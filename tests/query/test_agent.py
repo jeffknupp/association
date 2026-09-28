@@ -417,8 +417,8 @@ def test_a_rerouted_intent_runs_the_path_it_was_rerouted_to(monkeypatch: pytest.
         ran.append("team_record")
         raise TemplateUnsupported("team_record cannot read a player's line")
 
-    def composed(ctx: Any, intent: str, slots: dict[str, Any], question: str, subject: Any = None, trace: Any = None, declined: Any = None) -> TemplateResult:
-        ran.append(f"compose {intent}")
+    def composed(ctx: Any, reading: Reading, trace: Any = None, declined: Any = None) -> TemplateResult:
+        ran.append(f"compose {reading.intent}")
         return TemplateResult(data={}, answer="composed")
 
     import duckdb
@@ -433,7 +433,7 @@ def test_a_rerouted_intent_runs_the_path_it_was_rerouted_to(monkeypatch: pytest.
     agent = Agent("qwen2.5:7b", str(db_path), tmp_path / "out", history_dir=tmp_path / ".history")
 
     monkeypatch.setattr("association.query.agent.TEMPLATES", {"team_record": team_record})
-    monkeypatch.setattr("association.query.compose.answer", composed)
+    monkeypatch.setattr("association.query.compose.answer_reading", composed)
     answer = agent.ask("sixers record when maxey scored 20+ points", route=Route(intent="team_record", slots={"team": "Philadelphia 76ers", "stat": "points", "season_type": 2}))
     assert ran == ["compose record_when"]
     assert answer.intent == "record_when" and "composed" in (answer.text or "")
@@ -569,7 +569,7 @@ def test_with_fallthrough_disabled_a_question_no_template_answers_is_an_error_na
 def _refusing_template(ctx: Any, reading: Reading) -> NoReturn:
     """A template stand-in that always raises TemplateUnsupported, the way
     check_scope or a template's own validation does - the only trigger that
-    reaches association.query.compose.answer (agent._try_compose)."""
+    reaches association.query.compose.answer_reading (agent._try_compose)."""
     from association.query.templates.common import TemplateUnsupported
 
     raise TemplateUnsupported("a test double's refusal, standing in for whatever check_scope or a real template would have raised")
@@ -584,11 +584,11 @@ def test_a_templates_refusal_that_compose_answers_is_returned_as_fast_with_the_t
     from association.query.router import Route
     from association.query.templates.common import TemplateResult
 
-    def composed_answer(ctx: Any, intent: str, slots: dict[str, Any], question: str, subject: Any = None, trace: Any = None, declined: Any = None) -> TemplateResult:
+    def composed_answer(ctx: Any, reading: Reading, trace: Any = None, declined: Any = None) -> TemplateResult:
         return TemplateResult(data={"skeleton": "aggregate", "measures": ["points"], "rows": [{"points": 30.0}]}, answer="Joel Embiid has averaged 30.0 points since 2024.")
 
     monkeypatch.setattr("association.query.agent.TEMPLATES", {"player_stat": _refusing_template})
-    monkeypatch.setattr("association.query.compose.answer", composed_answer)
+    monkeypatch.setattr("association.query.compose.answer_reading", composed_answer)
 
     seen: list[str] = []
     agent = _agent_with_players(tmp_path, "Joel Embiid")
@@ -609,7 +609,7 @@ def test_a_templates_refusal_that_compose_answers_is_returned_as_fast_with_the_t
 
 
 def test_a_compose_none_falls_through_to_the_agent_exactly_as_before(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """No monkeypatch on compose.answer here: this exercises the real
+    """No monkeypatch on compose.answer_reading here: this exercises the real
     compiler (association.query.compose) on an intent that is not a point on
     any relation - a fingerprint is a chart over NetPoints - so it declines
     with None, and the wiring changes nothing: the fast path still falls
@@ -632,14 +632,14 @@ def test_a_compose_refusal_is_returned_as_the_answer_not_a_fall_through(monkeypa
     from association.query.router import Route
     from association.query.templates.common import TemplateResult
 
-    def composed_refusal(ctx: Any, intent: str, slots: dict[str, Any], question: str, subject: Any = None, trace: Any = None, declined: Any = None) -> TemplateResult:
+    def composed_refusal(ctx: Any, reading: Reading, trace: Any = None, declined: Any = None) -> TemplateResult:
         return TemplateResult(data={"ambiguous": "since"}, answer="I can't tell which span 'the last few' means - a number of games, or a number of seasons?")
 
     def chat_must_not_run(**kw: Any) -> None:
         raise AssertionError("the agent must not be asked - the compiler already answered")
 
     monkeypatch.setattr("association.query.agent.TEMPLATES", {"player_stat": _refusing_template})
-    monkeypatch.setattr("association.query.compose.answer", composed_refusal)
+    monkeypatch.setattr("association.query.compose.answer_reading", composed_refusal)
     monkeypatch.setattr(ollama, "chat", chat_must_not_run)
 
     answer = _agent_with_players(tmp_path, "Joel Embiid").ask("embiid's line over the last few?", route=Route(intent="player_stat", slots={"player": "Joel Embiid", "since": 2024}))
@@ -656,12 +656,12 @@ def test_a_composed_answer_carries_the_name_reading_it_noted(monkeypatch: pytest
     from association.query.router import Route
     from association.query.templates.common import TemplateResult
 
-    def composed_with_reading(ctx: Any, intent: str, slots: dict[str, Any], question: str, subject: Any = None, trace: Any = None, declined: Any = None) -> TemplateResult:
+    def composed_with_reading(ctx: Any, reading: Reading, trace: Any = None, declined: Any = None) -> TemplateResult:
         _note_name_reading("maxey", Entity("1", "Tyrese Maxey"), [Entity("0", "Marlon Maxey")], 2026, named_in_full=False)
         return TemplateResult(data={}, answer="Tyrese Maxey has averaged 28.0 points since 2024.")
 
     monkeypatch.setattr("association.query.agent.TEMPLATES", {"player_stat": _refusing_template})
-    monkeypatch.setattr("association.query.compose.answer", composed_with_reading)
+    monkeypatch.setattr("association.query.compose.answer_reading", composed_with_reading)
 
     answer = _agent_with_players(tmp_path, "Marlon Maxey", "Tyrese Maxey").ask(
         "how many points has maxey averaged since 2024?", route=Route(intent="player_stat", slots={"player": "maxey", "since": 2024})
@@ -694,7 +694,7 @@ def test_fast_path_answer_is_recorded_in_conversation_for_later_followups(monkey
     from association.query.templates.common import TemplateResult
 
     # threshold_count is answered by the compiler alone (compose.COMPILED_INTENTS).
-    monkeypatch.setattr("association.query.compose.answer", lambda *a, **k: TemplateResult(data={"leaders": []}, answer="template answer"))
+    monkeypatch.setattr("association.query.compose.answer_reading", lambda *a, **k: TemplateResult(data={"leaders": []}, answer="template answer"))
     # No ollama.chat stub: reaching one would itself be the bug. The route is
     # given, so nothing reads the question, and the compiler answers without a
     # model call.
@@ -1022,7 +1022,7 @@ def test_a_shape_nothing_reads_is_refused_before_the_agent_is_asked(monkeypatch:
         raise AssertionError("the agent must not be asked - the shape is one nothing here reads")
 
     monkeypatch.setattr("association.query.agent.TEMPLATES", {"game_log": _refusing_template})
-    monkeypatch.setattr("association.query.compose.answer", lambda *a, **k: None)
+    monkeypatch.setattr("association.query.compose.answer_reading", lambda *a, **k: None)
     monkeypatch.setattr(ollama, "chat", chat_must_not_run)
 
     agent = _agent_with_players(tmp_path, "Joel Embiid")
@@ -1084,7 +1084,7 @@ def test_a_compiled_intent_is_read_planned_and_answered_by_the_compiler_alone(mo
 
     calls: list[str] = []
 
-    def composed_first(ctx: Any, intent: str, slots: dict[str, Any], question: str, subject: Any = None, trace: Any = None, declined: Any = None) -> TemplateResult:
+    def composed_first(ctx: Any, reading: Reading, trace: Any = None, declined: Any = None) -> TemplateResult:
         calls.append("compose")
         if trace is not None:
             trace(
@@ -1095,7 +1095,7 @@ def test_a_compiled_intent_is_read_planned_and_answered_by_the_compiler_alone(mo
                     aggregate="count",
                     group="none",
                     predicates=[("points", ">=", 30)],
-                    intent=intent,
+                    intent=reading.intent,
                 )
             )
         return TemplateResult(data={"count": 9}, answer="Joel Embiid had 9 games with 30+ points.")
@@ -1106,7 +1106,7 @@ def test_a_compiled_intent_is_read_planned_and_answered_by_the_compiler_alone(mo
 
     recorded = Route(intent="threshold_count", slots={"player": "Joel Embiid", "stat": "points", "threshold": 30})
     monkeypatch.setattr("association.query.agent.TEMPLATES", {"threshold_count": never_template})
-    monkeypatch.setattr("association.query.compose.answer", composed_first)
+    monkeypatch.setattr("association.query.compose.answer_reading", composed_first)
 
     seen: list[str] = []
     agent = _agent_with_players(tmp_path, "Joel Embiid")
@@ -1128,7 +1128,7 @@ def test_a_compiled_intent_is_read_planned_and_answered_by_the_compiler_alone(mo
         calls.append("compose")
         declined("a test double's reason for having no reading")
 
-    monkeypatch.setattr("association.query.compose.answer", declining)
+    monkeypatch.setattr("association.query.compose.answer_reading", declining)
     agent.fallthrough = False
     with pytest.raises(FallthroughDisabled, match="a test double's reason"):
         agent.ask("how many 30 point games did embiid have?", route=recorded)

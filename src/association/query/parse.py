@@ -700,13 +700,29 @@ def reading_from_route(con: duckdb.DuckDBPyConnection, question: str, route: Rou
     slots = dict(route.slots)
     subject = read_subject(con, question, route.intent, dict(slots))
     applied = apply_subject(subject, slots, intent=route.intent)
-    return Reading(
+    reading = Reading(
         scope=Scope.from_slots(slots),
         intent=applied.intent,
         subject=subject,
         decisions=(*_subject_decisions(subject), *applied.decisions),
         misread=tuple(applied.dropped),
     )
+    return _reading_point(con, question, reading)
+
+
+def _reading_point(con: duckdb.DuckDBPyConnection, question: str, reading: Reading) -> Reading:
+    """``reading`` with the compiler's point read from the question's words
+    (:func:`~association.query.compose.move.read_point`) - or with why there
+    is none: the compiler declining (``point_declined``) or refusing
+    (``point_refusal``). Read here, once, so nothing after the parser reads
+    the question: the compiler plans and runs the point it is handed."""
+    try:
+        point = read_point(con, reading.intent, reading.scope.to_slots(), question, reading.subject)
+    except Unsupported as exc:
+        return replace(reading, point_declined=str(exc))
+    except Refused as exc:
+        return replace(reading, point_refusal=exc.result)
+    return replace(reading, point=point)
 
 
 def _subject_decisions(subject: Subject) -> tuple[Decision, ...]:

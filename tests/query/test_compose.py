@@ -1480,3 +1480,48 @@ def test_a_history_of_a_stat_nothing_carries_is_declined_not_swapped_for_points(
     why: list[str] = []
     assert compose_answer(cx_ctx, "player_history", {"player": "Brandin Podziemski", "stat": "shot_distance"}, "", declined=why.append) is None
     assert why == ["no per-season history for stat 'shot_distance'"]
+
+
+# ---------------------------------------------------------------------------
+# The parser reads the compiler's point once (ROADMAP next step 1): the
+# Reading carries it, and the compiler answers it without the question.
+# ---------------------------------------------------------------------------
+
+
+def test_the_parser_reads_the_point_and_the_compiler_answers_it_unread(cx_ctx: TemplateContext) -> None:
+    """``parse.reading_from_route`` reads the compiler's point from the
+    question's words (``Reading.point``), and ``compose.answer_reading``
+    plans and runs it without the question - the same answer, text and
+    ``data``, as the compiler reading the question itself (``compose.answer``)."""
+    from association.query.compose import answer_reading
+    from association.query.parse import reading_from_route
+    from association.query.router import Route
+
+    question = "how many 15+ point games did podziemski have"
+    reading = reading_from_route(cx_ctx.con, question, Route("threshold_count", {"player": "Brandin Podziemski", "stat": "points", "threshold": 15}))
+    assert reading.point is not None and (reading.point.shape, reading.point.aggregate) == ("scalar", "count")
+    by_reading = answer_reading(cx_ctx, reading)
+    by_slots = compose_answer(cx_ctx, "threshold_count", reading.scope.to_slots(), question, reading.subject)
+    assert by_reading is not None and by_slots is not None
+    assert (by_reading.answer, by_reading.data) == (by_slots.answer, by_slots.data)
+
+
+def test_a_point_the_compiler_declines_or_refuses_travels_on_the_reading(cx_ctx: TemplateContext) -> None:
+    """The compiler's verdict, read at parse time, is what ``answer_reading``
+    gives: a decline's reason (a league count with no line to count), and a
+    refusal as the answer - a copy, since the agent appends its notes to the
+    answer it is handed."""
+    from association.query.compose import answer_reading
+    from association.query.parse import reading_from_route
+    from association.query.router import Route
+
+    declined = reading_from_route(cx_ctx.con, "how many games", Route("threshold_count", {"stat": "points"}))
+    assert declined.point is None and declined.point_declined is not None
+    why: list[str] = []
+    assert answer_reading(cx_ctx, declined, declined=why.append) is None
+    assert why == [declined.point_declined]
+
+    refused = reading_from_route(cx_ctx.con, "most gizmos in a single game", Route("single_game_high", {"stat": "gizmos"}))
+    assert refused.point is None and refused.point_refusal is not None
+    answered = answer_reading(cx_ctx, refused)
+    assert answered is not None and answered.answer == refused.point_refusal.answer and answered is not refused.point_refusal

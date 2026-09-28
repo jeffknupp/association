@@ -566,30 +566,24 @@ class Agent:
         return None
 
     def _try_compose(self, question: str, reading: Reading, history: RunHistory, declined: Callable[[str], None] | None = None) -> TemplateResult | None:
-        """The step between a template's refusal and the fall-through agent:
-        ``association.query.compose.answer``, called only here so a caller
-        that never sees a ``TemplateUnsupported`` never pays for the import.
-        Answered exactly like a template's own result - same name-reading and
-        coverage-caveat attachment as :meth:`_run_template` - except its trace
-        line names the point on the relation it composed rather than a
-        template's intent and slots, since that IS the interesting fact about
-        a compiled answer.
+        """The compiler's answer to the point the parser read
+        (``association.query.compose.answer_reading``): the four compiled
+        intents' only answer, and the step between a template's refusal and
+        the fall-through agent. Answered exactly like a template's own result
+        - same name-reading and coverage-caveat attachment as
+        :meth:`_run_template` - except its trace line names the point on the
+        relation it composed rather than a template's intent and slots, since
+        that IS the interesting fact about a compiled answer.
 
-        Import inside the function, not at module level: the contract this
-        calls against (``README_land.md``) is built on a parallel branch, and
-        a call-time import is what lets a stub with only ``answer()`` stand in
-        for it - and what tests monkeypatch
-        (``association.query.compose.answer``).
+        The module is looked up at call time, not bound at import: that is
+        what tests monkeypatch (``association.query.compose.answer_reading``).
         """
         from . import compose
 
         with collect_name_readings() as readings:
-            composed = compose.answer(
+            composed = compose.answer_reading(
                 TemplateContext(con=self.toolbox.con, out_dir=self.toolbox.out_dir),
-                reading.intent,
-                reading.scope.to_slots(),
-                question,
-                reading.subject,
+                reading,
                 trace=lambda point: history.log(f"  -> (reading) {point.describe()}"),
                 declined=declined,
             )

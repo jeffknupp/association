@@ -491,8 +491,12 @@ model's. Two things follow, and both matter when you add a shape:
 - **A template's `TemplateUnsupported` gets one more deterministic try before
   the agent does.** `query/compose` sits between the two: when `check_scope`
   or the template itself raises, `agent.py`'s `_try_compose` offers
-  `compose.answer(ctx, intent, slots, question)` the same point on the
-  relation the template could not narrow to. A `TemplateResult` back is
+  `compose.answer_reading(ctx, reading)` the same point on the relation the
+  template could not narrow to - the point the parser read from the
+  question's words once (`Reading.point`, `parse.reading_from_route`), so
+  the compiler plans and runs it and never reads the question itself.
+  `compose.answer(ctx, intent, slots, question)` still reads its own point,
+  for a caller that holds slots rather than a Reading (the tests, scripts). A `TemplateResult` back is
   answered exactly like a template's own - `answered_by="fast"`, the intent
   kept, the same name-reading and coverage-caveat attachment - including when
   that result is itself a refusal (a clarification, a "no match"): looking at

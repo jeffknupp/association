@@ -157,8 +157,9 @@ common case is a single model call end to end.
 A template's refusal is not the end of the fast path. When ``check_scope`` or
 the template itself raises ``TemplateUnsupported``,
 :mod:`association.query.compose` gets a turn before the agent does:
-``compose.answer(ctx, intent, slots, question)`` compiles the same point on
-the relation the template could not narrow to and phrases its own answer
+``compose.answer_reading(ctx, reading)`` compiles the same point on the
+relation the template could not narrow to - the point the parser read from
+the question's words once (``Reading.point``) - and phrases its own answer
 exactly like a template's - a sentence, ``data``, no model call - or returns
 ``None`` to say "not a point on this relation", which falls through exactly as
 it did before this step existed. A refusal it hands back instead - a

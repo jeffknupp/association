@@ -32,6 +32,7 @@ if TYPE_CHECKING:
     from association.query.decisions import Decision
     from association.query.entities import Availability
     from association.query.subject import Subject
+    from association.query.templates.common import TemplateResult
 
 Shape = Literal["rows", "scalar", "grouped"]
 """Which reader answers the point: rows, one number, or one row per group.
@@ -368,6 +369,18 @@ class Reading:
     #: refuses by name rather than answer about somebody the question never
     #: mentioned (AGENTS.md: "when it cannot be repaired, say so").
     misread: tuple[str, ...] = ()
+    #: The compiler's point for the question - its word tables' reading of it
+    #: on the relation it names (:func:`~association.query.compose.move.read_point`),
+    #: read once, by the parser, so the compiler only plans and runs it
+    #: (:func:`~association.query.compose.answer_reading`). A Reading of its
+    #: own, since it reads words the templates never see: its scope may carry
+    #: a career the question's "ever" or "how many times" implies. ``None``
+    #: where the compiler has no reading of the point - ``point_declined``
+    #: says why - or a refusal of its own to give (``point_refusal``: a stat
+    #: nothing ranks, a floor no ranking applies).
+    point: Reading | None = None
+    point_declined: str | None = None
+    point_refusal: TemplateResult | None = None
 
     @classmethod
     def from_slots(cls, slots: Mapping[str, Any], *, intent: str = "", subject: Subject | None = None) -> Reading:

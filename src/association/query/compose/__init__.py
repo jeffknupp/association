@@ -26,6 +26,7 @@ a connection, an already-routed intent and slots, and the question's own text.
 
 from __future__ import annotations
 
+import copy
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
@@ -44,7 +45,7 @@ if TYPE_CHECKING:
     from association.query.reading import Reading
     from association.query.subject import Subject
 
-__all__ = ["answer"]
+__all__ = ["answer", "answer_reading"]
 
 
 def _point_data(query: Query, out: dict[str, Any], headline: str) -> dict[str, Any]:
@@ -188,10 +189,44 @@ def answer(
        of the point - the reason a question it alone answers falls through.
     """
     try:
-        reading = read_point(ctx.con, intent, slots, question, subject)
+        point = read_point(ctx.con, intent, slots, question, subject)
+    except Unsupported as exc:
+        if declined is not None:
+            declined(str(exc))
+        return None
+    except Refused as exc:
+        return exc.result
+    return _answer_point(ctx, intent, point, trace, declined)
+
+
+def answer_reading(ctx: TemplateContext, reading: Reading, trace: Callable[[Reading], None] | None = None, declined: Callable[[str], None] | None = None) -> TemplateResult | None:
+    """The point the parser read for a question (:attr:`Reading.point`,
+    :func:`~association.query.parse.reading_from_route`), answered - planned
+    and run, never read from the question again. The parser's own verdict
+    stands where it has no point: its refusal is the answer
+    (:attr:`Reading.point_refusal`), and a decline is ``None``, with the
+    reason given to ``declined``. Otherwise exactly :func:`answer`'s outcome.
+
+    .. versionadded:: 4.5.0
+    """
+    if reading.point_refusal is not None:
+        # A copy: the caller appends its notes to the answer it is handed.
+        return copy.deepcopy(reading.point_refusal)
+    if reading.point is None:
+        if declined is not None:
+            declined(reading.point_declined or "the compiler has no reading of this point")
+        return None
+    return _answer_point(ctx, reading.intent, reading.point, trace, declined)
+
+
+def _answer_point(ctx: TemplateContext, intent: str, point: Reading, trace: Callable[[Reading], None] | None, declined: Callable[[str], None] | None) -> TemplateResult | None:
+    """``point`` planned and run: the team subject's reader, the intent's
+    own presenter, or the compiler's own sentence - :func:`answer` and
+    :func:`answer_reading`'s shared tail."""
+    try:
         if trace is not None:
-            trace(reading)
-        query = plan(reading)
+            trace(point)
+        query = plan(point)
         if isinstance(query, TeamQuery):
             # A team's record above and below its own line is said by
             # record_when's own team reader (compose.present.present_team).
