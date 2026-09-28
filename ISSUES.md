@@ -226,6 +226,7 @@ those were found.
 - **User sees:** a wrong answer - a decade answered as its first season; possibly a player dropped from the question.
 - **Next step:** fold U+2019 (and U+2018) into a straight apostrophe once, where a question enters the parser (`parse.read_route`, or the agent before it), so every reader sees one apostrophe; `calendar._TYPOGRAPHIC_APOSTROPHE` (#238's local handling) can go then. A case per shape.
 - **Source:** ours.
+- **GitHub:** #259
 
 ### A single game named without an article is read as a season ranking: "This season's single game with the most assists" answers the assists-per-game leaders
 - **Found:** 2026-09-27, checking the answers the #168 fix moved ("most 3 pointers made in single game 24-25").
@@ -233,6 +234,7 @@ those were found.
 - **User sees:** a wrong answer - a season average or total where one game's high was asked.
 - **Next step:** let `subject.py`'s `single_game_high` grammar row read "single game" with no article ("in single game", "single game with the most"), gated as it is now on the subject's kind; a case per wording in `tests/query/test_subject.py`, and the corpus case to `port_check.py`.
 - **Source:** ours.
+- **GitHub:** #260
 
 ### A span of several seasons written short is read as its last season, or as nothing: "curry playoff stats 2015-18" answers the 2018 postseason alone
 - **Found:** 2026-09-27, fixing #168 - measuring which short spans the research corpora hold.
@@ -240,6 +242,7 @@ those were found.
 - **User sees:** a wrong answer - one season for a question spanning several; for the two-digit form, a refusal about the current season, which names the wrong cause.
 - **Next step:** read a span whose years are not consecutive as a closed range in `router._validate_range`, from `season_text.season_spans` (returning such a span marked as a range rather than as a season, so `season_from_text` stops reading "2015-18" as 2018), the way "2020-2024" reads; settle whether "2015-18" starts at season 2015, as "2020-2024" starts at 2020. A case per form in `tests/query/test_router.py`.
 - **Source:** ours.
+- **GitHub:** #261
 
 ## P2: misleading or incomplete
 
@@ -2334,6 +2337,7 @@ those were found.
 - **User sees:** a right number in a sentence that reads as a mistake, with neither game's date.
 - **Next step:** in the tie branch, name a player once with each of his games' dates ("Stephen Curry, twice - 12 on 2025-02-27 vs ORL and 2025-04-01 vs MEM"), and the dates beside several players' names; a case with one player's two tied games.
 - **Source:** ours.
+- **GitHub:** #262
 
 ## P3: refusal or gap
 
@@ -4256,3 +4260,4 @@ those were found.
 - **User sees:** a refusal whose reason contradicts itself.
 - **Next step:** give a name in `calendar.UNREAD_HOLIDAYS` its own sentence in `_non_calendar_situation` ("Easter moves with the church calendar, which is not read here - name its date instead"), or read Easter as a per-year list of dates, since it is no weekday-of-a-month rule.
 - **Source:** ours.
+- **GitHub:** #263
