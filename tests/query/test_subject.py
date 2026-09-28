@@ -444,6 +444,28 @@ def test_a_single_game_high_is_assigned_and_its_subject_restored(con: duckdb.Duc
     assert intent == "single_game_high" and slots["span"] == "career"
 
 
+def test_a_single_game_named_without_an_article_is_one_game(con: duckdb.DuckDBPyConnection) -> None:
+    """ "single game" is one game with an article or without (ISSUES.md
+    #260): "this season's single game with the most assists" answered the
+    assists-per-game leaders, and "most 3 pointers made in single game
+    24-25" the season's total. Neither names anybody - "single game with"
+    is no player called Single - and the kind still gates it: a team's
+    single game is not a player's high."""
+    intent, slots = _assigned(con, "this season's single game with the most assists", "leaderboard", stat="assists", season=2026, season_type=2)
+    assert intent == "single_game_high" and slots["stat"] == "assists" and slots["season"] == 2026 and "player" not in slots
+    intent, slots = _assigned(con, "most 3 pointers made in single game 24-25", "leaderboard", stat="threePointFieldGoalsMade", season=2025, season_type=2)
+    assert intent == "single_game_high" and slots["season"] == 2025 and "player" not in slots
+    intent, slots = _assigned(con, "single game with the most points this season", "leaderboard", stat="points", season=2026, season_type=2)
+    assert intent == "single_game_high" and "player" not in slots
+    intent, slots = _assigned(con, "jokic single-game high rebounds", "game_log", stat="rebounds", player="Nikola Jokic", season_type=2)
+    assert intent == "single_game_high" and slots["player"] == "Nikola Jokic" and slots["stat"] == "rebounds"
+    intent, _ = _assigned(con, "celtics most points single game", "other", stat="points", team="Boston Celtics", season_type=2)
+    assert intent == "other"
+    # A plural is games, not one game.
+    intent, _ = _assigned(con, "jokic single games stats", "game_log", player="Nikola Jokic", season_type=2)
+    assert intent == "game_log"
+
+
 def test_a_history_over_several_seasons_is_assigned_with_the_seasons_count(con: duckdb.DuckDBPyConnection) -> None:
     for parent in ("player_stat", "game_log", "other"):
         intent, slots = _assigned(con, "Klay Thompson's 3pt percentage over the past 4 seasons", parent, stat="threePointFieldGoalPct", player="Klay Thompson", season_type=2)

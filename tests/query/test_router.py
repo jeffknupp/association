@@ -1521,6 +1521,9 @@ def test_an_unscoped_count_by_a_named_player_reads_as_his_career() -> None:
         ("how many 30 point games does jokic have", "jokic"),
         ("how many games with 5+ blocks has wemby had", "wemby"),
         ("how many 50 point games does anyone have this season", None),
+        # #260: "single game with" is one game, not a player named Single.
+        ("this season's single game with the most assists", None),
+        ("single game with the most points this season", None),
     ],
 )
 def test_a_count_whose_subject_sits_between_does_and_have_is_restored(question: str, want: str | None) -> None:

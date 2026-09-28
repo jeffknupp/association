@@ -792,6 +792,10 @@ _COUNT_SUBJECT_WORDS = _SUBJECT_WORDS | frozenset(
         "but",
         "or",
         "per",
+        # "single game with the most assists" is one game, not a player named
+        # Single: under "X games with" it read "single" as the subject of a
+        # single-game high, and asked which Singleton was meant (#260).
+        "single",
         "game",
         "games",
         "total",
