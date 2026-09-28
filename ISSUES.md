@@ -469,8 +469,6 @@ those were found.
 - **Source:** ours, not ESPN's.
 - **GitHub:** #212
 
-### "Since 2000-01" is not read as a span: a league-wide multi-line count answers the default season
-- **Found:** 2026-09-24, grading `live_rest.jsonl` (yardstick-v2 F161).
 ### A composed league-wide read ignores `since`/`until`: "... games since 2000-01" answers the current season
 - **Found:** 2026-09-24, grading `live_rest.jsonl` (yardstick-v2 F161);
   re-diagnosed the same day fixing the router half of #207.
@@ -2457,6 +2455,8 @@ those were found.
   own `data` (add the first season there if it is not), not by parsing their
   sentences.
 - **Source:** ours (the standings' own floor is ESPN's, in `DATA.md`).
+- **GitHub:** #204
+
 ### No leaderboard metric ranks average three-point shot distance
 - **Found:** 2026-09-23, fixing the wrong-cause refusal `leaderboard` gives
   for `stat: "shot_distance"` (yardstick-v2 F019 - "who lead the league in
