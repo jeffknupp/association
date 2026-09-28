@@ -52,6 +52,7 @@ before that commit needs re-checking against the current warehouse.
 - **User sees:** that, where the count of triple-doubles per player - the leaderboard's answer - was asked: a different question, answered fluently or refused for a cause that is not the question's.
 - **Next step:** the `single_game_high` child declines where the stat is a boolean measure (`BOOLEAN_MEASURES`: a count of such games is the leaderboard's question), with cases in `tests/query/test_subject.py` and `port_check.py`'s corpus, and the rehearsal checked for false negatives ("most points in a single game" must still read as the high). Small: the gate is one condition in `subject._child_intent` or the row's own pattern.
 - **Source:** ours.
+- **GitHub:** #265
 
 ### "Embiid's record against Boston this year" answers a with/without split of the 76ers over the regular season; the question is Embiid's own games, playoffs included
 - **Found:** 2026-09-26, Jeff reviewing the pipeline walkthrough page (yardstick-v2 F088, all five wordings; blind key 4-2).
@@ -233,6 +234,7 @@ those were found.
 - **User sees:** a wrong answer - the teams' field goals made per game, where one player's single game was asked; a fall-through for the second.
 - **Next step:** let `single_game_high`'s row apply under `team_leaderboard` for the everyone kind where no team word ("team", "franchise") is written, measured on the rehearsal and `intent-shrink/port_check.py` first; a single game "with 0 fgm" is a predicate on the high the compiler has not got, so it refuses by name until it has one.
 - **Source:** ours.
+- **GitHub:** #266
 
 ### A month named with its calendar year is read as the season ending that year: "How many points did De'aaron fox average in November 2023" answers November 2022
 - **Found:** 2026-09-28, fixing #259 (one of the 19 research-corpus questions with a typographic apostrophe).
@@ -240,6 +242,7 @@ those were found.
 - **User sees:** a wrong answer - the right player's games from a year earlier, captioned as the month asked.
 - **Next step:** where a month from October to December is written with its year, read the season as that year + 1 (`router._validate_season` beside the situation reader); a case per month in `tests/query/test_router.py`.
 - **Source:** ours.
+- **GitHub:** #267
 
 ### A possessive on a name several players share drops the player: "Curry's stats by month 2016" answers the league's 2016 scorers
 - **Found:** 2026-09-28, fixing #259.
@@ -247,6 +250,7 @@ those were found.
 - **User sees:** a wrong answer - the league ranked where one player, a name several share, was asked about.
 - **Next step:** in `classify_span`, look the player up with the possessive stripped too (the `low` it already computes), so a shared surname stays a player's span for the template to ask about; a case in `tests/query/test_parser.py`.
 - **Source:** ours.
+- **GitHub:** #268
 
 ### A team named for a player's tenure beside an opponent is dropped: "d'angelo russell vs pistons as a laker" answers his 2026 games as a Maverick
 - **Found:** 2026-09-28, fixing #259 (the question carries a typographic apostrophe; its straight twin reads the same).
@@ -254,6 +258,7 @@ those were found.
 - **User sees:** a wrong answer - another team's games, where a tenure was asked.
 - **Next step:** read "as a <team>" beside an opponent as `own_team` (the tenure) rather than dropping it; a case in `tests/query/test_one_writer.py`.
 - **Source:** ours.
+- **GitHub:** #269
 
 ### "3's" is not read as threes: "Gabe Vincent 3’s as a laker" answers his points line
 - **Found:** 2026-09-28, fixing #259.
@@ -261,6 +266,7 @@ those were found.
 - **User sees:** a wrong answer - his scoring line where his threes were asked.
 - **Next step:** read "3's" (and "3’s", folded since #259) as threes made in `MEASURE_GRAMMAR`; a case in `tests/query/test_parser.py`.
 - **Source:** ours.
+- **GitHub:** #270
 
 ## P2: misleading or incomplete
 
@@ -2363,6 +2369,7 @@ those were found.
 - **User sees:** a refusal-shaped answer naming the wrong cause ("no games for every player"), the player dropped.
 - **Next step:** in the entity index, read a word with an apostrophe inside it (not a possessive at its end) joined as well as split - "jo'sh" as "josh" - the way the accent fold happened to read a typographic one; a case in `tests/query/test_entities.py`.
 - **Source:** ours.
+- **GitHub:** #271
 
 ## P3: refusal or gap
 
@@ -2979,6 +2986,7 @@ those were found.
 - **User sees:** a question where the answer was settled - the range names whose seasons to look in.
 - **Next step:** narrow by the range - `until` as the season a name left open is settled by, `since`..`until` as the seasons a candidate needs a row in (`entities.narrow_to_available` takes `season`/`through` today) - in `templates.common`'s resolution; a case per template reading `since`/`until`.
 - **Source:** ours.
+- **GitHub:** #272
 
 ## P4: tooling, docs, low impact
 
@@ -4300,3 +4308,4 @@ those were found.
 - **User sees:** nothing measured.
 - **Next step:** fold the question once where the agent receives it for everything after the normalizer - or carry the parser's folded question on the Reading - so no reader after the parser keeps its own.
 - **Source:** ours.
+- **GitHub:** #273
