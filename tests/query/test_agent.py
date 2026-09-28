@@ -1167,6 +1167,32 @@ def test_the_parser_reads_the_question(monkeypatch: pytest.MonkeyPatch, tmp_path
     assert (seen["player"], seen["stat"]) == ("Joel Embiid", "points")
 
 
+def test_the_intent_the_parsers_words_assign_reaches_the_answers_decisions(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """ISSUES.md #258: "how far away does embiid shoot from" is read under
+    ``player_stat`` by the grammar and settled as ``shot_distance`` by its
+    own words - which only the verbose trace used to say. The move is a
+    decision on the answer, as a value, and in the history record."""
+    import duckdb
+
+    from association.query.normalizer import Normalized
+    from association.query.templates.common import TemplateResult
+
+    monkeypatch.setattr("association.query.normalizer.normalize", lambda model, question: Normalized(["embiid"], ""))
+    monkeypatch.setattr("association.query.agent.TEMPLATES", {"shot_distance": lambda ctx, reading: TemplateResult(data={}, answer="templated")})
+    db_path = tmp_path / "test.duckdb"
+    con = duckdb.connect(str(db_path))
+    con.execute("CREATE TABLE players (athlete_id VARCHAR, display_name VARCHAR)")
+    con.execute("CREATE TABLE teams (team_id VARCHAR, abbreviation VARCHAR, display_name VARCHAR)")
+    con.execute("INSERT INTO players VALUES ('1', 'Joel Embiid')")
+    con.close()
+    answer = Agent("qwen2.5:7b", str(db_path), tmp_path / "out", history_dir=tmp_path / ".history").ask("how far away does embiid shoot from?")
+    assert (answer.text, answer.intent) == ("templated", "shot_distance")
+    moved = [d for d in answer.decisions if (d.stage, d.field) == ("parser", "intent")]
+    assert [(d.before, d.after, d.reason) for d in moved] == [("player_stat", "shot_distance", "the words 'how far' name shot_distance")]
+    record = next(iter((tmp_path / ".history").glob("*.log"))).read_text()
+    assert "  -> (decision) parser intent: 'player_stat' -> 'shot_distance' (the words 'how far' name shot_distance)" in record
+
+
 def test_a_slot_the_reading_cannot_hold_falls_through_rather_than_crashing(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """ "stephen curry last 0 games" reads as a window of 0, and a model can
     return a shot value of 0: the typed Scope refuses both, and the question

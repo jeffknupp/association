@@ -30,6 +30,7 @@ from typing import Any
 
 from association.nba.season import current_season
 
+from .decisions import Decision
 from .measures import MEASURE_WORDS
 from .season_text import season_from_text
 from .team_metrics import STAT_ALIASES
@@ -207,10 +208,21 @@ class RouterUnavailable(RuntimeError):
 @dataclass
 class Route:
     """`slots` holds only values that survived validation - a dropped slot is
-    absent, never a sentinel, so a template's own default applies normally."""
+    absent, never a sentinel, so a template's own default applies normally.
+    ``decisions`` are what the parser decided reading it
+    (:func:`~association.query.parse.read_route`): each move of the intent
+    off the parent its grammar named, and each slot a child's stages moved,
+    as values the Reading carries on
+    (:func:`~association.query.parse.reading_from_route`). A route the stages
+    settle, or one replayed, carries none.
+
+    .. versionchanged:: 4.5.0
+       ``decisions`` added.
+    """
 
     intent: str
     slots: dict[str, Any] = field(default_factory=dict)
+    decisions: tuple[Decision, ...] = ()
 
 
 def _validate_season(slots: dict[str, Any], question: str = "") -> int | None:

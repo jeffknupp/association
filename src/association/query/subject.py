@@ -90,6 +90,11 @@ SUBJECT_KINDS: frozenset[str] = frozenset({"player", "pair", "team", "teams", "p
 #: instead of the team's record under the condition.
 _RECORD_WHEN_PARENTS: frozenset[str] = frozenset({"player_stat", "player_splits", "game_log", "team_stat", "team_record", "with_without", "other"})
 
+#: Why a team's question with a companion's line is ``record_when``
+#: (:func:`_decide_intent`), wherever that is said: the reading's own
+#: decision, and the parser's about the intent.
+_TEAM_RECORD_WHEN = "a team's record in the games a player named beside it reached a line"
+
 # A line at or above a number, however it is written: "30+", "36-plus",
 # "30 or more", "at least 2" (the paraphrases' spellings, parser-greenfield).
 _N_PLUS = r"(?:\d{1,3}[\s-]*(?:\+|plus\b|or more\b)|\bat least \d{1,3})"
@@ -232,7 +237,7 @@ class Subject:
        spelling of each router name, resolved from the span the router's
        name anchors rather than from a whole-word match - which read "kareem
        stats vs bob lanier" as Kareem Rush. ``invented``,
-       ``named_season`` and ``intent`` added. ``opponent``
+       ``named_season``, ``intent`` and ``intent_reason`` added. ``opponent``
        also reads the router's slot where the question supports it;
        ``own_team`` needs the player named before the "for <team>" phrase.
     """
@@ -261,6 +266,12 @@ class Subject:
     #: (:data:`KIND_ASSIGNED_INTENTS`); the route's own intent everywhere
     #: else.
     intent: str = ""
+    #: Why ``intent`` is not the route's, in a sentence - the words that name
+    #: a child ("the words 'in a single game' name single_game_high"), or a
+    #: team's record in the games a companion reached a line - and ``None``
+    #: where it is the route's own. What the parser's decision about the
+    #: intent says (:func:`~association.query.parse.read_route`).
+    intent_reason: str | None = None
     #: The question this is a reading of - what :func:`apply_subject` settles
     #: a kind-assigned intent's slots from (:func:`~association.query.router.settle`).
     question: str = ""
@@ -821,10 +832,22 @@ def read_subject(con: duckdb.DuckDBPyConnection, question: str, intent: str, slo
         invented=tuple(invented),
         named_season=season_from_text(question),
         intent=settled,
+        intent_reason=_intent_reason(intent, settled, words),
         question=question,
         filler=filler,
         evidence=(*evidence, f"the words {words!r} name {settled}") if words else evidence,
     )
+
+
+def _intent_reason(intent: str, settled: str, words: str | None) -> str | None:
+    """Why ``settled`` is not the route's ``intent``
+    (:attr:`Subject.intent_reason`): the words that name a child, or -
+    the one other way :func:`_decide_intent` moves it, and the only one that
+    names no words - a team's record in the games a companion reached a
+    line."""
+    if settled == intent:
+        return None
+    return f"the words {words!r} name {settled}" if words is not None else _TEAM_RECORD_WHEN
 
 
 def _read_subject_alone(players: tuple[str, ...], teams: set[str], conditions: tuple[Companion, ...], slots: dict[str, Any]) -> bool:
@@ -993,21 +1016,19 @@ def _apply_team_record_when(subject: Subject, slots: dict[str, Any], intent: str
         # ("sixers" beside its invented Joel Embiid); the question sets
         # the team against nobody.
         kept.pop("opponent", None)
+    player = slots.get("player")
     slots.clear()
     slots.update(kept)
     slots.update({"player": condition.name, "stat": condition.stat, "threshold": condition.threshold})
     if subject.teams:
         slots["team"] = subject.teams[0]
-    reason = "a team's record in the games a player named beside it reached a line"
-    return [
-        Decision(
-            "subject",
-            "intent" if intent != "record_when" else "player",
-            intent if intent != "record_when" else slots.get("player"),
-            "record_when" if intent != "record_when" else condition.name,
-            reason,
-        )
-    ], "record_when"
+    if intent != "record_when":
+        return [Decision("subject", "intent", intent, "record_when", _TEAM_RECORD_WHEN)], "record_when"
+    # Already the team's record (the parser settles it, :func:`_decide_intent`):
+    # a decision only where the companion is not the player the route held -
+    # the player read BEFORE the slots were rewritten, since after they are
+    # his by construction.
+    return ([Decision("subject", "player", player, condition.name, _TEAM_RECORD_WHEN)] if player != condition.name else []), "record_when"
 
 
 def _apply_intent(subject: Subject, slots: dict[str, Any], intent: str) -> tuple[list[Decision], str]:

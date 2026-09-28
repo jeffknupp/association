@@ -10,8 +10,9 @@ from typing import Any
 import duckdb
 import pytest
 
+from association.query.decisions import Decision
 from association.query.parse import classify_span, measure, parent_intent, parse, read_route, reading_from_route, window
-from association.query.router import _threshold_from_text, settle
+from association.query.router import Route, _threshold_from_text, settle
 from association.query.templates.common import TemplateUnsupported, check_scope
 
 
@@ -405,3 +406,57 @@ def test_a_number_after_a_scoring_verb_is_a_line_on_points(con: duckdb.DuckDBPyC
     assert _threshold_from_text("when he scored 12 rebounds") == 12 and _threshold_from_text("tatum scored 3 threes") == 3
     for question in ("players who score 30 a game", "who scored 30 per game", "since he scored 2022", "scored 30.5 on average"):
         assert _threshold_from_text(question) is None, question
+
+
+# ---------------------------------------------------------------------------
+# The intent the parser's words assign, as decisions (ISSUES.md #258): a child
+# or a stage's intent was a trace line only, so the answer's decisions showed
+# who a question was about but never that "how many 30+ point games" was read
+# as a count rather than a game log.
+
+
+def test_each_move_of_the_intent_off_the_grammars_parent_is_a_decision(con: duckdb.DuckDBPyConnection) -> None:
+    """The three ways the intent leaves the parent the grammar named, each
+    with its own reason, and every slot a child's stages moved: the words
+    naming a child for the subject's kind, the stages settling another
+    intent, a team's record in the games a companion reached a line. A
+    question whose intent is the parent's carries none."""
+    route, _, _ = read_route(con, "How many times did embiid score 30+ points", ["embiid"], "points")
+    assert route.decisions == (
+        Decision("parser", "intent", "game_log", "threshold_count", "the words 'How many times did embiid score 30+' name threshold_count"),
+        Decision("parser", "span", None, "career", "read for threshold_count"),
+        Decision("parser", "threshold", None, 30, "read for threshold_count"),
+    )
+    route, _, _ = read_route(con, "rebounds allowed per team", [], "rebounds")
+    assert route.decisions == (Decision("parser", "intent", "leaderboard", "team_leaderboard", "the stages settle it from the question's words"),)
+    route, subject, _ = read_route(con, "what was the sixers record when maxey scored 15+ points?", ["sixers", "maxey"], "points")
+    team_rule = "a team's record in the games a player named beside it reached a line"
+    assert route.decisions[0] == Decision("parser", "intent", "with_without", "record_when", team_rule) and subject.intent_reason == team_rule
+    assert [(d.field, d.after) for d in route.decisions[1:]] == [("player", "maxey"), ("threshold", 15)]
+    route, subject, _ = read_route(con, "how many points does embiid average", ["embiid"], "points")
+    assert (route.intent, route.decisions, subject.intent_reason) == ("player_stat", (), None)
+
+
+def test_the_reading_carries_the_parsers_decisions_between_who_and_what_it_wrote(con: duckdb.DuckDBPyConnection) -> None:
+    """The Reading's decisions read in order: who the question is about, how
+    the parser moved the intent, then what the subject wrote into the scope
+    (here the question's own spelling of the companion, "maxey" read as
+    Tyrese Maxey) - and a replayed route, which the parser never read,
+    carries none of the parser's. The team rule's own decision is only where
+    it moves the player: it used to read the slot after rewriting it, and
+    said "subject player: 'maxey' -> 'maxey'" on every such question."""
+    question = "what was the sixers record when maxey scored 15+ points?"
+    route, _, _ = read_route(con, question, ["sixers", "maxey"], "points")
+    decisions = reading_from_route(con, question, route).decisions
+    assert [(d.stage, d.field) for d in decisions] == [
+        ("subject", "kind"),
+        ("subject", "teams"),
+        ("subject", "companions"),
+        ("parser", "intent"),
+        ("parser", "player"),
+        ("parser", "threshold"),
+        ("subject", "player"),
+    ]
+    assert (decisions[-1].before, decisions[-1].after) == ("maxey", "Tyrese Maxey")
+    replayed = reading_from_route(con, question, Route(route.intent, {**route.slots, "player": "Tyrese Maxey"}))
+    assert [(d.stage, d.field) for d in replayed.decisions] == [("subject", "kind"), ("subject", "teams"), ("subject", "companions")]

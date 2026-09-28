@@ -648,14 +648,41 @@ def read_route(con: duckdb.DuckDBPyConnection, question: str, names: list[str] |
     # The window before the stages: they read ``order``/``limit`` as the
     # model's (a bare "last 10 games" reads both season types only beside
     # them, ``_route_game_log_recent_span``).
-    child, settled = _read_route_child(con, question, settle(parent, window(question, slots), question))
+    staged = settle(parent, window(question, slots), question)
+    child, settled = _read_route_child(con, question, staged)
     final = child.intent
     point_slots = _read_route_fields(final, _read_route_period(final, window(question, dict(child.slots)), question), question)
     # A teammate's start is his, never the subject's own split: the stages
     # read the split from the whole question.
     point_slots = _read_route_split(subject, question, final, point_slots)
-    subject = replace(subject, intent=final, teams=subject.teams if subject.kind == "teams" else settled.teams, opponent=subject.opponent if subject.kind == "teams" else settled.opponent)
-    return Route(final, point_slots), subject, parent
+    subject = replace(
+        subject,
+        intent=final,
+        intent_reason=settled.intent_reason,
+        teams=subject.teams if subject.kind == "teams" else settled.teams,
+        opponent=subject.opponent if subject.kind == "teams" else settled.opponent,
+    )
+    return Route(final, point_slots, _read_route_decisions(parent, staged, child, settled)), subject, parent
+
+
+def _read_route_decisions(parent: str, staged: Route, child: Route, settled: Subject) -> tuple[Decision, ...]:
+    """How the intent moved off the parent the grammar named, as decisions
+    (:attr:`~association.query.router.Route.decisions`): the stages settling
+    another intent from the words (:func:`~association.query.router.settle`
+    - a ranking of teams, a count of games, a quarter's split), then a child
+    the words name for the subject's kind
+    (:attr:`~association.query.subject.Subject.intent_reason`), with each
+    slot the stages moved when they ran again under it. Until these, the
+    agent's ``(parser)`` trace line was the only place a count read out of
+    "how many 30+ point games" said it was not a game log."""
+    decisions: list[Decision] = []
+    if staged.intent != parent:
+        decisions.append(Decision("parser", "intent", parent, staged.intent, "the stages settle it from the question's words"))
+    if child.intent != staged.intent:
+        decisions.append(Decision("parser", "intent", staged.intent, child.intent, settled.intent_reason or ""))
+        moved = sorted(key for key in staged.slots.keys() | child.slots.keys() if staged.slots.get(key) != child.slots.get(key))
+        decisions.extend(Decision("parser", key, staged.slots.get(key), child.slots.get(key), f"read for {child.intent}") for key in moved)
+    return tuple(decisions)
 
 
 def _read_route_child(con: duckdb.DuckDBPyConnection, question: str, route: Route) -> tuple[Route, Subject]:
@@ -688,7 +715,9 @@ def reading_from_route(con: duckdb.DuckDBPyConnection, question: str, route: Rou
     (d), part 3 - one writer).
 
     The Reading carries what the reading decided, as values
-    (:attr:`~association.query.reading.Reading.decisions`), and the model's
+    (:attr:`~association.query.reading.Reading.decisions`) - who the question
+    is about, then the parser's own moves of the intent that ``route``
+    carries, then what the subject wrote into the scope - and the model's
     names the question never held that nothing in it could replace
     (:attr:`~association.query.reading.Reading.misread`), which the agent
     refuses by name rather than answer about somebody the question never
@@ -704,7 +733,7 @@ def reading_from_route(con: duckdb.DuckDBPyConnection, question: str, route: Rou
         scope=Scope.from_slots(slots),
         intent=applied.intent,
         subject=subject,
-        decisions=(*_subject_decisions(subject), *applied.decisions),
+        decisions=(*_subject_decisions(subject), *route.decisions, *applied.decisions),
         misread=tuple(applied.dropped),
     )
     return _reading_point(con, question, reading)
@@ -753,4 +782,10 @@ def parse(con: duckdb.DuckDBPyConnection, question: str, names: list[str] | None
         reading = read_point(con, route.intent, dict(route.slots), question, subject)
     except (Unsupported, Refused):
         reading = Reading(scope=Scope.from_slots(dict(route.slots)), intent=route.intent, subject=subject)
-    return replace(reading, intent=route.intent, subject=subject, evidence=(*reading.evidence, f"parent {parent!r} from the words under kind {subject.kind!r}"))
+    return replace(
+        reading,
+        intent=route.intent,
+        subject=subject,
+        decisions=(*route.decisions, *reading.decisions),
+        evidence=(*reading.evidence, f"parent {parent!r} from the words under kind {subject.kind!r}"),
+    )
