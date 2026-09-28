@@ -1632,7 +1632,13 @@
   const MEASURE_LABELS = {points: "PTS", rebounds: "REB", assists: "AST", minutes: "MIN", steals: "STL", blocks: "BLK", turnovers: "TOV", fouls: "PF",
     fieldGoalsMade: "FGM", fieldGoalsAttempted: "FGA", threePointFieldGoalsMade: "3PM", threePointFieldGoalsAttempted: "3PA", freeThrowsMade: "FTM", freeThrowsAttempted: "FTA",
     plusMinus: "+/-", ts_pct: "TS%", efg_pct: "eFG%", fg_pct: "FG%", three_pct: "3P%", ft_pct: "FT%", usage_pct: "USG%", game_score: "game score", pra: "PRA"};
-  const FRACTIONS = new Set(["ts_pct", "efg_pct", "usage_pct"]);
+  // The view stores ts_pct/efg_pct as fractions (0.57) but usage_pct, like
+  // fg_pct/three_pct/ft_pct, is already a percent (`fetch/advanced_stats.py`,
+  // `100.0 * ...`) - the same fact `compose/sentence.py`'s `_FRACTION_COLUMNS`
+  // holds, checked against this set by test_renderers.py so the two cannot
+  // drift apart again. usage_pct drifted in once and every composed usage
+  // rate printed 100x too large ("USG% 2435.5%", #225).
+  const FRACTIONS = new Set(["ts_pct", "efg_pct"]);
   function measureCell(v, m) {
     if (v === null || v === undefined) return "";
     if (typeof v === "number" && FRACTIONS.has(m)) return (v * 100).toFixed(1) + "%";
