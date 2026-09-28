@@ -84,25 +84,11 @@ SUBJECT_KINDS: frozenset[str] = frozenset({"player", "pair", "team", "teams", "p
 .. versionadded:: 4.4.0
 """
 
-#: Intents whose ``opponent`` is a team the subject played against. A PLAYER
-#: in that slot is the pair relation's question - "lebron vs kawhi head to
-#: head", "jay huff game log vs embiid" - which ``player_matchup`` answers
-#: from two reads of the relation joined on the event; the router filed the
-#: second player as an opponent, and a genuine two-player matchup refuses
-#: ``opponent``, so both fell through (yardstick-v2 F081, F142).
-_PAIRABLE_INTENTS: frozenset[str] = frozenset({"player_matchup", "game_log", "player_stat", "threshold_count", "single_game_high", "streak", "record_when", "player_splits"})
-
-_RECORD_ASKED = re.compile(r"\brecords?\b", re.IGNORECASE)
-
 #: The intents a "<team> when <player> reaches N" question arrives under
 #: (the router's own `_WHEN_REACHES_REROUTABLE`, plus the splits the model
 #: files it as) - each would answer the player's or the team's own line
 #: instead of the team's record under the condition.
 _RECORD_WHEN_PARENTS: frozenset[str] = frozenset({"player_stat", "player_splits", "game_log", "team_stat", "team_record", "with_without", "other"})
-
-#: A question that compares its two players - "compare", never "vs", which
-#: on two players is the pair relation's meetings, not a comparison.
-_COMPARES = re.compile(r"\bcompar(?:e[ds]?|ing|ison)\b", re.IGNORECASE)
 
 # A line at or above a number, however it is written: "30+", "36-plus",
 # "30 or more", "at least 2" (the paraphrases' spellings, parser-greenfield).
@@ -245,8 +231,8 @@ class Subject:
        ``named`` is gone: ``players`` itself carries the question's own
        spelling of each router name, resolved from the span the router's
        name anchors rather than from a whole-word match - which read "kareem
-       stats vs bob lanier" as Kareem Rush. ``routed_opponent`` and
-       ``invented``, ``named_season`` and ``intent`` added. ``opponent``
+       stats vs bob lanier" as Kareem Rush. ``invented``,
+       ``named_season`` and ``intent`` added. ``opponent``
        also reads the router's slot where the question supports it;
        ``own_team`` needs the player named before the "for <team>" phrase.
     """
@@ -259,11 +245,6 @@ class Subject:
     own_team: str | None = None
     companions: tuple[str, ...] = ()
     evidence: tuple[str, ...] = ()
-    #: The router's ``opponent`` when it names a player rather than a team -
-    #: the second of a pair, in the slot shape ``refusals.pair_from_opponent``
-    #: reads - so :func:`apply_subject` knows that slot holds a name to check.
-    #: ``None`` for a team opponent, which is a narrowing and not a subject.
-    routed_opponent: str | None = None
     #: The router's player names - from ``player``, ``players`` and a player
     #: filed as the ``opponent`` - that the question never held and that are
     #: not teams: fiction, as far as the question can tell ("Jusuf Nurkic" on
@@ -274,12 +255,11 @@ class Subject:
     #: reads ("for Miami" with no season is a career, not this season), and
     #: never the router's own "current season" default.
     named_season: int | None = None
-    #: The intent the subject's shape settles, where the router's cannot be
-    #: about this subject - a player's record against a team is
-    #: ``with_without``, not two franchises meeting (``head_to_head``); two
-    #: players are the pair relation (``player_matchup``), or a comparison
-    #: (``player_compare``) where the question compares them; the router's
-    #: own intent everywhere else.
+    #: The intent the subject's shape settles: a team's record in the games
+    #: a companion reached a line (``record_when``), or a child the
+    #: question's own words name for this kind of subject
+    #: (:data:`KIND_ASSIGNED_INTENTS`); the route's own intent everywhere
+    #: else.
     intent: str = ""
     #: The question this is a reading of - what :func:`apply_subject` settles
     #: a kind-assigned intent's slots from (:func:`~association.query.router.settle`).
@@ -581,10 +561,11 @@ def _named_as_own(con: duckdb.DuckDBPyConnection, question: str, team: Entity, s
 
 
 def _opponent_player(con: duckdb.DuckDBPyConnection, slots: dict[str, Any]) -> str | None:
-    """The router's ``opponent`` when it names a player and not a team: the
-    second of a pair, filed in the slot ``refusals.pair_from_opponent``
-    reads ("jay huff game log vs Embiid" arrived with Jokic there). A team
-    opponent is a narrowing, not a subject, and stays ``scope_from_question``'s."""
+    """A route's ``opponent`` when it names a player and not a team ("jay
+    huff game log vs Embiid" arrived from the router with Jokic there): a
+    name to check against the question like the subject's own, never read
+    as a team the subject is set against. A team opponent is a narrowing,
+    not a subject."""
     opponent = slots.get("opponent")
     if not isinstance(opponent, str) or not opponent.strip() or find_teams(con, opponent) or not find_players(con, opponent):
         return None
@@ -834,10 +815,9 @@ def read_subject(con: duckdb.DuckDBPyConnection, question: str, intent: str, slo
     if unrouted:
         evidence = (*evidence, f"companions the router named nobody for {list(unrouted)}")
     subject = replace(_decide(players, teams, position, opponent, own_team, companions, evidence, intent, question), conditions=conditions)
-    settled, words = _decide_intent(subject, routed_opponent, intent, question, slots)
+    settled, words = _decide_intent(subject, intent, question, slots)
     return replace(
         subject,
-        routed_opponent=routed_opponent,
         invented=tuple(invented),
         named_season=season_from_text(question),
         intent=settled,
@@ -860,49 +840,30 @@ def _read_subject_alone(players: tuple[str, ...], teams: set[str], conditions: t
     return not players and not named_team and len(conditions) == 1 and conditions[0].predicate == "played"
 
 
-def _decide_intent(subject: Subject, routed_opponent: str | None, intent: str, question: str, slots: dict[str, Any]) -> tuple[str, str | None]:
+def _decide_intent(subject: Subject, intent: str, question: str, slots: dict[str, Any]) -> tuple[str, str | None]:
     """The intent the subject's shape settles, and the words that named it
-    where a child intent was assigned - the router's own unless it cannot be
-    about this subject:
+    where a child intent was assigned - the route's own unless:
 
-    - A player's record against a team is not two franchises meeting.
-      ``head_to_head`` counts every meeting, the ones he sat out included;
-      ``with_without`` splits the team's record by the games he played,
-      narrowed to the opponent - "Embiid career record vs boston", #163.
-    - Two players are the pair relation, which ``player_matchup`` reads: a
-      player the router filed as the ``opponent`` (F081, F142), and a pair
-      the router sent to ``with_without`` - "steph curry record vs lebron
-      regular season without kd" (yardstick-v2 F114) is Curry's games
-      against LeBron with Durant absent, which that template answered as a
-      team's record with and without Durant.
-    - A pair the question compares, sent to ``player_stat`` with the second
-      player as the ``opponent`` ("compare Jaylen Brown and Jason Tatum's
-      netpoints ..."), is ``player_compare``.
+    - A team has a companion's line as the condition: "show me splits for
+      the sixers when maxey scores 20+ points" (yardstick-v2 F087) is the
+      team's record in the games he reached it, which ``record_when``
+      answers with HIM as its player.
+    - The question's own words name a child of the route's intent
+      (:data:`_CHILD_GRAMMARS`, :data:`KIND_ASSIGNED_INTENTS`) - and only
+      where the stages, run under that child
+      (:func:`~association.query.router.settle`), leave it there: a count of
+      games with no threshold in the text is a ranking, and stays the
+      route's question.
 
-    Exactly two players: a player whose invented opponent was deleted for
-    want of one spare name ("luka game log vs embiid and klay thompson")
-    is not a pair, and stays the router's question.
-
-    Last, a child intent the question's own words name under a parent the
-    router chose (:data:`_CHILD_GRAMMARS`, :data:`KIND_ASSIGNED_INTENTS`) -
-    and only where the router's own stages, run under that child
-    (:func:`~association.query.router.settle`), leave it there: a count of
-    games with no threshold in the text is a ranking, and stays the
-    router's question."""
-    if intent == "head_to_head" and subject.kind == "player" and subject.opponent and _RECORD_ASKED.search(question):
-        return "with_without", None
+    The router's reroutes are gone - a player's record against a team read
+    as two teams meeting (#163), a pair filed with the second player as the
+    ``opponent`` (F081, F142) or sent to ``with_without`` (F114), a
+    comparison sent to ``player_stat``: measured over the 628 questions with
+    a recorded normalizer reply, none fires on the parser's output, whose
+    grammar names a player's own record, the pair relation and a comparison
+    by the subject's kind (ROADMAP plan item 6, step (d), part 3)."""
     if subject.kind in ("team", "team_players") and intent in _RECORD_WHEN_PARENTS and any(c.predicate == "reached" for c in subject.conditions):
-        # A team with a companion's line as the condition - "show me splits
-        # for the sixers when maxey scores 20+ points" (yardstick-v2 F087):
-        # the team's record in the games he reached it, which record_when
-        # answers with HIM as its player. The router files it as the player's
-        # own splits, or as a line for a player it invented (Joel Embiid).
         return "record_when", None
-    if len(subject.players) == 2:
-        if intent == "with_without" or (intent in _PAIRABLE_INTENTS and routed_opponent is not None):
-            return "player_matchup", None
-        if intent == "player_stat" and _COMPARES.search(question):
-            return "player_compare", None
     return _child_intent(subject, intent, question, slots)
 
 
@@ -970,7 +931,9 @@ def _decide(
 
 def apply_subject(subject: Subject, slots: dict[str, Any], *, intent: str) -> Applied:
     """Write what the subject reading settled into the slots a template
-    reads, once the parser has read the question: the players the question
+    reads - the parser's last step
+    (:func:`~association.query.parse.reading_from_route`), which returns
+    them as the typed Scope: the players the question
     is about, in the shape the route already uses (``player`` or
     ``players``); the one player a template that needs one was left
     without; a player's own team, and the tenure it implies; a position
@@ -990,7 +953,9 @@ def apply_subject(subject: Subject, slots: dict[str, Any], *, intent: str) -> Ap
     recorded normalizer reply (ROADMAP plan item 6, step (d), part 3c), the
     router-era repairs that never fired there - a player filed in ``team``,
     a team that displaced the player, a player or a team filed as the
-    opponent, a team subject the router dropped - are gone.
+    opponent, a team subject the router dropped - are gone, and so are the
+    reroutes that never fired either (a player's record against a team, a
+    pair filed through the opponent, a child the parser already settles).
 
     .. versionadded:: 4.4.0
 
@@ -999,9 +964,8 @@ def apply_subject(subject: Subject, slots: dict[str, Any], *, intent: str) -> Ap
        "Seph Curry", included) rather than from a whole-word match; writes
        the restored player, the own team and the companions' roles, which
        were ``entities.scope_from_question``'s; takes ``intent`` and returns
-       :class:`Applied`, whose ``intent`` is the reroute
-       ``player_record_against_a_team`` and ``refusals.pair_from_opponent``
-       used to make.
+       :class:`Applied`, whose ``intent`` is a team's ``record_when`` where
+       the reading settled on it.
     """
     players, dropped = _apply_players(subject, slots, intent)
     if dropped:
@@ -1048,76 +1012,15 @@ def _apply_team_record_when(subject: Subject, slots: dict[str, Any], intent: str
 
 
 def _apply_intent(subject: Subject, slots: dict[str, Any], intent: str) -> tuple[list[Decision], str]:
-    """Rewrite the slots for the intent the subject settled
-    (:func:`_decide_intent`), where it differs from the router's; returns
-    the decisions and the intent the slots are now for."""
-    if not subject.intent:
-        return [], intent
+    """Rewrite the slots for the team's record in the games a companion
+    reached a line, where the reading settled on it
+    (:func:`_decide_intent`); returns the decisions and the intent the slots
+    are now for. A child the question's words name is the parser's own step
+    (:func:`~association.query.parse.read_route` settles the route under
+    it), so it arrives here as the route's intent and nothing moves."""
     if subject.intent == "record_when" and subject.kind in ("team", "team_players") and any(c.predicate == "reached" for c in subject.conditions):
-        # Before the word-assigned children: this record_when is the TEAM's
-        # question with a companion's line, not a player's own.
         return _apply_team_record_when(subject, slots, intent)
-    if subject.intent == intent and not (subject.intent == "player_matchup" and len(subject.players) == 2 and slots.get("opponent") and slots.get("player")):
-        # Already the router's intent - unless a player still sits in
-        # `opponent` beside `player` on a matchup the router itself chose
-        # ("lebron vs kawhi head to head"), which the template reads as a
-        # team and refuses; the pair goes into `players` either way.
-        return [], intent
-    if subject.intent in KIND_ASSIGNED_INTENTS:
-        return _apply_child_intent(subject, slots, intent)
-    if subject.intent == "with_without":
-        # Only the slots that still mean the same thing for the new intent.
-        # The team slots are exactly what must not survive: they are the
-        # reading being replaced. The subject goes in `without` because that
-        # is the slot the template splits BY; it infers his team itself.
-        kept = {key: value for key, value in slots.items() if key in ("season", "season_type", "span", "venue")}
-        slots.clear()
-        slots.update(kept)
-        slots["without"] = [subject.players[0]]
-        slots["opponent"] = subject.opponent
-        return [Decision("subject", "intent", intent, "with_without", "a player's record against a team, not two teams meeting")], "with_without"
-    slots["players"] = list(subject.players)
-    for key in ("player", "opponent", "team"):
-        slots.pop(key, None)
-    reason = "two players the question compares" if subject.intent == "player_compare" else "two players: the games the two played against each other"
-    if subject.intent == intent:
-        return [Decision("subject", "players", None, list(subject.players), reason)], intent
-    return [Decision("subject", "intent", intent, subject.intent, reason)], subject.intent
-
-
-def _apply_child_intent(subject: Subject, slots: dict[str, Any], intent: str) -> tuple[list[Decision], str]:
-    """The slots for a child intent the words assigned
-    (:data:`KIND_ASSIGNED_INTENTS`): the router's own stages run again under
-    it (:func:`~association.query.router.settle`), so the threshold, the
-    seasons count, a streak's kind or a split are read the one way the
-    router reads them - and the parent's own derived slots (a ``since`` a
-    game log read where a history reads ``limit``) do not survive into a
-    template that refuses them. Every slot that moved is a decision. Where
-    the stages settle elsewhere after all, nothing is written and the
-    router's intent stands."""
-    settled = settle(subject.intent, slots, subject.question)
-    if settled.intent != subject.intent:
-        return [], intent
-    before = dict(slots)
-    slots.clear()
-    slots.update(settled.slots)
-    decisions = [Decision("subject", "intent", intent, subject.intent, "the question's own words name it, and the subject is one it can be about")]
-    decisions.extend(Decision("subject", key, before.get(key), slots.get(key), f"read for {subject.intent}") for key in sorted(before.keys() | slots.keys()) if before.get(key) != slots.get(key))
-    # The player the reading holds, where the child's template needs one and
-    # neither the parent's stages nor the child's put one back: "kawhi most
-    # threes in a game" under a game log names nobody to a game log, and the
-    # single-game high the words settle is Kawhi's.
-    decisions.extend(_apply_restored_player(subject, slots, subject.intent))
-    team = slots.get("team")
-    if isinstance(team, str) and any(_same_person(team, [p]) for p in subject.players):
-        # The subject himself, filed as the TEAM by a team-only parent: "how
-        # many playoff games has embiid won?" arrived as an outlook for a
-        # "team" named Joel Embiid (day5), and left there it refused the
-        # compiler's read ("no team matching") once the child's template
-        # stepped aside.
-        slots.pop("team", None)
-        decisions.append(Decision("subject", "team", team, None, "the subject himself, filed as a team by the router"))
-    return decisions, subject.intent
+    return [], intent
 
 
 def _apply_restored_player(subject: Subject, slots: dict[str, Any], intent: str) -> list[Decision]:

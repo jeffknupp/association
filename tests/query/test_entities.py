@@ -890,53 +890,44 @@ def test_part_of_a_team_name_run_together_still_names_no_team(scope_con: duckdb.
         assert not isinstance(resolve_team(scope_con, spelling), Entity), spelling
 
 
-def _rerouted(con: duckdb.DuckDBPyConnection, question: str, intent: str, slots: dict[str, Any]) -> str:
-    """The intent the reading settles for the question, with `slots` rewritten for it."""
-    from association.query.subject import apply_subject, read_subject
+def _parsed(con: duckdb.DuckDBPyConnection, question: str, names: list[str]) -> Any:
+    """The Reading the parser settles for ``question``, the normalizer's
+    names stubbed as ``names``: its route (``parse.read_route``), then its
+    last step (``parse.reading_from_route``)."""
+    from association.query.parse import read_route, reading_from_route
 
-    return apply_subject(read_subject(con, question, intent, slots), slots, intent=intent).intent
+    route, _, _ = read_route(con, question, names, "")
+    return reading_from_route(con, question, route)
 
 
-def test_a_players_record_against_a_team_is_not_two_teams_meeting(scope_con: duckdb.DuckDBPyConnection) -> None:
-    """#163: the router sends "Embiid career record vs boston" to head_to_head,
-    which is two franchises meeting - a different question, counting every
-    meeting including the ones he sat out. It arrives two ways: with the player
-    in the TEAM list, and with him replaced by his own team and named only in
-    the question. Both become with_without, whose split is exactly "the games
-    he played against the ones he missed"."""
+def test_a_players_record_against_a_team_is_his_own_games(scope_con: duckdb.DuckDBPyConnection) -> None:
+    """#163, then #231 (F088): "Embiid career record vs boston" is not two
+    franchises meeting - ``head_to_head`` counts every meeting, the ones he
+    sat out included - and not the team's with/without split the router-era
+    reroute answered it with, an "out" row nobody asked for. The parser
+    reads a player's record against a team as his own games' record,
+    narrowed to the opponent (``player_splits``), from the subject's kind;
+    the reroute went with the router (ROADMAP plan item 6, step (d), part 3)."""
     scope_con.execute("INSERT INTO players VALUES ('20','Joel Embiid')")
-    in_teams: dict[str, Any] = {"teams": ["Joel Embiid", "Boston Celtics"], "season_type": 2, "span": "career"}
-    assert _rerouted(scope_con, "Embiid career record vs boston", "head_to_head", in_teams) == "with_without"
-    assert in_teams == {"season_type": 2, "span": "career", "without": ["Joel Embiid"], "opponent": "Boston Celtics"}
-    displaced: dict[str, Any] = {"stat": "wins", "teams": ["Philadelphia 76ers", "Boston Celtics"], "season_type": 2, "span": "career"}
-    assert _rerouted(scope_con, "Show Embiid's career record against Boston", "head_to_head", displaced) == "with_without"
-    # `players_named_in` returns the roster's own spelling, not the question's.
-    assert displaced["without"] == ["Joel Embiid"] and displaced["opponent"] == "Boston Celtics"
-    # The team slots must not survive: they are the reading being replaced.
-    assert "teams" not in displaced and "team" not in displaced
+    for question, names in (("Embiid career record vs boston", ["embiid", "boston"]), ("Show Embiid's career record against Boston", ["Embiid", "Boston"])):
+        reading = _parsed(scope_con, question, names)
+        assert reading.intent == "player_splits" and reading.scope.player == "Joel Embiid" and reading.scope.opponent == "Boston Celtics", question
+        assert reading.scope.span == "career" and not reading.scope.without and not reading.scope.team, question
 
 
-def test_a_real_head_to_head_is_left_exactly_as_it_was(scope_con: duckdb.DuckDBPyConnection) -> None:
-    """The other half. A question naming no player, one naming a player but no
-    opponent, and any other intent all come back None, so nothing that answers
-    today can move."""
-    # He has to be on the roster, or the "no record asked" case below would
-    # come back None because nothing named a player at all - passing for a
-    # reason that has nothing to do with the rule being tested.
+def test_a_real_head_to_head_and_a_players_games_against_a_team_stay_what_they_are(scope_con: duckdb.DuckDBPyConnection) -> None:
+    """The other half: two teams meeting is ``head_to_head``, and a player
+    and an opponent with no record asked for is his games - "Embiid vs boston
+    last 5 games" answered with a won-lost split would be a different
+    question, fluently."""
     scope_con.execute("INSERT INTO players VALUES ('20','Joel Embiid')")
-    for question, intent, slots in (
-        ("Lakers vs Celtics record this season", "head_to_head", {"teams": ["Los Angeles Lakers", "Boston Celtics"], "season": 2026}),
-        # "boston" names Brandon Boston Jr. by word, and must not be read as
-        # the subject of his own opponent's question.
-        ("celtics record vs boston", "head_to_head", {"teams": ["Boston Celtics", "Boston Celtics"]}),
-        ("jaylen brown last 8 games vs pistons", "game_log", {"player": "Jaylen Brown"}),
-        # A player and an opponent, but no record asked for: "Embiid vs boston
-        # last 5 games" wants his games, and answering it with a won-lost
-        # split would be a different question, fluently.
-        ("Embiid vs boston last 5 games", "head_to_head", {"teams": ["Joel Embiid", "Boston Celtics"], "limit": 5}),
-        ("Lakers vs Celtics this season", "head_to_head", {"teams": ["Los Angeles Lakers", "Boston Celtics"]}),
+    for question, names, intent in (
+        ("Lakers vs Celtics record this season", ["Lakers", "Celtics"], "head_to_head"),
+        ("Lakers vs Celtics this season", ["Lakers", "Celtics"], "head_to_head"),
+        ("jaylen brown last 8 games vs pistons", ["jaylen brown", "pistons"], "game_log"),
+        ("Embiid vs boston last 5 games", ["Embiid", "boston"], "game_log"),
     ):
-        assert _rerouted(scope_con, question, intent, dict(slots)) == intent, question
+        assert _parsed(scope_con, question, names).intent == intent, question
 
 
 def test_a_player_left_out_is_restored_only_where_one_is_required(scope_con: duckdb.DuckDBPyConnection) -> None:

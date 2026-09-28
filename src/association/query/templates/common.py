@@ -715,11 +715,12 @@ where the intent cannot be about the subject" is exactly this shape;
 ``agent.py`` before the template runs, and its refusal names the player it
 read rather than answering the wrong one.
 
-Deliberately not every team-shaped intent: ``head_to_head`` already has its
-own reroute for a player's record against a team
-(``subject.Subject.intent``, #163), and ``coach`` is
-TABLELESS_INTENTS and already refuses on its own terms - neither needs a
-second, more general check that could only disagree with the first.
+Deliberately not every team-shaped intent: ``head_to_head`` is only ever
+two teams meeting - the parser reads a player's record against a team as
+his own games (``player_splits``, #163) from the subject's kind - and
+``coach`` is TABLELESS_INTENTS and already refuses on its own terms -
+neither needs a second, more general check that could only disagree with
+the first.
 
 .. versionadded:: 4.4.0
 """
@@ -757,13 +758,13 @@ def _as_scope(value: Scope | Mapping[str, Any]) -> Scope:
     """The typed scope a shared step reads: a :class:`Scope` as given, and a
     slot dict through :meth:`Scope.from_slots` - the one door a slot dict
     comes in by, so a key or a value nothing types is refused here exactly as
-    it is where the agent builds the Reading.
+    it is where the parser builds the Reading.
 
     Only the four checks take a slot dict still (:func:`check_scope`,
-    :func:`check_coverage`, :func:`coverage_caveat` and ``_sources_for``):
-    ``agent.py`` asks them about a route before it builds the Reading, until
-    the parser writes the Scope itself (ROADMAP plan item 6, step (d), part
-    3). Every other step here takes the Scope alone."""
+    :func:`check_coverage`, :func:`coverage_caveat` and ``_sources_for``),
+    and only from the tests: the agent hands them the Reading's own Scope,
+    which the parser writes (:func:`~association.query.parse.reading_from_route`).
+    Every other step here takes the Scope alone."""
     return value if isinstance(value, Scope) else Scope.from_slots(value)
 
 

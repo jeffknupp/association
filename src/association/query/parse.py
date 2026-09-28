@@ -648,19 +648,30 @@ def read_route(con: duckdb.DuckDBPyConnection, question: str, names: list[str] |
     # The window before the stages: they read ``order``/``limit`` as the
     # model's (a bare "last 10 games" reads both season types only beside
     # them, ``_route_game_log_recent_span``).
-    route = settle(parent, window(question, slots), question)
-    settled = read_subject(con, question, route.intent, dict(route.slots))
-    final = settled.intent or route.intent
-    point_slots = dict(route.slots)
-    if final != route.intent and final in KIND_ASSIGNED_INTENTS:
-        again = settle(final, dict(route.slots), question)
-        final, point_slots = again.intent, dict(again.slots)
-    point_slots = _read_route_fields(final, _read_route_period(final, window(question, point_slots), question), question)
+    child, settled = _read_route_child(con, question, settle(parent, window(question, slots), question))
+    final = child.intent
+    point_slots = _read_route_fields(final, _read_route_period(final, window(question, dict(child.slots)), question), question)
     # A teammate's start is his, never the subject's own split: the stages
     # read the split from the whole question.
     point_slots = _read_route_split(subject, question, final, point_slots)
     subject = replace(subject, intent=final, teams=subject.teams if subject.kind == "teams" else settled.teams, opponent=subject.opponent if subject.kind == "teams" else settled.opponent)
     return Route(final, point_slots), subject, parent
+
+
+def _read_route_child(con: duckdb.DuckDBPyConnection, question: str, route: Route) -> tuple[Route, Subject]:
+    """``route`` under the intent the subject reading settles for it - a
+    child the question's own words name for the subject's kind
+    (:data:`~association.query.subject.KIND_ASSIGNED_INTENTS`: a count of
+    30+ point games under a game log, a history over the past 4 seasons
+    under a player's line), with the stages run again under the child
+    (:func:`~association.query.router.settle`), or a team's record under a
+    companion's line with the route's own slots - beside that reading."""
+    settled = read_subject(con, question, route.intent, dict(route.slots))
+    final = settled.intent or route.intent
+    if final != route.intent and final in KIND_ASSIGNED_INTENTS:
+        again = settle(final, dict(route.slots), question)
+        return Route(again.intent, dict(again.slots)), settled
+    return Route(final, dict(route.slots)), settled
 
 
 def reading_from_route(con: duckdb.DuckDBPyConnection, question: str, route: Route) -> Reading:

@@ -12,8 +12,8 @@ import duckdb
 import pytest
 
 from association.query.calendar import parse_alignment, parse_situation
+from association.query.reading import Reading
 from association.query.refusals import by_question, unanswerable
-from association.query.subject import apply_subject, read_subject
 from association.query.templates.common import TemplateUnsupported, check_scope
 
 
@@ -137,23 +137,25 @@ def test_a_player_beside_a_team_is_never_called_a_team(con: duckdb.DuckDBPyConne
     assert unanswerable(con, "player_stat", {"player": "jayson tatum", "team": "Boston Celtics"}, "celtics stats when jayson tatum has a big game") is None
 
 
-def test_a_player_in_the_opponent_slot_becomes_the_second_of_two_players(con: duckdb.DuckDBPyConnection) -> None:
+def test_a_player_set_against_another_is_the_second_of_two_players(con: duckdb.DuckDBPyConnection) -> None:
     """yardstick-v2 F081 "lebron vs kawhi head to head": the pair relation
-    is read by player_matchup, so a player filed as the opponent is the
-    second player - not a refusal. A team opponent, or a name matching
-    nothing, is left alone."""
+    is read by ``player_matchup``. The router filed the second player as the
+    opponent and a reroute (``refusals.pair_from_opponent``, then the subject
+    reading's) put him back; the parser names the pair from the subject's
+    kind - two players - so the reroute went with the router (ROADMAP plan
+    item 6, step (d), part 3). A team opponent stays a narrowing of the one
+    player's games."""
+    from association.query.parse import read_route, reading_from_route
 
-    def paired(question: str, intent: str, slots: dict[str, Any]) -> str:
-        return apply_subject(read_subject(con, question, intent, slots), slots, intent=intent).intent
+    def parsed(question: str, names: list[str]) -> Reading:
+        route, _, _ = read_route(con, question, names, "")
+        return reading_from_route(con, question, route)
 
-    slots: dict[str, Any] = {"player": "LeBron James", "opponent": "Kawhi Leonard", "limit": 5}
-    assert paired("lebron vs kawhi head to head", "game_log", slots) == "player_matchup"
-    assert slots == {"players": ["LeBron James", "Kawhi Leonard"], "limit": 5}
-    team: dict[str, Any] = {"player": "LeBron James", "opponent": "Atlanta Hawks"}
-    assert paired("lebron vs the hawks", "game_log", team) == "game_log" and team["opponent"] == "Atlanta Hawks"
-    nobody: dict[str, Any] = {"player": "LeBron James", "opponent": "Nobody Real"}
-    assert paired("lebron vs nobody real", "player_matchup", nobody) == "player_matchup" and nobody["opponent"] == "Nobody Real"
-    assert paired("lebron vs kawhi record", "team_record", {"player": "LeBron James", "opponent": "Kawhi Leonard"}) == "team_record"
+    for question in ("lebron vs kawhi head to head", "lebron vs kawhi record"):
+        reading = parsed(question, ["lebron", "kawhi"])
+        assert reading.intent == "player_matchup" and reading.scope.players == ("LeBron James", "Kawhi Leonard") and not reading.scope.opponent, question
+    team = parsed("lebron vs the hawks", ["lebron", "hawks"])
+    assert team.intent != "player_matchup" and team.scope.player == "LeBron James" and team.scope.opponent == "Atlanta Hawks"
 
 
 def test_a_teams_stat_other_than_points_by_period_is_refused(con: duckdb.DuckDBPyConnection) -> None:

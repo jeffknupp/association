@@ -396,25 +396,27 @@ def test_a_model_that_could_not_be_asked_falls_through_saying_why(monkeypatch: p
 
 
 def test_a_rerouted_intent_runs_the_template_it_was_rerouted_to(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """A player's record against a team arrives as head_to_head and is rewritten
-    to with_without (ISSUES.md #163). This pins that the HANDLER moves with the
-    intent, which is the half that shipped broken: the handler was resolved
-    from the router's intent before the rewrite, so "Embiid career record vs
-    boston" logged `head_to_head -> with_without` and then ran head_to_head,
-    which refused for wanting two team names. Every offline replay passed,
-    because the replay script looks the handler up afterwards and the real
-    pipeline looked it up before - so only a test on this path can catch it."""
+    """A team's record in the games a companion reached a line arrives under
+    the team's own intent and is rewritten to record_when - the reading's
+    one reroute (subject._decide_intent). This pins that the HANDLER moves
+    with the intent, which is the half that shipped broken once: the handler
+    was resolved from the route's intent before the rewrite, so "Embiid
+    career record vs boston" logged `head_to_head -> with_without` and then
+    ran head_to_head, which refused for wanting two team names. Every
+    offline replay passed, because the replay script looked the handler up
+    afterwards and the real pipeline before - so only a test on this path
+    can catch it."""
     from association.query.router import Route
     from association.query.templates.common import TemplateResult, TemplateUnsupported
 
     ran: list[str] = []
 
-    def head_to_head(ctx: Any, reading: Reading) -> TemplateResult:
-        ran.append("head_to_head")
-        raise TemplateUnsupported("head_to_head needs two team names")
+    def team_record(ctx: Any, reading: Reading) -> TemplateResult:
+        ran.append("team_record")
+        raise TemplateUnsupported("team_record cannot read a player's line")
 
-    def with_without(ctx: Any, reading: Reading) -> TemplateResult:
-        ran.append("with_without")
+    def record_when(ctx: Any, reading: Reading) -> TemplateResult:
+        ran.append("record_when")
         return TemplateResult(data={}, answer="templated")
 
     import duckdb
@@ -422,15 +424,17 @@ def test_a_rerouted_intent_runs_the_template_it_was_rerouted_to(monkeypatch: pyt
     db_path = tmp_path / "test.duckdb"
     con = duckdb.connect(str(db_path))
     con.execute("CREATE TABLE players (athlete_id VARCHAR, display_name VARCHAR)")
-    con.execute("INSERT INTO players VALUES ('1', 'Joel Embiid')")
+    con.execute("INSERT INTO players VALUES ('1', 'Tyrese Maxey')")
     con.execute("CREATE TABLE teams (team_id VARCHAR, display_name VARCHAR, abbreviation VARCHAR)")
-    con.execute("INSERT INTO teams VALUES ('2', 'Boston Celtics', 'BOS')")
+    con.execute("INSERT INTO teams VALUES ('20', 'Philadelphia 76ers', 'PHI')")
     con.close()
     agent = Agent("qwen2.5:7b", str(db_path), tmp_path / "out", history_dir=tmp_path / ".history")
 
-    monkeypatch.setattr("association.query.agent.TEMPLATES", {"head_to_head": head_to_head, "with_without": with_without})
-    answer = agent.ask("Embiid career record vs boston", route=Route(intent="head_to_head", slots={"teams": ["Joel Embiid", "Boston Celtics"], "span": "career"}))
-    assert ran == ["with_without"]
+    monkeypatch.setattr("association.query.agent.TEMPLATES", {"team_record": team_record, "record_when": record_when})
+    # record_when is compiler-first (compose.COMPILER_FIRST); the handler is what this pins.
+    monkeypatch.setattr("association.query.compose.answer", lambda *args, **kwargs: None)
+    answer = agent.ask("sixers record when maxey scored 20+ points", route=Route(intent="team_record", slots={"team": "Philadelphia 76ers", "stat": "points", "season_type": 2}))
+    assert ran == ["record_when"]
     assert "templated" in (answer.text or "")
 
 

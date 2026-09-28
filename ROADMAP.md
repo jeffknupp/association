@@ -770,11 +770,41 @@ with nothing to read fills the silence from its own weights), and more data
    (8b7f1f8), record_when's blank group, the team branches' `until` and
    #144 (e08165c), the parser's teammate roles, companions and "scores 30"
    (582b3fa), a typo'd possessive and the lone "in games he played" player
-   (79fa4e7). Still to do in (3): the parser builds the Scope itself - the
-   subject writers and `_apply_intent`'s child, with_without and pair
-   reroutes (which never fire on parser output, but the child grammar's
-   tests still read through them) move into `parse.read_route`, and the
-   agent consumes a Reading; a live run then closes (3).
+   (79fa4e7).
+   **(3), one writer, done 2026-09-27 (4406133 and the commit after it):** the parser
+   writes the Reading and the agent only consumes it.
+   `parse.reading_from_route` is the parser's last step - the subject
+   reading and its writers (`apply_subject`, called from nowhere else now),
+   returned as one typed `Reading` that carries what it decided
+   (`Reading.decisions`) and the model's names nothing in the question
+   could replace (`Reading.misread`); the agent records the one, refuses
+   the other by name, hands the Reading's Scope to `check_scope`,
+   `check_coverage` and `coverage_caveat` and the Reading itself to the
+   template, and writes no slot. A pure refactor: the rehearsal's 628
+   answers and traces identical, golden v1 631/631 and v2 628/628; with the
+   writers skipped as a perturbation, 6 of the 10 golden rows where one
+   fires answer differently. Then the reroutes that never fire on the
+   parser's output went - `_decide_intent`'s player-record-against-a-team
+   (#163), pair-through-the-opponent and compare reroutes,
+   `_apply_intent`'s child, with_without and pair rewrites, and
+   `Subject.routed_opponent` - leaving a team's `record_when` under a
+   companion's line (18 of the 628) as the reading's one settlement; the
+   child grammar's tests read through the parser's own child step
+   (`parse._read_route_child`, split out of `read_route`), and the reroute
+   tests became tests of what the parser reads for the same questions.
+   Measured: the rehearsal's 628 answers and traces identical, golden v2
+   628/628; golden v1 moved on 78 of its 631 router routes, every one a
+   route shaped by the router that leaned on a deleted reroute (60 recorded
+   under a parent the child rewrite moved, 15 a player's record filed as
+   `head_to_head`, the rest pairs and a comparison), and every one a
+   question the rehearsal holds, where the parser's own reading answers it
+   unchanged - so v1 is re-baselined here, as it was at 3c. A live run
+   closes (3). What is left of the slot dict: the
+   parser still builds its route as one and converts at the end
+   (`Scope.from_slots`), `compose.answer` and `refusals.unanswerable` still
+   take `scope.to_slots()`, and the check functions still accept a dict
+   from the tests - each is a consumer to move onto the Scope, not a
+   second writer.
 
 ## The rules a spike keeps
 

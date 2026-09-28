@@ -301,28 +301,24 @@ def test_the_routers_spelling_stands_where_a_whole_word_names_somebody_else(con:
 
 def test_a_player_filed_as_the_opponent_is_checked_like_the_subject(con: duckdb.DuckDBPyConnection) -> None:
     """#206, measured live: "jay huff game log vs Embiid" routed
-    ``opponent='Nikola Jokic'``. The reading holds the router's opponent
-    apart from the question's own pair, and the pair is what the slots get:
-    the invented opponent goes with the rewrite to ``players``. A team, and
-    a player the question does name, are left exactly as they came."""
-    from association.query.subject import apply_subject
-
-    slots: dict[str, Any] = {"player": "Jaylen Huff", "opponent": "Nikola Jokic"}
-    s = read_subject(con, "jay huff game log vs Embiid", "player_matchup", slots)
-    assert s.kind == "pair" and s.players == ("Jay Huff", "Joel Embiid") and s.routed_opponent == "Nikola Jokic"
-    decisions, dropped, intent = apply_subject(s, slots, intent="player_matchup")
-    assert slots == {"players": ["Jay Huff", "Joel Embiid"]} and dropped == [] and intent == "player_matchup"
-    assert [(d.field, d.before, d.after) for d in decisions] == [("player", "Jaylen Huff", "Jay Huff"), ("players", None, ["Jay Huff", "Joel Embiid"])]
-
-    team: dict[str, Any] = {"player": "Luka Doncic", "opponent": "Los Angeles Lakers"}
-    assert read_subject(con, "luka vs the lakers", "game_log", team).routed_opponent is None
-    assert apply_subject(read_subject(con, "luka vs the lakers", "game_log", team), team, intent="game_log")[:2] == ([], []) and team["opponent"] == "Los Angeles Lakers"
-    # A player the question does name in `opponent` is the second of a pair:
-    # the games the two played against each other (player_matchup), which
-    # refusals.pair_from_opponent used to decide.
-    named: dict[str, Any] = {"player": "Luka Doncic", "opponent": "Joel Embiid"}
-    applied = apply_subject(read_subject(con, "luka game log vs embiid", "game_log", named), named, intent="game_log")
-    assert applied.intent == "player_matchup" and named == {"players": ["Luka Doncic", "Joel Embiid"]} and applied.dropped == []
+    ``opponent='Nikola Jokic'``. The reading holds a model's opponent apart
+    from the question's own pair. On the parser's path the pair relation is
+    named from the subject's kind - the question's own two players - and a
+    name the model supplied that the question never held, which nothing in
+    it can replace, is carried as misread for the refusal rather than
+    answered about. A team opponent narrows the one player's games. The
+    router-era reroute that moved a player filed as the opponent into
+    ``players`` never fired on the parser's output and is gone (ROADMAP plan
+    item 6, step (d), part 3)."""
+    s = read_subject(con, "jay huff game log vs Embiid", "player_matchup", {"player": "Jaylen Huff", "opponent": "Nikola Jokic"})
+    assert s.kind == "pair" and s.players == ("Jay Huff", "Joel Embiid") and s.invented == ("Nikola Jokic",)
+    invented = _parsed(con, "jay huff game log vs Embiid", ["Jaylen Huff", "Nikola Jokic"])
+    assert invented.intent == "player_matchup" and invented.misread == ("Nikola Jokic",)
+    assert read_subject(con, "luka vs the lakers", "game_log", {"player": "Luka Doncic", "opponent": "Los Angeles Lakers"}).opponent == "Los Angeles Lakers"
+    team = _parsed(con, "luka vs the lakers", ["luka", "lakers"])
+    assert team.scope.player == "Luka Doncic" and team.scope.opponent == "Los Angeles Lakers" and team.misread == ()
+    pair = _parsed(con, "luka game log vs embiid", ["luka", "embiid"])
+    assert pair.intent == "player_matchup" and pair.scope.players == ("Luka Doncic", "Joel Embiid") and not pair.scope.opponent and pair.misread == ()
 
 
 def test_a_supported_name_stays_as_the_router_spelled_it(con: duckdb.DuckDBPyConnection) -> None:
@@ -384,14 +380,27 @@ def test_the_compare_whose_second_player_the_router_filed_as_the_opponent(con: d
 # model could have filled - and the child's own slots read back off the text.
 
 
-def _assigned(con: duckdb.DuckDBPyConnection, question: str, parent: str, **slots: Any) -> tuple[str, dict[str, Any]]:
-    """The intent and slots the agent hands the template: the reading of a
-    parent-routed question, applied."""
-    from association.query.subject import apply_subject
+def _parsed(con: duckdb.DuckDBPyConnection, question: str, names: list[str], stat: str = "") -> Any:
+    """The Reading the parser settles for ``question``, the normalizer's
+    reply stubbed as ``names`` and ``stat``: its route
+    (``parse.read_route``), then its last step (``parse.reading_from_route``)."""
+    from association.query.parse import read_route, reading_from_route
 
-    given: dict[str, Any] = dict(slots)
-    subject = read_subject(con, question, parent, given)
-    return apply_subject(subject, given, intent=parent).intent, given
+    route, _, _ = read_route(con, question, names, stat)
+    return reading_from_route(con, question, route)
+
+
+def _assigned(con: duckdb.DuckDBPyConnection, question: str, parent: str, **slots: Any) -> tuple[str, dict[str, Any]]:
+    """The intent and slots the agent hands the template for a question
+    whose route arrives under ``parent``: the parser's child step
+    (``parse._read_route_child``), then its last (``parse.reading_from_route``)
+    - the Reading, as slots."""
+    from association.query.parse import _read_route_child, reading_from_route
+    from association.query.router import Route
+
+    child, _ = _read_route_child(con, question, Route(parent, dict(slots)))
+    reading = reading_from_route(con, question, child)
+    return reading.intent, reading.scope.to_slots()
 
 
 def test_a_count_of_games_over_a_threshold_is_assigned_under_its_parents(con: duckdb.DuckDBPyConnection) -> None:
@@ -486,10 +495,11 @@ def test_a_teams_record_when_a_player_reached_a_threshold_is_assigned(con: duckd
     for parent in ("team_record", "game_log", "player_stat"):
         intent, slots = _assigned(con, "how many playoff games has embiid won?", parent, stat="wins", team="Philadelphia 76ers", season_type=3)
         assert intent == "record_when" and slots["player"] == "Joel Embiid" and slots["season_type"] == 3 and "threshold" not in slots, (parent, slots)
-    # ... and as an outlook for a "team" named Joel Embiid (day5): the
-    # subject himself leaves the team slot, and the stat is the compiler's.
-    intent, slots = _assigned(con, "how many playoff games has embiid won?", "team_outlook", stat="playoff_wins", team="Joel Embiid", season_type=3)
-    assert intent == "record_when" and slots["player"] == "Joel Embiid" and "team" not in slots and slots["stat"] == "wins"
+    # ... and read by the parser itself, with no team slot: the router once
+    # filed the subject as an outlook's "team" named Joel Embiid (day5), a
+    # shape the parser never writes.
+    reading = _parsed(con, "how many playoff games has embiid won?", ["embiid"])
+    assert reading.intent == "record_when" and reading.scope.player == "Joel Embiid" and not reading.scope.team and reading.scope.stat == "wins"
     intent, _ = _assigned(con, "how many games have the celtics won this season", "team_record", stat="wins", team="Boston Celtics", season=2026, season_type=2)
     assert intent == "team_record"
 
@@ -509,17 +519,6 @@ def test_a_players_splits_are_assigned_with_the_split(con: duckdb.DuckDBPyConnec
     # A team's record by month names no player to split.
     intent, _ = _assigned(con, "knicks record by month", "team_record", team="New York Knicks", season=2026, season_type=2)
     assert intent == "team_record"
-
-
-def test_an_assigned_child_is_recorded_with_every_slot_it_moved(con: duckdb.DuckDBPyConnection) -> None:
-    from association.query.subject import apply_subject
-
-    slots: dict[str, Any] = {"stat": "points", "player": "Nikola Jokic", "season": 2026, "season_type": 2, "order": "recent", "limit": 5}
-    subject = read_subject(con, "How many 30+ point games did Jokic have in his last 5 games", "game_log", slots)
-    assert subject.intent == "threshold_count" and subject.question.startswith("How many") and any("name threshold_count" in line for line in subject.evidence)
-    applied = apply_subject(subject, slots, intent="game_log")
-    moved = {d.field: (d.before, d.after) for d in applied.decisions if d.stage == "subject"}
-    assert moved["intent"] == ("game_log", "threshold_count") and moved["threshold"] == (None, 30) and applied.intent == "threshold_count"
 
 
 def test_a_child_the_router_chose_itself_stands(con: duckdb.DuckDBPyConnection) -> None:
