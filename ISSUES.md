@@ -271,6 +271,7 @@ those were found.
 - **User sees:** a fluent, confidently wrong-subject answer - a real player's real record, for a question about his team's own scoring.
 - **Next step:** `read_subject`'s companion-condition parsing needs to keep "they/the team score N" (the team's own subject-level threshold) and "X starts"/"X comes off the bench" (a role with no stat attached) as two separate facts, rather than folding both into one `Companion(predicate="reached", ...)` - fix belongs in `query/subject.py`, not this session's files.
 - **Source:** ours.
+- **GitHub:** #246
 
 ### A misspelled team name is dropped by the parser, and the question is answered without it: "gui last 5 games vs sours" lists his last 5 games, none against the Spurs
 - **Found:** 2026-09-27, plan item 6 step (d) part 3 (deleting the router reader), re-measuring #131 ("gui last 5 games vs sours") on the parser path.
@@ -278,6 +279,7 @@ those were found.
 - **User sees:** a fluent answer to the un-narrowed question - the player's or team's whole window or season - with the opponent it names nowhere in it.
 - **Next step:** a near spelling of exactly one franchise's word or nickname (within the index's edit budget, against the 30 franchises' words only) reads as that team and says so, the way `entities.read_near_spelling` does for a player; a span near nothing refuses by name rather than vanishing. A `tests/query/test_parser.py` case per wording above, watched to fail, and the hold-out comparison.
 - **Source:** ours.
+- **GitHub:** #247
 
 ### A start the question denies reads as a start: "maxey game log when embiid doesn't start" lists his games WITH Embiid starting
 - **Found:** 2026-09-27, plan item 6 step (d) follow-ups, probing negated roles beside the teammate-role fix.
@@ -285,6 +287,7 @@ those were found.
 - **User sees:** the inverse of the question, labeled with the condition it inverted ("with Joel Embiid starting").
 - **Next step:** read a denied start or bench in `_condition_role` (the parser's `parse._DENIED_ROLE` is the pattern) and either refuse it on a filter or add a `not_started` predicate to the relation (NOT EXISTS over the started clause, bounded by the tenure an absence already carries); a test per wording.
 - **Source:** ours.
+- **GitHub:** #248
 
 ## P2: misleading or incomplete
 
@@ -2371,6 +2374,7 @@ those were found.
 - **User sees:** a refusal naming the wrong cause for a 2-point-percentage ranking; for the two rebound halves, a right ranking labeled "offensiveRebounds per game".
 - **Next step:** leaderboard metrics for the six (2-point percentage with an attempts floor the way `fg_pct` has one); then `test_every_box_score_stat_the_model_may_name_ranks_by_a_metric` can read `NORMALIZER_STATS` itself rather than the router's fourteen names.
 - **Source:** ours.
+- **GitHub:** #249
 
 ## P3: refusal or gap
 
@@ -3011,6 +3015,7 @@ those were found.
 - **User sees:** the agent's answer, or with fall-through off none, where "when" would have answered.
 - **Next step:** let `_WHEN_PLAYED` (and `_WHEN_WITH`) take "while"; a parser test on the wording.
 - **Source:** ours.
+- **GitHub:** #250
 
 ## P4: tooling, docs, low impact
 
@@ -4278,6 +4283,7 @@ those were found.
 - **User sees:** nothing - the real budget is 120s (`models.AGENT_BUDGET_SECONDS`). A red gate for whoever runs the suite on a loaded machine, which is how parallel agents run it.
 - **Next step:** make the code keep the docstring's promise (skip the check before the first call, or start the clock after the prompt is built) and let the test assert that; or, if the check before the first call is wanted, give the test a budget above prompt-building time and say so in its docstring.
 - **Source:** ours.
+- **GitHub:** #251
 
 ### `player_netpoints`' season-totals reading (`rate: "total"`) cannot be reached through the agent
 - **Found:** 2026-09-27, plan item 6 step (d) round 2 (moving `templates/netpoints.py` onto the typed Scope).
@@ -4285,6 +4291,7 @@ those were found.
 - **User sees:** per-100 category tables for a totals question. The headline carries the season totals ("468.3 overall (403.9 offense, 64.4 defense)"), so the number asked for is there; only the breakdown is in the other unit.
 - **Next step:** decide whether per 100 possessions is the right breakdown for "total netpoints". If totals should be reachable, list `rate` for `player_netpoints` and have the parser read "total(s)" beside NetPoints as `rate: "total"`, with a test through the agent path; if not, delete the branch.
 - **Source:** ours.
+- **GitHub:** #252
 
 ### The Scope's door admits a float for an integer closed set: `shot_value` 3.0, `season_type` 3.0, `half` 2.0
 - **Found:** 2026-09-27, plan item 6 step (d) round 2, checking which values the removed template fallbacks could still meet.
@@ -4292,6 +4299,7 @@ those were found.
 - **User sees:** nothing today: nothing writes these slots from a float - the stages and the parser write integers, and the router's schema typed `shot_value` as an integer until its model call went (4.5.0).
 - **Next step:** make `_one_of` refuse a value whose type is not the matching allowed member's type (bool is already refused), with a test per closed-set field, watched to fail first.
 - **Source:** ours.
+- **GitHub:** #253
 
 ### A multi-game shot chart's markup order changes from run to run
 - **Found:** 2026-09-27, plan item 6 step (d) round 2, diffing the charts a direct-call golden wrote.
@@ -4299,6 +4307,7 @@ those were found.
 - **User sees:** nothing, beyond which of two overlapping markers is drawn on top.
 - **Next step:** order the read (event, period, clock) so a chart is byte-reproducible, and a golden can compare chart contents rather than only file names.
 - **Source:** ours.
+- **GitHub:** #254
 
 ### The normalizer's `names` array has no `maxItems`, the bound the router's schema put on every array after a live hang
 - **Found:** 2026-09-27, plan item 6 step (d) part 3, re-aiming the router's schema tests at the normalizer: `test_array_slots_are_bounded` could not be kept, because it would fail.
@@ -4306,6 +4315,7 @@ those were found.
 - **User sees:** nothing measured; the risk is a question that hangs for minutes.
 - **Next step:** bound `names` (measure the most names one recorded reply holds first), then re-record the normalizer's replies and make a live run the record, since a schema edit is a model-input change (AGENTS.md, "Any edit to the model's prompt").
 - **Source:** ours.
+- **GitHub:** #255
 
 ### `Agent.last_question` is written on every question and read by nothing
 - **Found:** 2026-09-27, plan item 6 step (d) part 3: its one reader was `route()`'s `previous_question`, deleted with the router's classification.
@@ -4313,6 +4323,7 @@ those were found.
 - **User sees:** nothing.
 - **Next step:** once 3c merges, delete it, its four writes and the tests' assertions, and reword `reset_conversation`'s docstring: the conversation the fall-through agent reads is what a stranger's question leaks through now.
 - **Source:** ours.
+- **GitHub:** #256
 
 ### A composed count under a condition prints its line raw: "had 34 games points >= 30 with Joel Embiid starting"
 - **Found:** 2026-09-27, plan item 6 step (d) follow-ups, once a teammate's start reached the compiler-first counts as a condition.
@@ -4320,3 +4331,4 @@ those were found.
 - **User sees:** a right count in an awkward sentence.
 - **Next step:** say the line the way the unnarrowed count does ("with 30+ points") before the narrowing's own phrase.
 - **Source:** ours.
+- **GitHub:** #257
