@@ -405,8 +405,8 @@ _SINCE = re.compile(r"\bsince\s+(?:the\s+)?((?:19|20)\d\d)\b", re.IGNORECASE)
 # (nba/season.py) - `_SINCE` alone read its leading "2000" and started a
 # season early (#207). What a span is, is `season_text.season_spans`'s to say
 # - the one definition, so "00-01" reads here as it does alone - and the
-# span must be one season's two years, so a real range ("2019-2024") is still
-# `_RANGE_HYPHEN_YEARS`'s to read and "since 2000-05" `_SINCE`'s.
+# span must be one season's two years: a range ("since 2019-2024", "since
+# 2000-05") is read before this, as the range it writes (`_validate_range_span`).
 _SINCE_SPAN = re.compile(r"\bsince\s+(?:the\s+)?\Z", re.IGNORECASE)
 _DECADE = re.compile(r"\b(?:the\s+)?((?:19|20)\d)0'?s\b", re.IGNORECASE)
 
@@ -424,17 +424,16 @@ _RANGE_TO_WORDS = re.compile(r"\s+(?:to|through)\s+", re.IGNORECASE)
 # "between 2020 and 2024": bare calendar-shaped years, read as season NUMBERS
 # (the same reading `_SINCE`'s own bare year gets), not calendar years.
 _RANGE_BETWEEN = re.compile(r"\bbetween\s+((?:19|20)\d\d)\s+and\s+((?:19|20)\d\d)\b", re.IGNORECASE)
-# "2020-2024": two season numbers joined by a hyphen with no "to"/"from" -
-# one span, where the form above is a span on each side of "to".
-# CONSECUTIVE years in this shape are not a range at all: "the 2023-2024
-# season" is how people write ONE season (2024) with both digits spelled out,
-# exactly as "2023-24" already means - `season_text.season_spans` already
-# reads that correctly as season 2024, and this regex used to re-match the same text as
-# since=2023/until=2024, silently overwriting a right answer with a wrong one
-# a step later. `_validate_range` only treats this shape as a range when the
-# two years are NOT consecutive ("2024-2026" - Jeff's own yardstick wording,
-# "how many 20+ point games did SGA have 2024-2026?").
-_RANGE_HYPHEN_YEARS = re.compile(r"\b((?:19|20)\d\d)-((?:19|20)\d\d)\b")
+# "2020-2024", "2015-18", "00-02": one span whose years do not follow each
+# other is a range of seasons, both ends season numbers - read by
+# `season_text.season_spans` (`SeasonSpan.is_range`), the one definition of a
+# span, in `_validate_range_span`. CONSECUTIVE years are not a range at all:
+# "the 2023-2024 season" is how people write ONE season (2024) with both
+# digits spelled out, exactly as "2023-24" means; a regex of its own here once
+# re-matched that text as since=2023/until=2024, silently overwriting a right
+# answer with a wrong one a step later. "2024-2026" is Jeff's own yardstick
+# wording ("how many 20+ point games did SGA have 2024-2026?"); "2015-18" read
+# as 2018 alone, and "00-02" as nothing, until the span said range (#261).
 # "knicks record by month 2024 2025": two bare, ADJACENT season numbers with
 # nothing joining them - only when the second is exactly one more than the
 # first, so this reads as a range and not two unrelated years mentioned in
@@ -459,6 +458,12 @@ def _validate_range(question: str) -> tuple[int, int | None] | None:
        as ``since`` - see AGENTS.md, "a season range", for why an unfilled
        ``until`` is this project's worst failure shape rather than a missing
        nicety.
+
+    .. versionchanged:: 5.0.0
+       A span written short whose years do not follow is a range too, read
+       by :func:`~association.query.season_text.season_spans`: "2015-18" is
+       2015 through 2018 and "00-02" 2000 through 2002, as "2020-2024" is
+       2020 through 2024.
     """
     to_spans = _validate_range_to(question)
     if to_spans is not None:
@@ -467,13 +472,9 @@ def _validate_range(question: str) -> tuple[int, int | None] | None:
     if between is not None:
         first, last = int(between.group(1)), int(between.group(2))
         return (first, last) if first <= last else (last, first)
-    hyphen_years = _RANGE_HYPHEN_YEARS.search(question)
-    if hyphen_years is not None:
-        first, last = int(hyphen_years.group(1)), int(hyphen_years.group(2))
-        if abs(last - first) > 1:
-            # Consecutive years ("2023-2024") are one season, not a range -
-            # left for season_text.season_spans to read the way "2023-24" already is.
-            return (first, last) if first <= last else (last, first)
+    span_range = _validate_range_span(question)
+    if span_range is not None:
+        return span_range
     bare_years = _RANGE_BARE_YEARS.search(question)
     if bare_years is not None and int(bare_years.group(2)) == int(bare_years.group(1)) + 1:
         return int(bare_years.group(1)), int(bare_years.group(2))
@@ -495,11 +496,21 @@ def _validate_range_to(question: str) -> tuple[int, int] | None:
     "to" or "through" between them - "2019-20 to 2023-24", "from 02-03 to
     06-07" - or ``None`` where the question writes no such pair. The spans
     are :func:`~association.query.season_text.season_spans`', so each end is
-    the season it names alone."""
+    the season it names alone, or a range's own first and last ("1999-00 to
+    2001-06" ends in 2006)."""
     for left, right in itertools.pairwise(season_spans(question)):
         if _RANGE_TO_WORDS.fullmatch(question, left.end, right.start):
-            return (left.season, right.season) if left.season <= right.season else (right.season, left.season)
+            first = left.first if left.is_range else left.season
+            return (first, right.season) if first <= right.season else (right.season, first)
     return None
+
+
+def _validate_range_span(question: str) -> tuple[int, int] | None:
+    """The first and last season of the first span the question writes as a
+    range - "2020-2024", "2015-18", "00-02"
+    (:attr:`~association.query.season_text.SeasonSpan.is_range`) - or
+    ``None``."""
+    return next(((span.first, span.season) for span in season_spans(question) if span.is_range), None)
 
 
 def _validate_range_since_season(question: str) -> int | None:
@@ -822,6 +833,10 @@ _COUNT_SUBJECT_WORDS = _SUBJECT_WORDS | frozenset(
         "but",
         "or",
         "per",
+        # "single game with the most assists" is one game, not a player named
+        # Single: under "X games with" it read "single" as the subject of a
+        # single-game high, and asked which Singleton was meant (#260).
+        "single",
         "game",
         "games",
         "total",

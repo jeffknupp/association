@@ -220,29 +220,47 @@ those were found.
 - **Source:** ours.
 - **GitHub:** #248
 
-### A typographic apostrophe (U+2019) is read by none of the router's patterns that take a straight one: "most points in the 2010’s" answers the 2010 season alone
-- **Found:** 2026-09-27, fixing #238 (the holiday words accept both apostrophes now, `calendar.HOLIDAY_WORDS`).
-- **Evidence:** `router._DECADE` is `\b(?:the\s+)?((?:19|20)\d)0'?s\b`, so "2010’s" is not a decade, and `season_text` reads its "2010" as one season. Measured offline through the whole agent (main warehouse, the normalizer's reply stubbed): "most points in the 2010’s" answers "Kevin Durant led the league in points per game in the 2010 regular season", where "most points in the 2010's" reads since 2010 until 2019; "nba mvps in 1980’s" answers "No games for every player in the 1980 regular season", where "1980's" reads since 1980 until 1989. 19 of the 2,285 questions in `statmuse-2026-09-large/feed_queries_large.txt` carry a U+2019, against 23 with a straight apostrophe: five are decades ("nba mvps in 1980’s" through "2020’s"), the rest possessives and names ("Devin Booker’s stats last five games", "D’Angelo Russell game against the Timberwolves", "How many points did De’aaron fox average in November 2023"). Every other router pattern taking an apostrophe (a possessive `'s`, `n't`, the name tokens' `[A-Za-z.'\-]`) is blind to it the same way. A name the normalizer copies with the possessive on is lost: stubbed with names `["Devin Booker’s"]`, "Devin Booker’s stats last five games" answers the league's scoring leaders, where `["Devin Booker's"]` answers his game log - what the model copies there is not measured.
-- **User sees:** a wrong answer - a decade answered as its first season; possibly a player dropped from the question.
-- **Next step:** fold U+2019 (and U+2018) into a straight apostrophe once, where a question enters the parser (`parse.read_route`, or the agent before it), so every reader sees one apostrophe; `calendar._TYPOGRAPHIC_APOSTROPHE` (#238's local handling) can go then. A case per shape.
+### "nba most fga with 0 fgm single game" is read as the teams' field goals made, and "without fgm single" as a teammate
+- **Found:** 2026-09-27, checking the answers the #168 fix moved (then part of #260, closed by 2026-09-28's fix: "single game" with no article is one game, and "this season's single game with the most assists" and both "most 3 pointers made in single game ..." read as one); what remains is its own shape.
+- **Evidence:** stubbed offline through the whole agent (main warehouse, names `[]`, stat `fieldGoalsAttempted`): "nba most fga with 0 fgm single game" routes `team_leaderboard` `{'stat': 'fgm', 'rank': 'most'}` and answers "Field goals made per game, 2026 regular season - highest first, of 30 teams: Miami Heat 43.7 ..."; "nba most fga without fgm single game" routes the same with `without: ['fgm single']` and falls through ("team_leaderboard cannot honor ['without']"). `parse.PARENT_GRAMMAR`'s everyone row reads "nba" beside "most" as a team ranking, and `single_game_high`'s child row applies only under the player relation's parents (`subject._PLAYER_RELATION_PARENTS`), so "single game" is never read; the measure is "fgm" where "fga" is the ranked one; and the router's without reader takes "fgm single" for a teammate. These are the last 2 of the 29 research-corpus questions saying "single game" that are not read as one game.
+- **User sees:** a wrong answer - the teams' field goals made per game, where one player's single game was asked; a fall-through for the second.
+- **Next step:** let `single_game_high`'s row apply under `team_leaderboard` for the everyone kind where no team word ("team", "franchise") is written, measured on the rehearsal and `intent-shrink/port_check.py` first; a single game "with 0 fgm" is a predicate on the high the compiler has not got, so it refuses by name until it has one.
 - **Source:** ours.
-- **GitHub:** #259
 
-### A single game named without an article is read as a season ranking: "This season's single game with the most assists" answers the assists-per-game leaders
-- **Found:** 2026-09-27, checking the answers the #168 fix moved ("most 3 pointers made in single game 24-25").
-- **Evidence:** the offline rehearsal (`yardstick-v2/rehearsal_all.py`, `all_dates_1.jsonl`, a paraphrase) routes "This season's single game with the most assists" to `leaderboard` and answers "Nikola Jokic led the league in assists per game in the 2026 regular season ... at 10.7". Stubbed offline: "most 3 pointers made in single game 24-25" answers "Anthony Edwards led the league in 3-pointers made in the 2025 regular season, at 320" - a season total - where "... in a single game 24-25" answers `single_game_high` (Stephen Curry, 12). The child grammar that names `single_game_high` (`subject.py:122`) takes "in a/one (single) game", "career high" and "highest ... game", not "in single game" or "single game with the most". Of the 8 research-corpus questions saying "single game" with no article, 5 are not read as one game: the two above, "most 3 pointers made in single game 2025", "nba most fga with 0 fgm single game" (the teams' field goals made per game) and "nba most fga without fgm single game" (which asks whether "fgm single" is Chris Singleton, the "without" reader taking it for a teammate); the three "highest single game" ones are.
-- **User sees:** a wrong answer - a season average or total where one game's high was asked.
-- **Next step:** let `subject.py`'s `single_game_high` grammar row read "single game" with no article ("in single game", "single game with the most"), gated as it is now on the subject's kind; a case per wording in `tests/query/test_subject.py`, and the corpus case to `port_check.py`.
+### A name several players share is asked about over a range of seasons, where the range's own seasons would settle it: "curry playoff stats 2015-18" asks among six Currys
+- **Found:** 2026-09-28, fixing #261 (the short range now reads as the range it writes, and meets the gap every range already had).
+- **Evidence:** stubbed offline through the whole agent (main warehouse): "curry playoff stats 2015-18", "curry playoff stats 2015-2018" and "curry stats from 2015-18" each route `since`/`until` and answer "'curry' matches more than one player - did you mean Seth Curry, Stephen Curry, Dell Curry, Eddy Curry or JamesOn Curry (1 other also matches)?"; "Love stats 2012-14" asks among Caleb Love, Kevin Love and Lawson Lovering; "jordan stats 95-98" lists 28 players. `templates.common._career_end` narrows a name by the current season whenever no single season is asked (`through=current_season()`), so a range's own seasons never narrow it - where one season does: "curry playoff stats 2018" is Stephen Curry, the only Curry in that postseason. Stephen Curry holds all 63 of the Currys' 2015-2018 postseason games (`player_game_log`, minutes > 0): Seth has none, and Dell, Eddy, JamesOn and Michael Curry had retired.
+- **User sees:** a question where the answer was settled - the range names whose seasons to look in.
+- **Next step:** narrow by the range - `until` as the season a name left open is settled by, `since`..`until` as the seasons a candidate needs a row in (`entities.narrow_to_available` takes `season`/`through` today) - in `templates.common`'s resolution; a case per template reading `since`/`until`.
 - **Source:** ours.
-- **GitHub:** #260
 
-### A span of several seasons written short is read as its last season, or as nothing: "curry playoff stats 2015-18" answers the 2018 postseason alone
-- **Found:** 2026-09-27, fixing #168 - measuring which short spans the research corpora hold.
-- **Evidence:** `season_text.season_spans` reads a four-digit span whose second year does not follow the first as ONE season, its last ("2015-18" is 2018; #168's fix kept the four-digit form as it read), and a two-digit one as nothing, since a short pair is a season only where its years are consecutive ("10-12" stays a record). Neither is read as a range: `router._validate_range` takes "2020-2024" (four digits a side) and nothing shorter. Measured offline through the whole agent (main warehouse, the normalizer's reply stubbed): "curry playoff stats 2015-18" answers "Stephen Curry averaged 25.5 points ... in 15 games in the 2018 postseason"; "Love stats 2012-14" answers his 2014 season alone; "kobe stats without shaq 00-02" answers "The time Kobe Bryant and Shaquille O'Neal spent together ... falls outside the 2026 regular season"; "kobe bryant 00-02" answers "Kobe Bryant has no 2026 regular season numbers in the warehouse". Of the 3,083 distinct research-corpus questions, 3 write a four-digit one ("curry playoff stats 2015-18", "Love stats 2012-14", "Heat game played 2009-23") and 4 a two-digit one ("kobe bryant 00-02", "Kobe bryant 00-03", "kobe stats without shaq 00-02", "Vince carter stats 00-02").
-- **User sees:** a wrong answer - one season for a question spanning several; for the two-digit form, a refusal about the current season, which names the wrong cause.
-- **Next step:** read a span whose years are not consecutive as a closed range in `router._validate_range`, from `season_text.season_spans` (returning such a span marked as a range rather than as a season, so `season_from_text` stops reading "2015-18" as 2018), the way "2020-2024" reads; settle whether "2015-18" starts at season 2015, as "2020-2024" starts at 2020. A case per form in `tests/query/test_router.py`.
+### A month named with its calendar year is read as the season ending that year: "How many points did De'aaron fox average in November 2023" answers November 2022
+- **Found:** 2026-09-28, fixing #259 (one of the 19 research-corpus questions with a typographic apostrophe).
+- **Evidence:** stubbed offline through the whole agent (main warehouse, names `["De'aaron fox"]`): routes `{'player': "De'Aaron Fox", 'season': 2023, 'situation': 'in november'}` and lists "De'Aaron Fox in November, last 10 of 13 games of the 2023 regular season", dated 2022-11-11 to 2022-11-30. November 2023 is in the 2024 season (2023-24): `season_text.season_from_text` reads "2023" as the season ending that year, which is right for a year alone and wrong beside October, November or December. Of the 3,084 distinct research-corpus questions, 7 name a month with its year; this is the only one whose month falls before the new year ("Luka doncic march 2026", "steph stats april 2021" and the rest read right).
+- **User sees:** a wrong answer - the right player's games from a year earlier, captioned as the month asked.
+- **Next step:** where a month from October to December is written with its year, read the season as that year + 1 (`router._validate_season` beside the situation reader); a case per month in `tests/query/test_router.py`.
 - **Source:** ours.
-- **GitHub:** #261
+
+### A possessive on a name several players share drops the player: "Curry's stats by month 2016" answers the league's 2016 scorers
+- **Found:** 2026-09-28, fixing #259.
+- **Evidence:** stubbed offline through the whole agent (main warehouse, names `["Curry's"]`, and `["Curry’s"]`, which reads the same since #259): routes `leaderboard` with no player and answers "every player, 2016 regular season, by player (points per game, minimum 20 games): Stephen Curry ... James Harden ...". `parse.classify_span` strips the possessive for its team check but looks the player up as given: `find_players(con, "Curry's")` needs a player holding the word "s", and the near-spelling fallback takes only a single near spelling, which "Curry" (six players) is not - so the span is nobody's and dropped. "curry stats by month 2016" keeps the name, and the template asks which Curry.
+- **User sees:** a wrong answer - the league ranked where one player, a name several share, was asked about.
+- **Next step:** in `classify_span`, look the player up with the possessive stripped too (the `low` it already computes), so a shared surname stays a player's span for the template to ask about; a case in `tests/query/test_parser.py`.
+- **Source:** ours.
+
+### A team named for a player's tenure beside an opponent is dropped: "d'angelo russell vs pistons as a laker" answers his 2026 games as a Maverick
+- **Found:** 2026-09-28, fixing #259 (the question carries a typographic apostrophe; its straight twin reads the same).
+- **Evidence:** stubbed offline through the whole agent (main warehouse, names `["d'angelo russell", "pistons", "laker"]`): routes `{'player': "D'Angelo Russell", 'opponent': 'Detroit Pistons'}` with no team, and answers "D'Angelo Russell averaged 17.5 points ... in 2 games vs the Detroit Pistons in the 2026 regular season" - his 2026 season is Dallas's (`player_season_stats_deduped`: 26 games for the Mavericks); his Lakers years are 2016-2017 and 2023-2025. The model's "laker" is dropped by `parse._read_route_names` once the reading placed an opponent, and `subject._apply_own_team` writes no `own_team` where an opponent is set (`subject.py:1091`), so "as a laker" narrows nothing.
+- **User sees:** a wrong answer - another team's games, where a tenure was asked.
+- **Next step:** read "as a <team>" beside an opponent as `own_team` (the tenure) rather than dropping it; a case in `tests/query/test_one_writer.py`.
+- **Source:** ours.
+
+### "3's" is not read as threes: "Gabe Vincent 3’s as a laker" answers his points line
+- **Found:** 2026-09-28, fixing #259.
+- **Evidence:** stubbed offline through the whole agent (main warehouse, names `["Gabe Vincent", "laker"]`, stat `threePointFieldGoalsMade`): routes `player_stat` with no stat and answers "Gabe Vincent averaged 4.4 points, 1 rebounds and 1.4 assists per game in 53 games in the 2026 regular season". `parse.MEASURE_GRAMMAR` reads "3s", "threes" and "3 pointers", and "3's" is none of them; the model's key is not kept for a line the words do not name. "Jarred 3’s as a laker" is the corpus's other one. Both also carry "as a laker", which the answer does not honor (Vincent's 2026 line is not a Laker's).
+- **User sees:** a wrong answer - his scoring line where his threes were asked.
+- **Next step:** read "3's" (and "3’s", folded since #259) as threes made in `MEASURE_GRAMMAR`; a case in `tests/query/test_parser.py`.
+- **Source:** ours.
 
 ## P2: misleading or incomplete
 
@@ -2339,6 +2357,13 @@ those were found.
 - **Source:** ours.
 - **GitHub:** #262
 
+### An apostrophe typed inside a name's word splits the name, and the question is answered without its player
+- **Found:** 2026-09-28, fixing #259 - the one research-corpus question the fold moved from a right answer to a wrong one.
+- **Evidence:** stubbed offline through the whole agent (main warehouse, names `["jo’sh hart", "philadelphia"]`): before #259, Josh Hart's last 3 games against the 76ers; after, the league read, "No games for every player vs the Philadelphia 76ers in the 2026 regular season" - what "jo'sh hart" with a straight apostrophe answered all along. The entity index's accent fold (`entities._fold`, NFKD to ASCII) drops a U+2019 outright, so "jo’sh" read as "josh"; a straight apostrophe splits the word (`entities._words`), so "jo'sh hart" is the words jo, sh, hart, which no player holds, and its near spellings are three players (Isaiah Hartenstein, Jason Hart, Josh Hart), which ask rather than default. Every name that really carries an apostrophe (32 players, "D'Angelo Russell", "De'Aaron Fox") splits the same way on both sides and matches. <!-- codespell:ignore hart - Josh Hart's surname -->
+- **User sees:** a refusal-shaped answer naming the wrong cause ("no games for every player"), the player dropped.
+- **Next step:** in the entity index, read a word with an apostrophe inside it (not a possessive at its end) joined as well as split - "jo'sh" as "josh" - the way the accent fold happened to read a typographic one; a case in `tests/query/test_entities.py`.
+- **Source:** ours.
+
 ## P3: refusal or gap
 
 ### The compiler has no NetPoints measure, so a single-game NetPoints ranking has nowhere to land but the agent
@@ -4261,3 +4286,10 @@ those were found.
 - **Next step:** give a name in `calendar.UNREAD_HOLIDAYS` its own sentence in `_non_calendar_situation` ("Easter moves with the church calendar, which is not read here - name its date instead"), or read Easter as a per-year list of dates, since it is no weekday-of-a-month rule.
 - **Source:** ours.
 - **GitHub:** #263
+
+### Four readers after the parser still read the question as typed, typographic apostrophe and all
+- **Found:** 2026-09-28, fixing #259 (the fold is at the parser's door, `parse.read_route` and `parse.reading_from_route`).
+- **Evidence:** `query/agent.py` hands the raw question to `refusals.by_question` (line 457), `refusals.unanswerable` (lines 463, 522, 560), `player_named_on_a_team_only_question` (line 370) and `entities.compared_but_unmatched` (line 502), after the Reading is settled. None of the 25 typographic-apostrophe questions measured for #259 (the corpus's 19 and six probes) answered differently for it - every move they made is the parser's - but a denial ("doesn’t") or a possessive ("Embiid’s") each of those reads would read as typed.
+- **User sees:** nothing measured.
+- **Next step:** fold the question once where the agent receives it for everything after the normalizer - or carry the parser's folded question on the Reading - so no reader after the parser keeps its own.
+- **Source:** ours.

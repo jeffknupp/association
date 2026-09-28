@@ -488,3 +488,67 @@ def test_the_reading_carries_the_parsers_decisions_between_who_and_what_it_wrote
     assert (decisions[-1].before, decisions[-1].after) == ("maxey", "Tyrese Maxey")
     replayed = reading_from_route(con, question, Route.from_slots(route.intent, {**route.slots, "player": "Tyrese Maxey"}))
     assert [(d.stage, d.field) for d in replayed.decisions] == [("subject", "kind"), ("subject", "teams"), ("subject", "companions")]
+
+
+# ISSUES.md #259: the apostrophe a phone keyboard types (U+2019, and U+2018,
+# its opening twin) is a straight one to every reader, folded once at the
+# parser's door - the question and the names the model copied out of it.
+
+
+@pytest.mark.parametrize("apostrophe", ["\u2019", "\u2018"])
+def test_a_typographic_apostrophe_reads_as_a_straight_one(con: duckdb.DuckDBPyConnection, apostrophe: str) -> None:
+    """ "most points in the 2010\u2019s" answered the 2010 season alone, and a
+    name the model copied with its possessive on ("Devin Booker\u2019s") or an
+    apostrophe inside ("D\u2019Angelo Russell") matched nobody, so the question
+    was answered about the league. Each reads as its straight twin now."""
+    con.execute("INSERT INTO players VALUES ('11', 'Devin Booker'), ('12', 'D''Angelo Russell')")
+    con.execute("INSERT INTO teams VALUES ('5', 'Minnesota Timberwolves', 'MIN')")
+    for typed, names, stat in (
+        ("most points in the 2010{a}s", [], "points"),
+        ("Devin Booker{a}s stats last five games", ["Devin Booker{a}s"], ""),
+        ("D{a}Angelo Russell game against the Timberwolves", ["D{a}Angelo Russell", "Timberwolves"], ""),
+        ("maxey points on new year{a}s eve", ["maxey"], "points"),
+    ):
+        curly, _, _ = read_route(con, typed.format(a=apostrophe), [name.format(a=apostrophe) for name in names], stat)
+        straight, _, _ = read_route(con, typed.format(a="'"), [name.format(a="'") for name in names], stat)
+        assert (curly.intent, curly.slots) == (straight.intent, straight.slots), typed
+    decade, _, _ = read_route(con, f"most points in the 2010{apostrophe}s", [], "points")
+    assert (decade.slots.get("since"), decade.slots.get("until"), decade.slots.get("season")) == (2010, 2019, None)
+    booker, _, _ = read_route(con, f"Devin Booker{apostrophe}s stats last five games", [f"Devin Booker{apostrophe}s"], "")
+    assert (booker.intent, booker.slots["player"], booker.slots["limit"]) == ("game_log", "Devin Booker", 5)
+    russell, _, _ = read_route(con, f"D{apostrophe}Angelo Russell game against the Timberwolves", [f"D{apostrophe}Angelo Russell", "Timberwolves"], "")
+    assert (russell.slots["player"], russell.slots["opponent"]) == ("D'Angelo Russell", "Minnesota Timberwolves")
+    holiday, _, _ = read_route(con, f"maxey points on new year{apostrophe}s eve", ["maxey"], "points")
+    assert holiday.slots["situation"] == "new year's eve"
+    # The whole path, as the agent takes it: the parser's last step is handed
+    # the question as typed too, and reads who it is about from its words.
+    reading = _read(con, f"D{apostrophe}Angelo Russell game against the Timberwolves", [f"D{apostrophe}Angelo Russell", "Timberwolves"])
+    assert reading.subject is not None and (reading.subject.kind, reading.subject.players, reading.misread) == ("player", ("D'Angelo Russell",), ())
+    # A denial is one: typed with U+2019, "doesn't play" was his games played.
+    denied = _read(con, f"maxey points when embiid doesn{apostrophe}t play", ["maxey", "embiid"], "points")
+    assert denied.scope == _read(con, "maxey points when embiid doesn't play", ["maxey", "embiid"], "points").scope
+    assert denied.subject is not None and [c.predicate for c in denied.subject.conditions] == ["absent"]
+
+
+def test_a_name_the_model_copied_with_a_typographic_apostrophe_anchors_to_the_question(con: duckdb.DuckDBPyConnection) -> None:
+    """The model copies a name as the question typed it, so the names are
+    folded with the question: left as typed, "De\u2019Aaron" is no span of the
+    folded question and is dropped (the league answered), and "Kel\u2019el Ware"
+    is cut back to the part the question still holds, "Ware", which two
+    players share."""
+    con.execute("INSERT INTO players VALUES ('11', 'De''Aaron Fox'), ('12', 'Kel''el Ware'), ('13', 'Casey Ware')")
+    for apostrophe in ("\u2019", "\u2018"):
+        first, subject, _ = read_route(con, f"De{apostrophe}Aaron stats this season", [f"De{apostrophe}Aaron"], "")
+        assert (first.intent, first.slots.get("player"), subject.kind) == ("player_stat", "De'Aaron", "player")
+        full, _, _ = read_route(con, f"Kel{apostrophe}el Ware rebounds", [f"Kel{apostrophe}el Ware"], "rebounds")
+        assert full.slots["player"] == "Kel'el Ware"
+
+
+def test_a_replayed_routes_typographic_apostrophe_reads_as_a_straight_one(con: duckdb.DuckDBPyConnection) -> None:
+    """The parser's last step takes a route it did not read (a recorded one,
+    replayed), so the fold is at its door as well: the question and every
+    string the route carries - a holiday, a name as the question typed it."""
+    question = "maxey points on new year\u2019s eve without jo\u2019el embiid"
+    route = Route.from_slots("player_stat", {"player": "Tyrese Maxey", "stat": "points", "situation": "new year\u2019s eve", "without": ["jo\u2019el embiid"]})
+    reading = reading_from_route(con, question, route)
+    assert (reading.scope.situation, reading.scope.without) == ("new year's eve", ("jo'el embiid",))

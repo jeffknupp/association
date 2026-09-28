@@ -121,10 +121,13 @@ _PLAYER_RELATION_PARENTS: frozenset[str] = frozenset({"game_log", "player_stat",
 #: ... in the past two seasons" a count before it is a history.
 _CHILD_GRAMMARS: tuple[tuple[str, re.Pattern[str], frozenset[str], frozenset[str]], ...] = (
     # "per game" is an average, never one game: "the highest points per game
-    # average" is a season ranking.
+    # average" is a season ranking. "single game" is one game with an article
+    # or without: "this season's single game with the most assists" and "most
+    # 3 pointers made in single game 24-25" answered the season's leaders
+    # (ISSUES.md #260) - "single games", a plural, is not one.
     (
         "single_game_high",
-        re.compile(r"\bin (?:a|one) (?:single )?(?:game|match|contest|outing)\b|\bcareer[- ]high\b|\bhighest\b.{0,60}(?<!per )\bgame\b", re.IGNORECASE),
+        re.compile(r"\bin (?:a|one) (?:single )?(?:game|match|contest|outing)\b|\bsingle[- ]game\b|\bcareer[- ]high\b|\bhighest\b.{0,60}(?<!per )\bgame\b", re.IGNORECASE),
         _NOT_A_TEAM,
         _PLAYER_RELATION_PARENTS,
     ),

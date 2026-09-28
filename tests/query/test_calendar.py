@@ -54,7 +54,6 @@ from association.query.calendar import (
         ("thanksgiving", "nth_weekday", (11, 4, 4)),
         ("christmas eve", "day", (12, 24)),
         ("new year's eve", "day", (12, 31)),
-        ("new year\u2019s eve", "day", (12, 31)),
         ("new years", "day", (1, 1)),
         ("valentine's day", "day", (2, 14)),
     ],
@@ -123,15 +122,15 @@ def test_a_fixed_holiday_is_its_own_day_and_not_the_next(spelling: str, day: str
 
 def test_holiday_words_hold_every_spelling_longest_first() -> None:
     """What the router captures is built from this: every spelling read or
-    refused, an Eve before its day, and a typographic apostrophe read as a
-    straight one."""
+    refused, and an Eve before its day. A typographic apostrophe is the
+    parser's to fold before any of it reads the question (ISSUES.md #259,
+    ``tests/query/test_parser.py``)."""
     words = re.compile(rf"\b(?:{HOLIDAY_WORDS})\b", re.IGNORECASE)
     for spelling in (*HOLIDAYS, *UNREAD_HOLIDAYS):
         assert words.fullmatch(spelling), spelling
     for text, captured in [
         ("on christmas eve", "christmas eve"),
         ("on new year's eve", "new year's eve"),
-        ("on New Year\u2019s Eve", "New Year\u2019s Eve"),
         ("on martin luther king jr. day", "martin luther king"),
     ]:
         found = words.search(text)

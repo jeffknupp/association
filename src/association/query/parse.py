@@ -691,6 +691,38 @@ def _read_route_split(subject: Subject, question: str, intent: str, scope: Scope
     return out
 
 
+# The apostrophe a phone keyboard types (U+2019, and U+2018, its opening
+# twin) is a straight one to every reader after the parser's door: the
+# router's patterns ("2010's" is a decade, "n't" a denial, a possessive
+# "'s"), the name tokens, and the warehouse's own names - 32 players carry a
+# straight apostrophe and none a typographic one. Typed with U+2019, "most
+# points in the 2010's" answered the 2010 season alone, and "D'Angelo
+# Russell game against the Timberwolves" lost its player (ISSUES.md #259).
+# Folded here, once, in the question and the names the model copied out of
+# it together, so a copied "De'Aaron" typed with one still anchors to its
+# question - and never before the normalizer is asked, since the model
+# copies the names from the question as typed and its recorded replies are
+# keyed on it.
+_READ_ROUTE_APOSTROPHES = str.maketrans({"\u2019": "'", "\u2018": "'"})
+
+
+def _read_route_folded(text: str) -> str:
+    """``text`` with each typographic apostrophe (U+2019, U+2018) read as a
+    straight one - the fold at the parser's door, for :func:`read_route`
+    and :func:`reading_from_route` alike."""
+    return text.translate(_READ_ROUTE_APOSTROPHES)
+
+
+def _read_route_folded_slots(slots: dict[str, Any]) -> dict[str, Any]:
+    """``slots`` with every string in them folded as :func:`_read_route_folded`
+    folds the question - a route replayed rather than read may carry a
+    typed name, or a holiday, as the question spelled it."""
+    return {
+        key: _read_route_folded(value) if isinstance(value, str) else [_read_route_folded(v) if isinstance(v, str) else v for v in value] if isinstance(value, list) else value
+        for key, value in slots.items()
+    }
+
+
 def read_route(con: duckdb.DuckDBPyConnection, question: str, names: list[str] | None = None, stat: str = "") -> tuple[Route, Subject, str]:
     """The route the parser settles on for ``question`` - the intent and the
     slots a template reads, in the router's own shape - beside the subject
@@ -698,11 +730,16 @@ def read_route(con: duckdb.DuckDBPyConnection, question: str, names: list[str] |
     spans the normalizer copied out of the question and ``stat`` its stat
     key, both checked here, never trusted. This is what the agent answers
     from when the parser reads the question in place of the router (step c):
-    the typed Scope the stages settled, exactly as a routed question's.
+    the typed Scope the stages settled, exactly as a routed question's. A
+    typographic apostrophe (U+2019, U+2018) in the question or in a name is
+    read as a straight one, so "the 2010's" typed with one is a decade, and
+    "D'Angelo Russell" a player.
 
     .. versionadded:: 5.0.0
     """
-    slots = _with_measure(question, _slots_from_names(con, [_as_typed_part(con, question, _as_typed(question, name)) for name in names or []], stat))
+    question = _read_route_folded(question)
+    names = [_read_route_folded(name) for name in names or []]
+    slots = _with_measure(question, _slots_from_names(con, [_as_typed_part(con, question, _as_typed(question, name)) for name in names], stat))
     subject = _two_teams(read_subject(con, question, "other", dict(slots)), question, slots)
     slots = _read_route_names(subject, slots)
     parent = parent_intent(question, subject.kind, _read_route_beside(subject, question))
@@ -783,11 +820,14 @@ def reading_from_route(con: duckdb.DuckDBPyConnection, question: str, route: Rou
     (:attr:`~association.query.reading.Reading.misread`), which the agent
     refuses by name rather than answer about somebody the question never
     mentioned. Raises :class:`~association.query.reading.ScopeError` where
-    the route holds a slot the Scope cannot.
+    the route holds a slot the Scope cannot. A typographic apostrophe in the
+    question or in the route's slots is read as a straight one, as
+    :func:`read_route` reads it.
 
     .. versionadded:: 5.0.0
     """
-    slots = dict(route.slots)
+    question = _read_route_folded(question)
+    slots = _read_route_folded_slots(dict(route.slots))
     subject = read_subject(con, question, route.intent, dict(slots))
     applied = apply_subject(subject, slots, intent=route.intent)
     reading = Reading(
