@@ -49,6 +49,7 @@ from association.query.templates.common import (
     _optional_team,
     _player_relation_season_type,
     _Span,
+    check_coverage,
     check_scope,
 )
 from association.query.templates.games import _game_log_lines, _log_extras, _player_game_log, _player_game_log_mixed
@@ -67,15 +68,17 @@ from association.query.templates.players import (
     _single_game_high_answer,
     _single_game_high_redirect,
     _single_game_high_result_data,
+    _threshold_count_ask,
     _threshold_count_lines,
     _threshold_count_notes,
     _wanted_stats,
 )
-from association.query.templates.splits import _record_when_answer, _record_when_query
+from association.query.templates.splits import _record_when_answer, _record_when_query, _record_when_team_answer
 
 from .adapt import DEFAULT_GAME_LOG_LIMIT, _to_reading_scope
-from .core import LINE, Query, Unsupported, compile_query, run
+from .core import LINE, Query, Refused, Unsupported, compile_query, run
 from .move import _stat_measure
+from .team import TeamQuery
 
 #: A presenter: the connection and the compiled point (its scope the intent's
 #: slots, typed), to the template's own answer - or ``None`` where the point
@@ -314,9 +317,14 @@ def _present_threshold_count(con: duckdb.DuckDBPyConnection, q: Query) -> Templa
     its own helper."""
     scope = q.scope
     stat = scope.stat
-    column = _stat_column(scope)
-    threshold = scope.threshold
-    if stat is None or column is None or threshold is None or threshold < 1 or not _threshold_count_is_own_point(q, column):
+    try:
+        # The count's column and threshold, read the one way the template
+        # reads them: a below/above phrase may be the whole line, with no
+        # threshold at all ("Sga games with under 14 fta").
+        column, threshold = _threshold_count_ask(scope)
+    except TemplateUnsupported:
+        return None
+    if not _threshold_count_is_own_point(q, column):
         return None
     try:
         _, _, scope_text = _threshold_count_lines(stat, threshold, scope.below, scope.above)
@@ -331,7 +339,7 @@ def _present_threshold_count(con: duckdb.DuckDBPyConnection, q: Query) -> Templa
     game_span = _game_span(con, season, season_type, player, ordinal=ordinal)
     empty = _empty_box_scores(con, season, season_type, player.id if player is not None else None, covered_by_rebuild=bool(out["rebuilt"]))
     phrase = game_span.preface + _phrase_threshold_count(rows, scope_text, game_span.when, player_name)
-    notes = _threshold_count_notes(con, (season, season_type), player, rows, column, STAT_LABELS.get(stat, stat), game_span, empty)
+    notes = _threshold_count_notes(con, (season, season_type), player, rows, column, STAT_LABELS.get(stat or "", stat or ""), game_span, empty)
     data = {
         "question_shape": f"games with {scope_text}, {game_span.caption}",
         "season": season,
@@ -398,4 +406,33 @@ def present(con: duckdb.DuckDBPyConnection, intent: str, q: Query) -> TemplateRe
     except TemplateUnsupported as exc:
         # The relation refusing a slot while the point was settled - the
         # same outcome core.run gives the compiler's own sentence.
+        raise Unsupported(f"relation: {exc}") from exc
+
+
+def present_team(con: duckdb.DuckDBPyConnection, intent: str, q: TeamQuery) -> TemplateResult | None:
+    """A team subject's point said the way its intent's template says it -
+    today one: ``record_when``'s team branch, a team's record above and below
+    its OWN line ("what was the celtics record when they scored 120 points",
+    ISSUES.md #144), which the team subject's own readers (a season sum, a
+    window sum) cannot represent. Read by the template's own team reader
+    (``templates.splits._record_when_team_answer``) behind the same two
+    checks the template ran behind: the slots it honors
+    (:func:`~association.query.templates.common.check_scope`) and the
+    coverage floor. ``None`` for any other point, which
+    :func:`~association.query.compose.team.run_team` answers.
+
+    .. versionadded:: 4.5.0
+    """
+    if intent != "record_when" or q.scope.threshold is None:
+        return None
+    try:
+        check_scope(intent, q.scope)
+    except TemplateUnsupported:
+        return None
+    refused = check_coverage(intent, q.scope)
+    if refused is not None:
+        raise Refused(TemplateResult(data={"message": refused, "season": q.scope.season}, answer=refused))
+    try:
+        return _record_when_team_answer(con, q.scope)
+    except TemplateUnsupported as exc:
         raise Unsupported(f"relation: {exc}") from exc

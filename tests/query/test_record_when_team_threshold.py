@@ -5,12 +5,12 @@ notion of a threshold - so "what was the celtics record when they scored 120
 points" silently answered the season's whole point total, the threshold
 dropped, instead of a win-loss record split by the line asked about.
 
-Kept apart from ``tests/query/test_conditions.py`` (which calls the template
-directly) and ``tests/query/test_compose.py``/``test_agent.py`` (owned by
-parallel work on ``compose/adapt.py`` and ``query/agent.py`` respectively):
-this is the one place the FULL agent path - the compiler declining, and the
-template answering instead - is exercised end to end, the way #144's own
-question is actually asked.
+Kept apart from ``tests/query/test_conditions.py`` and
+``tests/query/test_compose.py``: this is the one place the FULL agent path is
+exercised end to end, the way #144's own question is actually asked - the
+team subject's own readers declining a threshold, and the compiler answering
+it through ``record_when``'s own team reader
+(``compose.present.present_team``; ROADMAP plan item 6, step (d), part 4).
 """
 
 from __future__ import annotations
@@ -76,13 +76,15 @@ def test_a_team_only_threshold_record_answers_the_record_not_the_season_total(tm
     Celtics', 'season_type': 2, 'threshold': 120}` - and because
     `record_when` is in `compose.COMPILER_FIRST`, the team compiler used to
     answer first, with no notion of a threshold, silently reading the plain
-    season/window total and dropping the threshold. `run_team` now declines a
-    point whose scope carries a ``threshold``, so the question falls through
-    to `record_when`'s own team branch, which reads it as the record it
-    actually asked for: g1 (125, W) and g2 (130, L) reach 120+ (1-1, margin
-    +15 and -5); g3 (110, W) and g4 (95, L) fall short (1-1, margin +10 and
-    -10). No model call is needed - the fast path answers on its own."""
+    season/window total and dropping the threshold. `run_team` declines a
+    point whose scope carries a ``threshold``, and the compiler answers it
+    with `record_when`'s own team reader, as the record it actually asked
+    for: g1 (125, W) and g2 (130, L) reach 120+ (1-1, margin +15 and -5); g3
+    (110, W) and g4 (95, L) fall short (1-1, margin +10 and -10). No model
+    call is needed - the fast path answers on its own."""
     agent = _agent_with_a_team_threshold_split(tmp_path)
+    lines: list[str] = []
+    agent.trace, agent.verbose = lines.append, True
     answer = agent.ask(
         "what was the celtics record when they scored 120 points",
         route=Route(intent="record_when", slots={"stat": "points", "team": "Boston Celtics", "season_type": 2, "threshold": 120}),
@@ -94,3 +96,4 @@ def test_a_team_only_threshold_record_answers_the_record_not_the_season_total(tm
     assert answer.data is not None
     assert answer.data["reached"] == {"games": 2, "wins": 1, "losses": 1, "avg_margin": pytest.approx(5.0)}
     assert answer.data["fell_short"] == {"games": 2, "wins": 1, "losses": 1, "avg_margin": pytest.approx(0.0)}
+    assert any("-> (compose) intent='record_when'" in line for line in lines), lines

@@ -21,7 +21,7 @@ import duckdb
 from association.query.measures import MEASURE_WORDS
 from association.query.metrics import PER_GAME_MIN_GAMES
 from association.query.reading import Aggregate, Reading, Scope
-from association.query.templates.common import DEFAULT_LIMIT, FILLER_PLAYER_WORDS, POSITIONS, TEAM_ONLY_INTENTS, TemplateResult, _clamp_limit
+from association.query.templates.common import DEFAULT_LIMIT, FILLER_PLAYER_WORDS, POSITIONS, TEAM_ONLY_INTENTS, TemplateResult, _clamp_limit, ordinal_word
 
 from .adapt import DEFAULT_SINGLE_GAME_LIMIT, _named_player, _named_player_in, _to_reading_scope
 from .core import BOOLEAN_MEASURES, COLUMNS, DERIVED, LINE, Query, Refused, Unsupported
@@ -533,6 +533,12 @@ def _everyone_threshold_count(intent: str, scope: Scope, predicates: list[tuple[
         predicates = _everyone_threshold_count_line(scope)
     if not predicates:
         raise Unsupported("a league-wide count needs the line(s) it counts; none could be read from the question")
+    if scope.season_n:
+        # threshold_count's own refusal (templates.players._threshold_count_subject):
+        # "his 15th season" is a place in one career, and the league has none -
+        # read over everyone it narrowed to players in their 15th season of the
+        # default year while the sentence named only the year.
+        raise Unsupported(f"the {ordinal_word(scope.season_n)} season is a place in one player's career, and no player was named")
     # threshold_count's own leaderboard length (DEFAULT_LIMIT, five names)
     # where it is that intent's question; ten for a team's roster count
     # (F152), which also states the whole count beneath the ones listed.
@@ -978,6 +984,13 @@ def _read_point(con: duckdb.DuckDBPyConnection, intent: str, slots: dict[str, An
         raise Unsupported(f"a team's total of its players' {slots['stat']} is not read")
     slots = _drop_position_only_player(slots, subject)
     slots = _drop_filler_or_team_player(slots, subject)
+    if intent == "record_when" and not _named_player(slots) and isinstance(slots.get("team"), str) and slots["team"].strip():
+        # A team's record above and below its OWN line - "what was the celtics
+        # record when they scored 120 points" (ISSUES.md #144) - is neither the
+        # season sum nor the window sum the team subject otherwise reads: it is
+        # record_when's team reader's (compose.present.present_team).
+        scope = Scope.from_slots(slots)
+        return Reading(scope=scope, shape="scalar", measures=[scope.stat or "points"], aggregate="record", relation="team")
     if not _named_player(slots):
         team_reading = team_read_point(con, slots, question, subject)
         if team_reading is not None:

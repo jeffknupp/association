@@ -12,14 +12,14 @@ from typing import Any
 
 from association.query.measures import MEASURE_WORDS
 from association.query.reading import Group, Reading, Scope
-from association.query.templates.common import _BOX_SCORES, _clamp_limit
+from association.query.templates.common import _BOX_SCORES, TemplateUnsupported, _clamp_limit
 
 # One concept, one definition (scripts/check_duplicate_names.py): the default
 # row counts and the default stat line are the same constants the real
 # templates already carry (association.query.templates.games/players),
 # reused rather than redeclared under the same name.
 from association.query.templates.games import DEFAULT_GAME_LOG_LIMIT
-from association.query.templates.players import DEFAULT_SINGLE_GAME_LIMIT, STAT_LINE
+from association.query.templates.players import DEFAULT_SINGLE_GAME_LIMIT, STAT_LINE, _threshold_count_ask
 
 from .core import COLUMNS, LINE, Query, Unsupported
 from .plan import plan
@@ -111,11 +111,21 @@ def _adapt_player_stat(scope: Scope) -> Reading:
 
 
 def _adapt_threshold_count(scope: Scope) -> Reading:
-    """``threshold_count``'s default point: a count of games clearing one line."""
+    """``threshold_count``'s default point: a count of games clearing one
+    line - the threshold, or a below/above phrase that is the whole line
+    ("Sga games with under 14 fta": the relation narrows by it, and the
+    count is of the games left), read the one way the count's presenter reads
+    it (``templates.players._threshold_count_ask``)."""
     col = _stat_column(scope.stat)
     threshold = scope.threshold
     if not _named_player_in(scope):
         raise Unsupported("a league-wide count is not on the one-player relation")
+    if threshold is None and (scope.below or scope.above):
+        try:
+            _threshold_count_ask(scope)
+        except TemplateUnsupported as exc:
+            raise Unsupported(f"threshold_count: {exc}") from exc
+        return Reading(scope=scope, shape="scalar", measures=[], aggregate="count", group="none", predicates=[], available=_BOX_SCORES)
     if col is None or threshold is None or threshold < 1:
         raise Unsupported("threshold_count refuses; nothing to compare")
     # A below/above phrase carrying the threshold's own number IS the count,
@@ -155,8 +165,10 @@ def _adapt_record_when(scope: Scope) -> Reading:
     """``record_when``'s default point: the record in games clearing one line."""
     col = _stat_column(scope.stat)
     threshold = scope.threshold
-    if not _named_player_in(scope) or col is None or threshold is None:
-        raise Unsupported("record_when needs a player, a stat and a threshold here")
+    if not _named_player_in(scope) or col is None or threshold is None or threshold < 1:
+        # A line of 0 is every game he played: the template's own refusal
+        # (``templates.splits._record_when_stat``), never a record "when".
+        raise Unsupported("record_when needs a player, a stat and a positive threshold here")
     return Reading(scope=scope, shape="scalar", measures=[], aggregate="record", group="none", predicates=[(col, ">=", threshold)], available=_BOX_SCORES)
 
 

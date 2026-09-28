@@ -34,7 +34,7 @@ from association.query.templates.common import TemplateContext, TemplateResult, 
 from .core import Query, Refused, Unsupported, run
 from .move import games_reading, read_point
 from .plan import plan
-from .present import present
+from .present import present, present_team
 from .sentence import _span_phrase
 from .sentence import sentence as _sentence
 from .sentence import team_sentence as _team_sentence
@@ -105,7 +105,15 @@ words, and as the fallback where the compiler declines. ROADMAP plan item
 """
 
 
-def answer(ctx: TemplateContext, intent: str, slots: dict[str, Any], question: str, subject: Subject | None = None, trace: Callable[[Reading], None] | None = None) -> TemplateResult | None:
+def answer(
+    ctx: TemplateContext,
+    intent: str,
+    slots: dict[str, Any],
+    question: str,
+    subject: Subject | None = None,
+    trace: Callable[[Reading], None] | None = None,
+    declined: Callable[[str], None] | None = None,
+) -> TemplateResult | None:
     """A router-classified question, answered by the compiler where a
     template refused it - or ``None``, meaning the question is not a point on
     this relation at all and should fall through to the agent.
@@ -170,6 +178,13 @@ def answer(ctx: TemplateContext, intent: str, slots: dict[str, Any], question: s
        readers (``source="seasons"``, :mod:`~association.query.compose.present`),
        and a history they decline falls back to the game-level reading
        (:func:`~association.query.compose.move.games_reading`).
+
+    .. versionchanged:: 4.5.0
+       Answers a team's record above and below its own line in
+       ``record_when``'s own words
+       (:func:`~association.query.compose.present.present_team`), and takes
+       ``declined``, called with the reason when the compiler has no reading
+       of the point - the reason a question it alone answers falls through.
     """
     try:
         reading = read_point(ctx.con, intent, slots, question, subject)
@@ -177,6 +192,11 @@ def answer(ctx: TemplateContext, intent: str, slots: dict[str, Any], question: s
             trace(reading)
         query = plan(reading)
         if isinstance(query, TeamQuery):
+            # A team's record above and below its own line is said by
+            # record_when's own team reader (compose.present.present_team).
+            own_team = present_team(ctx.con, intent, query)
+            if own_team is not None:
+                return own_team
             result = run_team(ctx.con, query)
             return TemplateResult(data=_team_point_data(query, result), answer=_team_sentence(query, result), artifacts=[])
         # The shared checks read the slot dict until they take the Scope.
@@ -196,7 +216,9 @@ def answer(ctx: TemplateContext, intent: str, slots: dict[str, Any], question: s
             if refusal is not None:
                 raise Refused(TemplateResult(data={"message": refusal, "season": query.scope.season}, answer=refusal))
         out = run(ctx.con, query)
-    except Unsupported:
+    except Unsupported as exc:
+        if declined is not None:
+            declined(str(exc))
         return None
     except Refused as exc:
         return exc.result

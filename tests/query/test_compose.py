@@ -1379,3 +1379,59 @@ def test_a_teams_total_of_triple_doubles_is_declined_for_the_refusals_module(cx_
             "golden state warriors all-time triple doubles vs west",
             Subject("team", teams=("Golden State Warriors",), question="golden state warriors all-time triple doubles vs west"),
         )
+
+
+# ---------------------------------------------------------------------------
+# What only the four compiler-first templates answered, answered by the
+# compiler (ROADMAP plan item 6, step (d), part 4): measured on the unit tests
+# and the recorded questions, these were the shapes the template fallback
+# still carried.
+# ---------------------------------------------------------------------------
+
+
+def test_a_count_under_a_ceiling_with_no_threshold_is_counted(cx_ctx: TemplateContext) -> None:
+    """ "Sga games with under 14 fta in his whole career": the below phrase
+    IS the count - no threshold arrives - and the compiler declined it, so
+    the template's fallback answered. Counted now, in the template's words:
+    Curry's four games this season all have under 5 free throw attempts."""
+    result = compose_answer(cx_ctx, "threshold_count", {"player": "Stephen Curry", "stat": "freeThrowsAttempted", "below": ["under 5 fta"]}, "curry games with under 5 fta")
+    assert result is not None
+    assert result.answer == f"Stephen Curry had 4 games with under 5 free throw attempts in the {current_season()} regular season."
+    assert result.data["leaders"] == [{"player": "Stephen Curry", "games": 4}]
+
+
+def test_a_teams_own_threshold_record_is_said_by_record_whens_team_reader(cx_ctx: TemplateContext) -> None:
+    """ "What was the warriors record when they scored 100 points" (ISSUES.md
+    #144's shape): a team's record above and below its OWN line, which the
+    team subject's readers (a season sum, a window sum) cannot represent -
+    so run_team declines it, and record_when's own team reader answers
+    (compose.present.present_team). Golden State this season: 110 (W), 99
+    (L), 120 (W), 90 (L), 100 (W)."""
+    # The team-games relation reads the venue columns the player fixture skips.
+    cx_ctx.con.execute("ALTER TABLE games ADD COLUMN neutral_site BOOLEAN")
+    cx_ctx.con.execute("ALTER TABLE games ADD COLUMN venue_city VARCHAR")
+    real_games.build_table(cx_ctx.con, {"games", "teams"})
+    result = compose_answer(cx_ctx, "record_when", {"team": "Golden State Warriors", "stat": "points", "threshold": 100, "season_type": 2}, "warriors record when they scored 100 points")
+    assert result is not None
+    assert result.answer.startswith("Golden State Warriors record when they had 100+ points")
+    assert result.data["reached"]["games"] == 3 and result.data["reached"]["wins"] == 3
+    assert result.data["fell_short"]["games"] == 2 and result.data["fell_short"]["wins"] == 0
+
+
+def test_a_record_over_a_line_of_zero_is_declined_as_the_template_refused_it(cx_ctx: TemplateContext) -> None:
+    """A line of 0 is every game he played - never a record "when". The
+    template refused it; the compiler answered "went 2-1 in the 3 games
+    points >= 0" until it refused the same way, with the reason."""
+    why: list[str] = []
+    assert compose_answer(cx_ctx, "record_when", {"player": "Stephen Curry", "stat": "points", "threshold": 0}, "", declined=why.append) is None
+    assert why and "positive threshold" in why[0]
+
+
+def test_a_league_count_in_an_ordinal_season_is_declined_not_narrowed_silently(cx_ctx: TemplateContext) -> None:
+    """ "Most 20+ point games in a 15th season": a league has no career to
+    count seasons in. Read over everyone, the compiler narrowed to players in
+    their 15th season OF THE DEFAULT YEAR while its sentence named only the
+    year; it declines now, as the template did, saying why."""
+    why: list[str] = []
+    assert compose_answer(cx_ctx, "threshold_count", {"stat": "points", "threshold": 20, "season_n": 15}, "", declined=why.append) is None
+    assert why and "15th season is a place in one player's career" in why[0]
