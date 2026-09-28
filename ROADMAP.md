@@ -746,6 +746,35 @@ with nothing to read fills the silence from its own weights), and more data
    354 corpus rows. Found on the way: the parser drops a misspelled team
    name and answers without it ("gui last 5 games vs sours" lists his last 5
    games, none against the Spurs - ISSUES P1).
+   **(3), the repair chain, first half done 2026-09-27 (0e649ae, 33cfd60):**
+   measured over every question with a recorded normalizer reply - 628,
+   day10 and the recorded corpus and day10's paraphrases
+   (`yardstick-v2/rehearsal_all.py`, which also records which repair step
+   fired on each). On the parser's output `override_nicknames` fired 108
+   times and moved two answers, both through an own-team misreading it hid
+   ("for me" read as Memphis, fixed); `restore_dropped_players` fired 4 times
+   and moved none; `undo_name_completion` fired once, harmfully ("Jan 19 Bam
+   Adeyebu", a surname the reading had read, cut back to the ambiguous
+   "Bam"). All three are gone, and the completion cut is the parser's, on
+   the model's own spelling (`parse._as_typed_part`). `apply_subject` keeps
+   only the steps that fire on parser output - the names, the restored
+   player, the own team and its tenure, the position group, a team's
+   record_when from a companion's line, the companions' roles; the
+   router-only repairs never fired and went, with the `team_restored` slot.
+   Golden has two halves now: v1 replays the recorded router routes
+   (re-baselined at 33cfd60 - 48 router-shaped rows moved through 3c, each
+   a question the parser reads unchanged), v2 (`golden/golden_v2.py`) the
+   parser's own recorded routes, whose 628 replays answer exactly as the
+   live read does. The round-2 agents' wrong answers, merged the same day:
+   a teammate's role, a matchup's date and a shot read's calendar
+   (8b7f1f8), record_when's blank group, the team branches' `until` and
+   #144 (e08165c), the parser's teammate roles, companions and "scores 30"
+   (582b3fa), a typo'd possessive and the lone "in games he played" player
+   (79fa4e7). Still to do in (3): the parser builds the Scope itself - the
+   subject writers and `_apply_intent`'s child, with_without and pair
+   reroutes (which never fire on parser output, but the child grammar's
+   tests still read through them) move into `parse.read_route`, and the
+   agent consumes a Reading; a live run then closes (3).
 
 ## The rules a spike keeps
 

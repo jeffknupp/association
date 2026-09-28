@@ -55,13 +55,6 @@ before that commit needs re-checking against the current warehouse.
 - **Source:** ours, not ESPN's.
 - **GitHub:** #231
 
-### A companion's role beside a shot chart or shot distance is read inconsistently: "plays" is dropped silently, "starts" also narrows the subject's own split
-- **Found:** 2026-09-27, fixing the shot-narrowing follow-up to plan item 6 step (d) (the three-fix session that added `situation`/`conditions` to `_shots_other_narrowing`). Found while live-probing that fix with the parser reader, real warehouse, no ollama (`~/association-research/golden/probe_shots_situation_fix3.py`, extended locally to print the full trace).
-- **Evidence:** "stephen curry shot chart when draymond green plays" - the subject reading correctly logs `subject companions: ['Draymond Green']` from the question's own words, but never a `subject conditions` decision at all, so the template's `reading.scope.conditions` is empty and the chart draws the whole season (374/803 made, 46.6% - identical to no narrowing given at all). "stephen curry shot chart when draymond green starts" does log `subject conditions: [{'player': 'Draymond Green', 'side': 'own', 'predicate': 'started'}]` correctly, but the router's own slots ALSO carry `split: 'starter'` - which is `Narrowed.started`, the SUBJECT's (Curry's) own starter/bench half, not anything the question asked about him - so the chart narrows to games BOTH Curry started AND Draymond started (319/691, "as a starter with Draymond Green starting"), one narrowing too many. A third wording, "stephen curry average shot distance when draymond green starts", is misrouted to `with_without` (which owns "starts"/"bench" as a two-sided split, not a condition) and falls through entirely (`with_without cannot honor ['split']`) rather than reaching `shot_distance`.
-- **User sees:** a fluent, wrong chart with the companion nowhere in it for "plays" (the worst shape - no error, no caveat, the number is simply the whole season's); an over-narrowed chart for "starts" that silently adds a split on the subject nobody asked about; a fall-through for the same wording on `shot_distance`.
-- **Next step:** read "when X plays" as a `conditions` entry with `predicate: "played"` the same way "starts"/"bench"/"reached" already are (wherever that reading lives - `subject.py`'s companion-role parsing did not turn up in this session's read of it); and stop the router/parser from setting `split` for a phrase that names a companion rather than the subject himself, so "when Draymond starts" does not also narrow Curry's own starts. Worth checking whether `with_without`'s own intent-reroute rule is what is stealing the third wording from `shot_distance`.
-- **Source:** ours, not ESPN's.
-
 ### The web page scales a composed usage rate by 100 a second time: "USG% 2435.5%"
 - **Found:** 2026-09-25, fixing #222 (plan item 2, step 2a).
 - **Evidence:** `usage_pct` is stored as a percent - `fetch/advanced_stats.py`
@@ -263,13 +256,6 @@ those were found.
   "23-24"), just a different wrong year. The fix above is unchanged and still
   open.
 - **GitHub:** #168
-
-### `player_stat` given a `team` slot answers this season and never mentions the team: "lebron stats as a starter for Miami"
-- **Found:** 2026-09-27, the step (c) rehearsal (the whole agent with the parser as reader and the normalizer's recorded replies, `~/association-research/yardstick-v2/run_offline_parser.py`), on an intermediate parser that wrote the player's own team into `team`.
-- **Evidence:** slots `{'player': 'LeBron James', 'team': 'Miami Heat', 'season_type': 2, 'split': 'starter'}` answered "LeBron James averaged 20.9 points, 6.1 rebounds and 7.2 assists per game in 60 games as a starter in the 2026 regular season." - his Lakers season, with Miami nowhere in the sentence. With no `team` slot the subject stage reads the own team and the span it implies, and the same question answers "... in 294 games with the Miami Heat as a starter over his career (2011-2014 ...)". The parser does not write the own team into `team` (`parse._read_route_names`; the subject stage writes it to `own_team`), so it does not reach this; the router reader did whenever its model filed the team, and it is gone (4.5.0).
-- **User sees:** nothing on the parser. A fluent, correct-looking line about a different team's season for any route that carries `team` on `player_stat` - a recorded one, or a reader that files the own team there (step 3c moves the own-team writer into the parser).
-- **Next step:** find why `check_scope` lets `team` through for `player_stat` when the template does not narrow by it - either honor it as the own-team narrowing the subject stage already builds, or refuse it; warehouse-verified test on this question.
-- **GitHub:** #237
 
 ### Holidays answer the wrong day or none: "on mlk day" is every January 15, "on valentine's day" narrows nothing
 - **Found:** 2026-09-27, the package review of plan item 6's steps (a)-(d) (a read-only agent; spot-checked by the lead).
@@ -3027,6 +3013,14 @@ those were found.
 - **Source:** ours.
 
 ## P4: tooling, docs, low impact
+
+### `player_stat` given a `team` slot answers this season and never mentions the team: "lebron stats as a starter for Miami"
+- **Found:** 2026-09-27, the step (c) rehearsal (the whole agent with the parser as reader and the normalizer's recorded replies, `~/association-research/yardstick-v2/run_offline_parser.py`), on an intermediate parser that wrote the player's own team into `team`.
+- **Evidence:** slots `{'player': 'LeBron James', 'team': 'Miami Heat', 'season_type': 2, 'split': 'starter'}` answered "LeBron James averaged 20.9 points, 6.1 rebounds and 7.2 assists per game in 60 games as a starter in the 2026 regular season." - his Lakers season, with Miami nowhere in the sentence. With no `team` slot the subject stage reads the own team and the span it implies, and the same question answers "... in 294 games with the Miami Heat as a starter over his career (2011-2014 ...)". The parser does not write the own team into `team` (`parse._read_route_names`; the subject stage writes it to `own_team`), so it does not reach this; the router reader did whenever its model filed the team, and it is gone (4.5.0).
+- **Ranked P4 (2026-09-27):** the parser writes a player's own team to `own_team`, never `team` (`subject._apply_own_team`), so no question read today reaches this; only a recorded route carrying `team` beside a player does (golden's router routes).
+- **User sees:** nothing on the parser. A fluent, correct-looking line about a different team's season for any route that carries `team` on `player_stat` - a recorded one, or a reader that files the own team there (step 3c moves the own-team writer into the parser).
+- **Next step:** find why `check_scope` lets `team` through for `player_stat` when the template does not narrow by it - either honor it as the own-team narrowing the subject stage already builds, or refuse it; warehouse-verified test on this question.
+- **GitHub:** #237
 
 ### Package review leftovers: one fold, one ordinal, one month list, and an untested third of the parent grammar
 - **Found:** 2026-09-27, the package review of plan item 6's steps (a)-(d) (read-only agent; not each re-verified by the lead).
