@@ -686,3 +686,19 @@ def test_excluding_featuring_and_a_fronted_without_are_companion_phrases(con: du
     assert s.kind == "pair" and [(c.name, c.predicate) for c in s.conditions] == [("Kevin Durant", "absent")]
     s = _read(con, "display the PHI record featuring Embiid and Maxey", "with_without", team="Philadelphia 76ers")
     assert s.kind == "team" and [(c.name, c.predicate) for c in s.conditions] == [("Joel Embiid", "played"), ("Tyrese Maxey", "played")]
+
+
+def test_the_one_player_named_in_games_he_played_is_the_subject(con: duckdb.DuckDBPyConnection) -> None:
+    """ "2 threes in games Jamal Murray played" (a day10 paraphrase) names
+    nobody beside him: the games he played are his own, so he is the subject,
+    not a companion of nobody - read as a companion, the question had no
+    subject and fell through as a league ranking. A second name keeps the
+    companion reading."""
+    alone = read_subject(con, "2 threes in games Stephen Curry played including playoffs", "other", {"player": "Stephen Curry"})
+    assert (alone.kind, alone.players, alone.conditions) == ("player", ("Stephen Curry",), ())
+    beside = read_subject(con, "maxey points in games embiid played", "other", {"players": ["Tyrese Maxey", "Joel Embiid"]})
+    assert beside.players == ("Tyrese Maxey",) and [(c.name, c.predicate) for c in beside.conditions] == [("Joel Embiid", "played")]
+    # Two companions of a team, the team routed but not a word the reading
+    # finds ("76ers"), stay the team's question.
+    team = read_subject(con, "show me the 76ers record when both Embiid and Paul George played", "other", {"team": "76ers", "players": ["Embiid", "Paul George"]})
+    assert team.players == () and {c.name for c in team.conditions} >= {"Joel Embiid"}

@@ -415,8 +415,19 @@ def _as_typed_runs(words: list[str], wanted: list[str]) -> list[list[str]]:
     return [
         words[i : i + len(wanted)]
         for i in range(len(words) - len(wanted) + 1)
-        if all(len(t) >= 3 and _edit_distance(t.casefold(), w) <= _edit_budget(w) for t, w in zip(words[i : i + len(wanted)], wanted, strict=True))
+        if all(len(t) >= 3 and _as_typed_close(t.casefold(), w) for t, w in zip(words[i : i + len(wanted)], wanted, strict=True))
     ]
+
+
+def _as_typed_close(typed: str, wanted: str) -> bool:
+    """``typed`` is ``wanted`` within the entity index's edit budget - read
+    with its possessive "s" as well as without it, the way the index reads
+    a name (:func:`~association.query.entities.read_near_spelling`): "show
+    me embids 3pt percentage" came back "embiid", two edits from "embids"
+    and one from "embid", and with no run to put it back to, the name the
+    question does hold read as one it never named (ISSUES.md #180)."""
+    budget = _edit_budget(wanted)
+    return _edit_distance(typed, wanted) <= budget or (len(typed) > 3 and typed.endswith("s") and _edit_distance(typed[:-1], wanted) <= budget)
 
 
 _AS_TYPED_WORD = re.compile(r"[\w'.-]+")

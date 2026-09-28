@@ -2272,18 +2272,6 @@ those were found.
   default, answer `span: career` and say so. Re-score the corpus either way.
 - **GitHub:** #179
 
-### The name check refuses a possessive typo it used to answer ("embids")
-- **Found:** 2026-09-21, the web-session replay (agent), confirmed by the lead
-- **Evidence:** "show me embids 3pt percentage over the last 5 years" answered
-  on the 2026-09-09 build; on `31b2ec6`
-  `override_invented_players` returns `invented=['Joel Embiid']`: "embids" is
-  two edits from "embiid" against `_edit_budget`'s one for a six-letter word.
-- **User sees:** "This was read as a question about Joel Embiid, who the
-  question does not mention".
-- **Next step:** strip a trailing possessive "s" before measuring, rather than
-  widening the budget - #131 measured what a wider budget costs.
-- **GitHub:** #180
-
 ### A subject `game_log` was not given is not restored from the question
 - **Found:** 2026-09-21, live sample
 - **Evidence:** "Luka doncic last 5 away hames" routes to `game_log` with no

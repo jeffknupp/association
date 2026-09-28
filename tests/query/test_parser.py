@@ -236,6 +236,12 @@ def test_a_name_the_model_corrected_is_put_back_as_the_question_typed_it(con: du
     assert both.slots["player"] == "embidd"
     completed, _, _ = read_route(con, "how many points does embiid average", ["Joel Embiid"], "points")
     assert completed.slots["player"] in ("Joel Embiid", "embiid")
+    # A possessive "s" left on a typo ("embids" for "embid's") is the
+    # question's own spelling too, as the index reads it: put back, it is a
+    # player's history, where two edits from "embiid" it read as a name the
+    # question never held and was refused (ISSUES.md #180).
+    possessive, subject, _ = read_route(con, "show me embids 3pt percentage over the last 5 years", ["embiid"], "threePointFieldGoalPct")
+    assert (possessive.intent, possessive.slots["player"], subject.invented) == ("player_history", "embids", ())
 
 
 def test_a_count_spelled_out_is_the_count(con: duckdb.DuckDBPyConnection) -> None:

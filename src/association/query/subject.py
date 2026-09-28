@@ -821,6 +821,8 @@ def read_subject(con: duckdb.DuckDBPyConnection, question: str, intent: str, slo
     conditions = _conditions(question, (*players, *unrouted), slots)
     companions = tuple(dict.fromkeys(c.name for c in conditions))
     players = tuple(p for p in players if p not in companions)
+    if _read_subject_alone(players, teams_here, conditions, slots):
+        players, conditions, companions = companions, (), ()
     # "for the Heat" is a player's OWN team only beside a player subject
     # named BEFORE it - the order a tenure is asked in ("lebron ... for
     # Miami"); with none, or with the player following as a condition
@@ -843,6 +845,19 @@ def read_subject(con: duckdb.DuckDBPyConnection, question: str, intent: str, slo
         filler=filler,
         evidence=(*evidence, f"the words {words!r} name {settled}") if words else evidence,
     )
+
+
+def _read_subject_alone(players: tuple[str, ...], teams: set[str], conditions: tuple[Companion, ...], slots: dict[str, Any]) -> bool:
+    """Whether the one player named only as a companion is the subject after
+    all: "2 threes in games Jamal Murray played" names nobody BESIDE him, so
+    the games he played are his own games - he is the subject, and that he
+    played them narrows nothing. Only one, and only with no team anywhere:
+    "the 76ers record when both Embiid and Paul George played" is the
+    team's question with two companions ("76ers" is no word the team
+    reading finds, so the routed ``team`` slot is what says so). Split out
+    of :func:`read_subject` for the complexity gate."""
+    named_team = teams or slots.get("team") or slots.get("teams")
+    return not players and not named_team and len(conditions) == 1 and conditions[0].predicate == "played"
 
 
 def _decide_intent(subject: Subject, routed_opponent: str | None, intent: str, question: str, slots: dict[str, Any]) -> tuple[str, str | None]:
