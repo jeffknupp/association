@@ -8,10 +8,12 @@ For how the system is designed — the three stages, the reader/agent split, why
 templates instead of better prompting — read `docs/architecture.rst`. That is
 the source of truth for design, and this file does not restate it.
 
-Where the work is going - the goal, what each spike bought and why, and the
-next steps - is `ROADMAP.md`. Read it before starting a spike, and keep a
-spike pointed at it: measurements turn up fixable things, and those go to
-agents or to `ISSUES.md`, not into the spike.
+Where the work is going - the goal, where it stands, and the next steps in
+order - is `ROADMAP.md`; what each spike measured, bought and cost, as
+written at the time, is `ROADMAP-HISTORY.md`. Read the roadmap before
+starting a spike, and keep a spike pointed at it: measurements turn up
+fixable things, and those go to agents or to `ISSUES.md`, not into the
+spike.
 
 What is known to be wrong, missing or unverified is in `ISSUES.md`, ranked by
 priority. Read the entries for the area you are about to touch, and add what
