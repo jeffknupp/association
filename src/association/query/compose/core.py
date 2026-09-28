@@ -94,11 +94,17 @@ RATES: dict[str, tuple[str, str]] = {
     "fg_pct": ("SUM(pgl.fieldGoalsMade) * 100.0", "NULLIF(SUM(pgl.fieldGoalsAttempted), 0)"),
     "three_pct": ("SUM(pgl.threePointFieldGoalsMade) * 100.0", "NULLIF(SUM(pgl.threePointFieldGoalsAttempted), 0)"),
     "ft_pct": ("SUM(pgl.freeThrowsMade) * 100.0", "NULLIF(SUM(pgl.freeThrowsAttempted), 0)"),
-    "ts_pct": ("SUM(pgl.points) * 100.0", "NULLIF(2 * (SUM(pgl.fieldGoalsAttempted) + 0.44 * SUM(pgl.freeThrowsAttempted)), 0)"),
-    "efg_pct": ("(SUM(pgl.fieldGoalsMade) + 0.5 * SUM(pgl.threePointFieldGoalsMade)) * 100.0", "NULLIF(SUM(pgl.fieldGoalsAttempted), 0)"),
+    # A fraction (0.57), like the per-game column the view stores and the
+    # sentence and the page both print times 100 (sentence._FRACTION_COLUMNS,
+    # the page's FRACTIONS) - computed times 100 here as well, a narrowed
+    # line read "Joel Embiid averaged 4622.5% TS% per game ... vs the Boston
+    # Celtics", and a ranking "TS% 9213.1%".
+    "ts_pct": ("CAST(SUM(pgl.points) AS DOUBLE)", "NULLIF(2 * (SUM(pgl.fieldGoalsAttempted) + 0.44 * SUM(pgl.freeThrowsAttempted)), 0)"),
+    "efg_pct": ("CAST(SUM(pgl.fieldGoalsMade) + 0.5 * SUM(pgl.threePointFieldGoalsMade) AS DOUBLE)", "NULLIF(SUM(pgl.fieldGoalsAttempted), 0)"),
 }
 """A percentage measure's numerator and denominator, summed over games rather
-than averaged per game.
+than averaged per game - on the scale its per-game column has: a percent for
+``fg_pct``/``three_pct``/``ft_pct``, a fraction for ``ts_pct``/``efg_pct``.
 
 .. versionadded:: 4.4.0
 """

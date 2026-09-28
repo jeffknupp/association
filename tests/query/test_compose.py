@@ -1511,3 +1511,17 @@ def test_a_point_the_compiler_declines_or_refuses_travels_on_the_reading(cx_ctx:
     assert refused.point is None and refused.point_refusal is not None
     answered = answer_reading(cx_ctx, refused)
     assert answered is not None and answered.answer == refused.point_refusal.answer and answered is not refused.point_refusal
+
+
+def test_a_summed_true_shooting_rate_is_a_fraction_like_its_column(cx_ctx: TemplateContext) -> None:
+    """``ts_pct`` and ``efg_pct`` are stored per game as fractions (0.57) and
+    printed times 100 (``sentence._FRACTION_COLUMNS``, the page's
+    ``FRACTIONS``). Their ratio-of-sums rate (``core.RATES``) was computed
+    times 100 already, so a narrowed line printed it twice: on the real
+    warehouse, "Joel Embiid averaged 4622.5% TS% per game over 2 games vs the
+    Boston Celtics". Podziemski's two games against Boston: 30 points on 30
+    shots and no free throws is a TS% of 0.5."""
+    result = compose_answer(cx_ctx, "player_stat", {"player": "Brandin Podziemski", "stat": "ts_pct", "opponent": "Boston Celtics"}, "podziemski true shooting vs boston")
+    assert result is not None
+    assert result.data["rows"][0]["ts_pct"] == pytest.approx(0.5)
+    assert "50.0% TS%" in result.answer and "5000" not in result.answer
