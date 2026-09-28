@@ -96,9 +96,9 @@ jobs:
         run: scripts/check_issues_md.sh
 
       - name: Tests
-        # -n auto: the suite is 1,589 mostly-tiny tests and one that takes 57s
-        # on its own, so the runner's cores cut it from 156s to 80s. Local and
-        # CI run the same line, as everything here does.
+        # -n auto: the suite is ~2,400 small tests, 184s serial and 34s across
+        # 8 local cores (2026-09-28). Local and CI run the same line, as
+        # everything here does.
         run: uv run pytest -q -n auto
 
       - name: Docs build

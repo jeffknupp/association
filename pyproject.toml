@@ -102,10 +102,6 @@ association = ["py.typed"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-# `slow` is for a test measured in seconds rather than milliseconds, so the
-# iteration check (scripts/check_fast.sh) can leave it out. Nothing else may
-# skip it: every marked test still runs in CI and in the full local run.
-markers = ["slow: seconds, not milliseconds - left out of scripts/check_fast.sh, always run in CI"]
 
 [tool.ruff]
 # Generous on purpose: much of this codebase is prompt/schema description

@@ -3,6 +3,7 @@
 from datetime import date, datetime, timedelta, timezone
 
 import duckdb
+import pyarrow as pa
 import pytest
 
 from association.nba.season import eastern_date, eastern_date_sql, eastern_day_utc_range
@@ -44,19 +45,20 @@ def _stamps() -> list[str]:
     return stamps
 
 
-@pytest.mark.slow
 def test_the_sql_rule_and_the_python_rule_agree_on_every_day() -> None:
     """A query that filters on one and an answer that prints the other must
     never put a game on two different days.
 
-    Marked slow because it is: every day from 1976 to 2039 through DuckDB and
-    through Python, 57s of the suite's 80s (measured 2026-09-20). It is left
-    out of `scripts/check_fast.sh` and runs in every full check.
+    Every day from 1976 to 2039, six clock times each: 140,256 stamps through
+    DuckDB and through Python. They go in as one Arrow table - inserted a row
+    at a time with ``executemany`` they took 60s, the whole suite's critical
+    path, against half a second this way (measured 2026-09-28).
     """
+    stamps = _stamps()
     con = duckdb.connect()
-    con.execute("CREATE TABLE t (date VARCHAR)")
-    con.executemany("INSERT INTO t VALUES (?)", [(s,) for s in _stamps()])
+    con.register("t", pa.table({"date": stamps}))
     rows = con.execute(f"SELECT date, CAST({eastern_date_sql('date')} AS VARCHAR) FROM t").fetchall()
+    assert len(rows) == len(stamps)
     assert [(stamp, eastern_date(stamp)) for stamp, _ in rows] == rows
 
 
