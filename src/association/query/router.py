@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import itertools
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import date
 from typing import Any
@@ -34,6 +35,7 @@ from association.nba.season import current_season
 from .calendar import HOLIDAY_WORDS
 from .decisions import Decision
 from .measures import MEASURE_WORDS
+from .reading import Scope
 from .season_text import season_from_text, season_spans
 from .team_metrics import STAT_ALIASES
 
@@ -209,9 +211,11 @@ class RouterUnavailable(RuntimeError):
 
 @dataclass
 class Route:
-    """`slots` holds only values that survived validation - a dropped slot is
-    absent, never a sentinel, so a template's own default applies normally.
-    ``decisions`` are what the parser decided reading it
+    """The stages' settled reading of a question: the intent, and the typed
+    :class:`~association.query.reading.Scope` a template or the compiler
+    reads - every slot that survived validation, a dropped one the field at
+    its default (never a sentinel), so a template's own default applies
+    normally. ``decisions`` are what the parser decided reading it
     (:func:`~association.query.parse.read_route`): each move of the intent
     off the parent its grammar named, and each slot a child's stages moved,
     as values the Reading carries on
@@ -219,12 +223,38 @@ class Route:
     settle, or one replayed, carries none.
 
     .. versionchanged:: 5.0.0
-       ``decisions`` added.
+       ``scope`` (a :class:`~association.query.reading.Scope`) replaces
+       ``slots`` (a dict): the stages write the typed Scope, and nothing after
+       the model holds a slot dict (ROADMAP plan item 6, step (f)). A recorded
+       route is replayed through :meth:`from_slots`, and :attr:`slots` is the
+       Scope projected to a slot dict - the trace's and a test's shape, read
+       nowhere on the answering path. ``decisions`` added.
     """
 
     intent: str
-    slots: dict[str, Any] = field(default_factory=dict)
+    scope: Scope = field(default_factory=Scope)
     decisions: tuple[Decision, ...] = ()
+
+    @classmethod
+    def from_slots(cls, intent: str, slots: Mapping[str, Any], decisions: tuple[Decision, ...] = ()) -> Route:
+        """A route from a slot dict - a recorded route replayed, a test's
+        case - through the Scope's one door
+        (:meth:`~association.query.reading.Scope.from_slots`), which raises
+        :class:`~association.query.reading.ScopeError` for a value no field
+        holds.
+
+        .. versionadded:: 5.0.0
+        """
+        return cls(intent, Scope.from_slots(slots), decisions)
+
+    @property
+    def slots(self) -> dict[str, Any]:
+        """The scope as a slot dict (:meth:`~association.query.reading.Scope.to_slots`).
+
+        .. versionchanged:: 5.0.0
+           A projection of :attr:`scope`, no longer the field itself.
+        """
+        return self.scope.to_slots()
 
 
 def _validate_season(slots: dict[str, Any], question: str = "") -> int | None:
@@ -2938,7 +2968,7 @@ _MODEL_SLOTS: frozenset[str] = frozenset(
 )
 
 
-def settle(intent: str, slots: dict[str, Any], question: str) -> Route:
+def settle(intent: str, slots: Mapping[str, Any] | Scope, question: str) -> Route:
     """The route the stages settle on for ``intent`` over ``slots``: the
     parser's raw route (:func:`association.query.parse.read_route` runs them
     under the parent its grammar names), or a settled route run again under
@@ -2961,8 +2991,21 @@ def settle(intent: str, slots: dict[str, Any], question: str) -> Route:
     record is ``with_without`` - and the caller reads the returned intent
     rather than assuming its own.
 
+    ``slots`` is the model's slot dict - the names and the stat, with the
+    window the parser reads beside them - or a settled route's typed
+    :class:`~association.query.reading.Scope`, run again under a child; the
+    stages' own working dict never leaves this module, and the Route they
+    return carries the Scope.
+
     .. versionadded:: 5.0.0
+
+    .. versionchanged:: 5.0.0
+       Takes a :class:`~association.query.reading.Scope` as well as a slot
+       dict, and returns a Route carrying the typed Scope (ROADMAP plan item
+       6, step (f)).
     """
+    if isinstance(slots, Scope):
+        slots = slots.to_slots()
     raw: dict[str, Any] = {key: value for key, value in slots.items() if key in _MODEL_SLOTS}
     raw["intent"] = intent
     season = slots.get("season")
@@ -2982,7 +3025,7 @@ def _settle(raw: dict[str, Any], question: str) -> Route:
     # A coach question is refused whatever the model said, and carries no
     # slots, so it short-circuits before any of the stages below run.
     if _route_coach_intent(raw, question):
-        return Route(intent=raw["intent"], slots={})
+        return Route(intent=raw["intent"])
     # The stages run in this order because each reads what the ones before it
     # rewrote: the intents code assigns decide which slots are read, and a
     # threshold the question lacks turns a count back into a ranking before
@@ -3012,4 +3055,6 @@ def _settle(raw: dict[str, Any], question: str) -> Route:
     _route_period_window(raw["intent"], slots, question)
     _route_opponent_named_as_teammates(slots, without)
     _route_game_log_recent_span(raw["intent"], slots, question)
-    return Route(intent=raw["intent"], slots=slots)
+    # The stages' working dict crosses into the typed Scope here, once: a
+    # value no field holds (a window of 0) raises ScopeError to the parser.
+    return Route(intent=raw["intent"], scope=Scope.from_slots(slots))

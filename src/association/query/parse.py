@@ -26,7 +26,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import replace
-from typing import Any
+from typing import Any, Literal, cast, get_args
 
 import duckdb
 
@@ -38,7 +38,7 @@ from association.query.decisions import Decision
 from association.query.entities import _edit_budget, _question_derived_player, _words, find_players, find_teams, nicknames_in, suggest_players
 from association.query.measures import MEASURE_WORDS
 from association.query.metrics import EXTRA_FIELD_COLUMNS
-from association.query.reading import Reading, Scope
+from association.query.reading import Reading, Scope, ScopeError, Split
 from association.query.router import Route, _period_asked, _route_calendar_slots_split, settle
 from association.query.subject import (
     KIND_ASSIGNED_INTENTS,
@@ -265,26 +265,88 @@ def _count(word: str) -> int:
     return int(word) if word.isdigit() else _NUMBERS[" ".join(word.lower().replace("-", " ").split())]
 
 
-def window(question: str, slots: dict[str, Any]) -> dict[str, Any]:
-    """``slots`` with the window :data:`WINDOW_GRAMMAR` reads, where the
-    stages left it unset; a limit the stages set stands."""
-    if isinstance(slots.get("limit"), int) and not isinstance(slots.get("limit"), bool):
-        return slots
+def _window_read(question: str) -> tuple[str | None, int | None] | None:
+    """The window :data:`WINDOW_GRAMMAR` reads off ``question`` - the order
+    and the limit its first matching row names, either ``None`` where the row
+    names none - or ``None`` where no row matches."""
     for pattern, order, limit in WINDOW_GRAMMAR:
         match = re.search(pattern, question, re.IGNORECASE)
         if match is None:
             continue
-        out = dict(slots)
-        if order and not out.get("order"):
-            out["order"] = order
         if limit == 0:
             number = next((g for g in match.groups() if g and re.fullmatch(_COUNT, g, re.IGNORECASE)), None)
-            if number is not None:
-                out["limit"] = _count(number)
-        elif limit:
-            out["limit"] = limit
-        return out
-    return slots
+            return order or None, _count(number) if number is not None else None
+        return order or None, limit or None
+    return None
+
+
+def window(question: str, slots: dict[str, Any]) -> dict[str, Any]:
+    """``slots`` - the model's names and stat, before the stages - with the
+    window :data:`_window_read` reads, where nothing set it; a limit already
+    set stands. The stages read the window beside the season type they
+    decide, so it is read before them."""
+    if isinstance(slots.get("limit"), int) and not isinstance(slots.get("limit"), bool):
+        return slots
+    read = _window_read(question)
+    if read is None:
+        return slots
+    order, limit = read
+    out = dict(slots)
+    if order and not out.get("order"):
+        out["order"] = order
+    if limit is not None:
+        out["limit"] = limit
+    return out
+
+
+def _as_order(order: str | None) -> Literal["recent", "first"] | None:
+    """A window row's order as the Scope's own literal - the grammar's rows
+    write one of the two, and a row that wrote anything else is a bug said
+    out loud, as the Scope's door says it for a slot dict."""
+    if order == "recent":
+        return "recent"
+    if order == "first":
+        return "first"
+    if order:
+        raise ScopeError(f"window order {order!r} is not 'recent' or 'first'")
+    return None
+
+
+def _as_half(half: int | None) -> Literal[1, 2] | None:
+    """A half of a game as the Scope's own literal (:func:`_as_order`'s
+    reason)."""
+    if half == 1:
+        return 1
+    if half == 2:
+        return 2
+    if half is not None:
+        raise ScopeError(f"half {half!r} is not 1 or 2")
+    return None
+
+
+def _as_split(split: str | None) -> Split | None:
+    """A split read off the words as the Scope's own literal
+    (:func:`_as_order`'s reason)."""
+    if split is None:
+        return None
+    if split not in get_args(Split):
+        raise ScopeError(f"split {split!r} is not one the Scope holds")
+    return cast("Split", split)
+
+
+def window_scope(question: str, scope: Scope) -> Scope:
+    """:func:`window`, over the typed Scope the stages settled: the window
+    read again where the stages left it unset. A limit they set stands.
+
+    .. versionadded:: 5.0.0
+    """
+    if scope.limit is not None:
+        return scope
+    read = _window_read(question)
+    if read is None:
+        return scope
+    order, limit = read
+    return replace(scope, order=scope.order or _as_order(order), limit=limit if limit is not None else scope.limit)
 
 
 _MEETING = re.compile(r"\b(vs\.?|versus|against|play(?:ed|s)?|meet|met|head.to.head|matchup|face[ds]?|beat(?:en)?)\b", re.IGNORECASE)
@@ -524,15 +586,15 @@ _FIELDS_AFTER = re.compile(r"\b(?:with|alongside|and|plus|including)\s+(?:their|
 _TEAM_FIELD = re.compile(r"\bteams?\s+(?:they|he)\s+plays?(?:ed)?\s+for\b|\b(?:with|and|plus)\s+(?:the|their)\s+teams?\b", re.IGNORECASE)
 
 
-def _read_route_fields(intent: str, slots: dict[str, Any], question: str) -> dict[str, Any]:
+def _read_route_fields(intent: str, scope: Scope, question: str) -> Scope:
     """The columns a leaderboard question asks to see beside its ranking:
     each stat word after "with their" / "alongside their" that the
     leaderboard shows (:data:`~association.query.metrics.EXTRA_FIELD_COLUMNS`),
     and "team" for the team each player plays for. Only for the leaderboard,
     the one template that reads them; a word it cannot show is left out, and
     the answer is the ranking the question also asked for."""
-    if intent != "leaderboard" or slots.get("fields"):
-        return slots
+    if intent != "leaderboard" or scope.fields:
+        return scope
     fields: list[str] = []
     after = _FIELDS_AFTER.search(question)
     if after:
@@ -542,17 +604,17 @@ def _read_route_fields(intent: str, slots: dict[str, Any], question: str) -> dic
                 fields.append(key)
     if _TEAM_FIELD.search(question):
         fields.append("team")
-    return {**slots, "fields": fields} if fields else slots
+    return replace(scope, fields=tuple(fields)) if fields else scope
 
 
-def _read_route_period(intent: str, slots: dict[str, Any], question: str) -> dict[str, Any]:
+def _read_route_period(intent: str, scope: Scope, question: str) -> Scope:
     """A team's quarter or half from the words ("first quarter", "2nd
     half") - a slot the router's model filled and the stages only read for
     the intents they assign themselves."""
-    if intent != "team_quarter_points" or "period" in slots or "half" in slots:
-        return slots
+    if intent != "team_quarter_points" or scope.period is not None or scope.half is not None:
+        return scope
     asked = _period_asked(question)
-    return {**slots, **asked} if asked else slots
+    return replace(scope, period=asked.get("period"), half=_as_half(asked.get("half"))) if asked else scope
 
 
 #: The roles a companion can have that narrow the subject's OWN games as a
@@ -601,8 +663,8 @@ def _read_route_beside(subject: Subject, question: str) -> bool:
     return any(_DENIED_ROLE.search(match.group(2)) for match, _ in _read_route_role_phrases(subject, question))
 
 
-def _read_route_split(subject: Subject, question: str, intent: str, slots: dict[str, Any]) -> dict[str, Any]:
-    """``slots`` with the split read again from ``question`` with every
+def _read_route_split(subject: Subject, question: str, intent: str, scope: Scope) -> Scope:
+    """``scope`` with the split read again from ``question`` with every
     teammate's start or bench phrase blanked out: "maxey points when embiid
     starts" filed Embiid's start as Maxey's own starter split, which
     ``with_without`` refused, and "stephen curry shot chart when draymond
@@ -616,18 +678,16 @@ def _read_route_split(subject: Subject, question: str, intent: str, slots: dict[
     answered for every game, the start gone without a word."""
     phrases = [match for match, predicate in _read_route_role_phrases(subject, question) if predicate in _OWN_READ_ROLES]
     if not phrases or not _apply_conditions_honored(intent):
-        return slots
+        return scope
     blanked = question
     for match in phrases:
         tail = _ROLE_TAIL.match(question, match.end(2))
         end = tail.end() if tail is not None else match.end(2)
         blanked = blanked[: match.start()] + " " * (end - match.start()) + blanked[end:]
     split = _route_calendar_slots_split(blanked)
-    out = {key: value for key, value in slots.items() if key != "split"}
-    if split is not None:
-        out["split"] = split
-        if intent == "player_splits" and split == "home_away":
-            out.pop("venue", None)  # a split over venues is not a filter to one (router._route_intent_slots)
+    out = replace(scope, split=_as_split(split))
+    if split == "home_away" and intent == "player_splits":
+        out = replace(out, venue=None)  # a split over venues is not a filter to one (router._route_intent_slots)
     return out
 
 
@@ -638,8 +698,7 @@ def read_route(con: duckdb.DuckDBPyConnection, question: str, names: list[str] |
     spans the normalizer copied out of the question and ``stat`` its stat
     key, both checked here, never trusted. This is what the agent answers
     from when the parser reads the question in place of the router (step c):
-    the slots before the compiler's own repairs, exactly as a routed
-    question's are.
+    the typed Scope the stages settled, exactly as a routed question's.
 
     .. versionadded:: 5.0.0
     """
@@ -653,10 +712,10 @@ def read_route(con: duckdb.DuckDBPyConnection, question: str, names: list[str] |
     staged = settle(parent, window(question, slots), question)
     child, settled = _read_route_child(con, question, staged)
     final = child.intent
-    point_slots = _read_route_fields(final, _read_route_period(final, window(question, dict(child.slots)), question), question)
+    scope = _read_route_fields(final, _read_route_period(final, window_scope(question, child.scope), question), question)
     # A teammate's start is his, never the subject's own split: the stages
     # read the split from the whole question.
-    point_slots = _read_route_split(subject, question, final, point_slots)
+    scope = _read_route_split(subject, question, final, scope)
     subject = replace(
         subject,
         intent=final,
@@ -664,7 +723,7 @@ def read_route(con: duckdb.DuckDBPyConnection, question: str, names: list[str] |
         teams=subject.teams if subject.kind == "teams" else settled.teams,
         opponent=subject.opponent if subject.kind == "teams" else settled.opponent,
     )
-    return Route(final, point_slots, _read_route_decisions(parent, staged, child, settled)), subject, parent
+    return Route(final, scope, _read_route_decisions(parent, staged, child, settled)), subject, parent
 
 
 def _read_route_decisions(parent: str, staged: Route, child: Route, settled: Subject) -> tuple[Decision, ...]:
@@ -695,12 +754,12 @@ def _read_route_child(con: duckdb.DuckDBPyConnection, question: str, route: Rout
     under a player's line), with the stages run again under the child
     (:func:`~association.query.router.settle`), or a team's record under a
     companion's line with the route's own slots - beside that reading."""
-    settled = read_subject(con, question, route.intent, dict(route.slots))
+    settled = read_subject(con, question, route.intent, route.slots)
     final = settled.intent or route.intent
     if final != route.intent and final in KIND_ASSIGNED_INTENTS:
-        again = settle(final, dict(route.slots), question)
-        return Route(again.intent, dict(again.slots)), settled
-    return Route(final, dict(route.slots)), settled
+        again = settle(final, route.scope, question)
+        return Route(again.intent, again.scope), settled
+    return Route(final, route.scope), settled
 
 
 def reading_from_route(con: duckdb.DuckDBPyConnection, question: str, route: Route) -> Reading:

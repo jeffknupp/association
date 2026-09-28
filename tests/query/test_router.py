@@ -25,7 +25,7 @@ def _route(payload: str) -> Route:
 
 def test_parses_intent_and_slots() -> None:
     got = _route('{"intent":"threshold_count","stat":"points","threshold":30}')
-    assert got == Route(intent="threshold_count", slots={"stat": "points", "threshold": 30, "season_type": 2})
+    assert got == Route.from_slots(intent="threshold_count", slots={"stat": "points", "threshold": 30, "season_type": 2})
 
 
 def test_season_type_defaults_to_regular_season() -> None:

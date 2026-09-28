@@ -324,7 +324,7 @@ class Agent:
             self.fell_through = "the fast path is off (--no-fast-path)"
             return None
         # A recorded route is answered as given; otherwise the question is read.
-        routed = Route(intent=given.intent, slots=dict(given.slots)) if given is not None else self._read_or_fall_through(question, history)
+        routed = given if given is not None else self._read_or_fall_through(question, history)
         if routed is None:
             return None
         reading = self._reading_or_fall_through(question, routed, history)
@@ -376,22 +376,13 @@ class Agent:
 
     def _reading_or_fall_through(self, question: str, routed: Route, history: RunHistory) -> Reading | None:
         """The Reading ``routed`` settles into (:func:`~association.query.parse.reading_from_route`),
-        with every decision it made recorded - or None, with the reason, where
-        the route holds a slot nothing can hold. Split out of
-        :meth:`_try_fast_path` for the complexity gate."""
+        with every decision it made recorded. Split out of
+        :meth:`_try_fast_path` for the complexity gate. The route carries the
+        typed Scope already: a slot nothing can hold stopped the parser at the
+        Scope's door (:meth:`_read_or_fall_through`), or a replayed route at
+        its own (``Route.from_slots``)."""
         from association.query.parse import reading_from_route
 
-        # A slot nothing can hold - "stephen curry last 0 games" reads as a
-        # window of 0, a model can return a shot value of 0 - is a question
-        # the fast path cannot read: it falls through here, the way a
-        # template's refusal does, rather than crashing where the Scope is
-        # built (reading.Scope.from_slots).
-        try:
-            Scope.from_slots(routed.slots)
-        except ScopeError as exc:
-            history.log(f"  -> (scope) {exc}, falling through to the agent")
-            self.fell_through = f"a slot the Reading cannot hold: {exc}"
-            return None
         history.log(f"  -> (router) intent={routed.intent!r} slots={routed.slots}" + ("" if routed.intent in TEMPLATES else " - not ported yet, falling through"))
         # One reading of WHO the question is about, from its own words, written
         # into the Scope - the parser's last step, and the only writer: nothing
@@ -415,6 +406,15 @@ class Agent:
             history.record_model_call(time.monotonic() - t0)
             history.log(f"  -> (normalizer) {exc}, falling through to the agent")
             self.fell_through = str(exc)
+            return None
+        except ScopeError as exc:
+            # A slot nothing can hold - "stephen curry last 0 games" reads as a
+            # window of 0 - stops the parser at the Scope's door (the stages'
+            # own, router.settle): the fast path falls through here, the way a
+            # template's refusal does, rather than crashing.
+            history.record_model_call(time.monotonic() - t0)
+            history.log(f"  -> (scope) {exc}, falling through to the agent")
+            self.fell_through = f"a slot the Reading cannot hold: {exc}"
             return None
         history.record_model_call(time.monotonic() - t0)
         if routed is None:

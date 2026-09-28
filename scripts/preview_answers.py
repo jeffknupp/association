@@ -112,7 +112,7 @@ def answer_without_the_router(db_path: str, out_dir: Path, question: str, intent
         # question is not read, so no model is asked.
         agent = Agent("preview", db_path, out_dir, history_dir=out_dir / ".history", trace=lambda line: None, fallthrough=False)
         try:
-            answer = agent.ask(question, label="preview", route=Route(intent=intent, slots=dict(slots)))
+            answer = agent.ask(question, label="preview", route=Route.from_slots(intent, dict(slots)))
         except FallthroughDisabled as exc:
             return {
                 "question": question,

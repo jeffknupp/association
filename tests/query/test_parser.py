@@ -486,5 +486,5 @@ def test_the_reading_carries_the_parsers_decisions_between_who_and_what_it_wrote
         ("subject", "player"),
     ]
     assert (decisions[-1].before, decisions[-1].after) == ("maxey", "Tyrese Maxey")
-    replayed = reading_from_route(con, question, Route(route.intent, {**route.slots, "player": "Tyrese Maxey"}))
+    replayed = reading_from_route(con, question, Route.from_slots(route.intent, {**route.slots, "player": "Tyrese Maxey"}))
     assert [(d.stage, d.field) for d in replayed.decisions] == [("subject", "kind"), ("subject", "teams"), ("subject", "companions")]

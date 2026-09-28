@@ -87,7 +87,7 @@ def test_a_team_only_threshold_record_answers_the_record_not_the_season_total(tm
     agent.trace, agent.verbose = lines.append, True
     answer = agent.ask(
         "what was the celtics record when they scored 120 points",
-        route=Route(intent="record_when", slots={"stat": "points", "team": "Boston Celtics", "season_type": 2, "threshold": 120}),
+        route=Route.from_slots(intent="record_when", slots={"stat": "points", "team": "Boston Celtics", "season_type": 2, "threshold": 120}),
     )
     assert answer.answered_by == "fast"
     assert answer.intent == "record_when"

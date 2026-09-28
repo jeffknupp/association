@@ -393,7 +393,7 @@ def _assigned(con: duckdb.DuckDBPyConnection, question: str, parent: str, **slot
     from association.query.parse import _read_route_child, reading_from_route
     from association.query.router import Route
 
-    child, _ = _read_route_child(con, question, Route(parent, dict(slots)))
+    child, _ = _read_route_child(con, question, Route.from_slots(parent, dict(slots)))
     reading = reading_from_route(con, question, child)
     return reading.intent, reading.scope.to_slots()
 

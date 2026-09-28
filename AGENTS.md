@@ -474,7 +474,7 @@ classification went in step (d)). The model only copies names verbatim and
 picks a stat (`query/normalizer.py`); `parse.read_route` reads everything else
 from the words and hands the rest of the path a route in the shape the
 router's model used to fill (`router.Route`), and the stages in
-`query/router.py` settle its slots (`router.settle`), as they settled the
+`query/router.py` settle its slots into the typed `Scope` the Route carries (`router.settle`), as they settled the
 model's. Two things follow, and both matter when you add a shape:
 
 - **A slot the router's model used to fill has to be read from the words,**
