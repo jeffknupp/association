@@ -55,28 +55,52 @@ before that commit needs re-checking against the current warehouse.
 - **Source:** ours, not ESPN's.
 - **GitHub:** #231
 
-### The web page scales a composed usage rate by 100 a second time: "USG% 2435.5%"
-- **Found:** 2026-09-25, fixing #222 (plan item 2, step 2a).
-- **Evidence:** `usage_pct` is stored as a percent - `fetch/advanced_stats.py`
-  computes it as `100.0 * (...)` - and #222's fix made the compiler's TEXT
-  say so (`compose/sentence.py`, `_FRACTION_COLUMNS`). The page's composed
-  renderer still lists it as a fraction: `web/static/index.html:1635`,
-  `const FRACTIONS = new Set(["ts_pct", "efg_pct", "usage_pct"])`, and
-  `measureCell` prints `(v * 100).toFixed(1) + "%"` for it (line 1638).
-  Measured on the real warehouse at this branch: "Quentin grimes individual
-  gamelog usage rating without joel embiid" (`game_log`, `stat: usage_pct`;
-  the template refuses - "a game log has no per-game column for
-  'usage_pct'" - and `compose` answers) carries `data["rows"][0]["usage_pct"]
-  = 24.355`, which the text prints as "usage 24.4%" and the page's table as
-  "2435.5%". `player_splits`' USG% for the same games is 21.1/21.8.
-- **User sees:** on the web page, a fluent game log with an impossible
-  usage figure in every row - #222's symptom, still there for every web
-  user; the CLI's text is right.
-- **Next step:** drop `usage_pct` from `FRACTIONS` in
-  `web/static/index.html` (ts_pct/efg_pct ARE fractions and stay), add the
-  case to `tests/web/test_renderers.py`, and run `scripts/check_web_ui.py`.
+### A narrowed `player_stat` question naming `ts_pct` or `efg_pct` is scaled twice by the compiler's own fallback: "averaged 5000.0% TS%"
+- **Found:** 2026-09-27, fixing #225 - checking the page's `FRACTIONS` set
+  against the compiler's own `_FRACTION_COLUMNS` for another measure with the
+  same mismatch turned up a second, unrelated way to reach it.
+- **Evidence:** `compose/core.py`'s two per-measure SQL dicts disagree with
+  each other about `ts_pct`/`efg_pct`'s own scale. `DERIVED` (a `rows`
+  skeleton - a game log; line 76) has no entry for either, so `measure_sql`
+  reads the stored view column straight (line 261-267) - a fraction (0.57),
+  confirmed by `tests/fetch/test_advanced_stats.py:116,147`. `RATES` (a
+  `scalar`/`grouped` skeleton's `per_game`/`rate` aggregate - splits, a
+  narrowed average; line 93-98) computes both as
+  `SUM(...) * 100.0 / NULLIF(SUM(...), 0)` - already a percent. A narrowed
+  `player_stat` naming one of these two stats reaches the second path:
+  `templates/players.py`'s `_player_stat_advanced` (line 1428-1435) refuses
+  it outright whenever the question narrows the games ("... is not supported
+  yet - it is computed per season"), and `compose/present.py`'s
+  `_present_player_stat` (line 183-185) explicitly declines it too ("An
+  advanced rate reads its own table and is left to the compiler's sentence"),
+  so the generic `run()`/`_sentence()` path answers it - the same path
+  `_FRACTION_COLUMNS` (`compose/sentence.py:105`) unconditionally multiplies
+  by 100 for these two names, with no way to know which of the two SQL paths
+  produced the value. Reproduced read-only against `test_compose.py`'s
+  `cx_ctx` fixture (no warehouse): `compose.answer(ctx, "player_stat",
+  {"player": "Brandin Podziemski", "stat": "ts_pct", "opponent": "Boston
+  Celtics"}, ...)` answers "Brandin Podziemski averaged **5000.0%** TS% per
+  game over 2 games vs the Boston Celtics in the 2026 regular season." with
+  `data["rows"][0]["ts_pct"] == 50.0` (a real 50.0%, from his 30 points on 2
+  games with 30 combined true-shooting attempts) - the sentence is wrong, not
+  the data. `efg_pct` reproduces identically ("averaged 5000.0% eFG%...",
+  data `efg_pct: 50.0`). The web page's `measureCell`/`FRACTIONS` reads the
+  same `data["rows"]` the same way, so it is wrong there too.
+- **User sees:** a fluent, false answer (both CLI and web) to any
+  `player_stat` question that narrows the games (an opponent, a venue,
+  `since`/`until`, a game of a series, a calendar `situation`, a present or
+  absent teammate, `own_team`, or "including the playoffs") and names true
+  shooting or effective field goal percentage as the stat - e.g. "Klay
+  Thompson's true shooting percentage against the Warriors" or "SGA's
+  effective field goal percentage since December".
+- **Next step:** make `RATES`' `ts_pct`/`efg_pct` entries agree with
+  `DERIVED`'s (and the stored view's) convention - almost certainly by
+  dropping their `* 100.0` so a `scalar`/`grouped` read matches the `rows`
+  skeleton's own fraction, the scale `_FRACTION_COLUMNS` and the page's
+  `FRACTIONS` already assume everywhere. Out of scope here
+  (`src/association/query/compose/core.py` - the parser work in progress on
+  this branch touches the same package).
 - **Source:** ours, not ESPN's.
-- **GitHub:** #225
 
 ### The agent fall-through answers 1 question in 23, and does not finish 61% of the time
 - **Found:** 2026-09-18, the first measurement of the agent path in this project

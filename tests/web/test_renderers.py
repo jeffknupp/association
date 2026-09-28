@@ -25,6 +25,7 @@ import pytest
 from association.nba.netpoints import FINGERPRINT_CATEGORIES
 from association.query.compose import COMPILED_INTENTS
 from association.query.compose import answer as compose_answer
+from association.query.compose.sentence import _FRACTION_COLUMNS
 from association.query.reading import Reading
 from association.query.templates import TEMPLATES
 from association.query.templates.common import TemplateContext, TemplateResult
@@ -89,6 +90,26 @@ def test_a_signed_cell_still_counts_as_a_number_for_alignment() -> None:
     column, digits and all."""
     page = INDEX_HTML.read_text()
     assert r"/^[+-]?[\d,]+(\.\d+)?$/" in page, "table()'s numeric test no longer accepts a leading +"
+
+
+def test_the_pages_fraction_set_matches_the_compilers() -> None:
+    """``usage_pct`` is stored as a percent (``fetch/advanced_stats.py``
+    computes it as ``100.0 * ...``), the same fact the compiler's own
+    ``_FRACTION_COLUMNS`` (``compose/sentence.py``) holds - only ``ts_pct``
+    and ``efg_pct`` are raw fractions (0.57) needing a ``* 100`` before a "%"
+    sign. The page keeps a hand-copied ``FRACTIONS`` Set of the same fact
+    (``measureCell``), and one concept in two files under two different
+    names is exactly what `scripts/check_duplicate_names.py` cannot see:
+    ``usage_pct`` drifted into the page's copy and every composed usage rate
+    printed 100x too large - "USG% 2435.5%" (#225). Parsed out of the page
+    rather than hand-copied here, so the two sets cannot drift apart again
+    without this failing.
+    """
+    page = INDEX_HTML.read_text()
+    block = re.search(r"const FRACTIONS = new Set\(\[([^\]]*)\]\);", page)
+    assert block is not None, "could not find the FRACTIONS set in index.html"
+    page_fractions = set(re.findall(r'"([^"]+)"', block.group(1)))
+    assert page_fractions == set(_FRACTION_COLUMNS)
 
 
 def test_every_renderer_names_an_intent_that_actually_exists() -> None:
