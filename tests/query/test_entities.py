@@ -26,6 +26,7 @@ from association.query.entities import (
     suggest_players,
     team_only_question_names_a_player,
 )
+from association.query.reading import Scope
 
 
 @pytest.fixture
@@ -407,7 +408,12 @@ def _apply(con: duckdb.DuckDBPyConnection, question: str, slots: dict[str, Any],
     names dropped, the shape these tests were first written against."""
     from association.query.subject import apply_subject, read_subject
 
-    applied = apply_subject(read_subject(con, question, intent, slots), slots, intent=intent)
+    scope = Scope.from_slots(slots)
+    applied = apply_subject(read_subject(con, question, intent, scope), scope, intent=intent)
+    # The writers took and mutated this dict until 5.0.0; the cases below
+    # still read it afterwards, so the written scope is mirrored back.
+    slots.clear()
+    slots.update(applied.scope.to_slots())
     return [(str(d.before), str(d.after)) for d in applied.decisions], applied.dropped
 
 
@@ -426,8 +432,13 @@ def _scope(con: duckdb.DuckDBPyConnection, question: str, slots: dict[str, Any],
     flags.pop("restore_team_subject", None)
     assert not flags, flags
     intent = intent or ("game_log" if reads_player else "team_record")
-    subject = read_subject(con, question, intent, slots)
-    return [d.line() for d in apply_subject(subject, slots, intent=intent).decisions]
+    scope = Scope.from_slots(slots)
+    subject = read_subject(con, question, intent, scope)
+    applied = apply_subject(subject, scope, intent=intent)
+    # As above: the cases read the dict the writers used to mutate.
+    slots.clear()
+    slots.update(applied.scope.to_slots())
+    return [d.line() for d in applied.decisions]
 
 
 def test_a_truncated_name_is_expanded_from_the_question(span_con: duckdb.DuckDBPyConnection) -> None:

@@ -42,7 +42,7 @@ def _reading(con: duckdb.DuckDBPyConnection, intent: str, slots: dict[str, Any],
     the package takes the Reading alone): the typed scope, and the subject
     read from the question the way ``compose.move`` read it for a caller
     with none - never applied to the slots, so a case says what it did."""
-    return Reading(scope=Scope.from_slots(slots), intent=intent, subject=subject or read_subject(con, question, intent, dict(slots)))
+    return Reading(scope=Scope.from_slots(slots), intent=intent, subject=subject or read_subject(con, question, intent, Scope.from_slots(dict(slots))))
 
 
 def compose_answer(ctx: TemplateContext, intent: str, slots: dict[str, Any], question: str, subject: Subject | None = None, declined: Callable[[str], None] | None = None) -> TemplateResult | None:
@@ -58,7 +58,7 @@ def move_point(con: duckdb.DuckDBPyConnection, intent: str, slots: dict[str, Any
 
 def team_move_point(con: duckdb.DuckDBPyConnection, slots: dict[str, Any], question: str) -> TeamQuery | None:
     """``compose.move.team_move_point`` over ``slots``' scope and the subject read from the question."""
-    return _team_move_point(con, Scope.from_slots(slots), question, read_subject(con, question, "", dict(slots)))
+    return _team_move_point(con, Scope.from_slots(slots), question, read_subject(con, question, "", Scope.from_slots(dict(slots))))
 
 
 #: Box-score columns, in the order ``_box`` below fills them - the same shape

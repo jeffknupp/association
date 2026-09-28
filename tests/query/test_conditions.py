@@ -1028,9 +1028,9 @@ def test_a_named_player_beats_the_team_branch_end_to_end(league: TemplateContext
     from association.query.subject import apply_subject, read_subject
 
     def answered(question: str, **slots: Any) -> str:
-        given = _slots(**slots)
-        apply_subject(read_subject(league.con, question, "record_when", given), given, intent="record_when")
-        return (record_when(league, Reading.from_slots(given)).answer or "").splitlines()[0]
+        given = Scope.from_slots(_slots(**slots))
+        applied = apply_subject(read_subject(league.con, question, "record_when", given), given, intent="record_when")
+        return (record_when(league, Reading(scope=applied.scope)).answer or "").splitlines()[0]
 
     named = answered("celtics record with 20+ points from jayson tatum", stat="points", threshold=20, team="Boston Celtics")
     assert "Jayson Tatum had 20+ points" in named

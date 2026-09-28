@@ -24,7 +24,7 @@ def unanswerable(con: duckdb.DuckDBPyConnection, intent: str, slots: dict[str, A
     :func:`association.query.refusals.unanswerable` (5.0.0: it takes the
     Reading alone): the typed scope, and the subject read from the question
     the way the module read it for a caller with none."""
-    return refusals.unanswerable(con, Reading(scope=Scope.from_slots(slots), intent=intent, subject=read_subject(con, question, intent, dict(slots))), question)
+    return refusals.unanswerable(con, Reading(scope=Scope.from_slots(slots), intent=intent, subject=read_subject(con, question, intent, Scope.from_slots(dict(slots)))), question)
 
 
 @pytest.fixture

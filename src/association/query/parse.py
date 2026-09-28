@@ -25,7 +25,7 @@ a span that is no player's and no team's is dropped, never made a subject
 from __future__ import annotations
 
 import re
-from dataclasses import replace
+from dataclasses import fields, replace
 from typing import Any, Literal, cast, get_args
 
 import duckdb
@@ -713,14 +713,18 @@ def _read_route_folded(text: str) -> str:
     return text.translate(_READ_ROUTE_APOSTROPHES)
 
 
-def _read_route_folded_slots(slots: dict[str, Any]) -> dict[str, Any]:
-    """``slots`` with every string in them folded as :func:`_read_route_folded`
+def _read_route_folded_scope(scope: Scope) -> Scope:
+    """``scope`` with every name and phrase in it folded as :func:`_read_route_folded`
     folds the question - a route replayed rather than read may carry a
     typed name, or a holiday, as the question spelled it."""
-    return {
-        key: _read_route_folded(value) if isinstance(value, str) else [_read_route_folded(v) if isinstance(v, str) else v for v in value] if isinstance(value, list) else value
-        for key, value in slots.items()
-    }
+    changes: dict[str, Any] = {}
+    for f in fields(scope):
+        value = getattr(scope, f.name)
+        if isinstance(value, str):
+            changes[f.name] = _read_route_folded(value)
+        elif isinstance(value, tuple) and value and all(isinstance(v, str) for v in value):
+            changes[f.name] = tuple(_read_route_folded(v) for v in value)
+    return replace(scope, **changes) if changes else scope
 
 
 def read_route(con: duckdb.DuckDBPyConnection, question: str, names: list[str] | None = None, stat: str = "") -> tuple[Route, Subject, str]:
@@ -740,7 +744,7 @@ def read_route(con: duckdb.DuckDBPyConnection, question: str, names: list[str] |
     question = _read_route_folded(question)
     names = [_read_route_folded(name) for name in names or []]
     slots = _with_measure(question, _slots_from_names(con, [_as_typed_part(con, question, _as_typed(question, name)) for name in names], stat))
-    subject = _two_teams(read_subject(con, question, "other", dict(slots)), question, slots)
+    subject = _two_teams(read_subject(con, question, "other", Scope.from_slots(slots)), question, slots)
     slots = _read_route_names(subject, slots)
     parent = parent_intent(question, subject.kind, _read_route_beside(subject, question))
     # The window before the stages: they read ``order``/``limit`` as the
@@ -791,7 +795,7 @@ def _read_route_child(con: duckdb.DuckDBPyConnection, question: str, route: Rout
     under a player's line), with the stages run again under the child
     (:func:`~association.query.router.settle`), or a team's record under a
     companion's line with the route's own slots - beside that reading."""
-    settled = read_subject(con, question, route.intent, route.slots)
+    settled = read_subject(con, question, route.intent, route.scope)
     final = settled.intent or route.intent
     if final != route.intent and final in KIND_ASSIGNED_INTENTS:
         again = settle(final, route.scope, question)
@@ -819,19 +823,19 @@ def reading_from_route(con: duckdb.DuckDBPyConnection, question: str, route: Rou
     names the question never held that nothing in it could replace
     (:attr:`~association.query.reading.Reading.misread`), which the agent
     refuses by name rather than answer about somebody the question never
-    mentioned. Raises :class:`~association.query.reading.ScopeError` where
-    the route holds a slot the Scope cannot. A typographic apostrophe in the
+    mentioned. The route's scope is the typed
+    Scope already (:class:`~association.query.router.Route`). A typographic apostrophe in the
     question or in the route's slots is read as a straight one, as
     :func:`read_route` reads it.
 
     .. versionadded:: 5.0.0
     """
+    scope = _read_route_folded_scope(route.scope)
     question = _read_route_folded(question)
-    slots = _read_route_folded_slots(dict(route.slots))
-    subject = read_subject(con, question, route.intent, dict(slots))
-    applied = apply_subject(subject, slots, intent=route.intent)
+    subject = read_subject(con, question, route.intent, scope)
+    applied = apply_subject(subject, scope, intent=route.intent)
     reading = Reading(
-        scope=Scope.from_slots(slots),
+        scope=applied.scope,
         intent=applied.intent,
         subject=subject,
         decisions=(*_subject_decisions(subject), *route.decisions, *applied.decisions),

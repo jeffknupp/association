@@ -310,7 +310,7 @@ def _answered(ctx: TemplateContext, intent: str) -> TemplateResult:
     if intent in TEMPLATES:
         return TEMPLATES[intent](ctx, Reading.from_slots(CASES[intent]))
     slots = dict(CASES[intent])
-    result = compose_answer(ctx, with_point(ctx.con, "", Reading(scope=Scope.from_slots(slots), intent=intent, subject=read_subject(ctx.con, "", intent, slots))))
+    result = compose_answer(ctx, with_point(ctx.con, "", Reading(scope=Scope.from_slots(slots), intent=intent, subject=read_subject(ctx.con, "", intent, Scope.from_slots(slots)))))
     assert result is not None, f"the compiler has no reading of {intent}'s case"
     return result
 

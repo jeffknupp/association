@@ -37,7 +37,7 @@ import gzip
 import re
 from dataclasses import dataclass, replace
 from importlib import resources
-from typing import Any, NamedTuple
+from typing import NamedTuple
 
 import duckdb
 from rapidfuzz.distance import DamerauLevenshtein
@@ -64,6 +64,7 @@ from association.query.entities import (
     nicknames_in,
     players_named_in,
 )
+from association.query.reading import ConditionSpec, Scope
 from association.query.router import _ABSENCE_WORDS, _THRESHOLD_WORDS, _threshold_from_text_scored, settle
 from association.query.season_text import season_from_text
 from association.query.templates.common import (
@@ -203,14 +204,16 @@ seasons count, a streak's kind and a split.
 
 
 class Applied(NamedTuple):
-    """What :func:`apply_subject` did: the decisions recorded, the router's
-    names the question never held that nothing could replace (the caller
-    refuses by name), and the intent the subject's shape settled on -
-    the router's own where the shape fits it.
+    """What :func:`apply_subject` did: the typed scope with the reading
+    written into it, the decisions recorded, the router's names the question
+    never held that nothing could replace (the caller refuses by name), and
+    the intent the subject's shape settled on - the router's own where the
+    shape fits it.
 
     .. versionadded:: 5.0.0
     """
 
+    scope: Scope
     decisions: list[Decision]
     dropped: list[str]
     intent: str
@@ -533,7 +536,7 @@ def _merge_names(router_named: list[str], question_named: list[str]) -> tuple[st
     return tuple(out)
 
 
-def _read_opponent(con: duckdb.DuckDBPyConnection, question: str, slots: dict[str, Any], season: int | None) -> str | None:
+def _read_opponent(con: duckdb.DuckDBPyConnection, question: str, scope: Scope, season: int | None) -> str | None:
     """The team the subject is set against: the team after "vs" / "against"
     in the question's own words, whenever there is one - "duren v nets 1h
     gameloh" arrived as ``opponent="New Jersey Nets"``, which resolves to no
@@ -549,7 +552,7 @@ def _read_opponent(con: duckdb.DuckDBPyConnection, question: str, slots: dict[st
     versus = _team_after_versus(con, question, season)
     if versus is not None:
         return versus.name
-    held = slots.get("opponent")
+    held = scope.opponent
     held_team = _team_named(con, held, season) if isinstance(held, str) and held.strip() else None
     if held_team is not None and _team_grounded(con, question, held_team) and not _named_as_own(con, question, held_team, season):
         return held_team.name
@@ -557,7 +560,7 @@ def _read_opponent(con: duckdb.DuckDBPyConnection, question: str, slots: dict[st
     # resolves, and the router read it as a team it filed in `team` - a team
     # the question never holds otherwise, so the router's reading of that
     # word is the one there is.
-    team = _team_named(con, slots.get("team"), season) if held_team is None else None
+    team = _team_named(con, scope.team, season) if held_team is None else None
     if team is not None and _AGAINST.search(question) and not _team_grounded(con, question, team):
         return team.name
     return None
@@ -574,34 +577,34 @@ def _named_as_own(con: duckdb.DuckDBPyConnection, question: str, team: Entity, s
     return own is not None and own[0].id == team.id and not _AGAINST.search(question)
 
 
-def _opponent_player(con: duckdb.DuckDBPyConnection, slots: dict[str, Any]) -> str | None:
+def _opponent_player(con: duckdb.DuckDBPyConnection, scope: Scope) -> str | None:
     """A route's ``opponent`` when it names a player and not a team ("jay
     huff game log vs Embiid" arrived from the router with Jokic there): a
     name to check against the question like the subject's own, never read
     as a team the subject is set against. A team opponent is a narrowing,
     not a subject."""
-    opponent = slots.get("opponent")
+    opponent = scope.opponent
     if not isinstance(opponent, str) or not opponent.strip() or find_teams(con, opponent) or not find_players(con, opponent):
         return None
     return opponent
 
 
-def _routed_names(con: duckdb.DuckDBPyConnection, slots: dict[str, Any], question: str, opponent_player: str | None) -> tuple[list[str], list[str]]:
+def _routed_names(con: duckdb.DuckDBPyConnection, scope: Scope, question: str, opponent_player: str | None) -> tuple[list[str], list[str]]:
     """The router's player names - from ``player``, ``players``, a player
     filed as the ``opponent`` and one filed as the ``team`` - split into the
     ones the question supports and
     the ones it never held, minus any that is a team (the router files
     "Boston Celtics" as a player; a team is a narrowing, not an invention)."""
-    team_slot = _team_slot_player(con, slots)
-    routed = [p for p in _routed_player_slots(slots) + ([opponent_player] if opponent_player else []) + ([team_slot] if team_slot else []) if not _is_a_team(con, p) and not _not_a_name(p)]
+    team_slot = _team_slot_player(con, scope)
+    routed = [p for p in _routed_player_slots(scope) + ([opponent_player] if opponent_player else []) + ([team_slot] if team_slot else []) if not _is_a_team(con, p) and not _not_a_name(p)]
     supported = [p for p in routed if question_supports(p, question)]
     return supported, [p for p in routed if p not in supported]
 
 
-def _filler_names(con: duckdb.DuckDBPyConnection, slots: dict[str, Any], question: str) -> tuple[str, ...]:
+def _filler_names(con: duckdb.DuckDBPyConnection, scope: Scope, question: str) -> tuple[str, ...]:
     """The router's player names that are no name (:func:`_not_a_name`) or
     that the question holds only by a team's word - :attr:`Subject.filler`."""
-    return tuple(p for p in _routed_player_slots(slots) if _not_a_name(p) or (not _is_a_team(con, p) and _named_only_by_a_team_word(con, question, p)))
+    return tuple(p for p in _routed_player_slots(scope) if _not_a_name(p) or (not _is_a_team(con, p) and _named_only_by_a_team_word(con, question, p)))
 
 
 def _not_a_name(text: str) -> bool:
@@ -627,12 +630,12 @@ def _not_a_name(text: str) -> bool:
 _NO_NAME_HAS = re.compile(r"\d|\+|^(?:most|fewest|least|top|best|worst|highest|lowest)\b|\bplayers?\b", re.IGNORECASE)
 
 
-def _team_slot_player(con: duckdb.DuckDBPyConnection, slots: dict[str, Any]) -> str | None:
+def _team_slot_player(con: duckdb.DuckDBPyConnection, scope: Scope) -> str | None:
     """The router's ``team`` when it names a player and no team: "Podziemski
     game log without curry" arrived as ``team='Podziemski'``, and "Will
     Riley last 5 game s" as ``team='Riley'`` (a bare fragment, three
     players) - the subject, in the wrong slot."""
-    team = slots.get("team")
+    team = scope.team
     if not isinstance(team, str) or not team.strip() or _team_named(con, team) is not None or not find_players(con, team):
         return None
     return team
@@ -656,7 +659,7 @@ def _spellings(con: duckdb.DuckDBPyConnection, question: str, routed: list[str])
     return out
 
 
-def _conditions(question: str, players: tuple[str, ...], slots: dict[str, Any]) -> tuple[Companion, ...]:
+def _conditions(question: str, players: tuple[str, ...], scope: Scope) -> tuple[Companion, ...]:
     """The players whose ROLE the question states beside the subject -
     "without X", "with X on the floor", "when X scored 20+" - each with that
     role (:class:`Companion`), read from the question's own words, never
@@ -674,7 +677,7 @@ def _conditions(question: str, players: tuple[str, ...], slots: dict[str, Any]) 
     for match in _companion_phrases(question):
         word, text = match.group(1).lower(), match.group(2)
         predicate, stat, threshold = _condition_role(word, text)
-        names = _companion_names(text, players, slots)
+        names = _companion_names(text, players, scope)
         found.extend(Companion(name, predicate, stat, threshold) for name in names if not any(_same_person(name, [c.name]) for c in found))
     return tuple(found)
 
@@ -691,11 +694,11 @@ def _companion_phrases(question: str) -> list[re.Match[str]]:
     return sorted([*phrases, *in_games], key=lambda m: m.start())
 
 
-def _companion_names(text: str, players: tuple[str, ...], slots: dict[str, Any]) -> list[str]:
+def _companion_names(text: str, players: tuple[str, ...], scope: Scope) -> list[str]:
     """Who one companion phrase names: the players the question holds that
     its words support, then a router ``without``/``with_player`` name the
     phrase misspells."""
-    routed = [r for r in list(slots.get("without") or []) + list(slots.get("with_player") or []) if isinstance(r, str)]
+    routed = [r for r in list(scope.without or []) + list(scope.with_player or []) if isinstance(r, str)]
     names = [p for p in players if question_supports(p, text)]
     names += [r for r in routed if not _same_person(r, names) and _near(r, text)]
     return names
@@ -704,7 +707,7 @@ def _companion_names(text: str, players: tuple[str, ...], slots: dict[str, Any])
 _COMPANION_WORD = re.compile(r"[a-z][a-z'.-]+")
 
 
-def _unrouted_companions(con: duckdb.DuckDBPyConnection, question: str, players: tuple[str, ...], slots: dict[str, Any]) -> tuple[str, ...]:
+def _unrouted_companions(con: duckdb.DuckDBPyConnection, question: str, players: tuple[str, ...], scope: Scope) -> tuple[str, ...]:
     """A companion the router named nobody for, read from the phrase's own
     leading words: "show me splits for the sixers when maxey scores 20+
     points" arrived with an invented Joel Embiid and no Maxey anywhere in
@@ -728,7 +731,7 @@ def _unrouted_companions(con: duckdb.DuckDBPyConnection, question: str, players:
     found: list[str] = []
     for match in _companion_phrases(question):
         text = match.group(2)
-        if _companion_names(text, players, slots):
+        if _companion_names(text, players, scope):
             continue
         run: list[str] = []
         for token in text.casefold().split():
@@ -766,14 +769,14 @@ def _condition_role(word: str, text: str) -> tuple[str, str | None, int | None]:
     return "played", None, None
 
 
-def _team_names(con: duckdb.DuckDBPyConnection, question: str, slots: dict[str, Any], team_word: str | None, opponent: str | None, own_team: str | None) -> list[str]:
+def _team_names(con: duckdb.DuckDBPyConnection, question: str, scope: Scope, team_word: str | None, opponent: str | None, own_team: str | None) -> list[str]:
     """The team(s) the question is about: the word it names first, then the
     router's ``team`` / ``teams`` where the question supports them and they
     are teams - never the opponent or the player's own team over again."""
     names: list[str] = []
     if team_word and team_word not in (opponent, own_team):
         names.append(team_word)
-    routed_team = slots.get("team")
+    routed_team = scope.team
     if (
         isinstance(routed_team, str)
         and routed_team
@@ -783,40 +786,41 @@ def _team_names(con: duckdb.DuckDBPyConnection, question: str, slots: dict[str, 
         and not any(t and (question_supports(routed_team, t) or question_supports(t, routed_team)) for t in (opponent, own_team))
     ):
         names.append(routed_team)
-    for t in slots.get("teams") or []:
+    for t in scope.teams or []:
         if isinstance(t, str) and question_supports(t, question) and _is_a_team(con, t) and t not in names and t != opponent:
             names.append(t)
     return names
 
 
-def read_subject(con: duckdb.DuckDBPyConnection, question: str, intent: str, slots: dict[str, Any]) -> Subject:
+def read_subject(con: duckdb.DuckDBPyConnection, question: str, intent: str, scope: Scope) -> Subject:
     """One reading of the subject. The question's spans decide; a slot the
-    router filled counts only where the question's own words support it
+    router filled (``scope``, the typed Scope a route carries) counts only
+    where the question's own words support it
     (:func:`question_supports`), and never to invent a subject the question
     does not name. ``intent`` is read only to tell two teams meeting
     (``head_to_head``) from a team set against another.
 
     .. versionadded:: 4.4.0
     """
-    season = slots.get("season") if isinstance(slots.get("season"), int) else None
+    season = scope.season
     own = _team_after_for(con, question, season)
     team_word = _team_word(con, question)
     position = next((code for pattern, code in POSITIONS if re.search(pattern, question, re.IGNORECASE)), None)
-    routed_opponent = _opponent_player(con, slots)
-    opponent = _read_opponent(con, question, slots, season) if routed_opponent is None else None
+    routed_opponent = _opponent_player(con, scope)
+    opponent = _read_opponent(con, question, scope, season) if routed_opponent is None else None
     teams_here = {t for t in (opponent, own[0].name if own is not None else None, team_word) if t}
 
-    routed, invented = _routed_names(con, slots, question, routed_opponent)
-    filler = _filler_names(con, slots, question)
+    routed, invented = _routed_names(con, scope, question, routed_opponent)
+    filler = _filler_names(con, scope, question)
     routed = [p for p in routed if p not in filler]
     named = _question_players(con, question, routed, teams_here)
     spellings = _spellings(con, question, routed)
     players = _merge_names([spellings.get(r, r) for r in routed], named)
-    unrouted = _unrouted_companions(con, question, players, slots)
-    conditions = _conditions(question, (*players, *unrouted), slots)
+    unrouted = _unrouted_companions(con, question, players, scope)
+    conditions = _conditions(question, (*players, *unrouted), scope)
     companions = tuple(dict.fromkeys(c.name for c in conditions))
     players = tuple(p for p in players if p not in companions)
-    if _read_subject_alone(players, teams_here, conditions, slots):
+    if _read_subject_alone(players, teams_here, conditions, scope):
         players, conditions, companions = companions, (), ()
     # "for the Heat" is a player's OWN team only beside a player subject
     # named BEFORE it - the order a tenure is asked in ("lebron ... for
@@ -824,12 +828,12 @@ def read_subject(con: duckdb.DuckDBPyConnection, question: str, intent: str, slo
     # ("stats for sixers when maxey scored 20+", F087), it names the team the
     # question is about.
     own_team = own[0].name if own is not None and players and _named_before(question, players, own[1]) else None
-    teams = _team_names(con, question, slots, team_word, opponent, own_team)
+    teams = _team_names(con, question, scope, team_word, opponent, own_team)
     evidence = _evidence(named, routed, spellings, invented, team_word, opponent)
     if unrouted:
         evidence = (*evidence, f"companions the router named nobody for {list(unrouted)}")
     subject = replace(_decide(players, teams, position, opponent, own_team, companions, evidence, intent, question), conditions=conditions)
-    settled, words = _decide_intent(subject, intent, question, slots)
+    settled, words = _decide_intent(subject, intent, question, scope)
     return replace(
         subject,
         invented=tuple(invented),
@@ -853,7 +857,7 @@ def _intent_reason(intent: str, settled: str, words: str | None) -> str | None:
     return f"the words {words!r} name {settled}" if words is not None else _TEAM_RECORD_WHEN
 
 
-def _read_subject_alone(players: tuple[str, ...], teams: set[str], conditions: tuple[Companion, ...], slots: dict[str, Any]) -> bool:
+def _read_subject_alone(players: tuple[str, ...], teams: set[str], conditions: tuple[Companion, ...], scope: Scope) -> bool:
     """Whether the one player named only as a companion is the subject after
     all: "2 threes in games Jamal Murray played" names nobody BESIDE him, so
     the games he played are his own games - he is the subject, and that he
@@ -862,11 +866,11 @@ def _read_subject_alone(players: tuple[str, ...], teams: set[str], conditions: t
     team's question with two companions ("76ers" is no word the team
     reading finds, so the routed ``team`` slot is what says so). Split out
     of :func:`read_subject` for the complexity gate."""
-    named_team = teams or slots.get("team") or slots.get("teams")
+    named_team = teams or scope.team or scope.teams
     return not players and not named_team and len(conditions) == 1 and conditions[0].predicate == "played"
 
 
-def _decide_intent(subject: Subject, intent: str, question: str, slots: dict[str, Any]) -> tuple[str, str | None]:
+def _decide_intent(subject: Subject, intent: str, question: str, scope: Scope) -> tuple[str, str | None]:
     """The intent the subject's shape settles, and the words that named it
     where a child intent was assigned - the route's own unless:
 
@@ -890,10 +894,10 @@ def _decide_intent(subject: Subject, intent: str, question: str, slots: dict[str
     by the subject's kind (ROADMAP plan item 6, step (d), part 3)."""
     if subject.kind in ("team", "team_players") and intent in _RECORD_WHEN_PARENTS and any(c.predicate == "reached" for c in subject.conditions):
         return "record_when", None
-    return _child_intent(subject, intent, question, slots)
+    return _child_intent(subject, intent, question, scope)
 
 
-def _child_intent(subject: Subject, intent: str, question: str, slots: dict[str, Any]) -> tuple[str, str | None]:
+def _child_intent(subject: Subject, intent: str, question: str, scope: Scope) -> tuple[str, str | None]:
     """The first child of :data:`_CHILD_GRAMMARS` whose words the question
     holds, whose kinds admit the subject and whose parents include the
     router's intent - with the words - or the router's intent and ``None``.
@@ -904,7 +908,7 @@ def _child_intent(subject: Subject, intent: str, question: str, slots: dict[str,
         match = words.search(question)
         if match is None or intent not in parents or subject.kind not in kinds:
             continue
-        if settle(child, slots, question).intent == child:
+        if settle(child, scope, question).intent == child:
             return child, match.group(0)
         return intent, None
     return intent, None
@@ -955,22 +959,22 @@ def _decide(
     return Subject("everyone", (), (), position, opponent, own_team, companions, evidence)
 
 
-def apply_subject(subject: Subject, slots: dict[str, Any], *, intent: str) -> Applied:
-    """Write what the subject reading settled into the slots a template
+def apply_subject(subject: Subject, scope: Scope, *, intent: str) -> Applied:
+    """Write what the subject reading settled into the typed scope a template
     reads - the parser's last step
-    (:func:`~association.query.parse.reading_from_route`), which returns
-    them as the typed Scope: the players the question
-    is about, in the shape the route already uses (``player`` or
+    (:func:`~association.query.parse.reading_from_route`): the players the
+    question is about, in the shape the route already uses (``player`` or
     ``players``); the one player a template that needs one was left
-    without; a player's own team, and the tenure it implies; a position
-    group; the companions' roles; and a team's record in the games a
-    companion reached a line. A name the question never held is replaced by
-    the question's own spare name where there is exactly one per name, else
-    reported, and the caller refuses by name rather than answering about it
-    (AGENTS.md: "when it cannot be repaired, say so - do not hand it to the
-    agent"). Mutates ``slots``; returns the decisions made, the names
-    dropped, and the intent the subject settled on (:attr:`Subject.intent`),
-    with the slots rewritten for it where it differs.
+    without; a player's own team, and the tenure it implies; the
+    companions' roles; and a team's record in the games a companion reached
+    a line. A name the question never held is replaced by the question's
+    own spare name where there is exactly one per name, else reported, and
+    the caller refuses by name rather than answering about it (AGENTS.md:
+    "when it cannot be repaired, say so - do not hand it to the agent").
+    Returns the scope with the reading written in (``scope`` itself is
+    never changed), the decisions made, the names dropped, and the intent
+    the subject settled on (:attr:`Subject.intent`), with the scope
+    rewritten for it where it differs.
 
     A kept name is respelled as the question's own span spells it
     (:func:`_spellings`), so a template reads "Jay Huff" and "Seth Curry"
@@ -991,62 +995,74 @@ def apply_subject(subject: Subject, slots: dict[str, Any], *, intent: str) -> Ap
        the restored player, the own team and the companions' roles, which
        were ``entities.scope_from_question``'s; takes ``intent`` and returns
        :class:`Applied`, whose ``intent`` is a team's ``record_when`` where
-       the reading settled on it.
+       the reading settled on it. Takes and returns the typed
+       :class:`~association.query.reading.Scope` (ROADMAP plan item 6, step
+       (f)) in place of a slot dict it mutated.
     """
-    players, dropped = _apply_players(subject, slots, intent)
+    scope, players, dropped = _apply_players(subject, scope, intent)
     if dropped:
-        return Applied([], dropped, intent)
+        return Applied(scope, [], dropped, intent)
     decisions = list(players)
-    decisions.extend(_apply_restored_player(subject, slots, intent))
-    decisions.extend(_apply_own_team(subject, slots, intent))
-    decisions.extend(_apply_conditions(subject, slots, intent))
-    rewritten, settled = _apply_intent(subject, slots, intent)
+    scope, restored = _apply_restored_player(subject, scope, intent)
+    decisions.extend(restored)
+    scope, own = _apply_own_team(subject, scope, intent)
+    decisions.extend(own)
+    scope, conditions = _apply_conditions(subject, scope, intent)
+    decisions.extend(conditions)
+    scope, rewritten, settled = _apply_intent(subject, scope, intent)
     decisions.extend(rewritten)
-    return Applied(decisions, [], settled)
+    return Applied(scope, decisions, [], settled)
 
 
-def _apply_team_record_when(subject: Subject, slots: dict[str, Any], intent: str) -> tuple[list[Decision], str]:
-    """The slots for the TEAM's record in the games a companion reached a
+def _apply_team_record_when(subject: Subject, scope: Scope, intent: str) -> tuple[Scope, list[Decision], str]:
+    """The scope for the TEAM's record in the games a companion reached a
     line - split out of :func:`_apply_intent` for the complexity gate; see
     :func:`_decide_intent`'s record_when rule for the shape."""
     # Before the word-assigned children: this record_when is the TEAM's
     # question with a companion's line, not a player's "record when he
     # scored 30+" that the child grammar settles from the words.
     condition = next(c for c in subject.conditions if c.predicate == "reached")
-    kept = {key: value for key, value in slots.items() if key in ("season", "season_type", "span", "venue", "opponent", "since", "until", "season_type_unstated")}
-    if subject.opponent is None:
-        # The router filed the subject's own team as the opponent
-        # ("sixers" beside its invented Joel Embiid); the question sets
-        # the team against nobody.
-        kept.pop("opponent", None)
-    player = slots.get("player")
-    slots.clear()
-    slots.update(kept)
-    slots.update({"player": condition.name, "stat": condition.stat, "threshold": condition.threshold})
-    if subject.teams:
-        slots["team"] = subject.teams[0]
+    player = scope.player
+    rewritten = Scope(
+        season=scope.season,
+        season_type=scope.season_type,
+        span=scope.span,
+        venue=scope.venue,
+        # The router filed the subject's own team as the opponent ("sixers"
+        # beside its invented Joel Embiid); the question sets the team
+        # against nobody.
+        opponent=scope.opponent if subject.opponent is not None else None,
+        since=scope.since,
+        until=scope.until,
+        season_type_unstated=scope.season_type_unstated,
+        player=condition.name,
+        stat=condition.stat,
+        threshold=condition.threshold,
+        team=subject.teams[0] if subject.teams else None,
+    )
     if intent != "record_when":
-        return [Decision("subject", "intent", intent, "record_when", _TEAM_RECORD_WHEN)], "record_when"
-    # Already the team's record (the parser settles it, :func:`_decide_intent`):
-    # a decision only where the companion is not the player the route held -
-    # the player read BEFORE the slots were rewritten, since after they are
-    # his by construction.
-    return ([Decision("subject", "player", player, condition.name, _TEAM_RECORD_WHEN)] if player != condition.name else []), "record_when"
+        return rewritten, [Decision("subject", "intent", intent, "record_when", _TEAM_RECORD_WHEN)], "record_when"
+    # Already the team's record (the parser settles it, _decide_intent): a
+    # decision only where the companion is not the player the route held -
+    # the player read BEFORE the scope was rewritten, since after it is his
+    # by construction.
+    return rewritten, ([Decision("subject", "player", player, condition.name, _TEAM_RECORD_WHEN)] if player != condition.name else []), "record_when"
 
 
-def _apply_intent(subject: Subject, slots: dict[str, Any], intent: str) -> tuple[list[Decision], str]:
-    """Rewrite the slots for the team's record in the games a companion
+def _apply_intent(subject: Subject, scope: Scope, intent: str) -> tuple[Scope, list[Decision], str]:
+    """Rewrite the scope for the team's record in the games a companion
     reached a line, where the reading settled on it
-    (:func:`_decide_intent`); returns the decisions and the intent the slots
-    are now for. A child the question's words name is the parser's own step
-    (:func:`~association.query.parse.read_route` settles the route under
-    it), so it arrives here as the route's intent and nothing moves."""
+    (:func:`_decide_intent`); returns the scope, the decisions and the
+    intent the scope is now for. A child the question's words name is the
+    parser's own step (:func:`~association.query.parse.read_route` settles
+    the route under it), so it arrives here as the route's intent and
+    nothing moves."""
     if subject.intent == "record_when" and subject.kind in ("team", "team_players") and any(c.predicate == "reached" for c in subject.conditions):
-        return _apply_team_record_when(subject, slots, intent)
-    return [], intent
+        return _apply_team_record_when(subject, scope, intent)
+    return scope, [], intent
 
 
-def _apply_restored_player(subject: Subject, slots: dict[str, Any], intent: str) -> list[Decision]:
+def _apply_restored_player(subject: Subject, scope: Scope, intent: str) -> tuple[Scope, list[Decision]]:
     """Put back the one player the question names where the router left the
     player out - only for a template that cannot answer without one
     (:data:`~association.query.templates.common.PLAYER_REQUIRED_INTENTS`:
@@ -1063,16 +1079,15 @@ def _apply_restored_player(subject: Subject, slots: dict[str, Any], intent: str)
     slot IS the condition player. "Best true shooting percentage" names
     Travis Best by whole word and nobody to the reading (an ordinary word),
     so nothing is restored there."""
-    if intent not in PLAYER_REQUIRED_INTENTS | SUBJECT_RESTORABLE_INTENTS or slots.get("player") or slots.get("players"):
-        return []
+    if intent not in PLAYER_REQUIRED_INTENTS | SUBJECT_RESTORABLE_INTENTS or scope.player or scope.players:
+        return scope, []
     named = list(dict.fromkeys((*subject.players, *subject.companions)))
     if len(named) != 1:
-        return []
-    slots["player"] = named[0]
-    return [Decision("subject", "player", None, named[0], "from the question; the router left it out")]
+        return scope, []
+    return replace(scope, player=named[0]), [Decision("subject", "player", None, named[0], "from the question; the router left it out")]
 
 
-def _apply_own_team(subject: Subject, slots: dict[str, Any], intent: str) -> list[Decision]:
+def _apply_own_team(subject: Subject, scope: Scope, intent: str) -> tuple[Scope, list[Decision]]:
     """Put back a player's OWN team, where "for <team>" / "with the <team>"
     names one beside him and the router filed neither ``team`` nor
     ``opponent`` - yardstick-v2 F166, "lebron stats as a starter for Miami".
@@ -1089,37 +1104,35 @@ def _apply_own_team(subject: Subject, slots: dict[str, Any], intent: str) -> lis
     the question (:attr:`Subject.named_season`, never the router's own
     "current season" default), ``span`` becomes "career" - "for Miami"
     fifteen years into a Lakers career is not asking about this season."""
-    if intent not in OWN_TEAM_RESTORABLE_INTENTS or subject.own_team is None or not (slots.get("player") or slots.get("players")):
-        return []
-    if slots.get("team") or slots.get("opponent") or slots.get("own_team"):
-        return []
-    slots["own_team"] = subject.own_team
+    if intent not in OWN_TEAM_RESTORABLE_INTENTS or subject.own_team is None or not (scope.player or scope.players):
+        return scope, []
+    if scope.team or scope.opponent or scope.own_team:
+        return scope, []
+    out = replace(scope, own_team=subject.own_team)
     decisions = [Decision("subject", "own_team", None, subject.own_team, "from the question; the router left it out")]
-    if subject.named_season is None and not slots.get("span"):
-        slots["span"] = "career"
-        slots.pop("season", None)
+    if subject.named_season is None and not scope.span:
+        out = replace(out, span="career", season=None)
         decisions.append(Decision("subject", "span", None, "career", 'a team named with no season is a tenure, not "now"'))
-    return decisions
+    return out, decisions
 
 
-def _apply_filler_players(subject: Subject, slots: dict[str, Any]) -> tuple[list[Decision], list[str]]:
+def _apply_filler_players(subject: Subject, scope: Scope) -> tuple[Scope, list[Decision], list[str]]:
     """Take the router's no-names (:attr:`Subject.filler`) out of the player
     slots - "most", "most 30+ point games" (what the model files as the
     player for a ranking once nothing in its prompt shows one with none),
     or a team's word read as a player ("magic vs nets" as Magic Johnson) -
     rather than leave them for a template to resolve into "No player found
-    matching 'most'". Returns the decisions and the names still routed."""
-    routed = _routed_player_slots(slots)
+    matching 'most'". Returns the scope, the decisions and the names still
+    routed."""
+    routed = _routed_player_slots(scope)
     if not any(r in subject.filler for r in routed):
-        return [], routed
-    field = "players" if isinstance(slots.get("players"), list) else "player"
+        return scope, [], routed
     kept = [r for r in routed if r not in subject.filler]
+    field = "players" if scope.players else "player"
     decisions = [Decision("subject", field, r, None, "no player's name - a rank word, a phrase of the question, or a team's word") for r in routed if r in subject.filler]
-    if field == "players" and kept:
-        slots["players"] = kept
-    else:
-        slots.pop(field, None)
-    return decisions, kept
+    if field == "players":
+        return replace(scope, players=tuple(kept)), decisions, kept
+    return replace(scope, player=None), decisions, kept
 
 
 def _spare_names(subject: Subject, kept: list[str], intent: str) -> list[str]:
@@ -1134,27 +1147,21 @@ def _spare_names(subject: Subject, kept: list[str], intent: str) -> list[str]:
     return spare
 
 
-def _apply_players(subject: Subject, slots: dict[str, Any], intent: str = "") -> tuple[list[Decision], list[str]]:
+def _apply_players(subject: Subject, scope: Scope, intent: str = "") -> tuple[Scope, list[Decision], list[str]]:
     """The ``player``/``players`` half of :func:`apply_subject`. For
     ``record_when``, whose player IS the condition's ("sixers record when
     maxey scored 20+"), a reached companion is a spare name the way the
     subject's own are: the router invented Joel Embiid there (day5) and
     the question's Maxey replaces him rather than the question refusing."""
-    decisions, routed = _apply_filler_players(subject, slots)
+    scope, decisions, routed = _apply_filler_players(subject, scope)
     if not routed:
-        return decisions, []
-    # Whatever kind the subject is: "compare the two best centers" reads as a
-    # position group, and the two players the router put in its slots are
-    # still nobody the question named. A companion the router filed among
-    # the players ("fox vs magic without wembyanama" arrives as the pair
-    # Fox/Wembanyama) is the question's own name in the chain's slot shape -
-    # supported, so kept, not dropped.
+        return scope, decisions, []
     dropped = [r for r in routed if r in subject.invented]
     kept = [r for r in routed if r not in dropped]
     spare = _spare_names(subject, kept, intent)
     if dropped and len(spare) != len(dropped):
-        return [], dropped
-    field = "players" if isinstance(slots.get("players"), list) else "player"
+        return scope, [], dropped
+    field = "players" if scope.players else "player"
     replacement = dict(zip(dropped, spare, strict=True)) if dropped else {}  # a spare name with nothing dropped is a player the router omitted: not put back here
     decisions.extend(Decision("subject", field, was, now, "the question never names the router's player; it names this one") for was, now in replacement.items())
     respelled = _respellings(kept, subject.players)
@@ -1162,12 +1169,10 @@ def _apply_players(subject: Subject, slots: dict[str, Any], intent: str = "") ->
     decisions.extend(Decision("subject", field, was, now, "spelled as the question names the player") for was, now in respelled.items())
     new = [replacement.get(r, r) for r in routed]
     if new == routed:
-        return decisions, []
+        return scope, decisions, []
     if field == "players":
-        slots["players"] = new
-    else:
-        slots["player"] = new[0]
-    return decisions, []
+        return replace(scope, players=tuple(new)), decisions, []
+    return replace(scope, player=new[0]), decisions, []
 
 
 def _apply_conditions_honored(intent: str) -> bool:
@@ -1178,14 +1183,14 @@ def _apply_conditions_honored(intent: str) -> bool:
     return "conditions" in HONORED_SCOPING.get(intent, frozenset()) or intent in COMPILED_INTENTS
 
 
-def _apply_conditions(subject: Subject, slots: dict[str, Any], intent: str) -> list[Decision]:
+def _apply_conditions(subject: Subject, scope: Scope, intent: str) -> tuple[Scope, list[Decision]]:
     """Write the companions' roles the router's own slots cannot carry - a
     start, the bench, a line reached ("when Embiid starts", "in games Maxey
-    had 20+ points") - as the ``conditions`` slot the relation reads
-    (:func:`~association.query.templates.common._condition_from_slot`),
-    where the intent's template honors it - the relation templates as a
-    filter, ``with_without`` as the split's own side ("record when Embiid
-    and Paul George start": started against not). A played companion ("when
+    had 20+ points") - as the ``conditions`` the relation reads
+    (:class:`~association.query.reading.ConditionSpec`), where the intent's
+    template honors them - the relation templates as a filter,
+    ``with_without`` as the split's own side ("record when Embiid and Paul
+    George start": started against not). A played companion ("when
     Draymond plays", "with Draymond playing") is a condition too, on the
     relation templates: ``with_player`` is read by ``with_without`` alone,
     so on a game log or a shot chart it narrowed nothing and nothing
@@ -1197,13 +1202,9 @@ def _apply_conditions(subject: Subject, slots: dict[str, Any], intent: str) -> l
     condition, so "how many 30 point games did maxey have when embiid
     started" counts his games with Embiid starting (34) - with nothing
     written it counted all of them (86), the start gone without a word."""
-    if not _apply_conditions_honored(intent) or slots.get("conditions"):
-        return []
-    # Never on the subject of the read himself: record_when's player IS the
-    # companion of "sixers record when maxey scored 15+" (the template
-    # groups his games by that line), and a condition on him would keep only
-    # the games above it - the "under" row gone (found by the golden).
-    own = [name for name in [slots.get("player"), *(slots.get("players") or [])] if isinstance(name, str)]
+    if not _apply_conditions_honored(intent) or scope.conditions:
+        return scope, []
+    own = [name for name in [scope.player, *scope.players] if isinstance(name, str)]
     roles = ("started", "bench", "reached") if intent == "with_without" else ("started", "bench", "reached", "played")
     written = [
         {"player": c.name, "side": "own", "predicate": c.predicate, **({"stat": c.stat, "threshold": c.threshold} if c.predicate == "reached" else {})}
@@ -1211,14 +1212,17 @@ def _apply_conditions(subject: Subject, slots: dict[str, Any], intent: str) -> l
         if c.predicate in roles and not _same_person(c.name, own)
     ]
     if not written:
-        return []
-    slots["conditions"] = written
-    return [Decision("subject", "conditions", None, written, "the role the question gives each player named beside the subject")]
+        return scope, []
+    # The decision records the roles in the slot shape the trace has always
+    # printed; the scope holds them typed.
+    return replace(scope, conditions=tuple(ConditionSpec.from_slot(w) for w in written)), [
+        Decision("subject", "conditions", None, written, "the role the question gives each player named beside the subject")
+    ]
 
 
-def _routed_player_slots(slots: dict[str, Any]) -> list[str]:
+def _routed_player_slots(scope: Scope) -> list[str]:
     """The router's player names, from ``player`` or ``players``."""
-    return [p for p in ([slots.get("player")] if slots.get("player") else []) + list(slots.get("players") or []) if isinstance(p, str) and p.strip()]
+    return [p for p in ([scope.player] if scope.player else []) + list(scope.players) if isinstance(p, str) and p.strip()]
 
 
 def _same_person(name: str, others: tuple[str, ...] | list[str]) -> bool:

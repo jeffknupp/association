@@ -227,7 +227,6 @@ def test_the_parser_files_each_side_where_the_router_scrambled_it(league: duckdb
     from association.query.subject import apply_subject, read_subject
 
     route, _, _ = read_route(league, question, names, "")
-    slots = dict(route.slots)
-    applied = apply_subject(read_subject(league, question, route.intent, slots), slots, intent=route.intent)
-    got = {key: tuple(value) if isinstance(value, list) else value for key, value in slots.items() if key in _SIDES}
+    applied = apply_subject(read_subject(league, question, route.intent, route.scope), route.scope, intent=route.intent)
+    got = {key: tuple(value) if isinstance(value, list) else value for key, value in applied.scope.to_slots().items() if key in _SIDES}
     assert (applied.intent, got, applied.dropped) == (intent, sides, [])
