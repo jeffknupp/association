@@ -1348,7 +1348,6 @@ def test_a_narrowing_the_schema_has_no_slot_for_still_reaches_check_scope(questi
         ("lebron stats on valentine's day", "valentine's day", "day", (2, 14)),
         ("lebron stats on valentines day", "valentines day", "day", (2, 14)),
         ("lebron stats on new year's eve", "new year's eve", "day", (12, 31)),
-        ("lebron stats on new year\u2019s eve", "new year\u2019s eve", "day", (12, 31)),
         ("lebron stats on christmas eve", "christmas eve", "day", (12, 24)),
         ("lebron stats on new years day", "new years day", "day", (1, 1)),
         ("lebron stats on new year's", "new year's", "day", (1, 1)),

@@ -26,10 +26,11 @@ from association.query.conditions import _MONTH_NAMES
 WEEKDAYS: tuple[str, ...] = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
 """ISO order, Monday first - ``EXTRACT(ISODOW ...)`` numbers them 1-7."""
 
-# The apostrophe a phone keyboard types: 19 of the 2,285 questions in the
-# large StatMuse sample carry one, against 23 with a straight one. A holiday
-# spelled with it is the same holiday.
-_TYPOGRAPHIC_APOSTROPHE = "\u2019"
+# A holiday spelled with the apostrophe a phone keyboard types ("new year\u2019s
+# eve") is the same holiday, and reaches this module as a straight one: the
+# parser folds it where a question enters (parse.read_route and
+# parse.reading_from_route, ISSUES.md #259), so no reader here keeps a
+# second, local fold.
 
 _MONTH = "(?P<month>january|february|march|april|may|june|july|august|september|october|november|december)"
 _WEEKDAY = re.compile(r"^(?:on\s+)?(?P<day>monday|tuesday|wednesday|thursday|friday|saturday|sunday)s?$", re.IGNORECASE)
@@ -144,9 +145,8 @@ narrowing here states.
 
 
 def _holiday_words_spelling(spelling: str) -> str:
-    """One holiday spelling as a regex: any run of spaces between its words,
-    and a straight or a typographic apostrophe (U+2019, what a phone types)."""
-    return r"\s+".join(re.escape(word).replace("'", f"['{_TYPOGRAPHIC_APOSTROPHE}]") for word in spelling.split())
+    """One holiday spelling as a regex: any run of spaces between its words."""
+    return r"\s+".join(re.escape(word) for word in spelling.split())
 
 
 HOLIDAY_WORDS: str = "|".join(_holiday_words_spelling(name) for name in sorted({*HOLIDAYS, *UNREAD_HOLIDAYS}, key=lambda name: (-len(name), name)))
@@ -201,12 +201,13 @@ def parse_situation(text: Any) -> CalendarNarrowing | None:
     .. versionchanged:: 5.0.0
        Reads a "since" written in numbers: "since 1/26/20" (a ``since_date``)
        and "since 1/26" (a ``since_day``, as "since January 26"). A holiday
-       is whatever :data:`HOLIDAYS` maps it to, a typographic apostrophe
-       read as a straight one (U+2019, the one a phone types).
+       is whatever :data:`HOLIDAYS` maps it to. A typographic apostrophe
+       reaches it straight, folded where the question entered the parser
+       (:func:`association.query.parse.read_route`).
     """
     if not isinstance(text, str) or not text.strip():
         return None
-    words = " ".join(text.strip().lower().replace(_TYPOGRAPHIC_APOSTROPHE, "'").split())
+    words = " ".join(text.strip().lower().split())
     m = _WEEKDAY.fullmatch(words)
     if m:
         day = m.group("day")
