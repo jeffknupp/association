@@ -7,7 +7,7 @@ growing chain of code corrected what it returned (its model call went in
 4.5.0; the stages in ``router.py`` settle the parser's route now). Measured
 with the router withheld, what that chain could not replace is two things: the stat
 vocabulary ("fta" is ``freeThrowsAttempted``) and the spans that are names. So
-this is the whole job left to the model, and :func:`association.query.parse.parse`
+this is the whole job left to the model, and :func:`association.query.parse.read_route`
 checks both - every span against the entity index, the stat against the
 question's own words - before anything reads them.
 

@@ -40,8 +40,10 @@ Shape = Literal["rows", "scalar", "grouped"]
 .. versionadded:: 4.5.0
 """
 
-Aggregate = Literal["none", "per_game", "total", "count", "max", "min", "rate", "record"]
-"""How the rows are reduced.
+Aggregate = Literal["none", "per_game", "total", "count", "record"]
+"""How the rows are reduced. A single game's high is no aggregate: it is the
+``rows`` shape ordered by the measure; and a rate is the per-game one, a
+ratio of the games' sums (``compose.core.RATES``).
 
 .. versionadded:: 4.5.0
 """

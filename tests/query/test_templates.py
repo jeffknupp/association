@@ -4399,53 +4399,31 @@ def test_a_narrowed_question_carries_the_box_score_floor() -> None:
 # ---------------- player_matchup with a team opponent, not a second player ----------------
 
 
-def test_player_matchup_with_one_name_and_a_team_opponent_answers_like_game_log(pg_ctx: TemplateContext) -> None:
-    """ "sam hauser v mil", "julius randle stats vs blazers with minnestota" and
-    "Curry vs dallas last q0 games" all reach player_matchup with one name and
-    a team `opponent` - router._route_matchup_against_team cannot see the
-    player name entities.scope_from_question restores after it runs, so the
-    intent stays player_matchup. This used to refuse `opponent` outright; it
-    now answers exactly what game_log would for the same slots."""
-    slots = {"player": "Brandin Podziemski", "opponent": "Detroit Pistons"}
-    matchup = player_matchup(pg_ctx, Reading.from_slots(slots))
-    log = game_log(pg_ctx, Reading.from_slots(dict(slots)))
-    assert matchup.answer == log.answer
-    assert matchup.data == log.data
-    assert matchup.data["games"]  # the fixture has real Podziemski-vs-Pistons games
+def test_player_matchup_needs_two_players(pg_ctx: TemplateContext) -> None:
+    """One name and a team is a player's own question, never a matchup: the
+    parser reads it that way (``test_parser.test_a_player_against_a_team_is_never_a_matchup``),
+    and the router-era fallback that folded it into ``game_log`` from here
+    is gone (4.5.0)."""
+    with pytest.raises(TemplateUnsupported, match="exactly two players"):
+        player_matchup(pg_ctx, Reading.from_slots({"player": "Brandin Podziemski"}))
 
 
-def test_player_matchup_falls_back_from_a_single_element_players_list_too(pg_ctx: TemplateContext) -> None:
-    """The router sometimes fills `players` rather than `player` even with one
-    name in it - the fallback has to read both, the same way the two-player
-    path already merges them."""
-    matchup = player_matchup(pg_ctx, Reading.from_slots({"players": ["Brandin Podziemski"], "opponent": "Detroit Pistons"}))
-    log = game_log(pg_ctx, Reading.from_slots({"player": "Brandin Podziemski", "opponent": "Detroit Pistons"}))
-    assert matchup.answer == log.answer
-
-
-def test_player_matchup_refuses_a_real_two_player_matchup_with_a_leftover_opponent(pg_ctx: TemplateContext) -> None:
-    """check_scope now lets `opponent` through for player_matchup, to let the
-    fallback above run - a genuine two-player matchup has no third team to
-    narrow the meetings by, so it has to refuse it itself rather than silently
-    answer the whole matchup."""
-    with pytest.raises(TemplateUnsupported):
-        player_matchup(pg_ctx, Reading.from_slots({"players": ["Brandin Podziemski", "Stephen Curry"], "opponent": "Detroit Pistons"}))
-
-
-def test_check_scope_lets_player_matchup_honor_a_team_opponent(pg_ctx: TemplateContext) -> None:
-    check_scope("player_matchup", {"player": "Brandin Podziemski", "opponent": "Detroit Pistons"})
+def test_check_scope_refuses_a_team_opponent_on_a_matchup(pg_ctx: TemplateContext) -> None:
+    """Two players' meetings are the games they played against each other, so
+    there is no third team to narrow them to - refused by declaration
+    (``RELATION_SCOPING_EXCLUDED``), with or without a teammate named absent,
+    rather than answering the whole matchup as though no team was named."""
+    with pytest.raises(TemplateUnsupported, match="opponent"):
+        check_scope("player_matchup", {"players": ["Brandin Podziemski", "Stephen Curry"], "opponent": "Detroit Pistons"})
+    with pytest.raises(TemplateUnsupported, match="opponent"):
+        check_scope("player_matchup", {"players": ["Brandin Podziemski", "Stephen Curry"], "opponent": "Detroit Pistons", "without": ["Jaylen Brown"]})
+    assert "opponent" not in HONORED_SCOPING["player_matchup"]
 
 
 def test_check_scope_lets_player_matchup_honor_without_too(pg_ctx: TemplateContext) -> None:
-    """`without` is honored the same way `opponent` is - only for the shape a
-    fabricated second player or a teammate named twice collapses down to a
-    single player vs a team (ISSUES #34's last two rows: "de'aaron fox vs
-    magic ... without wembyanama", "oubre vs warriors without embiid").
-    check_scope cannot tell that shape from a genuine two-player matchup by
-    the slots alone, so it lets both through, and the template itself is what
-    refuses a leftover slot on a genuine matchup - see
-    test_player_matchup_refuses_a_real_two_player_matchup_with_a_leftover_without."""
-    check_scope("player_matchup", {"player": "Brandin Podziemski", "without": ["Stephen Curry"]})
+    """A teammate's absence narrows the first player's games on a genuine
+    two-player matchup, as it does on every template on the relation."""
+    check_scope("player_matchup", {"players": ["Brandin Podziemski", "Stephen Curry"], "without": ["Jaylen Brown"]})
 
 
 def test_check_scope_still_refuses_player_matchup_on_an_unhonored_slot(pg_ctx: TemplateContext) -> None:
@@ -4472,68 +4450,7 @@ def test_player_matchup_honors_without_on_a_real_two_player_matchup(pg_ctx: Temp
     # tests/query/test_conditions.py (a teammate's absence, a venue).
 
 
-def test_player_matchup_refuses_a_real_two_player_matchup_with_opponent_and_without(pg_ctx: TemplateContext) -> None:
-    """The same refusal, with a team present too: two real, unrelated players
-    and a `without` naming neither of them - not the fabricated-second-player
-    shape _player_matchup_drop_fabricated_second exists for, since Jaylen
-    Brown is not confirmably the same person as Stephen Curry - so the
-    reduction attempt leaves `texts` untouched and this is still a genuine
-    two-player matchup with two scoping slots it cannot honor."""
-    with pytest.raises(TemplateUnsupported, match="cannot narrow a two-player matchup"):
-        player_matchup(pg_ctx, Reading.from_slots({"players": ["Brandin Podziemski", "Stephen Curry"], "opponent": "Detroit Pistons", "without": ["Jaylen Brown"]}))
-
-
-# ---------------- player_matchup: a fabricated second "player" that is really `without` or noise ----------------
-
-
-def test_player_matchup_drops_a_second_player_who_matches_no_one(pg_ctx: TemplateContext) -> None:
-    """ "oubre vs warriors without embiid" keeps a garbled team name in
-    `players` beside the `opponent` already resolved correctly from it - not
-    a second player, noise with no match in the warehouse at all. Dropped
-    outright, and the rest reads exactly like the one-name-and-a-team
-    shape."""
-    matchup = player_matchup(pg_ctx, Reading.from_slots({"players": ["Brandin Podziemski", "Pistns"], "opponent": "Detroit Pistons", "without": ["Stephen Curry"]}))
-    log = game_log(pg_ctx, Reading.from_slots({"player": "Brandin Podziemski", "opponent": "Detroit Pistons", "without": ["Stephen Curry"]}))
-    assert matchup.answer == log.answer
-    assert matchup.data == log.data
-    assert matchup.data["games"]  # the fixture has real Podziemski-vs-Pistons games
-
-
-def test_player_matchup_drops_a_second_player_confirmed_by_without(pg_ctx: TemplateContext) -> None:
-    """ "de'aaron fox vs magic ... without wembyanama" carries Fox's own
-    teammate both as the fabricated second "player" and, in `without`. Here
-    Stephen Curry plays that role for Podziemski: dropped only because
-    `without` independently names the very same player - never merely
-    because the two share a team, which would silently drop a genuine second
-    player a real comparison had named (see the refusal test above, where
-    Jaylen Brown does NOT confirm Stephen Curry and the matchup is refused)."""
-    matchup = player_matchup(pg_ctx, Reading.from_slots({"players": ["Brandin Podziemski", "Stephen Curry"], "opponent": "Detroit Pistons", "without": ["Stephen Curry"]}))
-    log = game_log(pg_ctx, Reading.from_slots({"player": "Brandin Podziemski", "opponent": "Detroit Pistons", "without": ["Stephen Curry"]}))
-    assert matchup.answer == log.answer
-    assert matchup.data == log.data
-
-
-def test_player_matchup_drops_a_second_player_confirmed_by_a_near_spelling_of_without(pg_ctx: TemplateContext) -> None:
-    """The router corrects the fabricated second player's spelling
-    ("Wembanyama") while `without` still carries the user's own typo
-    ("wembyanama") - so the identity confirmation has to reach through
-    suggest_players' near-spelling pass, not just an exact match. "Stephen
-    Cury" here is one letter short of Stephen Curry and matches nobody else,
-    the same shape "wembyanama" is for Victor Wembanyama.
-
-    .. versionchanged:: 4.4.0
-       A near spelling with exactly one candidate is taken rather than asked
-       about (`_resolved_teammate`, F157) - the same default `resolve_player`
-       already applies to a bare surname - so both paths now answer the
-       narrowed game log instead of refusing over a typo the question's own
-       words resolve cleanly. Still checked for agreeing with each other:
-       that is the point of the case, not which way `without` resolves.
-    """
-    matchup = player_matchup(pg_ctx, Reading.from_slots({"players": ["Brandin Podziemski", "Stephen Curry"], "opponent": "Detroit Pistons", "without": ["Stephen Cury"]}))
-    log = game_log(pg_ctx, Reading.from_slots({"player": "Brandin Podziemski", "opponent": "Detroit Pistons", "without": ["Stephen Cury"]}))
-    assert matchup.answer == log.answer
-    assert "did you mean" not in log.answer
-    assert "without Stephen Curry" in log.answer
+# ---------------- game_log: a teammate named absent, read by the index ----------------
 
 
 def test_a_near_spelling_of_without_is_taken_and_the_reading_is_visible(pg_ctx: TemplateContext) -> None:

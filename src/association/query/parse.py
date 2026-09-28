@@ -3,8 +3,9 @@ with no router.
 
 ROADMAP plan item 6, step (b). What the model contributes arrives as data -
 the names it copied out of the question and the stat key it chose
-(:func:`parse` takes them as arguments; the normalizer that produces them is
-step (c)) - and everything else is read from the words here, in grammar
+(:func:`read_route` takes them as arguments, from
+:func:`~association.query.normalizer.normalize`) - and everything else is
+read from the words here, in grammar
 tables: the kind and the parent intent (:data:`PARENT_GRAMMAR`), then the
 scope, the window and the point through the readers the pipeline already
 has (:func:`~association.query.subject.read_subject`,
@@ -768,24 +769,4 @@ def _subject_decisions(subject: Subject) -> tuple[Decision, ...]:
     return (
         Decision("subject", "kind", None, subject.kind, "; ".join(subject.evidence)),
         *(Decision("subject", name, None, list(value) if isinstance(value, tuple) else value, "from the question's own words") for name, value in found if value),
-    )
-
-
-def parse(con: duckdb.DuckDBPyConnection, question: str, names: list[str] | None = None, stat: str = "") -> Reading:
-    """``question`` as a :class:`~association.query.reading.Reading`: the
-    route :func:`read_route` settles, read into the compiler's point.
-
-    .. versionadded:: 4.5.0
-    """
-    route, subject, parent = read_route(con, question, names, stat)
-    try:
-        reading = read_point(con, route.intent, dict(route.slots), question, subject)
-    except (Unsupported, Refused):
-        reading = Reading(scope=Scope.from_slots(dict(route.slots)), intent=route.intent, subject=subject)
-    return replace(
-        reading,
-        intent=route.intent,
-        subject=subject,
-        decisions=(*route.decisions, *reading.decisions),
-        evidence=(*reading.evidence, f"parent {parent!r} from the words under kind {subject.kind!r}"),
     )

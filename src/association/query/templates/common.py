@@ -224,6 +224,7 @@ RELATION_SCOPING_EXCLUDED: dict[str, dict[str, str]] = {
     # so one season) through `scoped_games`, the same as every other template
     # on the relation.
     "player_matchup": {
+        "opponent": "two players' meetings are the games they played against each other - there is no third team to narrow them to",
         "order": "the newest meetings are shown beneath averages over all of them - a window would cut the averages the matchup exists to give",
         "season_n": "an ordinal season is one player's - a matchup names two, and the question does not say whose fifth season is meant",
     },
@@ -421,15 +422,9 @@ HONORED_SCOPING: dict[str, frozenset[str]] = {
     # games his team played Boston, not overall (#163).
     "with_without": frozenset({"span", "without", "opponent", "conditions"}),
     "record_when": _relation_scoping("record_when"),
-    # `opponent` and `without` are honored only for the one-name-and-a-team
-    # shape that is really a player-vs-team question in disguise - see the
-    # versionchanged note on player_matchup itself. A genuine two-player
-    # matchup with either left over refuses it from inside the template,
-    # since check_scope cannot tell the two shapes apart from the slots alone.
-    # `opponent` is honored for the one-player-vs-a-team fallback only; a
-    # genuine two-player matchup refuses it itself (no third team to narrow
-    # by). `order` is excluded: the newest meetings are shown beneath
-    # averages over all of them, and a window would cut the averages.
+    # `opponent` and `order` are excluded, each with its reason
+    # (RELATION_SCOPING_EXCLUDED); a teammate's absence, a venue and a date
+    # narrow the first player's games as they do on every relation template.
     "player_matchup": _relation_scoping("player_matchup"),
     "streak": _relation_scoping("streak"),
     # The home/road split, the record against one team, and every season at

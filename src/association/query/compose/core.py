@@ -200,7 +200,7 @@ class Query:
     skeleton: str = "rows"
     #: The box-score columns (or derived measures) the point reads.
     measures: list[str] = field(default_factory=lambda: list(LINE))
-    #: ``"none"``, ``"per_game"``, ``"total"``, ``"count"``, ``"max"``, ``"min"``, ``"rate"`` or ``"record"``.
+    #: ``"none"``, ``"per_game"``, ``"total"``, ``"count"`` or ``"record"``.
     aggregate: str = "none"
     #: ``"none"`` or a key of :data:`GROUPS`.
     group: str = "none"
@@ -303,15 +303,6 @@ def _agg(name: str, aggregate: str, *, rebuilt: bool = False) -> str:
         return f'AVG({expr}) AS "{name}"'
     if aggregate == "total":
         return f'SUM({expr}) AS "{name}"'
-    if aggregate == "max":
-        return f'MAX({expr}) AS "{name}"'
-    if aggregate == "min":
-        return f'MIN({expr}) AS "{name}"'
-    if aggregate == "rate":
-        if name not in RATES:
-            raise Unsupported(f"no ratio-of-sums rate for {name!r}")
-        num, den = RATES[name]
-        return f'({num} / {den}) AS "{name}"'
     raise Unsupported(f"aggregate {aggregate!r}")
 
 
