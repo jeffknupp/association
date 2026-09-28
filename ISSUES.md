@@ -243,6 +243,27 @@ those were found.
 - **Source:** ours.
 - **GitHub:** #248
 
+### A typographic apostrophe (U+2019) is read by none of the router's patterns that take a straight one: "most points in the 2010’s" answers the 2010 season alone
+- **Found:** 2026-09-27, fixing #238 (the holiday words accept both apostrophes now, `calendar.HOLIDAY_WORDS`).
+- **Evidence:** `router._DECADE` is `\b(?:the\s+)?((?:19|20)\d)0'?s\b`, so "2010’s" is not a decade, and `season_text` reads its "2010" as one season. Measured offline through the whole agent (main warehouse, the normalizer's reply stubbed): "most points in the 2010’s" answers "Kevin Durant led the league in points per game in the 2010 regular season", where "most points in the 2010's" reads since 2010 until 2019; "nba mvps in 1980’s" answers "No games for every player in the 1980 regular season", where "1980's" reads since 1980 until 1989. 19 of the 2,285 questions in `statmuse-2026-09-large/feed_queries_large.txt` carry a U+2019, against 23 with a straight apostrophe: five are decades ("nba mvps in 1980’s" through "2020’s"), the rest possessives and names ("Devin Booker’s stats last five games", "D’Angelo Russell game against the Timberwolves", "How many points did De’aaron fox average in November 2023"). Every other router pattern taking an apostrophe (a possessive `'s`, `n't`, the name tokens' `[A-Za-z.'\-]`) is blind to it the same way. A name the normalizer copies with the possessive on is lost: stubbed with names `["Devin Booker’s"]`, "Devin Booker’s stats last five games" answers the league's scoring leaders, where `["Devin Booker's"]` answers his game log - what the model copies there is not measured.
+- **User sees:** a wrong answer - a decade answered as its first season; possibly a player dropped from the question.
+- **Next step:** fold U+2019 (and U+2018) into a straight apostrophe once, where a question enters the parser (`parse.read_route`, or the agent before it), so every reader sees one apostrophe; `calendar._TYPOGRAPHIC_APOSTROPHE` (#238's local handling) can go then. A case per shape.
+- **Source:** ours.
+
+### A single game named without an article is read as a season ranking: "This season's single game with the most assists" answers the assists-per-game leaders
+- **Found:** 2026-09-27, checking the answers the #168 fix moved ("most 3 pointers made in single game 24-25").
+- **Evidence:** the offline rehearsal (`yardstick-v2/rehearsal_all.py`, `all_dates_1.jsonl`, a paraphrase) routes "This season's single game with the most assists" to `leaderboard` and answers "Nikola Jokic led the league in assists per game in the 2026 regular season ... at 10.7". Stubbed offline: "most 3 pointers made in single game 24-25" answers "Anthony Edwards led the league in 3-pointers made in the 2025 regular season, at 320" - a season total - where "... in a single game 24-25" answers `single_game_high` (Stephen Curry, 12). The child grammar that names `single_game_high` (`subject.py:122`) takes "in a/one (single) game", "career high" and "highest ... game", not "in single game" or "single game with the most". Of the 8 research-corpus questions saying "single game" with no article, 5 are not read as one game: the two above, "most 3 pointers made in single game 2025", "nba most fga with 0 fgm single game" (the teams' field goals made per game) and "nba most fga without fgm single game" (which asks whether "fgm single" is Chris Singleton, the "without" reader taking it for a teammate); the three "highest single game" ones are.
+- **User sees:** a wrong answer - a season average or total where one game's high was asked.
+- **Next step:** let `subject.py`'s `single_game_high` grammar row read "single game" with no article ("in single game", "single game with the most"), gated as it is now on the subject's kind; a case per wording in `tests/query/test_subject.py`, and the corpus case to `port_check.py`.
+- **Source:** ours.
+
+### A span of several seasons written short is read as its last season, or as nothing: "curry playoff stats 2015-18" answers the 2018 postseason alone
+- **Found:** 2026-09-27, fixing #168 - measuring which short spans the research corpora hold.
+- **Evidence:** `season_text.season_spans` reads a four-digit span whose second year does not follow the first as ONE season, its last ("2015-18" is 2018; #168's fix kept the four-digit form as it read), and a two-digit one as nothing, since a short pair is a season only where its years are consecutive ("10-12" stays a record). Neither is read as a range: `router._validate_range` takes "2020-2024" (four digits a side) and nothing shorter. Measured offline through the whole agent (main warehouse, the normalizer's reply stubbed): "curry playoff stats 2015-18" answers "Stephen Curry averaged 25.5 points ... in 15 games in the 2018 postseason"; "Love stats 2012-14" answers his 2014 season alone; "kobe stats without shaq 00-02" answers "The time Kobe Bryant and Shaquille O'Neal spent together ... falls outside the 2026 regular season"; "kobe bryant 00-02" answers "Kobe Bryant has no 2026 regular season numbers in the warehouse". Of the 3,083 distinct research-corpus questions, 3 write a four-digit one ("curry playoff stats 2015-18", "Love stats 2012-14", "Heat game played 2009-23") and 4 a two-digit one ("kobe bryant 00-02", "Kobe bryant 00-03", "kobe stats without shaq 00-02", "Vince carter stats 00-02").
+- **User sees:** a wrong answer - one season for a question spanning several; for the two-digit form, a refusal about the current season, which names the wrong cause.
+- **Next step:** read a span whose years are not consecutive as a closed range in `router._validate_range`, from `season_text.season_spans` (returning such a span marked as a range rather than as a season, so `season_from_text` stops reading "2015-18" as 2018), the way "2020-2024" reads; settle whether "2015-18" starts at season 2015, as "2020-2024" starts at 2020. A case per form in `tests/query/test_router.py`.
+- **Source:** ours.
+
 ## P2: misleading or incomplete
 
 ### The compiler's team total ignores "no season type named": "total points by the raptors in the last 10 games" reads the regular season only
@@ -2330,6 +2351,13 @@ those were found.
 - **Source:** ours.
 - **GitHub:** #249
 
+### A single-game high tied between two games of one player names him twice: "Stephen Curry and Stephen Curry tied for the most 3-pointers in a single game"
+- **Found:** 2026-09-27, checking the answers the #168 fix moved.
+- **Evidence:** stubbed offline through the whole agent (main warehouse): "most 3 pointers made in a single game 24-25" answers "Stephen Curry and Stephen Curry tied for the most 3-pointers in a single game in the 2025 regular season, with 12 each. Next: Damian Lillard (10)." Curry made 12 on 2025-02-27 against Orlando and on 2025-04-01 against Memphis (Eastern dates, `player_game_log`). The tie sentence (`templates/players.py:1837`, `_single_game_high_answer`, which the compiler answers `single_game_high` with) joins the tied rows' player names and gives no date, so one player's two games read as a typo; and "Next" names one of the seven players who made 10 that season, the cut at a tie #99 already records.
+- **User sees:** a right number in a sentence that reads as a mistake, with neither game's date.
+- **Next step:** in the tie branch, name a player once with each of his games' dates ("Stephen Curry, twice - 12 on 2025-02-27 vs ORL and 2025-04-01 vs MEM"), and the dates beside several players' names; a case with one player's two tied games.
+- **Source:** ours.
+
 ## P3: refusal or gap
 
 ### The compiler has no NetPoints measure, so a single-game NetPoints ranking has nowhere to land but the agent
@@ -4251,3 +4279,10 @@ those were found.
 - **Next step:** say the line the way the unnarrowed count does ("with 30+ points") before the narrowing's own phrase.
 - **Source:** ours.
 - **GitHub:** #257
+
+### Easter is refused with a sentence that says a holiday is read
+- **Found:** 2026-09-27, fixing #238.
+- **Evidence:** stubbed offline through the whole agent (main warehouse): "lebron stats on easter" answers "'easter' is not something the games are read by - a weekday, a month, a holiday, "since <day>", a conference or a division is. Ask without it, or with one of those." (`refusals._non_calendar_situation`, refusals.py:103) - refusing a holiday while listing a holiday among what is read. Before #238's fix the same sentence answered "thanksgiving", "new years" and "martin luther king"; Easter is the one holiday word left that reaches it (`calendar.UNREAD_HOLIDAYS`, captured on purpose so it is refused rather than dropped). No research-corpus question names Easter.
+- **User sees:** a refusal whose reason contradicts itself.
+- **Next step:** give a name in `calendar.UNREAD_HOLIDAYS` its own sentence in `_non_calendar_situation` ("Easter moves with the church calendar, which is not read here - name its date instead"), or read Easter as a per-year list of dates, since it is no weekday-of-a-month rule.
+- **Source:** ours.
