@@ -594,7 +594,7 @@ latency fear was overstated), improving the agent fall-through (an agent
 with nothing to read fills the silence from its own weights), and more data
 (every structural gap added up comes to under 14% of questions).
 
-6. **The parser: one Reading, one writer of slots - (a)-(c) done, (d) next (item 14 above).**
+6. **The parser: one Reading, one writer of slots - (a)-(c) done, (d) parts 1-3 done, part 4 next (item 14 above).**
    The model's job shrinks to a names+stat normalizer on the 3B (names as
    spans of the question, one key from a closed measure table, no intent
    enum, ~300 tokens - the prompt-length drift class goes with the enum).
@@ -771,7 +771,7 @@ with nothing to read fills the silence from its own weights), and more data
    #144 (e08165c), the parser's teammate roles, companions and "scores 30"
    (582b3fa), a typo'd possessive and the lone "in games he played" player
    (79fa4e7).
-   **(3), one writer, done 2026-09-27 (4406133 and the commit after it):** the parser
+   **(3), one writer, done 2026-09-27 (4406133, fd88e48):** the parser
    writes the Reading and the agent only consumes it.
    `parse.reading_from_route` is the parser's last step - the subject
    reading and its writers (`apply_subject`, called from nowhere else now),
@@ -798,8 +798,11 @@ with nothing to read fills the silence from its own weights), and more data
    under a parent the child rewrite moved, 15 a player's record filed as
    `head_to_head`, the rest pairs and a comparison), and every one a
    question the rehearsal holds, where the parser's own reading answers it
-   unchanged - so v1 is re-baselined here, as it was at 3c. A live run
-   closes (3). What is left of the slot dict: the
+   unchanged - so v1 is re-baselined here, as it was at 3c. The live run
+   that closes (3), `live_parser5.jsonl` on fd88e48: 162/175 (92.6%),
+   families 151/166, 3 wrong - 0 answers moved against `live_parser4`,
+   and 277/277 identical to the offline rehearsal (median 1.22s). Next:
+   (4). What is left of the slot dict: the
    parser still builds its route as one and converts at the end
    (`Scope.from_slots`), `compose.answer` and `refusals.unanswerable` still
    take `scope.to_slots()`, and the check functions still accept a dict
