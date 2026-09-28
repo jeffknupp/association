@@ -1066,11 +1066,27 @@ def test_a_players_career_games_in_a_month_are_his_game_log_in_that_month() -> N
         # #207: "since" before a season-hyphenated year starts at the season
         # ENDING in the later year - `_SINCE` alone read "2000" and started a
         # season early. Four digits a year apart read the same way; halves
-        # that are not one season's two years keep the old leading-year read.
+        # that are not one season's two years are the range they write, as
+        # "since 2000-2005" always was (#261).
         ("players with 33 point and 13 rebound and 10 assist 2 blocks and 2 steals games since 2000-01", 2001, None),
         ("most triple doubles since 2000-2001", 2001, None),
         ("most triple doubles since 1999-00", 2000, None),
-        ("most triple doubles since 2000-05", 2000, None),
+        ("most triple doubles since 2000-05", 2000, 2005),
+        ("most triple doubles since 2000-2005", 2000, 2005),
+        # #261: a span whose years do not follow is a range whichever way it
+        # is written, both ends season numbers: "2015-18" answered the 2018
+        # postseason alone, and "00-02" the current season.
+        ("curry playoff stats 2015-18", 2015, 2018),
+        ("Love stats 2012-14", 2012, 2014),
+        ("how many 20+ point games did SGA have 2024-26?", 2024, 2026),
+        ("kobe bryant 00-02", 2000, 2002),
+        ("Kobe bryant 00-03", 2000, 2003),
+        ("kobe stats without shaq 00-02", 2000, 2002),
+        ("Heat game played 2009-23", 2009, 2023),
+        ("shaq stats 1996-04", 1996, 2004),
+        # A range on one side of "to" gives that side's own end.
+        ("kobe bryant 1999-00 to 2001-06", 2000, 2006),
+        ("kobe bryant 2000-02 to 2005-06", 2000, 2006),
         # #168: a span is `season_text.season_spans`' to read, here as alone -
         # two digits a side, or a slash. Unread, the short range answered its
         # first season alone once the short form read as a season.
@@ -1107,10 +1123,17 @@ def test_a_season_written_two_digits_a_side_is_the_season(question: str, season:
     assert "since" not in got.slots and "until" not in got.slots
 
 
-def test_a_short_pair_that_is_not_a_year_and_the_next_is_no_season() -> None:
-    """ "10-12" is a record or a score: read as a season it would answer
-    2011-12 for a question that named no year."""
+def test_a_short_pair_that_is_not_a_year_and_the_next_is_a_range_never_one_season() -> None:
+    """ "10-12" read as one season would answer 2011-12 for a question that
+    named no year (#168). Its years do not follow, so it is a range, 2010
+    through 2012 (#261): of the 3,084 research-corpus questions, the 4 short
+    pairs that ascend and do not follow are all ranges ("kobe bryant 00-02")
+    and none is a record - and the answer names the seasons it read, where a
+    record read as nothing answers the current season without a word. A pair
+    that descends, as most records do ("the 67-15 lakers"), is still none."""
     got = _ask("celtics record 10-12", '{"intent":"team_record","team":"Boston Celtics"}')
+    assert "season" not in got.slots and (got.slots.get("since"), got.slots.get("until")) == (2010, 2012)
+    got = _ask("celtics record 67-15", '{"intent":"team_record","team":"Boston Celtics"}')
     assert "season" not in got.slots and "since" not in got.slots
 
 

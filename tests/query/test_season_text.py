@@ -133,9 +133,10 @@ def test_a_two_digit_span_takes_the_century_the_league_could_have_played(monkeyp
 @pytest.mark.parametrize(
     "question",
     [
-        "celtics record 10-12",  # a record: the second number does not follow the first
-        "Lebron 21-13",
-        "kobe bryant 00-02",  # a range of seasons, not one season
+        "Lebron 21-13",  # a line: a short pair that descends is no range either (#261)
+        "the 67-15 lakers",  # a record, which the century read backwards would make 1967-2015
+        "stats 95-02",  # a short range turning the century descends as written, as a record does
+        "went 13/15 from three",  # a slash is a date or a shooting line, never a range
         "won 102-101",
         "shooting 23.5-24",  # a decimal
         "1:23-24",  # a clock
@@ -161,6 +162,48 @@ def test_a_slash_pair_that_is_also_a_calendar_day_is_the_day(question: str) -> N
 def test_a_hyphen_or_a_first_number_no_month_has_is_still_a_season() -> None:
     assert season_from_text("most triple doubles since 12-13") == 2013
     assert season_from_text("most triple doubles since 22/23") == 2023
+
+
+@pytest.mark.parametrize(
+    ("question", "first", "last"),
+    [
+        # #261: read as its last season ("2015-18" was the 2018 postseason
+        # alone) or, short, as nothing ("00-02" answered the current season).
+        ("curry playoff stats 2015-18", 2015, 2018),
+        ("Love stats 2012-14", 2012, 2014),
+        ("kobe bryant 00-02", 2000, 2002),
+        ("Vince carter stats 00-02", 2000, 2002),
+        ("Heat game played 2009-23", 2009, 2023),
+        # Two years written out, as the router always read them, either way round.
+        ("how many 20+ point games did SGA have 2024-2026?", 2024, 2026),
+        ("stats 2024-2020", 2020, 2024),
+        ("shaq 1996-04", 1996, 2004),
+        # An ascending record reads as a range: the corpus holds none, and the
+        # answer names the seasons it read.
+        ("celtics record 10-12", 2010, 2012),
+    ],
+)
+def test_a_span_whose_years_do_not_follow_is_a_range(question: str, first: int, last: int) -> None:
+    """Both ends are season numbers, the way "2020-2024" always read: the
+    router's range reader takes it (``since``/``until``), and the season a
+    caller asks for is its last, as a four-digit range's always was."""
+    (span,) = season_spans(question)
+    assert (span.is_range, span.first, span.season) == (True, first, last)
+    assert season_from_text(question) == last
+
+
+@pytest.mark.parametrize("question", ["2023-24", "the 2023-2024 season", "23-24", "23/24", "1999-00", "99-00"])
+def test_a_span_whose_years_follow_is_one_season_not_a_range(question: str) -> None:
+    (span,) = season_spans(question)
+    assert not span.is_range and span.season == span.first + 1
+
+
+@pytest.mark.parametrize("question", ["on 2001-03-15", "2015-12 stats", "stats for 2030-35"])
+def test_a_four_digit_span_that_is_no_range_keeps_the_season_it_ends_in(question: str) -> None:
+    """A date's pieces, a pair that descends, a year past the league's: kept
+    as the season they end in, for the caller to refuse - never a range."""
+    (span,) = season_spans(question)
+    assert not span.is_range
 
 
 def test_season_spans_finds_each_span_where_it_is_written() -> None:
