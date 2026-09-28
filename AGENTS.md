@@ -299,8 +299,9 @@ supplies may be fiction - the router's then, the normalizer's now.
 
 So a name is checked against the question before a template reads it:
 `subject.read_subject` reads who the question is about from its own spans,
-and `subject.apply_subject` writes those names into the slots (until 4.5.0 this
-was `entities.override_invented_players`). What counts as the question
+and `subject.apply_subject` writes those names into the scope (until 4.5.0 this
+was `entities.override_invented_players`) - both inside the parser's last step,
+`parse.reading_from_route`, whose `Reading` is all the agent answers from. What counts as the question
 supporting a name (`subject.question_supports`) is deliberately generous, because the router's expansions are usually the
 useful kind: the word itself, a near spelling of it (the router silently
 corrects typos; measured as Damerau-Levenshtein, rapidfuzz's, the metric the

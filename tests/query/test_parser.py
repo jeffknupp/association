@@ -10,9 +10,8 @@ from typing import Any
 import duckdb
 import pytest
 
-from association.query.parse import classify_span, measure, parent_intent, parse, read_route, window
+from association.query.parse import classify_span, measure, parent_intent, parse, read_route, reading_from_route, window
 from association.query.router import _threshold_from_text, settle
-from association.query.subject import apply_subject, read_subject
 from association.query.templates.common import TemplateUnsupported, check_scope
 
 
@@ -262,13 +261,12 @@ def test_a_count_spelled_out_is_the_count(con: duckdb.DuckDBPyConnection) -> Non
 
 
 def _settled(con: duckdb.DuckDBPyConnection, question: str, names: list[str], stat: str = "") -> tuple[str, dict[str, Any]]:
-    """The route :func:`read_route` settles, then the subject stage the agent
-    runs on it (``agent._record_subject`` and ``_ground_players``), which
-    writes a companion's role as the ``conditions`` slot."""
+    """The route :func:`read_route` settles, then the parser's last step
+    (:func:`reading_from_route`), which writes a companion's role as the
+    ``conditions`` slot - the Reading the agent answers from, as slots."""
     route, _, _ = read_route(con, question, names, stat)
-    slots = dict(route.slots)
-    applied = apply_subject(read_subject(con, question, route.intent, dict(slots)), slots, intent=route.intent)
-    return applied.intent, slots
+    reading = reading_from_route(con, question, route)
+    return reading.intent, reading.scope.to_slots()
 
 
 def _with_the_warriors(con: duckdb.DuckDBPyConnection) -> None:

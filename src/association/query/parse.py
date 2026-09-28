@@ -32,6 +32,7 @@ import duckdb
 from association.query.compose.core import Refused, Unsupported
 from association.query.compose.move import read_point
 from association.query.compose.team import team_named_in
+from association.query.decisions import Decision
 from association.query.entities import _edit_budget, _question_derived_player, _words, find_players, find_teams, nicknames_in, suggest_players
 from association.query.measures import MEASURE_WORDS
 from association.query.metrics import EXTRA_FIELD_COLUMNS
@@ -46,6 +47,7 @@ from association.query.subject import (
     _condition_role,
     _edit_distance,
     _near,
+    apply_subject,
     question_supports,
     read_subject,
 )
@@ -659,6 +661,58 @@ def read_route(con: duckdb.DuckDBPyConnection, question: str, names: list[str] |
     point_slots = _read_route_split(subject, question, final, point_slots)
     subject = replace(subject, intent=final, teams=subject.teams if subject.kind == "teams" else settled.teams, opponent=subject.opponent if subject.kind == "teams" else settled.opponent)
     return Route(final, point_slots), subject, parent
+
+
+def reading_from_route(con: duckdb.DuckDBPyConnection, question: str, route: Route) -> Reading:
+    """The parser's last step: the :class:`~association.query.reading.Reading`
+    everything after the parser answers from. ``route`` is what
+    :func:`read_route` settled, or a recorded route replayed; who the
+    question is about is read from its own words
+    (:func:`~association.query.subject.read_subject`) and written into the
+    typed scope - the players it names, in the route's own shape, the one
+    player a template that needs one was left without, a player's own team
+    and the tenure it implies, a position group, the companions' roles
+    (:func:`~association.query.subject.apply_subject`). Nothing after this
+    writes a slot: the agent consumes the Reading (ROADMAP plan item 6, step
+    (d), part 3 - one writer).
+
+    The Reading carries what the reading decided, as values
+    (:attr:`~association.query.reading.Reading.decisions`), and the model's
+    names the question never held that nothing in it could replace
+    (:attr:`~association.query.reading.Reading.misread`), which the agent
+    refuses by name rather than answer about somebody the question never
+    mentioned. Raises :class:`~association.query.reading.ScopeError` where
+    the route holds a slot the Scope cannot.
+
+    .. versionadded:: 4.5.0
+    """
+    slots = dict(route.slots)
+    subject = read_subject(con, question, route.intent, dict(slots))
+    applied = apply_subject(subject, slots, intent=route.intent)
+    return Reading(
+        scope=Scope.from_slots(slots),
+        intent=applied.intent,
+        subject=subject,
+        decisions=(*_subject_decisions(subject), *applied.decisions),
+        misread=tuple(applied.dropped),
+    )
+
+
+def _subject_decisions(subject: Subject) -> tuple[Decision, ...]:
+    """Who the question was read to be about, as decisions: the kind, with
+    what the reading rested on, then each name the reading found."""
+    found = (
+        ("players", subject.players),
+        ("teams", subject.teams),
+        ("opponent", subject.opponent),
+        ("own_team", subject.own_team),
+        ("companions", subject.companions),
+        ("position", subject.position),
+    )
+    return (
+        Decision("subject", "kind", None, subject.kind, "; ".join(subject.evidence)),
+        *(Decision("subject", name, None, list(value) if isinstance(value, tuple) else value, "from the question's own words") for name, value in found if value),
+    )
 
 
 def parse(con: duckdb.DuckDBPyConnection, question: str, names: list[str] | None = None, stat: str = "") -> Reading:

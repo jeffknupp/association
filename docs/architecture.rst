@@ -337,8 +337,10 @@ that:
   empty tables and is then free to fill the silence from its own weights.
 * Slots the model drops or files in the wrong place are read from the
   question text, and a player name the question does not support is refused
-  rather than answered about
-  (:func:`association.query.subject.apply_subject`).
+  rather than answered about: the parser's last step writes the typed
+  :class:`~association.query.reading.Reading` everything after it answers
+  from, and carries the names it could not read
+  (:func:`association.query.parse.reading_from_route`).
 * :func:`association.query.prompt.build_system_prompt` raises rather than
   handing ollama a prompt it would quietly truncate.
 * :meth:`association.query.toolbox.Toolbox.run_sql` bounds results by tokens

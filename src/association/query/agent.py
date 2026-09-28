@@ -14,7 +14,6 @@ from typing import Any
 import ollama
 
 from .answer import Answer, AnsweredBy, Artifact, FallthroughDisabled, Timing
-from .decisions import Decision
 from .entities import (
     collect_name_readings,
     compared_but_unmatched,
@@ -29,7 +28,6 @@ from .prompt import AGENT_NUM_CTX, TOOLS, build_system_prompt
 from .reading import Reading, Scope, ScopeError
 from .refusals import by_question, unanswerable
 from .router import Route, RouterUnavailable
-from .subject import Subject, apply_subject, read_subject
 from .templates import TEMPLATES
 from .templates.common import (
     PLAYER_INTENTS,
@@ -304,18 +302,17 @@ class Agent:
         )
 
     @staticmethod
-    def _named_in(slots: dict[str, Any]) -> list[str]:
-        """The player names a Route carries, however the router split them."""
-        listed = slots.get("players")
-        raw = listed if isinstance(listed, list) else [slots.get("player")]
+    def _named_in(scope: Scope) -> list[str]:
+        """The player names a Reading's scope carries, however the route split them."""
+        raw = list(scope.players) if scope.players else [scope.player]
         return [name for name in raw if isinstance(name, str) and name.strip()]
 
     def _try_fast_path(self, question: str, history: RunHistory, given: Route | None = None) -> tuple[str, TemplateResult] | None:
-        """Route -> deterministic template -> answer, returning the intent
-        alongside the template's whole result. Returns None to fall through to
-        the agent: an unported intent, slots that fail validation, or any
-        router or template failure. Falling through costs one ~1-2s round trip
-        and changes no answer.
+        """Route -> Reading -> deterministic template -> answer, returning the
+        intent alongside the template's whole result. Returns None to fall
+        through to the agent: an unported intent, slots that fail validation,
+        or any reader or template failure. Falling through costs one ~1-2s
+        round trip and changes no answer.
 
         The intent and the TemplateResult are returned, rather than just its
         `answer` text, because that text is only one of the things the template
@@ -325,53 +322,37 @@ class Agent:
         if not self.fast_path:
             self.fell_through = "the fast path is off (--no-fast-path)"
             return None
-        # A recorded route is answered as given (a copy: the stages after this
-        # one write into the slots); otherwise the question is read.
+        # A recorded route is answered as given; otherwise the question is read.
         routed = Route(intent=given.intent, slots=dict(given.slots)) if given is not None else self._read_or_fall_through(question, history)
         if routed is None:
             return None
-        # A slot nothing can hold - "stephen curry last 0 games" reads as a
-        # window of 0, a model can return a shot value of 0 - is a question
-        # the fast path cannot read: it falls through here, the way a
-        # template's refusal does, rather than crashing where the Reading is
-        # built (reading.Scope.from_slots).
-        try:
-            Scope.from_slots(routed.slots)
-        except ScopeError as exc:
-            history.log(f"  -> (scope) {exc}, falling through to the agent")
-            self.fell_through = f"a slot the Reading cannot hold: {exc}"
+        reading = self._reading_or_fall_through(question, routed, history)
+        if reading is None:
             return None
-        handler = TEMPLATES.get(routed.intent)
-        history.log(f"  -> (router) intent={routed.intent!r} slots={routed.slots}" + ("" if handler else " - not ported yet, falling through"))
-        # One reading of WHO the question is about, recorded as a decision
-        # beside the repair chain below - which still writes every slot. The
-        # reading writes none yet: measured against the chain on 290 recorded
-        # questions it agreed on 278 and was right on the five where the chain
-        # was wrong (query/subject.py); each chain step becomes a no-op, then
-        # goes, as the reading takes over the field it settled.
-        subject = self._record_subject(question, routed, history)
-        # The reading writes the slots a template reads - who the question
-        # is about, in the router's own slot shape - and settles the intent
-        # where the router's cannot be about that subject, or where the
-        # question's own words name a child of it (subject.KIND_ASSIGNED_INTENTS:
-        # a count of 30+ point games under a game log). The router invents
-        # whole names, not only nicknames: "compare sga and embiid" came back
-        # with Jusuf Nurkic in the second slot, and every stage after this one
-        # would have answered about him perfectly; a name nothing in the
-        # question can replace is refused by name here.
-        settled_intent, misread_result = self._ground_players(routed, subject, history)
-        if misread_result is not None:
-            return routed.intent, misread_result
-        if settled_intent != routed.intent and settled_intent in TEMPLATES:
-            # The handler goes with the intent. Resolving them apart is how a
-            # reroute shipped broken once: the intent said with_without, the
-            # trace said with_without, and head_to_head ran. Before the
-            # no-template check below, since the router's `other` is a
-            # parent the words assign under.
-            routed.intent = settled_intent
-            handler = TEMPLATES[routed.intent]
-            history.log(f"  -> (subject) intent={routed.intent!r} slots={routed.slots}")
-        settled = self._settled_before_template(question, routed, handler, history, subject)
+        # A name the model supplied that the question never held, and that
+        # nothing in the question can replace, is refused by name rather than
+        # answered: the router invented whole names, not only nicknames -
+        # "compare sga and embiid" came back with Jusuf Nurkic in the second
+        # slot, and every stage after this one would have answered about him
+        # perfectly. Falling through was tried and is worse: the agent answered
+        # one of these with a 55-second fingerprint for "Ronaldo Lopes", a
+        # player who does not exist, percentages included. Only where the
+        # template would actually be about that player - a stray name on a team
+        # question changes no answer.
+        if reading.misread and reading.intent in PLAYER_INTENTS:
+            misread = misread_players(list(reading.misread))
+            history.log(f"  -> (player) {misread}")
+            return reading.intent, TemplateResult(data={"message": misread, "misread": list(reading.misread)}, answer=misread)
+        # The handler goes with the intent the Reading settled - where the
+        # route's cannot be about the subject, or where the question's own
+        # words name a child of it (subject.KIND_ASSIGNED_INTENTS: a count of
+        # 30+ point games under a game log). Resolving them apart is how a
+        # reroute shipped broken once: the intent said with_without, the trace
+        # said with_without, and head_to_head ran.
+        handler = TEMPLATES.get(reading.intent)
+        if reading.intent != routed.intent:
+            history.log(f"  -> (subject) intent={reading.intent!r} slots={reading.scope.to_slots()}")
+        settled = self._settled_before_template(question, reading, handler, history)
         if settled is not None:
             return settled
         if handler is None:
@@ -382,13 +363,40 @@ class Agent:
         # different subject than the one it would answer - "alperen şengün
         # alltime record" routed to team_leaderboard and answered the league
         # standings, Sengun never read (yardstick-v2 F111).
-        if routed.intent in TEAM_ONLY_INTENTS:
-            named_player = player_named_on_a_team_only_question(self.toolbox.con, question, routed.slots)
+        if reading.intent in TEAM_ONLY_INTENTS:
+            named_player = player_named_on_a_team_only_question(self.toolbox.con, question, reading.scope.to_slots())
             if named_player is not None:
-                message = team_only_question_names_a_player(named_player, routed.intent)
+                message = team_only_question_names_a_player(named_player, reading.intent)
                 history.log(f"  -> (player) {message}")
-                return routed.intent, TemplateResult(data={"message": message, "named_player": named_player}, answer=message)
-        return self._run_scoped_template(question, routed, handler, history, subject)
+                return reading.intent, TemplateResult(data={"message": message, "named_player": named_player}, answer=message)
+        return self._run_scoped_template(question, reading, handler, history)
+
+    def _reading_or_fall_through(self, question: str, routed: Route, history: RunHistory) -> Reading | None:
+        """The Reading ``routed`` settles into (:func:`~association.query.parse.reading_from_route`),
+        with every decision it made recorded - or None, with the reason, where
+        the route holds a slot nothing can hold. Split out of
+        :meth:`_try_fast_path` for the complexity gate."""
+        from association.query.parse import reading_from_route
+
+        # A slot nothing can hold - "stephen curry last 0 games" reads as a
+        # window of 0, a model can return a shot value of 0 - is a question
+        # the fast path cannot read: it falls through here, the way a
+        # template's refusal does, rather than crashing where the Scope is
+        # built (reading.Scope.from_slots).
+        try:
+            Scope.from_slots(routed.slots)
+        except ScopeError as exc:
+            history.log(f"  -> (scope) {exc}, falling through to the agent")
+            self.fell_through = f"a slot the Reading cannot hold: {exc}"
+            return None
+        history.log(f"  -> (router) intent={routed.intent!r} slots={routed.slots}" + ("" if routed.intent in TEMPLATES else " - not ported yet, falling through"))
+        # One reading of WHO the question is about, from its own words, written
+        # into the Scope - the parser's last step, and the only writer: nothing
+        # after this changes a slot (query/subject.py, ROADMAP plan item 6).
+        reading = reading_from_route(self.toolbox.con, question, routed)
+        for decision in reading.decisions:
+            history.record_decision(decision)
+        return reading
 
     def _read_or_fall_through(self, question: str, history: RunHistory) -> Route | None:
         """The route the parser reads for ``question``, or None with the
@@ -418,7 +426,8 @@ class Agent:
         :func:`~association.query.parse.read_route` checks both and reads the
         intent and every other slot from the words. None when the model's
         reply is unusable. What follows is the path every route takes: the
-        subject reading, the repairs and the templates.
+        parser's last step (:func:`~association.query.parse.reading_from_route`)
+        and the templates.
 
         The previous question is not read: the normalizer copies spans of
         THIS question, and a follow-up's missing name is not one of them."""
@@ -433,50 +442,7 @@ class Agent:
         history.log(f"  -> (parser) parent={parent!r} kind={subject.kind!r} intent={routed.intent!r}")
         return routed
 
-    def _ground_players(self, routed: Route, subject: Subject, history: RunHistory) -> tuple[str, TemplateResult | None]:
-        """Every player name a template will read is one the question holds:
-        the subject reading writes the names it read (query/subject.py,
-        apply_subject) - the router's players and a player filed as the
-        opponent, each write a recorded decision - and a router name the
-        question never held that nothing in the question can replace is
-        refused by name (the result returned here, beside the intent the
-        reading settled the slots for). Split out of _try_fast_path for the
-        complexity gate."""
-        applied = apply_subject(subject, routed.slots, intent=routed.intent)
-        for decision in applied.decisions:
-            history.record_decision(decision)
-        dropped = applied.dropped
-        # Said, not passed along. Falling through was tried and is worse: the
-        # agent answered one of these with a 55-second fingerprint for "Ronaldo
-        # Lopes", a player who does not exist, percentages included. Only where
-        # the template would actually be about that player - a stray name on a
-        # team question changes no answer.
-        if dropped and routed.intent in PLAYER_INTENTS:
-            misread = misread_players(dropped)
-            history.log(f"  -> (player) {misread}")
-            return applied.intent, TemplateResult(data={"message": misread, "misread": dropped}, answer=misread)
-        return applied.intent, None
-
-    def _record_subject(self, question: str, routed: Route, history: RunHistory) -> Subject:
-        """The subject reading (query/subject.py) as decisions - who the
-        question was read to be about, from its own words - recorded beside
-        the repair chain, which still writes every slot. Split out of
-        _try_fast_path for the complexity gate."""
-        subject = read_subject(self.toolbox.con, question, routed.intent, routed.slots)
-        history.record_decision(Decision("subject", "kind", None, subject.kind, "; ".join(subject.evidence)))
-        for name, value in (
-            ("players", subject.players),
-            ("teams", subject.teams),
-            ("opponent", subject.opponent),
-            ("own_team", subject.own_team),
-            ("companions", subject.companions),
-            ("position", subject.position),
-        ):
-            if value:
-                history.record_decision(Decision("subject", name, None, list(value) if isinstance(value, tuple) else value, "from the question's own words"))
-        return subject
-
-    def _settled_before_template(self, question: str, routed: Route, handler: Callable[..., TemplateResult] | None, history: RunHistory, subject: Subject) -> tuple[str, TemplateResult] | None:
+    def _settled_before_template(self, question: str, reading: Reading, handler: Callable[..., TemplateResult] | None, history: RunHistory) -> tuple[str, TemplateResult] | None:
         """What is decided before any template runs: a shape the question's
         own words settle (a championship question a team ranking would
         answer fluently and wrongly - refusals.by_question), and, where no
@@ -485,64 +451,63 @@ class Agent:
         refusals module knows bench points are read by nothing - said in
         seconds rather than after the agent's minute). With no template and
         no refusal, records the fall-through and returns None."""
-        early = by_question(question, routed.intent)
+        early = by_question(question, reading.intent)
         if early is not None:
             history.log(f"  -> (refusal) {early.data['refused']}: nothing here reads that shape")
-            return routed.intent, early
+            return reading.intent, early
         if handler is not None:
             return None
-        refusal = unanswerable(self.toolbox.con, routed.intent, routed.slots, question, subject)
+        refusal = unanswerable(self.toolbox.con, reading.intent, reading.scope.to_slots(), question, reading.subject)
         if refusal is not None:
             history.log(f"  -> (refusal) {refusal.data['refused']}: nothing here reads that shape")
-            return routed.intent, refusal
-        self.fell_through = f"intent {routed.intent!r} has no template yet"
+            return reading.intent, refusal
+        self.fell_through = f"intent {reading.intent!r} has no template yet"
         return None
 
-    def _run_scoped_template(
-        self, question: str, routed: Route, handler: Callable[[TemplateContext, Reading], TemplateResult], history: RunHistory, subject: Subject
-    ) -> tuple[str, TemplateResult] | None:
+    def _run_scoped_template(self, question: str, reading: Reading, handler: Callable[[TemplateContext, Reading], TemplateResult], history: RunHistory) -> tuple[str, TemplateResult] | None:
         """Check scope and coverage, run the template, and attach the notes
         every fast-path answer carries. On a scoping refusal
         (``TemplateUnsupported``, from ``check_scope`` or the template itself),
         try the compiled answer before giving up on the fast path - split out
         of ``_try_fast_path`` to keep it under the complexity gate, and because
-        it is one coherent step: "run what the router found, and cope with it
+        it is one coherent step: "run what the reader found, and cope with it
         refusing"."""
         t0 = time.monotonic()
+        intent, scope = reading.intent, reading.scope
         # The four intents the compiler reproduces exactly are read and
         # planned first (compose.COMPILER_FIRST): the Reading is their record,
         # the template their presenter. Where the compiler declines, the
         # template runs as it always did.
         from association.query.compose import COMPILER_FIRST
 
-        if routed.intent in COMPILER_FIRST:
-            composed = self._try_compose(question, routed.intent, routed.slots, history, subject)
+        if intent in COMPILER_FIRST:
+            composed = self._try_compose(question, reading, history)
             if composed is not None:
-                history.record_tool_call(f"compose {routed.intent}", time.monotonic() - t0)
-                return routed.intent, composed
+                history.record_tool_call(f"compose {intent}", time.monotonic() - t0)
+                return intent, composed
         try:
-            check_scope(routed.intent, routed.slots)
+            check_scope(intent, scope)
             # Returned as the answer rather than raised past this point. A
             # season under a table's floor has no better source anywhere - the
             # agent would query the same empty tables, more slowly, and is then
             # free to fill the silence from its own weights.
-            refused = check_coverage(routed.intent, routed.slots)
+            refused = check_coverage(intent, scope)
             if refused is not None:
                 history.log(f"  -> (coverage) {refused}")
-                result = TemplateResult(data={"message": refused, "season": routed.slots.get("season")}, answer=refused)
+                result = TemplateResult(data={"message": refused, "season": scope.season}, answer=refused)
             else:
-                result = self._run_template(handler, Reading.from_slots(routed.slots, intent=routed.intent, subject=subject), history)
+                result = self._run_template(handler, reading, history)
                 # A season that IS covered but only partly says so, rather than
                 # reporting half a year as a whole one.
-                note = coverage_caveat(routed.intent, routed.slots)
+                note = coverage_caveat(intent, scope)
                 if note:
                     result.answer = f"{result.answer} {note}"
                     _note(result, note)
                 # A "vs" question that produced one polygon answered half of
                 # itself: entities.compared_but_unmatched says which name the
                 # question compares matched nobody - see its docstring.
-                if routed.intent == "fingerprint":
-                    unmatched_note = compared_but_unmatched(self.toolbox.con, question, self._named_in(routed.slots))
+                if intent == "fingerprint":
+                    unmatched_note = compared_but_unmatched(self.toolbox.con, question, self._named_in(scope))
                     if unmatched_note:
                         result.answer = f"{result.answer} {unmatched_note}"
                         _note(result, unmatched_note)
@@ -553,28 +518,28 @@ class Agent:
             # (a clarification, a "no match") is still an answer, not a
             # fall-through: it looked at the question.
             t1 = time.monotonic()
-            composed = self._try_compose(question, routed.intent, routed.slots, history, subject)
+            composed = self._try_compose(question, reading, history)
             if composed is not None:
-                history.record_tool_call(f"compose {routed.intent}", time.monotonic() - t1)
+                history.record_tool_call(f"compose {intent}", time.monotonic() - t1)
                 history.log(f"  -> (template) {exc} - composed instead of falling through")
-                return routed.intent, composed
+                return intent, composed
             # Then, before the slow agent: is this a shape nothing here can
             # read - a playoff round, an age, a stat by quarter other than
             # points? The agent has no better source for those either, and a
             # refusal naming the missing thing is the answer (query/refusals).
-            refusal = unanswerable(self.toolbox.con, routed.intent, routed.slots, question, subject)
+            refusal = unanswerable(self.toolbox.con, intent, scope.to_slots(), question, reading.subject)
             if refusal is not None:
                 history.log(f"  -> (template) {exc} - refused ({refusal.data['refused']}): nothing here reads that shape")
-                return routed.intent, refusal
+                return intent, refusal
             history.log(f"  -> (template) {exc} - falling through to the agent")
-            self.fell_through = f"{routed.intent}: {exc}"
+            self.fell_through = f"{intent}: {exc}"
             return None
-        history.record_tool_call(f"template {routed.intent}", time.monotonic() - t0)
+        history.record_tool_call(f"template {intent}", time.monotonic() - t0)
         # No second model call, ever: templates phrase their own answers. See
         # TemplateResult for why that is both faster and safer than narrating.
-        return routed.intent, result
+        return intent, result
 
-    def _try_compose(self, question: str, intent: str, slots: dict[str, Any], history: RunHistory, subject: Subject) -> TemplateResult | None:
+    def _try_compose(self, question: str, reading: Reading, history: RunHistory) -> TemplateResult | None:
         """The step between a template's refusal and the fall-through agent:
         ``association.query.compose.answer``, called only here so a caller
         that never sees a ``TemplateUnsupported`` never pays for the import.
@@ -595,26 +560,26 @@ class Agent:
         with collect_name_readings() as readings:
             composed = compose.answer(
                 TemplateContext(con=self.toolbox.con, out_dir=self.toolbox.out_dir),
-                intent,
-                slots,
+                reading.intent,
+                reading.scope.to_slots(),
                 question,
-                subject,
-                trace=lambda reading: history.log(f"  -> (reading) {reading.describe()}"),
+                reading.subject,
+                trace=lambda point: history.log(f"  -> (reading) {point.describe()}"),
             )
         if composed is None:
             return None
-        for reading in readings:
-            history.log(f"  -> (player) {reading}")
-            composed.answer = f"{composed.answer} {reading}"
-            _note(composed, reading)
+        for name_reading in readings:
+            history.log(f"  -> (player) {name_reading}")
+            composed.answer = f"{composed.answer} {name_reading}"
+            _note(composed, name_reading)
         if readings:
             composed.data["name_readings"] = list(readings)
-        note = coverage_caveat(intent, slots)
+        note = coverage_caveat(reading.intent, reading.scope)
         if note:
             composed.answer = f"{composed.answer} {note}"
             _note(composed, note)
         point = {key: composed.data[key] for key in _COMPOSE_POINT_KEYS if key in composed.data}
-        history.log(f"  -> (compose) intent={intent!r} point={point}")
+        history.log(f"  -> (compose) intent={reading.intent!r} point={point}")
         return composed
 
     def _run_template(self, handler: Callable[[TemplateContext, Reading], TemplateResult], reading: Reading, history: RunHistory) -> TemplateResult:

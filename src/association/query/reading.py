@@ -29,6 +29,7 @@ from datetime import date
 from typing import TYPE_CHECKING, Any, Literal
 
 if TYPE_CHECKING:
+    from association.query.decisions import Decision
     from association.query.entities import Availability
     from association.query.subject import Subject
 
@@ -357,6 +358,16 @@ class Reading:
     subject: Subject | None = None
     #: One line per finding, for the trace.
     evidence: tuple[str, ...] = ()
+    #: What the parser decided on the way, as values - who the question is
+    #: about, and each name, role, tenure or position group it wrote into
+    #: the scope (:func:`~association.query.parse.reading_from_route`) - kept
+    #: on the answer beside the trace line each one prints.
+    decisions: tuple[Decision, ...] = ()
+    #: The model's names the question never held that nothing in it could
+    #: replace ("Jusuf Nurkic" on "compare sga and embiid"): the agent
+    #: refuses by name rather than answer about somebody the question never
+    #: mentioned (AGENTS.md: "when it cannot be repaired, say so").
+    misread: tuple[str, ...] = ()
 
     @classmethod
     def from_slots(cls, slots: Mapping[str, Any], *, intent: str = "", subject: Subject | None = None) -> Reading:
