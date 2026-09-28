@@ -23,6 +23,7 @@ against a whitelist before it reaches SQL. Nothing here is trusted.
 
 from __future__ import annotations
 
+import itertools
 import re
 from dataclasses import dataclass, field
 from datetime import date
@@ -31,7 +32,7 @@ from typing import Any
 from association.nba.season import current_season
 
 from .measures import MEASURE_WORDS
-from .season_text import season_from_text
+from .season_text import season_from_text, season_spans
 from .team_metrics import STAT_ALIASES
 
 # The model picks a word; the numeric season_type every table uses is looked up
@@ -356,12 +357,14 @@ _SEASON_N = re.compile(r"\b(\d{1,2})(?:st|nd|rd|th)\s+season\b", re.IGNORECASE) 
 # ending in 2020; a decade ("the 2010s") is the seasons ending in it. Stated this
 # way, not guessed at, so a template that honors it can print the exact range.
 _SINCE = re.compile(r"\bsince\s+(?:the\s+)?((?:19|20)\d\d)\b", re.IGNORECASE)
-# "since 2000-01" / "since 2000-2001": the season-hyphenated year after
-# "since", which is the season ENDING in the second year (nba/season.py) -
-# `_SINCE` alone read its leading "2000" and started a season early (#207).
-# The second half must be the next year, two digits or four, so a real range
-# ("2019-2024") is still `_RANGE_HYPHEN_YEARS`'s to read.
-_SINCE_SEASON = re.compile(r"\bsince\s+(?:the\s+)?((?:19|20)\d\d)-(\d\d|(?:19|20)\d\d)\b", re.IGNORECASE)
+# "since 2000-01" / "since 2000-2001" / "since 00-01": a season written as a
+# span after "since", which is the season ENDING in the second year
+# (nba/season.py) - `_SINCE` alone read its leading "2000" and started a
+# season early (#207). What a span is, is `season_text.season_spans`'s to say
+# - the one definition, so "00-01" reads here as it does alone - and the
+# span must be one season's two years, so a real range ("2019-2024") is still
+# `_RANGE_HYPHEN_YEARS`'s to read and "since 2000-05" `_SINCE`'s.
+_SINCE_SPAN = re.compile(r"\bsince\s+(?:the\s+)?\Z", re.IGNORECASE)
 _DECADE = re.compile(r"\b(?:the\s+)?((?:19|20)\d)0'?s\b", re.IGNORECASE)
 
 # A CLOSED range - both ends named - rather than the open "since 2020" above.
@@ -369,22 +372,21 @@ _DECADE = re.compile(r"\b(?:the\s+)?((?:19|20)\d)0'?s\b", re.IGNORECASE)
 # (AGENTS.md's own worst-failure-shape example: "best 3 point shooters of the
 # 2010s" answered 2010 through now), so every form here fills BOTH slots.
 #
-# "2019-20 to 2023-24" / "from 2010-11 to 2018-19": the season-hyphenated
-# form on each side of "to"/"through". A season is named for the year it
-# ENDS (nba/season.py), so only the leading four-digit year is read - adding
-# 1 to it gives the season number whatever the trailing two digits say, the
-# same way `_SINCE` never checks them either.
-_SEASON_HYPHEN = r"((?:19|20)\d\d)-\d\d"
-_RANGE_TO_HYPHEN = re.compile(rf"\b(?:from\s+)?{_SEASON_HYPHEN}\s+(?:to|through)\s+{_SEASON_HYPHEN}\b", re.IGNORECASE)
+# "2019-20 to 2023-24" / "from 2010-11 to 2018-19" / "02-03 to 06-07": a
+# season written as a span on each side of "to"/"through" - the words this
+# matches BETWEEN two spans `season_text.season_spans` found, so the short
+# form ("kobe bryant playoff stats from 02-03 to 06-07") is a range here
+# exactly where it is a season alone, and not the first season of the two.
+_RANGE_TO_WORDS = re.compile(r"\s+(?:to|through)\s+", re.IGNORECASE)
 # "between 2020 and 2024": bare calendar-shaped years, read as season NUMBERS
 # (the same reading `_SINCE`'s own bare year gets), not calendar years.
 _RANGE_BETWEEN = re.compile(r"\bbetween\s+((?:19|20)\d\d)\s+and\s+((?:19|20)\d\d)\b", re.IGNORECASE)
 # "2020-2024": two season numbers joined by a hyphen with no "to"/"from" -
-# distinct from `_SEASON_HYPHEN` above, whose second half is two digits.
+# one span, where the form above is a span on each side of "to".
 # CONSECUTIVE years in this shape are not a range at all: "the 2023-2024
 # season" is how people write ONE season (2024) with both digits spelled out,
-# exactly as "2023-24" already means - `season_text._SPAN` already reads that
-# correctly as season 2024, and this regex used to re-match the same text as
+# exactly as "2023-24" already means - `season_text.season_spans` already
+# reads that correctly as season 2024, and this regex used to re-match the same text as
 # since=2023/until=2024, silently overwriting a right answer with a wrong one
 # a step later. `_validate_range` only treats this shape as a range when the
 # two years are NOT consecutive ("2024-2026" - Jeff's own yardstick wording,
@@ -415,10 +417,9 @@ def _validate_range(question: str) -> tuple[int, int | None] | None:
        ``until`` is this project's worst failure shape rather than a missing
        nicety.
     """
-    to_hyphen = _RANGE_TO_HYPHEN.search(question)
-    if to_hyphen is not None:
-        first, last = int(to_hyphen.group(1)) + 1, int(to_hyphen.group(2)) + 1
-        return (first, last) if first <= last else (last, first)
+    to_spans = _validate_range_to(question)
+    if to_spans is not None:
+        return to_spans
     between = _RANGE_BETWEEN.search(question)
     if between is not None:
         first, last = int(between.group(1)), int(between.group(2))
@@ -428,7 +429,7 @@ def _validate_range(question: str) -> tuple[int, int | None] | None:
         first, last = int(hyphen_years.group(1)), int(hyphen_years.group(2))
         if abs(last - first) > 1:
             # Consecutive years ("2023-2024") are one season, not a range -
-            # left for season_text._SPAN to read the way "2023-24" already is.
+            # left for season_text.season_spans to read the way "2023-24" already is.
             return (first, last) if first <= last else (last, first)
     bare_years = _RANGE_BARE_YEARS.search(question)
     if bare_years is not None and int(bare_years.group(2)) == int(bare_years.group(1)) + 1:
@@ -446,18 +447,26 @@ def _validate_range(question: str) -> tuple[int, int | None] | None:
     return None
 
 
+def _validate_range_to(question: str) -> tuple[int, int] | None:
+    """The first and last season of two seasons written as spans with only
+    "to" or "through" between them - "2019-20 to 2023-24", "from 02-03 to
+    06-07" - or ``None`` where the question writes no such pair. The spans
+    are :func:`~association.query.season_text.season_spans`', so each end is
+    the season it names alone."""
+    for left, right in itertools.pairwise(season_spans(question)):
+        if _RANGE_TO_WORDS.fullmatch(question, left.end, right.start):
+            return (left.season, right.season) if left.season <= right.season else (right.season, left.season)
+    return None
+
+
 def _validate_range_since_season(question: str) -> int | None:
-    """The season "since 2000-01" (or "since 2000-2001") starts from - the one
-    ending in the later year - or ``None`` when the halves are not one
-    season's two years."""
-    match = _SINCE_SEASON.search(question)
-    if match is None:
-        return None
-    first, second = int(match.group(1)), match.group(2)
-    ends = first // 100 * 100 + int(second) if len(second) == 2 else int(second)
-    if len(second) == 2 and ends < first:
-        ends += 100  # "since 1999-00": the century turns inside the season
-    return ends if ends == first + 1 else None
+    """The season "since 2000-01" (or "since 2000-2001", "since 00-01")
+    starts from - the one ending in the later year - or ``None`` when the
+    span after "since" is not one season's two years."""
+    for span in season_spans(question):
+        if _SINCE_SPAN.search(question, 0, span.start):
+            return span.season if span.season == span.first + 1 else None
+    return None
 
 
 # "past two seasons", "last 3 years": a relative window counted back from NOW,
