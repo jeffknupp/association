@@ -1712,7 +1712,7 @@ def _reads_slot(source: str, slot: str) -> bool:
     (``slots.get("venue")``, ``slots["venue"]``), or the slot handed to a
     shared step as its own keyword argument (``venue=venue``) at a call site.
 
-    Not a bare ``f'"{slot}"' in source`` any more (4.5.0): that matched ANY
+    Not a bare ``f'"{slot}"' in source`` any more (5.0.0): that matched ANY
     quoted occurrence of the word, including one built into a piece of OUTPUT
     data that has nothing to do with reading the slot -
     ``player_matchup``'s own ``_player_matchup_answer`` builds
@@ -4403,7 +4403,7 @@ def test_player_matchup_needs_two_players(pg_ctx: TemplateContext) -> None:
     """One name and a team is a player's own question, never a matchup: the
     parser reads it that way (``test_parser.test_a_player_against_a_team_is_never_a_matchup``),
     and the router-era fallback that folded it into ``game_log`` from here
-    is gone (4.5.0)."""
+    is gone (5.0.0)."""
     with pytest.raises(TemplateUnsupported, match="exactly two players"):
         player_matchup(pg_ctx, Reading.from_slots({"player": "Brandin Podziemski"}))
 

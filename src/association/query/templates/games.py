@@ -588,7 +588,7 @@ _TEAM_GAME_LOG_STAT_TOTALS: dict[str, str] = {
 
 .. versionadded:: 4.4.0
 
-.. versionchanged:: 4.5.0
+.. versionchanged:: 5.0.0
    The differential under its other spellings (``points_differential``,
    ``point_differential``, ``differential``).
 """
@@ -2380,7 +2380,7 @@ def player_matchup(ctx: TemplateContext, reading: Reading) -> TemplateResult:
        relation is on the relation. ``opponent`` is still refused there: two
        players' meetings have no third team to narrow by.
 
-    .. versionchanged:: 4.5.0
+    .. versionchanged:: 5.0.0
        Two players or none: the one-name-and-a-team fallback to
        :func:`game_log` and the fabricated-second-player repair above are
        gone, with the router that dressed those questions as matchups. The
@@ -2445,7 +2445,7 @@ def _player_matchup_narrowed(con: duckdb.DuckDBPyConnection, a: Entity, b: Entit
 
     .. versionadded:: 4.4.0
 
-    .. versionchanged:: 4.5.0
+    .. versionchanged:: 5.0.0
        Hands ``scoped_games`` the date: "curry vs lebron on 2025-04-03" used
        to answer every meeting of the season, the date reaching every other
        relation cell here but never the one-day filter. A date names its
@@ -2488,7 +2488,7 @@ def _player_matchup_absence_context(con: duckdb.DuckDBPyConnection, a: Entity, b
     said, so the reader has the other reading without re-asking. Empty
     where no absence was named.
 
-    .. versionadded:: 4.5.0
+    .. versionadded:: 5.0.0
     """
     if not narrowed.without:
         return ""

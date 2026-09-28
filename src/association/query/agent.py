@@ -108,7 +108,7 @@ class Agent:
        the wall clock the fall-through agent may spend before it gives up
        and says what the fast path could not answer.
 
-    .. versionchanged:: 4.5.0
+    .. versionchanged:: 5.0.0
        The parser reads the question: the model copies names and picks a
        stat (:mod:`~association.query.normalizer`) and
        :func:`~association.query.parse.read_route` reads the rest, where the
@@ -243,7 +243,7 @@ class Agent:
            answer text alone, and takes ``label`` rather than reading
            ``sys.argv``.
 
-        .. versionchanged:: 4.5.0
+        .. versionchanged:: 5.0.0
            Takes ``route``, a recorded route to answer in place of reading
            the question.
         """

@@ -70,7 +70,7 @@ class SeasonSpan:
     ``end`` are where the span sits in the text, for a reader that needs
     what is beside it: "to" between two of them, "since" before one.
 
-    .. versionadded:: 4.5.0
+    .. versionadded:: 5.0.0
     """
 
     start: int
@@ -98,7 +98,7 @@ def season_spans(text: str) -> list[SeasonSpan]:
     06-07", "since 2000-01"), so the short form reads the same wherever a
     question writes it.
 
-    .. versionadded:: 4.5.0
+    .. versionadded:: 5.0.0
     """
     spans = []
     for match in _SPAN.finditer(text):
@@ -130,7 +130,7 @@ def season_from_text(text: str) -> int | None:
     """The season a question names, or None if it names none (or names more
     than one - "compare 2023 and 2024" is not this function's call to make).
 
-    .. versionchanged:: 4.5.0
+    .. versionchanged:: 5.0.0
        Reads a season written two digits a side, "23-24" and "23/24"
        (:func:`season_spans`).
     """

@@ -74,7 +74,7 @@ def _context(tmp_path: Path, players: list[tuple[str, str]], stats: list[tuple[A
 
 #: The box-score categories the router's prompt taught its model - its `stat`
 #: line, read out of the prompt by this test until the model classification
-#: went in 4.5.0.
+#: went in 5.0.0.
 _BOX_SCORE_STAT_NAMES = (
     "points",
     "rebounds",

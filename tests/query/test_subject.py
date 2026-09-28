@@ -525,7 +525,7 @@ def test_a_child_the_router_chose_itself_stands(con: duckdb.DuckDBPyConnection) 
 
 
 def test_a_router_name_that_is_no_name_leaves_the_slots(con: duckdb.DuckDBPyConnection) -> None:
-    """Day5 after the 4.5.0 prompt shrink: with no count or ranking example
+    """Day5 after the 5.0.0 prompt shrink: with no count or ranking example
     in its prompt, the model files the ranking's own words as the player."""
     intent, slots = _assigned(con, "who had the most 30 pt games in 2024", "leaderboard", stat="points", player="most", season=2024, season_type=2)
     assert intent == "threshold_count" and "player" not in slots and slots["threshold"] == 30

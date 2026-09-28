@@ -414,7 +414,7 @@ def _apply(con: duckdb.DuckDBPyConnection, question: str, slots: dict[str, Any],
 def _scope(con: duckdb.DuckDBPyConnection, question: str, slots: dict[str, Any], *, reads_player: bool, intent: str = "", **flags: Any) -> list[str]:
     """The slot repair the agent runs: the subject read from the router's
     slots, then applied (`subject.apply_subject`, which took every step of
-    `scope_from_question` over in 4.5.0). One line per change, so a test
+    `scope_from_question` over in 5.0.0). One line per change, so a test
     written against `scope_from_question` reads the same."""
     from association.query.subject import apply_subject, read_subject
 

@@ -103,7 +103,7 @@ template's own words, through that template's phrasing helpers
 reading of a point, the question is refused or falls through, with the
 reason (``agent._run_compiled``).
 
-.. versionadded:: 4.5.0
+.. versionadded:: 5.0.0
 """
 
 
@@ -160,7 +160,7 @@ def answer(
        equivalent to check (:mod:`association.query.compose.team` reads
        ``games``/``team_season_stats``, never a player's box score).
 
-    .. versionchanged:: 4.5.0
+    .. versionchanged:: 5.0.0
        An intent's own default point is answered in its template's own words
        and ``data`` (:func:`~association.query.compose.present.present`,
        plan item 2 step 2a), and no partial-season caveat is appended here:
@@ -168,20 +168,20 @@ def answer(
        to a composed answer as it does to a template's, and this appending it
        as well printed the note twice.
 
-    .. versionchanged:: 4.5.0
+    .. versionchanged:: 5.0.0
        Reads the question once into a :class:`~association.query.reading.Reading`
        (:func:`~association.query.compose.move.read_point`), hands it to
        ``trace`` when given - the agent logs it as the decision record - and
        plans it (:func:`~association.query.compose.plan.plan`).
 
-    .. versionchanged:: 4.5.0
+    .. versionchanged:: 5.0.0
        Reads the season line as a second source: an unnarrowed player line
        and a per-season history are said by the templates' own season-line
        readers (``source="seasons"``, :mod:`~association.query.compose.present`),
        and a history they decline falls back to the game-level reading
        (:func:`~association.query.compose.move.games_reading`).
 
-    .. versionchanged:: 4.5.0
+    .. versionchanged:: 5.0.0
        Answers a team's record above and below its own line in
        ``record_when``'s own words
        (:func:`~association.query.compose.present.present_team`), and takes
@@ -207,7 +207,7 @@ def answer_reading(ctx: TemplateContext, reading: Reading, trace: Callable[[Read
     (:attr:`Reading.point_refusal`), and a decline is ``None``, with the
     reason given to ``declined``. Otherwise exactly :func:`answer`'s outcome.
 
-    .. versionadded:: 4.5.0
+    .. versionadded:: 5.0.0
     """
     if reading.point_refusal is not None:
         # A copy: the caller appends its notes to the answer it is handed.

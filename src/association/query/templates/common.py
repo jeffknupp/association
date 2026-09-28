@@ -608,7 +608,7 @@ and never a stray name found elsewhere in the question.
 
 .. versionadded:: 2.1.0
 
-.. versionchanged:: 4.5.0
+.. versionchanged:: 5.0.0
    ``shot_distance`` and ``player_history`` added: each refuses outright
    without a player ("shot_distance needs a player name"), and each is now
    assigned from the question's words under a parent whose own stages may
@@ -622,7 +622,7 @@ SUBJECT_RESTORABLE_INTENTS: frozenset[str] = frozenset({"single_game_high", "thr
 an empty slot means "the league" (or, for ``player_splits``, the team's own
 splits: "show me Embiid's splits against boston" arrived as the 76ers and
 the Celtics meeting with Embiid dropped, once the intent left the router's
-prompt in 4.5.0) - so a name is restored only where the
+prompt in 5.0.0) - so a name is restored only where the
 question's own words name exactly one player and that naming survives
 :func:`~association.query.entities._named_only_by_a_team_word` and
 :func:`~association.query.entities._named_only_by_a_common_word`.
@@ -859,7 +859,7 @@ def check_coverage(intent: str, scope: Scope | Mapping[str, Any]) -> str | None:
 
     .. versionadded:: 2.1.0
 
-    .. versionchanged:: 4.5.0
+    .. versionchanged:: 5.0.0
        Reads the typed :class:`~association.query.reading.Scope`. A slot dict
        is still taken, through :meth:`~association.query.reading.Scope.from_slots`,
        until every caller passes ``reading.scope``.
@@ -881,7 +881,7 @@ def coverage_caveat(intent: str, scope: Scope | Mapping[str, Any]) -> str | None
 
     .. versionadded:: 2.1.0
 
-    .. versionchanged:: 4.5.0
+    .. versionchanged:: 5.0.0
        Reads the typed :class:`~association.query.reading.Scope`. A slot dict
        is still taken, through :meth:`~association.query.reading.Scope.from_slots`,
        until every caller passes ``reading.scope``.
@@ -996,7 +996,7 @@ def check_scope(intent: str, scope: Scope | Mapping[str, Any]) -> None:
     field is truthy: a field at its default (None, an empty tuple, False) is
     the slot absent, the reading this has always taken of a falsy slot.
 
-    .. versionchanged:: 4.5.0
+    .. versionchanged:: 5.0.0
        Reads the typed :class:`~association.query.reading.Scope`. A slot dict
        is still taken, through :meth:`~association.query.reading.Scope.from_slots`,
        until every caller passes ``reading.scope``.
@@ -1604,7 +1604,7 @@ def scoped_player(
 
     .. versionadded:: 4.4.0
 
-    .. versionchanged:: 4.5.0
+    .. versionchanged:: 5.0.0
        Reads the typed :class:`~association.query.reading.Scope`. A slot dict
        is still taken, through :meth:`~association.query.reading.Scope.from_slots`,
        until every caller passes ``reading.scope``.
@@ -1735,7 +1735,7 @@ def scoped_games(
     .. versionchanged:: 4.4.0
        Takes ``team``.
 
-    .. versionchanged:: 4.5.0
+    .. versionchanged:: 5.0.0
        Reads the typed :class:`~association.query.reading.Scope`. A slot dict
        is still taken, through :meth:`~association.query.reading.Scope.from_slots`,
        until every caller passes ``reading.scope``.
@@ -1792,7 +1792,7 @@ POSITIONS: list[tuple[str, str]] = [
 
 .. versionadded:: 4.4.0
 
-.. versionchanged:: 4.5.0
+.. versionchanged:: 5.0.0
    Moved here from ``compose.move`` (which still re-exports it), so the
    subject reading and the compiler share one list without importing each
    other.
@@ -1804,7 +1804,7 @@ filler, not a name ("Most points in 15th season played" arrived as
 ``player: "player"``, yardstick-v2 F099). The subject reading reads none of
 them as a player, and the compiler clears the slot.
 
-.. versionadded:: 4.5.0
+.. versionadded:: 5.0.0
 """
 """``players.position_abbr`` values a question's position word reaches.
 
@@ -1832,7 +1832,7 @@ def league_games(con: duckdb.DuckDBPyConnection, span: _Span, scope: Scope, *, p
 
     .. versionadded:: 4.4.0
 
-    .. versionchanged:: 4.5.0
+    .. versionchanged:: 5.0.0
        Reads the typed :class:`~association.query.reading.Scope`. A slot dict
        is still taken, through :meth:`~association.query.reading.Scope.from_slots`,
        until every caller passes ``reading.scope``.
@@ -1912,7 +1912,7 @@ def condition_player(
 
     .. versionadded:: 4.4.0
 
-    .. versionchanged:: 4.5.0
+    .. versionchanged:: 5.0.0
        Reads the typed :class:`~association.query.reading.Scope`, and takes
        ``opponent``: a Scope holds names, so a team already resolved goes
        beside it. The template's own ``_Scope`` is ``condition_scope``.
@@ -1971,7 +1971,7 @@ def scoped_team(con: duckdb.DuckDBPyConnection, scope: Scope, missing: str, *, s
 
     .. versionadded:: 4.4.0
 
-    .. versionchanged:: 4.5.0
+    .. versionchanged:: 5.0.0
        Reads the typed :class:`~association.query.reading.Scope`. A slot dict
        is still taken, through :meth:`~association.query.reading.Scope.from_slots`,
        until every caller passes ``reading.scope``.
@@ -2063,7 +2063,7 @@ def team_games(con: duckdb.DuckDBPyConnection, team: Entity, span: _Span, scope:
        :meth:`association.query.team_games.TeamNarrowed.narrow_alignment` -
        see :func:`_apply_situation`.
 
-    .. versionchanged:: 4.5.0
+    .. versionchanged:: 5.0.0
        Reads the typed :class:`~association.query.reading.Scope`. A slot dict
        is still taken, through :meth:`~association.query.reading.Scope.from_slots`,
        until every caller passes ``reading.scope``.
@@ -2129,7 +2129,7 @@ def _condition_from_slot(con: duckdb.DuckDBPyConnection, entry: ConditionSpec, p
     box scores in the span. A predicate or stat this does not read refuses
     rather than narrowing to nothing.
 
-    .. versionadded:: 4.5.0
+    .. versionadded:: 5.0.0
     """
     if not entry.player.strip():
         raise TemplateUnsupported(f"a condition needs a player, got {entry!r}")
@@ -2170,7 +2170,7 @@ def _resolved_teammate(con: duckdb.DuckDBPyConnection, text: Any, player: Entity
        key note says resolves cleanly - the true reason the question falls
        short is a game count, not a name that failed to resolve.
 
-    .. versionchanged:: 4.5.0
+    .. versionchanged:: 5.0.0
        The near spelling is read by :func:`~association.query.entities.resolve_player`
        itself (:func:`~association.query.entities.read_near_spelling`), as for
        every other name slot, and a surname back-off with one survivor ("Jemel

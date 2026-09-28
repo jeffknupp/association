@@ -14,7 +14,7 @@ states is dropped rather than trusted. What they settle on is a
 Slot values are advisory: every one of them is re-validated in the templates package
 against a whitelist before it reaches SQL. Nothing here is trusted.
 
-.. versionchanged:: 4.5.0
+.. versionchanged:: 5.0.0
    The model classification is gone: ``route()``, which asked a model to
    classify the question into an intent and its slots under a constrained
    schema (the ``router_prompt`` module) and then ran these stages over its
@@ -110,7 +110,7 @@ def _names_a_period_subject(question: str) -> bool:
     """Whether the question's own grammar names a PLAYER as the scorer ("did
     Jokic score in the 3rd quarter") - the #170 shape, which the model files
     as the team's quarter with no player at all, and which the exemption for
-    a team's own quarter must not cover: measured after the 4.5.0 prompt
+    a team's own quarter must not cover: measured after the 5.0.0 prompt
     shrink, "How many points did Jokic score in the 3rd quarter against
     Boston?" arrived as ``team_quarter_points`` for the Nuggets and the
     exemption kept it there. The same reader and the same team guard as
@@ -202,7 +202,7 @@ class RouterUnavailable(RuntimeError):
 
     .. versionadded:: 4.4.0
 
-    .. versionchanged:: 4.5.0
+    .. versionchanged:: 5.0.0
        Raised by the normalizer: the router's own model call is gone.
     """
 
@@ -218,7 +218,7 @@ class Route:
     (:func:`~association.query.parse.reading_from_route`). A route the stages
     settle, or one replayed, carries none.
 
-    .. versionchanged:: 4.5.0
+    .. versionchanged:: 5.0.0
        ``decisions`` added.
     """
 
@@ -1468,7 +1468,7 @@ def _route_shot_value(intent: str, slots: dict[str, Any], question: str) -> None
     left the slot empty - never over a value it did fill, and only where
     exactly one value is named ("twos and threes" is neither).
 
-    .. versionadded:: 4.5.0
+    .. versionadded:: 5.0.0
     """
     if intent not in _SHOT_VALUE_INTENTS or isinstance(slots.get("shot_value"), int):
         return
@@ -1689,7 +1689,7 @@ def _route_rate(intent: str, slots: dict[str, Any], question: str) -> None:
     stat = slots.get("stat")
     if isinstance(stat, str) and stat in ("netpoints", "netpoints_per_100", "netpoints_total"):
         # "who are the top 10 in adjusted offensive netpoints" arrived as
-        # the total after the 4.5.0 prompt shrink; the side word decides.
+        # the total after the 5.0.0 prompt shrink; the side word decides.
         sides = [name for name, pattern in SIDE_WORDS.items() if pattern.search(question)]
         if len(sides) == 1:
             slots["stat"] = f"netpoints_{sides[0]}" + ("_per_100" if stat.endswith("_per_100") else "")
@@ -1720,11 +1720,11 @@ def _route_team_total(intent: str, slots: dict[str, Any], question: str) -> None
     ``team_stat`` does not honor - ``check_scope`` refuses it - so the
     compiler reads the season's raw total.
     "how many 3 pointers have the magic made so far this season" arrived as
-    ``team_stat`` after the 4.5.0 prompt shrink (it was ``leaderboard`` with
+    ``team_stat`` after the 5.0.0 prompt shrink (it was ``leaderboard`` with
     no team before, which the reading restored and the compiler answered)
     and was answered "11.7 per game" - the right stat, the wrong question.
 
-    .. versionadded:: 4.5.0
+    .. versionadded:: 5.0.0
     """
     if intent != "team_stat" or slots.get("rate") or not _TEAM_TOTAL.search(question) or _PER_GAME_WORDS.search(question):
         return
@@ -2099,7 +2099,7 @@ def _route_triple_double_abbreviation(raw: dict[str, Any], question: str) -> Non
         return
     raw["stat"] = "triple_double"
     raw.pop("shot_value", None)
-    # `shot_chart` too, since the 4.5.0 prompt shrink: the "3" reads as a
+    # `shot_chart` too, since the 5.0.0 prompt shrink: the "3" reads as a
     # shot to the model ("luka td3s home" arrived as a chart of his twos),
     # and a count of triple-doubles is never a chart unless the question
     # asks for one to be drawn.
@@ -2142,7 +2142,7 @@ def _route_team_and_player_intents(raw: dict[str, Any], question: str) -> None:
         raw["intent"] = "shot_chart" if _SHOT_WORDS.search(question) else "other"
     if raw["intent"] in _FINGERPRINT_REROUTABLE and _FINGERPRINT_NAMED.search(question):
         # The reverse: "compare fingerprints for embiid vs jokic in 2026"
-        # arrived as player_compare after the 4.5.0 prompt shrink, and a
+        # arrived as player_compare after the 5.0.0 prompt shrink, and a
         # table of averages is not the radar the word asks for. The word
         # is as unmistakable as "coach"; nothing else here is named it.
         raw["intent"] = "fingerprint"
@@ -2177,7 +2177,7 @@ def _route_one_player_intents(raw: dict[str, Any], question: str, listed: list[s
     if raw["intent"] == "player_compare" and len(listed) == 1 and not raw.get("player"):
         # One player "compared" with nobody is his own line (or log):
         # "alperen sengun double-doubles vs southeast division career away"
-        # arrived so after the 4.5.0 prompt shrink, and player_compare needs
+        # arrived so after the 5.0.0 prompt shrink, and player_compare needs
         # two. The name moves to the slot the line reads.
         raw["intent"] = "game_log" if _LOG_WORDS.search(question) or _GAMES_WORDS.search(question) else "player_stat"
         raw["player"] = listed[0]
@@ -2187,7 +2187,7 @@ def _route_one_player_intents(raw: dict[str, Any], question: str, listed: list[s
     _route_pair_over_seasons(raw, question, listed)
     if raw["intent"] == "game_log" and _HOW_MANY.search(question) and raw.get("stat") in _GAMES_STATS and not any(p.search(question) for p in ORDER_WORDS.values()):
         # "how many games did embid play" arrived as a log of his most
-        # recent game (order recent, limit 1) after the 4.5.0 prompt shrink;
+        # recent game (order recent, limit 1) after the 5.0.0 prompt shrink;
         # the count is the line's ("... in 38 games"), which player_stat
         # states, and a log of one game states nothing of the kind.
         raw["intent"] = "player_stat"
@@ -2196,7 +2196,7 @@ def _route_one_player_intents(raw: dict[str, Any], question: str, listed: list[s
     if raw["intent"] == "player_stat" and not _named_player(raw) and _WHO_RANKS.search(question):
         # No player named and "who ... the most": the league's ranking, not
         # one player's line - "who attempted the most three pointers this
-        # season?" arrived as player_stat after the 4.5.0 prompt shrink.
+        # season?" arrived as player_stat after the 5.0.0 prompt shrink.
         raw["intent"] = "leaderboard"
 
 
@@ -2254,13 +2254,13 @@ def _route_line_and_record_intents(raw: dict[str, Any], question: str) -> bool:
     if raw["intent"] == "with_without" and not _played_together_absent(question) and not _played_together(question) and any(pattern.search(question) for pattern in ORDER_WORDS.values()):
         # No teammate named, and "the last 7 games": a team's log, not a
         # split. "KNICKS point differential over the last 7 games" arrived
-        # as with_without after the 4.5.0 prompt shrink (day5) and answered
+        # as with_without after the 5.0.0 prompt shrink (day5) and answered
         # the last seven REGULAR-season games where the last seven were the
         # Finals - game_log reads both types for "last N" (_route_game_log_recent_span).
         raw["intent"] = "game_log"
     if raw["intent"] in _PLAYED_TOGETHER_REROUTABLE and _RECORD.search(question) and _threshold_from_text(question) is None and (_played_together(question) or _names_after(_ABSENT_NAMED, question)):
         # "PHI record when Embiid and Paul George play" arrived as
-        # head_to_head, the Pacers invented as the opponent, after the 4.5.0
+        # head_to_head, the Pacers invented as the opponent, after the 5.0.0
         # prompt shrink; with no threshold it is the with/without split
         # (#156's reading, which `_route_threshold` makes for record_when).
         # "record with Embiid out" is the same split, from the other side.
@@ -2571,7 +2571,7 @@ def _route_relation_intent_slots(intent: str, slots: dict[str, Any], question: s
         slots.pop("season", None)
     if intent in ("threshold_count", "single_game_high") and isinstance(slots.get("limit"), int) and not _names_a_count(question):
         # The model's `limit: 1` for "who had the most" under a leaderboard
-        # (its parent since 4.5.0) is filler here: the count's and the
+        # (its parent since 5.0.0) is filler here: the count's and the
         # high's answers name the runner-ups, which the model's prompt for
         # the child never asked it to cut.
         slots.pop("limit", None)
@@ -2660,7 +2660,7 @@ def _route_record_when_threshold(intent: str, slots: dict[str, Any], question: s
     pairs = list(_THRESHOLD_PAIR.finditer(question))
     if len(pairs) != 1:
         return
-    # threshold_count too, since 4.5.0: assigned from the words under a
+    # threshold_count too, since 5.0.0: assigned from the words under a
     # parent (subject.KIND_ASSIGNED_INTENTS), its stat is whatever the model
     # filed for the PARENT - "Who had the most 30+ point games" arrived
     # under leaderboard with threePointFieldGoalsMade - and the pair's own
@@ -2809,7 +2809,7 @@ def _drop_filler_limit(intent: str, slots: dict[str, Any], question: str) -> Non
         # limit the question never set: "paul reed gamelog with 25
         # minutes" arrived with order='recent', limit=1 and answered his most
         # recent game where his log was asked; "mikal bridges game log with
-        # less than 15 fga ..." arrived with limit=15 (day5, after the 4.5.0
+        # less than 15 fga ..." arrived with limit=15 (day5, after the 5.0.0
         # prompt shrink) and listed fifteen games across two season types
         # where the line's own number was read as a count. A model `order`
         # on game_log is kept whatever the patterns miss (_validate_order),
@@ -2928,7 +2928,7 @@ def _route_game_log_recent_span(intent: str, slots: dict[str, Any], question: st
 #: The slot keys a raw route carries into the stages: the router model's
 #: schema properties less the intent, which is the shape the parser writes
 #: its names, stat and window in now that the model classification is gone
-#: (4.5.0). What :func:`settle` keeps of a settled route before running the
+#: (5.0.0). What :func:`settle` keeps of a settled route before running the
 #: stages again, since every other key is one the stages themselves read off
 #: the question for the intent they were run under (``since`` for a
 #: ``game_log``, ``limit``-as-seasons for a ``player_history``), and would
@@ -2961,7 +2961,7 @@ def settle(intent: str, slots: dict[str, Any], question: str) -> Route:
     record is ``with_without`` - and the caller reads the returned intent
     rather than assuming its own.
 
-    .. versionadded:: 4.5.0
+    .. versionadded:: 5.0.0
     """
     raw: dict[str, Any] = {key: value for key, value in slots.items() if key in _MODEL_SLOTS}
     raw["intent"] = intent

@@ -658,7 +658,7 @@ def _with_without_held(mates: Sequence[str], predicates: Sequence[tuple[str, tup
     into ``params``; or, with none stated, that he appeared - the one clause
     :func:`_with_without_games` always had, over ``$mates``.
 
-    .. versionadded:: 4.5.0
+    .. versionadded:: 5.0.0
     """
     if not predicates or all(p == ("played", None) for p in predicates):
         return "list_contains($mates, m.athlete_id)"

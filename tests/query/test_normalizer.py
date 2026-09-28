@@ -56,7 +56,7 @@ def test_the_schema_asks_for_the_names_and_the_stat_and_requires_both() -> None:
     required. And nothing else is asked for: no intent and no slot a grammar
     reads from the words, so there is no enum an intent could be parked in
     and no slot that crowds out another, the two lessons the router's schema
-    taught (its tests went with it in 4.5.0)."""
+    taught (its tests went with it in 5.0.0)."""
     assert set(NORMALIZER_SCHEMA["properties"]) == {"names", "stat"}
     assert NORMALIZER_SCHEMA["required"] == ["names", "stat"]
 

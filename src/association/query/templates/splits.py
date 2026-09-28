@@ -183,7 +183,7 @@ def _condition_span_label(covered: _Scope, scope: Scope, first: Any, last: Any) 
     :meth:`_Scope.label` reads the actual seasons the narrowed games came
     from rather than defaulting to "now".
 
-    .. versionchanged:: 4.5.0
+    .. versionchanged:: 5.0.0
        Says "from X through Y" once ``scope.until`` bounds the other end too,
        matching :meth:`_Span.during`'s wording (see :func:`_team_span_label`,
        fixed the same way) - before this, "from 2019-20 to 2021-22" was
@@ -230,7 +230,7 @@ def _condition_span_label(covered: _Scope, scope: Scope, first: Any, last: Any) 
 # would silently answer a run over a scattered, non-adjacent subset rather
 # than the real games in between.
 #
-# `conditions` is here (added 4.5.0, ISSUES.md) for the same reason as
+# `conditions` is here (added 5.0.0, ISSUES.md) for the same reason as
 # `without`/`split`/`below`/`above`: a companion's role - he started, came off
 # the bench, or reached a line - is a fact about a named PLAYER's game, and a
 # team or league branch has no such player settled to check it against.
@@ -283,7 +283,7 @@ def _team_span_label(span: _Span, first: Any = None, last: Any = None) -> str:
        span rendered the same label as a plain career one, with nothing
        saying the question had named a starting year at all.
 
-    .. versionchanged:: 4.5.0
+    .. versionchanged:: 5.0.0
        Says "from X through Y" once ``span.until`` bounds the other end too -
        :meth:`_Span.during`'s own wording. Before this, a team's own record
        "from 2019-20 to 2021-22" was labeled "since 2020 (2020-2026 ...)",
@@ -399,7 +399,7 @@ def player_splits(ctx: TemplateContext, reading: Reading) -> TemplateResult:
        shown stays the one it always was - both groups side by side, folded
        back from the half the question named.
 
-    .. versionchanged:: 4.5.0
+    .. versionchanged:: 5.0.0
        A team with no player named honors ``until`` too, bounding a since
        range's other end ("splits from 2019-20 to 2021-22") rather than
        reading every season since - and refuses a ``conditions`` entry by
@@ -741,7 +741,7 @@ def _with_without_named(scope: Scope) -> tuple[list[str], bool, dict[str, tuple[
     ``with_player``'s, else the ones a ``conditions`` entry gives a role -
     whether it asked "without", and each name's role.
 
-    .. versionadded:: 4.5.0
+    .. versionadded:: 5.0.0
     """
     # Lists, as the slots always were: teammate_names reads a list or one
     # bare name, and a tuple would be neither - every teammate dropped.
@@ -763,7 +763,7 @@ def _with_without_roles(conditions: tuple[ConditionSpec, ...]) -> dict[str, tupl
     the resolved teammates. A ``played``/``absent`` entry adds nothing the
     ``with_player`` and ``without`` lists do not already say.
 
-    .. versionadded:: 4.5.0
+    .. versionadded:: 5.0.0
     """
     roles: dict[str, tuple[str, tuple[str, int] | None]] = {}
     for entry in conditions:
@@ -780,7 +780,7 @@ def _with_without_predicates(con: duckdb.DuckDBPyConnection, mates: list[Entity]
     """Each resolved teammate's predicate: the role a ``conditions`` entry
     naming him gives, else ``played``.
 
-    .. versionadded:: 4.5.0
+    .. versionadded:: 5.0.0
     """
     by_id: dict[str, tuple[str, tuple[str, int] | None]] = {}
     for text, role in roles.items():
@@ -796,7 +796,7 @@ def _with_without_verbs(predicates: list[tuple[str, tuple[str, int] | None]]) ->
     out" for the bench, "had 20+ points"/"did not" for a line - the words
     the question used, never "played" for a start it asked about.
 
-    .. versionadded:: 4.5.0
+    .. versionadded:: 5.0.0
     """
     kinds = {p for p, _ in predicates}
     if kinds == {"started"}:
@@ -1052,7 +1052,7 @@ def _record_when_group(by_hit: dict[bool | None, Any], hit: bool | None) -> dict
     grouping it (:func:`_record_when_team_base`), so ``None`` never appears
     there and this falls back to summing True and False alone.
 
-    .. versionchanged:: 4.5.0
+    .. versionchanged:: 5.0.0
        Keys on the value's own presence (``True``/``False``/``None``) - a
        blank-stat game still has a real result, so "every game" (``hit=None``)
        now counts it too, where it used to be reachable only through the
@@ -1074,7 +1074,7 @@ def _record_when_blank_note(count: int, unit: str) -> str:
     game still has a real result, so it is counted in "all his games" but in
     neither threshold row.
 
-    .. versionadded:: 4.5.0
+    .. versionadded:: 5.0.0
     """
     if not count:
         return ""
@@ -1104,7 +1104,7 @@ def _record_when_answer(
     points AND 5+ assists" shape, where the threshold is the split and a
     ``below``/``above`` line narrows the pool it is read over.
 
-    .. versionchanged:: 4.5.0
+    .. versionchanged:: 5.0.0
        Keys the threshold groups on the raw tri-state comparison
        (``True``/``False``/``None``) rather than ``bool(row[0])``, which
        folded a blank-stat game (NULL on a rebuilt row) into the same key as a
@@ -1402,7 +1402,7 @@ def streak(ctx: TemplateContext, reading: Reading) -> TemplateResult:
        each other, so a run over them would not be the run the question asked
        for.
 
-    .. versionchanged:: 4.5.0
+    .. versionchanged:: 5.0.0
        The team and league branches also honor ``until``, bounding a since
        range's other end ("longest streak from 2019-20 to 2021-22" rather
        than reading every season since) - and refuse a ``conditions`` entry

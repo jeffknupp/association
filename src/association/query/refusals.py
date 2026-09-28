@@ -50,7 +50,7 @@ def unanswerable(con: duckdb.DuckDBPyConnection, intent: str, slots: dict[str, A
 
     .. versionadded:: 4.4.0
 
-    .. versionchanged:: 4.5.0
+    .. versionchanged:: 5.0.0
        Takes the :class:`~association.query.subject.Subject` the agent read
        (read here when not given); the team-in-``player`` refusal reads it.
     """
@@ -157,7 +157,7 @@ def _team_boolean_count(con: duckdb.DuckDBPyConnection, intent: str, slots: dict
     """A team's count of its players' triple-doubles or double-doubles, as a
     ranking with the team filed: "oklahoma city thunder all-time triple
     doubles vs west" arrives as ``leaderboard`` with ``team`` and
-    ``stat: triple_double`` (day5, after the 4.5.0 prompt shrink), and the
+    ``stat: triple_double`` (day5, after the 5.0.0 prompt shrink), and the
     compiler's decline said "no ranking reads triple_double" - the wrong
     cause, since one player's triple-doubles ARE counted; what is not read
     is the team's aggregate of them."""

@@ -4,7 +4,7 @@ step c).
 
 The router's prompt asked a 3B model for an intent and every slot, and a
 growing chain of code corrected what it returned (its model call went in
-4.5.0; the stages in ``router.py`` settle the parser's route now). Measured
+5.0.0; the stages in ``router.py`` settle the parser's route now). Measured
 with the router withheld, what that chain could not replace is two things: the stat
 vocabulary ("fta" is ``freeThrowsAttempted``) and the spans that are names. So
 this is the whole job left to the model, and :func:`association.query.parse.read_route`
@@ -18,7 +18,7 @@ became Ben Simmons (AGENTS.md, "Why embiid specifically"). Measured over the
 277 day10 wordings: 299 of 302 names copied verbatim, 0.8s a question on
 qwen2.5:3b (``~/association-research/parser-greenfield/RESULT.md``).
 
-.. versionadded:: 4.5.0
+.. versionadded:: 5.0.0
 """
 
 from __future__ import annotations
@@ -113,7 +113,7 @@ class Normalized:
     """The model's two answers: the spans it read as names, and a stat key
     (``""`` for none). Neither is trusted - see the module docstring.
 
-    .. versionadded:: 4.5.0
+    .. versionadded:: 5.0.0
     """
 
     names: list[str] = field(default_factory=list)
@@ -127,7 +127,7 @@ def normalize(model: str, question: str) -> Normalized | None:
     not be asked at all - the same two sentences the router gave, since the
     reader has to be sent to the server rather than to their question.
 
-    .. versionadded:: 4.5.0
+    .. versionadded:: 5.0.0
     """
     try:
         response = ollama.chat(

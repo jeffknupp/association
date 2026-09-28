@@ -3,7 +3,7 @@ slots are and are not trusted to have gotten right, read against the
 question's own words.
 
 Most cases hand the stages a reply the router's model gave, recorded; the
-model call that decoded it is gone (4.5.0), so they run the stages directly
+model call that decoded it is gone (5.0.0), so they run the stages directly
 over the same reply (:func:`_ask`)."""
 
 import json
@@ -193,7 +193,7 @@ def test_every_template_is_reachable_from_the_reader() -> None:
     (``subject.KIND_ASSIGNED_INTENTS``). A template in none of the lists is
     dead code that no question can ever reach.
 
-    Until 4.5.0 the first route was the router's schema enum, and this read
+    Until 5.0.0 the first route was the router's schema enum, and this read
     ``test_every_ported_template_has_an_intent_in_the_schema``."""
     from association.query.parse import PARENT_GRAMMAR
     from association.query.subject import KIND_ASSIGNED_INTENTS
@@ -304,7 +304,7 @@ def test_the_side_values_match_the_scope() -> None:
     """Two hand-maintained lists of the same names is the shape that produced
     the player_compare bug - a value here the Scope refuses falls the question
     through, and one the Scope holds that is missing here gets dropped. The
-    other list was the router's schema enum until 4.5.0; every route now
+    other list was the router's schema enum until 5.0.0; every route now
     passes the Scope's door (``Scope.from_slots``)."""
     assert set(SIDE_VALUES) == _scope_values("side")
 
@@ -578,7 +578,7 @@ def test_the_order_intents_are_the_ones_that_honor_order() -> None:
 
 def _ask(question: str, payload: str) -> Route:
     """The stages on a real question, over a fixed model reply: what the
-    router returned for it, since its model call (deleted in 4.5.0) only
+    router returned for it, since its model call (deleted in 5.0.0) only
     decoded the reply before handing it to them."""
     return _settle(json.loads(payload), question)
 

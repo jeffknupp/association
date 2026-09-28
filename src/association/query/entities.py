@@ -965,7 +965,7 @@ def _team_grounded(con: duckdb.DuckDBPyConnection, question: str, team: Entity) 
 
 #: Ordinary English words that also happen to be an NBA player's whole
 #: surname - measured against the full routing corpus
-#: (the routing check's cases, retired in 4.5.0, plus
+#: (the routing check's cases, retired in 5.0.0, plus
 #: ``/home/jeff/association-research/statmuse-2026-09/feed_queries.txt``, 380
 #: questions) before :data:`~association.query.templates.common.SUBJECT_RESTORABLE_INTENTS`
 #: shipped: "Best true shooting percentage last season?" and "Best record
@@ -1246,7 +1246,7 @@ def read_near_spelling(con: duckdb.DuckDBPyConnection, text: str) -> Entity | No
     somebody in most questions ("season" is one edit from Tari Eason), which
     is measured and recorded in AGENTS.md.
 
-    .. versionadded:: 4.5.0
+    .. versionadded:: 5.0.0
     """
     tokens = [t for t in text.split() if t]
     if not tokens or _team_named(con, text) is not None:
@@ -1530,7 +1530,7 @@ def note_typo_reading(text: str, chosen: Entity) -> None:
     reach the :data:`_NAME_READINGS` context.
 
     .. versionadded:: 4.4.0
-    .. versionchanged:: 4.5.0
+    .. versionchanged:: 5.0.0
        The sentence says how to reach anybody else - it used to name the
        reading alone - and :func:`read_near_spelling` writes it for every name
        slot :func:`resolve_player` and the chart resolver settle, not only a
@@ -1631,7 +1631,7 @@ def resolve_player(
        yields to the one namesake with data where its owner has none. Both are
        reported through :func:`collect_name_readings`.
 
-    .. versionchanged:: 4.5.0
+    .. versionchanged:: 5.0.0
        A name that matches nobody but is a near spelling of exactly one player
        is that player, reported the same way (:func:`read_near_spelling`),
        where it used to be :class:`NotFound`.

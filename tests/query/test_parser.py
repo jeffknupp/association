@@ -154,7 +154,7 @@ def test_a_player_against_a_team_is_never_a_matchup(con: duckdb.DuckDBPyConnecti
     fox vs magic without wembyanama"), and ``player_matchup`` carried two
     repairs to fold each back into the player's own games. A matchup is read
     only where the question names two players (the pair kind), so neither
-    shape reaches it; the repairs are gone (4.5.0)."""
+    shape reaches it; the repairs are gone (5.0.0)."""
     for question, names in (
         ("maxey vs celtics without embiid", ["maxey", "celtics", "embiid"]),
         ("maxey vs celtics without embiid", ["maxey", "Celtcs", "embiid"]),

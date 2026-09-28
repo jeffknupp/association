@@ -88,7 +88,7 @@ def team_named_in(con: duckdb.DuckDBPyConnection, question: str) -> str | None:
 
     .. versionadded:: 4.4.0
 
-    .. versionchanged:: 4.5.0
+    .. versionchanged:: 5.0.0
        A possessive ("the Sixers' record") names the team as the bare word does.
     """
     for found in _WORD.findall(question.lower()):
@@ -156,7 +156,7 @@ class TeamQuery:
 
     .. versionadded:: 4.4.0
 
-    .. versionchanged:: 4.5.0
+    .. versionchanged:: 5.0.0
        Holds the typed :class:`~association.query.reading.Scope` as ``scope``
        in place of the ``slots`` dict, and every field is keyword-only.
     """
@@ -179,7 +179,7 @@ class TeamResult:
 
     .. versionadded:: 4.4.0
 
-    .. versionchanged:: 4.5.0
+    .. versionchanged:: 5.0.0
        No ``coverage_note``: the agent appends
        :func:`~association.query.templates.common.coverage_caveat` to a
        composed answer as it does to a template's, and this carrying one too
@@ -369,11 +369,11 @@ def run_team(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> TeamResult:
        Checks the coverage floor first, and carries a partial-season caveat
        on the result (#197, ISSUES.md).
 
-    .. versionchanged:: 4.5.0
+    .. versionchanged:: 5.0.0
        Carries no partial-season caveat: the agent appends the same note to
        every composed answer, and it printed twice.
 
-    .. versionchanged:: 4.5.0
+    .. versionchanged:: 5.0.0
        Declines a point whose scope carries a ``threshold`` (ISSUES.md #144),
        rather than silently answering the season or narrowed-window total
        with the threshold dropped. "What was the celtics record when they

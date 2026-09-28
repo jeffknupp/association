@@ -195,7 +195,7 @@ def _joined(names: list[str], word: str = "and") -> str:
 CONDITION_PREDICATES: frozenset[str] = frozenset({"played", "absent", "started", "bench", "reached"})
 """Every value :attr:`Condition.predicate` takes.
 
-.. versionadded:: 4.5.0
+.. versionadded:: 5.0.0
 """
 
 
@@ -216,7 +216,7 @@ class Condition:
     time on the subject's team (:func:`_teammate_stints`): "Nets record
     without KD" must not count the decades before he arrived.
 
-    .. versionadded:: 4.5.0
+    .. versionadded:: 5.0.0
     """
 
     player: Entity
@@ -247,7 +247,7 @@ def condition_clause(condition: Condition, box: BoxSource) -> tuple[list[str], l
     predicate; an absence is its negation, bounded by the tenure clause
     where one is carried.
 
-    .. versionadded:: 4.5.0
+    .. versionadded:: 5.0.0
     """
     if condition.predicate == "absent" and condition.tenure is not None:
         # Word for word the clause pair `Narrowed.without` has always added:
@@ -329,7 +329,7 @@ class Narrowed:
         """The teammates whose absence the games were narrowed to - the
         own-side ``absent`` conditions' players, in order.
 
-        .. versionchanged:: 4.5.0
+        .. versionchanged:: 5.0.0
            A view over :attr:`conditions`, not a field of its own.
         """
         return [c.player for c in self.conditions if c.side == "own" and c.predicate == "absent"]
@@ -338,7 +338,7 @@ class Narrowed:
     def tenure(self) -> list[tuple[str, list[Any]]]:
         """Each absent teammate's tenure clause, aligned with :attr:`without`.
 
-        .. versionchanged:: 4.5.0
+        .. versionchanged:: 5.0.0
            A view over :attr:`conditions`.
         """
         return [c.tenure or ("TRUE", []) for c in self.conditions if c.side == "own" and c.predicate == "absent"]
@@ -348,7 +348,7 @@ class Narrowed:
         ``extra`` - unless the same player is already held under the same
         predicate and side (the same man named twice narrows nothing).
 
-        .. versionadded:: 4.5.0
+        .. versionadded:: 5.0.0
         """
         if any(c.player.id == condition.player.id and c.predicate == condition.predicate and c.side == condition.side for c in self.conditions):
             return
@@ -547,7 +547,7 @@ def league(season_clause: str, season_params: list[Any], season_type: int) -> Na
 #: repeated (or forgotten) in each of :func:`rows_sql`'s callers, per
 #: ISSUES.md "A game log's same-date rows come out in an unstable order".
 #:
-#: .. versionadded:: 4.5.0
+#: .. versionadded:: 5.0.0
 ROWS_TIEBREAK = "pgl.event_id, pgl.player_name"
 
 
@@ -556,7 +556,7 @@ def rows_sql(narrowed: Narrowed, select: str, *, order: str, limit: int | None =
     ``select`` and ``order`` are column expressions written in code, ordered
     after by :data:`ROWS_TIEBREAK` so no caller has to add its own.
 
-    .. versionchanged:: 4.5.0
+    .. versionchanged:: 5.0.0
        Appends :data:`ROWS_TIEBREAK` after ``order``.
     """
     where, params = narrowed.clauses(rebuilt=rebuilt)

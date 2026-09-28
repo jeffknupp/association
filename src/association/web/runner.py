@@ -141,7 +141,7 @@ class AgentRunner:
         the serious one - the history is context nobody asked to spend, and a
         follow-up is read against it: "what about jokic" from one person was
         read against whatever a stranger had asked before it - by the router's
-        model, which was shown the previous question until 4.5.0, and by the
+        model, which was shown the previous question until 5.0.0, and by the
         fall-through agent, which reads the whole conversation. Reset under
         the lock, where no question is in flight to lose its own history
         mid-answer.

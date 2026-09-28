@@ -145,7 +145,7 @@ def resolve_chart_player(con: duckdb.DuckDBPyConnection, player_name: str, avail
        Hayes-Davis and Trayce Jackson-Davis also had 2026 shots, and 22 more
        names did the same that season.
 
-    .. versionchanged:: 4.5.0
+    .. versionchanged:: 5.0.0
        A name that matches nobody but is a near spelling of exactly one player
        resolves to him rather than None, and the reading is reported through
        :func:`association.query.entities.collect_name_readings`. See
@@ -213,7 +213,7 @@ def render_shot_chart(
        reaches unlabeled shots, and may be refused for a season that cannot
        separate them; see :func:`render_for_player`.
 
-    .. versionchanged:: 4.5.0
+    .. versionchanged:: 5.0.0
        A near spelling of exactly one player is drawn for him, and the message
        ends with the sentence saying so. See :func:`resolve_chart_player`.
     """

@@ -759,7 +759,7 @@ def _player_history_subject(con: duckdb.DuckDBPyConnection, scope: Scope) -> Ent
     ``player_history`` and the compiler's season-line source
     (``compose.present._present_player_history``) settle him.
 
-    .. versionadded:: 4.5.0
+    .. versionadded:: 5.0.0
     """
     # A named season anchors the range's END rather than replacing it, so
     # "3pt% over the 4 seasons through 2024" still spans four rows.
@@ -776,7 +776,7 @@ def _player_history_read(con: duckdb.DuckDBPyConnection, player: Entity, scope: 
     line under a career. Raises :class:`TemplateUnsupported` for a stat with
     no per-season column.
 
-    .. versionadded:: 4.5.0
+    .. versionadded:: 5.0.0
     """
     latest = scope.season or current_season()
 
@@ -1220,7 +1220,7 @@ def _player_stat_season_line_subject(con: duckdb.DuckDBPyConnection, scope: Scop
     line over, settled the one way both the template and the compiler's
     season-line source (``compose.present._present_player_stat``) settle them.
 
-    .. versionadded:: 4.5.0
+    .. versionadded:: 5.0.0
     """
     return scoped_player(con, scope, "player_stat needs a player name", table="player_season_stats_deduped", available=_SEASON_LINES, span=scope.span, season=scope.season)
 
@@ -1229,7 +1229,7 @@ def _player_stat_season_line(con: duckdb.DuckDBPyConnection, player: Entity, spa
     """An unnarrowed ``player_stat``: one season's line or a career, read
     from ``player_season_stats_deduped`` over a settled player and span.
 
-    .. versionadded:: 4.5.0
+    .. versionadded:: 5.0.0
     """
     stat = scope.stat
     # Before the ESPN-served columns, because these carry their own table, their
@@ -1271,7 +1271,7 @@ def _player_stat_reads_box_scores(scope: Scope, measures: list[MeasureFilter]) -
        ``team`` slot - see that function's docstring for the recorded case
        that slot silently narrowed before this distinction existed.
 
-    .. versionchanged:: 4.5.0
+    .. versionchanged:: 5.0.0
        Also true for ``conditions`` - a teammate's role ("maxey points when
        embiid starts") is a narrowing of the GAMES the same as an absent
        teammate already was, and the season line has no column for it either.

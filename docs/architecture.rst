@@ -111,7 +111,7 @@ router whose model classified the whole question into an intent and its slots:
 measured on yardstick-v2's live runs over the same 277 wordings, the parser
 scored 162/175 against the router's 160, with fewer wrong answers, in half the
 time (1.1s a question against 2.3s median), and the router's classification
-went in 4.5.0 (ROADMAP plan item 6).
+went in 5.0.0 (ROADMAP plan item 6).
 
 **Templates** (:mod:`association.query.templates`) do the deterministic half.
 Each owns one question shape. The ones that read a player's box scores - game

@@ -111,7 +111,7 @@ def _shots_windowed(scope: Scope) -> bool:
 #: the same reason, though it never arrives without `since` beside it
 #: (``common._validated_until``), so this is a no-op addition for it alone.
 #:
-#: .. versionadded:: 4.5.0
+#: .. versionadded:: 5.0.0
 _SHOTS_GAME_NARROWING_SLOTS = RELATION_SCOPING - {"order", "span", "season_n", "date", "below", "above"}
 
 
@@ -122,7 +122,7 @@ def _shots_other_narrowing(scope: Scope, date: str | None, measures: list[Measur
     one Eastern date, ``since``, a calendar ``situation``, or a companion's
     role (``conditions``) - see :data:`_SHOTS_GAME_NARROWING_SLOTS`.
 
-    .. versionchanged:: 4.5.0
+    .. versionchanged:: 5.0.0
        Derived from :data:`~association.query.templates.common.RELATION_SCOPING`
        rather than a hand-written list that predated ``situation`` and
        ``conditions`` joining it - both silently answered the whole span:

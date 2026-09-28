@@ -301,7 +301,7 @@ supplies may be fiction - the router's then, the normalizer's now.
 
 So a name is checked against the question before a template reads it:
 `subject.read_subject` reads who the question is about from its own spans,
-and `subject.apply_subject` writes those names into the scope (until 4.5.0 this
+and `subject.apply_subject` writes those names into the scope (until 5.0.0 this
 was `entities.override_invented_players`) - both inside the parser's last step,
 `parse.reading_from_route`, whose `Reading` is all the agent answers from. What counts as the question
 supporting a name (`subject.question_supports`) is deliberately generous, because the router's expansions are usually the
@@ -1246,6 +1246,42 @@ notification stops instead, and has to be resumed by hand - two did in one
 session. Tell every one not to run ollama, `association query` or a live
 yardstick run unless it is the only one doing so - one ollama caller at a time
 (see "Working on the query path").
+
+Four rules from the sessions where agents cost more than they saved (Jeff,
+2026-09-28: worktrees behind master, stalls the lead could not see, better
+ideas discarded to stay in scope, sweeps filing as many entries as they
+closed):
+
+- **Base the worktree on pushed master, and have the agent check.** The
+  tool branches a worktree from the main checkout's HEAD, so a lead working
+  on its own branch hands out a stale base unless it pushes and
+  fast-forwards that checkout first
+  (`git -C ~/code/association merge --ff-only origin/master`). Put the SHA
+  in the prompt and make the agent's first command `git log --oneline -1`:
+  a mismatch stops the task before any work is done on the wrong tree.
+- **Foreground, with a budget, and a lead who looks.** Every command in the
+  foreground, each with the time it should take (the table under "Before
+  you commit"; the rehearsal is about four minutes) - a command past three
+  times its budget is killed and reported, never waited on. The lead reads
+  the agent's transcript on a cadence (the task's output file and its
+  mtime) and messages an agent silent for fifteen minutes, rather than
+  waiting for a notification a stalled agent never sends. The lead's own
+  waits are on a process, never on a file appearing:
+  `until [ -s out ]; do sleep; done` spins to the timeout when the job died
+  before writing it.
+- **Fix what is cheap, file the rest, discard nothing.** "Recording
+  findings" was read as "stay in your lane", and bug sweeps filed as many
+  entries as they closed. A finding whose fix is small (about twenty lines),
+  in files the agent already owns, with a test, is fixed in its own commit
+  and reported; the rest is filed. A better approach than the one asked
+  for is treated the same way: taken when it is within the agent's files
+  and budget, otherwise stated in the report with its measured tradeoff.
+  Silence is the one outcome not allowed.
+- **Parallelism is for disjoint, bounded, measurable work** - a fix with its
+  own tests and a rehearsal to check it against, a relation over its own
+  tables. The parser-compiler seam is one agent's at a time: two branches
+  on it invalidate each other's measurements (the next paragraph) and
+  collide on helper names.
 
 **Re-verify a merged agent's load-bearing measurement yourself, and re-read
 `ISSUES.md` for entries the pair invalidated.** Each branch is sound alone and

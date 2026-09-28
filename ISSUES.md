@@ -173,7 +173,7 @@ before that commit needs re-checking against the current warehouse.
   sentinel `stat` and drops the filler player, and `leaderboard` refuses on
   the sentinel, naming the real cause and pointing at `shot_distance` for one
   named player, before either wrong-cause path can run.
-- **Parser path (4.5.0, the router gone):** "game score nba leader" answers
+- **Parser path (5.0.0, the router gone):** "game score nba leader" answers
   the game-score leaderboard (Jokic 28.68), read from the words by
   `parse.MEASURE_GRAMMAR` before the model's key, and "defensive rebounds" is
   `MEASURE_WORDS`' own key. The shape stays possible: the normalizer's `stat`
@@ -499,7 +499,7 @@ those were found.
   needs measuring how often this shape appears in the routing corpus before
   building anything, since a broad "ask on short questions" rule risks
   breaking working ones.
-- **Parser path (4.5.0, the router gone):** the parser reads "rec" beside one
+- **Parser path (5.0.0, the router gone):** the parser reads "rec" beside one
   player as his own record (`player_splits`, from its recorded reply
   `names: ['Tatum']`): "Jayson Tatum, splits, 2026 regular season (16 games he
   played)", W-L by venue and 13-3 as a starter - a different guess from the
@@ -632,7 +632,7 @@ those were found.
   enforced nowhere). Compare yardstick runs only when nothing else was asking
   ollama anything at the same time, not merely "within one server load" as
   the original entry said - a load-time comparison does not catch this.
-- **After 4.5.0:** the router's model call is gone; the normalizer asks the
+- **After 5.0.0:** the router's model call is gone; the normalizer asks the
   same qwen2.5:3b on the same single-slot instance, so the mechanism applies
   to it unchanged - unmeasured on the normalizer.
 - **Source:** ours (a single-slot ollama instance under two concurrent
@@ -714,7 +714,7 @@ those were found.
   standing in for a year). Re-measured on this commit, after #95's fix: the
   bare `season` now drops (nothing in the text names a year), so the same
   question renders the CURRENT season instead - also not necessarily his best,
-  just a different unexamined guess. On the parser (4.5.0) no model supplies
+  just a different unexamined guess. On the parser (5.0.0) no model supplies
   a season at all, and it renders the current season the same way: "Rendered
   NetPoints fingerprint (total) for Nikola Jokic (2026 season, percentile
   scale)".
@@ -1568,7 +1568,7 @@ those were found.
 - **Why it is still open, at P3.** The fix is a list of regexes, one per shape
   somebody happened to ask in a 261-query sample. The structural fault is
   untouched: **`check_scope` still cannot refuse what the reader never
-  emits** (the router's schema until 4.5.0; the parser's grammar tables and
+  emits** (the router's schema until 5.0.0; the parser's grammar tables and
   the stages since), so the next narrowing nobody has thought of is dropped silently and
   answered fluently, exactly as these eight were. It is P3 rather than P1
   because no measured question is wrong today - but the mechanism that produced
@@ -1708,7 +1708,7 @@ those were found.
   all-time triple doubles vs west" looked like a third instance but is not -
   "vs west" is Western Conference scoping, which is #25's gap, not this one.)
 - **User sees:** a fall-through to the slow agent for both, on the router.
-- **Parser path (4.5.0):** the kind reading routes a bare team subject to a
+- **Parser path (5.0.0):** the kind reading routes a bare team subject to a
   team-shaped intent. "cavaliers 3 pointers every game" (normalizer stubbed
   with the team's span and `threePointFieldGoalsMade`) answers `team_stat`:
   "The Cleveland Cavaliers' 3-pointers made per game was 14.3 in the 2026
@@ -2772,7 +2772,7 @@ those were found.
   wrong, 3 more fell through; 27 of 1,972 reasonable large-set questions name
   an award (regex also catches "since the all star break"). P1 by the file's
   own definition.
-- **Parser path (4.5.0):** still wrong. "nba mvps in 2010's" (normalizer
+- **Parser path (5.0.0):** still wrong. "nba mvps in 2010's" (normalizer
   stubbed with no names and no stat) reads parent `leaderboard` with
   `since: 2010, until: 2019` and answers the 2026 points-per-game board
   ("every player, 2026 regular season, by player (points per game, minimum 20
@@ -2950,17 +2950,9 @@ those were found.
 
 ## P4: tooling, docs, low impact
 
-### The unreleased changes remove documented API, and nothing yet says the next release is major
-- **Found:** 2026-09-28, the dead-code pass after plan item 6, step (e) - listing the public top-level names v4.4.0 shipped that HEAD lacks (ast over `git show v4.4.0:<module>` against HEAD, modules with no private path part).
-- **Evidence:** 20 public names in v4.4.0's modules are gone at `810d9fd`: `router.route`; `router_prompt.ROUTER_PROMPT`, `ROUTER_SCHEMA`, `ROUTER_NUM_CTX`, `ROUTER_PROMPT_TOKEN_BUDGET`; `entities.override_invented_players`, `override_nicknames`, `restore_dropped_players`, `undo_name_completion`, `teams_named_in`, `scope_from_question`, `player_record_against_a_team`; `refusals.pair_from_opponent`; `templates.common.TEAM_SUBJECT_RESTORABLE_INTENTS`; `compose.move.repair`, `compose.move.POSITIONS`; and four templates (`templates.players.threshold_count`, `single_game_high`, `player_history`, `templates.splits.record_when`), which the preamble exempts. `subject.apply_subject` no longer takes `con`. `CHANGES.md`'s preamble counts "the documented Python API" as what a major version protects, and autosummary documents every public module - yet no `## Unreleased` entry is labeled "Breaking:", and 134 directives say 4.5.0 (`git grep -c 'version\(added\|changed\):: 4.5.0' -- src`).
-- **User sees:** nothing in an answer. A caller of any of the sixteen non-template names breaks on what would be published as a minor upgrade.
-- **Next step:** decide before the bump (Jeff's call): either the next release is 5.0.0 - label the entries "Breaking:" and rewrite the 4.5.0 directives, as AGENTS.md's directive rule asks while `## Unreleased` records a breaking change - or the preamble names the query internals (the router's stages, the entity repairs, the compiler's moves) as outside the promise, the way it already names the templates. Settle it before step (f), which would remove `compose.answer`'s slot path and the slot adapters only the tests call (`compose.move.move_point`, `team_move_point`, `compose.adapt.to_reading`, `to_query`).
-- **Source:** ours.
-- **GitHub:** #264
-
 ### `player_stat` given a `team` slot answers this season and never mentions the team: "lebron stats as a starter for Miami"
 - **Found:** 2026-09-27, the step (c) rehearsal (the whole agent with the parser as reader and the normalizer's recorded replies, `~/association-research/yardstick-v2/run_offline_parser.py`), on an intermediate parser that wrote the player's own team into `team`.
-- **Evidence:** slots `{'player': 'LeBron James', 'team': 'Miami Heat', 'season_type': 2, 'split': 'starter'}` answered "LeBron James averaged 20.9 points, 6.1 rebounds and 7.2 assists per game in 60 games as a starter in the 2026 regular season." - his Lakers season, with Miami nowhere in the sentence. With no `team` slot the subject stage reads the own team and the span it implies, and the same question answers "... in 294 games with the Miami Heat as a starter over his career (2011-2014 ...)". The parser does not write the own team into `team` (`parse._read_route_names`; the subject stage writes it to `own_team`), so it does not reach this; the router reader did whenever its model filed the team, and it is gone (4.5.0).
+- **Evidence:** slots `{'player': 'LeBron James', 'team': 'Miami Heat', 'season_type': 2, 'split': 'starter'}` answered "LeBron James averaged 20.9 points, 6.1 rebounds and 7.2 assists per game in 60 games as a starter in the 2026 regular season." - his Lakers season, with Miami nowhere in the sentence. With no `team` slot the subject stage reads the own team and the span it implies, and the same question answers "... in 294 games with the Miami Heat as a starter over his career (2011-2014 ...)". The parser does not write the own team into `team` (`parse._read_route_names`; the subject stage writes it to `own_team`), so it does not reach this; the router reader did whenever its model filed the team, and it is gone (5.0.0).
 - **Ranked P4 (2026-09-27):** the parser writes a player's own team to `own_team`, never `team` (`subject._apply_own_team`), so no question read today reaches this; only a recorded route carrying `team` beside a player does (golden's router routes).
 - **User sees:** nothing on the parser. A fluent, correct-looking line about a different team's season for any route that carries `team` on `player_stat` - a recorded one, or a reader that files the own team there (step 3c moves the own-team writer into the parser).
 - **Next step:** find why `check_scope` lets `team` through for `player_stat` when the template does not narrow by it - either honor it as the own-team narrowing the subject stage already builds, or refuse it; warehouse-verified test on this question.
@@ -4225,7 +4217,7 @@ those were found.
 ### The Scope's door admits a float for an integer closed set: `shot_value` 3.0, `season_type` 3.0, `half` 2.0
 - **Found:** 2026-09-27, plan item 6 step (d) round 2, checking which values the removed template fallbacks could still meet.
 - **Evidence:** `reading._one_of` checks membership by equality, so `Scope.from_slots({"shot_value": 3.0})` keeps 3.0 - a float against `Literal[1, 2, 3]` - and `season_type` 3.0 and `half` 2.0 likewise, while `_whole` refuses `season` 2025.0 and `limit` 2.0 (measured on 0a7140a). The typed readers trust the Literal: `shots._shot_value` returns the float where the slot-dict code returned `int(3.0)`, `fingerprint` reads a season type of 3.0 as 3.0 where the slot-dict code fell back to the regular season, and `common._player_relation_season_type` passes it on the same way.
-- **User sees:** nothing today: nothing writes these slots from a float - the stages and the parser write integers, and the router's schema typed `shot_value` as an integer until its model call went (4.5.0).
+- **User sees:** nothing today: nothing writes these slots from a float - the stages and the parser write integers, and the router's schema typed `shot_value` as an integer until its model call went (5.0.0).
 - **Next step:** make `_one_of` refuse a value whose type is not the matching allowed member's type (bool is already refused), with a test per closed-set field, watched to fail first.
 - **Source:** ours.
 - **GitHub:** #253

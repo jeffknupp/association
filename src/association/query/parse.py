@@ -19,7 +19,7 @@ Nothing here reaches a model, and nothing here trusts a name it was given:
 a span that is no player's and no team's is dropped, never made a subject
 (ISSUES.md #236).
 
-.. versionadded:: 4.5.0
+.. versionadded:: 5.0.0
 """
 
 from __future__ import annotations
@@ -152,7 +152,7 @@ kind and whose words the question matches names the parent. The children
 (:data:`~association.query.subject.KIND_ASSIGNED_INTENTS`) are assigned
 under it by the subject reading, as they are on the router's parent today.
 
-.. versionadded:: 4.5.0
+.. versionadded:: 5.0.0
 """
 
 MEASURE_GRAMMAR: tuple[tuple[str, str], ...] = (
@@ -211,7 +211,7 @@ depends on the model - the NetPoints family above all (the 3B misses most
 of it), then the derived rates and the words :data:`~association.query.measures.MEASURE_WORDS`
 does not hold.
 
-.. versionadded:: 4.5.0
+.. versionadded:: 5.0.0
 """
 
 
@@ -250,7 +250,7 @@ WINDOW_GRAMMAR: tuple[tuple[str, str | None, int | None], ...] = (
 for, read from its own words ("last 10 games", "top 5", "his last game")
 where the router used to fill them in.
 
-.. versionadded:: 4.5.0
+.. versionadded:: 5.0.0
 """
 
 _LOG_OR_WINDOW_WORDS = re.compile(r"\b(log|gamelog|game log|last \d+|past \d+|first \d+)\b", re.IGNORECASE)
@@ -640,7 +640,7 @@ def read_route(con: duckdb.DuckDBPyConnection, question: str, names: list[str] |
     the slots before the compiler's own repairs, exactly as a routed
     question's are.
 
-    .. versionadded:: 4.5.0
+    .. versionadded:: 5.0.0
     """
     slots = _with_measure(question, _slots_from_names(con, [_as_typed_part(con, question, _as_typed(question, name)) for name in names or []], stat))
     subject = _two_teams(read_subject(con, question, "other", dict(slots)), question, slots)
@@ -725,7 +725,7 @@ def reading_from_route(con: duckdb.DuckDBPyConnection, question: str, route: Rou
     mentioned. Raises :class:`~association.query.reading.ScopeError` where
     the route holds a slot the Scope cannot.
 
-    .. versionadded:: 4.5.0
+    .. versionadded:: 5.0.0
     """
     slots = dict(route.slots)
     subject = read_subject(con, question, route.intent, dict(slots))

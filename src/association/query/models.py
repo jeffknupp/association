@@ -4,7 +4,7 @@ One definition, imported by both the CLI and the agent. These were duplicated
 for a while, and the copies could drift apart silently: the routing check read
 the router default to decide what to validate, so a divergence would have meant
 the check passing against a model the CLI does not ship. The same holds for the
-normalizer that replaced the router's classification (4.5.0): its prompt and its
+normalizer that replaced the router's classification (5.0.0): its prompt and its
 model are one unit, measured together - swapping either invalidates the
 measurement - which makes a second copy of the name a real hazard rather than
 untidiness.
@@ -24,7 +24,7 @@ without pulling in ollama and duckdb at startup.
 from __future__ import annotations
 
 # The normalizer's model (the name is the router's, which it served until
-# 4.5.0). Copying names and picking one stat key under a JSON schema is not a
+# 5.0.0). Copying names and picking one stat key under a JSON schema is not a
 # 7B-sized job: measured over the 277 day10 wordings, the 3B copies 299 of 302
 # names verbatim at 0.82s a question median, and the 7B adds nothing on names
 # and 13 of 162 on the stat at 1.84s

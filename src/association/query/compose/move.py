@@ -237,7 +237,7 @@ def _everyone_threshold_predicates(scope: Scope, question: str, measure: str | N
 def _everyone_single_game(intent: str, scope: Scope, question: str, measure: str | None, predicates: list[tuple[str, str, Any]], position: str | None) -> Reading | None:
     """ "Most ... in a game" over everyone: rows by measure, league-wide.
 
-    .. versionchanged:: 4.5.0
+    .. versionchanged:: 5.0.0
        Also for a ``single_game_high`` question whose words do not say "in a
        game" - the intent names the shape itself. "What was the highest
        scoring game by a player this year?" used to fall to
@@ -365,7 +365,7 @@ def _everyone_multi_line_games(intent: str, scope: Scope, question: str, predica
 
     .. versionadded:: 4.4.0
 
-    .. versionchanged:: 4.5.0
+    .. versionchanged:: 5.0.0
        Stands aside for a ranking word ("who had the MOST 30+ point 10+
        rebound games"): that asks who cleared every line most often - the
        per-player count :func:`_everyone_threshold_count` gives, with the
@@ -402,7 +402,7 @@ def _everyone_threshold_count_line(scope: Scope) -> list[tuple[str, str, Any]]:
     "Most games with 15+ assists in 2024?" declined for want of a line until
     this existed: the line was the whole question.
 
-    .. versionadded:: 4.5.0
+    .. versionadded:: 5.0.0
     """
     column = _stat_measure(scope.stat)
     threshold = scope.threshold
@@ -681,7 +681,7 @@ def games_reading(q: Query) -> Query:
     same question, so it raises :class:`~association.query.compose.core.Unsupported`,
     as it did before.
 
-    .. versionadded:: 4.5.0
+    .. versionadded:: 5.0.0
     """
     if q.source != "seasons":
         return q
@@ -812,7 +812,7 @@ def team_move_point(con: duckdb.DuckDBPyConnection, slots: dict[str, Any], quest
     """:func:`team_read_point`, planned - the team's point as the team
     compiler runs it, or ``None`` where the team is not the subject.
 
-    .. versionchanged:: 4.5.0
+    .. versionchanged:: 5.0.0
        Plans :func:`team_read_point`'s :class:`~association.query.reading.Reading`.
     """
     reading = team_read_point(con, slots, question, subject)
@@ -841,17 +841,17 @@ def read_point(con: duckdb.DuckDBPyConnection, intent: str, slots: dict[str, Any
        :class:`~association.query.compose.team.TeamQuery` instead of a
        :class:`~association.query.compose.core.Query`.
 
-    .. versionchanged:: 4.5.0
+    .. versionchanged:: 5.0.0
        Takes the :class:`~association.query.subject.Subject` the agent read
        (read here when not given), and reads the position group, the team
        and the subject's kind off it.
 
-    .. versionchanged:: 4.5.0
+    .. versionchanged:: 5.0.0
        Returns the :class:`~association.query.reading.Reading` (the record of
        what was read) rather than the planned query; :func:`move_point` is
        the two together.
 
-    .. versionchanged:: 4.5.0
+    .. versionchanged:: 5.0.0
        Repairs no slot: the position phrase, the filler word or team in
        ``player``, the dropped subject and the opponent player it once
        rewrote never reach it from the parser (ROADMAP plan item 6, step (e)).
@@ -903,7 +903,7 @@ def _read_point(con: duckdb.DuckDBPyConnection, intent: str, slots: dict[str, An
 def move_point(con: duckdb.DuckDBPyConnection, intent: str, slots: dict[str, Any], question: str, subject: Subject | None = None) -> Query | TeamQuery:
     """:func:`read_point`, planned - the point as the compiler runs it.
 
-    .. versionchanged:: 4.5.0
+    .. versionchanged:: 5.0.0
        The reading and the plan are two steps: :func:`read_point` builds the
        :class:`~association.query.reading.Reading` from the words, and
        :func:`~association.query.compose.plan.plan` turns it into the query.

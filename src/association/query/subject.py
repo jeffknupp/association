@@ -195,7 +195,7 @@ known. Their slots come from :func:`association.query.router.settle`, run
 under the child: the router's own text readers recover the threshold, the
 seasons count, a streak's kind and a split.
 
-.. versionadded:: 4.5.0
+.. versionadded:: 5.0.0
 """
 
 
@@ -205,7 +205,7 @@ class Applied(NamedTuple):
     refuses by name), and the intent the subject's shape settled on -
     the router's own where the shape fits it.
 
-    .. versionadded:: 4.5.0
+    .. versionadded:: 5.0.0
     """
 
     decisions: list[Decision]
@@ -232,7 +232,7 @@ class Subject:
 
     .. versionadded:: 4.4.0
 
-    .. versionchanged:: 4.5.0
+    .. versionchanged:: 5.0.0
        ``named`` is gone: ``players`` itself carries the question's own
        spelling of each router name, resolved from the span the router's
        name anchors rather than from a whole-word match - which read "kareem
@@ -341,7 +341,7 @@ class Companion(NamedTuple):
     The reading's side of the relation's :class:`~association.query.player_games.Condition`;
     :func:`apply_subject` writes it as the ``conditions`` slot.
 
-    .. versionadded:: 4.5.0
+    .. versionadded:: 5.0.0
     """
 
     name: str
@@ -418,7 +418,7 @@ def _edit_distance(a: str, b: str) -> int:
     measures with in SQL (DuckDB's ``damerau_levenshtein``, entities.py) -
     the two agree on every ASCII pair measured (142,880 word pairs from the
     corpora and the player table; DuckDB counts UTF-8 bytes where this counts
-    letters). Plain Levenshtein here, until 4.5.0, charged a transposition
+    letters). Plain Levenshtein here, until 5.0.0, charged a transposition
     twice, so "jokci stats" did not support Nikola Jokic while the index
     read "jokci" as him."""
     return DamerauLevenshtein.distance(a, b)
@@ -611,7 +611,7 @@ def _not_a_name(text: str) -> bool:
     if _NO_NAME_HAS.search(stripped):
         # "most 30+ point games", "most", "Most Player in 15th Season Played"
         # - what the model files as the player once nothing in its prompt
-        # shows a count or a ranking with none (the 4.5.0 prompt shrink).
+        # shows a count or a ranking with none (the 5.0.0 prompt shrink).
         # No player's name holds a digit, a plus sign, a rank word or the
         # word "player"; a phrase the question literally contains is not a
         # name for holding it.
@@ -664,7 +664,7 @@ def _conditions(question: str, players: tuple[str, ...], slots: dict[str, Any]) 
     router's name. One phrase, one role: "when Embiid and Paul George
     start" is two ``started`` companions.
 
-    .. versionchanged:: 4.5.0
+    .. versionchanged:: 5.0.0
        Returns :class:`Companion` tuples with the predicate, not names.
     """
     found: list[Companion] = []
@@ -982,7 +982,7 @@ def apply_subject(subject: Subject, slots: dict[str, Any], *, intent: str) -> Ap
 
     .. versionadded:: 4.4.0
 
-    .. versionchanged:: 4.5.0
+    .. versionchanged:: 5.0.0
        Respells a kept name from the anchored span (a question's own typo,
        "Seph Curry", included) rather than from a whole-word match; writes
        the restored player, the own team and the companions' roles, which

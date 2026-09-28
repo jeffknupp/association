@@ -1076,7 +1076,7 @@ def render_fingerprint(
        answered with a clarifying question rather than a plot. See
        :func:`association.query.shotchart.resolve_chart_player`.
 
-    .. versionchanged:: 4.5.0
+    .. versionchanged:: 5.0.0
        A near spelling of exactly one player is drawn for him, and the message
        ends with the sentence saying so.
     """

@@ -78,7 +78,7 @@ def _span_phrase(span: Any, player_seasons: tuple[int, int] | None = None) -> st
        sentence saying otherwise was a stated scope that did not match the
        count (yardstick-v2 F036). A both-season-types span is named as such.
 
-    .. versionchanged:: 4.5.0
+    .. versionchanged:: 5.0.0
        Takes ``player_seasons``.
     """
     kind = {2: "regular season", 3: "postseason", BOTH_SEASON_TYPES: "regular season and postseason"}.get(getattr(span, "season_type", 2), "regular season")
@@ -108,7 +108,7 @@ _FRACTION_COLUMNS = frozenset({"ts_pct", "efg_pct"})
 def _fmt(v: Any, name: str) -> str:
     """One cell of an answer's table: a fixed decimal for a float, a percent sign for a rate.
 
-    .. versionchanged:: 4.5.0
+    .. versionchanged:: 5.0.0
        ``usage_pct`` prints as the percent it is stored as (24.4%), not
        scaled by 100 a second time (#222).
     """

@@ -12,7 +12,7 @@ checked against the real warehouse first (`shot_chart`, `player_game_log`,
 `player_box_stats` over Stephen Curry's 2026 season) before being shrunk to a
 handful of rows; see the C5 report for the exact counts measured there.
 
-.. versionchanged:: 4.5.0
+.. versionchanged:: 5.0.0
    Adds ``situation`` and ``conditions`` (ROADMAP plan item 6, step (d)
    follow-up): both joined ``RELATION_SCOPING`` after this file's own tests
    were written, and ``_shots_other_narrowing`` (``templates/shots.py``) kept

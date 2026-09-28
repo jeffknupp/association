@@ -18,7 +18,7 @@ templates onto it: every template and the compiler read the Scope's fields.
 key or a value nothing here types, and :meth:`Scope.to_slots` the way back to
 the slot shape a route is recorded and traced in.
 
-.. versionadded:: 4.5.0
+.. versionadded:: 5.0.0
 """
 
 from __future__ import annotations
@@ -37,7 +37,7 @@ if TYPE_CHECKING:
 Shape = Literal["rows", "scalar", "grouped"]
 """Which reader answers the point: rows, one number, or one row per group.
 
-.. versionadded:: 4.5.0
+.. versionadded:: 5.0.0
 """
 
 Aggregate = Literal["none", "per_game", "total", "count", "record"]
@@ -45,33 +45,33 @@ Aggregate = Literal["none", "per_game", "total", "count", "record"]
 ``rows`` shape ordered by the measure; and a rate is the per-game one, a
 ratio of the games' sums (``compose.core.RATES``).
 
-.. versionadded:: 4.5.0
+.. versionadded:: 5.0.0
 """
 
 Group = Literal["none", "venue", "starter", "season", "season_type", "month", "opponent", "won", "player"]
 """``"none"`` or a key of :data:`~association.query.compose.core.GROUPS` (a
 test holds the two to the same names).
 
-.. versionadded:: 4.5.0
+.. versionadded:: 5.0.0
 """
 
 Relation = Literal["player", "everyone", "team"]
 """Which relation answers: one named player's games, the league's, or a team's.
 
-.. versionadded:: 4.5.0
+.. versionadded:: 5.0.0
 """
 
 SeasonType = Literal[2, 3]
 """ESPN's season type: 2 the regular season, 3 the postseason.
 
-.. versionadded:: 4.5.0
+.. versionadded:: 5.0.0
 """
 
 Split = Literal["home_away", "starter_bench", "wins_losses", "month", "starter", "bench"]
 """A split the question asks for: the two-sided category, or the one side
 ("starter", "bench") a filtering template honors.
 
-.. versionadded:: 4.5.0
+.. versionadded:: 5.0.0
 """
 
 
@@ -82,7 +82,7 @@ class ScopeError(ValueError):
     the question falls through the way a template's refusal does rather than
     an answer quietly leaving the narrowing out.
 
-    .. versionadded:: 4.5.0
+    .. versionadded:: 5.0.0
     """
 
 
@@ -94,7 +94,7 @@ class ConditionSpec:
     Paul George start", "in games Maxey had 20+ points". ``stat`` and
     ``threshold`` belong to a ``reached`` role.
 
-    .. versionadded:: 4.5.0
+    .. versionadded:: 5.0.0
     """
 
     player: str
@@ -108,7 +108,7 @@ class ConditionSpec:
         """One ``conditions`` slot entry, a dict, as a typed record - raising
         on a shape the relation could not read.
 
-        .. versionadded:: 4.5.0
+        .. versionadded:: 5.0.0
         """
         if not isinstance(entry, Mapping) or set(entry) - {"player", "side", "predicate", "stat", "threshold"}:
             raise ScopeError(f"scope condition {entry!r} is not a player, side, predicate and line")
@@ -130,7 +130,7 @@ class ConditionSpec:
     def to_slot(self) -> dict[str, Any]:
         """The ``conditions`` entry the relation reads.
 
-        .. versionadded:: 4.5.0
+        .. versionadded:: 5.0.0
         """
         line = {key: value for key, value in (("stat", self.stat), ("threshold", self.threshold)) if value is not None}
         return {"player": self.player, "side": self.side, "predicate": self.predicate, **line}
@@ -144,7 +144,7 @@ class Scope:
     ``slots.get(name)``). The names are here too, as the question gave them;
     resolving them against the warehouse happens where each is read.
 
-    .. versionadded:: 4.5.0
+    .. versionadded:: 5.0.0
     """
 
     #: The subject and the players and teams beside it.
@@ -210,7 +210,7 @@ class Scope:
         of the wrong type or outside its closed set, raises - a slot this
         could only drop is a narrowing the answer would silently leave out.
 
-        .. versionadded:: 4.5.0
+        .. versionadded:: 5.0.0
         """
         unknown = sorted(set(slots) - _SCOPE_FIELDS)
         if unknown:
@@ -227,7 +227,7 @@ class Scope:
         sequences as lists: the shape a route is recorded in and the trace
         prints (:meth:`Reading.describe`).
 
-        .. versionadded:: 4.5.0
+        .. versionadded:: 5.0.0
         """
         out: dict[str, Any] = {}
         for f in fields(self):
@@ -326,7 +326,7 @@ class Reading:
     :class:`~association.query.compose.core.Query` on purpose: the planner
     is a copy, not a second decision. Every construction names its fields.
 
-    .. versionadded:: 4.5.0
+    .. versionadded:: 5.0.0
     """
 
     #: The scoping the relation narrows by.
@@ -391,7 +391,7 @@ class Reading:
         slot dict: the agent's dispatch of a routed question to its template,
         a template handing a question to another, and the tests.
 
-        .. versionadded:: 4.5.0
+        .. versionadded:: 5.0.0
         """
         return cls(scope=Scope.from_slots(slots), intent=intent, subject=subject)
 

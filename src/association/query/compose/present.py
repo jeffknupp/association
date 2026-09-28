@@ -23,7 +23,7 @@ A presenter returns ``None`` for a point that is not the intent's own (the
 question's words moved it, or it carries something the template would have
 refused), and the compiler's generic sentence answers instead, as before.
 
-.. versionadded:: 4.5.0
+.. versionadded:: 5.0.0
 """
 
 from __future__ import annotations
@@ -378,7 +378,7 @@ PRESENTERS: dict[str, Presenter] = {
 """The intents whose own default point the compiler answers in that intent's
 template's words - see the module docstring.
 
-.. versionadded:: 4.5.0
+.. versionadded:: 5.0.0
 """
 
 
@@ -388,7 +388,7 @@ def present(con: duckdb.DuckDBPyConnection, intent: str, q: Query) -> TemplateRe
     and the compiler's own sentence should answer instead. The intent's slots
     are ``q``'s own scope.
 
-    .. versionadded:: 4.5.0
+    .. versionadded:: 5.0.0
     """
     presenter = PRESENTERS.get(intent)
     if presenter is None:
@@ -421,7 +421,7 @@ def present_team(con: duckdb.DuckDBPyConnection, intent: str, q: TeamQuery) -> T
     coverage floor. ``None`` for any other point, which
     :func:`~association.query.compose.team.run_team` answers.
 
-    .. versionadded:: 4.5.0
+    .. versionadded:: 5.0.0
     """
     if intent != "record_when" or q.scope.threshold is None:
         return None

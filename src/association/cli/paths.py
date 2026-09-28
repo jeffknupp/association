@@ -9,7 +9,7 @@ failed every one of them with "database does not exist" - nine call sites
 (``cli.py``, and ``check_coverage``, ``check_nicknames``,
 ``check_net_points_games``, ``check_team_box``, ``backfill_season_totals``,
 ``backfill_missing_playoffs``, ``backfill_power_index`` and the routing check
-retired in 4.5.0 under ``scripts/``) each hardcoding the same wrong default
+retired in 5.0.0 under ``scripts/``) each hardcoding the same wrong default
 independently.
 
 ``git rev-parse --git-common-dir`` answers "where is the real ``.git``" from

@@ -189,7 +189,7 @@ class Query:
 
     .. versionadded:: 4.4.0
 
-    .. versionchanged:: 4.5.0
+    .. versionchanged:: 5.0.0
        Holds the typed :class:`~association.query.reading.Scope` as ``scope``
        in place of the ``slots`` dict, and every field is keyword-only.
     """
@@ -664,7 +664,7 @@ def _player_own_seasons(con: duckdb.DuckDBPyConnection, player: Entity | None, s
     compiler's career span says '(1994 on)' where the template named the
     player's own seasons").
 
-    .. versionadded:: 4.5.0
+    .. versionadded:: 5.0.0
     """
     if player is None or span.season is not None or span.since is not None:
         return None
@@ -684,12 +684,12 @@ def run(con: duckdb.DuckDBPyConnection, q: Query) -> dict[str, Any]:
        :func:`~association.query.templates.common.coverage_caveat` (#197,
        ISSUES.md).
 
-    .. versionchanged:: 4.5.0
+    .. versionchanged:: 5.0.0
        Carries ``player_seasons`` (:func:`_player_own_seasons`), so a plain
        career sentence names the player's own seasons rather than the
        relation's floor.
 
-    .. versionchanged:: 4.5.0
+    .. versionchanged:: 5.0.0
        Carries ``entity`` (the resolved player, or ``None`` for the league)
        and ``rebuilt_by_row`` (each row's own rebuilt-game count), which
        :mod:`association.query.compose.present` phrases a template's own

@@ -200,11 +200,11 @@ def to_reading(intent: str, slots: dict[str, Any]) -> Reading:
 
     .. versionadded:: 4.4.0
 
-    .. versionchanged:: 4.5.0
+    .. versionchanged:: 5.0.0
        An unnarrowed ``player_stat`` is a point on the season line
        (``source="seasons"``) rather than :class:`~association.query.compose.core.Unsupported`.
 
-    .. versionchanged:: 4.5.0
+    .. versionchanged:: 5.0.0
        ``game_log`` with ``season_type_unstated`` ("his last 5 games") is a
        point - both season types, which the relation reads at once - rather
        than :class:`~association.query.compose.core.Unsupported`.
@@ -226,7 +226,7 @@ def to_query(intent: str, slots: dict[str, Any]) -> Query:
     """:func:`to_reading`, planned: the default point as the compiler's own
     :class:`~association.query.compose.core.Query`.
 
-    .. versionchanged:: 4.5.0
+    .. versionchanged:: 5.0.0
        Plans :func:`to_reading`; the adapters build
        :class:`~association.query.reading.Reading` records.
     """

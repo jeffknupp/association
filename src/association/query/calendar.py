@@ -83,7 +83,7 @@ class CalendarNarrowing:
 
     .. versionadded:: 4.4.0
 
-    .. versionchanged:: 4.5.0
+    .. versionchanged:: 5.0.0
        ``"since_date"``: a "since" written with a year, one cut across seasons.
        ``"nth_weekday"``: a holiday that falls on a weekday of its month
        rather than on a date.
@@ -124,7 +124,7 @@ narrowing it names: a fixed day ("christmas" is December 25) or, for a
 holiday that moves, a weekday of its month ("mlk day" is the third Monday
 of January). Keys are lowercase, with straight apostrophes.
 
-.. versionchanged:: 4.5.0
+.. versionchanged:: 5.0.0
    Maps to a :class:`CalendarNarrowing` rather than ``(month, day, label)``,
    so a holiday that moves can be one: MLK Day is the third Monday of January
    rather than January 15, and Thanksgiving is read. Christmas Eve and New
@@ -139,7 +139,7 @@ holiday by name rather than answering the season it was asked to narrow.
 Easter follows the church calendar (the Gregorian computus), which no
 narrowing here states.
 
-.. versionadded:: 4.5.0
+.. versionadded:: 5.0.0
 """
 
 
@@ -157,7 +157,7 @@ reading is built from it, so the words it captures and the words this
 module reads cannot drift apart: "valentine's day" was a key here that the
 router's own list never captured, and so narrowed nothing (#238).
 
-.. versionadded:: 4.5.0
+.. versionadded:: 5.0.0
 """
 
 
@@ -198,7 +198,7 @@ def parse_situation(text: Any) -> CalendarNarrowing | None:
 
     .. versionadded:: 4.4.0
 
-    .. versionchanged:: 4.5.0
+    .. versionchanged:: 5.0.0
        Reads a "since" written in numbers: "since 1/26/20" (a ``since_date``)
        and "since 1/26" (a ``since_day``, as "since January 26"). A holiday
        is whatever :data:`HOLIDAYS` maps it to, a typographic apostrophe
