@@ -5,7 +5,7 @@ The router files the words after a subject that name a circumstance in one
 ``situation`` slot - "tuesdays", "in october", "christmas", "since january
 31st" - alongside things no game table can filter on ("18 year old", "western
 conference", "since returning"). Only the calendar ones are a narrowing of a
-relation's games: a weekday, a month, a fixed calendar day, or every game
+relation's games: a weekday, a month, a holiday, or every game
 from a day of the season on. Everything else parses to ``None`` and the
 caller refuses it by name, the way it always did - a value that is not read
 is not dropped.
@@ -26,20 +26,10 @@ from association.query.conditions import _MONTH_NAMES
 WEEKDAYS: tuple[str, ...] = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
 """ISO order, Monday first - ``EXTRACT(ISODOW ...)`` numbers them 1-7."""
 
-#: Fixed-date holidays a question names as a day. Thanksgiving moves and is
-#: deliberately absent: a date the parser cannot state is one it refuses.
-HOLIDAYS: dict[str, tuple[int, int, str]] = {
-    "christmas": (12, 25, "Christmas Day"),
-    "christmas day": (12, 25, "Christmas Day"),
-    "xmas": (12, 25, "Christmas Day"),
-    "new year's day": (1, 1, "New Year's Day"),
-    "new years day": (1, 1, "New Year's Day"),
-    "new year's": (1, 1, "New Year's Day"),
-    "halloween": (10, 31, "Halloween"),
-    "valentine's day": (2, 14, "Valentine's Day"),
-    "valentines day": (2, 14, "Valentine's Day"),
-    "mlk day": (1, 15, "MLK Day"),
-}
+# The apostrophe a phone keyboard types: 19 of the 2,285 questions in the
+# large StatMuse sample carry one, against 23 with a straight one. A holiday
+# spelled with it is the same holiday.
+_TYPOGRAPHIC_APOSTROPHE = "\u2019"
 
 _MONTH = "(?P<month>january|february|march|april|may|june|july|august|september|october|november|december)"
 _WEEKDAY = re.compile(r"^(?:on\s+)?(?P<day>monday|tuesday|wednesday|thursday|friday|saturday|sunday)s?$", re.IGNORECASE)
@@ -51,7 +41,7 @@ _HOLIDAY = re.compile(r"^(?:on\s+)?(?P<name>.+?)$", re.IGNORECASE)
 #: A ``situation`` word naming a conference or division, mapped to
 #: ``(kind, value)`` - ``value`` the way :func:`association.fetch.parse.parse_team_alignment`
 #: stores it (``"Eastern Conference"``, ``"Southeast"``), read once here and
-#: nowhere else, the same discipline :data:`HOLIDAYS` keeps for a fixed date.
+#: nowhere else, the same discipline :data:`HOLIDAYS` keeps for a holiday.
 #: ``midwest`` answers a season before the 2004-05 realignment split it into
 #: three; asked of a later season it narrows to opponents nobody was ever
 #: aligned under, which is a real (empty) answer and not an error - the same
@@ -80,7 +70,10 @@ _ALIGNMENT = re.compile(
 @dataclass(frozen=True)
 class CalendarNarrowing:
     """One calendar narrowing: ``kind`` is ``"weekday"`` (``value`` 1-7, ISO),
-    ``"month"`` (1-12), ``"day"`` (``(month, day)``), ``"since_day"``
+    ``"month"`` (1-12), ``"day"`` (``(month, day)``), ``"nth_weekday"``
+    (``(month, weekday, n)`` - the nth of an ISO weekday in a month, the day a
+    holiday that moves falls on: MLK Day is ``(1, 1, 3)``, the third Monday
+    of January), ``"since_day"``
     (``(month, day)`` - every game from that day of the season on, in the
     calendar year that day falls in for the season) or ``"since_date"`` (an
     ISO date - every game from that calendar date on, across seasons: "since
@@ -92,11 +85,80 @@ class CalendarNarrowing:
 
     .. versionchanged:: 4.5.0
        ``"since_date"``: a "since" written with a year, one cut across seasons.
+       ``"nth_weekday"``: a holiday that falls on a weekday of its month
+       rather than on a date.
     """
 
     kind: str
     value: Any
     label: str
+
+
+# One row per holiday a question can name as a day: its label, the kind and
+# value of the narrowing it is, and every spelling read as it. Built into
+# HOLIDAYS below, and from there into the router's own reading of the words
+# (`HOLIDAY_WORDS`), so a spelling added here is one the router captures.
+_HOLIDAY_SPELLINGS: tuple[tuple[str, str, Any, tuple[str, ...]], ...] = (
+    ("Christmas Day", "day", (12, 25), ("christmas", "christmas day", "xmas")),
+    # Its own day, not Christmas: "christmas eve" was captured as "christmas"
+    # and answered December 25 (#238).
+    ("Christmas Eve", "day", (12, 24), ("christmas eve", "xmas eve")),
+    ("New Year's Day", "day", (1, 1), ("new year's", "new years", "new year's day", "new years day")),
+    ("New Year's Eve", "day", (12, 31), ("new year's eve", "new years eve")),
+    ("Halloween", "day", (10, 31), ("halloween",)),
+    ("Valentine's Day", "day", (2, 14), ("valentine's day", "valentines day")),
+    # The third Monday of January, not January 15: that is MLK Day in 5 of
+    # the 33 seasons 1994-2026 (2026's was January 19), and "on mlk day"
+    # answered every January 15 (#238). A federal holiday from 1986, before
+    # the first game on record. "martin luther king" alone is read too, so
+    # "martin luther king jr. day" is MLK Day and not a narrowing dropped.
+    ("MLK Day", "nth_weekday", (1, 1, 3), ("mlk day", "martin luther king day", "martin luther king")),
+    # The fourth Thursday of November - it moves the way MLK Day does, and
+    # was refused only while no moving date could be stated.
+    ("Thanksgiving", "nth_weekday", (11, 4, 4), ("thanksgiving", "thanksgiving day")),
+)
+
+HOLIDAYS: dict[str, CalendarNarrowing] = {spelling: CalendarNarrowing(kind, value, f"on {label}") for label, kind, value, spellings in _HOLIDAY_SPELLINGS for spelling in spellings}
+"""Every spelling of a holiday :func:`parse_situation` reads, mapped to the
+narrowing it names: a fixed day ("christmas" is December 25) or, for a
+holiday that moves, a weekday of its month ("mlk day" is the third Monday
+of January). Keys are lowercase, with straight apostrophes.
+
+.. versionchanged:: 4.5.0
+   Maps to a :class:`CalendarNarrowing` rather than ``(month, day, label)``,
+   so a holiday that moves can be one: MLK Day is the third Monday of January
+   rather than January 15, and Thanksgiving is read. Christmas Eve and New
+   Year's Eve are their own days, and "new years" and "martin luther king
+   day" are read.
+"""
+
+UNREAD_HOLIDAYS: tuple[str, ...] = ("easter",)
+"""Holidays a question can name that no day is read for. The router captures
+them all the same (:data:`HOLIDAY_WORDS`), so the answer refuses the
+holiday by name rather than answering the season it was asked to narrow.
+Easter follows the church calendar (the Gregorian computus), which no
+narrowing here states.
+
+.. versionadded:: 4.5.0
+"""
+
+
+def _holiday_words_spelling(spelling: str) -> str:
+    """One holiday spelling as a regex: any run of spaces between its words,
+    and a straight or a typographic apostrophe (U+2019, what a phone types)."""
+    return r"\s+".join(re.escape(word).replace("'", f"['{_TYPOGRAPHIC_APOSTROPHE}]") for word in spelling.split())
+
+
+HOLIDAY_WORDS: str = "|".join(_holiday_words_spelling(name) for name in sorted({*HOLIDAYS, *UNREAD_HOLIDAYS}, key=lambda name: (-len(name), name)))
+"""Every holiday spelling :data:`HOLIDAYS` reads and :data:`UNREAD_HOLIDAYS`
+refuses, as one regex alternation (no group of its own), longest first so
+"christmas eve" is not read as "christmas". The router's ``situation``
+reading is built from it, so the words it captures and the words this
+module reads cannot drift apart: "valentine's day" was a key here that the
+router's own list never captured, and so narrowed nothing (#238).
+
+.. versionadded:: 4.5.0
+"""
 
 
 @dataclass(frozen=True)
@@ -138,11 +200,13 @@ def parse_situation(text: Any) -> CalendarNarrowing | None:
 
     .. versionchanged:: 4.5.0
        Reads a "since" written in numbers: "since 1/26/20" (a ``since_date``)
-       and "since 1/26" (a ``since_day``, as "since January 26").
+       and "since 1/26" (a ``since_day``, as "since January 26"). A holiday
+       is whatever :data:`HOLIDAYS` maps it to, a typographic apostrophe
+       read as a straight one (U+2019, the one a phone types).
     """
     if not isinstance(text, str) or not text.strip():
         return None
-    words = " ".join(text.strip().lower().split())
+    words = " ".join(text.strip().lower().replace(_TYPOGRAPHIC_APOSTROPHE, "'").split())
     m = _WEEKDAY.fullmatch(words)
     if m:
         day = m.group("day")
@@ -162,10 +226,7 @@ def parse_situation(text: Any) -> CalendarNarrowing | None:
     if m:
         return _since_numeric(m.group("date"))
     m = _HOLIDAY.fullmatch(words)
-    if m and m.group("name") in HOLIDAYS:
-        month, day, label = HOLIDAYS[m.group("name")]
-        return CalendarNarrowing("day", (month, day), f"on {label}")
-    return None
+    return HOLIDAYS.get(m.group("name")) if m else None
 
 
 def _since_numeric(text: str) -> CalendarNarrowing | None:
@@ -213,6 +274,17 @@ def calendar_clause(narrowing: CalendarNarrowing, eastern_date: str, season: str
     if narrowing.kind == "day":
         month, day = narrowing.value
         return f"EXTRACT(MONTH FROM {eastern_date}) = ? AND EXTRACT(DAY FROM {eastern_date}) = ?", [month, day]
+    if narrowing.kind == "nth_weekday":
+        # The nth of a weekday falls on days 7n-6 through 7n of its month in
+        # every year - the third Monday of January is the one Monday from the
+        # 15th to the 21st - so each game's own date says whether it is the
+        # holiday, with no calendar computed per season. Checked against the
+        # real MLK Days and Thanksgivings (tests/query/test_calendar.py).
+        month, weekday, n = narrowing.value
+        return (
+            f"EXTRACT(MONTH FROM {eastern_date}) = ? AND EXTRACT(ISODOW FROM {eastern_date}) = ? AND EXTRACT(DAY FROM {eastern_date}) BETWEEN ? AND ?",
+            [month, weekday, 7 * n - 6, 7 * n],
+        )
     if narrowing.kind == "since_day":
         month, day = narrowing.value
         year = f"CASE WHEN ? >= 10 THEN {season} - 1 ELSE {season} END"

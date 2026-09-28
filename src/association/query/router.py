@@ -31,6 +31,7 @@ from typing import Any
 
 from association.nba.season import current_season
 
+from .calendar import HOLIDAY_WORDS
 from .measures import MEASURE_WORDS
 from .season_text import season_from_text, season_spans
 from .team_metrics import STAT_ALIASES
@@ -1155,7 +1156,11 @@ _SITUATION = re.compile(
     # A day of the week: 8 of the 14, and the most common shape in the feed.
     r"\b(?:mon|tues|wednes|thurs|fri|satur|sun)days?\b|"
     # A calendar holiday. "on christmas" answered with a whole season average.
-    r"\b(?:christmas|xmas|thanksgiving|halloween|easter|mlk\s+day|martin\s+luther\s+king|new\s+year'?s)\b|"
+    # The words are the calendar reading's own (`calendar.HOLIDAY_WORDS`),
+    # longest first: this list was once written out here, and "valentine's
+    # day" - a day the calendar read - was never captured and so narrowed
+    # nothing, while "christmas eve" was captured as "christmas" (#238).
+    rf"\b(?:{HOLIDAY_WORDS})\b|"
     # An age. "most triple doubles before turning 27" answered with this
     # season's triple-double leaders - `players` holds no birth date at all
     # (DATA.md), so this one cannot be answered even in principle.

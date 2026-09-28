@@ -1336,6 +1336,55 @@ def test_a_narrowing_the_schema_has_no_slot_for_still_reaches_check_scope(questi
     assert "situation" in _ask(question, '{"intent":"player_stat","player":"LeBron James"}').slots
 
 
+@pytest.mark.parametrize(
+    ("question", "situation", "kind", "value"),
+    [
+        # #238: each of these answered the wrong day, or no day at all. MLK
+        # Day is the third Monday of January, not January 15; "valentine's
+        # day" was never captured; the Eves were captured as the day after.
+        ("lebron stats on mlk day", "mlk day", "nth_weekday", (1, 1, 3)),
+        ("lebron stats on martin luther king day", "martin luther king day", "nth_weekday", (1, 1, 3)),
+        ("lebron stats on martin luther king jr. day", "martin luther king", "nth_weekday", (1, 1, 3)),
+        ("lebron stats on valentine's day", "valentine's day", "day", (2, 14)),
+        ("lebron stats on valentines day", "valentines day", "day", (2, 14)),
+        ("lebron stats on new year's eve", "new year's eve", "day", (12, 31)),
+        ("lebron stats on new year\u2019s eve", "new year\u2019s eve", "day", (12, 31)),
+        ("lebron stats on christmas eve", "christmas eve", "day", (12, 24)),
+        ("lebron stats on new years day", "new years day", "day", (1, 1)),
+        ("lebron stats on new year's", "new year's", "day", (1, 1)),
+        ("anthony davis stats on christmas", "christmas", "day", (12, 25)),
+        ("lebron james Christmas Day game record", "christmas day", "day", (12, 25)),
+        ("lebron stats on thanksgiving", "thanksgiving", "nth_weekday", (11, 4, 4)),
+    ],
+)
+def test_a_holiday_is_captured_whole_and_read_as_its_own_day(question: str, situation: str, kind: str, value: object) -> None:
+    from association.query.calendar import parse_situation
+
+    got = _ask(question, '{"intent":"player_stat","player":"LeBron James"}').slots.get("situation")
+    assert got == situation
+    narrowing = parse_situation(got)
+    assert narrowing is not None and (narrowing.kind, narrowing.value) == (kind, value)
+
+
+def test_every_holiday_the_calendar_names_is_one_the_router_captures() -> None:
+    """The router's holiday words are built from the calendar's own lists
+    (`calendar.HOLIDAY_WORDS`), so the two cannot drift the way they did:
+    "valentine's day" was a day the calendar read that the router's
+    hand-kept list never captured. Every spelling the calendar reads is
+    captured whole and read as its day; every one it names and does not
+    read is captured all the same, and refused by value downstream."""
+    from association.query.calendar import HOLIDAYS, UNREAD_HOLIDAYS, parse_situation
+
+    for spelling, narrowing in HOLIDAYS.items():
+        got = _ask(f"lebron stats on {spelling} this season", '{"intent":"player_stat","player":"LeBron James"}').slots.get("situation")
+        assert got == spelling, spelling
+        assert parse_situation(got) == narrowing, spelling
+    for spelling in UNREAD_HOLIDAYS:
+        got = _ask(f"lebron stats on {spelling} this season", '{"intent":"player_stat","player":"LeBron James"}').slots.get("situation")
+        assert got == spelling, spelling
+        assert parse_situation(got) is None, spelling
+
+
 def test_a_stat_name_before_a_second_line_is_not_a_subject() -> None:
     """ "who had the most 30+ point 10+ rebound games this year?" read "point"
     as the player of "point 10+ rebound games" and answered for Sir'Dominic
