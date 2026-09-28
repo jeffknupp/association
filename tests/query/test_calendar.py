@@ -8,10 +8,23 @@ value parses to and what SQL it produces."""
 
 from __future__ import annotations
 
+import re
+from datetime import date
+
 import duckdb
 import pytest
 
-from association.query.calendar import AlignmentNarrowing, CalendarNarrowing, alignment_clause, calendar_clause, parse_alignment, parse_situation
+from association.query.calendar import (
+    HOLIDAY_WORDS,
+    HOLIDAYS,
+    UNREAD_HOLIDAYS,
+    AlignmentNarrowing,
+    CalendarNarrowing,
+    alignment_clause,
+    calendar_clause,
+    parse_alignment,
+    parse_situation,
+)
 
 
 @pytest.mark.parametrize(
@@ -33,6 +46,17 @@ from association.query.calendar import AlignmentNarrowing, CalendarNarrowing, al
         ("since 1/26/98", "since_date", "1998-01-26"),
         ("since 1/26", "since_day", (1, 26)),
         ("after 2/29", "since_day", (2, 29)),
+        # #238: a holiday is its own day - MLK Day the third Monday of
+        # January (not January 15), each Eve the day before, not the day.
+        ("mlk day", "nth_weekday", (1, 1, 3)),
+        ("on MLK Day", "nth_weekday", (1, 1, 3)),
+        ("martin luther king day", "nth_weekday", (1, 1, 3)),
+        ("thanksgiving", "nth_weekday", (11, 4, 4)),
+        ("christmas eve", "day", (12, 24)),
+        ("new year's eve", "day", (12, 31)),
+        ("new year\u2019s eve", "day", (12, 31)),
+        ("new years", "day", (1, 1)),
+        ("valentine's day", "day", (2, 14)),
     ],
 )
 def test_parse_situation_reads_the_calendar_shapes(text: str, kind: str, value: object) -> None:
@@ -41,9 +65,77 @@ def test_parse_situation_reads_the_calendar_shapes(text: str, kind: str, value: 
     assert (narrowing.kind, narrowing.value) == (kind, value)
 
 
-@pytest.mark.parametrize("text", ["18 year old", "western conference", "since returning", "before turning 27", "since 2/30/20", "since 13/1/20", "", "   ", None, 42])
+@pytest.mark.parametrize("text", ["18 year old", "western conference", "since returning", "before turning 27", "since 2/30/20", "since 13/1/20", "easter", "", "   ", None, 42])
 def test_parse_situation_returns_none_for_anything_else(text: object) -> None:
     assert parse_situation(text) is None
+
+
+# Published dates, from the federal calendar - not derived by the rule being checked.
+_MLK_DAYS = ("1996-01-15", "2001-01-15", "2018-01-15", "2019-01-21", "2020-01-20", "2021-01-18", "2022-01-17", "2023-01-16", "2024-01-15", "2025-01-20", "2026-01-19")
+_THANKSGIVINGS = ("2010-11-25", "2023-11-23", "2024-11-28", "2025-11-27")
+
+
+def _calendar_days(con: duckdb.DuckDBPyConnection, first: str, last: str) -> None:
+    """A table ``g`` of every calendar day from ``first`` to ``last``, with the season each falls in."""
+    con.execute(
+        "CREATE TABLE g AS SELECT CAST(d AS DATE) AS eastern_date, CAST(year(d) + CASE WHEN month(d) >= 10 THEN 1 ELSE 0 END AS INTEGER) AS season "
+        "FROM range(CAST(? AS DATE), CAST(? AS DATE) + INTERVAL 1 DAY, INTERVAL 1 DAY) AS t(d)",
+        [first, last],
+    )
+
+
+def test_mlk_day_is_the_third_monday_of_january_in_every_season() -> None:
+    """ "on mlk day" used to match every January 15, which is MLK Day in 5 of
+    the 33 seasons 1994-2026 (#238). Every day from 1988 to 2040, through the
+    clause the relations run: exactly one a season, a Monday, the one the
+    published calendar names, and the day the ISSUES.md entry's own
+    expression computes - the two rules, written independently, agree."""
+    con = duckdb.connect(":memory:")
+    _calendar_days(con, "1988-01-01", "2040-12-31")
+    sql, params = calendar_clause(HOLIDAYS["mlk day"], "g.eastern_date", "g.season")
+    days = [str(r[0]) for r in con.execute(f"SELECT eastern_date FROM g WHERE {sql} ORDER BY 1", params).fetchall()]
+    assert len(days) == 2040 - 1988 + 1
+    assert set(_MLK_DAYS) <= set(days)
+    assert "2026-01-15" not in days and "2025-01-15" not in days
+    third_mondays = [str(r[0]) for r in con.execute("SELECT make_date(y, 1, 15) + CAST((8 - isodow(make_date(y, 1, 15))) % 7 AS INTEGER) FROM range(1988, 2041) AS t(y) ORDER BY 1").fetchall()]
+    assert days == third_mondays
+
+
+def test_thanksgiving_is_the_fourth_thursday_of_november() -> None:
+    con = duckdb.connect(":memory:")
+    _calendar_days(con, "1988-01-01", "2040-12-31")
+    sql, params = calendar_clause(HOLIDAYS["thanksgiving"], "g.eastern_date", "g.season")
+    days = [str(r[0]) for r in con.execute(f"SELECT eastern_date FROM g WHERE {sql} ORDER BY 1", params).fetchall()]
+    assert len(days) == 2040 - 1988 + 1
+    assert set(_THANKSGIVINGS) <= set(days)
+    assert all(date.fromisoformat(day).isoweekday() == 4 and 22 <= date.fromisoformat(day).day <= 28 for day in days)
+
+
+@pytest.mark.parametrize(("spelling", "day"), [("christmas eve", "2025-12-24"), ("new year's eve", "2025-12-31"), ("new year's", "2026-01-01"), ("valentine's day", "2026-02-14")])
+def test_a_fixed_holiday_is_its_own_day_and_not_the_next(spelling: str, day: str) -> None:
+    """ "christmas eve" was captured as "christmas" and "new year's eve" as
+    "new year's", each answering the day after the one asked about."""
+    con = duckdb.connect(":memory:")
+    _calendar_days(con, "2025-10-01", "2026-06-30")
+    sql, params = calendar_clause(HOLIDAYS[spelling], "g.eastern_date", "g.season")
+    assert [str(r[0]) for r in con.execute(f"SELECT eastern_date FROM g WHERE {sql}", params).fetchall()] == [day]
+
+
+def test_holiday_words_hold_every_spelling_longest_first() -> None:
+    """What the router captures is built from this: every spelling read or
+    refused, an Eve before its day, and a typographic apostrophe read as a
+    straight one."""
+    words = re.compile(rf"\b(?:{HOLIDAY_WORDS})\b", re.IGNORECASE)
+    for spelling in (*HOLIDAYS, *UNREAD_HOLIDAYS):
+        assert words.fullmatch(spelling), spelling
+    for text, captured in [
+        ("on christmas eve", "christmas eve"),
+        ("on new year's eve", "new year's eve"),
+        ("on New Year\u2019s Eve", "New Year\u2019s Eve"),
+        ("on martin luther king jr. day", "martin luther king"),
+    ]:
+        found = words.search(text)
+        assert found is not None and found.group(0) == captured
 
 
 @pytest.mark.parametrize(

@@ -1071,6 +1071,15 @@ def test_a_players_career_games_in_a_month_are_his_game_log_in_that_month() -> N
         ("most triple doubles since 2000-2001", 2001, None),
         ("most triple doubles since 1999-00", 2000, None),
         ("most triple doubles since 2000-05", 2000, None),
+        # #168: a span is `season_text.season_spans`' to read, here as alone -
+        # two digits a side, or a slash. Unread, the short range answered its
+        # first season alone once the short form read as a season.
+        ("kobe bryant playoff stats from 02-03 to 06-07", 2003, 2007),
+        ("Portis vs bulls 2019/20 to 2023/24", 2020, 2024),
+        ("Portis vs bulls 2019-2020 to 2023-2024", 2020, 2024),
+        ("most triple doubles since 00-01", 2001, None),
+        ("most triple doubles since 99-00", 2000, None),
+        ("most triple doubles since 2012/13", 2013, None),
     ],
 )
 def test_a_range_of_seasons_replaces_the_one_the_model_picked(question: str, since: int | None, until: int | None) -> None:
@@ -1079,6 +1088,40 @@ def test_a_range_of_seasons_replaces_the_one_the_model_picked(question: str, sin
     assert got.slots.get("since") == since and got.slots.get("until") == until
     if since is not None:
         assert "season" not in got.slots
+
+
+@pytest.mark.parametrize(
+    ("question", "season"),
+    [
+        # #168, from the live sample: answered for the current season (and,
+        # before #95, for 2023) while "23-24" went unread.
+        ("points per game leaders for the 23-24 nba season", 2024),
+        ("points per game leaders for the 23/24 nba season", 2024),
+        ("points per game leaders for the 2023-24 nba season", 2024),
+        ("nba leaders in plus minus in 25-26", 2026),
+    ],
+)
+def test_a_season_written_two_digits_a_side_is_the_season(question: str, season: int) -> None:
+    got = _ask(question, '{"intent":"leaderboard","stat":"points"}')
+    assert got.slots.get("season") == season
+    assert "since" not in got.slots and "until" not in got.slots
+
+
+def test_a_short_pair_that_is_not_a_year_and_the_next_is_no_season() -> None:
+    """ "10-12" is a record or a score: read as a season it would answer
+    2011-12 for a question that named no year."""
+    got = _ask("celtics record 10-12", '{"intent":"team_record","team":"Boston Celtics"}')
+    assert "season" not in got.slots and "since" not in got.slots
+
+
+def test_a_numeric_date_after_since_stays_a_date_and_names_no_season() -> None:
+    """ "since 12/13" is December 13 (`_NUMERIC_DATE_RANGE`), not the season
+    2012-13 written with a slash - the one definition of a span leaves a
+    slash pair that is also a calendar day to the date reading, so the two
+    never both read the same characters."""
+    got = _ask("most triple doubles since 12/13", '{"intent":"leaderboard","stat":"triple_doubles"}')
+    assert got.slots.get("situation") == "since 12/13"
+    assert "season" not in got.slots and "since" not in got.slots
 
 
 def test_a_consecutive_hyphenated_year_pair_keeps_season_texts_own_reading() -> None:
@@ -1291,6 +1334,55 @@ def test_a_narrowing_the_schema_has_no_slot_for_still_reaches_check_scope(questi
     falls through to the agent.
     """
     assert "situation" in _ask(question, '{"intent":"player_stat","player":"LeBron James"}').slots
+
+
+@pytest.mark.parametrize(
+    ("question", "situation", "kind", "value"),
+    [
+        # #238: each of these answered the wrong day, or no day at all. MLK
+        # Day is the third Monday of January, not January 15; "valentine's
+        # day" was never captured; the Eves were captured as the day after.
+        ("lebron stats on mlk day", "mlk day", "nth_weekday", (1, 1, 3)),
+        ("lebron stats on martin luther king day", "martin luther king day", "nth_weekday", (1, 1, 3)),
+        ("lebron stats on martin luther king jr. day", "martin luther king", "nth_weekday", (1, 1, 3)),
+        ("lebron stats on valentine's day", "valentine's day", "day", (2, 14)),
+        ("lebron stats on valentines day", "valentines day", "day", (2, 14)),
+        ("lebron stats on new year's eve", "new year's eve", "day", (12, 31)),
+        ("lebron stats on new year\u2019s eve", "new year\u2019s eve", "day", (12, 31)),
+        ("lebron stats on christmas eve", "christmas eve", "day", (12, 24)),
+        ("lebron stats on new years day", "new years day", "day", (1, 1)),
+        ("lebron stats on new year's", "new year's", "day", (1, 1)),
+        ("anthony davis stats on christmas", "christmas", "day", (12, 25)),
+        ("lebron james Christmas Day game record", "christmas day", "day", (12, 25)),
+        ("lebron stats on thanksgiving", "thanksgiving", "nth_weekday", (11, 4, 4)),
+    ],
+)
+def test_a_holiday_is_captured_whole_and_read_as_its_own_day(question: str, situation: str, kind: str, value: object) -> None:
+    from association.query.calendar import parse_situation
+
+    got = _ask(question, '{"intent":"player_stat","player":"LeBron James"}').slots.get("situation")
+    assert got == situation
+    narrowing = parse_situation(got)
+    assert narrowing is not None and (narrowing.kind, narrowing.value) == (kind, value)
+
+
+def test_every_holiday_the_calendar_names_is_one_the_router_captures() -> None:
+    """The router's holiday words are built from the calendar's own lists
+    (`calendar.HOLIDAY_WORDS`), so the two cannot drift the way they did:
+    "valentine's day" was a day the calendar read that the router's
+    hand-kept list never captured. Every spelling the calendar reads is
+    captured whole and read as its day; every one it names and does not
+    read is captured all the same, and refused by value downstream."""
+    from association.query.calendar import HOLIDAYS, UNREAD_HOLIDAYS, parse_situation
+
+    for spelling, narrowing in HOLIDAYS.items():
+        got = _ask(f"lebron stats on {spelling} this season", '{"intent":"player_stat","player":"LeBron James"}').slots.get("situation")
+        assert got == spelling, spelling
+        assert parse_situation(got) == narrowing, spelling
+    for spelling in UNREAD_HOLIDAYS:
+        got = _ask(f"lebron stats on {spelling} this season", '{"intent":"player_stat","player":"LeBron James"}').slots.get("situation")
+        assert got == spelling, spelling
+        assert parse_situation(got) is None, spelling
 
 
 def test_a_stat_name_before_a_second_line_is_not_a_subject() -> None:
