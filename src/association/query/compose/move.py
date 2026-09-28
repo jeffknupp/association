@@ -854,7 +854,7 @@ def read_point(con: duckdb.DuckDBPyConnection, intent: str, slots: dict[str, Any
     .. versionchanged:: 4.5.0
        Repairs no slot: the position phrase, the filler word or team in
        ``player``, the dropped subject and the opponent player it once
-       rewrote never reach it from the parser (ROADMAP next step 1).
+       rewrote never reach it from the parser (ROADMAP plan item 6, step (e)).
     """
     subject = _subject(con, question, slots, subject, intent)
     reading = _read_point(con, intent, slots, question, subject)

@@ -68,43 +68,36 @@ The 15 families still failing, by cause:
 
 ## Next, in order
 
-1. **The compiler's second reading of the question moves into the parser**
-   (item 6). `compose.move.read_point` reads the question's words again - a
-   skeleton ("most ... in a game"), a measure, a position group, a dropped
-   subject - and repairs the slots it was handed: the last writer after the
-   parser. Its word tables become the parser's, so the Reading carries the
-   point (shape, measures, aggregate, group) as well as the scope, and the
-   compiler only plans and runs it. The intent the words assign becomes a
-   recorded decision on the way (#258).
-2. **The planner replaces `check_scope`** (item 6). A Reading is planned
-   onto a relation, and a narrowing the relation cannot honor is refused
-   from the Reading itself - in place of each template's `HONORED_SCOPING`
-   and the check in front of it. `compose.answer` and the refusals take the
-   Reading instead of a slot dict, and the stages write the typed Scope, so
-   no slot dict is left after the model.
-3. **The templates the compiler can reproduce go** (item 2). `game_log`
-   (19/26 at parity) and a narrowed `player_stat` (6/29) first;
-   `player_history` and an unnarrowed `player_stat` read the season line,
-   which has to become a relation (#228). A template survives only for a
-   shape of its own: a chart, a fingerprint, a streak, a matchup, a quarter.
-   How to retire one is part 4's method: every call its unit tests make and
-   every recorded question it answers, answered both ways and compared -
-   the recorded questions alone found one shape the template still carried,
-   the unit tests five.
-4. **The period relation** (item 4). A quarter's or a half's figures beyond
+1. **The planner replaces `check_scope`** (item 6, step (f)). A Reading is
+   planned onto a relation, and a narrowing the relation cannot honor is
+   refused from the Reading itself - in place of each template's
+   `HONORED_SCOPING` and the check in front of it. `compose.answer` and the
+   refusals take the Reading instead of a slot dict, and the stages write the
+   typed Scope, so no slot dict is left after the model.
+2. **The templates the compiler can reproduce go** (item 6, step (g); item
+   2). `game_log` (19/26 at parity) and a narrowed `player_stat` (6/29)
+   first; `player_history` and an unnarrowed `player_stat` read the season
+   line, which has to become a relation (#228). A template survives only for
+   a shape of its own: a chart, a fingerprint, a streak, a matchup, a
+   quarter. How to retire one is part 4's method: every call its unit tests
+   make and every recorded question it answers, answered both ways and
+   compared - the recorded questions alone found one shape the template
+   still carried, the unit tests five.
+3. **The period relation** (item 4). A quarter's or a half's figures beyond
    points, rebuilt from the plays the way points are, as one relation the
    compiler reads - a player's or a team's quarter as a narrowing rather
    than three templates. The largest cluster of what still fails (F048,
-   F049, F060). It does not depend on steps 1-3, so it can run beside them.
-5. **The rest of the pair relation** (item 3). The pair as a compiler
+   F049, F060). It does not depend on steps 1 and 2, so it can run beside
+   them.
+4. **The rest of the pair relation** (item 3). The pair as a compiler
    subject ("most points by curry vs lebron", "how many times did lebron
    score 30 vs kawhi"), and the opponent-side condition ("vs lakers without
    lebron": the relation reads `side="opponent"`, and nothing writes it).
-6. **Re-plan from what is still failing**, after a live run.
+5. **Re-plan from what is still failing**, after a live run.
 
-Steps 1-3 finish the parser consolidation (item 6) and should move no
+Steps 1 and 2 finish the parser consolidation (item 6) and should move no
 answers: each is proved by golden and the rehearsal, then a live run. Steps
-4 and 5 are new capability, each measured on the yardstick.
+3 and 4 are new capability, each measured on the yardstick.
 
 **Waiting on a decision (Jeff's):**
 
@@ -133,12 +126,12 @@ text as written is the last section of `ROADMAP-HISTORY.md`.
    partly done.** Seven child intents are assigned from the words (2c: the
    router's intents went from 23 to 16, before the router itself went); the
    compiler reproduced four templates exactly (2a) and they retired
-   (item 6, part 4). What is left is next step 3.
+   (item 6, part 4). What is left is item 6, step (g) - next step 2.
 3. **The pair relation and the player condition - done but for next step
-   5.** `player_matchup` reads the pair on the relation (2026-09-24); a
+   4.** `player_matchup` reads the pair on the relation (2026-09-24); a
    condition `(player, side, predicate)` narrows either relation, with each
    companion's role read off the question (2026-09-26).
-4. **The period relation - not started** (next step 4).
+4. **The period relation - not started** (next step 3).
 5. **Conference and division - done 2026-09-25** (`team_alignment`).
 6. **The parser: one Reading, one writer of slots - in progress.** The
    model copies names and picks a stat; the parser writes everything else as
@@ -157,7 +150,16 @@ text as written is the last section of `ROADMAP-HISTORY.md`.
      compiler answers `threshold_count`, `single_game_high`, `record_when`
      and `player_history` alone, in their words (`compose.COMPILED_INTENTS`,
      `4b3aff9`, `8c808b7`; live 162/175, no answer moved) - done.
-   - Then next steps 1-3.
+   - (e) the compiler's reading of the question moved into the parser -
+     done. The parser reads the compiler's point once and the Reading
+     carries it (`Reading.point`); the compiler plans and runs the point it
+     is handed (`compose.answer_reading`) and repairs no slot; a position
+     group is a subject, never a player; and the intent the words assign is
+     a recorded decision (#258) (`1702db8`, `31c87f9`, `0ede991`). The word
+     tables still live beside the compiler (`compose.move.read_point`), and
+     the parser is their one caller on the live path.
+   - (f) the planner replaces `check_scope`, and (g) the templates the
+     compiler can reproduce go - next steps 1 and 2.
 
 ## How it is measured
 
@@ -232,6 +234,9 @@ ends.
 - **2026-09-27, item 6 (d) part 4:** four templates retired - the compiler
   answers `threshold_count`, `single_game_high`, `record_when` and
   `player_history` alone, in their words.
+- **2026-09-27, item 6 (e):** the compiler's reading of the question moved
+  into the parser - the Reading carries the compiler's point, the compiler
+  repairs no slot, and the intent the words assign is a decision.
 
 ## The rules a spike keeps
 

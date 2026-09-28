@@ -1469,7 +1469,7 @@ def test_a_history_of_a_stat_nothing_carries_is_declined_not_swapped_for_points(
 
 
 # ---------------------------------------------------------------------------
-# The parser reads the compiler's point once (ROADMAP next step 1): the
+# The parser reads the compiler's point once (ROADMAP plan item 6, step (e)): the
 # Reading carries it, and the compiler answers it without the question.
 # ---------------------------------------------------------------------------
 

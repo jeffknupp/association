@@ -537,7 +537,7 @@ model's. Two things follow, and both matter when you add a shape:
   box-score join yet. `move_point` tries `team_move_point` before the
   league-wide reading, and nothing after the parser restores a subject:
   "magic" is also Magic Johnson's given name, and the compiler's own
-  dropped-subject restoration (`repair()`, gone with ROADMAP next step 1)
+  dropped-subject restoration (`repair()`, gone with plan item 6, step (e))
   once invented him from a team reference - the shape `subject.apply_subject`
   exists to catch. `team_named_in` restores a dropped team from the
   question's own team word, the way `players_named_in` does a player.
