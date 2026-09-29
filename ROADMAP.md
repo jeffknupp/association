@@ -105,9 +105,17 @@ The 13 families still failing, by cause:
    declined every `with_without`, `player_matchup` and `streak` point (a
    condition or a run it has no reading of). What is left on the player
    relation: `with_without` (10 recorded questions), `player_matchup` (5),
-   `streak` (4) - measure the same way before retiring any. A template
+   `streak` (4). Each is a shape the compiler has no skeleton for, not a
+   point it declines by wording: a with/without split is a team's record
+   GROUPED BY a teammate's presence over his tenure windows (no such group
+   on either relation; the team relation carries no `without` cell); a
+   matchup is two players' lines over the games they met in, side by side
+   (a pair skeleton); a streak is a run, a window function over the ordered
+   games (no skeleton at all). Retiring one is a new skeleton or cell on the
+   relation first, measured the same way - never a presenter that calls
+   the template's body over the scope, which retires nothing. A template
    survives only for a shape of its own: a chart, a fingerprint, a streak, a
-   matchup, a quarter. How to retire one is part 4's method: every call its
+   matchup, a with/without split. How to retire one is part 4's method: every call its
    unit tests make and every recorded question it answers, answered both
    ways and compared (`~/association-research/intent-shrink/g/`: a pytest
    plugin records the unit-test calls; `parity_corpus.py` the recorded
