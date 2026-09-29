@@ -2407,9 +2407,9 @@ def _box_score_notes(con: duckdb.DuckDBPyConnection, player: Entity, span: _Span
     return notes
 
 
-def _ordinal(n: int) -> str:
-    suffix = "th" if 10 <= n % 100 <= 20 else {1: "st", 2: "nd", 3: "rd"}.get(n % 10, "th")  # codespell:ignore nd - an ordinal suffix
-    return f"{n}{suffix}"
+# The private name the templates import; one definition, `ordinal_word` -
+# the two were the same function written twice in this module.
+_ordinal = ordinal_word
 
 
 def _condition_scope(season: int | None, span: Literal["career"] | None, season_type: int | None, tables: tuple[str, ...], since: int | None = None) -> _Scope:
