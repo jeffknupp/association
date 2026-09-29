@@ -5366,6 +5366,15 @@ def period_rank_ctx(tmp_path: Path) -> TemplateContext:
         shot("2", event, 1)
     for event in events[:2]:  # Cameo: two, in his only two games
         shot("3", event, 1)
+    # The ranking reads the relation (plan item 4), which reads the
+    # warehouse's log view - mirrored here as period_ctx mirrors it.
+    c.execute(
+        "CREATE VIEW player_game_log AS SELECT pbs.*, "
+        "CASE WHEN g.home_team_id = pbs.team_id THEN g.away_team_id ELSE g.home_team_id END AS opponent_team_id, "
+        "TRUE AS starter, g.date AS game_date, p.display_name AS player_name "
+        "FROM player_box_stats pbs JOIN games g ON g.event_id = pbs.event_id AND g.season = pbs.season "
+        "LEFT JOIN players p ON p.athlete_id = pbs.athlete_id"
+    )
     return TemplateContext(con=c, out_dir=tmp_path)
 
 
@@ -5417,10 +5426,27 @@ def test_a_period_ranking_covers_a_half_as_well_as_a_quarter(period_rank_ctx: Te
 
 
 def test_a_period_ranking_refuses_a_stat_it_cannot_rank(period_rank_ctx: TemplateContext) -> None:
-    """Only points are in shot_chart. Rebounds per quarter would have to be
-    derived from plays, at a fidelity period_split already refuses over."""
-    with pytest.raises(TemplateUnsupported, match="ranks points only"):
-        period_leaderboard(period_rank_ctx, Reading.from_slots({"period": 1, "season": SEASON, "season_type": 3, "stat": "rebounds"}))
+    """Minutes are not split by period in any source, so they are refused by
+    name; rebounds are rebuilt from the plays, and refused only where the
+    warehouse holds none (this fixture) - never ranked as zeros."""
+    with pytest.raises(TemplateUnsupported, match="no per-period 'minutes'"):
+        period_leaderboard(period_rank_ctx, Reading.from_slots({"period": 1, "season": SEASON, "season_type": 3, "stat": "minutes"}))
+    answer = period_leaderboard(period_rank_ctx, Reading.from_slots({"period": 1, "season": SEASON, "season_type": 3, "stat": "rebounds"})).answer
+    assert answer == "Per-quarter rebounds cannot be ranked here: they are rebuilt from play-by-play, and this warehouse holds none."
+
+
+def test_points_by_quarter_is_every_quarter_side_by_side(period_rank_ctx: TemplateContext) -> None:
+    """yardstick-v2 F048, "nba playerspoints by quarter average": no period
+    named is the four quarters per player, ranked by the four together. Ace:
+    five first-quarter threes and one second-quarter one over six games -
+    2.5 and 0.5; Role: two first-quarter threes over six - 1.0. Cameo played
+    two games and does not qualify."""
+    result = period_leaderboard(period_rank_ctx, Reading.from_slots({"season": SEASON, "season_type": 3}))
+    leaders = result.data["leaders"]
+    assert [row["player"] for row in leaders] == ["Ace Scorer", "Role Player"]
+    assert leaders[0] == {"player": "Ace Scorer", "games": 6, "q1": 2.5, "q2": 0.5, "q3": 0.0, "q4": 0.0, "total": 3.0}
+    assert "ranked by the four quarters together" in (result.answer or "")
+    assert "Overtime is no quarter" in (result.answer or "")
 
 
 def test_a_period_ranking_nobody_qualifies_for_says_so(period_rank_ctx: TemplateContext) -> None:

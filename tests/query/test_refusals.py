@@ -107,15 +107,18 @@ def test_an_alignment_situation_is_never_refused_here(con: duckdb.DuckDBPyConnec
         assert unanswerable(con, "player_splits", {"player": "LeBron James", "situation": situation}, f"lebron {situation}") is None
 
 
-def test_a_stat_other_than_points_by_quarter_is_refused(con: duckdb.DuckDBPyConnection) -> None:
-    """yardstick-v2 F066-F068 "vj edgecombe 1st quarter assists by game":
-    period_split answers points only (its own refusal), and the per-period
-    figures are rebuilt from scoring plays, so nothing else reads a quarter's
-    assists either."""
-    refusal = unanswerable(con, "period_split", {"player": "VJ Edgecombe", "stat": "assists", "period": 1}, "vj edgecombe 1st quarter assists by game")
+def test_a_stat_the_period_line_does_not_rebuild_is_refused(con: duckdb.DuckDBPyConnection) -> None:
+    """yardstick-v2 F066-F068 "vj edgecombe 1st quarter assists by game" was
+    refused here for "only points are on record" - true until the period
+    relation (plan item 4) rebuilt assists, rebounds and the rest from the
+    plays, and a false cause after. Now only a stat no play carries per
+    period is refused, and the refusal names what IS rebuilt."""
+    assert unanswerable(con, "period_split", {"player": "VJ Edgecombe", "stat": "assists", "period": 1}, "vj edgecombe 1st quarter assists by game") is None
+    assert unanswerable(con, "period_leaderboard", {"stat": "rebounds", "half": 2}, "most 2nd half rebounds") is None
+    refusal = unanswerable(con, "period_split", {"player": "VJ Edgecombe", "stat": "minutes", "period": 1}, "vj edgecombe 1st quarter minutes")
     assert refusal is not None
-    assert "only points" in refusal.answer and "'assists'" in refusal.answer and "the 1st quarter" in refusal.answer
-    half = unanswerable(con, "period_split", {"player": "VJ Edgecombe", "stat": "rebounds", "half": 2}, "vj 2nd half rebounds")
+    assert "'minutes' is not among them" in refusal.answer and "rebounds, assists" in refusal.answer and "the 1st quarter" in refusal.answer
+    half = unanswerable(con, "period_split", {"player": "VJ Edgecombe", "stat": "plusMinus", "half": 2}, "vj 2nd half plus minus")
     assert half is not None and "the 2nd half" in half.answer
 
 
