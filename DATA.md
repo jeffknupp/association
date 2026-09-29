@@ -1137,20 +1137,58 @@ measured. Count foul-outs from the box score.
 
 ### The 2026 shot chart holds more shots than the box score
 
-- **What ESPN does:** logs shots in the play-by-play that its own box score
-  does not credit as attempts.
+- **What ESPN does:** logs every end-of-period heave in 2026's play-by-play,
+  typed `Heave Jump Shot`, and does not credit a missed one as a field goal
+  attempt in its own box score.
 - **Evidence:** re-verified 2026-09-11 with free throws excluded — **1,165
   player-games** have more field goals in `shot_chart` than the box score's
-  FGA, **1,207 extra shots** in total. Stephen Curry has **488** charted 2026
-  threes against **484** 3PA in the box score. Neither `plays` nor `shot_chart`
-  holds a duplicate `play_id`. The extras look like end-of-period heaves —
-  1,141 of those player-games have extra 3PA and hold 1,084 shots taken with
-  under a second on the clock — but that is a correlation, not proof.
+  FGA, **1,207 extra shots** in total (Stephen Curry: **488** charted threes
+  against **484** 3PA). Neither `plays` nor `shot_chart` holds a duplicate
+  `play_id`. Measured 2026-09-29: 2026 is the only season with the type -
+  1,153 `Heave Jump Shot` rows, none of them made - and leaving the missed
+  heaves out leaves **61 player-games, 62 shots** over. Per player-game,
+  attempts then agree with the box score 99.6% of the time against 95.8%.
 - **Does a refetch fix it?** **No, proven by the 2026-09-11 fresh pull**
   (`plays` and `shot_chart` both reproduced exactly).
-- **How we handle it:** nothing yet.
+- **How we handle it:** the period line leaves a missed heave out of its
+  attempts (`player_games.period_line_sql`); the shot chart and shot-distance
+  reads still count it.
 - **Tracked in:** ISSUES.md, "The 2026 shot chart holds more shots than the box
   score" (#15).
+
+### A play's type does not always say what the box score counts it as
+
+- **What ESPN does:** types some plays in words a box score column does not
+  use, and splits one event into two plays. Four shapes matter to anything
+  that rebuilds a line from `plays`:
+  - `Traveling` is a turnover whose type does not say "turnover" (the other
+    turnover types do): of the 1,289 2026 player-games one turnover short of
+    the box score when counting `%Turnover%` types, 1,366 plays of the type
+    fall in those games.
+  - `Shooting Block` (2005-2018), `Personal Block` (2011-2017) and
+    `Offensive Charge` (2011-2026) are personal fouls whose types never say
+    "foul".
+  - An offensive foul is two plays, `Offensive Foul` and `Offensive Foul
+    Turnover`: the first is the foul, the second the turnover, and counting
+    both as fouls double-counts.
+  - Before 2006 a play's second participant - the assister, the stealer, the
+    blocker - is mostly absent: summed over a game, rebuilt assists equal the
+    box score in about 31% of 2002-2005 player-games, steals about 51%,
+    blocks about 69% (88%, 92% and 95% in 2006, 99%+ from 2007).
+- **Evidence:** measured 2026-09-29 over every player-game 2002-2026 in a
+  game the shot table covers (628,103), summed over all periods against the
+  game's box score; the per-season table is `player_games.PERIOD_AGREEMENT`,
+  and `scripts/check_period_lines.py` re-measures it. With the rules above,
+  fouls agree with the box score in 99.0-99.9% of player-games from 2007
+  (2015: 88.6% before `Shooting Block` was counted, 99.7% after), turnovers
+  98.3-99.9% (2026: 95.2% before `Traveling`, 99.7% after).
+- **Does a refetch fix it?** untested; it is how the play types are named,
+  not a gap in a pull.
+- **How we handle it:** `player_games.period_line_sql` counts by these rules;
+  `fetch/repairs/reconstructed_box` (the empty 2013-18 box scores) still uses
+  the older `%Turnover%` / `%Foul%` rules.
+- **Tracked in:** ISSUES.md, "The empty-box rebuild counts turnovers and
+  fouls by the older rules".
 
 ### Team box scores disagree slightly with player-box sums in some seasons
 
