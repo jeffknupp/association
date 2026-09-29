@@ -248,6 +248,8 @@ def test_read_route_reads_the_columns_a_ranking_asks_to_see(con: duckdb.DuckDBPy
     assert (extra.intent, extra.slots.get("fields"), extra.slots.get("limit")) == ("leaderboard", ["rebounds", "assists"], 5)
     team, _, _ = read_route(con, "show the top 50 in total adjusted netpoints and the team they play for", [], "netpoints")
     assert team.slots.get("fields") == ["team"]
+    current, _, _ = read_route(con, "who are the top 50 players in total adjusted netpoints while playing for their current team", [], "netpoints")
+    assert current.slots.get("fields") == ["team"]
     plain, _, _ = read_route(con, "who led the league in scoring", [], "points")
     assert "fields" not in plain.slots
 
