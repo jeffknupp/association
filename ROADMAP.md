@@ -47,8 +47,8 @@ The 13 families still failing, by cause:
 - **A period as a condition** (plan item 4, what is left). "vj edgecombe
   three points made per game after making one three in first quarter"
   (F062) is refused by name: nothing keeps the games where a period held a
-  line (#275). A team's non-points figure per quarter is measured and not
-  built (#161).
+  line (#275). A team's non-points figure per quarter is built (the team
+  half, 2026-09-29; the rehearsal moves F065 to its own shape).
 - **A span or a window the parser does not read.** "... games since
   2000-01" (F161) answers one season; "Most reb by a hawk player history"
   (F125) ranks 2026 alone; "Best NBA record since January 31st 201" (F104)
@@ -92,20 +92,20 @@ The 13 families still failing, by cause:
    questions; `compare_trees.py` the before-and-after) - the recorded
    questions alone found one shape the template still carried, the unit
    tests five.
-2. **The period relation - the team half** (item 4). The player half is
-   done (2026-09-29, an Opus agent's branch merged at `621ab51`): a quarter
-   or half narrows the player-games relation (`Narrowed.narrow_periods`),
-   its line rebuilt from the shots and the plays (`player_games.period_line_sql`)
-   and validated per season and per column against the box score
-   (`PERIOD_AGREEMENT`, `scripts/check_period_lines.py`: 375/375 cells;
-   from 2007 on every column agrees in 99%+ of player-games but a few
-   seasons carried as caveats, and 2002-2005 assists/steals/blocks are
-   refused under 90%). F048, F049, F060 and F066-F068 answer. What is left:
-   a team's per-quarter figure beyond points (#161, a period narrowing on
-   `TeamNarrowed` summing the players' lines and the team's no-athlete
-   plays), a named player's four-quarter breakdown (#162), shooting
-   percentages in a period, a period as a condition (#275), and
-   `period_leaderboard` narrowed by opponent, venue, date or a range (#185).
+2. **The period relation - what is left** (item 4). Both halves are
+   done (2026-09-29): a quarter or half narrows the player-games relation
+   (`Narrowed.narrow_periods`, `PERIOD_AGREEMENT`,
+   `scripts/check_period_lines.py`: 375/375 cells) and the team-games
+   relation (`TeamNarrowed.narrow_periods`: points from the linescore, the
+   rest the players' period lines plus the team's own plays,
+   `team_games.team_period_line_sql`, validated per season and column in
+   `TEAM_PERIOD_AGREEMENT`, `scripts/check_team_period_lines.py`: 375/375
+   cells over 60,422 team-games; 70 cells refused under 90%, 60 of them
+   2002-2006). `team_quarter_points` answers any column of the line (F065).
+   What is left: a named player's four-quarter breakdown (#162), shooting
+   percentages in a period (player or team), a period as a condition
+   (#275), and `period_leaderboard` narrowed by opponent, venue, date or a
+   range (#185).
 3. **The rest of the pair relation** (item 3). The pair as a compiler
    subject ("most points by curry vs lebron", "how many times did lebron
    score 30 vs kawhi"), and the opponent-side condition ("vs lakers without

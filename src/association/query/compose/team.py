@@ -219,10 +219,17 @@ def _team_narrowed(scope: Scope) -> bool:
     total.
 
     .. versionadded:: 4.4.0
+
+    .. versionchanged:: 5.0.0
+       A quarter or half narrows too (the period relation's team half).
     """
     # The fields that narrow the games a team question reads - any of them
     # sends the read to the game-level relation rather than the season line.
+    # A quarter or half is one too: read as the season line, "the magic's
+    # first-quarter threes" would be their whole season's.
     if any((scope.opponent, scope.venue, scope.date, scope.since, scope.until, scope.game_n, scope.situation)):
+        return True
+    if scope.period is not None or scope.half is not None:
         return True
     return scope.order is not None or scope.limit is not None
 
@@ -377,7 +384,7 @@ def _compile_team_games_total(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> T
     if q.measure not in GAME_MEASURES:
         raise Unsupported(f"{q.measure!r} needs a box-score join the team relation does not have yet for a narrowed read")
     if _team_mixed(q.scope):
-        if q.scope.since or q.scope.until or q.scope.situation:
+        if q.scope.since or q.scope.until or q.scope.situation or q.scope.period is not None or q.scope.half is not None:
             # The both-types read is a plain window (an opponent and a venue
             # at most, as the log's is); a range of seasons or a calendar
             # would be dropped from it silently, so it is refused instead.

@@ -198,6 +198,19 @@ class TeamNarrowed:
     #: be in - or None. The team counterpart of
     #: :attr:`association.query.player_games.Narrowed.alignment`.
     alignment: AlignmentNarrowing | None = None
+    #: The periods a quarter or a half narrowed each game to - ``(1,)``,
+    #: ``(3, 4)`` - or None for the whole game. Set by :meth:`narrow_periods`;
+    #: every read then sees the period's own figures (:func:`_team_period_source`).
+    periods: tuple[int, ...] | None = None
+    #: How the answer names those periods: ``"1st quarter"``, ``"2nd half"``.
+    period_label: str | None = None
+    #: Whether the warehouse holds the shots and the player rows a period's
+    #: line is rebuilt from (``shot_chart``, ``player_box_stats``); without
+    #: them only the linescore's points are known.
+    period_shots: bool = True
+    #: Whether the warehouse holds ``plays``, which every rebuilt column but
+    #: the shot ones is read from.
+    period_plays: bool = True
 
     def clauses(self, *, narrowed: bool = True) -> tuple[str, list[Any]]:
         """The WHERE body and its parameters - without the narrowing when
@@ -210,7 +223,7 @@ class TeamNarrowed:
             params += self.extra_params
         return " AND ".join(where), params
 
-    def filters(self, *, opponent: bool = True, date: bool = True) -> str:
+    def filters(self, *, opponent: bool = True, date: bool = True, period: bool = True) -> str:
         """What the games were narrowed to, as it follows a name: ``" vs the
         Detroit Pistons at home"``. ``opponent`` is False for a caller that
         already names the opponent its own way (``team_quarter_points`` says
@@ -218,8 +231,14 @@ class TeamNarrowed:
         narrowing without a second, differently-worded mention of it. ``date``
         is False the same way, for a caller whose sentence already names the
         one game's date its own way (a single-game answer that already prints
-        ``g['date']``) and would otherwise say it twice."""
-        parts = []
+        ``g['date']``) and would otherwise say it twice, and ``period`` for a
+        caller that names the quarter or half itself (``team_quarter_points``).
+
+        .. versionchanged:: 5.0.0
+           Says the period (``"in the 1st quarter"``) a narrowing set, and
+           takes ``period``.
+        """
+        parts = [f"in the {self.period_label}"] if self.period_label and period else []
         if self.opponent is not None and opponent:
             parts.append(f"vs the {self.opponent.name}")
         if self.venue:
@@ -291,6 +310,25 @@ class TeamNarrowed:
         self.narrow(clause, *params)
         self.alignment = narrowing
 
+    def narrow_periods(self, periods: tuple[int, ...], label: str, *, shots: bool = True, plays: bool = True) -> None:
+        """Only ``periods`` of each game - a quarter, a half, an overtime -
+        the team counterpart of
+        :meth:`association.query.player_games.Narrowed.narrow_periods`.
+
+        Every read then sees the period's figures (:func:`_team_period_source`):
+        ``team_score``/``opponent_score`` and ``points`` from ESPN's own
+        linescore, and every other :data:`TEAM_PERIOD_COLUMNS` column from the
+        line :func:`team_period_line_sql` rebuilds. The row filters still read
+        the whole game, and ``won`` stays the game's result.
+
+        .. versionadded:: 5.0.0
+        """
+        _team_period_in(periods)  # validates the periods before anything is read
+        self.periods = tuple(periods)
+        self.period_label = label
+        self.period_shots = shots
+        self.period_plays = plays
+
 
 # Every postseason game numbered within its series, over the two teams that
 # played it - the team relation's own copy of
@@ -304,6 +342,468 @@ _TEAM_SERIES_GAMES = (
 )
 
 
+# A team's period line (ROADMAP plan item 4, the team half; ISSUES.md #161).
+# Nothing ESPN serves splits a team's box score by period except the
+# linescore, which holds points alone, so the rest is rebuilt: the sum of the
+# team's players' period lines (`player_games.period_line_sql`, each player
+# placed on his team by his own `player_box_stats` row) PLUS the team's own
+# plays that name no player. The two relations share no base class
+# (see `named`), and this does not add one: it shares the READ of the plays -
+# the same rules for what a turnover or a foul is, measured once against the
+# player box scores - not the rules for composing clauses, which stay each
+# relation's own.
+#
+# Which box column each rebuilt column reproduces, decided by measurement
+# (2026-09-29, every 2002-2026 team-game the shot table covers, summed over
+# every period against `team_box_stats`):
+#
+# - rebounds are the players' own, the split columns
+#   (`offensiveRebounds + defensiveRebounds`). The plays credit ~6 rebounds a
+#   game to the team itself (`Offensive Rebound`/`Defensive Rebound` with no
+#   athlete); added in, offensive rebounds agree with the box in 0.1-3.4% of
+#   team-games instead of 98-99%, and the total agrees with `totalRebounds`
+#   (which carried team rebounds until 2022, DATA.md) in 9-21% in 2007-2012 -
+#   the plays' team-rebound count is not ESPN's. The split is also what every
+#   other team reader means by rebounds (`team_metrics`, `conditions`).
+# - turnovers are the team's whole count, `totalTurnovers` (`turnovers +
+#   teamTurnovers` in 2018, whose `totalTurnovers` is NULL - DATA.md): the
+#   players' plus the team's own `Shot Clock Turnover`, `8-Second Turnover`
+#   and the rest, by the same rule a player's are counted. It is what a
+#   team's turnovers means everywhere else here (`record_when`'s team branch).
+# - fouls are the players' (a team's own `Technical Foul` is not a personal
+#   foul, by the same rule a player's is not).
+# - field goals and free throws include the few shots ESPN charted with no
+#   shooter (313 in 2007): with them 2007 field goals made agree in 99.5% of
+#   team-games, without them 98.4%.
+# - points are the linescore's, never the shots': it is ESPN's own official
+#   per-period score, where the shots' sum agrees with it in 76.5-99% of
+#   team-quarters by season (`templates.games.PERIOD_RECONCILIATION`).
+TEAM_PERIOD_COLUMNS: tuple[str, ...] = (
+    "points",
+    "fieldGoalsMade",
+    "fieldGoalsAttempted",
+    "threePointFieldGoalsMade",
+    "threePointFieldGoalsAttempted",
+    "freeThrowsMade",
+    "freeThrowsAttempted",
+    "rebounds",
+    "offensiveRebounds",
+    "defensiveRebounds",
+    "assists",
+    "steals",
+    "blocks",
+    "turnovers",
+    "fouls",
+)
+"""The columns a period-narrowed team read carries, under the player line's
+names: ``points`` from the linescore, the rest rebuilt by
+:func:`team_period_line_sql`.
+
+.. versionadded:: 5.0.0
+"""
+
+TEAM_PERIOD_BOX: dict[str, str] = {
+    "points": "the final score",
+    "rebounds": "b.offensiveRebounds + b.defensiveRebounds",
+    "turnovers": "COALESCE(b.totalTurnovers, b.turnovers + COALESCE(l.teamTurnovers, 0))",
+}
+"""For the :data:`TEAM_PERIOD_COLUMNS` a team box column does not reproduce by
+its own name, what the rebuilt figure is checked against - an expression over
+``team_box_stats`` aliased ``b`` (and, for ``points``, the game's score) - the
+definitions the comment above :data:`TEAM_PERIOD_COLUMNS` measured. Every
+other column is checked against the box column of its own name.
+
+2018 has no ``totalTurnovers`` and a ``teamTurnovers`` that is not that
+game's (DATA.md, "2018's `teamTurnovers` is not the game's own"), so a 2018
+team-game's turnovers are checked on the players' share alone, with the
+team's own turnovers (``l.teamTurnovers``, the line's) taken as read - they
+match ESPN's own count in 99.9-100% of team-games in 2016, 2017 and 2019.
+
+.. versionadded:: 5.0.0
+"""
+
+# Measured 2026-09-29 (`scripts/check_team_period_lines.py`) over 60,422
+# team-games 2002-2026, both season types, in games the shot table covers
+# and with a team box score: each team-game's line summed over EVERY period,
+# overtime included, against `team_box_stats`, and the linescore's periods
+# summed against the final score. A team-level check is stricter than the
+# player one - any one player's missed play breaks the team's game - so a
+# season 99% right per player is ~90% right per team. Only the cells under
+# 99% are listed; 70 cells are under 90% and refused, 60 of them in
+# 2002-2006. The causes are ESPN's, and DATA.md ("A team's play-by-play does
+# not add up to its box score in six seasons") has them: 2002 is half a
+# season of play-by-play with no shot values; before 2006 a play's second
+# participant (the assister, the stealer, the blocker) is mostly absent;
+# 2003-2006 attempts are miscounted in the plays; 2013 and 2016 play-by-play
+# lacks made shots its own running score counts; 2007-2008 plays are short of
+# turnovers, and 2018's of personal fouls.
+TEAM_PERIOD_AGREEMENT: dict[str, dict[int, float]] = {
+    "points": {},
+    "fieldGoalsMade": {2002: 81.7, 2003: 82.2, 2004: 89.9, 2005: 90.8, 2006: 89.5, 2013: 83.1, 2014: 98.6, 2015: 97.7, 2016: 56.7, 2017: 98.9},
+    "fieldGoalsAttempted": {
+        2002: 80.3,
+        2003: 70.1,
+        2004: 76.8,
+        2005: 73.7,
+        2006: 75.5,
+        2007: 97.7,
+        2008: 97.5,
+        2010: 98.4,
+        2011: 98.7,
+        2012: 98.6,
+        2013: 77.3,
+        2014: 98.2,
+        2015: 97.6,
+        2016: 55.6,
+        2017: 93.3,
+        2018: 94.8,
+        2019: 95.9,
+        2020: 96.9,
+        2021: 98.3,
+        2022: 97.2,
+        2023: 98.6,
+        2024: 97.9,
+        2025: 98.6,
+        2026: 97.7,
+    },
+    "threePointFieldGoalsMade": {2002: 88.1, 2003: 93.0, 2004: 98.6, 2005: 97.9, 2006: 98.3, 2013: 96.0, 2016: 98.6, 2022: 97.7},
+    "threePointFieldGoalsAttempted": {
+        2002: 83.9,
+        2003: 88.3,
+        2004: 95.6,
+        2005: 94.3,
+        2006: 94.5,
+        2007: 98.4,
+        2008: 98.4,
+        2013: 93.4,
+        2016: 94.5,
+        2017: 96.7,
+        2018: 98.7,
+        2019: 98.9,
+        2022: 93.0,
+        2023: 98.7,
+        2024: 98.7,
+        2025: 98.8,
+        2026: 98.4,
+    },
+    "freeThrowsMade": {2002: 86.2, 2003: 89.1, 2004: 94.9, 2005: 96.1, 2006: 95.1, 2013: 94.4},
+    "freeThrowsAttempted": {2002: 81.0, 2003: 80.8, 2004: 87.5, 2005: 71.2, 2006: 68.2, 2013: 92.9},
+    "rebounds": {
+        2002: 82.8,
+        2003: 77.0,
+        2004: 82.6,
+        2005: 82.1,
+        2006: 82.3,
+        2007: 97.5,
+        2008: 97.8,
+        2009: 98.9,
+        2010: 97.6,
+        2011: 98.5,
+        2012: 98.3,
+        2013: 81.2,
+        2014: 98.9,
+        2015: 98.5,
+        2016: 98.4,
+        2017: 91.3,
+        2018: 93.5,
+        2019: 93.8,
+        2020: 95.9,
+        2021: 97.6,
+        2022: 96.2,
+        2023: 98.2,
+        2024: 97.6,
+        2025: 98.0,
+        2026: 97.2,
+    },
+    "offensiveRebounds": {
+        2002: 57.1,
+        2003: 84.1,
+        2004: 88.4,
+        2005: 86.1,
+        2006: 87.4,
+        2007: 98.5,
+        2008: 98.7,
+        2010: 98.7,
+        2012: 98.9,
+        2013: 90.7,
+        2016: 99.0,
+        2017: 94.7,
+        2018: 96.7,
+        2019: 96.3,
+        2020: 97.2,
+        2021: 98.5,
+        2022: 97.9,
+        2023: 98.9,
+        2024: 98.6,
+        2025: 98.6,
+        2026: 98.2,
+    },
+    "defensiveRebounds": {
+        2002: 56.0,
+        2003: 84.5,
+        2004: 90.4,
+        2005: 91.2,
+        2006: 90.0,
+        2007: 98.3,
+        2008: 98.7,
+        2010: 98.6,
+        2011: 98.7,
+        2012: 98.9,
+        2013: 87.5,
+        2017: 95.4,
+        2018: 96.4,
+        2019: 97.0,
+        2020: 98.1,
+        2021: 98.8,
+        2022: 98.2,
+        2023: 99.0,
+        2026: 98.6,
+    },
+    "assists": {2002: 0.0, 2003: 0.0, 2004: 0.0, 2005: 0.0, 2006: 78.9, 2007: 97.8, 2008: 98.7, 2013: 90.2, 2014: 99.0, 2015: 98.7, 2016: 65.6, 2018: 98.4, 2019: 98.5, 2026: 98.6},
+    "steals": {
+        2002: 0.1,
+        2003: 0.1,
+        2004: 0.0,
+        2005: 0.2,
+        2006: 77.4,
+        2007: 97.8,
+        2008: 98.9,
+        2013: 89.7,
+        2014: 93.0,
+        2015: 92.1,
+        2016: 92.5,
+        2017: 90.9,
+        2018: 89.9,
+        2019: 96.8,
+        2020: 98.2,
+        2022: 97.6,
+        2024: 99.0,
+    },
+    "blocks": {
+        2002: 1.1,
+        2003: 1.4,
+        2004: 1.0,
+        2005: 2.2,
+        2006: 80.3,
+        2007: 98.7,
+        2008: 98.7,
+        2009: 98.6,
+        2010: 97.9,
+        2011: 99.0,
+        2013: 96.4,
+        2015: 98.6,
+        2016: 97.4,
+        2017: 91.9,
+        2018: 94.7,
+        2019: 95.0,
+        2020: 97.3,
+        2021: 98.5,
+        2022: 97.2,
+        2024: 97.9,
+        2025: 98.4,
+        2026: 98.1,
+    },
+    "turnovers": {
+        2002: 70.1,
+        2003: 77.2,
+        2004: 28.3,
+        2005: 63.4,
+        2006: 71.5,
+        2007: 86.2,
+        2008: 89.4,
+        2009: 92.5,
+        2010: 91.6,
+        2011: 98.9,
+        2012: 98.8,
+        2013: 77.2,
+        2014: 92.8,
+        2015: 92.9,
+        2016: 64.9,
+        2017: 97.2,
+        2018: 93.8,
+        2019: 96.2,
+        2020: 97.5,
+        2021: 98.8,
+        2022: 97.5,
+        2024: 98.9,
+        2026: 98.6,
+    },
+    "fouls": {
+        2002: 79.3,
+        2003: 80.2,
+        2004: 87.1,
+        2005: 84.0,
+        2006: 77.4,
+        2007: 95.0,
+        2008: 97.0,
+        2009: 97.5,
+        2010: 98.0,
+        2011: 97.4,
+        2012: 97.3,
+        2013: 90.4,
+        2014: 98.7,
+        2015: 97.3,
+        2016: 98.0,
+        2017: 98.5,
+        2018: 83.2,
+        2023: 98.9,
+        2026: 98.2,
+    },
+}
+"""Per :data:`TEAM_PERIOD_COLUMNS` column, per season, the percentage of
+team-games whose period figures, summed over the whole game, equal the box
+score (the final score, for points) - for the seasons under 99% only. A team
+period answer reading a column in a listed season says so, and refuses under
+90%; ``scripts/check_team_period_lines.py`` re-measures it.
+
+.. versionadded:: 5.0.0
+"""
+
+
+def _team_period_in(periods: tuple[int, ...] | None) -> str:
+    """``{alias}.period IN (1, 2)`` for ``periods``, or ``TRUE`` for every
+    period - written as integers, never bound, after checking they are."""
+    if periods is None:
+        return "TRUE"
+    if not periods or not all(isinstance(p, int) and not isinstance(p, bool) and 1 <= p <= 10 for p in periods):
+        raise ValueError(f"periods must be integers 1-10, got {periods!r}")
+    return f"{{alias}}.period IN ({', '.join(str(p) for p in periods)})"
+
+
+def team_period_points_sql(linescores: str, periods: tuple[int, ...]) -> str:
+    """SQL for one side's points in ``periods``, read from a linescore column
+    (``'25,32,25,26'``) - NULL where the game reached none of them, never a
+    zero for an overtime that was not played.
+
+    .. versionadded:: 5.0.0
+    """
+    _team_period_in(periods)
+    listed = ", ".join(str(p) for p in periods)
+    return f"list_sum(list_filter(list_transform(list_select(string_split({linescores}, ','), [{listed}]), x -> TRY_CAST(trim(x) AS BIGINT)), x -> x IS NOT NULL))"
+
+
+def team_period_line_sql(periods: tuple[int, ...] | None, games: str, *, plays: bool = True) -> str:
+    """One row per team per game - ``event_id``, ``season``, ``team_id``,
+    every :data:`TEAM_PERIOD_COLUMNS` column but ``points``, and
+    ``teamTurnovers`` (the share of ``turnovers`` charged to the team itself,
+    the column the team box score calls by that name) - summed over
+    ``periods`` (every period, overtime included, when ``None``), for the
+    games ``games`` names: SQL selecting ``event_id, season`` pairs.
+
+    The sum of the team's players' period lines
+    (:func:`association.query.player_games.period_line_sql`) and the team's
+    own plays - the shots ESPN charted with no shooter and the turnovers it
+    charged to the team rather than a player. With ``plays`` false every
+    column the plays carry is NULL - unknown, never zero.
+
+    .. versionadded:: 5.0.0
+    """
+    # Called here, not imported at the top: player_games imports conditions,
+    # which imports this module.
+    from association.query.player_games import _PERIOD_FREE_THROW, _PERIOD_HEAVE_MISS, _PERIOD_TURNOVER, PERIOD_COLUMNS, PERIOD_PLAYS_COLUMNS, period_line_sql
+
+    in_periods = _team_period_in(periods)
+    # The team's own turnovers are carried a second time on their own, as
+    # `teamTurnovers`, so the check can read the players' share by itself.
+    columns = [c for c in PERIOD_COLUMNS if c != "points"] + ["teamTurnovers"]
+    players = period_line_sql(periods, "SELECT event_id, season FROM _team_period_keys", plays=plays)
+    keyed = "EXISTS (SELECT 1 FROM _team_period_keys k WHERE k.event_id = {a}.event_id AND k.season = {a}.season)"
+    shot_zero = ", ".join(f"0 AS {c}" for c in columns if c not in PERIOD_PLAYS_COLUMNS and c != "teamTurnovers")
+    plays_zero = ", ".join(f"{'0' if plays else 'CAST(NULL AS BIGINT)'} AS {c}" for c in columns if c in PERIOD_PLAYS_COLUMNS and c != "turnovers")
+    own_shots = f"""
+        SELECT sc.event_id, sc.season, sc.team_id,
+            SUM(CASE WHEN sc.made AND NOT {_PERIOD_FREE_THROW} THEN 1 ELSE 0 END) AS fieldGoalsMade,
+            SUM(CASE WHEN NOT {_PERIOD_FREE_THROW} AND NOT {_PERIOD_HEAVE_MISS} THEN 1 ELSE 0 END) AS fieldGoalsAttempted,
+            0 AS threePointFieldGoalsMade, 0 AS threePointFieldGoalsAttempted,
+            SUM(CASE WHEN sc.made AND {_PERIOD_FREE_THROW} THEN 1 ELSE 0 END) AS freeThrowsMade,
+            SUM(CASE WHEN {_PERIOD_FREE_THROW} THEN 1 ELSE 0 END) AS freeThrowsAttempted,
+            {plays_zero}, {"0" if plays else "CAST(NULL AS BIGINT)"} AS turnovers, {"0" if plays else "CAST(NULL AS BIGINT)"} AS teamTurnovers
+        FROM shot_chart sc
+        WHERE {keyed.format(a="sc")} AND (sc.athlete_id IS NULL OR sc.athlete_id = '') AND sc.team_id IS NOT NULL AND {in_periods.format(alias="sc")}
+        GROUP BY 1, 2, 3"""
+    own_plays = f"""
+        SELECT p.event_id, p.season, p.team_id, {shot_zero}, {plays_zero.replace("CAST(NULL AS BIGINT)", "0")},
+            SUM(CASE WHEN {_PERIOD_TURNOVER} THEN 1 ELSE 0 END) AS turnovers,
+            SUM(CASE WHEN {_PERIOD_TURNOVER} THEN 1 ELSE 0 END) AS teamTurnovers
+        FROM plays p
+        WHERE {keyed.format(a="p")} AND (p.athlete_id IS NULL OR p.athlete_id = '') AND p.team_id IS NOT NULL AND {in_periods.format(alias="p")}
+        GROUP BY 1, 2, 3"""
+    listed = ", ".join(columns)
+    player_columns = ", ".join("0 AS teamTurnovers" if c == "teamTurnovers" else f"l.{c}" for c in columns)
+    parts = f"SELECT r.event_id, r.season, r.team_id, {player_columns} FROM ({players}) l JOIN _team_period_roster r USING (event_id, season, athlete_id)"
+    parts += f" UNION ALL SELECT event_id, season, team_id, {listed} FROM ({own_shots})"
+    if plays:
+        parts += f" UNION ALL SELECT event_id, season, team_id, {listed} FROM ({own_plays})"
+    sums = ", ".join(f"CAST(SUM({c}) AS BIGINT) AS {c}" for c in columns)
+    return f"""
+        WITH _team_period_keys AS ({games}),
+        _team_period_roster AS (
+            SELECT DISTINCT b.event_id, b.season, b.athlete_id, b.team_id FROM player_box_stats b WHERE {keyed.format(a="b")}
+        ),
+        _team_period_parts AS ({parts})
+        SELECT event_id, season, team_id, {sums}
+        FROM _team_period_parts GROUP BY event_id, season, team_id"""
+
+
+def _team_period_source(narrowed: TeamNarrowed) -> tuple[str, list[Any]]:
+    """The relation as a period-narrowed read sees it, and the parameters it
+    binds ahead of the WHERE: ``team_games`` with ``team_score`` and
+    ``opponent_score`` replaced by each side's linescore over the periods,
+    ``points`` beside them, and every other :data:`TEAM_PERIOD_COLUMNS`
+    column rebuilt by :func:`team_period_line_sql` - re-aliased ``tg`` so
+    every clause and every reader's SQL is unchanged.
+
+    A rebuilt column is NULL for a game the shot table does not cover - a
+    game with no charted shots would otherwise contribute a confident zero -
+    and for a warehouse without the tables it is read from. The line is
+    summed over the games the base clauses (team, span, season type) select,
+    never all 14 million plays. Every alias here is one ``TEAM_GAMES_SQL``
+    does not use (see ``templates.games._team_quarter_points_games`` for the
+    binder error a reused one raised).
+    """
+    assert narrowed.periods is not None
+    periods = narrowed.periods
+    own = team_period_points_sql("CASE WHEN tg.side = 'home' THEN tpl_g.home_linescores ELSE tpl_g.away_linescores END", periods)
+    theirs = team_period_points_sql("CASE WHEN tg.side = 'home' THEN tpl_g.away_linescores ELSE tpl_g.home_linescores END", periods)
+    columns = [c for c in TEAM_PERIOD_COLUMNS if c != "points"]
+    base = " AND ".join(narrowed.base) or "TRUE"
+    if not narrowed.period_shots:
+        rebuilt = ", ".join(f"CAST(NULL AS BIGINT) AS {c}" for c in columns)
+        return (
+            f"(SELECT tg.* REPLACE ({own} AS team_score, {theirs} AS opponent_score), {own} AS points, {rebuilt} "
+            "FROM team_games tg JOIN real_games tpl_g ON tpl_g.event_id = tg.event_id AND tpl_g.season = tg.season) tg",
+            [],
+        )
+    from association.query.player_games import PERIOD_PLAYS_COLUMNS  # call time: see team_period_line_sql
+
+    line = team_period_line_sql(periods, f"SELECT DISTINCT tg.event_id, tg.season FROM team_games tg WHERE {base}", plays=narrowed.period_plays)
+    covered = "tg.event_id IN (SELECT DISTINCT tpl_cov.event_id FROM shot_chart tpl_cov WHERE tpl_cov.season = tg.season)"
+
+    def _figure(c: str) -> str:
+        # A plays column stays NULL where the warehouse has no plays, and
+        # every column where the shot table does not cover the game.
+        known = f"COALESCE(tpl_l.{c}, 0)" if narrowed.period_plays or c not in PERIOD_PLAYS_COLUMNS else f"tpl_l.{c}"
+        return f"CASE WHEN {covered} THEN {known} END AS {c}"
+
+    rebuilt = ", ".join(_figure(c) for c in columns)
+    sql = (
+        f"(WITH _team_period_line AS ({line}) "
+        f"SELECT tg.* REPLACE ({own} AS team_score, {theirs} AS opponent_score), {own} AS points, {rebuilt} "
+        "FROM team_games tg JOIN real_games tpl_g ON tpl_g.event_id = tg.event_id AND tpl_g.season = tg.season "
+        "LEFT JOIN _team_period_line tpl_l ON tpl_l.event_id = tg.event_id AND tpl_l.season = tg.season AND tpl_l.team_id = tg.team_id) tg"
+    )
+    return sql, list(narrowed.base_params)
+
+
+def _team_source(narrowed: TeamNarrowed) -> tuple[str, list[Any]]:
+    """The relation a read's FROM names - ``team_games`` itself, or the
+    period's (:func:`_team_period_source`) - and the parameters it binds
+    ahead of the WHERE."""
+    if narrowed.periods is not None:
+        return _team_period_source(narrowed)
+    return "team_games tg", []
+
+
 def _windowed(narrowed: TeamNarrowed, *, join: str = "") -> tuple[str, list[Any]]:
     """The FROM ... WHERE of a read: the relation under every row filter, and
     under the window too when one is set - as a subquery cut to the newest or
@@ -313,16 +813,18 @@ def _windowed(narrowed: TeamNarrowed, *, join: str = "") -> tuple[str, list[Any]
     it has nothing left to filter, since the window has already cut the rows.
 
     The team counterpart of :func:`association.query.player_games._windowed`.
+    A period-narrowed read reads the period's relation (:func:`_team_source`).
 
     .. versionadded:: 4.4.0
     """
     where, params = narrowed.clauses()
+    source, source_params = _team_source(narrowed)
     if narrowed.window is None:
-        return f"FROM team_games tg{join} WHERE {where}", params
+        return f"FROM {source}{join} WHERE {where}", source_params + params
     order, n = narrowed.window
     direction = "DESC" if order == "recent" else "ASC"
-    inner = f"SELECT tg.* FROM team_games tg WHERE {where} ORDER BY tg.eastern_date {direction}, tg.event_id LIMIT {int(n)}"
-    return f"FROM ({inner}) tg{join}", params
+    inner = f"SELECT tg.* FROM {source} WHERE {where} ORDER BY tg.eastern_date {direction}, tg.event_id LIMIT {int(n)}"
+    return f"FROM ({inner}) tg{join}", source_params + params
 
 
 def rows_sql(narrowed: TeamNarrowed, select: str, *, order: str, limit: int | None = None, join: str = "") -> tuple[str, list[Any]]:

@@ -1487,41 +1487,47 @@ those were found.
 - **Source:** ours, not ESPN's.
 - **GitHub:** #118
 
-### A quarter or half is answered for a player, and for nobody else
+### A quarter or half is answered for a player or a team, and for nobody else
 - **Found:** 2026-09-16 auditing the feed; the player half shipped the same
   day as `period_split`; **re-scoped 2026-09-29** when the period became a
-  narrowing of the player-games relation (ROADMAP plan item 4)
+  narrowing of the player-games relation, and again the same day when it
+  became one of the team-games relation too (ROADMAP plan item 4)
 - **What is answered now:** a named player's quarter or half for any column
   the period's line rebuilds from the shots and plays (points, FG, FT, threes,
   rebounds, assists, steals, blocks, turnovers, fouls -
   `player_games.PERIOD_COLUMNS`), per game or averaged, under every relation
-  narrowing `period_split` honors; a log that names no stat lists the whole
-  period line; a ranking of players by any of those columns in one quarter or
-  half (`period_leaderboard`, league-wide or a team's roster); and every
-  player's four quarters side by side ("nba playerspoints by quarter
-  average", F048). Measured offline through the whole agent on the 19
-  recorded questions that name a period: 8 answers moved, every one to the
-  question's own shape (F048, F049, F060, F066-F068 among them), and F062
-  moved from a wrong-cause refusal to a fall-through (below).
+  narrowing `period_split` honors; a ranking of players by any of those
+  columns in one quarter or half (`period_leaderboard`); every player's four
+  quarters side by side (F048); and a TEAM's quarter or half for the same
+  columns ("trailblazers stats last 10 games 3 point average 1st quarter",
+  F065; "how many first-quarter rebounds do the Knicks average"), its points
+  from the linescore and the rest from its players' period lines plus its own
+  plays (`team_games.team_period_line_sql`), caveated per season by
+  `team_games.TEAM_PERIOD_AGREEMENT`.
 - **What is still not answered:**
-  - **A TEAM's non-points figure in a quarter** ("trailblazers stats last 10
-    games 3 point average 1st quarter") - see "A team's per-quarter average
-    of anything but points has no source".
+  - **A team's per-quarter figure in the seasons its play-by-play does not add
+    up** - refused, naming the season and the measured agreement: 70 of 375
+    season-columns, 60 of them 2002-2006, and in 2007+ field goals in 2013
+    and 2016, turnovers in 2007, 2008, 2013 and 2016, rebounds in 2013,
+    assists in 2016, steals in 2013 and 2018, fouls in 2018 (DATA.md, "A
+    team's play-by-play does not add up to its box score in six seasons").
   - **A named player's breakdown across all four quarters** ("points per
-    quarter for Luka", "Jokic points by quarter") - the league table exists;
-    the one-player version is the same four reads narrowed to him, not built.
+    quarter for Luka", "Jokic points by quarter") - #162.
   - **A position group as the subject** ("each center 1q pts log vs nugget") -
     the same gap position groups have everywhere.
   - **A shooting percentage in a period** ("vj edgecombe 1st quarter 3pt
-    percentage by game") - refused with the right cause; the makes and
-    attempts are on the line, so it is a ratio of two sums away.
-  - **A period used as a condition** ("... per game after making one three
-    in first quarter", F062) - routed to `other` so it falls through; see its
-    own entry.
-- **User sees:** for the shapes above, a refusal naming the cause or a
-  fall-through - no longer a whole-game line where one quarter was asked for.
+    percentage by game", or a team's) - refused with the right cause; the
+    makes and attempts are on both lines, so it is a ratio of two sums away.
+  - **A period used as a condition** (F062) - refused by name; see its own
+    entry (#275).
+  - **A team's record, series or ranking in one quarter** (`team_record`,
+    `head_to_head`, `team_leaderboard` exclude `period`/`half` in
+    `TEAM_RELATION_SCOPING_EXCLUDED`: a quarter has no winner to count) - by
+    design, not a gap to fill.
+- **User sees:** for the shapes above, a refusal naming the cause - no longer
+  a whole-game line where one quarter was asked for.
 - **Next step:** the shooting percentage (a `RATES`-style ratio over the
-  period's sums in `period_split`/`period_leaderboard`), then the team side.
+  period's sums in `period_split`/`team_quarter_points`/`period_leaderboard`).
 - **GitHub:** #96
 
 ### A coach question has nothing to read, and ESPN's coaches are not worth reading
@@ -2718,31 +2724,6 @@ those were found.
   the attempts floor above, and the current season's generic position
   codes (DATA.md).
 
-### A team's per-quarter average of anything but points is not built
-- **Found:** 2026-09-20; **re-measured 2026-09-29** once a player's period
-  line was rebuilt from the plays (plan item 4)
-- **Evidence:** the source exists now: a team's period figure is the sum of
-  its players' period lines (`player_games.period_line_sql`). Measured the
-  only way it can be checked - summed over every period and every player of
-  the team, against `team_box_stats` per team-game (2004-2026): field goals
-  made agree 97.6-100% of team-games in 2007-2026 except 2013 (83.1%) and
-  2016 (56.6%); threes made 97.7-100%; assists 97.8-99.8% from 2007 (65.6% in
-  2016); steals, blocks and turnovers 85-99% by season; `totalRebounds`
-  agrees in 0% of team-games through 2018 and ~97% from 2022 - the team
-  rebounds credited to no player are in the column until 2022 (DATA.md,
-  "The team `totalRebounds` column stops including team rebounds in 2022")
-  and are plays with no `athlete_id`, which a sum of player lines leaves out.
-  A team-level check is stricter than the player one (any player's miss
-  breaks the team's game), so the caveat has to be measured at team level.
-- **User sees:** "trailblazers stats last 10 games 3 point average 1st
-  quarter" is refused by `team_quarter_points` (the linescore holds points
-  only) and falls through.
-- **Next step:** a period narrowing on `TeamNarrowed` (`team_games.py`),
-  summing the team's players' period lines plus the team's own no-athlete
-  plays (team rebounds, team turnovers), with its own per-season agreement
-  table measured as above; points stay the linescore's.
-- **GitHub:** #161
-
 ### An award or All-Star question has no table to refuse from, so the agent is free to invent one
 - **Found:** 2026-09-18, the algebra spike's attack pass over the large
   StatMuse set (`~/association-research/algebra-spike/stage1/attack_report.md`)
@@ -2993,7 +2974,10 @@ those were found.
   missing `Shooting Block`/`Personal Block`/`Offensive Charge`). Its own
   measured accuracy is turnovers 92.5% and fouls 83.3% (2015). The period
   line's rules for the same columns (`player_games._PERIOD_TURNOVER`,
-  `_PERIOD_FOUL`) measure 99.8% and 99.7% on 2015's real box scores.
+  `_PERIOD_FOUL`) measure 99.8% and 99.7% on 2015's real box scores, and
+  since 2026-09-29 also read a `No Turnover` or `Not Available` play whose
+  text says "turnover" (436 in 2018, 344 in 2016) and a `Not Available` one
+  whose text says "foul" (89 in 2018).
   `REBUILT_STATS` leaves both columns out of every answer because of those
   figures, so a rebuilt Bulls or Pelicans 2013-18 game shows no turnovers or
   fouls at all.
@@ -3007,7 +2991,54 @@ those were found.
   counts it as"
 - **GitHub:** #276
 
+### A team named as its own opponent falls through
+- **Found:** 2026-09-29, period relation's team half
+- **Evidence:** "celtics 2nd half turnovers vs boston" reads as
+  `team_quarter_points` with team "celtics" and opponent "Boston Celtics"
+  (`parse.read_route`, measured on the read-only warehouse); the shared step
+  `templates.common.team_games` raises `TemplateUnsupported("a team cannot be
+  its own opponent")`, `compose.team.run_team` turns the same raise into
+  `Unsupported`, and the question leaves the fast path with nothing said about
+  why. Every team template reaches the same raise.
+- **User sees:** a fall-through (a refusal naming the compiler's reason once
+  the fall-through agent is gone) for a question whose real problem is that it
+  names one team twice - or, likelier, meant a different opponent.
+- **Next step:** return a `TemplateResult` from `team_games` naming it ("the
+  Boston Celtics are named as both the team and its opponent - name the team
+  they played"), with a test per team template.
+
+### 2013 and 2016 period lines could read the made shots the plays mistype
+- **Found:** 2026-09-29, period relation's team half
+- **Evidence:** DATA.md, "A team's play-by-play does not add up to its box
+  score in six seasons": the plays are short a made field goal in 304 of
+  2013's and 985 of 2016's team-games while their own running score reaches
+  the final score in 299 and 975 of them. `TEAM_PERIOD_AGREEMENT` refuses
+  field goals in both seasons (83.1%, 56.7%), 2016 assists (65.6%) and 2016
+  turnovers (64.9%); the player table caveats 2016 at 90.4%.
+- **User sees:** a refusal for a team's per-quarter field goals, assists or
+  turnovers in 2013 or 2016, and a caveat on a player's.
+- **Next step:** measure whether a shot play whose team's running score rises
+  by its value on the next play can be read as the make (2016's "Kyle Korver
+  misses three point jumper", the score rising by three) - a rule in
+  `period_line_sql`'s shots, checked by both checkers.
+- **Source:** DATA.md, "A team's play-by-play does not add up to its box
+  score in six seasons"
+
 ## P4: tooling, docs, low impact
+
+### 2018's `teamTurnovers` is kept though it is not the game's
+- **Found:** 2026-09-29, period relation's team half
+- **Evidence:** `fetch/repairs/team_box_repair.py` keeps 2018's
+  `teamTurnovers` ("nothing proves [it] wrong") while clearing the rest of the
+  shifted block; it matches the game's own team turnovers in the plays in 986
+  of 2,280 team-games and the opponent's in 965, against 99.9-100% in 2016,
+  2017 and 2019.
+- **User sees:** nothing through a template (none reads the column); a raw
+  read of `team_box_stats` gets a wrong per-game figure.
+- **Next step:** clear it with the rest of the 2018 block in
+  `team_box_repair` (a `data load --tables team_box_stats`), and say so in
+  its module docstring.
+- **Source:** DATA.md, "2018's `teamTurnovers` is not the game's own"
 
 ### `player_stat` given a `team` slot answers this season and never mentions the team: "lebron stats as a starter for Miami"
 - **Found:** 2026-09-27, the step (c) rehearsal (the whole agent with the parser as reader and the normalizer's recorded replies, `~/association-research/yardstick-v2/run_offline_parser.py`), on an intermediate parser that wrote the player's own team into `team`.

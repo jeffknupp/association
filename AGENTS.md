@@ -262,8 +262,10 @@ question.
 **A template on a relation does not declare, or apply, scoping of its own.**
 The player-games relation (`query/player_games.py`) and the team-games relation
 (`query/team_games.py`) each carry the narrowing once - opponent, venue, date,
-span, since, without, split, game_n, season_n, below/above, and order+limit as
-a window cut after every other filter - applied in the shared steps
+span, since, without, split, game_n, season_n, below/above, a quarter or half
+(`period`/`half`, which changes what a read SEES of each game rather than which
+games), and order+limit as a window cut after every other filter - applied in
+the shared steps
 (`scoped_player`/`scoped_games`, `scoped_team`/`team_games`,
 `condition_player`) and declared once (`RELATION_SCOPING`, with a reasoned
 per-cell `RELATION_SCOPING_EXCLUDED`; `HONORED_SCOPING` entries for those

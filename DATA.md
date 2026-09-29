@@ -1196,6 +1196,69 @@ measured. Count foul-outs from the box score.
 - **Tracked in:** ISSUES.md, "The empty-box rebuild counts turnovers and
   fouls by the older rules".
 
+### A team's play-by-play does not add up to its box score in six seasons
+
+- **What ESPN does:** serves play-by-play that, summed over a whole game, is
+  short of (or over) the same game's box score often enough that a team's
+  per-quarter figure cannot be trusted in some seasons. A team-level check is
+  stricter than a player one - one player's missing play breaks his team's
+  game - so a season right in 99% of player-games is right in ~90% of
+  team-games.
+- **Evidence:** measured 2026-09-29 over 60,422 team-games 2002-2026 (both
+  season types, a team box score, a game the shot table covers), each
+  team's players' period lines plus its own plays summed over every period
+  against `team_box_stats` (`scripts/check_team_period_lines.py`; the table
+  is `team_games.TEAM_PERIOD_AGREEMENT`). 70 of 375 season-columns agree in
+  under 90% of team-games; by cause:
+  - **2002-2006: second participants and attempts.** Assists, steals and
+    blocks agree in 0.0-2.2% of 2002-2005 team-games (the assister, stealer
+    and blocker are mostly absent - "A play's type does not always say what
+    the box score counts it as", above) and 77-80% in 2006. Field goal
+    attempts agree in 70-80% of 2002-2006 team-games and free throw attempts
+    in 68-88%: the plays are over the box by one free throw attempt in 500
+    of 2005's 2,628 team-games ("Free Throw - 2 of 2" outnumbers "1 of 2" by
+    146 that season) and short a field goal attempt in 325.
+  - **2013 and 2016: made shots the plays do not hold.** The plays are short
+    a made field goal against the box in 304 of 2013's 2,272 team-games
+    (13.4%) and 985 of 2016's 2,310 (42.6%), while their own running score
+    reaches the final score in 299 and 975 of those games: the points are
+    scored, the shot that scored them is not a make. In 2016 it is typed a
+    miss ("Kyle Korver misses three point jumper", the score rising by
+    three); 2013's plays are also out of order around the gaps. Field goals
+    agree in 83.1% (2013) and 56.7% (2016) of team-games, 2016 assists
+    65.6%, 2013 rebounds 81.2%.
+  - **2007-2008 turnovers, 2018 fouls: plays that are not there.** In 2007,
+    434 player-games' rebuilt turnovers differ from the box score, 380 of them
+    one short, and none of those players' plays that the rules leave out is a
+    turnover; in 2018, 481 player-games are still a personal foul short once
+    the mislabeled types above are read. Team turnovers agree in 86.2% (2007)
+    and 89.4% (2008) of team-games, 2018 fouls in 83.2%.
+- **Does a refetch fix it?** untested.
+- **How we handle it:** a team's per-quarter figure is caveated with its
+  season's measured agreement and refused under 90%
+  (`templates.games._team_quarter_points_rebuilt`).
+- **Tracked in:** ISSUES.md, "A quarter or half is answered for a player or
+  a team, and for nobody else".
+
+### 2018's `teamTurnovers` is not the game's own
+
+- **What ESPN does:** fills the 2018 team box `teamTurnovers` with a value
+  that averages right (0.60 a game, against 0.59 in 2017 and 0.55 in 2019)
+  but is not that game's count.
+- **Evidence:** measured 2026-09-29 against the turnovers the plays charge to
+  the team itself (shot-clock, 8-second and the rest - `plays` rows with a
+  `team_id` and no athlete): equal in 986 of 2018's 2,280 team-games
+  (43.2%), and equal to the OPPONENT's in 965 - no better than chance -
+  against 99.9-100% in 2016, 2017 and 2019. `fetch/repairs/team_box_repair.py`
+  keeps the column, on the reasoning that "nothing proves [it] wrong"; this
+  does.
+- **Does a refetch fix it?** untested.
+- **How we handle it:** `scripts/check_team_period_lines.py` checks a 2018
+  team's turnovers on the players' share alone (`team_games.TEAM_PERIOD_BOX`).
+  The column itself is still stored and served as ESPN sent it.
+- **Tracked in:** ISSUES.md, "2018's `teamTurnovers` is kept though it is not
+  the game's".
+
 ### Team box scores disagree slightly with player-box sums in some seasons
 
 - **What ESPN does:** publishes a team line and player lines for the same game

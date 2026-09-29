@@ -171,13 +171,16 @@ def test_a_player_set_against_another_is_the_second_of_two_players(con: duckdb.D
     assert team.intent != "player_matchup" and team.scope.player == "LeBron James" and team.scope.opponent == "Atlanta Hawks"
 
 
-def test_a_teams_stat_other_than_points_by_period_is_refused(con: duckdb.DuckDBPyConnection) -> None:
+def test_a_teams_stat_no_period_splits_is_refused_and_a_rebuilt_one_is_not(con: duckdb.DuckDBPyConnection) -> None:
     """yardstick-v2 F065 "trailblazers stats last 10 games 3 point average
-    1st quarter": the linescore holds points per period and nothing else."""
-    refusal = unanswerable(con, "team_quarter_points", {"team": "Portland Trail Blazers", "stat": "threePointFieldGoalsMade", "period": 1}, "trailblazers 3 point average 1st quarter")
+    1st quarter" is answered now - the period's line rebuilds threes from the
+    plays (the period relation's team half) - so only a stat neither the
+    linescore nor that line holds is refused, by name."""
+    refusal = unanswerable(con, "team_quarter_points", {"team": "Portland Trail Blazers", "stat": "plusMinus", "period": 1}, "blazers 1st quarter plus minus")
     assert refusal is not None
-    assert "linescore" in refusal.answer and "'threePointFieldGoalsMade'" in refusal.answer
-    assert unanswerable(con, "team_quarter_points", {"team": "Portland Trail Blazers", "stat": "points", "period": 1}, "blazers 1st quarter points") is None
+    assert "linescore" in refusal.answer and "'plusMinus'" in refusal.answer
+    for stat in ("points", "threePointFieldGoalsMade", "rebounds", "turnovers"):
+        assert unanswerable(con, "team_quarter_points", {"team": "Portland Trail Blazers", "stat": stat, "period": 1}, f"blazers 1st quarter {stat}") is None, stat
 
 
 def test_a_period_used_as_a_condition_is_refused_by_name(con: duckdb.DuckDBPyConnection) -> None:

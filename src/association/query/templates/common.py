@@ -312,13 +312,22 @@ def _relation_scoping(intent: str, *extra: str) -> frozenset[str]:
 # 2023-24"), read the same way `since` already is (`_span_of`/`scoped_team`) -
 # never alone (`_validated_until`), so a template honors it only by also
 # honoring `since`.
-TEAM_RELATION_SCOPING = frozenset({"opponent", "venue", "date", "since", "until", "span", "order", "game_n", "situation"})
+#
+# `period` and `half` are the period relation's team half (ROADMAP plan item
+# 4): a quarter or a half narrows what a read SEES of each game - the
+# linescore's points, and every other column rebuilt from the plays
+# (`team_games.team_period_line_sql`) - applied by `team_games` through
+# `TeamNarrowed.narrow_periods`, the counterpart of the player relation's.
+TEAM_RELATION_SCOPING = frozenset({"opponent", "venue", "date", "since", "until", "span", "order", "game_n", "situation", "period", "half"})
 """The scoping slots every template on the team-games relation honors.
 
 .. versionadded:: 4.4.0
 
 .. versionchanged:: 4.4.0
    Adds ``situation`` and ``until`` (step 3, K1).
+
+.. versionchanged:: 5.0.0
+   Adds ``period`` and ``half`` (the period relation's team half).
 """
 
 # The cells a template on the team relation does NOT honor, each with why. A
@@ -339,6 +348,8 @@ TEAM_RELATION_SCOPING_EXCLUDED: dict[str, dict[str, str]] = {
         # span of them; narrowing that pool to one weekday, month or holiday
         # within it is a different question from ranking the span itself.
         "situation": "a leaderboard ranks a season, not the games in one weekday, month or holiday within it",
+        "period": "a leaderboard ranks teams' season lines, and no season line is split by quarter",
+        "half": "a leaderboard ranks teams' season lines, and no season line is split by half",
     },
     # A record for one game is a single result, which game_log already answers
     # directly, and a record over a limited number of recent games is the same
@@ -351,6 +362,8 @@ TEAM_RELATION_SCOPING_EXCLUDED: dict[str, dict[str, str]] = {
     "team_record": {
         "date": "a record for one calendar date is a single game, which game_log already answers directly",
         "order": "a record over a limited set of games is a game_log question",
+        "period": "a record is won and lost over whole games; a quarter has no winner the record could count",
+        "half": "a record is won and lost over whole games; a half has no winner the record could count",
     },
     # head_to_head tallies every meeting in the span; `order` and `game_n`
     # pick out a subset of that tally, and neither is built. `since` and
@@ -367,6 +380,8 @@ TEAM_RELATION_SCOPING_EXCLUDED: dict[str, dict[str, str]] = {
         # holiday cut of an all-time series is a real question, just not this
         # step's.
         "situation": "head_to_head tallies every meeting in the span; narrowing that tally to one weekday, month or holiday within it is not built",
+        "period": "a series is won and lost in whole games; a quarter of each meeting has no winner to tally",
+        "half": "a series is won and lost in whole games; a half of each meeting has no winner to tally",
     },
 }
 """Per template, the team relation's slots it refuses, and why.
@@ -391,7 +406,7 @@ HONORED_SCOPING: dict[str, frozenset[str]] = {
     # from `team_games` (`opponent`, `venue`, `date`, `game_n`, `situation`,
     # the `order`/`limit` window) and its team and span from `scoped_team`
     # (`since`, `until`, `span`).
-    "team_quarter_points": _team_relation_scoping("team_quarter_points", "period", "half"),
+    "team_quarter_points": _team_relation_scoping("team_quarter_points"),
     # The ranking is of one quarter or half, the only cells it reads beyond
     # its own team and season.
     "period_leaderboard": frozenset({"period", "half"}),
@@ -2147,6 +2162,10 @@ def team_games(con: duckdb.DuckDBPyConnection, team: Entity, span: _Span, scope:
        Reads the typed :class:`~association.query.reading.Scope`. A slot dict
        is still taken, through :meth:`~association.query.reading.Scope.from_slots`,
        until every caller passes ``reading.scope``.
+
+    .. versionchanged:: 5.0.0
+       Honors ``period``/``half``: every read then sees that part of each
+       game (:meth:`~association.query.team_games.TeamNarrowed.narrow_periods`).
     """
     clause, params = _team_span_clause(span)
     narrowed = TeamNarrowed(base=["tg.team_id = ?", "tg.season_type = ?", clause], base_params=[team.id, span.season_type, *params], team=team)
@@ -2177,7 +2196,29 @@ def team_games(con: duckdb.DuckDBPyConnection, team: Entity, span: _Span, scope:
     # The same window rule as the player relation's - a named order, or a
     # bare limit read as the newest N (see _relation_window).
     narrowed.window = _relation_window(scope)
+    _team_games_apply_period(con, narrowed, scope)
     return narrowed
+
+
+def _team_games_apply_period(con: duckdb.DuckDBPyConnection, narrowed: TeamNarrowed, scope: Scope) -> None:
+    """A quarter or half narrows every read of the team relation to that part
+    of each game (:meth:`~association.query.team_games.TeamNarrowed.narrow_periods`)
+    - the ``period``/``half`` cells of :data:`TEAM_RELATION_SCOPING`, the
+    team counterpart of :func:`_apply_period`. A warehouse without the shots,
+    the player rows or the plays - or with a shot or play table that carries
+    no ``team_id`` (a fixture, a partial load) - leaves the columns rebuilt
+    from them unknown rather than zero, and the linescore's points still
+    answer."""
+    asked = period_narrowing(scope)
+    if asked is not None:
+        shots = _has_table(con, "player_box_stats") and _team_games_has_team_id(con, "shot_chart")
+        narrowed.narrow_periods(*asked, shots=shots, plays=shots and _team_games_has_team_id(con, "plays"))
+
+
+def _team_games_has_team_id(con: duckdb.DuckDBPyConnection, table: str) -> bool:
+    """Whether ``table`` exists and carries the ``team_id`` a team's period line groups by."""
+    row = con.execute("SELECT COUNT(*) FROM information_schema.columns WHERE table_name = ? AND column_name = 'team_id'", [table]).fetchone()
+    return bool(row and row[0])
 
 
 def _teammates_among(con: duckdb.DuckDBPyConnection, candidates: list[Entity], player: Entity, span: _Span) -> list[Entity]:

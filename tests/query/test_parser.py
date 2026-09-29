@@ -594,6 +594,21 @@ def test_most_ranks_a_quarter_only_where_no_team_is_named(con: duckdb.DuckDBPyCo
     assert team.intent == "team_quarter_points"
 
 
+def test_a_teams_quarter_of_any_stat_is_the_teams_quarter(con: duckdb.DuckDBPyConnection) -> None:
+    """The period relation's team half (ISSUES.md #161): a team's rebounds,
+    threes or turnovers in a quarter or half are read as team_quarter_points
+    with the stat kept and the period read from the words - hyphenated too
+    ("first-quarter rebounds"), which read no period at all."""
+    rebounds, _, _ = read_route(con, "how many first-quarter rebounds do the celtics average", ["celtics"], "rebounds")
+    assert (rebounds.intent, rebounds.slots.get("period"), rebounds.slots.get("stat")) == ("team_quarter_points", 1, "rebounds")
+    threes, _, _ = read_route(con, "magic stats last 10 games 3 point average 1st quarter", ["magic"], "threePointFieldGoalsMade")
+    assert (threes.intent, threes.slots.get("period"), threes.slots.get("limit"), threes.slots.get("stat")) == ("team_quarter_points", 1, 10, "threePointFieldGoalsMade")
+    turnovers, _, _ = read_route(con, "celtics 2nd half turnovers vs the lakers", ["celtics", "lakers"], "turnovers")
+    assert (turnovers.intent, turnovers.slots.get("half"), turnovers.slots.get("opponent")) == ("team_quarter_points", 2, "Los Angeles Lakers")
+    assists, _, _ = read_route(con, "sixers second-half assists per game", ["sixers"], "assists")
+    assert (assists.intent, assists.slots.get("half"), assists.slots.get("stat")) == ("team_quarter_points", 2, "assists")
+
+
 def test_a_period_used_as_a_condition_is_not_a_period_answer(con: duckdb.DuckDBPyConnection) -> None:
     """yardstick-v2 F062, "... three points made per game after making one
     three in first quarter": his whole-game threes over the games whose first

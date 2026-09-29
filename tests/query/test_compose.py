@@ -668,6 +668,18 @@ def test_team_move_point_reads_a_narrowed_total(team_cx_ctx: TemplateContext) ->
     assert not result.from_season_line
 
 
+def test_a_teams_quarter_is_never_read_as_its_season_line(team_cx_ctx: TemplateContext) -> None:
+    """A quarter or half narrows the team's games (the period relation's
+    team half): "the magic's first-quarter threes" read as unnarrowed would
+    answer their season's 961 - a whole-game total under a quarter's
+    question. It goes to the narrowed reader, which sums game-level columns
+    only, and declines a box-score count rather than answering the season."""
+    for period in ({"period": 1}, {"half": 2}):
+        q = TeamQuery(scope=Scope.from_slots({"team": "Orlando Magic", "season_type": 2, **period}), measure="threePointFieldGoalsMade")
+        with pytest.raises(Unsupported):
+            run_team(team_cx_ctx.con, q)
+
+
 def test_team_move_point_reads_a_narrowed_differential(team_cx_ctx: TemplateContext) -> None:
     """F129's shape: Toronto's last 3 games (r3 110-120 L, r4 90-100 W, r5
     115-108 W) sum to a -13 differential (-10 -10 +7), not the season's."""

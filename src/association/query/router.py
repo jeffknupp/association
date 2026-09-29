@@ -66,7 +66,7 @@ FOUL_OUT_THRESHOLD = 6
 # nothing counted one player's triple-doubles. The compiler does now (a
 # per-game flag on the player-games relation), so it left: see
 # `_route_triple_double_abbreviation`, which reads the word instead.
-_AGENT_ONLY = re.compile(r"\b(?:first|second|third|fourth|1st|2nd|3rd|4th)\s+(?:quarter|qtr|q)\b|\bq[1-4]\b|\b[1-4]q\b|\bqtrs?\b|\bper\s+quarter\b|\bby\s+quarter\b")
+_AGENT_ONLY = re.compile(r"\b(?:first|second|third|fourth|1st|2nd|3rd|4th)[\s-]+(?:quarter|qtr|q)\b|\bq[1-4]\b|\b[1-4]q\b|\bqtrs?\b|\bper\s+quarter\b|\bby\s+quarter\b")
 
 # "td3" is a triple-double, and the model reads its "3" as a shot value:
 # "luka td3s home" came back as `other` with stat threePointFieldGoalsMade
@@ -84,7 +84,7 @@ _DRAW_WORDS = re.compile(r"\b(?:plot|chart|draw|render|visuali[sz]e|graph|show m
 # template; a team's half still does not - see ISSUES.md #96). "rj barrett 4th
 # qtr log" is why both patterns grew abbreviations - it slipped past "quarter"
 # and game_log answered with his whole last game.
-_HALF_WORDS = re.compile(r"\b(?:first|second|1st|2nd)\s+half\b|\b[12]h\b|\bhalftime\b", re.IGNORECASE)
+_HALF_WORDS = re.compile(r"\b(?:first|second|1st|2nd)[\s-]+half\b|\b[12]h\b|\bhalftime\b", re.IGNORECASE)
 
 # A quarter or half question that ranks PLAYERS rather than asking about one:
 # "who has the highest average 1st quarter points this season?", "knicks 1st
@@ -193,12 +193,13 @@ to disagree deliberately rather than by drift.
 _ORDINAL_PERIODS = {"first": 1, "1st": 1, "second": 2, "2nd": 2, "third": 3, "3rd": 3, "fourth": 4, "4th": 4}
 
 # Which quarter or half, in the forms questions actually use. All three shapes
-# come from the feed: "1st quarter", "q1"/"1q", and "first half"/"2h".
+# come from the feed: "1st quarter", "q1"/"1q", and "first half"/"2h" - and
+# the hyphenated adjective, "first-quarter rebounds", which read no period.
 _WHICH_QUARTER = re.compile(
-    r"\b(?P<ordinal>first|second|third|fourth|1st|2nd|3rd|4th)\s+(?:quarter|qtr|q)\b|\bq(?P<qn>[1-4])\b|\b(?P<nq>[1-4])q\b",
+    r"\b(?P<ordinal>first|second|third|fourth|1st|2nd|3rd|4th)[\s-]+(?:quarter|qtr|q)\b|\bq(?P<qn>[1-4])\b|\b(?P<nq>[1-4])q\b",
     re.IGNORECASE,
 )
-_WHICH_HALF = re.compile(r"\b(?P<ordinal>first|second|1st|2nd)\s+half\b|\b(?P<hn>[12])h\b", re.IGNORECASE)
+_WHICH_HALF = re.compile(r"\b(?P<ordinal>first|second|1st|2nd)[\s-]+half\b|\b(?P<hn>[12])h\b", re.IGNORECASE)
 
 
 def _period_asked(question: str) -> dict[str, int] | None:

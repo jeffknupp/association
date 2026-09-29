@@ -2651,18 +2651,22 @@ def test_team_quarter_points_refuses_a_named_player(tq_con: TemplateContext) -> 
         team_quarter_points(tq_con, Reading.from_slots({"team": "Knicks", "period": 4, "player": "Jalen Brunson"}))
 
 
-def test_team_quarter_points_refuses_a_stat_the_linescore_does_not_hold(tq_con: TemplateContext) -> None:
-    """A linescore holds one number per period - the score - so a question
-    asking for a team's three-point or rebounding average by quarter is a
-    different question, and answering it with POINTS is the fluent wrong
-    answer this project keeps producing. It was invisible while "trailblazers
-    stats last 10 games 3 point average 1st quarter" was refused for naming no
-    team at all; restoring the team is what exposed it."""
+def test_team_quarter_points_refuses_a_stat_no_period_splits_and_one_it_cannot_rebuild_here(tq_con: TemplateContext) -> None:
+    """A linescore holds one number per period - the score - so answering a
+    team's three-point or rebounding average by quarter with POINTS is the
+    fluent wrong answer this project keeps producing ("trailblazers stats
+    last 10 games 3 point average 1st quarter"). Those columns are rebuilt
+    from the plays now (the period relation's team half); this fixture holds
+    none, so the answer says so, never a zero. A stat nothing splits by
+    period is refused naming it."""
     for stat in ("threePointFieldGoalsMade", "rebounds", "assists"):
-        with pytest.raises(TemplateUnsupported, match="linescore"):
-            team_quarter_points(tq_con, Reading.from_slots({"team": "Knicks", "period": 1, "season": current_season(), "stat": stat}))
-    # Points is the one it does hold, under either spelling, and no stat at
-    # all still means the score.
+        result = team_quarter_points(tq_con, Reading.from_slots({"team": "Knicks", "period": 1, "season": current_season(), "stat": stat}))
+        assert "No play-by-play is on record" in (result.answer or "") and "total" not in result.data, stat
+    for stat in ("minutes", "plusMinus", "pointsInPaint"):
+        result = team_quarter_points(tq_con, Reading.from_slots({"team": "Knicks", "period": 1, "season": current_season(), "stat": stat}))
+        assert f"not {stat}." in (result.answer or "") and "by quarter is not on record" in (result.answer or ""), stat
+    # Points is the one the linescore holds, under either spelling, and no
+    # stat at all still means the score.
     allowed: tuple[str | None, ...] = ("points", "avg_points", None)
     for held in allowed:
         result = team_quarter_points(tq_con, Reading.from_slots({"team": "Knicks", "period": 1, "season": current_season(), "stat": held}))

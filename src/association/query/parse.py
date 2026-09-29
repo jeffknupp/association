@@ -95,9 +95,9 @@ PARENT_GRAMMAR: tuple[tuple[frozenset[str], str, str], ...] = (
     (ANY, r"\bfingerprint", "fingerprint"),
     # "plot" and the shots in either order: "threes by Plot Curry" is "plot curry's threes" reworded.
     (ANY, r"\bshot (chart|map|plot)|\bplot\b.*\b(shots?|threes)\b|\b(shots?|threes)\b.*\bplot\b|\bshots?\b.*\b(chart|plot|map)\b|\bwhere .* shoot", "shot_chart"),
-    (frozenset({"team", "teams"}), r"\b(1st|2nd|3rd|4th|first|second|third|fourth) (quarter|half)|\bquarter\b|\b[1-4]h\b|\b[1-4]q\b|\bovertime\b|\bclutch\b", "team_quarter_points"),
-    (frozenset({"everyone"}), r"\b(1st|2nd|3rd|4th|first|second|third|fourth) (quarter|half)|\bquarter\b|\b[1-4]h\b|\b[1-4]q\b|\bovertime\b|\bclutch\b", "period_leaderboard"),
-    (ANY, r"\b(1st|2nd|3rd|4th|first|second|third|fourth) (quarter|half)|\bquarter\b|\b[1-4]h\b|\b[1-4]q\b|\bovertime\b|\bclutch\b", "period_split"),
+    (frozenset({"team", "teams"}), r"\b(1st|2nd|3rd|4th|first|second|third|fourth)[\s-](quarter|half)|\bquarter\b|\b[1-4]h\b|\b[1-4]q\b|\bovertime\b|\bclutch\b", "team_quarter_points"),
+    (frozenset({"everyone"}), r"\b(1st|2nd|3rd|4th|first|second|third|fourth)[\s-](quarter|half)|\bquarter\b|\b[1-4]h\b|\b[1-4]q\b|\bovertime\b|\bclutch\b", "period_leaderboard"),
+    (ANY, r"\b(1st|2nd|3rd|4th|first|second|third|fourth)[\s-](quarter|half)|\bquarter\b|\b[1-4]h\b|\b[1-4]q\b|\bovertime\b|\bclutch\b", "period_split"),
     (ANY, r"\bcoach", "coach"),
     (frozenset({"pair"}), _PAIR_MEETING, "player_matchup"),
     (frozenset({"pair"}), r".", "player_compare"),
