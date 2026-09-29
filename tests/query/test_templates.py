@@ -14,22 +14,28 @@ from association.nba.season import current_season
 from association.nba.season import eastern_date as _eastern_date_of
 from association.query import shotchart
 from association.query.compose import answer as compose_answer
+from association.query.compose.adapt import to_reading
 from association.query.compose.core import Unsupported
-from association.query.compose.present import STATED_SCOPING, _present_game_log, _present_player_splits, _present_player_stat, _present_player_stat_season_line
+from association.query.compose.present import STATED_SCOPING, _present_game_log, _present_period_split, _present_player_splits, _present_player_stat, _present_player_stat_season_line
 from association.query.compose.team import TeamQuery, run_team
 from association.query.entities import MAX_CANDIDATES, Availability, Entity, collect_name_readings, resolve_player
 from association.query.metrics import LEADERBOARD_METRICS, PER_GAME_MIN_GAMES, PER_GAME_MIN_POSTSEASON_GAMES
 from association.query.parse import with_point
 from association.query.reading import Reading, Scope
+from association.query.shotchart import SHOT_AVAILABILITY
 from association.query.subject import Subject
-from association.query.templates.common import HONORED_SCOPING, SCOPING_SLOTS, TemplateContext, TemplateResult, TemplateUnsupported, check_scope, unhonored_scoping
+from association.query.templates.common import HONORED_SCOPING, SCOPING_SLOTS, TemplateContext, TemplateResult, TemplateUnsupported, check_scope, scoped_player, unhonored_scoping
 from association.query.templates.games import (
+    _period_split_cross_season_redirect,
+    _period_split_empty,
+    _period_split_from,
+    _period_split_rows,
+    _period_split_rows_from,
     _player_game_log,
     _player_game_log_mixed,
     _rebuilt_readable,
     head_to_head,
     period_leaderboard,
-    period_split,
     player_matchup,
     team_game_log,
     team_quarter_points,
@@ -67,6 +73,7 @@ def _compiled(intent: str) -> Callable[[TemplateContext, Reading], TemplateResul
 
 game_log = _compiled("game_log")
 leaderboard = _compiled("leaderboard")
+period_split = _compiled("period_split")
 player_history = _compiled("player_history")
 player_splits = _compiled("player_splits")
 player_stat = _compiled("player_stat")
@@ -5218,15 +5225,18 @@ def test_the_scoping_slots_this_template_filters_on_are_declared_honored() -> No
        - see the next assertion.
     """
     # A value each slot can hold: the scope is typed at the door, and "home"
-    # is no order (Scope.from_slots refuses it before check_scope reads it).
+    # is no order (Scope.from_slots refuses it before the presenter reads it).
+    # Through the presenter's own declaration (STATED_SCOPING; the template
+    # retired into the compiler), which is what check_scope read before.
     for slot, given in (("opponent", "Boston Celtics"), ("venue", "home"), ("without", "Klay Thompson"), ("order", "recent"), ("date", "2026-01-02")):
-        check_scope("period_split", {"player": "Stephen Curry", "period": 1, slot: given})
+        assert unhonored_scoping("period_split", Scope.from_slots({"player": "Stephen Curry", "period": 1, slot: given}), STATED_SCOPING["period_split"]) == []
     # Two slots it still does not filter on, for the same reason: the accuracy
     # caveat (PERIOD_RECONCILIATION) is measured per season, and this reads
-    # only one - see RELATION_SCOPING_EXCLUDED["period_split"].
+    # only one - see RELATION_SCOPING_EXCLUDED["period_split"]. The point
+    # itself refuses them (compose.adapt._adapt_period_split), naming why.
     for slot, value in (("span", "career"), ("since", 2023)):
-        with pytest.raises(TemplateUnsupported):
-            check_scope("period_split", {"player": "Stephen Curry", "period": 1, slot: value})
+        with pytest.raises(Unsupported, match="accuracy caveat is measured per season"):
+            to_reading("period_split", {"player": "Stephen Curry", "period": 1, slot: value})
 
 
 def test_a_log_lists_the_games_and_keeps_the_season_in_the_header(period_ctx: TemplateContext) -> None:
@@ -5307,10 +5317,18 @@ def test_a_career_read_sums_every_season_now_the_shot_join_needs_no_season_param
     joined to the relation's own selected games instead of a literal
     ``season = ?``/``season_type = ?`` pair.
     """
-    result = period_split(period_ctx, Reading.from_slots({"player": "Stephen Curry", "period": 1, "span": "career"}))
-    assert result.data.get("season") is None or "message" not in result.data, "the old bug: a false 'no games' refusal for a player with games on record"
-    assert result.data["total"] == 15, "e1(6) + e2(3) + e4(3) across SEASON, plus e04(3) in 2004"
-    assert result.data["games_played"] == 6, "e1,e2,e3,e4,e5 (SEASON) and e04 (2004); e6 a DNP, e7 uncovered by the shot table"
+    # The reader itself, over a career span: the point refuses a career
+    # (compose.adapt._adapt_period_split, the per-season caveat), so the
+    # join is exercised the way the cross-season redirect exercises it.
+    scope = Scope.from_slots({"player": "Stephen Curry", "period": 1, "span": "career"})
+    subject = scoped_player(period_ctx.con, scope, "no player named", table="player_game_log", available=SHOT_AVAILABILITY, span="career", season=None)
+    assert not isinstance(subject, TemplateResult)
+    player, span = subject
+    read = _period_split_rows(period_ctx.con, player, span, (1,), scope, None)
+    assert not isinstance(read, TemplateResult), "the old bug: a false 'no games' refusal for a player with games on record"
+    rows, _, _, _ = read
+    assert sum(line["points"] for *_, line in rows) == 15, "e1(6) + e2(3) + e4(3) across SEASON, plus e04(3) in 2004"
+    assert len(rows) == 6, "e1,e2,e3,e4,e5 (SEASON) and e04 (2004); e6 a DNP, e7 uncovered by the shot table"
 
 
 def test_a_team_log_names_each_opponent_as_it_was_that_season(gl_con: TemplateContext) -> None:
@@ -5739,11 +5757,13 @@ def test_templates_on_the_relation_do_not_narrow_it_themselves() -> None:
     )
     from association.query.templates.splits import _player_splits_from, _player_splits_team, _record_when_answer, _record_when_query, _record_when_team_answer, team_splits
 
-    readers: dict[str, list[Callable[..., Any]]] = {intent: [TEMPLATES[intent]] for intent in ("period_split", "streak")}
-    # record_when's, game_log's, player_stat's and player_splits' templates
-    # are retired (compose.COMPILED_INTENTS); the readers the compiler
-    # answers them with still read the relation, walked the same way.
+    readers: dict[str, list[Callable[..., Any]]] = {"streak": [TEMPLATES["streak"]]}
+    # record_when's, game_log's, player_stat's, player_splits' and
+    # period_split's templates are retired (compose.COMPILED_INTENTS); the
+    # readers the compiler answers them with still read the relation, walked
+    # the same way.
     readers["record_when"] = [_record_when_query, _record_when_answer, _record_when_team_answer]
+    readers["period_split"] = [_present_period_split, _period_split_from, _period_split_rows, _period_split_rows_from, _period_split_empty, _period_split_cross_season_redirect]
     readers["player_splits"] = [_present_player_splits, _player_splits_from, _player_splits_team, team_splits]
     readers["game_log"] = [team_game_log, _present_game_log, _player_game_log, _player_game_log_mixed]
     readers["player_stat"] = [_present_player_stat, _present_player_stat_season_line, _box_score_player_stat, _player_stat_season_line, _player_stat_season_line_subject]

@@ -769,7 +769,13 @@ def _move_default(intent: str, scope: Scope, measure: str | None) -> Reading:
 def _move_named(intent: str, scope: Scope, question: str) -> Reading:
     """The moves that apply once a player is named, tried in order - a
     single-game high, a career win count, a career boolean count, a
-    per-season history, and finally the intent's own default point."""
+    per-season history, and finally the intent's own default point. A
+    quarter or half of a named player's games is ``period_split``'s own
+    point (the retired template read its slots alone, so no word moves it);
+    under any other intent it is declined, since the point would print the
+    game's figure under the quarter's heading."""
+    if intent == "period_split":
+        return _move_default(intent, scope, None)
     if _PERIOD.search(question):
         raise Unsupported("a quarter or half is the period relation's question")
     measure = _measure_for_named(scope, question)

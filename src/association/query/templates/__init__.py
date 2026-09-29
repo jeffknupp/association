@@ -35,7 +35,7 @@ from .common import TemplateUnsupported as TemplateUnsupported
 from .common import check_coverage as check_coverage
 from .common import check_scope as check_scope
 from .common import coverage_caveat as coverage_caveat
-from .games import head_to_head, period_leaderboard, period_split, player_matchup, team_quarter_points
+from .games import head_to_head, period_leaderboard, player_matchup, team_quarter_points
 from .netpoints import fingerprint, player_netpoints
 from .players import player_compare
 from .shots import shot_chart, shot_distance
@@ -49,7 +49,6 @@ TEMPLATES: dict[str, Callable[[TemplateContext, Reading], TemplateResult]] = {
     "head_to_head": head_to_head,
     "team_quarter_points": team_quarter_points,
     "period_leaderboard": period_leaderboard,
-    "period_split": period_split,
     "shot_distance": shot_distance,
     "player_netpoints": player_netpoints,
     "fingerprint": fingerprint,

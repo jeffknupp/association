@@ -91,12 +91,12 @@ def _team_point_data(query: TeamQuery, result: TeamResult) -> dict[str, Any]:
     }
 
 
-COMPILED_INTENTS: frozenset[str] = frozenset({"threshold_count", "single_game_high", "record_when", "player_history", "game_log", "player_stat", "player_splits", "leaderboard"})
+COMPILED_INTENTS: frozenset[str] = frozenset({"threshold_count", "single_game_high", "record_when", "player_history", "game_log", "player_stat", "player_splits", "leaderboard", "period_split"})
 """The intents the compiler alone answers - the four whose templates it
 reproduced exactly (``~/association-research/intent-shrink/parity.py``:
 18/18, 10/10, 10/10, 20/20 on the recorded corpus) and then replaced
 (ROADMAP plan item 6, step (d), part 4), and ``game_log``, ``player_stat``,
-``player_splits`` and ``leaderboard`` (step (g): ``intent-shrink/g/``, every
+``player_splits``, ``leaderboard`` and ``period_split`` (step (g): ``intent-shrink/g/``, every
 unit-test call and recorded question answered both ways). Each is said in its retired
 template's own words, through that template's phrasing helpers
 (:mod:`~association.query.compose.present`); where the compiler has no

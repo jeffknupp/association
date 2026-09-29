@@ -22,7 +22,7 @@ from ..entities import Entity, resolve_team
 from ..leaderboard import resolve_metric
 from ..metrics import PER_GAME_MIN_GAMES, PER_GAME_MIN_POSTSEASON_GAMES
 from ..player_games import PERIOD_AGREEMENT, PERIOD_COLUMNS, PERIOD_PLAYS_COLUMNS, _joined, aggregate_sql, grouped_sql, rows_sql
-from ..shotchart import SHOT_AVAILABILITY, UNSEPARABLE_SHOT_VALUES
+from ..shotchart import UNSEPARABLE_SHOT_VALUES
 from ..team_games import TEAM_GAMES_SQL, TEAM_PERIOD_AGREEMENT, TEAM_PERIOD_COLUMNS, TeamNarrowed
 from ..team_games import games_subquery as team_games_subquery
 from ..team_games import rows_sql as team_rows_sql
@@ -47,7 +47,6 @@ from .common import (
     _Narrowed,
     _no_games,
     _no_narrowed_games,
-    _optional_team,
     _period,
     _player_relation_season_type,
     _relation_window,
@@ -62,7 +61,6 @@ from .common import (
     measure_filters,
     period_narrowing,
     scoped_games,
-    scoped_player,
     scoped_team,
     team_games,
     whole_span,
@@ -1658,28 +1656,19 @@ def _period_split_reconciliation_refusal(season: int, measure: str = "points") -
     return None
 
 
-def _period_split_subject(con: duckdb.DuckDBPyConnection, scope: Scope, date: str | None) -> tuple[Entity, _Span] | TemplateResult:
-    """The player a period question is about, and the seasons it covers -
-    split out of :func:`period_split` to keep it inside the complexity gate.
-
-    Resolved against the shot table, not the box-score or season-line
-    availabilities :func:`common.scoped_player`'s other callers use - a
-    player with shots on record for this period is a different (narrower)
-    question from one with a game log, and ``scoped_player`` takes
-    ``available`` as a parameter for exactly this reason. With a ``date``,
-    the span is read over his whole career (the same override ``game_log``
-    and ``player_stat`` make) so an ambiguous name is narrowed by "has he
-    ever played" rather than by a season the date may not even belong to; a
-    bare "career" ``span`` with no date is refused above this, over the shot
-    table's own row (``RELATION_SCOPING_EXCLUDED``).
-
-    .. versionadded:: 4.4.0
-    """
-    return scoped_player(con, scope, "no player named", table="player_game_log", available=SHOT_AVAILABILITY, span="career" if date else scope.span, season=None if date else scope.season)
-
-
-def period_split(ctx: TemplateContext, reading: Reading) -> TemplateResult:
-    """A named player's points in ONE quarter or half, per game and averaged.
+def _period_split_from(con: duckdb.DuckDBPyConnection, scope: Scope, player: Entity, span: _Span, narrowed: _Narrowed, periods: tuple[int, ...], period_label: str, measure: str) -> TemplateResult:
+    """A named player's points in ONE quarter or half, per game and averaged
+    - ``period_split``'s answer, over a player, span and narrowing already
+    settled through the relation's shared steps. The retired template's own
+    body (5.0.0); its caller is the compiler's presenter
+    (:func:`~association.query.compose.present._present_period_split`),
+    which makes the template's early refusals first - a period the scope
+    lacks (:func:`_period_scope`), a column the period's line does not
+    rebuild (:func:`_period_split_measure`), a season whose per-period
+    figures cannot be trusted (:func:`_period_split_reconciliation_refusal`)
+    - and settles the player over the shot table
+    (:data:`~association.query.shotchart.SHOT_AVAILABILITY`, the same
+    availability the template resolved against).
 
     The counterpart to :func:`team_quarter_points`, which answers a TEAM's
     quarter from the official linescore. A player has no such source, so this
@@ -1705,66 +1694,26 @@ def period_split(ctx: TemplateContext, reading: Reading) -> TemplateResult:
     refused outright (4.9% and 76.5%); 2003-2006 and 2013 are answered with
     the measured figure attached.
 
-    Only POINTS. Rebounds, assists and the rest are not in ``shot_chart`` at
-    all, and deriving them per period from ``plays`` carries its own per-stat
-    fidelity (fouls reconstruct at 83%), so a question asking for them is
-    refused with that named as the reason rather than answered from a weaker
-    source.
+    Points by default; any other column the period's line rebuilds
+    (:data:`~association.query.player_games.PERIOD_COLUMNS`) in its own word,
+    with its own measured agreement. Minutes, plus-minus and the rates are
+    not in the plays at all, and a question asking for them is refused with
+    that named as the reason rather than answered from the whole game's box.
 
-    .. versionadded:: 2.2.0
+    ``span`` "career", ``since`` and ``until`` are refused before this runs
+    (:data:`common.RELATION_SCOPING_EXCLUDED`): the accuracy caveat this
+    exists to attach is a property of one season, not of a sum across many,
+    and the header names one season.
 
-    .. versionchanged:: 4.4.0
-       Honors ``below``/``above`` (step 3, C2) - a line on a box-score column
-       ("with under 25 minutes") narrows which of the player's games are
-       summed for the period, through :func:`common.measure_filters` and
-       :func:`common.scoped_games`, the same as every other template on the
-       relation.
-
-    .. versionchanged:: 4.4.0
-       Honors ``date`` (step 3, C5) - one calendar day names its own game the
-       same way it does in :func:`game_log`, so the season used for the
-       reconciliation caveat is read off THAT game rather than guessed from a
-       season slot the router usually defaults to "now": a date from a past
-       season looked for inside the current one used to find nothing.
-       ``span`` "career" is refused instead of silently answering "no games" -
-       see :data:`common.RELATION_SCOPING_EXCLUDED` - because the accuracy
-       caveat this template exists to attach is a property of one season, not
-       of a sum across many. ``since`` is refused for the same reason, found
-       measuring this one: it was already honored (``scoped_player`` reads it
-       directly off the full ``slots`` dict), and it pulled the right games
-       back to the named season - 257 rather than 60 for ``since=2023`` -
-       while still heading them "the 2026 regular season", one of the years
-       actually summed and not the range.
+    .. versionadded:: 5.0.0
+       ``period_split``'s body from 2.2.0, over a settled narrowing.
     """
-    scope = reading.scope
-    con = ctx.con
-    periods, period_label = _period_scope(scope)
-    measure = _period_split_measure(scope.stat)
-    # Refused here, before any name is resolved, if a line names no column -
-    # the same discipline player_stat's own measures follow.
-    measures = measure_filters(scope.below, scope.above)
-
     date = scope.date
     season, season_type = scope.season or current_season(), scope.season_type or 2
-    if date is None:
-        refusal = _period_split_reconciliation_refusal(season, measure)
-        if refusal is not None:
-            return refusal
-
-    subject = _period_split_subject(con, scope, date)
-    if isinstance(subject, TemplateResult):
-        return subject
-    player, span = subject
-
-    opponent = _optional_team(con, scope.opponent, season=_slot_season(scope))
-    if isinstance(opponent, TemplateResult):
-        return opponent
-
+    opponent = narrowed.opponent
     venue, started = _period_split_narrowing(scope.venue, scope.split)
-    narrowed_rows = _period_split_rows(con, player, span, periods, scope, opponent, measures, date)
-    if isinstance(narrowed_rows, TemplateResult):
-        return narrowed_rows
-    rows, narrowed_mates, narrowed_measures, series_game = narrowed_rows
+    rows = _period_split_rows_from(con, narrowed)
+    narrowed_mates, narrowed_measures, series_game = [mate.name for mate in narrowed.without], list(narrowed.measures), narrowed.series_game
 
     if date is not None and rows:
         # The season a date's game actually falls in, read off the row itself
@@ -1792,7 +1741,7 @@ def period_split(ctx: TemplateContext, reading: Reading) -> TemplateResult:
         "games_played": len(games),
     }
     if not games:
-        return _period_split_empty(con, player, span, periods, period_label, scope, opponent, measures, venue, started, data, season_label, vs, at)
+        return _period_split_empty(con, player, span, periods, period_label, scope, opponent, measure_filters(scope.below, scope.above), venue, started, data, season_label, vs, at)
 
     unknown = _period_split_unread(games, measure)
     if unknown is not None:
@@ -2133,10 +2082,21 @@ def _period_split_rows(
     narrowed = scoped_games(con, player, span, scope, opponent=opponent, measures=measures or [], date=date)
     if isinstance(narrowed, TemplateResult):
         return narrowed
-    # The relation carries the period (scoped_games applied the question's
-    # quarter or half), so every column read here is already the period's
-    # own figure, over the games the shot table covers - the denominator
-    # rules below live in `player_games._period_source` now.
+    rows = _period_split_rows_from(con, narrowed, limit=limit)
+    return rows, [mate.name for mate in narrowed.without], list(narrowed.measures), narrowed.series_game
+
+
+def _period_split_rows_from(con: duckdb.DuckDBPyConnection, narrowed: _Narrowed, limit: int | None = None) -> list[tuple[Any, ...]]:
+    """:func:`_period_split_rows`'s read, over a narrowing already settled:
+    one row a game, the period's whole line beside the date, the side and
+    the opponent, in date order. The relation carries the period
+    (``scoped_games`` applied the question's quarter or half), so every
+    column read here is already the period's own figure, over the games the
+    shot table covers - the denominator rules live in
+    ``player_games._period_source``. ``limit`` is the newest N by date.
+
+    .. versionadded:: 5.0.0
+    """
     rebuilt = box_source(con).rebuilt
     line = ", ".join(f"pgl.{column}" for column in PERIOD_COLUMNS)
     sql, params = rows_sql(
@@ -2148,8 +2108,7 @@ def _period_split_rows(
         rebuilt=rebuilt,
     )
     fetched = con.execute(sql, params).fetchall()
-    rows = sorted(((d, game_season, side, name, dict(zip(PERIOD_COLUMNS, figures, strict=True))) for d, game_season, side, name, *figures in fetched), key=lambda row: row[0])
-    return rows, [mate.name for mate in narrowed.without], list(narrowed.measures), narrowed.series_game
+    return sorted(((d, game_season, side, name, dict(zip(PERIOD_COLUMNS, figures, strict=True))) for d, game_season, side, name, *figures in fetched), key=lambda row: row[0])
 
 
 def _period_split_empty(

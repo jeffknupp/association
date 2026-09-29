@@ -12,13 +12,14 @@ from typing import Any
 
 from association.query.measures import MEASURE_WORDS
 from association.query.reading import Group, Reading, Scope
-from association.query.templates.common import _BOX_SCORES, TemplateUnsupported, _clamp_limit
+from association.query.shotchart import SHOT_AVAILABILITY
+from association.query.templates.common import _BOX_SCORES, RELATION_SCOPING_EXCLUDED, TemplateUnsupported, _clamp_limit, period_narrowing
 
 # One concept, one definition (scripts/check_duplicate_names.py): the default
 # row counts and the default stat line are the same constants the real
 # templates already carry (association.query.templates.games/players),
 # reused rather than redeclared under the same name.
-from association.query.templates.games import DEFAULT_GAME_LOG_LIMIT, _log_extras
+from association.query.templates.games import DEFAULT_GAME_LOG_LIMIT, _log_extras, _period_split_measure
 from association.query.templates.players import DEFAULT_SINGLE_GAME_LIMIT, STAT_LINE, _threshold_count_ask
 
 from .core import COLUMNS, LINE, Query, Unsupported
@@ -202,6 +203,51 @@ def _adapt_player_splits(scope: Scope) -> Reading:
     return Reading(scope=scope, shape="grouped", measures=list(SPLIT_LINE), aggregate="record", group=group, predicates=[], available=_BOX_SCORES)
 
 
+def _adapt_period_split(scope: Scope) -> Reading:
+    """``period_split``'s default point: a named player's games in date
+    order, each read as the quarter's or half's line (the relation's
+    ``period``/``half`` cells), measuring the column the period's line
+    rebuilds - points where no stat was named. The retired template's own
+    early refusals are the point's (ROADMAP plan item 6, step (g)): no
+    period, a column play-by-play cannot restrict to a period
+    (:func:`~association.query.templates.games._period_split_measure`), and
+    the narrowings its accuracy caveat cannot survive - a career, ``since``,
+    ``until`` (:data:`~association.query.templates.common.RELATION_SCOPING_EXCLUDED`).
+    The player is settled over the shot table
+    (:data:`~association.query.shotchart.SHOT_AVAILABILITY`), as the
+    template settled him, and over his career when a date names the game.
+
+    .. versionadded:: 5.0.0
+    """
+    if not _named_player_in(scope):
+        raise Unsupported("period_split needs a player")
+    if period_narrowing(scope) is None:
+        raise Unsupported(f"period_split needs a period 1-10 or a half 1-2, got period={scope.period!r} half={scope.half!r}")
+    excluded = RELATION_SCOPING_EXCLUDED["period_split"]
+    refused = [slot for slot in excluded if getattr(scope, slot) not in (None, "", (), False)]
+    if refused:
+        raise Unsupported(f"period_split cannot honor {refused} - {excluded[refused[0]]}")
+    try:
+        measure = _period_split_measure(scope.stat)
+    except TemplateUnsupported as exc:
+        raise Unsupported(str(exc)) from exc
+    date = scope.date
+    return Reading(
+        scope=scope,
+        shape="rows",
+        measures=[measure],
+        aggregate="none",
+        group="none",
+        predicates=[],
+        order="date",
+        direction="asc" if scope.order == "first" else "desc",
+        limit=_clamp_limit(scope.limit, DEFAULT_GAME_LOG_LIMIT),
+        available=SHOT_AVAILABILITY,
+        span="career" if date else scope.span,
+        season=None if date else scope.season,
+    )
+
+
 def _adapt_record_when(scope: Scope) -> Reading:
     """``record_when``'s default point: the record in games clearing one line."""
     col = _stat_column(scope.stat)
@@ -223,6 +269,7 @@ _ADAPTERS: dict[str, Callable[[Scope], Reading]] = {
     "single_game_high": _adapt_single_game_high,
     "player_splits": _adapt_player_splits,
     "record_when": _adapt_record_when,
+    "period_split": _adapt_period_split,
 }
 
 

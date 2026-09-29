@@ -34,7 +34,7 @@ from typing import Any
 
 import duckdb
 
-from association.nba.season import eastern_date
+from association.nba.season import current_season, eastern_date
 from association.query.conditions import _PLAYER_GAME_TABLES
 from association.query.player_games import REBUILT_STATS
 from association.query.reading import Scope
@@ -53,7 +53,17 @@ from association.query.templates.common import (
     check_coverage,
     unhonored_scoping,
 )
-from association.query.templates.games import _game_log_lines, _log_extras, _player_game_log, _player_game_log_mixed, team_game_log
+from association.query.templates.games import (
+    _game_log_lines,
+    _log_extras,
+    _period_scope,
+    _period_split_from,
+    _period_split_measure,
+    _period_split_reconciliation_refusal,
+    _player_game_log,
+    _player_game_log_mixed,
+    team_game_log,
+)
 from association.query.templates.players import (
     ADVANCED_STATS,
     SHOOTING_STATS,
@@ -151,6 +161,31 @@ def _present_game_log(con: duckdb.DuckDBPyConnection, q: Query) -> TemplateResul
             asked=asked,
         )
     return _player_game_log(con, compiled.player, compiled.span, compiled.narrowed, extras, limit=limit, asked=asked, ascending=q.direction == "asc")
+
+
+def _present_period_split(con: duckdb.DuckDBPyConnection, q: Query) -> TemplateResult | None:
+    """``period_split``'s own sentence, log and caveats over the compiler's
+    settled player, span and period-narrowed games
+    (``templates.games._period_split_from``). The template's own order is
+    kept: a season whose per-period figures cannot be trusted is refused
+    before any name is resolved (``_period_split_reconciliation_refusal``,
+    over :data:`~association.query.templates.games.PERIOD_RECONCILIATION`),
+    and again off the game a date names once it is found."""
+    if q.skeleton != "rows" or q.order != "date" or q.subject != "player" or q.predicates or q.group != "none":
+        return None
+    scope = q.scope
+    periods, period_label = _period_scope(scope)
+    measure = _period_split_measure(scope.stat)
+    if q.measures != [measure]:
+        return None
+    if scope.date is None:
+        refusal = _period_split_reconciliation_refusal(scope.season or current_season(), measure)
+        if refusal is not None:
+            return refusal
+    compiled = compile_query(con, q)
+    if compiled.player is None:
+        return None
+    return _period_split_from(con, scope, compiled.player, compiled.span, compiled.narrowed, periods, period_label, measure)
 
 
 def _present_player_splits(con: duckdb.DuckDBPyConnection, q: Query) -> TemplateResult | None:
@@ -452,6 +487,7 @@ PRESENTERS: dict[str, Presenter] = {
     "record_when": _present_record_when,
     "player_history": _present_player_history,
     "leaderboard": _present_leaderboard,
+    "period_split": _present_period_split,
 }
 """The intents whose own default point the compiler answers in that intent's
 template's words - see the module docstring.
@@ -477,6 +513,10 @@ STATED_SCOPING: dict[str, frozenset[str]] = {
     # leaderboard's words: a career pool, and a season total or a unit it
     # refuses by name (the template's own HONORED_SCOPING when it retired).
     "leaderboard": frozenset({"span", "rate"}),
+    # period_split's words: the relation's set less a career and a since/until
+    # range (RELATION_SCOPING_EXCLUDED: the accuracy caveat is per season),
+    # which its point refuses outright (compose.adapt._adapt_period_split).
+    "period_split": _relation_scoping("period_split"),
     "single_game_high": frozenset({"span"}),
     # A count is already a line on a column; `below` is the same line the
     # other way ("games with under 14 fta"), and a phrase carrying the count's
