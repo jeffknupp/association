@@ -24,11 +24,12 @@ Two properties are not negotiable on the way there:
   a follow-up wording reaches the alternative.** (Jeff, 2026-09-21.) A silent
   default is still the worst failure; a stated one is an answer.
 
-## Where it stands (2026-09-29, `5e72747`)
+## Where it stands (2026-09-29, `6b77f56`)
 
 **165 of 175 questions (94.3%), 154 of 166 families (92.8%)** on the live
-yardstick run (parser13, the period relation merged and F062 refused by
-name): 2 wrong, 5 partial, 3 fall-throughs.
+yardstick run (parser15: the fall-through agent removed, the period
+relation's team half merged): 2 wrong, 5 partial, 3 refused with no reading
+(the yardstick's "fell through" outcome).
 
 The pipeline: a 3B model (qwen2.5:3b) copies the names out of the question
 and picks one stat key (`query/normalizer.py`); the parser reads everything
