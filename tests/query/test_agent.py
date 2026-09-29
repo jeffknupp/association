@@ -106,7 +106,8 @@ def test_the_fast_path_replaces_a_player_the_question_never_named(monkeypatch: p
         seen.extend(reading.scope.players)
         return TemplateResult(data={}, answer="templated")
 
-    monkeypatch.setattr("association.query.agent.TEMPLATES", {"player_compare": record})
+    # player_compare is the compiler's (compose.COMPILED_INTENTS): the same Reading reaches compose.answer.
+    monkeypatch.setattr("association.query.compose.answer", lambda ctx, reading, trace=None, declined=None: record(ctx, reading))
     _agent_with_players(tmp_path, "Joel Embiid", "Jusuf Nurkic").ask(
         "compare sga and embiid", route=Route.from_slots(intent="player_compare", slots={"players": ["Shai Gilgeous-Alexander", "Jusuf Nurkic"]})
     )
@@ -121,7 +122,7 @@ def test_the_fast_path_records_who_the_question_was_read_to_be_about(monkeypatch
     from association.query.router import Route
     from association.query.templates.common import TemplateResult
 
-    monkeypatch.setattr("association.query.agent.TEMPLATES", {"player_compare": lambda ctx, slots: TemplateResult(data={}, answer="templated")})
+    monkeypatch.setattr("association.query.compose.answer", lambda ctx, reading, trace=None, declined=None: TemplateResult(data={}, answer="templated"))
     agent = _agent_with_players(tmp_path, "Joel Embiid", "Jusuf Nurkic")
     answer = agent.ask("compare sga and embiid", route=Route.from_slots(intent="player_compare", slots={"players": ["Shai Gilgeous-Alexander", "Jusuf Nurkic"]}))
     stages = [(d.stage, d.field, d.after) for d in answer.decisions]
@@ -257,7 +258,7 @@ def test_a_player_the_question_cannot_account_for_is_refused_not_passed_on(monke
     from association.query.router import Route
     from association.query.templates.common import TemplateResult
 
-    monkeypatch.setattr("association.query.agent.TEMPLATES", {"player_compare": lambda ctx, slots: TemplateResult(data={}, answer="templated")})
+    monkeypatch.setattr("association.query.compose.answer", lambda ctx, reading, trace=None, declined=None: TemplateResult(data={}, answer="templated"))
     answer = _agent_with_players(tmp_path, "Joel Embiid", "Jusuf Nurkic").ask(
         "compare the two best centers", route=Route.from_slots(intent="player_compare", slots={"players": ["Jusuf Nurkic", "Joel Embiid"]})
     )

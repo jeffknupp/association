@@ -73,6 +73,7 @@ from association.query.templates.players import (
     _game_span,
     _leaderboard_ranking,
     _phrase_threshold_count,
+    _player_compare_lines,
     _player_history_read,
     _player_history_subject,
     _player_stat_season_line,
@@ -340,6 +341,21 @@ def _present_leaderboard(con: duckdb.DuckDBPyConnection, q: Query) -> TemplateRe
         return None
 
 
+def _present_player_compare(con: duckdb.DuckDBPyConnection, q: Query) -> TemplateResult | None:
+    """``player_compare``'s own table - each named player's season line side
+    by side, with the NetPoints summary beneath
+    (``templates.players._player_compare_lines``) - over the compiler's
+    point for a pair on the season line. The reader's own refusals (an
+    unknown or ambiguous name, a stat the line has no column for, names
+    that resolve to one person) stand as the answer's reason.
+
+    .. versionadded:: 5.0.0
+    """
+    if q.subject != "player" or q.source != "seasons" or q.skeleton != "grouped" or q.group != "player" or q.predicates or q.measures:
+        return None
+    return _player_compare_lines(con, q.scope)
+
+
 def _present_player_history(con: duckdb.DuckDBPyConnection, q: Query) -> TemplateResult | None:
     """``player_history``'s own table - the stat season by season from the
     season line, newest first, the default four or the count asked for, and
@@ -488,6 +504,7 @@ PRESENTERS: dict[str, Presenter] = {
     "player_history": _present_player_history,
     "leaderboard": _present_leaderboard,
     "period_split": _present_period_split,
+    "player_compare": _present_player_compare,
 }
 """The intents whose own default point the compiler answers in that intent's
 template's words - see the module docstring.
@@ -517,6 +534,9 @@ STATED_SCOPING: dict[str, frozenset[str]] = {
     # range (RELATION_SCOPING_EXCLUDED: the accuracy caveat is per season),
     # which its point refuses outright (compose.adapt._adapt_period_split).
     "period_split": _relation_scoping("period_split"),
+    # player_compare's words state no narrowing at all; its point refuses
+    # one outright (compose.move._compare_point), as check_scope did.
+    "player_compare": frozenset(),
     "single_game_high": frozenset({"span"}),
     # A count is already a line on a column; `below` is the same line the
     # other way ("games with under 14 fta"), and a phrase carrying the count's

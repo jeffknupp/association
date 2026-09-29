@@ -41,7 +41,7 @@ from association.query.templates.games import (
     team_quarter_points,
 )
 from association.query.templates.netpoints import fingerprint, player_netpoints
-from association.query.templates.players import SHOOTING_STATS, _box_score_player_stat, _box_score_stat_rebuilt, _player_stat_season_line, _player_stat_season_line_subject, player_compare
+from association.query.templates.players import SHOOTING_STATS, _box_score_player_stat, _box_score_stat_rebuilt, _player_stat_season_line, _player_stat_season_line_subject
 from association.query.templates.shots import shot_chart, shot_distance
 from association.query.templates.teams import team_record
 
@@ -74,6 +74,7 @@ def _compiled(intent: str) -> Callable[[TemplateContext, Reading], TemplateResul
 game_log = _compiled("game_log")
 leaderboard = _compiled("leaderboard")
 period_split = _compiled("period_split")
+player_compare = _compiled("player_compare")
 player_history = _compiled("player_history")
 player_splits = _compiled("player_splits")
 player_stat = _compiled("player_stat")

@@ -15,7 +15,7 @@ from association.nba.coverage import COVERAGE, POSTSEASON
 from association.nba.franchises import season_name_sql
 from association.nba.season import current_season
 from association.nba.season import eastern_date as _eastern_date
-from association.query.reading import Reading, Scope
+from association.query.reading import Scope
 
 from ..entities import Availability, Entity
 from ..leaderboard import SEASON_TOTAL_OF, LeaderboardError, LeaderboardResult, not_a_postseason_copy, resolve_metric, run_career_leaderboard, run_leaderboard
@@ -30,7 +30,6 @@ from .common import (
     STAT_LABELS,
     THRESHOLD_STAT_COLUMNS,
     MeasureFilter,
-    TemplateContext,
     TemplateResult,
     TemplateUnsupported,
     _box_score_notes,
@@ -1792,18 +1791,24 @@ def _phrase_single_game_high(
 MAX_COMPARED_PLAYERS = 4
 
 
-def player_compare(ctx: TemplateContext, reading: Reading) -> TemplateResult:
-    """Two or more named players' season numbers side by side.
+def _player_compare_lines(con: duckdb.DuckDBPyConnection, scope: Scope) -> TemplateResult:
+    """Two or more named players' season numbers side by side -
+    ``player_compare``'s answer, over the scope the parser settled. The
+    retired template's own body (5.0.0); its caller is the compiler's
+    presenter (:func:`~association.query.compose.present._present_player_compare`),
+    for a pair's point on the season line (``source="seasons"``), and the
+    point itself refuses fewer than two distinct names and any narrowing
+    (:func:`~association.query.compose.move._compare_point`), as the
+    template's ``check_scope`` did.
 
     The agent wrote correct SQL but expanded "SGA" to '%Scottie G. Allen%' and
     compared Luka Doncic to Luka Garza. Nickname resolution is a lookup, not
-    something to hope a 7B model knows - see entities.PLAYER_NICKNAMES."""
-    scope = reading.scope
-    con = ctx.con
-    names = scope.players
-    if len({n for n in names if n.strip()}) < 2:
-        raise TemplateUnsupported("player_compare needs at least two distinct player names")
+    something to hope a 7B model knows - see entities.PLAYER_NICKNAMES.
 
+    .. versionadded:: 5.0.0
+       ``player_compare``'s body, over the settled scope.
+    """
+    names = scope.players
     season = scope.season or current_season()
     resolved: list[Entity] = []
     for name in names[:MAX_COMPARED_PLAYERS]:

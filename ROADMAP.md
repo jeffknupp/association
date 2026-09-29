@@ -95,11 +95,16 @@ The 13 families still failing, by cause:
    (`compose.adapt._adapt_period_split`, the template's early refusals
    the point's own); 10/11 recorded questions identical, 1 refused both
    ways with the same sentence, 31 unit-test calls through the shim.
-   Measured first on all six (`intent-shrink/g/six_before.jsonl`): the
-   compiler declined every `player_compare`, `with_without`,
-   `player_matchup` and `streak` point (a pair, a condition or a run it has
-   no reading of). What is left on the player relation: `player_compare`
-   (18 recorded questions), `with_without` (10), `player_matchup` (5),
+   `player_compare` too: its body is a reader over the settled scope
+   (`templates.players._player_compare_lines`), the point a pair's season
+   lines side by side (`compose.move._compare_point`, `source="seasons"`;
+   the template's refusals - fewer than two names, any narrowing - the
+   point's own); 16/18 recorded questions identical, 2 refused both ways
+   with the same sentence, 21 unit-test calls through the shim. Measured
+   first on all six (`intent-shrink/g/six_before.jsonl`): the compiler
+   declined every `with_without`, `player_matchup` and `streak` point (a
+   condition or a run it has no reading of). What is left on the player
+   relation: `with_without` (10 recorded questions), `player_matchup` (5),
    `streak` (4) - measure the same way before retiring any. A template
    survives only for a shape of its own: a chart, a fingerprint, a streak, a
    matchup, a quarter. How to retire one is part 4's method: every call its

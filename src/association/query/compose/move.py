@@ -22,7 +22,7 @@ from association.query.leaderboard import resolve_metric
 from association.query.measures import MEASURE_WORDS
 from association.query.metrics import PER_GAME_MIN_GAMES, TEAM_FIELD_WORDS
 from association.query.reading import Aggregate, Reading, Scope
-from association.query.templates.common import DEFAULT_LIMIT, HISTORY_COLUMNS, TEAM_ONLY_INTENTS, TemplateResult, _clamp_limit, ordinal_word
+from association.query.templates.common import DEFAULT_LIMIT, HISTORY_COLUMNS, TEAM_ONLY_INTENTS, TemplateResult, _clamp_limit, ordinal_word, unhonored_scoping
 from association.query.templates.players import leaderboard_shot_distance_refusal
 
 from .adapt import DEFAULT_GAME_LOG_LIMIT, DEFAULT_SINGLE_GAME_LIMIT, _named_player_in, _to_reading_scope
@@ -758,6 +758,26 @@ def games_reading(q: Query) -> Query:
     raise Unsupported("an unnarrowed player line the season line's reader did not say")
 
 
+def _compare_point(scope: Scope) -> Reading:
+    """``player_compare``'s own point (its template retired, ROADMAP plan
+    item 6, step (g)): two or more named players' season lines side by side
+    (``source="seasons"``, grouped by player), said by its presenter
+    (``compose.present._present_player_compare``). The template's own
+    refusals are the point's: fewer than two distinct names, and any
+    narrowing at all - it honored no scoping slot, and a comparison "vs the
+    celtics" answered for the whole season would be the substitution
+    ``check_scope`` existed to stop.
+
+    .. versionadded:: 5.0.0
+    """
+    ignored = unhonored_scoping("player_compare", scope, frozenset())
+    if ignored:
+        raise Unsupported(f"player_compare cannot honor {ignored} - it would answer for a different span than was asked")
+    if len({name for name in scope.players if name.strip()}) < 2:
+        raise Unsupported("player_compare needs at least two distinct player names")
+    return Reading(scope=scope, shape="grouped", measures=[], aggregate="per_game", group="player", predicates=[], source="seasons")
+
+
 def _move_default(intent: str, scope: Scope, measure: str | None) -> Reading:
     """The intent's default point, with the measure the question named added on."""
     base = _to_reading_scope(intent, scope)
@@ -1001,10 +1021,10 @@ def read_point(con: duckdb.DuckDBPyConnection, reading: Reading, question: str) 
     return replace(point, intent=reading.intent, subject=subject, evidence=(*point.evidence, *subject.evidence))
 
 
-def _read_point(con: duckdb.DuckDBPyConnection, intent: str, scope: Scope, question: str, subject: Subject) -> Reading:
-    """:func:`read_point`'s moves, in order; split out so the record carries
-    the intent and the subject whichever move settled it."""
-    if intent == "leaderboard" and scope.stat in ("triple_double", "double_double") and subject.kind in ("team", "team_players") and not subject.players:
+def _leaderboard_declines(scope: Scope, subject: Subject) -> None:
+    """What a ``leaderboard`` point is not, declined before any move - split
+    out of :func:`_read_point` to keep it inside the complexity gate."""
+    if scope.stat in ("triple_double", "double_double") and subject.kind in ("team", "team_players") and not subject.players:
         # A TEAM's total of its players' triple-doubles ("oklahoma city
         # thunder all-time triple doubles vs west", leaderboard with the team
         # filed - day5): not a ranking this relation lacks a measure for, but
@@ -1014,12 +1034,19 @@ def _read_point(con: duckdb.DuckDBPyConnection, intent: str, scope: Scope, quest
         # (refusals._team_boolean_count) rather than the ranking's sentence
         # naming the wrong one.
         raise Unsupported(f"a team's total of its players' {scope.stat} is not read")
-    if intent == "leaderboard" and _named_player_in(scope):
+    if _named_player_in(scope):
         # A leaderboard ranks the league or a team, never one named person -
         # the retired template's own refusal ("Klay Thompson's 3pt percentage
         # over the past 4 seasons" once landed here and came back with the
         # league's true-shooting leaders, Klay silently dropped).
         raise Unsupported(f"a leaderboard cannot answer about one named player ({scope.player!r})")
+
+
+def _read_point(con: duckdb.DuckDBPyConnection, intent: str, scope: Scope, question: str, subject: Subject) -> Reading:
+    """:func:`read_point`'s moves, in order; split out so the record carries
+    the intent and the subject whichever move settled it."""
+    if intent == "leaderboard":
+        _leaderboard_declines(scope, subject)
     if intent == "record_when" and not _named_player_in(scope) and scope.team is not None and scope.team.strip():
         # A team's record above and below its OWN line - "what was the celtics
         # record when they scored 120 points" (ISSUES.md #144) - is neither the
@@ -1039,6 +1066,8 @@ def _read_point(con: duckdb.DuckDBPyConnection, intent: str, scope: Scope, quest
         team_splits = team_splits_point(scope, subject)
         if team_splits is not None:
             return team_splits
+    if intent == "player_compare":
+        return _compare_point(scope)
     if not _named_player_in(scope):
         team_reading = team_read_point(con, scope, question, subject)
         if team_reading is not None:
