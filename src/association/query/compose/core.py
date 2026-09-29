@@ -40,7 +40,7 @@ from association.nba.season import current_season, eastern_date_sql
 from association.query.conditions import UNGATED_ON_REBUILD, BoxSource, box_source
 from association.query.entities import Entity
 from association.query.measures import MEASURE_WORDS
-from association.query.player_games import REBUILT_STATS, Narrowed, aggregate_sql, grouped_sql, rows_sql
+from association.query.player_games import PERIOD_COLUMNS, REBUILT_STATS, Narrowed, aggregate_sql, grouped_sql, rows_sql
 from association.query.reading import Scope
 from association.query.templates.common import (
     _GAME_LOGS,
@@ -54,6 +54,7 @@ from association.query.templates.common import (
     _span_of,
     league_games,
     measure_filters,
+    period_narrowing,
     scoped_games,
     scoped_player,
 )
@@ -341,6 +342,29 @@ def _check_relation_scoping(scope: Scope, subject: str = "player") -> None:
         raise Unsupported(f"the relation cannot honor {unhonored} - it would answer for a different span than was asked")
 
 
+#: What a period-narrowed read may measure: the columns the period's line
+#: rebuilds, and the measures computed only from them (a rate is a ratio of
+#: the period's sums; a game's result is the game's).
+_PERIOD_READABLE: frozenset[str] = frozenset(PERIOD_COLUMNS) | {"pra", "fg_pct", "three_pct", "ft_pct", "double_double", "triple_double", "won", "home"}
+
+
+def _check_period_measures(q: Query) -> None:
+    """A quarter or half narrows the relation to the period's line
+    (:meth:`~association.query.player_games.Narrowed.narrow_periods`), where
+    ``minutes`` still holds the whole game's (the played guard reads it) and
+    plus-minus and the advanced columns are blank. A read measuring one of
+    those under a period would print the game's figure under the quarter's
+    heading - so it is refused, and the default line (which carries minutes)
+    with it: the period templates say a period, and this compiler's sentence
+    has not been measured saying one."""
+    if period_narrowing(q.scope) is None:
+        return
+    read = [*q.measures, *(name for name, _, _ in q.predicates)]
+    unread = sorted({m for m in read if m not in _PERIOD_READABLE})
+    if unread:
+        raise Unsupported(f"a quarter or half rebuilds {', '.join(PERIOD_COLUMNS)} from the plays - not {unread}")
+
+
 def _check_split_category(q: Query) -> None:
     """``split`` names a HALF (starter/bench) for a row filter; the category
     ``starter_bench`` is a table of both halves, which only a grouped read by
@@ -570,6 +594,7 @@ def compile_query(con: duckdb.DuckDBPyConnection, q: Query) -> Compiled:
         raise Unsupported(f"the {q.source} source is read by the templates' own readers, not compiled")
     _check_relation_scoping(q.scope, q.subject)
     _check_split_category(q)
+    _check_period_measures(q)
     player, span, narrowed = _resolve_subject(con, q)
     _apply_predicates(narrowed, q)
     narrowed = _apply_team_slot(con, q, player, span, narrowed)

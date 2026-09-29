@@ -191,3 +191,27 @@ def test_the_agreement_table_names_only_period_columns_and_real_percentages() ->
     for column, seasons in PERIOD_AGREEMENT.items():
         for season, pct in seasons.items():
             assert season >= 2002 and 0 < pct < 99.05, f"{column} {season}: {pct} (the table lists seasons under 99% only)"
+
+
+def test_the_compiler_refuses_a_period_read_of_a_column_no_play_splits() -> None:
+    """Under a period, ``minutes`` still holds the game's figure (the played
+    guard reads it) - so the compiler's default line, which carries minutes,
+    is refused rather than printed under a quarter's heading, and a read of
+    the rebuilt columns passes."""
+    from association.query.compose.core import Query, Unsupported, _check_period_measures
+
+    with pytest.raises(Unsupported, match="minutes"):
+        _check_period_measures(Query(scope=Scope(player="x", period=1)))
+    with pytest.raises(Unsupported, match="plusMinus"):
+        _check_period_measures(Query(scope=Scope(player="x", half=2), measures=["points"], predicates=[("plusMinus", ">=", 5)]))
+    _check_period_measures(Query(scope=Scope(player="x", period=1), measures=["points", "rebounds", "fg_pct"]))
+    _check_period_measures(Query(scope=Scope(player="x"), measures=["minutes"]))  # no period: nothing to refuse
+
+
+def test_compiling_a_period_read_of_minutes_refuses_before_the_warehouse_is_read() -> None:
+    """The guard sits in ``compile_query`` itself, ahead of any read: an empty
+    connection is refused for the cause, not failed on a missing table."""
+    from association.query.compose.core import Query, Unsupported, compile_query
+
+    with pytest.raises(Unsupported, match="minutes"):
+        compile_query(duckdb.connect(":memory:"), Query(scope=Scope(player="x", period=1, season=SEASON, season_type=2)))
