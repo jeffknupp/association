@@ -346,11 +346,9 @@ def _team_relation_scoping(intent: str, *extra: str) -> frozenset[str]:
 
 # What each template actually honors. Anything not listed here honors none.
 HONORED_SCOPING: dict[str, frozenset[str]] = {
-    # The six on the player-games relation: see RELATION_SCOPING.
-    # `season_type_unstated` is honored by reading both season types for a
-    # "last N games" question and merging them by date - see
-    # router._route_game_log_recent_span and game_log's own handling of it.
-    "game_log": _relation_scoping("game_log", "season_type_unstated"),
+    # The templates on the player-games relation: see RELATION_SCOPING.
+    # game_log is the compiler's (compose.COMPILED_INTENTS): what its retired
+    # words state is compose.present.STATED_SCOPING's.
     # The three that narrow games are answered from box scores rather than the
     # season line; a career is summed from the season table. `season_type_unstated`
     # is one more such narrowing (`_player_stat_reads_box_scores`): the season

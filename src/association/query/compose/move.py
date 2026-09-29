@@ -23,7 +23,7 @@ from association.query.metrics import PER_GAME_MIN_GAMES
 from association.query.reading import Aggregate, Reading, Scope
 from association.query.templates.common import DEFAULT_LIMIT, HISTORY_COLUMNS, TEAM_ONLY_INTENTS, TemplateResult, _clamp_limit, ordinal_word
 
-from .adapt import DEFAULT_SINGLE_GAME_LIMIT, _named_player_in, _to_reading_scope
+from .adapt import DEFAULT_GAME_LOG_LIMIT, DEFAULT_SINGLE_GAME_LIMIT, _named_player_in, _to_reading_scope
 from .core import BOOLEAN_MEASURES, COLUMNS, DERIVED, LINE, Query, Refused, Unsupported
 from .plan import plan
 from .team import GAME_MEASURES, SEASON_MEASURES, TeamQuery
@@ -756,6 +756,41 @@ def _team_measure(scope: Scope, question: str) -> str | None:
     return None
 
 
+def team_log_point(scope: Scope, subject: Subject) -> Reading | None:
+    """A ``game_log`` question about a team and no player - "show me the
+    Knicks last 5 games" - as the team's own games listed: a ``rows`` point
+    on the team relation, in date order, the window the question asked
+    (:func:`~association.query.compose.present.present_team` says it in the
+    retired template's words). The team is the route's own slot, or the one
+    the subject reading found where the router dropped it. ``None`` where
+    the question is not that: a named player (his own log, the player
+    relation's), or a position group ("centers game log vs kings" - the
+    template answered the KINGS' log; the league-wide read lists the
+    centers' games against them, which is the question).
+
+    .. versionadded:: 5.0.0
+    """
+    if _named_player_in(scope) or subject.kind in ("player", "pair", "position"):
+        return None
+    team_text = scope.team if isinstance(scope.team, str) and scope.team.strip() and scope.team != "any_team" else None
+    if team_text is None:
+        if subject.kind not in ("team", "team_players") or not subject.teams:
+            return None
+        team_text = subject.teams[0]
+    return Reading(
+        scope=replace(scope, team=team_text),
+        shape="rows",
+        measures=["points"],
+        aggregate="none",
+        group="none",
+        predicates=[],
+        order="date",
+        direction="asc" if scope.order == "first" else "desc",
+        limit=_clamp_limit(scope.limit, DEFAULT_GAME_LOG_LIMIT),
+        relation="team",
+    )
+
+
 def team_read_point(con: duckdb.DuckDBPyConnection, scope: Scope, question: str, subject: Subject) -> Reading | None:
     """Whether ``question``/``scope`` name a team as the grammatical
     SUBJECT - no player, a team identifiable (the router's own ``team`` slot,
@@ -881,6 +916,15 @@ def _read_point(con: duckdb.DuckDBPyConnection, intent: str, scope: Scope, quest
         # season sum nor the window sum the team subject otherwise reads: it is
         # record_when's team reader's (compose.present.present_team).
         return Reading(scope=scope, shape="scalar", measures=[scope.stat or "points"], aggregate="record", relation="team")
+    if intent == "game_log":
+        # A team's log, before the team's sums: "knicks last 5 games" lists
+        # them (the retired template's team half, ROADMAP plan item 6, step
+        # (g)); "total points scored by the raptors in the last 10 games" is
+        # routed here too and lists them with the total stated beneath, as
+        # the template did.
+        team_log = team_log_point(scope, subject)
+        if team_log is not None:
+            return team_log
     if not _named_player_in(scope):
         team_reading = team_read_point(con, scope, question, subject)
         if team_reading is not None:

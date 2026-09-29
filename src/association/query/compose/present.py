@@ -54,7 +54,7 @@ from association.query.templates.common import (
     check_coverage,
     unhonored_scoping,
 )
-from association.query.templates.games import _game_log_lines, _log_extras, _player_game_log, _player_game_log_mixed
+from association.query.templates.games import _game_log_lines, _log_extras, _player_game_log, _player_game_log_mixed, team_game_log
 from association.query.templates.players import (
     ADVANCED_STATS,
     SHOOTING_STATS,
@@ -178,6 +178,11 @@ def _present_player_stat(con: duckdb.DuckDBPyConnection, q: Query) -> TemplateRe
     over the compiler's settled player, span and narrowing. An advanced rate
     reads its own table and is left to the compiler's sentence. An
     unnarrowed line is the season-line source's (:func:`_present_player_stat_season_line`)."""
+    if q.skeleton == "rows":
+        # A window ("stats over his last N games") is the log of those games
+        # with averages beneath, never the season line - the retired
+        # template handed the question to game_log, and the point is its.
+        return _present_game_log(con, q)
     if q.skeleton != "scalar" or q.aggregate != "per_game" or q.subject != "player" or q.predicates:
         return None
     if q.source == "seasons":
@@ -385,8 +390,11 @@ template's words - see the module docstring.
 
 STATED_SCOPING: dict[str, frozenset[str]] = {
     # A standing template's words are its own: what it honors, it states.
-    "game_log": HONORED_SCOPING["game_log"],
     "player_stat": HONORED_SCOPING["player_stat"],
+    # game_log retired stating the relation's whole set, and
+    # `season_type_unstated` read over both season types merged by date
+    # (`_player_game_log_mixed`, `templates.games._team_mixed_games`).
+    "game_log": _relation_scoping("game_log", "season_type_unstated"),
     # The retired templates' words, as they stated their narrowings when they
     # retired (ROADMAP plan item 6, step (d), part 4).
     "record_when": _relation_scoping("record_when"),
@@ -441,12 +449,32 @@ def present(con: duckdb.DuckDBPyConnection, intent: str, q: Query) -> TemplateRe
         raise Unsupported(f"relation: {exc}") from exc
 
 
+def _present_team_game_log(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> TemplateResult | None:
+    """A team's games listed (``templates.games.team_game_log``, the retired
+    template's team half) behind the same two checks the template ran
+    behind: the slots its words state (:data:`STATED_SCOPING`) and the
+    coverage floor.
+
+    .. versionadded:: 5.0.0
+    """
+    if unhonored_scoping("game_log", q.scope, STATED_SCOPING["game_log"]):
+        return None
+    refused = check_coverage("game_log", q.scope)
+    if refused is not None:
+        raise Refused(TemplateResult(data={"message": refused, "season": q.scope.season}, answer=refused))
+    try:
+        return team_game_log(con, q.scope)
+    except TemplateUnsupported as exc:
+        raise Unsupported(f"relation: {exc}") from exc
+
+
 def present_team(con: duckdb.DuckDBPyConnection, intent: str, q: TeamQuery) -> TemplateResult | None:
     """A team subject's point said the way its intent's template says it -
-    today one: ``record_when``'s team branch, a team's record above and below
-    its OWN line ("what was the celtics record when they scored 120 points",
-    ISSUES.md #144), which the team subject's own readers (a season sum, a
-    window sum) cannot represent. Read by the template's own team reader
+    two: a team's game log (``game_log``'s retired team half,
+    :func:`_present_team_game_log`), and ``record_when``'s team branch, a
+    team's record above and below its OWN line ("what was the celtics record
+    when they scored 120 points", ISSUES.md #144), which the team subject's
+    own readers (a season sum, a window sum) cannot represent. Read by the template's own team reader
     (``templates.splits._record_when_team_answer``) behind the same two
     checks the template ran behind: the slots its words state
     (:data:`STATED_SCOPING`) and the coverage floor. ``None`` for any other point, which
@@ -454,6 +482,8 @@ def present_team(con: duckdb.DuckDBPyConnection, intent: str, q: TeamQuery) -> T
 
     .. versionadded:: 5.0.0
     """
+    if intent == "game_log" and q.shape == "rows":
+        return _present_team_game_log(con, q)
     if intent != "record_when" or q.scope.threshold is None:
         return None
     if unhonored_scoping(intent, q.scope, STATED_SCOPING[intent]):

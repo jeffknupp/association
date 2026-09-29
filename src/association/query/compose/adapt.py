@@ -18,7 +18,7 @@ from association.query.templates.common import _BOX_SCORES, TemplateUnsupported,
 # row counts and the default stat line are the same constants the real
 # templates already carry (association.query.templates.games/players),
 # reused rather than redeclared under the same name.
-from association.query.templates.games import DEFAULT_GAME_LOG_LIMIT
+from association.query.templates.games import DEFAULT_GAME_LOG_LIMIT, _log_extras
 from association.query.templates.players import DEFAULT_SINGLE_GAME_LIMIT, STAT_LINE, _threshold_count_ask
 
 from .core import COLUMNS, LINE, Query, Unsupported
@@ -74,6 +74,16 @@ def _adapt_game_log(scope: Scope) -> Reading:
     """``game_log``'s default point: the newest games, in date order."""
     if not _named_player_in(scope):
         raise Unsupported("a team's log is the team relation's")
+    if scope.stat and _stat_column(scope.stat) is None:
+        # A REAL stat neither the log's columns nor the relation carries is
+        # refused, as the retired template refused it (``_log_extras``):
+        # "luka shot distance log" listed without it would be the narrower
+        # answer passed off as the one asked for. One the relation derives
+        # per game (TS%) is the compiler's own measure, and shown.
+        try:
+            _log_extras(scope.stat)
+        except TemplateUnsupported as exc:
+            raise Unsupported(str(exc)) from exc
     # ``season_type_unstated`` ("his last 5 games", no season type named) is
     # read over both types at once - ``scoped_player`` settles the span with
     # ``_player_relation_season_type`` - and ``compose.present`` says it the
@@ -110,7 +120,12 @@ def _adapt_player_stat(scope: Scope) -> Reading:
     col = _stat_column(scope.stat)
     measures = [col] if col else list(STAT_LINE)
     if scope.limit or scope.order:
-        raise Unsupported("player_stat hands a limit or an order to game_log - a log, not an average")
+        # "Jokic averages last 10 games" answered with his season line would
+        # be the substitution this module exists to stop: the log of exactly
+        # those games with averages beneath is the shape the question has,
+        # so the point is game_log's, said by its presenter
+        # (compose.present._present_player_stat hands a rows point on).
+        return _adapt_game_log(scope)
     if not (_player_stat_reads_box_scores(scope, measure_filters(scope.below, scope.above)) or scope.date):
         return Reading(scope=scope, shape="scalar", measures=measures, aggregate="per_game", group="none", predicates=[], source="seasons")
     date = scope.date

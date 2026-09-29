@@ -28,7 +28,6 @@ from ..team_games import games_subquery as team_games_subquery
 from ..team_games import rows_sql as team_rows_sql
 from .common import (
     _BOX_SCORES,
-    _GAME_LOGS,
     HISTORY_COLUMNS,
     PLAYER_STAT_COLUMNS,
     REBUILT_STATS,
@@ -193,62 +192,38 @@ def _log_extras(stat: Any) -> tuple[str, ...]:
     return ()
 
 
-def game_log(ctx: TemplateContext, reading: Reading) -> TemplateResult:
-    """A team's or a player's games. Both orderings are explicit: "first game"
-    and "last game" differ only by ORDER BY direction, and LIMIT 1 without one
-    returns an arbitrary row rather than either.
+def team_game_log(con: duckdb.DuckDBPyConnection, scope: Scope) -> TemplateResult:
+    """A team's games - the team half of the retired ``game_log`` template,
+    said for the compiler (:func:`~association.query.compose.present.present_team`)
+    in the template's own words. Both orderings are explicit: "first game"
+    and "last game" differ only by ORDER BY direction, and LIMIT 1 without
+    one returns an arbitrary row rather than either. Resolves the team,
+    refuses what a team's log cannot narrow by, and reads either one season
+    type or both.
 
-    A player's log can be narrowed to an ``opponent``, a ``venue`` and the games
-    a teammate missed (``without``), and ``span`` "career" makes it every
-    season, so "last 8 games vs the Pistons" reaches back as far as it has to.
-    It lists games he played, adds the columns a named stat needs, and ends
-    with per-game averages over exactly the games listed. A team's log honors
-    the same slots except ``without``, which is with_without's question.
+    A player's log (the other half) is the compiler's own point on the
+    player relation, said by ``compose.present._present_game_log`` through
+    :func:`_player_game_log` and :func:`_player_game_log_mixed`.
 
-    .. versionchanged:: 2.1.0
-       Honors ``opponent``, ``venue``, ``span`` and ``without``. Dates are the
-       US Eastern date a game was played on rather than its UTC tip time, for
-       ``date`` as well as for display. A player's log leaves out games he did
-       not play, shows the columns a named stat needs and ends with an average
-       row; a ``threshold`` is refused rather than ignored.
+    .. versionadded:: 4.4.0
+       As ``_game_log_team``, split out of ``game_log`` when reading both
+       season types pushed its complexity over the xenon C limit.
 
-    .. versionchanged:: 2.2.0
-       ``without`` takes every teammate the question names and lists a game
-       only where none of them played.
-
-    .. versionchanged:: 4.0.1
-       A narrowed span left with no games at all - a stat that sends a rebuilt
-       log back to its empty ESPN box scores, or a games-in-span guard that
-       never widened to a rebuild at all - now says whose box scores are
-       empty rather than the wrong-cause "no games found". "Anthony Davis
-       turnovers, 2015" no longer reads as though he never played.
-
-    .. versionchanged:: 4.1.0
-       A player's log with a defaulted (unnamed) season and no games in it
-       now redirects to the seasons he has on record, when there are any,
-       rather than a refusal that reads as though his whole career were
-       missing - "No 2026 regular season games found for Tim Hardaway" now
-       also says he last appears in 2003 and names his 1995-2003 range. A
-       season the question named outright keeps the plain refusal.
-
-    .. versionchanged:: 4.3.0
-       A ``team`` slot no longer wins outright over a named ``player`` (#147).
-       With a player present, his own team narrows nothing and is dropped, a
-       different team becomes his opponent, and a name nothing resolves to is
-       dropped - an ``opponent`` already named wins over all three, since a
-       ``team`` slot beside it is the noise the router routinely fills next to
-       an already-correct opponent.
     .. versionchanged:: 4.4.0
-       A "last N games" question naming no season type reads both and merges
-       them by date, saying in the heading what it found - see
-       ``router._route_game_log_recent_span`` and ``_game_log_team``'s and
-       ``_game_log_player``'s own ``mixed`` handling.
+       Takes ``stat``, so a log narrowed to a total or a differential
+       (F128/F129, ISSUES.md) states the number the question actually asked
+       for instead of only listing the games it was computed from - see
+       :func:`_team_game_log_total_line`. Takes ``since``/``until``; they were
+       silently dropped here before: "Warriors games since 2024" answered the
+       2026 regular season alone.
+
+    .. versionchanged:: 5.0.0
+       Public as ``team_game_log``, over the typed scope, when ``game_log``
+       retired (ROADMAP plan item 6, step (g)): the compiler answers the
+       intent alone (``compose.COMPILED_INTENTS``).
     """
-    scope = reading.scope
-    con = ctx.con
     season_type = scope.season_type or 2
     limit = _clamp_limit(scope.limit, default=DEFAULT_GAME_LOG_LIMIT)
-    asked = scope.limit
     ascending = scope.order == "first"
     date = scope.date
     opponent, venue, span, without = scope.opponent, scope.venue, scope.span, scope.without
@@ -264,76 +239,10 @@ def game_log(ctx: TemplateContext, reading: Reading) -> TemplateResult:
     # `date`, `span`, `since` or `game_n` - guaranteed there, checked again
     # here rather than trusted blindly.
     mixed = scope.season_type_unstated and not date and not span and not game_n
-    slot_season = _slot_season(scope)
-
     team_text = scope.team
-    if team_text and not scope.player:
-        return _game_log_team(
-            con,
-            team_text,
-            slot_season=slot_season,
-            span=span,
-            season=season,
-            season_type=season_type,
-            opponent=opponent,
-            venue=venue,
-            without=without,
-            measures=measures,
-            game_n=game_n,
-            date=date,
-            limit=limit,
-            ascending=ascending,
-            mixed=mixed,
-            stat=scope.stat,
-            since=scope.since,
-            until=scope.until,
-        )
-    return _game_log_player(
-        con, scope, team_text, slot_season=slot_season, span=span, season=season, opponent=opponent, measures=measures, date=date, limit=limit, ascending=ascending, mixed=mixed, asked=asked
-    )
-
-
-def _game_log_team(
-    con: duckdb.DuckDBPyConnection,
-    team_text: str,
-    *,
-    slot_season: int | None,
-    span: Any,
-    season: int | None,
-    season_type: int,
-    opponent: Any,
-    venue: Any,
-    without: Any,
-    measures: list[MeasureFilter],
-    game_n: Any,
-    date: str | None,
-    limit: int,
-    ascending: bool,
-    mixed: bool,
-    stat: Any = None,
-    since: Any = None,
-    until: Any = None,
-) -> TemplateResult:
-    """The team half of :func:`game_log`: resolve the team, refuse what a
-    team's log cannot narrow by, and read either one season type or both.
-
-    .. versionadded:: 4.4.0
-       Split out of ``game_log`` when reading both season types pushed its
-       complexity over the xenon C limit (AGENTS.md, "the way the templates
-       and ``route()`` took").
-
-    .. versionchanged:: 4.4.0
-       Takes ``stat``, so a log narrowed to a total or a differential
-       (F128/F129, ISSUES.md) states the number the question actually asked
-       for instead of only listing the games it was computed from - see
-       :func:`_team_game_log_total_line`.
-       Takes ``since``/``until`` and passes them to ``_span_of`` - they were
-       read into ``RELATION_SCOPING`` (which ``game_log`` claims in full) but
-       silently dropped here, the team branch, the same shape a bare ``until``
-       was dropped everywhere before this change: "Warriors games since 2024"
-       answered the 2026 regular season alone.
-    """
-    team = _resolved_team(con, team_text, season=slot_season)
+    if not team_text or scope.player:
+        raise TemplateUnsupported("game_log needs a team or a player")
+    team = _resolved_team(con, team_text, season=_slot_season(scope))
     if isinstance(team, TemplateResult):
         return team
     _team_game_log_refusals(without, measures, game_n)
@@ -341,64 +250,12 @@ def _game_log_team(
         resolved_season = _span_of(span, season, 2, "games").season
         if resolved_season is None:
             raise TemplateUnsupported("a career span has no single season to read both season types within")
-        return _team_game_log_mixed(con, team, resolved_season, opponent=opponent, venue=venue, limit=limit, stat=stat)
-    scope = _span_of(span, season, season_type, "games", since=since, until=until)
-    narrowed = team_games(con, team, scope, Scope(venue=venue), opponent=opponent, date=date)
+        return _team_game_log_mixed(con, team, resolved_season, opponent=opponent, venue=venue, limit=limit, stat=scope.stat)
+    seasons = _span_of(span, season, season_type, "games", since=scope.since, until=scope.until)
+    narrowed = team_games(con, team, seasons, Scope(venue=venue), opponent=opponent, date=date)
     if isinstance(narrowed, TemplateResult):
         return narrowed
-    return _team_game_log(con, team, scope, narrowed, limit=limit, ascending=ascending, stat=stat)
-
-
-def _game_log_player(
-    con: duckdb.DuckDBPyConnection,
-    scope: Scope,
-    team_text: str | None,
-    *,
-    slot_season: int | None,
-    span: Any,
-    season: int | None,
-    opponent: Any,
-    measures: list[MeasureFilter],
-    date: str | None,
-    limit: int,
-    ascending: bool,
-    mixed: bool,
-    asked: int | None,
-) -> TemplateResult:
-    """The player half of :func:`game_log`: settle his name (an ordinal season
-    and a ``team`` slot beside him included), then read either one season
-    type or both - the same split :func:`_game_log_team` makes.
-
-    .. versionadded:: 4.4.0
-       Split out of ``game_log`` alongside ``_game_log_team``, for the same
-       reason.
-    """
-    # The span is settled before the name is resolved, because it is what
-    # narrows the name. `season` here is the raw slot - None means the current
-    # season only once _span_of reads it - and passed through as it was, it
-    # narrowed "curry's last 5 games" over every season and asked about all six
-    # Currys again. The order those steps run in lives in scoped_player.
-    subject = scoped_player(con, scope, "game_log needs a team or a player", table="player_game_log", available=_GAME_LOGS, span=span, season=season)
-    if isinstance(subject, TemplateResult):
-        return subject
-    player, seasons = subject
-    if team_text:
-        # A `team` beside a named `player` used to win outright at the check
-        # above and answer the TEAM's log instead of his - see AGENTS.md,
-        # "game_log answers a team's log when the question named a player"
-        # (#147). Read it against him instead of the league: his own team
-        # narrows nothing, a different one is his opponent, and a name
-        # nothing resolves to is dropped exactly like an invented player name.
-        opponent = _team_slot_for_player(con, player, team_text, season=slot_season, opponent=opponent)
-    extras = _log_extras(scope.stat)
-    if mixed:
-        if seasons.season is None:
-            raise TemplateUnsupported("a career span has no single season to read both season types within")
-        return _player_game_log_mixed(con, player, seasons.season, scope, opponent=opponent, measures=measures, extras=extras, limit=limit, asked=asked)
-    narrowed = scoped_games(con, player, seasons, scope, opponent=opponent, measures=measures, date=date)
-    if isinstance(narrowed, TemplateResult):
-        return narrowed
-    return _player_game_log(con, player, seasons, narrowed, extras, limit=limit, asked=asked, ascending=ascending)
+    return _team_game_log(con, team, seasons, narrowed, limit=limit, ascending=ascending, stat=scope.stat)
 
 
 def _game_log_lines(below: Any, above: Any, threshold: Any) -> list[MeasureFilter]:

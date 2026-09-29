@@ -159,6 +159,10 @@ class TeamQuery:
     .. versionchanged:: 5.0.0
        Holds the typed :class:`~association.query.reading.Scope` as ``scope``
        in place of the ``slots`` dict, and every field is keyword-only.
+
+    .. versionchanged:: 5.0.0
+       ``shape``: a ``"rows"`` point is the team's game log (ROADMAP plan
+       item 6, step (g)).
     """
 
     #: The question's scoping, forwarded whole to the relation.
@@ -168,6 +172,10 @@ class TeamQuery:
     #: ``"total"`` (the only aggregate this module computes today) or
     #: ``"record"`` (wins/losses, over the narrowed or season games).
     aggregate: str = "total"
+    #: ``"scalar"`` (a sum, this module's own readers) or ``"rows"`` (the
+    #: team's games listed - ``game_log``'s team half, said by
+    #: :func:`~association.query.compose.present.present_team`).
+    shape: str = "scalar"
 
 
 @dataclass
@@ -462,6 +470,11 @@ def run_team(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> TeamResult:
     """
     if q.scope.threshold is not None:
         raise Unsupported("a threshold names a record above and below a line, not a total - this module has no reader for one")
+    if q.shape == "rows":
+        # The team's games listed are the log presenter's
+        # (compose.present.present_team); reaching here means a narrowing its
+        # words do not state, which no sum here answers either.
+        raise Unsupported("a team's log narrowed beyond its own words has no reader")
     refusal = team_coverage_refusal(q)
     if refusal is not None:
         raise Refused(refusal)

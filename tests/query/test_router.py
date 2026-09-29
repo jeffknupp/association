@@ -559,13 +559,16 @@ def test_the_order_intents_are_the_ones_that_honor_order() -> None:
     does not import the templates. An intent honoring `order` and missing here
     keeps the bug this fixed; one listed here that does not honor it turns
     into a fall-through."""
+    from association.query.compose.present import STATED_SCOPING
     from association.query.router import _ORDER_ON_A_SINGLE_GAME
     from association.query.templates.common import HONORED_SCOPING
 
     # player_stat honors an order only beside a limit of one (a single game
     # handed to game_log), so the stages set the pair together for it rather
-    # than filling order alone - see _ORDER_ON_A_SINGLE_GAME.
-    assert frozenset(intent for intent, honored in HONORED_SCOPING.items() if "order" in honored) == ORDER_INTENTS | _ORDER_ON_A_SINGLE_GAME
+    # than filling order alone - see _ORDER_ON_A_SINGLE_GAME. A retired
+    # template's list is what its presenter's words state (STATED_SCOPING).
+    declared = {**STATED_SCOPING, **HONORED_SCOPING}
+    assert frozenset(intent for intent, honored in declared.items() if "order" in honored) == ORDER_INTENTS | _ORDER_ON_A_SINGLE_GAME
 
 
 # ---------------- scoping read from the question text ----------------

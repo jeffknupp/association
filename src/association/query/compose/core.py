@@ -327,13 +327,15 @@ def _check_relation_scoping(scope: Scope, subject: str = "player") -> None:
     "including the playoffs") is honored for a named player: ``scoped_player``
     settles his span over both (``templates.common._player_relation_season_type``),
     the reading ``game_log``, ``player_stat`` and ``threshold_count`` all
-    declare. The league-wide read settles one type (:func:`_resolve_everyone`)
-    and still refuses it rather than answer the regular season alone.
+    declare, and for a team's log, which reads both types and merges them by
+    date (``templates.games._team_mixed_games``). The league-wide read
+    settles one type (:func:`_resolve_everyone`) and still refuses it rather
+    than answer the regular season alone.
 
     Every name in ``SCOPING_SLOTS`` is a :class:`~association.query.reading.Scope`
     field (``tests/query/test_reading.py`` holds the two to it), and a field
     at its default - None, an empty tuple, False - is the slot absent."""
-    honored = RELATION_SCOPING | COMPILER_SLOTS | ({"season_type_unstated"} if subject == "player" else set())
+    honored = RELATION_SCOPING | COMPILER_SLOTS | ({"season_type_unstated"} if subject in ("player", "team") else set())
     unhonored = sorted(k for k in SCOPING_SLOTS - honored if getattr(scope, k) not in (None, "", (), False))
     if unhonored:
         raise Unsupported(f"the relation cannot honor {unhonored} - it would answer for a different span than was asked")

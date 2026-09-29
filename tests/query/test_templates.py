@@ -15,7 +15,7 @@ from association.nba.season import eastern_date as _eastern_date_of
 from association.query import shotchart
 from association.query.compose import answer as compose_answer
 from association.query.compose.core import Unsupported
-from association.query.compose.present import STATED_SCOPING
+from association.query.compose.present import STATED_SCOPING, _present_game_log
 from association.query.compose.team import TeamQuery, run_team
 from association.query.entities import MAX_CANDIDATES, Availability, Entity, collect_name_readings, resolve_player
 from association.query.metrics import LEADERBOARD_METRICS, PER_GAME_MIN_GAMES, PER_GAME_MIN_POSTSEASON_GAMES
@@ -23,7 +23,17 @@ from association.query.parse import with_point
 from association.query.reading import Reading, Scope
 from association.query.subject import Subject
 from association.query.templates.common import HONORED_SCOPING, SCOPING_SLOTS, TemplateContext, TemplateResult, TemplateUnsupported, check_scope, unhonored_scoping
-from association.query.templates.games import _rebuilt_readable, game_log, head_to_head, period_leaderboard, period_split, player_matchup, team_quarter_points
+from association.query.templates.games import (
+    _player_game_log,
+    _player_game_log_mixed,
+    _rebuilt_readable,
+    head_to_head,
+    period_leaderboard,
+    period_split,
+    player_matchup,
+    team_game_log,
+    team_quarter_points,
+)
 from association.query.templates.netpoints import fingerprint, player_netpoints
 from association.query.templates.players import SHOOTING_STATS, _box_score_stat_rebuilt, leaderboard, player_compare, player_stat
 from association.query.templates.shots import shot_chart, shot_distance
@@ -53,6 +63,7 @@ def _compiled(intent: str) -> Callable[[TemplateContext, Reading], TemplateResul
     return answered
 
 
+game_log = _compiled("game_log")
 player_history = _compiled("player_history")
 single_game_high = _compiled("single_game_high")
 threshold_count = _compiled("threshold_count")
@@ -1316,9 +1327,15 @@ def test_a_players_last_n_games_keeps_its_other_narrowings_under_both_types(pg_c
 
 
 def test_a_players_last_n_games_with_no_games_this_season_says_so(pg_ctx: TemplateContext) -> None:
-    result = game_log(pg_ctx, Reading.from_slots({"player": "Brandin Podziemski", "order": "recent", "limit": 5, "season_type_unstated": True, "season": 1990}))
+    result = game_log(pg_ctx, Reading.from_slots({"player": "Brandin Podziemski", "order": "recent", "limit": 5, "season_type_unstated": True, "season": 2005}))
     assert result.data["games"] == []
-    assert "no games recorded in the 1990 season" in (result.answer or "")
+    assert "no games recorded in the 2005 season" in (result.answer or "")
+    # A season under the log's floor is the coverage refusal, as the agent
+    # gave it ahead of the template: never "no games" about a year nothing
+    # here can see (5.0.0: the compiler answers game_log alone, and reads
+    # the floor itself).
+    floored = game_log(pg_ctx, Reading.from_slots({"player": "Brandin Podziemski", "order": "recent", "limit": 5, "season_type_unstated": True, "season": 1990}))
+    assert "only go back to 1994" in floored.answer and floored.data["message"] == floored.answer
 
 
 # ---------------- shot_chart ----------------
@@ -3291,7 +3308,8 @@ def test_scope_guard_blocks_a_template_that_would_ignore_a_game_scope() -> None:
 
 
 def test_scope_guard_allows_templates_that_honor_the_slot() -> None:
-    check_scope("game_log", {"order": "recent", "date": "2026-04-12"})
+    # game_log is the compiler's (compose.COMPILED_INTENTS): its retired words state the slots.
+    assert unhonored_scoping("game_log", Scope.from_slots({"order": "recent", "date": "2026-04-12"}), STATED_SCOPING["game_log"]) == []
     check_scope("shot_chart", {"order": "recent"})
     check_scope("shot_distance", {"order": "first"})
     check_scope("player_netpoints", {"order": "recent"})
@@ -3308,7 +3326,7 @@ def test_scope_guard_lets_only_the_templates_that_read_it_honor_season_type_unst
     since an aggregate has no rows to interleave); the discipline for every
     other intent is the same as any other scoping slot - refuse rather than
     silently ignore."""
-    check_scope("game_log", {"order": "recent", "limit": 5, "season_type_unstated": True})
+    assert unhonored_scoping("game_log", Scope.from_slots({"order": "recent", "limit": 5, "season_type_unstated": True}), STATED_SCOPING["game_log"]) == []
     check_scope("player_stat", {"season_type_unstated": True})
     # threshold_count is the compiler's (compose.COMPILED_INTENTS): the
     # relation honors the slot for a named player, and the count's own words
@@ -3545,7 +3563,12 @@ def test_scope_guard_refuses_what_the_question_text_narrowed_to(intent: str, slo
 
 
 def test_scope_guard_lets_through_what_the_player_templates_now_honor() -> None:
-    check_scope("game_log", {"player": "Jaylen Brown", "opponent": "Detroit Pistons", "venue": "home", "span": "career", "without": "x", "order": "recent"})
+    assert (
+        unhonored_scoping(
+            "game_log", Scope.from_slots({"player": "Jaylen Brown", "opponent": "Detroit Pistons", "venue": "home", "span": "career", "without": "x", "order": "recent"}), STATED_SCOPING["game_log"]
+        )
+        == []
+    )
     check_scope("player_stat", {"player": "Evan Mobley", "opponent": "Milwaukee Bucks", "venue": "away", "span": "career", "without": "x"})
     assert unhonored_scoping("player_history", Scope.from_slots({"player": "Nikola Jokic", "span": "career"}), STATED_SCOPING["player_history"]) == []
     check_scope("shot_distance", {"player": "Jaylen Brown", "opponent": "Detroit Pistons"})
@@ -4056,10 +4079,16 @@ def test_a_named_stat_adds_its_columns_to_the_log(pg_ctx: TemplateContext) -> No
 
 
 def test_a_real_stat_the_log_cannot_show_is_refused_rather_than_dropped(pg_ctx: TemplateContext) -> None:
-    with pytest.raises(TemplateUnsupported):
-        game_log(pg_ctx, Reading.from_slots({"player": "Brandin Podziemski", "stat": "ts_pct"}))
+    with pytest.raises(TemplateUnsupported, match="no per-game column"):
+        game_log(pg_ctx, Reading.from_slots({"player": "Brandin Podziemski", "stat": "assist_o_net_pts"}))
     # Not a stat at all - the required slot filled with something - adds nothing.
     assert game_log(pg_ctx, Reading.from_slots({"player": "Brandin Podziemski", "stat": "game log"})).data["columns"] == ["MIN", "PTS", "REB", "AST"]
+    # A rate the relation derives per game is the compiler's own measure and
+    # is shown, in its own sentence (5.0.0; the retired template refused
+    # "luka ts% log" outright, having no such column).
+    pg_ctx.con.execute("ALTER TABLE player_box_stats ADD COLUMN ts_pct DOUBLE DEFAULT 0.55")
+    shown = game_log(pg_ctx, Reading.from_slots({"player": "Brandin Podziemski", "stat": "ts_pct"}))
+    assert "TS% 55.0%" in shown.answer and shown.data["rows"][0]["ts_pct"] == 0.55
 
 
 def test_game_log_dates_are_the_eastern_day_the_game_was_played(pg_ctx: TemplateContext) -> None:
@@ -4220,16 +4249,15 @@ def test_a_career_and_a_named_season_at_once_is_refused(pg_ctx: TemplateContext,
         template(pg_ctx, Reading.from_slots({"player": "Brandin Podziemski", "span": "career", "season": current_season()}))
 
 
-def test_game_log_refuses_a_threshold_rather_than_ignoring_it(pg_ctx: TemplateContext) -> None:
-    with pytest.raises(TemplateUnsupported):
-        game_log(pg_ctx, Reading.from_slots({"player": "Brandin Podziemski", "stat": "fieldGoalsAttempted", "threshold": 15}))
-    # The compiler keeps only the games past the line (e1 15 FGA, e2 20, e3
-    # 10) - it listed all three with the threshold dropped before 5.0.0 - and
-    # refuses one beside no stat, having no column to keep a line on.
-    kept = _compiled("game_log")(pg_ctx, Reading.from_slots({"player": "Brandin Podziemski", "stat": "fieldGoalsAttempted", "threshold": 15}))
+def test_game_log_keeps_only_the_games_past_a_threshold_rather_than_ignoring_it(pg_ctx: TemplateContext) -> None:
+    """The retired template refused a threshold outright, and the compiler
+    then listed every game with it dropped (5.0.0): now the line is kept -
+    e1 15 FGA and e2 20 stay, e3 10 goes - and one beside no stat is refused,
+    there being no column to keep a line on."""
+    kept = game_log(pg_ctx, Reading.from_slots({"player": "Brandin Podziemski", "stat": "fieldGoalsAttempted", "threshold": 15}))
     assert "FGA >= 15" in kept.answer and len(kept.data["rows"]) == 2 and {r["fieldGoalsAttempted"] for r in kept.data["rows"]} == {15, 20}
     with pytest.raises(TemplateUnsupported, match="no stat"):
-        _compiled("game_log")(pg_ctx, Reading.from_slots({"player": "Brandin Podziemski", "threshold": 15}))
+        game_log(pg_ctx, Reading.from_slots({"player": "Brandin Podziemski", "threshold": 15}))
 
 
 def test_player_stat_on_one_date_is_that_games_line(pg_ctx: TemplateContext) -> None:
@@ -4356,7 +4384,12 @@ def test_player_stat_over_the_last_n_games_is_the_log_with_its_averages(pg_ctx: 
     """The product decision: "stats over his last N games" is a log of those
     games with averages beneath, never the season line - so player_stat hands
     the question to game_log rather than refusing it or answering the season."""
-    result = player_stat(pg_ctx, Reading.from_slots({"player": "Brandin Podziemski", "limit": 2}))
+    with pytest.raises(TemplateUnsupported, match="hands a limit or an order to game_log"):
+        player_stat(pg_ctx, Reading.from_slots({"player": "Brandin Podziemski", "limit": 2}))
+    # The refusal hands the Reading to the compiler (agent._try_compose),
+    # whose player_stat reading of a window is the log's point, said by the
+    # log's presenter (5.0.0).
+    result = _compiled("player_stat")(pg_ctx, Reading.from_slots({"player": "Brandin Podziemski", "limit": 2}))
     assert len(result.data["games"]) == 2
     assert "averages" in result.data
     # F149 (ISSUES.md): the window (2) is narrower than his 3 qualifying
@@ -5631,10 +5664,12 @@ def test_templates_on_the_relation_do_not_narrow_it_themselves() -> None:
     )
     from association.query.templates.splits import _record_when_answer, _record_when_query, _record_when_team_answer
 
-    readers: dict[str, list[Callable[..., Any]]] = {intent: [TEMPLATES[intent]] for intent in ("game_log", "player_stat", "period_split", "player_splits", "streak")}
-    # record_when's template is retired (compose.COMPILED_INTENTS); the readers
-    # the compiler answers it with still read the relation, walked the same way.
+    readers: dict[str, list[Callable[..., Any]]] = {intent: [TEMPLATES[intent]] for intent in ("player_stat", "period_split", "player_splits", "streak")}
+    # record_when's and game_log's templates are retired (compose.COMPILED_INTENTS);
+    # the readers the compiler answers them with still read the relation,
+    # walked the same way.
     readers["record_when"] = [_record_when_query, _record_when_answer, _record_when_team_answer]
+    readers["game_log"] = [team_game_log, _present_game_log, _player_game_log, _player_game_log_mixed]
     for intent, functions in readers.items():
         for function in functions:
             # The reader and the private steps it calls, transitively -

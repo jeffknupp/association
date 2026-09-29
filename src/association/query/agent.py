@@ -534,7 +534,8 @@ class Agent:
     def _run_compiled(self, question: str, reading: Reading, history: RunHistory) -> tuple[str, TemplateResult] | None:
         """An intent the compiler alone answers (``compose.COMPILED_INTENTS``:
         the four whose templates it reproduced exactly, retired in ROADMAP
-        plan item 6, step (d), part 4). Where the compiler has no reading of
+        plan item 6, step (d), part 4, and ``game_log``, step (g)). Where the
+        compiler has no reading of
         the point, the steps a template's refusal took, in its order: the
         compiler's own reason - the planner refusing a narrowing the relation
         cannot honor, read at parse time (``Reading.point_declined``) - names
@@ -563,7 +564,7 @@ class Agent:
 
     def _try_compose(self, question: str, reading: Reading, history: RunHistory, declined: Callable[[str], None] | None = None) -> TemplateResult | None:
         """The compiler's answer to the point the parser read
-        (``association.query.compose.answer``): the four compiled
+        (``association.query.compose.answer``): the compiled
         intents' only answer, and the step between a template's refusal and
         the fall-through agent. Answered exactly like a template's own result
         - same name-reading and coverage-caveat attachment as

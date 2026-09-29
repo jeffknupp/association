@@ -1084,7 +1084,7 @@ def test_a_matchup_since_a_season_reaches_back_that_far_and_no_further(league: T
 
 
 def test_a_log_since_a_season_reaches_back_that_far(league: TemplateContext) -> None:
-    from association.query.templates import game_log
+    from test_templates import game_log  # the compiler's, game_log's template retired (compose.COMPILED_INTENTS)
 
     this_season = game_log(league, Reading.from_slots(_slots(player="Jayson Tatum", limit=50))).data["games"]
     since_last = game_log(league, Reading.from_slots(_slots(player="Jayson Tatum", limit=50, since=S - 1))).data["games"]

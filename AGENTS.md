@@ -509,10 +509,11 @@ model's. Two things follow, and both matter when you add a shape:
   smaller agent - and it narrows the relation only through the shared steps in
   `templates/common.py`, the same discipline the six relation templates keep
   (see "A template on a relation does not declare, or apply, scoping of its
-  own" above). Four intents have no template at all
+  own" above). Five intents have no template at all
   (`compose.COMPILED_INTENTS`: `threshold_count`, `single_game_high`,
-  `record_when`, `player_history`): the compiler answers them alone, in their
-  retired templates' words (`compose/present.py`), and where it has no reading
+  `record_when`, `player_history`, `game_log`): the compiler answers them
+  alone, in their retired templates' words (`compose/present.py`; a team's
+  log through `templates.games.team_game_log`), and where it has no reading
   the question is refused or falls through with the compiler's reason
   (`agent._run_compiled`). A presenter says what its retired template's
   words state (`compose.present.STATED_SCOPING`) and steps aside for a

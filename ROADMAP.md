@@ -69,14 +69,24 @@ The 15 families still failing, by cause:
 ## Next, in order
 
 1. **The templates the compiler can reproduce go** (item 6, step (g); item
-   2). `game_log` (19/26 at parity) and a narrowed `player_stat` (6/29)
-   first; `player_history` and an unnarrowed `player_stat` read the season
-   line, which has to become a relation (#228). A template survives only for
-   a shape of its own: a chart, a fingerprint, a streak, a matchup, a
-   quarter. How to retire one is part 4's method: every call its unit tests
-   make and every recorded question it answers, answered both ways and
-   compared - the recorded questions alone found one shape the template
-   still carried, the unit tests five.
+   2). `game_log` is gone (its team half is a point on the team relation,
+   said by the template's own reader; 35/35 recorded questions at parity or
+   better once three compiler readings the measurement found were fixed).
+   `player_stat` is next: measured at the same time, its unnarrowed line
+   (`_present_player_stat_season_line`) is 22/22 on the recorded questions
+   and 32/32 on its unit tests with the rest refusing for the same cause,
+   and the narrowed one 4/13 with 4 refusing alike, 2 fixed with the
+   readings above and 3 the compiler answers where the template refused or
+   read the wrong stat ("alperen sengun double-doubles vs southeast division
+   career away": the template averaged his season line). A template
+   survives only for a shape of its own: a chart, a fingerprint, a streak, a
+   matchup, a quarter. How to retire one is part 4's method: every call its
+   unit tests make and every recorded question it answers, answered both
+   ways and compared (`~/association-research/intent-shrink/g/`: a pytest
+   plugin records the unit-test calls; `parity_corpus.py` the recorded
+   questions; `compare_trees.py` the before-and-after) - the recorded
+   questions alone found one shape the template still carried, the unit
+   tests five.
 2. **The period relation** (item 4). A quarter's or a half's figures beyond
    points, rebuilt from the plays the way points are, as one relation the
    compiler reads - a player's or a team's quarter as a narrowing rather

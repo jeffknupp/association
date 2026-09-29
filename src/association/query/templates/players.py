@@ -6,7 +6,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from typing import Any, Literal
 
 import duckdb
@@ -1184,11 +1184,10 @@ def player_stat(ctx: TemplateContext, reading: Reading) -> TemplateResult:
         # "Jokic averages last 10 games" answered with his season line would be
         # the substitution this module exists to stop. game_log lists exactly
         # the games asked about and averages them beneath - the shape the
-        # question has, so it is handed there rather than refused: the same
-        # Reading, its scope and subject, under game_log's intent.
-        from .games import game_log
-
-        return game_log(ctx, replace(reading, intent="game_log"))
+        # question has. With game_log the compiler's (compose.COMPILED_INTENTS),
+        # the refusal hands the same Reading to it (agent._try_compose), whose
+        # player_stat reading is the log's point for a window.
+        raise TemplateUnsupported("player_stat hands a limit or an order to game_log - a log, not an average")
     # The order those steps have to run in lives in scoped_player, with why.
     # Settled before the name is resolved: the span, and the table it is read
     # from, are what narrow an ambiguous name to the players who could be the

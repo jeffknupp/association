@@ -1,5 +1,5 @@
 {
- "about": "The four compiler-first templates' own answers to the compiler parity cases in tests/query/test_compose.py, frozen from their last commit (4b3aff9) when they retired (ROADMAP plan item 6, step (d), part 4). Each expected answer is JSON text with the fixture's seasons as placeholders - {S} the current season, {S-1} and {S-2} the two before it, {S-1}-{s} and {S-2}-{s-1} their labels - since the fixture is built around current_season().",
+ "about": "The retired templates' own answers to the compiler parity cases in tests/query/test_compose.py, frozen from their last commit when they retired: the four compiler-first templates from 4b3aff9 (ROADMAP plan item 6, step (d), part 4), and game_log from 3b5fdd6 (step (g)). Each expected answer is JSON text with the fixture's seasons as placeholders - {S} the current season, {S-1} and {S-2} the two before it, {S-1}-{s} and {S-2}-{s-1} their labels - since the fixture is built around current_season().",
  "cases": [
   {
    "intent": "threshold_count",
@@ -119,6 +119,33 @@
    },
    "question": "curry's ppg every season of his career",
    "expected": "{\"answer\": \"Stephen Curry, points per game by regular season, career, {S-1}-{S} (most recent first):\\nseason   G   PPG\\n  {S}  43  26.0\\n  {S-1}  70  24.5\\nStephen Curry's career total: 2,833 points.\", \"data\": {\"labels\": {\"avgPoints\": \"PPG\"}, \"player\": \"Stephen Curry\", \"seasons\": [{\"avgPoints\": 26.0, \"games\": 43, \"season\": {S}}, {\"avgPoints\": 24.5, \"games\": 70, \"season\": {S-1}}], \"span\": \"career\", \"stat\": \"points\"}}"
+  },
+  {
+   "intent": "game_log",
+   "slots": {
+    "player": "Brandin Podziemski",
+    "limit": 2
+   },
+   "question": "podziemski's last 2 games",
+   "expected": "{\"answer\": \"Brandin Podziemski, last 2 of 4 games of the {S} regular season:\\n  date        opp     W/L   MIN   PTS  REB  AST\\n  {S}-03-01  vs BOS  W      22    10    3    2\\n  {S}-01-10  vs DET  W      35    28   10   11\\n  per game                 28.5  19.0  6.5  6.5\", \"data\": {\"averages\": {\"assists\": 6.5, \"minutes\": 28.5, \"points\": 19.0, \"rebounds\": 6.5}, \"columns\": [\"MIN\", \"PTS\", \"REB\", \"AST\"], \"games\": [{\"assists\": 2, \"date\": \"{S}-03-01\", \"home_away\": \"home\", \"minutes\": 22, \"opponent\": \"BOS\", \"points\": 10, \"rebounds\": 3, \"reconstructed\": false, \"result\": \"W\", \"season\": {S}}, {\"assists\": 11, \"date\": \"{S}-01-10\", \"home_away\": \"home\", \"minutes\": 35, \"opponent\": \"DET\", \"points\": 28, \"rebounds\": 10, \"reconstructed\": false, \"result\": \"W\", \"season\": {S}}], \"headline\": \"Brandin Podziemski, last 2 of 4 games of the {S} regular season\", \"notes\": [], \"opponent\": null, \"player\": \"Brandin Podziemski\", \"qualifying_games\": 4, \"season\": {S}, \"span\": null, \"venue\": null, \"without\": []}}"
+  },
+  {
+   "intent": "game_log",
+   "slots": {
+    "player": "Brandin Podziemski",
+    "opponent": "Boston Celtics",
+    "span": "career"
+   },
+   "question": "podziemski's games against boston",
+   "expected": "{\"answer\": \"Brandin Podziemski vs the Boston Celtics, last 3 games of his career ({S-1}-{S} regular seasons):\\n  date        opp     W/L   MIN   PTS  REB  AST\\n  {S}-03-01  vs BOS  W      22    10    3    2\\n  {S-1}-11-01  @ BOS   W      30    20    5    3\\n  {S-1}-02-01  @ BOS   L      25    12    4    3\\n  per game                 25.7  14.0  4.0  2.7\", \"data\": {\"averages\": {\"assists\": 2.6666666666666665, \"minutes\": 25.666666666666668, \"points\": 14.0, \"rebounds\": 4.0}, \"columns\": [\"MIN\", \"PTS\", \"REB\", \"AST\"], \"games\": [{\"assists\": 2, \"date\": \"{S}-03-01\", \"home_away\": \"home\", \"minutes\": 22, \"opponent\": \"BOS\", \"points\": 10, \"rebounds\": 3, \"reconstructed\": false, \"result\": \"W\", \"season\": {S}}, {\"assists\": 3, \"date\": \"{S-1}-11-01\", \"home_away\": \"away\", \"minutes\": 30, \"opponent\": \"BOS\", \"points\": 20, \"rebounds\": 5, \"reconstructed\": false, \"result\": \"W\", \"season\": {S}}, {\"assists\": 3, \"date\": \"{S-1}-02-01\", \"home_away\": \"away\", \"minutes\": 25, \"opponent\": \"BOS\", \"points\": 12, \"rebounds\": 4, \"reconstructed\": false, \"result\": \"L\", \"season\": {S-1}}], \"headline\": \"Brandin Podziemski vs the Boston Celtics, last 3 games of his career ({S-1}-{S} regular seasons)\", \"notes\": [], \"opponent\": \"Boston Celtics\", \"player\": \"Brandin Podziemski\", \"qualifying_games\": 3, \"season\": null, \"span\": \"career\", \"venue\": null, \"without\": []}}"
+  },
+  {
+   "intent": "game_log",
+   "slots": {
+    "player": "Brandin Podziemski"
+   },
+   "question": "podziemski's game log",
+   "expected": "{\"answer\": \"Brandin Podziemski, last 4 games of the {S} regular season:\\n  date        opp     W/L   MIN   PTS  REB  AST\\n  {S}-03-01  vs BOS  W       -    10    3    2\\n  {S}-01-10  vs DET  W      35    28   10   11\\n  {S-1}-12-01  vs DET  L      28    15    4    6\\n  {S-1}-11-01  @ BOS   W      30    20    5    3\\n  per game                 31.0  18.2  5.5  5.5\\n1 of these game has no box score from ESPN: its figures are rebuilt from play-by-play, and minutes cannot be recovered at all.\", \"data\": {\"averages\": {\"assists\": 5.5, \"minutes\": 31.0, \"points\": 18.25, \"rebounds\": 5.5}, \"columns\": [\"MIN\", \"PTS\", \"REB\", \"AST\"], \"games\": [{\"assists\": 2, \"date\": \"{S}-03-01\", \"home_away\": \"home\", \"minutes\": null, \"opponent\": \"BOS\", \"points\": 10, \"rebounds\": 3, \"reconstructed\": true, \"result\": \"W\", \"season\": {S}}, {\"assists\": 11, \"date\": \"{S}-01-10\", \"home_away\": \"home\", \"minutes\": 35, \"opponent\": \"DET\", \"points\": 28, \"rebounds\": 10, \"reconstructed\": false, \"result\": \"W\", \"season\": {S}}, {\"assists\": 6, \"date\": \"{S-1}-12-01\", \"home_away\": \"home\", \"minutes\": 28, \"opponent\": \"DET\", \"points\": 15, \"rebounds\": 4, \"reconstructed\": false, \"result\": \"L\", \"season\": {S}}, {\"assists\": 3, \"date\": \"{S-1}-11-01\", \"home_away\": \"away\", \"minutes\": 30, \"opponent\": \"BOS\", \"points\": 20, \"rebounds\": 5, \"reconstructed\": false, \"result\": \"W\", \"season\": {S}}], \"headline\": \"Brandin Podziemski, last 4 games of the {S} regular season\", \"notes\": [\"1 of these game has no box score from ESPN: its figures are rebuilt from play-by-play, and minutes cannot be recovered at all.\"], \"opponent\": null, \"player\": \"Brandin Podziemski\", \"qualifying_games\": 4, \"season\": {S}, \"span\": null, \"venue\": null, \"without\": []}}"
   }
  ]
 }
