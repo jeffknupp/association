@@ -225,10 +225,12 @@ def _present_player_stat_season_line(con: duckdb.DuckDBPyConnection, q: Query) -
     if own.source != "seasons" or (q.measures != own.measures and (stat_measure is None or q.measures != [stat_measure])):
         return None
     if not (stat is not None and (stat in ADVANCED_STATS or stat in SHOOTING_STATS)):
-        try:
-            _wanted_stats(scope)
-        except TemplateUnsupported:
-            return None
+        # A stat with no per-game column ("avg_shot_distance") is the
+        # template's own refusal, and its reason - raised, so the
+        # fall-through names the stat rather than "a line the season line's
+        # reader did not say" (the games relation has no column for it
+        # either; `present` says it as the relation's).
+        _wanted_stats(scope)
     subject = _player_stat_season_line_subject(con, scope)
     if isinstance(subject, TemplateResult):
         return subject

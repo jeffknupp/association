@@ -246,6 +246,12 @@ def team_game_log(con: duckdb.DuckDBPyConnection, scope: Scope) -> TemplateResul
     if isinstance(team, TemplateResult):
         return team
     _team_game_log_refusals(without, measures, game_n)
+    if mixed and (scope.since or scope.until or scope.situation):
+        # The both-types read is a plain window (an opponent and a venue at
+        # most); a range of seasons or a calendar narrowing was dropped from
+        # it silently - refused instead, as the team compiler's window sum
+        # refuses the same read.
+        raise TemplateUnsupported("a window over both season types is read for a plain 'last N games' only")
     if mixed:
         resolved_season = _span_of(span, season, 2, "games").season
         if resolved_season is None:

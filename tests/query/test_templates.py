@@ -1240,6 +1240,10 @@ def test_a_teams_last_n_games_states_the_total_points_asked_for(gl_con: Template
     # read silently - the read is refused.
     with pytest.raises(Unsupported, match="both season types"):
         run_team(gl_con.con, TeamQuery(scope=Scope.from_slots({"team": "Knicks", "order": "recent", "limit": 3, "season_type_unstated": True, "since": 2024}), measure="points"))
+    # The log's own both-types read refuses the same narrowings rather than
+    # listing the plain window with them dropped (it did, silently).
+    with pytest.raises(TemplateUnsupported, match="both season types"):
+        game_log(gl_con, Reading.from_slots({"team": "Knicks", "order": "recent", "limit": 3, "season_type_unstated": True, "situation": "on tuesdays"}))
 
 
 def test_a_teams_last_n_games_states_the_point_differential_asked_for(gl_con: TemplateContext) -> None:
@@ -4082,6 +4086,14 @@ def test_a_named_stat_adds_its_columns_to_the_log(pg_ctx: TemplateContext) -> No
     assert titles[-3:] == ["FTM", "FTA", "FT%"]
     # Over the listed games: 2 of 3, 4 of 4, 1 of 2 - a total, not a mean of percentages.
     assert result.data["averages"]["freeThrowPct"] == pytest.approx(100 * 7 / 9)
+
+
+def test_an_unnarrowed_line_on_a_stat_with_no_column_names_the_stat(pg_ctx: TemplateContext) -> None:
+    """ "what was steph curry's avg shot distance" fell through as "an
+    unnarrowed player line the season line's reader did not say" once the
+    template retired; the retired template's own reason names the stat."""
+    with pytest.raises(TemplateUnsupported, match="no per-game column for stat 'avg_shot_distance'"):
+        player_stat(pg_ctx, Reading.from_slots({"player": "Brandin Podziemski", "stat": "avg_shot_distance"}))
 
 
 def test_a_real_stat_the_log_cannot_show_is_refused_rather_than_dropped(pg_ctx: TemplateContext) -> None:
