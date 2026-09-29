@@ -175,10 +175,10 @@ The compiler reads the question once, into a :class:`association.query.reading.R
 window, the scope - and plans that record into its point
 (:func:`association.query.compose.plan.plan`) without reading the question
 again. The answering loop logs the record as ``-> (reading) ...``, the trace line that
-says where every value in a composed answer came from. Seven intents have
+says where every value in a composed answer came from. Eight intents have
 no template at all (``compose.COMPILED_INTENTS``: ``threshold_count``,
 ``single_game_high``, ``record_when``, ``player_history``, ``game_log``,
-``player_stat``, ``player_splits``): the
+``player_stat``, ``player_splits``, ``leaderboard``): the
 compiler reproduced their templates exactly, answered them first, and then
 replaced them. Each is still said in its retired template's words, through
 that template's phrasing helpers (:mod:`association.query.compose.present`;

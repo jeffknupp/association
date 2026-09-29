@@ -487,8 +487,9 @@ def test_the_fast_path_carries_out_the_intent_and_data_it_used_to_discard(monkey
     from association.query.router import Route
     from association.query.templates.common import TemplateResult
 
-    monkeypatch.setattr("association.query.agent.TEMPLATES", {"leaderboard": lambda con, slots: TemplateResult(data={"leaders": ["Jokic"]}, answer="Jokic.")})
-    answer = _agent(tmp_path).ask("who leads the league in scoring?", route=Route.from_slots(intent="leaderboard", slots={"stat": "points"}))
+    # leaderboard is the compiler's (compose.COMPILED_INTENTS): the same Reading reaches compose.answer.
+    monkeypatch.setattr("association.query.compose.answer", lambda ctx, reading, trace=None, declined=None: TemplateResult(data={"leaders": ["Jokic"]}, answer="Jokic."))
+    answer = _agent_with_players(tmp_path).ask("who leads the league in scoring?", route=Route.from_slots(intent="leaderboard", slots={"stat": "points"}))
 
     assert answer.text == "Jokic."
     assert answer.answered_by == "fast"

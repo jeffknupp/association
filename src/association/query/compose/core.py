@@ -318,7 +318,7 @@ def _agg(name: str, aggregate: str, *, rebuilt: bool = False) -> str:
 COMPILER_SLOTS: frozenset[str] = frozenset({"ranked_by"})
 
 
-def _check_relation_scoping(scope: Scope, subject: str = "player") -> None:
+def _check_relation_scoping(scope: Scope, subject: str = "player", honored_extra: frozenset[str] = frozenset()) -> None:
     """``check_scope``'s rule, for the relation: a scoping slot the relation
     does not narrow by (``situation`` when it names no calendar, ``round``,
     ``rate`` ...) is refused, never dropped - answering "on Tuesdays" for
@@ -335,8 +335,11 @@ def _check_relation_scoping(scope: Scope, subject: str = "player") -> None:
 
     Every name in ``SCOPING_SLOTS`` is a :class:`~association.query.reading.Scope`
     field (``tests/query/test_reading.py`` holds the two to it), and a field
-    at its default - None, an empty tuple, False - is the slot absent."""
-    honored = RELATION_SCOPING | COMPILER_SLOTS | ({"season_type_unstated"} if subject in ("player", "team") else set())
+    at its default - None, an empty tuple, False - is the slot absent.
+    ``honored_extra`` is what the point's own reader honors beyond the
+    relation: the season line's ranking reads ``rate`` (a season total, or a
+    unit it refuses by name), where the game-level relation cannot."""
+    honored = RELATION_SCOPING | COMPILER_SLOTS | honored_extra | ({"season_type_unstated"} if subject in ("player", "team") else set())
     unhonored = sorted(k for k in SCOPING_SLOTS - honored if getattr(scope, k) not in (None, "", (), False))
     if unhonored:
         raise Unsupported(f"the relation cannot honor {unhonored} - it would answer for a different span than was asked")

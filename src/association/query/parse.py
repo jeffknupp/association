@@ -37,7 +37,7 @@ from association.query.compose.team import team_named_in
 from association.query.decisions import Decision
 from association.query.entities import _edit_budget, _question_derived_player, _words, find_players, find_teams, nicknames_in, suggest_players
 from association.query.measures import MEASURE_WORDS
-from association.query.metrics import EXTRA_FIELD_COLUMNS
+from association.query.metrics import EXTRA_FIELD_COLUMNS, TEAM_FIELD_WORDS
 from association.query.reading import Reading, Scope, ScopeError, Split
 from association.query.router import Route, _period_asked, _route_calendar_slots_split, settle
 from association.query.subject import (
@@ -583,7 +583,6 @@ def _read_route_players(subject: Subject, slots: dict[str, Any]) -> list[str]:
 # assists", "... and the team they play for" (yardstick-v2 F017): the
 # leaderboard's `fields`, a slot the router's model filled from the words.
 _FIELDS_AFTER = re.compile(r"\b(?:with|alongside|and|plus|including)\s+(?:their|his|the)\s+(?P<rest>.+)$", re.IGNORECASE)
-_TEAM_FIELD = re.compile(r"\bteams?\s+(?:they|he)\s+plays?(?:ed)?\s+for\b|\b(?:with|and|plus)\s+(?:the|their)\s+teams?\b", re.IGNORECASE)
 
 
 def _read_route_fields(intent: str, scope: Scope, question: str) -> Scope:
@@ -602,7 +601,7 @@ def _read_route_fields(intent: str, scope: Scope, question: str) -> Scope:
             key = MEASURE_WORDS.get(word)
             if key in EXTRA_FIELD_COLUMNS and key not in fields:
                 fields.append(key)
-    if _TEAM_FIELD.search(question):
+    if TEAM_FIELD_WORDS.search(question):
         fields.append("team")
     return replace(scope, fields=tuple(fields)) if fields else scope
 

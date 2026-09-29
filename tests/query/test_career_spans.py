@@ -14,6 +14,7 @@ from typing import Any
 
 import duckdb
 import pytest
+from test_templates import leaderboard  # the compiler's, leaderboard's template retired (compose.COMPILED_INTENTS)
 
 from association.nba.season import current_season
 from association.query.compose import answer as compose_answer
@@ -25,7 +26,6 @@ from association.query.parse import with_point
 from association.query.reading import Reading, Scope
 from association.query.subject import Subject
 from association.query.templates.common import TemplateContext, TemplateResult, TemplateUnsupported, check_scope, unhonored_scoping
-from association.query.templates.players import leaderboard
 
 
 def _compiled(intent: str) -> Callable[[TemplateContext, Reading], TemplateResult]:

@@ -40,7 +40,10 @@ def plan(reading: Reading) -> Query | TeamQuery:
             _check_relation_scoping(reading.scope, "team")
         return TeamQuery(scope=reading.scope, measure=reading.measures[0], aggregate=reading.aggregate, shape=reading.shape)
     subject = "everyone" if reading.relation == "everyone" else "player"
-    _check_relation_scoping(reading.scope, subject)
+    # The season line's ranking (leaderboard's retired reader) honors `rate`
+    # - a season total, or a unit refused by name - which no game-level read
+    # does; a point its reader declines is refused with it (move.games_reading).
+    _check_relation_scoping(reading.scope, subject, frozenset({"rate"}) if reading.source == "seasons" and subject == "everyone" else frozenset())
     return Query(
         scope=reading.scope,
         skeleton=reading.shape,

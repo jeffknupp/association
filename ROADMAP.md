@@ -84,11 +84,20 @@ The 13 families still failing, by cause:
    recorded questions at parity or better once three compiler readings the
    measurement found were fixed (a date replacing the season, the team
    window sum over both season types, a threshold on a log). Live after
-   `game_log` and `player_stat` (parser9, parser10): 162/175, 0 moved. What
-   is left on the player relation: `streak`, `with_without`,
-   `player_matchup`, `period_split`, `leaderboard`, `player_compare` - each
-   a shape of its own or a reader the compiler lacks; measure the same way
-   before retiring any. A template
+   `game_log` and `player_stat` (parser9, parser10): 162/175, 0 moved.
+   `leaderboard` followed (2026-09-29): its reader over the season line is
+   the compiler's presenter for a league-wide point with
+   `source="seasons"`; 41/48 recorded questions identical, 6 the compiler
+   answers where the template refused, 1 the team total the template ranked
+   the league for. Measured first on all six remaining templates
+   (`intent-shrink/g/six_before.jsonl`): the compiler declined every
+   `period_split` point ("the period relation's question", though the
+   relation narrows by period now), every `player_compare`, `with_without`,
+   `player_matchup` and `streak` point (a pair, a condition or a run it has
+   no reading of). What is left on the player relation: `period_split`
+   (11 recorded questions), `player_compare` (18), `with_without` (10),
+   `player_matchup` (5), `streak` (4) - measure the same way before
+   retiring any. A template
    survives only for a shape of its own: a chart, a fingerprint, a streak, a
    matchup, a quarter. How to retire one is part 4's method: every call its
    unit tests make and every recorded question it answers, answered both

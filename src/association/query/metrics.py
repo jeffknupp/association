@@ -9,6 +9,7 @@ router slots against it."""
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 
 from association.nba.netpoints import FINGERPRINT_CATEGORIES, FINGERPRINT_SIDE_LABELS
@@ -33,6 +34,15 @@ SEASON_TYPE_LABELS = {1: "Preseason", 2: "Regular Season", 3: "Postseason"}
 # player_season_stats since that's the one table every metric can join to on
 # (athlete_id, season, season_type) regardless of which table the ranked
 # metric itself lives in.
+TEAM_FIELD_WORDS = re.compile(r"\bteams?\s+(?:they|he)\s+plays?(?:ed)?\s+for\b|\b(?:with|and|plus)\s+(?:the|their)\s+teams?\b", re.IGNORECASE)
+"""The words that ask a ranking to show each player's team beside him
+("with the team they play for", F017) - read by the parser as the ``team``
+field, and set aside by the compiler's league-wide guard, which otherwise
+reads any team word as a team's own question.
+
+.. versionadded:: 5.0.0
+"""
+
 EXTRA_FIELD_COLUMNS = {
     "points": "avgPoints",
     "rebounds": "avgRebounds",

@@ -18,10 +18,12 @@ from typing import TYPE_CHECKING, Any, Literal
 
 import duckdb
 
+from association.query.leaderboard import resolve_metric
 from association.query.measures import MEASURE_WORDS
-from association.query.metrics import PER_GAME_MIN_GAMES
+from association.query.metrics import PER_GAME_MIN_GAMES, TEAM_FIELD_WORDS
 from association.query.reading import Aggregate, Reading, Scope
 from association.query.templates.common import DEFAULT_LIMIT, HISTORY_COLUMNS, TEAM_ONLY_INTENTS, TemplateResult, _clamp_limit, ordinal_word
+from association.query.templates.players import leaderboard_shot_distance_refusal
 
 from .adapt import DEFAULT_GAME_LOG_LIMIT, DEFAULT_SINGLE_GAME_LIMIT, _named_player_in, _to_reading_scope
 from .core import BOOLEAN_MEASURES, COLUMNS, DERIVED, LINE, Query, Refused, Unsupported
@@ -186,7 +188,9 @@ def _everyone_guard(intent: str, question: str, position: str | None) -> None:
     the wrong cause; it is not this relation's question."""
     if _PERIOD.search(question):
         raise Unsupported("a quarter or half is the period relation's question")
-    if _NOT_PLAYERS.search(question) and not position:
+    # "the top 50 ... with the team they play for" (F017) names no team's
+    # question: the team is a column the ranking shows.
+    if _NOT_PLAYERS.search(TEAM_FIELD_WORDS.sub(" ", question)) and not position:
         raise Unsupported("a team, an opponent's figure or a franchise is the team relation's question")
     if intent in TEAM_ONLY_INTENTS:
         raise Unsupported("a team's own question is not the player relation's")
@@ -263,7 +267,7 @@ _BOOLEAN_RANK_WORDS: list[tuple[str, str]] = [
     (r"\bsteals?\b", "steals"),
     (r"\bblocks?\b", "blocks"),
 ]
-_BOOLEAN_GAME_RANKING = re.compile(r"\b(highest|biggest|largest|best|most|top)\b", re.I)
+_BOOLEAN_GAME_RANKING = re.compile(r"\b(highest|biggest|largest|best)\b", re.I)
 
 
 def _boolean_game_measure(question: str) -> str:
@@ -292,7 +296,15 @@ def _everyone_boolean_game_ranking(question: str, scope: Scope, predicates: list
     .. versionadded:: 4.4.0
     """
     boolean = [name for name, _, value in predicates if name in BOOLEAN_MEASURES and value is True]
-    if not (boolean and _BOOLEAN_GAME_RANKING.search(question)):
+    if not boolean:
+        return None
+    # "Most triple-doubles" is a COUNT per player (the season line's own
+    # metric, leaderboard's retired reader): the games are ranked only where
+    # the question sizes them - "highest scoring", "biggest", or a stat word
+    # of its own ("most rebounds in a double double"), or the parser's
+    # `ranked_by`.
+    sized = _BOOLEAN_GAME_RANKING.search(question) or scope.ranked_by or any(re.search(pattern, question, re.I) for pattern, _ in _BOOLEAN_RANK_WORDS)
+    if not sized:
         return None
     measure = _boolean_game_measure(question)
     return Reading(
@@ -442,6 +454,12 @@ def _everyone_threshold_count(intent: str, scope: Scope, predicates: list[tuple[
     )
 
 
+def _no_ranking_for(stat: str) -> TemplateResult:
+    """The refusal for a ranking by a stat this relation has no measure for."""
+    message = f"No ranking reads {stat!r} on the player-games relation - it only ranks the box-score measures it knows, not a NetPoints or other outside figure."
+    return TemplateResult(data={"message": message, "stat": stat}, answer=message)
+
+
 def _everyone_ranking(intent: str, scope: Scope, question: str, measure: str | None, predicates: list[tuple[str, str, Any]], position: str | None) -> Reading | None:
     """A ranking word, or a leaderboard/single-game-high intent: grouped by
     player. A "with at least N games" phrase in the question replaces the
@@ -469,11 +487,17 @@ def _everyone_ranking(intent: str, scope: Scope, question: str, measure: str | N
     """
     if not (_RANKING.search(question) or intent in ("leaderboard", "single_game_high")):
         return None
+    seasons = _leaderboard_season_line(intent, scope, question, measure, predicates, position)
+    if seasons is not None:
+        return seasons
     if measure is None:
         stat = scope.stat
+        if stat == "shot_distance":
+            # The parser's sentinel (router._route_leaderboard_shot_distance):
+            # the retired template's own refusal, naming the real cause.
+            raise Refused(leaderboard_shot_distance_refusal())
         if stat is not None and stat.strip():
-            message = f"No ranking reads {stat!r} on the player-games relation - it only ranks the box-score measures it knows, not a NetPoints or other outside figure."
-            raise Refused(TemplateResult(data={"message": message, "stat": stat}, answer=message))
+            raise Refused(_no_ranking_for(stat))
     aggregate: Aggregate = "total" if _TOTAL.search(question) else "per_game"
     minimum_games = PER_GAME_MIN_GAMES
     named_minimum = _ranking_minimum(question)
@@ -500,6 +524,46 @@ def _everyone_ranking(intent: str, scope: Scope, question: str, measure: str | N
         minimum_games=minimum_games,
         relation="everyone",
         position=position,
+    )
+
+
+def _leaderboard_season_line(intent: str, scope: Scope, question: str, measure: str | None, predicates: list[tuple[str, str, Any]], position: str | None) -> Reading | None:
+    """``leaderboard``'s own point (its template retired, ROADMAP plan item
+    6, step (g)): a ranking of the league or a team over the SEASON LINE -
+    ``run_leaderboard``'s pool, floors, traded-player dedup and NetPoints
+    tables - said by its presenter (``compose.present._present_leaderboard``),
+    for a stat that resolves to a leaderboard metric with no line on a
+    column, no "at least N" floor of the question's own and no position
+    group, each of which the game-level ranking reads and the season line
+    does not. A measure the words moved in that is not the stat's own is the
+    game-level ranking's too ("most points in a game" is a single game;
+    "total" stays a rate the presenter reads from ``scope.rate``).
+
+    .. versionadded:: 5.0.0
+    """
+    # A boolean stat's own predicate ("most triple-doubles": triple_double is
+    # True) is the count the season line keeps; any other line on a column
+    # is the game-level ranking's.
+    own_boolean = all(name == scope.stat and value is True for name, _, value in predicates)
+    if intent != "leaderboard" or not own_boolean or position is not None or _ranking_minimum(question) is not None:
+        return None
+    if resolve_metric(scope.stat, career=scope.span == "career") is None:
+        return None
+    if measure is not None and _stat_measure(scope.stat) not in (None, measure):
+        return None
+    return Reading(
+        scope=scope,
+        shape="grouped",
+        measures=[measure or "points"],
+        aggregate="per_game",
+        group="player",
+        predicates=[],
+        order="measure",
+        direction=_asc_or_desc(question),
+        limit=_clamp_limit(scope.limit, 10),
+        minimum_games=PER_GAME_MIN_GAMES,
+        relation="everyone",
+        source="seasons",
     )
 
 
@@ -676,6 +740,21 @@ def games_reading(q: Query) -> Query:
         return q
     if q.group == "season":
         return replace(q, scope=_career_scope(q.scope), source="games")
+    if q.group == "player" and q.subject == "everyone":
+        # The season line's ranking declined (leaderboard's retired refusals:
+        # a metric with no season form, an unknown field, an ambiguous team):
+        # the game-level ranking, exactly as it answered behind the template's
+        # refusal - except for what it cannot say. A stat this relation has no
+        # measure for is refused by name rather than ranked as points, and a
+        # `rate` only the season line reads is not dropped.
+        stat = q.scope.stat
+        if stat is not None and stat.strip() and _stat_measure(stat) is None:
+            raise Refused(_no_ranking_for(stat))
+        if q.scope.rate:
+            raise Unsupported("the relation cannot honor ['rate'] - it would answer for a different span than was asked")
+        if q.scope.fields:
+            raise Unsupported("the game-level ranking shows no columns beside its measure")
+        return replace(q, source="games")
     raise Unsupported("an unnarrowed player line the season line's reader did not say")
 
 
@@ -837,6 +916,10 @@ def team_read_point(con: duckdb.DuckDBPyConnection, scope: Scope, question: str,
     """
     if _named_player_in(scope) or _PERIOD.search(question) or _RANKING.search(question) or _LOG.search(question) or _TEAM_NOT_SUBJECT.search(question):
         return None
+    if subject.kind == "team_players":
+        # A team's players ("top scorers on the Lakers") are a ranking of
+        # players narrowed by team, never the team's own figure.
+        return None
     team_text = scope.team
     if not (isinstance(team_text, str) and team_text.strip()) or team_text == "any_team":
         # The router dropped the team (F127's shape): the subject reading
@@ -925,6 +1008,12 @@ def _read_point(con: duckdb.DuckDBPyConnection, intent: str, scope: Scope, quest
         # (refusals._team_boolean_count) rather than the ranking's sentence
         # naming the wrong one.
         raise Unsupported(f"a team's total of its players' {scope.stat} is not read")
+    if intent == "leaderboard" and _named_player_in(scope):
+        # A leaderboard ranks the league or a team, never one named person -
+        # the retired template's own refusal ("Klay Thompson's 3pt percentage
+        # over the past 4 seasons" once landed here and came back with the
+        # league's true-shooting leaders, Klay silently dropped).
+        raise Unsupported(f"a leaderboard cannot answer about one named player ({scope.player!r})")
     if intent == "record_when" and not _named_player_in(scope) and scope.team is not None and scope.team.strip():
         # A team's record above and below its OWN line - "what was the celtics
         # record when they scored 120 points" (ISSUES.md #144) - is neither the

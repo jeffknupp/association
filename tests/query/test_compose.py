@@ -928,9 +928,10 @@ def test_a_stat_this_relation_cannot_read_is_refused_not_defaulted_to_points(cx_
     with pytest.raises(Refused) as refused:
         move_point(cx_ctx.con, "single_game_high", {"stat": "netpoints"}, "who had the highest netpoints game this season")
     assert "netpoints" in refused.value.result.answer
-    with pytest.raises(Refused) as leaderboard_refused:
-        move_point(cx_ctx.con, "leaderboard", {"stat": "netpoints"}, "who leads the league in netpoints this season")
-    assert "netpoints" in leaderboard_refused.value.result.answer
+    # A leaderboard's NetPoints ranking is the season line's (its retired
+    # template's reader, over the NetPoints tables): a point, not a refusal.
+    netpoints = move_point(cx_ctx.con, "leaderboard", {"stat": "netpoints"}, "who leads the league in netpoints this season")
+    assert isinstance(netpoints, Query) and netpoints.source == "seasons" and netpoints.subject == "everyone"
     # No stat named at all is still the plain "top scorers" default.
     q = move_point(cx_ctx.con, "leaderboard", {}, "who are the top scorers this season")
     assert isinstance(q, Query)

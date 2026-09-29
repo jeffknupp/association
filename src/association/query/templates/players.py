@@ -403,8 +403,34 @@ def _leaderboard_no_such_rate(rate: Any, metric: str) -> TemplateResult:
     return TemplateResult(data={"message": message, "headline": message}, answer=message)
 
 
-def leaderboard(ctx: TemplateContext, reading: Reading) -> TemplateResult:
-    """ "Top N players by X" for the metrics in LEADERBOARD_METRICS.
+class LeaderboardStepsAside(TemplateUnsupported):
+    """``_leaderboard_ranking`` declining a point the compiler's own ranking
+    over box scores reads at least as well - a stat with no season-line
+    metric, a position group - as distinct from a refusal that stands (an
+    unknown field, an ambiguous team, a career list with columns).
+
+    .. versionadded:: 5.0.0
+    """
+
+
+def leaderboard_shot_distance_refusal() -> TemplateResult:
+    """The refusal for a shot-distance ranking, naming the real cause (ISSUES.md
+    #114): no leaderboard metric ranks distance, and the nearest real one is
+    a percentage.
+
+    .. versionadded:: 5.0.0
+    """
+    message = "Shot distance is not ranked league-wide yet - ask about one named player's average shot distance instead."
+    return TemplateResult(data={"message": message, "headline": message}, answer=message)
+
+
+def _leaderboard_ranking(con: duckdb.DuckDBPyConnection, scope: Scope, *, position: str | None = None) -> TemplateResult:
+    """ "Top N players by X" for the metrics in LEADERBOARD_METRICS - the
+    ``leaderboard`` template's reader, called by the compiler's presenter
+    (``compose.present._present_leaderboard``) since the template retired
+    (ROADMAP plan item 6, step (g)). Raises ``TemplateUnsupported`` exactly
+    where the template did, and the presenter steps aside for the compiler's
+    own ranking over box scores, which answered behind those refusals.
 
     Thin on purpose: run_leaderboard owns the season default, minimum-sample
     floor and traded-player dedup. This adds slot mapping and phrasing.
@@ -432,9 +458,11 @@ def leaderboard(ctx: TemplateContext, reading: Reading) -> TemplateResult:
        could rank, with an attempt floor and end-of-period heaves excluded -
        rather than built here, since the ranking needs its own qualifying
        floor measured (not simply plugged into `LEADERBOARD_METRICS`).
+
+    .. versionchanged:: 5.0.0
+       A reader over the settled scope (``con``, ``scope``, the subject's
+       ``position``), not a template.
     """
-    scope = reading.scope
-    con = ctx.con
     if scope.stat == "shot_distance":
         # router._route_leaderboard_shot_distance's sentinel - see the
         # comment there. Checked before resolve_metric and before the named-
@@ -446,12 +474,11 @@ def leaderboard(ctx: TemplateContext, reading: Reading) -> TemplateResult:
         # player the question does not mention - honest-sounding, and the
         # wrong cause, since no leaderboard metric exists either way. Neither
         # check below gets a chance to name the wrong cause now.
-        message = "Shot distance is not ranked league-wide yet - ask about one named player's average shot distance instead."
-        return TemplateResult(data={"message": message, "headline": message}, answer=message)
+        return leaderboard_shot_distance_refusal()
     career = _career_span("leaderboard", scope.span, scope.season)
     metric = resolve_metric(scope.stat, career=career)
     if metric is None:
-        raise TemplateUnsupported(f"no leaderboard metric for stat {scope.stat!r}")
+        raise LeaderboardStepsAside(f"no leaderboard metric for stat {scope.stat!r}")
     rate = scope.rate
     if rate == "total":
         # `stat` names a category, never which of its two readings; "most
@@ -459,7 +486,7 @@ def leaderboard(ctx: TemplateContext, reading: Reading) -> TemplateResult:
         metric = SEASON_TOTAL_OF.get(metric, metric)
     elif rate is not None:
         return _leaderboard_no_such_rate(rate, metric)
-    _leaderboard_refuse_a_subject(reading)
+    _leaderboard_refuse_a_subject(scope, position)
     fields = _leaderboard_fields(scope, metric)
     if career:
         return _career_leaderboard(con, metric, scope, fields)
@@ -499,19 +526,18 @@ def leaderboard(ctx: TemplateContext, reading: Reading) -> TemplateResult:
     return TemplateResult(data=_leaderboard_result_data(data, answer, trade_note), answer=answer + trade_note)
 
 
-def _leaderboard_refuse_a_subject(reading: Reading) -> None:
+def _leaderboard_refuse_a_subject(scope: Scope, position: str | None) -> None:
     """``leaderboard``'s refusal of a subject it cannot rank for: a position
-    group, and one named player. Split out of :func:`leaderboard` for the
-    complexity gate, in its order."""
-    scope = reading.scope
-    if reading.subject is not None and reading.subject.kind == "position":
+    group, and one named player. Split out of :func:`_leaderboard_ranking`
+    for the complexity gate, in its order."""
+    if position is not None:
         # A position group is part of the league no leaderboard metric
         # narrows to - "highest 3 point percentage ... by a shooting guard"
         # (F056) ranked the whole league before this refused it; the
         # compiler reads the group off the subject (compose.move's
         # league-wide point). Refused here, where a named player is, so what
         # refuses first is unchanged.
-        raise TemplateUnsupported(f"a leaderboard cannot narrow to a position group ({reading.subject.position!r})")
+        raise LeaderboardStepsAside(f"a leaderboard cannot narrow to a position group ({position!r})")
     if scope.player is not None and scope.player.strip():
         # A leaderboard ranks the league or a team, never one named person.
         # Confirmed live: "Klay Thompson's 3pt percentage over the past 4

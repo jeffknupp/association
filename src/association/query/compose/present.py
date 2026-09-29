@@ -57,9 +57,11 @@ from association.query.templates.games import _game_log_lines, _log_extras, _pla
 from association.query.templates.players import (
     ADVANCED_STATS,
     SHOOTING_STATS,
+    LeaderboardStepsAside,
     _box_score_player_stat,
     _empty_box_scores,
     _game_span,
+    _leaderboard_ranking,
     _phrase_threshold_count,
     _player_history_read,
     _player_history_subject,
@@ -281,6 +283,28 @@ def _present_player_stat_season_line(con: duckdb.DuckDBPyConnection, q: Query) -
     return _player_stat_season_line(con, *subject, scope)
 
 
+def _present_leaderboard(con: duckdb.DuckDBPyConnection, q: Query) -> TemplateResult | None:
+    """``leaderboard``'s own ranking - the season line's pool, floors,
+    traded-player dedup and NetPoints tables (``run_leaderboard``, the
+    retired template's reader ``templates.players._leaderboard_ranking``) -
+    over the compiler's league-wide point on the season line. Where the
+    template declined a point the game-level ranking reads at least as well
+    (``LeaderboardStepsAside``: a stat with no season metric, a position
+    group) it steps aside and that ranking answers, as it did behind the
+    template's refusal, or refuses by name (``move.games_reading``); the
+    template's other refusals (an unknown field, an ambiguous team, a career
+    list with columns) stand as the answer's reason.
+
+    .. versionadded:: 5.0.0
+    """
+    if q.subject != "everyone" or q.source != "seasons" or q.skeleton != "grouped" or q.group != "player" or q.predicates:
+        return None
+    try:
+        return _leaderboard_ranking(con, q.scope, position=q.position)
+    except LeaderboardStepsAside:
+        return None
+
+
 def _present_player_history(con: duckdb.DuckDBPyConnection, q: Query) -> TemplateResult | None:
     """``player_history``'s own table - the stat season by season from the
     season line, newest first, the default four or the count asked for, and
@@ -427,6 +451,7 @@ PRESENTERS: dict[str, Presenter] = {
     "threshold_count": _present_threshold_count,
     "record_when": _present_record_when,
     "player_history": _present_player_history,
+    "leaderboard": _present_leaderboard,
 }
 """The intents whose own default point the compiler answers in that intent's
 template's words - see the module docstring.
@@ -449,6 +474,9 @@ STATED_SCOPING: dict[str, frozenset[str]] = {
     # retired (ROADMAP plan item 6, step (d), part 4).
     "record_when": _relation_scoping("record_when"),
     "player_history": frozenset({"span"}),
+    # leaderboard's words: a career pool, and a season total or a unit it
+    # refuses by name (the template's own HONORED_SCOPING when it retired).
+    "leaderboard": frozenset({"span", "rate"}),
     "single_game_high": frozenset({"span"}),
     # A count is already a line on a column; `below` is the same line the
     # other way ("games with under 14 fta"), and a phrase carrying the count's

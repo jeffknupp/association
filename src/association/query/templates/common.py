@@ -445,7 +445,6 @@ HONORED_SCOPING: dict[str, frozenset[str]] = {
     # not ("/ 90"). It was unlisted, so check_scope raised before the template
     # ran: the per-90 question was refused naming only the slot, and the
     # `rate == "total"` branch below was unreachable in the pipeline.
-    "leaderboard": frozenset({"span", "rate"}),
     # A career is every season on record rather than the current one; see
     # _condition_scope. `without` is the teammate with_without divides by, and
     # `split` is the one player_splits was asked for. `venue` and `opponent`

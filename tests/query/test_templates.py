@@ -35,7 +35,7 @@ from association.query.templates.games import (
     team_quarter_points,
 )
 from association.query.templates.netpoints import fingerprint, player_netpoints
-from association.query.templates.players import SHOOTING_STATS, _box_score_player_stat, _box_score_stat_rebuilt, _player_stat_season_line, _player_stat_season_line_subject, leaderboard, player_compare
+from association.query.templates.players import SHOOTING_STATS, _box_score_player_stat, _box_score_stat_rebuilt, _player_stat_season_line, _player_stat_season_line_subject, player_compare
 from association.query.templates.shots import shot_chart, shot_distance
 from association.query.templates.teams import team_record
 
@@ -53,6 +53,8 @@ def _compiled(intent: str) -> Callable[[TemplateContext, Reading], TemplateResul
         scope = reading.scope
         named = tuple(name for name in (scope.player, *scope.players) if name)
         kind = "pair" if len(named) > 1 else "player" if named else "team" if scope.team else "everyone"
+        if kind == "team" and intent == "leaderboard":
+            kind = "team_players"  # a ranking within a team: its players, never its own figure
         subject = reading.subject or Subject(kind, players=named, teams=(scope.team,) if scope.team else ())
         why: list[str] = []
         result = compose_answer(ctx, with_point(ctx.con, "", Reading(scope=scope, intent=intent, subject=subject)), declined=why.append)
@@ -64,6 +66,7 @@ def _compiled(intent: str) -> Callable[[TemplateContext, Reading], TemplateResul
 
 
 game_log = _compiled("game_log")
+leaderboard = _compiled("leaderboard")
 player_history = _compiled("player_history")
 player_splits = _compiled("player_splits")
 player_stat = _compiled("player_stat")
@@ -555,8 +558,9 @@ def test_leaderboard_honors_playoffs(lb_con: TemplateContext) -> None:
 def test_leaderboard_unmapped_stat_falls_through_rather_than_fuzzy_matching(lb_con: TemplateContext) -> None:
     # Deliberately NOT get_close_matches: silently ranking by whichever metric
     # scored highest is the substitution failure this design exists to prevent.
-    with pytest.raises(TemplateUnsupported):
-        leaderboard(lb_con, Reading.from_slots({"stat": "clutchness"}))
+    # The template raised; the compiler refuses by name (move._no_ranking_for).
+    result = leaderboard(lb_con, Reading.from_slots({"stat": "clutchness"}))
+    assert "No ranking reads 'clutchness'" in result.answer
 
 
 def test_leaderboard_refuses_a_unit_the_metric_has_no_form_of(lb_con: TemplateContext) -> None:
@@ -566,10 +570,11 @@ def test_leaderboard_refuses_a_unit_the_metric_has_no_form_of(lb_con: TemplateCo
     with no per-90 anything to read, free to fill the silence from its own
     weights. It is a refusal now, and it names the metric's real forms rather
     than a generic list, which would be the wrong-cause refusal again."""
-    # Through check_scope, which is what raised before: calling the template
-    # directly would pass whether or not `rate` is declared honored.
+    # Through the presenter's own declaration, which is what refused before
+    # (check_scope; the template retired into the compiler): calling the
+    # reader directly would pass whether or not `rate` is declared stated.
     slots = {"stat": "points", "rate": "/ 90"}
-    check_scope("leaderboard", dict(slots))
+    assert unhonored_scoping("leaderboard", Scope.from_slots(slots), STATED_SCOPING["leaderboard"]) == []
     result = leaderboard(lb_con, Reading.from_slots(slots))
     assert "per 90 minutes" in (result.answer or "")
     assert "per game" in (result.answer or "") and "season total" in (result.answer or "")
@@ -584,7 +589,7 @@ def test_leaderboard_reads_a_season_total_now_that_rate_reaches_it(lb_con: Templ
     run, so "most points this season" as a TOTAL was unreachable through the
     pipeline."""
     slots = {"stat": "points", "rate": "total"}
-    check_scope("leaderboard", dict(slots))
+    assert unhonored_scoping("leaderboard", Scope.from_slots(slots), STATED_SCOPING["leaderboard"]) == []
     result = leaderboard(lb_con, Reading.from_slots(slots))
     assert "total points" in (result.answer or "")
     assert result.data["leaders"][0]["display_name"] == "Luka Doncic"
@@ -592,7 +597,7 @@ def test_leaderboard_reads_a_season_total_now_that_rate_reaches_it(lb_con: Templ
 
 def test_leaderboard_ambiguous_team_falls_through_rather_than_picking_one(lb_con: TemplateContext) -> None:
     lb_con.con.execute("INSERT INTO teams VALUES ('12','LAC','LA Clippers'),('13','LAL','Los Angeles Lakers')")
-    with pytest.raises(TemplateUnsupported):
+    with pytest.raises(TemplateUnsupported, match="LA"):
         leaderboard(lb_con, Reading.from_slots({"stat": "points", "team": "LA"}))
 
 
@@ -2988,8 +2993,13 @@ def test_leaderboard_refuses_a_shot_distance_ranking_naming_the_real_cause(lb_co
        computes a real league leader straight from `shot_chart`. The refusal
        now says the ranking is not built, which is the true state of things.
     """
-    result = leaderboard(lb_con, Reading.from_slots({"stat": "shot_distance", "player": "player"}))
+    result = leaderboard(lb_con, Reading.from_slots({"stat": "shot_distance"}))
     assert result.answer == "Shot distance is not ranked league-wide yet - ask about one named player's average shot distance instead."
+    # The filler player slot the router once left ("player": "player") is the
+    # parser's to drop now (subject.apply_subject); given one, the compiler
+    # refuses the named player in the template's own words.
+    with pytest.raises(TemplateUnsupported, match="one named player"):
+        leaderboard(lb_con, Reading.from_slots({"stat": "points", "player": "Klay Thompson"}))
 
 
 # ---------------- player_netpoints ----------------
@@ -3625,11 +3635,16 @@ def test_a_leaderboard_refuses_a_position_group_subject_for_the_compiler(lb_con:
     leaderboard metric narrows to. Refused, so the compiler reads the group
     - where the subject reading used to write the phrase into ``player`` for
     the named-player refusal to fire, and the compiler took it back out."""
+    from association.query.compose.move import read_point
     from association.query.reading import Scope
+    from association.query.templates.players import LeaderboardStepsAside, _leaderboard_ranking
 
     reading = Reading(scope=Scope.from_slots({"stat": "points"}), intent="leaderboard", subject=Subject("position", position="SG"))
-    with pytest.raises(TemplateUnsupported, match="position group"):
-        leaderboard(lb_con, reading)
+    with pytest.raises(LeaderboardStepsAside, match="position group"):
+        _leaderboard_ranking(lb_con.con, reading.scope, position="SG")
+    # The compiler's point reads the group over the box scores, not the season line.
+    point = read_point(lb_con.con, reading, "highest points per game by a shooting guard")
+    assert (point.relation, point.position, point.source) == ("everyone", "SG", "games")
 
 
 def test_a_zero_threshold_is_refused_rather_than_counting_every_game(con: TemplateContext) -> None:

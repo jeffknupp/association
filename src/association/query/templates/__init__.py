@@ -37,13 +37,12 @@ from .common import check_scope as check_scope
 from .common import coverage_caveat as coverage_caveat
 from .games import head_to_head, period_leaderboard, period_split, player_matchup, team_quarter_points
 from .netpoints import fingerprint, player_netpoints
-from .players import leaderboard, player_compare
+from .players import player_compare
 from .shots import shot_chart, shot_distance
 from .splits import streak, with_without
 from .teams import coach, team_leaderboard, team_outlook, team_record, team_stat
 
 TEMPLATES: dict[str, Callable[[TemplateContext, Reading], TemplateResult]] = {
-    "leaderboard": leaderboard,
     "team_record": team_record,
     "shot_chart": shot_chart,
     "player_compare": player_compare,
