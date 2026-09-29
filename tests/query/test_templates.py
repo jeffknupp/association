@@ -5150,13 +5150,28 @@ def test_the_worst_reconcilable_season_is_refused_and_the_merely_poor_ones_are_c
     assert "96% of the time" in caveated, "a poor season answers, and says how poor"
 
 
-def test_a_stat_that_is_not_points_is_refused_rather_than_approximated(period_ctx: TemplateContext) -> None:
-    """`shot_chart` holds shots. Rebounds and assists are not in it at all, and
-    deriving them per period from `plays` carries its own fidelity per stat -
-    fouls rebuild at 83%. Refusing names that instead of answering from a
-    weaker source."""
-    with pytest.raises(TemplateUnsupported, match="points only"):
-        period_split(period_ctx, Reading.from_slots({"player": "Stephen Curry", "period": 1, "season": SEASON, "season_type": 2, "stat": "rebounds"}))
+def test_a_stat_the_period_line_cannot_rebuild_is_refused_rather_than_approximated(period_ctx: TemplateContext) -> None:
+    """Play-by-play records no minutes per quarter, so a period's minutes are
+    refused by name rather than read off the whole game's box. And rebounds,
+    which the plays DO carry, are refused where the warehouse holds no plays
+    (this fixture) - summed as zeros they would answer "no rebounds"."""
+    with pytest.raises(TemplateUnsupported, match="no per-period 'minutes'"):
+        period_split(period_ctx, Reading.from_slots({"player": "Stephen Curry", "period": 1, "season": SEASON, "season_type": 2, "stat": "minutes"}))
+    answer = period_split(period_ctx, Reading.from_slots({"player": "Stephen Curry", "period": 1, "season": SEASON, "season_type": 2, "stat": "rebounds"})).answer
+    assert answer == "Per-quarter rebounds cannot be answered here: they are rebuilt from play-by-play, and this warehouse holds none."
+
+
+def test_a_stat_beyond_points_is_read_from_the_plays(period_ctx: TemplateContext) -> None:
+    """Plan item 4: a period's rebounds are the rebound plays in it - two in
+    e1's first quarter, one in its third - and a quarter with none is a zero
+    over a game he played, the denominator rule points already keep."""
+    c = period_ctx.con
+    c.execute("CREATE TABLE plays (event_id VARCHAR, season BIGINT, season_type BIGINT, period BIGINT, athlete_id VARCHAR, participant_athlete_ids VARCHAR, type VARCHAR, text VARCHAR)")
+    for period in (1, 1, 3):
+        c.execute("INSERT INTO plays VALUES ('e1', ?, 2, ?, '1', '1', 'Defensive Rebound', 'Stephen Curry defensive rebound')", [SEASON, period])
+    result = period_split(period_ctx, Reading.from_slots({"player": "Stephen Curry", "period": 1, "season": SEASON, "season_type": 2, "stat": "rebounds"}))
+    assert result.data["total"] == 2 and result.data["games_played"] == 5
+    assert (result.answer or "").startswith("Stephen Curry had 2 rebounds in the 1st quarter over 5 games of the 2026 regular season, averaging 0.4.")
 
 
 def test_a_question_with_no_period_is_not_this_template(period_ctx: TemplateContext) -> None:
@@ -5201,8 +5216,10 @@ def test_a_log_lists_the_games_and_keeps_the_season_in_the_header(period_ctx: Te
     the season rather than the rows shown."""
     answer = period_split(period_ctx, Reading.from_slots({"player": "Stephen Curry", "period": 1, "season": SEASON, "season_type": 2, "per_game": True})).answer or ""
     assert "over 5 games" in answer
-    assert "1st quarter points, every game:" in answer
+    assert "1st quarter line, every game:" in answer, "no stat named: the period's whole line, as a game log lists a game's"
     assert len([line for line in answer.splitlines() if line.strip()[:4].isdigit()]) == 5
+    points = period_split(period_ctx, Reading.from_slots({"player": "Stephen Curry", "period": 1, "season": SEASON, "season_type": 2, "per_game": True, "stat": "points"})).answer or ""
+    assert "1st quarter points, every game:" in points, "a stat named: that column alone"
 
 
 def test_a_date_narrows_to_that_one_game(period_ctx: TemplateContext) -> None:

@@ -552,3 +552,24 @@ def test_a_replayed_routes_typographic_apostrophe_reads_as_a_straight_one(con: d
     route = Route.from_slots("player_stat", {"player": "Tyrese Maxey", "stat": "points", "situation": "new year\u2019s eve", "without": ["jo\u2019el embiid"]})
     reading = reading_from_route(con, question, route)
     assert (reading.scope.situation, reading.scope.without) == ("new year's eve", ("jo'el embiid",))
+
+
+def test_a_quarter_ranking_that_says_player_ranks_the_teams_players(con: duckdb.DuckDBPyConnection) -> None:
+    """yardstick-v2 F049, "hornets average 1st quarter points player": the
+    team's own first-quarter average answered where its leading player's was
+    asked. "player" ranks, as "who" and "leaders" do, and only where no player
+    is named."""
+    route, _, _ = read_route(con, "celtics average 1st quarter points player", ["celtics"], "points")
+    assert (route.intent, route.slots.get("period")) == ("period_leaderboard", 1)
+    team, _, _ = read_route(con, "celtics average 1st quarter points", ["celtics"], "points")
+    assert team.intent == "team_quarter_points"
+
+
+def test_a_named_players_period_games_are_listed(con: duckdb.DuckDBPyConnection) -> None:
+    """yardstick-v2 F060, "Rudy gobert first half games this season": the key
+    lists his first halves, and a total answered it. "games" with no stat
+    named is a log, as "log" is; with a stat named it stays the total."""
+    route, _, _ = read_route(con, "tyrese maxey first half games this season", ["tyrese maxey"], "")
+    assert (route.intent, route.slots.get("half"), route.slots.get("per_game")) == ("period_split", 1, True)
+    total, _, _ = read_route(con, "tyrese maxey first half points over his games this season", ["tyrese maxey"], "points")
+    assert total.slots.get("per_game") is None

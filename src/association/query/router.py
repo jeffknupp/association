@@ -96,7 +96,18 @@ _HALF_WORDS = re.compile(r"\b(?:first|second|1st|2nd)\s+half\b|\b[12]h\b|\bhalft
 # team_quarter_points with the team filled and no player, which is exactly the
 # shape the exemption protects - and answering it would give the TEAM's first
 # quarter where its players' were asked for.
-_PERIOD_LEADERS = re.compile(r"\bleaders?\b|\bwho\b|\bwhich\s+player\b|\bleading\s+scorers?\b", re.IGNORECASE)
+#
+# "player" alone ranks too (yardstick-v2 F049, "hornets average 1st quarter
+# points player": the team's own quarter answered where its best player's was
+# asked). Only ever read where no player is named - a named player's quarter
+# is period_split before this is looked at - so "player" cannot pull a named
+# player's question into a ranking.
+_PERIOD_LEADERS = re.compile(r"\bleaders?\b|\bwho\b|\bwhich\s+player\b|\bleading\s+scorers?\b|\bplayers?\b", re.IGNORECASE)
+
+# A named player's period "games" with no stat named is his games listed, the
+# way "log" is (yardstick-v2 F060, "Rudy gobert first half games this
+# season": the key lists his 76 first halves, and a total answered it).
+_PERIOD_GAMES_WORDS = re.compile(r"\bgames\b", re.IGNORECASE)
 
 
 # A TEAM's quarter score (no player named) is exempted below: linescores answer
@@ -2028,7 +2039,7 @@ def _route_period_split_slots(raw: dict[str, Any], question: str, subject: str |
     # A log was asked for, not a season average. Measured, 7 of the 11
     # questions this template answered in its first replay said "log",
     # "by game" or "each game" and got a total and an average.
-    if _LOG_WORDS.search(question):
+    if _LOG_WORDS.search(question) or (_PERIOD_GAMES_WORDS.search(question) and "stat" not in raw):
         raw["per_game"] = True
     if subject is not None:
         # The player came from the text, not from the model's own
