@@ -47,7 +47,6 @@ from .common import (
     _no_games,
     _no_narrowed_games,
     _optional_team,
-    _ordinal,
     _period,
     _player_relation_season_type,
     _relation_window,
@@ -59,6 +58,7 @@ from .common import (
     _validated_until,
     _where_in,
     measure_filters,
+    period_narrowing,
     scoped_games,
     scoped_player,
     scoped_team,
@@ -1212,13 +1212,6 @@ def _linescores(raw: Any) -> list[int]:
     return out
 
 
-def _period_label(period: int) -> str:
-    if 1 <= period <= 4:
-        return f"{_ordinal(period)} quarter"
-    ot = period - 4
-    return "overtime" if ot == 1 else f"{_ordinal(ot)} overtime"
-
-
 def team_quarter_points(ctx: TemplateContext, reading: Reading) -> TemplateResult:
     """A team's total points in ONE quarter/period, narrowed to an opponent,
     a venue, one Eastern date, one game of each playoff series, a window of
@@ -1531,18 +1524,14 @@ quarter of its quarters is not an answer at all.
 """
 
 
-_HALF_PERIODS: dict[int, tuple[int, ...]] = {1: (1, 2), 2: (3, 4)}
-
-
 def _period_scope(scope: Scope, intent: str = "period_split") -> tuple[tuple[int, ...], str]:
-    """The periods a question asks for, and how to name them in an answer."""
-    half = scope.half
-    if half is not None and half in _HALF_PERIODS:
-        return _HALF_PERIODS[half], f"{_ordinal(half)} half"
-    period = scope.period
-    if period is not None and 1 <= period <= 10:
-        return (period,), _period_label(period)
-    raise TemplateUnsupported(f"{intent} needs a period 1-10 or a half 1-2, got period={scope.period!r} half={half!r}")
+    """The periods a question asks for, and how to name them in an answer -
+    the relation's own reading (:func:`common.period_narrowing`), refused here
+    when there is none."""
+    asked = period_narrowing(scope)
+    if asked is None:
+        raise TemplateUnsupported(f"{intent} needs a period 1-10 or a half 1-2, got period={scope.period!r} half={scope.half!r}")
+    return asked
 
 
 def _period_split_reconciliation_refusal(season: int) -> TemplateResult | None:

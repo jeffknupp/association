@@ -172,6 +172,8 @@ SCOPING_SLOTS = frozenset(
         "rate",
         "season_type_unstated",
         "ranked_by",
+        "period",
+        "half",
     }
 )
 
@@ -197,7 +199,7 @@ SCOPING_SLOTS = frozenset(
 # to one template at a time, which is the O(templates x slots) matrix the
 # algebra port exists to remove. A template on the relation that cannot honor
 # one of these says so in RELATION_SCOPING_EXCLUDED, with the reason.
-RELATION_SCOPING = frozenset({"order", "date", "opponent", "venue", "span", "without", "split", "since", "until", "below", "above", "game_n", "season_n", "situation", "conditions"})
+RELATION_SCOPING = frozenset({"order", "date", "opponent", "venue", "span", "without", "split", "since", "until", "below", "above", "game_n", "season_n", "situation", "conditions", "period", "half"})
 """The scoping slots every template on the player-games relation honors.
 
 .. versionadded:: 4.4.0
@@ -207,12 +209,38 @@ RELATION_SCOPING = frozenset({"order", "date", "opponent", "venue", "span", "wit
 # has to be about the template's answer, not its code: a slot that merely was
 # not wired is not excluded, it is wired.
 RELATION_SCOPING_EXCLUDED: dict[str, dict[str, str]] = {
+    # The two retired templates' WORDS (compose.present.STATED_SCOPING) never
+    # said a quarter: their presenters step aside for one, and the compiler's
+    # own sentence, which names the period through Narrowed.filters, answers.
+    "game_log": {
+        "period": "the log's retired sentence heads whole games and never names a quarter",
+        "half": "the log's retired sentence heads whole games and never names a half",
+    },
+    "player_stat": {
+        "period": "the season line's retired sentence heads whole games and never names a quarter",
+        "half": "the season line's retired sentence heads whole games and never names a half",
+    },
     # A single date is one game, and one game is not a streak.
-    "streak": {"date": "one game is not a run", "order": "a run is read over every game in the span, not the last N"},
+    "streak": {
+        "date": "one game is not a run",
+        "order": "a run is read over every game in the span, not the last N",
+        "period": "a run is a run of whole games; a quarter of each is a different streak nobody has defined",
+        "half": "a run is a run of whole games; a half of each is a different streak nobody has defined",
+    },
     # A split is a division of a span into groups; "the last N" is a window
     # that game_log answers.
-    "player_splits": {"date": "one game has nothing to split", "order": "a limited number of recent games is game_log's question"},
-    "record_when": {"date": "one game has no record", "order": "a record over the last N games is game_log's question"},
+    "player_splits": {
+        "date": "one game has nothing to split",
+        "order": "a limited number of recent games is game_log's question",
+        "period": "the splits table is headed as whole games; a quarter's split would print under the same heading",
+        "half": "the splits table is headed as whole games; a half's split would print under the same heading",
+    },
+    "record_when": {
+        "date": "one game has no record",
+        "order": "a record over the last N games is game_log's question",
+        "period": "a record is won and lost over whole games; its sentence would not say the condition was read in one quarter",
+        "half": "a record is won and lost over whole games; its sentence would not say the condition was read in one half",
+    },
     # A period question's accuracy caveat (PERIOD_RECONCILIATION) is measured
     # per SEASON against ESPN's own linescores - summing across several would
     # mix seasons of different reliability under one caveat, or none, and the
@@ -227,7 +255,14 @@ RELATION_SCOPING_EXCLUDED: dict[str, dict[str, str]] = {
         "opponent": "two players' meetings are the games they played against each other - there is no third team to narrow them to",
         "order": "the newest meetings are shown beneath averages over all of them - a window would cut the averages the matchup exists to give",
         "season_n": "an ordinal season is one player's - a matchup names two, and the question does not say whose fifth season is meant",
+        "period": "a meeting's line is both players' whole game; only one side of the pair would be read for the quarter",
+        "half": "a meeting's line is both players' whole game; only one side of the pair would be read for the half",
     },
+    # A shot read draws every shot of the games the relation narrows to; a
+    # quarter narrows the LINE of each game, not which of its shots are drawn,
+    # so the chart would be the whole game under a quarter's heading.
+    "shot_chart": {"period": "the chart draws every shot of each game, not the quarter's", "half": "the chart draws every shot of each game, not the half's"},
+    "shot_distance": {"period": "the average reads every shot of each game, not the quarter's", "half": "the average reads every shot of each game, not the half's"},
     "period_split": {
         "span": "the accuracy caveat is measured per season, not across a career",
         "since": "the accuracy caveat is measured per season, and the header names one season - both wrong for a range",
@@ -356,7 +391,10 @@ HONORED_SCOPING: dict[str, frozenset[str]] = {
     # from `team_games` (`opponent`, `venue`, `date`, `game_n`, `situation`,
     # the `order`/`limit` window) and its team and span from `scoped_team`
     # (`since`, `until`, `span`).
-    "team_quarter_points": _team_relation_scoping("team_quarter_points"),
+    "team_quarter_points": _team_relation_scoping("team_quarter_points", "period", "half"),
+    # The ranking is of one quarter or half, the only cells it reads beyond
+    # its own team and season.
+    "period_leaderboard": frozenset({"period", "half"}),
     "period_split": _relation_scoping("period_split"),
     # `since`/`until` and `span` ("career") are honored (step 3, team cells /
     # K1): every meeting in a since-bounded, optionally until-bounded, or
@@ -1681,6 +1719,49 @@ def _relation_window(scope: Scope) -> tuple[str, int] | None:
     return order, _clamp_limit(scope.limit, default=1)
 
 
+_HALF_PERIODS: dict[int, tuple[int, ...]] = {1: (1, 2), 2: (3, 4)}
+
+
+def _period_label(period: int) -> str:
+    """``1`` -> ``"1st quarter"``, ``5`` -> ``"overtime"``, ``6`` -> ``"2nd overtime"``."""
+    if 1 <= period <= 4:
+        return f"{_ordinal(period)} quarter"
+    ot = period - 4
+    return "overtime" if ot == 1 else f"{_ordinal(ot)} overtime"
+
+
+def period_narrowing(scope: Scope) -> tuple[tuple[int, ...], str] | None:
+    """The periods a question's ``period``/``half`` cell narrows each game to,
+    and how an answer names them - ``((3, 4), "2nd half")`` - or None for the
+    whole game. A half wins over a quarter, since the parser writes a half
+    only where the words said one; a period outside 1-10 is no period.
+
+    .. versionadded:: 5.0.0
+    """
+    if scope.half is not None and scope.half in _HALF_PERIODS:
+        return _HALF_PERIODS[scope.half], f"{_ordinal(scope.half)} half"
+    if scope.period is not None and 1 <= scope.period <= 10:
+        return (scope.period,), _period_label(scope.period)
+    return None
+
+
+def _apply_period(con: duckdb.DuckDBPyConnection, narrowed: Narrowed, scope: Scope) -> None:
+    """A quarter or half narrows every read of the relation to that part of
+    each game (:meth:`~association.query.player_games.Narrowed.narrow_periods`)
+    - the ``period``/``half`` cells of :data:`RELATION_SCOPING`, applied here
+    for a named player's games and a league-wide read alike."""
+    asked = period_narrowing(scope)
+    if asked is not None:
+        log_columns = frozenset(row[0] for row in con.execute("DESCRIBE player_game_log").fetchall())
+        narrowed.narrow_periods(*asked, plays=_has_table(con, "plays"), log_columns=log_columns)
+
+
+def _has_table(con: duckdb.DuckDBPyConnection, name: str) -> bool:
+    """Whether the warehouse holds ``name`` - a fixture or a partial load may not."""
+    row = con.execute("SELECT COUNT(*) FROM information_schema.tables WHERE table_name = ?", [name]).fetchone()
+    return bool(row and row[0])
+
+
 def scoped_games(
     con: duckdb.DuckDBPyConnection,
     player: Entity,
@@ -1764,6 +1845,7 @@ def scoped_games(
         # refused BY VALUE where it names anything else (an age, "since
         # returning") - see _apply_situation.
         _apply_situation(narrowed, scope.situation)
+    _apply_period(con, narrowed, scope)
     narrowed.window = _relation_window(scope)
     return narrowed
 
@@ -1874,6 +1956,7 @@ def league_games(con: duckdb.DuckDBPyConnection, span: _Span, scope: Scope, *, p
     if position:
         codes = POSITION_CODES.get(position, [position])
         narrowed.narrow(f"pgl.athlete_id IN (SELECT athlete_id FROM players WHERE position_abbr IN ({', '.join('?' for _ in codes)}))", *codes)
+    _apply_period(con, narrowed, scope)
     return narrowed
 
 
