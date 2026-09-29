@@ -24,12 +24,14 @@ Two properties are not negotiable on the way there:
   a follow-up wording reaches the alternative.** (Jeff, 2026-09-21.) A silent
   default is still the worst failure; a stated one is an answer.
 
-## Where it stands (2026-09-29, `6b77f56`)
+## Where it stands (2026-09-29, `4163c8c`)
 
-**165 of 175 questions (94.3%), 154 of 166 families (92.8%)** on the live
-yardstick run (parser15: the fall-through agent removed, the period
-relation's team half merged): 2 wrong, 5 partial, 3 refused with no reading
-(the yardstick's "fell through" outcome).
+**166 of 175 questions (94.9%), 155 of 166 families (93.4%)** on the live
+yardstick run (parser18: the fall-through agent removed, the period
+relation's team half merged, short questions refused, `leaderboard` and
+`period_split` retired into the compiler): 1 wrong, 5 partial, 3 refused
+with no reading (the yardstick's "fell through" outcome). Parser16, 17 and
+18 moved no answer between them.
 
 The pipeline: a 3B model (qwen2.5:3b) copies the names out of the question
 and picks one stat key (`query/normalizer.py`); the parser reads everything
@@ -41,10 +43,10 @@ the parser's, the template's or the compiler's own reason through
 `agent.refusal_text`). There is no fall-through: the SQL-writing agent
 answered 1 question in 23 when measured and was removed on 2026-09-29
 (Jeff's call); what the yardstick still calls "fell through" is a refusal
-for want of a reading. Seven intents are the compiler's alone
-(`compose.COMPILED_INTENTS`); `game_log`, `player_stat` and `player_splits`
-joined them in step (g) (parser9-11, 2026-09-28/29: 162/175, 0 answers
-moved).
+for want of a reading. Ten intents are the compiler's alone
+(`compose.COMPILED_INTENTS`); `game_log`, `player_stat`, `player_splits`,
+`leaderboard`, `period_split` and `player_compare` joined them in step (g)
+(parser9-18, 2026-09-28/29: 0 answers moved by any retirement).
 
 The 13 families still failing, by cause:
 
