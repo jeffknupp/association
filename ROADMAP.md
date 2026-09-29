@@ -24,7 +24,7 @@ Two properties are not negotiable on the way there:
   a follow-up wording reaches the alternative.** (Jeff, 2026-09-21.) A silent
   default is still the worst failure; a stated one is an answer.
 
-## Where it stands (2026-09-28, `c388fde`)
+## Where it stands (2026-09-29, `d005d85`)
 
 **162 of 175 questions (92.6%), 151 of 166 families (91.0%)** on the live
 yardstick run: 3 wrong, 6 partial, 4 fall-throughs, a median of 1.2 seconds
@@ -37,9 +37,10 @@ question is about, the intent, the scope (`query/parse.py`,
 `query/reading.py`); a template or the compiler (`query/compose`) answers
 the Reading, or a refusal names what is missing (`query/refusals.py`). The
 SQL-writing agent is the last resort, and a poor one - it answered 1
-question in 23 when last measured. Six intents are the compiler's alone
-(`compose.COMPILED_INTENTS`); `game_log` and `player_stat` joined them in
-step (g) (parser9 and parser10, 2026-09-28: 162/175, 0 answers moved).
+question in 23 when last measured. Seven intents are the compiler's alone
+(`compose.COMPILED_INTENTS`); `game_log`, `player_stat` and `player_splits`
+joined them in step (g) (parser9-11, 2026-09-28/29: 162/175, 0 answers
+moved).
 
 The 15 families still failing, by cause:
 
