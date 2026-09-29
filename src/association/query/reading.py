@@ -79,7 +79,7 @@ class ScopeError(ValueError):
     """A slot value the Scope cannot hold - a key nothing types, a value of
     the wrong type or outside its closed set, a window of fewer than one
     game. Raised where a slot dict comes in (:meth:`Scope.from_slots`), so
-    the question falls through the way a template's refusal does rather than
+    the question is refused the way a template's refusal is rather than
     an answer quietly leaving the narrowing out.
 
     .. versionadded:: 5.0.0

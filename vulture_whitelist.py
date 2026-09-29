@@ -55,11 +55,9 @@ handle_data
 attrs
 
 # association/query/compose/__init__.py: the compose package's whole public
-# surface (README_land.md's contract). Called by association/query/agent.py's
-# fall-through wiring, landed on a separate branch that wires this package
-# into the router -> template -> compiler -> agent pipeline; this branch adds
-# only the package itself, so nothing in this tree calls it besides its own
-# tests, and vulture would otherwise report it dead code.
+# surface, called by association/query/agent.py through a call-time module
+# lookup (`from . import compose; compose.answer(...)`, so tests can
+# monkeypatch it), which vulture cannot see as a call.
 answer
 
 # association/query/reading.py, Scope: a field read by name, never by

@@ -420,8 +420,7 @@ HONORED_SCOPING: dict[str, frozenset[str]] = {
     # and the loader picks a player's first or last game of a season, which are
     # different questions - answering one with the other is the substitution
     # this whole module exists to prevent. Both stay listed either way, since
-    # leaving one unlisted falls through to an agent with no better source,
-    # which is slower and free to answer the season instead.
+    # leaving one unlisted would refuse a question this answers.
     "fingerprint": frozenset({"order", "date"}),
     # `span` "career" is honored by summing every season: a career leaderboard
     # from the per-team season rows, and a career count or high from every box
@@ -429,8 +428,8 @@ HONORED_SCOPING: dict[str, frozenset[str]] = {
     # `rate` is honored by ANSWERING it where the metric has that form (a
     # season total) and by refusing, in the metric's own name, where it does
     # not ("/ 90"). It was unlisted, so check_scope raised before the template
-    # ran: the per-90 question fell through to an agent with nothing to read,
-    # and the `rate == "total"` branch below was unreachable in the pipeline.
+    # ran: the per-90 question was refused naming only the slot, and the
+    # `rate == "total"` branch below was unreachable in the pipeline.
     "leaderboard": frozenset({"span", "rate"}),
     # A career is every season on record rather than the current one; see
     # _condition_scope. `without` is the teammate with_without divides by, and

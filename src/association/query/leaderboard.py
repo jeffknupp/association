@@ -112,10 +112,10 @@ def resolve_metric(name: str | None, *, career: bool = False) -> str | None:
     """Router slot -> a real metric name, via an EXPLICIT alias table.
 
     Deliberately not get_close_matches: fuzzy matching is fine for suggesting a
-    fix to a model that can then correct itself, but a template silently
-    ranking by whichever metric happened to score highest is exactly the
-    substitution failure this architecture exists to prevent. An unmapped name
-    returns None and the question falls through.
+    fix a person can act on, but a template silently ranking by whichever
+    metric happened to score highest is exactly the substitution failure this
+    architecture exists to prevent. An unmapped name returns None and the
+    question is refused.
 
     With ``career``, a bare box-score name reads as the career TOTAL - see
     ``CAREER_METRIC_ALIASES``. A real metric name is never reinterpreted, so a

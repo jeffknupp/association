@@ -231,9 +231,9 @@ class RouterUnavailable(RuntimeError):
     that model. Raised by :func:`association.query.normalizer.normalize`.
 
     Distinct from ``normalize`` returning None, which means the model
-    answered with something unusable. Both fall through to the agent, and
-    neither is fatal; what differs is the sentence a person gets, and with
-    ``--disable-fallthrough`` that sentence is the entire error.
+    answered with something unusable. Both are refused, and neither is
+    fatal; what differs is the sentence a person gets, which is the entire
+    answer.
 
     .. versionadded:: 4.4.0
 
@@ -1224,8 +1224,8 @@ _ABOVE = re.compile(r"\b(?:with\s+(?:at\s+least\s+)?)?(?<!than\s)(?<!under\s)(?<
 # on unrelated questions (see _validate_side), while a regex here costs no
 # prompt tokens and cannot. Setting `situation` is enough on its own - no
 # template lists it in HONORED_SCOPING, so `check_scope` refuses and the
-# question falls through to the agent, which is the ranking AGENTS.md sets: a
-# refusal beats a fluent wrong answer.
+# question is refused, which is the ranking AGENTS.md sets: a refusal beats a
+# fluent wrong answer.
 #
 # Measured against 343 real questions (the 261-query feed plus the 83 routing
 # corpus cases): 14 feed queries match and **no corpus case does**, so no
@@ -1929,7 +1929,7 @@ router that imported the templates would invert the dependency, and guarded by
 ``test_the_order_intents_are_the_ones_that_honor_order``. Adding ``order``
 anywhere else would be worse than leaving it off: ``check_scope`` refuses a
 scoping slot the template cannot honor, so a question that answers today would
-start falling through to the agent instead.
+be refused instead.
 
 .. versionadded:: 2.1.0
 

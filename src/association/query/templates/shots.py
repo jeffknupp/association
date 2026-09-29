@@ -364,8 +364,8 @@ def shot_chart(ctx: TemplateContext, reading: Reading) -> TemplateResult:
         shot_value=shot_value,
     )
     # A "no player found" / "no shots found" message is returned as the answer
-    # rather than falling through: the agent has no better source for a chart
-    # than the same table this just queried.
+    # rather than raised: nothing has a better source for a chart than the
+    # same table this just queried, and a raise would refuse for the wrong cause.
     artifact = rendered.artifact
     message = _shot_chart_message(
         # `span.since` excludes a "since 2024"-shaped career: `_career_shot_note`

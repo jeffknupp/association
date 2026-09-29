@@ -1,5 +1,6 @@
 """Answering natural-language questions against the local warehouse.
 
-A small router classifies the question and a deterministic template answers it;
-anything no template covers falls through to a tool-calling agent.
+A small model copies the names out of the question and picks a stat, the
+parser reads the rest from the words, and a deterministic template or the
+compiler answers it; anything nothing reads is refused naming why.
 """

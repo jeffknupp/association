@@ -263,7 +263,7 @@ def _single_game_netpoints(ctx: TemplateContext, player: Entity, season: int, se
         ).fetchone()
     except duckdb.Error as exc:
         # The table only exists if the daily NetPoints fetch was run. Saying so
-        # beats falling through to an agent that has no better source.
+        # beats a refusal that names only the intent.
         raise TemplateUnsupported(f"per-game NetPoints unavailable: {exc}") from exc
 
     if row is None:
@@ -467,8 +467,8 @@ def _fingerprint_render(ctx: TemplateContext, players: list[Entity], ambiguous: 
     try:
         rendered = render_for_players(ctx.con, ctx.out_dir, players, ambiguous, season, view=view, season_type=season_type, order=order)
     except FingerprintUnavailable as exc:
-        # Returned, not raised: the agent has no better source for this plot
-        # than the table this just read, so falling through would only be slow.
+        # Returned, not raised: nothing has a better source for this plot than
+        # the table this just read, and a raise would refuse for the wrong cause.
         return TemplateResult(data={"message": str(exc)}, answer=str(exc))
     artifact = rendered.artifact
     return TemplateResult(

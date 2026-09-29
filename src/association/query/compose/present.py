@@ -271,7 +271,7 @@ def _present_player_stat_season_line(con: duckdb.DuckDBPyConnection, q: Query) -
     if not (stat is not None and (stat in ADVANCED_STATS or stat in SHOOTING_STATS)):
         # A stat with no per-game column ("avg_shot_distance") is the
         # template's own refusal, and its reason - raised, so the
-        # fall-through names the stat rather than "a line the season line's
+        # refusal names the stat rather than "a line the season line's
         # reader did not say" (the games relation has no column for it
         # either; `present` says it as the relation's).
         _wanted_stats(scope)
@@ -466,7 +466,7 @@ narrowing the relation applied, answers. A narrowing the relation cannot
 honor at all is the planner's refusal (:func:`~association.query.compose.plan.plan`),
 before any presenter runs; until 5.0.0 these lists lived in
 ``HONORED_SCOPING`` under the retired templates' names, where
-``agent._run_compiled`` also read them as the fall-through's reason - which
+``agent._run_compiled`` also read them as the refusal's reason - which
 could name a slot where the compiler had declined for another cause.
 
 .. versionadded:: 5.0.0

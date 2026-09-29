@@ -58,12 +58,12 @@ from .common import (
 # no table maps a team to one, and standings carry only each team's record in
 # its OWN conference's and division's games. So a team slot naming one cannot be
 # answered, and is refused by name. Resolved as a team it would match nothing
-# and fall through to an agent with no better source.
+# and be refused for the wrong cause.
 _CONFERENCE_WORDS = re.compile(r"\b(?:conferences?|divisions?|east(?:ern)?|west(?:ern)?|atlantic|central|southeast|northwest|pacific|southwest)\b", re.IGNORECASE)
 
 
-#: What a coach question is answered with, and why it is a refusal rather than
-#: a fall-through.
+#: What a coach question is answered with, and why it is a refusal naming the
+#: source rather than one naming only the intent.
 #:
 #: No table here holds a coach - 20 base tables and 6 views, zero columns named
 #: anything like it - so the SQL agent has nothing to find. Left to fall

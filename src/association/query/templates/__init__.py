@@ -5,9 +5,9 @@ Given an intent and its slots, these build and run the SQL themselves - the
 box-score templates by composing the one relation in
 :mod:`association.query.player_games`, the rest directly - so every correctness
 rule lives in code rather than as prose the model re-derives per query. Only
-intents present in TEMPLATES are handled; anything else - including
-a recognized intent whose slots don't validate - falls through to the agent
-untouched.
+intents present in TEMPLATES (or the compiler's, ``compose.COMPILED_INTENTS``)
+are handled; anything else - including a recognized intent whose slots don't
+validate - is refused naming why.
 
 The templates live in one module per subject; this package holds the registry,
 :data:`TEMPLATES`, and re-exports what callers outside it use. Seven intents
