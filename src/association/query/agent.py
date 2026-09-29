@@ -41,7 +41,7 @@ from .entities import (
 from .history import DEFAULT_HISTORY_DIR, RunHistory, echo_to_stderr
 from .models import DEFAULT_ROUTER_MODEL
 from .reading import Reading, Scope, ScopeError
-from .refusals import by_question, unanswerable
+from .refusals import MIN_QUESTION_WORDS, by_question, too_short, unanswerable
 from .router import Route, RouterUnavailable
 from .templates import TEMPLATES
 from .templates.common import (
@@ -174,6 +174,11 @@ class Agent:
         .. versionchanged:: 5.0.0
            A question nothing here reads is answered with a refusal naming
            why (``answered_by="refused"``), never handed to a model.
+
+        .. versionchanged:: 5.0.0
+           A question of fewer than :data:`~association.query.refusals.MIN_QUESTION_WORDS`
+           words is refused unread, with a generic sentence, before the
+           normalizer is asked (a recorded ``route`` is still answered).
         """
         history = RunHistory(self.verbose, self.history_dir, sink=self.trace)
         recorded = ""
@@ -524,6 +529,13 @@ class Agent:
         return result
 
     def _ask_inner(self, question: str, history: RunHistory, given: Route | None = None) -> Answer:
+        # A question too short to be one is refused before anything reads
+        # it (refusals.too_short): no model call, no guess at "Tatum rec".
+        short = too_short(question)
+        if short is not None and given is None:
+            self.unanswered = f"fewer than {MIN_QUESTION_WORDS} words"
+            history.log(f"  -> (refused) {self.unanswered}")
+            return self._answer(question, history, short, "refused")
         fast = self._try_fast_path(question, history, given)
         if fast is not None:
             intent, templated = fast

@@ -246,6 +246,34 @@ def _bench_points(con: duckdb.DuckDBPyConnection, intent: str, scope: Scope, que
     )
 
 
+MIN_QUESTION_WORDS = 3
+"""A question with fewer words than this is refused unread.
+
+Jeff, 2026-09-29: short or nonsensical questions are refused with a generic
+sentence, and no effort is spent on them - most of the StatMuse feed's
+two-word rows ("Tatum rec", "bam stats", "jaylen brown") are a user hitting
+enter before the question was typed, and a system that guesses at them
+answered "Tatum rec" with his splits. Measured before choosing the line: 215
+of the large feed's 2,285 questions have one or two words, almost all bare
+names; in the 175-question yardstick only "Tatum rec" has under three, and
+every three-word question ("76ers away record", "luka td3s home") answers.
+
+.. versionadded:: 5.0.0
+"""
+
+
+def too_short(question: str) -> str | None:
+    """The generic refusal for a question of fewer than
+    :data:`MIN_QUESTION_WORDS` words, or None. Decided from the words alone,
+    before the normalizer is asked, so a short question costs no model call.
+
+    .. versionadded:: 5.0.0
+    """
+    if len(question.split()) >= MIN_QUESTION_WORDS:
+        return None
+    return f"I couldn't understand your question, '{question.strip()}'. Please try re-phrasing it."
+
+
 def by_question(question: str, intent: str | None) -> TemplateResult | None:
     """A refusal decided from the question's own words BEFORE any template
     runs - for a shape a template would otherwise answer fluently and wrongly.

@@ -219,3 +219,16 @@ def test_a_teams_total_of_triple_doubles_is_refused_for_that_cause(con: duckdb.D
     result = unanswerable(con, "leaderboard", {"stat": "triple_double", "team": "Los Angeles Lakers", "span": "career"}, "los angeles lakers all-time triple doubles vs west")
     assert result is not None and result.data["refused"] == "team_boolean_count" and "team's total" in result.answer
     assert unanswerable(con, "leaderboard", {"stat": "triple_double"}, "who has the most triple doubles this season") is None
+
+
+def test_a_question_of_fewer_than_three_words_is_refused_unread() -> None:
+    """Jeff, 2026-09-29: "Tatum rec" and the feed's bare names are a user
+    hitting enter early, and are refused with a generic sentence rather than
+    guessed at. Three words is a question ("76ers away record")."""
+    from association.query.refusals import MIN_QUESTION_WORDS, too_short
+
+    assert MIN_QUESTION_WORDS == 3
+    assert too_short("Tatum rec") == "I couldn't understand your question, 'Tatum rec'. Please try re-phrasing it."
+    assert too_short("  bam stats ") == "I couldn't understand your question, 'bam stats'. Please try re-phrasing it."
+    assert too_short("76ers away record") is None
+    assert too_short("luka td3s home") is None

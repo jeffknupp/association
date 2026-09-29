@@ -60,9 +60,10 @@ The 13 families still failing, by cause:
   career games in the month of march" (F096) counts his 118 March games
   right but lists the last 10 under a heading that says "2026 regular
   season".
-- **A question that needs asking back.** "Tatum rec" (F112) and "25-26
-  knicks playoff statistics vs other historic teams" (F097) get a guess
-  where the key wants a clarification.
+- **A question not worth reading.** "Tatum rec" (F112) is refused unread
+  (fewer than three words - Jeff's rule, below); "25-26 knicks playoff
+  statistics vs other historic teams" (F097) gets a guess where the key
+  wants a clarification, and by the same rule it is not worked on.
 - **Two active players named Curry.** "Plot Curry's threes from last season"
   (F003) falls through, and a wording of F002 ("How far was Curry average
   three pointer?") asks Seth or Stephen. The rule is to ask when two
@@ -127,8 +128,13 @@ answers: it is proved by golden and the rehearsal, then a live run. Steps
   the grading scores it that way for now. The rule on the table: records,
   lists and counts read both season types, averages the regular season
   (#231's scope half: "Embiid's record against Boston this year").
-- **Whether a short ambiguous question asks back or defaults visibly.**
-  F112 ("Tatum rec") and F097 are graded wrong for guessing.
+- **A short question is refused, decided 2026-09-29.** Jeff: short or
+  nonsensical questions are mostly a user hitting enter early; they get a
+  generic "I couldn't understand your question ... Please try re-phrasing
+  it" (`refusals.too_short`, fewer than three words, before the model is
+  asked), and no effort is spent on them. F112 ("Tatum rec") is that
+  refusal now; F097 (eight words of nonsense) stays whatever it gets and is
+  not worked on.
 
 **Not planned, and why:** a bigger model (the 7B added no names and 13 of
 162 stats, for a second a question more); any fall-through agent (an agent

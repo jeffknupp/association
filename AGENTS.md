@@ -459,6 +459,20 @@ ranks them. Before extending the rule to another open slot, check both
 conditions - a default with no wording that reaches the alternative is the case
 that is not allowed.
 
+**A question too short to be one is refused unread.** Jeff's rule,
+2026-09-29: short or nonsensical questions are refused with a generic
+sentence ("I couldn't understand your question, 'Tatum rec'. Please try
+re-phrasing it."), and no effort is spent on them - most of the StatMuse
+feed's two-word rows are a user hitting enter before the question was typed,
+and guessing at "Tatum rec" answered his splits. `refusals.too_short` (fewer
+than `MIN_QUESTION_WORDS`, three) runs in `Agent.ask` before the normalizer,
+so a short question costs no model call; a recorded route is still answered.
+Measured before the line was chosen: 215 of the large feed's 2,285 questions
+have one or two words, almost all bare names, and in the yardstick only
+"Tatum rec" has under three while every three-word question answers. Do not
+add heuristics for longer nonsense (F097), do not file issues for such
+questions, and do not grade them as needing a clarification.
+
 **A best match is only safe where a wrong one is visible.** Charts resolved
 names best-match on the reasoning that the plot is titled with the name that
 won — sound, until the wrong name is *why* no plot gets drawn, which is

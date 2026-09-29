@@ -53,7 +53,7 @@ def test_ask_writes_history_file_even_when_it_raises(monkeypatch: pytest.MonkeyP
 
     monkeypatch.setattr("association.query.normalizer.normalize", failing)
     with pytest.raises(RuntimeError, match="simulated ollama connection failure"):
-        agent.ask("some question")
+        agent.ask("some question about jokic")
 
     files = list(history_dir.glob("*.log"))
     assert len(files) == 1
@@ -354,7 +354,7 @@ def test_a_question_nothing_reads_is_refused_naming_why(monkeypatch: pytest.Monk
     assert agent.unanswered is not None and agent.unanswered.startswith("threshold_count: ")
 
     monkeypatch.setattr("association.query.normalizer.normalize", lambda model, question: None)
-    answer = agent.ask("q")
+    answer = agent.ask("what is this question")
     assert answer.answered_by == "refused" and "no usable reply" in answer.text
 
     # A question a template answers is unaffected.
@@ -476,7 +476,7 @@ def test_an_unported_intent_is_refused_by_name(tmp_path: Path) -> None:
 
 def test_a_reader_failure_is_refused_rather_than_erroring(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setattr("association.query.normalizer.normalize", lambda model, question: None)
-    answer = _agent(tmp_path).ask("q")
+    answer = _agent(tmp_path).ask("what is this question")
     assert answer.answered_by == "refused" and "the normalizer returned no usable reply" in answer.text
 
 
@@ -501,7 +501,7 @@ def test_a_refused_answer_has_no_intent_or_data_rather_than_an_empty_one(monkeyp
     """Only a template or the compiler produces those. None says so; {} would
     read as "the template ran and found nothing", which is a different claim."""
     monkeypatch.setattr("association.query.normalizer.normalize", lambda model, question: None)
-    answer = _agent(tmp_path).ask("q")
+    answer = _agent(tmp_path).ask("what is this question")
 
     assert answer.answered_by == "refused"
     assert answer.intent is None
@@ -547,7 +547,7 @@ def test_a_trace_sink_takes_the_place_of_stderr_entirely(monkeypatch: pytest.Mon
     agent = Agent(str(db_path), tmp_path / "out", history_dir=tmp_path / ".history", verbose=True, trace=seen.append)
     monkeypatch.setattr("association.query.normalizer.normalize", lambda model, question: None)
 
-    agent.ask("q")
+    agent.ask("what is this question")
 
     assert any(line.startswith("[history] ") for line in seen)
     assert any("model inference #1" in line for line in seen)
@@ -795,3 +795,23 @@ def test_a_recorded_route_is_answered_as_given_without_reading_the_question(monk
     monkeypatch.setattr("association.query.compose.answer", lambda ctx, reading, trace=None, declined=None: record(ctx, reading))
     answer = _agent_with_players(tmp_path, "Joel Embiid").ask("how many points does embiid average", route=Route.from_slots(intent="player_stat", slots={"player": "Joel Embiid"}))
     assert (answer.text, answer.intent, seen) == ("answered", "player_stat", ["Joel Embiid"])
+
+
+def test_a_short_question_is_refused_before_the_model_is_asked(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """ "Tatum rec" used to answer his splits; a question of fewer than three
+    words is refused with the generic sentence and costs no model call
+    (refusals.too_short). A recorded route is still answered as given."""
+    from association.query.router import Route
+    from association.query.templates.common import TemplateResult
+
+    def never(model: str, question: str) -> None:
+        raise AssertionError("the normalizer must not be asked a two-word question")
+
+    monkeypatch.setattr("association.query.normalizer.normalize", never)
+    agent = _agent_with_players(tmp_path, "Jayson Tatum")
+    answer = agent.ask("Tatum rec")
+    assert answer.answered_by == "refused" and answer.timing.model_calls == 0
+    assert answer.text == "I couldn't understand your question, 'Tatum rec'. Please try re-phrasing it."
+    assert agent.unanswered == "fewer than 3 words"
+    monkeypatch.setattr("association.query.compose.answer", lambda ctx, reading, trace=None, declined=None: TemplateResult(data={}, answer="answered"))
+    assert agent.ask("Tatum rec", route=Route.from_slots(intent="player_stat", slots={"player": "Jayson Tatum"})).text == "answered"
