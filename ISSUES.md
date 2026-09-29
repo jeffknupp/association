@@ -2968,7 +2968,7 @@ those were found.
 - **Found:** 2026-09-27, the step (c) hold-out comparison (the 75 recorded routing-corpus questions outside day10, `~/association-research/yardstick-v2/holdout_compare.py`).
 - **Evidence:** `player_stat: no per-game column for stat 'threePointFieldGoalsAttempted'` - `templates.common.PLAYER_STAT_COLUMNS` holds the made columns, whose line reports the attempts beside them ("585 of 1,727 (33.9%)"), and no attempted column; `router._route_attempted_stat` rewrites a made stat to the attempted one whenever the question says "attempts" and not "made", on both readers.
 - **User sees:** a fall-through (the SQL agent, or with fall-through off an error) for a per-game attempts question, where the made line would have answered it in passing. Asking for both ("3pt attempts and made") answers, from the made line.
-- **Next step:** give `player_stat` the attempted columns (per game and total, from the same box-score join), or answer an attempted stat from the made line with the attempts per game computed; a warehouse-verified test on Embiid's career line.
+- **Next step:** `player_stat` is the compiler's now (2026-09-28, plan item 6 step (g)) and the reason is the same, from its season-line presenter (`compose.present._present_player_stat_season_line`, through `templates.players._wanted_stats`): give the season-line reader the attempted columns (per game and total), or answer an attempted stat from the made line with the attempts per game computed; a warehouse-verified test on Embiid's career line.
 - **Source:** ours.
 - **GitHub:** #243
 
@@ -2988,6 +2988,14 @@ those were found.
 - **Source:** ours.
 - **GitHub:** #272
 
+### A "last N games" question naming no season type refuses a calendar or a range of seasons instead of reading it
+- **Found:** 2026-09-28, plan item 6 step (g), giving the team compiler's window sum the both-types read the team log had (`templates.games._team_mixed_games`).
+- **Evidence:** the both-types read ("his/their last 5 games", `season_type_unstated`, both season types merged by date) narrows by an opponent and a venue only: `_team_game_log_mixed` and `_player_game_log_mixed` take neither `since`/`until` nor a calendar `situation`, and dropped them silently before this commit ("knicks last 5 games on tuesdays" listed their last 5 games on any day). `templates.games.team_game_log` and `compose.team._compile_team_games_mixed` refuse the three now ("a window over both season types is read for a plain 'last N games' only"); the player log's mixed read (`compose.present._present_game_log`) is not guarded the same way yet - the parser never sets `season_type_unstated` beside `since` (`router._route_game_log_recent_span`), but a calendar can reach it.
+- **User sees:** a fall-through where the single-type read ("knicks last 5 regular season games on tuesdays") answers.
+- **Next step:** read the calendar and the range in the merged read - `_team_mixed_games` and `_player_game_log_mixed` taking the scope's `situation`/`since`/`until` through the same shared steps (`team_games`, `scoped_games`) the single-type read uses - and guard the player log's mixed read until then; a test per relation.
+- **Source:** ours.
+- **GitHub:** #274
+
 ## P4: tooling, docs, low impact
 
 ### `player_stat` given a `team` slot answers this season and never mentions the team: "lebron stats as a starter for Miami"
@@ -2995,7 +3003,7 @@ those were found.
 - **Evidence:** slots `{'player': 'LeBron James', 'team': 'Miami Heat', 'season_type': 2, 'split': 'starter'}` answered "LeBron James averaged 20.9 points, 6.1 rebounds and 7.2 assists per game in 60 games as a starter in the 2026 regular season." - his Lakers season, with Miami nowhere in the sentence. With no `team` slot the subject stage reads the own team and the span it implies, and the same question answers "... in 294 games with the Miami Heat as a starter over his career (2011-2014 ...)". The parser does not write the own team into `team` (`parse._read_route_names`; the subject stage writes it to `own_team`), so it does not reach this; the router reader did whenever its model filed the team, and it is gone (5.0.0).
 - **Ranked P4 (2026-09-27):** the parser writes a player's own team to `own_team`, never `team` (`subject._apply_own_team`), so no question read today reaches this; only a recorded route carrying `team` beside a player does (golden's router routes).
 - **User sees:** nothing on the parser. A fluent, correct-looking line about a different team's season for any route that carries `team` on `player_stat` - a recorded one, or a reader that files the own team there (step 3c moves the own-team writer into the parser).
-- **Next step:** find why `check_scope` lets `team` through for `player_stat` when the template does not narrow by it - either honor it as the own-team narrowing the subject stage already builds, or refuse it; warehouse-verified test on this question.
+- **Next step:** `player_stat` is the compiler's now (2026-09-28, plan item 6 step (g)) and the same route still answers the Lakers season (re-measured on the main warehouse): `compose.core._apply_team_slot` reads no `team` on a per-game average by design, and `plan._check_relation_scoping` lets the slot through (`COMPILER_SLOTS`) - either honor it as the own-team narrowing the subject stage already builds (`own_team`), or refuse it on that skeleton; warehouse-verified test on this question.
 - **GitHub:** #237
 
 ### Package review leftovers: one fold, one ordinal, one month list, and an untested third of the parent grammar

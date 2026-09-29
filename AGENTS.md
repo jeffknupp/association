@@ -507,7 +507,7 @@ model's. Two things follow, and both matter when you add a shape:
   fall-through. `None` falls through to the agent exactly as before this step
   existed. Nothing in the package may reach ollama - it is a compiler, not a
   smaller agent - and it narrows the relation only through the shared steps in
-  `templates/common.py`, the same discipline the six relation templates keep
+  `templates/common.py`, the same discipline the relation templates keep
   (see "A template on a relation does not declare, or apply, scoping of its
   own" above). Six intents have no template at all
   (`compose.COMPILED_INTENTS`: `threshold_count`, `single_game_high`,
