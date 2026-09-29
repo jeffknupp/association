@@ -35,6 +35,7 @@ from association.query.calendar import parse_alignment, parse_situation
 from association.query.entities import find_teams
 from association.query.player_games import PERIOD_COLUMNS
 from association.query.reading import Reading, Scope
+from association.query.router import _PERIOD_AS_CONDITION
 from association.query.subject import Subject
 from association.query.templates.common import PLAYER_INTENTS, TemplateResult
 
@@ -64,7 +65,7 @@ def unanswerable(con: duckdb.DuckDBPyConnection, reading: Reading, question: str
         # with none is a caller's mistake, said here rather than as an
         # AttributeError inside a check.
         raise ValueError("unanswerable needs the reading's subject - who the question is about, as the parser read it")
-    for check in (_playoff_round, _non_calendar_situation, _period_stat, _team_period_stat, _bench_points, _team_where_a_player_belongs, _team_boolean_count):
+    for check in (_playoff_round, _non_calendar_situation, _period_stat, _period_as_condition, _team_period_stat, _bench_points, _team_where_a_player_belongs, _team_boolean_count):
         message = check(con, reading.intent, reading.scope, question, subject)
         if message is not None:
             return TemplateResult(data={"message": message, "refused": check.__name__.lstrip("_"), "intent": reading.intent}, answer=message)
@@ -185,6 +186,29 @@ def _team_boolean_count(con: duckdb.DuckDBPyConnection, intent: str, scope: Scop
         return None
     label = "triple-doubles" if stat == "triple_double" else "double-doubles"
     return f"A team's total of its players' {label} is not read yet - one player's {label} are (ask '<player> triple doubles this season'), and so is the team's own record. Ask one of those."
+
+
+_PERIOD_WORD = re.compile(r"\b(?:1st|2nd|3rd|4th|first|second|third|fourth)\s+(?:quarter|half)\b|\bq[1-4]\b|\b[1-4]q\b|\b[12]h\b|\b(?:quarter|half)\b", re.IGNORECASE)
+
+
+def _period_as_condition(con: duckdb.DuckDBPyConnection, intent: str, scope: Scope, question: str, subject: Subject) -> str | None:
+    """A quarter or half used as a CONDITION on which games count - "three
+    points made per game after making one three in first quarter"
+    (yardstick-v2 F062) - rather than as the part of each game measured.
+    The parser keeps such a question off the period templates
+    (``router._PERIOD_AS_CONDITION``), since a period read of it would answer
+    his first-quarter threes, fluently and wrongly; nothing reads the
+    condition either (ISSUES.md #275), so the refusal names that instead of
+    handing the question to the agent.
+
+    .. versionadded:: 5.0.0
+    """
+    if not (_PERIOD_AS_CONDITION.search(question) and _PERIOD_WORD.search(question)):
+        return None
+    return (
+        "A quarter or a half is read as the part of each game measured, not as a condition on which games count - "
+        "nothing keeps the games where a period held a line. Ask for the stat in that period, or for it over whole games."
+    )
 
 
 def _team_period_stat(con: duckdb.DuckDBPyConnection, intent: str, scope: Scope, question: str, subject: Subject) -> str | None:

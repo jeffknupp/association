@@ -2968,20 +2968,22 @@ those were found.
 - **Source:** ours.
 - **GitHub:** #274
 
-### A period used as a condition on the games falls through
+### A period used as a condition on the games is refused, not read
 - **Found:** 2026-09-29, period relation (plan item 4)
 - **Evidence:** "vj edgecombe three points made per game after making one
   three in first quarter" (yardstick-v2 F062) asks his WHOLE-game threes over
   the games whose first quarter held one (the key: 31 games, 2.52 a game).
   Once `period_split` read any stat, it answered his first-quarter threes
   (45 over 75 games) - measured offline, a wrong answer delivered fluently.
-  `router._PERIOD_AS_CONDITION` now routes the wording to `other`.
-- **User sees:** a fall-through where a condition-on-a-period question is
-  asked; before the guard, a wrong answer.
+  `router._PERIOD_AS_CONDITION` now routes the wording to `other`, and
+  `refusals._period_as_condition` names the cause (2026-09-29).
+- **User sees:** a refusal naming the gap where a condition-on-a-period
+  question is asked; before the guard, a wrong answer.
 - **Next step:** a period CONDITION on the relation - a `Condition`-like
   clause "his period line in this game met X" (an EXISTS over the period
   line), with the measure read over the whole game; the relation already has
   both halves.
+- **GitHub:** #275
 
 ### The empty-box rebuild counts turnovers and fouls by the older rules
 - **Found:** 2026-09-29, period relation (plan item 4)
@@ -3003,6 +3005,7 @@ those were found.
   `data load --tables player_box_stats` (the views are built at load time).
 - **Source:** DATA.md, "A play's type does not always say what the box score
   counts it as"
+- **GitHub:** #276
 
 ## P4: tooling, docs, low impact
 

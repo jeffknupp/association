@@ -24,11 +24,11 @@ Two properties are not negotiable on the way there:
   a follow-up wording reaches the alternative.** (Jeff, 2026-09-21.) A silent
   default is still the worst failure; a stated one is an answer.
 
-## Where it stands (2026-09-29, `d005d85`)
+## Where it stands (2026-09-29, `621ab51` + the F062 refusal)
 
-**162 of 175 questions (92.6%), 151 of 166 families (91.0%)** on the live
-yardstick run: 3 wrong, 6 partial, 4 fall-throughs, a median of 1.2 seconds
-a question.
+**164 of 175 questions (93.7%), 153 of 166 families (92.2%)** on the live
+yardstick run (parser12, the period relation merged): 2 wrong, 5 partial, 4
+fall-throughs.
 
 The pipeline: a 3B model (qwen2.5:3b) copies the names out of the question
 and picks one stat key (`query/normalizer.py`); the parser reads everything
@@ -42,12 +42,13 @@ question in 23 when last measured. Seven intents are the compiler's alone
 joined them in step (g) (parser9-11, 2026-09-28/29: 162/175, 0 answers
 moved).
 
-The 15 families still failing, by cause:
+The 13 families still failing, by cause:
 
-- **Period data** (plan item 4). "hornets average 1st quarter points player"
-  (F049) answers the team's average, not which player; "nba playerspoints
-  by quarter average" (F048) falls through; "Rudy gobert first half games
-  this season" (F060) gives his season total where the key lists his games.
+- **A period as a condition** (plan item 4, what is left). "vj edgecombe
+  three points made per game after making one three in first quarter"
+  (F062) is refused by name: nothing keeps the games where a period held a
+  line (#275). A team's non-points figure per quarter is measured and not
+  built (#161).
 - **A span or a window the parser does not read.** "... games since
   2000-01" (F161) answers one season; "Most reb by a hawk player history"
   (F125) ranks 2026 alone; "Best NBA record since January 31st 201" (F104)
@@ -91,11 +92,20 @@ The 15 families still failing, by cause:
    questions; `compare_trees.py` the before-and-after) - the recorded
    questions alone found one shape the template still carried, the unit
    tests five.
-2. **The period relation** (item 4). A quarter's or a half's figures beyond
-   points, rebuilt from the plays the way points are, as one relation the
-   compiler reads - a player's or a team's quarter as a narrowing rather
-   than three templates. The largest cluster of what still fails (F048,
-   F049, F060). It does not depend on step 1, so it can run beside it.
+2. **The period relation - the team half** (item 4). The player half is
+   done (2026-09-29, an Opus agent's branch merged at `621ab51`): a quarter
+   or half narrows the player-games relation (`Narrowed.narrow_periods`),
+   its line rebuilt from the shots and the plays (`player_games.period_line_sql`)
+   and validated per season and per column against the box score
+   (`PERIOD_AGREEMENT`, `scripts/check_period_lines.py`: 375/375 cells;
+   from 2007 on every column agrees in 99%+ of player-games but a few
+   seasons carried as caveats, and 2002-2005 assists/steals/blocks are
+   refused under 90%). F048, F049, F060 and F066-F068 answer. What is left:
+   a team's per-quarter figure beyond points (#161, a period narrowing on
+   `TeamNarrowed` summing the players' lines and the team's no-athlete
+   plays), a named player's four-quarter breakdown (#162), shooting
+   percentages in a period, a period as a condition (#275), and
+   `period_leaderboard` narrowed by opponent, venue, date or a range (#185).
 3. **The rest of the pair relation** (item 3). The pair as a compiler
    subject ("most points by curry vs lebron", "how many times did lebron
    score 30 vs kawhi"), and the opponent-side condition ("vs lakers without
@@ -138,7 +148,7 @@ text as written is the last section of `ROADMAP-HISTORY.md`.
    3.** `player_matchup` reads the pair on the relation (2026-09-24); a
    condition `(player, side, predicate)` narrows either relation, with each
    companion's role read off the question (2026-09-26).
-4. **The period relation - not started** (next step 2).
+4. **The period relation - the player half done 2026-09-29** (next step 2 is the team half).
 5. **Conference and division - done 2026-09-25** (`team_alignment`).
 6. **The parser: one Reading, one writer of slots - in progress.** The
    model copies names and picks a stat; the parser writes everything else as

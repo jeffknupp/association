@@ -180,6 +180,19 @@ def test_a_teams_stat_other_than_points_by_period_is_refused(con: duckdb.DuckDBP
     assert unanswerable(con, "team_quarter_points", {"team": "Portland Trail Blazers", "stat": "points", "period": 1}, "blazers 1st quarter points") is None
 
 
+def test_a_period_used_as_a_condition_is_refused_by_name(con: duckdb.DuckDBPyConnection) -> None:
+    """yardstick-v2 F062: "vj edgecombe three points made per game after
+    making one three in first quarter" asks his whole-game threes over the
+    games whose first quarter held one. The parser keeps it off the period
+    templates; this names why it is not answered instead of falling through."""
+    question = "vj edgecombe three points made per game after making one three in first quarter"
+    result = unanswerable(con, "other", {"player": "VJ Edgecombe", "stat": "threePointFieldGoalsMade"}, question)
+    assert result is not None and result.data["refused"] == "period_as_condition" and "condition on which games count" in result.answer
+    # A period that is the part measured is not this refusal.
+    plain = "vj edgecombe 1st quarter assists by game"
+    assert unanswerable(con, "other", {"player": "VJ Edgecombe", "stat": "assists", "period": 1}, plain) is None
+
+
 def test_bench_points_are_refused_as_a_gap_of_ours_not_missing_data(con: duckdb.DuckDBPyConnection) -> None:
     """yardstick-v2 F106: the box score flags starters, so bench points are
     derivable - the refusal says nothing reads them yet, never "no data"."""
