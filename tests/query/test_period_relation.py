@@ -87,6 +87,12 @@ def con() -> Iterator[duckdb.DuckDBPyConnection]:
         # A foul's second id is the man who drew it, and is never credited.
         ("g1", 1, "5", "5,1", "Personal Foul", "X personal foul (Player One draws the foul)"),
         ("g2", 3, "1", "1", "Defensive Rebound", "Player One defensive rebound"),
+        # 2018 types 436 real turnovers "No Turnover" and 89 blocking fouls
+        # "Not Available"; the text says what they are. A "no turnover" text
+        # is the overturned call the type names, and is not counted.
+        ("g2", 3, "1", "1", "No Turnover", "Player One turnover"),
+        ("g2", 3, "1", "1", "No Turnover", "Player One  no turnover X"),
+        ("g2", 3, "1", "1", "Not Available", "Player One personal blocking foul"),
     ]
     for event, period, athlete, parts, kind, text in plays:
         c.execute("INSERT INTO plays VALUES (?, ?, 2, ?, ?, ?, ?, ?)", [event, SEASON, period, athlete, parts, kind, text])
@@ -117,6 +123,11 @@ def test_a_quarters_line_counts_each_play_by_its_measured_rule(con: duckdb.DuckD
 
 def test_a_foul_the_type_does_not_name_is_counted_and_a_technical_is_not(con: duckdb.DuckDBPyConnection) -> None:
     assert _line(con, (2,))["fouls"] == 2, "a shooting block and a charge; not the technical, not the overturned call"
+
+
+def test_a_turnover_or_foul_the_type_mislabels_is_read_from_its_text(con: duckdb.DuckDBPyConnection) -> None:
+    line = _line(con, (3,), "g2")
+    assert (line["turnovers"], line["fouls"]) == (1, 1), "the 'No Turnover' that says turnover, the 'Not Available' blocking foul"
 
 
 def test_a_half_is_its_two_quarters_and_every_period_includes_overtime(con: duckdb.DuckDBPyConnection) -> None:

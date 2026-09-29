@@ -1159,7 +1159,7 @@ measured. Count foul-outs from the box score.
 ### A play's type does not always say what the box score counts it as
 
 - **What ESPN does:** types some plays in words a box score column does not
-  use, and splits one event into two plays. Four shapes matter to anything
+  use, and splits one event into two plays. Five shapes matter to anything
   that rebuilds a line from `plays`:
   - `Traveling` is a turnover whose type does not say "turnover" (the other
     turnover types do): of the 1,289 2026 player-games one turnover short of
@@ -1171,6 +1171,12 @@ measured. Count foul-outs from the box score.
   - An offensive foul is two plays, `Offensive Foul` and `Offensive Foul
     Turnover`: the first is the foul, the second the turnover, and counting
     both as fouls double-counts.
+  - A play's type can say the opposite of what happened, and its text is
+    then right: 2018 types 436 real turnovers `No Turnover` ("Andre Drummond
+    turnover"; 104 more in 2019, 54 in 2020), beside the 23 plays in
+    2013-2017 whose text really is "Tyler Zeller no turnover Ray Allen" (an
+    overturned call), and types 89 fouls `Not Available` ("Isaiah Taylor
+    personal blocking foul"), every one of that type in 2018.
   - Before 2006 a play's second participant - the assister, the stealer, the
     blocker - is mostly absent: summed over a game, rebuilt assists equal the
     box score in about 31% of 2002-2005 player-games, steals about 51%,
