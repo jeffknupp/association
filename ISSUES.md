@@ -2873,7 +2873,7 @@ those were found.
   counts it as"
 - **GitHub:** #276
 
-### A team named as its own opponent falls through
+### A team named as its own opponent is refused with no reason given
 - **Found:** 2026-09-29, period relation's team half
 - **Evidence:** "celtics 2nd half turnovers vs boston" reads as
   `team_quarter_points` with team "celtics" and opponent "Boston Celtics"
@@ -2882,12 +2882,13 @@ those were found.
   its own opponent")`, `compose.team.run_team` turns the same raise into
   `Unsupported`, and the question leaves the fast path with nothing said about
   why. Every team template reaches the same raise.
-- **User sees:** a fall-through (a refusal naming the compiler's reason once
-  the fall-through agent is gone) for a question whose real problem is that it
-  names one team twice - or, likelier, meant a different opponent.
+- **User sees:** a refusal naming only the compiler's reason ("a team cannot
+  be its own opponent") for a question whose real problem is that it names
+  one team twice - or, likelier, meant a different opponent.
 - **Next step:** return a `TemplateResult` from `team_games` naming it ("the
   Boston Celtics are named as both the team and its opponent - name the team
   they played"), with a test per team template.
+- **GitHub:** #277
 
 ### 2013 and 2016 period lines could read the made shots the plays mistype
 - **Found:** 2026-09-29, period relation's team half
@@ -2905,6 +2906,7 @@ those were found.
   `period_line_sql`'s shots, checked by both checkers.
 - **Source:** DATA.md, "A team's play-by-play does not add up to its box
   score in six seasons"
+- **GitHub:** #278
 
 ## P4: tooling, docs, low impact
 
@@ -2921,6 +2923,7 @@ those were found.
   `team_box_repair` (a `data load --tables team_box_stats`), and say so in
   its module docstring.
 - **Source:** DATA.md, "2018's `teamTurnovers` is not the game's own"
+- **GitHub:** #279
 
 ### `player_stat` given a `team` slot answers this season and never mentions the team: "lebron stats as a starter for Miami"
 - **Found:** 2026-09-27, the step (c) rehearsal (the whole agent with the parser as reader and the normalizer's recorded replies, `~/association-research/yardstick-v2/run_offline_parser.py`), on an intermediate parser that wrote the player's own team into `team`.
