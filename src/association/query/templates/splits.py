@@ -53,7 +53,6 @@ from .common import (
     _BOX_SCORES,
     STAT_LABELS,
     THRESHOLD_STAT_COLUMNS,
-    MeasureFilter,
     TemplateContext,
     TemplateResult,
     TemplateUnsupported,
@@ -364,74 +363,38 @@ def _team_season_range(con: duckdb.DuckDBPyConnection, base: str, params: Params
     return (int(row[0]), row[1], row[2]) if row else (0, None, None)
 
 
-def player_splits(ctx: TemplateContext, reading: Reading) -> TemplateResult:
-    """A player's per-game averages divided by one condition of the game:
-    home or away, starting or off the bench, won or lost, or the month.
-
-    With no ``split``, all four come back as one table rather than a guess at
-    which was meant: the router reads the split from the question's words
-    (``router.SPLIT_WORDS``) and leaves it unset when they name none or
-    several. A team works too ("76ers wins vs losses") with the team's own
-    per-game line, except that a team has no starter/bench split of its own,
-    which is refused rather than answered with something else.
-
-    A named ``team`` narrows a player's games to that team ("westbrook stats as
-    a starter for kings"), since a traded player's splits are otherwise a mix
-    of two rosters. A named ``venue`` and/or ``opponent`` narrow them further -
-    "Duren away vs Denver" - the same filters ``team_record`` already applies
-    to a team. Only games he played count, and months are the US Eastern date
-    the game was played on - see :mod:`association.query.conditions`.
-
-    .. versionadded:: 2.1.0
-
-    .. versionchanged:: 4.3.0
-       Honors ``venue`` and ``opponent``, narrowing the games either subject's
-       splits are computed over rather than falling through.
-
-    .. versionchanged:: 4.4.0
-       Settles a named player's games through :func:`common.condition_player`
-       (step 3, C2), which is what makes ``without``, one game of each playoff
-       series (``game_n``), a range or ordinal season (``since``/``season_n``)
-       and a line on a box-score column (``below``/``above``) reach his games
-       rather than being silently dropped by a stripped copy of the slots. A
-       named half of the starter/bench split (``split`` as ``"starter"`` or
-       ``"bench"``) now narrows the games the same way, while the CATEGORY
-       shown stays the one it always was - both groups side by side, folded
-       back from the half the question named.
-
-    .. versionchanged:: 5.0.0
-       A team with no player named honors ``until`` too, bounding a since
-       range's other end ("splits from 2019-20 to 2021-22") rather than
-       reading every season since - and refuses a ``conditions`` entry by
-       name (it needs a settled player to check a role against) instead of
-       silently answering the team's whole span as though none had been
-       named (ISSUES.md).
-    """
-    scope = reading.scope
-    con = ctx.con
-    split = scope.split
+def _player_splits_refusals(scope: Scope) -> None:
+    """What no splits answer honors, refused before any name is resolved: a
+    window of recent games, and a home/away split beside a venue already
+    narrowed to one."""
     if scope.limit is not None and scope.limit > 1:
         # This divides a whole span into groups; it has no notion of "his last
         # N games" the way game_log does, and answering the whole span under
         # that framing would be the exact silent substitution check_scope
         # exists to stop - "Pat Spencer st home last four games" would answer
-        # his entire 35-game home season instead. `limit` is not a scoping
-        # slot check_scope reads (nothing else needs it to refuse), so it is
-        # checked here. A bare 1 is left alone: router.py already treats it as
-        # noise for the same reason elsewhere (_route_side_and_order drops a
-        # limit of 1 once its `order` is dropped), and here it never changes
-        # the answer - the games a venue/opponent narrows to are shown in
-        # full either way, so a real "last one" and the router's filler 1
-        # produce the same table.
+        # his entire 35-game home season instead. A bare 1 is the router's
+        # filler and never changes the answer.
         raise TemplateUnsupported("player_splits has no notion of a limited number of recent games")
-    venue = scope.venue
-    if split == "home_away" and venue is not None:
+    if scope.split == "home_away" and scope.venue is not None:
         # Breaking games out by home/away while also narrowing to one of the
         # two asks the same axis twice; the narrowing wins rather than showing
         # one real row beside an empty one.
         raise TemplateUnsupported("a home/away split conflicts with a venue already narrowed to one")
-    # Refused here, before any name is resolved, if a line names no column -
-    # the same discipline player_stat's own measures follow.
+
+
+def team_splits(con: duckdb.DuckDBPyConnection, scope: Scope) -> TemplateResult:
+    """A team's own splits ("76ers wins vs losses"), the team half of
+    ``player_splits``: the team's per-game line by venue, by result or by
+    month, over the team-games relation (:func:`_player_splits_team`) - said
+    for the compiler by :func:`~association.query.compose.present.present_team`
+    in the template's own words. A team has no starter/bench split of its
+    own, and the narrowings only a settled player's games take (a line on a
+    box-score column, a game of a series, an ordinal season, a teammate's
+    absence or role) are refused by name rather than silently ignored.
+
+    .. versionadded:: 5.0.0
+    """
+    _player_splits_refusals(scope)
     measures = measure_filters(scope.below, scope.above)
     team = _optional_team(con, scope.team, season=scope.season)
     if isinstance(team, TemplateResult):
@@ -439,31 +402,27 @@ def player_splits(ctx: TemplateContext, reading: Reading) -> TemplateResult:
     opponent = _optional_team(con, scope.opponent, season=scope.season)
     if isinstance(opponent, TemplateResult):
         return opponent
-
-    if scope.player and scope.player.strip():
-        found = _player_splits_player(con, scope, team, venue, opponent, measures)
-    else:
-        if team is None:
-            raise TemplateUnsupported("player_splits needs a player or a team")
-        if measures or scope.game_n or scope.season_n or scope.without or scope.conditions:
-            # A team's own splits read the team tables directly, not the
-            # player-games relation these narrow - so a line on a box-score
-            # column, a playoff-series game, an ordinal season or a
-            # teammate's absence (or role: started, bench, reached a line)
-            # have nowhere to apply (ISSUES.md: "76ers splits without Embiid"
-            # answered his team's whole 82-game season, identical to the same
-            # call with no `without` at all - a silent narrowing check_scope
-            # exists to stop, missed here only because the slot IS declared
-            # honored, by the other subject the intent can have). Refused by
-            # name rather than silently ignored, the same way a starter/bench
-            # split is refused for a team just below - a real fix teaches
-            # `_player_splits_team` the same teammate-absence filter
-            # `with_without` already has.
-            raise TemplateUnsupported("player_splits cannot honor below/above, game_n, season_n, without or conditions for a team with no player named")
-        found = _player_splits_team(con, scope, team, split, opponent)
+    if team is None:
+        raise TemplateUnsupported("player_splits needs a player or a team")
+    if measures or scope.game_n or scope.season_n or scope.without or scope.conditions:
+        # A team's own splits read the team tables directly, not the
+        # player-games relation these narrow - so a line on a box-score
+        # column, a playoff-series game, an ordinal season or a
+        # teammate's absence (or role: started, bench, reached a line)
+        # have nowhere to apply (ISSUES.md: "76ers splits without Embiid"
+        # answered his team's whole 82-game season, identical to the same
+        # call with no `without` at all - a silent narrowing check_scope
+        # exists to stop, missed here only because the slot IS declared
+        # honored, by the other subject the intent can have). Refused by
+        # name rather than silently ignored, the same way a starter/bench
+        # split is refused for a team just below - a real fix teaches
+        # `_player_splits_team` the same teammate-absence filter
+        # `with_without` already has.
+        raise TemplateUnsupported("player_splits cannot honor below/above, game_n, season_n, without or conditions for a team with no player named")
+    found = _player_splits_team(con, scope, team, scope.split, opponent)
     if isinstance(found, TemplateResult):
         return found
-    return _player_splits_answer(con, found, split)
+    return _player_splits_answer(con, found, scope.split)
 
 
 #: The two halves `route()` narrows ``starter_bench`` to when the question names
@@ -529,45 +488,19 @@ class _SplitSubject:
     caveat: str
 
 
-def _player_splits_player(
-    con: duckdb.DuckDBPyConnection, scope: Scope, team: Entity | None, venue: str | None, opponent: Entity | None, measures: list[MeasureFilter]
+def _player_splits_from(
+    con: duckdb.DuckDBPyConnection, scope: Scope, player: Entity, narrowed: Narrowed, covered: _Scope, team: Entity | None, venue: str | None, opponent: Entity | None
 ) -> _SplitSubject | TemplateResult:
-    """A named player's own games, optionally narrowed to one team, one venue and/or one opponent.
+    """A player's splits over ``narrowed`` - his games already settled and
+    narrowed by the shared steps, whichever caller settled them: the
+    template (:func:`_player_splits_player`, through ``condition_player``) or
+    the compiler's presenter (``compose.present._present_player_splits``,
+    through ``compile_query``). The rows as the relation renders them
+    (``games_subquery``), the totals, the label and the caveats (#228).
 
-    .. versionchanged:: 4.4.0
-       Settles the player and narrows his games through the shared steps
-       (``condition_player``), reading the rows as the relation
-       renders them (``games_subquery``); the split itself is unchanged.
-
-    .. versionchanged:: 4.4.0
-       Forwards ``without``, ``split`` (its named half only - see
-       :data:`_STARTER_BENCH_SIDES`), ``game_n``, ``since`` and ``measures``
-       to :func:`common.condition_player` rather than a copy of ``slots``
-       stripped of the first two - previously "without Embiid" and "as a
-       starter" reached the template and were silently dropped before the
-       relation ever saw them.
+    .. versionadded:: 5.0.0
     """
-    # Checked before any name is resolved, the same discipline player_stat's
-    # own measures follow: a stat this cannot show is a fact about the
-    # question, not about which player it names.
     line = _player_splits_line(scope.stat, _PLAYER_LINE, alias="p")
-    # `since` narrows this player's OWN scope the same way it narrows the
-    # relation inside condition_player (below) - both read the question's
-    # `since` independently, so the label `covered` renders and the rows the
-    # relation returns agree on which seasons are in view.
-    covered = _condition_scope(scope.season, scope.span, scope.season_type, _PLAYER_GAME_TABLES, since=scope.since)
-    # The opponent was resolved above (a clarification about it comes before
-    # one about the player, as it always did), and goes beside the scope as
-    # that team rather than being resolved a second time - the scope's own
-    # text is left out, so a blank one the resolution above read as nobody
-    # narrows nothing here either. `without` and `split` reach the relation
-    # as the question gave them - a named half of `split` (STARTER_SIDES)
-    # narrows the games in `_narrow_player_games` while the bare category it
-    # was validated against above is what `_player_splits_answer` still shows.
-    found = condition_player(con, replace(scope, opponent=None), "player_splits needs a player", covered, team=team, measures=measures, opponent=opponent)
-    if isinstance(found, TemplateResult):
-        return found
-    player, narrowed = found
     base, base_params = games_subquery(narrowed, box_source(con))
     games, first, last = _totals(con, base, base_params)
     if not games:

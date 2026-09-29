@@ -400,7 +400,7 @@ HONORED_SCOPING: dict[str, frozenset[str]] = {
     # are filters on the same box-score rows `team` already narrows - a home
     # or road split for a player is answerable the same way a team's already
     # is (see team_record below).
-    "player_splits": _relation_scoping("player_splits"),
+    # player_splits is the compiler's too (step (g)): compose.present.STATED_SCOPING.
     # `opponent` narrows BOTH rows of the split to one opponent's games, and
     # the title says so - "Embiid career record vs boston" is his record in the
     # games his team played Boston, not overall (#163).

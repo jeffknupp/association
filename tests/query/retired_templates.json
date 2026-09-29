@@ -1,5 +1,5 @@
 {
- "about": "The retired templates' own answers to the compiler parity cases in tests/query/test_compose.py, frozen from their last commit when they retired: the four compiler-first templates from 4b3aff9 (ROADMAP plan item 6, step (d), part 4), and game_log and player_stat from 3b5fdd6 (step (g)). Each expected answer is JSON text with the fixture's seasons as placeholders - {S} the current season, {S-1} and {S-2} the two before it, {S-1}-{s} and {S-2}-{s-1} their labels - since the fixture is built around current_season().",
+ "about": "The retired templates' own answers to the compiler parity cases in tests/query/test_compose.py, frozen from their last commit when they retired: the four compiler-first templates from 4b3aff9 (ROADMAP plan item 6, step (d), part 4), game_log and player_stat from 3b5fdd6, and player_splits from 882e830 (step (g)). Each expected answer is JSON text with the fixture's seasons as placeholders - {S} the current season, {S-1} and {S-2} the two before it, {S-1}-{s} and {S-2}-{s-1} their labels - since the fixture is built around current_season().",
  "cases": [
   {
    "intent": "threshold_count",
@@ -191,6 +191,25 @@
    },
    "question": "podziemski's stats vs boston",
    "expected": "{\"answer\": \"Brandin Podziemski averaged 15 points, 4 rebounds and 2.5 assists per game in 2 games vs the Boston Celtics in the {S} regular season.\\nAll 2 meetings:\\n  {S}-03-01  vs BOS  W  10 PTS, 3 REB, 2 AST\\n  {S-1}-11-01  @ BOS  W  20 PTS, 5 REB, 3 AST\", \"data\": {\"date\": null, \"labels\": {\"assists\": \"assists total\", \"avgAssists\": \"assists per game\", \"avgPoints\": \"points per game\", \"avgRebounds\": \"rebounds per game\", \"points\": \"points total\"}, \"measures\": [], \"opponent\": \"Boston Celtics\", \"player\": \"Brandin Podziemski\", \"recent\": [{\"assists\": 2, \"date\": \"{S}-03-01\", \"home_away\": \"home\", \"opponent\": \"BOS\", \"points\": 10, \"rebounds\": 3, \"result\": \"W\", \"season\": {S}}, {\"assists\": 3, \"date\": \"{S-1}-11-01\", \"home_away\": \"away\", \"opponent\": \"BOS\", \"points\": 20, \"rebounds\": 5, \"result\": \"W\", \"season\": {S}}], \"season\": {S}, \"seasons\": [{S}, {S}], \"series_game\": null, \"span\": null, \"started\": null, \"stats\": {\"assists\": 5, \"avgAssists\": 2.5, \"avgPoints\": 15.0, \"avgRebounds\": 4.0, \"gamesPlayed\": 2, \"points\": 30}, \"venue\": null, \"without\": []}}"
+  },
+  {
+   "intent": "player_splits",
+   "slots": {
+    "player": "Brandin Podziemski",
+    "split": "home_away"
+   },
+   "question": "podziemski home and away splits",
+   "expected": "{\"answer\": \"Brandin Podziemski, home and away, {S} regular season (4 games he played):\\n      G  W-L   MIN   PTS  REB  AST  STL  BLK  TOV  3PM   FG%\\nHome  3  2-1  28.3  17.7  5.7  6.3  1.0  0.0  2.0  0.0  57.8\\nAway  1  1-0  30.0  20.0  5.0  3.0  1.0  0.0  2.0  0.0  50.0\\nPlayed means he appeared in the game, and W-L is his team's record in those games.\", \"data\": {\"games\": 4, \"headline\": \"Brandin Podziemski, home and away, {S} regular season (4 games he played)\", \"measures\": [], \"notes\": [\"Played means he appeared in the game, and W-L is his team's record in those games.\"], \"opponent\": null, \"player\": \"Brandin Podziemski\", \"series_game\": null, \"span\": \"{S} regular season\", \"splits\": {\"home_away\": [{\"assists\": 6.333333333333333, \"blocks\": 0.0, \"fg_pct\": 57.77777777777778, \"games\": 3, \"group\": \"home\", \"losses\": 1, \"minutes\": 28.333333333333332, \"points\": 17.666666666666668, \"rebounds\": 5.666666666666667, \"steals\": 1.0, \"threes\": 0.0, \"turnovers\": 2.0, \"wins\": 2}, {\"assists\": 3.0, \"blocks\": 0.0, \"fg_pct\": 50.0, \"games\": 1, \"group\": \"away\", \"losses\": 0, \"minutes\": 30.0, \"points\": 20.0, \"rebounds\": 5.0, \"steals\": 1.0, \"threes\": 0.0, \"turnovers\": 2.0, \"wins\": 1}]}, \"started\": null, \"team\": null, \"venue\": null, \"without\": []}}"
+  },
+  {
+   "intent": "player_splits",
+   "slots": {
+    "player": "Brandin Podziemski",
+    "split": "wins_losses",
+    "span": "career"
+   },
+   "question": "podziemski's career splits in wins and losses",
+   "expected": "{\"answer\": \"Brandin Podziemski, in wins and losses, {S-1}-{S} regular seasons (6 games he played):\\n        G  W-L   MIN   PTS  REB  AST  STL  BLK  TOV  3PM   FG%\\nWins    4  4-0  29.0  19.0  5.8  5.0  1.0  0.0  2.0  0.0  55.9\\nLosses  2  0-2  26.5  13.5  4.0  4.5  1.0  0.0  2.0  0.0  48.1\\nPlayed means he appeared in the game, and W-L is his team's record in those games.\", \"data\": {\"games\": 6, \"headline\": \"Brandin Podziemski, in wins and losses, {S-1}-{S} regular seasons (6 games he played)\", \"measures\": [], \"notes\": [\"Played means he appeared in the game, and W-L is his team's record in those games.\"], \"opponent\": null, \"player\": \"Brandin Podziemski\", \"series_game\": null, \"span\": \"{S-1}-{S} regular seasons\", \"splits\": {\"wins_losses\": [{\"assists\": 5.0, \"blocks\": 0.0, \"fg_pct\": 55.88235294117647, \"games\": 4, \"group\": \"wins\", \"losses\": 0, \"minutes\": 29.0, \"points\": 19.0, \"rebounds\": 5.75, \"steals\": 1.0, \"threes\": 0.0, \"turnovers\": 2.0, \"wins\": 4}, {\"assists\": 4.5, \"blocks\": 0.0, \"fg_pct\": 48.148148148148145, \"games\": 2, \"group\": \"losses\", \"losses\": 2, \"minutes\": 26.5, \"points\": 13.5, \"rebounds\": 4.0, \"steals\": 1.0, \"threes\": 0.0, \"turnovers\": 2.0, \"wins\": 0}]}, \"started\": null, \"team\": null, \"venue\": null, \"without\": []}}"
   }
  ]
 }

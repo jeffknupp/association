@@ -74,7 +74,17 @@ from association.query.templates.players import (
     _threshold_count_notes,
     _wanted_stats,
 )
-from association.query.templates.splits import _record_when_answer, _record_when_query, _record_when_team_answer
+from association.query.templates.splits import (
+    _PLAYER_LINE,
+    _player_splits_answer,
+    _player_splits_from,
+    _player_splits_line,
+    _player_splits_refusals,
+    _record_when_answer,
+    _record_when_query,
+    _record_when_team_answer,
+    team_splits,
+)
 
 from .adapt import DEFAULT_GAME_LOG_LIMIT, _to_reading_scope
 from .core import LINE, Query, Refused, Unsupported, compile_query, run
@@ -139,6 +149,40 @@ def _present_game_log(con: duckdb.DuckDBPyConnection, q: Query) -> TemplateResul
             asked=asked,
         )
     return _player_game_log(con, compiled.player, compiled.span, compiled.narrowed, extras, limit=limit, asked=asked, ascending=q.direction == "asc")
+
+
+def _present_player_splits(con: duckdb.DuckDBPyConnection, q: Query) -> TemplateResult | None:
+    """``player_splits``' own table - one split or all four, side by side -
+    over the compiler's settled player and narrowing
+    (``templates.splits._player_splits_from``, #228). The template's own
+    early refusals stand (a window, a home/away split beside a venue); a
+    stat its line has no column for is the compiler's own point, said by
+    its sentence (the fouls by venue the template refused).
+
+    .. versionadded:: 5.0.0
+    """
+    if q.skeleton != "grouped" or q.subject != "player" or q.predicates or q.group not in ("venue", "starter"):
+        return None
+    scope = q.scope
+    _player_splits_refusals(scope)
+    try:
+        _player_splits_line(scope.stat, _PLAYER_LINE, alias="p")
+    except TemplateUnsupported:
+        return None
+    team = _optional_team(con, scope.team, season=scope.season)
+    if isinstance(team, TemplateResult):
+        return team
+    opponent = _optional_team(con, scope.opponent, season=scope.season)
+    if isinstance(opponent, TemplateResult):
+        return opponent
+    covered = _condition_scope(scope.season, scope.span, scope.season_type, _PLAYER_GAME_TABLES, since=scope.since)
+    compiled = compile_query(con, q)
+    if compiled.player is None:
+        return None
+    found = _player_splits_from(con, scope, compiled.player, compiled.narrowed, covered, team, scope.venue, opponent)
+    if isinstance(found, TemplateResult):
+        return found
+    return _player_splits_answer(con, found, scope.split)
 
 
 def _present_record_when(con: duckdb.DuckDBPyConnection, q: Query) -> TemplateResult | None:
@@ -378,6 +422,7 @@ def _present_threshold_count_rows(q: Query, out: dict[str, Any]) -> list[tuple[A
 PRESENTERS: dict[str, Presenter] = {
     "game_log": _present_game_log,
     "player_stat": _present_player_stat,
+    "player_splits": _present_player_splits,
     "single_game_high": _present_single_game_high,
     "threshold_count": _present_threshold_count,
     "record_when": _present_record_when,
@@ -397,6 +442,9 @@ STATED_SCOPING: dict[str, frozenset[str]] = {
     # (`_player_stat_reads_box_scores`, `_player_relation_season_type`).
     "game_log": _relation_scoping("game_log", "season_type_unstated"),
     "player_stat": _relation_scoping("player_stat", "season_type_unstated"),
+    # player_splits' words: the relation's set less a date and a window
+    # (RELATION_SCOPING_EXCLUDED: one game has nothing to split).
+    "player_splits": _relation_scoping("player_splits"),
     # The retired templates' words, as they stated their narrowings when they
     # retired (ROADMAP plan item 6, step (d), part 4).
     "record_when": _relation_scoping("record_when"),
@@ -470,6 +518,23 @@ def _present_team_game_log(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> Temp
         raise Unsupported(f"relation: {exc}") from exc
 
 
+def _present_team_splits(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> TemplateResult | None:
+    """A team's own splits (``templates.splits.team_splits``, the retired
+    template's team half) behind the checks the template ran behind.
+
+    .. versionadded:: 5.0.0
+    """
+    if unhonored_scoping("player_splits", q.scope, STATED_SCOPING["player_splits"]):
+        return None
+    refused = check_coverage("player_splits", q.scope)
+    if refused is not None:
+        raise Refused(TemplateResult(data={"message": refused, "season": q.scope.season}, answer=refused))
+    try:
+        return team_splits(con, q.scope)
+    except TemplateUnsupported as exc:
+        raise Unsupported(f"relation: {exc}") from exc
+
+
 def present_team(con: duckdb.DuckDBPyConnection, intent: str, q: TeamQuery) -> TemplateResult | None:
     """A team subject's point said the way its intent's template says it -
     two: a team's game log (``game_log``'s retired team half,
@@ -486,6 +551,8 @@ def present_team(con: duckdb.DuckDBPyConnection, intent: str, q: TeamQuery) -> T
     """
     if intent == "game_log" and q.shape == "rows":
         return _present_team_game_log(con, q)
+    if intent == "player_splits" and q.shape == "grouped":
+        return _present_team_splits(con, q)
     if intent != "record_when" or q.scope.threshold is None:
         return None
     if unhonored_scoping(intent, q.scope, STATED_SCOPING[intent]):

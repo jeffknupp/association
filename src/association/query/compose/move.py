@@ -791,6 +791,21 @@ def team_log_point(scope: Scope, subject: Subject) -> Reading | None:
     )
 
 
+def team_splits_point(scope: Scope, subject: Subject) -> Reading | None:
+    """A ``player_splits`` question about a team and no player - "76ers wins
+    vs losses" - as the team's own splits: a ``grouped`` point on the team
+    relation (:func:`~association.query.compose.present.present_team` says
+    it in the retired template's words, ``templates.splits.team_splits``).
+    The team is read as :func:`team_log_point` reads it.
+
+    .. versionadded:: 5.0.0
+    """
+    log = team_log_point(scope, subject)
+    if log is None:
+        return None
+    return Reading(scope=log.scope, shape="grouped", measures=["points"], aggregate="record", group="venue", predicates=[], relation="team")
+
+
 def team_read_point(con: duckdb.DuckDBPyConnection, scope: Scope, question: str, subject: Subject) -> Reading | None:
     """Whether ``question``/``scope`` name a team as the grammatical
     SUBJECT - no player, a team identifiable (the router's own ``team`` slot,
@@ -925,6 +940,10 @@ def _read_point(con: duckdb.DuckDBPyConnection, intent: str, scope: Scope, quest
         team_log = team_log_point(scope, subject)
         if team_log is not None:
             return team_log
+    if intent == "player_splits":
+        team_splits = team_splits_point(scope, subject)
+        if team_splits is not None:
+            return team_splits
     if not _named_player_in(scope):
         team_reading = team_read_point(con, scope, question, subject)
         if team_reading is not None:

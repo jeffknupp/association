@@ -172,9 +172,10 @@ class TeamQuery:
     #: ``"total"`` (the only aggregate this module computes today) or
     #: ``"record"`` (wins/losses, over the narrowed or season games).
     aggregate: str = "total"
-    #: ``"scalar"`` (a sum, this module's own readers) or ``"rows"`` (the
-    #: team's games listed - ``game_log``'s team half, said by
-    #: :func:`~association.query.compose.present.present_team`).
+    #: ``"scalar"`` (a sum, this module's own readers), ``"rows"`` (the
+    #: team's games listed - ``game_log``'s team half) or ``"grouped"`` (its
+    #: splits - ``player_splits``' team half), the last two said by
+    #: :func:`~association.query.compose.present.present_team`.
     shape: str = "scalar"
 
 
@@ -470,11 +471,11 @@ def run_team(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> TeamResult:
     """
     if q.scope.threshold is not None:
         raise Unsupported("a threshold names a record above and below a line, not a total - this module has no reader for one")
-    if q.shape == "rows":
-        # The team's games listed are the log presenter's
-        # (compose.present.present_team); reaching here means a narrowing its
-        # words do not state, which no sum here answers either.
-        raise Unsupported("a team's log narrowed beyond its own words has no reader")
+    if q.shape in ("rows", "grouped"):
+        # The team's games listed, or split, are the presenters'
+        # (compose.present.present_team); reaching here means a narrowing
+        # their words do not state, which no sum here answers either.
+        raise Unsupported("a team's log or splits narrowed beyond their own words has no reader")
     refusal = team_coverage_refusal(q)
     if refusal is not None:
         raise Refused(refusal)

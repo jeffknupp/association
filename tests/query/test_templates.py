@@ -15,7 +15,7 @@ from association.nba.season import eastern_date as _eastern_date_of
 from association.query import shotchart
 from association.query.compose import answer as compose_answer
 from association.query.compose.core import Unsupported
-from association.query.compose.present import STATED_SCOPING, _present_game_log, _present_player_stat, _present_player_stat_season_line
+from association.query.compose.present import STATED_SCOPING, _present_game_log, _present_player_splits, _present_player_stat, _present_player_stat_season_line
 from association.query.compose.team import TeamQuery, run_team
 from association.query.entities import MAX_CANDIDATES, Availability, Entity, collect_name_readings, resolve_player
 from association.query.metrics import LEADERBOARD_METRICS, PER_GAME_MIN_GAMES, PER_GAME_MIN_POSTSEASON_GAMES
@@ -65,6 +65,7 @@ def _compiled(intent: str) -> Callable[[TemplateContext, Reading], TemplateResul
 
 game_log = _compiled("game_log")
 player_history = _compiled("player_history")
+player_splits = _compiled("player_splits")
 player_stat = _compiled("player_stat")
 single_game_high = _compiled("single_game_high")
 threshold_count = _compiled("threshold_count")
@@ -5676,13 +5677,14 @@ def test_templates_on_the_relation_do_not_narrow_it_themselves() -> None:
         "tg.side = ?",
         "tg.eastern_date = ?",
     )
-    from association.query.templates.splits import _record_when_answer, _record_when_query, _record_when_team_answer
+    from association.query.templates.splits import _player_splits_from, _player_splits_team, _record_when_answer, _record_when_query, _record_when_team_answer, team_splits
 
-    readers: dict[str, list[Callable[..., Any]]] = {intent: [TEMPLATES[intent]] for intent in ("period_split", "player_splits", "streak")}
-    # record_when's, game_log's and player_stat's templates are retired
-    # (compose.COMPILED_INTENTS); the readers the compiler answers them with
-    # still read the relation, walked the same way.
+    readers: dict[str, list[Callable[..., Any]]] = {intent: [TEMPLATES[intent]] for intent in ("period_split", "streak")}
+    # record_when's, game_log's, player_stat's and player_splits' templates
+    # are retired (compose.COMPILED_INTENTS); the readers the compiler
+    # answers them with still read the relation, walked the same way.
     readers["record_when"] = [_record_when_query, _record_when_answer, _record_when_team_answer]
+    readers["player_splits"] = [_present_player_splits, _player_splits_from, _player_splits_team, team_splits]
     readers["game_log"] = [team_game_log, _present_game_log, _player_game_log, _player_game_log_mixed]
     readers["player_stat"] = [_present_player_stat, _present_player_stat_season_line, _box_score_player_stat, _player_stat_season_line, _player_stat_season_line_subject]
     for intent, functions in readers.items():

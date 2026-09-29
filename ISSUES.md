@@ -3029,27 +3029,6 @@ those were found.
 - **Source:** ours.
 - **GitHub:** #234
 
-### player_splits has no reader over a settled narrowing
-- **Found:** 2026-09-25, plan item 2 step 2a (`query/compose/present.py`);
-  rewritten 2026-09-26 when the season line became the compiler's second
-  source, and 2026-09-27 when `single_game_high` and `threshold_count`
-  retired (plan item 6, step (d), part 4): their orchestration, restated in
-  `compose.present` beside the templates, now lives there alone.
-- **Evidence:** `compose.present` says an intent's own point in its
-  template's words by calling the template's helpers. `player_splits` has no
-  function over an already-settled narrowing: `_player_splits_player`
-  resolves the player itself (`condition_player`), so reaching parity means
-  copying its tail (`games_subquery`, `_totals`, `_SplitSubject`); it is 0/5
-  on the recorded corpus (`parity.py`, 2026-09-26, the `subject-kinds` tree,
-  the main warehouse).
-- **User sees:** nothing today - the template answers its own point.
-- **Next step:** give `player_splits` a `_player_splits_from(con, player,
-  narrowed, scope, ...)` both it and `present.py` call - the shape
-  `_player_history_subject`/`_player_history_read` took - before it can
-  retire the way the four compiled intents did.
-- **Source:** ours, not ESPN's.
-- **GitHub:** #228
-
 ### `team_alignment` is not declared in every `TEMPLATE_SOURCES` tuple that can now read it
 - **Found:** 2026-09-24, landing the K3-2 conference/division narrowing.
 - **Evidence:** `situation` reaching `Narrowed.narrow_alignment`/

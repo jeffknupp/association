@@ -217,7 +217,11 @@ class Scope:
             raise ScopeError(f"no scope field for slot(s) {unknown}")
         values: dict[str, Any] = {}
         for name, raw in slots.items():
-            if raw is None or raw is False or (isinstance(raw, (str, list, tuple)) and not raw):
+            # A blank string is the slot absent too: the model files " " for
+            # an opponent it has none of, and every template read it as
+            # nobody (`_optional_team`), where the relation's resolver read
+            # it as a team named nothing and refused.
+            if raw is None or raw is False or (isinstance(raw, (str, list, tuple)) and not raw) or (isinstance(raw, str) and not raw.strip()):
                 continue
             values[name] = _CHECKS[name](name, raw)
         return cls(**values)

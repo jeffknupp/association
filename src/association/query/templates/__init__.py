@@ -10,7 +10,7 @@ a recognized intent whose slots don't validate - falls through to the agent
 untouched.
 
 The templates live in one module per subject; this package holds the registry,
-:data:`TEMPLATES`, and re-exports what callers outside it use. Six intents
+:data:`TEMPLATES`, and re-exports what callers outside it use. Seven intents
 have no template here: the compiler answers them alone, in their retired
 templates' words (:data:`association.query.compose.COMPILED_INTENTS`).
 
@@ -39,7 +39,7 @@ from .games import head_to_head, period_leaderboard, period_split, player_matchu
 from .netpoints import fingerprint, player_netpoints
 from .players import leaderboard, player_compare
 from .shots import shot_chart, shot_distance
-from .splits import player_splits, streak, with_without
+from .splits import streak, with_without
 from .teams import coach, team_leaderboard, team_outlook, team_record, team_stat
 
 TEMPLATES: dict[str, Callable[[TemplateContext, Reading], TemplateResult]] = {
@@ -54,7 +54,6 @@ TEMPLATES: dict[str, Callable[[TemplateContext, Reading], TemplateResult]] = {
     "shot_distance": shot_distance,
     "player_netpoints": player_netpoints,
     "fingerprint": fingerprint,
-    "player_splits": player_splits,
     "with_without": with_without,
     "player_matchup": player_matchup,
     "streak": streak,

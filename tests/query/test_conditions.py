@@ -23,6 +23,7 @@ from typing import Any
 
 import duckdb
 import pytest
+from test_templates import player_splits  # the compiler's, player_splits' template retired (compose.COMPILED_INTENTS)
 
 from association.fetch.repairs import real_games
 from association.fetch.repairs.reconstructed_box import _FILLED_COLUMNS as FILLED_COLUMNS
@@ -35,7 +36,7 @@ from association.query.reading import Reading, Scope
 from association.query.subject import Subject
 from association.query.templates.common import REBUILT_STATS, TemplateContext, TemplateResult, TemplateUnsupported, check_coverage, unhonored_scoping
 from association.query.templates.games import player_matchup
-from association.query.templates.splits import SPLIT_KINDS, _record_when_group, player_splits, streak, with_without
+from association.query.templates.splits import SPLIT_KINDS, _record_when_group, streak, with_without
 
 
 def _compiled(intent: str) -> Callable[[TemplateContext, Reading], TemplateResult]:
@@ -531,8 +532,11 @@ def test_player_splits_refuses_a_stat_it_has_no_column_for(league: TemplateConte
     in SPLIT_EXTRA_STATS is refused by name rather than silently answered
     without it - and a team subject, which has no per-player rate column at
     all, refuses the same stat a player subject can show."""
-    with pytest.raises(TemplateUnsupported, match="fouls"):
-        player_splits(league, Reading.from_slots(_slots(player="Jayson Tatum", stat="fouls", split="home_away")))
+    # A player's fouls by venue are the compiler's own point now (5.0.0): the
+    # splits table has no column for them, and the compiler's sentence shows
+    # the stat by group instead of refusing it.
+    shown = player_splits(league, Reading.from_slots(_slots(player="Jayson Tatum", stat="fouls", split="home_away")))
+    assert "by venue (fouls" in shown.answer and {r["group"] for r in shown.data["rows"]} == {"home", "away"}
     with pytest.raises(TemplateUnsupported, match="usage_pct"):
         player_splits(league, Reading.from_slots(_slots(team="Boston Celtics", stat="usage_pct", split="wins_losses")))
 

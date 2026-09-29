@@ -534,8 +534,8 @@ class Agent:
     def _run_compiled(self, question: str, reading: Reading, history: RunHistory) -> tuple[str, TemplateResult] | None:
         """An intent the compiler alone answers (``compose.COMPILED_INTENTS``:
         the four whose templates it reproduced exactly, retired in ROADMAP
-        plan item 6, step (d), part 4, and ``game_log`` and ``player_stat``,
-        step (g)). Where the
+        plan item 6, step (d), part 4, and ``game_log``, ``player_stat`` and
+        ``player_splits``, step (g)). Where the
         compiler has no reading of
         the point, the steps a template's refusal took, in its order: the
         compiler's own reason - the planner refusing a narrowing the relation

@@ -194,7 +194,11 @@ def _adapt_player_splits(scope: Scope) -> Reading:
     """``player_splits``'s default point: a record by venue, or by starter/bench."""
     if not _named_player_in(scope):
         raise Unsupported("a team's splits are the team relation's")
-    group: Group = "starter" if scope.split == "starter_bench" else "venue"
+    # A named half ("as a starter") narrows the games (the relation's own
+    # `started`) while the category shown is still starter/bench - the
+    # template's own fold (_STARTER_BENCH_SIDES); by venue it read the
+    # half's games split by home/away instead.
+    group: Group = "starter" if scope.split in ("starter_bench", "starter", "bench") else "venue"
     return Reading(scope=scope, shape="grouped", measures=list(SPLIT_LINE), aggregate="record", group=group, predicates=[], available=_BOX_SCORES)
 
 

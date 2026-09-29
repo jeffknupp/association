@@ -1184,6 +1184,8 @@ def _parity(ctx: TemplateContext, intent: str, slots: dict[str, Any], question: 
         ("game_log", {"player": "Brandin Podziemski", "opponent": "Boston Celtics", "span": "career"}, "podziemski's games against boston"),
         ("player_stat", {"player": "Brandin Podziemski", "opponent": "Boston Celtics"}, "podziemski's stats vs boston"),
         ("record_when", {"player": "Brandin Podziemski", "stat": "points", "threshold": 15}, "warriors record when podziemski scores 15+"),
+        ("player_splits", {"player": "Brandin Podziemski", "split": "home_away"}, "podziemski home and away splits"),
+        ("player_splits", {"player": "Brandin Podziemski", "split": "wins_losses", "span": "career"}, "podziemski's career splits in wins and losses"),
     ],
 )
 def test_an_intents_own_point_reads_as_its_template(cx_ctx: TemplateContext, intent: str, slots: dict[str, Any], question: str) -> None:
@@ -1356,7 +1358,7 @@ def test_a_single_games_usage_is_the_percent_the_split_averages(cx_ctx: Template
     "2435.0%". The per-game row now reads the figure ``player_splits``' USG%
     column averages: Podziemski's only away game this season is g1, so the
     split's away USG% IS g1's usage, and the log's g1 row says the same."""
-    from association.query.templates import player_splits
+    from test_templates import player_splits  # the compiler's, player_splits' template retired
 
     _add_condition_tables(cx_ctx.con)
     cx_ctx.con.execute("ALTER TABLE player_box_stats ADD COLUMN usage_pct DOUBLE")

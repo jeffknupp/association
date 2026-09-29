@@ -71,16 +71,17 @@ The 15 families still failing, by cause:
 ## Next, in order
 
 1. **The templates the compiler can reproduce go** (item 6, step (g); item
-   2). `game_log` and `player_stat` are gone (2026-09-28): the log's team
-   half is a point on the team relation said by the template's own reader;
-   35/35 and 42/42 recorded questions at parity or better once three
-   compiler readings the measurement found were fixed (a date replacing the
-   season, the team window sum over both season types, a threshold on a
-   log). Live after `game_log` (parser9): 162/175, 0 moved. What is left
-   on the player relation: `player_splits` (#228, no reader over a settled
-   narrowing), `streak`, `with_without`, `player_matchup`, `period_split`,
-   `leaderboard`, `player_compare` - each a shape of its own or a reader
-   the compiler lacks; measure the same way before retiring any. A template
+   2). `game_log`, `player_stat` and `player_splits` are gone (2026-09-28
+   and -29): the log's and the splits' team halves are points on the team
+   relation said by the templates' own readers; 35/35, 42/42 and 5/5
+   recorded questions at parity or better once three compiler readings the
+   measurement found were fixed (a date replacing the season, the team
+   window sum over both season types, a threshold on a log). Live after
+   `game_log` and `player_stat` (parser9, parser10): 162/175, 0 moved. What
+   is left on the player relation: `streak`, `with_without`,
+   `player_matchup`, `period_split`, `leaderboard`, `player_compare` - each
+   a shape of its own or a reader the compiler lacks; measure the same way
+   before retiring any. A template
    survives only for a shape of its own: a chart, a fingerprint, a streak, a
    matchup, a quarter. How to retire one is part 4's method: every call its
    unit tests make and every recorded question it answers, answered both
