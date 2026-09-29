@@ -657,6 +657,34 @@ def _team_game_log(con: duckdb.DuckDBPyConnection, team: Entity, span: _Span, na
     return _team_game_log_rows(team, span, rows, narrowed=narrowed.filters(), date=narrowed.date, ascending=ascending, stat=stat)
 
 
+def _team_mixed_games(con: duckdb.DuckDBPyConnection, team: Entity, season: int, *, opponent: Any, venue: Any, limit: int) -> tuple[list[tuple[Any, ...]], dict[int, int], str] | TemplateResult:
+    """A team's newest ``limit`` games of ``season`` over BOTH season types
+    - each type read on its own through :func:`~association.query.templates.common.team_games`
+    and merged by date (:func:`_game_log_merge_season_types`) - as
+    :data:`_TEAM_GAME_LOG_SELECT`'s rows, with how many of the kept games
+    each type gave and the narrowing's own phrase. The one read a "last N
+    games" question naming no season type gets, shared by the team log
+    (:func:`_team_game_log_mixed`) and the team compiler's window sum
+    (``compose.team``), which summed one type alone before it: "KNICKS point
+    differential over the last 7 games" read seven regular-season games
+    where the log listed the postseason's.
+
+    .. versionadded:: 5.0.0
+    """
+    rows_by_type: dict[int, list[tuple[Any, ...]]] = {}
+    narrowed_text = ""
+    for season_type in (2, 3):
+        type_span = _Span(season, season_type)
+        narrowed = team_games(con, team, type_span, Scope(venue=venue), opponent=opponent)
+        if isinstance(narrowed, TemplateResult):
+            return narrowed
+        narrowed_text = narrowed.filters()
+        sql, params = team_rows_sql(narrowed, _TEAM_GAME_LOG_SELECT, order="tg.eastern_date DESC", limit=limit, join=_TEAM_GAME_LOG_JOIN)
+        rows_by_type[season_type] = con.execute(sql, params).fetchall()
+    rows, counts = _game_log_merge_season_types(rows_by_type, limit=limit, ascending=False)
+    return rows, counts, narrowed_text
+
+
 def _team_game_log_mixed(con: duckdb.DuckDBPyConnection, team: Entity, season: int, *, opponent: Any, venue: Any, limit: int, stat: Any = None) -> TemplateResult:
     """A team's "last N games" with no season type named: both types, read
     separately and merged by date - see ``router._route_game_log_recent_span``
@@ -673,17 +701,10 @@ def _team_game_log_mixed(con: duckdb.DuckDBPyConnection, team: Entity, season: i
     .. versionchanged:: 4.4.0
        Takes ``stat`` (F128/F129, ISSUES.md) - see :func:`_team_game_log_total_line`.
     """
-    rows_by_type: dict[int, list[tuple[Any, ...]]] = {}
-    narrowed_text = ""
-    for season_type in (2, 3):
-        type_span = _Span(season, season_type)
-        narrowed = team_games(con, team, type_span, Scope(venue=venue), opponent=opponent)
-        if isinstance(narrowed, TemplateResult):
-            return narrowed
-        narrowed_text = narrowed.filters()
-        sql, params = team_rows_sql(narrowed, _TEAM_GAME_LOG_SELECT, order="tg.eastern_date DESC", limit=limit, join=_TEAM_GAME_LOG_JOIN)
-        rows_by_type[season_type] = con.execute(sql, params).fetchall()
-    rows, counts = _game_log_merge_season_types(rows_by_type, limit=limit, ascending=False)
+    mixed = _team_mixed_games(con, team, season, opponent=opponent, venue=venue, limit=limit)
+    if isinstance(mixed, TemplateResult):
+        return mixed
+    rows, counts, narrowed_text = mixed
     if not rows:
         # Both types came back empty, so the missing fact really is "no games
         # in this span" - the same sentence a single-type refusal gives, with

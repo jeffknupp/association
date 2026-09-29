@@ -47,6 +47,29 @@ def _named_player_in(scope: Scope) -> bool:
     return scope.player is not None and bool(scope.player.strip())
 
 
+def _game_log_threshold(scope: Scope) -> list[tuple[str, str, Any]]:
+    """A ``threshold`` on a log as the line it keeps games past - "games with
+    15+ fga" lists those games, on the stat's column, rather than his last
+    ten whatever they held. The retired template refused the slot outright
+    (``_game_log_lines``) and the compiler then answered the whole log with
+    the threshold dropped - the silent widening the templates exist to stop.
+    One carrying a below/above phrase's own number is that phrase, misread
+    ("less than 15 fga" arrived as threshold 15), and the phrase answers it;
+    one beside no stat has no column to keep a line on and is refused.
+
+    .. versionadded:: 5.0.0
+    """
+    from association.query.templates.common import measure_filters
+
+    threshold = scope.threshold
+    if threshold is None or any(line.value == threshold for line in measure_filters(scope.below, scope.above)):
+        return []
+    col = _stat_column(scope.stat)
+    if col is None:
+        raise Unsupported("game_log cannot keep only the games past a threshold on no stat")
+    return [(col, ">=", threshold)]
+
+
 def _adapt_game_log(scope: Scope) -> Reading:
     """``game_log``'s default point: the newest games, in date order."""
     if not _named_player_in(scope):
@@ -65,7 +88,7 @@ def _adapt_game_log(scope: Scope) -> Reading:
         measures=list(LINE),
         aggregate="none",
         group="none",
-        predicates=[],
+        predicates=_game_log_threshold(scope),
         order="date",
         direction="asc" if scope.order == "first" else "desc",
         limit=_clamp_limit(scope.limit, DEFAULT_GAME_LOG_LIMIT),

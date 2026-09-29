@@ -371,14 +371,22 @@ def _resolve_named(con: duckdb.DuckDBPyConnection, q: Query) -> tuple[Entity | N
     :func:`~association.query.templates.common.scoped_player` and
     :func:`~association.query.templates.common.scoped_games`."""
     scope = q.scope
+    # A date names its game outright, so it replaces the season rather than
+    # being filtered inside it - the rule game_log and player_stat both
+    # state: the name is settled over his career and the date is the scope.
+    # The adapters set the point's span and season the same way, but a
+    # ``None`` season read here could not mean "unset" - the slot's own
+    # season came back and "Bam adebeyo jan 19" declined as "a career span
+    # and the 2026 season at once" (#230).
+    dated = bool(scope.date)
     subject = scoped_player(
         con,
         scope,
         "no player named",
         table="player_game_log",
         available=q.available or _GAME_LOGS,
-        span=q.span if q.span is not None else scope.span,
-        season=q.season if q.season is not None else scope.season,
+        span="career" if dated else (q.span if q.span is not None else scope.span),
+        season=None if dated else (q.season if q.season is not None else scope.season),
     )
     if isinstance(subject, TemplateResult):
         raise Refused(subject)

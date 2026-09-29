@@ -14,7 +14,9 @@ from association.nba.season import current_season
 from association.nba.season import eastern_date as _eastern_date_of
 from association.query import shotchart
 from association.query.compose import answer as compose_answer
+from association.query.compose.core import Unsupported
 from association.query.compose.present import STATED_SCOPING
+from association.query.compose.team import TeamQuery, run_team
 from association.query.entities import MAX_CANDIDATES, Availability, Entity, collect_name_readings, resolve_player
 from association.query.metrics import LEADERBOARD_METRICS, PER_GAME_MIN_GAMES, PER_GAME_MIN_POSTSEASON_GAMES
 from association.query.parse import with_point
@@ -1213,6 +1215,19 @@ def test_a_teams_last_n_games_states_the_total_points_asked_for(gl_con: Template
     _add_knicks_postseason(gl_con)
     result = game_log(gl_con, Reading.from_slots({"team": "Knicks", "order": "recent", "limit": 3, "season_type_unstated": True, "stat": "points"}))
     assert "\n  Total points: 302." in (result.answer or "")
+    # The team compiler's window sum reads the same three games: it summed
+    # one season type alone before 5.0.0 (e1 and e2, 208, 1-1) where the log
+    # merged both, and says which types the default kept.
+    scope = Scope.from_slots({"team": "Knicks", "order": "recent", "limit": 3, "season_type_unstated": True})
+    summed = run_team(gl_con.con, TeamQuery(scope=scope, measure="points"))
+    assert (summed.value, summed.games, summed.wins, summed.losses) == (302.0, 3, 2, 1)
+    assert summed.narrowed_text == " over their last 3 games (1 regular season and 2 postseason)"
+    differential = run_team(gl_con.con, TeamQuery(scope=scope, measure="differential"))
+    assert differential.value == 3.0
+    # A range of seasons or a calendar is not dropped from the both-types
+    # read silently - the read is refused.
+    with pytest.raises(Unsupported, match="both season types"):
+        run_team(gl_con.con, TeamQuery(scope=Scope.from_slots({"team": "Knicks", "order": "recent", "limit": 3, "season_type_unstated": True, "since": 2024}), measure="points"))
 
 
 def test_a_teams_last_n_games_states_the_point_differential_asked_for(gl_con: TemplateContext) -> None:
@@ -4208,6 +4223,13 @@ def test_a_career_and_a_named_season_at_once_is_refused(pg_ctx: TemplateContext,
 def test_game_log_refuses_a_threshold_rather_than_ignoring_it(pg_ctx: TemplateContext) -> None:
     with pytest.raises(TemplateUnsupported):
         game_log(pg_ctx, Reading.from_slots({"player": "Brandin Podziemski", "stat": "fieldGoalsAttempted", "threshold": 15}))
+    # The compiler keeps only the games past the line (e1 15 FGA, e2 20, e3
+    # 10) - it listed all three with the threshold dropped before 5.0.0 - and
+    # refuses one beside no stat, having no column to keep a line on.
+    kept = _compiled("game_log")(pg_ctx, Reading.from_slots({"player": "Brandin Podziemski", "stat": "fieldGoalsAttempted", "threshold": 15}))
+    assert "FGA >= 15" in kept.answer and len(kept.data["rows"]) == 2 and {r["fieldGoalsAttempted"] for r in kept.data["rows"]} == {15, 20}
+    with pytest.raises(TemplateUnsupported, match="no stat"):
+        _compiled("game_log")(pg_ctx, Reading.from_slots({"player": "Brandin Podziemski", "threshold": 15}))
 
 
 def test_player_stat_on_one_date_is_that_games_line(pg_ctx: TemplateContext) -> None:
@@ -4224,6 +4246,10 @@ def test_player_stat_on_one_date_is_that_games_line(pg_ctx: TemplateContext) -> 
     # previous season is still found.
     last = player_stat(pg_ctx, Reading.from_slots({"player": "Brandin Podziemski", "stat": "points", "date": f"{s - 1}-02-28", "season": s}))
     assert last.answer == f"Brandin Podziemski had 8 points on {s - 1}-02-28."
+    # The compiler reads the date the same way - the slot's season replaced,
+    # not read beside a career span (#230: it declined "a career span and
+    # the {s} season at once").
+    assert _compiled("player_stat")(pg_ctx, Reading.from_slots({"player": "Brandin Podziemski", "stat": "points", "date": f"{s - 1}-02-28", "season": s})).answer == last.answer
     none = player_stat(pg_ctx, Reading.from_slots({"player": "Brandin Podziemski", "date": f"{s}-07-04"}))
     assert none.answer.startswith(f"No regular season game on {s}-07-04 found for Brandin Podziemski")
 

@@ -3042,27 +3042,6 @@ those were found.
 - **Source:** ours, not ESPN's.
 - **GitHub:** #228
 
-### The compiler cannot unset a slot's season, so a dated player_stat declines
-- **Found:** 2026-09-26, the season-line parity run (`parity.py`).
-- **Evidence:** "Bam adebeyo jan 19" (slots `season: 2026, date:
-  2026-01-19`): the template answers from that night's box score, settling
-  the name with `span="career", season=None`. The compiler's adapter sets
-  `Query(span="career", season=None)` the same way, but
-  `core._resolve_named` reads `q.season if q.season is not None else
-  slots.get("season")`, so `None` cannot mean "no season" and the slot's
-  2026 comes back: `scoped_player` raises "a career span and the 2026
-  season at once" and the compiler declines. 1 of the 30 `player_stat` rows
-  the template answers on the recorded corpus; `game_log`'s adapter has the
-  same `season=None if date` line and the same read.
-- **User sees:** nothing today (the template answers first). When
-  `player_stat` is folded into the compiler, a dated question would fall
-  through to the agent.
-- **Next step:** give `Query` an explicit "season unset" (a sentinel, or
-  `season_from_slots: bool`) and read it in `_resolve_named`; a
-  `test_compose.py` case on a dated `player_stat` against the template.
-- **Source:** ours, not ESPN's.
-- **GitHub:** #230
-
 ### `team_alignment` is not declared in every `TEMPLATE_SOURCES` tuple that can now read it
 - **Found:** 2026-09-24, landing the K3-2 conference/division narrowing.
 - **Evidence:** `situation` reaching `Narrowed.narrow_alignment`/

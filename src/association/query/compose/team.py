@@ -62,7 +62,7 @@ from association.query.entities import _TEAM_NICKNAMES, Entity
 from association.query.reading import Scope
 from association.query.team_games import TeamNarrowed
 from association.query.team_games import aggregate_sql as team_aggregate_sql
-from association.query.templates.common import TemplateResult, TemplateUnsupported, _resolved_team, _Span, scoped_team
+from association.query.templates.common import TemplateResult, TemplateUnsupported, _clamp_limit, _resolved_team, _Span, scoped_team
 from association.query.templates.common import team_games as narrow_team_games
 
 from .core import Refused, Unsupported
@@ -294,14 +294,86 @@ def _team_games_narrowed(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> tuple[
     return narrowed, team, span
 
 
+def _team_mixed(scope: Scope) -> bool:
+    """Whether a window read spans both season types: "last N games" naming
+    no season type (``season_type_unstated``), with no date, career or game
+    of a series fixing one - the same test the team log makes."""
+    return scope.season_type_unstated and not scope.date and not scope.span and not scope.game_n
+
+
+def _compile_team_games_mixed(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> TeamResult:
+    """The window sum over BOTH season types, for a "last N games" question
+    naming neither: the games the team log lists for it
+    (``templates.games._team_mixed_games``), summed here - so the total is
+    over the same games the log shows, and the sentence says how many of
+    each type it kept, the default made visible (AGENTS.md, "a reasonable
+    default beats a question").
+
+    .. versionadded:: 5.0.0
+       Before this, the window sum read one season type alone: "KNICKS point
+       differential over the last 7 games" summed seven regular-season games
+       (5-2) where the log listed the postseason's (6-1).
+    """
+    from association.query.templates.games import DEFAULT_GAME_LOG_LIMIT, _game_log_mixed_where, _team_mixed_games
+
+    scope = q.scope
+    settled = scoped_team(con, scope, "no team named", span=None, season=scope.season)
+    if isinstance(settled, TemplateResult):
+        raise Refused(settled)
+    team, span = settled
+    if span.season is None:
+        raise Unsupported("a career span has no single season to read both season types within")
+    limit = _clamp_limit(scope.limit, DEFAULT_GAME_LOG_LIMIT)
+    mixed = _team_mixed_games(con, team, span.season, opponent=scope.opponent, venue=scope.venue, limit=limit)
+    if isinstance(mixed, TemplateResult):
+        raise Refused(mixed)
+    rows, counts, narrowed_text = mixed
+    # _TEAM_GAME_LOG_SELECT's columns: date, side, opponent, team score,
+    # opponent score, won, season.
+    scores = [(int(r[3]), int(r[4]), r[5]) for r in rows]
+    value: float | None
+    if not scores:
+        value = None
+    elif q.measure == "points":
+        value = float(sum(own for own, _, _ in scores))
+    elif q.measure == "points_allowed":
+        value = float(sum(theirs for _, theirs, _ in scores))
+    else:
+        value = float(sum(own - theirs for own, theirs, _ in scores))
+    window = f" over their last {len(rows)} game{'s' if len(rows) != 1 else ''}{_game_log_mixed_where(span.season, counts)}" if rows else ""
+    return TeamResult(
+        team=team,
+        span=span,
+        measure=q.measure,
+        aggregate=q.aggregate,
+        value=value,
+        games=len(rows),
+        wins=sum(1 for _, _, won in scores if won is True),
+        losses=sum(1 for _, _, won in scores if won is False),
+        narrowed_text=narrowed_text + window,
+    )
+
+
 def _compile_team_games_total(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> TeamResult:
     """The narrowed reader: a sum over the team-games relation's own
-    columns - F128 (points) and F129 (differential)'s shape for a single
-    season type. A "last N games" question naming no season type is answered
-    by ``game_log``'s existing team half instead (it already reads and
-    merges both types); this reader is one type at a time."""
+    columns - F128 (points) and F129 (differential)'s shape. One season type
+    at a time, except a "last N games" question naming none, which sums the
+    games the team log lists for it, both types merged by date
+    (:func:`_compile_team_games_mixed`).
+
+    .. versionchanged:: 5.0.0
+       Reads both season types for ``season_type_unstated``; one type alone
+       before, so the sum disagreed with the log's own games.
+    """
     if q.measure not in GAME_MEASURES:
         raise Unsupported(f"{q.measure!r} needs a box-score join the team relation does not have yet for a narrowed read")
+    if _team_mixed(q.scope):
+        if q.scope.since or q.scope.until or q.scope.situation:
+            # The both-types read is a plain window (an opponent and a venue
+            # at most, as the log's is); a range of seasons or a calendar
+            # would be dropped from it silently, so it is refused instead.
+            raise Unsupported("a window over both season types is read for a plain 'last N games' only")
+        return _compile_team_games_mixed(con, q)
     narrowed, team, span = _team_games_narrowed(con, q)
     column = GAME_MEASURES[q.measure]
     selects = [f"SUM({column}) AS total", "COUNT(*) AS games", "SUM(tg.won::INT) AS wins", "SUM((NOT tg.won)::INT) AS losses"]
