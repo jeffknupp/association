@@ -38,7 +38,10 @@ def test_team_templates_declare_scoping_through_the_shared_helper() -> None:
         "team_record": {"split", "season_type_unstated"},
         "team_leaderboard": set(),
         "head_to_head": set(),
-        "team_quarter_points": set(),
+        # A quarter or half is the template's own cell on the team side: the
+        # linescore reads one period, and the team relation has no period
+        # narrowing of its own (plan item 4 put it on the PLAYER relation).
+        "team_quarter_points": {"period", "half"},
     }
     for intent, extra in on_the_relation.items():
         excluded = TEAM_RELATION_SCOPING_EXCLUDED.get(intent, {})
@@ -56,7 +59,7 @@ def test_team_relation_scoping_helper_matches_the_declared_dict() -> None:
     assert _team_relation_scoping("team_record", "split", "season_type_unstated") == HONORED_SCOPING["team_record"]
     assert _team_relation_scoping("team_leaderboard") == HONORED_SCOPING["team_leaderboard"]
     assert _team_relation_scoping("head_to_head") == HONORED_SCOPING["head_to_head"]
-    assert _team_relation_scoping("team_quarter_points") == HONORED_SCOPING["team_quarter_points"]
+    assert _team_relation_scoping("team_quarter_points", "period", "half") == HONORED_SCOPING["team_quarter_points"]
 
 
 def _source_with_private_steps(handler: Any) -> str:

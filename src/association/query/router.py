@@ -96,7 +96,40 @@ _HALF_WORDS = re.compile(r"\b(?:first|second|1st|2nd)\s+half\b|\b[12]h\b|\bhalft
 # team_quarter_points with the team filled and no player, which is exactly the
 # shape the exemption protects - and answering it would give the TEAM's first
 # quarter where its players' were asked for.
-_PERIOD_LEADERS = re.compile(r"\bleaders?\b|\bwho\b|\bwhich\s+player\b|\bleading\s+scorers?\b", re.IGNORECASE)
+#
+# "player" alone ranks too (yardstick-v2 F049, "hornets average 1st quarter
+# points player": the team's own quarter answered where its best player's was
+# asked). Only ever read where no player is named - a named player's quarter
+# is period_split before this is looked at - so "player" cannot pull a named
+# player's question into a ranking.
+_PERIOD_LEADERS = re.compile(r"\bleaders?\b|\bwho\b|\bwhich\s+player\b|\bleading\s+scorers?\b|\bplayers?\b", re.IGNORECASE)
+
+# A named player's period "games" with no stat named is his games listed, the
+# way "log" is (yardstick-v2 F060, "Rudy gobert first half games this
+# season": the key lists his 76 first halves, and a total answered it).
+_PERIOD_GAMES_WORDS = re.compile(r"\bgames\b", re.IGNORECASE)
+
+# A period used as a CONDITION on the games rather than the part of each game
+# measured: "vj edgecombe three points made per game after making one three in
+# first quarter" (yardstick-v2 F062) asks his WHOLE-game threes over the games
+# whose first quarter held one. Once period_split read any stat, it answered
+# his first-quarter threes instead - fluent, and a different question. Nothing
+# reads a period as a condition, so it is not routed to a period template.
+_PERIOD_AS_CONDITION = re.compile(
+    r"\bafter\s+(?:making|scoring|hitting|getting|having|recording|grabbing)\b|\bin\s+games?\s+(?:where|when|in\s+which)\b|\bif\s+(?:he|she|they)\b",
+    re.IGNORECASE,
+)
+
+# "most first quarter rebounds per game" ranks the league's players too - but
+# only with no team in the question: "Detroit Pistons most points in a first
+# half" is the TEAM's single best half (team_quarter_points' own `rank`).
+_PERIOD_TOP = re.compile(r"\b(?:most|highest|top|best)\b", re.IGNORECASE)
+
+# Every quarter at once, side by side (yardstick-v2 F048, "nba playerspoints
+# by quarter average", which fell through for want of one period).
+# period_leaderboard with no period is that table; a NAMED player's breakdown
+# is not built and still reaches `other`.
+_BY_QUARTER = re.compile(r"\b(?:by|per|each|every)\s+(?:quarter|qtr)s?\b|\bquarter\s+by\s+quarter\b", re.IGNORECASE)
 
 
 # A TEAM's quarter score (no player named) is exempted below: linescores answer
@@ -2028,7 +2061,7 @@ def _route_period_split_slots(raw: dict[str, Any], question: str, subject: str |
     # A log was asked for, not a season average. Measured, 7 of the 11
     # questions this template answered in its first replay said "log",
     # "by game" or "each game" and got a total and an average.
-    if _LOG_WORDS.search(question):
+    if _LOG_WORDS.search(question) or (_PERIOD_GAMES_WORDS.search(question) and "stat" not in raw):
         raw["per_game"] = True
     if subject is not None:
         # The player came from the text, not from the model's own
@@ -2052,7 +2085,7 @@ def _route_period_intents(raw: dict[str, Any], question: str) -> None:
         raw["intent"] = "threshold_count"
         raw["stat"] = "fouls"
         raw["threshold"] = FOUL_OUT_THRESHOLD
-    ranks_players = _PERIOD_LEADERS.search(low) is not None
+    ranks_players = _PERIOD_LEADERS.search(low) is not None or (_PERIOD_TOP.search(low) is not None and not _team_slot_or_word(raw, low))
     if (_AGENT_ONLY.search(low) and (ranks_players or not _is_team_quarter_points(raw) or _names_a_period_subject(question))) or _HALF_WORDS.search(low):
         # A named player's quarter or half now HAS a template, so the override
         # sends it there instead of to the agent - but only when the question
@@ -2061,6 +2094,9 @@ def _route_period_intents(raw: dict[str, Any], question: str) -> None:
         # behavior: slots are kept, because the agent sees the conversation
         # rather than the Route, and the log line shows what the model thought.
         asked = _period_asked(question)
+        if asked is not None and _PERIOD_AS_CONDITION.search(low):
+            raw["intent"] = "other"
+            return
         if asked is not None:
             _route_period_intents_player_beside_team(raw, question)
         # No second `_is_team_quarter_points` check: it means "this intent, and
@@ -2068,35 +2104,51 @@ def _route_period_intents(raw: dict[str, Any], question: str) -> None:
         # team's own quarter is already exempted by the outer condition.
         named_player = isinstance(raw.get("player"), str) and raw["player"].strip()
         subject = _recover_period_subject(raw, question, asked, named_player, ranks_players)
-        named_player = named_player or subject is not None
-        if asked is not None and not named_player and ranks_players:
-            # Players ranked by a quarter or a half - templates.games
-            # .period_leaderboard. A team may still be named ("knicks 1st
-            # quarter scoring leaders"), where it narrows the ranking to that
-            # team's players rather than becoming the subject.
-            raw["intent"] = "period_leaderboard"
-            raw |= asked
-            if not _named_a_stat(question):
-                raw.pop("stat", None)
-        elif asked is not None and not named_player and (_team_slot_or_word(raw, low)):
-            # A TEAM's half. A team's QUARTER never reaches here - the
-            # exemption above keeps it on its own template - but a half always
-            # does, because the model maps "first half" onto period 1 and that
-            # is wrong for a team the same way it is for a player. The
-            # linescore holds both quarters, so the template sums them. The
-            # team is the model's `team` slot, or - measured, the model filed
-            # none for "Celtics 2nd half scoring this season" (the one
-            # check_routing.py gap after step 3) and "least points scored by
-            # the wizards in the first half" (yardstick-v2 F064) - the one
-            # nickname the question itself holds, which _TEAM_WORD reads.
-            raw["intent"] = "team_quarter_points"
-            raw |= asked
-        elif asked is not None and named_player:
-            raw["intent"] = "period_split"
-            raw |= asked
-            _route_period_split_slots(raw, question, subject)
-        else:
-            raw["intent"] = "other"
+        _route_period_intents_choose(raw, question, asked, bool(named_player) or subject is not None, ranks_players, subject)
+
+
+def _route_period_intents_choose(raw: dict[str, Any], question: str, asked: dict[str, int] | None, named_player: bool, ranks_players: bool, subject: str | None) -> None:
+    """Which period intent a quarter or half question is, once its period, its
+    player and whether it ranks are known - split out of
+    :func:`_route_period_intents` to keep it inside the complexity gate."""
+    low = question.lower()
+    if asked is not None and not named_player and ranks_players:
+        # Players ranked by a quarter or a half - templates.games
+        # .period_leaderboard. A team may still be named ("knicks 1st
+        # quarter scoring leaders"), where it narrows the ranking to that
+        # team's players rather than becoming the subject.
+        raw["intent"] = "period_leaderboard"
+        raw |= asked
+        if not _named_a_stat(question):
+            raw.pop("stat", None)
+    elif asked is not None and not named_player and (_team_slot_or_word(raw, low)):
+        # A TEAM's half. A team's QUARTER never reaches here - the
+        # exemption above keeps it on its own template - but a half always
+        # does, because the model maps "first half" onto period 1 and that
+        # is wrong for a team the same way it is for a player. The
+        # linescore holds both quarters, so the template sums them. The
+        # team is the model's `team` slot, or - measured, the model filed
+        # none for "Celtics 2nd half scoring this season" (the one
+        # check_routing.py gap after step 3) and "least points scored by
+        # the wizards in the first half" (yardstick-v2 F064) - the one
+        # nickname the question itself holds, which _TEAM_WORD reads.
+        raw["intent"] = "team_quarter_points"
+        raw |= asked
+    elif asked is not None and named_player:
+        raw["intent"] = "period_split"
+        raw |= asked
+        _route_period_split_slots(raw, question, subject)
+    elif asked is None and not named_player and _BY_QUARTER.search(low) and not _team_slot_or_word(raw, low):
+        # Every player's four quarters side by side - the league's; a
+        # team's players' breakdown ("knicks points by quarter") reads
+        # as the TEAM's by quarter, which is not built, and stays `other`.
+        raw["intent"] = "period_leaderboard"
+        raw.pop("period", None)
+        raw.pop("half", None)
+        if not _named_a_stat(question):
+            raw.pop("stat", None)
+    else:
+        raw["intent"] = "other"
 
 
 def _route_period_intents_player_beside_team(raw: dict[str, Any], question: str) -> None:

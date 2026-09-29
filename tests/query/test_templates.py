@@ -5151,13 +5151,28 @@ def test_the_worst_reconcilable_season_is_refused_and_the_merely_poor_ones_are_c
     assert "96% of the time" in caveated, "a poor season answers, and says how poor"
 
 
-def test_a_stat_that_is_not_points_is_refused_rather_than_approximated(period_ctx: TemplateContext) -> None:
-    """`shot_chart` holds shots. Rebounds and assists are not in it at all, and
-    deriving them per period from `plays` carries its own fidelity per stat -
-    fouls rebuild at 83%. Refusing names that instead of answering from a
-    weaker source."""
-    with pytest.raises(TemplateUnsupported, match="points only"):
-        period_split(period_ctx, Reading.from_slots({"player": "Stephen Curry", "period": 1, "season": SEASON, "season_type": 2, "stat": "rebounds"}))
+def test_a_stat_the_period_line_cannot_rebuild_is_refused_rather_than_approximated(period_ctx: TemplateContext) -> None:
+    """Play-by-play records no minutes per quarter, so a period's minutes are
+    refused by name rather than read off the whole game's box. And rebounds,
+    which the plays DO carry, are refused where the warehouse holds no plays
+    (this fixture) - summed as zeros they would answer "no rebounds"."""
+    with pytest.raises(TemplateUnsupported, match="no per-period 'minutes'"):
+        period_split(period_ctx, Reading.from_slots({"player": "Stephen Curry", "period": 1, "season": SEASON, "season_type": 2, "stat": "minutes"}))
+    answer = period_split(period_ctx, Reading.from_slots({"player": "Stephen Curry", "period": 1, "season": SEASON, "season_type": 2, "stat": "rebounds"})).answer
+    assert answer == "Per-quarter rebounds cannot be answered here: they are rebuilt from play-by-play, and this warehouse holds none."
+
+
+def test_a_stat_beyond_points_is_read_from_the_plays(period_ctx: TemplateContext) -> None:
+    """Plan item 4: a period's rebounds are the rebound plays in it - two in
+    e1's first quarter, one in its third - and a quarter with none is a zero
+    over a game he played, the denominator rule points already keep."""
+    c = period_ctx.con
+    c.execute("CREATE TABLE plays (event_id VARCHAR, season BIGINT, season_type BIGINT, period BIGINT, athlete_id VARCHAR, participant_athlete_ids VARCHAR, type VARCHAR, text VARCHAR)")
+    for period in (1, 1, 3):
+        c.execute("INSERT INTO plays VALUES ('e1', ?, 2, ?, '1', '1', 'Defensive Rebound', 'Stephen Curry defensive rebound')", [SEASON, period])
+    result = period_split(period_ctx, Reading.from_slots({"player": "Stephen Curry", "period": 1, "season": SEASON, "season_type": 2, "stat": "rebounds"}))
+    assert result.data["total"] == 2 and result.data["games_played"] == 5
+    assert (result.answer or "").startswith("Stephen Curry had 2 rebounds in the 1st quarter over 5 games of the 2026 regular season, averaging 0.4.")
 
 
 def test_a_question_with_no_period_is_not_this_template(period_ctx: TemplateContext) -> None:
@@ -5202,8 +5217,10 @@ def test_a_log_lists_the_games_and_keeps_the_season_in_the_header(period_ctx: Te
     the season rather than the rows shown."""
     answer = period_split(period_ctx, Reading.from_slots({"player": "Stephen Curry", "period": 1, "season": SEASON, "season_type": 2, "per_game": True})).answer or ""
     assert "over 5 games" in answer
-    assert "1st quarter points, every game:" in answer
+    assert "1st quarter line, every game:" in answer, "no stat named: the period's whole line, as a game log lists a game's"
     assert len([line for line in answer.splitlines() if line.strip()[:4].isdigit()]) == 5
+    points = period_split(period_ctx, Reading.from_slots({"player": "Stephen Curry", "period": 1, "season": SEASON, "season_type": 2, "per_game": True, "stat": "points"})).answer or ""
+    assert "1st quarter points, every game:" in points, "a stat named: that column alone"
 
 
 def test_a_date_narrows_to_that_one_game(period_ctx: TemplateContext) -> None:
@@ -5350,6 +5367,15 @@ def period_rank_ctx(tmp_path: Path) -> TemplateContext:
         shot("2", event, 1)
     for event in events[:2]:  # Cameo: two, in his only two games
         shot("3", event, 1)
+    # The ranking reads the relation (plan item 4), which reads the
+    # warehouse's log view - mirrored here as period_ctx mirrors it.
+    c.execute(
+        "CREATE VIEW player_game_log AS SELECT pbs.*, "
+        "CASE WHEN g.home_team_id = pbs.team_id THEN g.away_team_id ELSE g.home_team_id END AS opponent_team_id, "
+        "TRUE AS starter, g.date AS game_date, p.display_name AS player_name "
+        "FROM player_box_stats pbs JOIN games g ON g.event_id = pbs.event_id AND g.season = pbs.season "
+        "LEFT JOIN players p ON p.athlete_id = pbs.athlete_id"
+    )
     return TemplateContext(con=c, out_dir=tmp_path)
 
 
@@ -5401,10 +5427,27 @@ def test_a_period_ranking_covers_a_half_as_well_as_a_quarter(period_rank_ctx: Te
 
 
 def test_a_period_ranking_refuses_a_stat_it_cannot_rank(period_rank_ctx: TemplateContext) -> None:
-    """Only points are in shot_chart. Rebounds per quarter would have to be
-    derived from plays, at a fidelity period_split already refuses over."""
-    with pytest.raises(TemplateUnsupported, match="ranks points only"):
-        period_leaderboard(period_rank_ctx, Reading.from_slots({"period": 1, "season": SEASON, "season_type": 3, "stat": "rebounds"}))
+    """Minutes are not split by period in any source, so they are refused by
+    name; rebounds are rebuilt from the plays, and refused only where the
+    warehouse holds none (this fixture) - never ranked as zeros."""
+    with pytest.raises(TemplateUnsupported, match="no per-period 'minutes'"):
+        period_leaderboard(period_rank_ctx, Reading.from_slots({"period": 1, "season": SEASON, "season_type": 3, "stat": "minutes"}))
+    answer = period_leaderboard(period_rank_ctx, Reading.from_slots({"period": 1, "season": SEASON, "season_type": 3, "stat": "rebounds"})).answer
+    assert answer == "Per-quarter rebounds cannot be ranked here: they are rebuilt from play-by-play, and this warehouse holds none."
+
+
+def test_points_by_quarter_is_every_quarter_side_by_side(period_rank_ctx: TemplateContext) -> None:
+    """yardstick-v2 F048, "nba playerspoints by quarter average": no period
+    named is the four quarters per player, ranked by the four together. Ace:
+    five first-quarter threes and one second-quarter one over six games -
+    2.5 and 0.5; Role: two first-quarter threes over six - 1.0. Cameo played
+    two games and does not qualify."""
+    result = period_leaderboard(period_rank_ctx, Reading.from_slots({"season": SEASON, "season_type": 3}))
+    leaders = result.data["leaders"]
+    assert [row["player"] for row in leaders] == ["Ace Scorer", "Role Player"]
+    assert leaders[0] == {"player": "Ace Scorer", "games": 6, "q1": 2.5, "q2": 0.5, "q3": 0.0, "q4": 0.0, "total": 3.0}
+    assert "ranked by the four quarters together" in (result.answer or "")
+    assert "Overtime is no quarter" in (result.answer or "")
 
 
 def test_a_period_ranking_nobody_qualifies_for_says_so(period_rank_ctx: TemplateContext) -> None:
@@ -5433,26 +5476,24 @@ def test_a_period_is_narrowed_by_a_teammates_absence(period_ctx: TemplateContext
 
 
 def test_a_period_is_narrowed_by_a_line_on_a_box_score_column(period_ctx: TemplateContext) -> None:
-    """A line on a box-score column narrows which of the player's games the
-    period sum covers, the same as every other template on the relation
-    (step 3, C2) - previously `_period_split_rows` hard-coded `measures=[]`
-    into its own call to `common.scoped_games`, so `below`/`above` reached
-    `check_scope`'s declaration and nothing past it. e2 (30 total points) and
-    e4 (25) are the only games at or above 24 here; each holds one
-    first-quarter three (3 points) - 6 over 2 games, where the whole season
-    (5 games) totals 12."""
-    c = period_ctx.con
-    c.execute("ALTER TABLE player_box_stats ADD COLUMN points INTEGER")
-    for event, points in (("e1", 10), ("e2", 30), ("e3", 20), ("e4", 25), ("e5", 15)):
-        c.execute("UPDATE player_box_stats SET points = ? WHERE event_id = ? AND athlete_id = '1'", [points, event])
-    high = period_split(period_ctx, Reading.from_slots({"player": "Stephen Curry", "period": 1, "season": SEASON, "season_type": 2, "above": "24 points"}))
-    assert high.data["games_played"] == 2
-    assert high.data["total"] == 6
-    assert high.data["measures"] == ["at least 24 points"]
-    assert "with at least 24 points" in (high.answer or "")
-    low = period_split(period_ctx, Reading.from_slots({"player": "Stephen Curry", "period": 1, "season": SEASON, "season_type": 2, "below": "24 points"}))
-    assert low.data["games_played"] == 3
-    assert "with under 24 points" in (low.answer or "")
+    """A line on a stat narrows which of the player's games the period sum
+    covers, the same as every other template on the relation (step 3, C2) -
+    and since the relation carries the period (plan item 4), the line reads
+    the PERIOD's figure, the one the answer reports: "his first quarters with
+    at least 3 points" is the games where the first quarter held 3. Measured
+    on the fixture's first quarters: e1 6, e2 3, e4 3, e3 and e5 0 - 12 over 5
+    games. Before the period was the relation's, this line read the whole
+    game's points, which a quarter's answer printed under the quarter's
+    heading with nothing saying so."""
+    high = period_split(period_ctx, Reading.from_slots({"player": "Stephen Curry", "period": 1, "season": SEASON, "season_type": 2, "above": "3 points"}))
+    assert high.data["games_played"] == 3
+    assert high.data["total"] == 12
+    assert high.data["measures"] == ["at least 3 points"]
+    assert "with at least 3 points" in (high.answer or "")
+    low = period_split(period_ctx, Reading.from_slots({"player": "Stephen Curry", "period": 1, "season": SEASON, "season_type": 2, "below": "3 points"}))
+    assert low.data["games_played"] == 2
+    assert low.data["total"] == 0
+    assert "with under 3 points" in (low.answer or "")
     with pytest.raises(TemplateUnsupported):
         period_split(period_ctx, Reading.from_slots({"player": "Stephen Curry", "period": 1, "season": SEASON, "season_type": 2, "above": "24 vibes"}))
 

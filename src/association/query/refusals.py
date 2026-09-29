@@ -33,6 +33,7 @@ import duckdb
 
 from association.query.calendar import parse_alignment, parse_situation
 from association.query.entities import find_teams
+from association.query.player_games import PERIOD_COLUMNS
 from association.query.reading import Reading, Scope
 from association.query.subject import Subject
 from association.query.templates.common import PLAYER_INTENTS, TemplateResult
@@ -111,14 +112,25 @@ def _non_calendar_situation(con: duckdb.DuckDBPyConnection, intent: str, scope: 
 
 
 def _period_stat(con: duckdb.DuckDBPyConnection, intent: str, scope: Scope, question: str, subject: Subject) -> str | None:
-    """A stat other than points by quarter or half: the per-period figures
-    are rebuilt from the scoring plays, so points is the only one."""
+    """A stat the period's line does not rebuild, by quarter or half: the
+    per-period figures are rebuilt from the shots and plays
+    (:data:`~association.query.player_games.PERIOD_COLUMNS`), and play-by-play
+    carries no minutes, plus-minus or rate per quarter.
+
+    .. versionchanged:: 5.0.0
+       Names the columns that ARE rebuilt (plan item 4): until the period
+       relation, points were the only one, and this said so of rebounds and
+       assists too - a refusal naming a cause that is no longer true.
+    """
     stat = scope.stat
-    if intent != "period_split" or not isinstance(stat, str) or stat in ("points", "pts", ""):
+    if intent not in ("period_split", "period_leaderboard") or not isinstance(stat, str) or stat in ("pts", "", "all") or stat in PERIOD_COLUMNS:
         return None
     period = scope.period or scope.half
     where = f"the {period}{'st' if period == 1 else 'nd' if period == 2 else 'rd' if period == 3 else 'th'} {'half' if scope.half else 'quarter'}" if isinstance(period, int) else "a period"
-    return f"By quarter or half, only points are on record - {stat!r} is not split by period. Ask for points in {where}, or for {stat} over whole games."
+    return (
+        f"By quarter or half, a line is rebuilt from the play-by-play - points, field goals, free throws, rebounds, assists, steals, blocks, turnovers and fouls - "
+        f"and {stat!r} is not among them. Ask for one of those in {where}, or for {stat} over whole games."
+    )
 
 
 def _team_where_a_player_belongs(con: duckdb.DuckDBPyConnection, intent: str, scope: Scope, question: str, subject: Subject) -> str | None:

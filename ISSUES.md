@@ -1271,24 +1271,22 @@ those were found.
 - **GitHub:** #14
 
 ### The 2026 shot chart holds more shots than the box score
-- **Found:** 2026-09-11, shot-frame fix (shot agent)
-- **Evidence:** 1,165 player-games, across the regular season and postseason,
-  have more shots in `shot_chart` than in the box score, 1,207 extra in all.
-  Curry has 488 threes against 484 3PA. Neither `plays` nor `shot_chart` holds
-  a duplicate `play_id`. The extras look like end-of-period heaves: 1,141 of
-  those player-games have extra 3PA. **The "1,084 shots under a second" figure
-  did not reproduce on re-check (2026-09-16) and was measured wrong**: `clock`
-  is stored as `MM:SS` for most of a period and as bare seconds-with-tenths
-  (e.g. `"57.3"`) inside the last minute, and reading only the second format
-  as a number silently dropped every shot still in `MM:SS`. Parsing both forms
-  and filtering total seconds remaining `< 1.0` gives **1,131** shots in the
-  1,141 player-games with extra 3PA, and **1,135** across all 1,165. That is
-  still a correlation, not proof.
-- **User sees:** shot charts and shot-distance answers count shots that are not
-  in the box score.
-- **Next step:** check whether box scores leave out buzzer heaves (a shot after
-  the horn, or one ESPN logs but does not credit). If they do, filter the chart
-  the same way.
+- **Found:** 2026-09-11, shot-frame fix (shot agent); **cause found
+  2026-09-29** (period relation work)
+- **Evidence:** 1,165 player-games in 2026 have more field goal attempts in
+  `shot_chart` than in the box score, 1,207 extra in all. 2026 alone types
+  the end-of-period heave: 1,153 `Heave Jump Shot` rows, none made, and no
+  other season has the type. Leaving the MISSED heaves out, 61 player-games
+  (62 shots) are over - so the box score does not count a missed heave as an
+  attempt, and ~95% of the excess is exactly that. The period line already
+  leaves them out (`player_games._PERIOD_HEAVE_MISS`: 2026 attempts agree
+  with the box score in 99.6% of player-games, against 95.8% with them).
+- **User sees:** shot charts and shot-distance answers count 2026 heaves that
+  are not attempts in the box score (Curry: 488 charted threes against 484
+  3PA).
+- **Next step:** the same exclusion in the shot readers (`query/shotchart.py`,
+  `templates/shots.py`) - a chart may still want to draw a heave, but a count
+  or an average should not include it; say which in the answer.
 - **Source:** DATA.md, "The 2026 shot chart holds more shots than the box score"
 - **GitHub:** #15
 
@@ -1490,41 +1488,41 @@ those were found.
 - **GitHub:** #118
 
 ### A quarter or half is answered for a player, and for nobody else
-- **Found:** 2026-09-16 auditing the feed; **the player half shipped the same
-  day** as `period_split`
-- **Fixed.** **Re-counted 2026-09-16 with a quarter/half regex over the whole
-  feed: 25 of the 261 feed queries ask for a quarter or a half, not 21, and 24
-  of the 25 fell through before the fix** - one was a `team_quarter_points`
-  partial rather than a full fall-through. A named player's single period now
-  has a template: `shot_chart` carries `athlete_id`, `period`, `made` and the
-  shot's value, so it is a filtered sum, and the value is read through
-  `SHOT_VALUE_SQL` - 99.95% against ESPN's linescores, where guessing it from
-  the play's prose is 76.8%. Summed over all periods including overtime, a
-  player's season total matches his box score exactly for 550 of 578
-  player-seasons. **After the fix the 25 grade correct 6, partial 5, clarified
-  2, unclear 1, fell through 11.**
-- **What is still not answered**, and it is most of the rest of that 25:
-  - **A non-points stat, or a `split`/`without`/`order` narrowing, on a
-    player's period.** `period_split` refuses these (4 of the 25, e.g.
-    "scottie barnes stats 2nd half log without rj").
-  - **A TEAM's half.** `team_quarter_points` reads one period out of the
-    linescore and has no notion of a half, so "Detroit Pistons most points in a
-    first half this season" and "least points scored by the wizards in the
-    first half" still fall through. This is the cheapest of the four: the
-    linescore is exact and a half is two of its entries added together.
-  - **A breakdown across all four quarters.** "nba playerspoints by quarter
-    average", "points per quarter for Luka". `period_split` answers ONE period
-    by design; this is a different shape and is deliberately left alone rather
-    than answered for a period nobody named.
-  - **A position group as the subject.** "each center 1q pts log vs nugget" -
-    the same gap position groups have everywhere, not a period problem.
-  - **A ranking within a period.** "knicks 1st quarter scoring leaders" wants a
-    leaderboard restricted to a quarter.
-- **User sees:** for the shapes above, a slow agent answer or a whole-game line
-  where one quarter was asked for.
-- **Next step:** the team half, which is two linescore entries added.
+- **Found:** 2026-09-16 auditing the feed; the player half shipped the same
+  day as `period_split`; **re-scoped 2026-09-29** when the period became a
+  narrowing of the player-games relation (ROADMAP plan item 4)
+- **What is answered now:** a named player's quarter or half for any column
+  the period's line rebuilds from the shots and plays (points, FG, FT, threes,
+  rebounds, assists, steals, blocks, turnovers, fouls -
+  `player_games.PERIOD_COLUMNS`), per game or averaged, under every relation
+  narrowing `period_split` honors; a log that names no stat lists the whole
+  period line; a ranking of players by any of those columns in one quarter or
+  half (`period_leaderboard`, league-wide or a team's roster); and every
+  player's four quarters side by side ("nba playerspoints by quarter
+  average", F048). Measured offline through the whole agent on the 19
+  recorded questions that name a period: 8 answers moved, every one to the
+  question's own shape (F048, F049, F060, F066-F068 among them), and F062
+  moved from a wrong-cause refusal to a fall-through (below).
+- **What is still not answered:**
+  - **A TEAM's non-points figure in a quarter** ("trailblazers stats last 10
+    games 3 point average 1st quarter") - see "A team's per-quarter average
+    of anything but points has no source".
+  - **A named player's breakdown across all four quarters** ("points per
+    quarter for Luka", "Jokic points by quarter") - the league table exists;
+    the one-player version is the same four reads narrowed to him, not built.
+  - **A position group as the subject** ("each center 1q pts log vs nugget") -
+    the same gap position groups have everywhere.
+  - **A shooting percentage in a period** ("vj edgecombe 1st quarter 3pt
+    percentage by game") - refused with the right cause; the makes and
+    attempts are on the line, so it is a ratio of two sums away.
+  - **A period used as a condition** ("... per game after making one three
+    in first quarter", F062) - routed to `other` so it falls through; see its
+    own entry.
+- **User sees:** for the shapes above, a refusal naming the cause or a
+  fall-through - no longer a whole-game line where one quarter was asked for.
+- **Next step:** the shooting percentage (a `RATES`-style ratio over the
+  period's sums in `period_split`/`period_leaderboard`), then the team side.
 - **GitHub:** #96
-
 
 ### A coach question has nothing to read, and ESPN's coaches are not worth reading
 - **Found:** 2026-09-16, query-set audit; **the source question settled by live
@@ -2484,50 +2482,25 @@ those were found.
   warehouse's unfiltered leader is not Porzingis).
 - **GitHub:** #205
 
-### `period_leaderboard` stays off the player-games relation
-- **Found:** 2026-09-22, step 3 C5's own second task: assess whether a
-  no-player read of the relation (`player_games.league()`) would let
-  `period_leaderboard` honor `opponent`/`venue`/`since`/`span`/`date` for a
-  league-wide or team-wide ranking, the way `period_split` now does for one
-  player. Assessed and not ported - documented in the template's own
-  docstring (`templates/games.py: period_leaderboard`), per the README's
-  instruction to write down why rather than guess at a port.
-- **Evidence:** two separate blockers, not one:
-  - `opponent`/`venue`/`date` would need a NEW no-player narrowing step:
-    `common._narrow_player_games` (what `common.scoped_games` calls)
-    hardcodes `pgl.athlete_id = ?` into its base clause, so it cannot build a
-    league-wide `Narrowed` at all today - `player_games.league()` gives the
-    bare relation, but nothing turns an opponent/venue/date slot into a
-    clause on it without a player to resolve `without`/tenure against, which
-    is exactly the piece C1 left off the relation for `threshold_count` and
-    `single_game_high`'s own no-player modes.
-  - `since`/`span` reopen, at league scale, the identical bug just found and
-    fixed for `period_split`'s own `span`/`since` in this same commit
-    (`RELATION_SCOPING_EXCLUDED["period_split"]`, `templates/common.py`) -
-    both were previously silently wrong the same way (a career/`since` sum
-    that answered real games but headed them with the wrong single season),
-    not merely refused, and are refused now rather than shipped like that
-    again: `PERIOD_RECONCILIATION`
-    is measured per season, so a leaderboard ranged over several seasons would
-    need that caveat applied once per season summed into each player's total,
-    or the range refused outright - porting the READ alone would let a
-    badly-reconciled season (2016, 76.5%) drag rankings with no caveat naming
-    it. `date` has a narrower problem even alone: it narrows to ONE game, and
-    `PER_GAME_MIN_GAMES` (the qualifier a per-game leaderboard needs, or the
-    leader is whoever played once and scored eight) would then disqualify
-    every player at once.
+### `period_leaderboard` ranks one season and refuses an opponent, a venue, a range or a date
+- **Found:** 2026-09-22 (step 3 C5, assessed and not ported); **re-scoped
+  2026-09-29**: the template now READS the relation (`league_games` with the
+  period applied by the relation, plan item 4), so the first blocker the old
+  entry named - no no-player narrowing step - is gone.
+- **Evidence:** `HONORED_SCOPING["period_leaderboard"]` is `{period, half}`;
+  `league_games` would apply `opponent`/`venue` today, but the per-game
+  qualifier (`PER_GAME_MIN_GAMES`, 20) would disqualify every player against
+  one opponent (four meetings a season), so honoring them needs a qualifier
+  that scales with the games the narrowing leaves - a decision, not a port.
+  `since`/`span` would sum seasons of different measured accuracy
+  (`PERIOD_RECONCILIATION`, `player_games.PERIOD_AGREEMENT`) under one caveat;
+  `date` narrows to one game, where a per-game ranking means nothing.
 - **User sees:** "who led the league in 1st quarter scoring against the
-  Celtics this season" and the like still refuse (falls through to the agent,
-  which per `AGENTS.md` has nothing better to read here either - no other
-  source has per-quarter box scores) rather than answering a narrower,
-  real question.
-- **Next step:** the `opponent`/`venue` half looks buildable without the
-  `since`/`span`/`date` half's problems - a no-player `_narrow_player_games`
-  variant (or a generalization that makes `player` optional) that skips
-  `without`/tenure entirely, plus `opponent`/`venue`/`team` clauses copied from
-  the existing pattern, single-season only. Worth a dedicated pass rather than
-  folding into a future step 3 task, since it is new capability (a behavior
-  change with its own golden cases), not a pure port.
+  Celtics this season" falls through (the agent has no per-quarter source
+  either).
+- **Next step:** decide the qualifier for a narrowed ranking (a share of the
+  narrowed games, as `leaderboard` would need too), then declare
+  `opponent`/`venue` - one line each, since the relation already applies them.
 - **GitHub:** #185
 
 ### `player_splits` cannot honor a teammate's absence, a box-score line, a playoff-series game or an ordinal season when the subject is a team, not a player
@@ -2745,30 +2718,29 @@ those were found.
   the attempts floor above, and the current season's generic position
   codes (DATA.md).
 
-### A team's per-quarter average of anything but points has no source
-- **Found:** 2026-09-20, finishing the quarters-and-halves work
-- **Evidence:** "trailblazers stats last 10 games 3 point average 1st quarter"
-  asks for a team's first-quarter three-point average. `team_quarter_points`
-  reads `games.home_linescores`/`away_linescores`, which hold one total per
-  period and nothing else, so it can answer points and only points; the
-  player-side `period_split` refuses every other stat for its own reason (only
-  points are in `shot_chart`).
-- **Half of this is now closed.** Restoring the team the run-together nickname
-  had lost would have handed this question a POINTS answer to a three-point
-  question - measured, "The Portland Trail Blazers scored 2428 total points in
-  the 1st quarter ... averaging 29.6 per game" - so
-  `_team_quarter_points_check_stat` now refuses a `stat` that does not resolve
-  to points, naming the linescore as the limit. It raises
-  `TemplateUnsupported` rather than refusing outright, which keeps today's
-  behavior for these questions exactly: they fall through.
-- **User sees:** the agent, slowly, for any team per-quarter question about
-  something other than points. No longer a wrong answer.
-- **Next step:** a team's per-quarter THREE-POINT figures are derivable -
-  `shot_chart` carries `team_id`, `period` and the shot's value through
-  `SHOT_VALUE_SQL`, which is how `period_split` already counts a player's -
-  so answer threes per quarter from that table under the same per-season
-  accuracy gating `PERIOD_RECONCILIATION` applies. Rebounds and assists have
-  no such source and stay refused.
+### A team's per-quarter average of anything but points is not built
+- **Found:** 2026-09-20; **re-measured 2026-09-29** once a player's period
+  line was rebuilt from the plays (plan item 4)
+- **Evidence:** the source exists now: a team's period figure is the sum of
+  its players' period lines (`player_games.period_line_sql`). Measured the
+  only way it can be checked - summed over every period and every player of
+  the team, against `team_box_stats` per team-game (2004-2026): field goals
+  made agree 97.6-100% of team-games in 2007-2026 except 2013 (83.1%) and
+  2016 (56.6%); threes made 97.7-100%; assists 97.8-99.8% from 2007 (65.6% in
+  2016); steals, blocks and turnovers 85-99% by season; `totalRebounds`
+  agrees in 0% of team-games through 2018 and ~97% from 2022 - the team
+  rebounds credited to no player are in the column until 2022 (DATA.md,
+  "The team `totalRebounds` column stops including team rebounds in 2022")
+  and are plays with no `athlete_id`, which a sum of player lines leaves out.
+  A team-level check is stricter than the player one (any player's miss
+  breaks the team's game), so the caveat has to be measured at team level.
+- **User sees:** "trailblazers stats last 10 games 3 point average 1st
+  quarter" is refused by `team_quarter_points` (the linescore holds points
+  only) and falls through.
+- **Next step:** a period narrowing on `TeamNarrowed` (`team_games.py`),
+  summing the team's players' period lines plus the team's own no-athlete
+  plays (team rebounds, team turnovers), with its own per-season agreement
+  table measured as above; points stay the linescore's.
 - **GitHub:** #161
 
 ### An award or All-Star question has no table to refuse from, so the agent is free to invent one
@@ -2996,6 +2968,42 @@ those were found.
 - **Source:** ours.
 - **GitHub:** #274
 
+### A period used as a condition on the games falls through
+- **Found:** 2026-09-29, period relation (plan item 4)
+- **Evidence:** "vj edgecombe three points made per game after making one
+  three in first quarter" (yardstick-v2 F062) asks his WHOLE-game threes over
+  the games whose first quarter held one (the key: 31 games, 2.52 a game).
+  Once `period_split` read any stat, it answered his first-quarter threes
+  (45 over 75 games) - measured offline, a wrong answer delivered fluently.
+  `router._PERIOD_AS_CONDITION` now routes the wording to `other`.
+- **User sees:** a fall-through where a condition-on-a-period question is
+  asked; before the guard, a wrong answer.
+- **Next step:** a period CONDITION on the relation - a `Condition`-like
+  clause "his period line in this game met X" (an EXISTS over the period
+  line), with the measure read over the whole game; the relation already has
+  both halves.
+
+### The empty-box rebuild counts turnovers and fouls by the older rules
+- **Found:** 2026-09-29, period relation (plan item 4)
+- **Evidence:** `fetch/repairs/reconstructed_box.py` counts a turnover as a
+  `%Turnover%` type (missing `Traveling`) and a foul as `%Foul%` but
+  technicals (counting an offensive foul's turnover half as a second foul,
+  missing `Shooting Block`/`Personal Block`/`Offensive Charge`). Its own
+  measured accuracy is turnovers 92.5% and fouls 83.3% (2015). The period
+  line's rules for the same columns (`player_games._PERIOD_TURNOVER`,
+  `_PERIOD_FOUL`) measure 99.8% and 99.7% on 2015's real box scores.
+  `REBUILT_STATS` leaves both columns out of every answer because of those
+  figures, so a rebuilt Bulls or Pelicans 2013-18 game shows no turnovers or
+  fouls at all.
+- **User sees:** a per-game answer over the empty 2013-18 box scores skips
+  turnovers and fouls ("could not see N games") where it could read them.
+- **Next step:** reuse the period line's rules in the rebuild, re-measure
+  2015 against its surviving box scores, and admit the two columns to
+  `REBUILT_STATS` if they clear the others' ~99%; needs a
+  `data load --tables player_box_stats` (the views are built at load time).
+- **Source:** DATA.md, "A play's type does not always say what the box score
+  counts it as"
+
 ## P4: tooling, docs, low impact
 
 ### `player_stat` given a `team` slot answers this season and never mentions the team: "lebron stats as a starter for Miami"
@@ -3155,24 +3163,19 @@ those were found.
   next two ports each add their own copy instead of reading this one first.
 - **GitHub:** #193
 
-### "Points by quarter" asks for all four at once, and every template answers one
-- **Found:** 2026-09-20, finishing the quarters-and-halves work
-- **Evidence:** "nba playerspoints by quarter average" reaches `other` and
-  falls through. `router._period_asked` returns a single period or a single
-  half, and both period templates take exactly one of those, so a question
-  asking for the breakdown across all four quarters has nothing to route to -
-  `_AGENT_ONLY` matches "by quarter" and sends it to `other` for want of a
-  legible single period.
-- **User sees:** the slow agent, for a question the shot table can answer four
+### A named player's points by quarter, all four at once, is not built
+- **Found:** 2026-09-20; **the league-wide half fixed 2026-09-29** ("nba
+  playerspoints by quarter average", F048, is `period_leaderboard` with no
+  period: every qualifying player's four quarters side by side, the key's
+  own figures - Luka Doncic 11.97 / 7.22 / 9.70 / 4.56)
+- **Evidence:** "points per quarter for Luka" and "Jokic points by quarter"
+  still route to `other` (`router._BY_QUARTER` is read only with no player
+  or team named), pinned by `test_questions_no_template_computes_are_forced_to_the_agent`.
+- **User sees:** the slow agent, for a question the relation can answer four
   times over.
-- **Next step:** low priority - one corpus question, and it is malformed
-  ("playerspoints"). If it is picked up, the shape is `period_leaderboard`'s
-  query grouped by period rather than filtered to one, and the answer is a
-  four-column table; decide first whether it means the league's average by
-  quarter or one player's, which the question does not say.
-- **Priority note:** filed P4 rather than P3 because a single malformed
-  question is the whole evidence, and the shape is a table nobody has asked
-  for twice.
+- **Next step:** `period_split` with no period: the four quarter reads
+  `_period_leaderboard_by_quarter` makes, narrowed to the player through
+  `scoped_games` instead of `league_games`.
 - **GitHub:** #162
 
 ### `since` reaches the metric templates only by a second season-scoping path

@@ -552,3 +552,55 @@ def test_a_replayed_routes_typographic_apostrophe_reads_as_a_straight_one(con: d
     route = Route.from_slots("player_stat", {"player": "Tyrese Maxey", "stat": "points", "situation": "new year\u2019s eve", "without": ["jo\u2019el embiid"]})
     reading = reading_from_route(con, question, route)
     assert (reading.scope.situation, reading.scope.without) == ("new year's eve", ("jo'el embiid",))
+
+
+def test_a_quarter_ranking_that_says_player_ranks_the_teams_players(con: duckdb.DuckDBPyConnection) -> None:
+    """yardstick-v2 F049, "hornets average 1st quarter points player": the
+    team's own first-quarter average answered where its leading player's was
+    asked. "player" ranks, as "who" and "leaders" do, and only where no player
+    is named."""
+    route, _, _ = read_route(con, "celtics average 1st quarter points player", ["celtics"], "points")
+    assert (route.intent, route.slots.get("period")) == ("period_leaderboard", 1)
+    team, _, _ = read_route(con, "celtics average 1st quarter points", ["celtics"], "points")
+    assert team.intent == "team_quarter_points"
+
+
+def test_a_named_players_period_games_are_listed(con: duckdb.DuckDBPyConnection) -> None:
+    """yardstick-v2 F060, "Rudy gobert first half games this season": the key
+    lists his first halves, and a total answered it. "games" with no stat
+    named is a log, as "log" is; with a stat named it stays the total."""
+    route, _, _ = read_route(con, "tyrese maxey first half games this season", ["tyrese maxey"], "")
+    assert (route.intent, route.slots.get("half"), route.slots.get("per_game")) == ("period_split", 1, True)
+    total, _, _ = read_route(con, "tyrese maxey first half points over his games this season", ["tyrese maxey"], "points")
+    assert total.slots.get("per_game") is None
+
+
+def test_points_by_quarter_with_no_one_named_is_the_leagues_table(con: duckdb.DuckDBPyConnection) -> None:
+    """yardstick-v2 F048, "nba playerspoints by quarter average", fell through
+    for want of one period: every quarter at once is period_leaderboard with
+    none. A named player's breakdown is not built and stays `other`."""
+    route, _, _ = read_route(con, "nba playerspoints by quarter average", [], "")
+    assert route.intent == "period_leaderboard" and route.slots.get("period") is None and route.slots.get("half") is None
+    named, _, _ = read_route(con, "Jokic points by quarter", ["Jokic"], "points")
+    assert named.intent == "other"
+
+
+def test_most_ranks_a_quarter_only_where_no_team_is_named(con: duckdb.DuckDBPyConnection) -> None:
+    """ "most first quarter rebounds per game" ranks the league's players; "the
+    celtics most points in a first half" is the team's own best half."""
+    league, _, _ = read_route(con, "most first quarter rebounds per game this season", [], "rebounds")
+    assert (league.intent, league.slots.get("period"), league.slots.get("stat")) == ("period_leaderboard", 1, "rebounds")
+    team, _, _ = read_route(con, "celtics most points in a first half this season", ["celtics"], "points")
+    assert team.intent == "team_quarter_points"
+
+
+def test_a_period_used_as_a_condition_is_not_a_period_answer(con: duckdb.DuckDBPyConnection) -> None:
+    """yardstick-v2 F062, "... three points made per game after making one
+    three in first quarter": his whole-game threes over the games whose first
+    quarter held one. Once period_split read any stat it answered his
+    first-quarter threes - a different question, fluently. Nothing reads a
+    period as a condition, so the question is not a period template's."""
+    route, _, _ = read_route(con, "tyrese maxey three points made per game after making one three in first quarter", ["tyrese maxey"], "threePointFieldGoalsMade")
+    assert route.intent == "other"
+    plain, _, _ = read_route(con, "tyrese maxey three points made in the first quarter", ["tyrese maxey"], "threePointFieldGoalsMade")
+    assert plain.intent == "period_split"
