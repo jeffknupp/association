@@ -186,6 +186,17 @@ _PLAYER_GAMES = "FROM player_game_log pgl JOIN games g ON g.event_id = pgl.event
 #   offensive foul (the foul itself is its own play) and `No Foul`, plus
 #   `Offensive Charge`, `Shooting Block` and `Personal Block`, whose types never
 #   say "foul": 2015 went from 88.6% to 99.7%, 2026 from 89.8% to 99.8%.
+# - a `No Turnover` play whose text says "turnover" is one ("Andre Drummond
+#   turnover": 436 of 2018's 439 plays of the type, 104 of 2019's 104 - but
+#   not the 23 whose text is "Tyler Zeller no turnover Ray Allen"), and a
+#   `Not Available` play whose text says "foul" is one (2018's 89 "personal
+#   blocking foul"s), and so is one whose text says "turnover" (2016's 344,
+#   "John Wall turnover"). Measured 2026-09-29 at team level, where one
+#   missing play breaks a whole team-game: 2018 turnovers 85.4% -> 93.8%,
+#   2019 92.6% -> 95.5%, 2022 95.7% -> 97.5%, 2016 60.6% -> 64.9%; 2018
+#   fouls 80.7% -> 83.2%. 2016's 24 `Not Available` "offensive rebound"s are
+#   NOT rebounds the box counts: read as rebounds, 2016's team rebounds went
+#   from 98.4% to 97.9%.
 #
 # Assists, steals and blocks belong to the SECOND id in
 # `participant_athlete_ids`, as in the rebuild; a foul's second id is the man
@@ -193,9 +204,13 @@ _PLAYER_GAMES = "FROM player_game_log pgl JOIN games g ON g.event_id = pgl.event
 _PERIOD_SHOT_VALUE = SHOT_VALUE_SQL
 _PERIOD_FREE_THROW = "sc.shot_type ILIKE '%free throw%'"
 _PERIOD_HEAVE_MISS = "(sc.shot_type ILIKE 'heave%' AND NOT sc.made)"
-_PERIOD_TURNOVER = "((p.type ILIKE '%Turnover%' AND p.type <> 'No Turnover') OR p.type = 'Traveling')"
+_PERIOD_TURNOVER = (
+    "((p.type ILIKE '%Turnover%' AND p.type <> 'No Turnover') OR p.type = 'Traveling' "
+    "OR (p.type IN ('No Turnover', 'Not Available') AND p.text ILIKE '%turnover%' AND p.text NOT ILIKE '%no turnover%'))"
+)
 _PERIOD_FOUL = (
-    "((p.type ILIKE '%Foul%' AND p.type NOT ILIKE '%Technical%' AND p.type NOT ILIKE '%Turnover%' AND p.type <> 'No Foul') OR p.type IN ('Offensive Charge', 'Shooting Block', 'Personal Block'))"
+    "((p.type ILIKE '%Foul%' AND p.type NOT ILIKE '%Technical%' AND p.type NOT ILIKE '%Turnover%' AND p.type <> 'No Foul') "
+    "OR p.type IN ('Offensive Charge', 'Shooting Block', 'Personal Block') OR (p.type = 'Not Available' AND p.text ILIKE '%foul%'))"
 )
 
 PERIOD_COLUMNS: tuple[str, ...] = (
@@ -273,7 +288,7 @@ PERIOD_AGREEMENT: dict[str, dict[int, float]] = {
     "assists": {2002: 30.3, 2003: 30.3, 2004: 31.2, 2005: 31.8, 2006: 87.8, 2013: 98.6, 2016: 93.5, 2017: 98.9},
     "steals": {2002: 51.7, 2003: 51.6, 2004: 50.9, 2005: 53.3, 2006: 91.5, 2013: 98.7, 2017: 97.4, 2018: 98.5},
     "blocks": {2002: 68.9, 2003: 69.3, 2004: 69.0, 2005: 69.9, 2006: 94.5, 2017: 98.7},
-    "turnovers": {2002: 89.5, 2003: 95.0, 2004: 87.3, 2005: 94.1, 2006: 96.1, 2007: 98.3, 2008: 98.7, 2013: 98.8, 2016: 93.6, 2018: 98.3},
+    "turnovers": {2002: 89.5, 2003: 95.0, 2004: 87.3, 2005: 94.1, 2006: 96.1, 2007: 98.3, 2008: 98.7, 2013: 98.8, 2016: 94.5},
     "fouls": {2002: 92.9, 2003: 94.6, 2004: 98.4, 2005: 97.6, 2006: 96.8, 2013: 99.0, 2018: 97.6},
 }
 """Per :data:`PERIOD_COLUMNS` column, per season, the percentage of

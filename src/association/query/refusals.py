@@ -38,6 +38,7 @@ from association.query.player_games import PERIOD_COLUMNS
 from association.query.reading import Reading, Scope
 from association.query.router import _PERIOD_AS_CONDITION
 from association.query.subject import Subject
+from association.query.team_games import TEAM_PERIOD_COLUMNS
 from association.query.templates.common import PLAYER_INTENTS, TemplateResult
 
 _CHAMPIONSHIP = re.compile(r"\b(?:championships?|champions?|nba\s+titles?|won\s+the\s+(?:title|finals)|title\s+winners?|finals\s+winners?)\b", re.IGNORECASE)
@@ -213,15 +214,22 @@ def _period_as_condition(con: duckdb.DuckDBPyConnection, intent: str, scope: Sco
 
 
 def _team_period_stat(con: duckdb.DuckDBPyConnection, intent: str, scope: Scope, question: str, subject: Subject) -> str | None:
-    """A team's stat other than points by quarter or half: the linescore
-    holds each team's points per period and nothing else (yardstick-v2 F065,
-    "trailblazers ... 3 point average 1st quarter")."""
+    """A team's stat by quarter or half that neither the linescore (each
+    team's points per period) nor the period's rebuilt line
+    (:data:`~association.query.team_games.TEAM_PERIOD_COLUMNS` - threes,
+    rebounds, turnovers and the rest since the period relation's team half)
+    holds: minutes, plus-minus, points in the paint.
+
+    .. versionchanged:: 5.0.0
+       A column the rebuilt line holds is no longer refused here (yardstick-v2
+       F065, "trailblazers ... 3 point average 1st quarter", is answered).
+    """
     stat = scope.stat
-    if intent != "team_quarter_points" or not isinstance(stat, str) or stat in ("points", "pts", ""):
+    if intent != "team_quarter_points" or not isinstance(stat, str) or stat in ("points", "pts", "") or stat in TEAM_PERIOD_COLUMNS:
         return None
     return (
-        f"A team's quarter or half holds points only - the linescore is the one per-period figure on record, and {stat!r} is not split by period. "
-        f"Ask for the team's points in that period, or for {stat} over whole games."
+        f"A team's quarter or half holds its points (the linescore) and the box-score counts play-by-play rebuilds, and {stat!r} is neither. "
+        f"Ask for the team's points, threes, rebounds or turnovers in that period, or for {stat} over whole games."
     )
 
 

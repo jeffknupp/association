@@ -9,14 +9,20 @@ row in the shape of the real play that taught it.
 from __future__ import annotations
 
 from collections.abc import Iterator
+from pathlib import Path
 from typing import Any
 
 import duckdb
 import pytest
 
+from association.fetch.repairs import real_games
 from association.query.player_games import PERIOD_AGREEMENT, PERIOD_COLUMNS, Narrowed, aggregate_sql, period_line_sql, rows_sql
-from association.query.reading import Scope
-from association.query.templates.common import RELATION_SCOPING, RELATION_SCOPING_EXCLUDED, period_narrowing
+from association.query.reading import Reading, Scope
+from association.query.team_games import TEAM_PERIOD_AGREEMENT, TEAM_PERIOD_COLUMNS, TeamNarrowed, team_period_line_sql
+from association.query.team_games import aggregate_sql as team_aggregate_sql
+from association.query.team_games import rows_sql as team_rows_sql
+from association.query.templates.common import RELATION_SCOPING, RELATION_SCOPING_EXCLUDED, TEAM_RELATION_SCOPING, TEAM_RELATION_SCOPING_EXCLUDED, TemplateContext, period_narrowing
+from association.query.templates.games import team_quarter_points
 
 SEASON = 2026
 
@@ -87,6 +93,13 @@ def con() -> Iterator[duckdb.DuckDBPyConnection]:
         # A foul's second id is the man who drew it, and is never credited.
         ("g1", 1, "5", "5,1", "Personal Foul", "X personal foul (Player One draws the foul)"),
         ("g2", 3, "1", "1", "Defensive Rebound", "Player One defensive rebound"),
+        # 2018 types 436 real turnovers "No Turnover" and 89 blocking fouls
+        # "Not Available"; the text says what they are. A "no turnover" text
+        # is the overturned call the type names, and is not counted.
+        ("g2", 3, "1", "1", "No Turnover", "Player One turnover"),
+        ("g2", 3, "1", "1", "No Turnover", "Player One  no turnover X"),
+        ("g2", 3, "1", "1", "Not Available", "Player One personal blocking foul"),
+        ("g2", 3, "1", "1", "Not Available", "Player One turnover"),
     ]
     for event, period, athlete, parts, kind, text in plays:
         c.execute("INSERT INTO plays VALUES (?, ?, 2, ?, ?, ?, ?, ?)", [event, SEASON, period, athlete, parts, kind, text])
@@ -117,6 +130,11 @@ def test_a_quarters_line_counts_each_play_by_its_measured_rule(con: duckdb.DuckD
 
 def test_a_foul_the_type_does_not_name_is_counted_and_a_technical_is_not(con: duckdb.DuckDBPyConnection) -> None:
     assert _line(con, (2,))["fouls"] == 2, "a shooting block and a charge; not the technical, not the overturned call"
+
+
+def test_a_turnover_or_foul_the_type_mislabels_is_read_from_its_text(con: duckdb.DuckDBPyConnection) -> None:
+    line = _line(con, (3,), "g2")
+    assert (line["turnovers"], line["fouls"]) == (2, 1), "the 'No Turnover' and the 'Not Available' that say turnover, the 'Not Available' blocking foul"
 
 
 def test_a_half_is_its_two_quarters_and_every_period_includes_overtime(con: duckdb.DuckDBPyConnection) -> None:
@@ -215,3 +233,146 @@ def test_compiling_a_period_read_of_minutes_refuses_before_the_warehouse_is_read
 
     with pytest.raises(Unsupported, match="minutes"):
         compile_query(duckdb.connect(":memory:"), Query(scope=Scope(player="x", period=1, season=SEASON, season_type=2)))
+
+
+# ---------------------------------------------------------------------------
+# The team half (ISSUES.md #161): a team's period line is its players' lines
+# plus its own plays, and its points are the linescore's.
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def team_con(con: duckdb.DuckDBPyConnection) -> duckdb.DuckDBPyConnection:
+    """The player fixture's two players on team 9, at home to team 13 in g1
+    and g2, with the tables the team relation reads beside them: the
+    linescores, a roster, and the team's own plays in the shapes ESPN serves
+    them."""
+    con.execute("CREATE TABLE teams (team_id VARCHAR, abbreviation VARCHAR, display_name VARCHAR)")
+    con.execute("INSERT INTO teams VALUES ('9', 'AAA', 'Home Team'), ('13', 'BBB', 'Away Team')")
+    con.execute("ALTER TABLE games ADD COLUMN home_linescores VARCHAR")
+    con.execute("ALTER TABLE games ADD COLUMN away_linescores VARCHAR")
+    con.execute("ALTER TABLE games ADD COLUMN neutral_site BOOLEAN")
+    con.execute("ALTER TABLE games ADD COLUMN venue_city VARCHAR")
+    con.execute("UPDATE games SET home_linescores = '30,20,25,25', away_linescores = '20,25,20,25', neutral_site = FALSE, venue_city = 'Home'")
+    real_games.build_table(con, {"games", "teams"})
+    con.execute("CREATE TABLE player_box_stats (event_id VARCHAR, season BIGINT, season_type BIGINT, team_id VARCHAR, athlete_id VARCHAR)")
+    for event in ("g1", "g2"):
+        con.executemany("INSERT INTO player_box_stats VALUES (?, ?, 2, '9', ?)", [(event, SEASON, "1"), (event, SEASON, "2")])
+    con.execute("ALTER TABLE plays ADD COLUMN team_id VARCHAR")
+    con.execute("UPDATE plays SET team_id = '9'")
+    team_plays: list[tuple[Any, ...]] = [
+        # (event, period, type, text) - no athlete, the team's own.
+        # A shot-clock violation is charged to the team: a turnover the box
+        # counts (`totalTurnovers`), in no player's line.
+        ("g1", 1, "Shot Clock Turnover", "Home Team shot clock turnover"),
+        # A team rebound: in the plays, never in the box's rebound split
+        # (measured: counted, offensive rebounds agree in 0.1-3.4% of
+        # team-games instead of 98-99%).
+        ("g1", 1, "Offensive Rebound", "Home Team offensive team rebound"),
+        ("g1", 3, "8-Second Turnover", "Home Team 8 second turnover"),
+    ]
+    for event, period, kind, text in team_plays:
+        con.execute("INSERT INTO plays VALUES (?, ?, 2, ?, NULL, NULL, ?, ?, '9')", [event, SEASON, period, kind, text])
+    # A shot ESPN charted with no shooter still counts for the team.
+    con.execute("INSERT INTO shot_chart VALUES ('g1', ?, 2, NULL, '9', 1, TRUE, 'Jump Shot', 2, 25, 10, 'shot')", [SEASON])
+    return con
+
+
+def _team_line(con: duckdb.DuckDBPyConnection, periods: tuple[int, ...] | None, event: str = "g1", *, plays: bool = True) -> dict[str, Any]:
+    sql = team_period_line_sql(periods, "SELECT DISTINCT event_id, season FROM games", plays=plays)
+    res = con.execute(f"SELECT * FROM ({sql}) WHERE team_id = '9' AND event_id = ?", [event])
+    names = [d[0] for d in res.description]
+    row = res.fetchone()
+    assert row is not None
+    return dict(zip(names, row, strict=True))
+
+
+def test_a_teams_line_is_its_players_plus_its_own_turnovers_and_shots(team_con: duckdb.DuckDBPyConnection) -> None:
+    line = _team_line(team_con, (1,))
+    assert line["turnovers"] == 5, "his traveling, bad pass and offensive-foul turnover, Player Two's lost ball, and the team's shot-clock violation"
+    assert line["teamTurnovers"] == 1, "the team's own share, carried apart for the 2018 check"
+    assert (line["offensiveRebounds"], line["defensiveRebounds"], line["rebounds"]) == (1, 1, 2), "his two - never the team rebound the box's split leaves out"
+    assert (line["fieldGoalsMade"], line["fieldGoalsAttempted"]) == (2, 3), "his make and miss (the heave is no attempt), and the shooterless make"
+    assert line["assists"] == 1 and line["steals"] == 1 and line["blocks"] == 1
+
+
+def test_a_teams_half_is_its_two_quarters(team_con: duckdb.DuckDBPyConnection) -> None:
+    first, second, half = _team_line(team_con, (1,)), _team_line(team_con, (2,)), _team_line(team_con, (1, 2))
+    for column in (c for c in TEAM_PERIOD_COLUMNS if c != "points"):
+        assert half[column] == first[column] + second[column], column
+    assert _team_line(team_con, (3, 4))["turnovers"] == 1, "the 8-second violation, in the second half"
+
+
+def test_without_plays_a_teams_plays_columns_are_unknown_not_zero(team_con: duckdb.DuckDBPyConnection) -> None:
+    line = _team_line(team_con, (1,), plays=False)
+    assert line["fieldGoalsMade"] == 2
+    for column in ("rebounds", "offensiveRebounds", "assists", "steals", "blocks", "turnovers", "fouls"):
+        assert line[column] is None, column
+
+
+def _team_narrowed(periods: tuple[int, ...], label: str, **flags: bool) -> TeamNarrowed:
+    narrowed = TeamNarrowed(base=["tg.team_id = ?", "tg.season_type = ?", "tg.season = ?"], base_params=["9", 2, SEASON])
+    narrowed.narrow_periods(periods, label, **flags)
+    return narrowed
+
+
+def test_a_period_narrowed_team_read_sees_the_linescore_and_the_rebuilt_line(team_con: duckdb.DuckDBPyConnection) -> None:
+    """The reader's SQL is unchanged - ``tg.team_score`` - and gets the
+    period's score from ESPN's own linescore, each side's own; a rebuilt
+    column beside it. ``won`` stays the game's result."""
+    narrowed = _team_narrowed((1, 2), "1st half")
+    sql, params = team_rows_sql(narrowed, "tg.event_id, tg.team_score, tg.opponent_score, tg.points, tg.turnovers, tg.won", order="tg.eastern_date")
+    assert team_con.execute(sql, params).fetchall() == [("g1", 50, 45, 50, 5, True), ("g2", 50, 45, 50, 0, True)]
+    assert narrowed.filters() == " in the 1st half" and narrowed.filters(period=False) == ""
+
+
+def test_an_overtime_no_game_reached_is_null_not_zero(team_con: duckdb.DuckDBPyConnection) -> None:
+    sql, params = team_aggregate_sql(_team_narrowed((5,), "overtime"), ["COUNT(*)", "COUNT(tg.points)", "SUM(tg.points)"])
+    assert team_con.execute(sql, params).fetchone() == (2, 0, None)
+
+
+def test_a_team_game_the_shot_table_does_not_cover_has_no_rebuilt_line(team_con: duckdb.DuckDBPyConnection) -> None:
+    """The linescore still answers its points; the rebuilt columns are
+    unknown - a confident zero would drag every average down."""
+    team_con.execute("INSERT INTO games VALUES ('g3', ?, 2, '2025-11-05T00:30Z', '9', '13', 100, 90, '9', '25,25,25,25', '20,20,25,25', FALSE, 'Home')", [SEASON])
+    team_con.execute("DROP TABLE real_games")
+    real_games.build_table(team_con, {"games", "teams"})
+    sql, params = team_rows_sql(_team_narrowed((1,), "1st quarter"), "tg.event_id, tg.points, tg.rebounds", order="tg.eastern_date")
+    assert team_con.execute(sql, params).fetchall()[-1] == ("g3", 25, None)
+
+
+def test_a_team_read_without_shots_knows_only_the_linescore(team_con: duckdb.DuckDBPyConnection) -> None:
+    sql, params = team_rows_sql(_team_narrowed((1,), "1st quarter", shots=False, plays=False), "tg.points, tg.fieldGoalsMade, tg.turnovers", order="tg.eastern_date")
+    assert team_con.execute(sql, params).fetchall() == [(30, None, None), (30, None, None)]
+
+
+def test_period_is_a_team_relation_cell_and_every_exclusion_says_why() -> None:
+    assert {"period", "half"} <= TEAM_RELATION_SCOPING
+    for intent in ("team_record", "head_to_head", "team_leaderboard"):
+        for cell in ("period", "half"):
+            assert TEAM_RELATION_SCOPING_EXCLUDED[intent][cell].strip(), f"{intent} excludes {cell} without a reason"
+
+
+def test_the_team_agreement_table_names_only_period_columns_and_real_percentages() -> None:
+    assert set(TEAM_PERIOD_AGREEMENT) <= set(TEAM_PERIOD_COLUMNS)
+    for column, seasons in TEAM_PERIOD_AGREEMENT.items():
+        for season, pct in seasons.items():
+            assert season >= 2002 and 0 <= pct < 99.05, f"{column} {season}: {pct} (the table lists seasons under 99% only)"
+
+
+def test_team_quarter_points_answers_a_rebuilt_stat_with_its_seasons_caveat(team_con: duckdb.DuckDBPyConnection, tmp_path: Path) -> None:
+    """ "home team first half turnovers": the relation's rebuilt column, per
+    game and averaged, and the season's measured agreement said beside it."""
+    ctx = TemplateContext(con=team_con, out_dir=tmp_path)
+    result = team_quarter_points(ctx, Reading.from_slots({"team": "Home Team", "half": 1, "season": SEASON, "season_type": 2, "stat": "turnovers"}))
+    assert (result.data["total"], result.data["stat"], [g["turnovers"] for g in result.data["games"]]) == (5, "turnovers", [5, 0])
+    assert "averaged 2.5 turnovers in the 1st half" in (result.answer or "")
+    listed = TEAM_PERIOD_AGREEMENT["turnovers"].get(SEASON)
+    assert listed is None or f"{listed:.1f}% of the time in {SEASON}" in (result.answer or "")
+
+
+def test_team_quarter_points_refuses_a_season_the_line_rebuilds_badly(team_con: duckdb.DuckDBPyConnection, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setitem(TEAM_PERIOD_AGREEMENT, "turnovers", {SEASON: 60.6})
+    ctx = TemplateContext(con=team_con, out_dir=tmp_path)
+    result = team_quarter_points(ctx, Reading.from_slots({"team": "Home Team", "half": 1, "season": SEASON, "season_type": 2, "stat": "turnovers"}))
+    assert "total" not in result.data and f"cannot be answered for {SEASON} (61%)" in (result.answer or "")
