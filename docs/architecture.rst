@@ -9,9 +9,11 @@ against that warehouse. Nothing later in the chain needs the network.
 
    ESPN endpoints ──► fetch/ ──► data/parquet/ ──► warehouse ──► nba.duckdb
                                                                      │
-                                     question ──► reader ──► template┤
+                                     question ──► parser ──► template┤
                                                      │               │
-                                                     └──► agent ─────┘
+                                                     ├──► compiler ──┘
+                                                     │
+                                                     └──► refusal naming why
 
 Fetch
 -----
@@ -57,7 +59,7 @@ partial ``association data load --tables ...``:
   a per-game box line from ``plays`` for the roughly 1,025 Chicago/New Orleans
   games (2013-2018) ESPN serves with every stat zero. Deliberately its own
   views rather than a rewrite of ``player_box_stats`` itself, and deliberately
-  absent from :data:`association.query.prompt.KNOWN_TABLES` — a reconstructed
+  absent from :data:`association.nba.coverage.KNOWN_TABLES` — a reconstructed
   number sitting in the same column as a fetched one would be indistinguishable
   from it.
 * :mod:`association.fetch.repairs.real_games` builds the ``real_games`` table: the rows
@@ -82,8 +84,8 @@ failures each setting fixes). A **partial** rebuild (``--tables``) writes
 ``db_path`` in place, since it depends on tables already there that it is not
 reloading.
 
-Query: a reader in front of an agent
-------------------------------------
+Query: a parser in front of the templates
+-----------------------------------------
 
 The query engine's design is the product of one measurement. A single model was
 originally asked to do two jobs at once — understand the question *and* write
@@ -94,7 +96,8 @@ so only 4,098 tokens ever reached the model, and what it discarded was the
 schema summary and most of the correctness rules. Questions took minutes and
 answered the wrong thing.
 
-So the two jobs are now separate.
+So the two jobs were separated, and then the second was measured and removed:
+no model writes SQL here any more (below, "What an answer is").
 
 **The reader** does only the language half, and the model does the least of
 it. Its whole job is :func:`association.query.normalizer.normalize`: copy the
@@ -161,17 +164,17 @@ the template itself raises ``TemplateUnsupported``,
 relation the template could not narrow to - the point the parser read from
 the question's words once (``Reading.point``) - and phrases its own answer
 exactly like a template's - a sentence, ``data``, no model call - or returns
-``None`` to say "not a point on this relation", which falls through exactly as
-it did before this step existed. A refusal it hands back instead - a
+``None`` to say "not a point on this relation", and the question is then
+refused with the template's own reason. A refusal it hands back instead - a
 clarification, a "no match" - is answered, not passed along: it looked at the
 question and had something to say. Nothing here reaches ollama; it is another
-deterministic step, not a smaller agent.
+deterministic step, not a model.
 
 The compiler reads the question once, into a :class:`association.query.reading.Reading`
 - the relation, the subject, the shape, the measures, the predicates, the
 window, the scope - and plans that record into its point
 (:func:`association.query.compose.plan.plan`) without reading the question
-again. The agent logs the record as ``-> (reading) ...``, the trace line that
+again. The answering loop logs the record as ``-> (reading) ...``, the trace line that
 says where every value in a composed answer came from. Seven intents have
 no template at all (``compose.COMPILED_INTENTS``: ``threshold_count``,
 ``single_game_high``, ``record_when``, ``player_history``, ``game_log``,
@@ -180,8 +183,8 @@ compiler reproduced their templates exactly, answered them first, and then
 replaced them. Each is still said in its retired template's words, through
 that template's phrasing helpers (:mod:`association.query.compose.present`;
 a team's log through :func:`association.query.templates.games.team_game_log`),
-and a point the compiler has no reading of is refused or falls through with
-the compiler's reason. That is ROADMAP plan item 6's step (d), part 4, and
+and a point the compiler has no reading of is refused with the compiler's
+reason. That is ROADMAP plan item 6's step (d), part 4, and
 step (g) for ``game_log``, ``player_stat`` and ``player_splits``.
 
 The subject need not be a player. :mod:`association.query.compose.team` is a
@@ -198,24 +201,37 @@ steps every team template narrows through. Kept apart from the player
 compiler on purpose, so every rule measured for the player subject stays
 exactly as it was.
 
-**The agent** (:mod:`association.query.agent`) is the fall-through for
-questions no template covers, and no compiled answer does either. It still
-writes SQL by hand with the tools in :mod:`association.query.toolbox`, and its
-preamble is assembled per question
-(:func:`association.query.prompt.build_system_prompt`) so it carries only the
-knowledge-base entries that question needs.
+**The refusal** is what a question neither a template nor the compiler
+reads gets: :meth:`association.query.agent.Agent.ask` answers it in the same
+second with the reason the parser, the template or the compiler gave it up
+with (:func:`association.query.agent.refusal_text`) - an intent with no
+template, a narrowing the relation cannot honor, a reply the normalizer could
+not use - and where the shape is one the warehouse has no column for at all,
+:mod:`association.query.refusals` names the missing thing instead (a playoff
+round, an age, a stat by quarter the plays cannot rebuild). Until 5.0.0 such a
+question fell through to a tool-calling agent that wrote SQL by hand.
+Measured at production defaults over 24 questions (ISSUES.md #129), it
+answered one in 23, did not finish 61% of the time, and was wrong five times
+in six where it finished - an agent with nothing to read fills the silence
+from its own weights. So it went, with its prompt, its tools and its budget;
+the refusal it left behind is the answer ``--disable-fallthrough`` used to
+raise as an error.
 
 Why templates rather than better prompting
 ------------------------------------------
 
 The case against prompt-only correctness is empirical. Asked how many times two
-teams had played, the agent wrote ``home_team_id = 'PHI'`` — team ids are
-opaque all-digit strings, so the filter matched nothing, and it reported that
-the teams had never met. The rule against exactly that was in its prompt,
-verbatim, with that exact wrong form spelled out as a worked example.
+teams had played, the SQL-writing agent of the time wrote ``home_team_id =
+'PHI'`` — team ids are opaque all-digit strings, so the filter matched nothing,
+and it reported that the teams had never met. The rule against exactly that
+was in its prompt, verbatim, with that exact wrong form spelled out as a
+worked example.
 
 A template cannot make that mistake, because resolving a name to an id is code
-that runs the same way every time.
+that runs the same way every time. That is also why the agent is gone rather
+than improved: every measured failure of the fast path is a missing or
+too-narrow shape, which is a template or a compiler reading to add, and a
+model with nothing to read does not fill the gap - it fills the silence.
 
 What an answer is
 -----------------
@@ -225,23 +241,21 @@ What an answer is
 the CLI prints and is the whole of what the CLI ever showed; everything beside
 it is what the pipeline had already computed and thrown away.
 
-The important field is ``answered_by``: ``"fast"`` for reader → template, and
-``"agent"`` for the fall-through. That distinction is not bookkeeping. It is the
-single most useful thing a reader can know about an answer's reliability —
-whether a template built the sentence from code, or a 7B model wrote the SQL —
-and it was previously visible only by watching the trace go past.
+The important field is ``answered_by``: ``"fast"`` for parser → template or
+compiler, and ``"refused"`` where nothing here had a reading of the question
+and ``text`` names why. That distinction is not bookkeeping. It is the single
+most useful thing a reader can know about an answer — whether code built the
+sentence, or nothing read the question — and until 5.0.0 the second value was
+``"agent"``, a 7B model writing the SQL, visible only by watching the trace go
+past.
 
-``intent`` and ``data`` are populated on the fast path and ``None`` on the
-other, because only a template produces them. ``data`` is the same answer as
-resolved names and numbers, and it exists so a caller can render the result
-itself rather than parse the sentence. ``artifacts`` names the files a question
-wrote, which a chart's caller previously had to recover from the middle of the
-message it was formatted into.
-
-Both paths reach charts differently, which is why artifacts arrive from two
-places: a template renders straight to disk and reports what it wrote, while
-the agent renders through a tool whose return value is prose the *model* reads,
-so :class:`association.query.toolbox.Toolbox` records the file on the side.
+``intent`` and ``data`` are populated on a fast answer and ``None`` on a
+refusal, because only a template or the compiler produces them. ``data`` is
+the same answer as resolved names and numbers, and it exists so a caller can
+render the result itself rather than parse the sentence. ``artifacts`` names
+the files a question wrote, which a chart's caller previously had to recover
+from the middle of the message it was formatted into: a template renders
+straight to disk and reports what it wrote.
 
 The live trace is a sink rather than a print. :class:`association.query.history.RunHistory`
 records every line to the run's history file regardless, and hands it to
@@ -249,76 +263,24 @@ records every line to the run's history file regardless, and hands it to
 to a terminal on its own any more, which is what lets a caller other than a
 terminal forward the trace somewhere else.
 
-Two models
-----------
+One model
+---------
 
-Reading a question and writing SQL want different models. The normalizer only
-copies names and picks one stat key, and constrained decoding does the
-structural work: measured over the 277 day10 wordings, qwen2.5:3b copies 299
-of 302 names verbatim at 0.82s a question median, and qwen2.5:7b adds nothing
-on names and 13 of 162 on the stat - almost all of it the 2-point/3-point
-confusion, which the parser's measure grammar reads from the words instead -
-at 1.84s. So the normalizer runs a 3B (``--router-model``, named for the
-router it replaced) while the agent keeps a 7B (``--model``) for hand-written
-SQL. The same held for the router's classification before it: over its
-routing cases, every model from 1.5B to 8B landed within a case or two of the
-rest.
+The normalizer only copies names and picks one stat key, and constrained
+decoding does the structural work: measured over the 277 day10 wordings,
+qwen2.5:3b copies 299 of 302 names verbatim at 0.82s a question median, and
+qwen2.5:7b adds nothing on names and 13 of 162 on the stat - almost all of it
+the 2-point/3-point confusion, which the parser's measure grammar reads from
+the words instead - at 1.84s. So the normalizer runs a 3B (``--router-model``,
+named for the router it replaced), and it is the only model: the 7B that wrote
+SQL for the fall-through went with the fall-through (5.0.0). The same held for
+the router's classification before it: over its routing cases, every model
+from 1.5B to 8B landed within a case or two of the rest.
 
 Thinking models are disqualified on latency rather than accuracy: on the
 router's classification, qwen3:4b spent about 20 seconds per question
 reasoning before emitting the same small JSON object that qwen2.5:3b produces
 in about one.
-
-The tool budget
----------------
-
-The agent's preamble is capped at
-:data:`association.query.prompt.PREAMBLE_TOKEN_BUDGET` tokens, checked on every
-assembly, because ollama truncates an over-length prompt head-first and in
-silence — the original bug kept the tool schemas and discarded the schema
-summary and the correctness rules.
-
-The cap makes the tool list a *budget*, not a list. Each tool costs roughly 190
-tokens of JSON schema plus a line of prose, and that is charged on every
-question whether or not it is relevant: the schemas are a fixed block, unlike
-the knowledge-base entries, which are already selected per question. Five tools
-and the always-on core leave a few hundred tokens of headroom. A sixth and a
-seventh do not fit.
-
-Raising the cap is the smallest lever and the one with the least left in it.
-It cannot go above ``AGENT_NUM_CTX // 2`` without the preamble starting to
-collide with the conversation, and raising ``AGENT_NUM_CTX`` itself buys room
-at roughly a second of CPU prefill per hundred tokens, on the slowest path in
-the system.
-
-The three real levers, cheapest first:
-
-#. **Fold renderers into one tool.** ``render_shot_chart`` and
-   ``render_fingerprint`` are two ~190-token schemas describing the same verb
-   over different nouns. One ``render(kind, player, season, …)`` with an enum of
-   kinds costs one schema, and each new chart type after that costs an enum
-   value — about five tokens instead of a hundred and ninety. This is the
-   change to make first, and it gets cheaper the more chart types exist.
-
-#. **Select tool schemas per question, the way knowledge-base entries already
-   are.** :func:`association.query.prompt.select_knowledge` scores entries by
-   keyword overlap and includes only what a question needs;
-   ``describe_table``/``run_sql`` would stay always-on and the rest would be
-   selected the same way. The cost then scales with what a question is *about*
-   rather than with how much the system can do. The risk is the inverse of the
-   knowledge base's: a missed entry only makes the agent less informed, while a
-   missed tool makes a capability unreachable — so anything selected out this
-   way must already be covered by the fast path.
-
-#. **Port more shapes to templates.** This does not shrink the preamble; it
-   shrinks how much the preamble matters. Every intent with a template is a
-   question the agent never sees, and the budget only binds on the fall-through
-   path. It is also the only lever that makes answers *faster* rather than
-   merely affordable.
-
-What not to do is quietly trim the standing rules or ``TABLE_SUMMARY`` to make
-room. Those are the text the original truncation bug destroyed, and nothing in
-the test suite can tell that the agent got worse at writing SQL.
 
 Failing loudly
 --------------
@@ -333,24 +295,22 @@ that:
   (:func:`association.query.templates.check_scope`) - the ones on a relation
   through the relation's single declaration, the rest each for themselves - and
   a question scoped to particular games is offered to
-  :mod:`association.query.compose` before it falls through, rather than being
+  :mod:`association.query.compose` before it is refused, rather than being
   answered for a season. Only when the compiler also has nothing to say -
-  ``None``, not a refusal - does the question reach the agent.
+  ``None``, not a refusal - is the question refused, with the template's reason.
 * A question about a season a table cannot reach is refused, with the reason
   (:func:`association.query.templates.check_coverage`). The refusal is returned
-  as the answer rather than raised, because the agent would query the same
-  empty tables and is then free to fill the silence from its own weights.
+  as the answer rather than raised, because a season under the floor is empty
+  for every reader.
 * Slots the model drops or files in the wrong place are read from the
   question text, and a player name the question does not support is refused
   rather than answered about: the parser's last step writes the typed
   :class:`~association.query.reading.Reading` everything after it answers
   from, and carries the names it could not read
   (:func:`association.query.parse.reading_from_route`).
-* :func:`association.query.prompt.build_system_prompt` raises rather than
-  handing ollama a prompt it would quietly truncate.
-* :meth:`association.query.toolbox.Toolbox.run_sql` bounds results by tokens
-  rather than rows, and flags an ``*_id`` compared to a non-numeric literal —
-  a filter that can never match.
+* The normalizer's prompt is held to its context window by a test
+  (``normalizer.estimate_tokens``), because ollama truncates an over-length
+  prompt head-first and in silence.
 * Every answer names the season and scope it used, so a substitution is visible
   rather than silent.
 

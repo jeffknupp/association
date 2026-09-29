@@ -38,6 +38,44 @@ REGULAR_SEASON = 2
 #: The season type every table calls the postseason.
 POSTSEASON = 3
 
+KNOWN_TABLES: frozenset[str] = frozenset(
+    {
+        "teams",
+        "players",
+        "games",
+        "player_box_stats",
+        "team_box_stats",
+        "player_season_stats",
+        "team_season_stats",
+        "standings",
+        "team_alignment",
+        "team_power_index",
+        "shot_chart",
+        "win_probability",
+        "stat_glossary",
+        "player_game_log",
+        "player_season_stats_deduped",
+        "plays",
+        "player_advanced_stats",
+        "player_season_advanced_stats",
+        "net_points_player",
+        "net_points_player_fingerprint",
+        "net_points_team",
+        "net_points_player_game",
+        "net_points_player_game_fingerprint",
+        "net_points_team_game",
+    }
+)
+"""Every table and view the query side reads. :data:`COVERAGE` is keyed by
+these names, and the tests hold each floor and each template's declared
+tables to it, so a typo is a floor that never fires rather than a name
+silently unmatched.
+
+.. versionadded:: 5.0.0
+   Moved from ``association.query.prompt``, the agent's schema summary,
+   which went with the agent.
+"""
+
 
 @dataclass(frozen=True)
 class Floor:

@@ -27,10 +27,10 @@ keeping that visible:
   ``player_box_stats``. A reconstructed value sitting in the same column as a
   fetched one is indistinguishable from it, and every serious failure this
   project has had was an answer that looked exactly like a good one.
-- **Deliberately absent from** :data:`association.query.prompt.KNOWN_TABLES`.
-  The SQL agent can therefore neither query nor describe it, and it costs
-  nothing against the preamble budget, which has no room anyway. Do not add it
-  there without first deciding what the agent should say about a derived
+- **Deliberately absent from** :data:`association.nba.coverage.KNOWN_TABLES`.
+  No template reads it by that name, and while a SQL-writing agent existed it
+  could neither query nor describe it. Do not add it there without first
+  deciding what an answer should say about a derived
   number - "Anthony Davis scored 24" and "Anthony Davis probably scored about
   24" are different sentences.
 - **snake_case columns**, like the other derived module
@@ -101,9 +101,11 @@ caller that reads a substituted figure and does not pass that flag on is
 quoting a derived number as ESPN's - so the flag is part of the contract, not a
 debugging aid. ``minutes`` and ``plusMinus`` stay NULL on a substituted row.
 
-Neither view is in :data:`association.query.prompt.KNOWN_TABLES`, so the SQL
-agent reaches neither. That is deliberate for the filled view too: an agent
-writing its own SQL has nowhere to put the caveat that the flag demands.
+Neither view is in :data:`association.nba.coverage.KNOWN_TABLES`, so no
+reader reaches either by that list. That was deliberate for the filled view
+while a SQL-writing agent existed: an agent writing its own SQL had nowhere
+to put the caveat that the flag demands, and the reason stands for any
+reader that does not carry the flag out.
 
 Two notes on how the numbers are read out of ``plays``, both measured rather
 than assumed. A shot is identified by what its ``type`` NAMES - several real

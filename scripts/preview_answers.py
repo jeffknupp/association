@@ -23,7 +23,7 @@ and get one PNG per answer to look at.
 
 Runs against the warehouse at ``--db-path`` (default ``nba.duckdb`` in the current
 directory), read-only. Needs no ollama and no network: a question whose fast path
-gives up (the agent would have been asked) is recorded as fell-through and rendered
+gives up is answered with the refusal naming why, as the real page shows it, and rendered
 as such, which is itself worth seeing.
 """
 
@@ -95,38 +95,16 @@ def answer_without_the_router(db_path: str, out_dir: Path, question: str, intent
 
     Named for the router it stubbed until the recorded route was answered as
     given; the golden and hold-out harnesses import it by this name."""
-    import ollama
-
     from association.query.agent import Agent
-    from association.query.answer import FallthroughDisabled
     from association.query.router import Route
     from association.web.app import as_response
 
-    def never(**kw: Any) -> None:
-        raise AssertionError("the model must not be called: this preview runs the fast path from a recorded route")
-
-    original_chat = ollama.chat
-    ollama.chat = never  # type: ignore[assignment]
-    try:
-        # The recorded route is answered as given (Agent.ask's `route`): the
-        # question is not read, so no model is asked.
-        agent = Agent("preview", db_path, out_dir, history_dir=out_dir / ".history", trace=lambda line: None, fallthrough=False)
-        try:
-            answer = agent.ask(question, label="preview", route=Route.from_slots(intent, dict(slots)))
-        except FallthroughDisabled as exc:
-            return {
-                "question": question,
-                "text": f"(fell through to the agent) {exc}",
-                "answered_by": "agent",
-                "intent": intent,
-                "data": None,
-                "artifacts": [],
-                "timing": {"total_seconds": 0, "model_seconds": 0, "model_calls": 0, "tool_seconds": 0, "tool_calls": 0},
-                "history_file": None,
-            }
-        return as_response(answer, history_file=answer.history_file).model_dump(mode="json")
-    finally:
-        ollama.chat = original_chat  # type: ignore[assignment]
+    # The recorded route is answered as given (Agent.ask's `route`): the
+    # question is not read, so no model is asked - nothing after the
+    # normalizer reaches one.
+    agent = Agent(db_path, out_dir, history_dir=out_dir / ".history", trace=lambda line: None)
+    answer = agent.ask(question, label="preview", route=Route.from_slots(intent, dict(slots)))
+    return as_response(answer, history_file=answer.history_file).model_dump(mode="json")
 
 
 STUB = """

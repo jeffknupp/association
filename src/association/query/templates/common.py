@@ -873,10 +873,9 @@ def check_coverage(intent: str, scope: Scope | Mapping[str, Any]) -> str | None:
     """Why this question's season is out of reach, or None.
 
     Returned rather than raised, which is the opposite of :func:`check_scope`
-    and deliberate. check_scope raises so the question falls through to the
-    agent, which may do better. Nothing does better here: the agent would query
-    the same empty tables, more slowly, and is then free to fill the silence
-    from its own weights. The refusal IS the answer.
+    and deliberate. check_scope raises so the compiler gets its turn at the
+    same point, and may do better. Nothing does better here: a season under
+    the floor is empty for every reader. The refusal IS the answer.
 
     .. versionadded:: 2.1.0
 
@@ -1050,9 +1049,9 @@ def unhonored_scoping(intent: str, scope: Scope, honored: frozenset[str]) -> lis
 
 
 class TemplateUnsupported(Exception):
-    """Raised when slots don't validate. The caller treats this exactly like an
-    unrecognized intent - fall through to the agent - so a router slip
-    degrades to the old (slow) path rather than to a wrong answer."""
+    """Raised when slots don't validate. The caller offers the compiler the
+    same point and then refuses naming the reason, so a slip in the reading
+    degrades to a refusal rather than to a wrong answer."""
 
 
 @dataclass(frozen=True)
@@ -1060,7 +1059,7 @@ class TemplateContext:
     """What a template is given: the warehouse, and somewhere to write output.
 
     Templates took a bare connection until shot_chart needed an output
-    directory too. Passing a small context rather than the whole Toolbox keeps
+    directory too. A small context rather than the whole answering loop keeps
     templates testable with a plain in-memory DuckDB connection."""
 
     con: duckdb.DuckDBPyConnection
@@ -1141,7 +1140,7 @@ def _resolved_player(
     """One player, a clarifying question, or a refusal - the player counterpart
     to _resolved_team. Returning the TemplateResult rather than raising it keeps
     ambiguity a handled outcome: the caller answers with the question instead of
-    falling through to an agent that would guess. Callers must forward it.
+    guessing. Callers must forward it.
 
     `available` is required, so no template can resolve a name without saying
     where its answer comes from: an ambiguous name is narrowed to the players

@@ -63,7 +63,7 @@ def _answer(text: str, **kwargs: Any) -> Answer:
 
 
 def _client(answerer: Any, tmp_path: Path) -> TestClient:
-    app = create_app(answerer, db_path=str(tmp_path / "nba.duckdb"), out_dir=tmp_path / "out", model="qwen2.5:7b", router_model="qwen2.5:3b")
+    app = create_app(answerer, db_path=str(tmp_path / "nba.duckdb"), out_dir=tmp_path / "out", router_model="qwen2.5:3b")
     return TestClient(app)
 
 
@@ -121,13 +121,16 @@ def test_a_missing_history_file_is_reported_as_null_not_omitted(tmp_path: Path) 
     assert body["history_file"] is None
 
 
-def test_an_agent_answer_reports_no_intent_rather_than_an_empty_one(tmp_path: Path) -> None:
-    client = _client(StubAnswerer(_answer("agent answer", answered_by="agent", intent=None, data=None)), tmp_path)
+def test_a_refused_answer_reports_no_intent_rather_than_an_empty_one(tmp_path: Path) -> None:
+    """A question nothing reads is an ordinary answer whose text names why
+    (5.0.0: what --disable-fallthrough made a 501 is the only answer now)."""
+    client = _client(StubAnswerer(_answer("Nothing here answers this question: intent 'other' has no template yet.", answered_by="refused", intent=None, data=None)), tmp_path)
     body = client.post("/api/ask", json={"question": "something odd"}).json()
 
-    assert body["answered_by"] == "agent"
+    assert body["answered_by"] == "refused"
     assert body["intent"] is None
     assert body["data"] is None
+    assert "no template yet" in body["text"]
 
 
 def test_an_artifact_is_reported_by_name_not_by_path(tmp_path: Path) -> None:
@@ -154,8 +157,7 @@ def test_the_question_reaches_the_engine_with_a_label_naming_the_request(tmp_pat
 
 
 def test_the_stream_reports_progress_and_then_the_answer(tmp_path: Path) -> None:
-    """A fall-through takes minutes. The trace is what makes that legible
-    rather than indistinguishable from a hang."""
+    """The trace is how the page says what it read before the answer lands."""
     with _client(StubAnswerer(), tmp_path) as client, client.stream("GET", "/api/ask/stream", params={"question": "q"}) as response:
         assert response.headers["content-type"].startswith("text/event-stream")
         events = _events(response.iter_lines())
@@ -203,7 +205,7 @@ def test_health_reports_the_warehouse_it_is_actually_pointed_at(tmp_path: Path) 
     assert body["warehouse"] == str(tmp_path / "nba.duckdb")
     assert body["warehouse_ready"] is False  # nothing was created
     assert body["seasons"] is None
-    assert body["models"] == {"router": "qwen2.5:3b", "agent": "qwen2.5:7b"}
+    assert body["models"] == {"router": "qwen2.5:3b"}
     assert body["ollama_ready"] is True
 
 
@@ -553,15 +555,12 @@ def test_agent_runner_reads_the_history_file_off_the_answer(tmp_path: Path) -> N
     class Recording:
         trace: Any = None
 
-        def reset_conversation(self) -> None:
-            pass
-
         def ask(self, question: str, label: str = "") -> Answer:
             self.trace("  -> (router) intent='leaderboard' slots={}")
             self.trace("[history] .history/4.3.0-abc1234deadbeef01.log  [timing] total 1.23s - model 1.00s (1 call), tools 0.10s (1 call)")
             return replace(_answer("done"), history_file="4.3.0-abc1234deadbeef01.log")
 
-    runner = AgentRunner(Recording())  # type: ignore[arg-type]  # only .ask, .trace and .reset_conversation are touched
+    runner = AgentRunner(Recording())  # type: ignore[arg-type]  # only .ask and .trace are touched
     seen: list[str] = []
     answered = runner.ask("q", label="t", trace=seen.append)
 
@@ -577,13 +576,10 @@ def test_agent_runner_reports_no_history_file_when_the_answer_carries_none(tmp_p
     class Silent:
         trace: Any = None
 
-        def reset_conversation(self) -> None:
-            pass
-
         def ask(self, question: str, label: str = "") -> Answer:
             return _answer("done")
 
-    runner = AgentRunner(Silent())  # type: ignore[arg-type]  # only .ask, .trace and .reset_conversation are touched
+    runner = AgentRunner(Silent())  # type: ignore[arg-type]  # only .ask and .trace are touched
     assert runner.ask("q", label="t").history_file is None
 
 
@@ -610,10 +606,7 @@ def test_two_questions_at_once_are_answered_one_at_a_time(tmp_path: Path) -> Non
 
         trace: Any = None
 
-        def reset_conversation(self) -> None:
-            pass
-
-    runner = AgentRunner(Blocking())  # type: ignore[arg-type]  # only .ask, .trace and .reset_conversation are touched
+    runner = AgentRunner(Blocking())  # type: ignore[arg-type]  # only .ask and .trace are touched
     threads = [threading.Thread(target=lambda: runner.ask("q", label="t")) for _ in range(4)]
     for t in threads:
         t.start()
@@ -641,42 +634,6 @@ def test_a_malformed_ask_is_rejected_rather_than_asked(payload: dict[str, Any], 
     assert answerer.asked == []
 
 
-def test_every_request_gets_its_own_conversation(tmp_path: Path) -> None:
-    """One Agent reused across requests shared ONE history with every browser
-    that connected - and `last_question` with it, which the router's model was
-    shown as the previous question until 5.0.0 - so a follow-up was resolved
-    against whatever a stranger had asked. The docs already said each message
-    is a new question; this is what makes that true."""
-    from association.web.runner import AgentRunner
-
-    class Recording:
-        """Just enough Agent to hold a conversation and be asked to drop it."""
-
-        def __init__(self) -> None:
-            self.messages: list[dict[str, Any]] = [{"role": "system", "content": "x"}]
-            self.last_question: str | None = None
-            self.trace: Any = None
-
-        def reset_conversation(self) -> None:
-            self.messages = [{"role": "system", "content": "x"}]
-            self.last_question = None
-
-        def ask(self, question: str, label: str = "") -> Answer:
-            self.messages.append({"role": "user", "content": question})
-            self.last_question = question
-            return _answer("done")
-
-    agent = Recording()
-    runner = AgentRunner(agent)  # type: ignore[arg-type]  # only the four attributes above are touched
-
-    runner.ask("how many points does luka average", label="a")
-    runner.ask("what about jokic", label="b")
-
-    # The second question saw neither the first question nor its answer.
-    assert [m["content"] for m in agent.messages] == ["x", "what about jokic"]
-    assert agent.last_question == "what about jokic"
-
-
 def test_importing_the_api_layer_loads_no_model_client() -> None:
     """The runtime half of the "ollama stays out of the API layer" import
     contract. import-linter sees imports statically and has to be told that
@@ -687,21 +644,3 @@ def test_importing_the_api_layer_loads_no_model_client() -> None:
     probe = "import sys, association.web.app; print('ollama' in sys.modules)"
     result = subprocess.run([sys.executable, "-c", probe], capture_output=True, text=True, check=True)
     assert result.stdout.strip() == "False"
-
-
-def test_a_disabled_fallthrough_is_a_501_that_says_why(tmp_path: Path) -> None:
-    """Development only (--disable-fallthrough): a question no template answers
-    is refused with the reason rather than spending minutes on the agent - on
-    the plain endpoint as a status, on the stream as its error event."""
-    from association.query.answer import FallthroughDisabled
-
-    class Refusing(StubAnswerer):
-        def ask(self, question: str, label: str, trace: Callable[[str], None] = lambda line: None) -> Answered:
-            raise FallthroughDisabled("no template answered this question and fall-through to the agent is disabled: intent 'other' has no template yet")
-
-    with _client(Refusing(), tmp_path) as client:
-        response = client.post("/api/ask", json={"question": "q"})
-        assert response.status_code == 501 and "no template yet" in response.json()["detail"]
-        with client.stream("GET", "/api/ask/stream", params={"question": "q"}) as stream:
-            events = _events(stream.iter_lines())
-    assert [name for name, _ in events] == ["error"] and "no template yet" in events[0][1]["message"]

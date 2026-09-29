@@ -8,7 +8,7 @@ being returned, plus the intent and structured data the fast path had already
 computed and thrown away, plus the files that were written.
 
 Nothing here imports the rest of the query package, so templates, renderers
-and the agent can all depend on it without a cycle.
+and the answering loop can all depend on it without a cycle.
 
 .. versionadded:: 2.0.0
 """
@@ -21,34 +21,24 @@ from typing import Any, Literal
 
 from association.query.decisions import Decision
 
-AnsweredBy = Literal["fast", "agent"]
-"""Which of the two paths produced an answer.
+AnsweredBy = Literal["fast", "refused"]
+"""Whether the question was answered, or refused with no reading of it.
 
-``"fast"`` means router -> template: deterministic, typically 1-2s, and the
-only path that populates :attr:`Answer.intent` and :attr:`Answer.data`.
-``"agent"`` means the tool-calling fall-through, where a model wrote the SQL.
-The difference is the most useful single thing a reader can know about an
-answer's reliability, so it is carried out rather than inferred.
+``"fast"`` means parser -> template or compiler: deterministic, typically
+1-2s, and the only value that populates :attr:`Answer.intent` and
+:attr:`Answer.data`. It covers a template's or the compiler's own refusal
+too - a clarification, a "no match", a shape nothing here reads named by its
+cause - since looking at the question and having something to say about it
+is an answer. ``"refused"`` means nothing here had a reading of the question
+at all, and :attr:`Answer.text` names why
+(:func:`association.query.agent.refusal_text`).
 
 .. versionadded:: 2.0.0
+
+.. versionchanged:: 5.0.0
+   ``"refused"`` replaces ``"agent"``: the tool-calling fall-through is gone,
+   and the question it would have been handed is refused naming why.
 """
-
-
-class FallthroughDisabled(RuntimeError):
-    """A question the templates could not answer, refused instead of handed to
-    the agent because the caller asked for that (``--disable-fallthrough``).
-
-    For development only. The agent iterates on SQL for minutes at a time and
-    is unlikely to get it right, so a person testing the fast path in the web
-    interface would otherwise wait on it while ollama pegs the CPU. The
-    message says why the fast path gave the question up: no usable
-    classification, an intent with no template, or a template's own refusal.
-
-    Lives here rather than beside the agent so the web API can catch it
-    without importing a model client.
-
-    .. versionadded:: 4.4.0
-    """
 
 
 ARTIFACT_KINDS: frozenset[str] = frozenset({"shot_chart", "fingerprint"})
@@ -121,11 +111,15 @@ class Answer:
     path only - the intent it was classified as and the structured data the
     template built its sentence from.
 
-    ``intent`` and ``data`` are None when ``answered_by`` is ``"agent"``, since
-    only a template produces them. Callers must handle that rather than assume
-    a shape; it is the same fall-through that has always existed, now visible.
+    ``intent`` and ``data`` are None when ``answered_by`` is ``"refused"``,
+    since only a template or the compiler produces them. Callers must handle
+    that rather than assume a shape.
 
     .. versionadded:: 2.0.0
+
+    .. versionchanged:: 5.0.0
+       ``answered_by`` is ``"refused"``, never ``"agent"``, for a question
+       nothing here reads.
     """
 
     question: str

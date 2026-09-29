@@ -58,7 +58,7 @@ def served(tmp_path: Path) -> tuple[TestClient, Path]:
     out_dir.mkdir()
     (out_dir / "shotchart_stephen_curry_401811054.html").write_text("<!doctype html><title>chart</title>")
     (tmp_path / "secret.html").write_text("<!doctype html>NOT YOURS")
-    app = create_app(Idle(), db_path=str(tmp_path / "nba.duckdb"), out_dir=out_dir, model="m", router_model="r")
+    app = create_app(Idle(), db_path=str(tmp_path / "nba.duckdb"), out_dir=out_dir, router_model="r")
     return TestClient(app), out_dir
 
 

@@ -63,7 +63,7 @@ def test_a_missing_page_stops_startup_rather_than_serving_404s(monkeypatch: pyte
     starts and then serves a blank page hides that; refusing to start does not."""
     monkeypatch.setattr("association.web.serve.INDEX_HTML", tmp_path / "gone.html")
     with pytest.raises(SystemExit, match="missing from the installed package"):
-        serve("127.0.0.1", 0, str(tmp_path / "nba.duckdb"), tmp_path, model="m", router_model="r")
+        serve("127.0.0.1", 0, str(tmp_path / "nba.duckdb"), tmp_path, router_model="r")
 
 
 def test_the_page_this_module_points_at_exists_in_the_source_tree() -> None:

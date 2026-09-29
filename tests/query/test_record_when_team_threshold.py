@@ -67,7 +67,7 @@ def _agent_with_a_team_threshold_split(tmp_path: Path) -> Agent:
     con.execute("CREATE TABLE team_season_stats (season INTEGER, season_type INTEGER, team_id VARCHAR, gamesPlayed INTEGER, points INTEGER)")
     con.execute("INSERT INTO team_season_stats VALUES (?, ?, ?, ?, ?)", [S, 2, "2", 10, 9999])
     con.close()
-    return Agent("qwen2.5:7b", str(db_path), tmp_path / "out", history_dir=tmp_path / ".history")
+    return Agent(str(db_path), tmp_path / "out", history_dir=tmp_path / ".history")
 
 
 def test_a_team_only_threshold_record_answers_the_record_not_the_season_total(tmp_path: Path) -> None:

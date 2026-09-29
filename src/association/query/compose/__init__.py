@@ -1,14 +1,13 @@
-"""One compiler over the player-games relation - the step between a
-template's refusal and the slower SQL-writing agent.
+"""One compiler over the player-games relation - the step after a
+template's refusal, and the last one before a refusal naming why.
 
-The pipeline is router -> template -> compiler -> agent. A template on the
+The pipeline is parser -> template -> compiler -> refusal. A template on the
 relation answers a question at its own fixed point (the six intents in
 ``association.query.templates``); when a template refuses because the
 question's shape is close but not exact - a measure word its list does not
 carry, "most ... in a game" rather than a log, a league-wide read with no
 player named - :func:`answer` tries the same relation at the point the
-question's own words move it to, before the question falls through to the
-agent.
+question's own words move it to, before the question is refused.
 
 Every correctness rule a template on the relation carries - the scoping the
 relation narrows by, the rebuilt-line guard, binding parity, the
@@ -101,8 +100,8 @@ and ``player_splits`` (step (g): ``intent-shrink/g/``, every unit-test call
 and recorded question answered both ways). Each is said in its retired
 template's own words, through that template's phrasing helpers
 (:mod:`~association.query.compose.present`); where the compiler has no
-reading of a point, the question is refused or falls through, with the
-reason (``agent._run_compiled``).
+reading of a point, the question is refused with the reason
+(``agent._run_compiled``).
 
 .. versionadded:: 5.0.0
 """
@@ -114,14 +113,14 @@ def answer(ctx: TemplateContext, reading: Reading, trace: Callable[[Reading], No
     and run, never read from the question again. The parser's own verdict
     stands where it has no point: its refusal is the answer
     (:attr:`Reading.point_refusal`), and a decline is ``None`` - the question
-    is not a point on this relation and falls through to the agent - with
-    the reason given to ``declined``.
+    is not a point on this relation, and the caller refuses it - with the
+    reason given to ``declined``.
 
     ``Refused`` (the relation itself refusing - no such player, an ambiguous
     name, a coverage floor) is returned as the answer: a handled outcome
-    carrying the template-shaped refusal, not a reason to fall through.
+    carrying the template-shaped refusal, not a reason to decline.
     ``Unsupported`` (the compiler cannot say this question) becomes ``None``
-    instead, since falling through is exactly what it means. The team
+    instead, since declining is exactly what it means. The team
     subject is answered through :func:`~association.query.compose.team.run_team`
     (a team's record above and below its own line by
     :func:`~association.query.compose.present.present_team`), an intent's own
@@ -129,12 +128,12 @@ def answer(ctx: TemplateContext, reading: Reading, trace: Callable[[Reading], No
     (:func:`~association.query.compose.present.present`), and the rest by the
     compiler's own sentence, with the box-score caveats
     :func:`~association.query.compose.core.run` reads appended (#197); the
-    agent appends :func:`~association.query.templates.common.coverage_caveat`
+    answering loop appends :func:`~association.query.templates.common.coverage_caveat`
     as it does to a template's answer. ``trace`` is handed the point before
-    it is planned - the agent logs it as the decision record.
+    it is planned - the answering loop logs it as the decision record.
 
-    This function is the whole surface the agent's fall-through wiring calls;
-    nothing else in this package is meant to be called from outside it.
+    This function is the whole surface ``agent.py`` calls; nothing else in
+    this package is meant to be called from outside it.
 
     .. versionadded:: 4.4.0
 

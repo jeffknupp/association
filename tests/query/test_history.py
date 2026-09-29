@@ -51,7 +51,7 @@ def test_write_creates_file_named_with_a_hash_containing_everything(tmp_path: Pa
     history.record_model_call(1.0)
     history.record_tool_call("run_sql", 0.1)
 
-    path = history.write(command="association query 'x'", model="qwen2.5:7b", think=False, question="x", answer="the answer")
+    path = history.write(command="association query 'x'", question="x", answer="the answer", router_model="qwen2.5:3b")
 
     assert path.parent == history_dir
     assert path.suffix == ".log"
@@ -72,14 +72,14 @@ def test_write_creates_file_named_with_a_hash_containing_everything(tmp_path: Pa
 def test_write_creates_history_dir_if_missing(tmp_path: Path) -> None:
     history_dir = tmp_path / "nested" / ".history"
     history = RunHistory(verbose=False, history_dir=history_dir)
-    path = history.write(command="c", model="m", think=False, question="q", answer="a")
+    path = history.write(command="c", question="q", answer="a")
     assert path.exists()
 
 
 def test_two_runs_get_different_hashes(tmp_path: Path) -> None:
     history_dir = tmp_path / ".history"
-    path1 = RunHistory(verbose=False, history_dir=history_dir).write(command="c", model="m", think=False, question="q", answer="a")
-    path2 = RunHistory(verbose=False, history_dir=history_dir).write(command="c", model="m", think=False, question="q", answer="a")
+    path1 = RunHistory(verbose=False, history_dir=history_dir).write(command="c", question="q", answer="a")
+    path2 = RunHistory(verbose=False, history_dir=history_dir).write(command="c", question="q", answer="a")
     assert path1 != path2
 
 
@@ -111,7 +111,7 @@ def test_the_history_file_names_the_build_that_produced_it(tmp_path: Path) -> No
     project keeps changing are exactly the ones a reader needs to tie to a
     build."""
     history = RunHistory(verbose=False, history_dir=tmp_path)
-    path = history.write(command="query 'x'", model="m", think=False, question="x", answer="y")
+    path = history.write(command="query 'x'", question="x", answer="y")
     build = build_id()
     assert path.name.startswith(f"{build}-"), path.name
     assert f"build: {build}" in path.read_text()
@@ -168,13 +168,13 @@ def test_a_decision_is_kept_as_a_value_and_logged_where_it_happened(tmp_path: Pa
     history.record_decision(Decision("scope", "team", "Boston Celtics", None, "the team after 'vs' is the opponent"))
     assert history.lines[1] == "  -> (decision) subject players: ['Joel Embiid'] (question names players ['Joel Embiid'])"
     assert history.lines[2] == "  -> (decision) scope team: 'Boston Celtics' -> None (the team after 'vs' is the opponent)"
-    path = history.write("q", "m", False, "embiid vs boston", "the answer")
+    path = history.write("q", "embiid vs boston", "the answer")
     text = path.read_text()
     section = text.split("decisions:\n", 1)[1].split("\n" + "=" * 80, 1)[0].splitlines()
     assert [json.loads(line)["field"] for line in section] == ["players", "team"]
     assert text.index("decisions:") < text.index("answer:")
     # A run with no decisions writes no section at all.
-    assert "decisions:" not in RunHistory(verbose=False, history_dir=tmp_path).write("q", "m", False, "x", "y").read_text()
+    assert "decisions:" not in RunHistory(verbose=False, history_dir=tmp_path).write("q", "x", "y").read_text()
 
 
 def test_append_note_adds_one_timestamped_line(tmp_path: Path) -> None:

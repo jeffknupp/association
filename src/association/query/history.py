@@ -148,10 +148,15 @@ class RunHistory:
             f"tools {self.tool_seconds:.2f}s ({self.tool_calls} call{'s' if self.tool_calls != 1 else ''})"
         )
 
-    def write(self, command: str, model: str, think: bool, question: str, answer: str, router_model: str | None = None) -> Path:
+    def write(self, command: str, question: str, answer: str, router_model: str | None = None) -> Path:
         """Always called (from a finally block) regardless of how ask() exited -
         an exception's traceback text as `answer` is exactly the "failed run"
-        evidence this exists to keep."""
+        evidence this exists to keep.
+
+        .. versionchanged:: 5.0.0
+           Takes no ``model`` or ``think``: the fall-through agent they
+           described is gone, and the normalizer's model is the record's.
+        """
         self.history_dir.mkdir(parents=True, exist_ok=True)
         # The build leads the name so `ls` groups a run with the code that
         # produced it, and so one commit's runs can be selected with a glob.
@@ -160,7 +165,7 @@ class RunHistory:
         parts = [
             f"command: {command}",
             f"build: {build_id()}",
-            f"model: {model} (think={think})" + (f", router: {router_model}" if router_model else ""),
+            f"router: {router_model}",
             f"started: {started}",
             f"question: {question}",
             "=" * 80,

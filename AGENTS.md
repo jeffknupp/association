@@ -4,8 +4,9 @@ Orientation for agents (and people) making changes here. It covers what is
 *not* obvious from reading the code: the gates, the conventions that are
 enforced, and the specific shapes of bug this project keeps producing.
 
-For how the system is designed — the three stages, the reader/agent split, why
-templates instead of better prompting — read `docs/architecture.rst`. That is
+For how the system is designed — the three stages, the parser in front of the
+templates and the compiler, why templates instead of better prompting — read
+`docs/architecture.rst`. That is
 the source of truth for design, and this file does not restate it.
 
 Where the work is going - the goal, where it stands, and the next steps in
@@ -189,8 +190,8 @@ gets turned off.
     the tables built beside them.
   - `check/` - the coverage report. `query/` - the reader (`parse.py`, with
     what the model sees in `normalizer.py` and the stages it runs in
-    `router.py`), templates, entities, renderers, the agent. `web/` - the local
-    web interface.
+    `router.py`), templates, entities, renderers, the answering loop
+    (`agent.py`). `web/` - the local web interface.
 - **The package layers are a contract.** `cli` > `web` > `query | check` >
   `fetch` > `nba`, with `fetch` and `query` independent and the core free of
   the `web` extra's packages (`[tool.importlinter]`). A new module that needs
@@ -342,15 +343,17 @@ about what happens next, and the third is the one that was got wrong first:
   router-era `entities.undo_name_completion` was, it read a typo'd "Bam
   Adeyebu" - corrected to Bam Adebayo - as a question holding only "Bam",
   and asked which Bam (ROADMAP plan item 6, step (d), part 3c).
-- **When it cannot be repaired, say so - do not hand it to the agent.** This
-  one shipped wrong first, on the reasoning that the agent at least reads the
-  question. Measured, that is far worse: "compare fingerprints for embiid vs
-  jokic in 2026" fell through and the agent spent 55 seconds writing a
-  confident fingerprint for **"Ronaldo Lopes"**, a player who does not exist,
-  with play-type percentages attached. It is the lesson `check_coverage`
-  already carries - an agent with nothing to find fills the silence from its
-  own weights - and it needs saying twice, because falling through *feels* like
-  the humble option. Refuse only where the template would actually be about
+- **When it cannot be repaired, say so by name.** This one shipped wrong
+  first, on the reasoning that the fall-through agent of the time at least
+  read the question. Measured, that was far worse: "compare fingerprints for
+  embiid vs jokic in 2026" fell through and the agent spent 55 seconds
+  writing a confident fingerprint for **"Ronaldo Lopes"**, a player who does
+  not exist, with play-type percentages attached - the lesson
+  `check_coverage` already carries, an agent with nothing to find fills the
+  silence from its own weights, and the measurement that retired the agent
+  (5.0.0). Without it the difference is between a refusal that names the
+  player and the plain refusal for want of a reading, which names only the
+  slot. Refuse only where the template would actually be about
   that player (`PLAYER_INTENTS`, checked against the templates' own source): a
   stray name on a `head_to_head` question changes no answer, and refusing over
   it would break a question that works.
@@ -467,9 +470,19 @@ rejected.
 
 ## Working on the query path
 
-The pipeline is reader → template → deterministic answer, with the agent as
-fall-through. A question the fast path cannot answer falls through to the
-slower SQL-writing agent; that is by design, not a bug.
+The pipeline is parser → template or compiler → deterministic answer, and a
+refusal naming why where nothing has a reading of the question. There is no
+fall-through: until 5.0.0 a question the fast path could not answer went to
+a tool-calling agent that wrote SQL by hand, and measured (ISSUES.md #129,
+24 questions at production defaults) it answered 1 in 23, did not finish 61%
+of the time, and was wrong five times in six where it finished - so it is
+gone, with its prompt, its tools and its budget. `Agent.ask` (`agent.py`)
+answers `answered_by="refused"` with the reason the parser, the template or
+the compiler gave the question up with (`agent.refusal_text`), in the same
+second; a template's or the compiler's own refusal (a clarification, a "no
+match", a shape nothing reads named by its cause) is `"fast"`, since looking
+at the question and having something to say is an answer. A question the
+yardstick grades as "fell through" is one of these refusals now.
 
 **The reader is the parser** (ROADMAP plan item 6; the router's model
 classification went in step (d)). The model only copies names verbatim and
@@ -491,7 +504,7 @@ model's. Two things follow, and both matter when you add a shape:
   (`entities.read_near_spelling`); nothing corrects it upstream any more.
 
 - **A template's `TemplateUnsupported` gets one more deterministic try before
-  the agent does.** `query/compose` sits between the two: when `check_scope`
+  the refusal.** `query/compose` sits between the two: when `check_scope`
   or the template itself raises, `agent.py`'s `_try_compose` offers
   `compose.answer(ctx, reading)` the same point on the relation the
   template could not narrow to - the point the parser read from the
@@ -503,10 +516,10 @@ model's. Two things follow, and both matter when you add a shape:
   answered exactly like a template's own - `answered_by="fast"`, the intent
   kept, the same name-reading and coverage-caveat attachment - including when
   that result is itself a refusal (a clarification, a "no match"): looking at
-  the question and having something to say about it is an answer, not a
-  fall-through. `None` falls through to the agent exactly as before this step
-  existed. Nothing in the package may reach ollama - it is a compiler, not a
-  smaller agent - and it narrows the relation only through the shared steps in
+  the question and having something to say about it is an answer. `None`
+  is refused with the template's own reason. Nothing in the package may
+  reach ollama - it is a compiler, not a model - and it narrows the relation
+  only through the shared steps in
   `templates/common.py`, the same discipline the relation templates keep
   (see "A template on a relation does not declare, or apply, scoping of its
   own" above). Seven intents have no template at all
@@ -516,14 +529,14 @@ model's. Two things follow, and both matter when you add a shape:
   templates' words (`compose/present.py`; a team's log and splits through
   `templates.games.team_game_log` and `templates.splits.team_splits`), and
   where it has no reading
-  the question is refused or falls through with the compiler's reason
+  the question is refused with the compiler's reason
   (`agent._run_compiled`). A presenter says what its retired template's
   words state (`compose.present.STATED_SCOPING`) and steps aside for a
   narrowing beyond them, so the compiler's own sentence, which states every
   narrowing the relation applied, answers; a narrowing the relation cannot
   honor at all is refused by the planner (`compose.plan.plan`) as the parser
   reads the point, and the Reading carries the reason (`point_declined`) -
-  the fall-through names it, never a template's list. Retiring a template
+  the refusal names it, never a template's list. Retiring a template
   this way is measured first:
   every call its unit tests make, and every recorded question it answers,
   answered both ways and compared - the recorded questions alone showed one
@@ -572,31 +585,16 @@ model's. Two things follow, and both matter when you add a shape:
   `test_every_template_is_reachable_from_the_reader`
   (`tests/query/test_router.py`): the parser's `PARENT_GRAMMAR`, the stages'
   `CODE_ASSIGNED_INTENTS` or the subject reading's `KIND_ASSIGNED_INTENTS`.
-- **The preamble has a hard token budget.** `PREAMBLE_TOKEN_BUDGET = 6400`
-  against `AGENT_NUM_CTX = 16384`, enforced by raising `PreambleTooLarge`. This
-  exists because ollama truncates an over-length prompt *silently and
-  head-first*: the original bug was a 10,295-token preamble against
-  `NUM_CTX = 8192`, which discarded the schema and correctness rules while
-  keeping the tool descriptions.
-
-  Treat the tool list as a **budget, not a list**. Each tool costs ~190 tokens
-  of JSON schema, charged on every question whether or not it is relevant —
-  unlike knowledge-base entries, which `select_knowledge` already filters per
-  question. Five tools leave as little as ~100 tokens of headroom in the worst
-  case (measured: a question that pulls the maximum three selected
-  knowledge-base entries); a sixth does not fit.
-  `docs/architecture.rst` ("The tool budget") has the levers, cheapest first.
-  Do not buy room by trimming `TABLE_SUMMARY` or the standing rules: that is
-  the text the original truncation bug destroyed, and no gate can tell that the
-  agent got worse at writing SQL.
-- **Tool schemas and the dispatch table must agree**, the same way a model's
-  prompt and schema must. They are two hand-maintained lists of the same names:
-  a name in `TOOLS` with no handler is a `KeyError` the first time the model
-  calls it, and a handler no schema mentions is a capability the model cannot
-  reach — `render_fingerprint` sat in exactly that state while it did not fit
-  the budget. Guarded by
-  `test_every_advertised_tool_can_actually_be_dispatched` and
-  `test_every_tool_schema_names_its_required_parameters`.
+- **A prompt has a token budget, and ollama enforces none.** ollama
+  truncates an over-length prompt *silently and head-first*: the retired
+  agent's original bug was a 10,295-token preamble against `NUM_CTX = 8192`,
+  which discarded the schema and correctness rules while keeping the tool
+  descriptions, and nothing said so. The normalizer's prompt is ~330 tokens
+  against `NORMALIZER_NUM_CTX = 2048`, and
+  `test_the_normalizers_window_holds_its_prompt_and_a_long_question`
+  (`tests/query/test_normalizer.py`) holds the two together with
+  `normalizer.estimate_tokens`; keep that check beside any prompt this
+  project sends.
 - **A slot the schema does not require is a slot the decoder may never
   consider, and no prompt wording fixes that.** The router's schema recorded
   this for `stat`; `side` proved it again. "Show me Wembanyama's defensive
@@ -665,11 +663,13 @@ model's. Two things follow, and both matter when you add a shape:
   no threshold is a ranking), in which case the parent's intent stands. Add
   a case to `port_check.py`'s corpus (`~/association-research/intent-shrink/`)
   and to `tests/query/test_subject.py` for each wording a grammar gains.
-- **Refusing beats falling through wherever the agent has nothing to read.**
-  That is `check_coverage`'s reasoning, and it applies past the floors: a coach
-  question reached an agent that queried tables with no coach column and was
-  then free to fill the silence from its own weights. Before writing the
-  refusal, check what the source actually serves - "ESPN does not publish
+- **A refusal names the missing thing, never only the slot.**
+  `check_coverage`'s reasoning, and it applies past the floors: a coach
+  question once reached an agent that queried tables with no coach column and
+  was then free to fill the silence from its own weights; now it would be
+  refused for its intent, which tells the reader nothing. `query/refusals.py`
+  is where a shape the warehouse has no column for gets its cause. Before
+  writing the refusal, check what the source actually serves - "ESPN does not publish
   coaches" was the obvious sentence and it is false, and a refusal naming the
   wrong cause reads as honest while sending the reader somewhere useless.
 - **The parser has four regression nets; add to them whenever you port a
@@ -1017,10 +1017,11 @@ in `TEMPLATE_SOURCES`; a template missing from it is one no floor can refuse.
 Three things about that module are load-bearing:
 
 - **It returns the refusal rather than raising it.** That is the opposite of
-  `check_scope()`, and deliberate: `check_scope` raises so the question falls
-  through to an agent that may do better, and nothing does better here. The
-  agent would query the same empty tables, more slowly, and is then free to
-  fill the silence from its own weights.
+  `check_scope()`, and deliberate: `check_scope` raises so the compiler gets
+  its turn at the same point, and may do better. Nothing does better here: a
+  season under the floor is empty for every reader, and (while the agent
+  existed) an agent handed it queried the same empty tables, more slowly,
+  and was then free to fill the silence from its own weights.
 - **A lookup and a ranking have different floors.** `player_season_stats` holds
   Michael Jordan's real 1990 line, so his own average is answerable from it;
   ranking that season is not, because the pool is 217 players against a
@@ -1165,7 +1166,7 @@ prompted them:
   what was true when it was written. Two of its counts had already been fixed
   by other work in the same week.
 - **Say which copy of the code and which warehouse you measured**, and never
-  report a template's behavior from a direct call when the agent path adds
+  report a template's behavior from a direct call when the answering loop adds
   something - `agent.py` appends the coverage caveat, so a template called
   directly looks like it is missing one. Compare against `real_games` rather
   than `games` for anything counted against `team_season_stats`; two "new

@@ -2,11 +2,11 @@
 
 Two endpoints do the work. ``POST /api/ask`` answers a question and returns the
 whole :class:`association.query.answer.Answer`; ``GET /api/ask/stream`` answers
-the same question and reports progress as it goes. The stream exists because
-the two query paths differ by two orders of magnitude - a template answers in
-1-2 seconds, while a fall-through to the tool-calling agent has been measured
-at 113 seconds for its first inference alone. A spinner is a fine interface for
-the first and a broken one for the second.
+the same question and reports progress as it goes. The stream was built when
+the two query paths differed by two orders of magnitude - a template answered
+in 1-2 seconds, while a fall-through to the tool-calling agent was measured at
+113 seconds for its first inference alone; the agent is gone (5.0.0), and the
+stream stays because the trace it carries is how the page says what it read.
 
 .. versionadded:: 2.0.0
 """
@@ -28,9 +28,9 @@ from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 
 from ..nba.coverage import COVERAGE
-from ..query.answer import Answer, FallthroughDisabled
+from ..query.answer import Answer
+from ..query.connection import connect_read_only
 from ..query.history import DEFAULT_HISTORY_DIR, append_note
-from ..query.toolbox import connect_read_only
 from .runner import Answerer
 
 # The page is one self-contained file, inlining its own CSS and JavaScript, for
@@ -124,11 +124,15 @@ class DecisionResponse(BaseModel):
 class AnswerResponse(BaseModel):
     """An answered question.
 
-    ``intent`` and ``data`` are null when ``answered_by`` is ``"agent"``: only a
-    template produces them. A client must handle that rather than assume a
-    shape.
+    ``intent`` and ``data`` are null when ``answered_by`` is ``"refused"``:
+    only a template or the compiler produces them. A client must handle that
+    rather than assume a shape.
 
     .. versionadded:: 2.0.0
+
+    .. versionchanged:: 5.0.0
+       ``answered_by`` is ``"fast"`` or ``"refused"``, never ``"agent"``: a
+       question nothing here reads is refused naming why, in ``text``.
 
     .. versionchanged:: 4.4.0
        Adds ``history_file``, the basename of the run this answer was recorded
@@ -149,8 +153,7 @@ class AnswerResponse(BaseModel):
     history_file: str | None = None
     decisions: list[DecisionResponse] = []
     """What was decided on the way to the answer, as values - each reading of
-    the question and override of a routed field, in the order made. Empty for
-    an agent answer today.
+    the question and override of a routed field, in the order made.
 
     .. versionadded:: 4.4.0
     """
@@ -388,7 +391,7 @@ def _warehouse_seasons(db_path: str) -> dict[str, int] | None:
     Its own short-lived connection, deliberately: the Agent's connection is
     busy for as long as a question takes, and a health check that could block
     behind a 113-second answer would report exactly the wrong thing at exactly
-    the wrong moment. Opened through :func:`association.query.toolbox.connect_read_only`
+    the wrong moment. Opened through :func:`association.query.connection.connect_read_only`
     like every other connection on the query side - this one only ever runs the
     fixed query below, but a second way to open the warehouse is a second place
     for the next one to be opened wrongly.
@@ -528,7 +531,7 @@ def _warehouse_coverage(db_path: str) -> list[TierResponse]:
         con.close()
 
 
-def create_app(answerer: Answerer, db_path: str, out_dir: Path, model: str, router_model: str, history_dir: Path = DEFAULT_HISTORY_DIR) -> FastAPI:
+def create_app(answerer: Answerer, db_path: str, out_dir: Path, router_model: str, history_dir: Path = DEFAULT_HISTORY_DIR) -> FastAPI:
     """Build the app around an already-constructed engine.
 
     The engine is passed in rather than built here so the tests can supply a
@@ -542,6 +545,11 @@ def create_app(answerer: Answerer, db_path: str, out_dir: Path, model: str, rout
        with, so a name an answer actually reported always resolves.
        Serves ``GET /api/ping`` (:class:`PingResponse`), which the page polls
        for its connection indicator and to reload itself after a restart.
+
+    .. versionchanged:: 5.0.0
+       Breaking: takes no ``model``; ``GET /api/health`` reports
+       ``models={"router": ...}`` alone, the fall-through agent's model gone
+       with it.
     """
     app = FastAPI(title="association", description="Ask questions about the local NBA warehouse.", version="2.0.0")
     instance = secrets.token_hex(8)
@@ -559,7 +567,7 @@ def create_app(answerer: Answerer, db_path: str, out_dir: Path, model: str, rout
             warehouse_ready=Path(db_path).exists(),
             output_dir=str(out_dir),
             seasons=_warehouse_seasons(db_path),
-            models={"router": router_model, "agent": model},
+            models={"router": router_model},
             ollama_ready=answerer.ready,
             busy=answerer.busy,
         )
@@ -577,16 +585,10 @@ def create_app(answerer: Answerer, db_path: str, out_dir: Path, model: str, rout
 
     @app.post("/api/ask")
     def ask(request: AskRequest) -> AnswerResponse:
-        """Answer one question, waiting for any question ahead of it.
-
-        With fall-through disabled (``--disable-fallthrough``, development
-        only), a question no template answers is a 501 whose detail says why
-        the fast path gave it up, rather than minutes of the agent.
-        """
-        try:
-            answered = answerer.ask(request.question, label=f"POST /api/ask {request.question!r}")
-        except FallthroughDisabled as exc:
-            raise HTTPException(status_code=501, detail=str(exc)) from None
+        """Answer one question, waiting for any question ahead of it. A
+        question nothing here reads is an ordinary answer whose
+        ``answered_by`` is ``"refused"`` and whose text names why."""
+        answered = answerer.ask(request.question, label=f"POST /api/ask {request.question!r}")
         return as_response(answered.answer, answered.history_file)
 
     @app.post("/api/notes")

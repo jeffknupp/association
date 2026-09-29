@@ -8,7 +8,6 @@ from click.testing import CliRunner
 
 from association.cli.commands import _configure_logging, _parse_season_types, _parse_seasons, cli, data_check, data_load, data_pull, query
 from association.query.answer import Answer, Timing
-from association.query.models import AGENT_BUDGET_SECONDS
 
 
 def _answer(text: str) -> Answer:
@@ -154,19 +153,8 @@ def test_query_dispatches_with_question(monkeypatch: pytest.MonkeyPatch) -> None
     captured: dict[str, Any] = {}
 
     class FakeAgent:
-        def __init__(
-            self,
-            model: str,
-            db_path: str,
-            out_dir: object,
-            verbose: bool,
-            think: bool,
-            fast_path: bool,
-            router_model: str,
-            fallthrough: bool = True,
-            budget_seconds: float = 0.0,
-        ) -> None:
-            captured["model"] = model
+        def __init__(self, db_path: str, out_dir: object, verbose: bool, router_model: str) -> None:
+            captured["db_path"] = db_path
 
         def ask(self, question: str, label: str = "") -> Answer:
             captured["question"] = question
@@ -194,74 +182,31 @@ def test_query_passes_the_engine_options_through(monkeypatch: pytest.MonkeyPatch
     captured: dict[str, Any] = {}
 
     class FakeAgent:
-        def __init__(
-            self,
-            model: str,
-            db_path: str,
-            out_dir: object,
-            verbose: bool,
-            think: bool,
-            fast_path: bool,
-            router_model: str,
-            fallthrough: bool = True,
-            budget_seconds: float = 0.0,
-        ) -> None:
-            captured["model"] = model
-            captured["think"] = think
-            captured["fast_path"] = fast_path
+        def __init__(self, db_path: str, out_dir: object, verbose: bool, router_model: str) -> None:
+            captured["verbose"] = verbose
             captured["router_model"] = router_model
-            captured["fallthrough"] = fallthrough
-            captured["budget_seconds"] = budget_seconds
+            captured["out_dir"] = out_dir
 
         def ask(self, question: str, label: str = "") -> Answer:
             return _answer("the answer")
 
     monkeypatch.setattr("association.query.agent.Agent", FakeAgent)
     runner = CliRunner()
-    result = runner.invoke(query, ["--think", "--model", "qwen3:8b", "who led the league in blocks"])
+    result = runner.invoke(query, ["--verbose", "--router-model", "qwen2.5:1.5b", "--out-dir", "charts", "who led the league in blocks"])
     assert result.exit_code == 0, result.output
-    assert captured["think"] is True
-    assert captured["model"] == "qwen3:8b"
-    assert captured["fast_path"] is True
-    assert captured["fallthrough"] is True
-    assert captured["budget_seconds"] == AGENT_BUDGET_SECONDS
-
-    assert captured["router_model"] == "qwen2.5:3b"
-    assert captured["model"] != captured["router_model"]
+    assert captured["verbose"] is True
+    assert captured["router_model"] == "qwen2.5:1.5b"
+    assert str(captured["out_dir"]) == "charts"
 
 
-def test_disable_fallthrough_reaches_the_agent_and_its_refusal_is_an_error(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Development only: the flag turns a would-be fall-through into a
-    non-zero exit that says why, and cannot be combined with --no-fast-path."""
-    from association.query.answer import FallthroughDisabled
-
-    captured: dict[str, Any] = {}
-
-    class FakeAgent:
-        def __init__(
-            self,
-            model: str,
-            db_path: str,
-            out_dir: object,
-            verbose: bool,
-            think: bool,
-            fast_path: bool,
-            router_model: str,
-            fallthrough: bool = True,
-            budget_seconds: float = 0.0,
-        ) -> None:
-            captured["fallthrough"] = fallthrough
-
-        def ask(self, question: str, label: str = "") -> Answer:
-            raise FallthroughDisabled("no template answered this question and fall-through to the agent is disabled: intent 'other' has no template yet")
-
-    monkeypatch.setattr("association.query.agent.Agent", FakeAgent)
-    result = CliRunner().invoke(query, ["--disable-fallthrough", "who had the most triple-doubles"])
-    assert captured["fallthrough"] is False
-    assert result.exit_code == 1 and "no template yet" in result.output
-    both = CliRunner().invoke(query, ["--disable-fallthrough", "--no-fast-path", "q"])
-    assert both.exit_code == 2 and "pick one" in both.output
-    # Routing and SQL generation run on different models by design.
+def test_the_agents_options_are_gone_with_it() -> None:
+    """--model, --think, --no-fast-path, --disable-fallthrough and
+    --agent-budget configured the tool-calling fall-through (5.0.0 removed
+    it); a stale script passing one fails loudly rather than silently doing
+    something else."""
+    for flag in ("--model", "--think", "--no-fast-path", "--disable-fallthrough", "--agent-budget"):
+        result = CliRunner().invoke(query, [flag, "x", "q"])
+        assert result.exit_code == 2 and "No such option" in result.output, flag
 
 
 def test_version_flag_reports_the_packaged_version() -> None:

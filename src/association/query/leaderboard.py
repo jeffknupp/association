@@ -1,6 +1,6 @@
-"""The "top N players by X" query, extracted so the fast-path template and the
-agent's get_leaderboard tool are the same code rather than two implementations
-that can drift.
+"""The "top N players by X" query, extracted so every caller - the template,
+and the agent's ``get_leaderboard`` tool while there was one - ranks by the
+same code rather than two implementations that can drift.
 
 Every correctness rule is applied here rather than left to the model to
 re-derive per query: the season defaults to the CURRENT one rather than
@@ -47,9 +47,9 @@ SCHEDULE_BASE_GAMES = 82
 
 
 class LeaderboardError(Exception):
-    """Carries a message written for the model to read and act on - the agent
-    tool returns it verbatim as a tool result, the template treats it as a
-    reason to fall through."""
+    """Carries a message naming what the ranking could not do - an unknown
+    metric with the nearest real one, a season type out of range, a team
+    matching nothing - which the template answers with or refuses on."""
 
 
 @dataclass
@@ -71,10 +71,9 @@ class LeaderboardResult:
     rows: list[dict[str, Any]]
     #: Each row's athlete id, aligned by index with ``rows`` - kept OUTSIDE the
     #: row dicts rather than as one more key in them, so it never rides along
-    #: into ``toolbox.get_leaderboard``'s JSON (which serializes ``rows``
-    #: verbatim for the model to read) the way a raw id leaking into an
-    #: answer was already a fixed regression once (``toolbox.py``'s own
-    #: ``run_sql`` note). A caller that needs a fact the ranked table itself
+    #: into an answer's ``data`` (which carries ``rows`` verbatim for the
+    #: page to render) the way a raw id leaking into an answer was already a
+    #: fixed regression once. A caller that needs a fact the ranked table itself
     #: does not carry - each player's team, for a leaderboard that asked to
     #: see it (F017, ISSUES.md) - looks it up by these ids.
     #:

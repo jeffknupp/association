@@ -134,21 +134,13 @@ class AgentRunner:
         this holds the lock while it does so. Restored afterwards so a request
         that has finished cannot keep writing into a closed stream.
 
-        Every request starts a fresh conversation, which is what the docs
-        already promised ("each message is a new question") and what the code
-        did not do: one Agent reused across requests accumulated ONE history
-        shared by every browser that connected. Two costs, and the second is
-        the serious one - the history is context nobody asked to spend, and a
-        follow-up is read against it: "what about jokic" from one person was
-        read against whatever a stranger had asked before it - by the router's
-        model, which was shown the previous question until 5.0.0, and by the
-        fall-through agent, which reads the whole conversation. Reset under
-        the lock, where no question is in flight to lose its own history
-        mid-answer.
-
-        Giving the web UI real multi-turn memory means giving it per-client
-        conversations, which needs a session the API does not have yet. Until
-        then this is stateless on purpose rather than by accident.
+        Every request is its own question, which is what the docs promise
+        ("each message is a new question"). Until 5.0.0 the Agent kept a
+        conversation that had to be reset here under the lock, because one
+        Agent reused across requests accumulated ONE history shared by every
+        browser that connected, and a follow-up was read against a stranger's
+        question; the Agent keeps no conversation now, so there is nothing to
+        reset.
 
         ``Agent.ask`` (``query/agent.py``) never returns the history file it
         wrote, only names it in one exact trace line on its way out - on every
@@ -169,9 +161,11 @@ class AgentRunner:
            Returns :class:`Answered`, naming the history file the answer was
            recorded to, instead of a bare
            :class:`~association.query.answer.Answer`.
+
+        .. versionchanged:: 5.0.0
+           Resets no conversation: the Agent keeps none.
         """
         with self._lock:
-            self.agent.reset_conversation()
             previous, self.agent.trace = self.agent.trace, trace
             try:
                 answer = self.agent.ask(question, label=label)

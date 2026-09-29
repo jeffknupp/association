@@ -407,8 +407,7 @@ def leaderboard(ctx: TemplateContext, reading: Reading) -> TemplateResult:
     """ "Top N players by X" for the metrics in LEADERBOARD_METRICS.
 
     Thin on purpose: run_leaderboard owns the season default, minimum-sample
-    floor and traded-player dedup, and the agent's get_leaderboard tool calls
-    the same function. This adds slot mapping and phrasing.
+    floor and traded-player dedup. This adds slot mapping and phrasing.
 
     .. versionchanged:: 2.1.0
        Honors ``span`` "career", ranking whole careers (see
@@ -924,8 +923,8 @@ def _wanted_stats(scope: Scope, default: tuple[str, ...] = STAT_LINE) -> list[st
 
     A stat that was NAMED but is not supported must not fall back to the
     default line - that is how "what was Steph Curry's avg 3pt shot distance"
-    came back as "26.6 points, 3.6 rebounds and 4.7 assists per game". Falling
-    through to the agent is slow; answering a different question is worse."""
+    came back as "26.6 points, 3.6 rebounds and 4.7 assists per game". A
+    refusal names the stat; answering a different question is worse."""
     stat = scope.stat
     if stat is None or not stat.strip():
         return list(default)

@@ -281,8 +281,8 @@ def _shot_chart_message(ctx: TemplateContext, *, career: bool, defaulted: bool, 
 def shot_chart(ctx: TemplateContext, reading: Reading) -> TemplateResult:
     """Renders one player's shots to a static HTML court plot.
 
-    Uses shotchart.render_shot_chart, the same function the agent tool calls,
-    so it inherits best-match player handling rather than resolve_player's
+    Uses shotchart.render_shot_chart, the one renderer, so it inherits
+    best-match player handling rather than resolve_player's
     refusal: a chart of the wrong Curry is obvious on sight, and titled with the
     resolved name.
 

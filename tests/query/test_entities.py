@@ -260,9 +260,9 @@ def test_every_declared_availability_names_a_real_table() -> None:
     import importlib
     import pkgutil
 
+    from association.nba.coverage import KNOWN_TABLES
     from association.query import fingerprint, shotchart, templates
     from association.query.entities import Availability
-    from association.query.prompt import KNOWN_TABLES
 
     # Every one each module declares, tuples included, rather than a list here
     # that a new template's narrowing table would have to remember to join.

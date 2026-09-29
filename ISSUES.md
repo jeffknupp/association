@@ -15,8 +15,8 @@ other fix is recorded by its commit message.
 - **P2: misleading or incomplete.** The numbers are right as far as they go,
   but they are short of the truth with no caveat, or a refusal names the wrong
   cause.
-- **P3: refusal or gap.** A question real users ask is refused or falls through
-  to the agent, or data the source publishes is missing from the warehouse.
+- **P3: refusal or gap.** A question real users ask is refused, or data the
+  source publishes is missing from the warehouse.
 - **P4: tooling, docs, low impact.** Nothing a user sees, or so rare it does
   not matter yet.
 
@@ -62,61 +62,6 @@ before that commit needs re-checking against the current warehouse.
 - **Next step:** two decisions for the parser (ROADMAP: the consolidation). Shape: a player set against a team is his games narrowed by opponent - the player-games relation, rows with W/L and his line plus the tally - never the team's with/without split (the reroute rule goes; the compiler's rows shape with a record summary is the nearest thing today). Scope: "this year" / "this season" with no type named reads both types and says so, the way `season_type_unstated` already does for "last N games" - a policy for every question, to confirm with Jeff, since the regular-season default is what every per-game average answers under today.
 - **Source:** ours, not ESPN's.
 - **GitHub:** #231
-
-### The agent fall-through answers 1 question in 23, and does not finish 61% of the time
-- **Found:** 2026-09-18, the first measurement of the agent path in this project
-- **Evidence:** 24 questions stratified across the four fall-through causes, run
-  through the real `Agent` at production defaults (`qwen2.5:7b` agent,
-  `qwen2.5:3b` router, `fast_path=True`) against the live warehouse. **14 of 24
-  did not finish within 240s**; one ran past 17 minutes before being killed by
-  hand, pinning the 7B at 560% CPU throughout. Of the 9 that finished: **1
-  correct, 1 partial, 6 wrong, 1 appropriately refused.** Median latency of the
-  9: **155.5s** (range 81.7-192.4). The "documented 55s case" is the floor, not
-  a typical case. Raw rows in
-  `~/association-research/statmuse-2026-09/agent_results.jsonl`.
-- **User sees:** a 2.5-minute wait that usually produces nothing, and when it
-  does produce something it is wrong five times out of six. The fast path
-  answers the same class of question correctly 48.8% of the time in 2-6s.
-- **Bounded 2026-09-20, not yet resolved.** The wait is now capped:
-  `Agent` takes `budget_seconds` (default 120, `--agent-budget`, 0 to remove
-  it), checked before each model call so the first always runs, and giving up
-  names why the templates declined the question rather than saying "Gave up
-  after too many tool-call iterations". That removes the 17-minute case and
-  the silent 4-minute one, and it is why this entry is no longer about the
-  wait.
-- **What remains is the product decision**, which is the user's: whether the
-  fall-through runs at all by default. The measurement argues it should not -
-  1 correct in 23, and `check_coverage`'s own stated reasoning ("the agent
-  would query the same empty tables, more slowly, and is then free to fill
-  the silence from its own weights") describes exactly what it was measured
-  doing. Against that, `--disable-fallthrough` was deliberately scoped as
-  development-only when it was added, which says the path is wanted in
-  production. Until that is settled, the honest options are unchanged:
-  default it off with an opt-in flag, or gate it to shapes it can serve.
-- **GitHub:** #129
-
-### Three fabricated agent answers, each verified false against the warehouse
-- **Found:** 2026-09-18, grading the agent measurement above
-- **Evidence:** each re-verified independently by the lead, read-only:
-  - `lebron james 2 3 pointers all-time vs jazz on tuesdays` answered **"0 made
-    out of 12,688"** (2PT) and **"0 made out of 5,923"** (3PT), 0.0% both.
-    Measured: **399/695 (57.4%) 2PT and 77/238 (32.4%) 3PT** vs Utah. It also
-    dropped "Tuesdays" silently - `render_shot_chart` cannot honor it.
-  - `jonas valancunas vs last 10 games min` answered "there are no box stats
-    available for Jonas Valanciunas in the last 10 games." **False** -
-    `player_box_stats` holds those games with real minutes (4, 10, 3, 8, 6...).
-    This is the wrong-cause refusal shape `AGENTS.md` names in the Maxey
-    fingerprint example, now reproduced live rather than historically.
-  - `Most reb by a hawk player history` answered "Jalen Johnson, 18", silently
-    narrowing "history" to the current season. Measured all-time single-game
-    high on record for the Hawks: **Dikembe Mutombo, 29** (2000 and 2001).
-- **User sees:** fluent, confidently formatted, false answers with precise-looking
-  denominators - the exact failure shape at the top of `AGENTS.md`, on the path
-  that exists as the safety net.
-- **Next step:** these are symptoms of the entry above, not separate bugs. Fix
-  the path, not the three answers.
-- **GitHub:** #130
-
 
 ### "game score" is answered with points per game, because the router substitutes a stat it knows
 - **Found:** 2026-09-18, while making the computed advanced stats lookup-able
@@ -231,7 +176,7 @@ those were found.
 ### "nba most fga with 0 fgm single game" is read as the teams' field goals made, and "without fgm single" as a teammate
 - **Found:** 2026-09-27, checking the answers the #168 fix moved (then part of #260, closed by 2026-09-28's fix: "single game" with no article is one game, and "this season's single game with the most assists" and both "most 3 pointers made in single game ..." read as one); what remains is its own shape.
 - **Evidence:** stubbed offline through the whole agent (main warehouse, names `[]`, stat `fieldGoalsAttempted`): "nba most fga with 0 fgm single game" routes `team_leaderboard` `{'stat': 'fgm', 'rank': 'most'}` and answers "Field goals made per game, 2026 regular season - highest first, of 30 teams: Miami Heat 43.7 ..."; "nba most fga without fgm single game" routes the same with `without: ['fgm single']` and falls through ("team_leaderboard cannot honor ['without']"). `parse.PARENT_GRAMMAR`'s everyone row reads "nba" beside "most" as a team ranking, and `single_game_high`'s child row applies only under the player relation's parents (`subject._PLAYER_RELATION_PARENTS`), so "single game" is never read; the measure is "fgm" where "fga" is the ranked one; and the router's without reader takes "fgm single" for a teammate. These are the last 2 of the 29 research-corpus questions saying "single game" that are not read as one game.
-- **User sees:** a wrong answer - the teams' field goals made per game, where one player's single game was asked; a fall-through for the second.
+- **User sees:** a wrong answer - the teams' field goals made per game, where one player's single game was asked; a refusal for the second.
 - **Next step:** let `single_game_high`'s row apply under `team_leaderboard` for the everyone kind where no team word ("team", "franchise") is written, measured on the rehearsal and `intent-shrink/port_check.py` first; a single game "with 0 fgm" is a predicate on the high the compiler has not got, so it refuses by name until it has one.
 - **Source:** ours.
 - **GitHub:** #266
@@ -302,7 +247,7 @@ those were found.
   removing its duplicate (plan item 2 step 2a).
 - **Evidence:** "how many 3 pointers did the sixers make in the 2001
   playoffs" composed as `team_stat` reads `team_season_stats` - ESPN's own
-  23-game season line, complete - and the agent then appends
+  23-game season line, complete - and the answering loop then appends
   `coverage_caveat("team_stat", slots)` (`agent._try_compose`), which is
   keyed by the INTENT's tables (`TEMPLATE_SOURCES`), not the table the
   compiler read, and says the run "reads 16 games against the 23". The
@@ -314,7 +259,7 @@ those were found.
   Reached only where the `team_stat` template refuses and the compiler
   answers.
 - **Next step:** let a composed result name the tables it read (a
-  `TemplateResult.data` key the agent reads before `coverage_caveat`), and
+  `TemplateResult.data` key `agent.py` reads before `coverage_caveat`), and
   have `_try_compose` call `association.nba.coverage.caveat` over those
   instead of the intent's.
 - **Source:** ours, not ESPN's - the missing 2001 games themselves are
@@ -1076,47 +1021,6 @@ those were found.
 - **Source:** DATA.md, "Every Chicago and New Orleans game from 2013 to 2018 has an empty box score"
 - **GitHub:** #1
 
-### The SQL agent and the web health line still read raw `games`
-- **Found:** 2026-09-14, building the shared `real_games` list (issue #7)
-- **Evidence:** `real_games` (`fetch/repairs/real_games.py`) now holds the 43,353 rows
-  of `games`'s 43,504 that are actually games (both counts moved +10 with
-  `72b599c`'s 2000 playoff recovery; the gap is still 151), and every TEAM
-  template reads it. `_PLAYER_GAMES` (`query/templates/common.py`) still joins raw
-  `games` rather than `real_games` - harmlessly today, since no player row
-  falls on one of the 151 dropped events (see "Not affected, measured" below).
-  Two readers do not read `real_games` at all, both by design rather than
-  oversight:
-  - **The SQL agent.** `KNOWN_TABLES` and `TABLE_SUMMARY` (`query/prompt.py`)
-    name `games` and not `real_games`, so any question that falls through to
-    the agent gets SQL over the unfiltered table - the 134 placeholders, the 23
-    team-slots naming an id no franchise has, the 11 phantoms and the one
-    remaining duplicate. This is exactly the population the templates were
-    just fixed for, reached by the slower path. Adding a line to
-    `TABLE_SUMMARY` is not free: `PREAMBLE_TOKEN_BUDGET` is 6,400 and
-    AGENTS.md forbids buying room by trimming that text.
-  - **The web health line. Fixed 2026-09-18.** `_warehouse_seasons`
-    (`web/app.py`) counted `games`, so the page said 43,504 where 43,353 were
-    played. It reads `real_games` now, through `_game_span`, which asks the
-    catalog for the view and falls back to `games` for a warehouse loaded
-    before that view existed.
-- **User sees:** an agent-written answer that counts rows that are not games,
-  with nothing to mark it as different from the template answer to the same
-  question. The web page's count is fixed.
-- **Not affected, measured:** `player_box_stats`, `plays` and `shot_chart` hold
-  0 rows against the 151 dropped events, so the player paths (`_PLAYER_GAMES`,
-  `fingerprint.py`) never counted one. The 302 `team_box_stats` rows that do
-  exist for them are entirely NULL, so no sum over that table was inflated
-  either - they only ever mattered because a join could find them.
-- **Next step, and it needs a decision rather than a patch:** whether the
-  agent should be pointed at `real_games`. Renaming the table it sees costs no
-  tokens, but it changes what `describe_table` and hand-written SQL mean, and
-  `games` would then be reachable only by a name the preamble does not
-  mention - and `KNOWN_TABLES`/`TABLE_SUMMARY` are model-facing text, which is
-  not edited without measuring what it does to every other question. The
-  health line, which needed no such decision, is done.
-- **Source:** DATA.md, "`games` carries placeholder, duplicate and phantom rows"
-- **GitHub:** #73
-
 ### A named playoff round is refused - the games carry no round label, and the Finals are derivable
 - **Found:** 2026-09-11, repo audit; **re-measured 2026-09-18** over the
   2,285-question large StatMuse set (`~/association-research/statmuse-2026-09-large/`):
@@ -1448,8 +1352,8 @@ those were found.
   season_type it queried (mirroring `_period`), and separately list which
   filters (if any) were actually applied, rather than a blanket "with the
   given filters" that fires even with none. Threading that through touches
-  `shotchart.py`'s shared renderer, which the agent's `render_shot_chart` tool
-  also calls - check both callers before changing the message shape.
+  `shotchart.py`'s shared renderer - check every caller before changing the
+  message shape.
 - **Source:** ours, not ESPN's.
 - **GitHub:** #105
 
@@ -1462,7 +1366,7 @@ those were found.
     'franz wagner']`. `entities.scope_from_question` has no rule for an
     `opponent` that duplicates `without`; it is left in place, fails to
     resolve as a team ("no team matching 'Anthony Black, Franz Wagner'"), and
-    the whole question falls through even though every piece of scoping it
+    the whole question is refused even though every piece of scoping it
     actually needs is already sitting in `without`.
   - "Clippers ats record last 15 games at home" arrives with `team='Los
     Angeles Clippers'` (correct) and `opponent='home'` beside `venue='home'` -
@@ -1472,8 +1376,7 @@ those were found.
     This second one is not a clean fix even if `opponent` is dropped: "ats"
     means against-the-spread, which nothing in the warehouse stores, so the
     question is unanswerable on the stat alone regardless.
-- **User sees:** a fall-through to the agent for the first (which the agent
-  might still get right by reading `without` itself); the second would still
+- **User sees:** a refusal for the first; the second would still
   need a separate refusal for the unsupported "ats" stat even if `opponent`
   were fixed.
 - **Next step:** in `entities.py`, drop an `opponent` that (a) does not
@@ -1578,7 +1481,7 @@ those were found.
   January 31"), a career question (twenty Octobers), and February 31.
 - **Fixed in `61c1bef` and the second pass**, by reading each shape from the
   question text into `situation`, which no template lists in `HONORED_SCOPING`,
-  so `check_scope` refuses and the question falls through to the agent. Every
+  so `check_scope` refuses and the question is refused. Every
   alternative was perturbed individually and watched to fail.
 - **Measured across two replays:** fluently wrong 44 (17%) -> 33 (13%) -> **29
   (11%)**, and **correct is 67 (26%) in all three runs** - 15 wrong answers
@@ -1659,7 +1562,7 @@ those were found.
   the two players' whole 2026 seasons. `_narrow_player_games` already builds
   one player's box-score line against one opponent for `player_stat`.
 - **Re-checked 2026-09-16: no longer a one-off construction - six feed
-  questions fall through on it in the latest replay**, all on
+  questions are refused on it in the latest replay**, all on
   `player_matchup`/`player_compare cannot honor ['opponent']`: "sam hauser v
   mil", "Curry vs dallas last q0 games", "julius randle stats vs blazers with
   minnestota", "oubre vs warriors without embiid", "de'aaron fox vs magic
@@ -1707,7 +1610,7 @@ those were found.
   rather than guessed at. No other row in the 261-question corpus moved.
 - **Still open:** `player_compare` is untouched, so "compare curry and lebron
   vs the celtics" and "stating centers vs suns" (also a position-group
-  question, a separate gap) still fall through.
+  question, a separate gap) are still refused.
 - **Next step:** let `player_compare` honor `opponent` by building each
   player's line through `_narrow_player_games`.
 - **GitHub:** #34
@@ -1727,7 +1630,7 @@ those were found.
   handler still has no column or shape to answer from. ("oklahoma city thunder
   all-time triple doubles vs west" looked like a third instance but is not -
   "vs west" is Western Conference scoping, which is #25's gap, not this one.)
-- **User sees:** a fall-through to the slow agent for both, on the router.
+- **User sees:** a refusal for both, on the router.
 - **Parser path (5.0.0):** the kind reading routes a bare team subject to a
   team-shaped intent. "cavaliers 3 pointers every game" (normalizer stubbed
   with the team's span and `threePointFieldGoalsMade`) answers `team_stat`:
@@ -1755,9 +1658,9 @@ those were found.
   False on all 43,504 rows. No table maps a team to a conference, so
   `_conference_refusal` refuses a conference named as the subject ("who leads
   the east"), while "Western Conference standings" matches `router._SITUATION`
-  first and is handed to an agent with no conference data either.
-- **User sees:** a refusal for "who leads the East", and an ungrounded agent
-  answer for "Western Conference standings".
+  first and was handed to an agent (since removed) with no conference data either.
+- **User sees:** a refusal for "who leads the East", and (before the agent
+  went) an ungrounded agent answer for "Western Conference standings".
 - **Next step:** record the conference (and division at `level=3`) from the
   standings children, then re-pull `standings`. **Not** the static per-season
   table this entry used to propose.
@@ -1795,8 +1698,8 @@ those were found.
 - **What remains (the SUBJECT-is-a-conference half - "who leads the East",
   "Western Conference standings").** Unchanged by this fix: `_conference_refusal`
   (`templates/teams.py`) still refuses a `team`/`opponent` slot that names a
-  conference or division, and "Western Conference standings" still falls
-  through to an agent with no conference data grounded for it either, because
+  conference or division, and "Western Conference standings" was still handed
+  to an agent with no conference data grounded for it either, because
   neither shape reads `situation` - the router files a conference/division
   named as the SUBJECT into a team slot, not a narrowing. Answering it would
   need either a `team_leaderboard`-shaped read grouped by `team_alignment`
@@ -1813,7 +1716,7 @@ those were found.
 - **Evidence:** "kevin durant true shooting percentage career" routes to
   `player_stat` with `stat='ts_pct'`, which refuses. It is derivable from
   career totals: PTS / (2 × (FGA + 0.44 FTA)).
-- **User sees:** a fall-through to the agent. The wrong 3P% answer this used to
+- **User sees:** a refusal naming the stat. The wrong 3P% answer this used to
   give is fixed.
 - **Next step:** add TS% and eFG% to `player_stat` as computed ratios, like
   `SHOOTING_STATS`.
@@ -1821,24 +1724,6 @@ those were found.
   `ts_pct`/`efg_pct` for a single season too, not only a career, although
   `player_season_advanced_stats` holds both per season.
 - **GitHub:** #26
-
-### A games minimum cannot be given to the agent's TS%/eFG% leaderboard tool
-- **Found:** 2026-09-11, while qualifying true shooting and eFG% (`f66e1f1`)
-- **Evidence:** `get_leaderboard(metric="ts_pct", min_sample=50)` now means 50
-  attempts, not 50 games. The result carries `min_sample_column`, but a
-  games-based minimum can no longer be expressed through the tool for these two
-  metrics.
-- **Re-checked 2026-09-16: the "does not list" half is stale.** `TABLE_SUMMARY`
-  (`query/prompt.py:55,59,60`) has listed `ts_pct`/`efg_pct`/`usage_pct` since
-  `f971cfe`, so the agent does not need `describe_table` to find the columns
-  themselves. What is still missing is the tool parameter: `get_leaderboard`
-  (`query/prompt.py:509`, schema at `:626`; dispatched in
-  `query/toolbox.py:229-255`) takes `min_sample` only, with no `min_games`.
-- **User sees:** "best true shooting among players with 50 games" makes the agent
-  write SQL, more slowly.
-- **Next step:** accept a `min_games` alongside `min_sample` in the tool, if the
-  budget allows.
-- **GitHub:** #28
 
 ### Fingerprint for a specific date
 - **Found:** before 2026-09-11 (docstring)
@@ -1856,8 +1741,8 @@ those were found.
 - **User sees:** a refusal for "timberwolves career leaders in total points".
 - **Next step:** decide the relocation rule, then map it.
 - **Re-checked 2026-09-15:** the "User sees" is wrong. `_career_leaderboard`
-  raises `TemplateUnsupported`, which is a fall-through to the agent, not a
-  refusal the user reads.
+  raises `TemplateUnsupported`, which is a plain refusal naming the slot, not
+  a refusal the user can act on.
 - **Re-checked 2026-09-16: the relocation rule is no longer open.** The refusal
   is still at `query/templates/players.py` (`_career_leaderboard`, raising
   `TemplateUnsupported("franchise career leaderboards are not supported")`),
@@ -1883,7 +1768,7 @@ those were found.
   - **Columns unused by name resolution:** `teams.location`, `name` and
     `nickname`.
 - **User sees:** questions about clutch play, comebacks, win probability, team
-  NetPoints and paint or fast-break points go to the agent.
+  NetPoints and paint or fast-break points are refused naming only the slot.
 - **Next step:** re-run the field audit after each template round, and take the
   most-asked shapes first.
 - **Re-checked 2026-09-15: partly out of date.** Points in the paint and
@@ -1905,14 +1790,14 @@ those were found.
   - **Playoff-series situations** need series order from `games`.
   - **Anything by age** has no data behind it: no table holds a birth date. That
     is inherent until a bio source is added.
-- **User sees:** a fall-through to the agent.
+- **User sees:** a refusal naming only the slot.
 - **Next step:** take them in that order.
 - **Source:** DATA.md, "No conference, division or birth-date data anywhere"
   (`DATA.md:376`, corrected 2026-09-15) - the birth-date half only; conference
   and division are now #25's finding, not this one's.
 - **GitHub:** #32
 
-### A router-invented name one edit from a real one falls through instead of asking
+### A router-invented name one edit from a real one is refused instead of asking
 - **Found:** 2026-09-11, probing the season-narrowing branch
 - **Evidence:** "how many rebounds does davis average" routed to `player_stat`
   with `player='Davies (Davic)'`. `override_invented_players` counts it as
@@ -1921,7 +1806,7 @@ those were found.
   `TemplateUnsupported`. The likely reason the suggestion pass finds nobody is
   the parenthesized second token, since every token must be near some word of
   the name. That was not confirmed. Seen once.
-- **User sees:** the question goes to the agent, rather than asking which Davis
+- **User sees:** the question is refused, rather than asking which Davis
   was meant.
 - **Next step:** reproduce it. If it recurs, drop punctuated tokens before
   `suggest_players`, or back off to the word the question holds.
@@ -1999,7 +1884,7 @@ those were found.
   question is not asking about a player our matching failed to find, it is
   asking about a player who played before the warehouse's discovery mechanism
   (box scores from 1994) could ever have found him.
-- **User sees:** a fall-through that names the wrong cause; a person reading
+- **User sees:** a refusal that names the wrong cause; a person reading
   "no player matching" goes to check their spelling, not learn that pre-1994
   legends are out of reach entirely.
 - **Next step:** not fixable in `entities.py` - there is no near-spelling
@@ -2138,7 +2023,7 @@ those were found.
   `avg48*` family. Confirmed live for Seth Curry 2024 (`PER` 13.4). The parser
   deliberately drops them (`parse.SEASON_TOTAL_STAT_NAMES`) rather than widen
   the table as a side effect of a bug fix.
-- **User sees:** a refusal or a fall-through for any question naming one —
+- **User sees:** a refusal for any question naming one —
   "who led the league in PER", "what is Jokic's VORP". `player_season_advanced_stats`
   computes its own `ts_pct`/`efg_pct`/`usage_pct` from box scores, so those
   three have an answer already; the rest have none. ESPN's own `plusMinus` and
@@ -2202,7 +2087,7 @@ those were found.
   returns None, while `_team_named("76ers")` resolves team 20 fine. The same
   slot shape with "nyk" works ("tim hardaway vs nyk"). 22 of 1,972 reasonable
   large-set questions say "76ers", 12 of 2,285 after vs/against.
-- **User sees:** "game_log needs a team or a player" - a fall-through - for the
+- **User sees:** "game_log needs a team or a player" - a refusal - for the
   one franchise whose name starts with a digit.
 - **Next step:** keep digits inside a word in `_words` (or fold "76ers" to
   "sixers" in `_fold`), then re-run the entity golden comparison: `_words`
@@ -2217,7 +2102,7 @@ those were found.
   game". 22 of 1,972 reasonable large-set questions use an initial-pair name
   (`\b(pj|cj|tj|aj|rj|kj|dj|og|jj)\b`); some ("CJ McCollum") are stored
   without periods and work.
-- **User sees:** "no player matching 'Pj Washington'", then the agent.
+- **User sees:** "no player matching 'Pj Washington'".
 - **Next step:** fold periods out of both sides in `find_players` the way
   accents already are (178c21f).
 - **GitHub:** #178
@@ -2243,7 +2128,7 @@ those were found.
   changes nothing, and the template raises "game_log needs a team or a player".
   Not traced further. 7 corpus rows and 3 sample rows end on that message; most
   of the others are names nobody typed correctly, which nothing can restore.
-- **User sees:** a fall-through.
+- **User sees:** a refusal naming only the slot.
 - **Next step:** find why `_scope_from_question_restore_player` does not fire
   when neither `player` nor `team` is set.
 - **GitHub:** #181
@@ -2369,7 +2254,7 @@ those were found.
 
 ## P3: refusal or gap
 
-### The compiler has no NetPoints measure, so a single-game NetPoints ranking has nowhere to land but the agent
+### The compiler has no NetPoints measure, so a single-game NetPoints ranking has nowhere to land
 - **Found:** 2026-09-24, fixing a live finding on the rendered page
   (`/tmp/claude-1000/preview6`): "who had the highest netpoint game this
   season?" and "... highest total netpoint game ..." routed `single_game_high`
@@ -2384,8 +2269,7 @@ those were found.
   than a silent substitution - see `test_a_stat_this_relation_cannot_read_is_refused_not_defaulted_to_points`
   (`tests/query/test_compose.py`).
 - **User sees:** the refusal now names the real cause instead of a fluent,
-  wrong ranking; the question itself still has no fast answer and falls
-  through to the agent, slower.
+  wrong ranking; the question itself still has no answer.
 - **Next step:** `net_points_player_game` (per-player-per-game NetPoints,
   `DATA.md`) is a real table the compiler does not read at all - a second
   relation, or a narrow addition to this one, would let a NetPoints
@@ -2395,25 +2279,25 @@ those were found.
 - **Source:** ours.
 - **GitHub:** #220
 
-### `team_leaderboard` excludes `situation`, so "best record since <day>" still falls through
+### `team_leaderboard` excludes `situation`, so "best record since <day>" is still refused
 - **Found:** 2026-09-24, fixing yardstick-v2 F104's routing.
 - **Evidence:** "Best NBA record since January 31st 201" now routes
   `team_leaderboard {'stat': 'record', 'rank': 'best', 'limit': 1,
   'situation': 'since january 31st'}` (it was `team_record` with no team).
   Called directly on that tree, `check_scope` refuses: `team_leaderboard
-  cannot honor ['situation']`, and `compose.answer` returns None, so it
-  reaches the agent. The exclusion's reason in
+  cannot honor ['situation']`, and `compose.answer` returns None, so it is
+  refused. The exclusion's reason in
   `templates/common.py:TEAM_RELATION_SCOPING_EXCLUDED["team_leaderboard"]`
   ("a leaderboard ranks a season, not the games in one weekday, month or
   holiday within it") is about narrowing the pool, and a "since <day>"
   window is not that: "best record since January 31" ranks every team over
   a window, which is the standings question the key asks.
-- **User sees:** the slow agent, for a standings question.
+- **User sees:** a refusal, for a standings question.
 - **Next step:** the template owner lets `team_leaderboard` honor a
   `since_day` situation (the team relation already applies it,
   `TeamNarrowed.narrow_calendar`), keeping the weekday/month/holiday cells
   excluded if that reasoning holds for them.
-- **Priority note:** P3 - one corpus question, a fall-through.
+- **Priority note:** P3 - one corpus question, a refusal.
 - **GitHub:** #214
 
 ### `game_log`'s "last 10 of N games" heading misses the without branch
@@ -2496,8 +2380,7 @@ those were found.
   (`PERIOD_RECONCILIATION`, `player_games.PERIOD_AGREEMENT`) under one caveat;
   `date` narrows to one game, where a per-game ranking means nothing.
 - **User sees:** "who led the league in 1st quarter scoring against the
-  Celtics this season" falls through (the agent has no per-quarter source
-  either).
+  Celtics this season" is refused.
 - **Next step:** decide the qualifier for a narrowed ranking (a share of the
   narrowed games, as `leaderboard` would need too), then declare
   `opponent`/`venue` - one line each, since the relation already applies them.
@@ -2546,7 +2429,7 @@ those were found.
   `"player_splits cannot honor below/above, game_n, season_n or without for a
   team with no player named"` when any of the four are set and no player is
   named, the same way a starter/bench split is already refused for a team.
-- **User sees:** a refusal (falls through to the agent) for "76ers splits
+- **User sees:** a refusal for "76ers splits
   without Embiid" and the like, rather than the fluent wrong answer above.
 - **Next step:** teach `_player_splits_team` the four narrowings for real -
   `without` is the one with the clearest path, the same teammate-absence
@@ -2578,9 +2461,9 @@ those were found.
   - "the router keeps a named year alongside it, and 'career ... in 2015' is
   asking about 2015" - while `_span_of` (game_log, player_stat,
   threshold_count, single_game_high, period_split) raises "a career span and
-  the 2015 season at once" and the question falls through to the agent. Same
-  slots, opposite outcomes, by template.
-- **User sees:** on one intent an answer for 2015; on another, the slow agent.
+  the 2015 season at once" and the question is refused. Same slots, opposite
+  outcomes, by template.
+- **User sees:** on one intent an answer for 2015; on another, a refusal.
   Which one depends on the router's intent choice, not on the question.
 - **Moved 2026-09-27 (plan item 6, step (d), part 4):** `threshold_count`
   and `single_game_high` are the compiler's alone now, and the compiler reads
@@ -2743,7 +2626,7 @@ those were found.
   table measured as above; points stay the linescore's.
 - **GitHub:** #161
 
-### An award or All-Star question has no table to refuse from, so the agent is free to invent one
+### An award or All-Star question has no table to refuse from, so nothing refuses it by name
 - **Found:** 2026-09-18, the algebra spike's attack pass over the large
   StatMuse set (`~/association-research/algebra-spike/stage1/attack_report.md`)
 - **Evidence:** 11 of 2,285 real questions ask for an honor outright - "nba
@@ -2755,13 +2638,12 @@ those were found.
   coverage floor (there is no table to put one on), no keyword refusal the way
   `coach` has one in `CODE_ASSIGNED_INTENTS`, and `TABLELESS_INTENTS` has no
   entry for it. Not re-verified end to end - running the router is out of
-  scope for a read-only pass - but the path is the one `check_coverage`'s own
-  reasoning describes: a question with nothing to find reaches the agent,
-  which fills the silence from its own weights, as it did for the "Ronaldo
-  Lopes" fingerprint recorded above.
-- **User sees:** after 30-120 seconds, a confident list of MVPs or All-Star
-  counts the warehouse cannot have produced, with nothing marking it as
-  invented.
+  scope for a read-only pass - but the path was the one `check_coverage`'s
+  own reasoning describes: a question with nothing to find reached the
+  fall-through agent (removed 2026-09-29), which filled the silence from its
+  own weights, as it did for the "Ronaldo Lopes" fingerprint.
+- **User sees:** on the fast path, a wrong answer (below); with the agent
+  gone, otherwise a refusal naming only the intent.
 - **Next step:** cheapest first - a code-assigned `award` intent that refuses
   on the words (MVP, All-Star, All-NBA, All-Defensive, Rookie of the Year,
   Sixth Man, Defensive Player of the Year), exactly the `coach` mechanism.
@@ -2928,26 +2810,26 @@ those were found.
 - **Source:** ours.
 - **GitHub:** #241
 
-### "rebounds allowed per team" has no team metric to rank, and falls through
+### "rebounds allowed per team" has no team metric to rank, and is refused
 - **Found:** 2026-09-27, plan item 6 step (b) (the lead's offline run of the agent with the parser; the parser measurement's DEV row "rebounds allowed per team" and its paraphrase "per team rebounds allowed").
-- **Evidence:** `team_metrics._ALIASES` holds one opponent metric, `opponent_points` ("points allowed"); nothing else a team gives up (rebounds, assists, threes, turnovers forced) is a `TEAM_METRICS` key. Before this change the parser read the stat as `rebounds` and `team_leaderboard` answered the teams' OWN rebounds per game, best first - a fluent answer to a different question. `MEASURE_GRAMMAR` now reads "rebounds allowed" as the key `rebounds allowed`, which `resolve_team_metric` does not know, so `team_leaderboard` raises `TemplateUnsupported` ("no team metric for stat 'rebounds allowed'") and the question falls through (with the agent off: `(fell through to the agent)`). The router path (day10) routed `team_stat` with no team and fell through too.
-- **User sees:** the agent's answer, or with fall-through off, no answer - to a question the warehouse can answer (`team_box_stats` holds both sides of every game).
-- **Next step:** opponent box-score metrics in `TEAM_METRICS` (the opponent's row of the same game, the way `opponent_points` reads points against), then the aliases "rebounds allowed", "assists allowed", "threes allowed" that `MEASURE_GRAMMAR` already emits; until then a refusal naming the missing metric beats the fall-through.
+- **Evidence:** `team_metrics._ALIASES` holds one opponent metric, `opponent_points` ("points allowed"); nothing else a team gives up (rebounds, assists, threes, turnovers forced) is a `TEAM_METRICS` key. Before this change the parser read the stat as `rebounds` and `team_leaderboard` answered the teams' OWN rebounds per game, best first - a fluent answer to a different question. `MEASURE_GRAMMAR` now reads "rebounds allowed" as the key `rebounds allowed`, which `resolve_team_metric` does not know, so `team_leaderboard` raises `TemplateUnsupported` ("no team metric for stat 'rebounds allowed'") and the question is refused. The router path (day10) routed `team_stat` with no team and fell through too.
+- **User sees:** a refusal naming only the missing metric - to a question the warehouse can answer (`team_box_stats` holds both sides of every game).
+- **Next step:** opponent box-score metrics in `TEAM_METRICS` (the opponent's row of the same game, the way `opponent_points` reads points against), then the aliases "rebounds allowed", "assists allowed", "threes allowed" that `MEASURE_GRAMMAR` already emits; until then the refusal names the missing metric.
 - **Source:** ours, not ESPN's.
 - **GitHub:** #242
 
-### `player_stat` has no per-game line for attempts: "embiid 3pt attempts per game" falls through
+### `player_stat` has no per-game line for attempts: "embiid 3pt attempts per game" is refused
 - **Found:** 2026-09-27, the step (c) hold-out comparison (the 75 recorded routing-corpus questions outside day10, `~/association-research/yardstick-v2/holdout_compare.py`).
 - **Evidence:** `player_stat: no per-game column for stat 'threePointFieldGoalsAttempted'` - `templates.common.PLAYER_STAT_COLUMNS` holds the made columns, whose line reports the attempts beside them ("585 of 1,727 (33.9%)"), and no attempted column; `router._route_attempted_stat` rewrites a made stat to the attempted one whenever the question says "attempts" and not "made", on both readers.
-- **User sees:** a fall-through (the SQL agent, or with fall-through off an error) for a per-game attempts question, where the made line would have answered it in passing. Asking for both ("3pt attempts and made") answers, from the made line.
+- **User sees:** a refusal naming the stat for a per-game attempts question, where the made line would have answered it in passing. Asking for both ("3pt attempts and made") answers, from the made line.
 - **Next step:** `player_stat` is the compiler's now (2026-09-28, plan item 6 step (g)) and the reason is the same, from its season-line presenter (`compose.present._present_player_stat_season_line`, through `templates.players._wanted_stats`): give the season-line reader the attempted columns (per game and total), or answer an attempted stat from the made line with the attempts per game computed; a warehouse-verified test on Embiid's career line.
 - **Source:** ours.
 - **GitHub:** #243
 
-### "while X plays" names no teammate: "maxey points while embiid plays" falls through
+### "while X plays" names no teammate: "maxey points while embiid plays" is refused
 - **Found:** 2026-09-27, plan item 6 step (d) follow-ups, probing played companions.
-- **Evidence:** the parser reads Embiid as a `played` companion and routes `with_without` ("while" is a companion keyword), but the stage that writes `with_player` reads "with X" and "when X plays" only (`router._WHEN_PLAYED` is anchored on "when"), and `with_without` reads a played teammate from `with_player` alone - so the template has no teammate: "with_without needs exactly one teammate, got ['maxey']", a fall-through, on `0a7140a` and this branch alike. "maxey points when embiid plays" answers.
-- **User sees:** the agent's answer, or with fall-through off none, where "when" would have answered.
+- **Evidence:** the parser reads Embiid as a `played` companion and routes `with_without` ("while" is a companion keyword), but the stage that writes `with_player` reads "with X" and "when X plays" only (`router._WHEN_PLAYED` is anchored on "when"), and `with_without` reads a played teammate from `with_player` alone - so the template has no teammate: "with_without needs exactly one teammate, got ['maxey']", a refusal, on `0a7140a` and this branch alike. "maxey points when embiid plays" answers.
+- **User sees:** a refusal, where "when" would have answered.
 - **Next step:** let `_WHEN_PLAYED` (and `_WHEN_WITH`) take "while"; a parser test on the wording.
 - **Source:** ours.
 - **GitHub:** #250
@@ -2963,7 +2845,7 @@ those were found.
 ### A "last N games" question naming no season type refuses a calendar or a range of seasons instead of reading it
 - **Found:** 2026-09-28, plan item 6 step (g), giving the team compiler's window sum the both-types read the team log had (`templates.games._team_mixed_games`).
 - **Evidence:** the both-types read ("his/their last 5 games", `season_type_unstated`, both season types merged by date) narrows by an opponent and a venue only: `_team_game_log_mixed` and `_player_game_log_mixed` take neither `since`/`until` nor a calendar `situation`, and dropped them silently before this commit ("knicks last 5 games on tuesdays" listed their last 5 games on any day). `templates.games.team_game_log` and `compose.team._compile_team_games_mixed` refuse the three now ("a window over both season types is read for a plain 'last N games' only"); the player log's mixed read (`compose.present._present_game_log`) is not guarded the same way yet - the parser never sets `season_type_unstated` beside `since` (`router._route_game_log_recent_span`), but a calendar can reach it.
-- **User sees:** a fall-through where the single-type read ("knicks last 5 regular season games on tuesdays") answers.
+- **User sees:** a refusal where the single-type read ("knicks last 5 regular season games on tuesdays") answers.
 - **Next step:** read the calendar and the range in the merged read - `_team_mixed_games` and `_player_game_log_mixed` taking the scope's `situation`/`since`/`until` through the same shared steps (`team_games`, `scoped_games`) the single-type read uses - and guard the player log's mixed read until then; a test per relation.
 - **Source:** ours.
 - **GitHub:** #274
@@ -3197,7 +3079,7 @@ those were found.
   `since` by the stages (`router._route_season_range`) but is in neither `HONORED_SCOPING` nor `SCOPING_SLOTS`
   (see #23). So the "three separate season-handling paths" this entry first
   counted are two: the relation's span, and the metric templates' own.
-- **User sees:** the two leaderboard questions fall through; every other
+- **User sees:** the two leaderboard questions are refused; every other
   `since` question answers.
 - **Next step:** give `run_leaderboard` / `run_career_leaderboard` and
   `team_leaderboard` a span argument built by `_span_of` rather than a bare
@@ -3240,22 +3122,6 @@ those were found.
   `team_words()` and the `teams` argument to `candidates()`; runs offline.
 - **GitHub:** #136
 
-
-### The agent can finalize having made zero tool calls, delivering its own plan as the answer
-- **Found:** 2026-09-18, measuring the agent path
-- **Evidence:** 2 of the 9 answers that finished made **zero** tool calls and
-  returned the narration as the final answer - `stating centers vs suns` ->
-  "First, I'll use `player_season_stats_deduped`... Let's start by filtering..."
-  (~82s), and `myles turner vs 76ers last 5 games` -> "I will write a SQL query
-  to fetch the relevant player box statistics. Let's proceed with this query."
-  (~156s). `Agent._ask_inner_finalize` guards SQL-written-as-prose and
-  finalize-after-a-tool-error, but not finalize-with-no-tool-call-ever.
-- **User sees:** 80-155 seconds of waiting for text that reads as work in
-  progress and contains no data. Worse than a timeout, because it looks like an
-  answer.
-- **Next step:** add the third guard beside the two existing ones in
-  `_ask_inner_finalize`.
-- **GitHub:** #132
 
 ### `limit` is not a scoping slot, so a template that ignores it does so silently
 - **Found:** 2026-09-18, merging the StatMuse scoping branches and re-measuring
@@ -3342,14 +3208,14 @@ those were found.
 ### Plus/minus can be neither ranked nor looked up, though the data is complete
 - **Found:** 2026-09-18, while making the computed advanced stats lookup-able
 - **Evidence:** "nba leaders in plus minus in 25-26" routes to `leaderboard`
-  with `stat: 'plus_minus'` - the router names it correctly - and falls through
+  with `stat: 'plus_minus'` - the router names it correctly - and is refused
   with "no leaderboard metric for stat 'plus_minus'". The data is there and is
   complete where it matters: **0 of 860,230 `player_box_stats` rows with real
   minutes have a NULL `plusMinus`** (measured read-only against
   `nba.duckdb`, 2026-09-18), confirming `DATA.md`'s corrected note that the
   NULLs are a strict subset of the did-not-play rows. Summed for 2026 it gives
   a sensible board: Gilgeous-Alexander +788, Holmgren +678, Wembanyama +664.
-- **User sees:** a fall-through to the agent on a stat people ask about often.
+- **User sees:** a refusal on a stat people ask about often.
 - **Next step:** unlike true shooting, this has no season-level table to rank -
   `player_season_stats` has no `plusMinus` column, and every
   `LeaderboardMetric` names a pre-aggregated table. It needs a derived season
@@ -3533,26 +3399,6 @@ those were found.
   `usage_pct`/`ts_pct`/`efg_pct` to a sane precision at build time.
 - **GitHub:** #100
 
-### `games.date` is a VARCHAR, and the agent is taught only part of how to filter it
-- **Found:** 2026-09-16 during the query-set audit; **corrected and re-ranked
-  P3 -> P4 the same day** by the issues audit
-- **Evidence:** the column holds `2021-10-23T22:00Z`. The first version of this
-  entry said only `strptime` works, and that was wrong: `CAST(date AS
-  TIMESTAMP)` fails with `invalid timestamp field format`, but `CAST(date AS
-  DATE)` works (`= DATE '2026-04-12'` -> 7 rows; `>= DATE '2020-01-26'` -> 8,202,
-  the same as `strptime`), and so does a plain string comparison (`date >
-  '2020-01-26'` -> 8,202). `KNOWLEDGE_BASE`'s "Filtering by an exact calendar
-  date" (`query/prompt.py:330-339`) already teaches `LIKE 'YYYY-MM-DD%'` and
-  `CAST(date AS DATE)`, but is selected only on date and month keywords and
-  never shows the range form.
-- **User sees:** nothing directly - at worst a recoverable agent error on its
-  first try at a date range.
-- **Next step:** add the range form to that knowledge entry, which is cheaper
-  than a load-time column. Every date the project PRINTS goes through
-  `season.eastern_date`, so this is about agent SQL only.
-- **GitHub:** #98
-
-
 ### The 2026 regular-season power index snapshot carries no BPI rating for any team
 - **Found:** 2026-09-18, while fixing #88 below. **The caveat half was fixed
   the same day; what remains is the missing data itself.**
@@ -3607,8 +3453,8 @@ those were found.
 
 ### `MAX_LIMIT` is 100 in one module and 50 in another
 - **Found:** 2026-09-15, in the cross-module constant scan written after #6/#9
-- **Evidence:** `query/leaderboard.py:38` declares `MAX_LIMIT = 100` (the cap on
-  a model-supplied limit on the agent path); `query/templates/common.py` declares
+- **Evidence:** `query/leaderboard.py:38` declares `MAX_LIMIT = 100` (the cap
+  `run_leaderboard` clamps a limit to); `query/templates/common.py` declares
   `MAX_LIMIT = 50` (what `_clamp_limit` clamps a template to). Same name, two
   different facts, neither importing the other.
 - **User sees:** nothing wrong today - each is used only in its own module, and
@@ -3677,11 +3523,11 @@ those were found.
 - **Found:** 2026-09-11, while qualifying true shooting and eFG% (`f66e1f1`)
 - **Evidence:** a view's SQL is stored in the warehouse file. Code that reads a
   column the stored view lacks gets a Binder error; for `ts_pct`/`efg_pct`, the
-  template then falls through to the agent. This was confirmed against a real
+  template then refuses. This was confirmed against a real
   pre-change warehouse. The 2026-09-11 data load at `3d3c8c6` brought the
   current warehouse up to date.
-- **User sees:** after any view change and before the next `data load`, a slow
-  fall-through, with nothing saying a load would fix it.
+- **User sees:** after any view change and before the next `data load`, a
+  refusal, with nothing saying a load would fix it.
 - **Next step:** in `data check` or at startup, compare the stored views' columns
   against what the code reads. The backfill rule in `AGENTS.md` ("Working on the
   fetch path") is the process half of this.
@@ -3728,7 +3574,7 @@ those were found.
 - **Evidence:** `_single_game_netpoints` (`query/templates/netpoints.py`) catches
   every DuckDB error. `fingerprint.py` already narrowed the same pattern to the
   missing-table error.
-- **User sees:** a SQL bug reported as "unavailable", then a slow fall-through.
+- **User sees:** a SQL bug reported as "unavailable", then a refusal.
 - **Next step:** catch `duckdb.CatalogException` only.
 - **Re-checked 2026-09-15:** the pattern occurs twice. The second is
   `query/templates/players.py`, in `_compare_netpoints`, which catches `duckdb.Error`
@@ -3882,14 +3728,6 @@ those were found.
   dependency it deliberately does not have today.
 - **GitHub:** #51
 
-### The agent can return an empty answer
-- **Found:** 2026-09-08, pre-existing in 1.6.0 (reported, not re-verified)
-- **Evidence:** seen in session notes and not reproduced since.
-- **User sees:** a blank answer after a long wait.
-- **Next step:** reproduce it, then have the agent loop treat an empty final
-  message as a failure.
-- **GitHub:** #52
-
 ### Columns that look wrong but that nothing reads
 - **Found:** 2026-09-11, template and shot work; `dnp_reason` widened while
   making `opponent` refuse or narrow
@@ -3946,30 +3784,6 @@ those were found.
   subtitle.
 - **GitHub:** #55
 
-### A slow agent answer cannot be canceled
-- **Found:** before 2026-09-11 (`web/app.py` comment, `roadmap-2.0.md`)
-- **Evidence:** closing the tab does not stop the inference. The planned fix, a
-  canceled flag checked between tool calls, is not built.
-- **User sees:** the next question waits behind an abandoned one.
-- **Next step:** build the flag.
-- **GitHub:** #56
-
-### The agent's tool budget is full
-- **Found:** before 2026-09-11 (`docs/architecture.rst`, "The tool budget")
-- **Evidence:** measured 2026-09-11 with `prompt.estimate_tokens`, the budget
-  check's own counter. The five tool schemas cost 1,442 tokens. With no
-  knowledge entries selected, the preamble is 4,743 tokens, leaving 1,657 of
-  headroom against `PREAMBLE_TOKEN_BUDGET = 6400`. With the three largest
-  entries selected, it is 6,302, leaving 98. So a sixth tool does not fit, and a
-  question that selects the largest entries is one short entry away from
-  `PreambleTooLarge`. The docs disagree about the headroom, and all three are
-  wrong: `docs/architecture.rst` says "a few hundred tokens", `AGENTS.md` says
-  "about 220", and the 2.1.0 changelog says "about 120". The cheapest lever, folding `render_shot_chart` and
-  `render_fingerprint` into one tool, is not done.
-- **User sees:** nothing yet. It blocks any new agent tool.
-- **Next step:** fold the two render tools when a new tool is next needed.
-- **GitHub:** #57
-
 ### The PyPI upload fails
 - **Found:** documented in `AGENTS.md` ("Releasing")
 - **Evidence:** trusted publishing answers `invalid-publisher`, pending an
@@ -3998,8 +3812,8 @@ those were found.
   rows and 11 rows of `player_season_stats_deduped` (`PG` to `G`, athlete
   3907387).
 - **User sees:** nothing today. No template reads `jersey`, `short_name`,
-  `position_abbr` or `position`; they appear only in the agent's schema summary.
-  Anything that starts reading them gets a stale value.
+  `position_abbr` or `position`. Anything that starts reading them gets a
+  stale value.
 - **Next step:** re-fetch a bio when it is older than some age, or on `--force`,
   and record when it was fetched. Note that jersey and position are
   point-in-time facts stored as if they were static.
@@ -4101,55 +3915,6 @@ those were found.
   still NULL.
 - **GitHub:** #79
 
-### The SQL agent can read a team-rebounds column with the 2021/2022 discontinuity
-- **Found:** 2026-09-17, while fixing #75 (the deterministic
-  `player_splits`/`streak` team-rebounds read)
-- **Evidence:** `team_season_stats.totalRebounds` (the season-total column,
-  read as `totalRebounds / gamesPlayed`) reproduces the exact drop the fixed
-  issue was about - 53.17 a game in 2020, 49.00 in 2021, 44.45 in 2022 - while
-  its sibling `avgRebounds` does not (974 of 975 team-seasons 1994-2026 already
-  equal `avgOffensiveRebounds + avgDefensiveRebounds`, see DATA.md). No
-  template reads the raw `totalRebounds` column - only `run_sql`, the
-  SQL-writing agent's fallback tool, can reach it, since `team_season_stats` is
-  one of the tables its preamble describes.
-- **User sees:** nothing today - this is a gap nobody has hit, not a wrong
-  answer delivered. A question that falls through to the agent and asks it to
-  compare or trend a team's rebounds across the 2021/2022 boundary (e.g. "how
-  have the Celtics' rebounds trended since 2019") could have the agent write
-  `SUM(totalRebounds)` or read the column directly, producing a fluent,
-  ESPN-accurate-per-row, cross-era-incomparable number with no caveat - the
-  same failure `player_splits` used to have, one level down in the tool stack.
-- **Next step:** either add a `run_sql` preamble note steering a rebounds
-  question toward `avgOffensiveRebounds + avgDefensiveRebounds` (cheap, but
-  competes for the same token budget every other preamble addition does - see
-  AGENTS.md, "The tool budget"), or measure how often `run_sql` actually gets a
-  rebounds-trend question before spending budget on it. Not fixed here: out of
-  scope for the deterministic-template fix, and unmeasured how often it fires.
-- **Source:** DATA.md, "The team `totalRebounds` column stops including team
-  rebounds in 2022"
-- **GitHub:** #103
-
-### The agent's prompt says there is no per-game fingerprint, and the warehouse holds one
-- **Found:** 2026-09-18, while writing up the query path
-- **Evidence:** `query/prompt.py:525-528` tells the agent that
-  `render_fingerprint` covers one season and "There is no per-game fingerprint:
-  say so rather than plotting a season for a question about one game". The
-  same prompt's `TABLE_SUMMARY` (`prompt.py:73-76`) describes
-  `net_points_player_game_fingerprint`, the per-game play-type table, and the
-  `fingerprint` template draws a single game from it when `order` is set. The
-  tool does not reach that table, but the sentence claims the data does not
-  exist.
-- **User sees:** rarely anything. The fast path answers a one-game
-  fingerprint question itself. A question that reaches the agent anyway, such as
-  one the router mis-slots or one that falls through on another scoping slot,
-  gets a refusal that names the wrong cause ("no per-game fingerprint exists").
-  P4 on reach; the shape is P2's wrong-cause refusal.
-- **Next step:** reword the tool line to describe what the tool cannot do ("this
-  tool draws seasons only") rather than what the data lacks. Hash the preamble
-  and re-check `PREAMBLE_TOKEN_BUDGET` headroom, since this text is charged on
-  every agent call.
-- **GitHub:** #128
-
 ### Two NetPoints columns have a different type from the same column everywhere else
 - **Found:** 2026-09-25, while checking the warehouse's structure for join
   performance.
@@ -4218,7 +3983,7 @@ those were found.
 - **Source:** ours.
 - **GitHub:** #251
 
-### `player_netpoints`' season-totals reading (`rate: "total"`) cannot be reached through the agent
+### `player_netpoints`' season-totals reading (`rate: "total"`) cannot be reached
 - **Found:** 2026-09-27, plan item 6 step (d) round 2 (moving `templates/netpoints.py` onto the typed Scope).
 - **Evidence:** `HONORED_SCOPING["player_netpoints"]` is `{"order"}` and `rate` is in `SCOPING_SLOTS`, so `check_scope("player_netpoints", {"rate": "total"})` raises "player_netpoints cannot honor ['rate']" before the template runs (measured on 0a7140a). The parser writes no `rate` for "shai gilgeous-alexander netpoints season totals" or "... total netpoints this season" either (route `{'stat': 'netpoints', 'player': 'Shai Gilgeous-Alexander', 'season_type': 2}`), so both answer the play-type categories per 100 possessions. The template's `rate != "total"` branch ("Totals stay in `data`, and the `rate` slot asks for them") is reached only by a direct call - the shape `leaderboard`'s `rate` had before it was listed.
 - **User sees:** per-100 category tables for a totals question. The headline carries the season totals ("468.3 overall (403.9 offense, 64.4 defense)"), so the number asked for is there; only the breakdown is in the other unit.
@@ -4250,14 +4015,6 @@ those were found.
 - **Source:** ours.
 - **GitHub:** #255
 
-### `Agent.last_question` is written on every question and read by nothing
-- **Found:** 2026-09-27, plan item 6 step (d) part 3: its one reader was `route()`'s `previous_question`, deleted with the router's classification.
-- **Evidence:** `query/agent.py` sets it in `__init__`, `reset_conversation` and twice in `_ask_inner`; nothing in `src/` reads it - only two assertions in `tests/query/test_agent.py` and the web runner test's stand-in, which is what keeps vulture quiet (AGENTS.md: delete such code rather than rely on that). Left in place because step 3c owns the rest of `agent.py` at the same time.
-- **User sees:** nothing.
-- **Next step:** once 3c merges, delete it, its four writes and the tests' assertions, and reword `reset_conversation`'s docstring: the conversation the fall-through agent reads is what a stranger's question leaks through now.
-- **Source:** ours.
-- **GitHub:** #256
-
 ### A composed count under a condition prints its line raw: "had 34 games points >= 30 with Joel Embiid starting"
 - **Found:** 2026-09-27, plan item 6 step (d) follow-ups, once a teammate's start reached the compiler-first counts as a condition.
 - **Evidence:** "how many 30 point games did maxey have when embiid started" (parser reader, main warehouse) answers "Tyrese Maxey had 34 games points >= 30 with Joel Embiid starting in the regular season career (2021-2026)", where the same count unnarrowed reads "Tyrese Maxey had 86 games with 30+ points in his regular season career (2020-21 through 2025-26)". The number is right (34, checked against `player_game_log` directly); the narrowed sentence (`compose/sentence.py`) prints the predicate as `points >= 30` and drops "with ... in his".
@@ -4278,6 +4035,27 @@ those were found.
 - **Found:** 2026-09-28, fixing #259 (the fold is at the parser's door, `parse.read_route` and `parse.reading_from_route`).
 - **Evidence:** `query/agent.py` hands the raw question to `refusals.by_question` (line 457), `refusals.unanswerable` (lines 463, 522, 560), `player_named_on_a_team_only_question` (line 370) and `entities.compared_but_unmatched` (line 502), after the Reading is settled. None of the 25 typographic-apostrophe questions measured for #259 (the corpus's 19 and six probes) answered differently for it - every move they made is the parser's - but a denial ("doesn’t") or a possessive ("Embiid’s") each of those reads would read as typed.
 - **User sees:** nothing measured.
-- **Next step:** fold the question once where the agent receives it for everything after the normalizer - or carry the parser's folded question on the Reading - so no reader after the parser keeps its own.
+- **Next step:** fold the question once where `Agent.ask` receives it for everything after the normalizer - or carry the parser's folded question on the Reading - so no reader after the parser keeps its own.
 - **Source:** ours.
 - **GitHub:** #273
+
+### `_PLAYER_GAMES` still joins raw `games` rather than `real_games`
+- **Found:** 2026-09-14, building the shared `real_games` list (issue #7);
+  **re-scoped 2026-09-29** when the SQL-writing agent, the other reader of raw
+  `games`, was removed
+- **Evidence:** `real_games` (`fetch/repairs/real_games.py`) holds the 43,353
+  rows of `games`'s 43,504 that are actually games (the gap is 151: 134
+  placeholders, 23 team slots naming an id no franchise has, 11 phantoms and
+  one duplicate), and every TEAM template reads it. `_PLAYER_GAMES`
+  (`query/player_games.py`) still joins raw `games` - harmlessly today:
+  `player_box_stats`, `plays` and `shot_chart` hold 0 rows against the 151
+  dropped events, so no player read ever counted one, and the 302
+  `team_box_stats` rows that exist for them are entirely NULL. The web health
+  line was fixed 2026-09-18 (`_game_span` reads `real_games`), and the SQL
+  agent whose schema summary named `games` is gone (5.0.0).
+- **User sees:** nothing today.
+- **Next step:** point `_PLAYER_GAMES` at `real_games` behind the golden
+  comparison (no answer should move, by the measurement above), or record
+  here why the raw table stays.
+- **Source:** DATA.md, "`games` carries placeholder, duplicate and phantom rows"
+- **GitHub:** #73

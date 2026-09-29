@@ -1,9 +1,9 @@
 """Rendering one player's shots to a static HTML court plot.
 
-Extracted from Toolbox so the fast-path template and the agent's
-render_shot_chart tool are one implementation, the same split leaderboard.py
-got. Takes `con` and `out_dir` explicitly rather than reaching into a Toolbox,
-so a template can call it with nothing but a warehouse and a directory."""
+Extracted so every caller - the template, and the agent's render tool
+while there was one - draws through one implementation, the same split
+leaderboard.py got. Takes `con` and `out_dir` explicitly, so a template can
+call it with nothing but a warehouse and a directory."""
 
 from __future__ import annotations
 
@@ -194,9 +194,9 @@ def render_shot_chart(
     shot_value: int | None = None,
     made_only: bool | None = None,
 ) -> RenderResult:
-    """Resolve a player name and render their shots - the agent tool's entry
-    point. A caller that has already resolved the player calls
-    :func:`render_for_player`.
+    """Resolve a player name and render their shots - the entry point for a
+    caller holding only a name. A caller that has already resolved the player
+    calls :func:`render_for_player`.
 
     .. versionchanged:: 1.2.0
        Resolution split out into :func:`resolve_chart_player` and the rendering
@@ -220,9 +220,8 @@ def render_shot_chart(
     # `season` is passed through as given, None included: an unscoped chart
     # covers a whole career, so narrowing the name to one year would filter by
     # something the question never said. The readings are collected here
-    # because nothing above this entry point listens for them: the agent calls
-    # it as a tool, and a near spelling drawn without saying so is a silent
-    # default.
+    # because nothing above this entry point listens for them, and a near
+    # spelling drawn without saying so is a silent default.
     with collect_name_readings() as readings:
         resolved = resolve_chart_player(con, player_name, SHOT_AVAILABILITY, season)
     if resolved is None:
@@ -530,9 +529,9 @@ def render_for_player(
 
     html = render_court_html(title, subtitle, shots)
     fname = _render_for_player_filename(resolved_name, season, season_type, event_id, event_ids, period, shot_value, made_only)
-    # Toolbox creates out_dir in its constructor, but this function is also
-    # called straight from a template with whatever directory it was given -
-    # it must not depend on someone else having made it first.
+    # The answering loop creates out_dir when it starts, but this function is
+    # also called straight from a template with whatever directory it was
+    # given - it must not depend on someone else having made it first.
     out_dir.mkdir(parents=True, exist_ok=True)
     out_path = out_dir / fname
     out_path.write_text(html)

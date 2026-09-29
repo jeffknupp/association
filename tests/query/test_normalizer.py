@@ -11,8 +11,7 @@ import ollama
 import pytest
 from ollama import ChatResponse, Message
 
-from association.query.normalizer import NORMALIZER_NUM_CTX, NORMALIZER_PROMPT, NORMALIZER_SCHEMA, NORMALIZER_STATS, Normalized, normalize
-from association.query.prompt import estimate_tokens
+from association.query.normalizer import NORMALIZER_NUM_CTX, NORMALIZER_PROMPT, NORMALIZER_SCHEMA, NORMALIZER_STATS, Normalized, estimate_tokens, normalize
 from association.query.router import RouterUnavailable
 
 
@@ -67,7 +66,7 @@ def test_the_prompt_leaves_room_for_the_question_and_the_reply() -> None:
     raise at the way the agent's ``PreambleTooLarge`` does. It is a constant,
     so this is the guard: the prompt plus a long question may cost no more
     than three quarters of ``NORMALIZER_NUM_CTX``, measured at the same ~4
-    characters a token as the agent's budget; the quarter left holds the chat
+    characters a token as the retired agent's budget was; the quarter left holds the chat
     template and a reply of a few dozen tokens of JSON."""
     long_question = "what was the record of the los angeles lakers against the boston celtics at home in the 2024 regular season, and how many games did they win by ten or more points? " * 2
     cost = estimate_tokens(NORMALIZER_PROMPT) + estimate_tokens(f"Q: {long_question}")

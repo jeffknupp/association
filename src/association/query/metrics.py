@@ -200,7 +200,7 @@ LEADERBOARD_METRICS: dict[str, LeaderboardMetric] = {
     ),
     # Hollinger's single-game composite, already computed per game and averaged
     # per season by `fetch/advanced_stats.py`. It was reachable only by the SQL
-    # agent (`prompt.py` names it) and by nothing on the fast path, so "game
+    # agent of the time and by nothing on the fast path, so "game
     # score nba leader" was answered with POINTS PER GAME - a different metric,
     # printed as fluently as the right one. That is the substitution this
     # project refuses everywhere else, and it is what this entry closes.
@@ -436,12 +436,11 @@ def _percentage(column: str, made: str, attempted: str, label: str, qualifiers: 
     )
 
 
-# Every stat name ROUTER_PROMPT teaches the router that had no metric behind
-# it - so every leaderboard question naming one fell through to the agent. Kept
-# out of CORE_METRIC_NAMES, which the agent's preamble spells out three times:
-# the preamble has ~120 tokens of headroom and these 16 names would cost ~200.
-# The agent can still rank by any of them; an unknown name comes back with the
-# full list, the same way the fingerprint metrics are reached.
+# Every stat name the router's prompt taught it that had no metric behind
+# it - so every leaderboard question naming one fell through. Kept out of
+# CORE_METRIC_NAMES, which the agent's preamble once spelled out three times
+# against a token budget; the split is kept because the core set is what an
+# unknown metric's error lists.
 _BOX_SCORE_METRICS: dict[str, LeaderboardMetric] = {
     "total_points": _season_total("points", "total points"),
     "total_rebounds": _season_total("totalRebounds", "total rebounds"),
@@ -469,8 +468,8 @@ BOX_SCORE_METRIC_NAMES = frozenset(_BOX_SCORE_METRICS)
 """Season totals, per-game rates and shooting percentages from
 ``player_season_stats``, beyond the core set.
 
-Rankable exactly like the core metrics, but not listed in the agent's
-preamble - see the budget note above ``_BOX_SCORE_METRICS``.
+Rankable exactly like the core metrics, but not in the core set an unknown
+metric's error lists - see the note above ``_BOX_SCORE_METRICS``.
 
 .. versionadded:: 2.1.0
 """

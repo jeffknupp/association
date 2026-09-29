@@ -34,19 +34,16 @@ The models
 ----------
 
 Installing the package is not sufficient on its own: the query interface talks
-to a local `Ollama <https://ollama.com>`_ server, and two models must be pulled
+to a local `Ollama <https://ollama.com>`_ server, and one model must be pulled
 before :doc:`query <usage>` will answer anything.
 
 .. code-block:: console
 
    $ ollama serve &
-   $ ollama pull qwen2.5:3b    # normalizer, the fast path - required, ~1.9GB
-   $ ollama pull qwen2.5:7b    # fall-through agent - required, ~4.7GB
-   $ ollama pull qwen3:8b      # optional, for --think, ~5.2GB
+   $ ollama pull qwen2.5:3b    # the normalizer - required, ~1.9GB
 
-Both required models stay resident together in about 7GB. See
-:doc:`architecture` for why the work is split across two models of very
-different sizes, and :doc:`usage` for what each one does.
+It stays resident in about 2GB. See :doc:`architecture` for why one small
+model is the whole model budget, and :doc:`usage` for what it does.
 
 The data
 --------

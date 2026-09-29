@@ -67,7 +67,7 @@ def served(tmp_path: Path) -> tuple[TestClient, Path]:
     history_dir.mkdir()
     (history_dir / HISTORY_NAME).write_text("command: q\nbuild: abc1234\n" + "=" * 80 + "\ntrace\n" + "=" * 80 + "\nanswer:\nthe answer\n")
     (tmp_path / "secret.log").write_text("NOT YOURS")
-    app = create_app(Idle(), db_path=str(tmp_path / "nba.duckdb"), out_dir=tmp_path / "out", model="m", router_model="r", history_dir=history_dir)
+    app = create_app(Idle(), db_path=str(tmp_path / "nba.duckdb"), out_dir=tmp_path / "out", router_model="r", history_dir=history_dir)
     return TestClient(app), history_dir
 
 

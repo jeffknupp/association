@@ -1,18 +1,19 @@
 """What nothing here can answer, refused fast and with its cause.
 
-The pipeline's last step before the SQL-writing agent. A template that cannot
+The pipeline's last step before the plain refusal. A template that cannot
 honor a question raises ``TemplateUnsupported``; the compiler gets one try;
-and then, before the agent, this module asks whether the shape is one the
-agent has no better source for either. Where it is, a refusal naming the
-missing thing IS the answer - the same reasoning as
+and then this module asks whether the shape is one the warehouse has no
+column for at all. Where it is, a refusal naming the missing thing IS the
+answer - the same reasoning as
 :func:`association.query.templates.common.check_coverage`, which returns a
-floor refusal rather than raising it: the agent would query the same tables,
-take a minute over it, and is then free to fill the silence from its own
-weights (AGENTS.md, "Refusing beats falling through wherever the agent has
-nothing to read"). Measured on the yardstick's fall-throughs, 2026-09-23: a
-playoff round, an age, a conference, and a stat other than points by quarter
-each took 30-120 seconds to reach an agent
-answer that was wrong or never came.
+floor refusal rather than raising it. It was written while a SQL-writing
+agent still followed it (gone in 5.0.0): measured on the yardstick's
+fall-throughs, 2026-09-23, a playoff round, an age, a conference, and a stat
+other than points by quarter each took 30-120 seconds to reach an agent
+answer that was wrong or never came, where this names the cause in
+milliseconds. Without the agent the difference is between a refusal that
+names the missing column and one that names only the slot the template
+could not honor.
 
 Every shape here is one the templates already refuse and the warehouse has no
 column for; ``tests/query/test_refusals.py`` checks the first half of that
@@ -46,9 +47,10 @@ _CONFERENCE_OR_DIVISION = re.compile(r"\b(?:east(?:ern)?|west(?:ern)?|conference
 
 
 def unanswerable(con: duckdb.DuckDBPyConnection, reading: Reading, question: str) -> TemplateResult | None:
-    """The refusal for a question shape nothing here reads, or None where the
-    agent should have its turn. Called only after the template refused and
-    the compiler declined, so an answerable question never reaches it.
+    """The refusal for a question shape nothing here reads, or None where
+    this module has nothing to add to the template's or compiler's own
+    reason. Called only after the template refused and the compiler
+    declined, so an answerable question never reaches it.
     ``reading`` is the parser's (:func:`~association.query.parse.reading_from_route`):
     the checks read its intent, its typed scope and the subject it read.
 
@@ -198,8 +200,7 @@ def _period_as_condition(con: duckdb.DuckDBPyConnection, intent: str, scope: Sco
     The parser keeps such a question off the period templates
     (``router._PERIOD_AS_CONDITION``), since a period read of it would answer
     his first-quarter threes, fluently and wrongly; nothing reads the
-    condition either (ISSUES.md #275), so the refusal names that instead of
-    handing the question to the agent.
+    condition either (ISSUES.md #275), so the refusal names that.
 
     .. versionadded:: 5.0.0
     """

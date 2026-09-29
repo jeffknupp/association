@@ -255,12 +255,17 @@ Some questions are not answered by a template:
   does not have before 2002." :doc:`data-sources` lists where each kind of data
   starts.
 * **A narrowing no template honors**, such as back-to-backs, "in the Finals"
-  or "since returning from injury", goes to the agent rather than being
-  answered for everything.
+  or "since returning from injury", is refused with the reason rather than
+  being answered for everything.
 * **A conference** named as the subject ("who leads the east") is refused,
   because nothing in the warehouse records which teams are in one. Asked as a
   filter ("Celtics record in the eastern conference", "Western Conference
-  standings"), it is one of the narrowings above and goes to the agent.
+  standings"), it is one of the narrowings above and refused the same way.
+
+Every refusal says what is missing. Until 5.0.0 a question no template read
+went to a tool-calling agent that wrote its own SQL; measured, it answered one
+question in 23 over minutes, so it is gone, and the refusal that names the
+gap is the answer.
 
 Shot charts
 -----------
@@ -401,24 +406,20 @@ than just the chart on its own.
 
 Three more things about it are deliberate:
 
-* **Each message is a new question.** There is no conversation memory yet, so
+* **Each message is a new question.** There is no conversation memory, so
   "what about last year?" will not work. That is a real change in what a
   question *means* and it deserves its own routing cases rather than arriving
-  as a footnote to a UI release. Since 2.1.0 the server *enforces* this rather
-  than merely not implementing it: the Agent is reused for its warm connection
-  and keep-alive, but its conversation is reset per request, so one browser
-  can never answer from another's history.
-* **Every answer says which path produced it** — ``template`` in green, with
-  the intent, or ``agent`` in orange. Whether a template built the sentence
-  from code or a 7B model wrote the SQL is the most useful single thing you can
-  know about how far to trust an answer, so it is never hidden.
+  as a footnote to a UI release.
+* **Every answer says whether it was answered** — ``template`` in green, with
+  the intent, or ``refused`` in amber where nothing here had a reading of the
+  question and the text says what was missing. Never hidden.
 * **One question at a time.** ollama keeps a single KV cache slot per model, so
   two questions in flight would evict each other's prefix and both come back
   slow. A question that arrives while another is running is told it is waiting.
 
-A question that falls through to the agent can take minutes, and the page
-streams the trace while it does — the same lines ``--verbose`` prints — because
-a spinner for two minutes is indistinguishable from a hang.
+The page streams the trace while a question runs — the same lines
+``--verbose`` prints — so what the normalizer returned and what the parser read
+are on screen before the answer is.
 
 Every answer has a small note control underneath it — what is wrong with this
 one, or a thought on how it should look. Saving a note appends a timestamped
@@ -431,22 +432,16 @@ so more than one thought about the same answer is never lost to the last save.
 The server binds to localhost and has no authentication. It has no business
 being reachable by anything but you.
 
-Setting up the models
----------------------
+Setting up the model
+--------------------
 
-Two models, for the two jobs described in :doc:`architecture`. :doc:`installation`
-has the ``ollama pull`` commands; both fit in memory together.
+One model, for the one job a model has here (:doc:`architecture`): copying the
+names out of the question and picking a stat. :doc:`installation` has the
+``ollama pull`` command. ``--router-model`` names it, for both ``query`` and
+``web``.
 
-If a question falls through to the agent it will take noticeably longer — that path prefills a much larger prompt — which is
-expected, not a fault.
-
-``--no-fast-path`` forces every question through the agent, which is useful for
-comparing the two paths but slow.
-
-``--disable-fallthrough`` does the opposite, and is for development only: when
-no template can answer a question, ``query`` prints why the fast path gave it up
-and exits with an error, and ``web`` answers with an error, instead of handing
-the question to the agent. The agent iterates on SQL for minutes at a time and
-rarely gets it right, so testing the templates through the web interface is
-unusable while it runs. Both commands take the flag; it cannot be combined with
-``--no-fast-path``.
+Until 5.0.0 a second, larger model wrote SQL for questions no template
+answered, and ``--model``, ``--think``, ``--no-fast-path``,
+``--disable-fallthrough`` and ``--agent-budget`` configured it. They are gone
+with it; a question nothing reads is refused naming why, which is what
+``--disable-fallthrough`` used to make an error.

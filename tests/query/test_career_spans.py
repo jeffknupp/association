@@ -8,8 +8,6 @@ postseason that is a copy of the regular season, the 1993 phantom season, an
 empty box score, a career that began before the box scores do.
 """
 
-import json
-import re
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -21,10 +19,9 @@ from association.nba.season import current_season
 from association.query.compose import answer as compose_answer
 from association.query.compose.present import STATED_SCOPING
 from association.query.leaderboard import resolve_metric
-from association.query.metrics import BOX_SCORE_METRIC_NAMES, CORE_METRIC_NAMES, LEADERBOARD_METRICS
+from association.query.metrics import LEADERBOARD_METRICS
 from association.query.normalizer import NORMALIZER_STATS
 from association.query.parse import with_point
-from association.query.prompt import TOOLS, build_system_prompt
 from association.query.reading import Reading, Scope
 from association.query.subject import Subject
 from association.query.templates.common import TemplateContext, TemplateResult, TemplateUnsupported, check_scope, unhonored_scoping
@@ -98,7 +95,7 @@ _BOX_SCORE_STAT_NAMES = (
 def test_every_box_score_stat_the_model_may_name_ranks_by_a_metric() -> None:
     """Turnovers, minutes, fouls, the three makes and the three percentages were
     all taught to the router and none had a metric, so every leaderboard
-    question naming one fell through to the agent. The normalizer's
+    question naming one fell through. The normalizer's
     vocabulary (``NORMALIZER_STATS``) holds every one of them, so each still
     needs a metric, and a career form."""
     names = _BOX_SCORE_STAT_NAMES
@@ -116,16 +113,6 @@ def test_a_career_reads_a_bare_stat_as_a_total_and_a_season_as_it_always_did() -
     # A real metric name is never reinterpreted, so a career average stays reachable.
     assert resolve_metric("avg_points", career=True) == "avg_points"
     assert resolve_metric("threePointFieldGoalsMade") == "total_three_pointers_made"
-
-
-def test_the_new_metrics_stay_out_of_the_agents_preamble() -> None:
-    """The preamble spells CORE_METRIC_NAMES out three times and has ~120
-    tokens of headroom; these would cost ~200. They are reachable by name."""
-    preamble = build_system_prompt("") + json.dumps(TOOLS)
-    for name in BOX_SCORE_METRIC_NAMES:
-        assert name not in CORE_METRIC_NAMES
-        # On word boundaries: "fg_pct" is inside "efg_pct", which is listed.
-        assert not re.search(rf"\b{name}\b", preamble), name
 
 
 # ---------------- season leaderboards ----------------

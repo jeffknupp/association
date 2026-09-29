@@ -21,9 +21,10 @@ and game logs as tables, a multi-season history as a sparkline, a team's record
 as a card. Anything without a renderer still answers, in the same text the CLI
 prints — and every rendered answer keeps that text one click away.
 
-Every answer says whether a **template** or the fall-through **agent** produced
-it, because that is the most useful thing you can know about how far to trust
-it. Each message is a new question; there is no conversation memory yet.
+Every answer says whether a **template** produced it or the question was
+**refused** for want of a reading, because that is the most useful thing you
+can know about how far to trust it. Each message is a new question; there is
+no conversation memory.
 
 Shot charts and NetPoints fingerprints draw in the conversation, served from
 the same directory the CLI writes to — so a chart made at the terminal opens in
@@ -72,10 +73,11 @@ association query "who had the most assists in a single game this season?"
 # 23, on 2026-04-12 vs CHI. Next: Isaiah Collier (22), Josh Giddey (19).
 ```
 
-Questions like these hit a fast path and typically answer in a couple of
-seconds. Anything outside that set still gets answered — it falls through to
-a general-purpose agent that writes its own SQL against the warehouse, just
-more slowly.
+Questions like these are answered in about a second. Anything outside that
+set is refused, and the refusal says what is missing - an intent nothing
+answers, a narrowing the data cannot honor, a season a table does not reach.
+No model writes SQL here: the one that used to, for questions no template
+covered, answered one in 23 and is gone.
 
 The templates cover the shapes real NBA stat questions take, measured against
 StatMuse's live query feed. For example:
@@ -93,7 +95,7 @@ StatMuse's live query feed. For example:
 
 A question that narrows to something no template can honor, such as "on back-to-backs",
 "in the Finals" or "since returning from injury", is not answered for everything instead:
-it goes to the slower agent, which writes its own SQL. A question about a season a table does not reach,
+it is refused, naming the narrowing. A question about a season a table does not reach,
 such as a 1996 shot chart, is refused, and the answer says why.
 
 Some questions render a chart instead of text:
@@ -139,8 +141,8 @@ per-game NetPoints files, which are an opt-in pull
 - **Fast, deterministic answers** for common question shapes (rankings by
   any stat or over a career, player and team lines, splits, with/without a
   teammate, streaks, head-to-head, comparisons, game logs, shot charts,
-  fingerprints, multi-season history, …),
-  with a tool-calling agent as fallback for anything else
+  fingerprints, multi-season history, …), and a refusal naming what is
+  missing for anything else
 - **Computed advanced stats** ESPN's API doesn't expose directly — true
   shooting %, effective FG%, usage rate, game score
 - **NetPoints ratings** from ESPN Analytics — player/team ratings plus a
@@ -158,14 +160,11 @@ per-game NetPoints files, which are an opt-in pull
 uv tool install git+https://github.com/jeffknupp/association@v4.4.0
 brew install ollama               # or see https://ollama.com/download
 ollama serve &
-ollama pull qwen2.5:3b            # normalizer, the fast path - required, ~1.9GB
-ollama pull qwen2.5:7b            # fall-through agent - required, ~4.7GB
-ollama pull qwen3:8b              # optional: visible reasoning (--think), ~5.2GB
+ollama pull qwen2.5:3b            # the normalizer - required, ~1.9GB
 ```
 
-Both of the first two models are needed: the small one copies the names and the
-stat out of the question for the parser, and the fall-through agent handles
-anything the templates don't cover.
+One model: it copies the names and the stat out of the question for the
+parser, which reads everything else from the words.
 
 > **Note** — `pip install association` does not work yet. The PyPI project is
 > unreachable pending an account-access issue, so releases live on GitHub only
@@ -179,14 +178,8 @@ To work on `association` itself, clone the repo and sync it instead (see
 
 ### Hardware
 
-Recommended: 16GB of RAM. The normalizer and fall-through models together use
-about 7GB once both are loaded, leaving headroom for DuckDB and the OS. No GPU
-is required.
-
-On a lighter machine, the normalizer's model alone (`qwen2.5:3b`) covers most
-everyday questions through the fast path. Skip pulling `qwen2.5:7b` if RAM is
-tight — questions the fast path can't answer will just fail instead of
-falling through, rather than running slowly.
+Recommended: 8GB of RAM. The normalizer's model uses about 2GB once loaded,
+leaving headroom for DuckDB and the OS. No GPU is required.
 
 ### Shell completion
 

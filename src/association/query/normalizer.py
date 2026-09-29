@@ -108,6 +108,18 @@ NORMALIZER_NUM_CTX = 2048
 """The prompt is ~330 tokens; the window only has to hold it and one question."""
 
 
+def estimate_tokens(text: str) -> int:
+    """Deliberately a slight over-estimate (measured ~4.08 chars/token on the
+    retired agent's preamble), so a budget check errs toward failing loudly
+    rather than silently truncating: ollama truncates an over-length prompt
+    head-first and in silence.
+
+    .. versionadded:: 5.0.0
+       Moved from ``association.query.prompt``, which went with the agent.
+    """
+    return len(text) // 4
+
+
 @dataclass(frozen=True)
 class Normalized:
     """The model's two answers: the spans it read as names, and a stat key

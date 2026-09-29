@@ -63,7 +63,7 @@ def ask(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Any:
     def run(question: str, names: list[str], stat: str = "") -> list[tuple[str, str | None, tuple[str, ...]]]:
         monkeypatch.setattr("association.query.normalizer.normalize", lambda model, q: Normalized(names, stat))
         seen.clear()
-        Agent("qwen2.5:7b", str(db_path), tmp_path / "out", history_dir=tmp_path / ".history", fallthrough=False).ask(question)
+        Agent(str(db_path), tmp_path / "out", history_dir=tmp_path / ".history").ask(question)
         return list(seen)
 
     return run
@@ -152,7 +152,7 @@ def test_for_me_is_the_asker_not_the_memphis_grizzlies(monkeypatch: pytest.Monke
 
     monkeypatch.setattr("association.query.compose.answer", lambda ctx, reading, trace=None, declined=None: record(ctx, reading))
     monkeypatch.setattr("association.query.normalizer.normalize", lambda model, q: Normalized(["kat"], "points"))
-    Agent("qwen2.5:7b", str(db_path), tmp_path / "out", history_dir=tmp_path / ".history", fallthrough=False).ask("Display kat's average points for me")
+    Agent(str(db_path), tmp_path / "out", history_dir=tmp_path / ".history").ask("Display kat's average points for me")
     assert seen == [None]
 
 

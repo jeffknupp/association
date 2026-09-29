@@ -35,9 +35,12 @@ and picks one stat key (`query/normalizer.py`); the parser reads everything
 else from the question's own words and writes one typed `Reading` - who the
 question is about, the intent, the scope (`query/parse.py`,
 `query/reading.py`); a template or the compiler (`query/compose`) answers
-the Reading, or a refusal names what is missing (`query/refusals.py`). The
-SQL-writing agent is the last resort, and a poor one - it answered 1
-question in 23 when last measured. Seven intents are the compiler's alone
+the Reading, or a refusal names what is missing (`query/refusals.py`, or
+the parser's, the template's or the compiler's own reason through
+`agent.refusal_text`). There is no fall-through: the SQL-writing agent
+answered 1 question in 23 when measured and was removed on 2026-09-29
+(Jeff's call); what the yardstick still calls "fell through" is a refusal
+for want of a reading. Seven intents are the compiler's alone
 (`compose.COMPILED_INTENTS`); `game_log`, `player_stat` and `player_splits`
 joined them in step (g) (parser9-11, 2026-09-28/29: 162/175, 0 answers
 moved).
@@ -127,9 +130,10 @@ answers: it is proved by golden and the rehearsal, then a live run. Steps
   F112 ("Tatum rec") and F097 are graded wrong for guessing.
 
 **Not planned, and why:** a bigger model (the 7B added no names and 13 of
-162 stats, for a second a question more); a better fall-through agent (an
-agent with nothing to read fills the silence from its own weights); more
-data (every structural gap added up is under 14% of questions).
+162 stats, for a second a question more); any fall-through agent (an agent
+with nothing to read fills the silence from its own weights - the one this
+project had was measured at 1 in 23 and removed); more data (every
+structural gap added up is under 14% of questions).
 
 ## The plan items
 

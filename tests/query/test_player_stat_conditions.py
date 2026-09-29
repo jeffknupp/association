@@ -231,7 +231,7 @@ def test_agent_with_a_recorded_route_also_honors_the_condition(tmp_path: Path) -
     from association.query.router import Route
 
     db_path = _agent_warehouse(tmp_path)
-    agent = Agent("qwen2.5:7b", str(db_path), tmp_path / "out", history_dir=tmp_path / ".history")
+    agent = Agent(str(db_path), tmp_path / "out", history_dir=tmp_path / ".history")
     route = Route.from_slots(intent="player_stat", slots={"player": "Tyrese Maxey", "stat": "points", "conditions": [_condition("started")]})
     answer = agent.ask("Tyrese Maxey points when embiid starts", route=route)
     data = answer.data

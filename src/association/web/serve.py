@@ -14,7 +14,6 @@ from pathlib import Path
 
 from ..query.agent import Agent
 from ..query.history import DEFAULT_HISTORY_DIR
-from ..query.models import AGENT_BUDGET_SECONDS
 from .app import INDEX_HTML, create_app
 from .runner import AgentRunner, discard
 
@@ -58,11 +57,8 @@ def serve(
     port: int,
     db_path: str,
     out_dir: Path,
-    model: str,
     router_model: str,
     history_dir: Path = DEFAULT_HISTORY_DIR,
-    fallthrough: bool = True,
-    budget_seconds: float = AGENT_BUDGET_SECONDS,
 ) -> None:
     """Run the web interface until interrupted.
 
@@ -73,10 +69,12 @@ def serve(
     .. versionadded:: 2.0.0
 
     .. versionchanged:: 4.4.0
-       Takes ``fallthrough``; False answers a question no template can with
-       an error instead of the agent (``--disable-fallthrough``, development
-       only). Takes ``budget_seconds``, the wall clock the fall-through agent
-       may spend before it gives up and says so.
+       Took ``fallthrough`` and ``budget_seconds``.
+
+    .. versionchanged:: 5.0.0
+       Breaking: takes no ``model``, ``fallthrough`` or ``budget_seconds`` -
+       the fall-through agent they configured is gone, and a question no
+       template or compiled reading answers is refused naming why.
     """
     try:
         import uvicorn
@@ -93,9 +91,9 @@ def serve(
     # is where it goes. AgentRunner swaps in the requesting stream's sink for
     # the duration of each question, so the default here is only what happens
     # to lines nobody asked for.
-    agent = Agent(model, db_path, out_dir, verbose=True, history_dir=history_dir, router_model=router_model, trace=discard, fallthrough=fallthrough, budget_seconds=budget_seconds)
+    agent = Agent(db_path, out_dir, verbose=True, history_dir=history_dir, router_model=router_model, trace=discard)
     runner = AgentRunner(agent)
-    app = create_app(runner, db_path=db_path, out_dir=out_dir, model=model, router_model=router_model, history_dir=history_dir)
+    app = create_app(runner, db_path=db_path, out_dir=out_dir, router_model=router_model, history_dir=history_dir)
 
     sock = bind(host, port)
     # flush=True because the URL is the entire point of an ephemeral port, and
