@@ -500,7 +500,9 @@ def test_the_fast_path_says_how_it_read_a_name_the_question_left_open(monkeypatc
         _note_name_reading("maxey", Entity("1", "Tyrese Maxey"), [Entity("0", "Marlon Maxey")], 2026, named_in_full=False)
         return TemplateResult(data={}, answer="Tyrese Maxey averaged 28.0 points.")
 
-    monkeypatch.setattr("association.query.agent.TEMPLATES", {"player_stat": reads_a_name})
+    # player_stat is the compiler's (compose.COMPILED_INTENTS): the reading
+    # travels the same way through agent._try_compose.
+    monkeypatch.setattr("association.query.compose.answer", lambda ctx, reading, trace=None, declined=None: reads_a_name(ctx, reading))
     answer = _agent_with_players(tmp_path, "Marlon Maxey", "Tyrese Maxey").ask("how many points does maxey average?", route=Route.from_slots(intent="player_stat", slots={"player": "maxey"}))
     reading = "('maxey' was read as Tyrese Maxey, the only match who played in 2025-26. Marlon Maxey also matches - use the full name, or name a season he played, to ask about him.)"
     assert answer.text == f"Tyrese Maxey averaged 28.0 points. {reading}"
@@ -1161,7 +1163,7 @@ def test_the_parser_reads_the_question(monkeypatch: pytest.MonkeyPatch, tmp_path
         return TemplateResult(data={}, answer="templated")
 
     monkeypatch.setattr("association.query.normalizer.normalize", lambda model, question: Normalized(["embiid"], "points"))
-    monkeypatch.setattr("association.query.agent.TEMPLATES", {"player_stat": record})
+    monkeypatch.setattr("association.query.compose.answer", lambda ctx, reading, trace=None, declined=None: record(ctx, reading))
     db_path = tmp_path / "test.duckdb"
     con = duckdb.connect(str(db_path))
     con.execute("CREATE TABLE players (athlete_id VARCHAR, display_name VARCHAR)")
@@ -1253,6 +1255,6 @@ def test_a_recorded_route_is_answered_as_given_without_reading_the_question(monk
         return TemplateResult(data={}, answer="answered")
 
     monkeypatch.setattr("association.query.normalizer.normalize", no_reader)
-    monkeypatch.setattr("association.query.agent.TEMPLATES", {"player_stat": record})
+    monkeypatch.setattr("association.query.compose.answer", lambda ctx, reading, trace=None, declined=None: record(ctx, reading))
     answer = _agent_with_players(tmp_path, "Joel Embiid").ask("how many points does embiid average", route=Route.from_slots(intent="player_stat", slots={"player": "Joel Embiid"}))
     assert (answer.text, answer.intent, seen) == ("answered", "player_stat", ["Joel Embiid"])

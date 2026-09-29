@@ -40,7 +40,6 @@ from association.query.player_games import REBUILT_STATS
 from association.query.reading import Scope
 from association.query.templates.common import (
     HISTORY_COLUMNS,
-    HONORED_SCOPING,
     STAT_LABELS,
     THRESHOLD_STAT_COLUMNS,
     TemplateResult,
@@ -389,12 +388,13 @@ template's words - see the module docstring.
 """
 
 STATED_SCOPING: dict[str, frozenset[str]] = {
-    # A standing template's words are its own: what it honors, it states.
-    "player_stat": HONORED_SCOPING["player_stat"],
-    # game_log retired stating the relation's whole set, and
-    # `season_type_unstated` read over both season types merged by date
-    # (`_player_game_log_mixed`, `templates.games._team_mixed_games`).
+    # game_log and player_stat retired stating the relation's whole set, and
+    # `season_type_unstated`: read over both season types merged by date for
+    # a log (`_player_game_log_mixed`, `templates.games._team_mixed_games`),
+    # and from box scores as one combined read for an average
+    # (`_player_stat_reads_box_scores`, `_player_relation_season_type`).
     "game_log": _relation_scoping("game_log", "season_type_unstated"),
+    "player_stat": _relation_scoping("player_stat", "season_type_unstated"),
     # The retired templates' words, as they stated their narrowings when they
     # retired (ROADMAP plan item 6, step (d), part 4).
     "record_when": _relation_scoping("record_when"),

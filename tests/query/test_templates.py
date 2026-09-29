@@ -15,7 +15,7 @@ from association.nba.season import eastern_date as _eastern_date_of
 from association.query import shotchart
 from association.query.compose import answer as compose_answer
 from association.query.compose.core import Unsupported
-from association.query.compose.present import STATED_SCOPING, _present_game_log
+from association.query.compose.present import STATED_SCOPING, _present_game_log, _present_player_stat, _present_player_stat_season_line
 from association.query.compose.team import TeamQuery, run_team
 from association.query.entities import MAX_CANDIDATES, Availability, Entity, collect_name_readings, resolve_player
 from association.query.metrics import LEADERBOARD_METRICS, PER_GAME_MIN_GAMES, PER_GAME_MIN_POSTSEASON_GAMES
@@ -35,7 +35,7 @@ from association.query.templates.games import (
     team_quarter_points,
 )
 from association.query.templates.netpoints import fingerprint, player_netpoints
-from association.query.templates.players import SHOOTING_STATS, _box_score_stat_rebuilt, leaderboard, player_compare, player_stat
+from association.query.templates.players import SHOOTING_STATS, _box_score_player_stat, _box_score_stat_rebuilt, _player_stat_season_line, _player_stat_season_line_subject, leaderboard, player_compare
 from association.query.templates.shots import shot_chart, shot_distance
 from association.query.templates.teams import team_record
 
@@ -65,6 +65,7 @@ def _compiled(intent: str) -> Callable[[TemplateContext, Reading], TemplateResul
 
 game_log = _compiled("game_log")
 player_history = _compiled("player_history")
+player_stat = _compiled("player_stat")
 single_game_high = _compiled("single_game_high")
 threshold_count = _compiled("threshold_count")
 
@@ -3327,7 +3328,7 @@ def test_scope_guard_lets_only_the_templates_that_read_it_honor_season_type_unst
     other intent is the same as any other scoping slot - refuse rather than
     silently ignore."""
     assert unhonored_scoping("game_log", Scope.from_slots({"order": "recent", "limit": 5, "season_type_unstated": True}), STATED_SCOPING["game_log"]) == []
-    check_scope("player_stat", {"season_type_unstated": True})
+    assert unhonored_scoping("player_stat", Scope.from_slots({"season_type_unstated": True}), STATED_SCOPING["player_stat"]) == []
     # threshold_count is the compiler's (compose.COMPILED_INTENTS): the
     # relation honors the slot for a named player, and the count's own words
     # state it (compose.present.STATED_SCOPING).
@@ -3569,7 +3570,10 @@ def test_scope_guard_lets_through_what_the_player_templates_now_honor() -> None:
         )
         == []
     )
-    check_scope("player_stat", {"player": "Evan Mobley", "opponent": "Milwaukee Bucks", "venue": "away", "span": "career", "without": "x"})
+    assert (
+        unhonored_scoping("player_stat", Scope.from_slots({"player": "Evan Mobley", "opponent": "Milwaukee Bucks", "venue": "away", "span": "career", "without": "x"}), STATED_SCOPING["player_stat"])
+        == []
+    )
     assert unhonored_scoping("player_history", Scope.from_slots({"player": "Nikola Jokic", "span": "career"}), STATED_SCOPING["player_history"]) == []
     check_scope("shot_distance", {"player": "Jaylen Brown", "opponent": "Detroit Pistons"})
 
@@ -3600,8 +3604,10 @@ def test_team_quarter_points_still_honors_the_opponent_it_always_read() -> None:
 def test_no_template_narrows_to_a_playoff_round() -> None:
     """Nothing in the warehouse records a round or a series game number."""
     assert not any("round" in honored for honored in HONORED_SCOPING.values())
+    assert not any("round" in stated for stated in STATED_SCOPING.values())
     with pytest.raises(TemplateUnsupported, match="different span"):
-        check_scope("player_stat", {"player": "Jayson Tatum", "round": "finals"})
+        check_scope("player_compare", {"players": ["Jayson Tatum", "Jaylen Brown"], "round": "finals"})
+    assert unhonored_scoping("player_stat", Scope.from_slots({"player": "Jayson Tatum", "round": "finals"}), STATED_SCOPING["player_stat"]) == ["round"]
 
 
 def test_a_leaderboard_refuses_a_position_group_subject_for_the_compiler(lb_con: TemplateContext) -> None:
@@ -4384,12 +4390,9 @@ def test_player_stat_over_the_last_n_games_is_the_log_with_its_averages(pg_ctx: 
     """The product decision: "stats over his last N games" is a log of those
     games with averages beneath, never the season line - so player_stat hands
     the question to game_log rather than refusing it or answering the season."""
-    with pytest.raises(TemplateUnsupported, match="hands a limit or an order to game_log"):
-        player_stat(pg_ctx, Reading.from_slots({"player": "Brandin Podziemski", "limit": 2}))
-    # The refusal hands the Reading to the compiler (agent._try_compose),
-    # whose player_stat reading of a window is the log's point, said by the
-    # log's presenter (5.0.0).
-    result = _compiled("player_stat")(pg_ctx, Reading.from_slots({"player": "Brandin Podziemski", "limit": 2}))
+    # The compiler's player_stat reading of a window is the log's point,
+    # said by the log's presenter (5.0.0).
+    result = player_stat(pg_ctx, Reading.from_slots({"player": "Brandin Podziemski", "limit": 2}))
     assert len(result.data["games"]) == 2
     assert "averages" in result.data
     # F149 (ISSUES.md): the window (2) is narrower than his 3 qualifying
@@ -4398,10 +4401,9 @@ def test_player_stat_over_the_last_n_games_is_the_log_with_its_averages(pg_ctx: 
 
 
 def test_check_scope_lets_player_stat_honor_since_and_order(pg_ctx: TemplateContext) -> None:
-    from association.query.templates.common import check_scope
 
-    check_scope("player_stat", {"player": "Brandin Podziemski", "since": 2024})
-    check_scope("player_stat", {"player": "Brandin Podziemski", "order": "recent", "limit": 3})
+    assert unhonored_scoping("player_stat", Scope.from_slots({"player": "Brandin Podziemski", "since": 2024}), STATED_SCOPING["player_stat"]) == []
+    assert unhonored_scoping("player_stat", Scope.from_slots({"player": "Brandin Podziemski", "order": "recent", "limit": 3}), STATED_SCOPING["player_stat"]) == []
 
 
 def test_until_closes_a_since_bounded_range_rather_than_reading_through_now(pg_ctx: TemplateContext) -> None:
@@ -5664,12 +5666,13 @@ def test_templates_on_the_relation_do_not_narrow_it_themselves() -> None:
     )
     from association.query.templates.splits import _record_when_answer, _record_when_query, _record_when_team_answer
 
-    readers: dict[str, list[Callable[..., Any]]] = {intent: [TEMPLATES[intent]] for intent in ("player_stat", "period_split", "player_splits", "streak")}
-    # record_when's and game_log's templates are retired (compose.COMPILED_INTENTS);
-    # the readers the compiler answers them with still read the relation,
-    # walked the same way.
+    readers: dict[str, list[Callable[..., Any]]] = {intent: [TEMPLATES[intent]] for intent in ("period_split", "player_splits", "streak")}
+    # record_when's, game_log's and player_stat's templates are retired
+    # (compose.COMPILED_INTENTS); the readers the compiler answers them with
+    # still read the relation, walked the same way.
     readers["record_when"] = [_record_when_query, _record_when_answer, _record_when_team_answer]
     readers["game_log"] = [team_game_log, _present_game_log, _player_game_log, _player_game_log_mixed]
+    readers["player_stat"] = [_present_player_stat, _present_player_stat_season_line, _box_score_player_stat, _player_stat_season_line, _player_stat_season_line_subject]
     for intent, functions in readers.items():
         for function in functions:
             # The reader and the private steps it calls, transitively -

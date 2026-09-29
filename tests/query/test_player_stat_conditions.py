@@ -29,12 +29,12 @@ from typing import Any
 
 import duckdb
 import pytest
+from test_templates import player_stat  # the compiler's, player_stat's template retired (compose.COMPILED_INTENTS)
 
 from association.fetch.repairs import real_games
 from association.nba.season import current_season
 from association.query.reading import Reading
 from association.query.templates.common import TemplateContext
-from association.query.templates.players import player_stat
 
 SEASON = current_season()
 

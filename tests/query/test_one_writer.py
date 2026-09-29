@@ -55,7 +55,10 @@ def ask(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Any:
         seen.append((reading.intent, reading.scope.player, reading.scope.players))
         return TemplateResult(data={}, answer="answered")
 
-    monkeypatch.setattr("association.query.agent.TEMPLATES", {"fingerprint": record, "player_stat": record, "player_compare": record})
+    monkeypatch.setattr("association.query.agent.TEMPLATES", {"fingerprint": record, "player_compare": record})
+    # player_stat is the compiler's (compose.COMPILED_INTENTS): the same
+    # Reading reaches compose.answer, through agent._run_compiled.
+    monkeypatch.setattr("association.query.compose.answer", lambda ctx, reading, trace=None, declined=None: record(ctx, reading))
 
     def run(question: str, names: list[str], stat: str = "") -> list[tuple[str, str | None, tuple[str, ...]]]:
         monkeypatch.setattr("association.query.normalizer.normalize", lambda model, q: Normalized(names, stat))
@@ -147,7 +150,7 @@ def test_for_me_is_the_asker_not_the_memphis_grizzlies(monkeypatch: pytest.Monke
         seen.append(reading.scope.own_team)
         return TemplateResult(data={}, answer="answered")
 
-    monkeypatch.setattr("association.query.agent.TEMPLATES", {"player_stat": record})
+    monkeypatch.setattr("association.query.compose.answer", lambda ctx, reading, trace=None, declined=None: record(ctx, reading))
     monkeypatch.setattr("association.query.normalizer.normalize", lambda model, q: Normalized(["kat"], "points"))
     Agent("qwen2.5:7b", str(db_path), tmp_path / "out", history_dir=tmp_path / ".history", fallthrough=False).ask("Display kat's average points for me")
     assert seen == [None]

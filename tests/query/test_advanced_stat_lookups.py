@@ -14,11 +14,12 @@ from pathlib import Path
 
 import duckdb
 import pytest
+from test_templates import player_stat  # the compiler's, player_stat's template retired (compose.COMPILED_INTENTS)
 
-from association.query.reading import Reading
+from association.query.reading import Reading, Scope
 from association.query.templates import TemplateContext, TemplateUnsupported, check_coverage
 from association.query.templates.common import _ADVANCED_STAT_NAMES, _sources_for
-from association.query.templates.players import ADVANCED_STATS, player_stat
+from association.query.templates.players import ADVANCED_STATS
 
 
 @pytest.fixture
@@ -110,12 +111,22 @@ def test_a_stat_with_no_volume_column_refuses_a_career_rather_than_averaging(adv
         player_stat(advanced_ctx, Reading.from_slots({"player": "Klay Thompson", "stat": stat, "span": "career"}))
 
 
-def test_a_narrowed_set_of_games_is_refused_not_answered_with_the_season(advanced_ctx: TemplateContext) -> None:
-    """The season line is not an answer to a question about one opponent. This
-    is the substitution the module's own docstring exists to stop, and the
-    refusal names the real cause rather than claiming no data."""
-    with pytest.raises(TemplateUnsupported, match="narrowed set of games"):
-        player_stat(advanced_ctx, Reading.from_slots({"player": "Klay Thompson", "stat": "ts_pct", "opponent": "Boston Celtics"}))
+def test_a_narrowed_set_of_games_is_never_answered_with_the_season(advanced_ctx: TemplateContext) -> None:
+    """The season line is not an answer to a question about one opponent -
+    the substitution the module's own docstring exists to stop. The retired
+    template refused the question; the compiler (5.0.0) reads the rate over
+    the narrowed games from box scores instead (``compose.core.RATES``, a
+    ratio of sums), so its point is on the games relation with that measure
+    alone - never the season line. ``tests/query/test_compose.py`` runs one."""
+    from association.query.parse import with_point
+    from association.query.subject import Subject
+
+    reading = with_point(
+        advanced_ctx.con,
+        "",
+        Reading(scope=Scope.from_slots({"player": "Klay Thompson", "stat": "ts_pct", "opponent": "Boston Celtics"}), intent="player_stat", subject=Subject("player", players=("Klay Thompson",))),
+    )
+    assert reading.point is not None and reading.point.source == "games" and reading.point.measures == ["ts_pct"]
 
 
 def test_an_advanced_stat_is_charged_its_own_floor_not_the_season_lines() -> None:

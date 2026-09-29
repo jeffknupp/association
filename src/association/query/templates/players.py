@@ -22,7 +22,6 @@ from ..leaderboard import SEASON_TOTAL_OF, LeaderboardError, LeaderboardResult, 
 from ..metrics import EXTRA_FIELD_COLUMNS, LEADERBOARD_METRICS, SEASON_TYPE_LABELS
 from ..player_games import aggregate_sql, rows_sql, scope_without_guard, season_type_clause
 from .common import (
-    _GAME_LOGS,
     HISTORY_COLUMNS,
     PLAYER_STAT_COLUMNS,
     REBUILT_STATS,
@@ -50,7 +49,6 @@ from .common import (
     _table_cell,
     measure_filters,
     ordinal_word,
-    scoped_games,
     scoped_player,
 )
 
@@ -1122,96 +1120,6 @@ _CAREER_TOTALS: dict[str, str | None] = {
     "fieldGoalsMade": "fieldGoalsMade",
     "freeThrowsMade": "freeThrowsMade",
 }
-
-
-def player_stat(ctx: TemplateContext, reading: Reading) -> TemplateResult:
-    """One named player's numbers: a season line, a career, or the games a
-    question narrowed to.
-
-    - One season comes from player_season_stats_deduped, so a traded player's
-      multi-row season is already collapsed.
-    - A career (``span``) is summed from the same table - totals over games,
-      never an average of averages - which reaches back to 1977 because it is
-      fetched per player over a whole career.
-    - An ``opponent``, ``venue`` or ``without`` narrows the games, which only
-      box scores can do, so those are summed over player_game_log from 1994.
-    - A shooting percentage comes with the makes and attempts behind it.
-
-    An incomplete name ("Luka", "Curry") is answered with a question, not a
-    guess: falling through costs minutes and guesses anyway, and a prominence
-    tiebreak was measured and rejected (no threshold separates Luka Doncic from
-    Luka Garza without also wrongly resolving "Brown").
-
-    .. versionchanged:: 2.1.0
-       Honors ``opponent``, ``venue``, ``without`` and ``span``, answers
-       shooting percentages, and refuses a ``limit`` - a player's numbers over
-       his last N games is a game log, which averages the games it lists.
-
-    .. versionchanged:: 2.2.0
-       ``without`` takes every teammate the question names and counts a game
-       only where none of them played.
-
-    .. versionchanged:: 4.0.1
-       A game narrowed by ``opponent``, ``venue`` or ``without`` now reads a
-       line rebuilt from play-by-play in place of an ESPN box score served
-       empty, for a stat the rebuild gets right - "Anthony Davis points vs the
-       Lakers in 2015" no longer refuses a season that is entirely Pelicans
-       games ESPN zeroed. A span left with no games at all says whose box
-       scores are empty rather than that no games were found.
-
-    .. versionchanged:: 4.1.0
-       A season that was never named - the slot defaulted to "now" rather than
-       being asked for - now redirects to the seasons the player actually has
-       on record when the current one has nothing, instead of a refusal that
-       reads as though his whole career were missing. "Allen Iverson's points"
-       used to answer "no 2026 regular season numbers", true and about the
-       wrong year; it now also says he last appears in 2010 and names his
-       1997-2010 range. A season the question named outright keeps the plain
-       refusal, because it is the correct answer.
-    """
-    scope = reading.scope
-    con = ctx.con
-    # Refused here, before any name is resolved, if a line names no column.
-    measures = measure_filters(scope.below, scope.above)
-    # One date is one game, read from the box score of that game - the same
-    # narrowing game_log honors, so "how did maxey do on 2026-03-01" is that
-    # night's line. A date replaces the season: the router's season is usually
-    # its "current" default, and a date from last season looked for in this
-    # one finds nothing.
-    date = scope.date
-    from_box_scores = _player_stat_reads_box_scores(scope, measures) or bool(date)
-    if scope.limit or scope.order:
-        # "Jokic averages last 10 games" answered with his season line would be
-        # the substitution this module exists to stop. game_log lists exactly
-        # the games asked about and averages them beneath - the shape the
-        # question has. With game_log the compiler's (compose.COMPILED_INTENTS),
-        # the refusal hands the same Reading to it (agent._try_compose), whose
-        # player_stat reading is the log's point for a window.
-        raise TemplateUnsupported("player_stat hands a limit or an order to game_log - a log, not an average")
-    # The order those steps have to run in lives in scoped_player, with why.
-    # Settled before the name is resolved: the span, and the table it is read
-    # from, are what narrow an ambiguous name to the players who could be the
-    # answer - a career keeps Dell Curry, this season does not.
-    if not from_box_scores:
-        season_line = _player_stat_season_line_subject(con, scope)
-        if isinstance(season_line, TemplateResult):
-            return season_line
-        return _player_stat_season_line(con, *season_line, scope)
-    subject = scoped_player(con, scope, "player_stat needs a player name", table="player_game_log", available=_GAME_LOGS, span="career" if date else scope.span, season=None if date else scope.season)
-    if isinstance(subject, TemplateResult):
-        return subject
-    player, span = subject
-    stat = scope.stat
-    # Before the ESPN-served columns - see _player_stat_season_line's own comment.
-    if stat is not None and stat in ADVANCED_STATS:
-        return _player_stat_advanced(con, player, span, stat, from_box_scores)
-
-    shooting = SHOOTING_STATS.get(stat) if stat is not None else None
-    wanted = [] if shooting else _wanted_stats(scope)
-    narrowed = scoped_games(con, player, span, scope, opponent=scope.opponent, measures=measures, date=date, team=scope.own_team)
-    if isinstance(narrowed, TemplateResult):
-        return narrowed
-    return _box_score_player_stat(con, player, span, narrowed, wanted, shooting)
 
 
 def _player_stat_season_line_subject(con: duckdb.DuckDBPyConnection, scope: Scope) -> tuple[Entity, _Span] | TemplateResult:

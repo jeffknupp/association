@@ -1385,6 +1385,18 @@ def test_a_player_beside_a_team_subject_is_not_read_as_the_team(cx_ctx: Template
     assert result.answer.startswith("Golden State Warriors record when Brandin Podziemski had 15+ points")
 
 
+def test_a_narrowed_advanced_rate_is_read_over_the_games_not_the_season_line(cx_ctx: TemplateContext) -> None:
+    """ "klay ts% vs boston": the retired player_stat template refused a
+    narrowed advanced rate ("computed per season"); the compiler reads it
+    over exactly the narrowed games as a ratio of sums (``core.RATES``), in
+    its own sentence, never the season line's figure (5.0.0)."""
+    _add_condition_tables(cx_ctx.con)
+    result = compose_answer(cx_ctx, "player_stat", {"player": "Brandin Podziemski", "stat": "ts_pct", "opponent": "Boston Celtics"}, "podziemski ts% vs boston")
+    assert result is not None
+    assert "TS%" in result.answer and "vs the Boston Celtics" in result.answer
+    assert result.data["measures"] == ["ts_pct"] and result.data["skeleton"] == "scalar" and result.data["rows"][0]["games"] == 2
+
+
 def test_a_log_reads_a_rebuilt_game_with_its_minutes_blank(cx_ctx: TemplateContext) -> None:
     """A listing's rebuilt-line rule is ``game_log``'s own
     (``templates.games._rebuilt_readable``): ``minutes`` is exempt - play-by-

@@ -110,8 +110,8 @@ def _adapt_game_log(scope: Scope) -> Reading:
 def _adapt_player_stat(scope: Scope) -> Reading:
     """``player_stat``'s default point: a per-game average over box scores
     where a narrowing (or a date) sends the read there, and the season line
-    (``source="seasons"``) for an unnarrowed season or career - the same
-    split ``templates.players.player_stat`` makes."""
+    (``source="seasons"``) for an unnarrowed season or career - the split
+    the retired template made (``templates.players._player_stat_reads_box_scores``)."""
     if not _named_player_in(scope):
         raise Unsupported("player_stat needs a player")
     from association.query.templates.common import measure_filters

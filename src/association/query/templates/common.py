@@ -349,14 +349,9 @@ HONORED_SCOPING: dict[str, frozenset[str]] = {
     # The templates on the player-games relation: see RELATION_SCOPING.
     # game_log is the compiler's (compose.COMPILED_INTENTS): what its retired
     # words state is compose.present.STATED_SCOPING's.
-    # The three that narrow games are answered from box scores rather than the
-    # season line; a career is summed from the season table. `season_type_unstated`
-    # is one more such narrowing (`_player_stat_reads_box_scores`): the season
-    # LINE table has one row per season_type and so no "both at once" reading,
-    # so BOTH_SEASON_TYPES forces the box-score path the same as an `opponent`
-    # or a `since` does, and is read there through the shared `scoped_player`
-    # (`_player_relation_season_type`), same as `threshold_count`'s.
-    "player_stat": _relation_scoping("player_stat", "season_type_unstated"),
+    # player_stat is the compiler's too (step (g)): its retired words state
+    # the relation's set and `season_type_unstated`, read from box scores
+    # (`_player_stat_reads_box_scores`, `_player_relation_season_type`).
     # The team relation's whole set (step 3, C4b / K1): its games now come
     # from `team_games` (`opponent`, `venue`, `date`, `game_n`, `situation`,
     # the `order`/`limit` window) and its team and span from `scoped_team`

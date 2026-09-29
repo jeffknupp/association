@@ -1,5 +1,5 @@
 {
- "about": "The retired templates' own answers to the compiler parity cases in tests/query/test_compose.py, frozen from their last commit when they retired: the four compiler-first templates from 4b3aff9 (ROADMAP plan item 6, step (d), part 4), and game_log from 3b5fdd6 (step (g)). Each expected answer is JSON text with the fixture's seasons as placeholders - {S} the current season, {S-1} and {S-2} the two before it, {S-1}-{s} and {S-2}-{s-1} their labels - since the fixture is built around current_season().",
+ "about": "The retired templates' own answers to the compiler parity cases in tests/query/test_compose.py, frozen from their last commit when they retired: the four compiler-first templates from 4b3aff9 (ROADMAP plan item 6, step (d), part 4), and game_log and player_stat from 3b5fdd6 (step (g)). Each expected answer is JSON text with the fixture's seasons as placeholders - {S} the current season, {S-1} and {S-2} the two before it, {S-1}-{s} and {S-2}-{s-1} their labels - since the fixture is built around current_season().",
  "cases": [
   {
    "intent": "threshold_count",
@@ -146,6 +146,51 @@
    },
    "question": "podziemski's game log",
    "expected": "{\"answer\": \"Brandin Podziemski, last 4 games of the {S} regular season:\\n  date        opp     W/L   MIN   PTS  REB  AST\\n  {S}-03-01  vs BOS  W       -    10    3    2\\n  {S}-01-10  vs DET  W      35    28   10   11\\n  {S-1}-12-01  vs DET  L      28    15    4    6\\n  {S-1}-11-01  @ BOS   W      30    20    5    3\\n  per game                 31.0  18.2  5.5  5.5\\n1 of these game has no box score from ESPN: its figures are rebuilt from play-by-play, and minutes cannot be recovered at all.\", \"data\": {\"averages\": {\"assists\": 5.5, \"minutes\": 31.0, \"points\": 18.25, \"rebounds\": 5.5}, \"columns\": [\"MIN\", \"PTS\", \"REB\", \"AST\"], \"games\": [{\"assists\": 2, \"date\": \"{S}-03-01\", \"home_away\": \"home\", \"minutes\": null, \"opponent\": \"BOS\", \"points\": 10, \"rebounds\": 3, \"reconstructed\": true, \"result\": \"W\", \"season\": {S}}, {\"assists\": 11, \"date\": \"{S}-01-10\", \"home_away\": \"home\", \"minutes\": 35, \"opponent\": \"DET\", \"points\": 28, \"rebounds\": 10, \"reconstructed\": false, \"result\": \"W\", \"season\": {S}}, {\"assists\": 6, \"date\": \"{S-1}-12-01\", \"home_away\": \"home\", \"minutes\": 28, \"opponent\": \"DET\", \"points\": 15, \"rebounds\": 4, \"reconstructed\": false, \"result\": \"L\", \"season\": {S}}, {\"assists\": 3, \"date\": \"{S-1}-11-01\", \"home_away\": \"away\", \"minutes\": 30, \"opponent\": \"BOS\", \"points\": 20, \"rebounds\": 5, \"reconstructed\": false, \"result\": \"W\", \"season\": {S}}], \"headline\": \"Brandin Podziemski, last 4 games of the {S} regular season\", \"notes\": [\"1 of these game has no box score from ESPN: its figures are rebuilt from play-by-play, and minutes cannot be recovered at all.\"], \"opponent\": null, \"player\": \"Brandin Podziemski\", \"qualifying_games\": 4, \"season\": {S}, \"span\": null, \"venue\": null, \"without\": []}}"
+  },
+  {
+   "intent": "player_stat",
+   "slots": {
+    "player": "Stephen Curry",
+    "stat": "points"
+   },
+   "question": "how many points does curry average",
+   "expected": "{\"answer\": \"Stephen Curry averaged 26 points per game in 43 games in the {S} regular season. That is 1,118.0 in total.\", \"data\": {\"labels\": {\"avgPoints\": \"points per game\", \"points\": \"points total\"}, \"player\": \"Stephen Curry\", \"season\": {S}, \"season_n\": null, \"stats\": {\"avgPoints\": 26.0, \"gamesPlayed\": 43, \"points\": 1118.0}}}"
+  },
+  {
+   "intent": "player_stat",
+   "slots": {
+    "player": "Stephen Curry"
+   },
+   "question": "what are curry's numbers this season",
+   "expected": "{\"answer\": \"Stephen Curry averaged 26 points, 4 rebounds and 5 assists per game in 43 games in the {S} regular season.\", \"data\": {\"labels\": {\"assists\": \"assists total\", \"avgAssists\": \"assists per game\", \"avgPoints\": \"points per game\", \"avgRebounds\": \"rebounds per game\", \"points\": \"points total\"}, \"player\": \"Stephen Curry\", \"season\": {S}, \"season_n\": null, \"stats\": {\"assists\": 215.0, \"avgAssists\": 5.0, \"avgPoints\": 26.0, \"avgRebounds\": 4.0, \"gamesPlayed\": 43, \"points\": 1118.0}}}"
+  },
+  {
+   "intent": "player_stat",
+   "slots": {
+    "player": "Stephen Curry",
+    "span": "career"
+   },
+   "question": "curry career averages",
+   "expected": "{\"answer\": \"Stephen Curry averaged 25.1 points, 4.3 rebounds and 5.6 assists per game in 113 games over his career (2 regular seasons, {S-1}-{S}).\", \"data\": {\"labels\": {\"assists\": \"assists total\", \"avgAssists\": \"assists per game\", \"avgPoints\": \"points per game\", \"avgRebounds\": \"rebounds per game\", \"points\": \"points total\"}, \"player\": \"Stephen Curry\", \"season_count\": 2, \"seasons\": [{S-1}, {S}], \"span\": \"career\", \"stats\": {\"assists\": 635, \"avgAssists\": 5.6, \"avgPoints\": 25.1, \"avgRebounds\": 4.3, \"gamesPlayed\": 113, \"points\": 2833}}}"
+  },
+  {
+   "intent": "player_stat",
+   "slots": {
+    "player": "Stephen Curry",
+    "stat": "threePointFieldGoalPct",
+    "span": "career"
+   },
+   "question": "curry career 3pt percentage",
+   "expected": "{\"answer\": \"Stephen Curry shot 39.7% on 3-pointers (470.0 of 1,184.0) in 113 games over his career (2 regular seasons, {S-1}-{S}).\", \"data\": {\"labels\": {\"pct\": \"3PT%\", \"threePointFieldGoalsAttempted\": \"3PA\", \"threePointFieldGoalsMade\": \"3PM\"}, \"player\": \"Stephen Curry\", \"season_count\": 2, \"seasons\": [{S-1}, {S}], \"span\": \"career\", \"stats\": {\"gamesPlayed\": 113, \"pct\": 39.695945945945944, \"threePointFieldGoalsAttempted\": 1184.0, \"threePointFieldGoalsMade\": 470.0}}}"
+  },
+  {
+   "intent": "player_stat",
+   "slots": {
+    "player": "Brandin Podziemski",
+    "opponent": "Boston Celtics"
+   },
+   "question": "podziemski's stats vs boston",
+   "expected": "{\"answer\": \"Brandin Podziemski averaged 15 points, 4 rebounds and 2.5 assists per game in 2 games vs the Boston Celtics in the {S} regular season.\\nAll 2 meetings:\\n  {S}-03-01  vs BOS  W  10 PTS, 3 REB, 2 AST\\n  {S-1}-11-01  @ BOS  W  20 PTS, 5 REB, 3 AST\", \"data\": {\"date\": null, \"labels\": {\"assists\": \"assists total\", \"avgAssists\": \"assists per game\", \"avgPoints\": \"points per game\", \"avgRebounds\": \"rebounds per game\", \"points\": \"points total\"}, \"measures\": [], \"opponent\": \"Boston Celtics\", \"player\": \"Brandin Podziemski\", \"recent\": [{\"assists\": 2, \"date\": \"{S}-03-01\", \"home_away\": \"home\", \"opponent\": \"BOS\", \"points\": 10, \"rebounds\": 3, \"result\": \"W\", \"season\": {S}}, {\"assists\": 3, \"date\": \"{S-1}-11-01\", \"home_away\": \"away\", \"opponent\": \"BOS\", \"points\": 20, \"rebounds\": 5, \"result\": \"W\", \"season\": {S}}], \"season\": {S}, \"seasons\": [{S}, {S}], \"series_game\": null, \"span\": null, \"started\": null, \"stats\": {\"assists\": 5, \"avgAssists\": 2.5, \"avgPoints\": 15.0, \"avgRebounds\": 4.0, \"gamesPlayed\": 2, \"points\": 30}, \"venue\": null, \"without\": []}}"
   }
  ]
 }
