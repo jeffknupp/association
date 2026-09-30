@@ -611,13 +611,28 @@ def test_a_teams_quarter_of_any_stat_is_the_teams_quarter(con: duckdb.DuckDBPyCo
     assert (assists.intent, assists.slots.get("half"), assists.slots.get("stat")) == ("team_quarter_points", 2, "assists")
 
 
-def test_a_period_used_as_a_condition_is_not_a_period_answer(con: duckdb.DuckDBPyConnection) -> None:
+def test_a_period_used_as_a_condition_is_read_into_the_scope_and_off_the_period_templates(con: duckdb.DuckDBPyConnection) -> None:
     """yardstick-v2 F062, "... three points made per game after making one
     three in first quarter": his whole-game threes over the games whose first
     quarter held one. Once period_split read any stat it answered his
-    first-quarter threes - a different question, fluently. Nothing reads a
-    period as a condition, so the question is not a period template's."""
+    first-quarter threes - a different question, fluently. The condition is
+    read into the scope (`read_period_condition`, ROADMAP step 2, #275) and
+    its words taken out of the question the grammar sees, so the rest reads
+    as the per-game average it is; a bare "one" is exactly one (the key's
+    reading, said as "exactly" in the answer) and "at least"/"+" at least.
+    A condition whose line cannot be read ("after scoring a lot") is still
+    kept off the period templates, for the refusal to name."""
+    from association.query.reading import PeriodCondition
+
     route, _, _ = read_route(con, "tyrese maxey three points made per game after making one three in first quarter", ["tyrese maxey"], "threePointFieldGoalsMade")
-    assert route.intent == "other"
+    assert route.intent == "player_stat"
+    assert route.scope.period_condition == PeriodCondition(stat="threePointFieldGoalsMade", threshold=1, op="=", period=1)
+    assert route.scope.period is None and route.scope.threshold is None, "the condition's number and period are the condition's, not the route's"
+    at_least, _, _ = read_route(con, "tyrese maxey three points made per game after making at least one three in first quarter", ["tyrese maxey"], "threePointFieldGoalsMade")
+    assert at_least.scope.period_condition == PeriodCondition(stat="threePointFieldGoalsMade", threshold=1, op=">=", period=1)
+    log, _, _ = read_route(con, "tyrese maxey game log in games where he scored 10+ points in the first half", ["tyrese maxey"], "points")
+    assert log.intent == "game_log" and log.scope.period_condition == PeriodCondition(stat="points", threshold=10, op=">=", half=1)
     plain, _, _ = read_route(con, "tyrese maxey three points made in the first quarter", ["tyrese maxey"], "threePointFieldGoalsMade")
-    assert plain.intent == "period_split"
+    assert plain.intent == "period_split" and plain.scope.period_condition is None
+    unread, _, _ = read_route(con, "tyrese maxey three points made per game after scoring a lot in the first quarter", ["tyrese maxey"], "threePointFieldGoalsMade")
+    assert unread.intent == "other" and unread.scope.period_condition is None

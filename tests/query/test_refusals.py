@@ -194,11 +194,15 @@ def test_a_teams_stat_no_period_splits_is_refused_and_a_rebuilt_one_is_not(con: 
 def test_a_period_used_as_a_condition_is_refused_by_name(con: duckdb.DuckDBPyConnection) -> None:
     """yardstick-v2 F062: "vj edgecombe three points made per game after
     making one three in first quarter" asks his whole-game threes over the
-    games whose first quarter held one. The parser keeps it off the period
-    templates; this names why it is not answered instead of falling through."""
-    question = "vj edgecombe three points made per game after making one three in first quarter"
+    games whose first quarter held one - read into the scope now; a wording
+    whose line cannot be read is kept off the period templates, and this
+    names what a readable line looks like instead of falling through."""
+    question = "vj edgecombe three points made per game after scoring a lot in the first quarter"
     result = unanswerable(con, "other", {"player": "VJ Edgecombe", "stat": "threePointFieldGoalsMade"}, question)
-    assert result is not None and result.data["refused"] == "period_as_condition" and "condition on which games count" in result.answer
+    assert result is not None and result.data["refused"] == "period_as_condition" and "no line could be read from it" in result.answer
+    # A condition the parser read is the relation's narrowing (ROADMAP step 2, #275), not this refusal.
+    read = {"player": "VJ Edgecombe", "stat": "threePointFieldGoalsMade", "period_condition": {"stat": "threePointFieldGoalsMade", "threshold": 1, "period": 1}}
+    assert unanswerable(con, "player_stat", read, "vj edgecombe three points made per game after making one three in first quarter") is None
     # A period that is the part measured is not this refusal.
     plain = "vj edgecombe 1st quarter assists by game"
     assert unanswerable(con, "other", {"player": "VJ Edgecombe", "stat": "assists", "period": 1}, plain) is None

@@ -1212,6 +1212,11 @@ def _player_stat_reads_box_scores(scope: Scope, measures: list[MeasureFilter]) -
        teammate's role nowhere in it - "maxey points when embiid starts"
        answered his whole season (26.3 in 52 games) rather than the 16 games
        Embiid actually started (23.8).
+
+    .. versionchanged:: 5.0.0
+       Also true for ``period_condition`` (ROADMAP step 2, #275): the games
+       whose quarter held a line are a narrowing of the games, and the
+       season line has no quarter in it.
     """
     split_side = scope.split if scope.split in STARTER_SIDES else None
     # A `situation` (a weekday, a month, a holiday, "since <day>") is a
@@ -1229,6 +1234,7 @@ def _player_stat_reads_box_scores(scope: Scope, measures: list[MeasureFilter]) -
             scope.season_type_unstated,
             scope.own_team,
             scope.conditions,
+            scope.period_condition,
         )
     )
 

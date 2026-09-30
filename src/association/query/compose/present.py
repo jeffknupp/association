@@ -651,6 +651,11 @@ STATED_SCOPING: dict[str, frozenset[str]] = {
     # period_split's words: the relation's set less a career and a since/until
     # range (RELATION_SCOPING_EXCLUDED: the accuracy caveat is per season),
     # which its point refuses outright (compose.adapt._adapt_period_split).
+    # A period CONDITION (a quarter conditioning which games count, beside
+    # the quarter measured - "first quarter points in games he made a
+    # fourth-quarter three") is not among those words either
+    # (RELATION_SCOPING_EXCLUDED): the presenter steps aside and the
+    # compiler's sentence, which names both, answers.
     "period_split": _relation_scoping("period_split"),
     # player_compare's words state no narrowing at all; its point refuses
     # one outright (compose.move._compare_point), as check_scope did.

@@ -189,6 +189,44 @@ def test_a_game_the_shot_table_does_not_cover_is_no_game(con: duckdb.DuckDBPyCon
     assert con.execute(sql, params).fetchone() == (2,), "a confident zero for g3 would drag every average down"
 
 
+def test_a_period_as_a_condition_keeps_the_games_whose_period_held_the_line_and_reads_the_whole_game(con: duckdb.DuckDBPyConnection) -> None:
+    """ROADMAP step 2, #275 ("three points made per game after making one
+    three in first quarter"): the condition is on the period's own rebuilt
+    line and the read is the WHOLE game's. g1's first quarter holds one made
+    three and g2's none, so "1+ threes in the 1st quarter" keeps g1 alone -
+    and its points are the box score's 40, never the quarter's 4. "Exactly
+    2" keeps nothing; a line on the third quarter (g2's layup) keeps g2. A
+    measured quarter beside a conditioning one reads each on its own line:
+    g2's first quarter, in the games whose third held a basket, is 0."""
+    narrowed = Narrowed(base=["pgl.athlete_id = ?", "pgl.season = ?"], base_params=["1", SEASON])
+    narrowed.narrow_period_condition((1,), "threePointFieldGoalsMade", 1, "1+ 3-pointers in the 1st quarter")
+    sql, params = aggregate_sql(narrowed, ["COUNT(*)", "SUM(pgl.points)"])
+    assert con.execute(sql, params).fetchone() == (1, 40)
+    assert narrowed.filters() == " in games with 1+ 3-pointers in the 1st quarter"
+    exact = Narrowed(base=["pgl.athlete_id = ?", "pgl.season = ?"], base_params=["1", SEASON])
+    exact.narrow_period_condition((1,), "threePointFieldGoalsMade", 2, "exactly 2 3-pointers in the 1st quarter", op="=")
+    sql, params = aggregate_sql(exact, ["COUNT(*)"])
+    assert con.execute(sql, params).fetchone() == (0,)
+    third = _narrowed(con, (1,), "1st quarter")
+    third.narrow_period_condition((3,), "fieldGoalsMade", 1, "1+ field goals in the 3rd quarter")
+    sql, params = rows_sql(third, "pgl.event_id, pgl.points", order="g.date")
+    assert con.execute(sql, params).fetchall() == [("g2", 0)], "g2 is the game whose third quarter held a basket; its FIRST quarter is the measured, scoreless one"
+    assert third.filters() == " in the 1st quarter in games with 1+ field goals in the 3rd quarter"
+    with pytest.raises(ValueError, match="no period-line column"):
+        narrowed.narrow_period_condition((1,), "minutes", 1, "1+ minutes in the 1st quarter")
+
+
+def test_a_period_condition_sends_a_players_line_to_the_box_scores() -> None:
+    """The season line has no quarter in it: a condition on one narrows the
+    GAMES, and `player_stat` reads them from box scores as it does for an
+    opponent or a teammate's role (#212's shape, guarded)."""
+    from association.query.reading import PeriodCondition
+    from association.query.templates.players import _player_stat_reads_box_scores
+
+    assert _player_stat_reads_box_scores(Scope(player="x", period_condition=PeriodCondition(stat="points", threshold=10, period=1)), [])
+    assert not _player_stat_reads_box_scores(Scope(player="x"), [])
+
+
 def test_the_scope_names_a_half_before_a_quarter() -> None:
     assert period_narrowing(Scope(half=2)) == ((3, 4), "2nd half")
     assert period_narrowing(Scope(period=5)) == ((5,), "overtime")

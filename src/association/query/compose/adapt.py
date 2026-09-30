@@ -228,7 +228,10 @@ def _adapt_period_split(scope: Scope) -> Reading:
     if not _named_player_in(scope):
         raise Unsupported("period_split needs a player")
     excluded = RELATION_SCOPING_EXCLUDED["period_split"]
-    refused = [slot for slot in excluded if getattr(scope, slot) not in (None, "", (), False)]
+    # `period_condition` is excluded from the presenter's WORDS only: the
+    # point keeps it, the presenter steps aside (STATED_SCOPING) and the
+    # compiler's own sentence names both quarters - the game_log rule.
+    refused = [slot for slot in excluded if slot != "period_condition" and getattr(scope, slot) not in (None, "", (), False)]
     if refused:
         raise Unsupported(f"period_split cannot honor {refused} - {excluded[refused[0]]}")
     try:

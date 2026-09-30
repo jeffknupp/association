@@ -165,3 +165,28 @@ def test_every_scope_field_is_checked_and_every_group_is_the_compilers() -> None
     # `period` is the player relation's own, four reads of the same games rather than a GROUP BY (compose.core._compile_by_period).
     assert set(get_args(Group)) == {"none", "presence", "period", *GROUPS}
     assert names >= (SCOPING_SLOTS | RELATION_SCOPING)
+
+
+def test_a_period_condition_round_trips_through_the_slot_door() -> None:
+    """A quarter or half as a condition on which games count (ROADMAP step 2,
+    #275) is one typed record: a stat, a threshold, the comparison ("at
+    least" by default, "exactly" for a bare number) and exactly one of a
+    period or a half. A slot dict in that shape reads and writes back the
+    same; one naming both a period and a half, or neither, or a key nothing
+    types, is refused at the door."""
+    from association.query.reading import PeriodCondition, ScopeError
+
+    scope = Scope.from_slots({"period_condition": {"stat": "threePointFieldGoalsMade", "threshold": 1, "period": 1}})
+    assert scope.period_condition == PeriodCondition(stat="threePointFieldGoalsMade", threshold=1, op=">=", period=1)
+    assert scope.to_slots()["period_condition"] == {"stat": "threePointFieldGoalsMade", "threshold": 1, "op": ">=", "period": 1}
+    exact = Scope.from_slots({"period_condition": {"stat": "points", "threshold": 10, "op": "=", "half": 1}})
+    assert exact.period_condition == PeriodCondition(stat="points", threshold=10, op="=", half=1)
+    assert Scope.from_slots(exact.to_slots()) == exact
+    for bad in (
+        {"stat": "points", "threshold": 1},
+        {"stat": "points", "threshold": 1, "period": 1, "half": 1},
+        {"stat": "points", "threshold": 1, "period": 1, "op": "<"},
+        {"stat": "points", "period": 1},
+    ):
+        with pytest.raises(ScopeError):
+            Scope.from_slots({"period_condition": bad})

@@ -179,14 +179,14 @@ def _ranking_minimum(question: str) -> tuple[str, int] | None:
     return match.group(2).lower(), int(match.group(1))
 
 
-def _everyone_guard(intent: str, question: str, position: str | None) -> None:
+def _everyone_guard(intent: str, question: str, position: str | None, *, period_is_condition: bool = False) -> None:
     """What a league-wide read cannot answer: a period, a team's own figure
     read literally as a ranking of players (K2's guards), or a team-only
     intent's question at all - "Best NBA record since January 31st 2015"
     reached this read once the reading stopped naming Travis Best for it,
     and a player ranking refusing it for want of a "record" measure names
     the wrong cause; it is not this relation's question."""
-    if _PERIOD.search(question):
+    if _PERIOD.search(question) and not period_is_condition:
         raise Unsupported("a quarter or half is the period relation's question")
     # "the top 50 ... with the team they play for" (F017) names no team's
     # question: the team is a column the ranking shows.
@@ -602,7 +602,7 @@ def _everyone_point(intent: str, scope: Scope, question: str, measure: str | Non
        and ranking moves, since both are more specific readings of a
        ``threshold_count``/ranking question than either of those.
     """
-    _everyone_guard(intent, question, position)
+    _everyone_guard(intent, question, position, period_is_condition=scope.period_condition is not None)
     scope = _everyone_opponent(scope, question)
     scope = _everyone_career_scope(scope, question)
     words = _measure_words(question)
@@ -796,7 +796,9 @@ def _move_named(intent: str, scope: Scope, question: str) -> Reading:
     game's figure under the quarter's heading."""
     if intent == "period_split":
         return _move_default(intent, scope, None)
-    if _PERIOD.search(question):
+    if _PERIOD.search(question) and scope.period_condition is None:
+        # The quarter words are a condition's (read into the scope), or the
+        # period relation's question.
         raise Unsupported("a quarter or half is the period relation's question")
     measure = _measure_for_named(scope, question)
     single = _move_single_game(scope, question, measure)

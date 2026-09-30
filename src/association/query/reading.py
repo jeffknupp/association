@@ -154,6 +154,58 @@ class ConditionSpec:
 
 
 @dataclass(frozen=True, kw_only=True)
+class PeriodCondition:
+    """A quarter or half used as a CONDITION on which games count, rather
+    than as the part of each game measured: "three points made per game
+    after making one three in first quarter" (yardstick-v2 F062) is his
+    whole-game threes over the games whose first quarter held one. The
+    line is ``stat`` compared to ``threshold`` by ``op`` - ``">="`` ("at
+    least one", "10+", "a three"), or ``"="`` for a bare number ("one three"
+    is exactly one, the reading the question's key takes; the answer says
+    "exactly", and "1+" reaches the other) - in ``period`` (1-10) or ``half``
+    (1-2), on the subject's own period line
+    (:meth:`~association.query.player_games.Narrowed.narrow_period_condition`).
+
+    .. versionadded:: 5.0.0
+    """
+
+    stat: str
+    threshold: int
+    op: Literal[">=", "="] = ">="
+    period: int | None = None
+    half: Literal[1, 2] | None = None
+
+    @classmethod
+    def from_slot(cls, entry: Any) -> PeriodCondition:
+        """One ``period_condition`` slot value, a dict, as a typed record -
+        raising on a shape the relation could not read.
+
+        .. versionadded:: 5.0.0
+        """
+        if isinstance(entry, PeriodCondition):
+            return entry
+        if not isinstance(entry, Mapping) or set(entry) - {"stat", "threshold", "op", "period", "half"} or "stat" not in entry or "threshold" not in entry:
+            raise ScopeError(f"scope period_condition {entry!r} is not a stat, a threshold and a period or half")
+        period, half = entry.get("period"), entry.get("half")
+        if (period is None) == (half is None):
+            raise ScopeError(f"scope period_condition {entry!r} needs exactly one of period and half")
+        return cls(
+            stat=_text("period_condition stat", entry["stat"]),
+            threshold=_whole("period_condition threshold", entry["threshold"]),
+            op=_one_of(">=", "=")("period_condition op", entry.get("op", ">=")),
+            period=None if period is None else _whole("period_condition period", period),
+            half=None if half is None else _one_of(1, 2)("period_condition half", half),
+        )
+
+    def to_slot(self) -> dict[str, Any]:
+        """The ``period_condition`` slot value the relation reads.
+
+        .. versionadded:: 5.0.0
+        """
+        return {"stat": self.stat, "threshold": self.threshold, "op": self.op, **({"period": self.period} if self.period is not None else {"half": self.half})}
+
+
+@dataclass(frozen=True, kw_only=True)
 class Scope:
     """What narrows the answer, one typed field per scoping slot. A field at
     its default (None, empty, False) is the slot absent - the reading every
@@ -208,6 +260,8 @@ class Scope:
     round: str | None = None
     period: int | None = None
     half: Literal[1, 2] | None = None
+    #: A period as a condition on which games count (:class:`PeriodCondition`).
+    period_condition: PeriodCondition | None = None
     venue: Literal["home", "away"] | None = None
     #: The window.
     order: Literal["recent", "first"] | None = None
@@ -257,6 +311,8 @@ class Scope:
                 continue
             if f.name == "conditions":
                 out[f.name] = [condition.to_slot() for condition in value]
+            elif f.name == "period_condition":
+                out[f.name] = value.to_slot()
             else:
                 out[f.name] = list(value) if isinstance(value, tuple) else value
         return out
@@ -327,6 +383,7 @@ _CHECKS: dict[str, Callable[[str, Any], Any]] = {
     **dict.fromkeys(("threshold", "season", "since", "until", "game_n", "season_n", "period", "limit"), _whole),
     **dict.fromkeys(("per_game", "season_type_unstated"), _flag),
     "conditions": _conditions,
+    "period_condition": lambda name, raw: PeriodCondition.from_slot(raw),
     "side": _one_of("offense", "defense", "total"),
     "shot_value": _one_of(1, 2, 3),
     "rank": _one_of("most", "fewest", "best", "worst"),

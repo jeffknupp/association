@@ -54,11 +54,14 @@ answers moved by any retirement; parser20 after the last three, 0 moved).
 
 The 13 families still failing, by cause:
 
-- **A period as a condition** (plan item 4, what is left). "vj edgecombe
-  three points made per game after making one three in first quarter"
-  (F062) is refused by name: nothing keeps the games where a period held a
-  line (#275). A team's non-points figure per quarter is built (the team
-  half, 2026-09-29; the rehearsal moves F065 to its own shape).
+- **A period as a condition** (plan item 4) - built 2026-09-30. "vj
+  edgecombe three points made per game after making one three in first
+  quarter" (F062) reads the line into `Scope.period_condition` and answers
+  his whole-game threes over the games whose first quarter held exactly one
+  (28 games, 2.4; the key says 31 and 2.52, and "1+" reaches 36 and 2.8 -
+  the warehouse's first-quarter counts differ from the key's source for a
+  few games, cause not yet found). A team's non-points figure per quarter
+  is built (the team half, 2026-09-29).
 - **A span or a window the parser does not read.** "... games since
   2000-01" (F161) answered one season until the league-wide read took
   ``since``/``until`` (2026-09-30); "Most reb by a hawk player history"
@@ -163,10 +166,15 @@ The 13 families still failing, by cause:
    "vj edgecombe 1st quarter 3pt percentage by game" answers), and a named
    player's four-quarter breakdown (#162: `period_split` with no period is
    a `grouped` read by `period`, `compose.core._compile_by_period`, four
-   reads of the same narrowed games in one statement). What is left: a
-   period as a condition (#275), and `period_leaderboard` narrowed by
-   opponent, venue, date or a range (#185 - waiting on the qualifier
-   decision below).
+   reads of the same narrowed games in one statement), and a period as a
+   condition on which games count (#275: `Scope.period_condition`, read
+   from the words by `parse.read_period_condition` and taken out of the
+   question the grammar sees, applied by
+   `Narrowed.narrow_period_condition` as an EXISTS over the period's own
+   line, so every reader of the relation honors it and says it; a bare
+   number is "exactly", said so, and "N+" is at least). What is left:
+   `period_leaderboard` narrowed by opponent, venue, date or a range (#185
+   - waiting on the qualifier decision below).
 3. **The rest of the pair relation** (item 3). The pair as a compiler
    subject ("most points by curry vs lebron", "how many times did lebron
    score 30 vs kawhi"), and the opponent-side condition ("vs lakers without

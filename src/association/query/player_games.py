@@ -601,6 +601,13 @@ class Narrowed:
     #: an older warehouse (or a fixture) lacks the advanced ones, and a
     #: REPLACE naming a missing column fails to bind.
     period_log_columns: frozenset[str] | None = None
+    #: A period used as a CONDITION on which games count - ``(periods,
+    #: column, op, threshold, phrase)``, set by :meth:`narrow_period_condition`:
+    #: only the games whose line in those periods reached the threshold,
+    #: with every read still seeing the WHOLE game (or the measured period's
+    #: line, where :attr:`periods` is set too). ``phrase`` is how the answer
+    #: says it ("1+ 3-pointers in the 1st quarter").
+    period_condition: tuple[tuple[int, ...], str, str, int, str] | None = None
 
     @property
     def without(self) -> list[Entity]:
@@ -717,6 +724,8 @@ class Narrowed:
             # module exists to stop - it reads as his last 50 games played.
             parts.append("as a starter" if self.started else "off the bench")
         parts.extend(self._condition_parts())
+        if self.period_condition is not None:
+            parts.append(f"in games with {self.period_condition[4]}")
         if self.measures:
             parts.append(f"with {_joined(self.measures)}")
         parts.extend(self._ordinal_parts())
@@ -794,6 +803,41 @@ class Narrowed:
         self.period_label = label
         self.period_plays = plays
         self.period_log_columns = log_columns
+
+    def narrow_period_condition(self, periods: tuple[int, ...], column: str, threshold: int, phrase: str, *, op: str = ">=", plays: bool = True, log_columns: frozenset[str] | None = None) -> None:
+        """Only the games whose line in ``periods`` - a quarter, a half - held
+        ``column`` at or above ``threshold``, or exactly at it with ``op``
+        ``"="`` (ROADMAP step 2, #275: "three
+        points made per game after making one three in first quarter" is his
+        whole-game threes over the games whose first quarter held one). One
+        more clause over the same rows, like every narrowing here: an EXISTS
+        over the period's own rebuilt line (:func:`period_line_sql`, summed
+        over the games the base clauses select, the way :func:`_period_source`
+        sums a measured period's), so every reader of the relation - a log,
+        an average, a count, the box-score notes - applies it through
+        :meth:`clauses` with no source of its own. What a reader SELECTs is
+        still the whole game's, or the measured period's where
+        :meth:`narrow_periods` narrowed the line too. A game the shot table
+        does not cover has no line and fails the condition, as it is no
+        game in any period read.
+
+        .. versionadded:: 5.0.0
+        """
+        period_line_sql(periods, "SELECT 1")  # validates the periods before anything is read
+        if column not in PERIOD_COLUMNS or op not in MEASURE_OPS:  # written in code, so this is a programming error, not a refusal
+            raise ValueError(f"no period-line column {column!r} or comparison {op!r}")
+        self.period_condition = (tuple(periods), column, op, int(threshold), phrase)
+        self.period_plays = plays
+        if log_columns is not None:
+            self.period_log_columns = log_columns
+        base = " AND ".join(self.base) or "TRUE"
+        keys = f"SELECT DISTINCT pgl.event_id, pgl.season {_PLAYER_GAMES} WHERE {base}"
+        line = period_line_sql(periods, keys, plays=plays)
+        self.narrow(
+            f"EXISTS (SELECT 1 FROM ({line}) pc WHERE pc.event_id = pgl.event_id AND pc.season = pgl.season AND pc.athlete_id = pgl.athlete_id AND pc.{column} {MEASURE_OPS[op]} ?)",
+            *self.base_params,
+            int(threshold),
+        )
 
     def narrow_series_game(self, n: int) -> None:
         """Only the ``n``th game of each playoff series: the games between the
@@ -991,7 +1035,7 @@ def paired_rows_sql(narrowed: Narrowed, other_id: str, select: str, *, teammates
     reads of the relation joined on the event, both under the played guard,
     which is why "never met" can be true of two men who shared a floor for
     years (their games are teammates' games, not meetings)."""
-    if narrowed.periods is not None:
+    if narrowed.periods is not None or narrowed.period_condition is not None:
         # A meeting's period line would need the OTHER man's period line
         # too; nothing reads one yet, so this refuses rather than pairing a
         # period with a whole game.

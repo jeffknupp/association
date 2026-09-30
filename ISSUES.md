@@ -1395,20 +1395,21 @@ those were found.
     team's play-by-play does not add up to its box score in six seasons").
   - **A position group as the subject** ("each center 1q pts log vs nugget") -
     the same gap position groups have everywhere.
-  - **A period used as a condition** (F062) - refused by name; see its own
-    entry (#275).
   - **A team's record, series or ranking in one quarter** (`team_record`,
     `head_to_head`, `team_leaderboard` exclude `period`/`half` in
     `TEAM_RELATION_SCOPING_EXCLUDED`: a quarter has no winner to count) - by
     design, not a gap to fill.
 - **User sees:** for the shapes above, a refusal naming the cause - no longer
   a whole-game line where one quarter was asked for.
-- **Next step:** #275 has its own entry. Built 2026-09-30: the shooting
-  percentage (`templates.games.PERIOD_RATES`, a ratio of the period's sums
-  for a player and a team; a period RANKING by one is refused by name, since
-  a games-played minimum is not an attempts minimum) and a named player's
-  four quarters side by side (`compose.core._compile_by_period`, the
-  `period` group; #162 closed).
+- **Next step:** none open here. Built 2026-09-30: the shooting percentage
+  (`templates.games.PERIOD_RATES`, a ratio of the period's sums for a
+  player and a team; a period RANKING by one is refused by name, since a
+  games-played minimum is not an attempts minimum), a named player's four
+  quarters side by side (`compose.core._compile_by_period`, the `period`
+  group; #162 closed) and a period as a condition on which games count
+  (`Scope.period_condition`, read by `parse.read_period_condition` and
+  applied by `Narrowed.narrow_period_condition`; #275 closed). What a team
+  cannot do in one quarter (a record, a series, a ranking) stays by design.
 - **GitHub:** #96
 
 ### A coach question has nothing to read, and ESPN's coaches are not worth reading
@@ -2811,23 +2812,6 @@ those were found.
 - **Next step:** read the calendar and the range in the merged read - `_team_mixed_games` and `_player_game_log_mixed` taking the scope's `situation`/`since`/`until` through the same shared steps (`team_games`, `scoped_games`) the single-type read uses - and guard the player log's mixed read until then; a test per relation.
 - **Source:** ours.
 - **GitHub:** #274
-
-### A period used as a condition on the games is refused, not read
-- **Found:** 2026-09-29, period relation (plan item 4)
-- **Evidence:** "vj edgecombe three points made per game after making one
-  three in first quarter" (yardstick-v2 F062) asks his WHOLE-game threes over
-  the games whose first quarter held one (the key: 31 games, 2.52 a game).
-  Once `period_split` read any stat, it answered his first-quarter threes
-  (45 over 75 games) - measured offline, a wrong answer delivered fluently.
-  `router._PERIOD_AS_CONDITION` now routes the wording to `other`, and
-  `refusals._period_as_condition` names the cause (2026-09-29).
-- **User sees:** a refusal naming the gap where a condition-on-a-period
-  question is asked; before the guard, a wrong answer.
-- **Next step:** a period CONDITION on the relation - a `Condition`-like
-  clause "his period line in this game met X" (an EXISTS over the period
-  line), with the measure read over the whole game; the relation already has
-  both halves.
-- **GitHub:** #275
 
 ### The empty-box rebuild counts turnovers and fouls by the older rules
 - **Found:** 2026-09-29, period relation (plan item 4)

@@ -202,18 +202,25 @@ def _period_as_condition(con: duckdb.DuckDBPyConnection, intent: str, scope: Sco
     """A quarter or half used as a CONDITION on which games count - "three
     points made per game after making one three in first quarter"
     (yardstick-v2 F062) - rather than as the part of each game measured.
-    The parser keeps such a question off the period templates
-    (``router._PERIOD_AS_CONDITION``), since a period read of it would answer
-    his first-quarter threes, fluently and wrongly; nothing reads the
-    condition either (ISSUES.md #275), so the refusal names that.
+    The parser reads the line as ``period_condition``
+    (:func:`~association.query.parse.read_period_condition`), which the
+    relation applies (ROADMAP step 2, #275); where the words say a
+    condition and no line could be read from them, the question is kept off
+    the period templates (``router._PERIOD_AS_CONDITION``) - a period read
+    of it would answer his first-quarter threes, fluently and wrongly - and
+    this names what a readable line looks like.
 
     .. versionadded:: 5.0.0
+
+    .. versionchanged:: 5.0.0
+       A condition the parser read is answered, not refused.
     """
-    if not (_PERIOD_AS_CONDITION.search(question) and _PERIOD_WORD.search(question)):
+    if scope.period_condition is not None or not (_PERIOD_AS_CONDITION.search(question) and _PERIOD_WORD.search(question)):
         return None
     return (
-        "A quarter or a half is read as the part of each game measured, not as a condition on which games count - "
-        "nothing keeps the games where a period held a line. Ask for the stat in that period, or for it over whole games."
+        "A quarter or a half here reads as a condition on which games count, and no line could be read from it - "
+        'a number, a stat the period\'s line rebuilds and the period, as in "after making one three in the first quarter" or "in games where he scored 10+ points in the first half". '
+        "Ask with the line worded that way, for the stat in that period, or for it over whole games."
     )
 
 

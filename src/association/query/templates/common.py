@@ -32,6 +32,8 @@ from ..player_games import (  # noqa: F401 - the relation's names, re-exported f
     _RECORDED_OR_REBUILT,
     BOTH_SEASON_TYPES,
     CONDITION_PREDICATES,
+    PERIOD_COLUMNS,
+    PERIOD_PLAYS_COLUMNS,
     REBUILT_STATS,
     STARTER_SIDES,
     Condition,
@@ -44,7 +46,7 @@ from ..player_games import (  # noqa: F401 - the relation's names, re-exported f
     season_type_clause,
 )
 from ..player_games import _tenure_clause as _relation_tenure_clause
-from ..reading import ConditionSpec, Scope
+from ..reading import ConditionSpec, PeriodCondition, Scope
 from ..team_games import TeamNarrowed
 from ..team_metrics import TEAM_METRICS, resolve_team_metric
 
@@ -174,6 +176,7 @@ SCOPING_SLOTS = frozenset(
         "ranked_by",
         "period",
         "half",
+        "period_condition",
     }
 )
 
@@ -199,10 +202,16 @@ SCOPING_SLOTS = frozenset(
 # to one template at a time, which is the O(templates x slots) matrix the
 # algebra port exists to remove. A template on the relation that cannot honor
 # one of these says so in RELATION_SCOPING_EXCLUDED, with the reason.
-RELATION_SCOPING = frozenset({"order", "date", "opponent", "venue", "span", "without", "split", "since", "until", "below", "above", "game_n", "season_n", "situation", "conditions", "period", "half"})
+RELATION_SCOPING = frozenset(
+    {"order", "date", "opponent", "venue", "span", "without", "split", "since", "until", "below", "above", "game_n", "season_n", "situation", "conditions", "period", "half", "period_condition"}
+)
 """The scoping slots every template on the player-games relation honors.
 
 .. versionadded:: 4.4.0
+
+.. versionchanged:: 5.0.0
+   ``period_condition`` - a quarter or half as a condition on which games
+   count (ROADMAP step 2, #275), applied by :func:`_apply_period_condition`.
 """
 
 # The cells a template on the relation does NOT honor, each with why. A reason
@@ -267,8 +276,14 @@ RELATION_SCOPING_EXCLUDED: dict[str, dict[str, str]] = {
         "span": "the accuracy caveat is measured per season, not across a career",
         "since": "the accuracy caveat is measured per season, and the header names one season - both wrong for a range",
         "until": "the accuracy caveat is measured per season, and the header names one season - both wrong for a range",
+        # Excluded from the presenter's WORDS, not from the point: its point
+        # keeps the cell and the compiler's own sentence, which names both
+        # the quarter measured and the quarter conditioning the games,
+        # answers (compose.adapt._adapt_period_split, the game_log rule).
+        "period_condition": "a period answer says the one period it measures, never a second one conditioning which games count",
     },
 }
+RELATION_SCOPING_EXCLUDED["player_matchup"]["period_condition"] = "a meeting is both players' whole game; a quarter's line conditioning it would be read on one side of the pair only"
 """Per template, the relation's slots it refuses, and why.
 
 .. versionadded:: 4.4.0
@@ -1757,6 +1772,35 @@ def period_narrowing(scope: Scope) -> tuple[tuple[int, ...], str] | None:
     return None
 
 
+def _apply_period_condition(con: duckdb.DuckDBPyConnection, narrowed: Narrowed, condition: PeriodCondition) -> TemplateResult | None:
+    """A quarter or half used as a condition on which games count - the
+    ``period_condition`` cell of :data:`RELATION_SCOPING`
+    (:class:`~association.query.reading.PeriodCondition`), applied here for
+    a named player's games and a league-wide read alike
+    (:meth:`~association.query.player_games.Narrowed.narrow_period_condition`).
+    A column rebuilt from the plays, in a warehouse holding none, is refused
+    rather than read as zero - every game would fail the condition.
+
+    .. versionadded:: 5.0.0
+    """
+    asked = period_narrowing(Scope(period=condition.period, half=condition.half))
+    if asked is None or condition.stat not in PERIOD_COLUMNS or condition.threshold < 1:
+        raise TemplateUnsupported(f"no period condition reads {condition!r}")
+    periods, label = asked
+    plays = _has_table(con, "plays")
+    if not plays and condition.stat in PERIOD_PLAYS_COLUMNS:
+        noun = STAT_LABELS.get(condition.stat, condition.stat)
+        message = f"Games with {condition.threshold}+ {noun}s in the {label} cannot be picked out here: a period's {noun}s are rebuilt from play-by-play, and this warehouse holds none."
+        return TemplateResult(data={"message": message}, answer=message)
+    noun = STAT_LABELS.get(condition.stat, condition.stat)
+    # Said outright either way, so the reading is visible and the other is
+    # one word away: "exactly 1 3-pointer" against "1+ 3-pointers".
+    phrase = f"exactly {condition.threshold} {noun}{'' if condition.threshold == 1 else 's'} in the {label}" if condition.op == "=" else f"{condition.threshold}+ {noun}s in the {label}"
+    log_columns = frozenset(row[0] for row in con.execute("DESCRIBE player_game_log").fetchall())
+    narrowed.narrow_period_condition(periods, condition.stat, condition.threshold, phrase, op=condition.op, plays=plays, log_columns=log_columns)
+    return None
+
+
 def _apply_period(con: duckdb.DuckDBPyConnection, narrowed: Narrowed, scope: Scope) -> None:
     """A quarter or half narrows every read of the relation to that part of
     each game (:meth:`~association.query.player_games.Narrowed.narrow_periods`)
@@ -1858,6 +1902,10 @@ def scoped_games(
         # returning") - see _apply_situation.
         _apply_situation(narrowed, scope.situation)
     _apply_period(con, narrowed, scope)
+    if scope.period_condition is not None:
+        refused = _apply_period_condition(con, narrowed, scope.period_condition)
+        if refused is not None:
+            return refused
     narrowed.window = _relation_window(scope)
     return narrowed
 
@@ -1969,6 +2017,10 @@ def league_games(con: duckdb.DuckDBPyConnection, span: _Span, scope: Scope, *, p
         codes = POSITION_CODES.get(position, [position])
         narrowed.narrow(f"pgl.athlete_id IN (SELECT athlete_id FROM players WHERE position_abbr IN ({', '.join('?' for _ in codes)}))", *codes)
     _apply_period(con, narrowed, scope)
+    if scope.period_condition is not None:
+        refused = _apply_period_condition(con, narrowed, scope.period_condition)
+        if refused is not None:
+            return refused
     return narrowed
 
 

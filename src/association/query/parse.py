@@ -38,7 +38,8 @@ from association.query.decisions import Decision
 from association.query.entities import _edit_budget, _question_derived_player, _words, find_players, find_teams, nicknames_in, suggest_players
 from association.query.measures import MEASURE_WORDS
 from association.query.metrics import EXTRA_FIELD_COLUMNS, TEAM_FIELD_WORDS
-from association.query.reading import Reading, Scope, ScopeError, Split
+from association.query.player_games import PERIOD_COLUMNS
+from association.query.reading import PeriodCondition, Reading, Scope, ScopeError, Split
 from association.query.router import Route, _period_asked, _route_calendar_slots_split, settle
 from association.query.subject import (
     KIND_ASSIGNED_INTENTS,
@@ -606,6 +607,76 @@ def _read_route_fields(intent: str, scope: Scope, question: str) -> Scope:
     return replace(scope, fields=tuple(fields)) if fields else scope
 
 
+# A quarter or half used as a CONDITION on which games count: the verb, the
+# number, the stat and the period, in the shapes questions use - "after
+# making one three in first quarter" (yardstick-v2 F062), "in games where he
+# scored 10+ points in the first half", "when he makes a three in the 4th".
+_PERIOD_CONDITION = re.compile(
+    r"\b(?:after\s+|(?:in|for|over)\s+(?:the\s+)?games?\s+(?:(?:where|when|in\s+which)\s+)?(?:(?:he|she|they)\s+)?|when(?:ever)?\s+(?:he|she|they)\s+|if\s+(?:he|she|they)\s+)"
+    r"(?:making|scoring|hitting|getting|having|recording|grabbing|made|scored|hit|got|had|recorded|grabbed|makes|scores|hits|gets|has|records|grabs)\s+"
+    r"(?P<least>at\s+least\s+)?(?P<n>\d{1,3}|an?|one|two|three|four|five|six|seven|eight|nine|ten)\s*(?P<more>\+|\s+or\s+more)?\s+"
+    r"(?P<stat>[a-z0-9 -]+?)\s+in\s+(?:the\s+)?(?P<period>(?:first|second|third|fourth|1st|2nd|3rd|4th)[\s-]+(?:quarter|half)|q[1-4]|[1-4]q|[12]h)\b",
+    re.IGNORECASE,
+)
+_CONDITION_NUMBERS = {"a": 1, "an": 1, "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10}
+# The singular a line's words take after "one" - the columns the period's
+# line rebuilds (MEASURE_WORDS holds the plurals and the abbreviations).
+_CONDITION_STAT_WORDS: dict[str, str] = {
+    "three": "threePointFieldGoalsMade",
+    "3": "threePointFieldGoalsMade",
+    "three pointer": "threePointFieldGoalsMade",
+    "3 pointer": "threePointFieldGoalsMade",
+    "3-pointer": "threePointFieldGoalsMade",
+    "three-pointer": "threePointFieldGoalsMade",
+    "triple": "threePointFieldGoalsMade",
+    "point": "points",
+    "rebound": "rebounds",
+    "board": "rebounds",
+    "assist": "assists",
+    "steal": "steals",
+    "block": "blocks",
+    "turnover": "turnovers",
+    "foul": "fouls",
+    "free throw": "freeThrowsMade",
+    "field goal": "fieldGoalsMade",
+    "basket": "fieldGoalsMade",
+    "shot": "fieldGoalsMade",
+}
+
+
+def read_period_condition(question: str) -> tuple[PeriodCondition, tuple[int, int]] | None:
+    """The quarter or half a question uses as a condition on which games
+    count, as a :class:`~association.query.reading.PeriodCondition` with
+    the span of the words that said it - or None where the question uses
+    none, or words one whose stat the period's line does not rebuild
+    (:data:`~association.query.player_games.PERIOD_COLUMNS`; a refusal names
+    that, ``refusals._period_as_condition``). Read from the text alone, the
+    way every slot but the names and the stat is (ROADMAP plan item 6).
+    "At least N", "N+", "N or more" and "a"/"an" are at-least lines; a bare
+    number ("one three", "10 points") is exactly that many - the reading
+    yardstick-v2 F062's key takes (31 games with exactly one first-quarter
+    three, not the 36 with one or more) - and the answer says "exactly", so
+    the other reading is one word away (Jeff's rule: a visible default that
+    can be corrected).
+
+    .. versionadded:: 5.0.0
+    """
+    m = _PERIOD_CONDITION.search(question)
+    if m is None:
+        return None
+    number = m.group("n").lower()
+    threshold = int(number) if number.isdigit() else _CONDITION_NUMBERS[number]
+    words = re.sub(r"\s+", " ", m.group("stat").lower().strip())
+    stat = _CONDITION_STAT_WORDS.get(words) or MEASURE_WORDS.get(words) or MEASURE_WORDS.get(f"{words}s")
+    if stat is None or stat not in PERIOD_COLUMNS or threshold < 1:
+        return None
+    asked = _period_asked(m.group("period"))
+    if asked is None:
+        return None
+    op: Literal[">=", "="] = ">=" if m.group("least") or m.group("more") or number in ("a", "an") else "="
+    return PeriodCondition(stat=stat, threshold=threshold, op=op, period=asked.get("period"), half=_as_half(asked.get("half"))), m.span()
+
+
 def _read_route_period(intent: str, scope: Scope, question: str) -> Scope:
     """A team's quarter or half from the words ("first quarter", "2nd
     half") - a slot the router's model filled and the stages only read for
@@ -745,6 +816,14 @@ def read_route(con: duckdb.DuckDBPyConnection, question: str, names: list[str] |
     slots = _with_measure(question, _slots_from_names(con, [_as_typed_part(con, question, _as_typed(question, name)) for name in names], stat))
     subject = _two_teams(read_subject(con, question, "other", Scope.from_slots(slots)), question, slots)
     slots = _read_route_names(subject, slots)
+    # A quarter or half used as a condition on which games count is read
+    # here and its words taken out of the question the grammar and the
+    # stages see (#275): left in, "after making one three in first quarter"
+    # is the period relation's question and "one three" a line on nothing.
+    condition = read_period_condition(question)
+    if condition is not None:
+        start, end = condition[1]
+        question = f"{question[:start]} {question[end:]}"
     parent = parent_intent(question, subject.kind, _read_route_beside(subject, question))
     # The window before the stages: they read ``order``/``limit`` as the
     # model's (a bare "last 10 games" reads both season types only beside
@@ -756,6 +835,8 @@ def read_route(con: duckdb.DuckDBPyConnection, question: str, names: list[str] |
     # A teammate's start is his, never the subject's own split: the stages
     # read the split from the whole question.
     scope = _read_route_split(subject, question, final, scope)
+    if condition is not None:
+        scope = replace(scope, period_condition=condition[0])
     subject = replace(
         subject,
         intent=final,
