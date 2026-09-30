@@ -35,7 +35,7 @@ from .common import TemplateUnsupported as TemplateUnsupported
 from .common import check_coverage as check_coverage
 from .common import check_scope as check_scope
 from .common import coverage_caveat as coverage_caveat
-from .games import head_to_head, period_leaderboard, player_matchup, team_quarter_points
+from .games import head_to_head, period_leaderboard, team_quarter_points
 from .netpoints import fingerprint, player_netpoints
 from .shots import shot_chart, shot_distance
 from .splits import with_without
@@ -51,7 +51,6 @@ TEMPLATES: dict[str, Callable[[TemplateContext, Reading], TemplateResult]] = {
     "player_netpoints": player_netpoints,
     "fingerprint": fingerprint,
     "with_without": with_without,
-    "player_matchup": player_matchup,
     "team_stat": team_stat,
     "team_leaderboard": team_leaderboard,
     "team_outlook": team_outlook,

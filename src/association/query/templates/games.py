@@ -27,7 +27,6 @@ from ..team_games import TEAM_GAMES_SQL, TEAM_PERIOD_AGREEMENT, TEAM_PERIOD_COLU
 from ..team_games import games_subquery as team_games_subquery
 from ..team_games import rows_sql as team_rows_sql
 from .common import (
-    _BOX_SCORES,
     HISTORY_COLUMNS,
     PLAYER_STAT_COLUMNS,
     REBUILT_STATS,
@@ -40,7 +39,6 @@ from .common import (
     TemplateResult,
     TemplateUnsupported,
     _box_score_notes,
-    _career_end,
     _clamp_limit,
     _condition_scope,
     _log_carries_rebuilt,
@@ -50,7 +48,6 @@ from .common import (
     _period,
     _player_relation_season_type,
     _relation_window,
-    _resolved_player,
     _resolved_team,
     _slot_season,
     _Span,
@@ -2404,75 +2401,23 @@ def _period_split_result(data: dict[str, Any], header: str, caveat: str, *, extr
 _DEFAULT_MEETINGS_LOGGED = 5
 
 
-def player_matchup(ctx: TemplateContext, reading: Reading) -> TemplateResult:
+def _player_matchup_from(con: duckdb.DuckDBPyConnection, scope: Scope, covered: _Scope, a: Entity, b: Entity, narrowed: _Narrowed, meetings: list[dict[str, Any]], together: int) -> TemplateResult:
     """The games two named players both played, on opposite teams: the
     head-to-head record, each one's averages in those games, and the most
-    recent meetings.
+    recent meetings - over the meetings the compiler's ``pair`` shape read
+    (``compose.core._compile_pair``, ROADMAP plan item 6, step (g)) and the
+    games they played as teammates. A game in which they were teammates is
+    not a meeting, and when every shared game was one, the answer says that
+    rather than that they never played. The retired template's docstring
+    (``player_matchup``, 2.1.0-5.0.0) carries the shape's history: a genuine
+    two-player matchup narrows the first player's games through the shared
+    ``scoped_games`` step, so a teammate's absence, a venue, a date, a
+    starter half and a calendar are honored and stated; ``opponent`` is
+    refused (two players' meetings have no third team to narrow by), and a
+    player against a team is that player's own question, never a matchup.
 
-    Not ``player_compare``, which sets two players' season lines side by side
-    whether or not they ever met. The router sends only log, record and
-    head-to-head wordings here ("Andre Drummond vs Al Horford game log"), so
-    this does not second-guess which of the two readings was meant. A game in
-    which they were teammates is not a meeting, and when every shared game was
-    one, the answer says that rather than that they never played.
-
-    .. versionchanged:: 4.3.0
-       One player and a team ``opponent`` - "sam hauser v mil", "julius randle
-       stats vs blazers with minnestota" - is answered as the player-vs-team
-       question it actually is, the same way :func:`game_log` answers it,
-       instead of refused. ``router._route_matchup_against_team`` already
-       reroutes this shape to ``game_log``/``player_stat`` where it can, but
-       only from the router's raw output; it cannot see a player name
-       ``subject.apply_subject`` restores afterward, in ``agent.py``,
-       which is how these three still arrived here with one name and an
-       opponent. A genuine two-player matchup still refuses ``opponent``,
-       since it has no third team to narrow by.
-
-       The same shape arrives with a third name too - "de'aaron fox vs magic
-       last five games without wembyanama" carries Fox's actual Spurs
-       teammate Wembanyama both as a fabricated second "player" and, typo and
-       all, as ``without``; "oubre vs warriors without embiid" keeps a
-       garbled "Warriners" in ``players`` beside the ``opponent`` that was
-       already resolved correctly from it. Both are the one-player-and-a-team
-       question above with a teammate's absence named on top, not a genuine
-       three-way question, and :func:`_player_matchup_drop_fabricated_second`
-       recognizes each shape - eliminating, never guessing which of two real
-       players was meant - and folds it back into the branch above, which
-       already reads ``without`` because :func:`game_log` does.
-
-    .. versionchanged:: 4.4.0
-       A genuine two-player matchup narrows the first player's games through
-       the shared ``scoped_games`` step, so a teammate's absence, a venue, a
-       date, a starter half and a calendar are honored and stated - the pair
-       relation is on the relation. ``opponent`` is still refused there: two
-       players' meetings have no third team to narrow by.
-
-    .. versionchanged:: 5.0.0
-       Two players or none: the one-name-and-a-team fallback to
-       :func:`game_log` and the fabricated-second-player repair above are
-       gone, with the router that dressed those questions as matchups. The
-       parser reads a player against a team as that player's question, and
-       a matchup only where the question names two players; ``opponent`` is
-       refused by :func:`~association.query.templates.common.check_scope`
-       (``RELATION_SCOPING_EXCLUDED``).
-
-    .. versionadded:: 2.1.0
+    .. versionadded:: 5.0.0
     """
-    scope = reading.scope
-    con = ctx.con
-    texts = list(dict.fromkeys(n.strip() for n in [*scope.players, scope.player] if n is not None and n.strip()))
-    if len(texts) != 2:
-        raise TemplateUnsupported(f"player_matchup needs exactly two players, got {texts!r}")
-    covered = _player_matchup_covered(scope)
-    resolved = _player_matchup_resolve(con, texts, covered)
-    if isinstance(resolved, TemplateResult):
-        return resolved
-    a, b = resolved
-    narrowed = _player_matchup_narrowed(con, a, b, scope)
-    if isinstance(narrowed, TemplateResult):
-        return narrowed
-
-    meetings, together = _meetings(con, narrowed, b.id)
     unseen = _unseen_meetings(con, covered, a.id, b.id)
     caveat = (
         f" {unseen} game{'' if unseen == 1 else 's'} between their teams while both were playing for them {'has' if unseen == 1 else 'have'} no box score, so a meeting there is not counted."
@@ -2527,21 +2472,6 @@ def _player_matchup_narrowed(con: duckdb.DuckDBPyConnection, a: Entity, b: Entit
         message = f"{b.name} is both the player {a.name} is matched against and the teammate named as absent - no game can be both. Name the opponent team, or drop 'without'."
         return TemplateResult(data={"players": [a.name, b.name], "message": message}, answer=message)
     return narrowed
-
-
-def _player_matchup_resolve(con: duckdb.DuckDBPyConnection, texts: list[str], scope: _Scope) -> tuple[Entity, Entity] | TemplateResult:
-    """The two named players, resolved against the box scores - refusing a
-    question whose two names resolve to the same person."""
-    resolved: list[Entity] = []
-    for text in texts:
-        found = _resolved_player(con, text, available=_BOX_SCORES, season=scope.season, through=_career_end(scope.season))
-        if isinstance(found, TemplateResult):
-            return found
-        resolved.append(found)
-    a, b = resolved
-    if a.id == b.id:
-        raise TemplateUnsupported("the named players resolved to the same person")
-    return a, b
 
 
 def _player_matchup_absence_context(con: duckdb.DuckDBPyConnection, a: Entity, b: Entity, scope: Scope, narrowed: _Narrowed) -> str:

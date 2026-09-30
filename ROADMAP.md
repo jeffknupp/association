@@ -43,11 +43,12 @@ the parser's, the template's or the compiler's own reason through
 `agent.refusal_text`). There is no fall-through: the SQL-writing agent
 answered 1 question in 23 when measured and was removed on 2026-09-29
 (Jeff's call); what the yardstick still calls "fell through" is a refusal
-for want of a reading. Eleven intents are the compiler's alone
+for want of a reading. Twelve intents are the compiler's alone
 (`compose.COMPILED_INTENTS`); `game_log`, `player_stat`, `player_splits`,
-`leaderboard`, `period_split`, `player_compare` and `streak` joined them in
-step (g) (parser9-18, 2026-09-28/29: 0 answers moved by any retirement;
-`streak` on 2026-09-30, not yet run live).
+`leaderboard`, `period_split`, `player_compare`, `streak` and
+`player_matchup` joined them in step (g) (parser9-18, 2026-09-28/29: 0
+answers moved by any retirement; `streak` and `player_matchup` on
+2026-09-30, not yet run live).
 
 The 13 families still failing, by cause:
 
@@ -117,16 +118,23 @@ The 13 families still failing, by cause:
    `conditions._longest_runs_sql`; the point carries the template's
    refusals (`compose.adapt._adapt_streak`) and the presenters say the runs
    in its words. 4/4 recorded questions identical, 41 unit-test calls (32
-   identical, 9 refused both ways). What is left on the player relation:
-   `with_without` (10 recorded questions) - a team's record GROUPED BY a
-   teammate's presence over his tenure windows (no such group on either
-   relation; the team relation carries no `without` cell) - and
-   `player_matchup` (5) - two players' lines over the games they met in,
-   side by side (a pair skeleton). Retiring one is a new skeleton or cell on
-   the relation first, measured the same way - never a presenter that calls
-   the template's body over the scope, which retires nothing. A template
-   survives only for a shape of its own: a chart, a fingerprint. How to
-   retire one is part 4's method: every call its
+   identical, 9 refused both ways). `player_matchup` next (2026-09-30): the
+   `pair` shape, two named players' lines over the games they met in - the
+   pair relation `player_games.paired_rows_sql` over the first player's
+   games settled and narrowed as a named player's are
+   (`compose.core._resolve_pair`, `_compile_pair`), the point carrying the
+   template's refusals (`compose.adapt._adapt_player_matchup`) and the
+   presenter saying the meetings in its words
+   (`templates.games._player_matchup_from`). 5 recorded questions (3
+   identical, 2 refused both ways), 16 unit-test calls (13 identical, 3
+   refused both ways). What is left on the player relation: `with_without`
+   (10 recorded questions) - a team's record GROUPED BY a teammate's
+   presence over his tenure windows (no such group on either relation; the
+   team relation carries no `without` cell). Retiring it is a new group on
+   the team relation first, measured the same way - never a presenter that
+   calls the template's body over the scope, which retires nothing. A
+   template survives only for a shape of its own: a chart, a fingerprint.
+   How to retire one is part 4's method: every call its
    unit tests make and every recorded question it answers, answered both
    ways and compared (`~/association-research/intent-shrink/g/`: a pytest
    plugin records the unit-test calls; `parity_corpus.py` the recorded

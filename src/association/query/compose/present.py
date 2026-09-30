@@ -35,7 +35,7 @@ from typing import Any
 import duckdb
 
 from association.nba.season import current_season, eastern_date
-from association.query.conditions import _PLAYER_GAME_TABLES, _totals
+from association.query.conditions import _PLAYER_GAME_TABLES, _meeting_rows, _teammate_games, _totals
 from association.query.player_games import REBUILT_STATS
 from association.query.reading import Scope
 from association.query.templates.common import (
@@ -63,6 +63,8 @@ from association.query.templates.games import (
     _period_split_reconciliation_refusal,
     _player_game_log,
     _player_game_log_mixed,
+    _player_matchup_covered,
+    _player_matchup_from,
     team_game_log,
 )
 from association.query.templates.players import (
@@ -405,6 +407,28 @@ def _present_streak(con: duckdb.DuckDBPyConnection, q: Query) -> TemplateResult 
     return _streak_league_answer(runs, what, who, rule, covered.label(first, last), _where_in(covered), by_stat, scope.stat, scope.threshold, unit, want_win)
 
 
+def _present_player_matchup(con: duckdb.DuckDBPyConnection, q: Query) -> TemplateResult | None:
+    """``player_matchup``'s own tables over the compiler's ``pair`` shape:
+    the head-to-head record, each player's averages in the meetings and the
+    newest of them (``templates.games._player_matchup_from``), over the
+    meetings the compiled statement read (``compose.core._compile_pair``)
+    and the games the two played as teammates
+    (``conditions._teammate_games``, the pair relation's other read).
+
+    .. versionadded:: 5.0.0
+    """
+    if q.skeleton != "pair" or q.source != "games":
+        return None
+    scope = q.scope
+    covered = _player_matchup_covered(scope)
+    compiled = compile_query(con, q)
+    if compiled.player is None or compiled.other is None:
+        return None
+    meetings = _meeting_rows(con.execute(compiled.sql, compiled.params).fetchall())
+    together = _teammate_games(con, compiled.narrowed, compiled.other.id)
+    return _player_matchup_from(con, scope, covered, compiled.player, compiled.other, compiled.narrowed, meetings, together)
+
+
 def _present_player_history(con: duckdb.DuckDBPyConnection, q: Query) -> TemplateResult | None:
     """``player_history``'s own table - the stat season by season from the
     season line, newest first, the default four or the count asked for, and
@@ -555,6 +579,7 @@ PRESENTERS: dict[str, Presenter] = {
     "period_split": _present_period_split,
     "player_compare": _present_player_compare,
     "streak": _present_streak,
+    "player_matchup": _present_player_matchup,
 }
 """The intents whose own default point the compiler answers in that intent's
 template's words - see the module docstring.
@@ -593,6 +618,10 @@ STATED_SCOPING: dict[str, frozenset[str]] = {
     # (compose.adapt._adapt_streak); its team and league branches refuse
     # the cells only a named player's games settle, by name, there too.
     "streak": _relation_scoping("streak"),
+    # player_matchup's words: the relation's set less a third team, a window,
+    # an ordinal season and a quarter (RELATION_SCOPING_EXCLUDED), which its
+    # point refuses outright (compose.adapt._adapt_player_matchup).
+    "player_matchup": _relation_scoping("player_matchup"),
     "single_game_high": frozenset({"span"}),
     # A count is already a line on a column; `below` is the same line the
     # other way ("games with under 14 fta"), and a phrase carrying the count's

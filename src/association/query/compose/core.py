@@ -37,19 +37,22 @@ from typing import Any
 import duckdb
 
 from association.nba.season import current_season, eastern_date_sql
-from association.query.conditions import _PLAYER_GAME_TABLES, UNGATED_ON_REBUILD, BoxSource, _longest_runs_sql, _player_streak_rows, box_source
+from association.query.conditions import _PLAYER_GAME_TABLES, MEETING_STATS, UNGATED_ON_REBUILD, BoxSource, _longest_runs_sql, _meetings_select, _player_streak_rows, box_source
 from association.query.entities import Entity
 from association.query.measures import MEASURE_WORDS
-from association.query.player_games import PERIOD_COLUMNS, REBUILT_STATS, Narrowed, aggregate_sql, games_subquery, grouped_sql, named, rows_sql
+from association.query.player_games import PERIOD_COLUMNS, REBUILT_STATS, Narrowed, aggregate_sql, games_subquery, grouped_sql, named, paired_rows_sql, rows_sql
 from association.query.reading import Scope
 from association.query.templates.common import (
+    _BOX_SCORES,
     _GAME_LOGS,
     RELATION_SCOPING,
     SCOPING_SLOTS,
     TemplateResult,
     TemplateUnsupported,
     _box_score_notes,
+    _career_end,
     _condition_scope,
+    _resolved_player,
     _resolved_team,
     _Span,
     _span_of,
@@ -264,6 +267,9 @@ class Compiled:
     #: and unseen-games count (:func:`_compile_run`); ``None`` otherwise.
     run_rows: str | None = None
     run_params: dict[str, Any] | None = None
+    #: The second player of a ``pair`` read (:func:`_compile_pair`), whose
+    #: line the statement reads beside ``player``'s; ``None`` otherwise.
+    other: Entity | None = None
 
 
 def measure_sql(name: str, *, rebuilt: bool = False) -> str:
@@ -446,6 +452,32 @@ def _resolve_subject(con: duckdb.DuckDBPyConnection, q: Query) -> tuple[Entity |
     return _resolve_named(con, q)
 
 
+def _resolve_pair(con: duckdb.DuckDBPyConnection, q: Query) -> tuple[Entity, Entity, _Span, Narrowed]:
+    """The two players a ``pair`` read is about: the first settled and his
+    games narrowed exactly as a named player's are (:func:`_resolve_named`,
+    with no window and no opponent - the newest meetings are shown beneath
+    averages over all of them, and two players' meetings have no third team
+    to narrow to), the second resolved over the same span, as the matchup
+    template resolved both (``_resolved_player`` over the box scores). Two
+    names that resolve to one person are no pair.
+
+    .. versionadded:: 5.0.0
+    """
+    scope = q.scope
+    texts = list(dict.fromkeys(n.strip() for n in [*scope.players, scope.player] if n is not None and n.strip()))
+    if len(texts) != 2:
+        raise Unsupported(f"player_matchup needs exactly two players, got {texts!r}")
+    first = replace(q, scope=replace(scope, player=texts[0], limit=None, order=None, opponent=None))
+    a, span, narrowed = _resolve_named(con, first)
+    assert a is not None
+    b = _resolved_player(con, texts[1], available=_BOX_SCORES, season=span.season, through=_career_end(span.season))
+    if isinstance(b, TemplateResult):
+        raise Refused(b)
+    if a.id == b.id:
+        raise Unsupported("the named players resolved to the same person")
+    return a, b, span, narrowed
+
+
 def _apply_predicates(narrowed: Narrowed, q: Query) -> None:
     """A ``Query.predicates`` entry as one more clause over the same rows."""
     for name, op, value in q.predicates:
@@ -494,11 +526,12 @@ def _apply_window_rule(q: Query, narrowed: Narrowed) -> None:
     ``threshold_count`` reads it as the ranking's size), and only ``rows``
     reads it as a row count."""
     scope = q.scope
-    if q.skeleton == "run":
-        # A run is read over every game in the span (``whole_span``); its
-        # ``limit`` is how many runs are listed, never a games window, and
-        # ``order`` is refused before the point is planned
-        # (``RELATION_SCOPING_EXCLUDED["streak"]``, compose.adapt._adapt_streak).
+    if q.skeleton in ("run", "pair"):
+        # A run or a pair is read over every game in the span
+        # (``whole_span``): a run's ``limit`` is how many runs are listed,
+        # a matchup's the newest meetings shown beneath averages over all of
+        # them, never a games window; ``order`` is refused before the point
+        # is planned (``RELATION_SCOPING_EXCLUDED``, compose.adapt).
         narrowed.window = None
         return
     if (q.aggregate in ("count", "record") or q.skeleton == "grouped") and scope.order is None:
@@ -519,11 +552,12 @@ def _rebuilt_for(box: BoxSource, q: Query) -> bool:
     record widen the guard to rebuilt lines and blank the columns a rebuild
     does not fill; a scalar over measures or a count widens only when every
     column read (measures AND predicate columns) is one a rebuild gets right."""
-    if q.skeleton == "run":
-        # A run reads whichever source the warehouse holds, as the streak
-        # template did (``games_subquery(narrowed, box_source(con))``): a
-        # column a rebuild does not fill is blank on a rebuilt row, and a
-        # blank never satisfies the run's condition, so the run ends there.
+    if q.skeleton in ("run", "pair"):
+        # A run or a pair reads whichever source the warehouse holds, as the
+        # streak and matchup templates did (``box_source(con)``): a column
+        # a rebuild does not fill is blank on a rebuilt row - a blank never
+        # satisfies a run's condition, so the run ends there, and a meeting's
+        # minutes are averaged over the games that carry them.
         return box.rebuilt
     read = [*q.measures, *(name for name, _, _ in q.predicates)]
     if q.skeleton == "rows":
@@ -679,6 +713,26 @@ def _compile_run(q: Query, narrowed: Narrowed, box: BoxSource, player: Entity | 
     return Compiled(sql, {**row_params, **condition, "limit": limit}, player, span, narrowed, box.rebuilt, [], run_rows=rows, run_params=row_params)
 
 
+def _compile_pair(narrowed: Narrowed, box: BoxSource, a: Entity, b: Entity, span: _Span) -> Compiled:
+    """A ``pair`` read: the games ``a`` and ``b`` both played on opposite
+    teams, newest first, with both lines - the matchup's skeleton (ROADMAP
+    plan item 6, step (g)), the pair relation
+    (:func:`~association.query.player_games.paired_rows_sql`) over the first
+    player's narrowed games, selecting what a meeting reads
+    (:func:`~association.query.conditions._meetings_select`). A second
+    player who is also the teammate named as absent is a question with no
+    games in it, said so rather than answered "never met" (found by the
+    golden the day ``without`` landed on the pair relation).
+
+    .. versionadded:: 5.0.0
+    """
+    if any(absent.id == b.id for absent in narrowed.without):
+        message = f"{b.name} is both the player {a.name} is matched against and the teammate named as absent - no game can be both. Name the opponent team, or drop 'without'."
+        raise Refused(TemplateResult(data={"players": [a.name, b.name], "message": message}, answer=message))
+    sql, params = paired_rows_sql(narrowed, b.id, _meetings_select(box), rebuilt=box.rebuilt)
+    return Compiled(sql, params, a, span, narrowed, box.rebuilt, list(MEETING_STATS), other=b)
+
+
 def compile_query(con: duckdb.DuckDBPyConnection, q: Query) -> Compiled:
     """``q`` as SQL, over the real relation. Each step below is one rule the
     six relation templates carried before this compiler existed - the
@@ -691,7 +745,12 @@ def compile_query(con: duckdb.DuckDBPyConnection, q: Query) -> Compiled:
     _check_relation_scoping(q.scope, q.subject)
     _check_split_category(q)
     _check_period_measures(q)
-    player, span, narrowed = _resolve_subject(con, q)
+    player: Entity | None
+    other: Entity | None = None
+    if q.skeleton == "pair":
+        player, other, span, narrowed = _resolve_pair(con, q)
+    else:
+        player, span, narrowed = _resolve_subject(con, q)
     if q.skeleton != "run":
         # A run's one predicate is the condition the run holds along, not a
         # row filter: a game that misses it ENDS the run rather than
@@ -709,6 +768,9 @@ def compile_query(con: duckdb.DuckDBPyConnection, q: Query) -> Compiled:
         return _compile_grouped(q, narrowed, rebuilt, player, span)
     if q.skeleton == "run":
         return _compile_run(q, narrowed, box, player, span)
+    if q.skeleton == "pair":
+        assert player is not None and other is not None
+        return _compile_pair(narrowed, box, player, other, span)
     raise Unsupported(f"skeleton {q.skeleton!r}")
 
 

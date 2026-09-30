@@ -14,12 +14,13 @@ from association.nba.season import current_season
 from association.nba.season import eastern_date as _eastern_date_of
 from association.query import shotchart
 from association.query.compose import answer as compose_answer
-from association.query.compose.adapt import to_reading
-from association.query.compose.core import Unsupported, _compile_run
+from association.query.compose.adapt import to_query, to_reading
+from association.query.compose.core import Unsupported, _compile_pair, _compile_run, _resolve_pair
 from association.query.compose.present import (
     STATED_SCOPING,
     _present_game_log,
     _present_period_split,
+    _present_player_matchup,
     _present_player_splits,
     _present_player_stat,
     _present_player_stat_season_line,
@@ -42,10 +43,10 @@ from association.query.templates.games import (
     _period_split_rows_from,
     _player_game_log,
     _player_game_log_mixed,
+    _player_matchup_from,
     _rebuilt_readable,
     head_to_head,
     period_leaderboard,
-    player_matchup,
     team_game_log,
     team_quarter_points,
 )
@@ -86,6 +87,7 @@ period_split = _compiled("period_split")
 player_compare = _compiled("player_compare")
 player_history = _compiled("player_history")
 player_splits = _compiled("player_splits")
+player_matchup = _compiled("player_matchup")
 player_stat = _compiled("player_stat")
 streak = _compiled("streak")
 single_game_high = _compiled("single_game_high")
@@ -4524,32 +4526,38 @@ def test_player_matchup_needs_two_players(pg_ctx: TemplateContext) -> None:
         player_matchup(pg_ctx, Reading.from_slots({"player": "Brandin Podziemski"}))
 
 
-def test_check_scope_refuses_a_team_opponent_on_a_matchup(pg_ctx: TemplateContext) -> None:
+def test_the_matchup_point_refuses_a_team_opponent(pg_ctx: TemplateContext) -> None:
     """Two players' meetings are the games they played against each other, so
     there is no third team to narrow them to - refused by declaration
-    (``RELATION_SCOPING_EXCLUDED``), with or without a teammate named absent,
-    rather than answering the whole matchup as though no team was named."""
-    with pytest.raises(TemplateUnsupported, match="opponent"):
-        check_scope("player_matchup", {"players": ["Brandin Podziemski", "Stephen Curry"], "opponent": "Detroit Pistons"})
-    with pytest.raises(TemplateUnsupported, match="opponent"):
-        check_scope("player_matchup", {"players": ["Brandin Podziemski", "Stephen Curry"], "opponent": "Detroit Pistons", "without": ["Jaylen Brown"]})
-    assert "opponent" not in HONORED_SCOPING["player_matchup"]
+    (``RELATION_SCOPING_EXCLUDED``, read by the point,
+    ``compose.adapt._adapt_player_matchup``), with or without a teammate
+    named absent, rather than answering the whole matchup as though no team
+    was named. The template is retired (compose.COMPILED_INTENTS); what its
+    presenter's words state is ``STATED_SCOPING``'s."""
+    with pytest.raises(Unsupported, match="opponent"):
+        to_reading("player_matchup", {"players": ["Brandin Podziemski", "Stephen Curry"], "opponent": "Detroit Pistons"})
+    with pytest.raises(Unsupported, match="opponent"):
+        to_reading("player_matchup", {"players": ["Brandin Podziemski", "Stephen Curry"], "opponent": "Detroit Pistons", "without": ["Jaylen Brown"]})
+    assert "opponent" not in STATED_SCOPING["player_matchup"]
 
 
-def test_check_scope_lets_player_matchup_honor_without_too(pg_ctx: TemplateContext) -> None:
+def test_the_matchup_point_honors_without_too(pg_ctx: TemplateContext) -> None:
     """A teammate's absence narrows the first player's games on a genuine
-    two-player matchup, as it does on every template on the relation."""
-    check_scope("player_matchup", {"players": ["Brandin Podziemski", "Stephen Curry"], "without": ["Jaylen Brown"]})
+    two-player matchup, as it does on every reader of the relation."""
+    scope = Scope.from_slots({"players": ["Brandin Podziemski", "Stephen Curry"], "without": ["Jaylen Brown"]})
+    assert to_reading("player_matchup", scope.to_slots()).shape == "pair"
+    assert unhonored_scoping("player_matchup", scope, STATED_SCOPING["player_matchup"]) == []
 
 
-def test_check_scope_still_refuses_player_matchup_on_an_unhonored_slot(pg_ctx: TemplateContext) -> None:
+def test_the_matchup_point_still_refuses_an_unhonored_slot(pg_ctx: TemplateContext) -> None:
     """The relation's slots being honored must not quietly let every other
     scoping slot through too: `order` is excluded (the newest meetings are
-    shown beneath averages over all of them), and `round` no relation has."""
-    with pytest.raises(TemplateUnsupported, match="different span"):
-        check_scope("player_matchup", {"players": ["Brandin Podziemski", "Stephen Curry"], "order": "recent"})
-    with pytest.raises(TemplateUnsupported, match="different span"):
-        check_scope("player_matchup", {"players": ["Brandin Podziemski", "Stephen Curry"], "round": "finals"})
+    shown beneath averages over all of them), and `round` no relation has -
+    the planner's refusal, as the parser plans the point."""
+    with pytest.raises(Unsupported, match="newest meetings"):
+        to_reading("player_matchup", {"players": ["Brandin Podziemski", "Stephen Curry"], "order": "recent"})
+    with pytest.raises(Unsupported, match="different span"):
+        to_query("player_matchup", {"players": ["Brandin Podziemski", "Stephen Curry"], "round": "finals"})
 
 
 def test_player_matchup_honors_without_on_a_real_two_player_matchup(pg_ctx: TemplateContext) -> None:
@@ -4558,10 +4566,12 @@ def test_player_matchup_honors_without_on_a_real_two_player_matchup(pg_ctx: Temp
     games are narrowed through the shared step now (the pair relation is on
     the relation), so a teammate's absence is honored and stated rather than
     refused. Jaylen Brown is nobody's teammate in this fixture, so the
-    answer either finds no meetings or says the narrowing; it never raises."""
-    check_scope("player_matchup", {"players": ["Brandin Podziemski", "Stephen Curry"], "without": ["Jaylen Brown"]})
-    assert "without" in HONORED_SCOPING["player_matchup"] and "venue" in HONORED_SCOPING["player_matchup"]
-    assert "order" not in HONORED_SCOPING["player_matchup"]
+    answer either finds no meetings or says the narrowing; it never raises.
+    The template is retired: its presenter's words state the relation's set
+    (STATED_SCOPING), and its point refuses a window outright."""
+    assert unhonored_scoping("player_matchup", Scope.from_slots({"players": ["Brandin Podziemski", "Stephen Curry"], "without": ["Jaylen Brown"]}), STATED_SCOPING["player_matchup"]) == []
+    assert "without" in STATED_SCOPING["player_matchup"] and "venue" in STATED_SCOPING["player_matchup"]
+    assert "order" not in STATED_SCOPING["player_matchup"]
     # The behavior itself is pinned on the league fixture in
     # tests/query/test_conditions.py (a teammate's absence, a venue).
 
@@ -5791,6 +5801,8 @@ def test_templates_on_the_relation_do_not_narrow_it_themselves() -> None:
     # streak's template is retired too (the `run` shape): the compiler's
     # skeleton and the team compiler's, and the readers that say them.
     readers["streak"] = [_compile_run, _compile_team_run, _present_streak, _present_team_streak, _streak_player_answer, _streak_team_answer, _streak_league_team_narrowed]
+    # player_matchup's too (the `pair` shape).
+    readers["player_matchup"] = [_resolve_pair, _compile_pair, _present_player_matchup, _player_matchup_from]
     for intent, functions in readers.items():
         for function in functions:
             # The reader and the private steps it calls, transitively -

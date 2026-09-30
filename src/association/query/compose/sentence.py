@@ -292,6 +292,24 @@ def _run_sentence(q: Query, out: dict[str, Any]) -> str:
     return f"{who}{where}, {span} - longest run of games {what}:\n" + "\n".join(lines)
 
 
+def _pair_sentence(q: Query, out: dict[str, Any]) -> str:
+    """A ``pair`` read: two players' meetings, newest first, with each one's
+    line - the compiler's own words for a matchup, where the matchup
+    presenter's do not apply."""
+    rows = out["rows"]
+    who = out["player"]
+    where = out["narrowing"]
+    span = _span_phrase(out["span"], out.get("player_seasons"))
+    if not rows:
+        return f"No meetings for {who}{where} in the {span}."
+    lines = [
+        f"  {r['day']}  {'W' if r['won'] else 'L'} {r['team_score']}-{r['opponent_score']}  "
+        + "  ".join(f"{LABELS.get(c, c)} {_fmt(r.get(c), c)}/{_fmt(r.get(f'other_{c}'), c)}" for c in q.measures if c != "minutes")
+        for r in rows
+    ]
+    return f"{who}{where}, {span} - {len(rows)} meetings (his line / the other's):\n" + "\n".join(lines)
+
+
 def sentence(q: Query, out: dict[str, Any]) -> str:
     """The answer for a compiled :class:`~association.query.compose.core.Query`
     and its rows: one skeleton, one sentence shape, carrying the subject, the
@@ -307,4 +325,6 @@ def sentence(q: Query, out: dict[str, Any]) -> str:
         return _grouped_sentence(q, out)
     if q.skeleton == "run":
         return _run_sentence(q, out)
+    if q.skeleton == "pair":
+        return _pair_sentence(q, out)
     return f"{out['player']}{out['narrowing']}: {len(out['rows'])} rows"

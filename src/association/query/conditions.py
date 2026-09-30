@@ -842,6 +842,80 @@ def _longest_runs_sql(base: str, partition: tuple[str, ...], hit: str, *, best_p
 # ---------------- two players' meetings ----------------
 
 
+#: The box-score columns a meeting reads for each of the two players.
+MEETING_STATS: tuple[str, ...] = ("minutes", "points", "rebounds", "assists", "fieldGoalsMade", "fieldGoalsAttempted")
+"""Each player's line in a meeting, as the pair relation reads it.
+
+.. versionadded:: 5.0.0
+"""
+
+
+def _meetings_select(box: BoxSource) -> str:
+    """The pair relation's SELECT list for a meeting: the day, the first
+    player's result and scores, both teams, both players' lines
+    (:data:`MEETING_STATS`, the other's as ``other_<column>``) and the
+    season - the columns :func:`_meeting_rows` reads back by position, so
+    the compiler's ``pair`` shape (``compose.core._compile_pair``) and
+    :func:`_meetings` read the one statement.
+
+    .. versionadded:: 5.0.0
+    """
+    from .player_games import column
+
+    return ", ".join(
+        [
+            f"{_eastern_day('g.date')} AS day",
+            "g.winner_team_id = pgl.team_id AS won",
+            "CASE WHEN g.home_team_id = pgl.team_id THEN g.home_score ELSE g.away_score END AS team_score",
+            "CASE WHEN g.home_team_id = pgl.team_id THEN g.away_score ELSE g.home_score END AS opponent_score",
+            "pgl.team_id",
+            "other.team_id AS opponent_team_id",
+            *(column("pgl", s, box) for s in MEETING_STATS),
+            *(column("other", s, box).replace(f" AS {s}", f" AS other_{s}") for s in MEETING_STATS),
+            "pgl.season",
+        ]
+    )
+
+
+def _meeting_rows(rows: Sequence[Sequence[Any]]) -> list[dict[str, Any]]:
+    """:func:`_meetings_select`'s rows as the matchup readers take them: one
+    dict per meeting with each player's line under ``a`` and ``b``.
+
+    .. versionadded:: 5.0.0
+    """
+    n = len(MEETING_STATS)
+    return [
+        {
+            "day": row[0],
+            "season": row[6 + 2 * n],
+            "won": bool(row[1]),
+            "team_score": row[2],
+            "opponent_score": row[3],
+            "team_id": str(row[4]),
+            "opponent_team_id": str(row[5]),
+            "a": dict(zip(MEETING_STATS, row[6 : 6 + n], strict=True)),
+            "b": dict(zip(MEETING_STATS, row[6 + n : 6 + 2 * n], strict=True)),
+        }
+        for row in rows
+    ]
+
+
+def _teammate_games(con: duckdb.DuckDBPyConnection, narrowed: Narrowed, b: str) -> int:
+    """How many games the narrowed player and ``b`` both played as
+    teammates - the reason "never met" can be true of two players who
+    shared a floor for years - through the pair relation's own teammates
+    read (:func:`association.query.player_games.paired_rows_sql`).
+
+    .. versionadded:: 5.0.0
+    """
+    from .player_games import paired_rows_sql
+
+    box = box_source(con)
+    count_sql, count_params = paired_rows_sql(narrowed, b, "COUNT(*)", teammates=True, order=None, rebuilt=box.rebuilt)
+    together = con.execute(count_sql, count_params).fetchone()
+    return int(together[0]) if together else 0
+
+
 def _meetings(con: duckdb.DuckDBPyConnection, narrowed: Narrowed, b: str) -> tuple[list[dict[str, Any]], int]:
     """Games both players played on opposite teams, most recent first, and how
     many games they both played as teammates - the reason "never met" can be
@@ -857,43 +931,17 @@ def _meetings(con: duckdb.DuckDBPyConnection, narrowed: Narrowed, b: str) -> tup
        Takes the first player's :class:`~association.query.player_games.Narrowed`
        instead of building one - the pair relation honors the relation's
        scoping (a teammate's absence, a venue) through the shared step.
+
+    .. versionchanged:: 5.0.0
+       Composed of :func:`_meetings_select`, :func:`_meeting_rows` and
+       :func:`_teammate_games`, which the compiler's ``pair`` shape and its
+       presenter read separately (ROADMAP plan item 6, step (g)).
     """
-    from .player_games import column, paired_rows_sql
+    from .player_games import paired_rows_sql
 
     box = box_source(con)
-    stats = ["minutes", "points", "rebounds", "assists", "fieldGoalsMade", "fieldGoalsAttempted"]
-    select = ", ".join(
-        [
-            f"{_eastern_day('g.date')} AS day",
-            "g.winner_team_id = pgl.team_id AS won",
-            "CASE WHEN g.home_team_id = pgl.team_id THEN g.home_score ELSE g.away_score END AS team_score",
-            "CASE WHEN g.home_team_id = pgl.team_id THEN g.away_score ELSE g.home_score END AS opponent_score",
-            "pgl.team_id",
-            "other.team_id",
-            *(column("pgl", s, box) for s in stats),
-            *(column("other", s, box).replace(f" AS {s}", f" AS other_{s}") for s in stats),
-            "pgl.season",
-        ]
-    )
-    sql, sql_params = paired_rows_sql(narrowed, b, select, rebuilt=box.rebuilt)
-    rows = con.execute(sql, sql_params).fetchall()
-    count_sql, count_params = paired_rows_sql(narrowed, b, "COUNT(*)", teammates=True, order=None, rebuilt=box.rebuilt)
-    together = con.execute(count_sql, count_params).fetchone()
-    meetings = [
-        {
-            "day": row[0],
-            "season": row[18],
-            "won": bool(row[1]),
-            "team_score": row[2],
-            "opponent_score": row[3],
-            "team_id": str(row[4]),
-            "opponent_team_id": str(row[5]),
-            "a": dict(zip(stats, row[6:12], strict=True)),
-            "b": dict(zip(stats, row[12:18], strict=True)),
-        }
-        for row in rows
-    ]
-    return meetings, int(together[0]) if together else 0
+    sql, sql_params = paired_rows_sql(narrowed, b, _meetings_select(box), rebuilt=box.rebuilt)
+    return _meeting_rows(con.execute(sql, sql_params).fetchall()), _teammate_games(con, narrowed, b)
 
 
 def _unseen_meetings(con: duckdb.DuckDBPyConnection, scope: _Scope, a: str, b: str) -> int:

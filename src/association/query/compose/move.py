@@ -1068,10 +1068,11 @@ def _read_point(con: duckdb.DuckDBPyConnection, intent: str, scope: Scope, quest
             return team_splits
     if intent == "player_compare":
         return _compare_point(scope)
-    if intent == "streak":
-        # The retired template read its slots alone, so no word moves the
+    if intent in ("streak", "player_matchup"):
+        # The retired templates read their slots alone, so no word moves the
         # point: a player's, a team's or the league's longest run
-        # (compose.adapt._adapt_streak).
+        # (compose.adapt._adapt_streak), or two players' meetings
+        # (compose.adapt._adapt_player_matchup).
         return _to_reading_scope(intent, scope)
     if not _named_player_in(scope):
         team_reading = team_read_point(con, scope, question, subject)

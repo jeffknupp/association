@@ -313,6 +313,45 @@ def _adapt_streak(scope: Scope) -> Reading:
     return Reading(scope=scope, shape="run", measures=["won"], aggregate="count", group="none", predicates=predicates, limit=limit, relation="team")
 
 
+def _adapt_player_matchup(scope: Scope) -> Reading:
+    """``player_matchup``'s default point: two named players' lines over the
+    games they met in, on opposite teams (the ``pair`` shape), the names
+    settled over the box scores as the template settled them, and over the
+    career when a date names the game (a date replaces the season, the way
+    ``game_log``'s own does). The retired template's own early refusals are
+    the point's (ROADMAP plan item 6, step (g)): fewer or more than two
+    names, and the narrowings a matchup cannot take - a third team, a
+    window, an ordinal season, a quarter
+    (:data:`~association.query.templates.common.RELATION_SCOPING_EXCLUDED`);
+    two names that resolve to one person are refused as the pair is settled
+    (``compose.core._resolve_pair``).
+
+    .. versionadded:: 5.0.0
+    """
+    # The scoping first, as check_scope ran before the template: a player
+    # in the opponent slot ("lebron vs kawhi head to head" read as one name
+    # against a team) is refused for the slot, the cause the reader can fix.
+    excluded = RELATION_SCOPING_EXCLUDED["player_matchup"]
+    refused = [slot for slot in excluded if getattr(scope, slot) not in (None, "", (), False)]
+    if refused:
+        raise Unsupported(f"player_matchup cannot honor {refused} - {excluded[refused[0]]}")
+    texts = list(dict.fromkeys(n.strip() for n in [*scope.players, scope.player] if n is not None and n.strip()))
+    if len(texts) != 2:
+        raise Unsupported(f"player_matchup needs exactly two players, got {texts!r}")
+    dated = bool(scope.date)
+    return Reading(
+        scope=scope,
+        shape="pair",
+        measures=[],
+        aggregate="none",
+        group="none",
+        predicates=[],
+        available=_BOX_SCORES,
+        span="career" if dated else scope.span,
+        season=None if dated else scope.season,
+    )
+
+
 def _adapt_record_when(scope: Scope) -> Reading:
     """``record_when``'s default point: the record in games clearing one line."""
     col = _stat_column(scope.stat)
@@ -336,6 +375,7 @@ _ADAPTERS: dict[str, Callable[[Scope], Reading]] = {
     "record_when": _adapt_record_when,
     "period_split": _adapt_period_split,
     "streak": _adapt_streak,
+    "player_matchup": _adapt_player_matchup,
 }
 
 

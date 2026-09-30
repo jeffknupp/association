@@ -34,15 +34,18 @@ if TYPE_CHECKING:
     from association.query.subject import Subject
     from association.query.templates.common import TemplateResult
 
-Shape = Literal["rows", "scalar", "grouped", "run"]
-"""Which reader answers the point: rows, one number, one row per group, or
-the longest runs of consecutive games the point's one predicate holds along
-(``run``: a streak, read as a window over the games in date order).
+Shape = Literal["rows", "scalar", "grouped", "run", "pair"]
+"""Which reader answers the point: rows, one number, one row per group, the
+longest runs of consecutive games the point's one predicate holds along
+(``run``: a streak, read as a window over the games in date order), or two
+named players' lines over the games they met in, on opposite teams
+(``pair``: a matchup, the pair relation).
 
 .. versionadded:: 5.0.0
 
 .. versionchanged:: 5.0.0
-   ``run`` (ROADMAP plan item 6, step (g): ``streak``'s retired template).
+   ``run`` and ``pair`` (ROADMAP plan item 6, step (g): ``streak``'s and
+   ``player_matchup``'s retired templates).
 """
 
 Aggregate = Literal["none", "per_game", "total", "count", "record"]
