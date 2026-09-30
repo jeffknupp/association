@@ -1206,7 +1206,9 @@ those were found.
 - **Re-checked 2026-09-15: it now refuses instead of undercounting, and the
   next step below cannot work.** `with_without` for Klay Thompson 2021 answers
   that his tenure "falls outside the 2021 regular season" - the refusal built
-  in the `if not games:` branch of `with_without` (`query/templates/splits.py`).
+  in the `if not games:` branch of `_with_without_read`
+  (`query/templates/splits.py`; the template retired into the compiler's
+  `presence` group on 2026-09-30, and the reader kept the branch).
   Durant/Nets 2020 is the same. `player_season_stats` has **no row** for a
   season a player missed entirely, so it cannot supply tenure. Worse,
   `game_log` and `player_stat` say "Klay Thompson was not Stephen Curry's
@@ -2687,11 +2689,13 @@ those were found.
   both team branches and the league win/loss branch; `game_n` wired for
   `record_when`'s team branch only) - each cell closed here no longer
   appears below.
-- **Evidence:** `HONORED_SCOPING["record_when"]` and `["streak"]`
-  (`templates/common.py`) still claim the whole relation set for the WHOLE
-  intent, not just the player branch - `check_scope` cannot tell the
-  branches apart from the slots alone, since it runs before the template
-  does. `splits._condition_needs_player_refusal` is what actually narrows
+- **Evidence:** `compose.present.STATED_SCOPING["record_when"]` and
+  `["streak"]` (until 2026-09-30 `HONORED_SCOPING`, `templates/common.py`)
+  still claim the whole relation set for the WHOLE intent, not just the
+  player branch - the declaration cannot tell the branches apart from the
+  slots alone; since `streak` retired into the compiler's `run` shape, its
+  point (`compose.adapt._adapt_streak`) refuses the team-only cells by
+  name before the point is planned, with the same sentence. `splits._condition_needs_player_refusal` is what actually narrows
   the team-only/league-wide shape's refused set now
   (`_CONDITION_PLAYER_ONLY_CELLS = ("without", "split", "season_n", "below",
   "above")`, plus `"game_n"` passed as `streak`'s own `*extra` at its one
