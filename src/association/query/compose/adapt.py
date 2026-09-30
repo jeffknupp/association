@@ -208,9 +208,10 @@ def _adapt_period_split(scope: Scope) -> Reading:
     """``period_split``'s default point: a named player's games in date
     order, each read as the quarter's or half's line (the relation's
     ``period``/``half`` cells), measuring the column the period's line
-    rebuilds - points where no stat was named. The retired template's own
-    early refusals are the point's (ROADMAP plan item 6, step (g)): no
-    period, a column play-by-play cannot restrict to a period
+    rebuilds - points where no stat was named - or, with no period named,
+    his four quarters side by side, a ``grouped`` read by ``period``. The
+    retired template's own early refusals are the point's (ROADMAP plan
+    item 6, step (g)): a column play-by-play cannot restrict to a period
     (:func:`~association.query.templates.games._period_split_measure`), and
     the narrowings its accuracy caveat cannot survive - a career, ``since``,
     ``until`` (:data:`~association.query.templates.common.RELATION_SCOPING_EXCLUDED`).
@@ -219,11 +220,13 @@ def _adapt_period_split(scope: Scope) -> Reading:
     template settled him, and over his career when a date names the game.
 
     .. versionadded:: 5.0.0
+
+    .. versionchanged:: 5.0.0
+       No period is the by-quarter breakdown (ROADMAP step 2, #162), not
+       a refusal.
     """
     if not _named_player_in(scope):
         raise Unsupported("period_split needs a player")
-    if period_narrowing(scope) is None:
-        raise Unsupported(f"period_split needs a period 1-10 or a half 1-2, got period={scope.period!r} half={scope.half!r}")
     excluded = RELATION_SCOPING_EXCLUDED["period_split"]
     refused = [slot for slot in excluded if getattr(scope, slot) not in (None, "", (), False)]
     if refused:
@@ -233,6 +236,27 @@ def _adapt_period_split(scope: Scope) -> Reading:
     except TemplateUnsupported as exc:
         raise Unsupported(str(exc)) from exc
     date = scope.date
+    if period_narrowing(scope) is None:
+        # No period named: the four quarters side by side (#162, "Jokic
+        # points by quarter") - a grouped read by period over the same
+        # narrowed games (compose.core._compile_by_period), one row a
+        # quarter, said by the presenter in the template's words. The stage
+        # assigns period_split only where a period or the "by quarter"
+        # words were read, so a scope with neither is this shape.
+        return Reading(
+            scope=scope,
+            shape="grouped",
+            measures=[measure],
+            aggregate="per_game",
+            group="period",
+            predicates=[],
+            order="date",
+            direction="asc",
+            limit=None,
+            available=SHOT_AVAILABILITY,
+            span="career" if date else scope.span,
+            season=None if date else scope.season,
+        )
     return Reading(
         scope=scope,
         shape="rows",

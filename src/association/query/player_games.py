@@ -237,6 +237,15 @@ relation sees restricted to the period.
 .. versionadded:: 5.0.0
 """
 
+REGULATION_QUARTERS: tuple[int, ...] = (1, 2, 3, 4)
+"""The four quarters a "by quarter" breakdown divides each game into - the
+league's table (``templates.games._period_leaderboard_by_quarter``) and a
+named player's (``compose.core._compile_by_period``) alike. Overtime is no
+quarter and is left out, and each answer says so.
+
+.. versionadded:: 5.0.0
+"""
+
 PERIOD_PLAYS_COLUMNS: frozenset[str] = frozenset({"rebounds", "offensiveRebounds", "defensiveRebounds", "assists", "steals", "blocks", "turnovers", "fouls"})
 """The :data:`PERIOD_COLUMNS` read from ``plays`` rather than ``shot_chart`` -
 NULL on a period-narrowed row where the warehouse holds no play-by-play.

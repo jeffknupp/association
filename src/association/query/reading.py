@@ -56,16 +56,20 @@ ratio of the games' sums (``compose.core.RATES``).
 .. versionadded:: 5.0.0
 """
 
-Group = Literal["none", "venue", "starter", "season", "season_type", "month", "opponent", "won", "player", "presence"]
+Group = Literal["none", "venue", "starter", "season", "season_type", "month", "opponent", "won", "player", "presence", "period"]
 """``"none"`` or a key of :data:`~association.query.compose.core.GROUPS` (a
 test holds the two to the same names) - or ``"presence"``, the team
 relation's own group: a team's games divided by whether named teammates
-played (``with_without``'s retired template, ``compose.team._compile_team_presence``).
+played (``with_without``'s retired template, ``compose.team._compile_team_presence``)
+- or ``"period"``, the player relation's own: each game divided into its
+four quarters, one group per quarter over the same games
+(``compose.core._compile_by_period``; "Jokic points by quarter").
 
 .. versionadded:: 5.0.0
 
 .. versionchanged:: 5.0.0
-   ``presence`` (ROADMAP plan item 6, step (g)).
+   ``presence`` (ROADMAP plan item 6, step (g)); ``period`` (step 2, the
+   period relation's leftovers, #162).
 """
 
 Relation = Literal["player", "everyone", "team"]

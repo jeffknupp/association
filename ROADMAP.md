@@ -158,10 +158,15 @@ The 13 families still failing, by cause:
    `TEAM_PERIOD_AGREEMENT`, `scripts/check_team_period_lines.py`: 375/375
    cells over 60,422 team-games; 70 cells refused under 90%, 60 of them
    2002-2006). `team_quarter_points` answers any column of the line (F065).
-   What is left: a named player's four-quarter breakdown (#162), shooting
-   percentages in a period (player or team), a period as a condition
-   (#275), and `period_leaderboard` narrowed by opponent, venue, date or a
-   range (#185).
+   Built 2026-09-30: shooting percentages in a period, for a player and a
+   team (`templates.games.PERIOD_RATES`, a ratio of the period's sums;
+   "vj edgecombe 1st quarter 3pt percentage by game" answers), and a named
+   player's four-quarter breakdown (#162: `period_split` with no period is
+   a `grouped` read by `period`, `compose.core._compile_by_period`, four
+   reads of the same narrowed games in one statement). What is left: a
+   period as a condition (#275), and `period_leaderboard` narrowed by
+   opponent, venue, date or a range (#185 - waiting on the qualifier
+   decision below).
 3. **The rest of the pair relation** (item 3). The pair as a compiler
    subject ("most points by curry vs lebron", "how many times did lebron
    score 30 vs kawhi"), and the opponent-side condition ("vs lakers without

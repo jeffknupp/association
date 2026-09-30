@@ -13,6 +13,7 @@ from __future__ import annotations
 from typing import Any
 
 from association.query.player_games import BOTH_SEASON_TYPES
+from association.query.templates.common import _period_label
 
 from .core import Query
 from .team import TeamQuery, TeamResult
@@ -179,6 +180,17 @@ def _scalar_sentence(q: Query, out: dict[str, Any]) -> str:
     return f"{who}: {stats} ({how}) over {games} games{where} in the {span}."
 
 
+def _grouped_line(q: Query, r: dict[str, Any]) -> str:
+    """One group's row of a grouped answer: its label, games, record and
+    measures. A period group is a quarter number, said as the quarter."""
+    cells = [f"{r.get('games')} G"]
+    if "wins" in r:
+        cells.append(f"{r.get('wins')}-{r.get('losses')}")
+    cells += [f"{LABELS.get(m, m)} {_fmt(r.get(m), m)}" for m in q.measures]
+    label = _period_label(int(r["group"])) if q.group == "period" else str(r["group"])
+    return f"  {label:24s} " + "  ".join(cells)
+
+
 def _grouped_sentence(q: Query, out: dict[str, Any]) -> str:
     """A ``grouped`` read: a split by venue or starter/bench, or a ranking of players."""
     rows = out["rows"]
@@ -194,13 +206,7 @@ def _grouped_sentence(q: Query, out: dict[str, Any]) -> str:
         # The span names the whole career; the rows are its newest N (the
         # limit cut them - core._compile_grouped), which the heading says.
         head += f" - {'first' if q.direction == 'asc' else 'most recent'} {len(rows)} seasons"
-    lines = []
-    for r in rows:
-        cells = [f"{r.get('games')} G"]
-        if "wins" in r:
-            cells.append(f"{r.get('wins')}-{r.get('losses')}")
-        cells += [f"{LABELS.get(m, m)} {_fmt(r.get(m), m)}" for m in q.measures]
-        lines.append(f"  {r['group']!s:24s} " + "  ".join(cells))
+    lines = [_grouped_line(q, r) for r in rows]
     if q.aggregate == "count" and q.group == "player" and len(rows) > 1 and out.get("total") is not None:
         # A count by player is usually asked for its total too ("thunder
         # all-time triple doubles": 193, then who had them) - the whole

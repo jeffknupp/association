@@ -21,7 +21,7 @@ from ..conditions import _PLAYER_GAME_TABLES, _cell, _matchup_line, _meetings, _
 from ..entities import Entity, resolve_team
 from ..leaderboard import resolve_metric
 from ..metrics import PER_GAME_MIN_GAMES, PER_GAME_MIN_POSTSEASON_GAMES
-from ..player_games import PERIOD_AGREEMENT, PERIOD_COLUMNS, PERIOD_PLAYS_COLUMNS, _joined, aggregate_sql, grouped_sql, rows_sql
+from ..player_games import PERIOD_AGREEMENT, PERIOD_COLUMNS, PERIOD_PLAYS_COLUMNS, REGULATION_QUARTERS, _joined, aggregate_sql, grouped_sql, rows_sql
 from ..shotchart import UNSEPARABLE_SHOT_VALUES
 from ..team_games import TEAM_GAMES_SQL, TEAM_PERIOD_AGREEMENT, TEAM_PERIOD_COLUMNS, TeamNarrowed
 from ..team_games import games_subquery as team_games_subquery
@@ -1980,7 +1980,6 @@ def _period_leaderboard_answer(rows: list[tuple[Any, ...]], period_label: str, s
     )
 
 
-_PERIOD_LEADERBOARD_QUARTERS = (1, 2, 3, 4)
 _PERIOD_LEADERBOARD_BY_QUARTER_LIMIT = 10
 
 
@@ -1995,7 +1994,7 @@ def _period_leaderboard_by_quarter(con: duckdb.DuckDBPyConnection, span: _Span, 
     names: dict[str, str] = {}
     team: Entity | None = None
     box = box_source(con)
-    for quarter in _PERIOD_LEADERBOARD_QUARTERS:
+    for quarter in REGULATION_QUARTERS:
         narrowed = league_games(con, span, replace(scope, period=quarter, half=None), position=None)
         if isinstance(narrowed, TemplateResult):
             return narrowed
@@ -2006,7 +2005,7 @@ def _period_leaderboard_by_quarter(con: duckdb.DuckDBPyConnection, span: _Span, 
         for athlete, name, games, average in con.execute(sql, params).fetchall():
             names[athlete] = name
             per_quarter.setdefault(athlete, {})[quarter] = (int(games), float(average))
-    whole = {athlete: quarters for athlete, quarters in per_quarter.items() if len(quarters) == len(_PERIOD_LEADERBOARD_QUARTERS)}
+    whole = {athlete: quarters for athlete, quarters in per_quarter.items() if len(quarters) == len(REGULATION_QUARTERS)}
     ranked = sorted(whole, key=lambda athlete: (-sum(avg for _, avg in whole[athlete].values()), names[athlete]))
     limit = _clamp_limit(scope.limit, default=_PERIOD_LEADERBOARD_BY_QUARTER_LIMIT)
     season_label = _period(span.season or current_season(), span.season_type)
@@ -2015,7 +2014,7 @@ def _period_leaderboard_by_quarter(con: duckdb.DuckDBPyConnection, span: _Span, 
         message = f"No player{among} played the {minimum} games needed to rank points by quarter in the {season_label}."
         return TemplateResult(data={"season": span.season, "team": team.name if team else None, "leaders": [], "message": message}, answer=message)
     leaders = [
-        {"player": names[a], "games": whole[a][1][0], **{f"q{q}": round(whole[a][q][1], 2) for q in _PERIOD_LEADERBOARD_QUARTERS}, "total": round(sum(avg for _, avg in whole[a].values()), 2)}
+        {"player": names[a], "games": whole[a][1][0], **{f"q{q}": round(whole[a][q][1], 2) for q in REGULATION_QUARTERS}, "total": round(sum(avg for _, avg in whole[a].values()), 2)}
         for a in ranked[:limit]
     ]
     headline = f"Points per game by quarter{among} in the {season_label} (minimum {minimum} games), ranked by the four quarters together:"
@@ -2036,6 +2035,105 @@ def _period_leaderboard_by_quarter(con: duckdb.DuckDBPyConnection, span: _Span, 
         },
         answer=answer,
     )
+
+
+def _period_split_by_quarter_from(scope: Scope, player: Entity, narrowed: _Narrowed, rows: list[dict[str, Any]], measure: str) -> TemplateResult:
+    """A named player's four quarters side by side - "Jokic points by
+    quarter" (#162), the counterpart of :func:`_period_leaderboard_by_quarter`
+    for one man: his per-game figure and total in each quarter, over the
+    same games, and the four together (his figure in regulation). ``rows``
+    are the compiler's grouped-by-period read
+    (:func:`~association.query.compose.core._compile_by_period`): one a
+    quarter, with ``games``, the measure's per-game figure and its sums
+    (``<m>_total``, or a rate's ``<m>_made``/``<m>_attempted``). The games
+    are the same in every quarter - a quarter he did nothing in is a zero
+    over a game he played - so the count is said once. Overtime is no
+    quarter and is not counted, and the answer says so; the season's
+    measured accuracy is attached as every period answer's is.
+
+    .. versionadded:: 5.0.0
+    """
+    season, season_type = scope.season or current_season(), scope.season_type or 2
+    opponent = narrowed.opponent
+    venue, started = _period_split_narrowing(scope.venue, scope.split)
+    season_label = _period(season, season_type)
+    vs = f" against the {opponent.name}" if opponent else ""
+    at = _period_split_narrowing_said(venue, started, [mate.name for mate in narrowed.without], list(narrowed.measures), scope.date, series_game=narrowed.series_game, one_series=opponent is not None)
+    if narrowed.window is not None:
+        # The compiler's window cut these games (the same N in every
+        # quarter), so the answer says so - `Narrowed.filters(windowed=True)`'s
+        # own phrase.
+        order, n = narrowed.window
+        at += f" over his {'last' if order == 'recent' else 'first'} {n} game{'s' if n != 1 else ''}"
+    by_quarter = {int(r["group"]): r for r in rows}
+    games = max((int(r["games"]) for r in rows), default=0)
+    data: dict[str, Any] = {
+        "player": player.name,
+        "stat": measure,
+        "season": season,
+        "opponent": opponent.name if opponent else None,
+        "venue": venue,
+        "started": started,
+        "measures": list(narrowed.measures),
+        "games_played": games,
+        "quarters": [],
+    }
+    if not games:
+        message = f"No {season_label} games found for {player.name}{vs}{at}."
+        return TemplateResult(data={**data, "message": message, "headline": message}, answer=message)
+    if any(by_quarter[q].get(measure) is None and by_quarter[q].get(f"{measure}_total") is None and measure not in PERIOD_RATES for q in by_quarter):
+        message = f"Per-quarter {_period_split_columns_noun(measure)} cannot be answered here: they are rebuilt from play-by-play, and this warehouse holds none."
+        return TemplateResult(data={"message": message}, answer=message)
+    quarters = [_period_split_quarter_entry(by_quarter.get(quarter, {}), quarter, measure) for quarter in REGULATION_QUARTERS]
+    data["quarters"] = quarters
+    header, table = _period_split_by_quarter_table(player, measure, season_label, vs, at, games, quarters)
+    note = "Overtime is no quarter and is not counted."
+    caveat = _period_split_measure_caveat(season, measure)
+    data |= {"headline": header.rstrip(":"), "notes": [note, *([caveat.strip()] if caveat else [])]}
+    return TemplateResult(data=data, answer="\n".join([header, *table, f"  {note}"]) + caveat)
+
+
+def _period_split_quarter_entry(row: dict[str, Any], quarter: int, measure: str) -> dict[str, Any]:
+    """One quarter of a by-quarter answer's data: its games, per-game
+    figure and total - or, for a rate, its makes, attempts and percentage."""
+    entry: dict[str, Any] = {"quarter": quarter, "games": int(row.get("games") or 0)}
+    if measure in PERIOD_RATES:
+        made, attempted = int(row.get(f"{measure}_made") or 0), int(row.get(f"{measure}_attempted") or 0)
+        return {**entry, "made": made, "attempted": attempted, "pct": (made * 100.0 / attempted) if attempted else None}
+    average = row.get(measure)
+    return {**entry, "average": None if average is None else float(average), "total": int(row.get(f"{measure}_total") or 0)}
+
+
+def _period_split_by_quarter_table(player: Entity, measure: str, season_label: str, vs: str, at: str, games: int, quarters: list[dict[str, Any]]) -> tuple[str, list[str]]:
+    """The by-quarter answer's header and its two-row table: per game and
+    total (a rate: percentage and made-attempted) in each quarter, then in
+    regulation - the four together."""
+
+    def _cells(values: list[str]) -> str:
+        return "".join(f"{value:>9}" for value in values[:-1]) + f"{values[-1]:>12}"
+
+    heads = _cells([f"Q{q['quarter']}" for q in quarters] + ["regulation"])
+    if measure in PERIOD_RATES:
+        made, attempted = sum(q["made"] for q in quarters), sum(q["attempted"] for q in quarters)
+        pct_row = _cells([_period_split_pct_cell(q["pct"]) for q in quarters] + [_period_split_pct_cell(made * 100.0 / attempted if attempted else None)])
+        made_row = _cells([f"{q['made']}-{q['attempted']}" for q in quarters] + [f"{made}-{attempted}"])
+        header = f"{player.name}, {_PERIOD_RATE_WORDS[measure]} by quarter in the {season_label}{vs}{at} ({games} games):"
+        return header, [f"  {'':<10}{heads}", f"  {'percentage':<10}{pct_row}", f"  {'made-att':<10}{made_row}"]
+    noun = "points" if measure == "points" else _period_split_noun(measure, 2)
+    per_game = _cells([_period_split_avg_cell(q["average"]) for q in quarters] + [_period_split_avg_cell(sum(q["average"] or 0.0 for q in quarters))])
+    totals = _cells([str(q["total"]) for q in quarters] + [str(sum(q["total"] for q in quarters))])
+    header = f"{player.name}, {noun} per game by quarter in the {season_label}{vs}{at} ({games} games):"
+    return header, [f"  {'':<10}{heads}", f"  {'per game':<10}{per_game}", f"  {'total':<10}{totals}"]
+
+
+def _period_split_pct_cell(pct: float | None) -> str:
+    """ "35.7%", or "-" where nothing was attempted."""
+    return "-" if pct is None else f"{pct:.1f}%"
+
+
+def _period_split_avg_cell(average: float | None) -> str:
+    """ "12.0", or "-" where the column was not rebuilt."""
+    return "-" if average is None else f"{average:.1f}"
 
 
 def _period_split_refusal(season: int, agreement: float | None) -> TemplateResult | None:

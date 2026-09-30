@@ -580,11 +580,11 @@ def test_a_named_players_period_games_are_listed(con: duckdb.DuckDBPyConnection)
 def test_points_by_quarter_with_no_one_named_is_the_leagues_table(con: duckdb.DuckDBPyConnection) -> None:
     """yardstick-v2 F048, "nba playerspoints by quarter average", fell through
     for want of one period: every quarter at once is period_leaderboard with
-    none. A named player's breakdown is not built and stays `other`."""
+    none. A named player's breakdown is period_split with none (#162)."""
     route, _, _ = read_route(con, "nba playerspoints by quarter average", [], "")
     assert route.intent == "period_leaderboard" and route.slots.get("period") is None and route.slots.get("half") is None
     named, _, _ = read_route(con, "Jokic points by quarter", ["Jokic"], "points")
-    assert named.intent == "other"
+    assert named.intent == "period_split" and named.slots.get("period") is None and named.slots.get("half") is None
 
 
 def test_most_ranks_a_quarter_only_where_no_team_is_named(con: duckdb.DuckDBPyConnection) -> None:

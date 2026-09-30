@@ -58,6 +58,7 @@ from association.query.templates.games import (
     _game_log_lines,
     _log_extras,
     _period_scope,
+    _period_split_by_quarter_from,
     _period_split_from,
     _period_split_measure,
     _period_split_reconciliation_refusal,
@@ -186,6 +187,8 @@ def _present_period_split(con: duckdb.DuckDBPyConnection, q: Query) -> TemplateR
     before any name is resolved (``_period_split_reconciliation_refusal``,
     over :data:`~association.query.templates.games.PERIOD_RECONCILIATION`),
     and again off the game a date names once it is found."""
+    if q.skeleton == "grouped" and q.group == "period":
+        return _present_period_by_quarter(con, q)
     if q.skeleton != "rows" or q.order != "date" or q.subject != "player" or q.predicates or q.group != "none":
         return None
     scope = q.scope
@@ -201,6 +204,35 @@ def _present_period_split(con: duckdb.DuckDBPyConnection, q: Query) -> TemplateR
     if compiled.player is None:
         return None
     return _period_split_from(con, scope, compiled.player, compiled.span, compiled.narrowed, periods, period_label, measure)
+
+
+def _present_period_by_quarter(con: duckdb.DuckDBPyConnection, q: Query) -> TemplateResult | None:
+    """A named player's four quarters side by side (#162) - the compiler's
+    ``grouped``-by-``period`` read (:func:`~association.query.compose.core._compile_by_period`),
+    said the way ``period_split`` says a quarter and ``period_leaderboard``
+    says the league's table (``templates.games._period_split_by_quarter_from``).
+    The template's own order is kept: a season whose figures cannot be
+    trusted is refused before any name is resolved.
+
+    .. versionadded:: 5.0.0
+    """
+    scope = q.scope
+    if q.subject != "player" or q.predicates or q.aggregate != "per_game":
+        return None
+    measure = _period_split_measure(scope.stat)
+    if q.measures != [measure]:
+        return None
+    if scope.date is None:
+        refusal = _period_split_reconciliation_refusal(scope.season or current_season(), measure)
+        if refusal is not None:
+            return refusal
+    compiled = compile_query(con, q)
+    if compiled.player is None:
+        return None
+    cur = con.execute(compiled.sql, compiled.params)
+    names = [d[0] for d in cur.description]
+    rows = [dict(zip(names, r, strict=True)) for r in cur.fetchall()]
+    return _period_split_by_quarter_from(scope, compiled.player, compiled.narrowed, rows, measure)
 
 
 def _present_player_splits(con: duckdb.DuckDBPyConnection, q: Query) -> TemplateResult | None:

@@ -5286,10 +5286,28 @@ def test_a_stat_beyond_points_is_read_from_the_plays(period_ctx: TemplateContext
     assert (result.answer or "").startswith("Stephen Curry had 2 rebounds in the 1st quarter over 5 games of the 2026 regular season, averaging 0.4.")
 
 
-def test_a_question_with_no_period_is_not_this_template(period_ctx: TemplateContext) -> None:
-    """ "by quarter" is a breakdown across all four, which is a different shape."""
-    with pytest.raises(TemplateUnsupported, match="needs a period"):
-        period_split(period_ctx, Reading.from_slots({"player": "Stephen Curry", "season": SEASON, "season_type": 2}))
+def test_a_question_with_no_period_is_the_four_quarters_side_by_side(period_ctx: TemplateContext) -> None:
+    """ "Jokic points by quarter" (#162): period_split with no period is the
+    breakdown across all four - the compiler's grouped read by period
+    (`compose.core._compile_by_period`), four reads of the SAME five games.
+    Curry here: 12 in the first quarters (2.4 a game), 6 in each of the
+    others (1.2) - 30 in regulation, 6.0 a game - and e4's overtime three is
+    in none of them. e3 and e5, first quarters he played and did not score
+    in, are zeros over games he played, so every quarter counts the same
+    five games; a rate by quarter is each quarter's makes over its
+    attempts."""
+    result = period_split(period_ctx, Reading.from_slots({"player": "Stephen Curry", "season": SEASON, "season_type": 2}))
+    assert result.data["games_played"] == 5
+    assert [(q["quarter"], q["games"], q["total"], q["average"]) for q in result.data["quarters"]] == [(1, 5, 12, 2.4), (2, 5, 6, 1.2), (3, 5, 6, 1.2), (4, 5, 6, 1.2)]
+    answer = result.answer or ""
+    assert answer.startswith(f"Stephen Curry, points per game by quarter in the {SEASON} regular season (5 games):")
+    assert "per game        2.4      1.2      1.2      1.2         6.0" in answer and "total            12        6        6        6          30" in answer
+    assert "Overtime is no quarter and is not counted." in answer and result.data["headline"] == answer.splitlines()[0].rstrip(":")
+    threes = period_split(period_ctx, Reading.from_slots({"player": "Stephen Curry", "season": SEASON, "season_type": 2, "stat": "threePointFieldGoalPct", "opponent": "Lakers"}))
+    assert [(q["made"], q["attempted"], q["pct"]) for q in threes.data["quarters"]] == [(2, 5, 40.0), (1, 1, 100.0), (2, 2, 100.0), (0, 0, None)], (
+        "e1 and e3: first quarters 2-5, then e3's Q2 make, both Q3 makes"
+    )
+    assert "against the Los Angeles Lakers (2 games)" in (threes.answer or "") and "made-att        2-5      1-1      2-2      0-0         5-8" in (threes.answer or "")
 
 
 def test_the_scoping_slots_this_template_filters_on_are_declared_honored() -> None:

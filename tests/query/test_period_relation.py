@@ -224,6 +224,10 @@ def test_the_compiler_refuses_a_period_read_of_a_column_no_play_splits() -> None
         _check_period_measures(Query(scope=Scope(player="x", half=2), measures=["points"], predicates=[("plusMinus", ">=", 5)]))
     _check_period_measures(Query(scope=Scope(player="x", period=1), measures=["points", "rebounds", "fg_pct"]))
     _check_period_measures(Query(scope=Scope(player="x"), measures=["minutes"]))  # no period: nothing to refuse
+    # A read grouped by period sees each quarter's line, and is held to the same columns.
+    with pytest.raises(Unsupported, match="minutes"):
+        _check_period_measures(Query(scope=Scope(player="x"), skeleton="grouped", group="period", measures=["minutes"]))
+    _check_period_measures(Query(scope=Scope(player="x"), skeleton="grouped", group="period", measures=["three_pct"]))
 
 
 def test_compiling_a_period_read_of_minutes_refuses_before_the_warehouse_is_read() -> None:

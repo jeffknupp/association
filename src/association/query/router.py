@@ -66,7 +66,7 @@ FOUL_OUT_THRESHOLD = 6
 # nothing counted one player's triple-doubles. The compiler does now (a
 # per-game flag on the player-games relation), so it left: see
 # `_route_triple_double_abbreviation`, which reads the word instead.
-_AGENT_ONLY = re.compile(r"\b(?:first|second|third|fourth|1st|2nd|3rd|4th)[\s-]+(?:quarter|qtr|q)\b|\bq[1-4]\b|\b[1-4]q\b|\bqtrs?\b|\bper\s+quarter\b|\bby\s+quarter\b")
+_AGENT_ONLY = re.compile(r"\b(?:first|second|third|fourth|1st|2nd|3rd|4th)[\s-]+(?:quarter|qtr|q)\b|\bq[1-4]\b|\b[1-4]q\b|\bqtrs?\b|\bper\s+quarter\b|\bby\s+quarter\b|\b(?:each|every)\s+quarter\b")
 
 # "td3" is a triple-double, and the model reads its "3" as a shot value:
 # "luka td3s home" came back as `other` with stat threePointFieldGoalsMade
@@ -127,8 +127,8 @@ _PERIOD_TOP = re.compile(r"\b(?:most|highest|top|best)\b", re.IGNORECASE)
 
 # Every quarter at once, side by side (yardstick-v2 F048, "nba playerspoints
 # by quarter average", which fell through for want of one period).
-# period_leaderboard with no period is that table; a NAMED player's breakdown
-# is not built and still reaches `other`.
+# period_leaderboard with no period is the league's table; period_split with
+# no period is a NAMED player's (#162, ROADMAP step 2).
 _BY_QUARTER = re.compile(r"\b(?:by|per|each|every)\s+(?:quarter|qtr)s?\b|\bquarter\s+by\s+quarter\b", re.IGNORECASE)
 
 
@@ -2138,6 +2138,14 @@ def _route_period_intents_choose(raw: dict[str, Any], question: str, asked: dict
     elif asked is not None and named_player:
         raw["intent"] = "period_split"
         raw |= asked
+        _route_period_split_slots(raw, question, subject)
+    elif asked is None and named_player and _BY_QUARTER.search(low):
+        # A named player's four quarters side by side (#162): period_split
+        # with no period, which its point reads as the breakdown
+        # (compose.adapt._adapt_period_split).
+        raw["intent"] = "period_split"
+        raw.pop("period", None)
+        raw.pop("half", None)
         _route_period_split_slots(raw, question, subject)
     elif asked is None and not named_player and _BY_QUARTER.search(low) and not _team_slot_or_word(raw, low):
         # Every player's four quarters side by side - the league's; a

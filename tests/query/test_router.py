@@ -309,15 +309,19 @@ def test_the_side_values_match_the_scope() -> None:
     assert set(SIDE_VALUES) == _scope_values("side")
 
 
-@pytest.mark.parametrize("question", ["points per quarter for Luka", "Jokic points by quarter"])
-def test_questions_no_template_computes_are_forced_to_the_agent(question: str) -> None:
-    """These read like a supported shape while asking for something no template
-    computes. Shot distance was here too until it earned its own template, and
-    so was a named player's single quarter until `period_split` earned one -
-    which is the intended lifecycle for this list. What is left here is the
-    breakdown across ALL four quarters, which is a different shape."""
+@pytest.mark.parametrize("question", ["points per quarter for Luka", "Jokic points by quarter", "luka points each quarter this season"])
+def test_a_named_players_breakdown_by_quarter_is_period_split_with_no_period(question: str) -> None:
+    """These read like a supported shape while asking for something no
+    template computed. Shot distance was here until it earned its own
+    template, a named player's single quarter until `period_split` earned
+    one, and the breakdown across ALL four quarters until the compiler read
+    it (ROADMAP step 2, #162): `period_split` with no period, which its point
+    reads as the four quarters side by side. The stage assigns the intent
+    only where the "by quarter" words are read, so no period nobody asked
+    about is answered for."""
     got = _ask(question, '{"intent":"player_stat","player":"Stephen Curry"}')
-    assert got is not None and got.intent == "other"
+    assert got is not None and got.intent == "period_split"
+    assert got.slots.get("period") is None and got.slots.get("half") is None
 
 
 def test_a_named_players_single_quarter_earned_its_own_template() -> None:
@@ -2171,13 +2175,16 @@ def test_a_named_players_quarter_now_routes_to_a_template(question: str, want: d
     assert all(got.slots.get(k) == v for k, v in want.items()), got.slots
 
 
-@pytest.mark.parametrize("question", ["nba playerspoints by quarter average", "points per quarter for Luka", "Jokic qtrs"])
-def test_a_breakdown_across_every_quarter_still_goes_to_the_agent(question: str) -> None:
+def test_a_breakdown_across_every_quarter_is_the_players_own_and_a_bare_qtrs_is_nothing() -> None:
     """ "by quarter" asks for all four at once, which is a different shape from
-    "the third quarter". `period_split` answers one period, so a question that
-    names none keeps the old behavior rather than being answered for a period
-    nobody asked about."""
-    assert _ask(question, '{"intent":"player_stat","player":"Nikola Jokic"}').intent == "other"
+    "the third quarter": `period_split` with no period, the four side by side
+    (#162). A question that names neither a period nor the breakdown words
+    ("Jokic qtrs") is still refused rather than answered for a period nobody
+    asked about."""
+    for question in ("nba playerspoints by quarter average", "points per quarter for Luka"):
+        got = _ask(question, '{"intent":"player_stat","player":"Nikola Jokic"}')
+        assert got.intent == "period_split" and got.slots.get("period") is None and got.slots.get("half") is None, question
+    assert _ask("Jokic qtrs", '{"intent":"player_stat","player":"Nikola Jokic"}').intent == "other"
 
 
 def test_a_teams_quarter_is_still_the_teams_template() -> None:

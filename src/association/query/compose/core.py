@@ -31,6 +31,7 @@ exactly those tokens.
 
 from __future__ import annotations
 
+import copy
 from dataclasses import dataclass, field, replace
 from typing import Any
 
@@ -40,7 +41,7 @@ from association.nba.season import current_season, eastern_date_sql
 from association.query.conditions import _PLAYER_GAME_TABLES, MEETING_STATS, UNGATED_ON_REBUILD, BoxSource, _longest_runs_sql, _meetings_select, _player_streak_rows, box_source
 from association.query.entities import Entity
 from association.query.measures import MEASURE_WORDS
-from association.query.player_games import PERIOD_COLUMNS, REBUILT_STATS, Narrowed, aggregate_sql, games_subquery, grouped_sql, named, paired_rows_sql, rows_sql
+from association.query.player_games import PERIOD_COLUMNS, REBUILT_STATS, REGULATION_QUARTERS, Narrowed, aggregate_sql, games_subquery, grouped_sql, named, paired_rows_sql, rows_sql
 from association.query.reading import Scope
 from association.query.templates.common import (
     _BOX_SCORES,
@@ -49,6 +50,7 @@ from association.query.templates.common import (
     SCOPING_SLOTS,
     TemplateResult,
     TemplateUnsupported,
+    _apply_period,
     _box_score_notes,
     _career_end,
     _condition_scope,
@@ -62,7 +64,7 @@ from association.query.templates.common import (
     scoped_games,
     scoped_player,
 )
-from association.query.templates.games import _team_slot_for_player
+from association.query.templates.games import PERIOD_RATES, _team_slot_for_player
 from association.query.templates.players import _seasons_on_record
 
 EASTERN = eastern_date_sql("g.date")
@@ -374,8 +376,9 @@ def _check_period_measures(q: Query) -> None:
     those under a period would print the game's figure under the quarter's
     heading - so it is refused, and the default line (which carries minutes)
     with it: the period templates say a period, and this compiler's sentence
-    has not been measured saying one."""
-    if period_narrowing(q.scope) is None:
+    has not been measured saying one. A read grouped by ``period`` sees
+    each quarter's line the same way, and is held to the same columns."""
+    if period_narrowing(q.scope) is None and q.group != "period":
         return
     read = [*q.measures, *(name for name, _, _ in q.predicates)]
     unread = sorted({m for m in read if m not in _PERIOD_READABLE})
@@ -633,6 +636,46 @@ def _compile_scalar(q: Query, narrowed: Narrowed, rebuilt: bool, player: Entity 
     return Compiled(sql, params, player, span, narrowed, rebuilt, list(q.measures))
 
 
+def _by_period_totals(q: Query, rebuilt: bool) -> list[str]:
+    """Beside each quarter's per-game figures, the sums a presenter says
+    them from: a column's total (``"<m>_total"``), a rate's makes and
+    attempts (``"<m>_made"``, ``"<m>_attempted"``)."""
+    extra: list[str] = []
+    for m in q.measures:
+        if m in PERIOD_RATES:
+            made, attempted = PERIOD_RATES[m]
+            extra += [f'SUM(pgl.{made}) AS "{m}_made"', f'SUM(pgl.{attempted}) AS "{m}_attempted"']
+        elif m not in BOOLEAN_MEASURES:
+            extra.append(f'SUM({measure_sql(m, rebuilt=rebuilt)}) AS "{m}_total"')
+    return extra
+
+
+def _compile_by_period(con: duckdb.DuckDBPyConnection, q: Query, narrowed: Narrowed, rebuilt: bool, player: Entity | None, span: _Span) -> Compiled:
+    """A ``grouped`` read by ``period``: a named player's four quarters side
+    by side ("Jokic points by quarter", #162). One statement, the union of
+    four reads of the SAME narrowed games - the opponent, the venue, the
+    window, every clause the relation applied once - each seeing one
+    quarter's line (:func:`~association.query.templates.common._apply_period`
+    on a copy, the way a single-quarter read is narrowed), so a quarter he
+    played and did nothing in is a zero over a game he played, and a game the
+    shot table does not cover is no game in any quarter. Regulation only
+    (:data:`~association.query.player_games.REGULATION_QUARTERS`): overtime
+    is no quarter, and the presenter says so.
+
+    .. versionadded:: 5.0.0
+    """
+    selects = [*_scalar_selects(q, rebuilt), *_by_period_totals(q, rebuilt)]
+    parts: list[str] = []
+    params: list[Any] = []
+    for quarter in REGULATION_QUARTERS:
+        each = copy.deepcopy(narrowed)
+        _apply_period(con, each, replace(q.scope, period=quarter, half=None))
+        sql, each_params = aggregate_sql(each, [f'{quarter} AS "group"', *selects], rebuilt=rebuilt)
+        parts.append(f"SELECT * FROM ({sql})")
+        params += each_params
+    return Compiled(" UNION ALL ".join(parts) + ' ORDER BY "group"', params, player, span, narrowed, rebuilt, list(q.measures))
+
+
 def _compile_grouped(q: Query, narrowed: Narrowed, rebuilt: bool, player: Entity | None, span: _Span) -> Compiled:
     """A ``grouped`` read: a split, or a ranking of players."""
     if q.group not in GROUPS:
@@ -777,6 +820,8 @@ def compile_query(con: duckdb.DuckDBPyConnection, q: Query) -> Compiled:
         return _compile_rows(q, narrowed, rebuilt, player, span)
     if q.skeleton == "scalar":
         return _compile_scalar(q, narrowed, rebuilt, player, span)
+    if q.skeleton == "grouped" and q.group == "period":
+        return _compile_by_period(con, q, narrowed, rebuilt, player, span)
     if q.skeleton == "grouped":
         return _compile_grouped(q, narrowed, rebuilt, player, span)
     if q.skeleton == "run":

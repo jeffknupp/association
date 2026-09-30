@@ -1393,8 +1393,6 @@ those were found.
     and 2016, turnovers in 2007, 2008, 2013 and 2016, rebounds in 2013,
     assists in 2016, steals in 2013 and 2018, fouls in 2018 (DATA.md, "A
     team's play-by-play does not add up to its box score in six seasons").
-  - **A named player's breakdown across all four quarters** ("points per
-    quarter for Luka", "Jokic points by quarter") - #162.
   - **A position group as the subject** ("each center 1q pts log vs nugget") -
     the same gap position groups have everywhere.
   - **A period used as a condition** (F062) - refused by name; see its own
@@ -1405,10 +1403,12 @@ those were found.
     design, not a gap to fill.
 - **User sees:** for the shapes above, a refusal naming the cause - no longer
   a whole-game line where one quarter was asked for.
-- **Next step:** #162 and #275 have their own entries; the shooting
-  percentage was built 2026-09-30 (`templates.games.PERIOD_RATES`, a ratio
-  of the period's sums for a player and a team; a period RANKING by one is
-  refused by name, since a games-played minimum is not an attempts minimum).
+- **Next step:** #275 has its own entry. Built 2026-09-30: the shooting
+  percentage (`templates.games.PERIOD_RATES`, a ratio of the period's sums
+  for a player and a team; a period RANKING by one is refused by name, since
+  a games-played minimum is not an attempts minimum) and a named player's
+  four quarters side by side (`compose.core._compile_by_period`, the
+  `period` group; #162 closed).
 - **GitHub:** #96
 
 ### A coach question has nothing to read, and ESPN's coaches are not worth reading
@@ -3062,21 +3062,6 @@ those were found.
 - **Priority note:** P4 - no wrong answer today, a maintenance risk if the
   next two ports each add their own copy instead of reading this one first.
 - **GitHub:** #193
-
-### A named player's points by quarter, all four at once, is not built
-- **Found:** 2026-09-20; **the league-wide half fixed 2026-09-29** ("nba
-  playerspoints by quarter average", F048, is `period_leaderboard` with no
-  period: every qualifying player's four quarters side by side, the key's
-  own figures - Luka Doncic 11.97 / 7.22 / 9.70 / 4.56)
-- **Evidence:** "points per quarter for Luka" and "Jokic points by quarter"
-  still route to `other` (`router._BY_QUARTER` is read only with no player
-  or team named), pinned by `test_questions_no_template_computes_are_forced_to_the_agent`.
-- **User sees:** the slow agent, for a question the relation can answer four
-  times over.
-- **Next step:** `period_split` with no period: the four quarter reads
-  `_period_leaderboard_by_quarter` makes, narrowed to the player through
-  `scoped_games` instead of `league_games`.
-- **GitHub:** #162
 
 ### `since` reaches the metric templates only by a second season-scoping path
 - **Found:** 2026-09-18, looking for the next compositional-scoping win after
