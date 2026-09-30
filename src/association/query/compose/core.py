@@ -395,13 +395,26 @@ def _check_split_category(q: Query) -> None:
 def _resolve_everyone(con: duckdb.DuckDBPyConnection, q: Query) -> tuple[Entity | None, _Span, Narrowed]:
     """The league-wide subject: every player's games in the span settled the
     way ``threshold_count``'s and ``single_game_high``'s no-player modes
-    settle it, narrowed by :func:`~association.query.templates.common.league_games`."""
+    settle it, narrowed by :func:`~association.query.templates.common.league_games`.
+
+    ``since``/``until`` bound the span exactly as
+    :func:`~association.query.templates.common.scoped_player` bounds a named
+    player's: every season from ``since`` on (to ``until``), never the
+    current season alone. Read from ``season``/``span`` only, "players with
+    33 point and 13 rebound ... games since 2000-01" listed 2026's three
+    games under a heading saying so, where the warehouse holds eleven since
+    2001 (yardstick-v2 F161, #207). ``since`` beside a named season is the
+    same contradiction ``_span_of`` refuses for a player.
+    """
     scope = q.scope
     season_type = scope.season_type or 2
     season = scope.season
-    if season is None and scope.span != "career":
+    if season is None and scope.span != "career" and scope.since is None:
         season = current_season()
-    span = _span_of("career" if season is None else None, season, season_type, "player_game_log")
+    try:
+        span = _span_of("career" if season is None else None, season, season_type, "player_game_log", since=scope.since, until=scope.until)
+    except TemplateUnsupported as exc:
+        raise Unsupported(str(exc)) from exc
     # The shared steps read the slot dict until they take the Scope.
     narrowed = league_games(con, span, scope, position=q.position)
     if isinstance(narrowed, TemplateResult):

@@ -30,6 +30,7 @@ from association.query.compose.core import Query, Refused, Unsupported, compile_
 from association.query.compose.move import _asc_or_desc, _career_scope, _everyone_career_scope, _ranking_minimum, read_point
 from association.query.compose.move import team_move_point as _team_move_point
 from association.query.compose.plan import plan
+from association.query.compose.sentence import sentence
 from association.query.compose.team import TeamQuery, run_team
 from association.query.parse import with_point
 from association.query.reading import Reading, Scope
@@ -854,6 +855,36 @@ def test_several_number_stat_lines_read_the_qualifying_games_not_a_count(cx_ctx:
     assert sorted(q.predicates) == sorted([("points", ">=", 20), ("rebounds", ">=", 7), ("assists", ">=", 3)])
     out = run(cx_ctx.con, q)
     assert sorted(r["points"] for r in out["rows"]) == [28, 31]
+
+
+def test_a_league_wide_read_since_a_season_reaches_every_season_from_it(cx_ctx: TemplateContext) -> None:
+    """``since``/``until`` bound a league-wide read exactly as they bound a
+    named player's (F161, #207: "... games since 2000-01" listed the current
+    season's games alone, under a heading that said so, because
+    :func:`~association.query.compose.core._resolve_everyone` settled the
+    span from ``season``/``span`` and never read ``since``). This fixture's
+    own numbers: two games clear 12 rebounds and 5 assists - Sabonis's g2
+    (season ``s``) and g7 (season ``s-1``) - so the current season alone
+    holds one, "since s-1" both, and "s-1 through s-1" the other one."""
+    s = current_season()
+    question = "players with 12 rebounds and 5 assists games"
+    this_season = move_point(cx_ctx.con, "threshold_count", {"season_type": 2}, question)
+    assert isinstance(this_season, Query) and this_season.subject == "everyone" and this_season.skeleton == "rows"
+    assert [r["rebounds"] for r in run(cx_ctx.con, this_season)["rows"]] == [12]
+    since = move_point(cx_ctx.con, "threshold_count", {"season_type": 2, "since": s - 1}, question)
+    assert isinstance(since, Query)
+    out = run(cx_ctx.con, since)
+    assert sorted(r["rebounds"] for r in out["rows"]) == [12, 14]
+    assert f"({s - 1} on)" in sentence(since, out)
+    until = move_point(cx_ctx.con, "threshold_count", {"season_type": 2, "since": s - 1, "until": s - 1}, question)
+    assert isinstance(until, Query)
+    assert [r["rebounds"] for r in run(cx_ctx.con, until)["rows"]] == [14]
+    # A named season beside ``since`` is the contradiction ``_span_of``
+    # refuses for a player, and the compiler declines it the same way.
+    both = move_point(cx_ctx.con, "threshold_count", {"season_type": 2, "season": s, "since": s - 1}, question)
+    assert isinstance(both, Query)
+    with pytest.raises(Unsupported, match="since"):
+        run(cx_ctx.con, both)
 
 
 def test_a_single_number_stat_line_still_counts_by_player(cx_ctx: TemplateContext) -> None:

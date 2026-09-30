@@ -414,29 +414,6 @@ those were found.
 - **Source:** ours, not ESPN's.
 - **GitHub:** #212
 
-### A composed league-wide read ignores `since`/`until`: "... games since 2000-01" answers the current season
-- **Found:** 2026-09-24, grading `live_rest.jsonl` (yardstick-v2 F161);
-  re-diagnosed the same day fixing the router half of #207.
-- **Evidence:** "players with 33 point and 13 rebound and 10 assist 2 blocks
-  and 2 steals games since 2000-01" now routes `since: 2001` (the router
-  read "since 2000" before, a season early - fixed). But
-  `compose/core.py:_resolve_everyone` settles the span from `season`/`span`
-  alone and never reads `since`/`until`, so the composed rows are "2026
-  regular season" whatever the router sent: `compose.answer` with
-  `since: 2001` prints 3 rows, all 2026. Measured on the warehouse
-  (`player_game_log` joined to `real_games`): 11 regular-season games since
-  2001 clear all five lines (1 more in a postseason), 3 of them in 2026.
-  The "filler `limit: 3`" this entry used to name was not a limit at all:
-  every recorded routing of this question (yardstick-v2 live runs and the
-  baseline replays) is `since: 2000` with no `limit`, and "last 3 games" is
-  the row count of the 2026-only read.
-- **User sees:** 3 games of one season where a 26-season span was asked -
-  the span is stated, so it is correctable, but no wording reaches the span.
-- **Next step:** `_resolve_everyone` reads `since`/`until` into the span the
-  way `scoped_player` does for a named player (compose owns it).
-- **Source:** ours, not ESPN's.
-- **GitHub:** #207
-
 ### A short, genuinely ambiguous question is guessed at rather than asked about: "Tatum rec"
 - **Found:** 2026-09-23, working yardstick-v2's wrong-land bucket 4
   (`~/association-research/yardstick-v2/wrong_land.md`, F112).
@@ -2644,9 +2621,10 @@ those were found.
 - **Parser path (5.0.0):** still wrong. "nba mvps in 2010's" (normalizer
   stubbed with no names and no stat) reads parent `leaderboard` with
   `since: 2010, until: 2019` and answers the 2026 points-per-game board
-  ("every player, 2026 regular season, by player (points per game, minimum 20
-  games): Luka Doncic 33.5 ...") - the award unread and the range dropped as
-  well (#207's shape).
+  ("every player, regular season career (2010-2019), by player (points per
+  game, minimum 20 games): Kevin Durant 28.0 ...") - the award unread. (The
+  range was dropped too until `_resolve_everyone` read `since`/`until`,
+  the fix for the retired #207.)
 - **GitHub:** #146
 
 ### `_subject_named_in`'s original grammar reads a bare noun as a subject on four corpus questions

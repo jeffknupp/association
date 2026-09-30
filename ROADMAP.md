@@ -60,7 +60,8 @@ The 13 families still failing, by cause:
   line (#275). A team's non-points figure per quarter is built (the team
   half, 2026-09-29; the rehearsal moves F065 to its own shape).
 - **A span or a window the parser does not read.** "... games since
-  2000-01" (F161) answers one season; "Most reb by a hawk player history"
+  2000-01" (F161) answered one season until the league-wide read took
+  ``since``/``until`` (2026-09-30); "Most reb by a hawk player history"
   (F125) ranks 2026 alone; "Best NBA record since January 31st 201" (F104)
   falls through, since a team ranking cannot take a date; "bam adebayo
   career games in the month of march" (F096) counts his 118 March games
