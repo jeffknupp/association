@@ -24,14 +24,17 @@ Two properties are not negotiable on the way there:
   a follow-up wording reaches the alternative.** (Jeff, 2026-09-21.) A silent
   default is still the worst failure; a stated one is an answer.
 
-## Where it stands (2026-09-29, `4163c8c`)
+## Where it stands (2026-09-30, `a10da56`)
 
 **166 of 175 questions (94.9%), 155 of 166 families (93.4%)** on the live
 yardstick run (parser18: the fall-through agent removed, the period
 relation's team half merged, short questions refused, `leaderboard` and
 `period_split` retired into the compiler): 1 wrong, 5 partial, 3 refused
-with no reading (the yardstick's "fell through" outcome). Parser16, 17 and
-18 moved no answer between them.
+with no reading (the yardstick's "fell through" outcome). Parser16 through
+20 moved no answer between them - parser20 (2026-09-30, `a10da56`) is the
+run after step (g) finished: `streak`, `player_matchup` and `with_without`
+retired through skeletons of their own, 277/277 identical to parser19 live
+and to the offline rehearsal on both trees, median 1.12s.
 
 The pipeline: a 3B model (qwen2.5:3b) copies the names out of the question
 and picks one stat key (`query/normalizer.py`); the parser reads everything
@@ -47,8 +50,7 @@ for want of a reading. Thirteen intents are the compiler's alone
 (`compose.COMPILED_INTENTS`); `game_log`, `player_stat`, `player_splits`,
 `leaderboard`, `period_split`, `player_compare`, `streak`, `player_matchup`
 and `with_without` joined them in step (g) (parser9-18, 2026-09-28/29: 0
-answers moved by any retirement; the last three on 2026-09-30, not yet run
-live).
+answers moved by any retirement; parser20 after the last three, 0 moved).
 
 The 13 families still failing, by cause:
 
