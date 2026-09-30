@@ -31,14 +31,18 @@ from association.query.compose.team import TeamQuery, _compile_team_run, run_tea
 from association.query.entities import MAX_CANDIDATES, Availability, Entity, collect_name_readings, resolve_player
 from association.query.metrics import LEADERBOARD_METRICS, PER_GAME_MIN_GAMES, PER_GAME_MIN_POSTSEASON_GAMES
 from association.query.parse import with_point
+from association.query.player_games import PERIOD_COLUMNS
 from association.query.reading import Reading, Scope
 from association.query.shotchart import SHOT_AVAILABILITY
 from association.query.subject import Subject
 from association.query.templates.common import HONORED_SCOPING, SCOPING_SLOTS, TemplateContext, TemplateResult, TemplateUnsupported, check_scope, scoped_player, unhonored_scoping
 from association.query.templates.games import (
+    PERIOD_RATE_STATS,
+    PERIOD_RATES,
     _period_split_cross_season_redirect,
     _period_split_empty,
     _period_split_from,
+    _period_split_reconciliation_refusal,
     _period_split_rows,
     _period_split_rows_from,
     _player_game_log,
@@ -5206,8 +5210,67 @@ def test_a_stat_the_period_line_cannot_rebuild_is_refused_rather_than_approximat
     (this fixture) - summed as zeros they would answer "no rebounds"."""
     with pytest.raises(TemplateUnsupported, match="no per-period 'minutes'"):
         period_split(period_ctx, Reading.from_slots({"player": "Stephen Curry", "period": 1, "season": SEASON, "season_type": 2, "stat": "minutes"}))
+    # An advanced rate is not a ratio of two period-line columns.
+    with pytest.raises(TemplateUnsupported, match="no per-period 'ts_pct'"):
+        period_split(period_ctx, Reading.from_slots({"player": "Stephen Curry", "period": 1, "season": SEASON, "season_type": 2, "stat": "ts_pct"}))
     answer = period_split(period_ctx, Reading.from_slots({"player": "Stephen Curry", "period": 1, "season": SEASON, "season_type": 2, "stat": "rebounds"})).answer
     assert answer == "Per-quarter rebounds cannot be answered here: they are rebuilt from play-by-play, and this warehouse holds none."
+
+
+def test_a_shooting_percentage_in_a_period_is_the_periods_makes_over_its_attempts(period_ctx: TemplateContext) -> None:
+    """ "vj edgecombe 1st quarter 3pt percentage by game" (yardstick-v2) was
+    refused as a stat the period line does not rebuild - but the line holds
+    the makes and the attempts, so the percentage is the ratio of the two
+    sums (ROADMAP step 2, the period relation's shooting percentages). Curry's
+    first quarters: 2 of 5 in e1 (two makes, three misses), 1 of 1 in e2 and
+    e4, nothing attempted in e3 and e5 - 4 of 7, 57.1%, over the same five
+    games the points answer counts, and NEVER a mean of the per-game rates
+    (which would be 60.0% over the three games with an attempt). Every shot
+    in this fixture is a three, so the field goal percentage is the same
+    ratio; no free throw was attempted at all, and the answer says that
+    rather than printing a zero."""
+    slots: dict[str, Any] = {"player": "Stephen Curry", "period": 1, "season": SEASON, "season_type": 2, "stat": "threePointFieldGoalPct", "per_game": True}
+    result = period_split(period_ctx, Reading.from_slots(slots))
+    assert (result.data["stat"], result.data["total"], result.data["attempted"], result.data["games_played"]) == ("three_pct", 4, 7, 5)
+    assert result.data["average"] == pytest.approx(400 / 7)
+    answer = result.answer or ""
+    assert "Stephen Curry shot 4 of 7 (57.1%) on 3-pointers in the 1st quarter over 5 games" in answer
+    assert "averaging" not in answer, "the percentage is the average; a second figure beside it would be a mean of rates"
+    assert "1st quarter 3-pointers made-attempted, every game:" in answer and "2-5     40.0%" in answer and "0-0         -" in answer
+    assert [g["three_pct"] for g in result.data["games"]] == [40.0, 100.0, None, 100.0, None], "e1 through e5 in date order; a game with no attempt has no percentage"
+    field_goals = period_split(period_ctx, Reading.from_slots({**slots, "stat": "fieldGoalPct", "per_game": False}))
+    assert (field_goals.data["total"], field_goals.data["attempted"]) == (4, 7) and "shot 4 of 7 (57.1%) on field goals" in (field_goals.answer or "")
+    free_throws = period_split(period_ctx, Reading.from_slots({**slots, "stat": "freeThrowPct", "per_game": False}))
+    assert (free_throws.data["total"], free_throws.data["attempted"], free_throws.data["average"]) == (0, 0, None)
+    assert "Stephen Curry attempted no free throws in the 1st quarter over 5 games" in (free_throws.answer or "")
+    # One game says its own date, the way a column's one-game answer does.
+    one = period_split(period_ctx, Reading.from_slots({**slots, "per_game": False, "opponent": "Boston", "venue": "away"}))
+    assert "Stephen Curry shot 1 of 1 (100.0%) on 3-pointers in the 1st quarter at the Boston Celtics on" in (one.answer or "")
+
+
+def test_a_rate_is_refused_where_either_of_its_columns_is() -> None:
+    """A percentage over a season whose makes or attempts cannot be trusted
+    is refused as the column would be: 2002's shot values are unseparable,
+    so its 3-point makes are refused (``_PERIOD_SPLIT_SHOT_VALUED``) and the
+    3-point percentage with them; free throws are not valued, so 2002's free
+    throw percentage stands. Every rate the normalizer can name maps to a
+    pair of period-line columns, and the ranking refuses them all."""
+    assert set(PERIOD_RATE_STATS.values()) == set(PERIOD_RATES)
+    for made, attempted in PERIOD_RATES.values():
+        assert made in PERIOD_COLUMNS and attempted in PERIOD_COLUMNS
+    refused = _period_split_reconciliation_refusal(2002, "three_pct")
+    assert refused is not None and "cannot be answered for 2002" in (refused.answer or "")
+    assert _period_split_reconciliation_refusal(2002, "ft_pct") is None
+    assert _period_split_reconciliation_refusal(SEASON, "fg_pct") is None
+
+
+def test_period_leaderboard_does_not_rank_a_shooting_percentage(period_ctx: TemplateContext) -> None:
+    """A games-played minimum is not an attempts minimum: ranked by
+    first-quarter free throw percentage, the leader is whoever went 3 for 3.
+    Refused naming that, before any read, and the refusal points at the one
+    player's answer that IS built."""
+    result = period_leaderboard(period_ctx, Reading.from_slots({"period": 1, "season": SEASON, "season_type": 2, "stat": "freeThrowPct"}))
+    assert "leaders" not in result.data and "Players are not ranked by free throw percentage in a quarter or half" in (result.answer or "")
 
 
 def test_a_stat_beyond_points_is_read_from_the_plays(period_ctx: TemplateContext) -> None:

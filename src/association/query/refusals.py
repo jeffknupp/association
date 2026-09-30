@@ -40,6 +40,7 @@ from association.query.router import _PERIOD_AS_CONDITION
 from association.query.subject import Subject
 from association.query.team_games import TEAM_PERIOD_COLUMNS
 from association.query.templates.common import PLAYER_INTENTS, TemplateResult
+from association.query.templates.games import PERIOD_RATE_STATS
 
 _CHAMPIONSHIP = re.compile(r"\b(?:championships?|champions?|nba\s+titles?|won\s+the\s+(?:title|finals)|title\s+winners?|finals\s+winners?)\b", re.IGNORECASE)
 _BENCH_POINTS = re.compile(r"\bbench\s+(?:points?|scoring|pts)\b", re.IGNORECASE)
@@ -119,21 +120,24 @@ def _period_stat(con: duckdb.DuckDBPyConnection, intent: str, scope: Scope, ques
     """A stat the period's line does not rebuild, by quarter or half: the
     per-period figures are rebuilt from the shots and plays
     (:data:`~association.query.player_games.PERIOD_COLUMNS`), and play-by-play
-    carries no minutes, plus-minus or rate per quarter.
+    carries no minutes, plus-minus or advanced rate per quarter. A field
+    goal, 3-point or free throw percentage IS read - a ratio of the rebuilt
+    makes and attempts (``templates.games.PERIOD_RATE_STATS``).
 
     .. versionchanged:: 5.0.0
        Names the columns that ARE rebuilt (plan item 4): until the period
        relation, points were the only one, and this said so of rebounds and
-       assists too - a refusal naming a cause that is no longer true.
+       assists too - a refusal naming a cause that is no longer true. The
+       three shooting percentages are answered, not refused.
     """
     stat = scope.stat
-    if intent not in ("period_split", "period_leaderboard") or not isinstance(stat, str) or stat in ("pts", "", "all") or stat in PERIOD_COLUMNS:
+    if intent not in ("period_split", "period_leaderboard") or not isinstance(stat, str) or stat in ("pts", "", "all") or stat in PERIOD_COLUMNS or stat in PERIOD_RATE_STATS:
         return None
     period = scope.period or scope.half
     where = f"the {period}{'st' if period == 1 else 'nd' if period == 2 else 'rd' if period == 3 else 'th'} {'half' if scope.half else 'quarter'}" if isinstance(period, int) else "a period"
     return (
-        f"By quarter or half, a line is rebuilt from the play-by-play - points, field goals, free throws, rebounds, assists, steals, blocks, turnovers and fouls - "
-        f"and {stat!r} is not among them. Ask for one of those in {where}, or for {stat} over whole games."
+        f"By quarter or half, a line is rebuilt from the play-by-play - points, field goals, free throws, rebounds, assists, steals, blocks, turnovers and fouls, "
+        f"and the field goal, 3-point and free throw percentages from them - and {stat!r} is not among them. Ask for one of those in {where}, or for {stat} over whole games."
     )
 
 
@@ -225,11 +229,11 @@ def _team_period_stat(con: duckdb.DuckDBPyConnection, intent: str, scope: Scope,
        F065, "trailblazers ... 3 point average 1st quarter", is answered).
     """
     stat = scope.stat
-    if intent != "team_quarter_points" or not isinstance(stat, str) or stat in ("points", "pts", "") or stat in TEAM_PERIOD_COLUMNS:
+    if intent != "team_quarter_points" or not isinstance(stat, str) or stat in ("points", "pts", "") or stat in TEAM_PERIOD_COLUMNS or stat in PERIOD_RATE_STATS:
         return None
     return (
-        f"A team's quarter or half holds its points (the linescore) and the box-score counts play-by-play rebuilds, and {stat!r} is neither. "
-        f"Ask for the team's points, threes, rebounds or turnovers in that period, or for {stat} over whole games."
+        f"A team's quarter or half holds its points (the linescore), the box-score counts play-by-play rebuilds and the shooting percentages from them, and {stat!r} is none of those. "
+        f"Ask for the team's points, threes, rebounds, turnovers or free throw percentage in that period, or for {stat} over whole games."
     )
 
 

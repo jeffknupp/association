@@ -1397,9 +1397,6 @@ those were found.
     quarter for Luka", "Jokic points by quarter") - #162.
   - **A position group as the subject** ("each center 1q pts log vs nugget") -
     the same gap position groups have everywhere.
-  - **A shooting percentage in a period** ("vj edgecombe 1st quarter 3pt
-    percentage by game", or a team's) - refused with the right cause; the
-    makes and attempts are on both lines, so it is a ratio of two sums away.
   - **A period used as a condition** (F062) - refused by name; see its own
     entry (#275).
   - **A team's record, series or ranking in one quarter** (`team_record`,
@@ -1408,8 +1405,10 @@ those were found.
     design, not a gap to fill.
 - **User sees:** for the shapes above, a refusal naming the cause - no longer
   a whole-game line where one quarter was asked for.
-- **Next step:** the shooting percentage (a `RATES`-style ratio over the
-  period's sums in `period_split`/`team_quarter_points`/`period_leaderboard`).
+- **Next step:** #162 and #275 have their own entries; the shooting
+  percentage was built 2026-09-30 (`templates.games.PERIOD_RATES`, a ratio
+  of the period's sums for a player and a team; a period RANKING by one is
+  refused by name, since a games-played minimum is not an attempts minimum).
 - **GitHub:** #96
 
 ### A coach question has nothing to read, and ESPN's coaches are not worth reading

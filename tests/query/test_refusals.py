@@ -120,6 +120,14 @@ def test_a_stat_the_period_line_does_not_rebuild_is_refused(con: duckdb.DuckDBPy
     assert "'minutes' is not among them" in refusal.answer and "rebounds, assists" in refusal.answer and "the 1st quarter" in refusal.answer
     half = unanswerable(con, "period_split", {"player": "VJ Edgecombe", "stat": "plusMinus", "half": 2}, "vj 2nd half plus minus")
     assert half is not None and "the 2nd half" in half.answer
+    # A shooting percentage is a ratio of two rebuilt columns, read by both
+    # period templates' successors (ROADMAP step 2) - so it is not refused
+    # here, for a player or a team; an advanced rate still is, and the
+    # refusal names the percentages that ARE read.
+    assert unanswerable(con, "period_split", {"player": "VJ Edgecombe", "stat": "threePointFieldGoalPct", "period": 1}, "vj edgecombe 1st quarter 3pt percentage by game") is None
+    assert unanswerable(con, "team_quarter_points", {"team": "Knicks", "stat": "freeThrowPct", "period": 4}, "knicks free throw percentage in the 4th quarter") is None
+    advanced = unanswerable(con, "period_split", {"player": "VJ Edgecombe", "stat": "ts_pct", "period": 1}, "vj edgecombe 1st quarter true shooting")
+    assert advanced is not None and "free throw percentages from them" in advanced.answer and "'ts_pct' is not among them" in advanced.answer
 
 
 def test_a_team_in_the_player_slot_asks_which_player(con: duckdb.DuckDBPyConnection) -> None:

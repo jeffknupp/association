@@ -376,3 +376,29 @@ def test_team_quarter_points_refuses_a_season_the_line_rebuilds_badly(team_con: 
     ctx = TemplateContext(con=team_con, out_dir=tmp_path)
     result = team_quarter_points(ctx, Reading.from_slots({"team": "Home Team", "half": 1, "season": SEASON, "season_type": 2, "stat": "turnovers"}))
     assert "total" not in result.data and f"cannot be answered for {SEASON} (61%)" in (result.answer or "")
+
+
+def test_team_quarter_points_answers_a_shooting_percentage_as_makes_over_attempts(team_con: duckdb.DuckDBPyConnection, tmp_path: Path) -> None:
+    """A team's free throw percentage in a half is the ratio of its rebuilt
+    makes and attempts over the games (ROADMAP step 2): 1 of 2 in g1's first
+    half (Player One's pair), none attempted in g2 - 50.0% over both, each
+    game listed as made-attempted. A "most" question is refused rather than
+    naming g1 a record over two attempts, and a season either column
+    rebuilds badly refuses the percentage with it."""
+    ctx = TemplateContext(con=team_con, out_dir=tmp_path)
+    slots: dict[str, Any] = {"team": "Home Team", "half": 1, "season": SEASON, "season_type": 2, "stat": "freeThrowPct"}
+    result = team_quarter_points(ctx, Reading.from_slots(slots))
+    assert (result.data["stat"], result.data["total"], result.data["attempted"], result.data["average"]) == ("ft_pct", 1, 2, 50.0)
+    assert [(g["freeThrowsMade"], g["freeThrowsAttempted"], g["ft_pct"]) for g in result.data["games"]] == [(1, 2, 50.0), (0, 0, None)]
+    answer = result.answer or ""
+    assert "The Home Team shot 1 of 2 (50.0%) on free throws in the 1st half across 2 2026 regular season games:" in answer and "1-2  50.0%" in answer and "0-0  -" in answer
+    most = team_quarter_points(ctx, Reading.from_slots({**slots, "rank": "most"}))
+    assert "extreme" not in most.data and "is not ranked" in (most.answer or "")
+
+
+def test_team_quarter_points_refuses_a_shooting_percentage_where_a_column_it_divides_rebuilds_badly(team_con: duckdb.DuckDBPyConnection, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setitem(TEAM_PERIOD_AGREEMENT, "freeThrowsAttempted", {SEASON: 70.0})
+    ctx = TemplateContext(con=team_con, out_dir=tmp_path)
+    result = team_quarter_points(ctx, Reading.from_slots({"team": "Home Team", "half": 1, "season": SEASON, "season_type": 2, "stat": "freeThrowPct"}))
+    assert "total" not in result.data
+    assert f"1st half free throw percentage cannot be answered for {SEASON} (70%)" in (result.answer or "") and "free throws and free throw attempts match" in (result.answer or "")
