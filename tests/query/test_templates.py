@@ -90,6 +90,7 @@ player_splits = _compiled("player_splits")
 player_matchup = _compiled("player_matchup")
 player_stat = _compiled("player_stat")
 streak = _compiled("streak")
+with_without = _compiled("with_without")
 single_game_high = _compiled("single_game_high")
 threshold_count = _compiled("threshold_count")
 
@@ -5803,6 +5804,11 @@ def test_templates_on_the_relation_do_not_narrow_it_themselves() -> None:
     readers["streak"] = [_compile_run, _compile_team_run, _present_streak, _present_team_streak, _streak_player_answer, _streak_team_answer, _streak_league_team_narrowed]
     # player_matchup's too (the `pair` shape).
     readers["player_matchup"] = [_resolve_pair, _compile_pair, _present_player_matchup, _player_matchup_from]
+    # with_without (the team relation's `presence` group) is not walked, as
+    # its template never was: its games are read by the relation module's
+    # own cell (`conditions._with_without_games`, which narrows the team
+    # relation to the windows' teams and the opponent), and this walk cannot
+    # tell the relation writing a clause from a template writing one.
     for intent, functions in readers.items():
         for function in functions:
             # The reader and the private steps it calls, transitively -

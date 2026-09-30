@@ -23,7 +23,7 @@ from typing import Any
 
 import duckdb
 import pytest
-from test_templates import player_matchup, player_splits, streak  # the compiler's, the templates retired (compose.COMPILED_INTENTS)
+from test_templates import player_matchup, player_splits, streak, with_without  # the compiler's, the templates retired (compose.COMPILED_INTENTS)
 
 from association.fetch.repairs import real_games
 from association.fetch.repairs.reconstructed_box import _FILLED_COLUMNS as FILLED_COLUMNS
@@ -35,7 +35,7 @@ from association.query.parse import with_point
 from association.query.reading import Reading, Scope
 from association.query.subject import Subject
 from association.query.templates.common import REBUILT_STATS, TemplateContext, TemplateResult, TemplateUnsupported, check_coverage, unhonored_scoping
-from association.query.templates.splits import SPLIT_KINDS, _record_when_group, with_without
+from association.query.templates.splits import SPLIT_KINDS, _record_when_group
 
 
 def _compiled(intent: str) -> Callable[[TemplateContext, Reading], TemplateResult]:

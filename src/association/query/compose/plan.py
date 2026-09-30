@@ -38,7 +38,7 @@ def plan(reading: Reading) -> Query | TeamQuery:
             # retired templates' declarations, STATED_SCOPING); its sums
             # declare nothing yet.
             _check_relation_scoping(reading.scope, "team")
-        return TeamQuery(scope=reading.scope, measure=reading.measures[0], aggregate=reading.aggregate, shape=reading.shape)
+        return TeamQuery(scope=reading.scope, measure=reading.measures[0], aggregate=reading.aggregate, shape=reading.shape, group=reading.group)
     subject = "everyone" if reading.relation == "everyone" else "player"
     # The season line's ranking (leaderboard's retired reader) honors `rate`
     # - a season total, or a unit refused by name - which no game-level read

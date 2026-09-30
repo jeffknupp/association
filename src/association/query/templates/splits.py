@@ -13,7 +13,7 @@ import duckdb
 
 from association.nba.franchises import season_name
 from association.nba.season import current_season
-from association.query.reading import ConditionSpec, Reading, Scope
+from association.query.reading import ConditionSpec, Scope
 
 from ..conditions import (
     _PLAYER_GAME_TABLES,
@@ -50,7 +50,6 @@ from .common import (
     _BOX_SCORES,
     STAT_LABELS,
     THRESHOLD_STAT_COLUMNS,
-    TemplateContext,
     TemplateResult,
     TemplateUnsupported,
     _career_end,
@@ -585,44 +584,56 @@ def _player_splits_team(con: duckdb.DuckDBPyConnection, scope: Scope, team: Enti
     return _SplitSubject(_team_span_label(span, first, last), _team_span_floor_note(span, first), base, params, games, first, last, subject, alias, line, counted, data, caveat)
 
 
-def with_without(ctx: TemplateContext, reading: Reading) -> TemplateResult:
-    """A team's record in the games a teammate played against the games he
-    missed - and, when the subject is a player, that player's averages in each.
+@dataclass
+class PresenceSplit:
+    """A team's games inside the named teammates' time on the team, each
+    marked with how many of them held their condition and the subject's
+    line where he played - the team relation's ``presence`` group, read by
+    :func:`_with_without_read` for the compiler's grouped shape on the team
+    relation (``compose.team._compile_team_presence``) and said by
+    :func:`_with_without_said`.
 
-    Both groups are shown side by side, because the comparison is the question.
-    The subject is a team ("Celtics record without Tatum"), or a player whose
-    team is implied ("jalen Duren stats without Cade Cunningham"). The
-    teammates come from ``without`` or ``with_player`` (both read from the
-    question by the router), or failing those from a second name.
+    .. versionadded:: 5.0.0
+    """
+
+    covered: _Scope
+    team: Entity | None
+    subject: Entity | None
+    mates: list[Entity]
+    asked_without: bool
+    predicates: list[tuple[str, tuple[str, int] | None]]
+    windows: list[Any]
+    against: Entity | None
+    games: list[dict[str, Any]]
+    unknown: int
+    team_names: dict[str, str]
+
+
+def _with_without_read(con: duckdb.DuckDBPyConnection, scope: Scope) -> PresenceSplit | TemplateResult:
+    """A team's games divided by a teammate's presence - the ``presence``
+    group on the team relation, read: the teammates (``without``,
+    ``with_player``, a ``conditions`` role, or the one name beside a team),
+    the subject where a player is named, the team where one is, resolved
+    against the box scores; the overlap of their stints on the team (only
+    games inside a teammate's time on the team count - StatMuse answers
+    "Nets record without KD" all-time with 439-672, decades of games before
+    he arrived every one "without" him); and every game a window's team
+    played inside it, marked with HOW MANY of the named teammates held
+    their condition (:func:`~association.query.conditions._with_without_games`),
+    narrowed to the opponent the question named, since both rows narrow
+    together (#163). A ``TemplateResult`` is an answer the reading gives up
+    with: which player was meant, a teammate with no box score, a time
+    together outside the span.
 
     **A question naming two teammates is divided by both of them.** "Celtics
     record without Tatum and Brown" is the games NEITHER of them played, and
     "record when A and B play" the games both did; the games where one played
-    and one sat belong to neither of those, and go on the other row. They have
-    to be answered together, because answering for whichever name came first
-    is the same fluent answer to a narrower question this module exists to
-    stop - and with the second name simply gone, nothing in the answer says
-    so. Only the time they were ALL on the same team is counted, for the same
-    reason one teammate's tenure is.
+    and one sat belong to neither of those, and go on the other row
+    (:func:`_with_without_played`). Only the time they were ALL on the same
+    team is counted, for the same reason one teammate's tenure is.
 
-    **Only games inside the teammate's time on that team count.** StatMuse
-    answers "Nets record without KD" all-time with 439-672: decades of Nets
-    games before he arrived, every one a game "without" him. A teammate's time
-    on a team is read from the box scores as a run of rows for that team, from
-    the first to the last - see ``conditions._stints`` for where a run ends -
-    and the answer prints those dates, so what was counted is on the page.
-    "Played" means he appeared in the game - a box-score row with minutes, or
-    one rebuilt from play-by-play, which has none; a DNP and no box-score row at
-    all are both "out", since a missed game appears both ways.
-
-    .. versionadded:: 2.1.0
-
-    .. versionchanged:: 2.2.0
-       Divides by every teammate the question names at once, rather than by
-       the first of them.
+    .. versionadded:: 5.0.0
     """
-    scope = reading.scope
-    con = ctx.con
     mate_texts, asked_without, roles = _with_without_named(scope)
     texts = list(dict.fromkeys(n.strip() for n in (scope.player, *scope.players) if n is not None and n.strip()))
     team = _optional_team(con, scope.team, season=scope.season)
@@ -638,7 +649,7 @@ def with_without(ctx: TemplateContext, reading: Reading) -> TemplateResult:
     mates, subject = resolved
 
     named = [m.name for m in mates]
-    all_of, any_of = _joined(named), _joined(named, "or")
+    all_of = _joined(named)
     windows = _with_without_windows(con, mates, subject, team, covered)
     if isinstance(windows, TemplateResult):
         return windows
@@ -655,12 +666,28 @@ def with_without(ctx: TemplateContext, reading: Reading) -> TemplateResult:
     predicates = _with_without_predicates(con, mates, roles, covered)
     games, unknown = _with_without_games(con, covered, windows, [m.id for m in mates], subject.id if subject else None, against.id if against else None, predicates)
     team_names = _names(con, "teams", "team_id", {w.team_id for w in windows})
-    spell_text = "; ".join(f"{_with_without_stint_team(w, team_names)} {w.first} to {w.last}" for w in windows)
     if not games:
+        spell_text = "; ".join(f"{_with_without_stint_team(w, team_names)} {w.first} to {w.last}" for w in windows)
         return _with_without_empty_games(subject, mates, named, all_of, covered, spell_text, unknown)
+    return PresenceSplit(covered, team, subject, mates, asked_without, predicates, windows, against, games, unknown, team_names)
 
-    groups, rows, team_order = _with_without_rows(games, team_names, asked_without, len(mates), subject, all_of, any_of, verbs=_with_without_verbs(predicates))
-    return _with_without_answer(covered, games, team_names, team_order, windows, subject, mates, named, all_of, asked_without, unknown, groups, rows, against)
+
+def _with_without_said(split: PresenceSplit) -> TemplateResult:
+    """A :class:`PresenceSplit` as ``with_without``'s retired template said
+    it: the team's record in the games the teammate(s) played against the
+    games they missed, side by side because the comparison is the question,
+    with the subject's averages in each where a player is named, and the
+    notes under the table - the tenure counted, what "played" means for one
+    teammate against two, the games with no box score on neither side.
+
+    .. versionadded:: 5.0.0
+    """
+    named = [m.name for m in split.mates]
+    all_of, any_of = _joined(named), _joined(named, "or")
+    groups, rows, team_order = _with_without_rows(split.games, split.team_names, split.asked_without, len(split.mates), split.subject, all_of, any_of, verbs=_with_without_verbs(split.predicates))
+    return _with_without_answer(
+        split.covered, split.games, split.team_names, team_order, split.windows, split.subject, split.mates, named, all_of, split.asked_without, split.unknown, groups, rows, split.against
+    )
 
 
 def _with_without_named(scope: Scope) -> tuple[list[str], bool, dict[str, tuple[str, tuple[str, int] | None]]]:

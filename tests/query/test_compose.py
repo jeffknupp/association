@@ -1621,8 +1621,8 @@ def test_a_presenter_steps_aside_for_a_narrowing_its_words_do_not_state(cx_ctx: 
     other (``compose.present.STATED_SCOPING``): an opponent on a single-game
     high is the relation's to narrow by and the compiler's sentence's to
     state, so the presenter answers nothing and every presenter declares."""
-    from association.query.compose.present import PRESENTERS, STATED_SCOPING, present
+    from association.query.compose.present import PRESENTERS, STATED_SCOPING, TEAM_ONLY_PRESENTERS, present
 
-    assert set(STATED_SCOPING) == set(PRESENTERS)
+    assert set(STATED_SCOPING) == set(PRESENTERS) | TEAM_ONLY_PRESENTERS
     narrowed = to_query("single_game_high", {"player": "Brandin Podziemski", "stat": "points", "opponent": "Boston Celtics"})
     assert present(cx_ctx.con, "single_game_high", narrowed) is None

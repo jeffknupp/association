@@ -454,7 +454,8 @@ HONORED_SCOPING: dict[str, frozenset[str]] = {
     # `opponent` narrows BOTH rows of the split to one opponent's games, and
     # the title says so - "Embiid career record vs boston" is his record in the
     # games his team played Boston, not overall (#163).
-    "with_without": frozenset({"span", "without", "opponent", "conditions"}),
+    # with_without is the compiler's too (step (g), the team relation's
+    # `presence` group): compose.adapt.WITH_WITHOUT_STATED.
     # `opponent` and `order` are excluded, each with its reason
     # (RELATION_SCOPING_EXCLUDED); a teammate's absence, a venue and a date
     # narrow the first player's games as they do on every relation template.

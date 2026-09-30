@@ -38,7 +38,6 @@ from .common import coverage_caveat as coverage_caveat
 from .games import head_to_head, period_leaderboard, team_quarter_points
 from .netpoints import fingerprint, player_netpoints
 from .shots import shot_chart, shot_distance
-from .splits import with_without
 from .teams import coach, team_leaderboard, team_outlook, team_record, team_stat
 
 TEMPLATES: dict[str, Callable[[TemplateContext, Reading], TemplateResult]] = {
@@ -50,7 +49,6 @@ TEMPLATES: dict[str, Callable[[TemplateContext, Reading], TemplateResult]] = {
     "shot_distance": shot_distance,
     "player_netpoints": player_netpoints,
     "fingerprint": fingerprint,
-    "with_without": with_without,
     "team_stat": team_stat,
     "team_leaderboard": team_leaderboard,
     "team_outlook": team_outlook,

@@ -340,13 +340,15 @@ def test_a_question_nothing_reads_is_refused_naming_why(monkeypatch: pytest.Monk
     assert answer.intent is None and answer.data is None
     assert agent.unanswered == "intent 'other' has no template yet"
 
+    # A template's own refusal (head_to_head still has one; with_without,
+    # which this used, is the compiler's since step (g)).
     def refusing(ctx: Any, reading: Reading) -> TemplateResult:
-        raise TemplateUnsupported("with_without needs exactly one teammate, got []")
+        raise TemplateUnsupported("head_to_head needs two teams, got []")
 
-    monkeypatch.setattr("association.query.agent.TEMPLATES", {"with_without": refusing})
-    answer = agent.ask("sixers record without him", route=Route.from_slots(intent="with_without", slots={"team": "Philadelphia 76ers"}))
-    assert answer.answered_by == "refused" and "with_without: with_without needs exactly one teammate" in answer.text
-    assert agent.unanswered == "with_without: with_without needs exactly one teammate, got []"
+    monkeypatch.setattr("association.query.agent.TEMPLATES", {"head_to_head": refusing})
+    answer = agent.ask("q", route=Route.from_slots(intent="head_to_head", slots={"team": "Philadelphia 76ers"}))
+    assert answer.answered_by == "refused" and "head_to_head: head_to_head needs two teams" in answer.text
+    assert agent.unanswered == "head_to_head: head_to_head needs two teams, got []"
 
     # An intent the compiler alone answers (compose.COMPILED_INTENTS) is
     # refused with the compiler's reason: a count with no line to count.
@@ -359,8 +361,8 @@ def test_a_question_nothing_reads_is_refused_naming_why(monkeypatch: pytest.Monk
     assert answer.answered_by == "refused" and "no usable reply" in answer.text
 
     # A question a template answers is unaffected.
-    monkeypatch.setattr("association.query.agent.TEMPLATES", {"with_without": lambda ctx, slots: TemplateResult(data={}, answer="answered")})
-    answer = agent.ask("q", route=Route.from_slots(intent="with_without", slots={}))
+    monkeypatch.setattr("association.query.agent.TEMPLATES", {"head_to_head": lambda ctx, slots: TemplateResult(data={}, answer="answered")})
+    answer = agent.ask("q", route=Route.from_slots(intent="head_to_head", slots={}))
     assert (answer.text, answer.answered_by, agent.unanswered) == ("answered", "fast", None)
 
 

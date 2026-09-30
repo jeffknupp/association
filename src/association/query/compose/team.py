@@ -59,7 +59,7 @@ import duckdb
 
 from association.nba.coverage import unavailable
 from association.nba.season import current_season
-from association.query.conditions import _longest_runs
+from association.query.conditions import _PLAYER_GAME_TABLES, _longest_runs
 from association.query.entities import _TEAM_NICKNAMES, Entity
 from association.query.reading import Scope
 from association.query.team_games import TeamNarrowed
@@ -67,7 +67,7 @@ from association.query.team_games import aggregate_sql as team_aggregate_sql
 from association.query.team_games import named as team_named
 from association.query.templates.common import TemplateResult, TemplateUnsupported, _clamp_limit, _resolved_team, _Span, _span_of, scoped_team, whole_span
 from association.query.templates.common import team_games as narrow_team_games
-from association.query.templates.splits import _DEFAULT_STREAK_LIMIT, _TEAM_STREAK_SELECT, _streak_league_team_narrowed, _team_season_range
+from association.query.templates.splits import _DEFAULT_STREAK_LIMIT, _TEAM_STREAK_SELECT, PresenceSplit, _streak_league_team_narrowed, _team_season_range, _with_without_read
 
 from .core import Refused, Unsupported
 
@@ -183,6 +183,11 @@ class TeamQuery:
     #: :func:`_compile_team_run`; the league's with no team named), the
     #: last three said by :func:`~association.query.compose.present.present_team`.
     shape: str = "scalar"
+    #: A ``"grouped"`` shape's group: ``"none"`` for the team's own splits
+    #: (``player_splits``' team half), or ``"presence"`` - the team's games
+    #: divided by whether named teammates played (``with_without``'s retired
+    #: template, read by :func:`_compile_team_presence`).
+    group: str = "none"
 
 
 @dataclass
@@ -224,6 +229,10 @@ class TeamResult:
     #: span's label; ``None`` otherwise.
     first_season: int | None = None
     last_season: int | None = None
+    #: The ``presence`` group's read (:func:`_compile_team_presence`): the
+    #: games inside the teammates' time on the team, each marked with who
+    #: held the condition; ``None`` for every other shape.
+    presence: PresenceSplit | None = None
 
 
 def _team_narrowed(scope: Scope) -> bool:
@@ -467,6 +476,40 @@ def _compile_team_run(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> TeamResul
     )
 
 
+def _compile_team_presence(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> TeamResult:
+    """The ``presence`` group: a team's games inside the named teammates'
+    time on the team, each marked with how many of them held their
+    condition (played, started, came off the bench, reached a line) and
+    the subject's line where a player is named - ``with_without``'s retired
+    template (ROADMAP plan item 6, step (g)), read through
+    :func:`~association.query.templates.splits._with_without_read` over
+    the team relation narrowed to the windows' teams and the opponent
+    (:func:`~association.query.conditions._with_without_games`). A reading
+    that gives the question up - which player was meant, a teammate with no
+    box score, a time together outside the span - is the answer, raised as
+    :class:`~association.query.compose.core.Refused`.
+
+    .. versionadded:: 5.0.0
+    """
+    scope = q.scope
+    split = _with_without_read(con, scope)
+    if isinstance(split, TemplateResult):
+        raise Refused(split)
+    span = _span_of(scope.span, scope.season, scope.season_type or 2, "games")
+    return TeamResult(
+        team=split.team,
+        span=span,
+        measure=q.measure,
+        aggregate=q.aggregate,
+        value=None,
+        games=len(split.games),
+        wins=sum(1 for g in split.games if g["won"]),
+        losses=sum(1 for g in split.games if not g["won"]),
+        narrowed_text=f" vs the {split.against.name}" if split.against is not None else "",
+        presence=split,
+    )
+
+
 def _team_coverage_tables(q: TeamQuery) -> tuple[str, ...]:
     """Which table a :class:`TeamQuery` would be built from - the season line
     or the game-level relation - the same split :func:`_team_narrowed`
@@ -480,6 +523,10 @@ def _team_coverage_tables(q: TeamQuery) -> tuple[str, ...]:
         # A run of results reads the games' own winner column, and nothing
         # from the season line.
         return ("games",)
+    if q.group == "presence":
+        # A teammate's presence is read off the box scores (his row, or
+        # none), so the split reaches only as far as they do.
+        return _PLAYER_GAME_TABLES
     return ("games",) if _team_narrowed(q.scope) else ("team_season_stats",)
 
 
@@ -538,12 +585,12 @@ def run_team(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> TeamResult:
        branch (:func:`~association.query.templates.splits._record_when_team_answer`),
        which answers a threshold record for real.
     """
-    if q.shape == "run":
+    if q.shape == "run" or q.group == "presence":
         refusal = team_coverage_refusal(q)
         if refusal is not None:
             raise Refused(refusal)
         try:
-            return _compile_team_run(con, q)
+            return _compile_team_run(con, q) if q.shape == "run" else _compile_team_presence(con, q)
         except TemplateUnsupported as exc:
             raise Unsupported(f"relation: {exc}") from exc
     if q.scope.threshold is not None:

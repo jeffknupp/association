@@ -109,10 +109,11 @@ from association.query.templates.splits import (
     _streak_words,
     _team_span_label,
     _team_where_in,
+    _with_without_said,
     team_splits,
 )
 
-from .adapt import DEFAULT_GAME_LOG_LIMIT, _to_reading_scope
+from .adapt import DEFAULT_GAME_LOG_LIMIT, WITH_WITHOUT_STATED, _to_reading_scope
 from .core import LINE, Query, Refused, Unsupported, compile_query, run, run_scope
 from .move import _stat_measure
 from .team import TeamQuery, _team_games_narrowed, run_team
@@ -587,6 +588,16 @@ template's words - see the module docstring.
 .. versionadded:: 5.0.0
 """
 
+TEAM_ONLY_PRESENTERS: frozenset[str] = frozenset({"with_without"})
+"""The intents whose only presenter is the team relation's
+(:func:`present_team`): ``with_without``'s split is the team's record, so
+its point is a :class:`~association.query.compose.team.TeamQuery` whoever
+the question names, and :data:`PRESENTERS` (the player relation's) has no
+entry for it. :data:`STATED_SCOPING` declares for both.
+
+.. versionadded:: 5.0.0
+"""
+
 STATED_SCOPING: dict[str, frozenset[str]] = {
     # game_log and player_stat retired stating the relation's whole set, and
     # `season_type_unstated`: read over both season types merged by date for
@@ -622,6 +633,9 @@ STATED_SCOPING: dict[str, frozenset[str]] = {
     # an ordinal season and a quarter (RELATION_SCOPING_EXCLUDED), which its
     # point refuses outright (compose.adapt._adapt_player_matchup).
     "player_matchup": _relation_scoping("player_matchup"),
+    # with_without's words: a career, the teammates, one opponent and a
+    # companion's role, the template's own declaration when it retired.
+    "with_without": WITH_WITHOUT_STATED,
     "single_game_high": frozenset({"span"}),
     # A count is already a line on a column; `below` is the same line the
     # other way ("games with under 14 fta"), and a phrase carrying the count's
@@ -733,6 +747,24 @@ def _present_team_streak(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> Templa
     return _streak_league_answer(found.runs, what, who, rule, _team_span_label(found.span, found.first_season, found.last_season), _team_where_in(found.span), False, None, None, "", want_win)
 
 
+def _present_with_without(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> TemplateResult | None:
+    """A team's record with and without named teammates, said in the
+    retired template's words (``templates.splits._with_without_said``) over
+    the team compiler's ``presence`` group
+    (``compose.team._compile_team_presence``, through
+    :func:`~association.query.compose.team.run_team`, which checks the
+    coverage floor first).
+
+    .. versionadded:: 5.0.0
+    """
+    if unhonored_scoping("with_without", q.scope, STATED_SCOPING["with_without"]):
+        return None
+    found = run_team(con, q)
+    if found.presence is None:
+        return None
+    return _with_without_said(found.presence)
+
+
 def present_team(con: duckdb.DuckDBPyConnection, intent: str, q: TeamQuery) -> TemplateResult | None:
     """A team subject's point said the way its intent's template says it -
     two: a team's game log (``game_log``'s retired team half,
@@ -754,6 +786,11 @@ def present_team(con: duckdb.DuckDBPyConnection, intent: str, q: TeamQuery) -> T
     if intent == "streak" and q.shape == "run":
         try:
             return _present_team_streak(con, q)
+        except TemplateUnsupported as exc:
+            raise Unsupported(f"relation: {exc}") from exc
+    if intent == "with_without" and q.shape == "grouped" and q.group == "presence":
+        try:
+            return _present_with_without(con, q)
         except TemplateUnsupported as exc:
             raise Unsupported(f"relation: {exc}") from exc
     if intent != "record_when" or q.scope.threshold is None:

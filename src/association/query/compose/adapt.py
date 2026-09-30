@@ -13,7 +13,7 @@ from typing import Any
 from association.query.measures import MEASURE_WORDS
 from association.query.reading import Group, Reading, Scope
 from association.query.shotchart import SHOT_AVAILABILITY
-from association.query.templates.common import _BOX_SCORES, RELATION_SCOPING_EXCLUDED, TemplateUnsupported, _clamp_limit, period_narrowing
+from association.query.templates.common import _BOX_SCORES, RELATION_SCOPING_EXCLUDED, TemplateUnsupported, _clamp_limit, period_narrowing, unhonored_scoping
 
 # One concept, one definition (scripts/check_duplicate_names.py): the default
 # row counts and the default stat line are the same constants the real
@@ -21,7 +21,7 @@ from association.query.templates.common import _BOX_SCORES, RELATION_SCOPING_EXC
 # reused rather than redeclared under the same name.
 from association.query.templates.games import DEFAULT_GAME_LOG_LIMIT, _log_extras, _period_split_measure
 from association.query.templates.players import DEFAULT_SINGLE_GAME_LIMIT, STAT_LINE, _threshold_count_ask
-from association.query.templates.splits import _DEFAULT_STREAK_LIMIT, _condition_needs_player_refusal, _streak_league_needs_named_subject, _streak_words
+from association.query.templates.splits import _DEFAULT_STREAK_LIMIT, _condition_needs_player_refusal, _streak_league_needs_named_subject, _streak_words, _with_without_named
 
 from .core import COLUMNS, DEFAULT_NAMED_RUNS, LINE, Query, Unsupported, run_scope
 from .plan import plan
@@ -352,6 +352,42 @@ def _adapt_player_matchup(scope: Scope) -> Reading:
     )
 
 
+WITH_WITHOUT_STATED: frozenset[str] = frozenset({"span", "without", "opponent", "conditions"})
+"""The scoping ``with_without``'s words state - a career, the teammates
+divided by, one opponent (both rows narrow together, #163) and a
+companion's role - the retired template's own declaration; any other
+narrowing is refused by name.
+
+.. versionadded:: 5.0.0
+"""
+
+
+def _adapt_with_without(scope: Scope) -> Reading:
+    """``with_without``'s default point: a team's record in the games named
+    teammates played against the games they missed - the team relation's
+    ``presence`` group (``compose.team._compile_team_presence``) - with the
+    subject's averages in each where a player is named. The retired
+    template's own early refusals are the point's (ROADMAP plan item 6, step
+    (g)): a narrowing its words do not state (:data:`WITH_WITHOUT_STATED`),
+    and no teammate to divide by - the teammates come from ``without`` or
+    ``with_player``, a ``conditions`` role, or failing those the one name
+    beside a team or the second of two; more than that is "record when A
+    and B and C play", which nobody has defined.
+
+    .. versionadded:: 5.0.0
+    """
+    ignored = unhonored_scoping("with_without", scope, WITH_WITHOUT_STATED)
+    if ignored:
+        raise Unsupported(f"with_without cannot honor {ignored} - it would answer for a different span than was asked")
+    mate_texts, _asked_without, _roles = _with_without_named(scope)
+    if not mate_texts:
+        texts = list(dict.fromkeys(n.strip() for n in (scope.player, *scope.players) if n is not None and n.strip()))
+        team_named = bool(scope.team and scope.team.strip())
+        if not ((team_named and len(texts) == 1) or (not team_named and len(texts) == 2)):
+            raise Unsupported(f"with_without needs exactly one teammate, got {texts!r}")
+    return Reading(scope=scope, shape="grouped", measures=["record"], aggregate="record", group="presence", predicates=[], relation="team")
+
+
 def _adapt_record_when(scope: Scope) -> Reading:
     """``record_when``'s default point: the record in games clearing one line."""
     col = _stat_column(scope.stat)
@@ -376,6 +412,7 @@ _ADAPTERS: dict[str, Callable[[Scope], Reading]] = {
     "period_split": _adapt_period_split,
     "streak": _adapt_streak,
     "player_matchup": _adapt_player_matchup,
+    "with_without": _adapt_with_without,
 }
 
 

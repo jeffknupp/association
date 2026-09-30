@@ -43,12 +43,12 @@ the parser's, the template's or the compiler's own reason through
 `agent.refusal_text`). There is no fall-through: the SQL-writing agent
 answered 1 question in 23 when measured and was removed on 2026-09-29
 (Jeff's call); what the yardstick still calls "fell through" is a refusal
-for want of a reading. Twelve intents are the compiler's alone
+for want of a reading. Thirteen intents are the compiler's alone
 (`compose.COMPILED_INTENTS`); `game_log`, `player_stat`, `player_splits`,
-`leaderboard`, `period_split`, `player_compare`, `streak` and
-`player_matchup` joined them in step (g) (parser9-18, 2026-09-28/29: 0
-answers moved by any retirement; `streak` and `player_matchup` on
-2026-09-30, not yet run live).
+`leaderboard`, `period_split`, `player_compare`, `streak`, `player_matchup`
+and `with_without` joined them in step (g) (parser9-18, 2026-09-28/29: 0
+answers moved by any retirement; the last three on 2026-09-30, not yet run
+live).
 
 The 13 families still failing, by cause:
 
@@ -127,14 +127,18 @@ The 13 families still failing, by cause:
    presenter saying the meetings in its words
    (`templates.games._player_matchup_from`). 5 recorded questions (3
    identical, 2 refused both ways), 16 unit-test calls (13 identical, 3
-   refused both ways). What is left on the player relation: `with_without`
-   (10 recorded questions) - a team's record GROUPED BY a teammate's
-   presence over his tenure windows (no such group on either relation; the
-   team relation carries no `without` cell). Retiring it is a new group on
-   the team relation first, measured the same way - never a presenter that
-   calls the template's body over the scope, which retires nothing. A
-   template survives only for a shape of its own: a chart, a fingerprint.
-   How to retire one is part 4's method: every call its
+   refused both ways). `with_without` last (2026-09-30): the team
+   relation's `presence` group - a team's games inside named teammates'
+   time on the team, each marked with who held the condition
+   (`compose.team._compile_team_presence` over
+   `templates.splits._with_without_read` and the relation cell
+   `conditions._with_without_games`), the point carrying the template's
+   refusals (`compose.adapt._adapt_with_without`) and `_with_without_said`
+   saying it in the template's words. 10 recorded questions (8 identical, 2
+   refused both ways with the same sentence), 19 unit-test calls. **Step
+   (g) is done:** every template on the player relation but the charts is
+   retired. A template survives only for a shape of its own: a chart, a
+   fingerprint. How to retire one was part 4's method: every call its
    unit tests make and every recorded question it answers, answered both
    ways and compared (`~/association-research/intent-shrink/g/`: a pytest
    plugin records the unit-test calls; `parity_corpus.py` the recorded
@@ -242,7 +246,10 @@ text as written is the last section of `ROADMAP-HISTORY.md`.
      stages return (`86adde7`), and the subject reading takes and returns it
      (`33a1d3f`). Live 162/175, no answer moved. `check_scope` remains the
      gate for the templates that remain, and goes with them in (g).
-   - (g) the templates the compiler can reproduce go - next step 1.
+   - (g) the templates the compiler can reproduce go - done 2026-09-30
+     (nine templates: `game_log`, `player_stat`, `player_splits`,
+     `leaderboard`, `period_split`, `player_compare`, then `streak`,
+     `player_matchup` and `with_without` through skeletons of their own).
 
 ## How it is measured
 

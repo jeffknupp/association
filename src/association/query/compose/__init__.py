@@ -105,6 +105,7 @@ COMPILED_INTENTS: frozenset[str] = frozenset(
         "player_compare",
         "streak",
         "player_matchup",
+        "with_without",
     }
 )
 """The intents the compiler alone answers - the four whose templates it
@@ -112,10 +113,11 @@ reproduced exactly (``~/association-research/intent-shrink/parity.py``:
 18/18, 10/10, 10/10, 20/20 on the recorded corpus) and then replaced
 (ROADMAP plan item 6, step (d), part 4), and ``game_log``, ``player_stat``,
 ``player_splits``, ``leaderboard``, ``period_split``, ``player_compare``,
-``streak`` and ``player_matchup`` (step (g): ``intent-shrink/g/``, every
-unit-test call and recorded question answered both ways; ``streak`` is the
-``run`` shape and ``player_matchup`` the ``pair`` shape, skeletons the
-compiler gained for them). Each is said in its retired template's own words,
+``streak``, ``player_matchup`` and ``with_without`` (step (g):
+``intent-shrink/g/``, every unit-test call and recorded question answered
+both ways; ``streak`` is the ``run`` shape, ``player_matchup`` the ``pair``
+shape and ``with_without`` the team relation's ``presence`` group, skeletons
+the compiler gained for them). Each is said in its retired template's own words,
 through that template's phrasing helpers
 (:mod:`~association.query.compose.present`); where the compiler has no
 reading of a point, the question is refused with the reason
