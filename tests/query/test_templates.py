@@ -5590,6 +5590,43 @@ def test_points_by_quarter_is_every_quarter_side_by_side(period_rank_ctx: Templa
     assert "Overtime is no quarter" in (result.answer or "")
 
 
+def test_a_period_ranking_narrowed_to_an_opponent_or_venue_keeps_a_share_of_the_narrowed_games(period_rank_ctx: TemplateContext) -> None:
+    """#185, Jeff's call (2026-09-30): a pool narrowed to an opponent or a
+    venue cannot keep the season's minimum (nobody plays twenty games
+    against one team), so the qualifier is half of the most anyone played
+    in the pool, capped at the season's own minimum, and the answer says
+    both. Two road games against Boston are added: Ace and Role play both,
+    Ace scores a first-quarter three in one (and Role a second-quarter one
+    in the other, so the shot table covers both). Against the Celtics the most
+    anyone played is 2, so the minimum is 1 and both rank (Ace 1.5, Role
+    0.0); against the Lakers it is half of 6, capped at the postseason's 5
+    - 3 - which still keeps Cameo (2 games) out; on the road is the same
+    two Boston games."""
+    c = period_rank_ctx.con
+    c.execute("INSERT INTO teams VALUES ('2','BOS','Boston Celtics')")
+    for n, event in enumerate(("p7", "p8"), start=7):
+        c.execute("INSERT INTO games VALUES (?,?,3,?,'2','9',100,110,'9')", [event, SEASON, f"{SEASON}-05-0{n}T00:30Z"])
+        c.execute("INSERT INTO player_box_stats VALUES (?,?,3,'9','1',FALSE,30)", [event, SEASON])
+        c.execute("INSERT INTO player_box_stats VALUES (?,?,3,'9','2',FALSE,24)", [event, SEASON])
+    c.execute("INSERT INTO shot_chart VALUES ('1',?,3,'p7','9',1,'5:00',TRUE,'Jump Shot',25,26,0,'makes 26-foot jump shot')", [SEASON])
+    # A second-quarter make in p8, so the shot table covers it (a game with no located shots is no game in any period).
+    c.execute("INSERT INTO shot_chart VALUES ('2',?,3,'p8','9',2,'5:00',TRUE,'Jump Shot',25,26,0,'makes 26-foot jump shot')", [SEASON])
+    boston = period_leaderboard(period_rank_ctx, Reading.from_slots({"period": 1, "season": SEASON, "season_type": 3, "opponent": "Celtics"}))
+    assert [(row["player"], row["games"], row["average"]) for row in boston.data["leaders"]] == [("Ace Scorer", 2, 1.5), ("Role Player", 2, 0.0)]
+    assert boston.data["minimum_games"] == 1 and boston.data["narrowing"] == "vs the Boston Celtics"
+    assert f"in the {SEASON} postseason vs the Boston Celtics (minimum 1 games, half of the 2 anyone played)" in (boston.answer or "")
+    lakers = period_leaderboard(period_rank_ctx, Reading.from_slots({"period": 1, "season": SEASON, "season_type": 3, "opponent": "Lakers"}))
+    assert lakers.data["minimum_games"] == 3 and "Cameo Sub" not in str(lakers.data["leaders"]) and "(minimum 3 games, half of the 6 anyone played)" in (lakers.answer or "")
+    road = period_leaderboard(period_rank_ctx, Reading.from_slots({"period": 1, "season": SEASON, "season_type": 3, "venue": "away"}))
+    assert road.data["narrowing"] == "on the road" and [row["games"] for row in road.data["leaders"]] == [2, 2]
+    # The whole-season ranking keeps its own minimum, said without a share.
+    whole = period_leaderboard(period_rank_ctx, Reading.from_slots({"period": 1, "season": SEASON, "season_type": 3}))
+    assert whole.data["minimum_games"] == 5 and "(minimum 5 games)" in (whole.answer or "") and whole.data["narrowing"] == ""
+    # The by-quarter table reads the same share off its pool.
+    table = period_leaderboard(period_rank_ctx, Reading.from_slots({"season": SEASON, "season_type": 3, "opponent": "Celtics"}))
+    assert table.data["minimum_games"] == 1 and "vs the Boston Celtics (minimum 1 games, half of the 2 anyone played)" in (table.answer or "")
+
+
 def test_a_period_ranking_nobody_qualifies_for_says_so(period_rank_ctx: TemplateContext) -> None:
     """A regular season needs 20 games and this fixture has six postseason
     ones, so the honest answer names the qualifier rather than reading as

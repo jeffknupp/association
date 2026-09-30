@@ -1877,10 +1877,12 @@ def period_leaderboard(ctx: TemplateContext, reading: Reading) -> TemplateResult
     (points) and :data:`~association.query.player_games.PERIOD_AGREEMENT`
     (every other column) are measured per season, so a ranking is of one
     season, refused where the stat's season agrees under
-    :data:`PERIOD_REFUSE_BELOW` and caveated where it is under 99%. What is
-    still not honored - an opponent, a venue, a range of seasons - is filed
-    in ``ISSUES.md`` ("period_leaderboard stays off the player-games
-    relation"); :data:`common.HONORED_SCOPING` refuses those cells first.
+    :data:`PERIOD_REFUSE_BELOW` and caveated where it is under 99%. An
+    opponent and a venue narrow the pool (the relation applies them), with
+    a qualifier that is a share of the games the narrowing leaves
+    (:func:`_period_leaderboard_minimum`, #185); a range of seasons and a
+    single date are refused first (:data:`common.HONORED_SCOPING`): the
+    accuracy is measured per season, and one game ranks nothing per game.
 
     .. versionadded:: 4.4.0
 
@@ -1925,9 +1927,47 @@ def period_leaderboard(ctx: TemplateContext, reading: Reading) -> TemplateResult
         message = f"Per-quarter {_period_split_noun(measure, 2)} cannot be ranked here: they are rebuilt from play-by-play, and this warehouse holds none."
         return TemplateResult(data={"message": message}, answer=message)
     limit = _clamp_limit(scope.limit)
+    minimum, qualifier = _period_leaderboard_minimum(con, narrowed, scope, minimum)
     rows = _period_leaderboard_rows(con, narrowed, measure, minimum=minimum, limit=limit)
     _periods, period_label = asked
-    return _period_leaderboard_answer(rows, period_label, _period(season, season_type), narrowed.team, minimum, season, measure)
+    return _period_leaderboard_answer(rows, period_label, _period(season, season_type), narrowed.team, minimum, season, measure, where=_period_leaderboard_where(narrowed), qualifier=qualifier)
+
+
+def _period_leaderboard_where(narrowed: _Narrowed) -> str:
+    """The opponent and the venue a period ranking's pool was narrowed to,
+    as the headline says them after the season - ``" vs the Boston Celtics
+    at home"`` - and nothing else: the team a ranking is OF is said as "led
+    the Knicks", its own way."""
+    said = f" vs the {narrowed.opponent.name}" if narrowed.opponent is not None else ""
+    if narrowed.venue:
+        said += " at home" if narrowed.venue == "home" else " on the road"
+    return said
+
+
+def _period_leaderboard_minimum(con: duckdb.DuckDBPyConnection, narrowed: _Narrowed, scope: Scope, default: int) -> tuple[int, str]:
+    """The games a player needs to rank, and how the answer says it. A whole
+    season's ranking keeps the per-game minimum every ranking here applies
+    (``default``: :data:`~association.query.metrics.PER_GAME_MIN_GAMES`,
+    five in the postseason). A pool narrowed to an opponent or a venue
+    (#185) keeps a SHARE of the games the narrowing leaves instead - half
+    of the most anyone played in it, never more than the season's own
+    minimum and never under one - since against one opponent nobody plays
+    twenty, and the answer names both the minimum and what it is half of.
+    Jeff's call, 2026-09-30: a share of the narrowed games.
+
+    .. versionadded:: 5.0.0
+    """
+    if not (scope.opponent or scope.venue):
+        return default, ""
+    sql, params = grouped_sql(narrowed, "pgl.athlete_id", ["COUNT(*) AS games"], order="games DESC", limit=1, rebuilt=box_source(con).rebuilt)
+    row = con.execute(sql, params).fetchone()
+    most = int(row[0]) if row else 0
+    share = max(1, -(-most // 2))
+    if share >= default:
+        # A venue leaves half a season, where the season's own minimum
+        # still applies and is said as itself.
+        return default, ""
+    return share, f", half of the {most} anyone played"
 
 
 def _period_leaderboard_rows(con: duckdb.DuckDBPyConnection, narrowed: _Narrowed, measure: str, *, minimum: int, limit: int) -> list[tuple[Any, ...]]:
@@ -1946,8 +1986,16 @@ def _period_leaderboard_rows(con: duckdb.DuckDBPyConnection, narrowed: _Narrowed
     return con.execute(sql, params).fetchall()
 
 
-def _period_leaderboard_answer(rows: list[tuple[Any, ...]], period_label: str, scope: str, team: Entity | None, minimum: int, season: int, measure: str = "points") -> TemplateResult:
-    """The ranking as a sentence and a list, naming the qualifier it applied."""
+def _period_leaderboard_answer(
+    rows: list[tuple[Any, ...]], period_label: str, scope: str, team: Entity | None, minimum: int, season: int, measure: str = "points", *, where: str = "", qualifier: str = ""
+) -> TemplateResult:
+    """The ranking as a sentence and a list, naming the qualifier it applied
+    - ``where`` the opponent and venue the pool was narrowed to, ``qualifier``
+    what a narrowed pool's minimum is a share of (:func:`_period_leaderboard_minimum`).
+
+    .. versionchanged:: 5.0.0
+       Takes ``where`` and ``qualifier`` (#185).
+    """
     # "led the Knicks in first-quarter points" and "led the league in ..." are
     # both idiomatic; "No player in the league played ..." is not, so the
     # refusal names the group its own way.
@@ -1955,12 +2003,12 @@ def _period_leaderboard_answer(rows: list[tuple[Any, ...]], period_label: str, s
     among = f" for the {team.name}" if team is not None else ""
     noun = _period_split_noun(measure, 2)
     if not rows:
-        message = f"No player{among} played the {minimum} games needed to rank {period_label} {'scoring' if measure == 'points' else noun} in the {scope}."
-        return TemplateResult(data={"period": period_label, "season": season, "team": team.name if team else None, "leaders": [], "message": message}, answer=message)
+        message = f"No player{among} played the {minimum} games needed to rank {period_label} {'scoring' if measure == 'points' else noun} in the {scope}{where}."
+        return TemplateResult(data={"period": period_label, "season": season, "team": team.name if team else None, "narrowing": where.strip(), "leaders": [], "message": message}, answer=message)
     leaders = [{"player": name, "games": int(games), measure: int(total), "average": round(float(average), 1)} for name, games, total, average in rows]
     top = leaders[0]
     rest = ", ".join(f"{row['player']} ({row['average']})" for row in leaders[1:])
-    headline = f"{top['player']} led {led} in {period_label} {noun} per game in the {scope} (minimum {minimum} games), at {top['average']} over {top['games']} games."
+    headline = f"{top['player']} led {led} in {period_label} {noun} per game in the {scope}{where} (minimum {minimum} games{qualifier}), at {top['average']} over {top['games']} games."
     answer = headline
     if rest:
         answer += f" Next: {rest}."
@@ -1971,6 +2019,7 @@ def _period_leaderboard_answer(rows: list[tuple[Any, ...]], period_label: str, s
             "stat": measure,
             "season": season,
             "team": team.name if team else None,
+            "narrowing": where.strip(),
             "minimum_games": minimum,
             "leaders": leaders,
             "headline": headline,
@@ -1994,11 +2043,19 @@ def _period_leaderboard_by_quarter(con: duckdb.DuckDBPyConnection, span: _Span, 
     names: dict[str, str] = {}
     team: Entity | None = None
     box = box_source(con)
+    qualifier = ""
+    where = ""
     for quarter in REGULATION_QUARTERS:
         narrowed = league_games(con, span, replace(scope, period=quarter, half=None), position=None)
         if isinstance(narrowed, TemplateResult):
             return narrowed
         team = narrowed.team
+        if quarter == REGULATION_QUARTERS[0]:
+            # The pool is the same games in every quarter, so the share is
+            # read once (#185: half of the most anyone played vs an opponent
+            # or at a venue).
+            minimum, qualifier = _period_leaderboard_minimum(con, narrowed, scope, minimum)
+            where = _period_leaderboard_where(narrowed)
         sql, params = grouped_sql(
             narrowed, "pgl.athlete_id, pgl.player_name", ["pgl.athlete_id", "pgl.player_name", "COUNT(*)", "AVG(pgl.points)"], having=f"COUNT(*) >= {int(minimum)}", rebuilt=box.rebuilt
         )
@@ -2011,13 +2068,13 @@ def _period_leaderboard_by_quarter(con: duckdb.DuckDBPyConnection, span: _Span, 
     season_label = _period(span.season or current_season(), span.season_type)
     among = f" for the {team.name}" if team is not None else ""
     if not ranked:
-        message = f"No player{among} played the {minimum} games needed to rank points by quarter in the {season_label}."
-        return TemplateResult(data={"season": span.season, "team": team.name if team else None, "leaders": [], "message": message}, answer=message)
+        message = f"No player{among} played the {minimum} games needed to rank points by quarter in the {season_label}{where}."
+        return TemplateResult(data={"season": span.season, "team": team.name if team else None, "narrowing": where.strip(), "leaders": [], "message": message}, answer=message)
     leaders = [
         {"player": names[a], "games": whole[a][1][0], **{f"q{q}": round(whole[a][q][1], 2) for q in REGULATION_QUARTERS}, "total": round(sum(avg for _, avg in whole[a].values()), 2)}
         for a in ranked[:limit]
     ]
-    headline = f"Points per game by quarter{among} in the {season_label} (minimum {minimum} games), ranked by the four quarters together:"
+    headline = f"Points per game by quarter{among} in the {season_label}{where} (minimum {minimum} games{qualifier}), ranked by the four quarters together:"
     table = [f"  {'player':<26} {'G':>3} {'Q1':>6} {'Q2':>6} {'Q3':>6} {'Q4':>6} {'total':>6}"]
     table += [f"  {row['player']:<26} {row['games']:>3} {row['q1']:>6.2f} {row['q2']:>6.2f} {row['q3']:>6.2f} {row['q4']:>6.2f} {row['total']:>6.2f}" for row in leaders]
     notes = [f"Overtime is no quarter and is not counted. {len(ranked)} players qualified; the top {len(leaders)} are shown."]
@@ -2027,6 +2084,7 @@ def _period_leaderboard_by_quarter(con: duckdb.DuckDBPyConnection, span: _Span, 
         data={
             "season": span.season,
             "team": team.name if team else None,
+            "narrowing": where.strip(),
             "minimum_games": minimum,
             "leaders": leaders,
             "qualified": len(ranked),

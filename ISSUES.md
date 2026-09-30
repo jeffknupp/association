@@ -2351,26 +2351,6 @@ those were found.
   warehouse's unfiltered leader is not Porzingis).
 - **GitHub:** #205
 
-### `period_leaderboard` ranks one season and refuses an opponent, a venue, a range or a date
-- **Found:** 2026-09-22 (step 3 C5, assessed and not ported); **re-scoped
-  2026-09-29**: the template now READS the relation (`league_games` with the
-  period applied by the relation, plan item 4), so the first blocker the old
-  entry named - no no-player narrowing step - is gone.
-- **Evidence:** `HONORED_SCOPING["period_leaderboard"]` is `{period, half}`;
-  `league_games` would apply `opponent`/`venue` today, but the per-game
-  qualifier (`PER_GAME_MIN_GAMES`, 20) would disqualify every player against
-  one opponent (four meetings a season), so honoring them needs a qualifier
-  that scales with the games the narrowing leaves - a decision, not a port.
-  `since`/`span` would sum seasons of different measured accuracy
-  (`PERIOD_RECONCILIATION`, `player_games.PERIOD_AGREEMENT`) under one caveat;
-  `date` narrows to one game, where a per-game ranking means nothing.
-- **User sees:** "who led the league in 1st quarter scoring against the
-  Celtics this season" is refused.
-- **Next step:** decide the qualifier for a narrowed ranking (a share of the
-  narrowed games, as `leaderboard` would need too), then declare
-  `opponent`/`venue` - one line each, since the relation already applies them.
-- **GitHub:** #185
-
 ### `player_splits` cannot honor a teammate's absence, a box-score line, a playoff-series game or an ordinal season when the subject is a team, not a player
 - **Found:** 2026-09-22, step 3 C2 work on `player_splits`/`period_split`
   (out of that task's scope - the fix landed only for the PLAYER subject,

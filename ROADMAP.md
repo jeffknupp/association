@@ -179,9 +179,13 @@ The 13 families still failing, by cause:
    question the grammar sees, applied by
    `Narrowed.narrow_period_condition` as an EXISTS over the period's own
    line, so every reader of the relation honors it and says it; a bare
-   number is "exactly", said so, and "N+" is at least). What is left:
-   `period_leaderboard` narrowed by opponent, venue, date or a range (#185
-   - waiting on the qualifier decision below).
+   number is "exactly", said so, and "N+" is at least), and
+   `period_leaderboard` narrowed by an opponent or a venue (#185; Jeff's
+   call, 2026-09-30: the qualifier is a share of the narrowed games - half
+   of the most anyone played in the pool, capped at the season's minimum,
+   said in the answer). A range of seasons and a single date stay refused
+   by their reasons (accuracy is per season; one game ranks nothing per
+   game). Nothing of step 2 is left.
 3. **The rest of the pair relation** (item 3). The pair as a compiler
    subject ("most points by curry vs lebron", "how many times did lebron
    score 30 vs kawhi"), and the opponent-side condition ("vs lakers without

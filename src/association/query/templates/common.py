@@ -424,7 +424,7 @@ HONORED_SCOPING: dict[str, frozenset[str]] = {
     "team_quarter_points": _team_relation_scoping("team_quarter_points"),
     # The ranking is of one quarter or half, the only cells it reads beyond
     # its own team and season.
-    "period_leaderboard": frozenset({"period", "half"}),
+    "period_leaderboard": frozenset({"period", "half", "opponent", "venue"}),
     # `since`/`until` and `span` ("career") are honored (step 3, team cells /
     # K1): every meeting in a since-bounded, optionally until-bounded, or
     # whole-career span, read the same way team_record's own `since`/`until`/
