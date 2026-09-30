@@ -15,9 +15,18 @@ from association.nba.season import eastern_date as _eastern_date_of
 from association.query import shotchart
 from association.query.compose import answer as compose_answer
 from association.query.compose.adapt import to_reading
-from association.query.compose.core import Unsupported
-from association.query.compose.present import STATED_SCOPING, _present_game_log, _present_period_split, _present_player_splits, _present_player_stat, _present_player_stat_season_line
-from association.query.compose.team import TeamQuery, run_team
+from association.query.compose.core import Unsupported, _compile_run
+from association.query.compose.present import (
+    STATED_SCOPING,
+    _present_game_log,
+    _present_period_split,
+    _present_player_splits,
+    _present_player_stat,
+    _present_player_stat_season_line,
+    _present_streak,
+    _present_team_streak,
+)
+from association.query.compose.team import TeamQuery, _compile_team_run, run_team
 from association.query.entities import MAX_CANDIDATES, Availability, Entity, collect_name_readings, resolve_player
 from association.query.metrics import LEADERBOARD_METRICS, PER_GAME_MIN_GAMES, PER_GAME_MIN_POSTSEASON_GAMES
 from association.query.parse import with_point
@@ -78,6 +87,7 @@ player_compare = _compiled("player_compare")
 player_history = _compiled("player_history")
 player_splits = _compiled("player_splits")
 player_stat = _compiled("player_stat")
+streak = _compiled("streak")
 single_game_high = _compiled("single_game_high")
 threshold_count = _compiled("threshold_count")
 
@@ -5756,9 +5766,19 @@ def test_templates_on_the_relation_do_not_narrow_it_themselves() -> None:
         "tg.side = ?",
         "tg.eastern_date = ?",
     )
-    from association.query.templates.splits import _player_splits_from, _player_splits_team, _record_when_answer, _record_when_query, _record_when_team_answer, team_splits
+    from association.query.templates.splits import (
+        _player_splits_from,
+        _player_splits_team,
+        _record_when_answer,
+        _record_when_query,
+        _record_when_team_answer,
+        _streak_league_team_narrowed,
+        _streak_player_answer,
+        _streak_team_answer,
+        team_splits,
+    )
 
-    readers: dict[str, list[Callable[..., Any]]] = {"streak": [TEMPLATES["streak"]]}
+    readers: dict[str, list[Callable[..., Any]]] = {}
     # record_when's, game_log's, player_stat's, player_splits' and
     # period_split's templates are retired (compose.COMPILED_INTENTS); the
     # readers the compiler answers them with still read the relation, walked
@@ -5768,6 +5788,9 @@ def test_templates_on_the_relation_do_not_narrow_it_themselves() -> None:
     readers["player_splits"] = [_present_player_splits, _player_splits_from, _player_splits_team, team_splits]
     readers["game_log"] = [team_game_log, _present_game_log, _player_game_log, _player_game_log_mixed]
     readers["player_stat"] = [_present_player_stat, _present_player_stat_season_line, _box_score_player_stat, _player_stat_season_line, _player_stat_season_line_subject]
+    # streak's template is retired too (the `run` shape): the compiler's
+    # skeleton and the team compiler's, and the readers that say them.
+    readers["streak"] = [_compile_run, _compile_team_run, _present_streak, _present_team_streak, _streak_player_answer, _streak_team_answer, _streak_league_team_narrowed]
     for intent, functions in readers.items():
         for function in functions:
             # The reader and the private steps it calls, transitively -

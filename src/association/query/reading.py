@@ -34,10 +34,15 @@ if TYPE_CHECKING:
     from association.query.subject import Subject
     from association.query.templates.common import TemplateResult
 
-Shape = Literal["rows", "scalar", "grouped"]
-"""Which reader answers the point: rows, one number, or one row per group.
+Shape = Literal["rows", "scalar", "grouped", "run"]
+"""Which reader answers the point: rows, one number, one row per group, or
+the longest runs of consecutive games the point's one predicate holds along
+(``run``: a streak, read as a window over the games in date order).
 
 .. versionadded:: 5.0.0
+
+.. versionchanged:: 5.0.0
+   ``run`` (ROADMAP plan item 6, step (g): ``streak``'s retired template).
 """
 
 Aggregate = Literal["none", "per_game", "total", "count", "record"]

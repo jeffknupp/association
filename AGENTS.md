@@ -538,17 +538,22 @@ model's. Two things follow, and both matter when you add a shape:
   only through the shared steps in
   `templates/common.py`, the same discipline the relation templates keep
   (see "A template on a relation does not declare, or apply, scoping of its
-  own" above). Ten intents have no template at all
+  own" above). Eleven intents have no template at all
   (`compose.COMPILED_INTENTS`: `threshold_count`, `single_game_high`,
   `record_when`, `player_history`, `game_log`, `player_stat`,
-  `player_splits`, `leaderboard`, `period_split`, `player_compare`): the
+  `player_splits`, `leaderboard`, `period_split`, `player_compare`,
+  `streak`): the
   compiler answers them alone, in their retired templates' words
   (`compose/present.py`; a team's log and splits through
   `templates.games.team_game_log` and `templates.splits.team_splits`; a
   ranking over the season line through
   `templates.players._leaderboard_ranking`; a player's quarter or half
   through `templates.games._period_split_from`; two players' season lines
-  through `templates.players._player_compare_lines`), and
+  through `templates.players._player_compare_lines`; a streak through the
+  `run` shape - a skeleton of its own, the longest runs of consecutive
+  games one predicate holds along, `compose.core._compile_run` on the
+  player relation and `compose.team._compile_team_run` on the team's, said
+  by `templates.splits._streak_player_answer` and its siblings), and
   where it has no reading
   the question is refused with the compiler's reason
   (`agent._run_compiled`). A presenter says what its retired template's

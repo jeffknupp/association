@@ -78,7 +78,7 @@ def _team_point_data(query: TeamQuery, result: TeamResult) -> dict[str, Any]:
     """The point a compiled :class:`~association.query.compose.team.TeamQuery`
     answered, as plain values - the team subject's counterpart of :func:`_point_data`."""
     return {
-        "team": result.team.name,
+        "team": result.team.name if result.team is not None else None,
         "span": _span_phrase(result.span),
         "narrowing": result.narrowed_text,
         "measure": query.measure,
@@ -103,15 +103,18 @@ COMPILED_INTENTS: frozenset[str] = frozenset(
         "leaderboard",
         "period_split",
         "player_compare",
+        "streak",
     }
 )
 """The intents the compiler alone answers - the four whose templates it
 reproduced exactly (``~/association-research/intent-shrink/parity.py``:
 18/18, 10/10, 10/10, 20/20 on the recorded corpus) and then replaced
 (ROADMAP plan item 6, step (d), part 4), and ``game_log``, ``player_stat``,
-``player_splits``, ``leaderboard``, ``period_split`` and ``player_compare`` (step (g): ``intent-shrink/g/``, every
-unit-test call and recorded question answered both ways). Each is said in its retired
-template's own words, through that template's phrasing helpers
+``player_splits``, ``leaderboard``, ``period_split``, ``player_compare`` and
+``streak`` (step (g): ``intent-shrink/g/``, every unit-test call and recorded
+question answered both ways; ``streak`` is the ``run`` shape, a skeleton the
+compiler gained for it). Each is said in its retired template's own words,
+through that template's phrasing helpers
 (:mod:`~association.query.compose.present`); where the compiler has no
 reading of a point, the question is refused with the reason
 (``agent._run_compiled``).

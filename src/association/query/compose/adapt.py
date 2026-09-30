@@ -21,8 +21,9 @@ from association.query.templates.common import _BOX_SCORES, RELATION_SCOPING_EXC
 # reused rather than redeclared under the same name.
 from association.query.templates.games import DEFAULT_GAME_LOG_LIMIT, _log_extras, _period_split_measure
 from association.query.templates.players import DEFAULT_SINGLE_GAME_LIMIT, STAT_LINE, _threshold_count_ask
+from association.query.templates.splits import _DEFAULT_STREAK_LIMIT, _condition_needs_player_refusal, _streak_league_needs_named_subject, _streak_words
 
-from .core import COLUMNS, LINE, Query, Unsupported
+from .core import COLUMNS, DEFAULT_NAMED_RUNS, LINE, Query, Unsupported, run_scope
 from .plan import plan
 
 #: The line a splits read carries, beyond the four :data:`~association.query.compose.core.LINE` measures.
@@ -248,6 +249,70 @@ def _adapt_period_split(scope: Scope) -> Reading:
     )
 
 
+def _adapt_streak(scope: Scope) -> Reading:
+    """``streak``'s default point: the longest run of consecutive games
+    meeting one condition (the ``run`` shape), on the relation the question
+    names. A named player's is over his games (a stat at or above its
+    threshold, or his team's wins in games he played); a named team's is
+    its own run of wins or losses within a season, on the team relation;
+    nobody named is the league's - each player's or each team-season's own
+    longest, the count asked for or :data:`~association.query.templates.splits._DEFAULT_STREAK_LIMIT`.
+    The retired template's own early refusals are the point's (ROADMAP plan
+    item 6, step (g)): a stat with no threshold or a threshold with no stat
+    (:func:`~association.query.templates.splits._streak_kind`), a team's run
+    of a stat, the narrowings a run cannot take (one date, a window, a
+    quarter - :data:`~association.query.templates.common.RELATION_SCOPING_EXCLUDED`),
+    the cells only a named player's games settle
+    (:func:`~association.query.templates.splits._condition_needs_player_refusal`)
+    and, for the league, an opponent or a venue with no subject to narrow
+    (:func:`~association.query.templates.splits._streak_league_needs_named_subject`).
+
+    .. versionadded:: 5.0.0
+    """
+    try:
+        column, by_stat, _unit, want_win, _result = _streak_words(scope)
+    except TemplateUnsupported as exc:
+        raise Unsupported(str(exc)) from exc
+    excluded = RELATION_SCOPING_EXCLUDED["streak"]
+    refused = [slot for slot in excluded if getattr(scope, slot) not in (None, "", (), False)]
+    if refused:
+        raise Unsupported(f"streak cannot honor {refused} - {excluded[refused[0]]}")
+    predicates: list[tuple[str, str, Any]] = [(column, ">=", scope.threshold)] if by_stat and column is not None else [("won", "=", want_win)]
+    if _named_player_in(scope):
+        try:
+            covered = run_scope(scope, named=True)
+        except TemplateUnsupported as exc:
+            raise Unsupported(str(exc)) from exc
+        return Reading(
+            scope=scope,
+            shape="run",
+            measures=[],
+            aggregate="none",
+            group="none",
+            predicates=predicates,
+            limit=DEFAULT_NAMED_RUNS,
+            available=_BOX_SCORES,
+            span="career" if covered.season is None else None,
+            season=covered.season,
+        )
+    try:
+        # `game_n` stays refused for the team and league branches: one
+        # numbered game of each series is not a run of CONSECUTIVE games.
+        _condition_needs_player_refusal("streak", scope, "game_n")
+        if not (scope.team and scope.team.strip()):
+            _streak_league_needs_named_subject(scope)
+    except TemplateUnsupported as exc:
+        raise Unsupported(str(exc)) from exc
+    if scope.team and scope.team.strip():
+        if by_stat:
+            raise Unsupported("a team's streak is of wins or losses, not of a stat")
+        return Reading(scope=scope, shape="run", measures=["won"], aggregate="count", group="none", predicates=predicates, relation="team")
+    limit = _clamp_limit(scope.limit, _DEFAULT_STREAK_LIMIT)
+    if by_stat:
+        return Reading(scope=scope, shape="run", measures=[], aggregate="none", group="none", predicates=predicates, limit=limit, relation="everyone")
+    return Reading(scope=scope, shape="run", measures=["won"], aggregate="count", group="none", predicates=predicates, limit=limit, relation="team")
+
+
 def _adapt_record_when(scope: Scope) -> Reading:
     """``record_when``'s default point: the record in games clearing one line."""
     col = _stat_column(scope.stat)
@@ -270,6 +335,7 @@ _ADAPTERS: dict[str, Callable[[Scope], Reading]] = {
     "player_splits": _adapt_player_splits,
     "record_when": _adapt_record_when,
     "period_split": _adapt_period_split,
+    "streak": _adapt_streak,
 }
 
 

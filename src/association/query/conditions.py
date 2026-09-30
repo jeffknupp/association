@@ -809,10 +809,22 @@ def _longest_runs(
     a league-wide list is not one team's season listed five times.
 
     ``open`` marks a run still going at the partition's last game."""
+    rows = con.execute(_longest_runs_sql(base, partition, hit, best_per_partition=best_per_partition), {**params, "limit": limit}).fetchall()
+    names = [*partition, "length", "first_day", "last_day", "first_season", "last_season", "open"]
+    return [dict(zip(names, row, strict=True)) for row in rows]
+
+
+def _longest_runs_sql(base: str, partition: tuple[str, ...], hit: str, *, best_per_partition: bool) -> str:
+    """:func:`_longest_runs`' statement - the run skeleton as SQL, binding
+    ``$limit`` beside ``base``'s own names: the relation cell the compiler's
+    ``run`` shape reads (``compose.core._compile_run``), so a streak is one
+    window over the games in date order whoever asks for it.
+
+    .. versionadded:: 5.0.0
+    """
     keys = ", ".join(partition)
     pick = "WHERE pick = 1" if best_per_partition else ""
-    rows = con.execute(
-        f"""
+    return f"""
         WITH x AS ({base}),
         n AS (
             SELECT x.*, {hit} AS hit, ROW_NUMBER() OVER (PARTITION BY {keys} ORDER BY {_GAME_ORDER}) AS rn, COUNT(*) OVER (PARTITION BY {keys}) AS total FROM x
@@ -824,11 +836,7 @@ def _longest_runs(
             FROM h WHERE hit GROUP BY {keys}, island
         ),
         ranked AS (SELECT runs.*, ROW_NUMBER() OVER (PARTITION BY {keys} ORDER BY length DESC, first_day) AS pick FROM runs)
-        SELECT {keys}, length, first_day, last_day, first_season, last_season, open FROM ranked {pick} ORDER BY length DESC, first_day, {keys} LIMIT $limit""",
-        {**params, "limit": limit},
-    ).fetchall()
-    names = [*partition, "length", "first_day", "last_day", "first_season", "last_season", "open"]
-    return [dict(zip(names, row, strict=True)) for row in rows]
+        SELECT {keys}, length, first_day, last_day, first_season, last_season, open FROM ranked {pick} ORDER BY length DESC, first_day, {keys} LIMIT $limit"""
 
 
 # ---------------- two players' meetings ----------------

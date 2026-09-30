@@ -37,10 +37,10 @@ from typing import Any
 import duckdb
 
 from association.nba.season import current_season, eastern_date_sql
-from association.query.conditions import UNGATED_ON_REBUILD, BoxSource, box_source
+from association.query.conditions import _PLAYER_GAME_TABLES, UNGATED_ON_REBUILD, BoxSource, _longest_runs_sql, _player_streak_rows, box_source
 from association.query.entities import Entity
 from association.query.measures import MEASURE_WORDS
-from association.query.player_games import PERIOD_COLUMNS, REBUILT_STATS, Narrowed, aggregate_sql, grouped_sql, rows_sql
+from association.query.player_games import PERIOD_COLUMNS, REBUILT_STATS, Narrowed, aggregate_sql, games_subquery, grouped_sql, named, rows_sql
 from association.query.reading import Scope
 from association.query.templates.common import (
     _GAME_LOGS,
@@ -49,6 +49,7 @@ from association.query.templates.common import (
     TemplateResult,
     TemplateUnsupported,
     _box_score_notes,
+    _condition_scope,
     _resolved_team,
     _Span,
     _span_of,
@@ -249,12 +250,20 @@ class Compiled:
     """
 
     sql: str
-    params: list[Any]
+    #: Positional (``?``) for the rows, scalar and grouped shapes; named
+    #: (``$name``) for a run, whose statement nests the relation's own
+    #: subquery twice (:func:`association.query.player_games.named`).
+    params: list[Any] | dict[str, Any]
     player: Entity | None
     span: Any
     narrowed: Narrowed
     rebuilt: bool
     measures: list[str]
+    #: A run's games in date order - the rows the window was read over,
+    #: with their own names bound in ``params`` - for a presenter's totals
+    #: and unseen-games count (:func:`_compile_run`); ``None`` otherwise.
+    run_rows: str | None = None
+    run_params: dict[str, Any] | None = None
 
 
 def measure_sql(name: str, *, rebuilt: bool = False) -> str:
@@ -469,7 +478,7 @@ def _apply_team_slot(con: duckdb.DuckDBPyConnection, q: Query, player: Entity | 
                 raise Refused(rescoped)
             narrowed = rescoped
         return narrowed
-    if not (q.aggregate in ("count", "record") or q.skeleton == "grouped"):
+    if not (q.aggregate in ("count", "record") or q.skeleton in ("grouped", "run")):
         return narrowed
     team = _resolved_team(con, team_text, season=scope.season)
     if isinstance(team, TemplateResult):
@@ -485,6 +494,13 @@ def _apply_window_rule(q: Query, narrowed: Narrowed) -> None:
     ``threshold_count`` reads it as the ranking's size), and only ``rows``
     reads it as a row count."""
     scope = q.scope
+    if q.skeleton == "run":
+        # A run is read over every game in the span (``whole_span``); its
+        # ``limit`` is how many runs are listed, never a games window, and
+        # ``order`` is refused before the point is planned
+        # (``RELATION_SCOPING_EXCLUDED["streak"]``, compose.adapt._adapt_streak).
+        narrowed.window = None
+        return
     if (q.aggregate in ("count", "record") or q.skeleton == "grouped") and scope.order is None:
         limit = scope.limit
         # A limit on a grouped read by a SCOPE (season, month) is the number
@@ -503,6 +519,12 @@ def _rebuilt_for(box: BoxSource, q: Query) -> bool:
     record widen the guard to rebuilt lines and blank the columns a rebuild
     does not fill; a scalar over measures or a count widens only when every
     column read (measures AND predicate columns) is one a rebuild gets right."""
+    if q.skeleton == "run":
+        # A run reads whichever source the warehouse holds, as the streak
+        # template did (``games_subquery(narrowed, box_source(con))``): a
+        # column a rebuild does not fill is blank on a rebuilt row, and a
+        # blank never satisfies the run's condition, so the run ends there.
+        return box.rebuilt
     read = [*q.measures, *(name for name, _, _ in q.predicates)]
     if q.skeleton == "rows":
         # A listing's own rule (``templates.games._rebuilt_readable``, which
@@ -586,6 +608,77 @@ def _compile_grouped(q: Query, narrowed: Narrowed, rebuilt: bool, player: Entity
     return Compiled(sql, params, player, span, narrowed, rebuilt, list(q.measures))
 
 
+#: How many runs a named player's or team's answer lists - the longest and
+#: any that tie it (``templates.splits._single_streak`` shows the ties).
+DEFAULT_NAMED_RUNS = 3
+"""The runs read for one named subject: the longest, plus two to tie it.
+
+.. versionadded:: 5.0.0
+"""
+
+
+def run_scope(scope: Scope, *, named: bool) -> Any:
+    """The games a run is read over, as the streak template's own
+    :class:`~association.query.conditions._Scope`: a named player's honors
+    ``since`` and reads an ordinal season over a career-shaped outer scope
+    (``season_n``, the way ``scoped_player`` settles one); the league-wide
+    read (``named=False``) takes the season or the career alone, as its
+    retired branch did. Shared with the presenter, which names the span and
+    counts the unseen games off the same scope.
+
+    .. versionadded:: 5.0.0
+    """
+    if named:
+        return _condition_scope(scope.season, "career" if scope.season_n else scope.span, scope.season_type, _PLAYER_GAME_TABLES, since=scope.since)
+    return _condition_scope(scope.season, scope.span, scope.season_type, _PLAYER_GAME_TABLES)
+
+
+def _compile_run(q: Query, narrowed: Narrowed, box: BoxSource, player: Entity | None, span: _Span) -> Compiled:
+    """A ``run`` read: the longest runs of consecutive games the point's one
+    predicate holds along, over the narrowed games in Eastern-date order -
+    the streak's skeleton (ROADMAP plan item 6, step (g)), as
+    :func:`~association.query.conditions._longest_runs_sql` reads it over
+    :func:`~association.query.conditions._player_streak_rows`: each game he
+    played, and each game with no box score inside a spell he was playing
+    in, which never satisfies the condition and so ends a run rather than
+    being carried across. A named player's run is his alone; the league-wide
+    read keeps each player's own longest (``best_per_partition``), so a list
+    is not one man's season five times.
+
+    The predicate is ``(column, ">=", threshold)`` for a line, or
+    ``("won", "=", True|False)`` for a run of wins or losses in the games he
+    played. ``limit`` is how many runs come back (:data:`DEFAULT_NAMED_RUNS`
+    for a named player).
+
+    .. versionadded:: 5.0.0
+    """
+    if len(q.predicates) != 1:
+        raise Unsupported("a run holds exactly one condition along it")
+    name, op, value = q.predicates[0]
+    if name == "won":
+        if op != "=":
+            raise Unsupported(f"a run of results is read as won = True or False, not {op!r}")
+        hit, condition, read = "x.won = $want", {"want": bool(value)}, "NULL"
+    else:
+        if op not in OPS:
+            raise Unsupported(f"operator {op!r}")
+        if name not in COLUMNS or name in DERIVED:
+            raise Unsupported(f"no per-game column {name!r} for a run to hold along")
+        hit, condition, read = f"x.value {OPS[op]} $threshold", {"threshold": value}, f"p.{name}"
+    covered = run_scope(q.scope, named=player is not None)
+    # Named parameters: the played subquery is nested twice in the streak
+    # rows (once for the games, once for the spells they span) beside
+    # ``covered``'s own $season/$first, and the condition binds its own.
+    base, params = named(*games_subquery(narrowed, box))
+    rows = _player_streak_rows(covered, base, read, box)
+    limit = q.limit if q.limit is not None else DEFAULT_NAMED_RUNS
+    sql = _longest_runs_sql(rows, ("athlete_id",), hit, best_per_partition=player is None)
+    # ``covered``'s own names bind only where the rows SQL uses them (the
+    # missing-box half); DuckDB rejects a name a statement never reads.
+    row_params = {**params, **covered.params()}
+    return Compiled(sql, {**row_params, **condition, "limit": limit}, player, span, narrowed, box.rebuilt, [], run_rows=rows, run_params=row_params)
+
+
 def compile_query(con: duckdb.DuckDBPyConnection, q: Query) -> Compiled:
     """``q`` as SQL, over the real relation. Each step below is one rule the
     six relation templates carried before this compiler existed - the
@@ -599,16 +692,23 @@ def compile_query(con: duckdb.DuckDBPyConnection, q: Query) -> Compiled:
     _check_split_category(q)
     _check_period_measures(q)
     player, span, narrowed = _resolve_subject(con, q)
-    _apply_predicates(narrowed, q)
+    if q.skeleton != "run":
+        # A run's one predicate is the condition the run holds along, not a
+        # row filter: a game that misses it ENDS the run rather than
+        # leaving the pool (``_compile_run``).
+        _apply_predicates(narrowed, q)
     narrowed = _apply_team_slot(con, q, player, span, narrowed)
     _apply_window_rule(q, narrowed)
-    rebuilt = _rebuilt_for(box_source(con), q)
+    box = box_source(con)
+    rebuilt = _rebuilt_for(box, q)
     if q.skeleton == "rows":
         return _compile_rows(q, narrowed, rebuilt, player, span)
     if q.skeleton == "scalar":
         return _compile_scalar(q, narrowed, rebuilt, player, span)
     if q.skeleton == "grouped":
         return _compile_grouped(q, narrowed, rebuilt, player, span)
+    if q.skeleton == "run":
+        return _compile_run(q, narrowed, box, player, span)
     raise Unsupported(f"skeleton {q.skeleton!r}")
 
 

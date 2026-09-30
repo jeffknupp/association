@@ -33,8 +33,8 @@ def plan(reading: Reading) -> Query | TeamQuery:
        step (f)); the compiler's own compile step had, one call later.
     """
     if reading.relation == "team":
-        if reading.shape in ("rows", "grouped"):
-            # A team's log or splits honor the relation's whole set (the
+        if reading.shape in ("rows", "grouped", "run"):
+            # A team's log, splits or run honor the relation's whole set (the
             # retired templates' declarations, STATED_SCOPING); its sums
             # declare nothing yet.
             _check_relation_scoping(reading.scope, "team")

@@ -16,6 +16,7 @@ from typing import Any
 
 import duckdb
 import pytest
+from test_templates import streak  # the compiler's, the template retired (compose.COMPILED_INTENTS)
 
 from association.fetch.repairs import real_games
 from association.nba.season import current_season
@@ -26,7 +27,6 @@ from association.query.subject import Subject
 from association.query.team_metrics import TEAM_METRICS, descending_for, resolve_team_metric
 from association.query.templates.common import TemplateContext, TemplateResult, TemplateUnsupported, check_coverage, check_scope
 from association.query.templates.games import team_quarter_points
-from association.query.templates.splits import streak
 from association.query.templates.teams import team_leaderboard, team_outlook, team_record, team_stat
 
 

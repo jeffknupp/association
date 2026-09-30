@@ -243,6 +243,11 @@ def team_sentence(q: TeamQuery, result: TeamResult) -> str:
     """
     label = TEAM_LABELS.get(q.measure, q.measure)
     span = _span_phrase(result.span)
+    if q.shape == "run":
+        return _team_run_sentence(q, result, span)
+    if result.team is None:
+        # Only the league's run has no team, and it is said just above.
+        return f"The warehouse has no {label} on record for the league in the {span}."
     if result.value is None:
         return f"The warehouse has no {label} on record for the {result.team.name} in the {span}."
     if result.from_season_line:
@@ -255,6 +260,36 @@ def team_sentence(q: TeamQuery, result: TeamResult) -> str:
     # here would read as "over 10 games over their last 10 games".
     games_phrase = "" if "game" in result.narrowed_text else f" over {result.games} games"
     return f"The {result.team.name} {'are' if label == 'point differential' else 'had'} {value} {label}{per_game}{games_phrase}{result.narrowed_text}{record}."
+
+
+def _team_run_sentence(q: TeamQuery, result: TeamResult, span: str) -> str:
+    """The ``run`` shape on the team relation in the compiler's own words: a
+    team's, or the league's, longest run of wins or losses."""
+    who = f"The {result.team.name}" if result.team is not None else "Every team"
+    what = "lost" if q.scope.kind == "loss" else "won"
+    if not result.runs:
+        return f"No run of games {what} for {who[0].lower() + who[1:]}{result.narrowed_text} in the {span}."
+    lines = []
+    for r in result.runs:
+        whose = f" ({r['team_id']}, {r['season']})" if result.team is None else ""
+        lines.append(f"  {r['length']} games, {r['first_day']} to {r['last_day']}{whose}" + (" (still going)" if r.get("open") else ""))
+    return f"{who}{result.narrowed_text}, {span} - longest run of games {what}:\n" + "\n".join(lines)
+
+
+def _run_sentence(q: Query, out: dict[str, Any]) -> str:
+    """A ``run`` read: the longest runs of consecutive games the point's one
+    condition held along - the compiler's own words for a streak, where the
+    streak presenter's do not apply."""
+    rows = out["rows"]
+    who = out["player"]
+    where = out["narrowing"]
+    span = _span_phrase(out["span"], out.get("player_seasons"))
+    name, op, value = q.predicates[0] if q.predicates else ("won", "=", True)
+    what = ("won" if value else "lost") if name == "won" else f"{LABELS.get(name, name)} {op} {value}"
+    if not rows:
+        return f"No run of games {what} for {who}{where} in the {span}."
+    lines = [f"  {r['length']} games, {r['first_day']} to {r['last_day']}" + (" (still going)" if r.get("open") else "") for r in rows]
+    return f"{who}{where}, {span} - longest run of games {what}:\n" + "\n".join(lines)
 
 
 def sentence(q: Query, out: dict[str, Any]) -> str:
@@ -270,4 +305,6 @@ def sentence(q: Query, out: dict[str, Any]) -> str:
         return _scalar_sentence(q, out)
     if q.skeleton == "grouped":
         return _grouped_sentence(q, out)
+    if q.skeleton == "run":
+        return _run_sentence(q, out)
     return f"{out['player']}{out['narrowing']}: {len(out['rows'])} rows"

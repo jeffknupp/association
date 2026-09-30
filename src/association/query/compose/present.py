@@ -35,7 +35,7 @@ from typing import Any
 import duckdb
 
 from association.nba.season import current_season, eastern_date
-from association.query.conditions import _PLAYER_GAME_TABLES
+from association.query.conditions import _PLAYER_GAME_TABLES, _totals
 from association.query.player_games import REBUILT_STATS
 from association.query.reading import Scope
 from association.query.templates.common import (
@@ -50,6 +50,7 @@ from association.query.templates.common import (
     _player_relation_season_type,
     _relation_scoping,
     _Span,
+    _where_in,
     check_coverage,
     unhonored_scoping,
 )
@@ -89,6 +90,8 @@ from association.query.templates.players import (
 )
 from association.query.templates.splits import (
     _PLAYER_LINE,
+    _condition_team_no_games,
+    _misfiled_postseason,
     _player_splits_answer,
     _player_splits_from,
     _player_splits_line,
@@ -96,13 +99,21 @@ from association.query.templates.splits import (
     _record_when_answer,
     _record_when_query,
     _record_when_team_answer,
+    _streak_league_answer,
+    _streak_league_result_words,
+    _streak_league_stat_words,
+    _streak_player_answer,
+    _streak_team_answer,
+    _streak_words,
+    _team_span_label,
+    _team_where_in,
     team_splits,
 )
 
 from .adapt import DEFAULT_GAME_LOG_LIMIT, _to_reading_scope
-from .core import LINE, Query, Refused, Unsupported, compile_query, run
+from .core import LINE, Query, Refused, Unsupported, compile_query, run, run_scope
 from .move import _stat_measure
-from .team import TeamQuery
+from .team import TeamQuery, _team_games_narrowed, run_team
 
 #: A presenter: the connection and the compiled point (its scope the intent's
 #: slots, typed), to the template's own answer - or ``None`` where the point
@@ -356,6 +367,44 @@ def _present_player_compare(con: duckdb.DuckDBPyConnection, q: Query) -> Templat
     return _player_compare_lines(con, q.scope)
 
 
+def _present_streak(con: duckdb.DuckDBPyConnection, q: Query) -> TemplateResult | None:
+    """``streak``'s own sentence over the compiler's ``run`` shape on the
+    player relation: a named player's longest run of games meeting the
+    condition (``templates.splits._streak_player_answer``), or the league's
+    longest, one per player (``_streak_league_stat_words`` and
+    ``_streak_league_answer``). The runs are the compiled statement's own
+    rows (``compose.core._compile_run``); the span, the rule and the
+    unseen-games note are read off the same relation subquery. A single
+    postseason before 1993-94 is refused as the template refused it
+    (``_misfiled_postseason``) before any run is read.
+
+    .. versionadded:: 5.0.0
+    """
+    if q.skeleton != "run" or q.source != "games":
+        return None
+    scope = q.scope
+    _column, by_stat, unit, want_win, result = _streak_words(scope)
+    team = _optional_team(con, scope.team, season=scope.season)
+    if isinstance(team, TemplateResult):
+        return team
+    covered = run_scope(scope, named=q.subject == "player")
+    if q.subject != "player":
+        misfiled = _misfiled_postseason(covered)
+        if misfiled is not None:
+            return misfiled
+    compiled = compile_query(con, q)
+    cur = con.execute(compiled.sql, compiled.params)
+    names = [d[0] for d in cur.description]
+    runs = [dict(zip(names, row, strict=True)) for row in cur.fetchall()]
+    if compiled.player is not None:
+        return _streak_player_answer(con, scope, covered, compiled.player, compiled.narrowed, team, runs, by_stat, scope.threshold, unit, want_win, result)
+    what, who, rule = _streak_league_stat_words(con, covered, runs, scope.threshold, unit)
+    # The span searched, not the seasons the leaders' runs happen to fall in:
+    # "1997-2023" under a question about every season reads as a narrower search.
+    _, first, last = _totals(con, compiled.run_rows or "", compiled.run_params or {})
+    return _streak_league_answer(runs, what, who, rule, covered.label(first, last), _where_in(covered), by_stat, scope.stat, scope.threshold, unit, want_win)
+
+
 def _present_player_history(con: duckdb.DuckDBPyConnection, q: Query) -> TemplateResult | None:
     """``player_history``'s own table - the stat season by season from the
     season line, newest first, the default four or the count asked for, and
@@ -505,6 +554,7 @@ PRESENTERS: dict[str, Presenter] = {
     "leaderboard": _present_leaderboard,
     "period_split": _present_period_split,
     "player_compare": _present_player_compare,
+    "streak": _present_streak,
 }
 """The intents whose own default point the compiler answers in that intent's
 template's words - see the module docstring.
@@ -537,6 +587,12 @@ STATED_SCOPING: dict[str, frozenset[str]] = {
     # player_compare's words state no narrowing at all; its point refuses
     # one outright (compose.move._compare_point), as check_scope did.
     "player_compare": frozenset(),
+    # streak's words: the relation's set less one date, a window and a
+    # quarter (RELATION_SCOPING_EXCLUDED: a run is a run of whole games over
+    # every game in the span), which its point refuses outright
+    # (compose.adapt._adapt_streak); its team and league branches refuse
+    # the cells only a named player's games settle, by name, there too.
+    "streak": _relation_scoping("streak"),
     "single_game_high": frozenset({"span"}),
     # A count is already a line on a column; `below` is the same line the
     # other way ("games with under 14 fta"), and a phrase carrying the count's
@@ -623,6 +679,31 @@ def _present_team_splits(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> Templa
         raise Unsupported(f"relation: {exc}") from exc
 
 
+def _present_team_streak(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> TemplateResult | None:
+    """A team's longest run of wins or losses, or the league's with no team
+    named (``streak``'s retired team and league branches), said in the
+    template's words over the team compiler's ``run`` shape
+    (``compose.team._compile_team_run``, through :func:`~association.query.compose.team.run_team`,
+    which checks the coverage floor first).
+
+    .. versionadded:: 5.0.0
+    """
+    if unhonored_scoping("streak", q.scope, STATED_SCOPING["streak"]):
+        return None
+    _column, _by_stat, _unit, want_win, result = _streak_words(q.scope)
+    found = run_team(con, q)
+    if found.team is not None:
+        # The narrowing the run was read over, for the sentence - and, with
+        # no games in it, which fact is missing (the team's games in this
+        # span at all, or the match to an opponent/venue narrowing).
+        narrowed, team, span = _team_games_narrowed(con, q)
+        if not found.games:
+            return _condition_team_no_games(con, team, span, narrowed)
+        return _streak_team_answer(found.team, narrowed, found.span, found.first_season, found.last_season, found.runs, want_win, result)
+    what, who, rule = _streak_league_result_words(con, found.span, found.runs, result)
+    return _streak_league_answer(found.runs, what, who, rule, _team_span_label(found.span, found.first_season, found.last_season), _team_where_in(found.span), False, None, None, "", want_win)
+
+
 def present_team(con: duckdb.DuckDBPyConnection, intent: str, q: TeamQuery) -> TemplateResult | None:
     """A team subject's point said the way its intent's template says it -
     two: a team's game log (``game_log``'s retired team half,
@@ -641,6 +722,11 @@ def present_team(con: duckdb.DuckDBPyConnection, intent: str, q: TeamQuery) -> T
         return _present_team_game_log(con, q)
     if intent == "player_splits" and q.shape == "grouped":
         return _present_team_splits(con, q)
+    if intent == "streak" and q.shape == "run":
+        try:
+            return _present_team_streak(con, q)
+        except TemplateUnsupported as exc:
+            raise Unsupported(f"relation: {exc}") from exc
     if intent != "record_when" or q.scope.threshold is None:
         return None
     if unhonored_scoping(intent, q.scope, STATED_SCOPING[intent]):

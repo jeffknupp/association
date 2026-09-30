@@ -23,12 +23,9 @@ from ..conditions import (
     Params,
     _box_missing,
     _cell,
-    _longest_runs,
     _margin,
     _names,
     _overlaps,
-    _player_games,
-    _player_streak_rows,
     _Scope,
     _split_cells,
     _split_label,
@@ -57,7 +54,6 @@ from .common import (
     TemplateResult,
     TemplateUnsupported,
     _career_end,
-    _clamp_limit,
     _condition_scope,
     _joined,
     _no_games,
@@ -67,8 +63,6 @@ from .common import (
     _Span,
     _span_of,
     _team_span_clause,
-    _where_in,
-    condition_player,
     measure_filters,
     ordinal_word,
     team_games,
@@ -1296,81 +1290,6 @@ def _record_when_team_answer(con: duckdb.DuckDBPyConnection, scope: Scope) -> Te
     return _record_when_team_answer_table(con, span, team, narrowed, stat, column, threshold, found)
 
 
-def streak(ctx: TemplateContext, reading: Reading) -> TemplateResult:
-    """The longest run of consecutive games meeting a condition.
-
-    For a team, its longest winning or losing run (``kind``) - within one
-    season, as the record book counts them. With no team named, the league's
-    longest, one per team-season ("longest winning streak in the NBA this
-    season"). For a player, his longest run of games with ``stat`` at or above
-    ``threshold`` ("most 40 point games in a row"), or with no stat his team's
-    longest run of wins in games he played; with no player named, the league's
-    longest such run. A player's run counts only games he played - a game he
-    missed neither extends it nor ends it - and in a career it carries across
-    seasons, as consecutive-game records do (Curry's 3-pointer streak ran
-    through four of them). Each answer says which of those rules applied.
-
-    Games are ordered by their US Eastern date, so two nights either side of
-    midnight UTC land in the order they were played.
-
-    .. versionadded:: 2.1.0
-
-    .. versionchanged:: 4.4.0
-       A named player's run honors ``opponent``, ``venue``, ``without``,
-       ``split``, ``game_n``, ``since``, ``season_n``, ``below`` and ``above``
-       - the run is read over the games those narrow to, so "longest run of
-       20+ point games vs Boston" is a run over his Boston games only, and the
-       answer says so beside the run. A named team's own run (no player) now
-       honors ``opponent`` and ``venue`` too (step 3, C4), reading the
-       team-games relation the way ``team_record`` does; the league branch
-       (nobody named at all) still cannot narrow to a single opponent or
-       venue, and refuses naming which rather than silently narrowing
-       nothing (ISSUES.md).
-
-    .. versionchanged:: 4.4.0
-       The team and league branches also honor ``since`` (step 3, C4b) - a
-       team's or the league's longest run since a given season, searched over
-       the same career-shaped span a bare career already reaches. ``game_n``
-       stays refused for both: the games it numbers are not consecutive to
-       each other, so a run over them would not be the run the question asked
-       for.
-
-    .. versionchanged:: 5.0.0
-       The team and league branches also honor ``until``, bounding a since
-       range's other end ("longest streak from 2019-20 to 2021-22" rather
-       than reading every season since) - and refuse a ``conditions`` entry
-       by name, needing a settled player to check a role against, rather
-       than silently dropping it (ISSUES.md).
-    """
-    scope = reading.scope
-    con = ctx.con
-    want_win = scope.kind != "loss"
-    stat, threshold = scope.stat, scope.threshold
-    column, by_stat, unit = _streak_kind(stat, threshold)
-    result = "winning streak" if want_win else "losing streak"
-    # A player's rows carry the stat as `value` (see conditions._player_streak_rows); a team's carry only `won`.
-    hit = "x.value >= $threshold" if by_stat else "x.won = $want"
-    condition: dict[str, Any] = {"threshold": threshold} if by_stat else {"want": want_win}
-    team = _optional_team(con, scope.team, season=scope.season)
-    if isinstance(team, TemplateResult):
-        return team
-
-    if scope.player and scope.player.strip():
-        return _streak_player(con, scope, team, by_stat, column, threshold, unit, want_win, result, hit, condition)
-
-    # `game_n` stays refused for the team and league branches (both reach
-    # this one call site) - see _CONDITION_PLAYER_ONLY_CELLS's comment: one
-    # numbered game of each series is not a run of CONSECUTIVE games.
-    _condition_needs_player_refusal("streak", scope, "game_n")
-    if team is not None:
-        return _streak_team(con, scope, team, by_stat, want_win, result, hit, condition)
-
-    # Nobody named: the league's longest, each team-season or player once -
-    # and no single team or player for `opponent`/`venue` to narrow against.
-    _streak_league_needs_named_subject(scope)
-    return _streak_league(con, scope, by_stat, column, stat, threshold, unit, want_win, result, hit, condition)
-
-
 def _streak_kind(stat: str | None, threshold: int | None) -> tuple[str | None, bool, str]:
     """Validate a streak's stat/threshold pair and derive its per-game column,
     whether it is a stat streak at all (as against one of wins or losses), and
@@ -1391,48 +1310,50 @@ def _streak_kind(stat: str | None, threshold: int | None) -> tuple[str | None, b
     return column, by_stat, unit
 
 
-def _streak_player(
+def _streak_words(scope: Scope) -> tuple[str | None, bool, str, bool, str]:
+    """A streak question's settled reading, for the compiler's presenter and
+    its point alike: the per-game column (``None`` for a run of results),
+    whether it is a stat streak at all, the unit its threshold is counted
+    in, whether wins are wanted, and the result word ("winning streak") -
+    :func:`_streak_kind`'s refusals included.
+
+    .. versionadded:: 5.0.0
+    """
+    column, by_stat, unit = _streak_kind(scope.stat, scope.threshold)
+    want_win = scope.kind != "loss"
+    return column, by_stat, unit, want_win, "winning streak" if want_win else "losing streak"
+
+
+def _streak_player_answer(
     con: duckdb.DuckDBPyConnection,
     scope: Scope,
+    covered: _Scope,
+    player: Entity,
+    narrowed: Narrowed,
     team: Entity | None,
+    runs: list[dict[str, Any]],
     by_stat: bool,
-    column: str | None,
     threshold: Any,
     unit: str,
     want_win: bool,
     result: str,
-    hit: str,
-    condition: dict[str, Any],
 ) -> TemplateResult:
-    """A named player's longest run of games meeting the condition, over the
-    games the question narrowed - "longest run of 20+ point games vs Boston"
-    is a run over his Boston games only, said so beside the run."""
-    # Refused here, before any name is resolved, if a line names no column -
-    # the same discipline player_stat's own measures follow.
-    measures = measure_filters(scope.below, scope.above)
-    # `season_n` forces a career-shaped outer scope the same way
-    # `scoped_player` treats it internally, so the label below reads the real
-    # narrowed season rather than "now" - see _condition_span_label.
-    covered = _condition_scope(scope.season, "career" if scope.season_n else scope.span, scope.season_type, _PLAYER_GAME_TABLES, since=scope.since)
-    # The scope goes in whole, so condition_player's own scoped_games reads
-    # "opponent", "venue", "without", "split" and "game_n" off it directly
-    # (common._narrow_player_games) and narrows the run's games before any of
-    # this function's own SQL runs.
-    subject = condition_player(con, scope, "streak needs a player", covered, team=team, measures=measures)
-    if isinstance(subject, TemplateResult):
-        return subject
-    player, narrowed = subject
-    # Named parameters here: the played subquery is nested twice in the
-    # streak rows (once for the games, once for the spells they span) beside
-    # `covered`'s own $season/$first, and the condition binds $threshold.
+    """A named player's longest run of games meeting the condition, said -
+    over the games the relation narrowed to ("longest run of 20+ point
+    games vs Boston" is a run over his Boston games only, said so beside
+    the run) and the ``runs`` the compiler's ``run`` skeleton read over them
+    (``compose.core._compile_run``, ROADMAP plan item 6, step (g)). The
+    span, the "only games he played" rule and the unseen-games note are
+    read off the same relation subquery the runs were.
+
+    .. versionadded:: 5.0.0
+    """
+    # Named parameters: the played subquery binds beside `covered`'s own
+    # $season/$first in the unseen-games read.
     base, params = named(*games_subquery(narrowed, box_source(con)))
     games, first, last = _totals(con, base, params)
     if not games:
         return _no_games(con, player, covered, team)
-    rows_sql = _player_streak_rows(covered, base, f"p.{column}" if by_stat else "NULL", box_source(con))
-    # `covered`'s own names bind only where the rows SQL uses them (the
-    # missing-box half); DuckDB rejects a name a statement never reads.
-    runs = _longest_runs(con, rows_sql, {**params, **covered.params(), **condition}, ("athlete_id",), hit, 3, best_per_partition=False)
     label = _condition_span_label(covered, scope, first, last)
     what = f"consecutive games with {threshold}+ {unit}" if by_stat else f"{result} in games he played"
     rule = "Only games he played count: a game he missed neither extends the run nor ends it" + (", and a run carries on from one season into the next." if covered.season is None else ".")
@@ -1453,44 +1374,17 @@ def _streak_player(
 _TEAM_STREAK_SELECT: tuple[str, ...] = ("tg.team_id", "tg.season", "tg.event_id", "tg.eastern_date AS day", "tg.eastern_date AS stamp", "tg.won")
 
 
-def _streak_team(
-    con: duckdb.DuckDBPyConnection,
-    scope: Scope,
-    team: Entity,
-    by_stat: bool,
-    want_win: bool,
-    result: str,
-    hit: str,
-    condition: dict[str, Any],
-) -> TemplateResult:
-    """A named team's longest run of wins or losses in a season, narrowed to
-    an opponent and/or a venue where the question named them.
+def _streak_team_answer(team: Entity, narrowed: TeamNarrowed, span: _Span, first: Any, last: Any, runs: list[dict[str, Any]], want_win: bool, result: str) -> TemplateResult:
+    """A named team's longest run of wins or losses in a season, said - over
+    the team-games relation narrowed to an opponent and/or a venue where
+    the question named them, and the ``runs`` the team compiler's ``run``
+    shape read over it (``compose.team.run_team``). The caller has already
+    found the team games in the span at all (:func:`_condition_team_no_games`
+    says which fact is missing otherwise).
 
-    .. versionchanged:: 4.4.0
-       Honors ``opponent`` and ``venue`` (step 3, C4), reading the team-games
-       relation through :func:`common.team_games`. A postseason before
-       1993-94 is now selected by the calendar year it was played in rather
-       than ESPN's own-year label, so the pre-1994 refusal that used to run
-       here no longer applies - see CHANGES.md for the moved cases.
-
-    .. versionchanged:: 4.4.0
-       Honors ``since`` (step 3, C4b): a run since a given season, searched
-       the same career-shaped way a bare career already is.
+    .. versionadded:: 5.0.0
     """
-    if by_stat:
-        raise TemplateUnsupported("a team's streak is of wins or losses, not of a stat")
-    span = _span_of(scope.span, scope.season, scope.season_type or 2, "games", since=scope.since, until=scope.until)
-    narrowed = team_games(con, team, span, scope, opponent=scope.opponent)
-    if isinstance(narrowed, TemplateResult):
-        return narrowed
-    # A split, a record, a run: read over every game in the span (common.whole_span).
-    whole_span(narrowed)
-    base, params = team_named(*team_aggregate_sql(narrowed, list(_TEAM_STREAK_SELECT)))
-    games, first, last = _team_season_range(con, base, params, span)
-    if not games:
-        return _condition_team_no_games(con, team, span, narrowed)
     label = _team_span_label(span, first, last)
-    runs = _longest_runs(con, base, {**params, **condition}, ("team_id", "season"), hit, 3, best_per_partition=False)
     if not runs:
         message = f"The {team.name} did not {'win' if want_win else 'lose'} a game{narrowed.filters()} in the {label}."
         return TemplateResult(data={"team": team.name, "span": label, "streaks": [], "headline": message}, answer=message)
@@ -1504,123 +1398,64 @@ def _streak_team(
     )
 
 
-def _streak_league_by_stat(
-    con: duckdb.DuckDBPyConnection, scope: _Scope, column: str | None, threshold: Any, unit: str, hit: str, condition: dict[str, Any], limit: int
-) -> tuple[str, list[dict[str, Any]], str, list[str], str]:
-    """Each player's longest run of games meeting the stat threshold, one per player."""
-    base = _player_streak_rows(scope, _player_games(scope, player="", box=box_source(con)), f"p.{column}", box_source(con))
-    runs = _longest_runs(con, base, {**scope.params(), **condition}, ("athlete_id",), hit, limit, best_per_partition=True)
-    names = _names(con, "players", "athlete_id", [r["athlete_id"] for r in runs])
-    what, who = f"run of consecutive games with {threshold}+ {unit}", [names[r["athlete_id"]] for r in runs]
-    rule = "Each player's longest run, counting only games he played" + (", carried across seasons." if scope.season is None else ".")
-    rule += _UNSEEN_ENDS_RUN if _totals(con, _box_missing(scope, box_source(con)), scope.params())[0] else ""
-    return base, runs, what, who, rule
+def _streak_league_team_narrowed(span: _Span) -> TeamNarrowed:
+    """Every team's games in ``span``, for the league's longest run of wins
+    or losses - over the relation, with no single team to narrow to the way
+    :func:`common.team_games` always takes one, so the base clause is built
+    the same way it builds one, minus the ``team_id`` clause it always adds.
+    A postseason before 1993-94 is selected by the calendar year it was
+    played in, not ESPN's own-year label (step 3, C4).
 
-
-_StreakLeagueResult = tuple[str, Params, list[dict[str, Any]], str, list[str], str]
-"""``(base sql, params, runs, what-label, who-labels, rule note)`` -
-:func:`_streak_league_by_result`'s return shape, named so its signature fits
-the line-length gate. ``_streak_league_by_stat`` returns the same five
-pieces minus ``params`` (its own ``base`` binds the shared ``_Scope``'s own
-named parameters, read straight off ``scope.params()`` by its caller)."""
-
-
-def _streak_league_by_result(con: duckdb.DuckDBPyConnection, span: _Span, result: str, hit: str, condition: dict[str, Any], limit: int) -> _StreakLeagueResult:
-    """Each team's longest run of wins or losses in a season, one per
-    team-season - over the relation, with no single team to narrow to the
-    way :func:`common.team_games` always takes one, so the base clause is
-    built the same way it builds one, minus the ``team_id`` clause it always
-    adds.
-
-    .. versionchanged:: 4.4.0
-       Ported off ``conditions._team_games`` (step 3, C4): a postseason
-       before 1993-94 is now selected by the calendar year it was played in,
-       not ESPN's own-year label - see CHANGES.md for the moved cases.
+    .. versionadded:: 5.0.0
     """
     clause, clause_params = _team_span_clause(span)
     # Teams the `teams` table does not hold are exhibition opponents that
     # turn up in a few regular-season rows (1992-2000), not franchises - the
     # same guard `_team_games` used to apply inline.
-    narrowed = TeamNarrowed(base=["tg.team_id IN (SELECT team_id FROM teams)", "tg.season_type = ?", clause], base_params=[span.season_type, *clause_params])
-    base, params = team_named(*team_aggregate_sql(narrowed, list(_TEAM_STREAK_SELECT)))
-    runs = _longest_runs(con, base, {**params, **condition}, ("team_id", "season"), hit, limit, best_per_partition=True)
+    return TeamNarrowed(base=["tg.team_id IN (SELECT team_id FROM teams)", "tg.season_type = ?", clause], base_params=[span.season_type, *clause_params])
+
+
+def _streak_league_result_words(con: duckdb.DuckDBPyConnection, span: _Span, runs: list[dict[str, Any]], result: str) -> tuple[str, list[str], str]:
+    """What the league's longest win/loss runs are runs OF, who had each
+    (the team as it was named that season, with the season where the span
+    covers several), and the rule under the table.
+
+    .. versionadded:: 5.0.0
+    """
     names = _names(con, "teams", "team_id", [r["team_id"] for r in runs])
-    what = result
     # Every run lies inside one season, so each is named as its team was
     # that season. This used to add "franchises are named as they are
     # today" to every all-seasons answer, which is what it was.
     who = [season_name(r["team_id"], int(r["season"]), names[r["team_id"]]) + (f" ({r['season']})" if span.season is None else "") for r in runs]
-    rule = "Each team's longest in a season, counted within that season."
-    return base, params, runs, what, who, rule
+    return result, who, "Each team's longest in a season, counted within that season."
 
 
-_StreakLeagueFound = tuple[list[dict[str, Any]], str, list[str], str, str, str]
-"""``(runs, what-label, who-labels, rule note, span label, "in the ..." phrase)`` -
-what :func:`_streak_league_stat_branch` and :func:`_streak_league_team_branch`
-each hand :func:`_streak_league` once their own span is settled and checked
-for the pre-1994 misfiled-postseason refusal."""
+def _streak_league_stat_words(con: duckdb.DuckDBPyConnection, covered: _Scope, runs: list[dict[str, Any]], threshold: Any, unit: str) -> tuple[str, list[str], str]:
+    """What the league's longest stat runs are runs OF, who had each (one
+    per player), and the rule under the table - with the unseen-games note
+    where the span holds a game with no box score.
 
-
-def _streak_league_stat_branch(
-    con: duckdb.DuckDBPyConnection, scope: Scope, column: str | None, threshold: Any, unit: str, hit: str, condition: dict[str, Any], limit: int
-) -> _StreakLeagueFound | TemplateResult:
-    """The by-stat half of :func:`_streak_league`: each player's longest run
-    meeting the threshold, one per player - unchanged by step 3, C4, still a
-    ``_Scope`` over the player relation's own tables."""
-    covered = _condition_scope(scope.season, scope.span, scope.season_type, _PLAYER_GAME_TABLES)
-    misfiled = _misfiled_postseason(covered)
-    if misfiled is not None:
-        return misfiled
-    base, runs, what, who, rule = _streak_league_by_stat(con, covered, column, threshold, unit, hit, condition, limit)
-    # The span searched, not the seasons the leaders' runs happen to fall in:
-    # "1997-2023" under a question about every season reads as a narrower search.
-    _, first, last = _totals(con, base, covered.params())
-    return runs, what, who, rule, covered.label(first, last), _where_in(covered)
-
-
-def _streak_league_team_branch(con: duckdb.DuckDBPyConnection, scope: Scope, result: str, hit: str, condition: dict[str, Any], limit: int) -> _StreakLeagueFound | TemplateResult:
-    """The win-loss half of :func:`_streak_league`: each team's longest run
-    in a season, one per team-season - settles its span as a ``_Span`` and
-    reads the team-games relation (step 3, C4): a postseason before 1993-94
-    is selected by the calendar year it was played in, not ESPN's own-year
-    label, and a career span reaches its real 1989 floor rather than 1994.
-    Honors ``since`` the same way (step 3, C4b)."""
-    team_span = _span_of(scope.span, scope.season, scope.season_type or 2, "games", since=scope.since, until=scope.until)
-    base, params, runs, what, who, rule = _streak_league_by_result(con, team_span, result, hit, condition, limit)
-    _, first, last = _team_season_range(con, base, params, team_span)
-    return runs, what, who, rule, _team_span_label(team_span, first, last), _team_where_in(team_span)
-
-
-def _streak_league(
-    con: duckdb.DuckDBPyConnection,
-    scope: Scope,
-    by_stat: bool,
-    column: str | None,
-    stat: Any,
-    threshold: Any,
-    unit: str,
-    want_win: bool,
-    result: str,
-    hit: str,
-    condition: dict[str, Any],
-) -> TemplateResult:
-    """The league's longest run with nobody named: one per player (a stat
-    streak) or one per team-season (a win/loss streak).
-
-    .. versionchanged:: 4.4.0
-       The team/win-loss branch (:func:`_streak_league_team_branch`) settles
-       its span as a ``_Span`` and reads the team-games relation (step 3,
-       C4); the player/stat branch (:func:`_streak_league_stat_branch`) is
-       unchanged, still a ``_Scope`` over the player relation's own tables -
-       the two readers of a player's and a team's games keep their own scope
-       objects, the same split ``condition_player``'s docstring already
-       carries for record_when/streak's player branches.
+    .. versionadded:: 5.0.0
     """
-    limit = _clamp_limit(scope.limit, _DEFAULT_STREAK_LIMIT)
-    found = _streak_league_stat_branch(con, scope, column, threshold, unit, hit, condition, limit) if by_stat else _streak_league_team_branch(con, scope, result, hit, condition, limit)
-    if isinstance(found, TemplateResult):
-        return found
-    runs, what, who, rule, label, where_in_text = found
+    names = _names(con, "players", "athlete_id", [r["athlete_id"] for r in runs])
+    what, who = f"run of consecutive games with {threshold}+ {unit}", [names[r["athlete_id"]] for r in runs]
+    rule = "Each player's longest run, counting only games he played" + (", carried across seasons." if covered.season is None else ".")
+    rule += _UNSEEN_ENDS_RUN if _totals(con, _box_missing(covered, box_source(con)), covered.params())[0] else ""
+    return what, who, rule
+
+
+def _streak_league_answer(
+    runs: list[dict[str, Any]], what: str, who: list[str], rule: str, label: str, where_in_text: str, by_stat: bool, stat: Any, threshold: Any, unit: str, want_win: bool
+) -> TemplateResult:
+    """The league's longest run with nobody named, said: one per player (a
+    stat streak) or one per team-season (a win/loss streak), a tie reported
+    as a tie the way threshold_count reports one, and the rule and the
+    open-run footnote under the table - carried in ``data["notes"]`` too, so
+    the web page shows them under the rendered table (rendered, the "*"
+    beside a run had no key anywhere on screen - Jeff's note, 2026-09-24).
+
+    .. versionadded:: 5.0.0
+    """
     if not runs:
         nobody = f"No player had a game with {threshold}+ {unit}" if by_stat else "No team has a game with a result"
         message = f"{nobody} {where_in_text}."
@@ -1630,15 +1465,11 @@ def _streak_league(
         for n, r in zip(who, runs, strict=True)
     ]
     top = [s for s in streaks if s["length"] == streaks[0]["length"]]
-    # A tie is reported as a tie, the way threshold_count reports one.
     leaders = " and ".join(s["name"] for s in top)
     headline = f"{leaders} {'shared' if len(top) > 1 else 'had'} the longest {what} of the {label}: {streaks[0]['length']} {'game' if streaks[0]['length'] == 1 else 'games'}."
     rows = [(s["name"], [str(s["length"]), s["from"], s["to"] + (" *" if s["open"] else "")]) for s in streaks]
     footnote = " * still going at the last game on record." if any(s["open"] for s in streaks) else ""
     answer = f"{headline}\n" + _table(f"Longest, {label}:", ["games", "from", "to"], rows) + f"\n{rule}{footnote}"
-    # The rule and the footnote's key ride in `data["notes"]` too, so the web
-    # page shows them under the rendered table: rendered, the "*" beside a
-    # run had no key anywhere on screen (Jeff's note, 2026-09-24).
     return TemplateResult(
         data={
             "span": label,

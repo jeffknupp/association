@@ -43,10 +43,11 @@ the parser's, the template's or the compiler's own reason through
 `agent.refusal_text`). There is no fall-through: the SQL-writing agent
 answered 1 question in 23 when measured and was removed on 2026-09-29
 (Jeff's call); what the yardstick still calls "fell through" is a refusal
-for want of a reading. Ten intents are the compiler's alone
+for want of a reading. Eleven intents are the compiler's alone
 (`compose.COMPILED_INTENTS`); `game_log`, `player_stat`, `player_splits`,
-`leaderboard`, `period_split` and `player_compare` joined them in step (g)
-(parser9-18, 2026-09-28/29: 0 answers moved by any retirement).
+`leaderboard`, `period_split`, `player_compare` and `streak` joined them in
+step (g) (parser9-18, 2026-09-28/29: 0 answers moved by any retirement;
+`streak` on 2026-09-30, not yet run live).
 
 The 13 families still failing, by cause:
 
@@ -105,19 +106,27 @@ The 13 families still failing, by cause:
    with the same sentence, 21 unit-test calls through the shim. Measured
    first on all six (`intent-shrink/g/six_before.jsonl`): the compiler
    declined every `with_without`, `player_matchup` and `streak` point (a
-   condition or a run it has no reading of). What is left on the player
-   relation: `with_without` (10 recorded questions), `player_matchup` (5),
-   `streak` (4). Each is a shape the compiler has no skeleton for, not a
-   point it declines by wording: a with/without split is a team's record
-   GROUPED BY a teammate's presence over his tenure windows (no such group
-   on either relation; the team relation carries no `without` cell); a
-   matchup is two players' lines over the games they met in, side by side
-   (a pair skeleton); a streak is a run, a window function over the ordered
-   games (no skeleton at all). Retiring one is a new skeleton or cell on the
-   relation first, measured the same way - never a presenter that calls
+   condition or a run it has no reading of). Each was a shape the compiler
+   had no skeleton for, not a point it declined by wording, and Jeff's call
+   (2026-09-30) is that none is bespoke enough to survive as a shape of its
+   own the way a chart or a fingerprint does: each gets its skeleton.
+   `streak` went first (2026-09-30): the `run` shape, the longest runs of
+   consecutive games one predicate holds along, a window over the ordered
+   games - `compose.core._compile_run` on the player relation and
+   `compose.team._compile_team_run` on the team's, over the relation cell
+   `conditions._longest_runs_sql`; the point carries the template's
+   refusals (`compose.adapt._adapt_streak`) and the presenters say the runs
+   in its words. 4/4 recorded questions identical, 41 unit-test calls (32
+   identical, 9 refused both ways). What is left on the player relation:
+   `with_without` (10 recorded questions) - a team's record GROUPED BY a
+   teammate's presence over his tenure windows (no such group on either
+   relation; the team relation carries no `without` cell) - and
+   `player_matchup` (5) - two players' lines over the games they met in,
+   side by side (a pair skeleton). Retiring one is a new skeleton or cell on
+   the relation first, measured the same way - never a presenter that calls
    the template's body over the scope, which retires nothing. A template
-   survives only for a shape of its own: a chart, a fingerprint, a streak, a
-   matchup, a with/without split. How to retire one is part 4's method: every call its
+   survives only for a shape of its own: a chart, a fingerprint. How to
+   retire one is part 4's method: every call its
    unit tests make and every recorded question it answers, answered both
    ways and compared (`~/association-research/intent-shrink/g/`: a pytest
    plugin records the unit-test calls; `parity_corpus.py` the recorded

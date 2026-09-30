@@ -52,18 +52,22 @@ narrowed reader is one season type at a time.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import Any
 
 import duckdb
 
 from association.nba.coverage import unavailable
 from association.nba.season import current_season
+from association.query.conditions import _longest_runs
 from association.query.entities import _TEAM_NICKNAMES, Entity
 from association.query.reading import Scope
 from association.query.team_games import TeamNarrowed
 from association.query.team_games import aggregate_sql as team_aggregate_sql
-from association.query.templates.common import TemplateResult, TemplateUnsupported, _clamp_limit, _resolved_team, _Span, scoped_team
+from association.query.team_games import named as team_named
+from association.query.templates.common import TemplateResult, TemplateUnsupported, _clamp_limit, _resolved_team, _Span, _span_of, scoped_team, whole_span
 from association.query.templates.common import team_games as narrow_team_games
+from association.query.templates.splits import _DEFAULT_STREAK_LIMIT, _TEAM_STREAK_SELECT, _streak_league_team_narrowed, _team_season_range
 
 from .core import Refused, Unsupported
 
@@ -173,9 +177,11 @@ class TeamQuery:
     #: ``"record"`` (wins/losses, over the narrowed or season games).
     aggregate: str = "total"
     #: ``"scalar"`` (a sum, this module's own readers), ``"rows"`` (the
-    #: team's games listed - ``game_log``'s team half) or ``"grouped"`` (its
-    #: splits - ``player_splits``' team half), the last two said by
-    #: :func:`~association.query.compose.present.present_team`.
+    #: team's games listed - ``game_log``'s team half), ``"grouped"`` (its
+    #: splits - ``player_splits``' team half) or ``"run"`` (its longest run
+    #: of wins or losses - ``streak``'s team half, read here by
+    #: :func:`_compile_team_run`; the league's with no team named), the
+    #: last three said by :func:`~association.query.compose.present.present_team`.
     shape: str = "scalar"
 
 
@@ -195,7 +201,9 @@ class TeamResult:
        printed ESPN's 2001-playoffs note twice.
     """
 
-    team: Entity
+    #: The team - or ``None`` for the league's longest run, which has no one
+    #: team (the ``run`` shape with no team named).
+    team: Entity | None
     span: _Span
     measure: str
     aggregate: str
@@ -208,6 +216,14 @@ class TeamResult:
     #: A note appended past the number - the season-total reader's own
     #: postseason addendum (F127: "...and added 78 more in the playoffs").
     note: str = ""
+    #: The ``run`` shape's runs (:func:`~association.query.conditions._longest_runs`'
+    #: rows), longest first; empty for every other shape.
+    runs: list[dict[str, Any]] = field(default_factory=list)
+    #: The first and last season the ``run`` shape's games actually came
+    #: from (a postseason's by the calendar year it was played in), for the
+    #: span's label; ``None`` otherwise.
+    first_season: int | None = None
+    last_season: int | None = None
 
 
 def _team_narrowed(scope: Scope) -> bool:
@@ -409,6 +425,48 @@ def _compile_team_games_total(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> T
     )
 
 
+def _compile_team_run(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> TeamResult:
+    """The ``run`` shape: a named team's longest run of wins or losses
+    (``scope.kind``) within a season, over the team-games relation narrowed
+    exactly as every team template narrows it (:func:`_team_games_narrowed`)
+    and read over every game in the span (``whole_span``) - or, with no team
+    named, each team-season's own longest, the league's list. The runs are
+    :func:`~association.query.conditions._longest_runs`', partitioned by
+    ``(team_id, season)``: a team's run is counted within one season, as the
+    record book counts them. ``streak``'s retired team and league branches
+    (ROADMAP plan item 6, step (g)).
+
+    .. versionadded:: 5.0.0
+    """
+    scope = q.scope
+    want_win = scope.kind != "loss"
+    hit, condition = "x.won = $want", {"want": want_win}
+    if scope.team and scope.team.strip():
+        narrowed, team, span = _team_games_narrowed(con, q)
+        whole_span(narrowed)
+        limit, best = 3, False
+    else:
+        team = None
+        span = _span_of(scope.span, scope.season, scope.season_type or 2, "games", since=scope.since, until=scope.until)
+        narrowed = _streak_league_team_narrowed(span)
+        limit, best = _clamp_limit(scope.limit, _DEFAULT_STREAK_LIMIT), True
+    base, params = team_named(*team_aggregate_sql(narrowed, list(_TEAM_STREAK_SELECT)))
+    games, first, last = _team_season_range(con, base, params, span)
+    runs = _longest_runs(con, base, {**params, **condition}, ("team_id", "season"), hit, limit, best_per_partition=best) if games else []
+    return TeamResult(
+        team=team,
+        span=span,
+        measure=q.measure,
+        aggregate=q.aggregate,
+        value=None,
+        games=games,
+        narrowed_text=narrowed.filters(),
+        runs=runs,
+        first_season=first,
+        last_season=last,
+    )
+
+
 def _team_coverage_tables(q: TeamQuery) -> tuple[str, ...]:
     """Which table a :class:`TeamQuery` would be built from - the season line
     or the game-level relation - the same split :func:`_team_narrowed`
@@ -418,6 +476,10 @@ def _team_coverage_tables(q: TeamQuery) -> tuple[str, ...]:
 
     .. versionadded:: 4.4.0
     """
+    if q.shape == "run":
+        # A run of results reads the games' own winner column, and nothing
+        # from the season line.
+        return ("games",)
     return ("games",) if _team_narrowed(q.scope) else ("team_season_stats",)
 
 
@@ -476,6 +538,14 @@ def run_team(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> TeamResult:
        branch (:func:`~association.query.templates.splits._record_when_team_answer`),
        which answers a threshold record for real.
     """
+    if q.shape == "run":
+        refusal = team_coverage_refusal(q)
+        if refusal is not None:
+            raise Refused(refusal)
+        try:
+            return _compile_team_run(con, q)
+        except TemplateUnsupported as exc:
+            raise Unsupported(f"relation: {exc}") from exc
     if q.scope.threshold is not None:
         raise Unsupported("a threshold names a record above and below a line, not a total - this module has no reader for one")
     if q.shape in ("rows", "grouped"):

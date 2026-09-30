@@ -459,7 +459,8 @@ HONORED_SCOPING: dict[str, frozenset[str]] = {
     # (RELATION_SCOPING_EXCLUDED); a teammate's absence, a venue and a date
     # narrow the first player's games as they do on every relation template.
     "player_matchup": _relation_scoping("player_matchup"),
-    "streak": _relation_scoping("streak"),
+    # streak is the compiler's too (step (g), the `run` shape):
+    # compose.present.STATED_SCOPING.
     # The home/road split, the record against one team, and every season at
     # once - "Knicks home record" was answered with their overall 53-29.
     # `situation` is now the full calendar narrowing TEAM_RELATION_SCOPING
