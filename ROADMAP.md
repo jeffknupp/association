@@ -24,7 +24,7 @@ Two properties are not negotiable on the way there:
   a follow-up wording reaches the alternative.** (Jeff, 2026-09-21.) A silent
   default is still the worst failure; a stated one is an answer.
 
-## Where it stands (2026-09-30, `a10da56`)
+## Where it stands (2026-09-30, `f720e6a`)
 
 **166 of 175 questions (94.9%), 155 of 166 families (93.4%)** on the live
 yardstick run (parser18: the fall-through agent removed, the period
@@ -34,7 +34,14 @@ with no reading (the yardstick's "fell through" outcome). Parser16 through
 20 moved no answer between them - parser20 (2026-09-30, `a10da56`) is the
 run after step (g) finished: `streak`, `player_matchup` and `with_without`
 retired through skeletons of their own, 277/277 identical to parser19 live
-and to the offline rehearsal on both trees, median 1.12s.
+and to the offline rehearsal on both trees, median 1.12s. Parser21
+(2026-09-30, `f720e6a`, median 1.16s) moved exactly three answers, each
+the one a commit aimed at: F161's league-wide read honors `since` (11
+games since 2001, not 3 of 2026), the first-quarter 3-point percentage
+answers (45 of 126), and F062's period condition answers (28 games with
+exactly one first-quarter three, 2.4 a game; the key says 31 and 2.52 -
+see "A period as a condition" below). 272 answered, 5 refused for want
+of a reading; the rehearsal on each tree reproduced the live run.
 
 The pipeline: a 3B model (qwen2.5:3b) copies the names out of the question
 and picks one stat key (`query/normalizer.py`); the parser reads everything
