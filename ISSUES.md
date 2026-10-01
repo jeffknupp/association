@@ -225,6 +225,7 @@ those were found.
 - **User sees:** a refusal naming the wrong missing fact (yardstick F003).
 - **Next step:** the chart resolver's ambiguity reaches the refusal as the
   clarification, with a test.
+- **GitHub:** #280
 
 ### A refusal for an unhonored narrowing prints the intent's identifier and a Python list: "player_compare: player_compare cannot honor ['since']"
 - **Found:** 2026-09-30, roadmap review (agent B), on live parser22.
@@ -237,6 +238,7 @@ those were found.
   names the missing thing, never only the slot.
 - **Next step:** each cell's phrase in the relation's cell table (the new
   roadmap's contract 4), read by the refusal.
+- **GitHub:** #281
 
 ### A comparison over a season no named player has a line in prints a table of dashes, not a refusal
 - **Found:** 2026-09-30, roadmap review (agent A), under a faked October
@@ -248,6 +250,7 @@ those were found.
 - **User sees:** an empty table that reads as an answer.
 - **Next step:** refuse, naming the season, when no named player has a
   line; fix the plural.
+- **GitHub:** #282
 
 ### The compiler's team total ignores "no season type named": "total points by the raptors in the last 10 games" reads the regular season only
 - **Found:** 2026-09-25, plan item 2 step 2a's parity harness
@@ -2286,6 +2289,7 @@ those were found.
   narrowing is dropped silently - the shape of the P1 fixed in `35d1676`.
 - **Next step:** a (shape x cell) test through `compose.answer`; then a
   refusal-by-name becomes a row of the team relation's cell table.
+- **GitHub:** #283
 
 ### The compiler has no NetPoints measure, so a single-game NetPoints ranking has nowhere to land
 - **Found:** 2026-09-24, fixing a live finding on the rendered page
@@ -2916,6 +2920,7 @@ those were found.
   of what happened.
 - **Next step:** print the reader's name and the path that will answer;
   correct the five docstrings (new roadmap, Phase 0).
+- **GitHub:** #284
 
 ### A log narrowed by a season range is headed "last 7 games of his career"
 - **Found:** 2026-09-30, roadmap review (agent A).
@@ -2926,6 +2931,7 @@ those were found.
   'career'` beside `since: 2025`.
 - **User sees:** a right list under a heading that says "career".
 - **Next step:** head the log by its narrowing.
+- **GitHub:** #285
 
 ### `Scope.stat` holds raw phrases and two key vocabularies for one measure
 - **Found:** 2026-09-30, roadmap review (agent A).
@@ -2936,6 +2942,7 @@ those were found.
   vs `three_pct`, `plus_minus` vs `plusMinus`); two label tables.
 - **User sees:** nothing directly; every reader of `stat` maps it again.
 - **Next step:** one closed measure type (new roadmap, Phase 0).
+- **GitHub:** #286
 
 ### The reader imports the answer side and runs the planner; it also issues about 100 SQL statements per question to recognize names
 - **Found:** 2026-09-30, roadmap review (agent A), instrumented over the
@@ -2948,6 +2955,7 @@ those were found.
 - **User sees:** nothing; what is read depends on what will answer.
 - **Next step:** import-linter layers inside `query/`; an in-memory name
   index (new roadmap, Phase 1).
+- **GitHub:** #287
 
 ### Research: the blind score is not computed from the run it names, and the golden harness keys on routes and intents
 - **Found:** 2026-09-30, roadmap reviews (both agents).
@@ -2959,6 +2967,7 @@ those were found.
 - **User sees:** nothing; a headline number can be stale without saying so.
 - **Next step:** the scorer takes the run file and refuses while a moved
   answer is ungraded; the harnesses move onto per-stage snapshots.
+- **GitHub:** #288
 
 ### 2018's `teamTurnovers` is kept though it is not the game's
 - **Found:** 2026-09-29, period relation's team half
