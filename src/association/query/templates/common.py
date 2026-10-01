@@ -2349,12 +2349,12 @@ def _absence_condition(con: duckdb.DuckDBPyConnection, mate: Entity, player: Ent
 
     .. versionadded:: 5.0.0
     """
-    if opponent is not None and not _teammates_among(con, [mate], player, span) and _played_for(con, mate, opponent, span):
+    if opponent is not None and not _teammates_among(con, [mate], player, span) and _on_team_in_span(con, mate, opponent, span):
         return Condition(mate, "opponent", "absent", None, _relation_tenure_clause(con, mate, span.season, side="opponent"))
     return Condition(mate, "own", "absent", None, _relation_tenure_clause(con, mate, span.season))
 
 
-def _played_for(con: duckdb.DuckDBPyConnection, mate: Entity, team: Entity, span: _Span) -> bool:
+def _on_team_in_span(con: duckdb.DuckDBPyConnection, mate: Entity, team: Entity, span: _Span) -> bool:
     """Whether ``mate`` has a box score for ``team`` in a season of ``span``."""
     clause, params = span.clause("season")
     row = con.execute(f"SELECT 1 FROM player_box_stats WHERE athlete_id = ? AND team_id = ? AND season_type = ? AND {clause} LIMIT 1", [mate.id, team.id, span.season_type, *params]).fetchone()

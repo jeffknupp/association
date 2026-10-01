@@ -46,29 +46,6 @@ before that commit needs re-checking against the current warehouse.
 
 ## P1: wrong answer
 
-### A team's compiled read silently drops a player-relation narrowing: "raptors game log in games where they made 5 threes in the first quarter" lists every game
-- **Found:** 2026-09-30, auditing the day's work (introduced for
-  `period_condition` by `f720e6a`; the hole itself is older).
-- **Evidence:** the question reads `game_log` for a team subject with
-  `period_condition {threePointFieldGoalsMade = 5, period 1}` in the scope,
-  and answers "Toronto Raptors, last 10 games of the 2026 regular season
-  (6-4)" - all ten, the condition nowhere in the answer. `compose/plan.py`
-  checks a team point with `_check_relation_scoping(reading.scope, "team")`,
-  which reads `RELATION_SCOPING` - the PLAYER relation's set - so a cell
-  only the player relation applies (`period_condition` since today;
-  `conditions`, `without`, `split`, `below`/`above`, `season_n` by the same
-  construction, not each verified) passes the planner, and the team
-  relation, which has no such cell, ignores it. A team SUM is not checked
-  at all ("its sums declare nothing yet"). The template path refuses the
-  same scope correctly ("team_stat cannot honor ['period_condition', ...]").
-- **User sees:** the team's whole log under a question that narrowed it - a
-  fluent answer to a different question.
-- **Next step:** check a team point against `TEAM_RELATION_SCOPING` (plus
-  what the team presenters state), for every team shape including the
-  sums; add a test per player-only cell that a team read refuses it.
-- **Source:** ours, not ESPN's.
-
-
 ### "single game" before a boolean stat is read as a single-game high: "who has the most single game triple doubles" answers a single-game high, never the triple-double leaderboard
 - **Found:** 2026-09-28, a probe the #260 fix agent invented (in no corpus) and reported; re-measured by the lead on the merged tree (`95c8a21`, the main warehouse, the parser with no model).
 - **Evidence:** `parse.read_route` reads "who has the most single game triple doubles" (and "... this season") as parent `leaderboard`, then the `single_game_high` child (`subject._CHILD_GRAMMARS`, the `\bsingle[- ]game\b` alternative #260 added): `intent=single_game_high kind=everyone slots={'stat': 'triple_double', 'season_type': 2}`, reason "the words 'single game' name single_game_high". "who has the most triple doubles" and "most triple doubles in a single season" stay `leaderboard`. A triple-double is a boolean measure (`compose.core.BOOLEAN_MEASURES`): "single game" here modifies the stat - every triple-double is one game's - not the question's shape, and a league-wide single-game high of a boolean has nothing to rank by. Through the agent with the route as read (answered_by=fast intent=single_game_high): "every player, 2026 regular season with a triple-double - top 3 by points:   2025-12-25  Nikola Jokic     vs MIN  W  points 56  minutes 43  rebounds 16  assists 15   2025-11-10  Cade Cunningham  vs WSH  W  points 46  minutes 45  rebounds 12  assists 11   2025-12-18  Luka Doncic      @ UTAH W  points ".

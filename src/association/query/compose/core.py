@@ -48,6 +48,7 @@ from association.query.templates.common import (
     _GAME_LOGS,
     RELATION_SCOPING,
     SCOPING_SLOTS,
+    TEAM_RELATION_SCOPING,
     TemplateResult,
     TemplateUnsupported,
     _apply_period,
@@ -356,10 +357,20 @@ def _check_relation_scoping(scope: Scope, subject: str = "player", honored_extra
     ``honored_extra`` is what the point's own reader honors beyond the
     relation: the season line's ranking reads ``rate`` (a season total, or a
     unit it refuses by name), where the game-level relation cannot."""
-    honored = RELATION_SCOPING | COMPILER_SLOTS | honored_extra | ({"season_type_unstated"} if subject in ("player", "team") else set())
+    # A team's point is held to the TEAM relation's own cells: checked
+    # against the player relation's, a cell only a player's games carry (a
+    # teammate's role, a starter half, a line on a box-score column, a
+    # period condition) passed the planner and was then ignored by a
+    # relation with no such cell - "raptors game log in games where they
+    # made 5 threes in the first quarter" listed every game (ISSUES.md, P1,
+    # 2026-09-30). An allow list, so a cell added to one relation is refused
+    # on the other until it is built there.
+    relation = TEAM_RELATION_SCOPING if subject == "team" else RELATION_SCOPING
+    honored = relation | COMPILER_SLOTS | honored_extra | ({"season_type_unstated"} if subject in ("player", "team") else set())
     unhonored = sorted(k for k in SCOPING_SLOTS - honored if getattr(scope, k) not in (None, "", (), False))
     if unhonored:
-        raise Unsupported(f"the relation cannot honor {unhonored} - it would answer for a different span than was asked")
+        whose = "a team's games cannot be narrowed by" if subject == "team" else "the relation cannot honor"
+        raise Unsupported(f"{whose} {unhonored} - it would answer for a different span than was asked")
 
 
 #: What a period-narrowed read may measure: the columns the period's line

@@ -768,6 +768,46 @@ def test_a_box_stat_measure_narrowed_to_a_window_is_unsupported(team_cx_ctx: Tem
         run_team(team_cx_ctx.con, q)
 
 
+def test_a_team_point_refuses_a_cell_only_a_players_games_carry() -> None:
+    """ISSUES.md P1 (2026-09-30): the planner checked a team point against
+    the PLAYER relation's cells, so one only a player's games carry passed
+    and the team relation, which has no such cell, ignored it - "raptors
+    game log in games where they made 5 threes in the first quarter" listed
+    every game, and a team SUM was not checked at all. A team point is held
+    to the team relation's own cells now, every shape, as an allow list: a
+    cell built on one relation is refused on the other until it is built
+    there. The cells a team's reader refuses with its own sentence (a
+    teammate's absence is with_without's question) still reach that
+    reader, and the team relation's own cells pass."""
+    from association.query.reading import PeriodCondition, Reading
+
+    def team_point(shape: str, **cells: Any) -> Reading:
+        aggregate = "none" if shape in ("rows", "run") else ("record" if shape == "grouped" else "total")
+        return Reading(relation="team", shape=shape, measures=["points"], aggregate=aggregate, group="venue" if shape == "grouped" else "none", scope=Scope(team="Orlando Magic", **cells))  # type: ignore[arg-type]
+
+    line = PeriodCondition(stat="threePointFieldGoalsMade", threshold=5, period=1)
+    refused: list[tuple[str, dict[str, Any], str]] = [
+        ("rows", {"period_condition": line}, "period_condition"),
+        ("scalar", {"period_condition": line}, "period_condition"),
+        ("rows", {"split": "starter"}, "split"),
+        ("scalar", {"without": ("Paolo Banchero",)}, "without"),
+        ("scalar", {"below": ("14 fta",)}, "below"),
+        ("scalar", {"season_n": 3}, "season_n"),
+        ("run", {"period_condition": line}, "period_condition"),
+    ]
+    for shape, cells, named in refused:
+        with pytest.raises(Unsupported, match=rf"a team's games cannot be narrowed by .*{named}"):
+            plan(team_point(shape, **cells))
+    passes: list[tuple[str, dict[str, Any]]] = [
+        ("scalar", {"opponent": "Boston", "venue": "home", "order": "recent", "limit": 10}),
+        ("rows", {"since": 2022, "until": 2024}),
+        ("grouped", {"split": "home_away"}),
+        ("rows", {"without": ("Paolo Banchero",)}),  # the log's own reader says where that question belongs
+    ]
+    for shape, cells in passes:
+        assert isinstance(plan(team_point(shape, **cells)), TeamQuery), (shape, cells)
+
+
 def test_answer_composes_a_team_subject_sentence(team_cx_ctx: TemplateContext) -> None:
     """``answer()``'s dispatch to the team subject, end to end - the same
     surface :func:`association.query.agent.Agent._try_compose` calls."""
