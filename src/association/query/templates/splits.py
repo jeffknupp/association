@@ -41,6 +41,7 @@ from ..conditions import (
     box_source,
 )
 from ..entities import Entity, teammate_names
+from ..notes import note
 from ..player_games import _PLAYER_GAMES, Narrowed, games_subquery, named
 from ..team_games import TEAM_GAMES_SQL, TeamNarrowed
 from ..team_games import aggregate_sql as team_aggregate_sql
@@ -302,7 +303,7 @@ def _team_span_floor_note(span: _Span, first: Any) -> str:
     "start with" that year would read as though the WAREHOUSE, not the
     question, put the floor there."""
     if span.season is None and span.since is None and first == span.first:
-        return f" Box scores start with the {span.first} {span.kind}; anything earlier is not counted."
+        return note("floor", f" Box scores start with the {span.first} {span.kind}; anything earlier is not counted.", table="box_scores", first=span.first, what=span.kind)
     return ""
 
 
@@ -442,12 +443,12 @@ def _player_splits_answer(con: duckdb.DuckDBPyConnection, found: _SplitSubject, 
     what = _SPLIT_TITLES[split] if split else "splits"
     notes = []
     if found.alias == "p":
-        notes.append("Played means he appeared in the game, and W-L is his team's record in those games.")
+        notes.append(note("definition", "Played means he appeared in the game, and W-L is his team's record in those games.", term="played"))
     if "month" in kinds:
-        notes.append("Months go by the US Eastern date of the game.")
+        notes.append(note("definition", "Months go by the US Eastern date of the game.", term="months_eastern"))
     headline = f"{found.subject}, {what}, {label} ({found.counted}):"
     answer = _table(headline, ["G", "W-L", *(h for _, h, _ in found.line)], rows)
-    notes += [note.strip() for note in (found.floor_note, found.caveat) if note]
+    notes += [remark.strip() for remark in (found.floor_note, found.caveat) if remark]
     answer += "\n" + " ".join(notes)
     return TemplateResult(data={**found.data, "span": label, "games": found.games, "splits": splits, "headline": headline.rstrip(":"), "notes": notes}, answer=answer.strip())
 
@@ -608,7 +609,8 @@ def _player_splits_team(con: duckdb.DuckDBPyConnection, scope: Scope, team: Enti
     # team box stats are NULL - averaged over the rest, and said so.
     blank = con.execute(f"SELECT COUNT(*) FILTER (WHERE fieldGoalsAttempted IS NULL) FROM ({base})", params).fetchone()
     blanks = int(blank[0]) if blank else 0
-    caveat = f" Rebounds, assists, 3-pointers and FG% are missing from {blanks} of those games' box scores and are averaged over the rest." if blanks else ""
+    said = f" Rebounds, assists, 3-pointers and FG% are missing from {blanks} of those games' box scores and are averaged over the rest." if blanks else ""
+    caveat = note("stat_blank", said, games=blanks, columns=["rebounds", "assists", "threes", "fg_pct"])
     return _SplitSubject(_team_span_label(span, first, last), _team_span_floor_note(span, first), base, params, games, first, last, subject, alias, line, counted, data, caveat)
 
 
@@ -948,9 +950,9 @@ def _with_without_answer(
     title, headers, whose = _with_without_heading(subject, mates, named, all_of, counted_teams, label, against)
     used = [w for w in windows if any(g["team_id"] == w.team_id and w.first <= g["day"] <= w.last for g in games)]
     spell_text = "; ".join(f"{team_names[w.team_id]} {w.first} to {w.last}" if len(team_order) > 1 else f"{w.first} to {w.last}" for w in used)
-    notes = _with_without_notes(whose, spell_text, mates, asked_without, all_of, unknown, subject)
-    answer = _table(title, headers, rows) + "\n" + " ".join(notes)
     tenure = [{"team": team_names[w.team_id], "from": str(w.first), "to": str(w.last)} for w in used]
+    notes = _with_without_notes(whose, spell_text, mates, asked_without, all_of, unknown, subject, tenure)
+    answer = _table(title, headers, rows) + "\n" + " ".join(notes)
     data = {
         "teammate": all_of,
         "teammates": named,
@@ -984,23 +986,29 @@ def _with_without_heading(subject: Entity | None, mates: list[Entity], named: li
     return title, headers, whose
 
 
-def _with_without_notes(whose: str, spell_text: str, mates: list[Entity], asked_without: bool, all_of: str, unknown: int, subject: Entity | None) -> list[str]:
+def _with_without_notes(whose: str, spell_text: str, mates: list[Entity], asked_without: bool, all_of: str, unknown: int, subject: Entity | None, tenure: list[dict[str, str]]) -> list[str]:
     """The caveats under the table: what "played" means for one teammate
     against two, games with no box score, and a player subject's extra
-    columns."""
-    notes = [f"Counted: games inside {whose} ({spell_text}), which runs from the first box score that lists {'him' if len(mates) == 1 else 'them'} there to the last."]
+    columns. ``tenure`` is the stints ``spell_text`` spells out, as values."""
+    names = [mate.name for mate in mates]
+    said = f"Counted: games inside {whose} ({spell_text}), which runs from the first box score that lists {'him' if len(mates) == 1 else 'them'} there to the last."
+    notes = [note("definition", said, term="tenure_counted", names=names, stints=tenure)]
     if len(mates) == 1:
-        notes.append(f"Played means {all_of} appeared in the game; out is a DNP or no box-score row at all.")
+        notes.append(note("definition", f"Played means {all_of} appeared in the game; out is a DNP or no box-score row at all.", term="played", names=names))
     elif asked_without:
-        notes.append(f"Out means none of {all_of} appeared in the game - a DNP or no box-score row at all; the other row is every game at least one of them played.")
+        said = f"Out means none of {all_of} appeared in the game - a DNP or no box-score row at all; the other row is every game at least one of them played."
+        notes.append(note("definition", said, term="out", names=names))
     else:
-        notes.append(f"Played means every one of {all_of} appeared in the game; the other row is every game at least one of them missed - a DNP or no box-score row at all.")
+        said = f"Played means every one of {all_of} appeared in the game; the other row is every game at least one of them missed - a DNP or no box-score row at all."
+        notes.append(note("definition", said, term="played", names=names))
     if unknown:
         # A game with no box score is not a game he missed - see
         # conditions._box_missing - so it is on neither side, and said so.
-        notes.append(f"{unknown} game{'' if unknown == 1 else 's'} inside that time {'has' if unknown == 1 else 'have'} no box score, so whether he played is unknown; they are on neither side.")
+        said = f"{unknown} game{'' if unknown == 1 else 's'} inside that time {'has' if unknown == 1 else 'have'} no box score, so whether he played is unknown; they are on neither side."
+        notes.append(note("games_unseen", said, games=unknown, why="no_box_score"))
     if subject is not None:
-        notes.append(f"G, W-L and margin are the team's; Played counts {subject.name}'s games, and his averages are over those.")
+        said = f"G, W-L and margin are the team's; Played counts {subject.name}'s games, and his averages are over those."
+        notes.append(note("definition", said, term="columns", whose=subject.name))
     return notes
 
 
@@ -1047,7 +1055,7 @@ def _record_when_group(by_hit: dict[bool | None, Any], hit: bool | None) -> dict
     return {"games": games, "wins": wins, "losses": games - wins, "avg_margin": margin}
 
 
-def _record_when_blank_note(count: int, unit: str) -> str:
+def _record_when_blank_note(count: int, unit: str, stat: Any) -> str:
     """The player counterpart to :func:`_record_when_team_unseen_note`: how
     many of his games in this span carry a box score but no usable figure for
     this stat at all - a rebuilt row blanks a column it was never measured for
@@ -1060,7 +1068,7 @@ def _record_when_blank_note(count: int, unit: str) -> str:
     """
     if not count:
         return ""
-    return f" {count} of his games in that span have no {unit} figure on record, so they are in neither row."
+    return note("stat_blank", f" {count} of his games in that span have no {unit} figure on record, so they are in neither row.", games=count, stat=stat, whose="player")
 
 
 def _record_when_answer(
@@ -1108,8 +1116,9 @@ def _record_when_answer(
     rows = [(f"{threshold}+ {unit}", reached), (f"under {threshold} {unit}", short), ("all his games", every)]
     table = _table(title, ["G", "W-L", "Win%", "Margin"], [(name, [str(g["games"]), f"{g['wins']}-{g['losses']}", _win_pct(g["wins"], g["games"]), _margin(g["avg_margin"])]) for name, g in rows])
     blank = by_hit.get(None)
-    caveat = _unseen_note(_unseen(con, covered, base, params, box_source(con))) + _record_when_blank_note(int(blank[1]) if blank is not None else 0, unit)
-    trailer = f"Over the {every['games']} games he played; a game he missed is in neither row.{covered.floor_note(min(r[4] for r in found))}{caveat}"
+    caveat = _unseen_note(_unseen(con, covered, base, params, box_source(con))) + _record_when_blank_note(int(blank[1]) if blank is not None else 0, unit, stat)
+    pool = note("definition", f"Over the {every['games']} games he played; a game he missed is in neither row.", term="pool", games=every["games"], what="games_he_played")
+    trailer = f"{pool}{covered.floor_note(min(r[4] for r in found))}{caveat}"
     answer = f"{table}\n{trailer}"
     data = {
         "player": player.name,
@@ -1199,14 +1208,14 @@ def _record_when_team_unseen(con: duckdb.DuckDBPyConnection, narrowed: TeamNarro
     return int(row[0]) if row else 0
 
 
-def _record_when_team_unseen_note(count: int, unit: str) -> str:
+def _record_when_team_unseen_note(count: int, unit: str, stat: Any) -> str:
     """The team counterpart to conditions._unseen_note: how many of the
     team's games in this span carry no usable figure for this stat at all, so
     they sit in neither row. Not shown for `points`, which reads the game's
     own score and always has one."""
     if not count:
         return ""
-    return f" {count} of their games in that span have no {unit} figure on record, so they are in neither row."
+    return note("stat_blank", f" {count} of their games in that span have no {unit} figure on record, so they are in neither row.", games=count, stat=stat, whose="team")
 
 
 def _record_when_team_no_stat(team: Entity, span: _Span, narrowed: TeamNarrowed, stat: Any, games: int) -> TemplateResult:
@@ -1275,8 +1284,9 @@ def _record_when_team_answer_table(con: duckdb.DuckDBPyConnection, span: _Span, 
     title = f"{team.name} record when they had {threshold}+ {unit}{narrowed.filters()}, {label}:"
     rows = [(f"{threshold}+ {unit}", reached), (f"under {threshold} {unit}", short), ("all their games", every)]
     table = _table(title, ["G", "W-L", "Win%", "Margin"], [(name, [str(g["games"]), f"{g['wins']}-{g['losses']}", _win_pct(g["wins"], g["games"]), _margin(g["avg_margin"])]) for name, g in rows])
-    caveat = "" if stat == "points" else _record_when_team_unseen_note(_record_when_team_unseen(con, narrowed, column), unit)
-    trailer = f"Over the {every['games']} games with a result.{_team_span_floor_note(span, min(r[4] for r in found))}{caveat}"
+    caveat = "" if stat == "points" else _record_when_team_unseen_note(_record_when_team_unseen(con, narrowed, column), unit, stat)
+    pool = note("definition", f"Over the {every['games']} games with a result.", term="pool", games=every["games"], what="games_with_a_result")
+    trailer = f"{pool}{_team_span_floor_note(span, min(r[4] for r in found))}{caveat}"
     answer = f"{table}\n{trailer}"
     data = {
         "team": team.name,
@@ -1411,8 +1421,9 @@ def _streak_player_answer(
         return _no_games(con, player, covered, team)
     label = _condition_span_label(covered, scope, first, last)
     what = f"consecutive games with {threshold}+ {unit}" if by_stat else f"{result} in games he played"
-    rule = "Only games he played count: a game he missed neither extends the run nor ends it" + (", and a run carries on from one season into the next." if covered.season is None else ".")
-    rule += _UNSEEN_ENDS_RUN if _unseen(con, covered, base, {**params, **covered.params()}, box_source(con)) else ""
+    said = "Only games he played count: a game he missed neither extends the run nor ends it" + (", and a run carries on from one season into the next." if covered.season is None else ".")
+    rule = note("definition", said, term="streak_rule", what="player_games_played", across_seasons=covered.season is None)
+    rule += note("definition", _UNSEEN_ENDS_RUN, term="unseen_ends_run") if _unseen(con, covered, base, {**params, **covered.params()}, box_source(con)) else ""
     if not runs:
         never = f"never had a game with {threshold}+ {unit}" if by_stat else f"never {'won' if want_win else 'lost'} a game he played"
         message = f"{player.name} {never}{narrowed.filters()} in the {label}."
@@ -1447,7 +1458,7 @@ def _streak_team_answer(team: Entity, narrowed: TeamNarrowed, span: _Span, first
         (f"The {team.name}' longest {result}" if team.name.endswith("s") else f"The {team.name}'s longest {result}") + narrowed.filters(),
         label,
         runs,
-        "Streaks are counted within one season.",
+        note("definition", "Streaks are counted within one season.", term="streak_rule", what="team_within_season"),
         span,
         {"team": team.name},
     )
@@ -1482,7 +1493,7 @@ def _streak_league_result_words(con: duckdb.DuckDBPyConnection, span: _Span, run
     # that season. This used to add "franchises are named as they are
     # today" to every all-seasons answer, which is what it was.
     who = [season_name(r["team_id"], int(r["season"]), names[r["team_id"]]) + (f" ({r['season']})" if span.season is None else "") for r in runs]
-    return result, who, "Each team's longest in a season, counted within that season."
+    return result, who, note("definition", "Each team's longest in a season, counted within that season.", term="streak_rule", what="league_team_within_season")
 
 
 def _streak_league_stat_words(con: duckdb.DuckDBPyConnection, covered: _Scope, runs: list[dict[str, Any]], threshold: Any, unit: str) -> tuple[str, list[str], str]:
@@ -1494,8 +1505,9 @@ def _streak_league_stat_words(con: duckdb.DuckDBPyConnection, covered: _Scope, r
     """
     names = _names(con, "players", "athlete_id", [r["athlete_id"] for r in runs])
     what, who = f"run of consecutive games with {threshold}+ {unit}", [names[r["athlete_id"]] for r in runs]
-    rule = "Each player's longest run, counting only games he played" + (", carried across seasons." if covered.season is None else ".")
-    rule += _UNSEEN_ENDS_RUN if _totals(con, _box_missing(covered, box_source(con)), covered.params())[0] else ""
+    said = "Each player's longest run, counting only games he played" + (", carried across seasons." if covered.season is None else ".")
+    rule = note("definition", said, term="streak_rule", what="league_player_games_played", across_seasons=covered.season is None)
+    rule += note("definition", _UNSEEN_ENDS_RUN, term="unseen_ends_run") if _totals(con, _box_missing(covered, box_source(con)), covered.params())[0] else ""
     return what, who, rule
 
 
@@ -1523,7 +1535,7 @@ def _streak_league_answer(
     leaders = " and ".join(s["name"] for s in top)
     headline = f"{leaders} {'shared' if len(top) > 1 else 'had'} the longest {what} of the {label}: {streaks[0]['length']} {'game' if streaks[0]['length'] == 1 else 'games'}."
     rows = [(s["name"], [str(s["length"]), s["from"], s["to"] + (" *" if s["open"] else "")]) for s in streaks]
-    footnote = " * still going at the last game on record." if any(s["open"] for s in streaks) else ""
+    footnote = note("still_open", " * still going at the last game on record.") if any(s["open"] for s in streaks) else ""
     answer = f"{headline}\n" + _table(f"Longest, {label}:", ["games", "from", "to"], rows) + f"\n{rule}{footnote}"
     return TemplateResult(
         data={
@@ -1558,6 +1570,6 @@ def _single_streak(subject: str, label: str, runs: list[dict[str, Any]], rule: s
     if ties:
         answer += " Matched by " + ", ".join(f"{r['first_day']} to {r['last_day']}" for r in ties) + "."
     if top["open"] and (scope.season is None or scope.season == current_season()):
-        answer += " It was still going at the last game on record."
+        answer += note("still_open", " It was still going at the last game on record.")
     streaks = [{"length": r["length"], "from": str(r["first_day"]), "to": str(r["last_day"]), "open": bool(r["open"])} for r in [top, *ties]]
     return TemplateResult(data={**who, "span": label, "streaks": streaks, "headline": answer, "notes": [rule.strip()]}, answer=f"{answer}\n{rule}")
