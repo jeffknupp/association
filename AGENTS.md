@@ -10,8 +10,10 @@ templates and the compiler, why templates instead of better prompting — read
 the source of truth for design, and this file does not restate it.
 
 Where the work is going - the goal, where it stands, and the next steps in
-order - is `ROADMAP.md` (rewritten 2026-09-30: the four-stage pipeline and
-the phases that reach it). The roadmap before it is `ROADMAP-2026-09.md`,
+order - is `ROADMAP.md` (accepted 2026-09-30: the four-stage pipeline, READ
+-> PLAN -> RUN -> SAY, and the phases that reach it). **Its rules bind every
+change to `query/` now, not only the roadmap's own work: "While the pipeline
+is rebuilt", below.** The roadmap before it is `ROADMAP-2026-09.md`,
 archived verbatim: "plan item N" and "ROADMAP step N" in code, commits and
 `CHANGES.md` cite that file. What each earlier spike measured, bought and
 cost, as written at the time, is `ROADMAP-HISTORY.md`. Read the roadmap before
@@ -28,10 +30,75 @@ What the *source* does — ESPN's wrong values, missing games, odd labeling and
 per-table history — is catalogued separately in `DATA.md`. `ISSUES.md` is what
 we do about it. Read `DATA.md` before trusting a column.
 
+## While the pipeline is rebuilt
+
+`ROADMAP.md` replaces the query path's half-ported middle (templates,
+presenters, adapters, six scoping declarations) with four stages. Until its
+Phase 4 these rules apply to every change under `src/association/query/`,
+whoever makes it. Each is a gate or a test, so a change that breaks one
+fails rather than drifts.
+
+- **New shapes are frozen** (decision D4). No new intent, template,
+  presenter, scoping table or per-intent renderer.
+  `tests/query/test_frozen_shapes.py` holds the 25 intents the reader can
+  name: one retires with its slice, none is added. A P1 wrong answer is
+  still fixed, in the code that exists. The sections below still describe
+  how templates, intents and presenters work, because they are what runs;
+  they are not an invitation to add one.
+- **What the roadmap is deleting may not grow.** `scripts/check_ratchets.py`
+  lists today's violations of each direction by name
+  (`scripts/ratchets.json`): a function outside the reader that takes the
+  question's text, a module that executes SQL, a private name `compose/`
+  imports from `templates/`, a module outside the reader that imports `re`.
+  It fails on a NEW one and on a listed one that is GONE, so the lists only
+  shrink. A NEW failure is fixed in the code - pass the Reading, not the
+  question; narrow through the relation's shared steps, not a new
+  `execute` - and adding to the list is Jeff's call. A GONE failure is the
+  ratchet working: run `scripts/check_ratchets.py --shrink` (it only
+  removes) and commit the shorter list with the change.
+- **The reader does not import the answer side, and the answer side never
+  reaches the model** (`[tool.importlinter]`). The reader's nine imports of
+  `compose`, `templates` and the relations are listed by name and go in
+  Phase 1; a tenth fails, and so does a listed one that no longer exists.
+- **A change to the pipeline is proven stage by stage, on two
+  populations.** `scripts/stage_snapshots.py run OUT.jsonl` answers the 628
+  recorded questions through the whole agent with no model (the
+  normalizer's recorded replies, the date pinned, DuckDB single-threaded,
+  about five minutes) and writes what each stage produced: the reading,
+  the planned query, the result's values, the answer. `compare` reports
+  the first stage each question differs in and exits 1. The second
+  population is every call the unit tests make across a stage boundary:
+  run the suite on each tree with `ASSOCIATION_STAGE_CALLS=<dir>` and
+  `compare-calls` the two directories. Three things to hold to:
+  - **Run the "before" tree, not a stored file.** The baseline is
+    `PYTHONPATH=<before>/src ... run before.jsonl`, and the first line of
+    each file says which copy of the code it read; check it. Measured
+    2026-09-30: two runs of one tree are identical on both populations
+    (628 of 628 questions, text included; 1,363 of 1,363 calls), so ANY
+    difference is the change.
+  - **Identical means identical.** `--values-only` leaves the sentences
+    out, and is only for a change the roadmap allows to reword an answer
+    (a Phase 2 sayer). Everything else compares text and all.
+  - **A boundary that moves is recorded on both sides first.** A phase
+    that replaces `compose.answer` adds the new boundary to
+    `tests/stage_calls.py` before it deletes the old one.
+- **Every step deletes the path it replaces, in the same change.** No
+  dispatcher between an old and a new implementation outlives its slice;
+  that is how the middle got half-ported.
+- **A test goes with what it tests.** A test whose subject is a structure
+  the change deletes (a presenter, a scoping table, a template's exact
+  sentence, the stages' intermediate slots) is deleted with it, not ported.
+  A test of behavior a user can see moves to the stage that owns the
+  behavior, and only if the stage snapshots do not already hold the case.
+  The change's report says how many tests it deleted and how many it moved.
+- **`AGENTS.md` changes with the code.** A slice that deletes what a
+  section here describes rewrites that section in the same change; the
+  roadmap does not leave it for the end.
+
 ## Before you commit
 
 ```bash
-uv run pre-commit run --all-files   # all seventeen gates
+uv run pre-commit run --all-files   # all eighteen gates
 uv run pytest -q -n auto            # fully offline: no network, no ollama
 ```
 
@@ -199,7 +266,9 @@ gets turned off.
   `fetch` > `nba`, with `fetch` and `query` independent and the core free of
   the `web` extra's packages (`[tool.importlinter]`). A new module that needs
   to sit somewhere else changes the contract, with a reason, rather than an
-  ignore.
+  ignore. Inside `query/` three more contracts hold the reader apart from
+  the answer side ("While the pipeline is rebuilt"); their `ignore_imports`
+  are a list of what is left to cut, not a place to add.
 - **Call-time imports are absolute.** A `from .fetch import warehouse` inside a
   function resolves against wherever the module lives *when it is called*:
   moving `cli.py` into `cli/` turned seven of them into imports of
@@ -541,13 +610,22 @@ model's. Two things follow, and both matter when you add a shape:
   only through the shared steps in
   `templates/common.py`, the same discipline the relation templates keep
   (see "A template on a relation does not declare, or apply, scoping of its
-  own" above). Thirteen intents have no template at all
+  own" above). Thirteen intents have no entry in `TEMPLATES`
   (`compose.COMPILED_INTENTS`: `threshold_count`, `single_game_high`,
   `record_when`, `player_history`, `game_log`, `player_stat`,
   `player_splits`, `leaderboard`, `period_split`, `player_compare`,
-  `streak`, `player_matchup`, `with_without`): the
-  compiler answers them alone, in their retired templates' words
-  (`compose/present.py`; a team's log and splits through
+  `streak`, `player_matchup`, `with_without`). **"The compiler answers
+  them" means the compiler plans them; most are still read and worded by
+  the retired template's body.** Measured over the 277 yardstick questions
+  (2026-09-30, both roadmap reviews): of 205 answers by these intents the
+  compiler's own SQL read 45 and its own sentence worded 16; 55 compiled a
+  query and discarded it for the template body's read; 94 never compiled
+  one (the season line, which the compiler has no model of). So when you
+  trace one of these, do not assume `compose.core` produced the numbers:
+  find the presenter (`compose/present.py`) and follow it into
+  `templates/`. `ROADMAP.md`, Phase 2, removes that detour slice by slice.
+  The presenters' routes, as they stand
+  (a team's log and splits through
   `templates.games.team_game_log` and `templates.splits.team_splits`; a
   ranking over the season line through
   `templates.players._leaderboard_ranking`; a player's quarter or half
@@ -710,18 +788,22 @@ model's. Two things follow, and both matter when you add a shape:
   writing the refusal, check what the source actually serves - "ESPN does not publish
   coaches" was the obvious sentence and it is false, and a refusal naming the
   wrong cause reads as honest while sending the reader somewhere useless.
-- **The parser has four regression nets; add to them whenever you port a
-  shape or find a misreading in the wild.** Cheapest first:
-  `tests/query/test_parser.py`, a case per wording a table gains, watched to
-  fail; the offline rehearsal
-  (`~/association-research/yardstick-v2/run_offline_parser.py`, compared with
-  `cmp_routes.py`), the 277 day10 wordings through the whole agent with the
-  normalizer's recorded replies and no model - it reproduced three live runs
-  exactly; the hold-out comparison (`holdout_compare.py`), the recorded
-  corpus's questions outside day10, which nothing was tuned on; and the
-  yardstick's live run, graded blind, which is the record. Pytest cannot see
-  a table change that moves some other wording - that is what the rehearsal
-  and the hold-out are for.
+- **The parser has three regression nets; add to them whenever you find a
+  misreading in the wild.** Cheapest first: `tests/query/test_parser.py`, a
+  case per wording a table gains, watched to fail; the stage snapshots
+  (`scripts/stage_snapshots.py`, "While the pipeline is rebuilt"), all 628
+  recorded questions - the 277 yardstick wordings, the 75 hold-out
+  questions nothing was tuned on and the 276 paraphrases - through the
+  whole agent with the normalizer's recorded replies and no model, compared
+  stage by stage against the tree before the change; and the yardstick's
+  live run, graded blind, which is the record. Pytest cannot see a table
+  change that moves some other wording - that is what the snapshots are
+  for, and they say whether it moved in the reading or only in the answer.
+  They replace the offline rehearsal and the hold-out comparison
+  (`~/association-research/yardstick-v2/run_offline_parser.py`,
+  `cmp_routes.py`, `holdout_compare.py`), which compared the answer's text
+  and the route's trace line; `run_offline_parser.py` is still what
+  predicts a live run's graded rows before the model is asked.
 - **Only one ollama caller at a time.** Two callers on one CPU-only ollama
   instance corrupted the router's output silently (ISSUES.md #171) or wedged
   it in a reload loop for minutes, and the normalizer runs the same model. A
@@ -966,8 +1048,11 @@ everything about it is constrained by things measured elsewhere in this file.
   2026-10-01 was 2027, a season with no games. `Agent.ask` answers inside
   `season_on_record(latest_season_on_record(con))`, which caps
   `current_season()`; the fetch path pulls `calendar_season()`, uncapped. A
-  harness that must answer the same on any day sets `ASSOCIATION_TODAY`,
-  and the test suite pins it (`tests/conftest.py`): fifteen tests encode the
+  harness that must answer the same on any day sets `ASSOCIATION_TODAY`:
+  the stage snapshots and every research harness under
+  `~/association-research` pin 2026-09-30 (the day the recorded corpus's
+  answers were graded as of), and a new harness does the same. The test
+  suite pins it too (`tests/conftest.py`): fifteen tests encode the
   2025-26 season and went red under an October date with nothing wrong.
 - **NetPoints tables disagree with each other about `season_type`.**
   `net_points_player` uses its own *string* column (`net_points_season_type`,
@@ -1108,7 +1193,11 @@ The habits that caught real bugs here, in rough order of how often they paid:
   explicitly (`PYTHONPATH=<tree>/src PYTHONDONTWRITEBYTECODE=1`, print
   `association.__file__`), and perturb one token of the refactored code to
   prove the comparison can fail. A green suite says only that the tested
-  inputs still pass.
+  inputs still pass. **On the query path that comparison is built:**
+  `scripts/stage_snapshots.py` ("While the pipeline is rebuilt") runs both
+  populations, pins what moves and names the stage a difference entered
+  at. Use it rather than a hand-rolled harness; the perturbation is still
+  yours to make.
 - **Run the original twice before calling a float difference a regression.**
   DuckDB's parallel `SUM` is not bit-reproducible: the same query over
   `player_season_advanced_stats` twice returns up to 185 of 588 rows differing
