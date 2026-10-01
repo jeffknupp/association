@@ -46,6 +46,32 @@ before that commit needs re-checking against the current warehouse.
 
 ## P1: wrong answer
 
+### From October 1 every unstated season reads the NEXT season, which has no games: "how many points does luka average" answers "no 2027 regular season numbers"
+- **Found:** 2026-09-30, roadmap review (agent A); re-measured by the lead
+  the same day with `date.today()` faked to 2026-10-01 on `b818823`.
+- **Evidence:** `nba/season.py:15-20` `current_season()` returns
+  `today.year + 1` from October 1 (and the warehouse macro,
+  `fetch/warehouse.py:235-238`, turns over the same day); the warehouse's
+  latest season with games is 2026 (`SELECT MAX(season) FROM real_games`).
+  Under the faked date: "how many points does luka average" -> "Luka
+  Doncic has no 2027 regular season numbers in the warehouse. He last
+  appears in 2026 ..."; "compare sga and embiid" -> a table headed "2027
+  regular season" with no figures; "what did Nikola Jokic do in his last
+  game?" -> "no games recorded in the 2027 season". The reviewer measured
+  79 of 84 sampled yardstick questions naming no season moving, and the
+  bare-name recency rule collapsing ("Curry" asks among retired Currys,
+  "Maxey" asks Marlon or Tyrese) since nobody has played the "current"
+  season.
+- **User sees:** empty tables and refusals naming a season nobody asked
+  about, on most everyday questions, from 2026-10-01 until 2026-27 games
+  are loaded. Every rehearsal and live run from that day also differs from
+  parser22 for a reason that is not the code.
+- **Next step:** Jeff's rule to decide - proposed: the default season is
+  the latest season with games on record, stated in the answer as it is
+  today. Make `today` injectable, pin it in every harness, and add a test
+  with an early-October date.
+- **Source:** ours, not ESPN's.
+
 ### "single game" before a boolean stat is read as a single-game high: "who has the most single game triple doubles" answers a single-game high, never the triple-double leaderboard
 - **Found:** 2026-09-28, a probe the #260 fix agent invented (in no corpus) and reported; re-measured by the lead on the merged tree (`95c8a21`, the main warehouse, the parser with no model).
 - **Evidence:** `parse.read_route` reads "who has the most single game triple doubles" (and "... this season") as parent `leaderboard`, then the `single_game_high` child (`subject._CHILD_GRAMMARS`, the `\bsingle[- ]game\b` alternative #260 added): `intent=single_game_high kind=everyone slots={'stat': 'triple_double', 'season_type': 2}`, reason "the words 'single game' name single_game_high". "who has the most triple doubles" and "most triple doubles in a single season" stay `leaderboard`. A triple-double is a boolean measure (`compose.core.BOOLEAN_MEASURES`): "single game" here modifies the stat - every triple-double is one game's - not the question's shape, and a league-wide single-game high of a boolean has nothing to rank by. Through the agent with the route as read (answered_by=fast intent=single_game_high): "every player, 2026 regular season with a triple-double - top 3 by points:   2025-12-25  Nikola Jokic     vs MIN  W  points 56  minutes 43  rebounds 16  assists 15   2025-11-10  Cade Cunningham  vs WSH  W  points 46  minutes 45  rebounds 12  assists 11   2025-12-18  Luka Doncic      @ UTAH W  points ".
@@ -214,6 +240,40 @@ those were found.
 - **GitHub:** #270
 
 ## P2: misleading or incomplete
+
+### A shot chart for a name two active players share is refused as naming nobody: "Plot Curry's threes from last season" says "shot_chart needs a player name"
+- **Found:** 2026-09-30, roadmap review (agent B), on live parser22 and an
+  instrumented offline replay; not re-measured by the lead.
+- **Evidence:** the answer is "Nothing here answers this question:
+  shot_chart: shot_chart needs a player name." The question names Curry;
+  the cause is two active namesakes - elsewhere ("curry assist each game")
+  the same name gets "did you mean Seth Curry or Stephen Curry?".
+- **User sees:** a refusal naming the wrong missing fact (yardstick F003).
+- **Next step:** the chart resolver's ambiguity reaches the refusal as the
+  clarification, with a test.
+
+### A refusal for an unhonored narrowing prints the intent's identifier and a Python list: "player_compare: player_compare cannot honor ['since']"
+- **Found:** 2026-09-30, roadmap review (agent B), on live parser22.
+- **Evidence:** "compare Jaylen Brown and Jason Tatum's netpoints over the
+  past four seasons" -> "Nothing here answers this question:
+  player_compare: player_compare cannot honor ['since'] - it would answer
+  for a different span than was asked."; "Best NBA record since January
+  31st 201" -> "... team_leaderboard cannot honor ['situation'] ...".
+- **User sees:** a slot name where AGENTS.md's rule is that a refusal
+  names the missing thing, never only the slot.
+- **Next step:** each cell's phrase in the relation's cell table (the new
+  roadmap's contract 4), read by the refusal.
+
+### A comparison over a season no named player has a line in prints a table of dashes, not a refusal
+- **Found:** 2026-09-30, roadmap review (agent A), under a faked October
+  date (see the rollover entry in P1).
+- **Evidence:** `templates.players._player_compare_lines`: "compare sga and
+  embiid" with the season defaulted to 2027 prints the table with no
+  figures and the note "(Shai Gilgeous-Alexander, Joel Embiid has no 2027
+  ...)" - the wrong number of the verb as well.
+- **User sees:** an empty table that reads as an answer.
+- **Next step:** refuse, naming the season, when no named player has a
+  line; fix the plural.
 
 ### The compiler's team total ignores "no season type named": "total points by the raptors in the last 10 games" reads the regular season only
 - **Found:** 2026-09-25, plan item 2 step 2a's parity harness
@@ -2239,6 +2299,20 @@ those were found.
 
 ## P3: refusal or gap
 
+### The planner lets five player cells through to a team's readers on trust, with no test per cell
+- **Found:** 2026-09-30, roadmap reviews (both agents), about the fix in
+  `35d1676`.
+- **Evidence:** `compose/plan.py` `_TEAM_READER_REFUSES` passes `without`,
+  `below`, `above`, `season_n` and `conditions` for a team's rows, run,
+  grouped and record shapes because each reader refuses them with its own
+  sentence. Nothing asserts, per (shape, cell) through `compose.answer`,
+  that the reader does. It is a fourth scoping declaration encoding a
+  property of template code inside the planner.
+- **User sees:** nothing today; if a reader stops refusing one, the
+  narrowing is dropped silently - the shape of the P1 fixed in `35d1676`.
+- **Next step:** a (shape x cell) test through `compose.answer`; then a
+  refusal-by-name becomes a row of the team relation's cell table.
+
 ### The compiler has no NetPoints measure, so a single-game NetPoints ranking has nowhere to land
 - **Found:** 2026-09-24, fixing a live finding on the rendered page
   (`/tmp/claude-1000/preview6`): "who had the highest netpoint game this
@@ -2854,6 +2928,63 @@ those were found.
 - **GitHub:** #278
 
 ## P4: tooling, docs, low impact
+
+### The trace says "(router) ... - not ported yet" on every compiled answer, and five docstrings on the query path describe an older tree
+- **Found:** 2026-09-30, roadmap reviews (both agents).
+- **Evidence:** `agent.py:308` appends " - not ported yet" whenever the
+  intent is not in `TEMPLATES`: 206 of 277 parser22 rows, all answered,
+  and there is no router. Stale docstrings: `templates/__init__.py`
+  ("Seven intents have no template"; thirteen), `compose/core.py`
+  ("Streaks are out of scope"), `compose/__init__.py` ("the six intents"),
+  `compose/present.py` ("reads nothing of its own"; its presenters execute
+  SQL), `router._AGENT_ONLY` (names the deleted agent).
+- **User sees:** nothing; anyone tracing the pipeline is told the opposite
+  of what happened.
+- **Next step:** print the reader's name and the path that will answer;
+  correct the five docstrings (new roadmap, Phase 0).
+
+### A log narrowed by a season range is headed "last 7 games of his career"
+- **Found:** 2026-09-30, roadmap review (agent A).
+- **Evidence:** "show maxey's games against boston in the past two
+  seasons" is headed "..., last 7 games of his career (2025-2026 regular
+  seasons)"; the 7 rows are every regular-season game against Boston since
+  2024-25 (checked against `real_games`). The point carries `span:
+  'career'` beside `since: 2025`.
+- **User sees:** a right list under a heading that says "career".
+- **Next step:** head the log by its narrowing.
+
+### `Scope.stat` holds raw phrases and two key vocabularies for one measure
+- **Found:** 2026-09-30, roadmap review (agent A).
+- **Evidence:** "how many 3 pointers have the magic made ..." carries
+  `stat: '3 pointers'` (`router._route_team_slots` -> `_team_metric_in`,
+  `router.py:2716-2719`); the parser's measure grammar and the compiler's
+  word table key the same measures differently (`threePointFieldGoalPct`
+  vs `three_pct`, `plus_minus` vs `plusMinus`); two label tables.
+- **User sees:** nothing directly; every reader of `stat` maps it again.
+- **Next step:** one closed measure type (new roadmap, Phase 0).
+
+### The reader imports the answer side and runs the planner; it also issues about 100 SQL statements per question to recognize names
+- **Found:** 2026-09-30, roadmap review (agent A), instrumented over the
+  277 yardstick questions.
+- **Evidence:** `subject.py:45,70,1233-1238` reads `COMPILED_INTENTS` and
+  `HONORED_SCOPING` to decide whether to write a companion's role;
+  `parse.py:33-36,948-970` calls `plan`. 28,218 statements over the 277
+  questions, 97% of them name recognition (`players_named_in` 11,575,
+  `team_named_in` 4,441 - one query per word).
+- **User sees:** nothing; what is read depends on what will answer.
+- **Next step:** import-linter layers inside `query/`; an in-memory name
+  index (new roadmap, Phase 1).
+
+### Research: the blind score is not computed from the run it names, and the golden harness keys on routes and intents
+- **Found:** 2026-09-30, roadmap reviews (both agents).
+- **Evidence:** `~/association-research/yardstick-v2/score_blind.py` reads
+  the fixed grade files plus `grade_overrides.json` and never opens
+  `live_<run>.jsonl`, so a run with ungraded moved answers still prints a
+  score. `golden/golden_v2.py` and `cmp_routes.py` parse the `(router)
+  intent=... slots=` trace line, which the new roadmap removes.
+- **User sees:** nothing; a headline number can be stale without saying so.
+- **Next step:** the scorer takes the run file and refuses while a moved
+  answer is ungraded; the harnesses move onto per-stage snapshots.
 
 ### 2018's `teamTurnovers` is kept though it is not the game's
 - **Found:** 2026-09-29, period relation's team half
