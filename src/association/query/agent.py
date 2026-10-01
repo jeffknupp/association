@@ -32,6 +32,7 @@ from association.nba.season import calendar_season, season_on_record
 
 from .answer import Answer, AnsweredBy, Artifact, Timing
 from .compose import COMPILED_INTENTS
+from .compose.plan import Planned, plan_point
 from .connection import connect_read_only, latest_season_on_record
 from .entities import (
     collect_name_readings,
@@ -142,6 +143,14 @@ class Agent:
         #:
         #: .. versionadded:: 5.0.0
         self.reading: Reading | None = None
+        #: The last question's Reading planned onto its relation - the
+        #: query, or why there is none
+        #: (:func:`~association.query.compose.plan.plan_point`) - or None
+        #: where nothing was read. Planned once per question, here, and
+        #: handed to whatever answers.
+        #:
+        #: .. versionadded:: 5.0.0
+        self.planned: Planned | None = None
         #: The kinds of the remarks written for the last question whose
         #: sentence did not reach its answer (:func:`association.query.notes.unsaid`):
         #: a caveat computed and then dropped. Empty when every one was said.
@@ -198,6 +207,7 @@ class Agent:
         """
         history = RunHistory(self.verbose, self.history_dir, sink=self.trace)
         self.reading = None
+        self.planned = None
         self.unsaid = []
         recorded = ""
         answer: Answer | None = None
@@ -346,6 +356,9 @@ class Agent:
         # after this changes a slot (query/subject.py, ROADMAP plan item 6).
         reading = reading_from_route(self.con, question, routed)
         self.reading = reading
+        # PLAN, once: the point on its relation, or why there is none. The
+        # parser read the point; it does not plan it (ROADMAP.md, Phase 1).
+        self.planned = plan_point(reading)
         for decision in reading.decisions:
             history.record_decision(decision)
         return reading
@@ -487,7 +500,7 @@ class Agent:
         ``player_splits``, step (g)). Where the compiler has no reading of
         the point, the steps a template's refusal took, in its order: the
         compiler's own reason - the planner refusing a narrowing the relation
-        cannot honor, read at parse time (``Reading.point_declined``) - names
+        cannot honor (``Planned.declined``) - names
         why the question is refused; a season under a table's floor is
         refused, never answered from nothing; and a shape nothing here reads
         is refused by name (query/refusals)."""
@@ -531,6 +544,7 @@ class Agent:
                 reading,
                 trace=lambda point: history.log(f"  -> (reading) {point.describe()}"),
                 declined=declined,
+                planned=self.planned,
             )
         if composed is None:
             return None

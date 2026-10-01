@@ -261,11 +261,10 @@ forbidden_modules = [
 ]
 allow_indirect_imports = true
 ignore_imports = [
-    # The parser reads the compiler's point and runs the planner (Phase 1
-    # moves both out of it).
+    # The parser reads the compiler's point (Phase 1 moves that out of it;
+    # the planner left 2026-10-01).
     "association.query.parse -> association.query.compose.core",
     "association.query.parse -> association.query.compose.move",
-    "association.query.parse -> association.query.compose.plan",
     "association.query.parse -> association.query.compose.team",
     "association.query.parse -> association.query.player_games",
     # The subject reading asks which cells the answering template honors

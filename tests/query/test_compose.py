@@ -1709,19 +1709,40 @@ def test_the_planner_refuses_a_narrowing_the_relation_cannot_honor() -> None:
     assert isinstance(plan(to_reading("threshold_count", {"player": "Brandin Podziemski", "stat": "points", "threshold": 30})), Query)
 
 
-def test_the_parser_carries_the_planners_refusal_on_the_reading(cx_ctx: TemplateContext) -> None:
-    """The point is planned as it is read (``parse.with_point``), so a
-    narrowing the relation cannot honor is the Reading's own verdict
-    (``point_declined``) - the reason the fall-through names, never a
-    template's list read after the fact."""
+def test_the_planner_refuses_after_the_parser_has_read_and_only_once(cx_ctx: TemplateContext) -> None:
+    """The parser reads the point and does not plan it (``ROADMAP.md``,
+    Phase 1): a narrowing the relation cannot honor is the PLAN stage's
+    verdict (``plan_point``) - the reason the refusal names, never a
+    template's list read after the fact - and the compiler answers from the
+    planning it is handed without planning again."""
+    from association.query.compose import plan as plan_module
+    from association.query.compose.plan import plan_point
     from association.query.parse import reading_from_route
     from association.query.router import Route
 
     reading = reading_from_route(
         cx_ctx.con, "podziemski 30 point games per 36", Route.from_slots("threshold_count", {"player": "Brandin Podziemski", "stat": "points", "threshold": 30, "rate": "per_36"})
     )
-    assert reading.point is None and reading.point_refusal is None
-    assert reading.point_declined is not None and reading.point_declined.startswith("the relation cannot honor ['rate']")
+    assert reading.point is not None and reading.point_declined is None and reading.point_refusal is None
+    planned = plan_point(reading)
+    assert planned.query is None and planned.refusal is None
+    assert planned.declined is not None and planned.declined.startswith("the relation cannot honor ['rate']")
+    why: list[str] = []
+    assert compose.answer(cx_ctx, reading, declined=why.append, planned=planned) is None and why == [planned.declined]
+
+    answerable = reading_from_route(cx_ctx.con, "podziemski 30 point games", Route.from_slots("threshold_count", {"player": "Brandin Podziemski", "stat": "points", "threshold": 30}))
+    handed = plan_point(answerable)
+    assert isinstance(handed.query, Query)
+    calls: list[Reading] = []
+    original = plan_module.plan
+    try:
+        plan_module.plan = lambda point: calls.append(point) or original(point)  # type: ignore[assignment, func-returns-value]
+        assert compose.answer(cx_ctx, answerable, planned=handed) is not None
+        assert calls == []  # handed its planning, the compiler does not plan
+        assert compose.answer(cx_ctx, answerable) is not None
+        assert len(calls) == 1  # a caller with only a Reading has it planned here
+    finally:
+        plan_module.plan = original
 
 
 def test_a_presenter_steps_aside_for_a_narrowing_its_words_do_not_state(cx_ctx: TemplateContext) -> None:

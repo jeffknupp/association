@@ -24,7 +24,7 @@ def test_ask_writes_history_file_even_without_verbose(monkeypatch: pytest.Monkey
     agent = _agent_with_players(tmp_path, "Joel Embiid")
     agent.history_dir = history_dir
     monkeypatch.setattr("association.query.normalizer.normalize", lambda model, question: Normalized(["embiid"], "points"))
-    monkeypatch.setattr("association.query.compose.answer", lambda ctx, reading, trace=None, declined=None: TemplateResult(data={}, answer="Final answer."))
+    monkeypatch.setattr("association.query.compose.answer", lambda ctx, reading, trace=None, declined=None, planned=None: TemplateResult(data={}, answer="Final answer."))
     result = agent.ask("how many points does embiid average").text
 
     assert result == "Final answer."
@@ -107,7 +107,7 @@ def test_the_fast_path_replaces_a_player_the_question_never_named(monkeypatch: p
         return TemplateResult(data={}, answer="templated")
 
     # player_compare is the compiler's (compose.COMPILED_INTENTS): the same Reading reaches compose.answer.
-    monkeypatch.setattr("association.query.compose.answer", lambda ctx, reading, trace=None, declined=None: record(ctx, reading))
+    monkeypatch.setattr("association.query.compose.answer", lambda ctx, reading, trace=None, declined=None, planned=None: record(ctx, reading))
     _agent_with_players(tmp_path, "Joel Embiid", "Jusuf Nurkic").ask(
         "compare sga and embiid", route=Route.from_slots(intent="player_compare", slots={"players": ["Shai Gilgeous-Alexander", "Jusuf Nurkic"]})
     )
@@ -122,7 +122,7 @@ def test_the_fast_path_records_who_the_question_was_read_to_be_about(monkeypatch
     from association.query.router import Route
     from association.query.templates.common import TemplateResult
 
-    monkeypatch.setattr("association.query.compose.answer", lambda ctx, reading, trace=None, declined=None: TemplateResult(data={}, answer="templated"))
+    monkeypatch.setattr("association.query.compose.answer", lambda ctx, reading, trace=None, declined=None, planned=None: TemplateResult(data={}, answer="templated"))
     agent = _agent_with_players(tmp_path, "Joel Embiid", "Jusuf Nurkic")
     answer = agent.ask("compare sga and embiid", route=Route.from_slots(intent="player_compare", slots={"players": ["Shai Gilgeous-Alexander", "Jusuf Nurkic"]}))
     stages = [(d.stage, d.field, d.after) for d in answer.decisions]
@@ -226,7 +226,7 @@ def test_a_rerouted_intent_runs_the_path_it_was_rerouted_to(monkeypatch: pytest.
         ran.append("team_record")
         raise TemplateUnsupported("team_record cannot read a player's line")
 
-    def composed(ctx: Any, reading: Reading, trace: Any = None, declined: Any = None) -> TemplateResult:
+    def composed(ctx: Any, reading: Reading, trace: Any = None, declined: Any = None, planned: Any = None) -> TemplateResult:
         ran.append(f"compose {reading.intent}")
         return TemplateResult(data={}, answer="composed")
 
@@ -258,7 +258,7 @@ def test_a_player_the_question_cannot_account_for_is_refused_not_passed_on(monke
     from association.query.router import Route
     from association.query.templates.common import TemplateResult
 
-    monkeypatch.setattr("association.query.compose.answer", lambda ctx, reading, trace=None, declined=None: TemplateResult(data={}, answer="templated"))
+    monkeypatch.setattr("association.query.compose.answer", lambda ctx, reading, trace=None, declined=None, planned=None: TemplateResult(data={}, answer="templated"))
     answer = _agent_with_players(tmp_path, "Joel Embiid", "Jusuf Nurkic").ask(
         "compare the two best centers", route=Route.from_slots(intent="player_compare", slots={"players": ["Jusuf Nurkic", "Joel Embiid"]})
     )
@@ -310,7 +310,7 @@ def test_the_fast_path_says_how_it_read_a_name_the_question_left_open(monkeypatc
 
     # player_stat is the compiler's (compose.COMPILED_INTENTS): the reading
     # travels the same way through agent._try_compose.
-    monkeypatch.setattr("association.query.compose.answer", lambda ctx, reading, trace=None, declined=None: reads_a_name(ctx, reading))
+    monkeypatch.setattr("association.query.compose.answer", lambda ctx, reading, trace=None, declined=None, planned=None: reads_a_name(ctx, reading))
     answer = _agent_with_players(tmp_path, "Marlon Maxey", "Tyrese Maxey").ask("how many points does maxey average?", route=Route.from_slots(intent="player_stat", slots={"player": "maxey"}))
     reading = "('maxey' was read as Tyrese Maxey, the only match who played in 2025-26. Marlon Maxey also matches - use the full name, or name a season he played, to ask about him.)"
     assert answer.text == f"Tyrese Maxey averaged 28.0 points. {reading}"
@@ -387,7 +387,7 @@ def test_a_templates_refusal_that_compose_answers_is_returned_as_fast_with_the_t
     from association.query.router import Route
     from association.query.templates.common import TemplateResult
 
-    def composed_answer(ctx: Any, reading: Reading, trace: Any = None, declined: Any = None) -> TemplateResult:
+    def composed_answer(ctx: Any, reading: Reading, trace: Any = None, declined: Any = None, planned: Any = None) -> TemplateResult:
         return TemplateResult(data={"skeleton": "aggregate", "measures": ["points"], "rows": [{"points": 30.0}]}, answer="Joel Embiid has averaged 30.0 points since 2024.")
 
     monkeypatch.setattr("association.query.agent.TEMPLATES", {"player_stat": _refusing_template})
@@ -433,7 +433,7 @@ def test_a_compose_refusal_is_returned_as_the_answer_not_a_fall_through(monkeypa
     from association.query.router import Route
     from association.query.templates.common import TemplateResult
 
-    def composed_refusal(ctx: Any, reading: Reading, trace: Any = None, declined: Any = None) -> TemplateResult:
+    def composed_refusal(ctx: Any, reading: Reading, trace: Any = None, declined: Any = None, planned: Any = None) -> TemplateResult:
         return TemplateResult(data={"ambiguous": "since"}, answer="I can't tell which span 'the last few' means - a number of games, or a number of seasons?")
 
     monkeypatch.setattr("association.query.agent.TEMPLATES", {"player_stat": _refusing_template})
@@ -453,7 +453,7 @@ def test_a_composed_answer_carries_the_name_reading_it_noted(monkeypatch: pytest
     from association.query.router import Route
     from association.query.templates.common import TemplateResult
 
-    def composed_with_reading(ctx: Any, reading: Reading, trace: Any = None, declined: Any = None) -> TemplateResult:
+    def composed_with_reading(ctx: Any, reading: Reading, trace: Any = None, declined: Any = None, planned: Any = None) -> TemplateResult:
         _note_name_reading("maxey", Entity("1", "Tyrese Maxey"), [Entity("0", "Marlon Maxey")], 2026, named_in_full=False)
         return TemplateResult(data={}, answer="Tyrese Maxey has averaged 28.0 points since 2024.")
 
@@ -491,7 +491,7 @@ def test_the_fast_path_carries_out_the_intent_and_data_it_used_to_discard(monkey
     from association.query.templates.common import TemplateResult
 
     # leaderboard is the compiler's (compose.COMPILED_INTENTS): the same Reading reaches compose.answer.
-    monkeypatch.setattr("association.query.compose.answer", lambda ctx, reading, trace=None, declined=None: TemplateResult(data={"leaders": ["Jokic"]}, answer="Jokic."))
+    monkeypatch.setattr("association.query.compose.answer", lambda ctx, reading, trace=None, declined=None, planned=None: TemplateResult(data={"leaders": ["Jokic"]}, answer="Jokic."))
     answer = _agent_with_players(tmp_path).ask("who leads the league in scoring?", route=Route.from_slots(intent="leaderboard", slots={"stat": "points"}))
 
     assert answer.text == "Jokic."
@@ -639,7 +639,7 @@ def test_a_compiled_intent_is_read_planned_and_answered_by_the_compiler_alone(mo
 
     calls: list[str] = []
 
-    def composed_first(ctx: Any, reading: Reading, trace: Any = None, declined: Any = None) -> TemplateResult:
+    def composed_first(ctx: Any, reading: Reading, trace: Any = None, declined: Any = None, planned: Any = None) -> TemplateResult:
         calls.append("compose")
         if trace is not None:
             trace(
@@ -708,7 +708,7 @@ def test_the_parser_reads_the_question(monkeypatch: pytest.MonkeyPatch, tmp_path
         return TemplateResult(data={}, answer="templated")
 
     monkeypatch.setattr("association.query.normalizer.normalize", lambda model, question: Normalized(["embiid"], "points"))
-    monkeypatch.setattr("association.query.compose.answer", lambda ctx, reading, trace=None, declined=None: record(ctx, reading))
+    monkeypatch.setattr("association.query.compose.answer", lambda ctx, reading, trace=None, declined=None, planned=None: record(ctx, reading))
     db_path = tmp_path / "test.duckdb"
     con = duckdb.connect(str(db_path))
     con.execute("CREATE TABLE players (athlete_id VARCHAR, display_name VARCHAR)")
@@ -796,7 +796,7 @@ def test_a_recorded_route_is_answered_as_given_without_reading_the_question(monk
         return TemplateResult(data={}, answer="answered")
 
     monkeypatch.setattr("association.query.normalizer.normalize", no_reader)
-    monkeypatch.setattr("association.query.compose.answer", lambda ctx, reading, trace=None, declined=None: record(ctx, reading))
+    monkeypatch.setattr("association.query.compose.answer", lambda ctx, reading, trace=None, declined=None, planned=None: record(ctx, reading))
     answer = _agent_with_players(tmp_path, "Joel Embiid").ask("how many points does embiid average", route=Route.from_slots(intent="player_stat", slots={"player": "Joel Embiid"}))
     assert (answer.text, answer.intent, seen) == ("answered", "player_stat", ["Joel Embiid"])
 
@@ -817,7 +817,7 @@ def test_a_short_question_is_refused_before_the_model_is_asked(monkeypatch: pyte
     assert answer.answered_by == "refused" and answer.timing.model_calls == 0
     assert answer.text == "I couldn't understand your question, 'Tatum rec'. Please try re-phrasing it."
     assert agent.unanswered == "fewer than 3 words"
-    monkeypatch.setattr("association.query.compose.answer", lambda ctx, reading, trace=None, declined=None: TemplateResult(data={}, answer="answered"))
+    monkeypatch.setattr("association.query.compose.answer", lambda ctx, reading, trace=None, declined=None, planned=None: TemplateResult(data={}, answer="answered"))
     assert agent.ask("Tatum rec", route=Route.from_slots(intent="player_stat", slots={"player": "Jayson Tatum"})).text == "answered"
 
 

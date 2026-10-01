@@ -41,7 +41,7 @@ from association.query.templates.common import TemplateContext, TemplateResult, 
 
 from .core import Query, Refused, Unsupported, run
 from .move import games_reading
-from .plan import plan
+from .plan import Planned, plan_point
 from .present import present, present_team
 from .sentence import _span_phrase
 from .sentence import sentence as _sentence
@@ -135,14 +135,24 @@ reading of a point, the question is refused with the reason
 """
 
 
-def answer(ctx: TemplateContext, reading: Reading, trace: Callable[[Reading], None] | None = None, declined: Callable[[str], None] | None = None) -> TemplateResult | None:
+def answer(
+    ctx: TemplateContext,
+    reading: Reading,
+    trace: Callable[[Reading], None] | None = None,
+    declined: Callable[[str], None] | None = None,
+    planned: Planned | None = None,
+) -> TemplateResult | None:
     """The point the parser read for a question (:attr:`Reading.point`,
-    :func:`~association.query.parse.reading_from_route`), answered - planned
-    and run, never read from the question again. The parser's own verdict
-    stands where it has no point: its refusal is the answer
-    (:attr:`Reading.point_refusal`), and a decline is ``None`` - the question
-    is not a point on this relation, and the caller refuses it - with the
-    reason given to ``declined``.
+    :func:`~association.query.parse.reading_from_route`), answered - run,
+    never read from the question again. ``planned`` is the point planned
+    onto its relation (:func:`~association.query.compose.plan.plan_point`):
+    the answering loop plans once and hands it over; a caller with only a
+    Reading (a test) leaves it out and it is planned here. Where there is
+    no query, the verdict stands: a refusal is the answer
+    (:attr:`~association.query.compose.plan.Planned.refusal`), and a decline
+    is ``None`` - the question is not a point on this relation, or carries a
+    narrowing the relation cannot honor, and the caller refuses it - with
+    the reason given to ``declined``.
 
     ``Refused`` (the relation itself refusing - no such player, an ambiguous
     name, a coverage floor) is returned as the answer: a handled outcome
@@ -171,25 +181,32 @@ def answer(ctx: TemplateContext, reading: Reading, trace: Callable[[Reading], No
        its own point from (ROADMAP plan item 6, step (f)): the compiler plans
        and runs, and never reads the question. Until then this was
        ``answer_reading``, beside the slot-taking ``answer``.
+
+    .. versionchanged:: 5.0.0
+       Takes ``planned``: the planner runs once per question, in the
+       answering loop, where the parser used to plan the point as it read
+       it and this function again (``ROADMAP.md``, Phase 1).
     """
-    if reading.point_refusal is not None:
+    verdict = planned if planned is not None else plan_point(reading)
+    if verdict.refusal is not None:
         # A copy: the caller appends its notes to the answer it is handed.
-        return copy.deepcopy(reading.point_refusal)
-    if reading.point is None:
+        return copy.deepcopy(verdict.refusal)
+    if verdict.query is None or reading.point is None:
         if declined is not None:
-            declined(reading.point_declined or "the compiler has no reading of this point")
+            declined(verdict.declined or "the compiler has no reading of this point")
         return None
-    return _answer_point(ctx, reading.intent, reading.point, trace, declined)
+    return _answer_point(ctx, reading.intent, reading.point, verdict.query, trace, declined)
 
 
-def _answer_point(ctx: TemplateContext, intent: str, point: Reading, trace: Callable[[Reading], None] | None, declined: Callable[[str], None] | None) -> TemplateResult | None:
-    """``point`` planned and run: the team subject's reader, the intent's
-    own presenter, or the compiler's own sentence - :func:`answer` and
+def _answer_point(
+    ctx: TemplateContext, intent: str, point: Reading, query: Query | TeamQuery, trace: Callable[[Reading], None] | None, declined: Callable[[str], None] | None
+) -> TemplateResult | None:
+    """``point``'s planned ``query``, run: the team subject's reader, the
+    intent's own presenter, or the compiler's own sentence -
     :func:`answer`'s tail."""
     try:
         if trace is not None:
             trace(point)
-        query = plan(point)
         if isinstance(query, TeamQuery):
             # A team's record above and below its own line is said by
             # record_when's own team reader (compose.present.present_team).

@@ -40,6 +40,7 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from association.query.answer import Answer
+    from association.query.compose.plan import Planned
     from association.query.reading import Reading
 
 STAGES: tuple[str, ...] = ("reading", "query", "result", "answer")
@@ -141,20 +142,26 @@ def _reading_record(reading: Reading, mask: Mapping[str, str] | None) -> dict[st
     }
 
 
-def _query_record(reading: Reading, mask: Mapping[str, str] | None) -> dict[str, Any]:
-    """The point the compiler plans and runs, or why there is none: the
-    parser's own refusal of it, or the reason the planner declined."""
-    if reading.point_refusal is not None:
-        return {"refused": plain(reading.point_refusal.data, mask=mask), "said": _masked(reading.point_refusal.answer, mask)}
+def _query_record(reading: Reading, planned: Planned | None, mask: Mapping[str, str] | None) -> dict[str, Any]:
+    """The point planned onto its relation, or why there is none: a refusal
+    the reading or the planner came to, or the reason one of them declined.
+    ``planned`` is the answering loop's own planning of the question; a
+    caller without it (one that stops at the Reading) gets the same record
+    from planning the Reading here."""
+    from association.query.compose.plan import plan_point
+
+    verdict = planned if planned is not None else plan_point(reading)
+    if verdict.refusal is not None:
+        return {"refused": plain(verdict.refusal.data, mask=mask), "said": _masked(verdict.refusal.answer, mask)}
     point = reading.point
-    if point is None:
-        return {"declined": reading.point_declined}
+    if verdict.query is None or point is None:
+        return {"declined": verdict.declined}
     record: dict[str, Any] = {name: plain(getattr(point, name), mask=mask) for name in _POINT_FIELDS}
     record["scope"] = plain(point.scope.to_slots(), mask=mask)
     return record
 
 
-def read_stages(reading: Reading, *, mask: Mapping[str, str] | None = None) -> dict[str, Any]:
+def read_stages(reading: Reading, *, planned: Planned | None = None, mask: Mapping[str, str] | None = None) -> dict[str, Any]:
     """The two records a Reading holds - ``reading`` and ``query`` - as
     :func:`snapshot` writes them, for a caller that stops before the answer
     (``scripts/claims_ledger.py``, which asks which of a question's words
@@ -162,15 +169,25 @@ def read_stages(reading: Reading, *, mask: Mapping[str, str] | None = None) -> d
 
     .. versionadded:: 5.0.0
     """
-    return {"reading": _reading_record(reading, mask), "query": _query_record(reading, mask)}
+    return {"reading": _reading_record(reading, mask), "query": _query_record(reading, planned, mask)}
 
 
-def snapshot(reading: Reading | None, answer: Answer, *, unanswered: str | None = None, unsaid: list[str] | None = None, mask: Mapping[str, str] | None = None) -> dict[str, Any]:
+def snapshot(
+    reading: Reading | None,
+    answer: Answer,
+    *,
+    planned: Planned | None = None,
+    unanswered: str | None = None,
+    unsaid: list[str] | None = None,
+    mask: Mapping[str, str] | None = None,
+) -> dict[str, Any]:
     """One question's four records as JSON-ready values. ``reading`` is None
     where the question was refused before anything read it (too short, a
     normalizer that could not be reached); ``unanswered`` is the reason a
     question nothing reads was given up with
     (:attr:`Agent.unanswered <association.query.agent.Agent.unanswered>`);
+    ``planned`` the answering loop's planning of the question
+    (:attr:`Agent.planned <association.query.agent.Agent.planned>`);
     ``unsaid`` the kinds of the remarks written and not said
     (:attr:`Agent.unsaid <association.query.agent.Agent.unsaid>`); ``mask``
     is :func:`plain`'s. The record also holds ``remarks``: the answer's
@@ -189,7 +206,7 @@ def snapshot(reading: Reading | None, answer: Answer, *, unanswered: str | None 
             "decisions": [plain(decision.as_dict(), mask=mask) for decision in stated],
             "unsaid": list(unsaid or ()),
         },
-        **(read_stages(reading, mask=mask) if reading is not None else {"reading": None, "query": None}),
+        **(read_stages(reading, planned=planned, mask=mask) if reading is not None else {"reading": None, "query": None}),
         "result": plain(answer.data, mask=mask),
         "answer": {
             "text": _masked(answer.text, mask),

@@ -32,7 +32,6 @@ import duckdb
 
 from association.query.compose.core import Refused, Unsupported
 from association.query.compose.move import read_point
-from association.query.compose.plan import plan
 from association.query.compose.team import team_named_in
 from association.query.decisions import Decision
 from association.query.entities import _edit_budget, _question_derived_player, _words, find_players, find_teams, nicknames_in, suggest_players
@@ -947,22 +946,25 @@ def reading_from_route(con: duckdb.DuckDBPyConnection, question: str, route: Rou
 
 def with_point(con: duckdb.DuckDBPyConnection, question: str, reading: Reading) -> Reading:
     """``reading`` with the compiler's point read from the question's words
-    (:func:`~association.query.compose.move.read_point`) and planned onto its
-    relation (:func:`~association.query.compose.plan.plan`) - or with why
-    there is none: the compiler declining (``point_declined``: no reading of
-    the point, or a narrowing the relation cannot honor, refused by the
-    planner from the Reading itself) or refusing (``point_refusal``). Read
-    here, once, so nothing after the parser reads the question: the compiler
-    plans and runs the point it is handed
-    (:func:`~association.query.compose.answer`). :func:`reading_from_route`'s
-    last step; public for a caller that builds a Reading by hand (a test
-    handing the compiler a subject of its own) rather than from a route.
+    (:func:`~association.query.compose.move.read_point`) - or with why
+    there is none: no reading of the point (``point_declined``), or a
+    refusal the reading itself comes to (``point_refusal``). Read here,
+    once, so nothing after the parser reads the question; the point is
+    PLANNED after the parser, once, by the answering loop
+    (:func:`~association.query.compose.plan.plan_point`), which is where a
+    narrowing the relation cannot honor is refused.
+    :func:`reading_from_route`'s last step; public for a caller that builds
+    a Reading by hand (a test handing the compiler a subject of its own)
+    rather than from a route.
 
     .. versionadded:: 5.0.0
+
+    .. versionchanged:: 5.0.0
+       Reads the point and no longer plans it (``ROADMAP.md``, Phase 1: the
+       planner runs once, outside the parser).
     """
     try:
         point = read_point(con, reading, question)
-        plan(point)
     except Unsupported as exc:
         return replace(reading, point_declined=str(exc))
     except Refused as exc:

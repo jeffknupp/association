@@ -669,9 +669,11 @@ model's. Two things follow, and both matter when you add a shape:
   words state (`compose.present.STATED_SCOPING`) and steps aside for a
   narrowing beyond them, so the compiler's own sentence, which states every
   narrowing the relation applied, answers; a narrowing the relation cannot
-  honor at all is refused by the planner (`compose.plan.plan`) as the parser
-  reads the point, and the Reading carries the reason (`point_declined`) -
-  the refusal names it, never a template's list. Retiring a template
+  honor at all is refused by the planner, which the answering loop runs
+  once per question AFTER the parser has read the point
+  (`compose.plan.plan_point`, kept on `Agent.planned` and handed to
+  `compose.answer`; the parser reads and does not plan) - the refusal
+  names the planner's reason, never a template's list. Retiring a template
   this way is measured first:
   every call its unit tests make, and every recorded question it answers,
   answered both ways and compared - the recorded questions alone showed one

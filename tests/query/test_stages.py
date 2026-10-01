@@ -208,7 +208,7 @@ def _agent(tmp_path: Path) -> Agent:
 
 
 def test_the_agent_keeps_the_reading_it_answered_from_and_forgets_it_on_the_next_question(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    monkeypatch.setattr("association.query.compose.answer", lambda ctx, reading, trace=None, declined=None: TemplateResult(data={"value": 1}, answer="templated"))
+    monkeypatch.setattr("association.query.compose.answer", lambda ctx, reading, trace=None, declined=None, planned=None: TemplateResult(data={"value": 1}, answer="templated"))
     agent = _agent(tmp_path)
     answer = agent.ask("who scored the most points", route=Route.from_slots(intent="leaderboard", slots={"stat": "points"}))
     assert agent.reading is not None and agent.reading.intent == "leaderboard"
