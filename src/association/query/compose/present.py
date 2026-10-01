@@ -7,7 +7,13 @@ template answers - the answer has to read exactly as the template's does,
 text and ``data`` both (plan item 2, step 2a: presentation parity), or folding
 that template into the compiler would move every answer it gives.
 
-So this module reads nothing of its own and phrases nothing of its own. The
+So this module phrases nothing of its own, and what it reads it reads
+through a template's body: most presenters hand the compiler's settled
+player and narrowing to the retired template's reader, which builds and
+executes its own SQL - the compiled SQL is discarded on those paths (55 of
+the 205 compiled answers on the yardstick, 2026-09-30), and three presenters
+execute SQL here directly. That is the detour ``ROADMAP.md``'s Phase 2
+removes. The
 subject, the span and every narrowing are the compiler's
 (:func:`~association.query.compose.core.compile_query`, through the shared
 steps in :mod:`association.query.templates.common`); the numbers are either

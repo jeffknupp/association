@@ -226,6 +226,87 @@ source_modules = [
 ]
 forbidden_modules = ["fastapi", "uvicorn", "pydantic"]
 
+# The three contracts below hold the query package to the stages ROADMAP.md
+# is rebuilding it into (READ -> PLAN -> RUN -> SAY), while the packages
+# those stages will live in do not exist yet. Each lists today's violations
+# under ignore_imports, by name: a new one fails, and so does a listed one
+# that is gone (import-linter reports an ignore that matches nothing), so
+# the list only shrinks. scripts/check_ratchets.py holds the directions an
+# import cannot express.
+
+[[tool.importlinter.contracts]]
+name = "The reader does not import the answer side"
+# ROADMAP contract 1 and Phase 1: what is read must not depend on what will
+# answer. Direct imports only - router reaches the relations through
+# calendar today, and that chain goes when calendar's words move to the
+# lexicon.
+type = "forbidden"
+source_modules = [
+    "association.query.normalizer",
+    "association.query.parse",
+    "association.query.router",
+    "association.query.subject",
+    "association.query.season_text",
+]
+forbidden_modules = [
+    "association.query.compose",
+    "association.query.templates",
+    "association.query.player_games",
+    "association.query.team_games",
+    "association.query.conditions",
+    "association.query.team_metrics",
+    "association.query.leaderboard",
+    "association.query.shotchart",
+    "association.query.fingerprint",
+]
+allow_indirect_imports = true
+ignore_imports = [
+    # The parser reads the compiler's point and runs the planner (Phase 1
+    # moves both out of it).
+    "association.query.parse -> association.query.compose.core",
+    "association.query.parse -> association.query.compose.move",
+    "association.query.parse -> association.query.compose.plan",
+    "association.query.parse -> association.query.compose.team",
+    "association.query.parse -> association.query.player_games",
+    # The subject reading asks which cells the answering template honors
+    # before it writes one.
+    "association.query.subject -> association.query.compose",
+    "association.query.subject -> association.query.compose.team",
+    "association.query.subject -> association.query.templates.common",
+    # The stages read a team metric's name from the catalog that also
+    # ranks it.
+    "association.query.router -> association.query.team_metrics",
+]
+
+[[tool.importlinter.contracts]]
+name = "The compiler's sentence reads no warehouse"
+# ROADMAP contract 3: a sayer takes a result and no connection. The one
+# module that already writes words from a result alone, held there; the
+# presenters and the template bodies are sql_outside_the_relations'
+# (scripts/check_ratchets.py) until their slices land.
+type = "forbidden"
+source_modules = ["association.query.compose.sentence"]
+forbidden_modules = ["duckdb"]
+allow_indirect_imports = true
+
+[[tool.importlinter.contracts]]
+name = "The answer side never asks the model"
+# ROADMAP contract 1: only the read stage reaches the normalizer (through
+# the answering loop, which hands it the question).
+type = "forbidden"
+source_modules = [
+    "association.query.compose",
+    "association.query.templates",
+    "association.query.player_games",
+    "association.query.team_games",
+    "association.query.conditions",
+    "association.query.entities",
+    "association.query.refusals",
+    "association.query.leaderboard",
+    "association.query.stages",
+]
+forbidden_modules = ["association.query.normalizer", "ollama"]
+
 [tool.mypy]
 python_version = "3.10"
 ignore_missing_imports = true

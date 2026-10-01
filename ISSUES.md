@@ -2907,21 +2907,6 @@ those were found.
 
 ## P4: tooling, docs, low impact
 
-### The trace says "(router) ... - not ported yet" on every compiled answer, and five docstrings on the query path describe an older tree
-- **Found:** 2026-09-30, roadmap reviews (both agents).
-- **Evidence:** `agent.py:308` appends " - not ported yet" whenever the
-  intent is not in `TEMPLATES`: 206 of 277 parser22 rows, all answered,
-  and there is no router. Stale docstrings: `templates/__init__.py`
-  ("Seven intents have no template"; thirteen), `compose/core.py`
-  ("Streaks are out of scope"), `compose/__init__.py` ("the six intents"),
-  `compose/present.py` ("reads nothing of its own"; its presenters execute
-  SQL), `router._AGENT_ONLY` (names the deleted agent).
-- **User sees:** nothing; anyone tracing the pipeline is told the opposite
-  of what happened.
-- **Next step:** print the reader's name and the path that will answer;
-  correct the five docstrings (new roadmap, Phase 0).
-- **GitHub:** #284
-
 ### A log narrowed by a season range is headed "last 7 games of his career"
 - **Found:** 2026-09-30, roadmap review (agent A).
 - **Evidence:** "show maxey's games against boston in the past two

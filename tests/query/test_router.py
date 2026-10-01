@@ -335,7 +335,7 @@ def test_a_named_players_single_quarter_earned_its_own_template() -> None:
 
 def test_a_team_quarter_question_is_exempted_from_the_agent_only_override() -> None:
     """Regression: "how many points did the 76ers score in the 4th quarter
-    against Boston this season?" tripped _AGENT_ONLY like any other "Nth
+    against Boston this season?" tripped _QUARTER_WORDS like any other "Nth
     quarter" question and was forced to the agent, which then spent 3 model
     calls (~150s) on SQL that filtered a nonexistent games.period column, a
     broken LAG() over play_id, and finally comparing home_team_id directly to
@@ -1006,7 +1006,7 @@ def test_a_player_beside_a_team_in_players_is_a_players_half_against_that_team()
 def test_td3s_is_a_triple_double_and_not_a_period_or_a_shot_value() -> None:
     """yardstick-v2 F098, the model's reply as recorded: "luka td3s home"
     came back as `other` with stat threePointFieldGoalsMade and shot_value
-    3, and `_AGENT_ONLY` then sent it to the agent as though "td3s" were a
+    3, and `_QUARTER_WORDS` then sent it to the agent as though "td3s" were a
     period word. It is a triple-double: one player's count of them at home
     is a player_stat the compiler answers."""
     got = _asking(
@@ -1716,7 +1716,7 @@ def test_a_player_whose_name_looks_like_a_team_is_still_a_player(name: str) -> N
 
 def test_a_triple_double_abbreviation_is_not_read_as_three_pointers() -> None:
     """ "luka td3s home" once answered his POINTS per game at home, because
-    `td3s` became shot_value 3; then `_AGENT_ONLY` sent it to the agent,
+    `td3s` became shot_value 3; then `_QUARTER_WORDS` sent it to the agent,
     since nothing counted one player's triple-doubles. The compiler counts
     them now, so a player_stat the model chose keeps its intent and reads
     the right stat."""
@@ -1726,7 +1726,7 @@ def test_a_triple_double_abbreviation_is_not_read_as_three_pointers() -> None:
 
 @pytest.mark.parametrize("question", ["Duncan Robison 1q log", "Devin Vassell nba player per game stats 1q"])
 def test_the_short_form_of_a_quarter_is_recognized(question: str) -> None:
-    """`_AGENT_ONLY` knew `q1` and not `1q`, so these were answered with a
+    """`_QUARTER_WORDS` knew `q1` and not `1q`, so these were answered with a
     whole-game line - the mirror of the "4th qtr" gap that made the pattern
     grow abbreviations. Recognizing them first sent them to the agent; now that
     `period_split` exists they route to it."""

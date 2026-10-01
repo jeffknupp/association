@@ -2629,7 +2629,7 @@ def test_head_to_head_since_conflicts_with_career(team_cells_con: TemplateContex
 
 def test_team_quarter_points_reads_each_games_own_side_of_linescores(tq_con: TemplateContext) -> None:
     """Regression: "how many points did the 76ers score in the 4th quarter
-    against Boston this season?" forced the router's _AGENT_ONLY override to
+    against Boston this season?" forced the router's _QUARTER_WORDS override to
     the agent, which spent 3 model calls (~150s) filtering a nonexistent
     games.period column, then a broken LAG() over play_id, then comparing
     home_team_id directly to an abbreviation - the opaque-id mistake its own

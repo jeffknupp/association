@@ -322,7 +322,11 @@ class Agent:
         its own (``Route.from_slots``)."""
         from association.query.parse import reading_from_route
 
-        history.log(f"  -> (router) intent={routed.intent!r} slots={routed.slots}" + ("" if routed.intent in TEMPLATES else " - not ported yet"))
+        # What will answer, said beside the route: until 5.0.0 every intent
+        # outside TEMPLATES printed "not ported yet" here - on 206 of 277
+        # yardstick answers, all of them the compiler's (ISSUES.md #284).
+        path = "a template" if routed.intent in TEMPLATES else "the compiler" if routed.intent in COMPILED_INTENTS else "no reader: refused unless a named refusal has its cause"
+        history.log(f"  -> (router) intent={routed.intent!r} slots={routed.slots} - {path}")
         # One reading of WHO the question is about, from its own words, written
         # into the Scope - the parser's last step, and the only writer: nothing
         # after this changes a slot (query/subject.py, ROADMAP plan item 6).

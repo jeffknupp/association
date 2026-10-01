@@ -64,8 +64,9 @@ jobs:
         run: git ls-files -z | xargs -0 uv run codespell
 
       - name: Import contracts (import-linter)
-        # Layers, fetch/query independence, no model client under web.app, and
-        # no web-extra imports in the core. Contracts in [tool.importlinter].
+        # Layers, fetch/query independence, no model client under web.app, no
+        # web-extra imports in the core, and the query package's stages (the
+        # reader apart from the answer side). Contracts in [tool.importlinter].
         run: uv run lint-imports
 
       - name: No merge-conflict markers
@@ -86,6 +87,13 @@ jobs:
         # already filed - so this fails only on a NEW one. Ruff's F811 covers
         # the same shape inside a single module and is blind across two.
         run: scripts/check_duplicate_names.py
+
+      - name: Roadmap ratchets
+        # What ROADMAP.md is deleting from the query package may not grow
+        # while it is being deleted: today's violations are listed by name
+        # (scripts/ratchets.json); a new one fails, and so does a listed one
+        # that is gone.
+        run: scripts/check_ratchets.py
 
       - name: Docstring coverage
         run: scripts/check_docstrings.py

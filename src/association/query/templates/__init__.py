@@ -10,9 +10,15 @@ are handled; anything else - including a recognized intent whose slots don't
 validate - is refused naming why.
 
 The templates live in one module per subject; this package holds the registry,
-:data:`TEMPLATES`, and re-exports what callers outside it use. Seven intents
-have no template here: the compiler answers them alone, in their retired
-templates' words (:data:`association.query.compose.COMPILED_INTENTS`).
+:data:`TEMPLATES` (twelve intents), and re-exports what callers outside it
+use. Thirteen more intents have no entry here
+(:data:`association.query.compose.COMPILED_INTENTS`): the compiler plans
+them, and most are still read and worded by their retired templates' bodies,
+which stay in these modules and are called by the compiler's presenters
+(:mod:`association.query.compose.present`). Measured over the 277 yardstick
+questions on 2026-09-30, the compiler's own SQL read 45 of the 205 answers
+those intents gave and its own sentence worded 16; ``ROADMAP.md``, Phase 2,
+is the work of moving the rest.
 
 .. versionchanged:: 3.0.0
    A package rather than a single module.

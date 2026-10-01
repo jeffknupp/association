@@ -114,6 +114,15 @@ repos:
         language: system
         pass_filenames: false
         files: ^src/association/.*\.py$
+      # The directions ROADMAP.md set for the query package, each held as a
+      # list of today's violations (scripts/ratchets.json): a new one fails,
+      # and so does a listed one that is gone, so the list only shrinks.
+      - id: ratchets
+        name: roadmap ratchets (query)
+        entry: scripts/check_ratchets.py
+        language: system
+        pass_filenames: false
+        files: ^(src/association/query/.*\.py|scripts/(check_ratchets\.py|ratchets\.json))$
 
       - id: docstrings
         name: docstring coverage (src)

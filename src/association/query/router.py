@@ -58,6 +58,10 @@ SEASON_TYPES = {"regular": 2, "playoffs": 3}
 _FOULED_OUT = re.compile(r"\bfoul(?:ed|s|ing)?\s+out\b")
 FOUL_OUT_THRESHOLD = 6
 
+# The words that name a quarter. Called `_AGENT_ONLY` until 5.0.0, for the
+# tool-calling agent a quarter question was once sent to; the period
+# relation reads them now (period_split, period_leaderboard,
+# team_quarter_points).
 # `[1-4]q` is the mirror of `q[1-4]` and was missing: "Duncan Robison 1q log"
 # and "Devin Vassell nba player per game stats 1q" were both answered with a
 # whole-game line in the 2026-09-15 feed replay. Same shape as the "4th qtr"
@@ -66,7 +70,7 @@ FOUL_OUT_THRESHOLD = 6
 # nothing counted one player's triple-doubles. The compiler does now (a
 # per-game flag on the player-games relation), so it left: see
 # `_route_triple_double_abbreviation`, which reads the word instead.
-_AGENT_ONLY = re.compile(r"\b(?:first|second|third|fourth|1st|2nd|3rd|4th)[\s-]+(?:quarter|qtr|q)\b|\bq[1-4]\b|\b[1-4]q\b|\bqtrs?\b|\bper\s+quarter\b|\bby\s+quarter\b|\b(?:each|every)\s+quarter\b")
+_QUARTER_WORDS = re.compile(r"\b(?:first|second|third|fourth|1st|2nd|3rd|4th)[\s-]+(?:quarter|qtr|q)\b|\bq[1-4]\b|\b[1-4]q\b|\bqtrs?\b|\bper\s+quarter\b|\bby\s+quarter\b|\b(?:each|every)\s+quarter\b")
 
 # "td3" is a triple-double, and the model reads its "3" as a shot value:
 # "luka td3s home" came back as `other` with stat threePointFieldGoalsMade
@@ -78,7 +82,7 @@ _DRAW_WORDS = re.compile(r"\b(?:plot|chart|draw|render|visuali[sz]e|graph|show m
 
 # A half is never a quarter. team_quarter_points reads a period number and the
 # model maps "first half" onto period 1, which is wrong for a TEAM the same way
-# it would be for a player - so half words are kept apart from _AGENT_ONLY,
+# it would be for a player - so half words are kept apart from _QUARTER_WORDS,
 # whose team exemption applies to quarters only, and instead always route
 # through the period_split override below (a named player's half now has a
 # template; a team's half still does not - see ISSUES.md #96). "rj barrett 4th
@@ -2087,7 +2091,7 @@ def _route_period_intents(raw: dict[str, Any], question: str) -> None:
         raw["stat"] = "fouls"
         raw["threshold"] = FOUL_OUT_THRESHOLD
     ranks_players = _PERIOD_LEADERS.search(low) is not None or (_PERIOD_TOP.search(low) is not None and not _team_slot_or_word(raw, low))
-    if (_AGENT_ONLY.search(low) and (ranks_players or not _is_team_quarter_points(raw) or _names_a_period_subject(question))) or _HALF_WORDS.search(low):
+    if (_QUARTER_WORDS.search(low) and (ranks_players or not _is_team_quarter_points(raw) or _names_a_period_subject(question))) or _HALF_WORDS.search(low):
         # A named player's quarter or half now HAS a template, so the override
         # sends it there instead of to the agent - but only when the question
         # names one and the period is legible, since `period_split` answers

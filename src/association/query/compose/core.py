@@ -1,7 +1,7 @@
 """One compiler over the player-games relation: a :class:`Query` names a point
 (skeleton, measures, aggregate, group, window) and the relation supplies the
-subject, the span and every scoping slot exactly as it does for the six
-relation templates - through :func:`~association.query.templates.common.scoped_player` /
+subject, the span and every scoping slot exactly as it does for the
+template bodies on the relation - through :func:`~association.query.templates.common.scoped_player` /
 :func:`~association.query.templates.common.scoped_games` for a named player,
 :func:`~association.query.templates.common.league_games` for the league-wide
 read - so binding parity is not a question here.
@@ -13,9 +13,11 @@ Skeletons and readers:
 - ``scalar`` - :func:`association.query.player_games.aggregate_sql`
   (averages, totals, a count, a record)
 - ``grouped`` - :func:`association.query.player_games.grouped_sql` (splits, a
-  ranking)
-
-Streaks are out of scope: nothing here reads a run of consecutive games.
+  ranking, a player's four quarters)
+- ``run`` - the longest runs of consecutive games one predicate holds along
+  (a streak), read as a window over the games in date order
+- ``pair`` - :func:`association.query.player_games.paired_rows_sql` (two
+  named players' lines over the games they met in)
 
 The compiler never narrows the relation by hand - every clause on
 ``pgl.opponent_team_id``, ``pgl.starter``, ``g.home_team_id`` or ``g.date``

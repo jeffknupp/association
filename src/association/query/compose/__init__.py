@@ -1,13 +1,20 @@
-"""One compiler over the player-games relation - the step after a
-template's refusal, and the last one before a refusal naming why.
+"""One compiler over the player-games and team-games relations: the only
+answer thirteen intents have (:data:`COMPILED_INTENTS`), the step after a
+live template's refusal, and the last one before a refusal naming why.
 
-The pipeline is parser -> template -> compiler -> refusal. A template on the
-relation answers a question at its own fixed point (the six intents in
-``association.query.templates``); when a template refuses because the
-question's shape is close but not exact - a measure word its list does not
-carry, "most ... in a game" rather than a log, a league-wide read with no
-player named - :func:`answer` tries the same relation at the point the
-question's own words move it to, before the question is refused.
+The pipeline is parser -> template or compiler -> refusal. :func:`answer`
+is handed the point the parser read from the question's words
+(:attr:`Reading.point <association.query.reading.Reading.point>`), plans it
+(:mod:`~association.query.compose.plan`) and answers it one of three ways:
+an intent's own default point through its presenter
+(:mod:`~association.query.compose.present`, which mostly calls the retired
+template's body - its SQL and its words), a team's point through
+:mod:`~association.query.compose.team`, and any other point through the
+compiler's own SQL (:mod:`~association.query.compose.core`) and sentence
+(:mod:`~association.query.compose.sentence`). Which of the three answered
+is not visible in the answer; ``ROADMAP.md`` ("Where it stands") has the
+measured split, and its Phase 2 is the work of making the last one the
+only one.
 
 Every correctness rule a template on the relation carries - the scoping the
 relation narrows by, the rebuilt-line guard, binding parity, the
@@ -17,8 +24,9 @@ which is what lets this package answer them all through one compiler instead
 of a template per shape. See ``core.py``'s module docstring for the rules
 themselves and where each is enforced.
 
-Nothing here reaches ollama or the agent: :func:`answer` is a pure function of
-a connection, an already-routed intent and slots, and the question's own text.
+Nothing here reaches ollama, and nothing here reads the question:
+:func:`answer` is a function of a connection and the
+:class:`~association.query.reading.Reading` the parser settled.
 
 .. versionadded:: 4.4.0
 """
