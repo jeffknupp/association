@@ -186,10 +186,29 @@ The 13 families still failing, by cause:
    said in the answer). A range of seasons and a single date stay refused
    by their reasons (accuracy is per season; one game ranks nothing per
    game). Nothing of step 2 is left.
-3. **The rest of the pair relation** (item 3). The pair as a compiler
-   subject ("most points by curry vs lebron", "how many times did lebron
-   score 30 vs kawhi"), and the opponent-side condition ("vs lakers without
-   lebron": the relation reads `side="opponent"`, and nothing writes it).
+3. **Players beside the subject are conditions, on either side, any
+   number of them** (item 3; Jeff's call, 2026-09-30, re-scoping what was
+   "the pair as a compiler subject" and "the opponent-side condition").
+   The relation already has the one mechanism: a `Condition` on the
+   games - a player, his side (own or opponent) and a predicate (played,
+   absent, started, bench, reached a line) - and a list of them is ANDed;
+   the pair relation's second player was one of its special cases. So
+   "most points by curry vs lebron", "how many times did lebron score 30
+   vs kawhi", "curry record vs lebron without kd" and "giannis points vs
+   lebron and curry" are all one shape: the subject's games under
+   conditions, read as a high, a count, a record or an average. Nothing
+   pair-specific is needed; only the matchup SUMMARY (both players' lines
+   and the head-to-head record over their meetings) keeps the `pair`
+   skeleton, for the bare "curry vs lebron" and "curry stats vs lebron".
+   The gap is the parser's: a player after "vs"/"against"/"versus" is
+   read as the second half of a pair today (every two-name question is a
+   matchup), and "without X" is always an own-side absence. To build: a
+   player after a versus word is an opponent-side `played` condition
+   wherever the words ask for anything but the summary; "without X" is
+   an own-side absence where X was the subject's teammate in the span and
+   an opponent-side one where he played for the other side, settled
+   where the name is resolved (the parser does not read the warehouse)
+   and said in the answer; any number of players, each a condition.
 4. **Re-plan from what is still failing**, after a live run.
 
 Step 1 finishes the parser consolidation (item 6) and should move no
