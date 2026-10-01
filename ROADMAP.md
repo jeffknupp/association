@@ -1,11 +1,10 @@
 # Roadmap
 
-**Status: PROPOSED, revised 2026-09-30 after two independent reviews.**
-Decided by Jeff: an answer's wording may change (D1), the answer side goes
-before the reader (D2), new shapes are frozen (D4), `intent` goes (D3).
-The reviews corrected the measurements below, changed the phases, and
-raised the decisions listed under "Decisions still open". Nothing here is
-started.
+**Status: ACCEPTED 2026-09-30, after two independent reviews; Phase 0 not
+started.** The reviews corrected the measurements below and changed the
+phases. Jeff's decisions are recorded under "Decisions"; one is still
+open (the season type a question that names none reads) and does not
+block Phase 0.
 
 The previous roadmap is `ROADMAP-2026-09.md` (archived verbatim; code and
 commits that cite "plan item N" or "ROADMAP step N" mean that file).
@@ -221,6 +220,32 @@ renderers keyed by shape (22 become one per shape); the browser check run;
 `docs/architecture.rst` rewritten. `AGENTS.md` is updated with each slice,
 not here: agents work from it throughout.
 
+## How a note survives a rewording
+
+A note today is a sentence: a string appended to the answer and to
+`data["notes"]`. Under D1 a sentence cannot be compared, so "numbers
+identical" would pass while a caveat vanished - the silent narrower answer,
+reintroduced by the proof itself. So a note stops being a sentence:
+
+- **A note is data on the Result:** a kind and its facts.
+  `empty_box_scores(games=5)`, `rebuilt_lines(games=3)`,
+  `name_reading(typed="maxey", read="Tyrese Maxey", also=["Marlon Maxey"])`,
+  `season_type_default(read="regular season")`,
+  `coverage_partial(table="plays", season=2002)`,
+  `redirected_season(asked=2026, answered=2025)`. Phase 0 gives every note
+  the code emits today a kind, at the place it is emitted.
+- **"Identical" means the same kinds with the same facts,** compared in
+  the result's projection, before and after each change. The sentence is
+  not compared.
+- **Each kind has one phrase,** in the sayer. Rewording a note is editing
+  that one phrase.
+- **Contract 5 closes the loop:** over the whole corpus, every note on a
+  Result must have been rendered into the answer. A sayer that drops one
+  fails the check even though every number matches.
+
+The same holds for the narrowings applied (each cell has one phrase) and
+for refusals (a cause, then a phrase).
+
 ## What "done" means
 
 | Measure | Today | Done |
@@ -239,6 +264,7 @@ not here: agents work from it throughout.
 | result shapes, and web renderers | 25 and 22 | one per shape |
 | unclaimed content words over the corpus | measured in Phase 0 | not grown |
 | stage snapshots, questions and unit-test calls | baseline | identical at the stated tolerance |
+| tests bound to deleted structures | about 1,170 | 0: deleted, or re-seated at a stage |
 | score | 167/175, 156/166 | not lower |
 
 Line counts are reported against 33,556 at each phase, not gated.
@@ -250,35 +276,49 @@ Line counts are reported against 33,556 at each phase, not gated.
 - **D2. Answer side before the reader - yes.** Kept, with the small
   read-stage decoupling (Phase 1) placed before it on both reviewers'
   advice.
-- **D3. `intent` goes entirely.** Neither the trace nor the web API needs
-  it; the page renders by shape.
+- **D3. `intent` goes entirely - kept after review.** Neither the trace
+  nor the web API needs it; the page renders by shape. One reviewer would
+  have kept a family name as a row of data for a readable trace; the small
+  closed set of shapes named in Phase 0 gives the trace its label without
+  a second concept.
 - **D4. New shapes are frozen - yes.** P1 wrong answers are still fixed.
+- **Charts are declared shapes.** The four chart answers (39 on
+  parser22) keep their own readers and renderers, each declared as a
+  shape with its relation. Porting them onto shots and NetPoints relations
+  is revisited after Phase 3.
+- **Notes stay identical; their wording does not have to.** See "How a
+  note survives a rewording" below.
+- **An unclaimed word is measured first.** Trace and a corpus count in
+  Phase 0; a visible note or a refusal is decided from the numbers.
+- **A new shape may be built once its family's slice has landed,** through
+  the new stages only.
+- **Tests are re-seated at a stage boundary, and retired wherever
+  possible.** About 1,170 tests are bound to structures this roadmap
+  deletes. A test whose subject is a deleted structure (a presenter, a
+  scoping table, a template's exact sentence, the stages' intermediate
+  slots) is deleted with it, not ported. A test of behavior a user can see
+  moves to the stage that owns the behavior, and only if the stage
+  snapshots do not already hold the case. Each slice reports the tests it
+  deleted and the tests it moved.
 - **The default season is the latest one with games on record.** From
   2026-10-01 the calendar's season (2027) has no games; fixed the day
   before (`nba.season.season_on_record`, entered by `Agent.ask`). The
   answer names the season, as before.
 
-## Decisions still open (Jeff)
+## Decision still open (Jeff)
 
-1. **D3, challenged by one reviewer.** Reviewer A would keep a family name
-   as one row of data, for a readable trace, a test entry point and the
-   harness vocabulary. Reviewer B would define a small closed set of shapes
-   first. Recommended: keep D3 as decided and name the shapes in Phase 0;
-   a named shape gives the trace its label without a second concept.
-2. **Charts:** port them onto shots and NetPoints relations, or declare
-   them shapes with their own readers kept. They are 39 answers, correct
-   and isolated. Recommended: declare them, and revisit after Phase 3.
-3. **D1's boundary.** Wording may change; must the set of caveats and
-   notes stay identical? Recommended: yes, enforced as data (contract 5).
-4. **What an unclaimed word does:** trace and metric only, a visible note,
-   or a refusal. Recommended: measure first.
-5. **D4's edge.** May a new shape be built once its family's slice has
-   landed on the new stages? Recommended: yes, through the new stages only.
-6. **The tests.** About 1,170 are bound to deleted structures.
-   Recommended: re-seat each at a stage boundary as its slice lands; the
-   frozen template texts go with D1.
-7. **Still open from before:** the season type a question that names none
-   reads. Two parser22 rows (F062, F161) differ from the key only by it.
+**The season type a question that names none reads.** Today: the regular
+season, said in the answer, except a "last N games" window, which reads
+both. The rule left on the table by the last roadmap: **records, lists and
+counts read both season types; averages read the regular season.**
+Evidence since: the keys of two parser22 rows combine both types where
+the question named none - F161, a list (the key's twelfth game is a 2021
+playoff game), and F062, an AVERAGE (the key's 31 games are 28
+regular-season and 3 playoff), which the rule on the table would still
+answer from the regular season alone; and "show maxey's games against
+boston in the past two seasons" lists 7 regular-season games and leaves
+out 7 playoff meetings, saying so. Both are graded correct today because
+the default is stated.
 
 ## What still fails (parser22)
 
