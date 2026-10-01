@@ -24,7 +24,7 @@ Two properties are not negotiable on the way there:
   a follow-up wording reaches the alternative.** (Jeff, 2026-09-21.) A silent
   default is still the worst failure; a stated one is an answer.
 
-## Where it stands (2026-09-30, `f720e6a`)
+## Where it stands (2026-09-30, `de5d820`)
 
 **166 of 175 questions (94.9%), 155 of 166 families (93.4%)** on the live
 yardstick run (parser18: the fall-through agent removed, the period
@@ -42,6 +42,10 @@ answers (45 of 126), and F062's period condition answers (28 games with
 exactly one first-quarter three, 2.4 a game; the key says 31 and 2.52 -
 see "A period as a condition" below). 272 answered, 5 refused for want
 of a reading; the rehearsal on each tree reproduced the live run.
+Parser22 (`de5d820`, step 3, median 1.19s) moved one answer, the intended
+one: "jay huff game log vs Embiid" lists his three games against Embiid
+(the log asked for) where it gave the pair's summary of the same three
+meetings; 272/5, the rehearsal identical.
 
 The pipeline: a 3B model (qwen2.5:3b) copies the names out of the question
 and picks one stat key (`query/normalizer.py`); the parser reads everything
@@ -209,6 +213,20 @@ The 13 families still failing, by cause:
    an opponent-side one where he played for the other side, settled
    where the name is resolved (the parser does not read the warehouse)
    and said in the answer; any number of players, each a condition.
+   **Built 2026-09-30 (`de5d820`):** `subject._versus_companions` reads a
+   player after a versus word as an opponent-side `played` condition
+   where the words ask for games (a high, a count, a log, a streak,
+   splits, "most"/"fewest") or three names are given; the route carries
+   them typed (`parse._read_route_versus`); "most points by curry vs
+   lebron" is his best meetings (`compose.move._move_single_game`), "how
+   many times did lebron score 30 vs kawhi" a count (7 over his career),
+   the bare pair and "record vs" still the matchup summary.
+   `templates.common._absence_condition` settles "without X"'s side at
+   resolution: the subject's team, else the opponent X played for, said
+   as "without X on the other side" ("steph curry game log vs lakers
+   without lebron"); a versus team keeps the question off the with/without
+   split. Live parser22: one answer moved (F "jay huff game log vs
+   Embiid", to the log asked for), 272/5.
 4. **Re-plan from what is still failing**, after a live run.
 
 Step 1 finishes the parser consolidation (item 6) and should move no
