@@ -97,9 +97,10 @@ fails rather than drifts.
   it overcounts a word a rule matched and did not need ("games" in "last
   10 games").
 - **The target types are `ROADMAP-TYPES.md`**, a draft until Jeff has
-  reviewed it: the Reading's typed filters, the Measure, the Query, the
-  Result, five shapes, about 25 note kinds. A type is declared in code by
-  the phase that first uses it, not before.
+  reviewed all of it (its "Decided" and "Still open" say which parts):
+  the Reading's typed filters, the Measure, the Query, the Result, seven
+  shapes, decisions apart from notes. A type is declared in code by the
+  phase that first uses it, not before.
 - **Every step deletes the path it replaces, in the same change.** No
   dispatcher between an old and a new implementation outlives its slice;
   that is how the middle got half-ported.

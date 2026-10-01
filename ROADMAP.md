@@ -182,8 +182,8 @@ moved one is graded against the key, and each new sayer is reviewed once.
 | Unread content words | done: `scripts/claims_ledger.py`. Baseline at `011091f`: 679 of 2,415 content words (28.1%) in 390 of the 628 questions do not move the reading when deleted - mostly words that restate the shape ("average", "record", "stats", "game"). Eleven questions have an unread NUMBER; three of those are wrong answers, filed |
 | Import contracts and ratchets | done: three contracts (the reader's nine imports of the answer side listed), `scripts/check_ratchets.py` (50 functions outside the reader take the question, 21 modules execute SQL, 91 private template imports, 9 modules outside the reader import `re`), the 25 intents frozen by a test |
 | Trace line, stale docstrings | done (#284) |
-| Target types | drafted for review: `ROADMAP-TYPES.md` |
-| Every note given a kind where it is emitted | not started: follows the review of the kinds |
+| Target types | `ROADMAP-TYPES.md`, draft 2, partly decided 2026-10-01 (three grouped shapes; decisions apart from notes; no `pair`). It lists what must be decided before each phase; Phase 1 needs nothing from it |
+| Every remark given a kind where it is written | not started: needs the decision and note split settled (`ROADMAP-TYPES.md`, "Still open" 1) |
 
 **Phase 1 - The read stage becomes a stage.** Small, and before the answer
 side, because it removes the coupling everything else trips on.

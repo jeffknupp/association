@@ -1,6 +1,7 @@
 # The target types
 
-**Status: DRAFT 2 for review (Jeff), 2026-09-30. Nothing here is code yet.**
+**Status: DRAFT 2, partly decided (Jeff, 2026-10-01); see "Decided" and
+"Still open". Nothing here is code yet.**
 `ROADMAP.md`, Phase 0: "the target types written down and reviewed: the
 Reading's typed filters, the Result, the measure type, and the closed set
 of shapes. Shapes are named here, before any sayer is written, so 'shape'
@@ -17,8 +18,31 @@ review changed" lists them. Both reports are kept:
 
 Evidence is the stage snapshot of the 628 recorded questions on `7f6425b`
 (`~/association-research/stages/corpus-7f6425b.jsonl`) unless a line says
-otherwise. The decisions that are Jeff's are numbered under "Open for
-review".
+otherwise.
+
+## Decided (Jeff, 2026-10-01)
+
+- **Ranking, comparison and split are three shapes** over one `Grouped`
+  body and one table renderer. Which one a part is follows from a rule on
+  the subject's kind and `by`, held by a test with no exceptions ("The
+  shapes").
+- **A decision and a note are two types.** A decision is something the
+  question left open and the system chose; a note is something about the
+  data. What that split still leaves to decide is under "Still open" 1.
+- **`pair` is not a shape, on one condition: any number of subjects and
+  any number of players beside them, each with its own role, stay
+  expressible.** They do; "More than one player" shows how.
+
+## What must be decided before which phase
+
+| Phase | Needs from this document |
+| --- | --- |
+| Phase 0, the last item (a kind on every remark where it is written) | "Still open" 1: the decision and note split |
+| Phase 1 (the read stage becomes a stage) | nothing. It keeps today's `Reading` and `Scope` and is proven by identical snapshots |
+| Phase 2, before its first slice | "Still open" 2 to 5: parts, `record_when`, `period`, the default line |
+| Phase 2, slice (iv), team shapes | "Still open" 6: `team_snapshots` |
+| Phase 2, slice (v), charts | "Still open" 7: two charts, not four |
+| Phase 3 (one reader) | the Filter union, `Measure`, `Window`, `Unsupported`: reviewed again with the shadow reader's diffs in hand |
 
 ## What exists, in one table
 
@@ -90,6 +114,7 @@ defaulted by the planner, and a default is a note.
 | `Line(measure, op, value, who, period)` | a stat reached, missed or equaled a number - the subject's or a companion's, in the game or in a quarter | `stat`+`threshold`, `above`, `below`, the point's `predicates`, `ConditionSpec(reached)`, `PeriodCondition` |
 | `Won(bool)` | his team won | a streak's `kind`, the `won` predicate |
 | `ShotValue(1 \| 2 \| 3)` | shots relation only | `shot_value` |
+| `Met(opposite \| same \| either)` | the games every named subject played in | the `pair` shape |
 | `Unsupported(what, as_typed)` | something the reader recognized and nothing reads: an age, a rate per 90 minutes | refusal text, or nothing |
 
 `Line` is the one that matters: a line on a stat has five carriers today,
@@ -108,6 +133,30 @@ A `Dimension` is closed and may carry a parameter: `player`, `team`,
 `subject` (the names in the question), `season`, `season_type`, `month`,
 `venue`, `opponent`, `role`, `won`, `period`, `category` (NetPoints),
 `presence(of: names)`, `line(Line)`.
+
+### More than one player
+
+Nothing in the Reading is a pair. A subject holds any number of names, and
+any number of `Companion` filters stand beside it, each with its own side
+and role:
+
+| Question | Subject | Filters | Shape |
+| --- | --- | --- | --- |
+| "steph curry record vs lebron regular season without kd" | Curry | `Companion(LeBron, opponent, played)`, `Companion(Durant, own, absent)` | scalar (a record) |
+| "curry record vs lebron and kawhi without kd or klay at home" | Curry | four `Companion`s, `Venue(home)` | scalar |
+| "curry vs lebron" | Curry, LeBron | `Met(opposite)` | comparison, with the meetings as a detail part |
+| "compare curry and lebron" | Curry, LeBron | none | comparison |
+
+`Met(side)` is one more filter: the games every named subject played in,
+on opposite sides for "vs". So a matchup is a comparison with one filter,
+and the difference between "compare" and "vs" is that filter and the
+relation it forces (games, not the season line).
+
+What the code honors today is narrower than the type, and the planner's
+cell table says so rather than the type: `Met` is built for exactly two
+subjects (`player_games.paired_rows_sql`), and the reader turns a third
+name into a `Companion` (`subject._versus_companions`). `Companion`s are
+already any number, on either side (step 3 of the last roadmap).
 
 ### Measure - a closed type, one catalog
 
@@ -156,7 +205,7 @@ class Query:
     window: Window | None
     minimum: Minimum | None  # stated, or the catalog's default for a ranking
     span: ResolvedSpan  # the seasons and season types that will be read
-    notes: tuple[Note, ...]  # what planning decided that the answer must say
+    decisions: tuple[Decision, ...]  # what the question left open and the planner chose
 ```
 
 or `Clarify` or `Refusal` (below). The planner is the only code that
@@ -183,7 +232,8 @@ class Result:
     cells: tuple[Cell, ...]  # the narrowings actually applied
     games: int | None  # games counted
     parts: tuple[Part, ...]  # the first is the headline
-    notes: tuple[Note, ...]  # the planner's, plus what the read found
+    decisions: tuple[Decision, ...]  # the planner's, carried through
+    notes: tuple[Note, ...]  # what the read found about the data
 
 
 class Part:
@@ -204,7 +254,8 @@ class Refusal:  # about 50 of 628
 ```
 
 The sayer takes an `Outcome` and nothing else. Contract 5 is checkable
-because of it: every cell and every note must appear in the answer.
+because of it: every cell, every note and every decision that must be said
+has to appear in the answer.
 
 ## The shapes
 
@@ -215,7 +266,7 @@ about; the relation, the measures and `by` say that.
 | --- | --- | --- |
 | `scalar` | `values: (Measure, value)...` | the whole narrowed set, reduced |
 | `rows` | `columns`, `rows`, `total_before_window` | one game of one entity (the entity is a column when the subject is everyone) |
-| `grouped` | `by`, `rows: (key, games, values, span, rank)...`, `qualifier`, `total_groups`, optional `total` row | one value of `by` |
+| `ranking`, `comparison`, `split` | one `Grouped` body: `by`, `rows: (key, games, values, span, rank)...`, `qualifier`, `total_groups`, optional `total` row | one value of `by` |
 | `runs` | `runs: (owner, length, first, last, still_open)...` | one run of consecutive games a `Line` or `Won` holds along |
 | `chart` | the artifact, and the counts it drew (made, attempted) | `shot_chart` and `fingerprint` only |
 
@@ -223,7 +274,7 @@ A row may carry a flag of its own (`rebuilt`: this game's line comes from
 play-by-play). A grouped value may be keyed by period as well as measure
 (a ranking with a column per quarter).
 
-`grouped` is three things people name differently, and they differ in
+The three grouped shapes share a body and a table renderer and differ in
 more than a sentence:
 
 | | ranking | comparison | split |
@@ -235,8 +286,16 @@ more than a sentence:
 | qualifier, truncation | yes ("minimum 550 attempts", top 10 of 451) | no | no |
 | default line | one measure, plus `also` | the whole line, plus NetPoints | the whole line, plus the team's W-L |
 
-Which of the three a `grouped` part is follows mechanically from the
-subject's kind and `by`. See "Open for review" 3.
+The rule, with no exceptions and held by a test: `by` is an entity kind
+and the subject is everyone, a position group or a team's players -
+`ranking`; `by` is `subject` and two or more are named - `comparison`;
+`by` is anything else - `split`. Checked against the corpus's edge cases:
+a league-wide count of games over a line is a ranking; a ranking with a
+column per quarter is a ranking whose values are keyed by period;
+`record_when` (by `line`), `with_without` (by `presence`), a team's
+regular season beside its playoffs (by `season_type`) and NetPoints by
+`category` are splits. A sayer may branch on the shape and on nothing
+else.
 
 ### Where today's 25 intents land
 
@@ -248,25 +307,25 @@ refusals or clarifications and have no body.
 | `player_stat`, unnarrowed | player_seasons | scalar | 50 |
 | `player_stat`, narrowed | player_games | scalar, with recent games as detail rows (7); a log (2) | 28 |
 | `team_stat` | team_seasons | scalar | 3 |
-| `team_record` | team_games, team_seasons | five forms: a standings line (scalar, with home and road records as narrower parts) 7; a venue record beside the season's 3; a month all-time with its games 2; regular season and playoffs (grouped by `season_type`) 2; by month (grouped by `season`, `month`) 2 | 16 |
-| `team_outlook` | team_snapshots | scalar, and chances grouped by round | 4 |
+| `team_record` | team_games, team_seasons | five forms: a standings line (scalar, with home and road records as narrower parts) 7; a venue record beside the season's 3; a month all-time with its games 2; regular season and playoffs (a split by `season_type`) 2; by month (a split by `season`, `month`) 2 | 16 |
+| `team_outlook` | team_snapshots | scalar, and chances as a split by round | 4 |
 | `head_to_head` | team_games + `Opponent` | scalar (wins per team) | 10 |
 | `team_quarter_points` | team_games + `period` | scalar with the games as detail; rows by the measure for an extreme | 9 |
 | `game_log` | player_games 48, team_games 17, everyone by position 4 | rows by date, with a summary | 71 |
 | `single_game_high` | player_games; everyone in 19 | rows by the measure | 29 |
 | `period_split` | player_games + `period` | scalar, with the games as detail | 19 |
-| `threshold_count` | player_games + `Line` | scalar (a count) 26; grouped by `player` 11; rows 1 | 38 |
-| `record_when` | team_games + `Line` | grouped by `line`, with a total row 22; scalar (a count of wins) 2 | 24 |
-| `player_history` | player_seasons | grouped by `season` | 38 |
-| `player_splits` | player_games | four grouped parts (venue, month, role, won) in 16 of 18 | 19 |
-| `with_without` | team_games + `Companion` | grouped by `presence` | 13 |
-| `leaderboard` | player_seasons 72; player_games 5 | grouped by `player`; rows for a `Window.by` ranking of games 2 | 87 |
-| `period_leaderboard` | player_games + `period` | grouped by `player`; a column per quarter in 2 | 10 |
-| `team_leaderboard` | team_seasons | grouped by `team` | 11 |
-| `player_compare` | player_seasons and netpoints | two grouped parts by `subject` | 28 |
-| `player_matchup` | player_games, two subjects who met | grouped by `subject`, with the meetings as detail rows of (game, player) | 11 |
+| `threshold_count` | player_games + `Line` | scalar (a count) 26; ranking by `player` 11; rows 1 | 38 |
+| `record_when` | team_games + `Line` | split by `line`, with a total row 22; scalar (a count of wins) 2 | 24 |
+| `player_history` | player_seasons | split by `season` | 38 |
+| `player_splits` | player_games | four split parts (venue, month, role, won) in 16 of 18 | 19 |
+| `with_without` | team_games + `Companion` | split by `presence` | 13 |
+| `leaderboard` | player_seasons 72; player_games 5 | ranking by `player`; rows for a `Window.by` ordering of games 2 | 87 |
+| `period_leaderboard` | player_games + `period` | ranking by `player`; a column per quarter in 2 | 10 |
+| `team_leaderboard` | team_seasons | ranking by `team` | 11 |
+| `player_compare` | player_seasons and netpoints | two comparison parts | 28 |
+| `player_matchup` | player_games + `Met` | comparison, with the meetings as detail rows of (game, player) | 11 |
 | `streak` | team_games in all 5 | runs; an owner per run league-wide (2) | 5 |
-| `player_netpoints` | netpoints | scalar, and grouped by `category` | 6 |
+| `player_netpoints` | netpoints | scalar, and a split by `category` | 6 |
 | `shot_distance` | shots | scalar | 16 |
 | `shot_chart`, `fingerprint` | shots, netpoints | chart | 62 |
 | `coach` | none | refusal | 3 |
@@ -274,9 +333,9 @@ refusals or clarifications and have no body.
 The other 18 of the 628 were refused with no answer; 16 of them had been
 read to an intent and were refused for a narrowing nothing honors.
 
-Twenty-two intents become seven relations and four table shapes (six if
-"Open for review" 3 names ranking, comparison and split apart); two are
-charts, and `coach` is a refusal with a cause. The trace's label is the pair: "grouped by player on
+Twenty-two intents become seven relations and six table shapes (scalar,
+rows, ranking, comparison, split, runs); two are charts, and `coach` is a
+refusal with a cause. The trace's label is the pair: "ranking by player on
 player_seasons".
 
 ## Notes - the kinds
@@ -296,13 +355,27 @@ So a caveat is not one thing today: the same fact has up to eleven
 wordings, and whether the page shows it depends on which template said it.
 
 ```python
-class Note:
+class Decision:  # the question left it open; the system chose
+    kind: DecisionKind  # closed
+    chose: Value
+    instead_of: tuple[Value, ...]  # what else it could have been, where that is a finite list
+    why: Reason  # closed: the only one active, a near spelling, no season named ...
+
+
+class Note:  # about the data, or about a term the answer uses
     kind: NoteKind  # closed
     facts: Mapping[str, Value]  # numbers, names, seasons - never a sentence
 ```
 
-The 69 remarks are instances of about 25 kinds in five families. One
-phrase per kind, in the sayer; the facts fill it.
+The dividing question is **could the question have said it differently?**
+A name read as one player, a season nobody named, a minimum nobody
+stated: yes, so a decision, and the answer owes the reader the value it
+used and a way to the alternative (Jeff's rule, 2026-09-21). A game with no
+box score, a floor, what "played" means: no, so a note.
+
+The 69 remarks are instances of about 25 kinds. One phrase per kind, in
+the sayer; the facts fill it. The first two families below are decisions,
+the next two notes, and the last is divided ("Still open" 1).
 
 | Family | Kinds | Remarks replaced |
 | --- | --- | --- |
@@ -348,53 +421,52 @@ moves into `data` before the slice that rewords its answer:
 | `Calendar` for every `situation` | date cuts and conferences are not calendar values | `DateRange`, `Opponent(alignment)` |
 | the 25-intent table | six rows wrong, among them `team_record` (five forms), `period_split` (never grouped), `player_netpoints` (not a chart) | corrected, with the counts |
 
-## Open for review
+## Still open
 
-1. **`pair` stops being a shape.** A matchup is two named subjects over
-   the games they met in: grouped by subject, with the meetings as detail
-   rows of (game, player). The second player is a subject, not a
-   `Companion`. Proposed: no `pair`.
+1. **What the decision and note split leaves to decide.**
+   - *The dividing rule.* Proposed: "could the question have said it
+     differently?", as above.
+   - *The borderline kinds.* Under that rule a ranking's default minimum
+     and its cut to the top ten are decisions (the question can state
+     either), and `definition`, `window_short` (asked for ten, found
+     seven) and `still_open` are notes. Proposed: so.
+   - *One type or two with the trace.* `decisions.Decision` exists since
+     4.4.0 and records EVERY reading (the subject's kind, each slot
+     written); most are never said. Proposed: one type with a closed
+     `kind`, and a declared subset of kinds that must be said, which
+     contract 5 checks. The alternative is a second type for the said
+     ones, and two lists to keep in step.
+   - *Who may decide.* Proposed: only PLAN. RUN finds facts and writes
+     notes. A redirect that depends on data ("no games this season, so
+     his most recent five") is then the planner's, decided when it settles
+     the span, not discovered by whatever words the answer.
+   - *How much a said decision must say.* A name reading states the
+     wording that reaches the alternative ("use the full name, or name a
+     season he played"). A defaulted season is only shown ("in the 2026
+     regular season"). Proposed: each kind declares which it is; name
+     readings and redirects state the wording, the season shows the value.
+     Whether the season TYPE states it ("say playoffs for the postseason")
+     goes with the season-type default still open in `ROADMAP.md`.
 2. **Parts.** An answer is a tuple of typed parts, the first the
    headline. The alternative is several Results per answer, which
    duplicates the subject and span and splits contract 5's bookkeeping.
-3. **One `grouped` body, and whether ranking, comparison and split are
-   three shapes.** They share a body and a table renderer and differ in
-   orientation, headline, order, qualifier and default line (the table
-   above). A sayer that branches on `by`'s kind is the intent under
-   another name unless the branch is declared. Proposed: three named
-   shapes (`ranking`, `comparison`, `split`) over one `Grouped` body,
-   chosen by a rule on the subject's kind and `by` with no exceptions,
-   held by a test. Six table shapes then, not four. The alternative is one
-   `grouped` shape with a closed `role` field, which is the same thing
-   spelled differently; what is not acceptable is a sayer deciding it from
-   anything else.
-4. **`record_when` is a split** by `line` with a total row, in 22 of 24;
+3. **`record_when` is a split** by `line` with a total row, in 22 of 24;
    the other two are counts. One question family, two shapes: the reader
    decides from the words.
-5. **`period` has three roles**: what a read sees (its own field), a
+4. **`period` has three roles**: what a read sees (its own field), a
    filter (a `Line` with a period), and a dimension (a column per
    quarter). Proposed as above, with the catalog saying which measures
    have a reading in a quarter.
-6. **The note kinds.** About 25 kinds in five families. The two judgment
-   calls: one `definition(term)` kind with a closed set of terms rather
-   than a kind per term; and one `games_unseen` with a `why` rather than a
-   kind per cause, which is what lets eleven wordings become one phrase
-   per cause. The reviewer would also keep a default the planner took
-   (`Decision`) apart from a caveat about the data (`Note`); this draft
-   keeps one list with families.
-7. **Where a default is recorded.** The planner puts a `Note` on the
-   Query and RUN carries it to the Result, so the sayer has one list. A
-   note may also sit on a part.
-8. **`team_outlook`** reads ESPN's power-index snapshots: per date and
+5. **The default line** per relation and shape is a declared table. It is
+   where the old intents' habits survive; proposed: accept that, keep it
+   small, and review its rows as each slice lands.
+6. **`team_outlook`** reads ESPN's power-index snapshots: per date and
    per kind, with provenance that matters (a snapshot stamped after its
    season). Proposed: a declared relation, `team_snapshots`, not columns
    on team_seasons.
-9. **Charts are two, not four.** Only `shot_chart` and `fingerprint` draw
+7. **Charts are two, not four.** Only `shot_chart` and `fingerprint` draw
    an artifact. `shot_distance` is a scalar on `shots` and
-   `player_netpoints` a scalar and a grouping on `netpoints`. `ROADMAP.md`
+   `player_netpoints` a scalar and a split on `netpoints`. `ROADMAP.md`
    says "the four chart answers keep their own readers and renderers";
    proposed: that still holds for their READERS (the relations are
    declared, not ported), while their answers use the common shapes.
-10. **The default line** per relation and shape is a declared table. It is
-    where the old intents' habits survive; proposed: accept that, keep it
-    small, and review its rows as each slice lands.
