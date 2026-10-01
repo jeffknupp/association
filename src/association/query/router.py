@@ -28,7 +28,7 @@ import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import date
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from association.nba.season import current_season
 
@@ -38,6 +38,9 @@ from .measures import MEASURE_WORDS
 from .reading import Scope
 from .season_text import season_from_text, season_spans
 from .team_metrics import STAT_ALIASES
+
+if TYPE_CHECKING:
+    from .subject import Subject
 
 # The model picks a word; the numeric season_type every table uses is looked up
 # here. Without this slot a playoff question silently answers for the regular
@@ -272,6 +275,14 @@ class Route:
     intent: str
     scope: Scope = field(default_factory=Scope)
     decisions: tuple[Decision, ...] = ()
+    #: Who the question was read to be about, where the parser read the
+    #: question (:func:`~association.query.parse.read_route`): the one
+    #: reading of the subject, which the parser's last step settles under
+    #: the route's intent rather than read again. ``None`` on a route
+    #: replayed from a record, whose subject is read there.
+    #:
+    #: .. versionadded:: 5.0.0
+    subject: Subject | None = None
 
     @classmethod
     def from_slots(cls, intent: str, slots: Mapping[str, Any], decisions: tuple[Decision, ...] = ()) -> Route:

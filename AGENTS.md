@@ -411,10 +411,18 @@ Answer" in as Klay Thompson); the general version is that **any** name a model
 supplies may be fiction - the router's then, the normalizer's now.
 
 So a name is checked against the question before a template reads it:
-`subject.read_subject` reads who the question is about from its own spans,
-and `subject.apply_subject` writes those names into the scope (until 5.0.0 this
-was `entities.override_invented_players`) - both inside the parser's last step,
-`parse.reading_from_route`, whose `Reading` is all the agent answers from. What counts as the question
+`subject.read_subject` reads who the question is about from its own spans -
+ONCE per question, in `parse.read_route`, which carries that reading on the
+route (`Route.subject`); the parser's child step and its last step settle it
+under the intent the stages chose (`subject.settle_subject`, which reads no
+name and asks the warehouse nothing) - and `subject.apply_subject` writes
+those names into the scope (until 5.0.0 this was
+`entities.override_invented_players`) inside the parser's last step,
+`parse.reading_from_route`, whose `Reading` is all the agent answers from.
+Only a replayed route, which carries no subject, has it read there. Do not
+add a second `read_subject` call to the live path: three readings of one
+question is what this replaced, and they disagreed on 18 of the 628 recorded
+questions. What counts as the question
 supporting a name (`subject.question_supports`) is deliberately generous, because the router's expansions are usually the
 useful kind: the word itself, a near spelling of it (the router silently
 corrects typos; measured as Damerau-Levenshtein, rapidfuzz's, the metric the

@@ -203,7 +203,8 @@ Proved by identical Reading and Query snapshots.
 | Item | State |
 | --- | --- |
 | The planner runs once, outside the parser | done: `compose.plan.plan_point`, run by `Agent.ask` (`Agent.planned`) and handed to `compose.answer`; `parse.with_point` only reads. 628 of 628 questions identical in every stage; 8 of 1,378 unit-test calls differ, each the Reading now holding a point the planner later declines |
-| The subject is read once | next. Measured at `7394ac5` over the 628 recorded questions: every question reads the subject three times; 610 agree in every field, 18 differ. In 11 the first pass (before the intent is known) reads one team and an opponent where the later two read two teams; in 5 a companion is spelled or placed differently between passes. The second and third passes almost always agree |
+| The subject is read once | done: `parse.read_route` reads it, `Route.subject` carries it, `subject.settle_subject` settles it under the stages' intent with no name read again. Before, every question read it three times and 18 of 628 disagreed between passes. After: no answer, query, scope or intent moves on either population (628 questions; 1,383 unit-test calls). The subject RECORD differs on 5 questions (a companion named as typed, "kd", where the third pass had re-read the resolved name; a model's filler name now recorded; a bogus player "first quarter" no longer in it), and 185 decisions say what the one reading rested on. The corpus run takes about 220s where it took about 285s |
+| A companion's name is read twice more (the stages' `without`/`with_player`, and settling) | open: the subject's companions should be the only reader (#310 is this) |
 | The stages run once | open |
 | The reader always writes the condition it read | open |
 | The reader's imports of the answer side | 8 of 9 left (`[tool.importlinter]`) |
@@ -282,9 +283,9 @@ for refusals (a cause, then a phrase).
 | `present.py`, `adapt.py`, `check_scope`, `HONORED_SCOPING`, `STATED_SCOPING` | present | deleted |
 | private imports from `templates/` into `compose/` | 91 | 0 |
 | compiled answers whose read is the compiler's SQL | 45 of 205 | every answer |
-| subject readings per question | 3 | 1 |
+| subject readings per question | 3 (1 since 2026-10-01) | 1 |
 | stage runs per question | mean 1.7 | 1 |
-| planner runs per question | 2 | 1 |
+| planner runs per question | 2 (1 since 2026-10-01) | 1 |
 | functions outside the reader that take the question | 168 | 0 |
 | modules that execute SQL | 20 | `relations/` only |
 | SQL statements the reader issues per question | about 100 | 0 |

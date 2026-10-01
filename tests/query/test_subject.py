@@ -401,14 +401,18 @@ def _parsed(con: duckdb.DuckDBPyConnection, question: str, names: list[str], sta
 
 def _assigned(con: duckdb.DuckDBPyConnection, question: str, parent: str, **slots: Any) -> tuple[str, dict[str, Any]]:
     """The intent and slots the agent hands the template for a question
-    whose route arrives under ``parent``: the parser's child step
-    (``parse._read_route_child``), then its last (``parse.reading_from_route``)
-    - the Reading, as slots."""
+    whose route arrives under ``parent``: the one subject reading, the
+    parser's child step (``parse._read_route_child``), then its last
+    (``parse.reading_from_route``) - the Reading, as slots."""
     from association.query.parse import _read_route_child, reading_from_route
     from association.query.router import Route
 
-    child, _ = _read_route_child(con, question, Route.from_slots(parent, dict(slots)))
-    reading = reading_from_route(con, question, child)
+    route = Route.from_slots(parent, dict(slots))
+    # The subject is read once and carried: the child step and the last
+    # step settle it, neither reads it again.
+    who = read_subject(con, question, parent, route.scope)
+    child, _ = _read_route_child(question, route, who)
+    reading = reading_from_route(con, question, Route(child.intent, child.scope, subject=who))
     return reading.intent, reading.scope.to_slots()
 
 
@@ -767,3 +771,70 @@ def test_the_one_player_named_in_games_he_played_is_the_subject(con: duckdb.Duck
     # finds ("76ers"), stay the team's question.
     team = read_subject(con, "show me the 76ers record when both Embiid and Paul George played", "other", Scope.from_slots({"team": "76ers", "players": ["Embiid", "Paul George"]}))
     assert team.players == () and {c.name for c in team.conditions} >= {"Joel Embiid"}
+
+
+def test_the_subject_is_read_once_per_question(con: duckdb.DuckDBPyConnection, monkeypatch: pytest.MonkeyPatch) -> None:
+    """``ROADMAP.md``, Phase 1: the parser reads who the question is about
+    once (``read_route``), carries that reading on the route, and its child
+    step and last step settle it (``settle_subject``) - three readings
+    until 5.0.0, each asking the warehouse for the same names. A replayed
+    route carries no subject, and has it read in the last step, once."""
+    import association.query.parse as parse
+    from association.query.router import Route
+
+    seen: list[str] = []
+    original = parse.read_subject
+
+    def counting(connection: duckdb.DuckDBPyConnection, question: str, intent: str, scope: Scope) -> Subject:
+        seen.append(intent)
+        return original(connection, question, intent, scope)
+
+    monkeypatch.setattr(parse, "read_subject", counting)
+    question = "How many 30+ point games did Jokic have this season?"
+    route, subject, _ = parse.read_route(con, question, ["Jokic"], "points")
+    assert route.subject is not None and route.subject.players == subject.players == ("Nikola Jokic",)
+    reading = parse.reading_from_route(con, question, route)
+    assert seen == ["other"]
+    assert reading.intent == "threshold_count" and reading.subject is not None and reading.subject.intent == "threshold_count"
+
+    seen.clear()
+    replayed = parse.reading_from_route(con, question, Route.from_slots("threshold_count", route.slots))
+    assert seen == ["threshold_count"]
+    assert replayed.scope == reading.scope and replayed.intent == reading.intent
+
+
+def test_a_subject_is_settled_under_the_intent_without_reading_a_name_again() -> None:
+    """What depends on the intent is decided from the reading already made:
+    two teams meeting are the ``teams`` kind under ``head_to_head`` and a
+    team against another under anything else; the words that name a child
+    are said once, whichever intent the subject was read under."""
+    from association.query.subject import settle_subject
+
+    team = Subject("team", teams=("Philadelphia 76ers",), opponent="Boston Celtics", evidence=("team word '76ers'", "the words 'old' name streak"))
+    meeting = settle_subject(team, "head_to_head", "how many times did the 76ers play boston", Scope())
+    assert (meeting.kind, meeting.teams, meeting.opponent) == ("teams", ("Philadelphia 76ers", "Boston Celtics"), None)
+    against = settle_subject(team, "team_quarter_points", "76ers 4th quarter points against boston", Scope())
+    assert (against.kind, against.teams, against.opponent, against.intent) == ("team", ("Philadelphia 76ers",), "Boston Celtics", "team_quarter_points")
+    assert against.evidence == ("team word '76ers'",)
+
+    player = Subject("player", players=("Nikola Jokic",))
+    counted = settle_subject(player, "game_log", "How many 30+ point games did Jokic have this season?", Scope.from_slots({"player": "Nikola Jokic", "stat": "points"}))
+    assert counted.intent == "threshold_count" and counted.intent_reason is not None and counted.evidence[-1].endswith("name threshold_count")
+
+
+def test_a_companion_only_the_stages_named_is_settled_into_the_subject_and_the_subject_never_into_his_own() -> None:
+    """A misspelled companion matches no player the reading knows; the
+    stages carry the span in ``without``/``with_player``, and settling
+    reads his role from the same phrase - or a typo'd "with X starting"
+    would never reach the relation as a condition. The one player in a
+    "games X played" phrase whom the reading made the subject stays it."""
+    from association.query.subject import settle_subject
+
+    fox = Subject("player", players=("De'Aaron Fox",), opponent="Orlando Magic")
+    settled = settle_subject(fox, "game_log", "de'aaron fox vs magic last five games without wembyanama", Scope.from_slots({"player": "De'Aaron Fox", "without": ["wembyanama"]}))
+    assert settled.companions == ("wembyanama",) and [(c.name, c.predicate) for c in settled.conditions] == [("wembyanama", "absent")]
+    assert settled.players == ("De'Aaron Fox",)
+
+    murray = Subject("player", players=("Jamal Murray",))
+    alone = settle_subject(murray, "player_stat", "2 threes in games Jamal Murray played including playoffs", Scope.from_slots({"player": "Jamal Murray"}))
+    assert alone.players == ("Jamal Murray",) and alone.companions == () and alone.conditions == ()

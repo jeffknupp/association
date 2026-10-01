@@ -901,6 +901,49 @@ def read_subject(con: duckdb.DuckDBPyConnection, question: str, intent: str, sco
     )
 
 
+def settle_subject(subject: Subject, intent: str, question: str, scope: Scope) -> Subject:
+    """``subject``, already read, under the ``intent`` and ``scope`` the
+    stages settled - no name is read again and the warehouse is not asked
+    (``ROADMAP.md``, Phase 1: the subject is read once). What depends on the
+    intent is decided here: two teams meeting are the ``teams`` kind under
+    ``head_to_head``, and the intent the subject's shape settles
+    (:func:`_decide_intent`), with the words that named a child.
+
+    .. versionadded:: 5.0.0
+    """
+    who = _settle_companions(subject, question, scope)
+    if who.kind == "team" and who.teams and who.opponent and intent == "head_to_head":
+        who = replace(who, kind="teams", teams=(who.teams[0], who.opponent), opponent=None)
+    evidence = tuple(line for line in who.evidence if not line.startswith("the words "))
+    settled, words = _decide_intent(who, intent, question, scope)
+    return replace(
+        who,
+        intent=settled,
+        intent_reason=_intent_reason(intent, settled, words),
+        evidence=(*evidence, f"the words {words!r} name {settled}") if words else evidence,
+    )
+
+
+def _settle_companions(subject: Subject, question: str, scope: Scope) -> Subject:
+    """``subject`` with the companions the stages named that the reading
+    had not: a companion phrase whose name the question misspells
+    ("without wembyanama") matches no player the reading knows, and is
+    carried by the stages' ``without`` / ``with_player`` slot, which the
+    phrase is a near spelling of (:func:`_companion_names`). No name is
+    resolved here and the warehouse is not asked; the roles are the same
+    words' (:func:`_conditions`). Without this a typo'd companion's role
+    would never reach the relation as a condition (:func:`_apply_conditions`),
+    and the answer would be about more games than were asked for."""
+    # Never the subject himself: the reading already decided whether the
+    # one player in a "games X played" phrase is the subject (_read_subject_alone).
+    known = [*(c.name for c in subject.conditions), *subject.players]
+    late = tuple(c for c in _conditions(question, (*subject.players, *subject.companions), scope) if not _same_person(c.name, known))
+    if not late:
+        return subject
+    companions = tuple(dict.fromkeys((*subject.companions, *(c.name for c in late))))
+    return replace(subject, conditions=(*subject.conditions, *late), companions=companions)
+
+
 def _intent_reason(intent: str, settled: str, words: str | None) -> str | None:
     """Why ``settled`` is not the route's ``intent``
     (:attr:`Subject.intent_reason`): the words that name a child, or -

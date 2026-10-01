@@ -52,6 +52,7 @@ from association.query.subject import (
     apply_subject,
     question_supports,
     read_subject,
+    settle_subject,
 )
 
 _PAIR_MEETING = (
@@ -833,7 +834,10 @@ def read_route(con: duckdb.DuckDBPyConnection, question: str, names: list[str] |
     question = _read_route_folded(question)
     names = [_read_route_folded(name) for name in names or []]
     slots = _with_measure(question, _slots_from_names(con, [_as_typed_part(con, question, _as_typed(question, name)) for name in names], stat))
-    subject = _two_teams(read_subject(con, question, "other", Scope.from_slots(slots)), question, slots)
+    # THE reading of who the question is about: everything after this
+    # settles it (subject.settle_subject), nothing reads the names again.
+    read = read_subject(con, question, "other", Scope.from_slots(slots))
+    subject = _two_teams(read, question, slots)
     slots = _read_route_names(subject, slots)
     # A quarter or half used as a condition on which games count is read
     # here and its words taken out of the question the grammar and the
@@ -848,7 +852,7 @@ def read_route(con: duckdb.DuckDBPyConnection, question: str, names: list[str] |
     # model's (a bare "last 10 games" reads both season types only beside
     # them, ``_route_game_log_recent_span``).
     staged = settle(parent, window(question, slots), question)
-    child, settled = _read_route_child(con, question, staged)
+    child, settled = _read_route_child(question, staged, read)
     final = child.intent
     scope = _read_route_fields(final, _read_route_period(final, window_scope(question, child.scope), question), question)
     # A teammate's start is his, never the subject's own split: the stages
@@ -864,7 +868,7 @@ def read_route(con: duckdb.DuckDBPyConnection, question: str, names: list[str] |
         teams=subject.teams if subject.kind == "teams" else settled.teams,
         opponent=subject.opponent if subject.kind == "teams" else settled.opponent,
     )
-    return Route(final, scope, _read_route_decisions(parent, staged, child, settled)), subject, parent
+    return Route(final, scope, _read_route_decisions(parent, staged, child, settled), read), subject, parent
 
 
 def _read_route_decisions(parent: str, staged: Route, child: Route, settled: Subject) -> tuple[Decision, ...]:
@@ -887,15 +891,17 @@ def _read_route_decisions(parent: str, staged: Route, child: Route, settled: Sub
     return tuple(decisions)
 
 
-def _read_route_child(con: duckdb.DuckDBPyConnection, question: str, route: Route) -> tuple[Route, Subject]:
-    """``route`` under the intent the subject reading settles for it - a
-    child the question's own words name for the subject's kind
+def _read_route_child(question: str, route: Route, subject: Subject) -> tuple[Route, Subject]:
+    """``route`` under the intent ``subject`` - the one reading of who the
+    question is about - settles for it
+    (:func:`~association.query.subject.settle_subject`), never a second
+    reading: a child the question's own words name for the subject's kind
     (:data:`~association.query.subject.KIND_ASSIGNED_INTENTS`: a count of
     30+ point games under a game log, a history over the past 4 seasons
     under a player's line), with the stages run again under the child
     (:func:`~association.query.router.settle`), or a team's record under a
     companion's line with the route's own slots - beside that reading."""
-    settled = read_subject(con, question, route.intent, route.scope)
+    settled = settle_subject(subject, route.intent, question, route.scope)
     final = settled.intent or route.intent
     if final != route.intent and final in KIND_ASSIGNED_INTENTS:
         again = settle(final, route.scope, question)
@@ -932,7 +938,10 @@ def reading_from_route(con: duckdb.DuckDBPyConnection, question: str, route: Rou
     """
     scope = _read_route_folded_scope(route.scope)
     question = _read_route_folded(question)
-    subject = read_subject(con, question, route.intent, scope)
+    # The subject is read once: a route the parser read carries its
+    # subject, settled here under the route's intent; only a replayed route
+    # (a record, a test's case) has it read now.
+    subject = settle_subject(route.subject, route.intent, question, scope) if route.subject is not None else read_subject(con, question, route.intent, scope)
     applied = apply_subject(subject, scope, intent=route.intent)
     reading = Reading(
         scope=applied.scope,
