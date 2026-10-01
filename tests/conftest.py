@@ -10,6 +10,9 @@ so its "today" is pinned here, once. A test about another day sets
 ``ASSOCIATION_TODAY`` itself (``monkeypatch.setenv``), and an explicit value
 in the environment wins, so the suite can still be run "on" any date by
 hand.
+
+And, when asked for, the recording of every call the suite makes across a
+stage boundary (``tests/stage_calls.py``).
 """
 
 from __future__ import annotations
@@ -19,3 +22,16 @@ import os
 from association.nba.season import TODAY_ENV
 
 os.environ.setdefault(TODAY_ENV, "2026-09-30")
+
+# Off unless asked for: every call the suite makes across a stage boundary,
+# written out for comparing two trees (tests/stage_calls.py; ROADMAP.md,
+# Phase 0). Installed here, before any test module is imported, so a test
+# that imports a boundary by name gets the recording one.
+if os.environ.get("ASSOCIATION_STAGE_CALLS"):
+    import sys
+    from pathlib import Path
+
+    sys.path.insert(0, str(Path(__file__).parent))
+    from stage_calls import install
+
+    install(Path(os.environ["ASSOCIATION_STAGE_CALLS"]))

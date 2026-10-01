@@ -134,6 +134,12 @@ class Agent:
         #: own refusal (a clarification, a "no match", a shape nothing reads)
         #: is an answer: it looked at the question and had something to say.
         self.unanswered: str | None = None
+        #: The Reading the last question settled into, or None where it was
+        #: refused before anything read it - what a stage snapshot records
+        #: beside the answer (:func:`association.query.stages.snapshot`).
+        #:
+        #: .. versionadded:: 5.0.0
+        self.reading: Reading | None = None
         self.trace = trace
         #: The warehouse, read-only and cut off from the disk
         #: (:func:`~association.query.connection.connect_read_only`).
@@ -183,6 +189,7 @@ class Agent:
            normalizer is asked (a recorded ``route`` is still answered).
         """
         history = RunHistory(self.verbose, self.history_dir, sink=self.trace)
+        self.reading = None
         recorded = ""
         answer: Answer | None = None
         # "This season" is the latest one the warehouse has games for, not
@@ -320,6 +327,7 @@ class Agent:
         # into the Scope - the parser's last step, and the only writer: nothing
         # after this changes a slot (query/subject.py, ROADMAP plan item 6).
         reading = reading_from_route(self.con, question, routed)
+        self.reading = reading
         for decision in reading.decisions:
             history.record_decision(decision)
         return reading

@@ -1,0 +1,271 @@
+#!/usr/bin/env python3
+"""Write, and compare, each stage's output for every recorded question.
+
+ROADMAP.md, Phase 0: the proof of a change to the query pipeline. ``run``
+answers each recorded question through the whole ``Agent`` with the
+normalizer's RECORDED reply in place of the model (no ollama, no network) and
+writes one JSON line per question holding what each stage produced - the
+reading, the planned query, the result's values and the answer
+(``association.query.stages.snapshot``). ``compare`` reads two such files and
+reports, per question, the FIRST stage a difference appears in.
+
+    PYTHONPATH=<tree>/src uv run python scripts/stage_snapshots.py run before.jsonl
+    PYTHONPATH=<tree>/src uv run python scripts/stage_snapshots.py run after.jsonl
+    uv run python scripts/stage_snapshots.py compare before.jsonl after.jsonl
+
+``run`` pins what would otherwise move an answer between two runs of the same
+code: the date (``ASSOCIATION_TODAY``, from ``--today``), DuckDB's thread
+count (``--threads 1``: a parallel SUM is not bit-reproducible) and the
+directory charts are written to (masked as ``<out>``). Its first line says
+which copy of the code it read, the build and the warehouse - a script run
+from a worktree resolves the INSTALLED package unless ``PYTHONPATH`` says
+otherwise, and a green comparison of a tree against itself proves nothing.
+
+``compare-calls`` is the same comparison over the second population a
+change is proven on: every call the unit tests make across a stage boundary,
+recorded by running the suite with ``ASSOCIATION_STAGE_CALLS=<dir>``
+(``tests/stage_calls.py``) on each tree.
+
+``compare`` exits 1 on any difference, and 2 when the two runs share
+nothing to compare (a wrong path must not read as a clean run). ``--values-only`` leaves the
+sentences out (``stages.WORDING``): for a change allowed to reword an answer
+but not to move a number. Run the baseline twice and compare it with itself
+before reading anything into a difference.
+
+The recorded replies are jsonl rows ``{"q": question, "out": {"names": [...],
+"stat": ...}}``; by default the three files of the 628-question corpus under
+``~/association-research/parser-greenfield`` (the 277 yardstick wordings, the
+75 hold-out questions and the 276 paraphrases).
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import subprocess
+import sys
+import tempfile
+import time
+from collections import Counter
+from pathlib import Path
+from typing import Any
+
+RECORDED_DIR = Path.home() / "association-research" / "parser-greenfield"
+DEFAULT_RECORDED = tuple(RECORDED_DIR / name for name in ("normalizer_qwen2.5_3b.jsonl", "normalizer_corpus_qwen2.5_3b.jsonl", "normalizer_paraphrases_qwen2.5_3b.jsonl"))
+DEFAULT_TODAY = "2026-09-30"
+
+
+def _recorded_replies(paths: list[Path]) -> dict[str, dict[str, Any]]:
+    """Each question's recorded normalizer reply, in file order, first one kept."""
+    replies: dict[str, dict[str, Any]] = {}
+    for path in paths:
+        for line in path.read_text().splitlines():
+            row = json.loads(line)
+            replies.setdefault(row["q"], row["out"])
+    return replies
+
+
+def _build(root: Path) -> str:
+    """The tree's ``git describe``, or "unknown" outside a checkout."""
+    described = subprocess.run(["git", "-C", str(root), "describe", "--always", "--dirty"], capture_output=True, text=True, check=False)
+    return described.stdout.strip() or "unknown"
+
+
+def run(args: argparse.Namespace) -> int:
+    """Answer every recorded question and write its stages, one line each."""
+    # Before the package is imported: the date is read at call time, but a
+    # pin set after the first answer would split the run in two.
+    os.environ["ASSOCIATION_TODAY"] = args.today
+    import association
+    import association.query.normalizer as normalizer
+    from association.query.agent import Agent
+    from association.query.stages import snapshot
+
+    replies = _recorded_replies(args.recorded)
+    questions = [q for q in replies if not args.match or any(word.lower() in q.lower() for word in args.match)]
+
+    def recorded(_model: str, question: str) -> Any:
+        out = replies.get(question)
+        if out is None or "error" in out:
+            return None
+        names = [name.strip() for name in out.get("names") or [] if isinstance(name, str) and name.strip()]
+        return normalizer.Normalized(names, out.get("stat") if out.get("stat") in normalizer.NORMALIZER_STATS else "")
+
+    normalizer.normalize = recorded  # type: ignore[assignment]
+    scratch = Path(tempfile.mkdtemp(prefix="stages-"))
+    agent = Agent(str(args.db_path), scratch / "out", history_dir=scratch / "history", trace=lambda _line: None)
+    agent.con.execute(f"SET threads = {int(args.threads)}")
+    mask = {str(scratch / "out"): "<out>"}
+    code = Path(association.__file__).resolve()
+    meta = {"code": str(code), "build": _build(code.parents[2]), "db": str(args.db_path.resolve()), "today": args.today, "threads": args.threads, "questions": len(questions)}
+    print(json.dumps(meta), flush=True)
+    started = time.monotonic()
+    with args.out.open("w") as out:
+        out.write(json.dumps({"meta": meta}) + "\n")
+        for index, question in enumerate(questions, 1):
+            try:
+                answer = agent.ask(question)
+                record = snapshot(agent.reading, answer, unanswered=agent.unanswered if answer.answered_by == "refused" else None, mask=mask)
+            except Exception as exc:  # noqa: BLE001 - one bad question must not end the run, and a crash is itself a result to compare
+                record = {"question": question, "error": f"{type(exc).__name__}: {exc}"}
+            out.write(json.dumps(record, sort_keys=True) + "\n")
+            if index % 100 == 0:
+                print(f"{index}/{len(questions)} {time.monotonic() - started:.0f}s", flush=True)
+    print(f"wrote {len(questions)} questions to {args.out} in {time.monotonic() - started:.0f}s", flush=True)
+    return 0
+
+
+def _load(path: Path) -> tuple[dict[str, Any], dict[str, dict[str, Any]]]:
+    """A snapshot file's meta line and its records by question."""
+    meta: dict[str, Any] = {}
+    records: dict[str, dict[str, Any]] = {}
+    for line in path.read_text().splitlines():
+        row = json.loads(line)
+        if "meta" in row:
+            meta = row["meta"]
+        else:
+            records[row["question"]] = row
+    return meta, records
+
+
+def _question_differences(before: dict[str, Any], after: dict[str, Any], args: argparse.Namespace) -> list[Any]:
+    """One question's differences; a crash on either side is one difference
+    in a stage of its own, named first."""
+    from association.query.stages import Difference, differences
+
+    if "error" in before or "error" in after:
+        if before.get("error") == after.get("error"):
+            return []
+        return [Difference("error", "", "changed", before.get("error"), after.get("error"))]
+    return differences(before, after, tolerance=args.tolerance, wording=not args.values_only)
+
+
+def compare(args: argparse.Namespace) -> int:
+    """Report every question whose stages differ between two runs; 1 if any."""
+    before_meta, before = _load(args.before)
+    after_meta, after = _load(args.after)
+    print(f"before: {before_meta.get('build')} {before_meta.get('code')}")
+    print(f"after:  {after_meta.get('build')} {after_meta.get('code')}")
+    for pinned in ("db", "today", "threads"):
+        if before_meta.get(pinned) != after_meta.get(pinned):
+            print(f"WARNING: the runs differ in {pinned}: {before_meta.get(pinned)!r} against {after_meta.get(pinned)!r}")
+    only = sorted(before.keys() ^ after.keys())
+    for question in only:
+        print(f"ONLY IN {'before' if question in before else 'after'}: {question}")
+    first_stage: Counter[str] = Counter()
+    kinds: Counter[str] = Counter()
+    moved: list[tuple[str, list[Any]]] = []
+    for question in before:
+        if question not in after:
+            continue
+        found = _question_differences(before[question], after[question], args)
+        if found:
+            moved.append((question, found))
+            first_stage[found[0].stage] += 1
+            kinds.update(each.kind for each in found)
+    for question, found in moved[: args.show]:
+        print(f"\n{question}")
+        for each in found[: args.lines]:
+            print(f"    {each.line()}")
+        if len(found) > args.lines:
+            print(f"    ... and {len(found) - args.lines} more")
+    if len(moved) > args.show:
+        print(f"\n... and {len(moved) - args.show} more questions (--show)")
+    compared = len(before.keys() & after.keys())
+    scope = "values only" if args.values_only else "values and wording"
+    print(f"\n{compared} questions compared ({scope}, tolerance {args.tolerance}): {compared - len(moved)} identical, {len(moved)} differ, {len(only)} in one run only")
+    if moved:
+        print("first stage that differs: " + ", ".join(f"{stage} {count}" for stage, count in first_stage.most_common()))
+        print("kinds of difference: " + ", ".join(f"{kind} {count}" for kind, count in kinds.most_common()))
+    if not compared:
+        print("NOTHING COMPARED: the two runs share no question - an empty comparison is not a clean one")
+        return 2
+    return 1 if moved or only else 0
+
+
+def _load_calls(directory: Path) -> tuple[set[str], dict[tuple[str, int], dict[str, Any]]]:
+    """The copies of the code a recorded suite run read, and every call it
+    made (``tests/stage_calls.py``) by the test that made it and its position
+    among that test's calls."""
+    code: set[str] = set()
+    calls: dict[tuple[str, int], dict[str, Any]] = {}
+    for path in sorted(directory.glob("calls-*.jsonl")):
+        for line in path.read_text().splitlines():
+            row = json.loads(line)
+            if "meta" in row:
+                code.add(row["meta"]["code"])
+            else:
+                calls[(row.pop("test"), row.pop("call"))] = row
+    return code, calls
+
+
+def compare_calls(args: argparse.Namespace) -> int:
+    """Report every unit-test call whose arguments or outcome differ between
+    two recorded suite runs; 1 if any, or if a call is in one run only."""
+    from association.query.stages import value_differences
+
+    before_code, before = _load_calls(args.before)
+    after_code, after = _load_calls(args.after)
+    print(f"before: {', '.join(sorted(before_code)) or 'unknown'}")
+    print(f"after:  {', '.join(sorted(after_code)) or 'unknown'}")
+    only = sorted(before.keys() ^ after.keys())
+    tests_only = sorted({test for test, _ in only})
+    for test in tests_only[: args.show]:
+        print(f"CALLS IN ONE RUN ONLY: {test}")
+    moved: list[tuple[tuple[str, int], list[Any]]] = []
+    for key in sorted(before.keys() & after.keys()):
+        found = value_differences(before[key]["boundary"], before[key], after[key], tolerance=args.tolerance)
+        if found:
+            moved.append((key, found))
+    for (test, call), found in moved[: args.show]:
+        print(f"\n{test} call {call}")
+        for each in found[: args.lines]:
+            print(f"    {each.line()}")
+        if len(found) > args.lines:
+            print(f"    ... and {len(found) - args.lines} more")
+    compared = len(before.keys() & after.keys())
+    boundaries = Counter(row["boundary"].split(":")[0] if row["boundary"].startswith("template:") else row["boundary"] for row in before.values())
+    print(f"\n{compared} calls compared (tolerance {args.tolerance}): {compared - len(moved)} identical, {len(moved)} differ, {len(only)} in one run only ({len(tests_only)} tests)")
+    print("calls by boundary (before): " + ", ".join(f"{name} {count}" for name, count in boundaries.most_common()))
+    if not compared:
+        print("NOTHING COMPARED: the two runs share no call - an empty comparison is not a clean one")
+        return 2
+    return 1 if moved or only else 0
+
+
+def main() -> int:
+    """Parse the command line and run the subcommand."""
+    from association.query.stages import FLOAT_TOLERANCE
+
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    commands = parser.add_subparsers(dest="command", required=True)
+    run_parser = commands.add_parser("run", help="answer every recorded question and write each stage's output")
+    run_parser.add_argument("out", type=Path)
+    run_parser.add_argument("--recorded", type=Path, nargs="+", default=list(DEFAULT_RECORDED), help="recorded normalizer replies (jsonl)")
+    run_parser.add_argument("--db-path", type=Path, default=Path("nba.duckdb"))
+    run_parser.add_argument("--today", default=DEFAULT_TODAY, help="the date the run answers as (ASSOCIATION_TODAY)")
+    run_parser.add_argument("--threads", type=int, default=1)
+    run_parser.add_argument("--match", action="append", help="only questions containing this text (repeatable)")
+    run_parser.set_defaults(func=run)
+    compare_parser = commands.add_parser("compare", help="report the first stage each question differs in between two runs")
+    compare_parser.add_argument("before", type=Path)
+    compare_parser.add_argument("after", type=Path)
+    compare_parser.add_argument("--values-only", action="store_true", help="leave the sentences out (stages.WORDING)")
+    compare_parser.add_argument("--tolerance", type=float, default=FLOAT_TOLERANCE)
+    compare_parser.add_argument("--show", type=int, default=20, help="questions to print")
+    compare_parser.add_argument("--lines", type=int, default=6, help="differences to print per question")
+    compare_parser.set_defaults(func=compare)
+    calls_parser = commands.add_parser("compare-calls", help="compare two recorded suite runs (ASSOCIATION_STAGE_CALLS), call by call")
+    calls_parser.add_argument("before", type=Path)
+    calls_parser.add_argument("after", type=Path)
+    calls_parser.add_argument("--tolerance", type=float, default=FLOAT_TOLERANCE)
+    calls_parser.add_argument("--show", type=int, default=20, help="calls to print")
+    calls_parser.add_argument("--lines", type=int, default=6, help="differences to print per call")
+    calls_parser.set_defaults(func=compare_calls)
+    args = parser.parse_args()
+    return int(args.func(args))
+
+
+if __name__ == "__main__":
+    sys.exit(main())
