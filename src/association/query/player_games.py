@@ -1115,15 +1115,23 @@ def _teammate_stints(con: duckdb.DuckDBPyConnection, athlete_id: str) -> list[tu
     return stints
 
 
-def _tenure_clause(con: duckdb.DuckDBPyConnection, mate: Entity, season: int | None) -> tuple[str, list[Any]]:
+def _tenure_clause(con: duckdb.DuckDBPyConnection, mate: Entity, season: int | None, *, side: str = "own") -> tuple[str, list[Any]]:
     """SQL keeping the games ``pgl`` played on a team ``mate`` was on at the
-    time - see _teammate_stints for how "was on" is read. ``season`` is the one
-    season asked about, or None for a career."""
+    time - see _teammate_stints for how "was on" is read - or, with ``side``
+    ``"opponent"``, the games played AGAINST a team he was on at the time
+    ("vs lakers without lebron": the Lakers games of his Lakers years,
+    ROADMAP step 3). ``season`` is the one season asked about, or None for
+    a career.
+
+    .. versionchanged:: 5.0.0
+       Takes ``side``.
+    """
     stints = [s for s in _teammate_stints(con, mate.id) if season is None or s[0] == season]
     if not stints:
         return "FALSE", []
     rows = ", ".join("(?, ?, ?, ?)" for _ in stints)
+    team = "pgl.team_id" if side == "own" else "pgl.opponent_team_id"
     return (
         f"EXISTS (SELECT 1 FROM (VALUES {rows}) AS stint(season, team_id, start_date, end_date) "
-        "WHERE stint.season = pgl.season AND stint.team_id = pgl.team_id AND pgl.game_date BETWEEN stint.start_date AND stint.end_date)"
+        f"WHERE stint.season = pgl.season AND stint.team_id = {team} AND pgl.game_date BETWEEN stint.start_date AND stint.end_date)"
     ), [value for stint in stints for value in stint]

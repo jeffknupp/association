@@ -644,8 +644,14 @@ def _career_scope(scope: Scope) -> Scope:
 
 
 def _move_single_game(scope: Scope, question: str, measure: str | None) -> Reading | None:
-    """ "Most ... in a game" for a named player: rows by measure."""
-    if not (_TOP_IN_A_GAME.search(question) and measure and measure not in BOOLEAN_MEASURES):
+    """ "Most ... in a game" for a named player: rows by measure - and
+    "most points by curry vs lebron", with a player on the other side of
+    the games (ROADMAP step 3): against a named opponent, "most" is his best
+    meeting, the question a pair's summary never answered."""
+    if not measure or measure in BOOLEAN_MEASURES:
+        return None
+    against = any(c.side == "opponent" for c in scope.conditions)
+    if not (_TOP_IN_A_GAME.search(question) or (against and _RANKING.search(question))):
         return None
     return Reading(
         scope=scope,
@@ -655,7 +661,7 @@ def _move_single_game(scope: Scope, question: str, measure: str | None) -> Readi
         group="none",
         predicates=[],
         order="measure",
-        direction="desc",
+        direction=_asc_or_desc(question),
         limit=_clamp_limit(scope.limit, DEFAULT_SINGLE_GAME_LIMIT),
     )
 

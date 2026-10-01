@@ -147,6 +147,33 @@ def test_the_parser_with_no_names_and_no_stat_still_reads_the_question(con: duck
     assert r.scope.threshold == 20
 
 
+def test_a_player_after_a_versus_word_reaches_the_route_as_a_condition(con: duckdb.DuckDBPyConnection) -> None:
+    """ROADMAP step 3: the route carries the other-side player as a typed
+    condition (``_read_route_versus``) - written by the first reading, which
+    has the model's names, so the second (``reading_from_route``) keeps him
+    even where his name alone is two players' - and the point is the
+    subject's own: a high (rows by measure, "most" against a named opponent
+    being his best meeting), a count, a log. A bare pair is still the
+    matchup, and "vs <team> without <player>" is the player's own question,
+    not a with/without split."""
+    from association.query.reading import ConditionSpec
+
+    against = ConditionSpec(player="Jayson Tatum", side="opponent", predicate="played")
+    high = _read(con, "most points by tyrese maxey vs tatum", ["tyrese maxey", "tatum"], "points")
+    assert high.intent == "player_stat" and high.scope.player == "Tyrese Maxey" and high.scope.conditions == (against,)
+    assert high.point is not None and high.point.shape == "rows" and high.point.order == "measure" and high.point.direction == "desc"
+    fewest = _read(con, "fewest points by tyrese maxey vs tatum", ["tyrese maxey", "tatum"], "points")
+    assert fewest.point is not None and fewest.point.order == "measure" and fewest.point.direction == "asc"
+    count = _read(con, "how many times did tyrese maxey score 30 vs tatum", ["tyrese maxey", "tatum"], "points")
+    assert count.intent == "threshold_count" and count.scope.conditions == (against,) and count.scope.threshold == 30
+    log = _read(con, "tyrese maxey game log vs tatum", ["tyrese maxey", "tatum"], "")
+    assert log.intent == "game_log" and log.scope.conditions == (against,) and log.scope.players == ()
+    pair = _read(con, "tyrese maxey vs tatum", ["tyrese maxey", "tatum"], "")
+    assert pair.intent == "player_matchup" and pair.scope.conditions == () and len(pair.scope.players) == 2
+    narrowed = _read(con, "tyrese maxey points vs boston without embiid", ["tyrese maxey", "boston", "embiid"], "points")
+    assert narrowed.intent == "player_stat" and narrowed.scope.opponent == "Boston Celtics" and narrowed.scope.without == ("embiid",)
+
+
 def test_a_player_against_a_team_is_never_a_matchup(con: duckdb.DuckDBPyConnection) -> None:
     """The router dressed one player against a team as a two-player matchup -
     with the team, or a garbled spelling of it, or a teammate named as absent

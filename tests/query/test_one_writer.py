@@ -207,8 +207,9 @@ _SIDES = ("player", "players", "team", "opponent", "without")
         ("luka dončić last 15 games vs. magic", ["luka dončić", "magic"], "game_log", {"player": "Luka Doncic", "opponent": "Orlando Magic"}),
         ("steve adam's vs kings last 10 games", ["steve adam's", "kings"], "game_log", {"player": "Steven Adams", "opponent": "Sacramento Kings"}),
         ("jaylen brown last 8 games vs pistons", ["jaylen brown", "pistons"], "game_log", {"player": "Jaylen Brown", "opponent": "Detroit Pistons"}),
-        # Two players set against each other are the pair, whatever "vs" joins.
-        ("jay huff game log vs Embiid", ["jay huff", "Embiid"], "player_matchup", {"players": ("Jay Huff", "Joel Embiid")}),
+        # A log against a player is his own games with the other on the far side (ROADMAP step 3); the bare pair is the matchup.
+        ("jay huff game log vs Embiid", ["jay huff", "Embiid"], "game_log", {"player": "Jay Huff"}),
+        ("jay huff vs Embiid", ["jay huff", "Embiid"], "player_matchup", {"players": ("Jay Huff", "Joel Embiid")}),
         # A teammate named with "without" narrows; the team is the opponent.
         (
             "de'aaron fox vs magic last five games without wembyanama",

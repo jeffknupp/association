@@ -519,6 +519,43 @@ def test_a_closed_range_is_named_as_one_and_counted_as_one(cx_ctx: TemplateConte
     assert one.data["rows"][0]["games"] == 2
 
 
+def test_an_absence_is_read_on_the_other_side_where_the_man_was_never_a_teammate(cx_ctx: TemplateContext) -> None:
+    """ROADMAP step 3 (Jeff's call, 2026-09-30): "without X" is the games X
+    missed on the subject's team - or, where X was never his teammate in
+    the span and the games are narrowed to an opponent X played for, the
+    games X missed on the OTHER side, settled where the name is resolved
+    (``common._absence_condition``) and said so. Jaylen Brown (Boston)
+    played both of Podziemski's season-``s`` Boston games (g1, g5); a third
+    Boston game he sat out is added, and it is the one game "without Jaylen
+    Brown on the other side". A player on neither side keeps the own-side
+    reading, whose empty answer names him as never the teammate."""
+    s = current_season()
+    cx_ctx.con.execute("INSERT INTO games VALUES (?, ?, 2, ?, ?, ?, ?, ?, ?)", ["g9", s, f"{s}-03-15T20:00Z", BOS, GS, 90, 101, GS])
+    cx_ctx.con.execute(f"INSERT INTO player_box_stats VALUES ({', '.join('?' for _ in range(24))})", _box("g9", s, GS, BOS, PODZ, minutes=31, pts=24, reb=6, ast=5))
+    result = compose_answer(
+        cx_ctx, "game_log", {"player": "Brandin Podziemski", "opponent": "Boston", "without": ["Jaylen Brown"], "season": s, "season_type": 2}, "podziemski game log vs boston without jaylen brown"
+    )
+    assert result is not None and [g["date"] for g in result.data["games"]] == [f"{s}-03-15"]
+    assert "vs the Boston Celtics without Jaylen Brown on the other side" in (result.answer or "")
+    # A man on neither side: the own-side reading, and the honest empty answer.
+    neither = compose_answer(
+        cx_ctx, "game_log", {"player": "Brandin Podziemski", "opponent": "Boston", "without": ["Domantas Sabonis"], "season": s, "season_type": 2}, "podziemski game log vs boston without sabonis"
+    )
+    assert neither is not None and "Domantas Sabonis was not Brandin Podziemski's teammate" in (neither.answer or "")
+
+
+def test_an_empty_splits_read_names_the_narrowing_not_a_phantom_did_not_play(cx_ctx: TemplateContext) -> None:
+    """ "steph curry record vs lebron" with no meeting this season said
+    "listed in 43 box scores but did not play in any of them" - a confident
+    refusal naming the wrong missing fact. Podziemski's one Lakers game
+    (g4) is a DNP, so his splits against them are empty, and the answer
+    says that it is the narrowing that emptied them."""
+    s = current_season()
+    result = compose_answer(cx_ctx, "player_splits", {"player": "Brandin Podziemski", "opponent": "Lakers", "season": s, "season_type": 2}, "podziemski record vs lakers")
+    assert result is not None and result.data["games"] == 0
+    assert "none of them vs the Los Angeles Lakers" in (result.answer or "") and "did not play in any" not in (result.answer or "")
+
+
 def test_a_plain_career_names_the_players_own_seasons_not_the_floor(cx_ctx: TemplateContext) -> None:
     """A career with no ``since``/``until`` named used to read the relation's
     floor - "(1994 on)", true of every player and naming nothing about the

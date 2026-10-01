@@ -39,7 +39,7 @@ from association.query.entities import _edit_budget, _question_derived_player, _
 from association.query.measures import MEASURE_WORDS
 from association.query.metrics import EXTRA_FIELD_COLUMNS, TEAM_FIELD_WORDS
 from association.query.player_games import PERIOD_COLUMNS
-from association.query.reading import PeriodCondition, Reading, Scope, ScopeError, Split
+from association.query.reading import ConditionSpec, PeriodCondition, Reading, Scope, ScopeError, Split
 from association.query.router import Route, _period_asked, _route_calendar_slots_split, settle
 from association.query.subject import (
     KIND_ASSIGNED_INTENTS,
@@ -82,7 +82,7 @@ _COUNT = r"(\d{1,3}|" + "|".join(re.escape(w).replace(r"\ ", r"[\s-]+") for w in
 
 
 _PLAYER_LOG = (
-    r"\b(game ?log|gamelog|logs?|last " + _COUNT + r" games|each game|game by game|box scores?|games? (with|where|in which|against|vs)"
+    r"\b(game ?log|gamelog|logs?|last " + _COUNT + r" games|each game|game by game|box scores?|(?<!per )games? (with|where|in which|against|vs)"
     r"|how many (games|times)|highest|most .* in a game|career high|best game|single game"
     r"|first game|last game|(most recent|latest|previous|final) (\d+ )?games?|first \d+ games|game \d|month of|\d+/\d+|march|january|february|april|december|november|october)\b"
 )
@@ -133,7 +133,11 @@ PARENT_GRAMMAR: tuple[tuple[frozenset[str], str, str], ...] = (
         "player_splits",
     ),
     (frozenset({"player"}), _PLAYER_LOG, "game_log"),
-    (frozenset({"player+companions"}), r"\b(with|without|while|when)\b", "with_without"),
+    # A player's split by a companion - unless a versus word sets him against
+    # a team, where "maxey points vs boston without embiid" is his own games
+    # narrowed (ROADMAP step 3: the absence a condition, on whichever side the
+    # name resolves to), not a two-sided split.
+    (frozenset({"player+companions"}), r"(?=.*\b(with|without|while|when)\b)(?!.*\b(?:vs\.?|versus|against)\b)", "with_without"),
     (frozenset({"player"}), r".", "player_stat"),
     (frozenset({"position"}), r"\b(log|game ?log)\b", "game_log"),
     (frozenset({"position"}), r".", "leaderboard"),
@@ -677,6 +681,22 @@ def read_period_condition(question: str) -> tuple[PeriodCondition, tuple[int, in
     return PeriodCondition(stat=stat, threshold=threshold, op=op, period=asked.get("period"), half=_as_half(asked.get("half"))), m.span()
 
 
+def _read_route_versus(subject: Subject, scope: Scope, intent: str) -> Scope:
+    """The players the reading put on the OTHER side of the subject's games
+    ("most points by curry vs lebron", ROADMAP step 3), written into the
+    route's ``conditions`` here rather than left for the reading's second
+    pass (:func:`reading_from_route`, which reads the route and not the
+    model's names): a name two players share ("curry") is read as a player
+    only through the model's span, so a second pass without it would lose
+    him - and with him lost, "giannis points vs lebron and curry" was two
+    subjects again. Only where the intent reads conditions
+    (:func:`~association.query.subject._apply_conditions_honored`)."""
+    versus = [c for c in subject.conditions if c.side == "opponent"]
+    if not versus or not _apply_conditions_honored(intent):
+        return scope
+    return replace(scope, conditions=(*scope.conditions, *(ConditionSpec(player=c.name, side="opponent", predicate="played") for c in versus)))
+
+
 def _read_route_period(intent: str, scope: Scope, question: str) -> Scope:
     """A team's quarter or half from the words ("first quarter", "2nd
     half") - a slot the router's model filled and the stages only read for
@@ -837,6 +857,7 @@ def read_route(con: duckdb.DuckDBPyConnection, question: str, names: list[str] |
     scope = _read_route_split(subject, question, final, scope)
     if condition is not None:
         scope = replace(scope, period_condition=condition[0])
+    scope = _read_route_versus(subject, scope, final)
     subject = replace(
         subject,
         intent=final,

@@ -322,13 +322,17 @@ def test_a_player_filed_as_the_opponent_is_checked_like_the_subject(con: duckdb.
     ``players`` never fired on the parser's output and is gone (ROADMAP plan
     item 6, step (d), part 3)."""
     s = read_subject(con, "jay huff game log vs Embiid", "player_matchup", Scope.from_slots({"player": "Jaylen Huff", "opponent": "Nikola Jokic"}))
-    assert s.kind == "pair" and s.players == ("Jay Huff", "Joel Embiid") and s.invented == ("Nikola Jokic",)
+    # A log against a player is his own games with the other on the far side (ROADMAP step 3), the model's Jokic still carried as invented.
+    assert s.kind == "player" and s.players == ("Jay Huff",) and [(c.name, c.side) for c in s.conditions] == [("Joel Embiid", "opponent")] and s.invented == ("Nikola Jokic",)
     invented = _parsed(con, "jay huff game log vs Embiid", ["Jaylen Huff", "Nikola Jokic"])
-    assert invented.intent == "player_matchup" and invented.misread == ("Nikola Jokic",)
+    assert invented.intent == "game_log" and invented.misread == ("Nikola Jokic",)
     assert read_subject(con, "luka vs the lakers", "game_log", Scope.from_slots({"player": "Luka Doncic", "opponent": "Los Angeles Lakers"})).opponent == "Los Angeles Lakers"
     team = _parsed(con, "luka vs the lakers", ["luka", "lakers"])
     assert team.scope.player == "Luka Doncic" and team.scope.opponent == "Los Angeles Lakers" and team.misread == ()
-    pair = _parsed(con, "luka game log vs embiid", ["luka", "embiid"])
+    # A log against a player: his own games, the other on the far side (ROADMAP step 3); the bare pair is still the matchup.
+    log = _parsed(con, "luka game log vs embiid", ["luka", "embiid"])
+    assert log.intent == "game_log" and log.scope.player == "Luka Doncic" and [(c.player, c.side) for c in log.scope.conditions] == [("Joel Embiid", "opponent")] and log.misread == ()
+    pair = _parsed(con, "luka vs embiid", ["luka", "embiid"])
     assert pair.intent == "player_matchup" and pair.scope.players == ("Luka Doncic", "Joel Embiid") and not pair.scope.opponent and pair.misread == ()
 
 
@@ -677,6 +681,33 @@ def test_a_possessive_team_word_names_the_team(con: duckdb.DuckDBPyConnection) -
     assert s.kind == "team" and s.teams == ("Atlanta Hawks",)
     s = _read(con, "the Celtics's record", "team_record")
     assert s.kind == "team" and s.teams == ("Boston Celtics",)
+
+
+def test_a_player_after_a_versus_word_is_an_opponent_side_condition_where_the_words_ask_for_games(con: duckdb.DuckDBPyConnection) -> None:
+    """ROADMAP step 3 (Jeff's call, 2026-09-30): a player after "vs" is on
+    the other side of the subject's games - a condition, read wherever the
+    words ask for a high, a count, a record, a log or a split - and never a
+    second subject there. A bare "curry vs lebron" or "curry stats vs
+    lebron" stays the pair, whose matchup summary reads both lines. Three
+    names are a subject and conditions whatever the words; a team after
+    "vs" names nobody here."""
+    from association.query.subject import Companion
+
+    s = _read(con, "most points by stephen curry vs lebron", "player_stat", players=["Stephen Curry", "LeBron James"], stat="points")
+    assert s.kind == "player" and s.players == ("Stephen Curry",) and s.conditions == (Companion("LeBron James", "played", side="opponent"),)
+    s = _read(con, "how many times did lebron score 30 vs kawhi", "player_stat", players=["LeBron James", "Kawhi Leonard"], stat="points")
+    assert s.kind == "player" and s.players == ("LeBron James",) and s.conditions == (Companion("Kawhi Leonard", "played", side="opponent"),)
+    for question in ("stephen curry vs lebron", "stephen curry stats vs lebron", "stephen curry ppg against lebron this season"):
+        s = _read(con, question, "player_stat", players=["Stephen Curry", "LeBron James"])
+        assert s.kind == "pair" and s.conditions == (), question
+    s = _read(con, "kawhi points per game vs lebron and curry", "player_stat", players=["Kawhi Leonard", "LeBron James", "Stephen Curry"], stat="points")
+    assert s.kind == "player" and [(c.name, c.side) for c in s.conditions] == [("LeBron James", "opponent"), ("Stephen Curry", "opponent")]
+    # Beside a teammate's absence: the two conditions, on their two sides.
+    s = _read(con, "stephen curry game log vs lebron without durant", "game_log", players=["Stephen Curry", "LeBron James"], without=["durant"])
+    assert s.kind == "player" and [(c.name, c.predicate, c.side) for c in s.conditions] == [("Kevin Durant", "absent", "own"), ("LeBron James", "played", "opponent")]
+    # A team after "vs" is the opponent slot's; a player named only after it has no subject before him.
+    s = _read(con, "stephen curry game log vs the lakers", "game_log", player="Stephen Curry")
+    assert s.kind == "player" and s.conditions == ()
 
 
 def test_compare_x_with_y_reads_a_pair_not_a_companion(con: duckdb.DuckDBPyConnection) -> None:

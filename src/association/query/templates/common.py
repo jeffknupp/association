@@ -1600,12 +1600,12 @@ def _narrow_player_games(
         mate = _resolved_teammate(con, text, player, span)
         if isinstance(mate, TemplateResult):
             return mate
-        narrowed.add_condition(Condition(mate, "own", "absent", None, _relation_tenure_clause(con, mate, span.season)), box_source(con))
+        narrowed.add_condition(_absence_condition(con, mate, player, span, narrowed.opponent), box_source(con))
     # The general shape of the same thing (ROADMAP plan item 3): any
     # player, on either side, under any predicate - "when Embiid and Paul
     # George start", "vs LeBron without Durant", "in games Maxey had 20+".
     for entry in conditions:
-        condition = _condition_from_slot(con, entry, player, span)
+        condition = _condition_from_slot(con, entry, player, span, narrowed.opponent)
         if isinstance(condition, TemplateResult):
             return condition
         narrowed.add_condition(condition, box_source(con))
@@ -2289,7 +2289,7 @@ def _teammates_among(con: duckdb.DuckDBPyConnection, candidates: list[Entity], p
     return [c for c in candidates if c.id in have]
 
 
-def _condition_from_slot(con: duckdb.DuckDBPyConnection, entry: ConditionSpec, player: Entity, span: _Span) -> Condition | TemplateResult:
+def _condition_from_slot(con: duckdb.DuckDBPyConnection, entry: ConditionSpec, player: Entity, span: _Span, opponent: Entity | None = None) -> Condition | TemplateResult:
     """One ``conditions`` entry - a :class:`~association.query.reading.ConditionSpec`:
     a player, his side (``"own"`` or ``"opponent"``), a predicate, and the
     line a ``reached`` one names - as a
@@ -2299,7 +2299,18 @@ def _condition_from_slot(con: duckdb.DuckDBPyConnection, entry: ConditionSpec, p
     box scores in the span. A predicate or stat this does not read refuses
     rather than narrowing to nothing.
 
+    An absence the question wrote on the subject's own side ("without X")
+    whose player was never his teammate in the span is read on the OTHER
+    side where the games are narrowed to an ``opponent`` he played for then
+    - "vs lakers without lebron" (ROADMAP step 3, Jeff's call: the side is
+    settled where the name is resolved, since the parser does not read the
+    warehouse) - bounded to his time on that team and said as "without X
+    on the other side"; else the teammate refusal stands, naming both.
+
     .. versionadded:: 5.0.0
+
+    .. versionchanged:: 5.0.0
+       Takes ``opponent``, for an absence read on the other side.
     """
     if not entry.player.strip():
         raise TemplateUnsupported(f"a condition needs a player, got {entry!r}")
@@ -2308,6 +2319,8 @@ def _condition_from_slot(con: duckdb.DuckDBPyConnection, entry: ConditionSpec, p
         raise TemplateUnsupported(f"no condition reads side {side!r} with predicate {predicate!r}")
     if side == "own":
         found = _resolved_teammate(con, entry.player, player, span)
+        if predicate == "absent" and isinstance(found, Entity):
+            return _absence_condition(con, found, player, span, opponent)
     else:
         found = _resolved_player(con, entry.player, f"no player named {entry.player!r}", available=_BOX_SCORES, season=span.season, through=_career_end(span.season))
     if isinstance(found, TemplateResult):
@@ -2321,6 +2334,31 @@ def _condition_from_slot(con: duckdb.DuckDBPyConnection, entry: ConditionSpec, p
         line = (column, ">=", threshold, f"{threshold}+ {STAT_LABELS.get(stat, stat)}s")
     tenure = _relation_tenure_clause(con, found, span.season) if side == "own" and predicate == "absent" else None
     return Condition(found, side, predicate, line, tenure)
+
+
+def _absence_condition(con: duckdb.DuckDBPyConnection, mate: Entity, player: Entity, span: _Span, opponent: Entity | None) -> Condition:
+    """ "Without X" as the relation reads it: the games X missed while on
+    the subject's team (bounded to that tenure), or - where X was never his
+    teammate in the span and the games are narrowed to an ``opponent`` X
+    played for then - the games X missed on the OTHER side ("vs lakers
+    without lebron", ROADMAP step 3), bounded to his time on that team and
+    said as "without X on the other side". Settled here, where the name is
+    resolved, since the parser reads no roster (Jeff's call, 2026-09-30).
+    A man on neither side keeps the own-side reading, whose empty answer
+    says he was never the subject's teammate.
+
+    .. versionadded:: 5.0.0
+    """
+    if opponent is not None and not _teammates_among(con, [mate], player, span) and _played_for(con, mate, opponent, span):
+        return Condition(mate, "opponent", "absent", None, _relation_tenure_clause(con, mate, span.season, side="opponent"))
+    return Condition(mate, "own", "absent", None, _relation_tenure_clause(con, mate, span.season))
+
+
+def _played_for(con: duckdb.DuckDBPyConnection, mate: Entity, team: Entity, span: _Span) -> bool:
+    """Whether ``mate`` has a box score for ``team`` in a season of ``span``."""
+    clause, params = span.clause("season")
+    row = con.execute(f"SELECT 1 FROM player_box_stats WHERE athlete_id = ? AND team_id = ? AND season_type = ? AND {clause} LIMIT 1", [mate.id, team.id, span.season_type, *params]).fetchone()
+    return row is not None
 
 
 def _resolved_teammate(con: duckdb.DuckDBPyConnection, text: Any, player: Entity, span: _Span) -> Entity | TemplateResult:

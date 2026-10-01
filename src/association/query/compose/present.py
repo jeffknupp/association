@@ -263,7 +263,7 @@ def _present_player_splits(con: duckdb.DuckDBPyConnection, q: Query) -> Template
     compiled = compile_query(con, q)
     if compiled.player is None:
         return None
-    found = _player_splits_from(con, scope, compiled.player, compiled.narrowed, covered, team, scope.venue, opponent)
+    found = _player_splits_from(con, scope, compiled.player, compiled.narrowed, covered, team, scope.venue, opponent, span=compiled.span)
     if isinstance(found, TemplateResult):
         return found
     return _player_splits_answer(con, found, scope.split)

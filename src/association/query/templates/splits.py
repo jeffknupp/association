@@ -41,7 +41,7 @@ from ..conditions import (
     box_source,
 )
 from ..entities import Entity, teammate_names
-from ..player_games import Narrowed, games_subquery, named
+from ..player_games import _PLAYER_GAMES, Narrowed, games_subquery, named
 from ..team_games import TEAM_GAMES_SQL, TeamNarrowed
 from ..team_games import aggregate_sql as team_aggregate_sql
 from ..team_games import games_subquery as team_games_subquery
@@ -56,6 +56,7 @@ from .common import (
     _condition_scope,
     _joined,
     _no_games,
+    _no_narrowed_games,
     _optional_team,
     _period,
     _resolved_player,
@@ -481,8 +482,27 @@ class _SplitSubject:
     caveat: str
 
 
+def _player_splits_narrowing_emptied(con: duckdb.DuckDBPyConnection, narrowed: Narrowed) -> bool:
+    """Whether the player has games under the base clauses alone - so it is
+    the narrowing (an opponent, a condition, a venue) that left none, and
+    the answer should name it rather than the span."""
+    if not narrowed.extra:
+        return False
+    where, params = narrowed.clauses(narrowed=False, rebuilt=box_source(con).rebuilt)
+    row = con.execute(f"SELECT COUNT(*) {_PLAYER_GAMES} WHERE {where}", params).fetchone()
+    return bool(row and row[0])
+
+
 def _player_splits_from(
-    con: duckdb.DuckDBPyConnection, scope: Scope, player: Entity, narrowed: Narrowed, covered: _Scope, team: Entity | None, venue: str | None, opponent: Entity | None
+    con: duckdb.DuckDBPyConnection,
+    scope: Scope,
+    player: Entity,
+    narrowed: Narrowed,
+    covered: _Scope,
+    team: Entity | None,
+    venue: str | None,
+    opponent: Entity | None,
+    span: _Span | None = None,
 ) -> _SplitSubject | TemplateResult:
     """A player's splits over ``narrowed`` - his games already settled and
     narrowed by the shared steps, whichever caller settled them: the
@@ -497,6 +517,14 @@ def _player_splits_from(
     base, base_params = games_subquery(narrowed, box_source(con))
     games, first, last = _totals(con, base, base_params)
     if not games:
+        if span is not None and _player_splits_narrowing_emptied(con, narrowed):
+            # The narrowing emptied the games, not the span: "steph curry
+            # record vs lebron" with no meeting this season said "listed in
+            # 43 box scores but did not play in any of them" - a confident
+            # refusal naming the wrong missing fact (AGENTS.md's mirror
+            # image). The relation's own sentence names the narrowing.
+            message = _no_narrowed_games(con, player, span, narrowed, rebuilt=box_source(con).rebuilt)
+            return TemplateResult(data={"player": player.name, "team": team.name if team else None, "span": covered.label(), "games": 0, "message": message}, answer=message)
         return _no_games(con, player, covered, team)
     if scope.season_n and first is not None and first == last and covered.season != first:
         # An ordinal season ("his 18th season") is not a year until the player
