@@ -819,3 +819,44 @@ def test_a_short_question_is_refused_before_the_model_is_asked(monkeypatch: pyte
     assert agent.unanswered == "fewer than 3 words"
     monkeypatch.setattr("association.query.compose.answer", lambda ctx, reading, trace=None, declined=None: TemplateResult(data={}, answer="answered"))
     assert agent.ask("Tatum rec", route=Route.from_slots(intent="player_stat", slots={"player": "Jayson Tatum"})).text == "answered"
+
+
+def test_a_question_is_answered_in_the_latest_season_on_record_not_the_calendars(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """ISSUES.md P1, 2026-09-30: from October 1 the calendar's season is one
+    the warehouse has no games for. ``Agent.ask`` reads the latest season
+    with a played regular-season or postseason game (a preseason-only or
+    unplayed season does not count) and answers inside it; the trace says
+    so; and once the question is answered the calendar's season stands
+    again."""
+    import duckdb
+
+    from association.nba.season import TODAY_ENV, current_season
+    from association.query.connection import latest_season_on_record
+
+    db_path = tmp_path / "test.duckdb"
+    con = duckdb.connect(str(db_path))
+    con.execute("CREATE TABLE players (athlete_id VARCHAR, display_name VARCHAR)")
+    con.execute("CREATE TABLE teams (team_id VARCHAR, abbreviation VARCHAR, display_name VARCHAR)")
+    con.execute("CREATE TABLE games (event_id VARCHAR, season INTEGER, season_type INTEGER, winner_team_id VARCHAR)")
+    # 2026 played; 2027 holds a preseason game and an unplayed regular-season one.
+    con.execute("INSERT INTO games VALUES ('a', 2025, 2, '1'), ('b', 2026, 2, '1'), ('c', 2026, 3, '2'), ('d', 2027, 1, '1'), ('e', 2027, 2, NULL)")
+    assert latest_season_on_record(con) == 2026
+    con.close()
+    assert latest_season_on_record(duckdb.connect(":memory:")) is None
+
+    monkeypatch.setenv(TODAY_ENV, "2026-10-05")
+    lines: list[str] = []
+    agent = Agent(str(db_path), tmp_path / "out", history_dir=tmp_path / ".history", trace=lines.append, verbose=True)
+    seen: list[int] = []
+
+    def inner(question: str, history: Any, route: Any = None) -> Any:
+        seen.append(current_season())
+        from association.query.answer import Answer, Timing
+
+        return Answer(question=question, text="ok", answered_by="refused", timing=Timing(total_seconds=0.0, model_seconds=0.0, model_calls=0, tool_seconds=0.0, tool_calls=0))
+
+    monkeypatch.setattr(agent, "_ask_inner", inner)
+    agent.ask("how many points does luka average")
+    assert seen == [2026], "the question's default season is the latest with games, not the calendar's 2027"
+    assert current_season() == 2027, "outside the question the calendar's season stands"
+    assert any("default season: 2026 (the calendar's 2027 has no games on record)" in line for line in lines)

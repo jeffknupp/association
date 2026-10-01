@@ -28,9 +28,11 @@ from typing import Any
 
 import duckdb
 
+from association.nba.season import calendar_season, season_on_record
+
 from .answer import Answer, AnsweredBy, Artifact, Timing
 from .compose import COMPILED_INTENTS
-from .connection import connect_read_only
+from .connection import connect_read_only, latest_season_on_record
 from .entities import (
     collect_name_readings,
     compared_but_unmatched,
@@ -183,8 +185,16 @@ class Agent:
         history = RunHistory(self.verbose, self.history_dir, sink=self.trace)
         recorded = ""
         answer: Answer | None = None
+        # "This season" is the latest one the warehouse has games for, not
+        # the calendar's, from October 1 until the new season's games are
+        # loaded (nba.season.current_season). Read per question: a server
+        # outlives a reload.
+        on_record = latest_season_on_record(self.con)
+        if on_record is not None and on_record < calendar_season():
+            history.log(f"  -> (decision) default season: {on_record} (the calendar's {calendar_season()} has no games on record)")
         try:
-            answer = self._ask_inner(question, history, route)
+            with season_on_record(on_record):
+                answer = self._ask_inner(question, history, route)
             recorded = answer.text
         except Exception:
             recorded = "EXCEPTION:\n" + traceback.format_exc()

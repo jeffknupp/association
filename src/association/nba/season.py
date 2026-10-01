@@ -10,15 +10,88 @@ so neither package has to depend on the other for it.
 
 from __future__ import annotations
 
+import os
+from collections.abc import Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
 from datetime import date, datetime, timedelta, timezone
+
+TODAY_ENV = "ASSOCIATION_TODAY"
+"""The environment variable that pins "today" to an ISO date - for a harness
+that must answer the same on any day (a rehearsal compared with last week's
+run), and for a test of a date that has not come yet.
+
+.. versionadded:: 5.0.0
+"""
+
+# The latest season the warehouse being read holds played games for, where a
+# reader has said so (:func:`season_on_record`); None means nobody has, and
+# the calendar's season stands (the fetch path, a template called directly).
+_ON_RECORD: ContextVar[int | None] = ContextVar("association_season_on_record", default=None)
+
+
+def today() -> date:
+    """The date "now" is read as: :data:`TODAY_ENV` where it is set, else the
+    machine's own calendar date.
+
+    .. versionadded:: 5.0.0
+    """
+    pinned = os.environ.get(TODAY_ENV)
+    if pinned:
+        return date.fromisoformat(pinned)
+    return date.today()  # noqa: DTZ011 - the machine's own calendar date is the one meant: a season turns over in October wherever you are
+
+
+def calendar_season() -> int:
+    """The season the calendar says it is: one starting in October of year Y
+    is season Y+1, otherwise the current year (season 2026 for 2025-26, from
+    October 2025 through the following September). What the fetch path
+    pulls; a question's default is :func:`current_season`.
+
+    .. versionadded:: 5.0.0
+    """
+    now = today()
+    return now.year + 1 if now.month >= 10 else now.year
 
 
 def current_season() -> int:
-    """A season starting in October of year Y is season Y+1, otherwise it's
-    the current year (e.g. season=2026 for the 2025-26 season, from October
-    2025 through the following September)."""
-    today = date.today()  # noqa: DTZ011 - the machine's own calendar date is the one meant: a season turns over in October wherever you are
-    return today.year + 1 if today.month >= 10 else today.year
+    """The season a question that names none is about: the calendar's
+    (:func:`calendar_season`), or - while a reader has said which seasons
+    the warehouse holds (:func:`season_on_record`) - the latest one with
+    games on record when the calendar has moved past it.
+
+    The calendar turns over on October 1 and the first game is played weeks
+    later, and a warehouse is loaded later still. Read from the calendar
+    alone, every unstated season from 2026-10-01 was 2027, a season with no
+    games: "how many points does luka average" answered "no 2027 regular
+    season numbers", a comparison printed a table of dashes, and the
+    bare-name recency rule had nobody who "played this season" to prefer
+    (ISSUES.md, 2026-09-30). The answer names the season it read, as it
+    always has, and naming a season in the question reaches any other.
+
+    .. versionchanged:: 5.0.0
+       Capped at the latest season on record inside :func:`season_on_record`.
+    """
+    calendar = calendar_season()
+    on_record = _ON_RECORD.get()
+    return min(calendar, on_record) if on_record is not None else calendar
+
+
+@contextmanager
+def season_on_record(season: int | None) -> Iterator[None]:
+    """While this is entered, :func:`current_season` is no later than
+    ``season`` - the latest one the warehouse being read holds played games
+    for (``None`` leaves the calendar's). Entered by the answering loop
+    around each question; per context, so a server's concurrent readers and
+    a test's own warehouse do not see each other's.
+
+    .. versionadded:: 5.0.0
+    """
+    token = _ON_RECORD.set(season)
+    try:
+        yield
+    finally:
+        _ON_RECORD.reset(token)
 
 
 # The day a game was played is its US Eastern date. ESPN stores a tip as UTC, a

@@ -6,7 +6,7 @@ import duckdb
 import pyarrow as pa
 import pytest
 
-from association.nba.season import eastern_date, eastern_date_sql, eastern_day_utc_range
+from association.nba.season import TODAY_ENV, calendar_season, current_season, eastern_date, eastern_date_sql, eastern_day_utc_range, season_on_record, today
 
 
 def test_a_game_is_dated_by_the_day_it_was_played() -> None:
@@ -78,3 +78,33 @@ def test_the_hand_written_daylight_rules_match_the_tz_database() -> None:
         start, end = (datetime.combine(d, datetime.min.time(), new_york).astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%MZ") for d in (day, day + timedelta(days=1)))
         assert eastern_day_utc_range(day.isoformat()) == (start, end), day
         day += timedelta(days=1)
+
+
+def test_the_default_season_is_the_latest_on_record_once_the_calendar_passes_it(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The calendar's season turns over on October 1; the first game is weeks
+    later and a warehouse is loaded later still. Read from the calendar
+    alone, every question naming no season asked about 2027 from 2026-10-01
+    - a season with no games ("how many points does luka average": "no 2027
+    regular season numbers"). Inside ``season_on_record`` the default is
+    capped at the latest season the warehouse holds games for, and only
+    capped: a warehouse AHEAD of the calendar (a fixture) leaves the
+    calendar's, and outside the context nothing is capped - the fetch path
+    pulls the calendar's season."""
+    monkeypatch.setenv(TODAY_ENV, "2026-10-01")
+    assert today() == date(2026, 10, 1)
+    assert calendar_season() == 2027 and current_season() == 2027
+    with season_on_record(2026):
+        assert current_season() == 2026 and calendar_season() == 2027
+        with season_on_record(None):
+            assert current_season() == 2027
+        assert current_season() == 2026
+    assert current_season() == 2027
+    with season_on_record(2030):
+        assert current_season() == 2027
+    # The day before, the two agree and the cap is a no-op.
+    monkeypatch.setenv(TODAY_ENV, "2026-09-30")
+    with season_on_record(2026):
+        assert current_season() == calendar_season() == 2026
+    monkeypatch.setenv(TODAY_ENV, "not a date")
+    with pytest.raises(ValueError):
+        today()

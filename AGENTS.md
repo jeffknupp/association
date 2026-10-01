@@ -957,6 +957,15 @@ everything about it is constrained by things measured elsewhere in this file.
 
 - **A season is named for the year it ends.** 2023-24 is season `2024`. See
   `nba/season.py`.
+- **"This season" is the latest season with games on record, not the
+  calendar's.** The calendar turns over on October 1 and the first game is
+  weeks later: read from the calendar alone, every unstated season from
+  2026-10-01 was 2027, a season with no games. `Agent.ask` answers inside
+  `season_on_record(latest_season_on_record(con))`, which caps
+  `current_season()`; the fetch path pulls `calendar_season()`, uncapped. A
+  harness that must answer the same on any day sets `ASSOCIATION_TODAY`,
+  and the test suite pins it (`tests/conftest.py`): fifteen tests encode the
+  2025-26 season and went red under an October date with nothing wrong.
 - **NetPoints tables disagree with each other about `season_type`.**
   `net_points_player` uses its own *string* column (`net_points_season_type`,
   e.g. "Regular Season"); `net_points_player_game` and

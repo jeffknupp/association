@@ -28,3 +28,21 @@ def connect_read_only(db_path: str) -> duckdb.DuckDBPyConnection:
     .. versionadded:: 2.1.0
     """
     return duckdb.connect(db_path, read_only=True, config={"enable_external_access": False})
+
+
+def latest_season_on_record(con: duckdb.DuckDBPyConnection) -> int | None:
+    """The latest season the warehouse holds a played regular-season or
+    postseason game for - what "this season" can mean before the calendar's
+    new season has a game in it (:func:`association.nba.season.season_on_record`).
+    Preseason games do not count: a season with only those has no line to
+    read. ``None`` for a warehouse with no games table at all (a fixture).
+
+    .. versionadded:: 5.0.0
+    """
+    for table in ("real_games", "games"):
+        try:
+            row = con.execute(f"SELECT MAX(season) FROM {table} WHERE season_type IN (2, 3) AND winner_team_id IS NOT NULL").fetchone()
+        except duckdb.Error:
+            continue
+        return int(row[0]) if row and row[0] is not None else None
+    return None
