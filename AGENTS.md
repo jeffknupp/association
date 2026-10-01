@@ -10,8 +10,11 @@ templates and the compiler, why templates instead of better prompting — read
 the source of truth for design, and this file does not restate it.
 
 Where the work is going - the goal, where it stands, and the next steps in
-order - is `ROADMAP.md`; what each spike measured, bought and cost, as
-written at the time, is `ROADMAP-HISTORY.md`. Read the roadmap before
+order - is `ROADMAP.md` (rewritten 2026-09-30: the four-stage pipeline and
+the phases that reach it). The roadmap before it is `ROADMAP-2026-09.md`,
+archived verbatim: "plan item N" and "ROADMAP step N" in code, commits and
+`CHANGES.md` cite that file. What each earlier spike measured, bought and
+cost, as written at the time, is `ROADMAP-HISTORY.md`. Read the roadmap before
 starting a spike, and keep a spike pointed at it: measurements turn up
 fixable things, and those go to agents or to `ISSUES.md`, not into the
 spike.

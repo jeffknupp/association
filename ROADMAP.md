@@ -1,412 +1,310 @@
 # Roadmap
 
-Where the work is going, in order. `ISSUES.md` is the ranked list of what is
-wrong now; `ROADMAP-HISTORY.md` is how the project got here - what each step
-measured, bought and cost, as written at the time. Code and commit messages
-cite the plan by item ("plan item 6, step (d), part 3"); the numbers are
-stable, and each item's status is under "The plan items" below.
+**Status: PROPOSED, revised 2026-09-30 after two independent reviews.**
+Decided by Jeff: an answer's wording may change (D1), the answer side goes
+before the reader (D2), new shapes are frozen (D4), `intent` goes (D3).
+The reviews corrected the measurements below, changed the phases, and
+raised the decisions listed under "Decisions still open". Nothing here is
+started.
+
+The previous roadmap is `ROADMAP-2026-09.md` (archived verbatim; code and
+commits that cite "plan item N" or "ROADMAP step N" mean that file).
+`ROADMAP-HISTORY.md` is the log before it. `ISSUES.md` is what is wrong now.
 
 ## The goal
 
-**A correct answer to every reasonable question of at least mild complexity,
-or an honest refusal that names what is missing - fast, from the warehouse,
-never from a model's weights.** "Reasonable" is the corpus's own term: a
-question a careful human could answer from box scores, play-by-play, shot
-charts, standings and NetPoints. 90% of those is the target.
+Unchanged: **a correct answer to every reasonable question of at least mild
+complexity, or an honest refusal that names what is missing - fast, from the
+warehouse, never from a model's weights.** Refuse rather than approximate. A
+stated, correctable default beats a question.
 
-Two properties are not negotiable on the way there:
+Added, and the subject of this roadmap: **a pipeline a person or an agent
+can trace in one sitting.** The question's text is read once, into one typed
+record. That record is read once, by one planner. One place builds SQL. One
+place writes words.
 
-- **Refuse rather than approximate.** A fluent answer to a different question
-  than the one asked is the failure shape this project produces; a refusal
-  that names the wrong cause is its mirror. Both are graded worse than a
-  fall-through.
-- **A reasonable default beats a question, if the value used is displayed and
-  a follow-up wording reaches the alternative.** (Jeff, 2026-09-21.) A silent
-  default is still the worst failure; a stated one is an answer.
+## Where it stands (measured 2026-09-30, `b818823`)
 
-## Where it stands (2026-09-30, `de5d820`)
+**The score is good.** Live parser22: 167 of 175 questions (95.4%), 156 of
+166 families (94.0%); 1 wrong, 4 partial, 3 refused for want of a reading.
+Eleven of the twelve open P1s in `ISSUES.md` are reader faults; none is a
+wrong number from the answer side.
 
-**166 of 175 questions (94.9%), 155 of 166 families (93.4%)** on the live
-yardstick run (parser18: the fall-through agent removed, the period
-relation's team half merged, short questions refused, `leaderboard` and
-`period_split` retired into the compiler): 1 wrong, 5 partial, 3 refused
-with no reading (the yardstick's "fell through" outcome). Parser16 through
-20 moved no answer between them - parser20 (2026-09-30, `a10da56`) is the
-run after step (g) finished: `streak`, `player_matchup` and `with_without`
-retired through skeletons of their own, 277/277 identical to parser19 live
-and to the offline rehearsal on both trees, median 1.12s. Parser21
-(2026-09-30, `f720e6a`, median 1.16s) moved exactly three answers, each
-the one a commit aimed at: F161's league-wide read honors `since` (11
-games since 2001, not 3 of 2026), the first-quarter 3-point percentage
-answers (45 of 126), and F062's period condition answers (28 games with
-exactly one first-quarter three, 2.4 a game; the key says 31 and 2.52 -
-see "A period as a condition" below). 272 answered, 5 refused for want
-of a reading; the rehearsal on each tree reproduced the live run.
-Parser22 (`de5d820`, step 3, median 1.19s) moved one answer, the intended
-one: "jay huff game log vs Embiid" lists his three games against Embiid
-(the log asked for) where it gave the pair's summary of the same three
-meetings; 272/5, the rehearsal identical.
+**The architecture is half-ported.** Both reviewers replayed parser22's 277
+questions through the real agent with every presenter, compile and SQL
+execution instrumented (the replay matched the live run on all 277).
 
-The pipeline: a 3B model (qwen2.5:3b) copies the names out of the question
-and picks one stat key (`query/normalizer.py`); the parser reads everything
-else from the question's own words and writes one typed `Reading` - who the
-question is about, the intent, the scope (`query/parse.py`,
-`query/reading.py`); a template or the compiler (`query/compose`) answers
-the Reading, or a refusal names what is missing (`query/refusals.py`, or
-the parser's, the template's or the compiler's own reason through
-`agent.refusal_text`). There is no fall-through: the SQL-writing agent
-answered 1 question in 23 when measured and was removed on 2026-09-29
-(Jeff's call); what the yardstick still calls "fell through" is a refusal
-for want of a reading. Thirteen intents are the compiler's alone
-(`compose.COMPILED_INTENTS`); `game_log`, `player_stat`, `player_splits`,
-`leaderboard`, `period_split`, `player_compare`, `streak`, `player_matchup`
-and `with_without` joined them in step (g) (parser9-18, 2026-09-28/29: 0
-answers moved by any retirement; parser20 after the last three, 0 moved).
+Of the 205 answers by a "compiled" intent:
 
-The 13 families still failing, by cause:
+| What produced the answer | Answers |
+| --- | --- |
+| The compiler's SQL, the compiler's sentence | 16 |
+| The compiler's SQL, a retained template helper's words (`threshold_count` 15, `single_game_high` 8, `player_matchup` 5, team streak 1) | 29 |
+| SQL compiled, then discarded; the template body reads and words (`game_log` 18, `record_when` 11, `period_split` 9, `player_splits` 9, narrowed `player_stat` 8) | 55 |
+| Nothing compiled; the template body reads and words (`leaderboard` 29, `player_history` 19, season-line `player_stat` 19, `player_compare` 14, team log 7, `with_without` 6) | 94 |
+| Refused or clarified before any read | 11 |
 
-- **A period as a condition** (plan item 4) - built 2026-09-30. "vj
-  edgecombe three points made per game after making one three in first
-  quarter" (F062) reads the line into `Scope.period_condition` and answers
-  his whole-game threes over the games whose first quarter held exactly one
-  (28 games, 2.4; the key says 31 and 2.52, and "1+" reaches 36 and 2.8 -
-  the warehouse's first-quarter counts differ from the key's source for a
-  few games, cause not yet found). A team's non-points figure per quarter
-  is built (the team half, 2026-09-29).
-- **A span or a window the parser does not read.** "... games since
-  2000-01" (F161) answered one season until the league-wide read took
-  ``since``/``until`` (2026-09-30); "Most reb by a hawk player history"
-  (F125) ranks 2026 alone; "Best NBA record since January 31st 201" (F104)
-  falls through, since a team ranking cannot take a date; "bam adebayo
-  career games in the month of march" (F096) counts his 118 March games
-  right but lists the last 10 under a heading that says "2026 regular
-  season".
-- **A question not worth reading.** "Tatum rec" (F112) is refused unread
-  (fewer than three words - Jeff's rule, below); "25-26 knicks playoff
-  statistics vs other historic teams" (F097) gets a guess where the key
-  wants a clarification, and by the same rule it is not worked on.
-- **Two active players named Curry.** "Plot Curry's threes from last season"
-  (F003) falls through, and a wording of F002 ("How far was Curry average
-  three pointer?") asks Seth or Stephen. The rule is to ask when two
-  namesakes both played (AGENTS.md); the key reads Curry as Stephen.
-- **One each.** "rebounds allowed per team" (F101): no team metric holds it.
-  "towns home rec including playoffs since 1/26/20 vs spurs" (F110): 11
-  games where the key counts 10. "steph curry record vs lebron regular
-  season without kd" (F114): the key reads "without KD" as every game Durant
-  was not his teammate. A wording of F017 ("who are the top 50 in total
-  adjusted netpoints"): the 50 rows and each player's team.
+So the compiler reads 45 of 205 and words 16. Eighty-one answers, 30% of
+everything answered, read the **season line**, a relation the compiler has
+no model of. Of the 67 answers by a live template, 39 are charts.
 
-## Next, in order
+The rest of the picture:
 
-1. **The templates the compiler can reproduce go** (item 6, step (g); item
-   2). `game_log`, `player_stat` and `player_splits` are gone (2026-09-28
-   and -29): the log's and the splits' team halves are points on the team
-   relation said by the templates' own readers; 35/35, 42/42 and 5/5
-   recorded questions at parity or better once three compiler readings the
-   measurement found were fixed (a date replacing the season, the team
-   window sum over both season types, a threshold on a log). Live after
-   `game_log` and `player_stat` (parser9, parser10): 162/175, 0 moved.
-   `leaderboard` followed (2026-09-29): its reader over the season line is
-   the compiler's presenter for a league-wide point with
-   `source="seasons"`; 41/48 recorded questions identical, 6 the compiler
-   answers where the template refused, 1 the team total the template ranked
-   the league for. `period_split` followed the same day: its body is a
-   reader over a settled narrowing (`templates.games._period_split_from`),
-   the point a named player's games each read as the period's line
-   (`compose.adapt._adapt_period_split`, the template's early refusals
-   the point's own); 10/11 recorded questions identical, 1 refused both
-   ways with the same sentence, 31 unit-test calls through the shim.
-   `player_compare` too: its body is a reader over the settled scope
-   (`templates.players._player_compare_lines`), the point a pair's season
-   lines side by side (`compose.move._compare_point`, `source="seasons"`;
-   the template's refusals - fewer than two names, any narrowing - the
-   point's own); 16/18 recorded questions identical, 2 refused both ways
-   with the same sentence, 21 unit-test calls through the shim. Measured
-   first on all six (`intent-shrink/g/six_before.jsonl`): the compiler
-   declined every `with_without`, `player_matchup` and `streak` point (a
-   condition or a run it has no reading of). Each was a shape the compiler
-   had no skeleton for, not a point it declined by wording, and Jeff's call
-   (2026-09-30) is that none is bespoke enough to survive as a shape of its
-   own the way a chart or a fingerprint does: each gets its skeleton.
-   `streak` went first (2026-09-30): the `run` shape, the longest runs of
-   consecutive games one predicate holds along, a window over the ordered
-   games - `compose.core._compile_run` on the player relation and
-   `compose.team._compile_team_run` on the team's, over the relation cell
-   `conditions._longest_runs_sql`; the point carries the template's
-   refusals (`compose.adapt._adapt_streak`) and the presenters say the runs
-   in its words. 4/4 recorded questions identical, 41 unit-test calls (32
-   identical, 9 refused both ways). `player_matchup` next (2026-09-30): the
-   `pair` shape, two named players' lines over the games they met in - the
-   pair relation `player_games.paired_rows_sql` over the first player's
-   games settled and narrowed as a named player's are
-   (`compose.core._resolve_pair`, `_compile_pair`), the point carrying the
-   template's refusals (`compose.adapt._adapt_player_matchup`) and the
-   presenter saying the meetings in its words
-   (`templates.games._player_matchup_from`). 5 recorded questions (3
-   identical, 2 refused both ways), 16 unit-test calls (13 identical, 3
-   refused both ways). `with_without` last (2026-09-30): the team
-   relation's `presence` group - a team's games inside named teammates'
-   time on the team, each marked with who held the condition
-   (`compose.team._compile_team_presence` over
-   `templates.splits._with_without_read` and the relation cell
-   `conditions._with_without_games`), the point carrying the template's
-   refusals (`compose.adapt._adapt_with_without`) and `_with_without_said`
-   saying it in the template's words. 10 recorded questions (8 identical, 2
-   refused both ways with the same sentence), 19 unit-test calls. **Step
-   (g) is done:** every template on the player relation but the charts is
-   retired. A template survives only for a shape of its own: a chart, a
-   fingerprint. How to retire one was part 4's method: every call its
-   unit tests make and every recorded question it answers, answered both
-   ways and compared (`~/association-research/intent-shrink/g/`: a pytest
-   plugin records the unit-test calls; `parity_corpus.py` the recorded
-   questions; `compare_trees.py` the before-and-after) - the recorded
-   questions alone found one shape the template still carried, the unit
-   tests five.
-2. **The period relation - what is left** (item 4). Both halves are
-   done (2026-09-29): a quarter or half narrows the player-games relation
-   (`Narrowed.narrow_periods`, `PERIOD_AGREEMENT`,
-   `scripts/check_period_lines.py`: 375/375 cells) and the team-games
-   relation (`TeamNarrowed.narrow_periods`: points from the linescore, the
-   rest the players' period lines plus the team's own plays,
-   `team_games.team_period_line_sql`, validated per season and column in
-   `TEAM_PERIOD_AGREEMENT`, `scripts/check_team_period_lines.py`: 375/375
-   cells over 60,422 team-games; 70 cells refused under 90%, 60 of them
-   2002-2006). `team_quarter_points` answers any column of the line (F065).
-   Built 2026-09-30: shooting percentages in a period, for a player and a
-   team (`templates.games.PERIOD_RATES`, a ratio of the period's sums;
-   "vj edgecombe 1st quarter 3pt percentage by game" answers), and a named
-   player's four-quarter breakdown (#162: `period_split` with no period is
-   a `grouped` read by `period`, `compose.core._compile_by_period`, four
-   reads of the same narrowed games in one statement), and a period as a
-   condition on which games count (#275: `Scope.period_condition`, read
-   from the words by `parse.read_period_condition` and taken out of the
-   question the grammar sees, applied by
-   `Narrowed.narrow_period_condition` as an EXISTS over the period's own
-   line, so every reader of the relation honors it and says it; a bare
-   number is "exactly", said so, and "N+" is at least), and
-   `period_leaderboard` narrowed by an opponent or a venue (#185; Jeff's
-   call, 2026-09-30: the qualifier is a share of the narrowed games - half
-   of the most anyone played in the pool, capped at the season's minimum,
-   said in the answer). A range of seasons and a single date stay refused
-   by their reasons (accuracy is per season; one game ranks nothing per
-   game). Nothing of step 2 is left.
-3. **Players beside the subject are conditions, on either side, any
-   number of them** (item 3; Jeff's call, 2026-09-30, re-scoping what was
-   "the pair as a compiler subject" and "the opponent-side condition").
-   The relation already has the one mechanism: a `Condition` on the
-   games - a player, his side (own or opponent) and a predicate (played,
-   absent, started, bench, reached a line) - and a list of them is ANDed;
-   the pair relation's second player was one of its special cases. So
-   "most points by curry vs lebron", "how many times did lebron score 30
-   vs kawhi", "curry record vs lebron without kd" and "giannis points vs
-   lebron and curry" are all one shape: the subject's games under
-   conditions, read as a high, a count, a record or an average. Nothing
-   pair-specific is needed; only the matchup SUMMARY (both players' lines
-   and the head-to-head record over their meetings) keeps the `pair`
-   skeleton, for the bare "curry vs lebron" and "curry stats vs lebron".
-   The gap is the parser's: a player after "vs"/"against"/"versus" is
-   read as the second half of a pair today (every two-name question is a
-   matchup), and "without X" is always an own-side absence. To build: a
-   player after a versus word is an opponent-side `played` condition
-   wherever the words ask for anything but the summary; "without X" is
-   an own-side absence where X was the subject's teammate in the span and
-   an opponent-side one where he played for the other side, settled
-   where the name is resolved (the parser does not read the warehouse)
-   and said in the answer; any number of players, each a condition.
-   **Built 2026-09-30 (`de5d820`):** `subject._versus_companions` reads a
-   player after a versus word as an opponent-side `played` condition
-   where the words ask for games (a high, a count, a log, a streak,
-   splits, "most"/"fewest") or three names are given; the route carries
-   them typed (`parse._read_route_versus`); "most points by curry vs
-   lebron" is his best meetings (`compose.move._move_single_game`), "how
-   many times did lebron score 30 vs kawhi" a count (7 over his career),
-   the bare pair and "record vs" still the matchup summary.
-   `templates.common._absence_condition` settles "without X"'s side at
-   resolution: the subject's team, else the opponent X played for, said
-   as "without X on the other side" ("steph curry game log vs lakers
-   without lebron"); a versus team keeps the question off the with/without
-   split. Live parser22: one answer moved (F "jay huff game log vs
-   Embiid", to the log asked for), 272/5.
-4. **Re-plan from what is still failing**, after a live run.
+| What | Measured |
+| --- | --- |
+| `query/` | 33,556 lines; grew 4,748 in the five days since v4.4.0 while nine templates "retired" |
+| `templates/` | 12,231 lines, 401 more than at v4.4.0 |
+| private names `compose/` imports from `templates/` | 91 |
+| the subject is read | 3 times per question |
+| the router's stages run | 1 to 4 times per question (mean 1.7), speculatively, inside the subject reading |
+| the planner runs | twice per compiled answer, once of them inside the parser |
+| functions that take the question string | 168, in 10 modules; `Subject.question` carries the text on a record |
+| SQL statements per question to recognize names | about 100 (97% of all SQL issued) |
+| occurrences of `intent` | 567, of which 361 are on the READ side, where it is context the stages branch on |
+| sets keyed by intent, across the package and the web page | about 25 |
+| declarations of what a reader honors | 6, plus about 170 hand-written refusals in 11 modules |
+| distinct `data` shapes an answer carries | 25, with 22 per-intent renderers on the web page |
+| tests bound to structures this roadmap deletes | about 1,170 of 2,386 |
+| lines the 628 recorded questions reach | 61.6% (router 65%, `templates/splits` 44%, `team_games` 31%) |
 
-Step 1 finishes the parser consolidation (item 6) and should move no
-answers: it is proved by golden and the rehearsal, then a live run. Steps
-2 and 3 are new capability, each measured on the yardstick.
+**What the knot is** (the reviews' diagnosis, which replaces mine):
 
-**Waiting on a decision (Jeff's):**
+1. **Two vocabularies for one question.** The slot bag (`Scope`, 39 fields,
+   born as the router model's JSON schema) and the compiler's algebra are
+   both carried on the `Reading` and translated both ways: `adapt`, `move`,
+   `present` and the scoping tables are translation code. A presenter
+   pattern-matches the planned query back to the intent's default point and
+   calls the template on the slots - the algebra is a detour, not the
+   representation the answer is computed from.
+2. **The reader depends on the answer side.** `subject.py` asks whether the
+   downstream template honors a cell before writing it; `parse.py` runs the
+   planner. What is read depends on what will answer, so "read" is not a
+   stage.
+3. **`intent` is context inside the reader,** not a label on the answer:
+   the stages branch on it and are run speculatively to choose it.
+4. **There is no common result.** Twenty-five data shapes, each read and
+   worded by its own code.
 
-- **Which season type a question that names none reads.** Today it is the
-  regular season, except a "last N games" window, which reads both - and
-  the grading scores it that way for now. The rule on the table: records,
-  lists and counts read both season types, averages the regular season
-  (#231's scope half: "Embiid's record against Boston this year").
-- **A short question is refused, decided 2026-09-29.** Jeff: short or
-  nonsensical questions are mostly a user hitting enter early; they get a
-  generic "I couldn't understand your question ... Please try re-phrasing
-  it" (`refusals.too_short`, fewer than three words, before the model is
-  asked), and no effort is spent on them. F112 ("Tatum rec") is that
-  refusal now; F097 (eight words of nonsense) stays whatever it gets and is
-  not worked on.
+**What is good and must survive:** the shared narrowing steps and
+`Narrowed`; the allow-list scoping tests; coverage floors (missing versus
+unrepresentative, the ranking floor, phantom 1993); the name-safety rules
+(whole-word matching, the misread refusal, single-near-spelling defaults);
+every caveat that makes a default visible (empty box scores, rebuilt
+lines, name readings, the stated season type); `metrics.py`'s measure
+catalog; the rehearsal and hold-out discipline.
 
-**Not planned, and why:** a bigger model (the 7B added no names and 13 of
-162 stats, for a second a question more); any fall-through agent (an agent
-with nothing to read fills the silence from its own weights - the one this
-project had was measured at 1 in 23 and removed); more data (every
-structural gap added up is under 14% of questions).
+## The target
 
-## The plan items
+```
+question, names, stat
+   |  READ   the only code that sees the question's text; no warehouse SQL
+   v
+Reading      subject, measure, shape, typed filters, window, span - names as
+             typed, and the words nothing claimed
+   |  PLAN   resolves names, checks cells against the relation's table,
+   v         picks the relation; or refuses with a cause
+Query        resolved entities, one relation, one shape, typed cells
+   |  RUN    the only code that builds or executes SQL
+   v
+Result       rows, games counted, cells applied, typed notes and defaults,
+             or a refusal cause
+   |  SAY    takes a Result and no connection; one sayer per shape
+   v
+Answer
+```
 
-The numbered items code and commits cite, with their status. Each one's full
-text as written is the last section of `ROADMAP-HISTORY.md`.
+Contracts, each enforced mechanically:
 
-1. **Subject kinds, decided once - done 2026-09-25.** One reading of who a
-   question is about (`query/subject.py`) - a player, a pair, a team, two
-   teams, a position group, a team's players, everyone - from its own words.
-2. **Skeleton x measure in the compiler, and the intent set shrinks -
-   partly done.** Seven child intents are assigned from the words (2c: the
-   router's intents went from 23 to 16, before the router itself went); the
-   compiler reproduced four templates exactly (2a) and they retired
-   (item 6, part 4). What is left is item 6, step (g) - next step 1.
-3. **The pair relation and the player condition - done but for next step
-   3.** `player_matchup` reads the pair on the relation (2026-09-24); a
-   condition `(player, side, predicate)` narrows either relation, with each
-   companion's role read off the question (2026-09-26).
-4. **The period relation - the player half done 2026-09-29** (next step 2 is the team half).
-5. **Conference and division - done 2026-09-25** (`team_alignment`).
-6. **The parser: one Reading, one writer of slots - in progress.** The
-   model copies names and picks a stat; the parser writes everything else as
-   one typed Reading.
-   - (a) the Reading, and the planner in front of the compiler - done
-     (`43eca0c`).
-   - (b) the grammar tables and (c) the normalizer in place of the router's
-     prompt - done (`6e4e4aa`, `2b2e9d3` .. `fe53c72`; live 162/175 on
-     `efef90d`).
-   - (d) one writer. Part 1, the typed `Scope` and `Reading` (`1f344e4`);
-     part 2, every template reads the Scope (`3aaa755` .. `36d68a6`); part
-     3, the router reader and the repair chain deleted and the parser
-     writing the Reading the agent consumes (`1240612`, `0e649ae`,
-     `33cfd60`, `4406133`, `fd88e48`; live 162/175, no answer moved) - done.
-     Part 4, the four templates the compiler answered first retired - the
-     compiler answers `threshold_count`, `single_game_high`, `record_when`
-     and `player_history` alone, in their words (`compose.COMPILED_INTENTS`,
-     `4b3aff9`, `8c808b7`; live 162/175, no answer moved) - done.
-   - (e) the compiler's reading of the question moved into the parser -
-     done. The parser reads the compiler's point once and the Reading
-     carries it (`Reading.point`); the compiler plans and runs the point it
-     is handed (`compose.answer`) and repairs no slot; a position
-     group is a subject, never a player; and the intent the words assign is
-     a recorded decision (#258) (`1702db8`, `31c87f9`, `0ede991`; live
-     162/175, no answer moved). The word tables still live beside the
-     compiler (`compose.move.read_point`), and the parser is their one
-     caller on the live path.
-   - (f) the planner refuses from the Reading, and nothing after the model
-     holds a slot dict - done. `compose.answer(ctx, reading)` is the
-     compiler's one door and the refusals read the Reading (`ef0c6f0`);
-     `plan.plan` refuses a narrowing the relation cannot honor as the parser
-     plans the point, the four compiled intents' presenters declare what
-     their words state (`compose.present.STATED_SCOPING`) in place of
-     `HONORED_SCOPING`, and a compiled question falls through with the
-     compiler's own reason (`2df8754`); `Route` carries the typed Scope the
-     stages return (`86adde7`), and the subject reading takes and returns it
-     (`33a1d3f`). Live 162/175, no answer moved. `check_scope` remains the
-     gate for the templates that remain, and goes with them in (g).
-   - (g) the templates the compiler can reproduce go - done 2026-09-30
-     (nine templates: `game_log`, `player_stat`, `player_splits`,
-     `leaderboard`, `period_split`, `player_compare`, then `streak`,
-     `player_matchup` and `with_without` through skeletons of their own).
+1. **The text stays in the reader.** No record reachable from Reading,
+   Query or Result holds the question; only the read stage imports the
+   normalizer. Enforced by import-linter layers inside `query/`
+   (`say > relations > plan > read > lexicon`), already a gate here.
+2. **Each word is read once.** Every reader rule claims the span it
+   consumed; overlapping claims fail; content words nothing claimed are
+   recorded on the Reading. The subject, the stages and the planner each
+   run once per question.
+3. **A sayer cannot read the warehouse.** `say/` does not import duckdb;
+   SQL executes only in `relations/`. Names are recognized from an
+   in-memory index, not by query.
+4. **One table of cells per relation:** how each narrowing is applied, how
+   it is said, or why it is refused. It is the planner's allow list. A
+   behavioral test per (relation, cell) shows that applying the cell
+   changes the result. No second declaration, no refusal on trust.
+5. **Everything the result carries is said.** A check over the whole
+   corpus that every applied cell, note and default in a Result was
+   rendered. This is what stops a reworded answer from silently losing a
+   caveat.
+6. **One representation, one vocabulary.** A closed measure type; one
+   condition type for "a line on a stat" (five carriers today); regexes
+   only in the lexicon; no slot-era field beside the algebra.
 
-## How it is measured
+## The phases, in order
 
-Yardstick v2 (`~/association-research/yardstick-v2/`): 175 primary questions
-(89 of Jeff's own, 86 starred StatMuse rows) in 166 families of wordings,
-graded against a blind answer key computed from the warehouse by agents who
-never saw the system's answers. A question is good when it is correct, or a
-clarification or refusal that was genuinely required; a family passes only
-when every wording is right. The season type is graded as the regular-season
-default until the decision above is made.
+**Proof, for every phase.** Per question, each stage's output is written
+as a snapshot (reading, query, a canonical projection of the result,
+answer) and compared across trees, stage by stage. The projection holds
+entities, measure, values and rows, the games counted, the span, the cells
+applied, typed notes and the refusal cause - not text. Compared at a stated
+float tolerance, tie-insensitive, single-threaded, with the date pinned and
+artifact paths masked, after running the baseline twice to learn the noise.
+Two populations, both required: the 628 recorded questions (which already
+include the 75 hold-out), and every call the unit tests make - the second
+found five divergent shapes where the first found one. A live run closes
+each phase: an answer whose projection did not move inherits its grade, a
+moved one is graded against the key, and each new sayer is reviewed once.
 
-A change is checked by four nets, cheapest first:
+**Phase 0 - Make it measurable.** No behavior change.
+- Pin the inputs: `today` is injectable (`ASSOCIATION_TODAY`, done
+  2026-09-30 with the rollover fix, and pinned for the test suite); pin
+  it in every research harness.
+- The per-stage snapshots and the projection comparison, watched to fail.
+  The research harnesses move onto them, off route replay and the trace
+  line, before anything they depend on is deleted.
+- The claims ledger as instrumentation: the count of unclaimed content
+  words over the corpus becomes a baseline.
+- The target types written down and reviewed: the Reading's typed filters,
+  the Result, the measure type, and the closed set of shapes. Shapes are
+  named here, before any sayer is written, so "shape" does not become
+  intent renamed.
+- The import-linter layers and the ratchets, with today's violations
+  allowlisted.
+- The trace line and the stale docstrings corrected.
 
-- **The tests** (`pytest`, offline, no model): a case per wording a grammar
-  table gains, watched to fail.
-- **The rehearsal** (`rehearsal_all.py`): all 628 questions with a recorded
-  model reply - the 277 yardstick wordings, 75 more from the recorded
-  corpus, 276 paraphrases nothing was tuned on - through the whole agent
-  with no model. It reproduces a live run exactly, so it is the loop.
-- **Golden** (`~/association-research/golden/`): recorded routes replayed
-  through everything after the parser - the 631 the router recorded (v1)
-  and the 628 the parser recorded (v2) - every answer compared. A refactor
-  must come back identical, and the comparison is watched to fail on a
-  one-token change.
-- **The live run** (`run_live.py`, graded with `score_blind.py`): all 277
-  wordings with the model, one ollama caller at a time; every row that moved
-  is graded by hand. This is the record.
+**Phase 1 - The read stage becomes a stage.** Small, and before the answer
+side, because it removes the coupling everything else trips on.
+- The subject is read once (the three passes already agree on 269 of 277
+  questions; the eight differ for three known reasons).
+- The stages run once; no speculative run to choose a child.
+- The planner runs once, outside the parser. The reader always writes the
+  condition it read; the planner refuses it.
+- The reader's imports from the answer side are cut.
+- Names are recognized from an in-memory index of the 3,101 players and 30
+  teams.
+Proved by identical Reading and Query snapshots.
 
-| when | build | primary questions | families |
-| --- | --- | --- | --- |
-| 2026-09-18, before the spike (v1 corpus, 217 StatMuse rows) | | 39.2% -> 48.8% | |
-| 2026-09-21, yardstick v2 first score | `50c1faa` | 99 / 175 (56.6%) | |
-| step 3 C1-C3 | `c64c2f2` | 106 / 175 | 96 / 166 |
-| step 3 C4-C5 | | 107 / 175 (61.1%) | 97 / 166 |
-| the compiler landed | `7fce95a`+ | 118 / 175 (67.4%) | 108 / 166 |
-| sweep + team parity | `43f242f` | 136 / 175 (77.7%) | 125 / 166 (75.3%) |
-| fast refusals, the partials, compiler moves | `08482db` | 155 / 175 (88.6%) - 135 correct, 18 honest refusals, 2 required clarifications | 144 / 166 (86.7%) |
-| pair relation, division, compiler moves, sweep 2 | `a7b902a` | **161 / 175 (92.0%)** - 140 correct, 19 honest refusals, 2 required clarifications | **150 / 166 (90.4%)** |
-| subject kinds, the intent set 23 -> 16, the player condition (days 3-10) | `8ac55f0` .. `bcf30a8` | 161 / 175 (92.0%); 160 / 175 after F088's re-grade | 150 / 166 |
-| the parser reads the question (item 6, step c) | `efef90d` | 162 / 175 (92.6%) | 151 / 166 (91.0%) |
-| one writer: the router and the repair chain deleted (item 6, step d, part 3) | `a884272` | 162 / 175 (92.6%), no answer moved | 151 / 166 (91.0%) |
-| four templates retired: the compiler answers them alone (item 6, step d, part 4) | `8c808b7` | 162 / 175 (92.6%), no answer moved | 151 / 166 (91.0%) |
-| the compiler's reading moved into the parser (item 6, step e) | `0ede991` | 162 / 175 (92.6%), no answer moved | 151 / 166 (91.0%) |
-| the planner refuses from the Reading; no slot dict after the model (item 6, step f), and #259-#261 | `33a1d3f` | 162 / 175 (92.6%), no answer moved | 151 / 166 (91.0%) |
+**Phase 2 - The answer side, in slices.** Each slice ends with its
+presenter, template body, scoping rows, adapter branch and web renderer
+deleted in the same change. Method: split each body into a reader that
+returns a Result and a sayer that takes one - numbers identical by
+construction - then merge readers where measured equal.
+- (i) **Compiled and discarded** (55 answers): execute the compiled SQL.
+  `game_log`, narrowed `player_stat`, `player_splits`, `record_when`,
+  `period_split`.
+- (ii) **Compiler-read, template-worded** (29): the wording moves into
+  sayers and the notes into the Result. `threshold_count`,
+  `single_game_high`, `player_matchup`, streaks.
+- (iii) **The season-line relation** (81): `leaderboard`, `player_history`,
+  `player_compare`, unnarrowed `player_stat`. The existing readers and the
+  measure catalog are moved, not re-derived: their floors, traded-player
+  dedup and qualifiers are what stopped "Moses Malone led 1980". The
+  riskiest slice of the answer side.
+- (iv) **Team shapes** (about 40): the team log, with/without, the team
+  templates, the period ranking. Standings and projections are a
+  team-season relation.
+- (v) **Charts** (39): see the open decision.
+Exit: `templates/`, `present.py`, `adapt.py`, `check_scope` and every
+scoping table but the per-relation cell tables are gone.
 
-## How it got here
+**Phase 3 - One reader.** A typed reader with claimed spans is built
+beside the old one and run in shadow: its Reading is projected to the old
+shape and diffed on the whole corpus and on every reader test. The router's
+stages become taggers. Reader tests are re-seated as question-to-Reading
+snapshots before `router.py` is deleted. Nothing is deleted "by coverage":
+the corpus reaches 65% of the router's lines, and the rest is mostly
+guards for recorded failure shapes. Unclaimed words go to the trace, are
+measured, and only then considered as a refusal trigger. Exit: `router.py`,
+`Route`, `intent` in the reader, and the reader's regexes outside the
+lexicon are gone.
 
-One line each; `ROADMAP-HISTORY.md` has the why, the numbers and the dead
-ends.
+**Phase 4 - Close out.** `Answer.intent` removed and the web page's
+renderers keyed by shape (22 become one per shape); the browser check run;
+`docs/architecture.rst` rewritten. `AGENTS.md` is updated with each slice,
+not here: agents work from it throughout.
 
-- **2026-09-19, the algebra spike.** Questions are compositions of a few
-  dimensions over four skeletons; the algebra is the right internal
-  representation and the wrong model output.
-- **2026-09-19, one definition of a player's games** (v4.3.0,
-  `query/player_games.py`).
-- **2026-09-21/22, scoping is a property of the relation** - for a
-  player's games, a team's and shots, declared once (`RELATION_SCOPING`).
-- **2026-09-22, the compiler** (`query/compose/`), between a template's
-  refusal and the agent: 107 -> 118.
-- **2026-09-23/24, the sweep, team parity and fast refusals**
-  (`query/refusals.py`), then the pair relation, conference and division:
-  118 -> 161 (92.0%).
-- **2026-09-25/26, one reading of the subject** (item 1), decisions as data,
-  child intents from the words (item 2c) and the player condition (item 3):
-  161, the same total on a shorter prompt.
-- **2026-09-26, the architecture review:** the pipeline was back in
-  rules-engine territory (five writers of the same slots after the model),
-  so item 6 - one parser, one Reading - went next.
-- **2026-09-27, item 6 (a)-(c):** the Reading, the grammar tables, and the
-  model reduced to names and a stat: 162 (92.6%), twice as fast.
-- **2026-09-27, item 6 (d) parts 1-3:** the typed Scope; the router and the
-  repair chain deleted; the parser writes the Reading, and the agent only
-  consumes it.
-- **2026-09-27, item 6 (d) part 4:** four templates retired - the compiler
-  answers `threshold_count`, `single_game_high`, `record_when` and
-  `player_history` alone, in their words.
-- **2026-09-27, item 6 (e):** the compiler's reading of the question moved
-  into the parser - the Reading carries the compiler's point, the compiler
-  repairs no slot, and the intent the words assign is a decision: 162, no
-  answer moved.
-- **2026-09-28, item 6 (f):** the compiler and the refusals take the
-  Reading, the planner refuses from it, and the typed Scope runs from the
-  stages to the answer - no slot dict after the model: 162, no answer moved.
+## What "done" means
 
-## The rules a spike keeps
+| Measure | Today | Done |
+| --- | --- | --- |
+| `TEMPLATES` | 12 entries | 0, or only declared chart shapes |
+| `present.py`, `adapt.py`, `check_scope`, `HONORED_SCOPING`, `STATED_SCOPING` | present | deleted |
+| private imports from `templates/` into `compose/` | 91 | 0 |
+| compiled answers whose read is the compiler's SQL | 45 of 205 | every answer |
+| subject readings per question | 3 | 1 |
+| stage runs per question | mean 1.7 | 1 |
+| planner runs per question | 2 | 1 |
+| functions outside the reader that take the question | 168 | 0 |
+| modules that execute SQL | 20 | `relations/` only |
+| SQL statements the reader issues per question | about 100 | 0 |
+| records between question and answer | 8 | 4 |
+| result shapes, and web renderers | 25 and 22 | one per shape |
+| unclaimed content words over the corpus | measured in Phase 0 | not grown |
+| stage snapshots, questions and unit-test calls | baseline | identical at the stated tolerance |
+| score | 167/175, 156/166 | not lower |
 
-- Measure first; grade every moved row against the key; re-measure a merged
-  agent's load-bearing number yourself.
-- A refactor is proved by golden comparison, a behavior change by the
-  yardstick; a gate is watched to fail before it counts.
-- One ollama caller at a time. Never chain a gate with `;`.
-- Contained fixes go to agents in worktrees with disjoint files; the lead
-  keeps the structural change, and this file says which it is. Opus-low for
-  sweep-shaped work, Sonnet for bounded harness tasks (measured 2026-09-24);
-  every agent takes its before-golden from its own worktree's package and
-  says which copy it read.
+Line counts are reported against 33,556 at each phase, not gated.
+
+## Decisions (Jeff, 2026-09-30)
+
+- **D1. Wording may change - yes.** Numbers and games proven identical;
+  one sayer per shape, reviewed once.
+- **D2. Answer side before the reader - yes.** Kept, with the small
+  read-stage decoupling (Phase 1) placed before it on both reviewers'
+  advice.
+- **D3. `intent` goes entirely.** Neither the trace nor the web API needs
+  it; the page renders by shape.
+- **D4. New shapes are frozen - yes.** P1 wrong answers are still fixed.
+- **The default season is the latest one with games on record.** From
+  2026-10-01 the calendar's season (2027) has no games; fixed the day
+  before (`nba.season.season_on_record`, entered by `Agent.ask`). The
+  answer names the season, as before.
+
+## Decisions still open (Jeff)
+
+1. **D3, challenged by one reviewer.** Reviewer A would keep a family name
+   as one row of data, for a readable trace, a test entry point and the
+   harness vocabulary. Reviewer B would define a small closed set of shapes
+   first. Recommended: keep D3 as decided and name the shapes in Phase 0;
+   a named shape gives the trace its label without a second concept.
+2. **Charts:** port them onto shots and NetPoints relations, or declare
+   them shapes with their own readers kept. They are 39 answers, correct
+   and isolated. Recommended: declare them, and revisit after Phase 3.
+3. **D1's boundary.** Wording may change; must the set of caveats and
+   notes stay identical? Recommended: yes, enforced as data (contract 5).
+4. **What an unclaimed word does:** trace and metric only, a visible note,
+   or a refusal. Recommended: measure first.
+5. **D4's edge.** May a new shape be built once its family's slice has
+   landed on the new stages? Recommended: yes, through the new stages only.
+6. **The tests.** About 1,170 are bound to deleted structures.
+   Recommended: re-seat each at a stage boundary as its slice lands; the
+   frozen template texts go with D1.
+7. **Still open from before:** the season type a question that names none
+   reads. Two parser22 rows (F062, F161) differ from the key only by it.
+
+## What still fails (parser22)
+
+Not worked on until its slice lands, unless it is a wrong answer: a team
+ranking that cannot take a date or a career (F104, F125); a career count
+whose heading names one season (F096); two active players named Curry
+(F002, F003); "without kd" meaning every game Durant was not a teammate
+(F114); "rebounds allowed per team" (F101); a record counted 11 where the
+key counts 10 (F110); the top 50 with each player's team (a wording of
+F017). "Tatum rec" and F097 are refused by rule.
+
+## Rules for the work
+
+- One structural change at a time, by the lead. Agents get bounded,
+  disjoint pieces with their own stage comparison.
+- Every step deletes the path it replaces in the same change. No
+  dispatcher between an old and a new implementation outlives its slice.
+- Measure first; every live run is scored against the key, not only
+  diffed.
+- A finding goes in `ISSUES.md` when it is found.
+- One ollama caller at a time. Gates chained with `&&`.
+
+## Not planned
+
+A bigger model, any fall-through agent, more data. One unified relation
+(considered by both reviewers and rejected: the per-relation rules -
+rebuilt box scores, the phantom season, period lines, ranking floors - are
+where correctness lives). A full grammar engine in place of the reader's
+tuned rules (rejected as a rewrite; the claimed-span ledger is adopted).
