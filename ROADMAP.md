@@ -179,7 +179,7 @@ moved one is graded against the key, and each new sayer is reviewed once.
 | Inputs pinned | done: the snapshots, the ledger, the suite and twelve research harnesses pin `ASSOCIATION_TODAY` |
 | Stage snapshots, both populations | done: `scripts/stage_snapshots.py`, `tests/stage_calls.py`. Two runs of one tree are identical (628 of 628 questions, text included; 1,363 of 1,363 unit-test calls); a perturbed token fails each at the stage it was made in |
 | Research harnesses off the trace line | done for the rehearsal, the hold-out and the scorer (it reads the run it scores and refuses on an ungraded moved answer); the golden harness and the preview script still replay routes (#288, before Phase 3) |
-| Unread content words | done: `scripts/claims_ledger.py`. Baseline at `011091f`: 679 of 2,415 content words (28.1%) in 390 of the 628 questions do not move the reading when deleted - mostly words that restate the shape ("average", "record", "stats", "game"). Eleven questions have an unread NUMBER; three of those are wrong answers, filed |
+| Unread content words | done: `scripts/claims_ledger.py`. Baseline at `011091f`: 679 of 2,415 content words (28.1%) in 390 of the 628 questions do not move the reading when deleted - mostly words that restate the shape ("average", "record", "stats", "game"). Nine questions have an unread NUMBER (eleven before two stat spellings were taught to the instrument); three of those are wrong answers, filed. Unchanged after Phase 1's first two steps |
 | Import contracts and ratchets | done: three contracts (the reader's nine imports of the answer side listed), `scripts/check_ratchets.py` (50 functions outside the reader take the question, 21 modules execute SQL, 91 private template imports, 9 modules outside the reader import `re`), the 25 intents frozen by a test |
 | Trace line, stale docstrings | done (#284) |
 | Target types | `ROADMAP-TYPES.md`, draft 2, partly decided 2026-10-01 (three grouped shapes; decisions apart from notes; no `pair`). It lists what must be decided before each phase; Phase 1 needs nothing from it |
@@ -291,7 +291,7 @@ for refusals (a cause, then a phrase).
 | SQL statements the reader issues per question | about 100 | 0 |
 | records between question and answer | 8 | 4 |
 | result shapes, and web renderers | 25 and 22 | one per shape |
-| unread content words over the corpus (`scripts/claims_ledger.py`) | 679 of 2,415; 11 questions with an unread number | not grown; no unread number |
+| unread content words over the corpus (`scripts/claims_ledger.py`) | 679 of 2,415; 9 questions with an unread number | not grown; no unread number |
 | stage snapshots, questions and unit-test calls | baseline | identical at the stated tolerance |
 | tests bound to deleted structures | about 1,170 | 0: deleted, or re-seated at a stage |
 | score | 167/175, 156/166 | not lower |

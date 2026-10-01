@@ -90,7 +90,7 @@ fails rather than drifts.
   the count means the same before and after the reader is replaced.
   Baseline at `011091f`: 679 of 2,415 content words in 390 of 628
   questions, most of them words that restate the shape ("average",
-  "record", "stats"). Eleven questions had an unread NUMBER, and three of
+  "record", "stats"). Nine questions have an unread NUMBER, and three of
   those were fluent answers to a broader question (`ISSUES.md`). After a
   reader change, run it and read the unread numbers first; the count may
   not grow. It is blind to a word only the model could have dropped, and
