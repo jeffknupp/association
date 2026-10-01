@@ -80,6 +80,46 @@ DECISION_KINDS: dict[str, str] = {
 """
 
 
+FACTS: dict[str, frozenset[str]] = {
+    # notes
+    "partial_season": frozenset({"season", "season_type", "intent"}),
+    "floor": frozenset({"table", "first", "what", "earliest", "last", "whose", "season_type"}),
+    "games_unseen": frozenset({"games", "why", "whose", "what", "of", "first", "last"}),
+    "lines_rebuilt": frozenset({"games", "what", "total", "whose"}),
+    "rebuilt_agreement": frozenset({"season", "seasons", "pct", "columns", "stat", "what"}),
+    "stat_withheld": frozenset({"games", "stat", "label"}),
+    "stat_blank": frozenset({"games", "stat", "columns", "whose"}),
+    "seasons_missing": frozenset({"seasons", "stat", "label", "why"}),
+    "standings_short": frozenset({"team", "seasons"}),
+    "game_list_disagrees": frozenset({"team", "seasons", "what"}),
+    "shots_unlabeled": frozenset({"shots", "seasons", "why"}),
+    "shot_values_derived": frozenset({"season"}),
+    "snapshot": frozenset({"what", "season", "team", "date", "snapshot", "snapshots"}),
+    "value_withheld": frozenset({"what", "why", "team", "teams", "season"}),
+    "part_missing": frozenset({"what"}),
+    "no_data_for": frozenset({"names", "what", "period"}),
+    "below_pool": frozenset({"names", "threshold", "of"}),
+    "window_short": frozenset({"found", "asked", "season", "season_type"}),
+    "still_open": frozenset(),
+    "definition": frozenset({"term", "what", "names", "games", "whose", "units", "possessions", "stints", "across_seasons"}),
+    "hint": frozenset({"what", "team", "season", "snapshots"}),
+    # decisions (beside field, chose, before, instead_of and why)
+    "name_reading": frozenset({"season"}),
+    "name_left_out": frozenset({"names"}),
+    "also_matched": frozenset(),
+    "season_redirected": frozenset({"first", "last", "what"}),
+    "season_fallback": frozenset({"games", "season_type"}),
+    "minimum": frozenset({"of", "column"}),
+    "cut": frozenset({"total"}),
+}
+"""The facts each kind may carry, by name - closed, as the kinds are. A
+writer needing another name adds it here, deliberately, where the next
+reader of the kind will see every fact it can hold.
+
+.. versionadded:: 5.0.0
+"""
+
+
 @dataclass(frozen=True)
 class Note:
     """One remark about the data, or about a term the answer uses: a
@@ -141,7 +181,7 @@ def note(kind: str, text: str, /, **facts: Any) -> str:
     """
     if kind not in NOTE_KINDS:
         raise ValueError(f"{kind!r} is not a note kind (association.query.notes.NOTE_KINDS)")
-    held = _values(facts)
+    held = _values(kind, facts)
     collected = _COLLECTING.get()
     if collected is not None and text.strip():
         recorded = Note(kind, held)
@@ -162,7 +202,7 @@ def decided(kind: str, text: str, /, *, field: str, chose: Any, before: Any = No
     """
     if kind not in DECISION_KINDS:
         raise ValueError(f"{kind!r} is not a decision kind (association.query.notes.DECISION_KINDS)")
-    held = _values(facts)
+    held = _values(kind, facts)
     typed, chosen, others = _value("before", before), _value("chose", chose), tuple(_value("instead_of", list(instead_of)))
     collected = _COLLECTING.get()
     if collected is not None and text.strip():
@@ -173,10 +213,14 @@ def decided(kind: str, text: str, /, *, field: str, chose: Any, before: Any = No
     return text
 
 
-def _values(facts: dict[str, Any]) -> dict[str, Any]:
-    """``facts`` as plain values, checked whoever is listening - so a
-    writer handing over an object is caught by any test that runs it, not
-    by the first answer served."""
+def _values(kind: str, facts: dict[str, Any]) -> dict[str, Any]:
+    """``facts`` as plain values under the names ``kind`` declares
+    (:data:`FACTS`), checked whoever is listening - so a writer handing over
+    an object, or a fact the kind does not hold, is caught by any test that
+    runs it, not by the first answer served."""
+    undeclared = sorted(facts.keys() - FACTS[kind])
+    if undeclared:
+        raise ValueError(f"{kind!r} holds no fact named {undeclared} (association.query.notes.FACTS: {sorted(FACTS[kind])})")
     return {name: _value(name, value) for name, value in facts.items()}
 
 

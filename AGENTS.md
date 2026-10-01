@@ -96,6 +96,21 @@ fails rather than drifts.
   not grow. It is blind to a word only the model could have dropped, and
   it overcounts a word a rule matched and did not need ("games" in "last
   10 games").
+- **A caveat, a stated default or a definition is written through
+  `query/notes.py`.** `note(kind, text, **facts)` for something about the
+  data or a term the answer uses, `decided(kind, text, field=, chose=, ...)`
+  for something the question left open and the system chose ("could the
+  question have said it differently?"). Both hand the sentence back
+  unchanged and, inside `Agent.ask`, record the kind and facts on the
+  answer (`Answer.notes`, `Answer.decisions`) and in the stage snapshot's
+  `remarks`. The 28 kinds and each kind's fact names are closed
+  (`NOTE_KINDS`, `DECISION_KINDS`, `FACTS`): a new remark uses one, and
+  adding a kind or a fact name is a deliberate edit there. Facts are plain
+  values, never a sentence or an object. Wrap at the writer, once, not
+  where the sentence is attached. `scripts/stage_snapshots.py remarks`
+  lists a remark that was written and never reached its answer;
+  `compare` holds the remarks identical unless `--ignore-remarks` is
+  given, which is only for a change whose point is to record more.
 - **The target types are `ROADMAP-TYPES.md`**, a draft until Jeff has
   reviewed all of it (its "Decided" and "Still open" say which parts):
   the Reading's typed filters, the Measure, the Query, the Result, seven

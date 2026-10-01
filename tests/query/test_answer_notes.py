@@ -114,37 +114,50 @@ def test_a_fact_is_a_plain_value_whoever_is_listening() -> None:
     object: refused where the writer runs, in any test, not at the first
     answer served."""
     with collect() as collected:
-        note("games_unseen", "said", games=5, seasons=(2013, 2018), names={"b", "a"}, by={"season": 2013})
+        note("rebuilt_agreement", "said", pct=99.5, seasons=(2013, 2018), columns={"b", "a"}, what={"season": 2013})
         decided("name_reading", "said", field="player", before="maxey", chose="Tyrese Maxey", instead_of=("Marlon Maxey",))
-    assert collected.notes[0].facts == {"games": 5, "seasons": [2013, 2018], "names": ["a", "b"], "by": {"season": 2013}}
-    with pytest.raises(TypeError, match="the fact 'day' is a date"):
-        note("games_unseen", "said", day=date(2026, 1, 2))
+    assert collected.notes[0].facts == {"pct": 99.5, "seasons": [2013, 2018], "columns": ["a", "b"], "what": {"season": 2013}}
+    with pytest.raises(TypeError, match="the fact 'first' is a date"):
+        note("games_unseen", "said", first=date(2026, 1, 2))
     with pytest.raises(TypeError, match="'chose' is a object"):
         decided("minimum", "said", field="minimum", chose=object())
 
 
-def _remark_calls() -> list[tuple[str, int, str, ast.expr]]:
+def _remark_calls() -> list[tuple[str, int, str, ast.Call]]:
     """Every ``note(...)`` and ``decided(...)`` call under ``src``: the
-    file, the line, which of the two, and its first argument."""
-    found: list[tuple[str, int, str, ast.expr]] = []
+    file, the line, which of the two, and the call."""
+    found: list[tuple[str, int, str, ast.Call]] = []
     root = Path(notes.__file__).resolve().parents[1]
     for path in sorted(root.rglob("*.py")):
         if path.name == "notes.py":
             continue
         for node in ast.walk(ast.parse(path.read_text())):
             if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id in {"note", "decided"} and node.args:
-                found += [(str(path.relative_to(root)), node.lineno, node.func.id, node.args[0])]
+                found += [(str(path.relative_to(root)), node.lineno, node.func.id, node)]
     return found
 
 
-def test_every_remark_in_the_source_names_a_declared_kind() -> None:
-    """A kind is checked when its line runs, and not every line runs under a
-    test: so every call in the source is read here. The kind is a literal
-    (a computed one cannot be checked), a ``note`` names a note kind and a
-    ``decided`` a decision kind."""
+def test_every_remark_in_the_source_names_a_declared_kind_and_its_declared_facts() -> None:
+    """A kind and a fact's name are checked when their line runs, and not
+    every line runs under a test: so every call in the source is read here.
+    The kind is a literal (a computed one cannot be checked), a ``note``
+    names a note kind and a ``decided`` a decision kind, and each fact
+    written by name is one the kind declares."""
+    own = {"field", "chose", "before", "instead_of", "why"}
     calls = _remark_calls()
-    assert len(calls) >= 15
-    for where, line, function, kind in calls:
+    assert len(calls) >= 90
+    for where, line, function, call in calls:
+        kind = call.args[0]
         assert isinstance(kind, ast.Constant) and isinstance(kind.value, str), f"{where}:{line}: the kind is not a string literal"
         declared = notes.NOTE_KINDS if function == "note" else notes.DECISION_KINDS
         assert kind.value in declared, f"{where}:{line}: {function}({kind.value!r}, ...) is not a declared kind"
+        named = {keyword.arg for keyword in call.keywords if keyword.arg is not None} - (own if function == "decided" else set())
+        assert named <= notes.FACTS[kind.value], f"{where}:{line}: {kind.value!r} holds no fact named {sorted(named - notes.FACTS[kind.value])}"
+
+
+def test_every_kind_declares_its_facts_and_is_written_somewhere() -> None:
+    assert set(notes.FACTS) == set(notes.NOTE_KINDS) | set(notes.DECISION_KINDS)
+    written = {call.args[0].value for _, _, _, call in _remark_calls() if isinstance(call.args[0], ast.Constant)}
+    assert written == set(notes.FACTS), "a kind nothing writes is one nothing can check"
+    with pytest.raises(ValueError, match="holds no fact named \\['seasons'\\]"):
+        note("still_open", " (still going)", seasons=[2026])

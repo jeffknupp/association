@@ -172,7 +172,7 @@ moved one is graded against the key, and each new sayer is reviewed once.
   allowlisted.
 - The trace line and the stale docstrings corrected.
 
-**Phase 0, as it stands (2026-09-30).**
+**Phase 0, closed 2026-10-01.**
 
 | Item | State |
 | --- | --- |
@@ -183,7 +183,8 @@ moved one is graded against the key, and each new sayer is reviewed once.
 | Import contracts and ratchets | done: three contracts (the reader's nine imports of the answer side listed), `scripts/check_ratchets.py` (50 functions outside the reader take the question, 21 modules execute SQL, 91 private template imports, 9 modules outside the reader import `re`), the 25 intents frozen by a test |
 | Trace line, stale docstrings | done (#284) |
 | Target types | `ROADMAP-TYPES.md`, draft 2, partly decided 2026-10-01 (three grouped shapes; decisions apart from notes; no `pair`). It lists what must be decided before each phase; Phase 1 needs nothing from it |
-| Every remark given a kind where it is written | not started: needs the decision and note split settled (`ROADMAP-TYPES.md`, "Still open" 1) |
+| Every remark given a kind where it is written | done: `query/notes.py`, 28 closed kinds with closed fact names, 98 writers; 180 of the 628 recorded answers carry 234 typed remarks, every stage identical to before; `stage_snapshots.py remarks` names two answers that drop a remark they wrote (filed) |
+| Five numbers that are only in an answer's text (#309) | open: each moves into `data` before the Phase 2 slice that rewords its answer |
 
 **Phase 1 - The read stage becomes a stage.** Small, and before the answer
 side, because it removes the coupling everything else trips on.
@@ -196,6 +197,17 @@ side, because it removes the coupling everything else trips on.
 - Names are recognized from an in-memory index of the 3,101 players and 30
   teams.
 Proved by identical Reading and Query snapshots.
+
+**Phase 1, as it stands (2026-10-01).**
+
+| Item | State |
+| --- | --- |
+| The planner runs once, outside the parser | done: `compose.plan.plan_point`, run by `Agent.ask` (`Agent.planned`) and handed to `compose.answer`; `parse.with_point` only reads. 628 of 628 questions identical in every stage; 8 of 1,378 unit-test calls differ, each the Reading now holding a point the planner later declines |
+| The subject is read once | next |
+| The stages run once | open |
+| The reader always writes the condition it read | open |
+| The reader's imports of the answer side | 8 of 9 left (`[tool.importlinter]`) |
+| Names from an in-memory index | open |
 
 **Phase 2 - The answer side, in slices.** Each slice ends with its
 presenter, template body, scoping rows, adapter branch and web renderer
