@@ -19,6 +19,7 @@ from association.query.reading import Reading, Scope
 from ..calendar import CalendarNarrowing, parse_situation
 from ..conditions import _MONTH_NAMES, _season_month_order, _table
 from ..entities import Entity
+from ..notes import note
 from ..team_games import TeamNarrowed
 from ..team_games import games_subquery as team_games_subquery
 from ..team_games import rows_sql as team_rows_sql
@@ -545,7 +546,8 @@ def _standings_gap(con: duckdb.DuckDBPyConnection, team: Entity, seasons: list[t
     if not short:
         return None
     parts = _joined([f"{s} ({g} of {t} games)" for s, g, t in short])
-    return f"Note: ESPN's standings do not cover the {_possessive(team.name)} whole season in {parts}, so this record is short by those games."
+    said = f"Note: ESPN's standings do not cover the {_possessive(team.name)} whole season in {parts}, so this record is short by those games."
+    return note("standings_short", said, team=team.name, seasons=[{"season": int(s), "held": int(g), "played": t} for s, g, t in short])
 
 
 def _standings_season(con: duckdb.DuckDBPyConnection, team: Entity, season: int, venue: str | None) -> TemplateResult:
@@ -614,7 +616,8 @@ def _standings_season_split(w: int, lost: int, home_text: Any, road_text: Any) -
     # halves can sum to less than the whole - and a reader adding them up
     # deserves to know why.
     neutral = w + lost - sum(split[0]) - sum(split[1]) if split else 0
-    neutral_note = f" ({neutral} neutral-site game{'s' if neutral != 1 else ''} count{'s' if neutral == 1 else ''} as neither home nor away)" if neutral > 0 else ""
+    said = f" ({neutral} neutral-site game{'s' if neutral != 1 else ''} count{'s' if neutral == 1 else ''} as neither home nor away)"
+    neutral_note = note("definition", said, term="neutral_site", games=neutral) if neutral > 0 else ""
     return split, neutral, neutral_note
 
 
@@ -693,7 +696,7 @@ def _standings_career(con: duckdb.DuckDBPyConnection, team: Entity, venue: str |
     # The start is the warehouse's, not the franchise's, and saying which is
     # the whole difference between an all-time record and a partial one.
     start = (
-        "the warehouse's standings begin there, so this is not the franchise's whole history"
+        note("floor", "the warehouse's standings begin there, so this is not the franchise's whole history", table="standings", first=int(first))
         if first == min(r[0] for r in con.execute("SELECT MIN(season) FROM standings").fetchall())
         else "the first season the warehouse holds for them"
     )
@@ -729,13 +732,15 @@ def _standings_career_venue(con: duckdb.DuckDBPyConnection, team: Entity, venue:
     vl = sum(h[2][1] for h in halves)
     neutral = sum(h[1] - h[3] for h in halves)
     first, last = halves[0][0], halves[-1][0]
+    floor = " - ESPN's standings carry no home/road split before 1993-94"
     headline = (
         f"The {team.name} are {_tally(vw, vl)} {VENUE_WORDS[venue]} across the {len(halves)} regular seasons from {_season_name(first)} through {_season_name(last)}"
-        + (" - ESPN's standings carry no home/road split before 1993-94" if first == FIRST_FULL_REGULAR_SEASON else "")
+        + (note("floor", floor, table="standings", first=FIRST_FULL_REGULAR_SEASON, what="home_road_split") if first == FIRST_FULL_REGULAR_SEASON else "")
         + "."
     )
     if neutral > 0:
-        headline += f" {neutral} neutral-site game{'s' if neutral != 1 else ''} count{'s' if neutral == 1 else ''} as neither."
+        said = f" {neutral} neutral-site game{'s' if neutral != 1 else ''} count{'s' if neutral == 1 else ''} as neither."
+        headline += note("definition", said, term="neutral_site", games=neutral)
     data: dict[str, Any] = {
         "team": team.name,
         "venue": venue,
@@ -820,7 +825,8 @@ ORDER BY 1""",
         return None
     parts = _joined([f"{s} ({int(listed)} listed, {int(played)} played)" for s, listed, played in rows])
     kind = "postseason" if season_type == 3 else "regular-season"
-    return f"Note: ESPN's game list and the {_possessive(team.name)} season totals disagree on how many {kind} games they played in {parts}, so this tally is off by those games."
+    said = f"Note: ESPN's game list and the {_possessive(team.name)} season totals disagree on how many {kind} games they played in {parts}, so this tally is off by those games."
+    return note("game_list_disagrees", said, team=team.name, what=kind, seasons=[{"season": int(s), "listed": int(listed), "played": int(played)} for s, listed, played in rows])
 
 
 def _no_team_games(
@@ -1038,8 +1044,9 @@ def _games_record_span_text(season: int | None, season_type: int, since: int | N
         bound = f"from {since} through {until}" if until is not None else f"since {since}"
         return f"the {kind} {bound}"
     if season_type == 3:
-        return "every postseason from 1989 through the latest - the warehouse's game list starts with the 1989 playoffs"
-    return f"the regular seasons from {_season_name(FIRST_FULL_REGULAR_SEASON)} on - the first the warehouse holds every game of"
+        return "every postseason from 1989 through the latest" + note("floor", " - the warehouse's game list starts with the 1989 playoffs", table="games", first=1989, what="postseason")
+    floor = note("floor", " - the first the warehouse holds every game of", table="games", first=FIRST_FULL_REGULAR_SEASON, what="regular season")
+    return f"the regular seasons from {_season_name(FIRST_FULL_REGULAR_SEASON)} on{floor}"
 
 
 def _games_record_answer(
@@ -1091,7 +1098,7 @@ def _games_record_answer(
     if venue is None:
         answer += _games_record_split(games)
     elif len(shown) < len(games) and any(g["venue"] == "neutral" for g in games):
-        answer += "\n  Neutral-site games count as neither home nor away."
+        answer += _games_record_answer_neutral(games)
     # A season's meetings are few enough to list, and the list is what "vs"
     # questions usually want next.
     if opponent is not None and season is not None and shown:
@@ -1101,6 +1108,13 @@ def _games_record_answer(
             for g in shown
         )
     return answer
+
+
+def _games_record_answer_neutral(games: list[dict[str, Any]]) -> str:
+    """The line under a home or road tally that leaves neutral-site games out,
+    saying why the two halves do not add up to the whole."""
+    neutral = sum(1 for g in games if g["venue"] == "neutral")
+    return note("definition", "\n  Neutral-site games count as neither home nor away.", term="neutral_site", games=neutral)
 
 
 def _team_record_month_table(team: Entity, opponent: Entity | None, venue: str | None, span_text: str, season: int | None, shown: list[dict[str, Any]]) -> tuple[str, list[dict[str, Any]]]:
@@ -1148,12 +1162,9 @@ def _team_record_by_month(con: duckdb.DuckDBPyConnection, team: Entity, opponent
     shown = [g for g in games if venue is None or g["venue"] == venue]
     if not shown:
         return TemplateResult(data={"team": team.name, "season": season, "months": []}, answer=_no_team_games(con, team, opponent, season, season_type))
-    if season is not None:
-        span = f"the {_period(season, season_type)}"
-    elif season_type == 3:
-        span = "every postseason from 1989 through the latest - the warehouse's game list starts with the 1989 playoffs"
-    else:
-        span = f"the regular seasons from {_season_name(FIRST_FULL_REGULAR_SEASON)} on - the first the warehouse holds every game of"
+    # The same span wording as a tallied record's, from the one place that
+    # writes it (and its floor note).
+    span = _games_record_span_text(season, season_type, None)
     answer, months_data = _team_record_month_table(team, opponent, venue, span, season, shown)
     data = {"team": team.name, "season": season, "opponent": opponent.name if opponent else None, "venue": venue, "months": months_data, "headline": answer.split("\n")[0].rstrip(":")}
     return TemplateResult(data=data, answer=answer)
@@ -1362,7 +1373,7 @@ def _team_stat_single(key: str, stats: dict[str, dict[str, Any]], period: str, t
         where = f", {_ordinal(entry['rank'])}-{order} of {entry['of']} teams"
     answer = f"The {_possessive(team.name)} {metric.label} was {_metric_cell(metric, entry['value'])} in the {period} ({mine.games} games){where}."
     if _uses_possessions([key]):
-        answer += f" {RATING_NOTE}"
+        answer += f" {note('definition', RATING_NOTE, term='rating_formula')}"
     # `headline` matches the page's own firstLine(text) fallback exactly (the
     # whole thing - this answer is one line even with the rating note glued
     # on) rather than the note-free sentence alone: the renderer's own
@@ -1384,11 +1395,13 @@ def _team_stat_summary(stats: dict[str, dict[str, Any]], wanted: list[str], team
     for label, entry in stats.items():
         rank_cell = f"{_ordinal(entry['rank'])} of {entry['of']}" if entry["rank"] is not None else "-"
         lines_out.append(f"{label.ljust(label_width)}  {cells[label].rjust(value_width)}  {rank_cell}")
-    notes = ["Rank 1st is the best in the league (for pace, the fastest).", RATING_NOTE]
+    notes = [note("definition", "Rank 1st is the best in the league (for pace, the fastest).", term="rank_meaning"), note("definition", RATING_NOTE, term="rating_formula")]
     if any(e["value"] is None for e in stats.values()):
-        notes.append("A '-' needs points allowed, and ESPN's game list does not hold all of this team's games that season.")
+        said = "A '-' needs points allowed, and ESPN's game list does not hold all of this team's games that season."
+        notes.append(note("value_withheld", said, what="points_allowed", why="game list short for this team", team=team.name, season=season))
     elif any(e["rank"] is None for e in stats.values()):
-        notes.append("A rank is left out where ESPN's game list is short for other teams that season.")
+        said = "A rank is left out where ESPN's game list is short for other teams that season."
+        notes.append(note("value_withheld", said, what="rank", why="game list short for other teams", team=team.name, season=season))
     return TemplateResult(
         data={"team": team.name, "season": season, "games": mine.games, "stats": stats, "headline": lines_out[0].rstrip(":"), "notes": notes},
         answer="\n".join([*lines_out, *notes]),
@@ -1642,7 +1655,7 @@ def _team_leaderboard_result(order: list[tuple[int, str, float]], display: dict[
         rows_out += ["    ...", *(f"{rank:>2}  {team.ljust(name_width)}  {display[team].rjust(value_width)}" for rank, team, _ in extra)]
     headline = f"{title} - {end}, of {len(order)} teams:"
     lines_out = [headline, *rows_out]
-    notes = [RATING_NOTE] if _uses_possessions([key]) else []
+    notes = [note("definition", RATING_NOTE, term="rating_formula")] if _uses_possessions([key]) else []
     lines_out += notes
     teams = [{"rank": rank, "team": team, "value": value, "display": display[team]} for rank, team, value in [*shown, *extra]]
     return TemplateResult(data={"question_shape": title, "season": season, "order": end, "teams": teams, "headline": headline.rstrip(":"), "notes": notes}, answer="\n".join(lines_out))
@@ -1813,7 +1826,8 @@ def _team_outlook_missing(team: Entity, season: int, postseason: bool, snapshots
     message = f"ESPN's power index for {season} has {have}, {gap}."
     holding = [d for (*_, has), d in zip(snapshots, listing, strict=True) if has]
     if holding:
-        message += f" The {team.name} are only in {_joined(holding)} - ask about the regular season to see it."
+        said = f" The {team.name} are only in {_joined(holding)} - ask about the regular season to see it."
+        message += note("hint", said, team=team.name, season=season, what="regular_season", snapshots=_team_outlook_snapshot_facts([s for s in snapshots if s[3]]))
     return TemplateResult(data={"team": team.name, "season": season, "snapshots": listing, "message": message}, answer=message)
 
 
@@ -1844,9 +1858,10 @@ def _team_outlook_headline(team: Entity, season: int, postseason: bool, chosen: 
     name = BPI_SNAPSHOT_NAMES.get(kind, f"type-{kind}")
     lines_out = [f"ESPN's power index for the {team.name}, {season} {name} snapshot (updated {str(updated)[:10]}, {chosen[2]} teams):"]
     if not postseason and kind == 3:
-        lines_out.append("  (No pre-playoff snapshot for that season holds them, so this is the postseason one.)")
+        lines_out.append(note("snapshot", "  (No pre-playoff snapshot for that season holds them, so this is the postseason one.)", what="postseason_substitute", season=season, team=team.name))
     if str(updated)[:4] > str(season):
-        lines_out.append(f"  (ESPN stamps this snapshot {str(updated)[:10]}, after the {season} season ended, so it may not reflect any one moment of it.)")
+        said = f"  (ESPN stamps this snapshot {str(updated)[:10]}, after the {season} season ended, so it may not reflect any one moment of it.)"
+        lines_out.append(note("snapshot", said, what="stamped_after_season", date=str(updated)[:10], season=season, snapshot=name))
     return lines_out
 
 
@@ -1871,7 +1886,8 @@ def _team_outlook_bpi_line(bpi: Any, offense: Any, defense: Any, higher: Any, te
        line.
     """
     if bpi is None:
-        return f"  no BPI rating in this snapshot - ESPN left it empty for all {teams} teams, though the record and projections below are its own"
+        said = f"  no BPI rating in this snapshot - ESPN left it empty for all {teams} teams, though the record and projections below are its own"
+        return note("value_withheld", said, what="bpi", why="empty in this snapshot", teams=teams)
     detail = f" (offense {offense:+.1f}, defense {defense:+.1f})" if offense is not None and defense is not None else ""
     return f"  BPI {bpi:+.1f}{detail}, {_ordinal(int(higher) + 1)} of the {teams} teams in the snapshot"
 
@@ -1897,7 +1913,16 @@ def _team_outlook_others_line(season: int, kind: int, snapshots: list[tuple[Any,
     """team_outlook's note about the season's other snapshots, or None where
     the chosen one is the only one."""
     others = [d for (k, *_), d in zip(snapshots, listing, strict=True) if k != kind]
-    return f"  ESPN's power index for {season} also has {_joined(others)}." if others else None
+    if not others:
+        return None
+    facts = _team_outlook_snapshot_facts([s for s in snapshots if s[0] != kind])
+    return note("snapshot", f"  ESPN's power index for {season} also has {_joined(others)}.", what="other_snapshots", season=season, snapshots=facts)
+
+
+def _team_outlook_snapshot_facts(snapshots: list[tuple[Any, ...]]) -> list[dict[str, Any]]:
+    """The facts :func:`_team_outlook_describe` words each snapshot from - its
+    kind, date and team count - as plain values for a note."""
+    return [{"kind": BPI_SNAPSHOT_NAMES.get(k, f"type-{k}"), "date": str(u)[:10], "teams": int(n)} for k, u, n, *_ in snapshots]
 
 
 def _team_outlook_data(
