@@ -2456,6 +2456,7 @@ those were found.
 - **Evidence:** the reading's scope is `{'player': 'first quarter', 'period': 1, 'order': 'recent', 'limit': 10, 'stat': 'points'}` under `period_split`, a player's intent, though the subject is the team (`kind: team`, Philadelphia 76ers; the normalizer's names were `["Sixers"]`). The answer is "No player found matching 'first quarter' - did you mean Tim Quarterman?". The wording "show sixers first quarter scoring for their last 10 games" answers the team's quarter (`team_quarter_points`).
 - **User sees:** a refusal about a player he never named.
 - **Next step:** find what writes the words "first quarter" into `player` (the parser's last step restores "the one player the question names" for a player-required intent); a team subject with a quarter is `team_quarter_points`, never `period_split`. A case in `tests/query/test_parser.py`.
+- **GitHub:** #314
 
 ## P3: refusal or gap
 
