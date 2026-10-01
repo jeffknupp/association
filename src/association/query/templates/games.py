@@ -21,6 +21,7 @@ from ..conditions import _PLAYER_GAME_TABLES, _cell, _matchup_line, _meetings, _
 from ..entities import Entity, resolve_team
 from ..leaderboard import resolve_metric
 from ..metrics import PER_GAME_MIN_GAMES, PER_GAME_MIN_POSTSEASON_GAMES
+from ..notes import decided, note
 from ..player_games import PERIOD_AGREEMENT, PERIOD_COLUMNS, PERIOD_PLAYS_COLUMNS, REGULATION_QUARTERS, _joined, aggregate_sql, grouped_sql, rows_sql
 from ..shotchart import UNSEPARABLE_SHOT_VALUES
 from ..team_games import TEAM_GAMES_SQL, TEAM_PERIOD_AGREEMENT, TEAM_PERIOD_COLUMNS, TeamNarrowed
@@ -726,7 +727,8 @@ def _player_game_log_notes(con: duckdb.DuckDBPyConnection, player: Entity, span:
     notes: list[str] = []
     if asked and count < asked and not narrowed.date:
         found_in = "in his box scores" if span.career else f"in the {_period(span.season or current_season(), span.season_type)} - ask about his career to reach earlier seasons"
-        notes.append(f"Only {count} game{'s' if count != 1 else ''}{narrowed.filters()} {found_in}.")
+        said = f"Only {count} game{'s' if count != 1 else ''}{narrowed.filters()} {found_in}."
+        notes.append(note("window_short", said, found=count, asked=asked, season=None if span.career else span.season or current_season(), season_type=span.season_type))
     rebuilt_shown = sum(1 for g in games if g["reconstructed"])
     notes += _box_score_notes(con, player, span, narrowed, career_note=not narrowed.date, rebuilt=rebuilt, rebuilt_shown=rebuilt_shown)
     return notes
@@ -797,15 +799,16 @@ def _player_game_log_mixed_notes(
     notes: list[str] = []
     if asked and count < asked:
         _, narrowed = per_type[2]
-        notes.append(f"Only {count} game{'s' if count != 1 else ''}{narrowed.filters()} found across the regular season and postseason.")
+        said = f"Only {count} game{'s' if count != 1 else ''}{narrowed.filters()} found across the regular season and postseason."
+        notes.append(note("window_short", said, found=count, asked=asked, season_type=[2, 3]))
     rebuilt_shown = sum(1 for g in games if g["reconstructed"])
     seen: set[str] = set()
     for season_type in sorted(per_type):
         span, narrowed = per_type[season_type]
-        for note in _box_score_notes(con, player, span, narrowed, career_note=False, rebuilt=rebuilt, rebuilt_shown=rebuilt_shown):
-            if note not in seen:
-                seen.add(note)
-                notes.append(note)
+        for line in _box_score_notes(con, player, span, narrowed, career_note=False, rebuilt=rebuilt, rebuilt_shown=rebuilt_shown):
+            if line not in seen:
+                seen.add(line)
+                notes.append(line)
     return notes
 
 
@@ -1400,11 +1403,13 @@ def _team_quarter_points_rebuilt_note(measure: str, weak: dict[int, float | None
     """The notes a rebuilt column's answer carries: the games with no
     play-by-play left out, and each listed season's measured agreement."""
     noun = _period_split_columns_noun(measure)
-    notes = [f"{missing} of the {reached} games have no play-by-play and are not counted."] if missing else []
+    notes = [note("games_unseen", f"{missing} of the {reached} games have no play-by-play and are not counted.", games=missing, of=reached, why="no_play_by_play")] if missing else []
     listed = sorted((season, pct) for season, pct in weak.items() if pct is not None)
     if listed:
         said = ", ".join(f"{pct:.1f}% of the time in {season}" for season, pct in listed)
-        notes.append(f"Rebuilt from play-by-play rather than an official per-quarter box score: a team-game's {noun} rebuilt this way match its box score {said} - treat a single game as approximate.")
+        sentence = f"Rebuilt from play-by-play rather than an official per-quarter box score: a team-game's {noun} rebuilt this way match its box score {said} - treat a single game as approximate."
+        seasons, pcts = [season for season, _ in listed], [pct for _, pct in listed]
+        notes.append(note("rebuilt_agreement", sentence, seasons=seasons, pct=pcts, columns=list(_period_split_columns(measure)), stat=measure, what="team_period_rebuilt"))
     return " ".join(f"({n})" for n in notes)
 
 
@@ -1970,6 +1975,14 @@ def _period_leaderboard_minimum(con: duckdb.DuckDBPyConnection, narrowed: _Narro
     return share, f", half of the {most} anyone played"
 
 
+def _period_leaderboard_minimum_said(minimum: int, qualifier: str) -> str:
+    """The minimum a period ranking applied, as its headline says it inside
+    the parentheses - "minimum 20 games", or with ``qualifier`` (what a
+    narrowed pool's minimum is half of, :func:`_period_leaderboard_minimum`)."""
+    said = f"minimum {minimum} games{qualifier}"
+    return decided("minimum", said, field="minimum", chose=minimum, why="half_of_most" if qualifier else "per_game_minimum", of="games")
+
+
 def _period_leaderboard_rows(con: duckdb.DuckDBPyConnection, narrowed: _Narrowed, measure: str, *, minimum: int, limit: int) -> list[tuple[Any, ...]]:
     """(name, games, total, average) per qualifying player, best first -
     grouped over the period-narrowed relation, whose played guard and
@@ -2008,7 +2021,8 @@ def _period_leaderboard_answer(
     leaders = [{"player": name, "games": int(games), measure: int(total), "average": round(float(average), 1)} for name, games, total, average in rows]
     top = leaders[0]
     rest = ", ".join(f"{row['player']} ({row['average']})" for row in leaders[1:])
-    headline = f"{top['player']} led {led} in {period_label} {noun} per game in the {scope}{where} (minimum {minimum} games{qualifier}), at {top['average']} over {top['games']} games."
+    least = _period_leaderboard_minimum_said(minimum, qualifier)
+    headline = f"{top['player']} led {led} in {period_label} {noun} per game in the {scope}{where} ({least}), at {top['average']} over {top['games']} games."
     answer = headline
     if rest:
         answer += f" Next: {rest}."
@@ -2074,10 +2088,12 @@ def _period_leaderboard_by_quarter(con: duckdb.DuckDBPyConnection, span: _Span, 
         {"player": names[a], "games": whole[a][1][0], **{f"q{q}": round(whole[a][q][1], 2) for q in REGULATION_QUARTERS}, "total": round(sum(avg for _, avg in whole[a].values()), 2)}
         for a in ranked[:limit]
     ]
-    headline = f"Points per game by quarter{among} in the {season_label}{where} (minimum {minimum} games{qualifier}), ranked by the four quarters together:"
+    headline = f"Points per game by quarter{among} in the {season_label}{where} ({_period_leaderboard_minimum_said(minimum, qualifier)}), ranked by the four quarters together:"
     table = [f"  {'player':<26} {'G':>3} {'Q1':>6} {'Q2':>6} {'Q3':>6} {'Q4':>6} {'total':>6}"]
     table += [f"  {row['player']:<26} {row['games']:>3} {row['q1']:>6.2f} {row['q2']:>6.2f} {row['q3']:>6.2f} {row['q4']:>6.2f} {row['total']:>6.2f}" for row in leaders]
-    notes = [f"Overtime is no quarter and is not counted. {len(ranked)} players qualified; the top {len(leaders)} are shown."]
+    overtime = note("definition", "Overtime is no quarter and is not counted.", term="overtime_excluded")
+    shown = decided("cut", f"{len(ranked)} players qualified; the top {len(leaders)} are shown.", field="limit", chose=len(leaders), before=scope.limit, total=len(ranked))
+    notes = [f"{overtime} {shown}"]
     caveat = _period_split_measure_caveat(span.season or current_season(), "points")
     answer = "\n".join([headline, *table, *notes]) + caveat
     return TemplateResult(
@@ -2145,10 +2161,10 @@ def _period_split_by_quarter_from(scope: Scope, player: Entity, narrowed: _Narro
     quarters = [_period_split_quarter_entry(by_quarter.get(quarter, {}), quarter, measure) for quarter in REGULATION_QUARTERS]
     data["quarters"] = quarters
     header, table = _period_split_by_quarter_table(player, measure, season_label, vs, at, games, quarters)
-    note = "Overtime is no quarter and is not counted."
+    overtime = note("definition", "Overtime is no quarter and is not counted.", term="overtime_excluded")
     caveat = _period_split_measure_caveat(season, measure)
-    data |= {"headline": header.rstrip(":"), "notes": [note, *([caveat.strip()] if caveat else [])]}
-    return TemplateResult(data=data, answer="\n".join([header, *table, f"  {note}"]) + caveat)
+    data |= {"headline": header.rstrip(":"), "notes": [overtime, *([caveat.strip()] if caveat else [])]}
+    return TemplateResult(data=data, answer="\n".join([header, *table, f"  {overtime}"]) + caveat)
 
 
 def _period_split_quarter_entry(row: dict[str, Any], quarter: int, measure: str) -> dict[str, Any]:
@@ -2483,7 +2499,8 @@ def _period_split_cross_season_redirect(
         **figures,
     }
     header = _period_split_header(player, period_label, season_label, vs, at, figures["total"], figures["average"], games, scope, scope.order, measure=measure)
-    redirect_note = f"No games this season, so these are his most recent {len(games)}{at}, from the {season_label}."
+    said = f"No games this season, so these are his most recent {len(games)}{at}, from the {season_label}."
+    redirect_note = decided("season_fallback", said, field="season", chose=season, before=span.season, games=len(games), season_type=span.season_type)
     caveat = _period_split_measure_caveat(season, measure, full_line=scope.per_game and scope.stat is None and len(games) > 1)
     return _period_split_result(data, header, caveat, extra_note=redirect_note)
 
@@ -2735,10 +2752,11 @@ def _period_split_caveat(season: int, agreement: float | None) -> str:
     ESPN's own quarter scores has been measured; empty otherwise."""
     if agreement is None:
         return ""
-    return (
+    said = (
         f"\n  (Summed from shot data rather than an official per-quarter box score. In {season} that sum matches ESPN's own "
         f"quarter scores {agreement:.0f}% of the time, so treat a single game as approximate.)"
     )
+    return note("rebuilt_agreement", said, season=season, pct=agreement, columns=["points"], what="period_points_from_shots")
 
 
 def _period_split_measure_caveat(season: int, measure: str, *, full_line: bool = False) -> str:
@@ -2756,10 +2774,11 @@ def _period_split_measure_caveat(season: int, measure: str, *, full_line: bool =
     if not weak:
         return points
     said = ", ".join(f"{_period_split_noun(column, 2)} {pct:.0f}%" for column, pct in weak)
-    return points + (
+    rebuilt = (
         f"\n  (Rebuilt from play-by-play rather than an official per-quarter box score. In {season} a game's figures rebuilt this way match its box score "
         f"this often: {said} - treat a single game as approximate.)"
     )
+    return points + note("rebuilt_agreement", rebuilt, season=season, columns=[column for column, _ in weak], pct=[pct for _, pct in weak], what="period_rebuilt")
 
 
 def _period_split_result(data: dict[str, Any], header: str, caveat: str, *, extra_note: str | None = None) -> TemplateResult:
@@ -2801,11 +2820,12 @@ def _player_matchup_from(con: duckdb.DuckDBPyConnection, scope: Scope, covered: 
     .. versionadded:: 5.0.0
     """
     unseen = _unseen_meetings(con, covered, a.id, b.id)
-    caveat = (
+    said = (
         f" {unseen} game{'' if unseen == 1 else 's'} between their teams while both were playing for them {'has' if unseen == 1 else 'have'} no box score, so a meeting there is not counted."
         if unseen
         else ""
     )
+    caveat = note("games_unseen", said, games=unseen, why="no_box_score", what="meetings")
     if not meetings:
         return _player_matchup_no_meetings(con, covered, a, b, together, caveat + _player_matchup_absence_context(con, a, b, scope, narrowed), narrowed.filters())
 
