@@ -16,6 +16,7 @@ from .answer import Artifact, RenderResult
 from .court import BEYOND_THE_ARC_SQL, HAS_POSITION_SQL, render_court_html
 from .entities import MAX_CANDIDATES, Ambiguous, Availability, Entity, clarification, collect_name_readings, find_players, narrow_to_available, no_match, read_near_spelling
 from .game_label import game_label
+from .notes import decided, note
 
 UNSEPARABLE_SHOT_VALUES: dict[int, str] = {
     2002: (
@@ -314,10 +315,13 @@ def _render_for_player_notes(kept: list[tuple[Any, ...]], unknown: list[tuple[An
     if unknown:
         # Only reachable across seasons (a career or one game): a single
         # unseparable season was refused above.
-        why = "; ".join(UNSEPARABLE_SHOT_VALUES.get(s, f"nothing records their value in {s}") for s in sorted({r[7] for r in unknown}))
-        notes.append(f"left out {len(unknown):,} {'shot' if len(unknown) == 1 else 'shots'} that cannot be told apart as twos or threes: {why}")
+        seasons = sorted({r[7] for r in unknown})
+        why = "; ".join(UNSEPARABLE_SHOT_VALUES.get(s, f"nothing records their value in {s}") for s in seasons)
+        said = f"left out {len(unknown):,} {'shot' if len(unknown) == 1 else 'shots'} that cannot be told apart as twos or threes: {why}"
+        causes = ["unseparable" if s in UNSEPARABLE_SHOT_VALUES else "no_value_recorded" for s in seasons]
+        notes.append(note("shots_unlabeled", said, shots=len(unknown), seasons=seasons, why=causes))
     if shot_value is not None:
-        notes.extend(DERIVED_SHOT_VALUES[s] for s in sorted({r[7] for r in kept} & DERIVED_SHOT_VALUES.keys()))
+        notes.extend(note("shot_values_derived", DERIVED_SHOT_VALUES[s], season=s) for s in sorted({r[7] for r in kept} & DERIVED_SHOT_VALUES.keys()))
     return notes
 
 
@@ -415,9 +419,9 @@ def _render_for_player_message(
     who = f"{resolved_name} ({context})" if context else resolved_name
     msg = f"Rendered shot chart for {who} ({made}/{total} made, {made / total:.1%}) to {out_path}"
     if ambiguous:
-        msg += f". Note: other players also matched: {ambiguous}"
-    for note in notes:
-        msg += f". Note: {note}"
+        msg += decided("also_matched", f". Note: other players also matched: {ambiguous}", field="player", chose=resolved_name, instead_of=ambiguous)
+    for said in notes:
+        msg += f". Note: {said}"
     return msg
 
 

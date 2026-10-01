@@ -18,6 +18,7 @@ from association.query.reading import Reading
 from ..entities import Ambiguous, Availability, Entity, no_match
 from ..fingerprint import FINGERPRINT_AVAILABILITY, GAME_FINGERPRINT_AVAILABILITY, FingerprintUnavailable, render_for_players
 from ..metrics import SEASON_TYPE_LABELS
+from ..notes import note
 from ..shotchart import resolve_chart_player
 from .common import SEASON_TYPE_NAMES, TemplateContext, TemplateResult, TemplateUnsupported, _clarify, _defaulted_season_note, _period, _resolved_player, _table_cell
 
@@ -132,7 +133,7 @@ def player_netpoints(ctx: TemplateContext, reading: Reading) -> TemplateResult:
         )
 
     units, scope = _netpoints_units(per_100, possessions)
-    answer = _phrase_netpoints(player.name, period, totals_row, breakdown, units, scope)
+    answer = _phrase_netpoints(player.name, period, totals_row, breakdown, units, scope, possessions if per_100 else None)
     return TemplateResult(
         data={
             "player": player.name,
@@ -285,7 +286,7 @@ def _single_game_netpoints(ctx: TemplateContext, player: Entity, season: int, se
     answer = headline
     if detail:
         answer += "\n  " + ", ".join(detail) + "."
-    answer += "\n  (Ask for a fingerprint of that game to see the play-type split behind it.)"
+    answer += note("hint", "\n  (Ask for a fingerprint of that game to see the play-type split behind it.)", what="fingerprint_of_that_game")
     notes = [", ".join(detail) + "."] if detail else []
     return TemplateResult(data={"player": player.name, "game": game, "headline": headline, "notes": notes}, answer=answer)
 
@@ -297,23 +298,25 @@ def _phrase_netpoints(
     breakdown: list[dict[str, Any]],
     units: str,
     scope: str,
+    possessions: float | None = None,
 ) -> str:
     """The season line, then a table of the six partition categories (offense
     and defense sections) and one of the overlapping play-type detail rows.
     ``units``/``scope`` come from `_netpoints_units`, computed once in
     `player_netpoints` and reused in `data["notes"]` so the printed table and
     the page's own render of `fingerprint` say the same thing about what the
-    numbers are."""
+    numbers are. ``possessions`` is what ``scope`` counts, when the rows are
+    per 100 of them - recorded with the units' definition, not printed."""
     lines = _phrase_netpoints_headline(name, period, totals_row)
 
     if not breakdown:
-        lines.append("  No play-type fingerprint on record for this season.")
+        lines.append(note("part_missing", "  No play-type fingerprint on record for this season.", what="fingerprint"))
         return "\n".join(lines)
 
     width = max(len(row["category"]) for row in breakdown)
     partition_rows = [r for r in breakdown if r["partition"]]
     detail_rows = [r for r in breakdown if not r["partition"]]
-    lines += _phrase_netpoints_partition(partition_rows, units, scope, width)
+    lines += _phrase_netpoints_partition(partition_rows, units, scope, width, possessions)
     lines += _phrase_netpoints_detail(detail_rows, units, width)
     return "\n".join(lines)
 
@@ -333,11 +336,11 @@ def _phrase_netpoints_headline(name: str, period: str, totals_row: tuple[Any, ..
         if detail:
             lines.append("  " + ", ".join(detail) + ".")
     else:
-        lines.append(f"{name}, NetPoints fingerprint in the {period} (no season totals on record):")
+        lines.append(f"{name}, NetPoints fingerprint in the {period} {note('part_missing', '(no season totals on record)', what='season_totals')}:")
     return lines
 
 
-def _phrase_netpoints_partition(partition_rows: list[dict[str, Any]], units: str, scope: str, width: int) -> list[str]:
+def _phrase_netpoints_partition(partition_rows: list[dict[str, Any]], units: str, scope: str, width: int, possessions: float | None = None) -> list[str]:
     """The six categories that partition the total, as an offense section and a defense section."""
     lines: list[str] = []
     # Offense and defense get a section each, sorted by their OWN side. One
@@ -349,7 +352,7 @@ def _phrase_netpoints_partition(partition_rows: list[dict[str, Any]], units: str
         if not ranked:
             continue
         lines.append("")
-        lines.append(f"  {heading}, {units}{scope}:")
+        lines.append(f"  {heading}, {note('definition', f'{units}{scope}', term='netpoints_units', units=units, possessions=possessions)}:")
         # Two decimals: per-100 values are small, and one decimal collapses
         # most of the categories onto the same number.
         lines.extend("  " + row["category"].ljust(width) + f"{row[side]:.2f}".rjust(9) for row in ranked)
@@ -364,10 +367,10 @@ def _phrase_netpoints_detail(detail_rows: list[dict[str, Any]], units: str, widt
     """The overlapping play-type slices, which are shown but do not add up."""
     if not detail_rows:
         return []
+    said = note("definition", "overlapping slices - a driving layup at the rim\n  counts in driving, layup and rim, so these do not add up", term="netpoints_overlap")
     lines = [
         "",
-        f"  Play-type detail, {units} (overlapping slices - a driving layup at the rim",
-        "  counts in driving, layup and rim, so these do not add up):",
+        *f"  Play-type detail, {units} ({said}):".split("\n"),
         "  " + "category".ljust(width) + "".join(h.rjust(9) for h in ("O", "D")),
     ]
     for row in sorted(detail_rows, key=lambda r: -abs(r["total"] or 0)):

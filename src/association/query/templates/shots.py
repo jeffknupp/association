@@ -34,6 +34,7 @@ from association.query.reading import Reading, Scope
 from ..conditions import box_source
 from ..court import HAS_POSITION_SQL, SHOT_DISTANCE_SQL
 from ..entities import Ambiguous, Entity, no_match
+from ..notes import note
 from ..player_games import games_subquery, named
 from ..shotchart import DERIVED_SHOT_VALUES, SHOT_AVAILABILITY, SHOT_VALUE_SQL, UNSEPARABLE_SHOT_VALUES, render_for_player, resolve_chart_player
 from .common import (
@@ -442,11 +443,13 @@ def _career_shot_note(con: duckdb.DuckDBPyConnection, player: Entity, season_typ
     if span is None:
         return ""
     earliest, latest = span
+    facts = {"table": "shots", "first": floor_season, "earliest": earliest, "last": latest, "season_type": season_type}
     if latest < floor_season:
-        return f" {player.name}'s {kind} career ({earliest}-{latest}) ends before shot data begins, in {floor_season}, so none of it can be shown."
+        said = f" {player.name}'s {kind} career ({earliest}-{latest}) ends before shot data begins, in {floor_season}, so none of it can be shown."
+        return note("floor", said, what="career_before_floor", **facts)
     if earliest < floor_season:
-        return f" Shot data begins with the {floor_season} season, so his {earliest}-{floor_season - 1} {kind}s are not shown."
-    return f" Covers his whole {kind} career on record ({earliest}-{latest})." if found else ""
+        return note("floor", f" Shot data begins with the {floor_season} season, so his {earliest}-{floor_season - 1} {kind}s are not shown.", what="career_clipped", **facts)
+    return note("floor", f" Covers his whole {kind} career on record ({earliest}-{latest}).", what="career_whole", **facts) if found else ""
 
 
 def _shot_distance_period(player: Entity, season: int | None, season_type: int, *, career: bool) -> str:
@@ -548,7 +551,7 @@ def _shot_distance_answer(player: Entity, kind: str, period: str, game_note: str
         return f"No {kind}shots with recorded coordinates for {player.name}{game_note} in the {period}."
     answer = f"{player.name}'s average {kind}shot distance{game_note or f' in the {period}'} was {average:.1f} feet, over {attempts:,} attempts with recorded coordinates."
     if shot_value is not None and season in DERIVED_SHOT_VALUES:
-        answer += f" Note: {DERIVED_SHOT_VALUES[season]}."
+        answer += f" Note: {note('shot_values_derived', DERIVED_SHOT_VALUES[season], season=season)}."
     return answer
 
 

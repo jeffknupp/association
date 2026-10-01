@@ -40,6 +40,7 @@ from association.nba.season import current_season, eastern_date
 from .answer import Artifact, RenderResult
 from .entities import Ambiguous, Availability, Entity, clarification, collect_name_readings, no_match
 from .game_label import game_label
+from .notes import decided, note
 from .radar import VALUE_ZERO_FRACTION, Axis, Cell, Series, render_fingerprint_html
 
 
@@ -887,7 +888,8 @@ def _render_for_players_load(
         # reading as a data gap rather than as an ambiguous name.
         if not ambiguous:
             raise
-        raise FingerprintUnavailable(f"{exc} Note: other players also matched: {', '.join(ambiguous)}.") from exc
+        also = decided("also_matched", f" Note: other players also matched: {', '.join(ambiguous)}.", field="player", chose=[p.name for p in players], instead_of=ambiguous)
+        raise FingerprintUnavailable(f"{exc}{also}") from exc
     return fingerprints, league, games, unit
 
 
@@ -944,11 +946,13 @@ def _render_for_players_message(
     unqualified = [f.name for f in fingerprints if not f.qualified]
     if unqualified:
         short = f"under {FINGERPRINT_MIN_GAME_POSSESSIONS} possessions in that game" if order else f"under {min_minutes} minutes"
-        message += f". Note: {', '.join(unqualified)} played {short}, so they are plotted against a pool they are not in"
+        said = f". Note: {', '.join(unqualified)} played {short}, so they are plotted against a pool they are not in"
+        threshold, of = (FINGERPRINT_MIN_GAME_POSSESSIONS, "possessions") if order else (min_minutes, "minutes")
+        message += note("below_pool", said, names=unqualified, threshold=threshold, of=of)
     if missing:
-        message += f". No fingerprint on record for: {', '.join(missing)}"
+        message += note("no_data_for", f". No fingerprint on record for: {', '.join(missing)}", names=missing, what="fingerprint")
     if ambiguous:
-        message += f". Note: other players also matched: {ambiguous}"
+        message += decided("also_matched", f". Note: other players also matched: {ambiguous}", field="player", chose=[f.name for f in fingerprints], instead_of=ambiguous)
     return message
 
 
