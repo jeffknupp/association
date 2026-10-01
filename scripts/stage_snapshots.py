@@ -26,6 +26,10 @@ change is proven on: every call the unit tests make across a stage boundary,
 recorded by running the suite with ``ASSOCIATION_STAGE_CALLS=<dir>``
 (``tests/stage_calls.py``) on each tree.
 
+``remarks`` reads one run: how many answers carry a note or a stated
+decision, the count of each kind (``association.query.notes``), and every
+remark that was written and did not reach its answer.
+
 ``compare`` exits 1 on any difference, and 2 when the two runs share
 nothing to compare (a wrong path must not read as a clean run). ``--values-only`` leaves the
 sentences out (``stages.WORDING``): for a change allowed to reword an answer
@@ -106,7 +110,7 @@ def run(args: argparse.Namespace) -> int:
         for index, question in enumerate(questions, 1):
             try:
                 answer = agent.ask(question)
-                record = snapshot(agent.reading, answer, unanswered=agent.unanswered if answer.answered_by == "refused" else None, mask=mask)
+                record = snapshot(agent.reading, answer, unanswered=agent.unanswered if answer.answered_by == "refused" else None, unsaid=agent.unsaid, mask=mask)
             except Exception as exc:  # noqa: BLE001 - one bad question must not end the run, and a crash is itself a result to compare
                 record = {"question": question, "error": f"{type(exc).__name__}: {exc}"}
             out.write(json.dumps(record, sort_keys=True) + "\n")
@@ -132,13 +136,20 @@ def _load(path: Path) -> tuple[dict[str, Any], dict[str, dict[str, Any]]]:
 def _question_differences(before: dict[str, Any], after: dict[str, Any], args: argparse.Namespace) -> list[Any]:
     """One question's differences; a crash on either side is one difference
     in a stage of its own, named first."""
-    from association.query.stages import Difference, differences
+    from association.query.stages import Difference, differences, value_differences
 
     if "error" in before or "error" in after:
         if before.get("error") == after.get("error"):
             return []
         return [Difference("error", "", "changed", before.get("error"), after.get("error"))]
-    return differences(before, after, tolerance=args.tolerance, wording=not args.values_only)
+    found = differences(before, after, tolerance=args.tolerance, wording=not args.values_only)
+    # What the answer said beside its numbers, as kinds and facts: compared
+    # in either mode wherever both runs recorded it - it is what holds a
+    # caveat in place while a sentence is reworded. A run from before the
+    # remarks were recorded has none to compare.
+    if "remarks" in before and "remarks" in after and not args.ignore_remarks:
+        found.extend(value_differences("remarks", before["remarks"], after["remarks"], tolerance=args.tolerance))
+    return found
 
 
 def compare(args: argparse.Namespace) -> int:
@@ -182,6 +193,29 @@ def compare(args: argparse.Namespace) -> int:
         print("NOTHING COMPARED: the two runs share no question - an empty comparison is not a clean one")
         return 2
     return 1 if moved or only else 0
+
+
+def remarks(args: argparse.Namespace) -> int:
+    """What a run's answers said beside their numbers: each kind's count,
+    and every remark written and not said. 1 if any was not said."""
+    _meta, records = _load(args.run)
+    kinds: Counter[str] = Counter()
+    carrying = 0
+    dropped: list[tuple[str, list[str]]] = []
+    for question, record in records.items():
+        held = record.get("remarks") or {}
+        found = [each["kind"] for each in (*held.get("notes", []), *held.get("decisions", []))]
+        kinds.update(found)
+        carrying += bool(found)
+        if held.get("unsaid"):
+            dropped.append((question, held["unsaid"]))
+    print(f"{len(records)} questions: {carrying} answers carry {sum(kinds.values())} remarks of {len(kinds)} kinds")
+    for kind, count in kinds.most_common():
+        print(f"  {count:4d}  {kind}")
+    for question, unsaid in dropped[: args.show]:
+        print(f"WRITTEN AND NOT SAID ({', '.join(unsaid)}): {question}")
+    print(f"{len(dropped)} answers have a remark that was written and not said")
+    return 1 if dropped else 0
 
 
 def _load_calls(directory: Path) -> tuple[set[str], dict[tuple[str, int], dict[str, Any]]]:
@@ -252,10 +286,15 @@ def main() -> int:
     compare_parser.add_argument("before", type=Path)
     compare_parser.add_argument("after", type=Path)
     compare_parser.add_argument("--values-only", action="store_true", help="leave the sentences out (stages.WORDING)")
+    compare_parser.add_argument("--ignore-remarks", action="store_true", help="do not compare the notes and stated decisions: only for a change whose whole point is to record more of them")
     compare_parser.add_argument("--tolerance", type=float, default=FLOAT_TOLERANCE)
     compare_parser.add_argument("--show", type=int, default=20, help="questions to print")
     compare_parser.add_argument("--lines", type=int, default=6, help="differences to print per question")
     compare_parser.set_defaults(func=compare)
+    remarks_parser = commands.add_parser("remarks", help="count a run's notes and stated decisions by kind, and list any written and not said")
+    remarks_parser.add_argument("run", type=Path)
+    remarks_parser.add_argument("--show", type=int, default=40, help="questions to print")
+    remarks_parser.set_defaults(func=remarks)
     calls_parser = commands.add_parser("compare-calls", help="compare two recorded suite runs (ASSOCIATION_STAGE_CALLS), call by call")
     calls_parser.add_argument("before", type=Path)
     calls_parser.add_argument("after", type=Path)

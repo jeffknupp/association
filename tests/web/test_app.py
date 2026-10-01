@@ -92,11 +92,32 @@ def test_the_answer_carries_its_decisions_as_values(tmp_path: Path) -> None:
         decisions=(Decision("subject", "kind", None, "player", "question names players ['Nikola Jokic']"), Decision("scope", "team", "Boston Celtics", None, "the team after 'vs' is the opponent")),
     )
     body = _client(StubAnswerer(decided), tmp_path).post("/api/ask", json={"question": "jokic vs boston"}).json()
+    trace_only = {"kind": "", "instead_of": [], "facts": {}}
     assert body["decisions"] == [
-        {"stage": "subject", "field": "kind", "before": None, "after": "player", "reason": "question names players ['Nikola Jokic']"},
-        {"stage": "scope", "field": "team", "before": "Boston Celtics", "after": None, "reason": "the team after 'vs' is the opponent"},
+        {"stage": "subject", "field": "kind", "before": None, "after": "player", "reason": "question names players ['Nikola Jokic']", **trace_only},
+        {"stage": "scope", "field": "team", "before": "Boston Celtics", "after": None, "reason": "the team after 'vs' is the opponent", **trace_only},
     ]
-    assert _client(StubAnswerer(), tmp_path).post("/api/ask", json={"question": "q"}).json()["decisions"] == []
+    empty = _client(StubAnswerer(), tmp_path).post("/api/ask", json={"question": "q"}).json()
+    assert empty["decisions"] == [] and empty["notes"] == []
+
+
+def test_the_answer_carries_what_it_says_beside_its_numbers_as_kinds_and_facts(tmp_path: Path) -> None:
+    """A caveat and a stated default reach the client as values too
+    (query/notes.py): a note as its kind and facts, a decision the answer
+    states with its kind and what else it could have been."""
+    from association.query.decisions import Decision
+    from association.query.notes import Note
+
+    remarked = replace(
+        _answer("the answer"),
+        notes=(Note("games_unseen", {"games": 5, "why": "empty_box_score"}),),
+        decisions=(Decision("answer", "player", "maxey", "Tyrese Maxey", "only_active", kind="name_reading", instead_of=("Marlon Maxey",), facts={"season": 2026}),),
+    )
+    body = _client(StubAnswerer(remarked), tmp_path).post("/api/ask", json={"question": "maxey points"}).json()
+    assert body["notes"] == [{"kind": "games_unseen", "facts": {"games": 5, "why": "empty_box_score"}}]
+    assert body["decisions"] == [
+        {"stage": "answer", "field": "player", "before": "maxey", "after": "Tyrese Maxey", "reason": "only_active", "kind": "name_reading", "instead_of": ["Marlon Maxey"], "facts": {"season": 2026}}
+    ]
 
 
 def test_the_answer_names_the_history_file_it_was_recorded_to(tmp_path: Path) -> None:

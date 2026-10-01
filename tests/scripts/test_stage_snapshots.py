@@ -184,3 +184,32 @@ def test_two_recorded_suite_runs_are_compared_call_by_call(monkeypatch: pytest.M
     # A call one run never made.
     assert compared(_calls(tmp_path / "fewer", rows[0], rows[1])) == 1
     assert "CALLS IN ONE RUN ONLY: t.py::test_b" in capsys.readouterr().out
+
+
+def test_what_an_answer_said_beside_its_numbers_is_compared_where_both_runs_recorded_it(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """A caveat held as a kind and its facts cannot vanish under a
+    rewording: the remarks are compared in either mode, unless one run is
+    from before they were recorded or the change is the one adding them."""
+    said = {"notes": [{"kind": "games_unseen", "facts": {"games": 5}}], "decisions": [], "unsaid": []}
+    with_note = dict(_record("q one"), remarks=said)
+    without = dict(_record("q one", answer__text="Jokic had 53."), remarks={"notes": [], "decisions": [], "unsaid": []})
+    before = _write(tmp_path / "a.jsonl", with_note)
+    after = _write(tmp_path / "b.jsonl", without)
+    assert _compare(monkeypatch, before, after, "--values-only") == 1
+    assert "remarks: notes[0] missing" in capsys.readouterr().out
+    assert _compare(monkeypatch, before, after, "--values-only", "--ignore-remarks") == 0
+    # A run from before the remarks were recorded has none to compare.
+    assert _compare(monkeypatch, _write(tmp_path / "c.jsonl", _record("q one")), before) == 0
+
+
+def test_a_runs_remarks_are_counted_by_kind_and_a_dropped_one_fails(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    kept = {"notes": [{"kind": "games_unseen", "facts": {"games": 5}}, {"kind": "floor", "facts": {}}], "decisions": [{"kind": "minimum", "after": 20}], "unsaid": []}
+    run = _write(tmp_path / "a.jsonl", dict(_record("q one"), remarks=kept), _record("q two"))
+    monkeypatch.setattr(sys, "argv", ["stage_snapshots.py", "remarks", str(run)])
+    assert stage_snapshots.main() == 0
+    out = capsys.readouterr().out
+    assert "2 questions: 1 answers carry 3 remarks of 3 kinds" in out and "   1  minimum" in out
+    dropped = _write(tmp_path / "b.jsonl", dict(_record("q one"), remarks={**kept, "unsaid": ["floor"]}))
+    monkeypatch.setattr(sys, "argv", ["stage_snapshots.py", "remarks", str(dropped)])
+    assert stage_snapshots.main() == 1
+    assert "WRITTEN AND NOT SAID (floor): q one" in capsys.readouterr().out

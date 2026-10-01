@@ -1,0 +1,189 @@
+"""What an answer says beside its numbers, as values: a kind and its facts.
+
+Until 5.0.0 a caveat, a stated default or a definition was a sentence glued
+onto the answer, and some of them a second time into ``data["notes"]``: 69
+distinct remarks written by about 75 functions, the same fact in up to
+eleven wordings (``ROADMAP-TYPES.md``, "Notes - the kinds"). A sentence
+cannot be compared, so a reworded answer could lose a caveat with every
+number still matching. Here each remark is recorded as it is written:
+
+- a :class:`Note` is about the data or about a term the answer uses - a
+  game with no box score, a table's floor, what "played" means;
+- a decision (:class:`~association.query.decisions.Decision` with a
+  ``kind``) is something the question left open and the system chose - a
+  name read as one player, a season redirected, a ranking's minimum.
+
+The dividing question is "could the question have said it differently?"
+(Jeff, 2026-10-01). The kinds are closed (:data:`NOTE_KINDS`,
+:data:`DECISION_KINDS`); the sentence stays exactly where it is written
+today, and :func:`note` and :func:`decided` hand it back unchanged, so
+wrapping a writer moves no answer. One phrase per kind, written from the
+facts, is ``ROADMAP.md``'s Phase 2.
+
+Recorded only inside :func:`collect` - the answering loop's, around one
+question. A writer called directly (a test, a template on its own) records
+nothing and behaves the same.
+
+.. versionadded:: 5.0.0
+"""
+
+from __future__ import annotations
+
+from collections.abc import Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
+from dataclasses import dataclass, field
+from typing import Any
+
+from association.query.decisions import Decision
+
+NOTE_KINDS: dict[str, str] = {
+    "partial_season": "a season the table holds only part of",
+    "floor": "seasons before the first one a table holds are not counted",
+    "games_unseen": "games the answer could not see: no box score, an empty one, no play-by-play",
+    "lines_rebuilt": "figures rebuilt from play-by-play where ESPN has no box score",
+    "rebuilt_agreement": "how often a figure rebuilt this way matches the official one",
+    "stat_withheld": "a stat not read from a rebuilt or partial source",
+    "stat_blank": "games with no figure for the stat asked about",
+    "seasons_missing": "seasons left out because their source is empty",
+    "standings_short": "ESPN's standings cover fewer games than the team played",
+    "game_list_disagrees": "ESPN's game list and the season's totals disagree on the games played",
+    "shots_unlabeled": "shots left out because their value cannot be told",
+    "shot_values_derived": "shot values derived where ESPN labeled few",
+    "snapshot": "which power-index snapshot was read, and what is odd about it",
+    "value_withheld": "a column or rank left blank, and why",
+    "part_missing": "a part of the answer with nothing on record",
+    "no_data_for": "named players with nothing on record for what was asked",
+    "below_pool": "players shown against a pool they did not qualify for",
+    "window_short": "fewer games found than the window asked for",
+    "still_open": "a run still going at the last game on record",
+    "definition": "what a word or column in the answer means",
+    "hint": "another question that shows more",
+}
+"""Every kind a :class:`Note` may have, with what it says.
+
+.. versionadded:: 5.0.0
+"""
+
+DECISION_KINDS: dict[str, str] = {
+    "name_reading": "a name several players share, or a near spelling, read as one player",
+    "name_left_out": "a name the question holds that the answer is not about",
+    "also_matched": "the best match was answered; others matched too",
+    "season_redirected": "the season read by default holds nothing for him; the seasons that do",
+    "season_fallback": "no games this season, so an earlier one was read",
+    "minimum": "the fewest games or attempts a ranking required",
+    "cut": "how many qualified, and how many are shown",
+}
+"""Every kind a decision the answer states may have, with what it says.
+
+.. versionadded:: 5.0.0
+"""
+
+
+@dataclass(frozen=True)
+class Note:
+    """One remark about the data, or about a term the answer uses: a
+    ``kind`` from :data:`NOTE_KINDS` and the ``facts`` its sentence is made
+    of - counts, names, seasons, never the sentence.
+
+    .. versionadded:: 5.0.0
+    """
+
+    kind: str
+    facts: dict[str, Any] = field(default_factory=dict)
+
+    def as_dict(self) -> dict[str, Any]:
+        """The wire and file form."""
+        return {"kind": self.kind, "facts": dict(self.facts)}
+
+
+@dataclass
+class Collected:
+    """What one question's answer said beside its numbers: the notes, the
+    decisions it stated, and each remark's sentence as written (``said``,
+    by kind) - kept so :func:`unsaid` can check the sentence reached the
+    answer.
+
+    .. versionadded:: 5.0.0
+    """
+
+    notes: list[Note] = field(default_factory=list)
+    decisions: list[Decision] = field(default_factory=list)
+    said: list[tuple[str, str]] = field(default_factory=list)
+
+
+_COLLECTING: ContextVar[Collected | None] = ContextVar("association_remarks", default=None)
+
+
+@contextmanager
+def collect() -> Iterator[Collected]:
+    """Collect every remark written while one question is answered. A
+    ``ContextVar``, as :func:`~association.query.entities.collect_name_readings`
+    is: the web server and the tests answer on more than one thread.
+
+    .. versionadded:: 5.0.0
+    """
+    collected = Collected()
+    token = _COLLECTING.set(collected)
+    try:
+        yield collected
+    finally:
+        _COLLECTING.reset(token)
+
+
+def note(kind: str, text: str, /, **facts: Any) -> str:
+    """Record that ``text`` - a sentence being written into an answer - is a
+    note of ``kind`` made of ``facts``, and return ``text`` unchanged. An
+    empty ``text`` is no remark and records nothing, so a writer can wrap
+    its sentence whether or not it had one to write.
+
+    .. versionadded:: 5.0.0
+    """
+    if kind not in NOTE_KINDS:
+        raise ValueError(f"{kind!r} is not a note kind (association.query.notes.NOTE_KINDS)")
+    collected = _COLLECTING.get()
+    if collected is not None and text.strip():
+        recorded = Note(kind, dict(facts))
+        if recorded not in collected.notes:
+            collected.notes.append(recorded)
+        _remember(collected, kind, text)
+    return text
+
+
+def decided(kind: str, text: str, /, *, field: str, chose: Any, before: Any = None, instead_of: tuple[Any, ...] | list[Any] = (), why: str = "", **facts: Any) -> str:
+    """Record that ``text`` states a decision of ``kind``: ``field`` was
+    left open by the question (``before`` is what it typed, if anything),
+    the system ``chose`` a value where it could have been one of
+    ``instead_of``, for the reason ``why``. Returns ``text`` unchanged, and
+    records nothing for an empty one, as :func:`note` does.
+
+    .. versionadded:: 5.0.0
+    """
+    if kind not in DECISION_KINDS:
+        raise ValueError(f"{kind!r} is not a decision kind (association.query.notes.DECISION_KINDS)")
+    collected = _COLLECTING.get()
+    if collected is not None and text.strip():
+        recorded = Decision("answer", field, before, chose, why, kind=kind, instead_of=tuple(instead_of), facts=dict(facts))
+        if recorded not in collected.decisions:
+            collected.decisions.append(recorded)
+        _remember(collected, kind, text)
+    return text
+
+
+def _remember(collected: Collected, kind: str, text: str) -> None:
+    """Keep a remark's sentence once, for :func:`unsaid`."""
+    said = (kind, text.strip())
+    if said not in collected.said:
+        collected.said.append(said)
+
+
+def unsaid(collected: Collected, answer_text: str) -> list[str]:
+    """The kinds of the remarks whose sentence is not in ``answer_text``: a
+    remark written and then dropped on the way to the answer. Compared with
+    runs of spaces collapsed, since a writer's sentence is joined to the
+    answer with one space or a line break.
+
+    .. versionadded:: 5.0.0
+    """
+    answer = " ".join(answer_text.split())
+    return [kind for kind, text in collected.said if " ".join(text.split()) not in answer]

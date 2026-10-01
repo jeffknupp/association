@@ -24,6 +24,7 @@ from ..entities import Ambiguous, Availability, Entity, clarification, find_play
 from ..leaderboard import resolve_metric
 from ..measures import MEASURE_WORDS
 from ..metrics import LEADERBOARD_METRICS
+from ..notes import decided, note
 from ..player_games import (  # noqa: F401 - the relation's names, re-exported for the templates and tests that read them here
     _OPEN_END,
     _OPEN_START,
@@ -937,7 +938,8 @@ def coverage_caveat(intent: str, scope: Scope | Mapping[str, Any]) -> str | None
     scope = _as_scope(scope)
     if scope.season is None:
         return None
-    return caveat(_sources_for(intent, scope), scope.season, scope.season_type or REGULAR_SEASON)
+    said = caveat(_sources_for(intent, scope), scope.season, scope.season_type or REGULAR_SEASON)
+    return note("partial_season", said, season=scope.season, season_type=scope.season_type or REGULAR_SEASON, intent=intent) if said else None
 
 
 #: Templates that honor one NAMED half of the starter/bench split and refuse
@@ -2444,7 +2446,8 @@ def _defaulted_season_note(season_range: tuple[int, int] | None, kind: str, *, c
     # seasons" for a player on record in exactly one.
     span = f"{first} {kind}" if first == last else f"{first}-{last} {kind}s"
     tail = ", or ask for his career." if career_hint else "."
-    return f" He last appears in {last}. The warehouse holds his {span}; name one{tail}"
+    said = f" He last appears in {last}. The warehouse holds his {span}; name one{tail}"
+    return decided("season_redirected", said, field="season", chose=None, why="the season read by default holds nothing for him", first=first, last=last, what=kind)
 
 
 def _no_narrowed_games(con: duckdb.DuckDBPyConnection, player: Entity, span: _Span, narrowed: Narrowed, *, rebuilt: bool = False) -> str:
@@ -2510,20 +2513,23 @@ def _box_score_notes(con: duckdb.DuckDBPyConnection, player: Entity, span: _Span
     if narrowed.without:
         names = [mate.name for mate in narrowed.without]
         who = "he did not play" if len(names) == 1 else ("neither of them played" if len(names) == 2 else "none of them played")
-        notes.append(f"Without {_joined(names)} means games {who} while on the same team - a did-not-play entry, or no line in the box score at all, which is how most injuries appear.")
+        said = f"Without {_joined(names)} means games {who} while on the same team - a did-not-play entry, or no line in the box score at all, which is how most injuries appear."
+        notes.append(note("definition", said, term="without", names=names))
     if rebuilt_shown:
         # Said outright, because these numbers did not come from ESPN. Per game
         # they are close (see REBUILT_STATS) but they are not the box score, and
         # a reader quoting one should know which kind of number they hold.
-        notes.append(
+        said = (
             f"{rebuilt_shown} of these game{'s have' if rebuilt_shown != 1 else ' has'} no box score from ESPN: "
             f"{'their' if rebuilt_shown != 1 else 'its'} figures are rebuilt from play-by-play, and minutes cannot be recovered at all."
         )
+        notes.append(note("lines_rebuilt", said, games=rebuilt_shown, what="shown"))
     where, params = narrowed.clauses(recorded=False, rebuilt=rebuilt)
     row = con.execute(f"SELECT COUNT(*) {_PLAYER_GAMES} WHERE {where}", params).fetchone()
     empty = row[0] if row else 0
     if empty:
-        notes.append(f"Not counted: {empty} game{'s' if empty != 1 else ''} in this span whose box score lists him with no minutes and no stats.")
+        said = f"Not counted: {empty} game{'s' if empty != 1 else ''} in this span whose box score lists him with no minutes and no stats."
+        notes.append(note("games_unseen", said, games=empty, why="empty_box_score"))
     if span.career and career_note and span.since is None:
         row = con.execute(
             "SELECT MIN(season) FROM player_season_stats_deduped WHERE athlete_id = ? AND season_type = ? AND gamesPlayed > 0",
@@ -2531,7 +2537,8 @@ def _box_score_notes(con: duckdb.DuckDBPyConnection, player: Entity, span: _Span
         ).fetchone()
         earliest = row[0] if row else None
         if earliest is not None and earliest < span.first:
-            notes.append(f"Box scores begin with the {_season_name(span.first)} season, so his {earliest}-{span.first - 1} seasons are not counted.")
+            said = f"Box scores begin with the {_season_name(span.first)} season, so his {earliest}-{span.first - 1} seasons are not counted."
+            notes.append(note("floor", said, table="box_scores", first=span.first, earliest=earliest))
     return notes
 
 

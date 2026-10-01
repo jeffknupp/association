@@ -22,6 +22,7 @@ choice follow as each is wired.
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
+from dataclasses import field as dataclass_field
 from typing import Any
 
 
@@ -33,7 +34,17 @@ class Decision:
     values (``after`` alone for a reading that overrides nothing), ``reason``
     the evidence in a sentence.
 
+    A decision the answer has to STATE - a name read as one player, a
+    season redirected, a ranking's minimum - also carries a ``kind`` (one of
+    :data:`association.query.notes.DECISION_KINDS`), what else it could have
+    been (``instead_of``) and the ``facts`` its sentence is made of. With no
+    ``kind`` it is the trace's alone.
+
     .. versionadded:: 4.4.0
+
+    .. versionchanged:: 5.0.0
+       ``kind``, ``instead_of`` and ``facts``, for a decision the answer
+       states (:func:`association.query.notes.decided`).
     """
 
     stage: str
@@ -41,13 +52,22 @@ class Decision:
     before: Any
     after: Any
     reason: str
+    kind: str = ""
+    instead_of: tuple[Any, ...] = ()
+    facts: dict[str, Any] = dataclass_field(default_factory=dict)
 
     def as_dict(self) -> dict[str, Any]:
-        """The wire and file form.
+        """The wire and file form. A decision with no ``kind`` - the
+        trace's own - is its five original fields, so a record written
+        before 5.0.0 and one written after read the same.
 
         .. versionadded:: 4.4.0
         """
-        return asdict(self)
+        whole = asdict(self)
+        if not self.kind:
+            for stated_only in ("kind", "instead_of", "facts"):
+                del whole[stated_only]
+        return whole
 
     def line(self) -> str:
         """The one-line trace form - what ``--verbose`` prints and the history

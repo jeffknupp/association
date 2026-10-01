@@ -69,6 +69,7 @@ import duckdb
 from association.nba.coverage import COVERAGE
 from association.nba.season import eastern_date_sql
 
+from .notes import note
 from .team_games import TeamNarrowed, games_subquery, named
 
 if TYPE_CHECKING:
@@ -266,7 +267,7 @@ class _Scope:
         """A sentence for a multi-season answer whose earliest row sits on the
         coverage floor: the career may have started before the box scores did."""
         if self.season is None and first == self.first:
-            return f" Box scores start with the {self.first} {self.kind}; anything earlier is not counted."
+            return note("floor", f" Box scores start with the {self.first} {self.kind}; anything earlier is not counted.", table="box_scores", first=self.first, what=self.kind)
         return ""
 
 
@@ -386,7 +387,8 @@ def _unseen(con: duckdb.DuckDBPyConnection, scope: _Scope, played: str, params: 
 def _unseen_note(count: int, whose: str = "his team's") -> str:
     if not count:
         return ""
-    return f" The warehouse has no box score for {count} of {whose} games in that span - ESPN lacks about one game in eight from 2013 to 2018 - so any of them he played are not counted."
+    said = f" The warehouse has no box score for {count} of {whose} games in that span - ESPN lacks about one game in eight from 2013 to 2018 - so any of them he played are not counted."
+    return note("games_unseen", said, games=count, why="no_box_score", whose=whose)
 
 
 def _player_streak_rows(scope: _Scope, played: str, value: str, box: BoxSource = RAW_BOX) -> str:

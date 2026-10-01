@@ -165,18 +165,30 @@ def read_stages(reading: Reading, *, mask: Mapping[str, str] | None = None) -> d
     return {"reading": _reading_record(reading, mask), "query": _query_record(reading, mask)}
 
 
-def snapshot(reading: Reading | None, answer: Answer, *, unanswered: str | None = None, mask: Mapping[str, str] | None = None) -> dict[str, Any]:
+def snapshot(reading: Reading | None, answer: Answer, *, unanswered: str | None = None, unsaid: list[str] | None = None, mask: Mapping[str, str] | None = None) -> dict[str, Any]:
     """One question's four records as JSON-ready values. ``reading`` is None
     where the question was refused before anything read it (too short, a
     normalizer that could not be reached); ``unanswered`` is the reason a
     question nothing reads was given up with
     (:attr:`Agent.unanswered <association.query.agent.Agent.unanswered>`);
-    ``mask`` is :func:`plain`'s.
+    ``unsaid`` the kinds of the remarks written and not said
+    (:attr:`Agent.unsaid <association.query.agent.Agent.unsaid>`); ``mask``
+    is :func:`plain`'s. The record also holds ``remarks``: the answer's
+    notes and the decisions it states.
 
     .. versionadded:: 5.0.0
     """
+    stated = [decision for decision in answer.decisions if decision.kind]
     return {
         "question": answer.question,
+        # Beside the four stages, not one of them: what the answer said
+        # about its data and its own choices, as kinds and facts
+        # (query/notes.py). Compared whenever both runs hold it.
+        "remarks": {
+            "notes": [plain(each.as_dict(), mask=mask) for each in answer.notes],
+            "decisions": [plain(decision.as_dict(), mask=mask) for decision in stated],
+            "unsaid": list(unsaid or ()),
+        },
         **(read_stages(reading, mask=mask) if reading is not None else {"reading": None, "query": None}),
         "result": plain(answer.data, mask=mask),
         "answer": {

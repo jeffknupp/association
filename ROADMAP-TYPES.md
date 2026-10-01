@@ -28,7 +28,24 @@ otherwise.
   shapes").
 - **A decision and a note are two types.** A decision is something the
   question left open and the system chose; a note is something about the
-  data. What that split still leaves to decide is under "Still open" 1.
+  data. Five points under it, all decided 2026-10-01 as proposed:
+  - *The dividing rule* is "could the question have said it differently?"
+  - *The borderline kinds:* a ranking's default minimum and its cut to the
+    top ten are decisions; `definition`, `window_short` and `still_open`
+    are notes.
+  - *One type.* `decisions.Decision`, which already records every reading
+    for the trace, gains a closed `kind`; the kinds that must be said are a
+    declared subset, and contract 5 checks them.
+  - *Only PLAN decides.* RUN finds facts and writes notes. A redirect that
+    depends on data ("no games this season, so his most recent five") is
+    the planner's, decided when it settles the span.
+  - *How much a said decision says* is declared per kind: a name reading
+    and a redirect state the wording that reaches the alternative, a
+    defaulted season shows its value. Whether the season TYPE states it
+    goes with the season-type default still open in `ROADMAP.md`.
+
+  In code since the same day (`query/notes.py`): the kinds are attached
+  where each remark is written, and the sentences have not moved.
 - **`pair` is not a shape, on one condition: any number of subjects and
   any number of players beside them, each with its own role, stay
   expressible.** They do; "More than one player" shows how.
@@ -37,11 +54,11 @@ otherwise.
 
 | Phase | Needs from this document |
 | --- | --- |
-| Phase 0, the last item (a kind on every remark where it is written) | "Still open" 1: the decision and note split |
+| Phase 0, the last item (a kind on every remark where it is written) | nothing more: decided |
 | Phase 1 (the read stage becomes a stage) | nothing. It keeps today's `Reading` and `Scope` and is proven by identical snapshots |
-| Phase 2, before its first slice | "Still open" 2 to 5: parts, `record_when`, `period`, the default line |
-| Phase 2, slice (iv), team shapes | "Still open" 6: `team_snapshots` |
-| Phase 2, slice (v), charts | "Still open" 7: two charts, not four |
+| Phase 2, before its first slice | "Still open" 1 to 4: parts, `record_when`, `period`, the default line |
+| Phase 2, slice (iv), team shapes | "Still open" 5: `team_snapshots` |
+| Phase 2, slice (v), charts | "Still open" 6: two charts, not four |
 | Phase 3 (one reader) | the Filter union, `Measure`, `Window`, `Unsupported`: reviewed again with the shadow reader's diffs in hand |
 
 ## What exists, in one table
@@ -375,7 +392,7 @@ box score, a floor, what "played" means: no, so a note.
 
 The 69 remarks are instances of about 25 kinds. One phrase per kind, in
 the sayer; the facts fill it. The first two families below are decisions,
-the next two notes, and the last is divided ("Still open" 1).
+the next two notes, and the last is divided: `minimum` and the cut are decisions, `still_open` a note.
 
 | Family | Kinds | Remarks replaced |
 | --- | --- | --- |
@@ -423,48 +440,24 @@ moves into `data` before the slice that rewords its answer:
 
 ## Still open
 
-1. **What the decision and note split leaves to decide.**
-   - *The dividing rule.* Proposed: "could the question have said it
-     differently?", as above.
-   - *The borderline kinds.* Under that rule a ranking's default minimum
-     and its cut to the top ten are decisions (the question can state
-     either), and `definition`, `window_short` (asked for ten, found
-     seven) and `still_open` are notes. Proposed: so.
-   - *One type or two with the trace.* `decisions.Decision` exists since
-     4.4.0 and records EVERY reading (the subject's kind, each slot
-     written); most are never said. Proposed: one type with a closed
-     `kind`, and a declared subset of kinds that must be said, which
-     contract 5 checks. The alternative is a second type for the said
-     ones, and two lists to keep in step.
-   - *Who may decide.* Proposed: only PLAN. RUN finds facts and writes
-     notes. A redirect that depends on data ("no games this season, so
-     his most recent five") is then the planner's, decided when it settles
-     the span, not discovered by whatever words the answer.
-   - *How much a said decision must say.* A name reading states the
-     wording that reaches the alternative ("use the full name, or name a
-     season he played"). A defaulted season is only shown ("in the 2026
-     regular season"). Proposed: each kind declares which it is; name
-     readings and redirects state the wording, the season shows the value.
-     Whether the season TYPE states it ("say playoffs for the postseason")
-     goes with the season-type default still open in `ROADMAP.md`.
-2. **Parts.** An answer is a tuple of typed parts, the first the
+1. **Parts.** An answer is a tuple of typed parts, the first the
    headline. The alternative is several Results per answer, which
    duplicates the subject and span and splits contract 5's bookkeeping.
-3. **`record_when` is a split** by `line` with a total row, in 22 of 24;
+2. **`record_when` is a split** by `line` with a total row, in 22 of 24;
    the other two are counts. One question family, two shapes: the reader
    decides from the words.
-4. **`period` has three roles**: what a read sees (its own field), a
+3. **`period` has three roles**: what a read sees (its own field), a
    filter (a `Line` with a period), and a dimension (a column per
    quarter). Proposed as above, with the catalog saying which measures
    have a reading in a quarter.
-5. **The default line** per relation and shape is a declared table. It is
+4. **The default line** per relation and shape is a declared table. It is
    where the old intents' habits survive; proposed: accept that, keep it
    small, and review its rows as each slice lands.
-6. **`team_outlook`** reads ESPN's power-index snapshots: per date and
+5. **`team_outlook`** reads ESPN's power-index snapshots: per date and
    per kind, with provenance that matters (a snapshot stamped after its
    season). Proposed: a declared relation, `team_snapshots`, not columns
    on team_seasons.
-7. **Charts are two, not four.** Only `shot_chart` and `fingerprint` draw
+6. **Charts are two, not four.** Only `shot_chart` and `fingerprint` draw
    an artifact. `shot_distance` is a scalar on `shots` and
    `player_netpoints` a scalar and a split on `netpoints`. `ROADMAP.md`
    says "the four chart answers keep their own readers and renderers";

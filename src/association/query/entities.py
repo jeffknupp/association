@@ -35,6 +35,7 @@ import duckdb
 
 from association.nba.franchises import FRANCHISE_ERAS, FranchiseEra, season_name
 from association.nba.season import current_season
+from association.query.notes import decided
 
 MAX_CANDIDATES = 10
 
@@ -517,8 +518,9 @@ def compared_but_unmatched(con: duckdb.DuckDBPyConnection, question: str, held: 
         return None
     dropped = [name for name in players_named_in(con, question) if not any(_shares_word(name, k) for k in held)]
     if dropped:
-        return f"Note: the question also names {' and '.join(dropped)}, who was not included in this answer."
-    return "Note: the question compares two players, but only one of them matches anybody in the warehouse - check the spelling of the other."
+        return decided("name_left_out", f"Note: the question also names {' and '.join(dropped)}, who was not included in this answer.", field="players", chose=list(held), why="dropped", names=dropped)
+    said = "Note: the question compares two players, but only one of them matches anybody in the warehouse - check the spelling of the other."
+    return decided("name_left_out", said, field="players", chose=list(held), why="unmatched")
 
 
 def misread_players(names: list[str]) -> str:
@@ -1540,6 +1542,7 @@ def note_typo_reading(text: str, chosen: Entity) -> None:
     if notes is None:
         return
     note = f"({text!r} matches no player exactly and was read as {chosen.name}, the only near spelling on record - spell the name exactly to ask about someone else.)"
+    decided("name_reading", note, field="player", before=text, chose=chosen.name, why="near_spelling")
     if note not in notes:
         notes.append(note)
 
@@ -1558,6 +1561,7 @@ def _note_name_reading(text: str, chosen: Entity, others: list[Entity], season: 
     whom, they = ("him", "he") if len(others) == 1 else ("one of them", "they")
     how = f"name a season {they} played" if named_in_full else f"use the full name, or name a season {they} played,"
     note = f"({text!r} was read as {chosen.name}, the only match who played in {season - 1}-{season % 100:02d}. {also} also {verb} - {how} to ask about {whom}.)"
+    decided("name_reading", note, field="player", before=text, chose=chosen.name, instead_of=[c.name for c in others], why="namesake" if named_in_full else "only_active", season=season)
     if note not in notes:
         notes.append(note)
 

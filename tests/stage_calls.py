@@ -145,7 +145,7 @@ def install(directory: Path) -> None:
         TEMPLATES[intent] = wrapped
 
     def as_snapshot(answer: Any, args: tuple[Any, ...]) -> Any:
-        return snapshot(args[0].reading, answer, unanswered=args[0].unanswered)
+        return snapshot(args[0].reading, answer, unanswered=args[0].unanswered, unsaid=args[0].unsaid)
 
     ask = agent_module.Agent.ask
     agent_module.Agent.ask = _recording(out, "Agent.ask", ask, as_snapshot)  # type: ignore[method-assign]

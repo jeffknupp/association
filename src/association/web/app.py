@@ -119,6 +119,25 @@ class DecisionResponse(BaseModel):
     before: Any
     after: Any
     reason: str
+    kind: str = ""
+    """One of :data:`association.query.notes.DECISION_KINDS` for a decision
+    the answer states; empty for one that is the trace's alone.
+
+    .. versionadded:: 5.0.0
+    """
+    instead_of: list[Any] = []
+    facts: dict[str, Any] = {}
+
+
+class AnswerNoteResponse(BaseModel):
+    """One thing the answer says about its data, the wire form of
+    :class:`~association.query.notes.Note`: a kind and its facts.
+
+    .. versionadded:: 5.0.0
+    """
+
+    kind: str
+    facts: dict[str, Any]
 
 
 class AnswerResponse(BaseModel):
@@ -156,6 +175,12 @@ class AnswerResponse(BaseModel):
     the question and override of a routed field, in the order made.
 
     .. versionadded:: 4.4.0
+    """
+    notes: list[AnswerNoteResponse] = []
+    """What the answer says about its data beside the numbers, as kinds and
+    facts; the sentences are in ``text``.
+
+    .. versionadded:: 5.0.0
     """
 
 
@@ -281,6 +306,7 @@ def as_response(answer: Answer, history_file: str | None = None) -> AnswerRespon
         ),
         history_file=history_file,
         decisions=[DecisionResponse(**d.as_dict()) for d in answer.decisions],
+        notes=[AnswerNoteResponse(**n.as_dict()) for n in answer.notes],
     )
 
 

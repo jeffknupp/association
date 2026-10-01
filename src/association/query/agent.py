@@ -42,6 +42,8 @@ from .entities import (
 )
 from .history import DEFAULT_HISTORY_DIR, RunHistory, echo_to_stderr
 from .models import DEFAULT_ROUTER_MODEL
+from .notes import collect as collect_remarks
+from .notes import unsaid
 from .reading import Reading, Scope, ScopeError
 from .refusals import MIN_QUESTION_WORDS, by_question, too_short, unanswerable
 from .router import Route, RouterUnavailable
@@ -140,6 +142,12 @@ class Agent:
         #:
         #: .. versionadded:: 5.0.0
         self.reading: Reading | None = None
+        #: The kinds of the remarks written for the last question whose
+        #: sentence did not reach its answer (:func:`association.query.notes.unsaid`):
+        #: a caveat computed and then dropped. Empty when every one was said.
+        #:
+        #: .. versionadded:: 5.0.0
+        self.unsaid: list[str] = []
         self.trace = trace
         #: The warehouse, read-only and cut off from the disk
         #: (:func:`~association.query.connection.connect_read_only`).
@@ -190,6 +198,7 @@ class Agent:
         """
         history = RunHistory(self.verbose, self.history_dir, sink=self.trace)
         self.reading = None
+        self.unsaid = []
         recorded = ""
         answer: Answer | None = None
         # "This season" is the latest one the warehouse has games for, not
@@ -200,8 +209,13 @@ class Agent:
         if on_record is not None and on_record < calendar_season():
             history.log(f"  -> (decision) default season: {on_record} (the calendar's {calendar_season()} has no games on record)")
         try:
-            with season_on_record(on_record):
+            # Every remark written on the way - a caveat, a stated default, a
+            # definition - recorded as a kind and its facts beside the
+            # sentence it stays in (query/notes.py; ROADMAP.md, Phase 0).
+            with season_on_record(on_record), collect_remarks() as remarks:
                 answer = self._ask_inner(question, history, route)
+            answer = replace(answer, notes=tuple(remarks.notes), decisions=(*answer.decisions, *remarks.decisions))
+            self.unsaid = unsaid(remarks, answer.text)
             recorded = answer.text
         except Exception:
             recorded = "EXCEPTION:\n" + traceback.format_exc()

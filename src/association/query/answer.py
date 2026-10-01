@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 from association.query.decisions import Decision
+from association.query.notes import Note
 
 AnsweredBy = Literal["fast", "refused"]
 """Whether the question was answered, or refused with no reading of it.
@@ -139,5 +140,16 @@ class Answer:
     #: question and override of a routed field, as values
     #: (:class:`~association.query.decisions.Decision`), in the order made.
     #:
+    #: A decision the answer states - a name read as one player, a season
+    #: redirected - is here too, with its ``kind``
+    #: (:func:`association.query.notes.decided`).
+    #:
     #: .. versionadded:: 4.4.0
     decisions: tuple[Decision, ...] = ()
+    #: What the answer says about its data beside the numbers - a game with
+    #: no box score, a table's floor, what a column means - each a kind and
+    #: its facts (:class:`~association.query.notes.Note`), in the order
+    #: written. The sentences themselves are in ``text``.
+    #:
+    #: .. versionadded:: 5.0.0
+    notes: tuple[Note, ...] = ()

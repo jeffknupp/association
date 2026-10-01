@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from association.query.notes import decided, note
 from association.query.player_games import BOTH_SEASON_TYPES
 from association.query.templates.common import _period_label
 
@@ -201,7 +202,8 @@ def _grouped_sentence(q: Query, out: dict[str, Any]) -> str:
         return f"No games for {who}{where} in the {span}."
     head = f"{who}{where}, {span}{_predicates(q)}, by {q.group}"
     if q.measures:
-        head += f" ({LABELS.get(q.measures[0], q.measures[0])} {'per game' if q.aggregate == 'per_game' else q.aggregate}" + (f", minimum {q.minimum_games} games" if q.minimum_games else "") + ")"
+        minimum = decided("minimum", f", minimum {q.minimum_games} games", field="minimum", chose=q.minimum_games, of="games") if q.minimum_games else ""
+        head += f" ({LABELS.get(q.measures[0], q.measures[0])} {'per game' if q.aggregate == 'per_game' else q.aggregate}" + minimum + ")"
     if q.group == "season" and q.limit and len(rows) >= q.limit:
         # The span names the whole career; the rows are its newest N (the
         # limit cut them - core._compile_grouped), which the heading says.
@@ -282,7 +284,7 @@ def _team_run_sentence(q: TeamQuery, result: TeamResult, span: str) -> str:
     lines = []
     for r in result.runs:
         whose = f" ({r['team_id']}, {r['season']})" if result.team is None else ""
-        lines.append(f"  {r['length']} games, {r['first_day']} to {r['last_day']}{whose}" + (" (still going)" if r.get("open") else ""))
+        lines.append(f"  {r['length']} games, {r['first_day']} to {r['last_day']}{whose}" + (note("still_open", " (still going)") if r.get("open") else ""))
     return f"{who}{result.narrowed_text}, {span} - longest run of games {what}:\n" + "\n".join(lines)
 
 
@@ -298,7 +300,7 @@ def _run_sentence(q: Query, out: dict[str, Any]) -> str:
     what = ("won" if value else "lost") if name == "won" else f"{LABELS.get(name, name)} {op} {value}"
     if not rows:
         return f"No run of games {what} for {who}{where} in the {span}."
-    lines = [f"  {r['length']} games, {r['first_day']} to {r['last_day']}" + (" (still going)" if r.get("open") else "") for r in rows]
+    lines = [f"  {r['length']} games, {r['first_day']} to {r['last_day']}" + (note("still_open", " (still going)") if r.get("open") else "") for r in rows]
     return f"{who}{where}, {span} - longest run of games {what}:\n" + "\n".join(lines)
 
 
