@@ -82,6 +82,24 @@ fails rather than drifts.
   - **A boundary that moves is recorded on both sides first.** A phase
     that replaces `compose.answer` adds the new boundary to
     `tests/stage_calls.py` before it deletes the old one.
+- **A word the reading does not depend on is counted, and a number among
+  them is a bug.** `scripts/claims_ledger.py run` reads each recorded
+  question whole and again with each content word deleted (no model, about
+  seven minutes), and reports the words whose deletion leaves the reading
+  and the planned query unchanged. It measures from outside the reader, so
+  the count means the same before and after the reader is replaced.
+  Baseline at `011091f`: 679 of 2,415 content words in 390 of 628
+  questions, most of them words that restate the shape ("average",
+  "record", "stats"). Eleven questions had an unread NUMBER, and three of
+  those were fluent answers to a broader question (`ISSUES.md`). After a
+  reader change, run it and read the unread numbers first; the count may
+  not grow. It is blind to a word only the model could have dropped, and
+  it overcounts a word a rule matched and did not need ("games" in "last
+  10 games").
+- **The target types are `ROADMAP-TYPES.md`**, a draft until Jeff has
+  reviewed it: the Reading's typed filters, the Measure, the Query, the
+  Result, five shapes, about 25 note kinds. A type is declared in code by
+  the phase that first uses it, not before.
 - **Every step deletes the path it replaces, in the same change.** No
   dispatcher between an old and a new implementation outlives its slice;
   that is how the middle got half-ported.

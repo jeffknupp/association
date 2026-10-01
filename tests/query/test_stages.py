@@ -18,7 +18,7 @@ from association.query.answer import Answer, Artifact, Timing
 from association.query.decisions import Decision
 from association.query.reading import Reading, Scope
 from association.query.router import Route
-from association.query.stages import STAGES, WORDING, Difference, differences, plain, snapshot
+from association.query.stages import STAGES, WORDING, Difference, differences, plain, read_stages, snapshot
 from association.query.subject import Subject
 from association.query.templates.common import TemplateResult
 
@@ -61,6 +61,13 @@ def test_no_stage_record_holds_the_questions_text() -> None:
     record = _snapshot()
     assert QUESTION not in json.dumps(record["reading"]) and QUESTION not in json.dumps(record["query"])
     assert "evidence" not in record["reading"]["subject"]
+
+
+def test_the_reading_and_query_records_can_be_taken_without_an_answer() -> None:
+    """What ``scripts/claims_ledger.py`` compares: the same two records a
+    snapshot holds, for a caller that stops before the answer."""
+    record = _snapshot()
+    assert read_stages(_reading()) == {"reading": record["reading"], "query": record["query"]}
 
 
 def test_a_question_nothing_read_has_no_reading_or_query() -> None:

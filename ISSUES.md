@@ -46,6 +46,55 @@ before that commit needs re-checking against the current warehouse.
 
 ## P1: wrong answer
 
+### Two seasons named before the team are dropped: "2024 and 2025 Knicks record by month" answers 2026
+- **Found:** 2026-09-30, the review of `ROADMAP-TYPES.md` (an Opus agent over the stage snapshot of the 628 recorded questions at `7f6425b`); the answers quoted were re-read from the snapshot.
+- **Evidence:** the reading's scope holds no `season`, `since` or `until` (`{'season_type': 2, 'split': 'month', 'team': 'New York Knicks'}`) and the answer is "The New York Knicks, record by month, the 2026 regular season". The same words in another order ("knicks record by month 2024 2025") read `since: 2024, until: 2025` and answer both seasons.
+- **User sees:** a by-month record for a season he did not ask about; the season is printed.
+- **Next step:** the season reader takes "N and M" before the subject as it does after it (`season_text`); a case in `tests/query/test_parser.py`.
+
+### A number the question states is dropped and a broader question answered: three paraphrases the unread-words ledger found
+- **Found:** 2026-09-30, `scripts/claims_ledger.py` over the 628 recorded
+  questions at `011091f` (the first run of the instrument: 11 questions
+  have a number the reading does not depend on; these three are answered
+  fluently without it).
+- **Evidence:** (1) "since 2000-01, how many games have players recorded
+  33 points, 13 rebounds, 10 assists, 2 blocks, and 2 steals?" reads
+  `leaderboard` with `stat: rebounds` and answers a rebounds-per-game
+  ranking since 2001 (Andre Drummond 11.9 ...); none of the five lines is
+  read. The yardstick's own wording of it (F161, "players with 33 point
+  and 13 rebound ... games since 2000-01") is answered correctly. (2) "2
+  threes in games Jamal Murray played including playoffs" answers his 3.2
+  threes per game over 81 games; the 2 is not read. (3) "18-year-old
+  Lebron's ppg total" answers "20.9 points per game in 60 games in the
+  2026 regular season"; the age is not read, and `refusals` has a named
+  refusal for an age that did not fire on this wording.
+- **User sees:** a fluent answer to a broader question than the one
+  asked, with nothing saying a number was set aside.
+- **Next step:** reader fixes, one per wording: "N <stat>, N <stat> ...
+  and N <stat>" joined by commas reads as lines the way "and"-joined ones
+  do; a hyphenated age ("18-year-old") reaches the age refusal. The
+  structural answer is `ROADMAP.md` contract 2 (a content word nothing
+  claimed is recorded, measured, then said or refused); re-run the ledger
+  after each reader change and read its unread NUMBERS first.
+
+### A quarter named as a vague condition is read as the period asked about: "jokic assists per game after a big first quarter" answers his first-quarter assists
+- **Found:** 2026-09-30, checking the period condition (ROADMAP step 2);
+  re-verified offline the same day at `011091f`.
+- **Evidence:** "jokic assists per game after a big first quarter"
+  (normalizer reply `jokic` / `assists`) reads `period_split` with
+  `period: 1` and answers "Nikola Jokic had 240 assists in the 1st quarter
+  over 65 games of the 2026 regular season, averaging 3.7." The question
+  asks for his whole-game assists in games whose first quarter was "big".
+  `parse.read_period_condition` reads a condition only where a number
+  names the line ("after making one three in the first quarter"), and
+  `refusals._period_as_condition` did not fire: "big" names no line.
+- **User sees:** a fluent answer to a different question.
+- **Next step:** "after|following|when ... <quarter>" with no line is a
+  condition nothing can hold: refuse it naming the missing number, rather
+  than read the quarter as the period. A reader fix; goes with the read
+  stage's work (`ROADMAP.md`, Phase 1) unless it shows up in the wild
+  first.
+
 ### "single game" before a boolean stat is read as a single-game high: "who has the most single game triple doubles" answers a single-game high, never the triple-double leaderboard
 - **Found:** 2026-09-28, a probe the #260 fix agent invented (in no corpus) and reported; re-measured by the lead on the merged tree (`95c8a21`, the main warehouse, the parser with no model).
 - **Evidence:** `parse.read_route` reads "who has the most single game triple doubles" (and "... this season") as parent `leaderboard`, then the `single_game_high` child (`subject._CHILD_GRAMMARS`, the `\bsingle[- ]game\b` alternative #260 added): `intent=single_game_high kind=everyone slots={'stat': 'triple_double', 'season_type': 2}`, reason "the words 'single game' name single_game_high". "who has the most triple doubles" and "most triple doubles in a single season" stay `leaderboard`. A triple-double is a boolean measure (`compose.core.BOOLEAN_MEASURES`): "single game" here modifies the stat - every triple-double is one game's - not the question's shape, and a league-wide single-game high of a boolean has nothing to rank by. Through the agent with the route as read (answered_by=fast intent=single_game_high): "every player, 2026 regular season with a triple-double - top 3 by points:   2025-12-25  Nikola Jokic     vs MIN  W  points 56  minutes 43  rebounds 16  assists 15   2025-11-10  Cade Cunningham  vs WSH  W  points 46  minutes 45  rebounds 12  assists 11   2025-12-18  Luka Doncic      @ UTAH W  points ".
@@ -214,6 +263,24 @@ those were found.
 - **GitHub:** #270
 
 ## P2: misleading or incomplete
+
+### In the off-season "last season" reads the season before the one just finished: "how many points did luka average last season" answers 2024-25 on 2026-09-30
+- **Found:** 2026-09-30, with the season-rollover fix; re-verified offline
+  the same day at `011091f`.
+- **Evidence:** with the date pinned to 2026-09-30, "how many points did
+  luka average last season" reads `season: 2025` and answers "Luka Doncic
+  averaged 28.2 points per game in 50 games in the 2025 regular season."
+  "This season" is 2026 (the latest with games on record), so "last
+  season" is one before it. Between the last game of a season and the
+  first of the next, a person saying "last season" most likely means the
+  one that just ended (2025-26). The answer names the season it read, so
+  the default is visible and "2025-26" reaches the other.
+- **User sees:** a correct figure for a season one earlier than meant,
+  with the season stated.
+- **Next step:** Jeff's call: whether, while the latest season on record
+  is over (no game in N days, or the calendar's season is ahead of it),
+  "last season" reads the latest season on record and says so. Then one
+  rule in `season_text`, with the answer stating which season it read.
 
 ### A shot chart for a name two active players share is refused as naming nobody: "Plot Curry's threes from last season" says "shot_chart needs a player name"
 - **Found:** 2026-09-30, roadmap review (agent B), on live parser22 and an
@@ -536,6 +603,7 @@ those were found.
   Priority within this group should follow AGENTS.md's own ordering (a
   wrong number > a missing one > a missing label), which was not assessed
   per-item here.
+- **Also (2026-09-30, the types review):** "nba team with least playoff wins since 2022" and "NBA team with the fewest playoff wins since 2022" rank by win percentage ("worst record first"): New Orleans 2-8 is 4th and Utah 2-4 is 8th though they tie on wins.
 - **GitHub:** #203
 
 ### Two callers sharing one ollama instance corrupt each other's router output; ambient CPU load alone does not
@@ -2274,6 +2342,90 @@ those were found.
 - **Source:** ours.
 - **GitHub:** #271
 
+### A player's advanced stat in one 2013-2018 season is refused naming the wrong cause, with a ranking's caveat appended
+- **Found:** 2026-09-30, the notes inventory for `ROADMAP-TYPES.md` (an Opus agent reading `011091f`; reported, not re-verified).
+- **Evidence:** `templates/players.py:1419-1423` says the stat "is computed from box scores, which start in 1994" where the value is NULL because that season's box scores are empty; `coverage_caveat` then appends `nba/coverage.py:250-257` ("missing from this ranking entirely") to a one-player lookup.
+- **User sees:** a refusal that sends him to the wrong fact, and a note about a ranking he did not ask for.
+- **Next step:** reproduce with a Chicago or New Orleans player's usage in 2015; name the empty box scores as the cause.
+
+### A coverage caveat is the first declared table's, whoever the answer is about: a player's 2001 playoff quarter gets the team-worded games note
+- **Found:** 2026-09-30, the notes inventory for `ROADMAP-TYPES.md` (an Opus agent reading `011091f`; reported, not re-verified).
+- **Evidence:** `nba/coverage.py:517` returns the first source's note; `period_split` and `period_leaderboard` list `shot_chart`, `games`, ... (`templates/common.py:553,555`), so a 2001 postseason player answer says "Philadelphia's run reads 16 games ... a series can look shorter" - wording the module's own comment (`coverage.py:192-193`) calls wrong for a player. Same family as "A composed team season total carries a caveat about a different table".
+- **User sees:** a caveat about a different table than the one his number came from.
+- **Next step:** the caveat goes with the relation the answer read (`ROADMAP.md`, a `partial_season(table, season)` note from RUN), not with the intent.
+
+### The unseen-games note names 2013-2018 as the cause whatever seasons the games are in
+- **Found:** 2026-09-30, the notes inventory for `ROADMAP-TYPES.md` (an Opus agent reading `011091f`; reported, not re-verified).
+- **Evidence:** `conditions.py:389` always says "ESPN lacks about one game in eight from 2013 to 2018"; over the filled view those seasons are mostly rebuilt (`conditions.py:321-326`), so the unseen games may be elsewhere. Needs a measurement: which seasons the unseen games of a recorded split fall in.
+- **User sees:** a cause that may be false for his span.
+- **Next step:** measure over the corpus's splits; say the seasons the unseen games are in.
+
+### A shot chart emptied by a shot-value filter says the player "last appears in" the season asked about
+- **Found:** 2026-09-30, the notes inventory for `ROADMAP-TYPES.md` (an Opus agent reading `011091f`; reported, not re-verified).
+- **Evidence:** `templates/shots.py:268-277` appends the defaulted-season redirect whenever nothing was drawn; `_season_redirect` ignores the shot-value filter (`templates/common.py:2425`), so a player with 2026 shots and no 2026 threes can be told "He last appears in 2026 ... name one".
+- **User sees:** a redirect that contradicts itself.
+- **Next step:** reproduce with a center's threes this season; redirect only when the season holds no shots at all.
+
+### A streak in a finished season is marked "still going at the last game on record"
+- **Found:** 2026-09-30, the notes inventory for `ROADMAP-TYPES.md` (an Opus agent reading `011091f`; reported, not re-verified).
+- **Evidence:** `open` means the run reached the partition's last game (`conditions.py:811,835`). `_single_streak` guards on the current season (`templates/splits.py:1560`); `templates/splits.py:1526` and `compose/sentence.py:285,301` do not.
+- **User sees:** "still going" beside a streak that ended with its season.
+- **Next step:** reproduce with a league-wide streak ranking for 2024; guard the two unguarded writers.
+
+### The game-list caveat says a narrowed record "is off by those games"
+- **Found:** 2026-09-30, the notes inventory for `ROADMAP-TYPES.md` (an Opus agent reading `011091f`; reported, not re-verified).
+- **Evidence:** `templates/teams.py:967,803`: `_game_list_gaps` ignores opponent, venue, month, calendar and game_n, so a record against one opponent or in one month in a season whose list is short says "this tally is off by those games" though the missing games may be none of the ones counted.
+- **User sees:** a caveat claiming an error the answer may not have.
+- **Next step:** say the season's list is short by N games and that they may fall outside the narrowing, or check whether they do.
+
+### A postseason NetPoints answer prints the whole season's play-type split under a postseason label
+- **Found:** 2026-09-30, the notes inventory for `ROADMAP-TYPES.md` (an Opus agent reading `011091f`; reported, not re-verified).
+- **Evidence:** the season fingerprint table has no season type (`templates/netpoints.py:98-102`; `fingerprint.py:457,979-980`); `templates/netpoints.py:113,331` label the answer "{season} postseason" and `fingerprint.py:853` captions the plot "{season} season". Nothing says the split is the whole season's.
+- **User sees:** a play-type split labeled as the playoffs' that is not.
+- **Next step:** confirm against a playoff NetPoints question; say the split covers the whole season, or refuse the split for a postseason.
+
+### A team's record by month silently drops seasons under the games floor, and never carries the gap note
+- **Found:** 2026-09-30, the notes inventory for `ROADMAP-TYPES.md` (an Opus agent reading `011091f`; reported, not re-verified).
+- **Evidence:** `templates/teams.py:1179-1180` skips seasons below the floor with no remark; the by-month tables (`teams.py:1134-1193`) never call `_game_list_gaps`.
+- **User sees:** a span of months that leaves seasons out without saying so.
+- **Next step:** reproduce with an all-time by-month record; say which seasons the table starts from.
+
+### A period answer can apply a calendar narrowing or a companion condition without saying it
+- **Found:** 2026-09-30, the notes inventory for `ROADMAP-TYPES.md` (an Opus agent reading `011091f`; reported, not re-verified).
+- **Evidence:** the period sentence states venue, starter, teammates, line, date and series game (`templates/games.py:2208-2235`); `STATED_SCOPING` lets `situation` and `conditions` through for `period_split` (`compose/present.py:665`; `templates/common.py:293-294,205-206`). Medium confidence: needs a question that carries one.
+- **User sees:** a quarter's figure over fewer games than the sentence describes.
+- **Next step:** try "jokic first quarter points on back to backs" and a period question with a companion; add the phrase or step aside for the compiler's sentence.
+
+### A dated by-quarter answer takes its accuracy caveat from the wrong season
+- **Found:** 2026-09-30, the notes inventory for `ROADMAP-TYPES.md` (an Opus agent reading `011091f`; reported, not re-verified).
+- **Evidence:** with a date the refusal is skipped (`compose/present.py:231-234`) and the caveat reads `scope.season or current_season()` (`templates/games.py:2114,2149`), where `_period_split_from` re-reads the game's real season (`games.py:1814-1821`).
+- **User sees:** an agreement percentage for a season other than the game's.
+- **Next step:** reproduce with a by-quarter question on a 2019 date; pass the game's season.
+
+### A league-wide compiled answer carries no box-score caveat
+- **Found:** 2026-09-30, the notes inventory for `ROADMAP-TYPES.md` (an Opus agent reading `011091f`; reported, not re-verified).
+- **Evidence:** `compose/core.py:899-900` reads the notes only for a named player; the `threshold_count` presenter does say them league-wide (`templates/players.py:259`).
+- **User sees:** a league-wide count or list over 2013-2018 with nothing saying games are empty or rebuilt.
+- **Next step:** measure on "most 40 point games 2013-2018" both ways; the note belongs to the relation's read, not to one presenter.
+
+### A surname that is also a word loses the subject, and the refusal names a slot: "since 1/26/20, what are the towns home records including playoffs against the spurs?"
+- **Found:** 2026-09-30, the review of `ROADMAP-TYPES.md` (an Opus agent over the stage snapshot of the 628 recorded questions at `7f6425b`); the answers quoted were re-read from the snapshot.
+- **Evidence:** the subject reads as `everyone` ("towns" lowercase after "the"), the intent as `leaderboard`, and the answer is "leaderboard: the relation cannot honor ['season_type_unstated'] - it would answer for a different span than was asked." The wording "towns home rec including playoffs since 1/26/20 vs spurs" answers.
+- **User sees:** a refusal that names an internal slot, about a question whose player was never read.
+- **Next step:** the wrong cause is #281's shape (a refusal for an unhonored narrowing prints identifiers); the dropped subject is the reader's.
+
+### "consecutive" is read as a streak: "Display Luka's average assists for each consecutive year" is refused as a streak with no threshold
+- **Found:** 2026-09-30, the review of `ROADMAP-TYPES.md` (an Opus agent over the stage snapshot of the 628 recorded questions at `7f6425b`); the answers quoted were re-read from the snapshot.
+- **Evidence:** the parser's decision is "the words 'consecutive' name streak", `kind: win` is written with nothing in the question naming a win, and the answer is "streak: a streak of a stat needs both a known stat and a positive threshold, got 'assists'/None." The question is a history by season.
+- **User sees:** a refusal about a streak he did not ask for.
+- **Next step:** "each/every consecutive year|season" is a history; a case in `tests/query/test_subject.py`.
+
+### A ranking in a player's Nth season answers the current season only: "Most points in 15th season played"
+- **Found:** 2026-09-30, the review of `ROADMAP-TYPES.md` (an Opus agent over the stage snapshot of the 628 recorded questions at `7f6425b`); the answers quoted were re-read from the snapshot.
+- **Evidence:** answers "every player in their 15th season, 2026 regular season, by player (points per game, minimum 20 games)" - Jimmy Butler 20.0. The question reads as all-time (the most points anyone scored in his 15th season). The season is stated, and no wording is offered that reaches every season.
+- **User sees:** this season's players in their 15th year, where the best 15th seasons ever were asked for.
+- **Next step:** Jeff's call on the default (a `season_n` ranking with no season named reads every season); possibly known.
+
 ## P3: refusal or gap
 
 ### The planner lets five player cells through to a team's readers on trust, with no test per cell
@@ -2942,16 +3094,25 @@ those were found.
   index (new roadmap, Phase 1).
 - **GitHub:** #287
 
-### Research: the blind score is not computed from the run it names, and the golden harness keys on routes and intents
-- **Found:** 2026-09-30, roadmap reviews (both agents).
-- **Evidence:** `~/association-research/yardstick-v2/score_blind.py` reads
-  the fixed grade files plus `grade_overrides.json` and never opens
-  `live_<run>.jsonl`, so a run with ungraded moved answers still prints a
-  score. `golden/golden_v2.py` and `cmp_routes.py` parse the `(router)
-  intent=... slots=` trace line, which the new roadmap removes.
-- **User sees:** nothing; a headline number can be stale without saying so.
-- **Next step:** the scorer takes the run file and refuses while a moved
-  answer is ungraded; the harnesses move onto per-stage snapshots.
+### Research: the golden harness and the preview script replay recorded routes, which go with `Route`
+- **Found:** 2026-09-30, roadmap reviews (both agents); rewritten the same
+  day to what remains.
+- **Evidence:** `~/association-research/golden/golden_all.py` and
+  `scripts/preview_answers.py` (`--from-live`, `--from-history`) parse the
+  `(router) intent=... slots={...}` trace line and answer it through
+  `Agent.ask(route=...)`. `ROADMAP.md` Phase 3 deletes `Route` and the
+  intent. (Done 2026-09-30: `score_blind.py` reads the run it scores and
+  the one before it, and refuses while a moved answer has no grade for
+  the run, a wording is missing or a file is absent - enforced for runs
+  after parser22, watched to refuse; `run_live.py` records each answer's
+  stage snapshot, and "moved" is decided from values where both runs have
+  one; the rehearsal and the hold-out comparison are replaced by
+  `scripts/stage_snapshots.py`.)
+- **User sees:** nothing.
+- **Next step:** before Phase 3 deletes `Route`, the preview gallery
+  answers recorded QUESTIONS with their recorded normalizer replies (as
+  the stage snapshots do), and the golden harness is retired for the
+  snapshots.
 - **GitHub:** #288
 
 ### 2018's `teamTurnovers` is kept though it is not the game's
@@ -4122,3 +4283,21 @@ those were found.
   here why the raw table stays.
 - **Source:** DATA.md, "`games` carries placeholder, duplicate and phantom rows"
 - **GitHub:** #73
+
+### Caveats in the answer's text that never reach `data["notes"]`, and remarks glued onto refusals
+- **Found:** 2026-09-30, the notes inventory for `ROADMAP-TYPES.md` (an Opus agent reading `011091f`; reported, not re-verified).
+- **Evidence:** thirteen groups (the inventory, section 5.1; `~/association-research/stages/notes-inventory-011091f.md`): every caveat of `single_game_high` and narrowed `player_stat`, both charts, the season-line redirect, the combined team record, the BPI headline remarks, the compiler's team path (`compose/__init__.py:85-99` has no `notes`); `record_when` bundles three or four remarks into one string (`templates/splits.py:1112,1279`). The coverage caveat and name readings are appended to whatever came back, refusals and clarifications included (`agent.py:431-434,529-532`).
+- **User sees:** on the web page, which renders from `data`, fewer caveats than the CLI's text holds.
+- **Next step:** the typed notes of `ROADMAP.md` Phase 0 (every writer records a kind and facts) replace `data["notes"]`; do not patch the thirteen one by one.
+
+### A list of matched names is printed as a Python list, and four small wording faults
+- **Found:** 2026-09-30, the notes inventory for `ROADMAP-TYPES.md` (an Opus agent reading `011091f`; reported, not re-verified).
+- **Evidence:** `shotchart.py:418` and `fingerprint.py:951` interpolate the list itself ("['Seth Curry', ...]"); `fingerprint.py:890` joins it. "({A}, {B} has no ...)" at `templates/players.py:1924`. The box-score floor is "the 1993-94 season" in `templates/common.py:2534` and "the 1994 regular season" in `conditions.py:269`. A history `limit` over 20 silently becomes 4 (`templates/players.py:813`). `render_shot_chart` and `render_fingerprint` (`shotchart.py:186`, `fingerprint.py:1035`) have no caller in `src`, only tests.
+- **User sees:** brackets and quotes in a chart's note; otherwise nothing wrong, only uneven.
+- **Next step:** join the names; the rest goes with each kind's one phrase (Phase 2).
+
+### Numbers an answer states that are only in its text, so no comparison of values can see them move
+- **Found:** 2026-09-30, the review of `ROADMAP-TYPES.md` (an Opus agent over the stage snapshot of the 628 recorded questions at `7f6425b`); the answers quoted were re-read from the snapshot.
+- **Evidence:** the shot chart's made/attempted ("10/22 made"); a single game's NetPoints possessions and win probability added; a career's true-shooting attempts; a matchup's "met 27 times in all, 4 of them with ..."; the compiled team total's playoff addendum ("78 more over a 7-game playoff run", `compose/team.py:297`). None is in `data`, so `scripts/stage_snapshots.py compare --values-only` would pass a rewording that dropped or changed one. Also in the snapshot: a combined line is carried twice in the nine multi-line questions (`stat`/`threshold` say `assists`/20 for "20+ point 5+ assist" while `above` holds both lines) - harmless today, a trap when the five carriers of a line become one type.
+- **User sees:** nothing today.
+- **Next step:** each moves into `data` (then the Result) before the Phase 2 slice that rewords its answer; `ROADMAP-TYPES.md` lists them.

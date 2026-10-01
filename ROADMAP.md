@@ -1,10 +1,10 @@
 # Roadmap
 
-**Status: ACCEPTED 2026-09-30, after two independent reviews; Phase 0 not
-started.** The reviews corrected the measurements below and changed the
-phases. Jeff's decisions are recorded under "Decisions"; one is still
-open (the season type a question that names none reads) and does not
-block Phase 0.
+**Status: ACCEPTED 2026-09-30, after two independent reviews; Phase 0 in
+progress** (see "Phase 0, as it stands"). The reviews corrected the
+measurements below and changed the phases. Jeff's decisions are recorded
+under "Decisions"; one is still open (the season type a question that names
+none reads) and does not block Phase 0.
 
 The previous roadmap is `ROADMAP-2026-09.md` (archived verbatim; code and
 commits that cite "plan item N" or "ROADMAP step N" mean that file).
@@ -160,7 +160,10 @@ moved one is graded against the key, and each new sayer is reviewed once.
   The research harnesses move onto them, off route replay and the trace
   line, before anything they depend on is deleted.
 - The claims ledger as instrumentation: the count of unclaimed content
-  words over the corpus becomes a baseline.
+  words over the corpus becomes a baseline. Measured from outside the
+  reader, so the number means the same after the reader is replaced: a
+  content word is unread when deleting it leaves the reading and the
+  planned query unchanged (`scripts/claims_ledger.py`).
 - The target types written down and reviewed: the Reading's typed filters,
   the Result, the measure type, and the closed set of shapes. Shapes are
   named here, before any sayer is written, so "shape" does not become
@@ -168,6 +171,19 @@ moved one is graded against the key, and each new sayer is reviewed once.
 - The import-linter layers and the ratchets, with today's violations
   allowlisted.
 - The trace line and the stale docstrings corrected.
+
+**Phase 0, as it stands (2026-09-30).**
+
+| Item | State |
+| --- | --- |
+| Inputs pinned | done: the snapshots, the ledger, the suite and twelve research harnesses pin `ASSOCIATION_TODAY` |
+| Stage snapshots, both populations | done: `scripts/stage_snapshots.py`, `tests/stage_calls.py`. Two runs of one tree are identical (628 of 628 questions, text included; 1,363 of 1,363 unit-test calls); a perturbed token fails each at the stage it was made in |
+| Research harnesses off the trace line | done for the rehearsal, the hold-out and the scorer (it reads the run it scores and refuses on an ungraded moved answer); the golden harness and the preview script still replay routes (#288, before Phase 3) |
+| Unread content words | done: `scripts/claims_ledger.py`. Baseline at `011091f`: 679 of 2,415 content words (28.1%) in 390 of the 628 questions do not move the reading when deleted - mostly words that restate the shape ("average", "record", "stats", "game"). Eleven questions have an unread NUMBER; three of those are wrong answers, filed |
+| Import contracts and ratchets | done: three contracts (the reader's nine imports of the answer side listed), `scripts/check_ratchets.py` (50 functions outside the reader take the question, 21 modules execute SQL, 91 private template imports, 9 modules outside the reader import `re`), the 25 intents frozen by a test |
+| Trace line, stale docstrings | done (#284) |
+| Target types | drafted for review: `ROADMAP-TYPES.md` |
+| Every note given a kind where it is emitted | not started: follows the review of the kinds |
 
 **Phase 1 - The read stage becomes a stage.** Small, and before the answer
 side, because it removes the coupling everything else trips on.
@@ -262,7 +278,7 @@ for refusals (a cause, then a phrase).
 | SQL statements the reader issues per question | about 100 | 0 |
 | records between question and answer | 8 | 4 |
 | result shapes, and web renderers | 25 and 22 | one per shape |
-| unclaimed content words over the corpus | measured in Phase 0 | not grown |
+| unread content words over the corpus (`scripts/claims_ledger.py`) | 679 of 2,415; 11 questions with an unread number | not grown; no unread number |
 | stage snapshots, questions and unit-test calls | baseline | identical at the stated tolerance |
 | tests bound to deleted structures | about 1,170 | 0: deleted, or re-seated at a stage |
 | score | 167/175, 156/166 | not lower |

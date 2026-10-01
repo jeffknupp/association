@@ -154,6 +154,17 @@ def _query_record(reading: Reading, mask: Mapping[str, str] | None) -> dict[str,
     return record
 
 
+def read_stages(reading: Reading, *, mask: Mapping[str, str] | None = None) -> dict[str, Any]:
+    """The two records a Reading holds - ``reading`` and ``query`` - as
+    :func:`snapshot` writes them, for a caller that stops before the answer
+    (``scripts/claims_ledger.py``, which asks which of a question's words
+    the reading depends on).
+
+    .. versionadded:: 5.0.0
+    """
+    return {"reading": _reading_record(reading, mask), "query": _query_record(reading, mask)}
+
+
 def snapshot(reading: Reading | None, answer: Answer, *, unanswered: str | None = None, mask: Mapping[str, str] | None = None) -> dict[str, Any]:
     """One question's four records as JSON-ready values. ``reading`` is None
     where the question was refused before anything read it (too short, a
@@ -166,8 +177,7 @@ def snapshot(reading: Reading | None, answer: Answer, *, unanswered: str | None 
     """
     return {
         "question": answer.question,
-        "reading": _reading_record(reading, mask) if reading is not None else None,
-        "query": _query_record(reading, mask) if reading is not None else None,
+        **(read_stages(reading, mask=mask) if reading is not None else {"reading": None, "query": None}),
         "result": plain(answer.data, mask=mask),
         "answer": {
             "text": _masked(answer.text, mask),
