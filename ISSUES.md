@@ -3087,12 +3087,14 @@ those were found.
 - **Evidence:** `_team_record_combined_types` answers each season type through `_team_record_route`, and `_combined_record_result` (`templates/teams.py:416-448`) writes its own heading and keeps only each half's "Note:" tail, found by searching the text (`_extract_note`). So the halves' heading floors ("ESPN's standings carry no home/road split before 1993-94", "the warehouse's game list starts with the 1989 playoffs") and any neutral-site remark are written and never said. The combined answer shows the years each span starts from, with no cause.
 - **User sees:** "from 1993-94" and "from 1989" with nothing saying why the record starts there; where neutral-site games are in the span, home and road halves that do not add up, unexplained.
 - **Next step:** the combined result takes its halves' remarks from the notes each recorded (`query/notes.py`), not from their text; goes with the team shapes' slice (`ROADMAP.md`, Phase 2 (iv)). Until then `stage_snapshots.py remarks` exits 1 on the corpus for these two, which is the check working.
+- **GitHub:** #311
 
 ### A team's splits count blank box-score columns from field-goal attempts alone
 - **Found:** 2026-10-01, closing ROADMAP Phase 0 (a kind on every remark); the splits agent, reading `templates/splits.py:609-613`; reported, not measured.
 - **Evidence:** the count behind "Rebounds, assists, 3-pointers and FG% are missing from N of those games' box scores" tests only `fieldGoalsAttempted IS NULL`. That holds for the wholly empty 2013-18 team rows; but `record_when`'s team branch shows a column can be blank alone (2018 `totalTurnovers` is NULL on rows with a real box score), and a row with attempts and no assists would be averaged with nothing said.
 - **User sees:** possibly an average over fewer games than the table's G column, uncaveated.
 - **Next step:** one query over `team_box_stats`: rows where `fieldGoalsAttempted` is set and `assists`, a rebound column or `threePointFieldGoalsMade` is NULL, by season. If any, count per column.
+- **GitHub:** #312
 
 ## P4: tooling, docs, low impact
 
@@ -4347,3 +4349,4 @@ those were found.
 - **Evidence:** (1) one withheld-stat remark has two wordings ("is not counted from a rebuilt line", `templates/players.py:258`; "is not read from a rebuilt line", `players.py:1779`) and the second carries `label` with no `stat` key, since only the label reaches it from `compose/present.py:531`. (2) "so whether he played is unknown" is said with two or more teammates (`templates/splits.py:1007`). (3) `_team_outlook_missing`'s hint always says "ask about the regular season", whichever snapshot holds the team (`templates/teams.py:1829`). (4) `templates/games.py:1286` and `:1414` bind a local named `note`, which shadows the import: a later wrap inside either function raises `UnboundLocalError` on that path alone. (5) `floor` is used for "Covers his whole career on record" (`templates/shots.py:452`), which says nothing was clipped. (6) a period ranking's minimum records why it was halved and not of what (`games.py:1952-1975`: `most` is only in the sentence). (7) NetPoints' `data["notes"]` restate three facts in other words than the text (`templates/netpoints.py:211-217` against 337, 355, 372); only the text side is recorded. (8) the corpus reaches about half of the 98 writers; the rest are checked by the suite running them and by the source-reading test, not by a recorded answer.
 - **User sees:** a wrong pronoun in (2), a possibly wrong hint in (3); otherwise nothing.
 - **Next step:** each goes when its kind gets its one phrase (`ROADMAP.md`, Phase 2); rename the two locals in (4) with the next change to that file.
+- **GitHub:** #313
