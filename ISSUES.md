@@ -51,6 +51,7 @@ before that commit needs re-checking against the current warehouse.
 - **Evidence:** the subject reading holds both companions (Embiid and Paul George, each `played`) and the scope's `with_player` holds one: the answer is "Philadelphia 76ers with and without Joel Embiid". "this year, what is the Hornets' record when Brandon Miller, Lamelo, and Knueppel play?" answers "with and without Brandon Miller and LaMelo Ball" (Knueppel dropped). Two more wordings of the first ("... are both in the game", "... were in the lineup") are refused with "with_without needs exactly one teammate, got []". The yardstick's own wordings of both questions answer with every teammate.
 - **User sees:** a split for fewer players than the question names, headed with the names it kept.
 - **Next step:** the stage that writes `with_player` reads the names from the subject's companions (one reading), not from its own match on "with ..."; `ROADMAP.md` Phase 1, "the subject is read once", is where this goes, with a case per wording in `tests/query/test_subject.py`.
+- **GitHub:** #310
 
 ### Two seasons named before the team are dropped: "2024 and 2025 Knicks record by month" answers 2026
 - **Found:** 2026-09-30, the review of `ROADMAP-TYPES.md` (an Opus agent over the stage snapshot of the 628 recorded questions at `7f6425b`); the answers quoted were re-read from the snapshot.
