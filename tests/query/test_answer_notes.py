@@ -3,6 +3,8 @@ goes back unchanged, and the kind and facts are kept beside it."""
 
 from __future__ import annotations
 
+import ast
+from datetime import date
 from pathlib import Path
 
 import pytest
@@ -105,3 +107,44 @@ def test_the_answer_carries_what_was_written_for_it_and_the_agent_names_what_was
     monkeypatch.setattr("association.query.compose.answer", lambda ctx, reading, trace=None, declined=None: TemplateResult(data={}, answer="plain"))
     plain = agent.ask("who scored the most points", route=Route.from_slots(intent="leaderboard", slots={"stat": "points"}))
     assert plain.notes == () and agent.unsaid == [] and not [d for d in plain.decisions if d.kind]
+
+
+def test_a_fact_is_a_plain_value_whoever_is_listening() -> None:
+    """An entity or a date handed over as a fact would reach the wire as an
+    object: refused where the writer runs, in any test, not at the first
+    answer served."""
+    with collect() as collected:
+        note("games_unseen", "said", games=5, seasons=(2013, 2018), names={"b", "a"}, by={"season": 2013})
+        decided("name_reading", "said", field="player", before="maxey", chose="Tyrese Maxey", instead_of=("Marlon Maxey",))
+    assert collected.notes[0].facts == {"games": 5, "seasons": [2013, 2018], "names": ["a", "b"], "by": {"season": 2013}}
+    with pytest.raises(TypeError, match="the fact 'day' is a date"):
+        note("games_unseen", "said", day=date(2026, 1, 2))
+    with pytest.raises(TypeError, match="'chose' is a object"):
+        decided("minimum", "said", field="minimum", chose=object())
+
+
+def _remark_calls() -> list[tuple[str, int, str, ast.expr]]:
+    """Every ``note(...)`` and ``decided(...)`` call under ``src``: the
+    file, the line, which of the two, and its first argument."""
+    found: list[tuple[str, int, str, ast.expr]] = []
+    root = Path(notes.__file__).resolve().parents[1]
+    for path in sorted(root.rglob("*.py")):
+        if path.name == "notes.py":
+            continue
+        for node in ast.walk(ast.parse(path.read_text())):
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id in {"note", "decided"} and node.args:
+                found += [(str(path.relative_to(root)), node.lineno, node.func.id, node.args[0])]
+    return found
+
+
+def test_every_remark_in_the_source_names_a_declared_kind() -> None:
+    """A kind is checked when its line runs, and not every line runs under a
+    test: so every call in the source is read here. The kind is a literal
+    (a computed one cannot be checked), a ``note`` names a note kind and a
+    ``decided`` a decision kind."""
+    calls = _remark_calls()
+    assert len(calls) >= 15
+    for where, line, function, kind in calls:
+        assert isinstance(kind, ast.Constant) and isinstance(kind.value, str), f"{where}:{line}: the kind is not a string literal"
+        declared = notes.NOTE_KINDS if function == "note" else notes.DECISION_KINDS
+        assert kind.value in declared, f"{where}:{line}: {function}({kind.value!r}, ...) is not a declared kind"

@@ -141,9 +141,10 @@ def note(kind: str, text: str, /, **facts: Any) -> str:
     """
     if kind not in NOTE_KINDS:
         raise ValueError(f"{kind!r} is not a note kind (association.query.notes.NOTE_KINDS)")
+    held = _values(facts)
     collected = _COLLECTING.get()
     if collected is not None and text.strip():
-        recorded = Note(kind, dict(facts))
+        recorded = Note(kind, held)
         if recorded not in collected.notes:
             collected.notes.append(recorded)
         _remember(collected, kind, text)
@@ -161,13 +162,38 @@ def decided(kind: str, text: str, /, *, field: str, chose: Any, before: Any = No
     """
     if kind not in DECISION_KINDS:
         raise ValueError(f"{kind!r} is not a decision kind (association.query.notes.DECISION_KINDS)")
+    held = _values(facts)
+    typed, chosen, others = _value("before", before), _value("chose", chose), tuple(_value("instead_of", list(instead_of)))
     collected = _COLLECTING.get()
     if collected is not None and text.strip():
-        recorded = Decision("answer", field, before, chose, why, kind=kind, instead_of=tuple(instead_of), facts=dict(facts))
+        recorded = Decision("answer", field, typed, chosen, why, kind=kind, instead_of=others, facts=held)
         if recorded not in collected.decisions:
             collected.decisions.append(recorded)
         _remember(collected, kind, text)
     return text
+
+
+def _values(facts: dict[str, Any]) -> dict[str, Any]:
+    """``facts`` as plain values, checked whoever is listening - so a
+    writer handing over an object is caught by any test that runs it, not
+    by the first answer served."""
+    return {name: _value(name, value) for name, value in facts.items()}
+
+
+def _value(name: str, value: Any) -> Any:
+    """One fact as a plain value: a number, a string, None, or a list or
+    dict of them (a tuple or a set becomes a list). Anything else - an
+    entity, a row, a date - is refused: a fact is what the sentence was made
+    of, as a value a client can read."""
+    if value is None or isinstance(value, (bool, int, float, str)):
+        return value
+    if isinstance(value, (list, tuple)):
+        return [_value(name, each) for each in value]
+    if isinstance(value, (set, frozenset)):
+        return sorted((_value(name, each) for each in value), key=repr)
+    if isinstance(value, dict):
+        return {str(key): _value(name, each) for key, each in value.items()}
+    raise TypeError(f"the fact {name!r} is a {type(value).__name__}, not a plain value: pass its name, its number or its ISO date")
 
 
 def _remember(collected: Collected, kind: str, text: str) -> None:
