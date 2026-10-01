@@ -20,6 +20,7 @@ from association.query.reading import Scope
 from ..entities import Availability, Entity
 from ..leaderboard import SEASON_TOTAL_OF, LeaderboardError, LeaderboardResult, not_a_postseason_copy, resolve_metric, run_career_leaderboard, run_leaderboard
 from ..metrics import EXTRA_FIELD_COLUMNS, LEADERBOARD_METRICS, SEASON_TYPE_LABELS
+from ..notes import decided, note
 from ..player_games import aggregate_sql, rows_sql, scope_without_guard, season_type_clause
 from .common import (
     HISTORY_COLUMNS,
@@ -124,7 +125,8 @@ def _game_span(con: duckdb.DuckDBPyConnection, season: int | None, season_type: 
         return _GameSpan(when=f"in the {kind} since {since}", caption=f"{kind} since {since}", games=f"{kind} games since {since}", since=since, league_note=True)
     began, ended = _seasons_on_record(con, player.id, season_type)
     if isinstance(began, int) and began < floor:
-        preface = f"Box scores here begin in {since}, and {player.name}'s {kind} career began in {_season_label(began)}, so his whole career is not in them. "
+        said = f"Box scores here begin in {since}, and {player.name}'s {kind} career began in {_season_label(began)}, so his whole career is not in them. "
+        preface = note("floor", said, table="box_scores", first=floor, earliest=began, whose=player.name, season_type=season_type, what="career_began_earlier")
         return _GameSpan(when=f"in the {kind} since {since}", caption=f"{kind} since {since}", games=f"{kind} games since {since}", since=since, preface=preface)
     years = f" ({_season_label(began)} through {_season_label(ended)})" if isinstance(began, int) and isinstance(ended, int) else ""
     return _GameSpan(when=f"in his {kind} career{years}", caption=f"{kind} career{years}", games=f"{kind} games", since=since)
@@ -221,7 +223,8 @@ def _empty_note(found: tuple[int, int | None, int | None], name: str | None, con
         return ""
     whose = f"{count:,} of {name}'s games" if name else f"{count:,} {'game' if count == 1 else 'games'}"
     between = f"in {_season_label(first)}" if first == last else f"between {_season_label(first)} and {_season_label(last)}"
-    return f" {whose} {between} {'has' if count == 1 else 'have'} an empty box score in this warehouse, so {consequence}."
+    said = f" {whose} {between} {'has' if count == 1 else 'have'} an empty box score in this warehouse, so {consequence}."
+    return note("games_unseen", said, why="empty_box_score", games=count, first=first, last=last, whose=name)
 
 
 def _threshold_count_notes(
@@ -246,15 +249,17 @@ def _threshold_count_notes(
     player_id = player.id if player is not None else None
     notes: list[str] = []
     if span.league_note:
-        notes.append(f"Box scores begin in {span.since}, so these are not all-time counts: a career that began earlier is counted only from {span.since}.")
+        said = f"Box scores begin in {span.since}, so these are not all-time counts: a career that began earlier is counted only from {span.since}."
+        notes.append(note("floor", said, table="box_scores", first=COVERAGE["player_box_stats"].first_season, what="league_counts"))
     # Only when nothing was counted AND the stat was deliberately withheld: a
     # count of none that names a decision beats one that implies missing data.
     withheld = 0 if (rows and rows[0][1]) or column in REBUILT_STATS else _rebuilt_in_scope(con, season, season_type, player_id)
     if withheld:
-        notes.append(
+        said = (
             f"{withheld:,} of the games in that span were rebuilt from play-by-play, but a {label} is not counted from a rebuilt line: "
             f"rebuilt fouls are wrong in about one game in six, and turnovers in one in thirteen, against one in sixty for points."
         )
+        notes.append(note("stat_withheld", said, games=withheld, stat=column, label=label))
     else:
         empty_note = _empty_note(empty, player.name if player is not None else None, "the count may be low" if player is not None else "these counts may be low")
         if empty_note:
@@ -337,7 +342,8 @@ def _threshold_count_rebuilt_note(rows: list[tuple[Any, ...]], named: bool) -> s
         lead = f"None of {whose} {counted} games has a box score from ESPN" if plural else f"{'That' if named else whose + ' only'} game has no box score from ESPN"
     else:
         lead = f"{rebuilt_shown} of {whose} {counted} games {'have' if plural else 'has'} no box score from ESPN"
-    return f" {lead} - {'those figures are' if plural else 'that figure is'} rebuilt from play-by-play, so treat the count as close rather than exact."
+    said = f" {lead} - {'those figures are' if plural else 'that figure is'} rebuilt from play-by-play, so treat the count as close rather than exact."
+    return note("lines_rebuilt", said, games=rebuilt_shown, total=counted, whose=None if named else rows[0][0], what="counted")
 
 
 def _phrase_threshold_count(rows: list[tuple[Any, ...]], scope: str, when: str, player: str | None) -> str:
@@ -634,7 +640,7 @@ def _leaderboard_show_teams(con: duckdb.DuckDBPyConnection, result: LeaderboardR
     # "team" always makes `fields` non-empty, so `leaderboard` always appends
     # this after a table (never the plain sentence) - a new line, the same
     # way a table's own truncation and box-score notes follow it elsewhere.
-    return "\nTeam is each player's most recent team that season." if traded else ""
+    return note("definition", "\nTeam is each player's most recent team that season.", term="most_recent_team") if traded else ""
 
 
 def _career_leaderboard(con: duckdb.DuckDBPyConnection, metric: str, scope: Scope, fields: list[str]) -> TemplateResult:
@@ -657,7 +663,7 @@ def _career_leaderboard(con: duckdb.DuckDBPyConnection, metric: str, scope: Scop
     label = f"career {result.label.removeprefix('total ')}"
     since = _season_label(result.pool_first_season)
     qualifier = _qualifier(result.min_sample_applied, result.min_sample_column)
-    answer = _phrase_career_leaderboard(result.rows, label, kind, since, qualifier, LEADERBOARD_METRICS[metric].ratio)
+    answer = _phrase_career_leaderboard(result.rows, label, kind, since, qualifier, LEADERBOARD_METRICS[metric].ratio, pool_first=result.pool_first_season)
     return TemplateResult(
         data={
             "question_shape": f"{label}, {kind}, players active since {since}",
@@ -673,13 +679,13 @@ def _career_leaderboard(con: duckdb.DuckDBPyConnection, metric: str, scope: Scop
     )
 
 
-def _phrase_career_leaderboard(rows: list[dict[str, Any]], label: str, kind: str, since: str, qualifier: str, ratio: tuple[str, str] | None) -> str:
+def _phrase_career_leaderboard(rows: list[dict[str, Any]], label: str, kind: str, since: str, qualifier: str, ratio: tuple[str, str] | None, *, pool_first: int | None = None) -> str:
     """Says whose careers, every time. The pool is every player active in
     1993-94 or later, counted over his whole career, and nobody whose career
     ended before it - Kareem Abdul-Jabbar is not in the warehouse at all - so
     presenting it as "all-time" would be the unrepresentative ranking
     nba/coverage.py's second floor exists to refuse."""
-    gap = f"Careers that ended before {since} are not in this warehouse, so this is not an all-time list."
+    gap = note("floor", f"Careers that ended before {since} are not in this warehouse, so this is not an all-time list.", table="season_line", first=pool_first, what="career_pool")
     if not rows:
         return f"No player qualified for {label} in the {kind}{qualifier}. {gap}"
     top = rows[0]
@@ -713,7 +719,8 @@ def _qualifier(min_sample: int | None, column: str | None) -> str:
     board say why it is empty."""
     if not min_sample:
         return ""
-    return f" (minimum {min_sample:,} {MIN_SAMPLE_LABELS.get(column or '', column or '')})"
+    unit = MIN_SAMPLE_LABELS.get(column or "", column or "")
+    return decided("minimum", f" (minimum {min_sample:,} {unit})", field="minimum", chose=min_sample, of=unit, column=column)
 
 
 def _phrase_leaderboard(rows: list[dict[str, Any]], label: str, where: str, period: str, qualifier: str = "", ratio: tuple[str, str] | None = None) -> str:
@@ -1366,7 +1373,8 @@ def _player_stat_advanced_gap(missing: int, spec: _AdvancedStat) -> str:
         return ""
     subject = "season in that span is" if missing == 1 else "seasons in that span are"
     them = "it" if missing == 1 else "them"
-    return f" {missing} {subject} not counted: ESPN's box scores for {them} are empty, so no {spec.label} can be computed from {them}."
+    said = f" {missing} {subject} not counted: ESPN's box scores for {them} are empty, so no {spec.label} can be computed from {them}."
+    return note("seasons_missing", said, seasons=missing, why="empty_box_score", stat=spec.column, label=spec.label)
 
 
 def _player_stat_advanced(con: duckdb.DuckDBPyConnection, player: Entity, span: _Span, stat: str, from_box_scores: bool) -> TemplateResult:
@@ -1742,7 +1750,8 @@ def _single_game_high_answer(games: list[dict[str, Any]], label: str, span: _Gam
     gap), and the rebuilt-line caveat when the answer itself rests on one."""
     answer = span.preface + _phrase_single_game_high(games, label, span, who, empty=empty, withheld=withheld)
     if span.league_note:
-        answer += f" Box scores begin in {span.since}, so this is not an all-time record: earlier games are not in this warehouse."
+        said = f" Box scores begin in {span.since}, so this is not an all-time record: earlier games are not in this warehouse."
+        answer += note("floor", said, table="box_scores", first=COVERAGE["player_box_stats"].first_season, what="league_record")
     # Suppressed when `withheld` fired: that sentence already gave the count and
     # the reason, and repeating it as "empty box scores, so there is no per-game
     # high" contradicts it - the lines are there, they were held back.
@@ -1752,7 +1761,7 @@ def _single_game_high_answer(games: list[dict[str, Any]], label: str, span: _Gam
     # read: a rebuilt game that lost to a fetched one changes nothing a reader
     # needs to know about the number they were given.
     if games and games[0]["reconstructed"]:
-        answer += " That game has no box score from ESPN - the figure is rebuilt from its play-by-play, so treat it as close rather than exact."
+        answer += note("lines_rebuilt", " That game has no box score from ESPN - the figure is rebuilt from its play-by-play, so treat it as close rather than exact.", games=1, what="single_game")
     return answer
 
 
@@ -1766,11 +1775,12 @@ def _phrase_single_game_high(
         # score" is true of the fetched lines and hides that the data exists and
         # was withheld because it is not accurate enough to quote.
         if withheld:
-            return (
-                f"{who} no {span.games} with a box score in the warehouse. {withheld:,} of them were rebuilt from play-by-play, "
+            said = (
+                f"{withheld:,} of them were rebuilt from play-by-play, "
                 f"but a {label} is not read from a rebuilt line: rebuilt fouls are wrong in about one game in six, and turnovers "
                 f"in one in thirteen, against one in sixty for points."
             )
+            return f"{who} no {span.games} with a box score in the warehouse. " + note("stat_withheld", said, games=withheld, label=label)
         # "No games" and "no games WITH A BOX SCORE" are different claims, and
         # the first said of a player who played 68 of them is the wrong-cause
         # refusal this project keeps producing: true-sounding, and it sends the
@@ -1921,5 +1931,5 @@ def _phrase_compare(rows: dict[str, dict[str, Any]], wanted: list[str], period: 
     lines = [f"{' vs '.join(names)}, {period}:", (f"{' ' * label_width}  " + "  ".join(name.rjust(name_width) for name in names)).rstrip()]
     lines += [(f"{label.ljust(label_width)}  " + "  ".join(cell.rjust(name_width) for cell in cells)).rstrip() for label, cells in entries]
     if missing:
-        lines.append(f"({', '.join(missing)} has no {period} numbers in the warehouse.)")
+        lines.append(note("no_data_for", f"({', '.join(missing)} has no {period} numbers in the warehouse.)", names=missing, period=period))
     return "\n".join(lines)
