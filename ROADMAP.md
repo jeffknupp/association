@@ -203,7 +203,7 @@ Proved by identical Reading and Query snapshots.
 | Item | State |
 | --- | --- |
 | The planner runs once, outside the parser | done: `compose.plan.plan_point`, run by `Agent.ask` (`Agent.planned`) and handed to `compose.answer`; `parse.with_point` only reads. 628 of 628 questions identical in every stage; 8 of 1,378 unit-test calls differ, each the Reading now holding a point the planner later declines |
-| The subject is read once | next |
+| The subject is read once | next. Measured at `7394ac5` over the 628 recorded questions: every question reads the subject three times; 610 agree in every field, 18 differ. In 11 the first pass (before the intent is known) reads one team and an opponent where the later two read two teams; in 5 a companion is spelled or placed differently between passes. The second and third passes almost always agree |
 | The stages run once | open |
 | The reader always writes the condition it read | open |
 | The reader's imports of the answer side | 8 of 9 left (`[tool.importlinter]`) |
