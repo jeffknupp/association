@@ -3137,19 +3137,6 @@ those were found.
 
 ## P4: tooling, docs, low impact
 
-### The dependency audit workflow has been red on master on every push
-- **Found:** 2026-10-02, reading the CI runs for `8f7bc97` and `c50c35a`.
-- **Evidence:** `.github/workflows/audit.yml` (`scripts/audit_dependencies.sh`)
-  exits 1: "Found 11 known vulnerabilities in 2 packages" - urllib3 2.7.0
-  (PYSEC-2026-4175, -4176, -4177; fixed in 2.8.0) and virtualenv 21.7.7
-  (PYSEC-2026-4011 to -4014; fixed by 21.7.13).
-- **User sees:** nothing; a red check beside every green CI run, which is
-  how a real advisory gets ignored.
-- **Next step:** `uv lock --upgrade-package urllib3 --upgrade-package virtualenv`,
-  rerun the script by hand, or list an advisory under `IGNORED` with why
-  it does not apply.
-- **GitHub:** #317
-
 ### A log narrowed by a season range is headed "last 7 games of his career"
 - **Found:** 2026-09-30, roadmap review (agent A).
 - **Evidence:** "show maxey's games against boston in the past two
