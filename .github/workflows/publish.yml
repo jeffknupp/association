@@ -41,7 +41,7 @@ jobs:
           uv run mypy src
           uv run mypy tests
           scripts/check_types_complete.sh
-          scripts/check_docstrings.py
+          uv run python scripts/check_docstrings.py
           uv run pytest -q
 
       - name: Verify the tag matches the packaged version

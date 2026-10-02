@@ -178,7 +178,13 @@ here and in CI.** Until 2026-10-02 nothing pinned it, `requires-python` said
 one test was red with nothing wrong in the tree, because `names.sql_lower`
 leaned on the interpreter's Unicode tables. Moving the pin is one change:
 `.python-version`, `requires-python`, and the ruff, mypy and pyright targets
-in `pyproject.toml`, then `uv lock`.
+in `pyproject.toml`, then `uv lock`. **A Python script a gate runs goes
+through that interpreter by name** - `.venv/bin/python scripts/x.py` in a
+hook, `uv run python scripts/x.py` in a workflow - never through its
+shebang: the day the pin landed, three scripts CI ran bare were parsed by
+the runner's own 3.12, one held a 3.14-only `except A, B:`, and CI was red
+for three pushes while every local gate passed (the hooks run under `uv
+run`, which puts the venv first on `PATH`). After a push, read the CI run.
 
 Both must be clean. Everything in `pre-commit` also runs in CI
 (`.github/workflows/ci.yml`), so a green local run means a green PR.

@@ -86,17 +86,17 @@ jobs:
         # Cross-module constant collisions, against an allowlist of the ones
         # already filed - so this fails only on a NEW one. Ruff's F811 covers
         # the same shape inside a single module and is blind across two.
-        run: scripts/check_duplicate_names.py
+        run: uv run python scripts/check_duplicate_names.py
 
       - name: Roadmap ratchets
         # What ROADMAP.md is deleting from the query package may not grow
         # while it is being deleted: today's violations are listed by name
         # (scripts/ratchets.json); a new one fails, and so does a listed one
         # that is gone.
-        run: scripts/check_ratchets.py
+        run: uv run python scripts/check_ratchets.py
 
       - name: Docstring coverage
-        run: scripts/check_docstrings.py
+        run: uv run python scripts/check_docstrings.py
 
       - name: ISSUES.md priority headings
         # One heading per tier, in order: sync_issues.py labels by section,

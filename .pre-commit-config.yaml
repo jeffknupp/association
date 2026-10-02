@@ -110,7 +110,7 @@ repos:
         types: [python]
       - id: duplicate-names
         name: one concept, one definition
-        entry: scripts/check_duplicate_names.py
+        entry: .venv/bin/python scripts/check_duplicate_names.py
         language: system
         pass_filenames: false
         files: ^src/association/.*\.py$
@@ -119,14 +119,14 @@ repos:
       # and so does a listed one that is gone, so the list only shrinks.
       - id: ratchets
         name: roadmap ratchets (query)
-        entry: scripts/check_ratchets.py
+        entry: .venv/bin/python scripts/check_ratchets.py
         language: system
         pass_filenames: false
         files: ^(src/association/query/.*\.py|scripts/(check_ratchets\.py|ratchets\.json))$
 
       - id: docstrings
         name: docstring coverage (src)
-        entry: scripts/check_docstrings.py
+        entry: .venv/bin/python scripts/check_docstrings.py
         language: system
         pass_filenames: false
         files: ^src/.*\.py$
