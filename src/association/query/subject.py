@@ -42,7 +42,6 @@ from typing import NamedTuple
 import duckdb
 from rapidfuzz.distance import DamerauLevenshtein
 
-from association.query.compose import COMPILED_INTENTS
 from association.query.compose.team import team_named_in
 from association.query.decisions import Decision
 from association.query.entities import (
@@ -71,7 +70,6 @@ from association.query.router import _ABSENCE_WORDS, _NAME_STOPWORDS, _THRESHOLD
 from association.query.season_text import season_from_text
 from association.query.templates.common import (
     FILLER_PLAYER_WORDS,
-    HONORED_SCOPING,
     OWN_TEAM_RESTORABLE_INTENTS,
     PLAYER_REQUIRED_INTENTS,
     POSITIONS,
@@ -1382,35 +1380,30 @@ def _apply_players(subject: Subject, scope: Scope, intent: str = "") -> tuple[Sc
     return replace(scope, player=new[0]), decisions, []
 
 
-def _apply_conditions_honored(intent: str) -> bool:
-    """Whether a companion's role reaches ``intent``'s answer as a
-    ``conditions`` entry (:func:`_apply_conditions`): its template honors
-    the slot, or the compiler answers it and narrows its relation by every
-    condition (``compose.COMPILED_INTENTS``)."""
-    return "conditions" in HONORED_SCOPING.get(intent, frozenset()) or intent in COMPILED_INTENTS
-
-
 def _apply_conditions(subject: Subject, scope: Scope, intent: str) -> tuple[Scope, list[Decision]]:
     """Write the companions' roles the router's own slots cannot carry - a
     start, the bench, a line reached ("when Embiid starts", "in games Maxey
     had 20+ points") - as the ``conditions`` the relation reads
-    (:class:`~association.query.reading.ConditionSpec`), where the intent's
-    template honors them - the relation templates as a filter,
-    ``with_without`` as the split's own side ("record when Embiid and Paul
-    George start": started against not). A played companion ("when
+    (:class:`~association.query.reading.ConditionSpec`), whatever the
+    intent - the relation templates read them as a filter, ``with_without``
+    as the split's own side ("record when Embiid and Paul George start":
+    started against not), and an answer that cannot honor them refuses by
+    name (``check_scope``, the planner). Until 5.0.0's last change they
+    were written only where the answering template honored them, a reader
+    that asked what would answer before it wrote (``ROADMAP.md``, Phase 1):
+    "how many times did the 76ers beat boston when embiid started"
+    answered every meeting, the start gone without a word, and "plot
+    jokic's fingerprint in games murray started" drew the season. A played companion ("when
     Draymond plays", "with Draymond playing") is a condition too, on the
     relation templates: ``with_player`` is read by ``with_without`` alone,
     so on a game log or a shot chart it narrowed nothing and nothing
     refused it. ``with_without`` keeps reading its ``with_player`` (the
     router's stage reads it from the same words), and an absence stays the
     router's ``without`` ("with Draymond out" included) - ROADMAP plan item
-    3, steps B and C. The compiled intents too (``compose.COMPILED_INTENTS``):
-    the compiler answers them and narrows its relation by every
+    3, steps B and C. The compiler narrows its relation by every
     condition, so "how many 30 point games did maxey have when embiid
     started" counts his games with Embiid starting (34) - with nothing
     written it counted all of them (86), the start gone without a word."""
-    if not _apply_conditions_honored(intent):
-        return scope, []
     own = [name for name in [scope.player, *scope.players] if isinstance(name, str)]
     held = [c.player for c in scope.conditions]
     roles = ("started", "bench", "reached") if intent == "with_without" else ("started", "bench", "reached", "played")

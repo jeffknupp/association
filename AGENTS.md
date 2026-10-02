@@ -69,7 +69,8 @@ fails rather than drifts.
   reaches the model** (`[tool.importlinter]`). The reader's imports of
   `compose`, `templates` and the relations are listed by name and go in
   Phase 1 (nine when the contract was written, eight since the planner left
-  the parser; four of the eight are `parse -> compose`, for `read_point`);
+  the parser, seven since the reader stopped asking which cells the answer
+  honors; four of the seven are `parse -> compose`, for `read_point`);
   a new one fails, and so does a listed one that no longer exists.
 - **A change to the pipeline is proven stage by stage, on two
   populations.** `scripts/stage_snapshots.py run OUT.jsonl` answers the 628

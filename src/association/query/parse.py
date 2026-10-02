@@ -43,7 +43,6 @@ from association.query.router import Route, _period_asked, _route_calendar_slots
 from association.query.subject import (
     TEAM_SINGULARS,
     Subject,
-    _apply_conditions_honored,
     _companion_phrases,
     _condition_role,
     _edit_distance,
@@ -690,10 +689,10 @@ def _read_route_versus(subject: Subject, scope: Scope, intent: str) -> Scope:
     model's names): a name two players share ("curry") is read as a player
     only through the model's span, so a second pass without it would lose
     him - and with him lost, "giannis points vs lebron and curry" was two
-    subjects again. Only where the intent reads conditions
-    (:func:`~association.query.subject._apply_conditions_honored`)."""
+    subjects again. Whatever the intent: a condition the answer cannot
+    honor is refused by name, never dropped."""
     versus = [c for c in subject.conditions if c.side == "opponent"]
-    if not versus or not _apply_conditions_honored(intent):
+    if not versus:
         return scope
     return replace(scope, conditions=(*scope.conditions, *(ConditionSpec(player=c.name, side="opponent", predicate="played") for c in versus)))
 
@@ -762,13 +761,16 @@ def _read_route_split(subject: Subject, question: str, intent: str, scope: Scope
     green starts" drew Curry's starts. The subject's own split still reads
     ("maxey points as a starter when embiid comes off the bench").
 
-    Only where the teammate's role is written in its place, as a condition
-    (``subject._apply_conditions_honored``): "sixers first quarter points
-    when embiid starts" has no reading of either, and the misread split is
-    what refuses it - taken away with nothing written, the quarter would be
-    answered for every game, the start gone without a word."""
+    The teammate's role is written in its place, as a condition, whatever
+    the intent (``subject._apply_conditions``): until 5.0.0's last change
+    this and that were gated on whether the answering template honored
+    conditions, so "sixers first quarter points when embiid starts" kept
+    the misread split, and the split is what refused it - a reader that
+    read differently for what would answer (``ROADMAP.md``, Phase 1). Now
+    the condition is written, and the planner or the template refuses it
+    by name."""
     phrases = [match for match, predicate in _read_route_role_phrases(subject, question) if predicate in _OWN_READ_ROLES]
-    if not phrases or not _apply_conditions_honored(intent):
+    if not phrases:
         return scope
     blanked = question
     for match in phrases:

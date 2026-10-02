@@ -264,9 +264,9 @@ ignore_imports = [
     "association.query.parse -> association.query.compose.move",
     "association.query.parse -> association.query.compose.team",
     "association.query.parse -> association.query.player_games",
-    # The subject reading asks which cells the answering template honors
-    # before it writes one.
-    "association.query.subject -> association.query.compose",
+    # The subject reading takes the team word's reader and five intent sets
+    # from the answer side (it asked which cells the answering template
+    # honors until 2026-10-02; it writes every condition it reads now).
     "association.query.subject -> association.query.compose.team",
     "association.query.subject -> association.query.templates.common",
     # The stages read a team metric's name from the catalog that also

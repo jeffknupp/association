@@ -386,11 +386,17 @@ def test_the_subjects_own_split_still_reads_beside_a_teammates_role(con: duckdb.
     assert route.intent == "with_without" and "split" not in route.slots
     route, _, _ = read_route(con, "maxey points when embiid doesn't start", ["maxey", "embiid"], "points")
     assert route.intent == "with_without"
-    # Where nothing reads the start as a condition, the question is refused - never answered for every game.
-    route, _, _ = read_route(con, "sixers first quarter points when embiid starts", ["sixers", "embiid"], "points")
-    assert route.intent == "team_quarter_points"
-    with pytest.raises(TemplateUnsupported):
-        check_scope(route.intent, route.slots)
+    # Where nothing reads the start as a condition, the condition is still
+    # written - the reader does not ask what will answer - and the answer
+    # refuses it by name, never answering every game (until 5.0.0's last
+    # change the misread split was left in place to do the refusing).
+    question = "sixers first quarter points when embiid starts"
+    route, _, _ = read_route(con, question, ["sixers", "embiid"], "points")
+    assert route.intent == "team_quarter_points" and "split" not in route.slots
+    reading = reading_from_route(con, question, route)
+    assert [c.predicate for c in reading.scope.conditions] == ["started"]
+    with pytest.raises(TemplateUnsupported, match="conditions"):
+        check_scope(reading.intent, reading.scope)
 
 
 def test_a_companion_who_sat_out_is_without_and_out_is_no_part_of_his_name(con: duckdb.DuckDBPyConnection) -> None:
