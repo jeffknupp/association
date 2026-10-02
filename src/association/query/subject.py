@@ -979,7 +979,13 @@ def read_subject(con: duckdb.DuckDBPyConnection, question: str, intent: str, sco
 
     .. versionadded:: 4.4.0
     """
-    season = scope.season
+    # The season a team's name is read in. The parser reads the subject
+    # BEFORE the stages settle the season (they are handed its companions),
+    # so the scope it reads from holds none: the question's own season is
+    # read here, or "the hornets in 2008" is today's Charlotte Hornets and
+    # Chris Paul's New Orleans team is asked about as a name nobody typed
+    # (ISSUES.md #316).
+    season = scope.season if scope.season is not None else season_from_text(question)
     own = _team_after_for(con, question, season)
     team_word = _team_word(con, question)
     position = next((code for pattern, code in POSITIONS if re.search(pattern, question, re.IGNORECASE)), None)

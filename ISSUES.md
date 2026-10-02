@@ -267,43 +267,26 @@ those were found.
 
 ## P2: misleading or incomplete
 
-### A team named by a franchise's old name is read without the question's season: "chris paul assists for the hornets in 2008" asks "did you mean New Orleans Hornets or Charlotte Bobcats?"
-- **Found:** 2026-10-02, reviewing Phase 1 on wordings outside the corpus
-  (HEAD `8f7bc97`, the real warehouse, the date pinned to 2026-09-30, the
-  names handed over as typed).
-- **Evidence:** two halves, one cause - the name is read with no season.
-  - *A player's own team, a regression at `6af7c08` (the subject read
-    once).* `parse.read_route` reads the subject from the scope built from
-    the names alone, before the stages settle the season, so
-    `subject._team_after_for(con, question, None)` reads "hornets" as
-    today's Charlotte Hornets. Until then the reading that wrote the scope
-    ran in `reading_from_route`, with the settled season. At `7f16b2d`:
-    "Chris Paul averaged 11.6 assists per game in 80 games with the New
-    Orleans Hornets in the 2008 regular season." At `6af7c08` and HEAD:
-    "'Charlotte Hornets' matches more than one team - did you mean New
-    Orleans Hornets or Charlotte Bobcats?" The same for "david west points
-    for the hornets in 2009". "kevin durant points per game for the sonics
-    in 2008" and "shawn kemp rebounds for seattle in 1996" keep their
-    answers and carry `own_team: Oklahoma City Thunder` where they carried
-    Seattle SuperSonics. Neither population saw it: the commit's own
-    comparison was identical on 628 of 628 questions and every unit-test
-    call, so none of them names a player's own team by a moved franchise's
-    old name beside a season. A
-    replayed route still reads the subject the old way, and the two paths
-    differ on 9 of 12 such wordings tried (5 of the 628, all known).
-  - *An opponent, the same on both trees.* "kobe points against the hornets
-    in 2008", "lakers record against the hornets in 2011", "lebron stats vs
-    the bobcats in 2012" and "vince carter game log for the nets vs the
-    bobcats in 2007" all ask the same "did you mean" about 'Charlotte
-    Hornets', a name the question never typed.
-- **User sees:** a clarification about a team name they did not type, where
-  the season in the question says which franchise is meant; for the own-team
-  half, where an answer was given until 2026-10-01.
-- **Next step:** the one subject reading needs the season the question
-  names before it reads a team: `season_text.season_from_text(question)` is
-  already computed for `Subject.named_season` and reads no stage. Then a
-  case per half in `tests/query/test_subject.py`, and these wordings added
-  to the out-of-corpus harness the companions step used.
+### A team that is the SUBJECT, named by a franchise's old name, is read without the question's season: "what was the bobcats record against the hornets in 2012" asks "did you mean New Orleans Hornets or Charlotte Bobcats?"
+- **Found:** 2026-10-02, reviewing Phase 1 on wordings outside the corpus;
+  what is left of the entry after the player's own team and the opponent
+  were fixed the same day (the subject reading takes the question's own
+  season: "chris paul assists for the hornets in 2008" and "kobe points
+  against the hornets in 2008" answer for New Orleans).
+- **Evidence:** the team a question is ABOUT is found by
+  `subject._team_word` -> `compose.team.team_named_in`, a whole-word match
+  against today's `teams` table that takes no season. "bobcats" reads as
+  today's Charlotte Hornets, and with `season: 2012` that name is two
+  franchises. Measured on the real warehouse at the fix's tree, the date
+  pinned to 2026-09-30. A team subject under a name it still carries, and
+  an old name beside no season, are unaffected.
+- **User sees:** a clarification naming 'Charlotte Hornets', which the
+  question never typed, where "bobcats" and "2012" say which franchise is
+  meant.
+- **Next step:** give `_team_word` the season `read_subject` now holds, and
+  read a franchise's old name through `entities.franchise_by_name` before
+  the whole-word match; a case beside
+  `test_a_team_is_read_in_the_season_the_question_names`.
 - **GitHub:** #316
 
 ### In the off-season "last season" reads the season before the one just finished: "how many points did luka average last season" answers 2024-25 on 2026-09-30

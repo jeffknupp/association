@@ -399,6 +399,38 @@ def _parsed(con: duckdb.DuckDBPyConnection, question: str, names: list[str], sta
     return reading_from_route(con, question, route)
 
 
+@pytest.fixture
+def franchises() -> duckdb.DuckDBPyConnection:
+    """Three franchises under ESPN's own ids, each with a name it no longer
+    has: id 3 was the New Orleans Hornets, id 30 the Charlotte Bobcats, id
+    25 the Seattle SuperSonics (``nba.franchises.FRANCHISE_ERAS``)."""
+    c = duckdb.connect(":memory:")
+    c.execute("CREATE TABLE players (athlete_id VARCHAR, display_name VARCHAR)")
+    c.executemany("INSERT INTO players VALUES (?, ?)", [("1", "Chris Paul"), ("2", "Kevin Durant"), ("3", "Kobe Bryant")])
+    c.execute("CREATE TABLE teams (team_id VARCHAR, display_name VARCHAR, abbreviation VARCHAR)")
+    c.executemany(
+        "INSERT INTO teams VALUES (?, ?, ?)",
+        [("3", "New Orleans Pelicans", "NO"), ("30", "Charlotte Hornets", "CHA"), ("25", "Oklahoma City Thunder", "OKC"), ("13", "Los Angeles Lakers", "LAL")],
+    )
+    return c
+
+
+def test_a_team_is_read_in_the_season_the_question_names(franchises: duckdb.DuckDBPyConnection) -> None:
+    # The parser reads the subject before the stages settle the season, so
+    # the reading takes the question's own: "the hornets in 2008" is Chris
+    # Paul's New Orleans team, not today's Charlotte Hornets, which the
+    # answer then asked about as a name nobody typed (ISSUES.md #316).
+    own = _parsed(franchises, "chris paul assists for the hornets in 2008", ["chris paul", "hornets"], "assists")
+    assert own.scope.own_team == "New Orleans Hornets" and own.scope.season == 2008
+    assert _parsed(franchises, "kevin durant points per game for the sonics in 2008", ["kevin durant", "sonics"], "points").scope.own_team == "Seattle SuperSonics"
+    # An opponent the same way.
+    against = _parsed(franchises, "kobe points against the hornets in 2008", ["kobe", "hornets"], "points")
+    assert against.scope.opponent == "New Orleans Hornets"
+    # With no season named the name is today's, and the tenure rule reads a career.
+    today = _parsed(franchises, "chris paul assists for the hornets", ["chris paul", "hornets"], "assists")
+    assert today.scope.own_team == "Charlotte Hornets" and today.scope.span == "career"
+
+
 def _assigned(con: duckdb.DuckDBPyConnection, question: str, parent: str, **slots: Any) -> tuple[str, dict[str, Any]]:
     """The intent and slots the agent hands the template for a question
     whose route arrives under ``parent``: the one subject reading, the
