@@ -46,7 +46,24 @@ def test_a_module_that_executes_sql_is_found() -> None:
         compose__sentence="def say(result):\n    return str(result)",
         leaderboard="def top(con):\n    return con.sql('SELECT 1')",
     )
-    assert ratchets.sql_outside_the_relations(modules) == {"player_games", "leaderboard"}
+    assert ratchets.sql_outside_the_relations(modules) == {"player_games": 1, "leaderboard": 1}
+
+
+def test_sql_is_counted_per_module_and_a_count_may_only_fall() -> None:
+    # Phase 1's order from here, step 4: a listed module could grow
+    # statements freely while the ratchet listed modules; it counts them.
+    modules = _modules(leaderboard="def top(con):\n    con.execute('SELECT 1')\n    return con.sql('SELECT 2').fetchall()")
+    assert ratchets.sql_outside_the_relations(modules) == {"leaderboard": 2}
+    listed = {name: ([] if name != "sql_outside_the_relations" else {"leaderboard": 2}) for name in ratchets.CHECKS}
+    now = {name: ([] if name != "sql_outside_the_relations" else {"leaderboard": 2}) for name in ratchets.CHECKS}
+    assert ratchets.compare(listed, now) == []
+    grown = {**now, "sql_outside_the_relations": {"leaderboard": 3}}
+    assert ratchets.compare(listed, grown) == ["sql_outside_the_relations: NEW leaderboard (2 -> 3) - the roadmap is deleting this shape; do not add to it"]
+    fallen = {**now, "sql_outside_the_relations": {"leaderboard": 1}}
+    assert ratchets.compare(listed, fallen) == ["sql_outside_the_relations: GONE leaderboard (2 -> 1) - remove it from scripts/ratchets.json (--shrink) so it cannot come back"]
+    # --shrink lowers a count to the code's and never raises one.
+    assert ratchets.shrink(listed, fallen)["sql_outside_the_relations"] == {"leaderboard": 1}
+    assert ratchets.shrink(listed, grown)["sql_outside_the_relations"] == {"leaderboard": 2}
 
 
 def test_a_private_name_the_compiler_takes_from_a_template_is_found() -> None:
@@ -80,8 +97,8 @@ def test_the_list_on_disk_is_this_trees_and_shrink_never_adds(monkeypatch: pytes
     assert set(listed) == set(ratchets.CHECKS) and ratchets.compare(listed, found) == []
     # --shrink over a list holding one stale entry and missing one real one
     # drops the stale entry and does not add the missing one.
-    name = "sql_outside_the_relations"
-    doctored = {**listed, name: [*listed[name][1:], "a_module_that_is_gone"]}
+    name = "private_template_imports"
+    doctored = {**listed, name: [*listed[name][1:], "a_name_that_is_gone"]}
     copy = tmp_path / "ratchets.json"
     copy.write_text(json.dumps(doctored))
     monkeypatch.setattr(ratchets, "RATCHETS", copy)

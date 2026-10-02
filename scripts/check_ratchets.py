@@ -11,11 +11,11 @@ them, so each is held as a RATCHET: today's violations are listed, by name,
 in ``scripts/ratchets.json``, and this fails on
 
 - a violation that is not listed - new code going the way the roadmap is
-  leaving. Fix it; adding it to the list is a decision for a person, written
-  into the commit that does it.
-- a listed violation the code no longer has - the list must shrink with the
-  code, or the room it leaves gets used again. ``--shrink`` removes them and
-  never adds one.
+  leaving - or a counted one that grew. Fix it; adding to the list is a
+  decision for a person, written into the commit that does it.
+- a listed violation the code no longer has, or a count that fell - the list
+  must shrink with the code, or the room it leaves gets used again.
+  ``--shrink`` removes and lowers, and never adds or raises.
 
 The ratchets, each named for the contract it holds (``ROADMAP.md``, "The
 target"):
@@ -25,8 +25,10 @@ target"):
     ``question``) outside the modules that read it and the answering loop
     that hands it to them. Contract 1: the text stays in the reader.
 ``sql_outside_the_relations``
-    A module that executes SQL (calls ``.execute`` or ``.sql``). Contract
-    3: one place builds and runs SQL; a sayer cannot read the warehouse.
+    How many statements each module executes (calls of ``.execute`` or
+    ``.sql``), by module. Contract 3: one place builds and runs SQL; a
+    sayer cannot read the warehouse. Counted, not listed, since 2026-10-02:
+    a listed module could grow statements freely, and nothing said so.
 ``private_template_imports``
     A private name the compiler imports from ``templates/`` - the template
     bodies the compiled intents still answer through. They reach zero when
@@ -47,6 +49,7 @@ import ast
 import json
 import pathlib
 import sys
+from collections.abc import Callable
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 QUERY = ROOT / "src" / "association" / "query"
@@ -100,9 +103,11 @@ def question_outside_the_reader(modules: dict[str, ast.Module]) -> set[str]:
     return found
 
 
-def sql_outside_the_relations(modules: dict[str, ast.Module]) -> set[str]:
-    """Each module that calls ``.execute(...)`` or ``.sql(...)``."""
-    return {name for name, tree in modules.items() if any(isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr in {"execute", "sql"} for node in ast.walk(tree))}
+def sql_outside_the_relations(modules: dict[str, ast.Module]) -> dict[str, int]:
+    """How many ``.execute(...)`` and ``.sql(...)`` calls each module makes,
+    for the modules that make any."""
+    counts = {name: sum(1 for node in ast.walk(tree) if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr in {"execute", "sql"}) for name, tree in modules.items()}
+    return {name: count for name, count in counts.items() if count}
 
 
 def private_template_imports(modules: dict[str, ast.Module]) -> set[str]:
@@ -130,28 +135,56 @@ def regex_outside_the_reader(modules: dict[str, ast.Module]) -> set[str]:
     return found
 
 
-CHECKS = {
+CHECKS: dict[str, Callable[[dict[str, ast.Module]], set[str] | dict[str, int]]] = {
     "question_outside_the_reader": question_outside_the_reader,
     "sql_outside_the_relations": sql_outside_the_relations,
     "private_template_imports": private_template_imports,
     "regex_outside_the_reader": regex_outside_the_reader,
 }
 
+Standing = list[str] | dict[str, int]
+"""Where one ratchet stands: the violations by name, or a count per name."""
 
-def measure() -> dict[str, list[str]]:
+
+def measure() -> dict[str, Standing]:
     """Where every ratchet stands in this tree."""
     modules = _modules()
-    return {name: sorted(check(modules)) for name, check in CHECKS.items()}
+    return {name: dict(sorted(found.items())) if isinstance(found, dict) else sorted(found) for name, found in ((name, check(modules)) for name, check in CHECKS.items())}
 
 
-def compare(allowed: dict[str, list[str]], found: dict[str, list[str]]) -> list[str]:
-    """One line per violation not listed and per listed violation gone."""
+def _counts(standing: Standing | None) -> dict[str, int]:
+    """A standing as counts: a listed name counts one."""
+    if standing is None:
+        return {}
+    return dict(standing) if isinstance(standing, dict) else dict.fromkeys(standing, 1)
+
+
+def compare(allowed: dict[str, Standing], found: dict[str, Standing]) -> list[str]:
+    """One line per violation not listed or counted higher than listed, and
+    per listed violation gone or counted lower."""
     problems: list[str] = []
     for name in CHECKS:
-        listed, now = set(allowed.get(name, [])), set(found[name])
-        problems.extend(f"{name}: NEW {entry} - the roadmap is deleting this shape; do not add to it" for entry in sorted(now - listed))
-        problems.extend(f"{name}: GONE {entry} - remove it from scripts/ratchets.json (--shrink) so it cannot come back" for entry in sorted(listed - now))
+        listed, now = _counts(allowed.get(name)), _counts(found[name])
+        counted = isinstance(found[name], dict)
+        for entry in sorted(now.keys() | listed.keys()):
+            before, after = listed.get(entry, 0), now.get(entry, 0)
+            where = f"{entry} ({before} -> {after})" if counted and before and after else entry
+            if after > before:
+                problems.append(f"{name}: NEW {where} - the roadmap is deleting this shape; do not add to it")
+            elif after < before:
+                problems.append(f"{name}: GONE {where} - remove it from scripts/ratchets.json (--shrink) so it cannot come back")
     return problems
+
+
+def shrink(allowed: dict[str, Standing], found: dict[str, Standing]) -> dict[str, Standing]:
+    """``allowed`` with what the code no longer has removed and every count
+    lowered to the code's; nothing added, nothing raised."""
+    shrunk: dict[str, Standing] = {}
+    for name in CHECKS:
+        listed, now = _counts(allowed.get(name)), _counts(found[name])
+        kept = {entry: min(count, now[entry]) for entry, count in listed.items() if entry in now}
+        shrunk[name] = dict(sorted(kept.items())) if isinstance(found[name], dict) else sorted(kept)
+    return shrunk
 
 
 def main() -> int:
@@ -160,15 +193,14 @@ def main() -> int:
     parser.add_argument("--counts", action="store_true", help="print where each ratchet stands")
     parser.add_argument("--shrink", action="store_true", help="drop listed violations the code no longer has; never adds one")
     args = parser.parse_args()
-    allowed: dict[str, list[str]] = json.loads(RATCHETS.read_text()) if RATCHETS.exists() else {}
+    allowed: dict[str, Standing] = json.loads(RATCHETS.read_text()) if RATCHETS.exists() else {}
     found = measure()
     if args.shrink:
-        shrunk = {name: sorted(set(allowed.get(name, [])) & set(found[name])) for name in CHECKS}
-        RATCHETS.write_text(json.dumps(shrunk, indent=1) + "\n")
-        allowed = shrunk
+        allowed = shrink(allowed, found)
+        RATCHETS.write_text(json.dumps(allowed, indent=1) + "\n")
     if args.counts:
         for name in CHECKS:
-            print(f"{name}: {len(found[name])} (listed {len(allowed.get(name, []))})")
+            print(f"{name}: {sum(_counts(found[name]).values())} (listed {sum(_counts(allowed.get(name)).values())})")
     problems = compare(allowed, found)
     for problem in problems:
         print(problem)

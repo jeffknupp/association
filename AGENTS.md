@@ -44,21 +44,27 @@ fails rather than drifts.
 - **New shapes are frozen** (decision D4). No new intent, template,
   presenter, scoping table or per-intent renderer.
   `tests/query/test_frozen_shapes.py` holds the 25 intents the reader can
-  name: one retires with its slice, none is added. A P1 wrong answer is
+  name, and since 2026-10-02 the 12 templates, the 12 presenters and the
+  team-only one, the 10 adapters, the 12 scoping declarations (by module
+  and name, read from the source) and the page's 22 renderers: each
+  retires with its slice, none is added. A P1 wrong answer is
   still fixed, in the code that exists. The sections below still describe
   how templates, intents and presenters work, because they are what runs;
   they are not an invitation to add one.
 - **What the roadmap is deleting may not grow.** `scripts/check_ratchets.py`
   lists today's violations of each direction by name
   (`scripts/ratchets.json`): a function outside the reader that takes the
-  question's text, a module that executes SQL, a private name `compose/`
-  imports from `templates/`, a module outside the reader that imports `re`.
-  It fails on a NEW one and on a listed one that is GONE, so the lists only
-  shrink. A NEW failure is fixed in the code - pass the Reading, not the
-  question; narrow through the relation's shared steps, not a new
-  `execute` - and adding to the list is Jeff's call. A GONE failure is the
-  ratchet working: run `scripts/check_ratchets.py --shrink` (it only
-  removes) and commit the shorter list with the change.
+  question's text, how many statements each module executes (103 in 19
+  modules; counted per module since 2026-10-02, because a listed module
+  could grow statements freely), a private name `compose/` imports from
+  `templates/`, a module outside the reader that imports `re`. It fails
+  on a NEW one or a count that grew, and on a listed one that is GONE or a
+  count that fell, so the lists only shrink. A NEW failure is fixed in the
+  code - pass the Reading, not the question; narrow through the relation's
+  shared steps, not a new `execute` - and adding to the list is Jeff's
+  call. A GONE failure is the ratchet working: run
+  `scripts/check_ratchets.py --shrink` (it only removes and lowers) and
+  commit the shorter list with the change.
 - **The reader does not import the answer side, and the answer side never
   reaches the model** (`[tool.importlinter]`). The reader's nine imports of
   `compose`, `templates` and the relations are listed by name and go in
