@@ -16,7 +16,10 @@ change to `query/` now, not only the roadmap's own work: "While the pipeline
 is rebuilt", below.** The roadmap before it is `ROADMAP-2026-09.md`,
 archived verbatim: "plan item N" and "ROADMAP step N" in code, commits and
 `CHANGES.md` cite that file. What each earlier spike measured, bought and
-cost, as written at the time, is `ROADMAP-HISTORY.md`. Read the roadmap before
+cost, as written at the time, is `ROADMAP-HISTORY.md`; its last section,
+"The rewrite's working log", gets an entry as each step of the current
+roadmap lands (what it measured, what moved, what it cost), because the
+roadmap's own status tables are rewritten as the work moves. Read the roadmap before
 starting a spike, and keep a spike pointed at it: measurements turn up
 fixable things, and those go to agents or to `ISSUES.md`, not into the
 spike.

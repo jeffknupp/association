@@ -3,10 +3,13 @@
 How the project got to where `ROADMAP.md` starts: what each spike measured,
 bought and cost, the working days that carried the plan out, and the plan
 items' full text - kept as written at the time, so the reasoning behind a
-decision can be found again. `ROADMAP.md` is where the work is going; this
-file is not updated as it moves. The living record of each spike (numbers,
-decisions, dead ends) is the plan doc "Reaching 90% on Real NBA Questions",
-and the research runs are in `~/association-research/`.
+decision can be found again. `ROADMAP.md` is where the work is going. The
+sections up to "The plan items" are frozen as written; "The rewrite's
+working log" is added to as each step of the current roadmap lands, so what
+a step measured, moved and cost survives the roadmap's own status tables
+being rewritten. The living record of each spike (numbers, decisions, dead
+ends) is the plan doc "Reaching 90% on Real NBA Questions", and the research
+runs are in `~/association-research/`.
 
 Moved out of `ROADMAP.md` unedited on 2026-09-27. Code and commit messages
 cite the plan items by number ("plan item 6, step (d), part 3"); the items'
@@ -493,6 +496,114 @@ honest refusals that a fuller system would answer. By cause:
    partial at best from now on. **Decision: the parser consolidation is
    plan item 6, and next.** Deferred product change, Jeff's: a bare "this
    year" (and stats generally) reading the playoffs in by default.
+
+## The rewrite's working log, 2026-09-30 on
+
+The roadmap these entries belong to is `ROADMAP.md` (accepted 2026-09-30).
+The one before it is `ROADMAP-2026-09.md`, archived with a banner saying
+where it ended and which two of its statements were wrong. Baselines and
+agents' reports named here are in `~/association-research/stages/`.
+
+1. **The audit that ended the last roadmap (2026-09-30).** Jeff asked for
+   an honest look at what had been built. The last live run, parser22,
+   scored 167 of 175 questions (95.4%) and 156 of 166 families - the score
+   was good and the architecture half-ported. Replaying its 277 questions
+   with every presenter, compile and SQL execution instrumented: of 205
+   answers by a "compiled" intent the compiler's own SQL read 45 and its
+   own sentence worded 16; 55 compiled a query and discarded it; 94 never
+   compiled one. `query/` had grown 4,748 lines in five days while nine
+   templates "retired". Two independent Opus reviews corrected the lead's
+   numbers (the first draft said the compiler read 16) and its diagnosis:
+   two vocabularies for one question, a reader that depends on the answer
+   side, `intent` as context inside the reader, no common result. Cost:
+   the lead's first count was wrong and would have gone into the roadmap
+   unreviewed.
+2. **The new roadmap (2026-09-30).** READ -> PLAN -> RUN -> SAY, six
+   contracts, phases 0 to 4. Jeff's decisions: wording may change (D1),
+   the answer side before the reader (D2), `intent` goes entirely (D3),
+   new shapes frozen (D4), charts declared, notes typed, unclaimed words
+   measured first, tests retired with what they test. Open: the season
+   type a question that names none reads.
+3. **The October 1 rollover, found by a reviewer and fixed the day
+   before (2026-09-30, `d00512f`).** From October 1 the calendar's season
+   was 2027, with no games: every unstated season would have read it.
+   "This season" is now the latest season with games on record
+   (`season_on_record`, entered by `Agent.ask`); `ASSOCIATION_TODAY` pins
+   the date for the suite and every harness. Fifteen tests encoded the
+   2025-26 season and would have gone red on the day.
+4. **Phase 0 - make it measurable (2026-09-30 to 2026-10-01, closed).**
+   - *Stage snapshots* (`scripts/stage_snapshots.py`, `query/stages.py`,
+     `tests/stage_calls.py`): the reading, the planned query, the result's
+     values and the answer per question, compared stage by stage, on two
+     populations. Two runs of one tree are identical on both (628 of 628
+     recorded questions, text included; 1,363 unit-test calls), so any
+     difference is the change. A perturbed token fails each at the stage
+     it was made in. An empty comparison is exit 2: a wrong path read as
+     "0 differ" once during the build.
+   - *Ratchets and contracts*: three import contracts and
+     `scripts/check_ratchets.py` (the eighteenth gate) list today's
+     violations by name - 50 functions outside the reader take the
+     question, 21 modules run SQL, 91 private template imports, nine reader
+     imports of the answer side - and fail on a new one and on a listed one
+     that is gone. The 25 intents are frozen by a test.
+   - *The unread-words ledger* (`scripts/claims_ledger.py`): each content
+     word deleted in turn, from outside the reader. 679 of 2,415 words do
+     not move the reading; nine questions have an unread number, and three
+     of those were fluent answers to a broader question, found on the
+     instrument's first run.
+   - *Typed remarks* (`query/notes.py`): an Opus agent inventoried 69
+     distinct remarks from about 75 writers, the same fact in up to eleven
+     wordings. 28 closed kinds with closed fact names; 98 writers wrapped,
+     the sentences unmoved; 180 of 628 recorded answers carry 234 typed
+     remarks. The new check found two answers that write a caveat and never
+     say it (#311). Five Opus agents wrapped the template modules in
+     parallel, one module group each.
+   - *The target types* (`ROADMAP-TYPES.md`): draft 1 was reviewed by an
+     Opus agent against the corpus before Jeff read it and was lossy in
+     seven ways (16 splits answers carry four groupings; 20 answers are
+     clarifications, not refusals; the measure type lacked the opponent's
+     figure). Decided 2026-10-01: ranking, comparison and split are three
+     shapes; a decision and a note are two types; no `pair` shape.
+   - *What it cost*: 21 findings filed in one day from the instruments and
+     the two agents, three of them new wrong answers. Agent worktrees are
+     cut from pushed master, so five agents dispatched on unpushed commits
+     all stopped at their first check and had to be redispatched. Cleaning
+     up afterwards, the lead removed every worktree under
+     `.claude/worktrees` by pattern - 42, of which 37 were earlier
+     sessions' - and their branches; 66 dangling commits were pinned under
+     `refs/rescue/2026-10-01/`, and uncommitted files in those worktrees,
+     if any, are gone. The lesson is in `AGENTS.md`'s own terms: look at
+     the target before deleting, and delete by name.
+5. **Phase 1, step 1 - the planner runs once (2026-10-01, `2e24173`).**
+   The parser planned the point it read and the compiler planned it again.
+   Now `compose.plan.plan_point` is the PLAN stage, run once by
+   `Agent.ask`. No answer moved: 628 of 628 identical in every stage; 8 of
+   1,378 unit-test calls differ, each the Reading now holding a point the
+   planner later declines. Reader imports of the answer side: nine to
+   eight.
+6. **Phase 1, step 2 - the subject is read once (2026-10-01, `6af7c08`).**
+   Three readings per question, which disagreed on 18 of 628. Now one,
+   carried on the route and settled under the stages' intent. No answer,
+   query, scope or intent moved on either population; 5 subject records
+   and 185 decision reason texts differ, each now saying what the one
+   reading rested on. The corpus run went from about 285s to about 220s.
+7. **Phase 1, step 3 - a companion's name has one reader (2026-10-01,
+   `a8f02f6`).** The stages had regexes of their own for "with X" and
+   "without X" beside the subject reading's; they disagreed on seven
+   recorded questions. The stage readers are gone and the stages are
+   handed the subject's companions. Four answers moved, each to exactly
+   its graded sibling wording's answer (two wrong answers naming fewer
+   teammates than asked, #310, and two refusals). The first attempt -
+   simply deleting the stage readers - lost names on wordings OUTSIDE the
+   corpus: "without curry" and "Tatum and Brown" are ordinary words the
+   subject reading skipped unless the model had copied them, and "warriors
+   record in games curry missed" answered the whole record. The corpus
+   showed none of it; a harness of 25 such wordings, each read with the
+   model's names and with none, old tree against new, did. The stage
+   reader's strength - a name read by its position in the phrase - was
+   folded into the subject's, and the 50 cases then kept their names and
+   intents. The ledger grew by five words, all the verb in "when X and Y
+   play", which the one reader does not need.
 
 ## The plan items, as written
 
