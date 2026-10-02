@@ -210,6 +210,27 @@ Proved by identical Reading and Query snapshots.
 | The reader's imports of the answer side | 8 of 9 left (`[tool.importlinter]`) |
 | Names from an in-memory index | done 2026-10-01: `query/names.py` (an Opus agent, then the three team lookups it was told to leave). Every `players`/`teams` lookup is answered from two indexes loaded once per question inside `Agent.ask` (`names.loaded`). Reader statements over the 277 yardstick questions: 10,658 before, 554 after - the two loads. A differential check of 478,304 calls against the old code on the real warehouse found no difference except the order of two players who share one `display_name` (21 such names; the first candidate never differs). 628 of 628 recorded questions and 1,386 of 1,386 unit-test calls identical |
 
+**Phase 1, the order from here (Jeff, 2026-10-02, after a review of
+Phases 0 and 1 on the new devbox;** `ROADMAP-HISTORY.md`, the working log,
+entry 9). The review re-measured every claim above and found them true,
+one regression the two populations could not see (a team read without the
+question's season, fixed the same day, #316) and three places a step had
+kept the path it replaced. Those come before the open items, because the
+next step builds on the same reading order:
+
+| Step | What | State |
+| --- | --- | --- |
+| 1 | The replay branch goes: `reading_from_route` no longer reads a subject of its own for a route that carries none, `Agent.ask` takes no `route`, and the preview script answers recorded questions with their recorded normalizer replies (#288). A test hands the agent a route at the reader's boundary | open |
+| 2 | The other two kept paths go: `compose.answer` planning again when `planned` is left out, and a name lookup outside `names.loaded` reading its table again | open |
+| 3 | The snapshot's `query` stage records the planned `Query`, not the Reading's point; the snapshot's first line says the ollama version | open |
+| 4 | The ratchets tighten: SQL counted per module by statement, not listed by module; the D4 freeze holds presenters, scoping tables and web renderers as well as intents | open |
+| 5 | Documents that drifted: `AGENTS.md`'s "nine imports", the done table's 20 modules against Phase 0's 21, the records row (Phase 1 added `Planned`, `Beside` and `Route.subject`) | open |
+| 6 | Phase 1 proper: the stages run once, with the subject settled once; the reader always writes the condition it read; the reader's eight imports of the answer side, four of them `parse -> compose` for `read_point` | open |
+
+A reader change is also proven on wordings OUTSIDE the corpus, old tree
+against new, before it lands: the companions step did this and caught
+what the corpus could not; the subject step did not, and regressed.
+
 **Phase 2 - The answer side, in slices.** Each slice ends with its
 presenter, template body, scoping rows, adapter branch and web renderer
 deleted in the same change. Method: split each body into a reader that
