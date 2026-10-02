@@ -4356,3 +4356,4 @@ those were found.
 - **Evidence:** `entities.find_players(con, "_")` and `find_players(con, "%")` match most players: the pattern is built from the text with no escape, as the SQL's `ILIKE ?` was. The index reproduces it on purpose (no answer may move). Nothing in the 628 recorded questions triggers it. Also recorded there: two players who share a `display_name` (21 names, "Chris Smith", "Dee Brown") came back from `ORDER BY display_name` in an order DuckDB left unspecified and that changed with the rows being sorted; the index returns them in table order, so `find_players(..., limit=None)` differs from the old code in the order of such a pair on 30 of 478,304 inputs, never in the first candidate.
 - **User sees:** nothing today; a name typed as "_" would ask among dozens of players.
 - **Next step:** treat `%` and `_` in a name slot as literal characters, with a test; then no name matches them.
+- **GitHub:** #315
