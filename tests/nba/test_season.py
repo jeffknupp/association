@@ -1,6 +1,6 @@
 """Tests for season naming and dating."""
 
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 
 import duckdb
 import pyarrow as pa
@@ -75,7 +75,7 @@ def test_the_hand_written_daylight_rules_match_the_tz_database() -> None:
         assert eastern_date(stamp) == real, stamp
     day = date(1976, 1, 1)
     while day < date(2040, 1, 1):
-        start, end = (datetime.combine(d, datetime.min.time(), new_york).astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%MZ") for d in (day, day + timedelta(days=1)))
+        start, end = (datetime.combine(d, datetime.min.time(), new_york).astimezone(UTC).strftime("%Y-%m-%dT%H:%MZ") for d in (day, day + timedelta(days=1)))
         assert eastern_day_utc_range(day.isoformat()) == (start, end), day
         day += timedelta(days=1)
 

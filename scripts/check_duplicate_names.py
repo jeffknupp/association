@@ -82,7 +82,7 @@ def collisions() -> dict[str, list[tuple[str, str]]]:
                     continue
                 try:
                     value = repr(ast.literal_eval(node.value)) if node.value else "?"
-                except (ValueError, TypeError, SyntaxError):
+                except ValueError, TypeError, SyntaxError:
                     value = "<computed>"
                 by_name[target.id].append((str(path.relative_to(SRC)), value[:70]))
     return {name: places for name, places in by_name.items() if len({module for module, _ in places}) > 1}

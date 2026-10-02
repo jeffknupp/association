@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any, TypeVar
+from typing import Any
 
 import click
 
@@ -54,8 +54,6 @@ def _configure_logging(log_level: str) -> None:
         logger.addHandler(handler)
     logger.propagate = False
 
-
-F = TypeVar("F", bound=Callable[..., Any])
 
 CLI_EPILOG = f"""
 Examples:
@@ -121,7 +119,7 @@ def _parse_season_types(spec: str) -> list[int]:
     return sorted({int(x.strip()) for x in spec.split(",") if x.strip()})
 
 
-def _query_engine_options(f: F) -> F:
+def _query_engine_options[F: Callable[..., Any]](f: F) -> F:
     f = click.option(
         "--router-model",
         default=DEFAULT_ROUTER_MODEL,

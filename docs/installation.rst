@@ -27,7 +27,7 @@ Releases cut from now on also carry the built wheel and sdist as downloadable
 assets, so ``pip install ./association-X.Y.Z-py3-none-any.whl`` works from a
 local copy. Releases made before that have none attached; use the tag above.
 
-Python 3.10 or newer is required. The package is pure Python and ships no
+Python 3.14 or newer is required. The package is pure Python and ships no
 compiled extensions, so there is a single wheel for every platform.
 
 The models

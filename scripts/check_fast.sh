@@ -3,22 +3,22 @@
 # Sphinx build, plus the whole test suite, in parallel across the cores
 # available.
 #
-# Measured 2026-09-28 on 8 cores, nothing else running:
+# Measured 2026-10-02 on 24 cores, nothing else running:
 #
-#   this script                                         42s
-#   the hooks it runs (all but Sphinx)                   6s
-#   uv run pre-commit run --all-files                   29s   (23s of it Sphinx)
-#   uv run pytest -q                                   184s   serial
-#   uv run pytest -q -n auto                            34s
+#   this script                                         24s
+#   the hooks it runs (all but Sphinx)                   4s
+#   uv run pre-commit run --all-files                   17s   (13s of it Sphinx)
+#   uv run pytest -q                                    87s   serial
+#   uv run pytest -q -n auto                            20s
 #
 # So the full check is `uv run pre-commit run --all-files && uv run pytest -q -n auto`
-# at about 63s, and this one - the 6s of hooks plus the 34s of tests - is the
+# at about 37s, and this one - the 4s of hooks plus the 20s of tests - is the
 # one to run several times per commit.
 #
 # It is NOT a substitute for that full check before committing. Exactly one
 # thing is left out, named so nobody has to guess: the Sphinx build (`docs`),
-# which rebuilds from scratch with -E on purpose (see AGENTS.md) and is 23s of
-# the 29s the hooks cost. It is the gate that catches a malformed docstring,
+# which rebuilds from scratch with -E on purpose (see AGENTS.md) and is 13s of
+# the 17s the hooks cost. It is the gate that catches a malformed docstring,
 # so a commit touching one runs the full check.
 #
 # Both commands read their exit status through `set -e`, which is the point:

@@ -52,24 +52,30 @@ from typing import Any
 from rapidfuzz import process
 from rapidfuzz.distance import DamerauLevenshtein
 
-# DuckDB's lower() maps each code point to its SIMPLE lowercase, one for one.
-# Python's str.lower() is the full mapping, which differs in two ways: U+0130
-# (capital I with a dot) becomes two code points, and a capital sigma at the
-# end of a word becomes a final sigma. Lowering one code point at a time
-# removes the second; the first is the only code point whose full lowercase is
-# not its simple one. Checked over every code point against DuckDB
-# (tests/query/test_names.py).
-_DOTTED_CAPITAL_I = "\N{LATIN CAPITAL LETTER I WITH DOT ABOVE}"
+from association.query.duckdb_lower import LOWER_RUNS
+
+# DuckDB's lower() maps each code point to its SIMPLE lowercase, one for one,
+# from the Unicode tables DuckDB bundles. Python's str.lower() is the full
+# mapping from the INTERPRETER's tables, so it differs three ways: U+0130
+# (capital I with a dot) becomes two code points, a capital sigma at the end
+# of a word becomes a final sigma, and a letter one Unicode version cased and
+# the other did not lowers under one and not the other - against DuckDB 1.5.5,
+# Python 3.12 and 3.13 agreed on every code point, 3.10 and 3.14 did not. So
+# the mapping is DuckDB's own, asked of it once and committed
+# (query/duckdb_lower.py), and checked over every code point against the
+# installed DuckDB (tests/query/test_names.py).
+_LOWER = {code: code + delta for first, last, delta, step in LOWER_RUNS for code in range(first, last + 1, step)}
 
 
 def sql_lower(text: str) -> str:
-    """``text`` lowered exactly as DuckDB's ``lower()`` lowers it.
+    """``text`` lowered exactly as DuckDB's ``lower()`` lowers it, on any
+    interpreter.
 
     .. versionadded:: 5.0.0
     """
     if text.isascii():
         return text.lower()
-    return "".join("i" if char == _DOTTED_CAPITAL_I else char.lower() for char in text)
+    return text.translate(_LOWER)
 
 
 # Every ASCII character that is not a letter, to a space - so an ASCII text's

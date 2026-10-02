@@ -58,7 +58,7 @@ def recorded_routes(path: Path, matches: list[str]) -> list[tuple[str, str, dict
             continue
         try:
             cases.append((row["q"], found.group(1), ast.literal_eval(found.group(2))))
-        except (ValueError, SyntaxError):
+        except ValueError, SyntaxError:
             continue
     return cases
 
@@ -84,7 +84,7 @@ def recorded_history(history_dir: Path, matches: list[str], since: str | None) -
             continue
         try:
             seen[question] = (question, found.group(1), ast.literal_eval(found.group(2)))
-        except (ValueError, SyntaxError):
+        except ValueError, SyntaxError:
             continue
     return list(seen.values())
 

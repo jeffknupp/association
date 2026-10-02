@@ -18,7 +18,7 @@ import sys
 import time
 import uuid
 from collections.abc import Callable
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from association import __version__
@@ -64,7 +64,7 @@ def build_id() -> str:
             timeout=5,
             check=True,
         ).stdout.strip()
-    except (OSError, subprocess.SubprocessError):
+    except OSError, subprocess.SubprocessError:
         return __version__
     return f"{commit}-dirty" if dirty else commit
 
@@ -161,7 +161,7 @@ class RunHistory:
         # The build leads the name so `ls` groups a run with the code that
         # produced it, and so one commit's runs can be selected with a glob.
         path = self.history_dir / f"{build_id()}-{uuid.uuid4().hex[:16]}.log"
-        started = datetime.fromtimestamp(time.time() - self.total_seconds, tz=timezone.utc).isoformat()
+        started = datetime.fromtimestamp(time.time() - self.total_seconds, tz=UTC).isoformat()
         parts = [
             f"command: {command}",
             f"build: {build_id()}",
@@ -217,7 +217,7 @@ def append_note(path: Path, note: str, replacing: str | None = None) -> str:
 
     .. versionadded:: 4.4.0
     """
-    timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    timestamp = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     escaped = note.replace("\\", "\\\\").replace("\n", "\\n")
     line = f"[note {timestamp}] {escaped}"
     if replacing is not None and replacing.startswith("[note "):

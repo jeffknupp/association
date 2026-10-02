@@ -67,7 +67,7 @@ fails rather than drifts.
   populations.** `scripts/stage_snapshots.py run OUT.jsonl` answers the 628
   recorded questions through the whole agent with no model (the
   normalizer's recorded replies, the date pinned, DuckDB single-threaded,
-  about five minutes) and writes what each stage produced: the reading,
+  about two minutes) and writes what each stage produced: the reading,
   the planned query, the result's values, the answer. `compare` reports
   the first stage each question differs in and exits 1. The second
   population is every call the unit tests make across a stage boundary:
@@ -142,18 +142,19 @@ uv run pytest -q -n auto            # fully offline: no network, no ollama
 ```
 
 **While iterating, run `scripts/check_fast.sh` instead** - every gate except
-the Sphinx build, plus the whole test suite, in parallel. Measured on 8 cores
-with nothing else running (2026-09-28):
+the Sphinx build, plus the whole test suite, in parallel. Measured on 24 cores
+with nothing else running (2026-10-02, the OVH devbox, Python 3.14; on the
+8-core box before it the same five were 42s, 6s, 29s, 184s and 34s):
 
 | command | time |
 | --- | --- |
-| `scripts/check_fast.sh` | 42s |
-| the hooks it runs (all but Sphinx) | 6s |
-| `uv run pre-commit run --all-files` | 29s (23s of it Sphinx) |
-| `uv run pytest -q` | 184s |
-| `uv run pytest -q -n auto` | 34s |
+| `scripts/check_fast.sh` | 24s |
+| the hooks it runs (all but Sphinx) | 4s |
+| `uv run pre-commit run --all-files` | 17s (13s of it Sphinx) |
+| `uv run pytest -q` | 87s |
+| `uv run pytest -q -n auto` | 20s |
 
-So the full check above costs about 63s and the iteration check about 42s.
+So the full check above costs about 37s and the iteration check about 24s.
 The fast one leaves out exactly one thing, and its own header says so: the
 docs build, which is the gate that catches a malformed docstring. A commit
 touching a docstring runs the full check. Nothing else may be skipped.
@@ -169,6 +170,14 @@ slow, find out where its time goes.
 or `web` extras, so `uv run pytest -q` fails with `Failed to spawn: pytest`
 and the gates never run. Run CI's own line first:
 `uv sync --frozen --extra dev --extra docs --extra web`.
+
+**The interpreter is pinned: `.python-version` says 3.14, and `uv` reads it
+here and in CI.** Until 2026-10-02 nothing pinned it, `requires-python` said
+`>=3.10`, CI ran on its runner's own 3.12 and a new devbox took 3.14 - where
+one test was red with nothing wrong in the tree, because `names.sql_lower`
+leaned on the interpreter's Unicode tables. Moving the pin is one change:
+`.python-version`, `requires-python`, and the ruff, mypy and pyright targets
+in `pyproject.toml`, then `uv lock`.
 
 Both must be clean. Everything in `pre-commit` also runs in CI
 (`.github/workflows/ci.yml`), so a green local run means a green PR.
@@ -1368,7 +1377,8 @@ The habits that caught real bugs here, in rough order of how often they paid:
   `git ls-files` lists it, so a `sed -i` or `perl -pi` over a file list
   replaces the link with a regular copy (`git status` shows `T CLAUDE.md`). The
   two then drift silently. Exclude it from bulk edits and edit `AGENTS.md`.
-- **`/tmp` is a shared 7.9G tmpfs.** Four agents' golden-comparison outputs,
+- **`/tmp` is a shared tmpfs** (32G on the OVH devbox; 7.9G on the box
+  before it, where this happened). Four agents' golden-comparison outputs,
   plus older sessions' scratch directories, filled it to 100% mid-run, where a
   failed write looks like a diff or a crash unrelated to the change. Compress
   or hash large outputs, delete them once compared, and check `df -h /tmp`

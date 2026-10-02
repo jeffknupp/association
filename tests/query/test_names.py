@@ -65,7 +65,9 @@ TRICKY = [
 def test_lowering_is_duckdbs_over_every_code_point() -> None:
     every = "".join(chr(code) for code in range(1, 0x110000) if not 0xD800 <= code <= 0xDFFF)
     assert names.sql_lower(every) == duckdb.connect().execute("SELECT lower(?)", [every]).fetchone()[0]  # type: ignore[index]
-    # The two places Python's own lower() differs, both kept as DuckDB's.
+    # Two places Python's own lower() differs on every interpreter, both kept
+    # as DuckDB's; the table is DuckDB's own, so a letter only the
+    # interpreter's Unicode version cases (U+1C89, new in Unicode 16) is too.
     assert names.sql_lower("\N{LATIN CAPITAL LETTER I WITH DOT ABOVE}") == "i"
     assert (
         names.sql_lower("\N{GREEK CAPITAL LETTER SIGMA}\N{GREEK CAPITAL LETTER ALPHA}\N{GREEK CAPITAL LETTER SIGMA}")

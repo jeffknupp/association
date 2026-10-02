@@ -12,7 +12,7 @@ readme = "README.md"
 license = "BSD-3-Clause"
 license-files = ["LICENSE"]
 authors = [{ name = "Jeff Knupp", email = "jeff@jeffknupp.com" }]
-requires-python = ">=3.10"
+requires-python = ">=3.14"
 keywords = ["nba", "basketball", "espn", "duckdb", "parquet", "ollama", "llm", "statistics"]
 classifiers = [
     "Development Status :: 4 - Beta",
@@ -23,10 +23,7 @@ classifiers = [
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3 :: Only",
-    "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
-    "Programming Language :: Python :: 3.12",
-    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Database",
     "Topic :: Scientific/Engineering :: Information Analysis",
     "Typing :: Typed",
@@ -109,7 +106,7 @@ testpaths = ["tests"]
 # The formatter reads this same setting, so `ruff format` joins those strings
 # up to 200 columns rather than fighting them back down to 88.
 line-length = 200
-target-version = "py310"
+target-version = "py314"
 
 [tool.ruff.lint]
 select = [
@@ -307,7 +304,7 @@ source_modules = [
 forbidden_modules = ["association.query.normalizer", "ollama"]
 
 [tool.mypy]
-python_version = "3.10"
+python_version = "3.14"
 ignore_missing_imports = true
 warn_unused_ignores = true
 warn_redundant_casts = true
@@ -323,5 +320,5 @@ include = ["src"]
 extraPaths = ["src"]
 venvPath = "."
 venv = ".venv"
-pythonVersion = "3.10"
+pythonVersion = "3.14"
 typeCheckingMode = "standard"

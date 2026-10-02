@@ -48,7 +48,7 @@ def _main_checkout_root(start: Path) -> Path | None:
             text=True,
             check=True,
         )
-    except (OSError, subprocess.CalledProcessError):
+    except OSError, subprocess.CalledProcessError:
         return None
     common_dir = Path(result.stdout.strip())
     if not common_dir.is_absolute():

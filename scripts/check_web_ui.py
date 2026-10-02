@@ -208,7 +208,7 @@ with sync_playwright() as p:
                 page.wait_for_load_state()
                 page.wait_for_selector("#input")
                 return page.evaluate("window.__marker") is None
-            except PlaywrightError:  # noqa: PERF203 - retrying is the point: a reload in flight destroys the context being read
+            except PlaywrightError:
                 page.wait_for_timeout(100)
         return False
 

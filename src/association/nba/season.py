@@ -14,7 +14,7 @@ import os
 from collections.abc import Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 
 TODAY_ENV = "ASSOCIATION_TODAY"
 """The environment variable that pins "today" to an ISO date - for a harness
@@ -208,6 +208,6 @@ def eastern_day_utc_range(day: str) -> tuple[str, str]:
     """
     first = date.fromisoformat(day)
     following = first + timedelta(days=1)
-    start = datetime(first.year, first.month, first.day, tzinfo=timezone.utc) + timedelta(hours=eastern_utc_offset_hours(first))
-    end = datetime(following.year, following.month, following.day, tzinfo=timezone.utc) + timedelta(hours=eastern_utc_offset_hours(following))
+    start = datetime(first.year, first.month, first.day, tzinfo=UTC) + timedelta(hours=eastern_utc_offset_hours(first))
+    end = datetime(following.year, following.month, following.day, tzinfo=UTC) + timedelta(hours=eastern_utc_offset_hours(following))
     return start.strftime("%Y-%m-%dT%H:%MZ"), end.strftime("%Y-%m-%dT%H:%MZ")

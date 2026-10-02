@@ -10,7 +10,7 @@ import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Literal, TypeVar
+from typing import Any, Literal
 
 import duckdb
 
@@ -1684,10 +1684,7 @@ def scoped_player(
     return player, settled
 
 
-_NarrowedT = TypeVar("_NarrowedT", Narrowed, TeamNarrowed)
-
-
-def _apply_situation(narrowed: _NarrowedT, situation: str) -> None:
+def _apply_situation[NarrowedT: (Narrowed, TeamNarrowed)](narrowed: NarrowedT, situation: str) -> None:
     """Read a ``situation`` value as the calendar narrowing it names (a
     weekday, a month, a fixed day, "since <day>") or - the other half of the
     same slot - the conference/division narrowing it names ("vs the west",
@@ -2075,7 +2072,7 @@ def condition_player(
     return player, whole_span(narrowed)
 
 
-def whole_span(narrowed: _NarrowedT) -> _NarrowedT:
+def whole_span[NarrowedT: (Narrowed, TeamNarrowed)](narrowed: NarrowedT) -> NarrowedT:
     """``narrowed`` with no window: the condition skeletons - a split, a
     record, a run - are read over every game in the span, which is why each
     of them excludes ``order`` in :data:`RELATION_SCOPING_EXCLUDED` ("a
