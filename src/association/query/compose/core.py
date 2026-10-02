@@ -42,7 +42,9 @@ import duckdb
 from association.nba.season import current_season, eastern_date_sql
 from association.query.conditions import _PLAYER_GAME_TABLES, MEETING_STATS, UNGATED_ON_REBUILD, BoxSource, _longest_runs_sql, _meetings_select, _player_streak_rows, box_source
 from association.query.entities import Entity
-from association.query.measures import MEASURE_WORDS
+from association.query.measures import BOOLEAN_MEASURES as BOOLEAN_MEASURES
+from association.query.measures import GAME_COLUMNS
+from association.query.measures import LINE as LINE
 from association.query.player_games import PERIOD_COLUMNS, REBUILT_STATS, REGULATION_QUARTERS, Narrowed, aggregate_sql, games_subquery, grouped_sql, named, paired_rows_sql, rows_sql
 from association.query.reading import Scope
 from association.query.templates.common import (
@@ -74,12 +76,14 @@ EASTERN = eastern_date_sql("g.date")
 
 #: Box-score columns a measure may name: everything ``MEASURE_WORDS`` reaches
 #: plus the per-game advanced figures the view carries.
-COLUMNS: frozenset[str] = frozenset(MEASURE_WORDS.values()) | frozenset(
-    {"plusMinus", "offensiveRebounds", "defensiveRebounds", "ts_pct", "efg_pct", "usage_pct", "game_score", "threePointFieldGoalsMade", "threePointFieldGoalsAttempted"}
-)
-"""Every column name a ``Query.measures`` entry may hold, taken straight or derived.
+COLUMNS: frozenset[str] = GAME_COLUMNS
+"""Every column name a ``Query.measures`` entry may hold straight -
+:data:`association.query.measures.GAME_COLUMNS`, the reader's own vocabulary.
 
 .. versionadded:: 4.4.0
+
+.. versionchanged:: 5.0.0
+   Defined in ``measures``; re-exported here.
 """
 
 #: Measures computed from columns, per game.
@@ -145,11 +149,6 @@ GROUPS: dict[str, tuple[str, str]] = {
 """
 
 #: The default measures of a ``rows`` read with no measure named.
-LINE: tuple[str, ...] = ("minutes", "points", "rebounds", "assists")
-"""The default line a game log or single-game read carries.
-
-.. versionadded:: 4.4.0
-"""
 
 
 def _row_select(*, rebuilt: bool) -> str:
@@ -296,11 +295,6 @@ def measure_sql(name: str, *, rebuilt: bool = False) -> str:
 
 #: Measures that are conditions rather than counted quantities - "how many
 #: triple-doubles" counts games where the measure is true.
-BOOLEAN_MEASURES: frozenset[str] = frozenset({"triple_double", "double_double", "won", "fouled_out"})
-"""Measures read as a per-game condition rather than a counted quantity.
-
-.. versionadded:: 4.4.0
-"""
 
 
 def _agg(name: str, aggregate: str, *, rebuilt: bool = False) -> str:

@@ -19,16 +19,16 @@ from typing import TYPE_CHECKING, Any, Literal
 import duckdb
 
 from association.query.leaderboard import resolve_metric
-from association.query.measures import MEASURE_WORDS
+from association.query.measures import BOOLEAN_MEASURES, DERIVED_LINES, DERIVED_MEASURES, GAME_COLUMNS, HISTORY_STATS, LINE, MEASURE_WORDS, TEAM_GAME_MEASURES, TEAM_SEASON_MEASURES
 from association.query.metrics import PER_GAME_MIN_GAMES, TEAM_FIELD_WORDS
 from association.query.reading import Aggregate, Reading, Scope
-from association.query.templates.common import DEFAULT_LIMIT, HISTORY_COLUMNS, TEAM_ONLY_INTENTS, TemplateResult, _clamp_limit, ordinal_word, unhonored_scoping
+from association.query.templates.common import DEFAULT_LIMIT, TEAM_ONLY_INTENTS, TemplateResult, _clamp_limit, ordinal_word, unhonored_scoping
 from association.query.templates.players import leaderboard_shot_distance_refusal
 
 from .adapt import DEFAULT_GAME_LOG_LIMIT, DEFAULT_SINGLE_GAME_LIMIT, _named_player_in, _to_reading_scope
-from .core import BOOLEAN_MEASURES, COLUMNS, DERIVED, LINE, Query, Refused, Unsupported
+from .core import Query, Refused, Unsupported
 from .plan import plan
-from .team import GAME_MEASURES, SEASON_MEASURES, TeamQuery
+from .team import TeamQuery
 
 if TYPE_CHECKING:
     from association.query.subject import Subject
@@ -122,7 +122,7 @@ def _stat_measure(stat: str | None) -> str | None:
         return None
     if stat in MEASURE_ALIASES:
         return MEASURE_ALIASES[stat]
-    if stat in COLUMNS or stat in DERIVED:
+    if stat in GAME_COLUMNS or stat in DERIVED_MEASURES:
         return stat
     return MEASURE_WORDS.get(stat.strip().lower())
 
@@ -693,14 +693,14 @@ def _move_boolean_count(question: str, measure: str | None, intent: str, career:
 
 
 def _move_boolean_count_is_line(measure: str, scope: Scope) -> bool:
-    """Whether a boolean measure is, by its one definition in
-    :data:`~association.query.compose.core.DERIVED`, exactly the router's own
-    ``stat``/``threshold`` line (``fouled_out`` is ``fouls >= 6``)."""
+    """Whether a boolean measure is, by its one definition
+    (:data:`~association.query.measures.DERIVED_LINES`), exactly the router's
+    own ``stat``/``threshold`` line (``fouled_out`` is ``fouls >= 6``)."""
     column = _stat_measure(scope.stat)
     threshold = scope.threshold
     if column is None or threshold is None:
         return False
-    return DERIVED.get(measure, "").strip("()") == f"pgl.{column} >= {threshold}"
+    return DERIVED_LINES.get(measure) == (column, threshold)
 
 
 def _move_player_history(intent: str, scope: Scope, career: Scope, measure: str | None) -> Reading | None:
@@ -710,7 +710,7 @@ def _move_player_history(intent: str, scope: Scope, career: Scope, measure: str 
     it into a career of games grouped by season, newest first."""
     if intent != "player_history":
         return None
-    if measure is None and scope.stat is not None and scope.stat not in HISTORY_COLUMNS:
+    if measure is None and scope.stat is not None and scope.stat not in HISTORY_STATS:
         # A stat named that neither the season line nor the games carry
         # ("shot_distance"): refused, as player_history's retired template
         # refused it - never drawn as the points history the default measure
@@ -838,8 +838,8 @@ _TEAM_WORD_MEASURES: list[tuple[str, str]] = [
     (r"\bblocks\b", "blocks"),
     (r"\bturnovers\b", "turnovers"),
 ]
-"""``(pattern, measure)`` - a phrase naming one of :data:`~association.query.compose.team.GAME_MEASURES`
-or :data:`~association.query.compose.team.SEASON_MEASURES` directly.
+"""``(pattern, measure)`` - a phrase naming one of :data:`~association.query.measures.TEAM_GAME_MEASURES`
+or :data:`~association.query.measures.TEAM_SEASON_MEASURES` directly.
 
 .. versionadded:: 4.4.0
 """
@@ -854,8 +854,8 @@ def _team_measure(scope: Scope, question: str) -> str | None:
     """The team measure a question names - the question's own word first
     (the same priority :func:`_measure_for_named` gives a player's), the
     router's ``stat`` slot otherwise, when it is a column
-    :data:`~association.query.compose.team.GAME_MEASURES` or
-    :data:`~association.query.compose.team.SEASON_MEASURES` knows.
+    :data:`~association.query.measures.TEAM_GAME_MEASURES` or
+    :data:`~association.query.measures.TEAM_SEASON_MEASURES` knows.
 
     .. versionadded:: 4.4.0
     """
@@ -864,7 +864,7 @@ def _team_measure(scope: Scope, question: str) -> str | None:
         if re.search(pattern, ql):
             return name
     stat = scope.stat
-    if stat is not None and (stat in GAME_MEASURES or stat in SEASON_MEASURES):
+    if stat is not None and (stat in TEAM_GAME_MEASURES or stat in TEAM_SEASON_MEASURES):
         return stat
     return None
 

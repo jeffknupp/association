@@ -184,3 +184,76 @@ relation sees restricted to the period.
 
 .. versionadded:: 5.0.0
 """
+
+
+# The measures, by name - what the point reader reads a question's words into
+# and the compiler computes. The names are closed here, and the SQL that
+# computes each lives where it runs (compose.core.DERIVED, compose.team's
+# GAME_MEASURES and SEASON_MEASURES, templates.common.HISTORY_COLUMNS), keyed
+# by exactly these names: tests/query/test_measures.py holds the two sides
+# together. Moved here from those modules on 2026-10-02 (ROADMAP.md, Phase 1,
+# the read_point move, step 2), where the reader imported the SQL to learn a
+# name; each re-exports its old name.
+
+GAME_COLUMNS: frozenset[str] = frozenset(MEASURE_WORDS.values()) | frozenset(
+    {"plusMinus", "offensiveRebounds", "defensiveRebounds", "ts_pct", "efg_pct", "usage_pct", "game_score", "threePointFieldGoalsMade", "threePointFieldGoalsAttempted"}
+)
+"""Every column name a per-game measure may take straight from the game log.
+
+.. versionadded:: 5.0.0
+"""
+
+DERIVED_MEASURES: frozenset[str] = frozenset({"pra", "fg_pct", "three_pct", "ft_pct", "double_double", "triple_double", "won", "home", "fouled_out"})
+"""Measures computed from columns per game, by name; the SQL is
+:data:`association.query.compose.core.DERIVED`'s.
+
+.. versionadded:: 5.0.0
+"""
+
+DERIVED_LINES: dict[str, tuple[str, int]] = {"fouled_out": ("fouls", 6)}
+"""A derived measure that IS a line on one column - ``fouled_out`` is six
+fouls - so a count of it and a count over that line are one question
+(``compose.move._move_boolean_count_is_line``). The compiler's SQL for each
+says the same thing, and the test checks it.
+
+.. versionadded:: 5.0.0
+"""
+
+BOOLEAN_MEASURES: frozenset[str] = frozenset({"triple_double", "double_double", "won", "fouled_out"})
+"""Measures read as a per-game condition rather than a counted quantity.
+
+.. versionadded:: 4.4.0
+
+.. versionchanged:: 5.0.0
+   Defined here; ``compose.core`` re-exports it.
+"""
+
+LINE: tuple[str, ...] = ("minutes", "points", "rebounds", "assists")
+"""The default line a game log or single-game read carries.
+
+.. versionadded:: 4.4.0
+
+.. versionchanged:: 5.0.0
+   Defined here; ``compose.core`` re-exports it.
+"""
+
+TEAM_GAME_MEASURES: frozenset[str] = frozenset({"points", "points_allowed", "differential"})
+"""A team's game-level measures, by name (:data:`association.query.compose.team.GAME_MEASURES` computes them).
+
+.. versionadded:: 5.0.0
+"""
+
+TEAM_SEASON_MEASURES: frozenset[str] = frozenset({"points", "rebounds", "assists", "steals", "blocks", "turnovers", "threePointFieldGoalsMade", "fieldGoalsMade", "freeThrowsMade", "fouls"})
+"""A team's season-total measures, by name (:data:`association.query.compose.team.SEASON_MEASURES` reads them).
+
+.. versionadded:: 5.0.0
+"""
+
+HISTORY_STATS: frozenset[str] = frozenset(
+    {"threePointFieldGoalPct", "fieldGoalPct", "freeThrowPct", "twoPointFieldGoalPct", "points", "rebounds", "assists", "steals", "blocks", "minutes", "threePointFieldGoalsMade"}
+)
+"""The stats a season-by-season history exists for, by name
+(:data:`association.query.templates.common.HISTORY_COLUMNS` says the columns and labels).
+
+.. versionadded:: 5.0.0
+"""
