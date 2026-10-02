@@ -66,9 +66,11 @@ fails rather than drifts.
   `scripts/check_ratchets.py --shrink` (it only removes and lowers) and
   commit the shorter list with the change.
 - **The reader does not import the answer side, and the answer side never
-  reaches the model** (`[tool.importlinter]`). The reader's nine imports of
+  reaches the model** (`[tool.importlinter]`). The reader's imports of
   `compose`, `templates` and the relations are listed by name and go in
-  Phase 1; a tenth fails, and so does a listed one that no longer exists.
+  Phase 1 (nine when the contract was written, eight since the planner left
+  the parser; four of the eight are `parse -> compose`, for `read_point`);
+  a new one fails, and so does a listed one that no longer exists.
 - **A change to the pipeline is proven stage by stage, on two
   populations.** `scripts/stage_snapshots.py run OUT.jsonl` answers the 628
   recorded questions through the whole agent with no model (the

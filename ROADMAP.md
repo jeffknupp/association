@@ -224,7 +224,7 @@ next step builds on the same reading order:
 | 2 | The other two kept paths go: `compose.answer` planning again when `planned` is left out, and a name lookup outside `names.loaded` reading its table again | done 2026-10-02: `planned` is required by `compose.answer` and the snapshot; a lookup outside a block raises `names.NotLoaded` (901 tests had made one; every test now runs inside a block). 628 of 628 questions and all 1,389 unit-test outcomes identical |
 | 3 | The snapshot's `query` stage records the planned `Query`, not the Reading's point; the snapshot's first line says the ollama version | done 2026-10-02: `query` is the planned `Query`/`TeamQuery`, the point is `reading.point`; the meta line carries `python`, `duckdb` and `ollama` (version, model, digest) and `compare` warns on each. Every other stage identical on 628 of 628; old `query` equals new `reading.point` on all 452 with a point |
 | 4 | The ratchets tighten: SQL counted per module by statement, not listed by module; the D4 freeze holds presenters, scoping tables and web renderers as well as intents | done 2026-10-02: 103 statements in 19 modules, each count may only fall; `test_frozen_shapes` holds the templates, presenters, adapters, the 12 scoping declarations and the 22 renderers, each watched to fail |
-| 5 | Documents that drifted: `AGENTS.md`'s "nine imports", the done table's 20 modules against Phase 0's 21, the records row (Phase 1 added `Planned`, `Beside` and `Route.subject`) | open |
+| 5 | Documents that drifted: `AGENTS.md`'s "nine imports", the done table's 20 modules against Phase 0's 21, the records row (Phase 1 added `Planned`, `Beside` and `Route.subject`) | done 2026-10-02: the three corrected in place, and the stage-runs row carries its re-measured figure |
 | 6 | Phase 1 proper: the stages run once, with the subject settled once; the reader always writes the condition it read; the reader's eight imports of the answer side, four of them `parse -> compose` for `read_point` | open |
 
 A reader change is also proven on wordings OUTSIDE the corpus, old tree
@@ -305,12 +305,12 @@ for refusals (a cause, then a phrase).
 | private imports from `templates/` into `compose/` | 91 | 0 |
 | compiled answers whose read is the compiler's SQL | 45 of 205 | every answer |
 | subject readings per question | 3 (1 since 2026-10-01) | 1 |
-| stage runs per question | mean 1.7 | 1 |
+| stage runs per question | mean 1.7 (1.68 measured 2026-10-02, up to 4) | 1 |
 | planner runs per question | 2 (1 since 2026-10-01) | 1 |
 | functions outside the reader that take the question | 168 | 0 |
-| modules that execute SQL | 20 (19 listed by the ratchet since 2026-10-01: `parse` and `subject` no longer do) | `relations/` only |
+| modules that execute SQL | 21 when the ratchet first listed them (the audit's own count was 20); 19 since 2026-10-01, `parse` and `subject` no longer do - 103 statements, counted per module since 2026-10-02 | `relations/` only |
 | SQL statements the reader issues per question | about 100 (38.5 once the subject was read once; 2 since 2026-10-01, the index's two loads) | 0 |
-| records between question and answer | 8 | 4 |
+| records between question and answer | 8 at the audit; 11 since Phase 1 added `Planned` (the planner's verdict, which the target's Query-or-cause absorbs), `Beside` (the companions the stages are handed) and `Route.subject` | 4 |
 | result shapes, and web renderers | 25 and 22 | one per shape |
 | unread content words over the corpus (`scripts/claims_ledger.py`) | 683 of 2,409 on the replies re-recorded on the OVH devbox (2026-10-02); on the old box's replies 684 of 2,415, and 679 before the companions' one reader, which no longer needs "play" to see who played; 9 questions with an unread number | not grown; no unread number |
 | stage snapshots, questions and unit-test calls | baseline | identical at the stated tolerance |
