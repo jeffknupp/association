@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from association.query.reading import Reading
+from association.query.templates.common import RELATION_SCOPING_EXCLUDED, unhonored_scoping
 
 from .core import Query, Refused, Unsupported, _check_relation_scoping
 from .team import TeamQuery
@@ -46,6 +47,38 @@ def _team_shape_cells(reading: Reading) -> frozenset[str]:
     return frozenset({"rate"})
 
 
+def _shape_declines(point: Reading) -> str | None:
+    """A cell the point's own reader cannot honor beyond the relation's
+    cells - why the planner declines the point, or None. The comparison
+    over the season line honors no narrowing at all ("compare curry and
+    lebron vs the celtics" answered for the whole season would be the
+    substitution ``check_scope`` exists to stop); the with/without split
+    only what its words state; a quarter's split, a run and two players'
+    meetings each refuse the cells their retired template excluded, with
+    that template's reason. Until 5.0.0's last change the point reader
+    raised these itself while reading, so what was read depended on what
+    would answer (``ROADMAP.md``, Phase 1, the ``read_point`` move, step 3).
+    """
+    # At call time: the adapters import the planner.
+    from association.query.compose.adapt import WITH_WITHOUT_STATED
+
+    intent, scope = point.intent, point.scope
+    if intent == "player_compare":
+        ignored = unhonored_scoping(intent, scope, frozenset())
+        return f"player_compare cannot honor {ignored} - it would answer for a different span than was asked" if ignored else None
+    if intent == "with_without":
+        ignored = unhonored_scoping(intent, scope, WITH_WITHOUT_STATED)
+        return f"with_without cannot honor {ignored} - it would answer for a different span than was asked" if ignored else None
+    if intent in ("period_split", "streak", "player_matchup"):
+        excluded = RELATION_SCOPING_EXCLUDED[intent]
+        # A period condition is excluded from period_split's presenter's
+        # WORDS only: the point keeps it, and the compiler's own sentence
+        # names both quarters.
+        refused = [slot for slot in excluded if (intent != "period_split" or slot != "period_condition") and getattr(scope, slot) not in (None, "", (), False)]
+        return f"{intent} cannot honor {refused} - {excluded[refused[0]]}" if refused else None
+    return None
+
+
 def plan(reading: Reading) -> Query | TeamQuery:
     """The point ``reading`` names, on the relation it names - or
     :class:`~association.query.compose.core.Unsupported` where that relation
@@ -62,6 +95,9 @@ def plan(reading: Reading) -> Query | TeamQuery:
        Refuses a narrowing the relation cannot honor (ROADMAP plan item 6,
        step (f)); the compiler's own compile step had, one call later.
     """
+    declined = _shape_declines(reading)
+    if declined is not None:
+        raise Unsupported(declined)
     if reading.relation == "team":
         # Every team shape, the sums included, against the TEAM relation's
         # own cells and what this shape's reader takes beside them.

@@ -8,12 +8,13 @@ templates on the player-games relation where they read box scores.
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import replace
 from typing import Any
 
 from association.query.measures import MEASURE_WORDS
 from association.query.reading import Group, Reading, Scope
 from association.query.shotchart import SHOT_AVAILABILITY
-from association.query.templates.common import _BOX_SCORES, RELATION_SCOPING_EXCLUDED, TemplateUnsupported, _clamp_limit, period_narrowing, unhonored_scoping
+from association.query.templates.common import _BOX_SCORES, TemplateUnsupported, _clamp_limit, period_narrowing
 
 # One concept, one definition (scripts/check_duplicate_names.py): the default
 # row counts and the default stat line are the same constants the real
@@ -227,13 +228,6 @@ def _adapt_period_split(scope: Scope) -> Reading:
     """
     if not _named_player_in(scope):
         raise Unsupported("period_split needs a player")
-    excluded = RELATION_SCOPING_EXCLUDED["period_split"]
-    # `period_condition` is excluded from the presenter's WORDS only: the
-    # point keeps it, the presenter steps aside (STATED_SCOPING) and the
-    # compiler's own sentence names both quarters - the game_log rule.
-    refused = [slot for slot in excluded if slot != "period_condition" and getattr(scope, slot) not in (None, "", (), False)]
-    if refused:
-        raise Unsupported(f"period_split cannot honor {refused} - {excluded[refused[0]]}")
     try:
         measure = _period_split_measure(scope.stat)
     except TemplateUnsupported as exc:
@@ -300,10 +294,6 @@ def _adapt_streak(scope: Scope) -> Reading:
         column, by_stat, _unit, want_win, _result = _streak_words(scope)
     except TemplateUnsupported as exc:
         raise Unsupported(str(exc)) from exc
-    excluded = RELATION_SCOPING_EXCLUDED["streak"]
-    refused = [slot for slot in excluded if getattr(scope, slot) not in (None, "", (), False)]
-    if refused:
-        raise Unsupported(f"streak cannot honor {refused} - {excluded[refused[0]]}")
     predicates: list[tuple[str, str, Any]] = [(column, ">=", scope.threshold)] if by_stat and column is not None else [("won", "=", want_win)]
     if _named_player_in(scope):
         try:
@@ -355,13 +345,9 @@ def _adapt_player_matchup(scope: Scope) -> Reading:
 
     .. versionadded:: 5.0.0
     """
-    # The scoping first, as check_scope ran before the template: a player
-    # in the opponent slot ("lebron vs kawhi head to head" read as one name
-    # against a team) is refused for the slot, the cause the reader can fix.
-    excluded = RELATION_SCOPING_EXCLUDED["player_matchup"]
-    refused = [slot for slot in excluded if getattr(scope, slot) not in (None, "", (), False)]
-    if refused:
-        raise Unsupported(f"player_matchup cannot honor {refused} - {excluded[refused[0]]}")
+    # The scoping - a player in the opponent slot ("lebron vs kawhi head to
+    # head" read as one name against a team) - is the planner's to refuse
+    # (compose.plan._shape_declines), the cause the reader can fix.
     texts = list(dict.fromkeys(n.strip() for n in [*scope.players, scope.player] if n is not None and n.strip()))
     if len(texts) != 2:
         raise Unsupported(f"player_matchup needs exactly two players, got {texts!r}")
@@ -403,9 +389,6 @@ def _adapt_with_without(scope: Scope) -> Reading:
 
     .. versionadded:: 5.0.0
     """
-    ignored = unhonored_scoping("with_without", scope, WITH_WITHOUT_STATED)
-    if ignored:
-        raise Unsupported(f"with_without cannot honor {ignored} - it would answer for a different span than was asked")
     mate_texts, _asked_without, _roles = _with_without_named(scope)
     if not mate_texts:
         texts = list(dict.fromkeys(n.strip() for n in (scope.player, *scope.players) if n is not None and n.strip()))
@@ -471,7 +454,10 @@ def _to_reading_scope(intent: str, scope: Scope) -> Reading:
     adapter = _ADAPTERS.get(intent)
     if adapter is None:
         raise Unsupported(f"no adapter for {intent}")
-    return adapter(scope)
+    # The point says whose default it is: the planner declines by it
+    # (compose.plan._shape_declines) until intent leaves the reader in
+    # Phase 3.
+    return replace(adapter(scope), intent=intent)
 
 
 def to_query(intent: str, slots: dict[str, Any]) -> Query:

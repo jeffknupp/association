@@ -16,6 +16,7 @@ from association.nba.season import eastern_date as _eastern_date_of
 from association.query import shotchart
 from association.query.compose.adapt import to_query, to_reading
 from association.query.compose.core import Unsupported, _compile_pair, _compile_run, _resolve_pair
+from association.query.compose.plan import plan
 from association.query.compose.present import (
     STATED_SCOPING,
     _present_game_log,
@@ -4534,15 +4535,15 @@ def test_player_matchup_needs_two_players(pg_ctx: TemplateContext) -> None:
 def test_the_matchup_point_refuses_a_team_opponent(pg_ctx: TemplateContext) -> None:
     """Two players' meetings are the games they played against each other, so
     there is no third team to narrow them to - refused by declaration
-    (``RELATION_SCOPING_EXCLUDED``, read by the point,
-    ``compose.adapt._adapt_player_matchup``), with or without a teammate
+    (``RELATION_SCOPING_EXCLUDED``, read by the planner,
+    ``compose.plan._shape_declines``), with or without a teammate
     named absent, rather than answering the whole matchup as though no team
     was named. The template is retired (compose.COMPILED_INTENTS); what its
     presenter's words state is ``STATED_SCOPING``'s."""
     with pytest.raises(Unsupported, match="opponent"):
-        to_reading("player_matchup", {"players": ["Brandin Podziemski", "Stephen Curry"], "opponent": "Detroit Pistons"})
+        plan(to_reading("player_matchup", {"players": ["Brandin Podziemski", "Stephen Curry"], "opponent": "Detroit Pistons"}))
     with pytest.raises(Unsupported, match="opponent"):
-        to_reading("player_matchup", {"players": ["Brandin Podziemski", "Stephen Curry"], "opponent": "Detroit Pistons", "without": ["Jaylen Brown"]})
+        plan(to_reading("player_matchup", {"players": ["Brandin Podziemski", "Stephen Curry"], "opponent": "Detroit Pistons", "without": ["Jaylen Brown"]}))
     assert "opponent" not in STATED_SCOPING["player_matchup"]
 
 
@@ -4560,7 +4561,7 @@ def test_the_matchup_point_still_refuses_an_unhonored_slot(pg_ctx: TemplateConte
     shown beneath averages over all of them), and `round` no relation has -
     the planner's refusal, as the parser plans the point."""
     with pytest.raises(Unsupported, match="newest meetings"):
-        to_reading("player_matchup", {"players": ["Brandin Podziemski", "Stephen Curry"], "order": "recent"})
+        plan(to_reading("player_matchup", {"players": ["Brandin Podziemski", "Stephen Curry"], "order": "recent"}))
     with pytest.raises(Unsupported, match="different span"):
         to_query("player_matchup", {"players": ["Brandin Podziemski", "Stephen Curry"], "round": "finals"})
 
@@ -5339,7 +5340,7 @@ def test_the_scoping_slots_this_template_filters_on_are_declared_honored() -> No
     # itself refuses them (compose.adapt._adapt_period_split), naming why.
     for slot, value in (("span", "career"), ("since", 2023)):
         with pytest.raises(Unsupported, match="accuracy caveat is measured per season"):
-            to_reading("period_split", {"player": "Stephen Curry", "period": 1, slot: value})
+            plan(to_reading("period_split", {"player": "Stephen Curry", "period": 1, slot: value}))
 
 
 def test_a_log_lists_the_games_and_keeps_the_season_in_the_header(period_ctx: TemplateContext) -> None:

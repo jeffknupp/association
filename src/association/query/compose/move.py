@@ -22,7 +22,7 @@ from association.query.leaderboard import resolve_metric
 from association.query.measures import BOOLEAN_MEASURES, DERIVED_LINES, DERIVED_MEASURES, GAME_COLUMNS, HISTORY_STATS, LINE, MEASURE_WORDS, TEAM_GAME_MEASURES, TEAM_SEASON_MEASURES
 from association.query.metrics import PER_GAME_MIN_GAMES, TEAM_FIELD_WORDS
 from association.query.reading import Aggregate, Reading, Scope
-from association.query.templates.common import DEFAULT_LIMIT, TEAM_ONLY_INTENTS, TemplateResult, _clamp_limit, ordinal_word, unhonored_scoping
+from association.query.templates.common import DEFAULT_LIMIT, TEAM_ONLY_INTENTS, TemplateResult, _clamp_limit, ordinal_word
 from association.query.templates.players import leaderboard_shot_distance_refusal
 
 from .adapt import DEFAULT_GAME_LOG_LIMIT, DEFAULT_SINGLE_GAME_LIMIT, _named_player_in, _to_reading_scope
@@ -769,16 +769,12 @@ def _compare_point(scope: Scope) -> Reading:
     item 6, step (g)): two or more named players' season lines side by side
     (``source="seasons"``, grouped by player), said by its presenter
     (``compose.present._present_player_compare``). The template's own
-    refusals are the point's: fewer than two distinct names, and any
-    narrowing at all - it honored no scoping slot, and a comparison "vs the
-    celtics" answered for the whole season would be the substitution
-    ``check_scope`` existed to stop.
+    refusal is the point's: fewer than two distinct names. A narrowing -
+    it honors none - is the planner's to decline
+    (:func:`~association.query.compose.plan._shape_declines`).
 
     .. versionadded:: 5.0.0
     """
-    ignored = unhonored_scoping("player_compare", scope, frozenset())
-    if ignored:
-        raise Unsupported(f"player_compare cannot honor {ignored} - it would answer for a different span than was asked")
     if len({name for name in scope.players if name.strip()}) < 2:
         raise Unsupported("player_compare needs at least two distinct player names")
     return Reading(scope=scope, shape="grouped", measures=[], aggregate="per_game", group="player", predicates=[], source="seasons")
