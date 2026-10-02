@@ -38,7 +38,7 @@ from association.query.compose.plan import plan_point
 from association.query.normalizer import Normalized
 from association.query.reading import Reading, Scope
 from association.query.router import Route
-from association.query.subject import read_subject
+from association.query.subject import child_named, read_subject, settle_subject
 from association.query.templates.common import TemplateContext, TemplateResult
 
 
@@ -51,10 +51,16 @@ def slots_route(intent: str, slots: Mapping[str, Any] | None = None) -> Route:
 
 def with_subject(con: duckdb.DuckDBPyConnection, question: str, route: Route) -> Route:
     """``route`` carrying who ``question`` is about, read as ``read_route``
-    reads it: under no intent, from the route's own scope."""
+    reads it - under no intent, from the route's own scope - and settled
+    under the route's intent, or under the child the subject's shape names
+    for it (``subject.child_named``), which the route then carries. The
+    stages do not run here: a child the stages would decline stands."""
     if route.subject is not None:
         return route
-    return replace(route, subject=read_subject(con, question, "other", route.scope))
+    read = read_subject(con, question, "other", route.scope)
+    named = child_named(read, route.intent, question)
+    intent, words = named if named is not None else (route.intent, None)
+    return replace(route, intent=intent, subject=settle_subject(read, intent, parent=route.intent, words=words))
 
 
 def ask_routed(agent: Agent, question: str, route: Route, *, label: str = "") -> Answer:

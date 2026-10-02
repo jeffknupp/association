@@ -476,25 +476,27 @@ def test_a_number_after_a_scoring_verb_is_a_line_on_points(con: duckdb.DuckDBPyC
 
 
 def test_each_move_of_the_intent_off_the_grammars_parent_is_a_decision(con: duckdb.DuckDBPyConnection) -> None:
-    """The three ways the intent leaves the parent the grammar named, each
-    with its own reason, and every slot a child's stages moved: the words
-    naming a child for the subject's kind, the stages settling another
-    intent, a team's record in the games a companion reached a line. A
-    question whose intent is the parent's carries none."""
+    """The ways the intent leaves the parent the grammar named, each with
+    its own reason: the words naming a child for the subject's kind, the
+    stages settling another intent, a team's record in the games a
+    companion reached a line, and a child the stages declined. A question
+    whose intent is the parent's carries none. (Until the stages ran once,
+    a child's decision listed every slot its run moved against the
+    parent's; there is no parent run to list against now.)"""
     route, _, _ = read_route(con, "How many times did embiid score 30+ points", ["embiid"], "points")
-    assert route.decisions == (
-        Decision("parser", "intent", "game_log", "threshold_count", "the words 'How many times did embiid score 30+' name threshold_count"),
-        Decision("parser", "span", None, "career", "read for threshold_count"),
-        Decision("parser", "threshold", None, 30, "read for threshold_count"),
-    )
+    assert route.decisions == (Decision("parser", "intent", "game_log", "threshold_count", "the words 'How many times did embiid score 30+' name threshold_count"),)
     route, _, _ = read_route(con, "rebounds allowed per team", [], "rebounds")
     assert route.decisions == (Decision("parser", "intent", "leaderboard", "team_leaderboard", "the stages settle it from the question's words"),)
     route, subject, _ = read_route(con, "what was the sixers record when maxey scored 15+ points?", ["sixers", "maxey"], "points")
     team_rule = "a team's record in the games a player named beside it reached a line"
-    assert route.decisions[0] == Decision("parser", "intent", "with_without", "record_when", team_rule) and subject.intent_reason == team_rule
-    assert [(d.field, d.after) for d in route.decisions[1:]] == [("player", "maxey"), ("threshold", 15)]
+    assert route.decisions == (Decision("parser", "intent", "with_without", "record_when", team_rule),) and subject.intent_reason == team_rule
     route, subject, _ = read_route(con, "how many points does embiid average", ["embiid"], "points")
     assert (route.intent, route.decisions, subject.intent_reason) == ("player_stat", (), None)
+    # A child the words name and the stages decline: said, and the parent
+    # stands (a history with no stat named is the whole line).
+    route, _, _ = read_route(con, "embiid career averages over the past 4 seasons", ["embiid"], "")
+    declined = "the words 'over the past 4 seasons' name player_history, and the stages declined it"
+    assert route.intent == "player_stat" and route.decisions == (Decision("parser", "intent", "player_history", "player_stat", declined),)
 
 
 def test_the_reading_carries_the_parsers_decisions_between_who_and_what_it_wrote(con: duckdb.DuckDBPyConnection) -> None:
@@ -508,15 +510,7 @@ def test_the_reading_carries_the_parsers_decisions_between_who_and_what_it_wrote
     question = "what was the sixers record when maxey scored 15+ points?"
     route, _, _ = read_route(con, question, ["sixers", "maxey"], "points")
     decisions = reading_from_route(con, question, route).decisions
-    assert [(d.stage, d.field) for d in decisions] == [
-        ("subject", "kind"),
-        ("subject", "teams"),
-        ("subject", "companions"),
-        ("parser", "intent"),
-        ("parser", "player"),
-        ("parser", "threshold"),
-        ("subject", "player"),
-    ]
+    assert [(d.stage, d.field) for d in decisions] == [("subject", "kind"), ("subject", "teams"), ("subject", "companions"), ("parser", "intent"), ("subject", "player")]
     assert (decisions[-1].before, decisions[-1].after) == ("maxey", "Tyrese Maxey")
     replayed = reading_from_route(con, question, with_subject(con, question, slots_route(route.intent, {**route.slots, "player": "Tyrese Maxey"})))
     assert [(d.stage, d.field) for d in replayed.decisions] == [("subject", "kind"), ("subject", "teams"), ("subject", "companions")]

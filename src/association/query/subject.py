@@ -67,7 +67,7 @@ from association.query.entities import (
     team_abbreviations,
 )
 from association.query.reading import ConditionSpec, Scope
-from association.query.router import _ABSENCE_WORDS, _NAME_STOPWORDS, _THRESHOLD_WORDS, Beside, _threshold_from_text_scored, settle
+from association.query.router import _ABSENCE_WORDS, _NAME_STOPWORDS, _THRESHOLD_WORDS, Beside, _threshold_from_text_scored
 from association.query.season_text import season_from_text
 from association.query.templates.common import (
     FILLER_PLAYER_WORDS,
@@ -94,7 +94,7 @@ SUBJECT_KINDS: frozenset[str] = frozenset({"player", "pair", "team", "teams", "p
 _RECORD_WHEN_PARENTS: frozenset[str] = frozenset({"player_stat", "player_splits", "game_log", "team_stat", "team_record", "with_without", "other"})
 
 #: Why a team's question with a companion's line is ``record_when``
-#: (:func:`_decide_intent`), wherever that is said: the reading's own
+#: (:func:`child_named`), wherever that is said: the reading's own
 #: decision, and the parser's about the intent.
 _TEAM_RECORD_WHEN = "a team's record in the games a player named beside it reached a line"
 
@@ -1016,48 +1016,50 @@ def read_subject(con: duckdb.DuckDBPyConnection, question: str, intent: str, sco
     if unrouted:
         evidence = (*evidence, f"companions the router named nobody for {list(unrouted)}")
     subject = replace(_decide(players, teams, position, opponent, own_team, companions, evidence, intent, question), conditions=conditions)
-    settled, words = _decide_intent(subject, intent, question, scope)
-    return replace(
-        subject,
-        invented=tuple(invented),
-        named_season=season_from_text(question),
-        intent=settled,
-        intent_reason=_intent_reason(intent, settled, words),
-        question=question,
-        filler=filler,
-        evidence=(*evidence, f"the words {words!r} name {settled}") if words else evidence,
-    )
+    # Read, not decided: the intent the subject's shape settles is the
+    # parser's step (:func:`child_named`, with the stages run once under
+    # it), and :func:`settle_subject` writes it here. Until 5.0.0's last
+    # change this ran the stages under each child the words named, before
+    # the parser ran them at all.
+    return replace(subject, invented=tuple(invented), named_season=season_from_text(question), intent=intent, question=question, filler=filler)
 
 
-def settle_subject(subject: Subject, intent: str, question: str, scope: Scope) -> Subject:
-    """``subject``, already read, under the ``intent`` and ``scope`` the
-    stages settled - no name is read again and the warehouse is not asked
-    (``ROADMAP.md``, Phase 1: the subject is read once). What depends on the
-    intent is decided here: two teams meeting are the ``teams`` kind under
-    ``head_to_head``, and the intent the subject's shape settles
-    (:func:`_decide_intent`), with the words that named a child. Who
-    stands beside the subject is the reading's too, and the stages take it
-    from there (:func:`beside`).
+def settle_subject(subject: Subject, intent: str, *, parent: str | None = None, words: str | None = None) -> Subject:
+    """``subject``, already read, under the ``intent`` the stages settled -
+    no name is read again, the warehouse is not asked and the stages do not
+    run (``ROADMAP.md``, Phase 1: the subject is read once, the stages run
+    once). What depends on the intent is written here: two teams meeting
+    are the ``teams`` kind under ``head_to_head``, and the intent itself
+    with why it is not ``parent``'s - the ``words`` that named a child
+    (:func:`child_named`), or the one move that names no words, a team's
+    record in the games a companion reached a line. Who stands beside the
+    subject is the reading's too, and the stages take it from there
+    (:func:`beside`).
 
     .. versionadded:: 5.0.0
+
+    .. versionchanged:: 5.0.0
+       Takes the child the parser decided (``parent``, ``words``) and runs
+       no stage of its own: until then it ran the stages under each child
+       the words named, a speculative run beside the parser's.
     """
     who = subject
     if who.kind == "team" and who.teams and who.opponent and intent == "head_to_head":
         who = replace(who, kind="teams", teams=(who.teams[0], who.opponent), opponent=None)
     evidence = tuple(line for line in who.evidence if not line.startswith("the words "))
-    settled, words = _decide_intent(who, intent, question, scope)
+    moved = parent is not None and intent != parent
     return replace(
         who,
-        intent=settled,
-        intent_reason=_intent_reason(intent, settled, words),
-        evidence=(*evidence, f"the words {words!r} name {settled}") if words else evidence,
+        intent=intent,
+        intent_reason=_intent_reason(parent or intent, intent, words) if moved else None,
+        evidence=(*evidence, f"the words {words!r} name {intent}") if words else evidence,
     )
 
 
 def _intent_reason(intent: str, settled: str, words: str | None) -> str | None:
     """Why ``settled`` is not the route's ``intent``
     (:attr:`Subject.intent_reason`): the words that name a child, or -
-    the one other way :func:`_decide_intent` moves it, and the only one that
+    the one other way :func:`child_named` moves it, and the only one that
     names no words - a team's record in the games a companion reached a
     line."""
     if settled == intent:
@@ -1078,9 +1080,14 @@ def _read_subject_alone(players: tuple[str, ...], teams: set[str], conditions: t
     return not players and not named_team and len(conditions) == 1 and conditions[0].predicate == "played"
 
 
-def _decide_intent(subject: Subject, intent: str, question: str, scope: Scope) -> tuple[str, str | None]:
-    """The intent the subject's shape settles, and the words that named it
-    where a child intent was assigned - the route's own unless:
+def child_named(subject: Subject, parent: str, question: str) -> tuple[str, str | None] | None:
+    """The child of ``parent`` the subject's shape names, with the words
+    that name it - or None where the parent stands. Decided from the
+    grammar alone; the parser runs the stages ONCE under the child, and
+    where they decline it (a count with no threshold in the text is a
+    ranking) runs them under the parent instead
+    (:func:`~association.query.parse.read_route`). Two ways a child is
+    named:
 
     - A team has a companion's line as the condition: "show me splits for
       the sixers when maxey scores 20+ points" (yardstick-v2 F087) is the
@@ -1099,27 +1106,19 @@ def _decide_intent(subject: Subject, intent: str, question: str, scope: Scope) -
     comparison sent to ``player_stat``: measured over the 628 questions with
     a recorded normalizer reply, none fires on the parser's output, whose
     grammar names a player's own record, the pair relation and a comparison
-    by the subject's kind (ROADMAP plan item 6, step (d), part 3)."""
-    if subject.kind in ("team", "team_players") and intent in _RECORD_WHEN_PARENTS and any(c.predicate == "reached" for c in subject.conditions):
+    by the subject's kind (ROADMAP plan item 6, step (d), part 3).
+
+    .. versionadded:: 5.0.0
+    """
+    if subject.kind in ("team", "team_players") and parent in _RECORD_WHEN_PARENTS and any(c.predicate == "reached" for c in subject.conditions):
         return "record_when", None
-    return _child_intent(subject, intent, question, scope)
-
-
-def _child_intent(subject: Subject, intent: str, question: str, scope: Scope) -> tuple[str, str | None]:
-    """The first child of :data:`_CHILD_GRAMMARS` whose words the question
-    holds, whose kinds admit the subject and whose parents include the
-    router's intent - with the words - or the router's intent and ``None``.
-    A child the router (or its own stages) already chose stands."""
-    if intent in KIND_ASSIGNED_INTENTS:
-        return intent, None
+    if parent in KIND_ASSIGNED_INTENTS:
+        return None
     for child, words, kinds, parents in _CHILD_GRAMMARS:
         match = words.search(question)
-        if match is None or intent not in parents or subject.kind not in kinds:
-            continue
-        if settle(child, scope, question, beside(subject.conditions)).intent == child:
+        if match is not None and parent in parents and subject.kind in kinds:
             return child, match.group(0)
-        return intent, None
-    return intent, None
+    return None
 
 
 def _named_before(question: str, players: tuple[str, ...], at: int) -> bool:
@@ -1225,7 +1224,7 @@ def apply_subject(subject: Subject, scope: Scope, *, intent: str) -> Applied:
 def _apply_team_record_when(subject: Subject, scope: Scope, intent: str) -> tuple[Scope, list[Decision], str]:
     """The scope for the TEAM's record in the games a companion reached a
     line - split out of :func:`_apply_intent` for the complexity gate; see
-    :func:`_decide_intent`'s record_when rule for the shape."""
+    :func:`child_named`'s record_when rule for the shape."""
     # Before the word-assigned children: this record_when is the TEAM's
     # question with a companion's line, not a player's "record when he
     # scored 30+" that the child grammar settles from the words.
@@ -1260,7 +1259,7 @@ def _apply_team_record_when(subject: Subject, scope: Scope, intent: str) -> tupl
 def _apply_intent(subject: Subject, scope: Scope, intent: str) -> tuple[Scope, list[Decision], str]:
     """Rewrite the scope for the team's record in the games a companion
     reached a line, where the reading settled on it
-    (:func:`_decide_intent`); returns the scope, the decisions and the
+    (:func:`child_named`); returns the scope, the decisions and the
     intent the scope is now for. A child the question's words name is the
     parser's own step (:func:`~association.query.parse.read_route` settles
     the route under it), so it arrives here as the route's intent and

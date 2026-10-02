@@ -41,7 +41,6 @@ from association.query.player_games import PERIOD_COLUMNS
 from association.query.reading import ConditionSpec, PeriodCondition, Reading, Scope, ScopeError, Split
 from association.query.router import Route, _period_asked, _route_calendar_slots_split, settle
 from association.query.subject import (
-    KIND_ASSIGNED_INTENTS,
     TEAM_SINGULARS,
     Subject,
     _apply_conditions_honored,
@@ -51,6 +50,7 @@ from association.query.subject import (
     _near,
     apply_subject,
     beside,
+    child_named,
     question_supports,
     read_subject,
     settle_subject,
@@ -838,16 +838,18 @@ def read_route(con: duckdb.DuckDBPyConnection, question: str, names: list[str] |
     # The window before the stages: they read ``order``/``limit`` as the
     # model's (a bare "last 10 games" reads both season types only beside
     # them, ``_route_game_log_recent_span``).
-    staged = settle(parent, window(question, slots), question, beside(read.conditions))
-    child, settled = _read_route_child(question, staged, read)
-    final = child.intent
-    scope = _read_route_fields(final, _read_route_period(final, window_scope(question, child.scope), question), question)
+    staged, decisions, words = _read_route_staged(question, slots, parent, read)
+    final = staged.intent
+    scope = _read_route_fields(final, _read_route_period(final, window_scope(question, staged.scope), question), question)
     # A teammate's start is his, never the subject's own split: the stages
     # read the split from the whole question.
     scope = _read_route_split(subject, question, final, scope)
     if condition is not None:
         scope = replace(scope, period_condition=condition[0])
     scope = _read_route_versus(subject, scope, final)
+    # The one reading, settled under the intent the route ends with: what
+    # the parser's last step and everything after it answer from.
+    settled = settle_subject(read, final, parent=parent, words=words)
     subject = replace(
         subject,
         intent=final,
@@ -855,45 +857,50 @@ def read_route(con: duckdb.DuckDBPyConnection, question: str, names: list[str] |
         teams=subject.teams if subject.kind == "teams" else settled.teams,
         opponent=subject.opponent if subject.kind == "teams" else settled.opponent,
     )
-    return Route(final, scope, _read_route_decisions(parent, staged, child, settled), read), subject, parent
+    return Route(final, scope, decisions, settled), subject, parent
 
 
-def _read_route_decisions(parent: str, staged: Route, child: Route, settled: Subject) -> tuple[Decision, ...]:
-    """How the intent moved off the parent the grammar named, as decisions
-    (:attr:`~association.query.router.Route.decisions`): the stages settling
-    another intent from the words (:func:`~association.query.router.settle`
-    - a ranking of teams, a count of games, a quarter's split), then a child
-    the words name for the subject's kind
-    (:attr:`~association.query.subject.Subject.intent_reason`), with each
-    slot the stages moved when they ran again under it. Until these, the
-    agent's ``(parser)`` trace line was the only place a count read out of
-    "how many 30+ point games" said it was not a game log."""
+def _read_route_staged(question: str, slots: dict[str, Any], parent: str, read: Subject) -> tuple[Route, tuple[Decision, ...], str | None]:
+    """The stages, run ONCE: under the child the subject's shape and the
+    question's words name for ``parent``
+    (:func:`~association.query.subject.child_named` - a count of 30+ point
+    games under a game log, a history over the past 4 seasons under a
+    player's line, a team's record under a companion's line), or under the
+    parent itself. The stages may decline a child (a count with no
+    threshold in the text is a ranking), and then run again under the
+    parent - the one case of a second run, measured at 14 of 628 recorded
+    questions, every one a history the stages read as a line. Until
+    5.0.0's last change they ran under the parent first and again under
+    each child to see whether it held, and once more under the one that
+    did: 1.7 runs a question on average, up to four.
+
+    Returns the route, the decisions made getting to it
+    (:attr:`~association.query.router.Route.decisions`: the intent moving
+    off the parent, and why) and the words that named the child, if one
+    stands."""
+    named = child_named(read, parent, question)
+    companions = beside(read.conditions)
     decisions: list[Decision] = []
+    if named is not None:
+        child, words = named
+        staged = settle(child, window(question, slots), question, companions)
+        # A team's record under a companion's line names no words, and the
+        # stages' own settling of it stands, as the route's did.
+        if staged.intent == child or words is None:
+            decisions.append(Decision("parser", "intent", parent, child, _why_named(child, words)))
+            if staged.intent != child:
+                decisions.append(Decision("parser", "intent", child, staged.intent, "the stages settle it from the question's words"))
+            return staged, tuple(decisions), words
+        decisions.append(Decision("parser", "intent", child, parent, f"the words {words!r} name {child}, and the stages declined it"))
+    staged = settle(parent, window(question, slots), question, companions)
     if staged.intent != parent:
         decisions.append(Decision("parser", "intent", parent, staged.intent, "the stages settle it from the question's words"))
-    if child.intent != staged.intent:
-        decisions.append(Decision("parser", "intent", staged.intent, child.intent, settled.intent_reason or ""))
-        moved = sorted(key for key in staged.slots.keys() | child.slots.keys() if staged.slots.get(key) != child.slots.get(key))
-        decisions.extend(Decision("parser", key, staged.slots.get(key), child.slots.get(key), f"read for {child.intent}") for key in moved)
-    return tuple(decisions)
+    return staged, tuple(decisions), None
 
 
-def _read_route_child(question: str, route: Route, subject: Subject) -> tuple[Route, Subject]:
-    """``route`` under the intent ``subject`` - the one reading of who the
-    question is about - settles for it
-    (:func:`~association.query.subject.settle_subject`), never a second
-    reading: a child the question's own words name for the subject's kind
-    (:data:`~association.query.subject.KIND_ASSIGNED_INTENTS`: a count of
-    30+ point games under a game log, a history over the past 4 seasons
-    under a player's line), with the stages run again under the child
-    (:func:`~association.query.router.settle`), or a team's record under a
-    companion's line with the route's own slots - beside that reading."""
-    settled = settle_subject(subject, route.intent, question, route.scope)
-    final = settled.intent or route.intent
-    if final != route.intent and final in KIND_ASSIGNED_INTENTS:
-        again = settle(final, route.scope, question, beside(subject.conditions))
-        return Route(again.intent, again.scope), settled
-    return Route(final, route.scope), settled
+def _why_named(child: str, words: str | None) -> str:
+    """The reason a child stands, as :attr:`~association.query.subject.Subject.intent_reason` says it."""
+    return f"the words {words!r} name {child}" if words is not None else "a team's record in the games a player named beside it reached a line"
 
 
 def reading_from_route(con: duckdb.DuckDBPyConnection, question: str, route: Route) -> Reading:
@@ -926,15 +933,15 @@ def reading_from_route(con: duckdb.DuckDBPyConnection, question: str, route: Rou
     """
     scope = route.scope
     question = _read_route_folded(question)
-    # The subject is read once, by read_route, and rides on the route; it is
-    # settled here under the route's intent. A route with none is a caller's
-    # mistake, said here: until 5.0.0's last change the subject was read
-    # again for one, a second reading that ran on a different scope than
-    # the first and disagreed with it (a team's old name read without the
-    # season; ROADMAP.md, Phase 1).
+    # The subject is read once, by read_route, settled there under the
+    # intent the route ends with, and rides on the route. A route with none
+    # is a caller's mistake, said here: until 5.0.0's last change the
+    # subject was read again for one, a second reading that ran on a
+    # different scope than the first and disagreed with it (a team's old
+    # name read without the season; ROADMAP.md, Phase 1).
     if route.subject is None:
         raise ValueError("reading_from_route needs the route's subject - who the question is about, as read_route read it")
-    subject = settle_subject(route.subject, route.intent, question, scope)
+    subject = route.subject
     applied = apply_subject(subject, scope, intent=route.intent)
     reading = Reading(
         scope=applied.scope,

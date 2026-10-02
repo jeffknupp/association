@@ -644,6 +644,25 @@ agents' reports named here are in `~/association-research/stages/`.
    Gates on the new box: the fast check 24s, the full check 37s, the
    corpus snapshots 102s, the ledger 12s.
 
+10. **Phase 1, the order from here, steps 1-5 and the stages run once
+    (2026-10-02).** Step 1 (`b2ee61c`): `Agent.ask` takes no route and a
+    route with no subject is refused, not read for again; the preview
+    script answers recorded questions with recorded replies; 39 test call
+    sites moved to `tests/routed.py`. Step 2 (`fcd9c68`): the compiler and
+    the snapshot take their planning; a name lookup outside `names.loaded()`
+    raises (901 tests had made one). Step 3 (`f5b2682`): the snapshot's
+    query stage is the planned Query; the run's first line names Python,
+    DuckDB and ollama. Step 4 (`6a5eb6a`): SQL counted per module (103 in
+    19); the D4 freeze holds templates, presenters, adapters, scoping
+    declarations and renderers. Step 5 (`c2438b1`): the drifted figures.
+    Then the stages run once: the child named from the grammar, the stages
+    run under it first, the parent only where they decline - 1.00 runs a
+    question where it was 1.68, nothing but decision records and
+    `intent_reason` moving on the corpus, and 2,710 out-of-corpus wordings
+    read the same but three that gained a stat. Cost: the ledger reads 690
+    where it read 683, because a second run's decision records had been
+    counting as reads.
+
 ## The plan items, as written
 
 In order of lift per unit of structural change, each measured on the

@@ -16,7 +16,7 @@ from association.nba.season import current_season
 from association.query import names, subject
 from association.query.decisions import Decision
 from association.query.reading import Scope
-from association.query.subject import SUBJECT_KINDS, Subject, apply_subject, question_supports, read_subject
+from association.query.subject import SUBJECT_KINDS, Subject, apply_subject, child_named, question_supports, read_subject, settle_subject
 
 
 def _applied(con: duckdb.DuckDBPyConnection, question: str, intent: str, slots: dict[str, Any]) -> tuple[dict[str, Any], list[Decision], list[str], str]:
@@ -87,6 +87,16 @@ def con() -> duckdb.DuckDBPyConnection:
 
 def _read(con: duckdb.DuckDBPyConnection, question: str, intent: str = "player_stat", **slots: Any) -> Subject:
     return read_subject(con, question, intent, Scope.from_slots(slots))
+
+
+def _settled(con: duckdb.DuckDBPyConnection, question: str, intent: str = "player_stat", **slots: Any) -> Subject:
+    """The subject read, then settled under ``intent`` or the child its
+    shape names for it (the grammar's decision alone; the stages run in
+    ``parse.read_route``)."""
+    read = _read(con, question, intent, **slots)
+    named = child_named(read, intent, question)
+    chosen, words = named if named is not None else (intent, None)
+    return settle_subject(read, chosen, parent=intent, words=words)
 
 
 def test_every_kind_the_reading_returns_is_declared(con: duckdb.DuckDBPyConnection) -> None:
@@ -437,15 +447,14 @@ def _assigned(con: duckdb.DuckDBPyConnection, question: str, parent: str, **slot
     whose route arrives under ``parent``: the one subject reading, the
     parser's child step (``parse._read_route_child``), then its last
     (``parse.reading_from_route``) - the Reading, as slots."""
-    from association.query.parse import _read_route_child, reading_from_route
+    from association.query.parse import _read_route_staged, reading_from_route
     from association.query.router import Route
 
-    route = slots_route(parent, dict(slots))
-    # The subject is read once and carried: the child step and the last
-    # step settle it, neither reads it again.
-    who = read_subject(con, question, parent, route.scope)
-    child, _ = _read_route_child(question, route, who)
-    reading = reading_from_route(con, question, Route(child.intent, child.scope, subject=who))
+    # The subject is read once; the stages run once, under the child the
+    # words name for it or under the parent; the last step settles nothing.
+    who = read_subject(con, question, parent, Scope.from_slots(slots))
+    staged, decisions, words = _read_route_staged(question, dict(slots), parent, who)
+    reading = reading_from_route(con, question, Route(staged.intent, staged.scope, decisions, settle_subject(who, staged.intent, parent=parent, words=words)))
     return reading.intent, reading.scope.to_slots()
 
 
@@ -470,7 +479,8 @@ def test_a_count_with_no_threshold_in_the_text_stays_the_routers_question(con: d
     """The router's own stages, run under the child, turn a count with no
     threshold into a ranking - so the words alone do not move it."""
     intent, slots = _assigned(con, "how many times has jokic been named mvp", "other", stat="points", player="Nikola Jokic")
-    assert intent == "other" and slots == {"stat": "points", "player": "Nikola Jokic"}
+    # The stages, run under the parent once the child declined, add their own season type.
+    assert intent == "other" and slots == {"stat": "points", "player": "Nikola Jokic", "season_type": 2}
 
 
 def test_two_teams_meeting_is_not_a_count_of_games(con: duckdb.DuckDBPyConnection) -> None:
@@ -659,10 +669,10 @@ def test_a_start_or_a_line_is_written_as_a_condition_where_the_template_honors_i
     assert slots["conditions"] == [{"player": "Jayson Tatum", "side": "own", "predicate": "reached", "stat": "points", "threshold": 30}]
     # An absence stays the router's `without`; the comparison templates read it as the split's two sides.
     intent, slots = _assigned(con, "celtics record without tatum", "with_without", team="Boston Celtics", without=["tatum"])
-    assert "conditions" not in slots and slots["without"] == ["tatum"]
+    assert "conditions" not in slots and slots["without"] == ["Jayson Tatum"]  # the stages write the one reading's companion, resolved
     # with_without reads a start as the split's own side (step C).
     intent, slots = _assigned(con, "celtics record when tatum starts", "with_without", team="Boston Celtics", with_player=["tatum"])
-    assert slots["conditions"] == [{"player": "Jayson Tatum", "side": "own", "predicate": "started"}] and slots["with_player"] == ["tatum"]
+    assert slots["conditions"] == [{"player": "Jayson Tatum", "side": "own", "predicate": "started"}] and "with_player" not in slots  # a start is the condition, not a presence
 
 
 def test_a_team_with_a_companions_line_is_record_when_with_him_as_the_player(con: duckdb.DuckDBPyConnection) -> None:
@@ -696,7 +706,7 @@ def test_a_companion_the_router_named_nobody_for_is_read_from_the_question(con: 
     # companion phrase's own word reaches them.
     con.executemany("INSERT INTO players VALUES (?, ?)", [("28", "Marlon Maxey"), ("29", "Jalen Williams"), ("30", "Jalen Williams")])
     slots: dict[str, Any] = {"stat": "points", "player": "Joel Embiid", "opponent": "Philadelphia 76ers", "season": 2026, "season_type": 2}
-    s = _read(con, "show me splits for the sixers when maxey scores 20+ points", "player_stat", **slots)
+    s = _settled(con, "show me splits for the sixers when maxey scores 20+ points", "player_stat", **slots)
     assert s.kind == "team" and s.teams == ("Philadelphia 76ers",) and s.conditions == (Companion("maxey", "reached", "points", 20),) and s.intent == "record_when"
     assert "companions the router named nobody for ['maxey']" in s.evidence
     applied = apply_subject(s, Scope.from_slots(slots), intent="player_stat")
@@ -841,22 +851,24 @@ def test_the_subject_is_read_once_per_question(con: duckdb.DuckDBPyConnection, m
 
 
 def test_a_subject_is_settled_under_the_intent_without_reading_a_name_again() -> None:
-    """What depends on the intent is decided from the reading already made:
-    two teams meeting are the ``teams`` kind under ``head_to_head`` and a
-    team against another under anything else; the words that name a child
-    are said once, whichever intent the subject was read under."""
-    from association.query.subject import settle_subject
-
+    """What depends on the intent is written from the reading already made,
+    with no stage run: two teams meeting are the ``teams`` kind under
+    ``head_to_head`` and a team against another under anything else; the
+    words that name a child (``child_named``, the grammar's decision) are
+    said once, whichever intent the subject was read under."""
     team = Subject("team", teams=("Philadelphia 76ers",), opponent="Boston Celtics", evidence=("team word '76ers'", "the words 'old' name streak"))
-    meeting = settle_subject(team, "head_to_head", "how many times did the 76ers play boston", Scope())
+    meeting = settle_subject(team, "head_to_head")
     assert (meeting.kind, meeting.teams, meeting.opponent) == ("teams", ("Philadelphia 76ers", "Boston Celtics"), None)
-    against = settle_subject(team, "team_quarter_points", "76ers 4th quarter points against boston", Scope())
+    against = settle_subject(team, "team_quarter_points")
     assert (against.kind, against.teams, against.opponent, against.intent) == ("team", ("Philadelphia 76ers",), "Boston Celtics", "team_quarter_points")
     assert against.evidence == ("team word '76ers'",)
 
     player = Subject("player", players=("Nikola Jokic",))
-    counted = settle_subject(player, "game_log", "How many 30+ point games did Jokic have this season?", Scope.from_slots({"player": "Nikola Jokic", "stat": "points"}))
-    assert counted.intent == "threshold_count" and counted.intent_reason is not None and counted.evidence[-1].endswith("name threshold_count")
+    question = "How many 30+ point games did Jokic have this season?"
+    assert child_named(player, "game_log", question) == ("threshold_count", "How many 30+ point games")
+    assert child_named(player, "threshold_count", question) is None  # a child already chosen stands
+    counted = settle_subject(player, "threshold_count", parent="game_log", words="How many 30+ point games")
+    assert counted.intent == "threshold_count" and counted.intent_reason == "the words 'How many 30+ point games' name threshold_count" and counted.evidence[-1].endswith("name threshold_count")
 
 
 @pytest.mark.parametrize(

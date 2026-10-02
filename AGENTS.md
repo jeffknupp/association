@@ -99,10 +99,14 @@ fails rather than drifts.
   twelve seconds since names come from the index), and reports the words whose deletion leaves the reading
   and the planned query unchanged. It measures from outside the reader, so
   the count means the same before and after the reader is replaced.
-  Baseline: 683 of 2,409 content words in 391 of 628 questions, most of
+  Baseline: 690 of 2,409 content words in 391 of 628 questions, most of
   them words that restate the shape ("average", "record", "stats"),
-  measured at `42e95d3` on the replies re-recorded on the OVH devbox
-  (2026-10-02; below). On the old box's replies it was 679 of 2,415 at
+  measured on the replies re-recorded on the OVH devbox (2026-10-02;
+  below). It read 683 at `42e95d3`: seven words ("points" in "when maxey
+  scored 20+ points", "shot" in "shot distance") counted as read only
+  because the parser's decision records named the slots a second stage
+  run had moved; with the stages run once there is no second run to
+  list, and the reading and the query are the same without them. On the old box's replies it was 679 of 2,415 at
   `011091f` and 684 once the one reader of companions no longer needed
   the verb in "when Embiid and Paul George play". Nine questions have an unread NUMBER, and three of
   those were fluent answers to a broader question (`ISSUES.md`). After a
@@ -898,10 +902,18 @@ model's. Two things follow, and both matter when you add a shape:
   `threshold_count` and "who lead the league in avg 3 point distance" (no
   player) off `shot_distance`. Measured when the seven left the router's
   prompt: 0 false positives over 261 recorded questions of other intents.
-  The child's slots are the stages run again under it (`router.settle`),
-  never a second reader per child; and the stages may decline (a count with
-  no threshold is a ranking), in which case the parent's intent stands. Add
-  a case to `port_check.py`'s corpus (`~/association-research/intent-shrink/`)
+  The child is named from the grammar alone (`subject.child_named`), and
+  the stages run ONCE, under it (`parse._read_route_staged`); they may
+  decline it (a count with no threshold is a ranking), and only then run
+  again under the parent - 4 of the 628 recorded questions, every one a
+  history read as a line. Until 2026-10-02 they ran under the parent,
+  again under each child to see whether it held, and once more under the
+  one that did (1.7 runs a question, up to four), and the subject reading
+  ran them too, under "other", before the parser ran them at all.
+  `subject.read_subject` reads and decides nothing; `subject.settle_subject`
+  writes the intent and why with no stage run; the Route carries the
+  SETTLED subject, and `parse.reading_from_route` settles nothing. Add a
+  case to `port_check.py`'s corpus (`~/association-research/intent-shrink/`)
   and to `tests/query/test_subject.py` for each wording a grammar gains.
 - **A refusal names the missing thing, never only the slot.**
   `check_coverage`'s reasoning, and it applies past the floors: a coach
