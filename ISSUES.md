@@ -304,6 +304,7 @@ those were found.
   already computed for `Subject.named_season` and reads no stage. Then a
   case per half in `tests/query/test_subject.py`, and these wordings added
   to the out-of-corpus harness the companions step used.
+- **GitHub:** #316
 
 ### In the off-season "last season" reads the season before the one just finished: "how many points did luka average last season" answers 2024-25 on 2026-09-30
 - **Found:** 2026-09-30, with the season-rollover fix; re-verified offline
@@ -3147,6 +3148,7 @@ those were found.
 - **Next step:** `uv lock --upgrade-package urllib3 --upgrade-package virtualenv`,
   rerun the script by hand, or list an advisory under `IGNORED` with why
   it does not apply.
+- **GitHub:** #317
 
 ### A log narrowed by a season range is headed "last 7 games of his career"
 - **Found:** 2026-09-30, roadmap review (agent A).
