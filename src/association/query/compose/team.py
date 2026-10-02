@@ -51,7 +51,6 @@ narrowed reader is one season type at a time.
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -60,7 +59,8 @@ import duckdb
 from association.nba.coverage import unavailable
 from association.nba.season import current_season
 from association.query.conditions import _PLAYER_GAME_TABLES, _longest_runs
-from association.query.entities import _TEAM_NICKNAMES, Entity, teams_named_by_word
+from association.query.entities import Entity
+from association.query.entities import team_named_in as team_named_in
 from association.query.reading import Scope
 from association.query.team_games import TeamNarrowed
 from association.query.team_games import aggregate_sql as team_aggregate_sql
@@ -70,46 +70,6 @@ from association.query.templates.common import team_games as narrow_team_games
 from association.query.templates.splits import _DEFAULT_STREAK_LIMIT, _TEAM_STREAK_SELECT, PresenceSplit, _streak_league_team_narrowed, _team_season_range, _with_without_read
 
 from .core import Refused, Unsupported
-
-_WORD = re.compile(r"[a-zA-Z']+")
-
-
-def team_named_in(con: duckdb.DuckDBPyConnection, question: str) -> str | None:
-    """The one team the question itself names, by a whole word of it (or a
-    curated nickname) - the team counterpart of
-    :func:`association.query.entities.players_named_in`, kept deliberately
-    minimal: single words only, since no franchise name has an internal
-    ambiguity a span needs to resolve the way a player's first/last name
-    does ("Portland Trail Blazers" is found by "blazers" alone; nothing
-    named "Trail" collides with it). Never a guess between two candidates -
-    only an exact single match counts, and the first match wins, read left
-    to right the way a question states its subject first.
-
-    Used to restore a team the router dropped entirely (F127, ISSUES.md:
-    "how many 3 pointers have the magic made" routed with no ``team`` slot
-    at all) - the same repair :func:`association.query.entities.players_named_in`
-    already makes for a dropped player, in :func:`association.query.compose.move.repair`.
-
-    .. versionadded:: 4.4.0
-
-    .. versionchanged:: 5.0.0
-       A possessive ("the Sixers' record") names the team as the bare word does.
-    """
-    for found in _WORD.findall(question.lower()):
-        # "the Sixers' record", "the Knicks' last 5 games": the possessive
-        # is the question's, not the name's (ISSUES.md #232 - 11 of 277
-        # paraphrases read no team at all).
-        word = found.removesuffix("'s").rstrip("'")
-        if len(word) < 4:
-            continue
-        nickname = _TEAM_NICKNAMES.get(word)
-        if nickname:
-            return nickname
-        named = teams_named_by_word(con, word)
-        if len(named) == 1:
-            return str(named[0])
-    return None
-
 
 #: A team measure name -> the team-games relation column expression it
 #: reads, for a NARROWED read. Only game-outcome figures live on

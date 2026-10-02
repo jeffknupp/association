@@ -47,6 +47,11 @@ from ..player_games import (  # noqa: F401 - the relation's names, re-exported f
     season_type_clause,
 )
 from ..player_games import _tenure_clause as _relation_tenure_clause
+from ..reading import FILLER_PLAYER_WORDS as FILLER_PLAYER_WORDS
+from ..reading import OWN_TEAM_RESTORABLE_INTENTS as OWN_TEAM_RESTORABLE_INTENTS
+from ..reading import PLAYER_REQUIRED_INTENTS as PLAYER_REQUIRED_INTENTS
+from ..reading import POSITIONS as POSITIONS
+from ..reading import SUBJECT_RESTORABLE_INTENTS as SUBJECT_RESTORABLE_INTENTS
 from ..reading import ConditionSpec, PeriodCondition, Scope
 from ..team_games import TeamNarrowed
 from ..team_metrics import TEAM_METRICS, resolve_team_metric
@@ -638,110 +643,6 @@ PLAYER_INTENTS: frozenset[str] = frozenset(
 """Intents whose template reads a ``player`` or ``players`` slot.
 
 .. versionadded:: 2.1.0
-"""
-
-
-PLAYER_REQUIRED_INTENTS: frozenset[str] = frozenset({"record_when", "period_split", "shot_distance", "player_history"})
-"""Intents whose template cannot answer at all without a player, so a player the
-router left out is worth restoring from the question.
-
-Deliberately not every intent that reads one: where the player is optional -
-``threshold_count``, ``single_game_high`` - an empty slot means "the league", and
-filling it would turn a league question into a question about somebody the
-question may only appear to name ("best" is Travis Best).
-
-``record_when`` has a team branch too (ISSUES.md #144) - a threshold on a
-TEAM's own scoring is a real, player-less question - which is why the restore
-that reads this set (``subject._apply_restored_player``) puts a name back
-only where the reading settled on exactly ONE player, subject or companion,
-and never a stray name found elsewhere in the question.
-
-.. versionadded:: 2.1.0
-
-.. versionchanged:: 5.0.0
-   ``shot_distance`` and ``player_history`` added: each refuses outright
-   without a player ("shot_distance needs a player name"), and each is now
-   assigned from the question's words under a parent whose own stages may
-   have dropped the player (``subject.KIND_ASSIGNED_INTENTS``: a
-   ``leaderboard`` drops the filler player a distance question arrives with).
-"""
-
-
-SUBJECT_RESTORABLE_INTENTS: frozenset[str] = frozenset({"single_game_high", "threshold_count", "player_splits"})
-"""Intents where a player left out changes the answer, but is not required -
-an empty slot means "the league" (or, for ``player_splits``, the team's own
-splits: "show me Embiid's splits against boston" arrived as the 76ers and
-the Celtics meeting with Embiid dropped, once the intent left the router's
-prompt in 5.0.0) - so a name is restored only where the
-question's own words name exactly one player and that naming survives
-:func:`~association.query.entities._named_only_by_a_team_word` and
-:func:`~association.query.entities._named_only_by_a_common_word`.
-
-Separate from :data:`PLAYER_REQUIRED_INTENTS` on purpose: those templates
-cannot answer at all without a player, while these two have a real,
-different answer with none (the league's leaders) - "kawhi most threes in a
-game" (yardstick-v2 F093) used to answer that league ranking, Kawhi Leonard's
-own 7 never mentioned, because ``single_game_high`` was never taught to read
-a subject named with no scoring verb and no possessive
-(``router._SUBJECT_OF_HIGH`` needs one of those; "NAME most/highest STAT"
-has neither).
-
-Measured before shipping, per AGENTS.md's own discipline for this exact
-trap ("best" is Travis Best): both ``scripts/check_routing.py``'s cases and
-``/home/jeff/association-research/statmuse-2026-09/feed_queries.txt`` (380
-questions together) were run through the restoring grammar
-(the subject reading) with the two intents here as
-the only ones it can touch. 5 false-positive candidates turned up in the
-WHOLE corpus - "Best true shooting percentage last season?" (Travis Best),
-"Best record from 2010-11 to 2018-19 nba" and "Best NBA record since
-January 31st 201" (both Travis Best again), "Celtics vs Bulls head to head
-record" (Luther Head), and "Aaron gordan vs 76ers log" (a typo landing on
-Gordan Giricek instead of Aaron Gordon) - and NONE of the five route to
-``single_game_high`` or ``threshold_count``, so restricting to this pair
-alone already clears the measured corpus with zero false positives. The
-``best``/``head`` pair is still excluded by
-:func:`~association.query.entities._named_only_by_a_common_word` as a
-forward-looking gate, since a future question in either intent could still
-collide with one of them; the typo case is not addressed here (a wrong
-candidate, not an ungrounded one - the entity index's near-spelling pass is
-the tool for that: :func:`~association.query.entities.read_near_spelling`
-reads a single near spelling as that player and says so, and asks about two
-or more).
-
-.. versionadded:: 4.4.0
-"""
-
-
-OWN_TEAM_RESTORABLE_INTENTS: frozenset[str] = frozenset({"player_stat"})
-"""Intents where a player's OWN team, named beside him and left out by the
-router, is worth restoring - narrower than :data:`PLAYER_INTENTS` on
-purpose, since honoring the restored ``own_team`` slot needs the relation to
-narrow by it (``templates.common._narrow_player_games``'s ``team`` param,
-threaded through ``scoped_games`` only where a caller passes it), which only
-``player_stat`` does.
-
-"lebron stats as a starter for Miami" (yardstick-v2 F166) used to answer his
-current (Lakers) season, "Miami" never read at all - not even as noise, since
-nothing on the relation could have narrowed to it either way.
-the subject reading reads "for <team>"/"with the <team>" beside an
-already-known player (``subject._apply_own_team``) and, with no season also
-named, defaults ``span`` to "career" too - a historical team names a
-tenure, not "now". Written to ``own_team``, never the router's own ``team``
-slot - see that function's docstring for the recorded case
-(``player_stat``'s golden snapshot) where a router-supplied ``team`` sitting
-beside a correct ``opponent`` is noise, not a second fact to narrow by, the
-same shape ``games._team_slot_for_player`` already treats it as for
-``game_log``.
-
-Deliberately not ``game_log``: its own ``team``/``opponent`` dance
-(``games._team_slot_for_player``) already reads a ``team`` slot beside a
-player, and drops it outright when he actually played for that team ("his
-own team narrows nothing") - correct only because no tenure narrowing
-existed there. Reusing this flag for ``game_log`` without first reconciling
-the two readings would leave one of them silently wrong; filed in
-``ISSUES.md`` rather than done here.
-
-.. versionadded:: 4.4.0
 """
 
 
@@ -1916,34 +1817,7 @@ def scoped_games(
 #: reaches every forward on record and "shooting guards" only those listed as SG.
 POSITION_CODES: dict[str, list[str]] = {"G": ["G", "PG", "SG", "GF"], "F": ["F", "PF", "SF", "GF"], "C": ["C"], "PG": ["PG"], "SG": ["SG"], "PF": ["PF"], "SF": ["SF"]}
 
-#: A question's position word, mapped to :data:`POSITION_CODES`' own letter.
-POSITIONS: list[tuple[str, str]] = [
-    (r"\bcenters?\b", "C"),
-    (r"\bpoint guards?\b", "PG"),
-    (r"\bshooting guards?\b", "SG"),
-    (r"\bpower forwards?\b", "PF"),
-    (r"\bsmall forwards?\b", "SF"),
-    (r"\bforwards?\b", "F"),
-    (r"\bguards?\b", "G"),
-]
-"""``(pattern, position code)`` - the words a position-group question uses.
 
-.. versionadded:: 4.4.0
-
-.. versionchanged:: 5.0.0
-   Moved here from ``compose.move`` (which still re-exports it), so the
-   subject reading and the compiler share one list without importing each
-   other.
-"""
-
-FILLER_PLAYER_WORDS: frozenset[str] = frozenset({"player", "players", "a player", "any player"})
-"""What the router writes in ``player`` when the question names nobody -
-filler, not a name ("Most points in 15th season played" arrived as
-``player: "player"``, yardstick-v2 F099). The subject reading reads none of
-them as a player, and the compiler clears the slot.
-
-.. versionadded:: 5.0.0
-"""
 """``players.position_abbr`` values a question's position word reaches.
 
 .. versionadded:: 4.4.0

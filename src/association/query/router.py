@@ -34,10 +34,9 @@ from association.nba.season import current_season
 
 from .calendar import HOLIDAY_WORDS
 from .decisions import Decision
-from .measures import MEASURE_WORDS
+from .measures import MEASURE_WORDS, STAT_ALIASES
 from .reading import Scope
 from .season_text import season_from_text, season_spans
-from .team_metrics import STAT_ALIASES
 
 if TYPE_CHECKING:
     from .subject import Subject

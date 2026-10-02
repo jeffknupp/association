@@ -97,6 +97,51 @@ def _team_index(con: duckdb.DuckDBPyConnection, *columns: str) -> names.TeamInde
     return index
 
 
+_NAME_WORD = re.compile(r"[a-zA-Z']+")
+
+
+def team_named_in(con: duckdb.DuckDBPyConnection, question: str) -> str | None:
+    """The one team the question itself names, by a whole word of it (or a
+    curated nickname) - the team counterpart of
+    :func:`players_named_in`, kept deliberately
+    minimal: single words only, since no franchise name has an internal
+    ambiguity a span needs to resolve the way a player's first/last name
+    does ("Portland Trail Blazers" is found by "blazers" alone; nothing
+    named "Trail" collides with it). Never a guess between two candidates -
+    only an exact single match counts, and the first match wins, read left
+    to right the way a question states its subject first.
+
+    Used to restore a team the router dropped entirely (F127, ISSUES.md:
+    "how many 3 pointers have the magic made" routed with no ``team`` slot
+    at all) - the same repair :func:`players_named_in`
+    already makes for a dropped player.
+
+    .. versionadded:: 4.4.0
+
+    .. versionchanged:: 5.0.0
+       Lives here, beside the player's reader: it was ``compose.team``'s,
+       which the subject reading and the parser imported from the answer
+       side to read a team word (``ROADMAP.md``, Phase 1).
+
+    .. versionchanged:: 5.0.0
+       A possessive ("the Sixers' record") names the team as the bare word does.
+    """
+    for found in _NAME_WORD.findall(question.lower()):
+        # "the Sixers' record", "the Knicks' last 5 games": the possessive
+        # is the question's, not the name's (ISSUES.md #232 - 11 of 277
+        # paraphrases read no team at all).
+        word = found.removesuffix("'s").rstrip("'")
+        if len(word) < 4:
+            continue
+        nickname = _TEAM_NICKNAMES.get(word)
+        if nickname:
+            return nickname
+        named = teams_named_by_word(con, word)
+        if len(named) == 1:
+            return str(named[0])
+    return None
+
+
 def teams_named_by_word(con: duckdb.DuckDBPyConnection, word: str) -> list[str]:
     """The distinct display names of the teams ``word`` is a whole word of
     ("blazers" for the Portland Trail Blazers), in table order - from the

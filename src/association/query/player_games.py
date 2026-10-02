@@ -46,6 +46,7 @@ import duckdb
 from association.nba.coverage import COVERAGE, POSTSEASON, REGULAR_SEASON
 from association.nba.season import eastern_date_sql
 from association.query.calendar import AlignmentNarrowing, CalendarNarrowing, alignment_clause, calendar_clause
+from association.query.measures import PERIOD_COLUMNS as PERIOD_COLUMNS
 
 from .conditions import UNGATED_ON_REBUILD, BoxSource
 from .entities import Entity
@@ -213,29 +214,6 @@ _PERIOD_FOUL = (
     "OR p.type IN ('Offensive Charge', 'Shooting Block', 'Personal Block') OR (p.type = 'Not Available' AND p.text ILIKE '%foul%'))"
 )
 
-PERIOD_COLUMNS: tuple[str, ...] = (
-    "points",
-    "fieldGoalsMade",
-    "fieldGoalsAttempted",
-    "threePointFieldGoalsMade",
-    "threePointFieldGoalsAttempted",
-    "freeThrowsMade",
-    "freeThrowsAttempted",
-    "rebounds",
-    "offensiveRebounds",
-    "defensiveRebounds",
-    "assists",
-    "steals",
-    "blocks",
-    "turnovers",
-    "fouls",
-)
-"""The box-score columns a period narrowing rebuilds from the shots and plays,
-under their ``player_game_log`` names - the columns a reader of a narrowed
-relation sees restricted to the period.
-
-.. versionadded:: 5.0.0
-"""
 
 REGULATION_QUARTERS: tuple[int, ...] = (1, 2, 3, 4)
 """The four quarters a "by quarter" breakdown divides each game into - the

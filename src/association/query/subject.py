@@ -42,7 +42,6 @@ from typing import NamedTuple
 import duckdb
 from rapidfuzz.distance import DamerauLevenshtein
 
-from association.query.compose.team import team_named_in
 from association.query.decisions import Decision
 from association.query.entities import (
     _AGAINST,
@@ -64,17 +63,11 @@ from association.query.entities import (
     nicknames_in,
     players_named_in,
     team_abbreviations,
+    team_named_in,
 )
-from association.query.reading import ConditionSpec, Scope
+from association.query.reading import FILLER_PLAYER_WORDS, OWN_TEAM_RESTORABLE_INTENTS, PLAYER_REQUIRED_INTENTS, POSITIONS, SUBJECT_RESTORABLE_INTENTS, ConditionSpec, Scope
 from association.query.router import _ABSENCE_WORDS, _NAME_STOPWORDS, _THRESHOLD_WORDS, Beside, _threshold_from_text_scored
 from association.query.season_text import season_from_text
-from association.query.templates.common import (
-    FILLER_PLAYER_WORDS,
-    OWN_TEAM_RESTORABLE_INTENTS,
-    PLAYER_REQUIRED_INTENTS,
-    POSITIONS,
-    SUBJECT_RESTORABLE_INTENTS,
-)
 
 #: The kinds a subject can be. ``team_players`` is "a Hawks player" - the
 #: team's players as a group, which the compiler's team-where-a-player-
@@ -493,7 +486,7 @@ def _team_abbreviation(con: duckdb.DuckDBPyConnection, question: str) -> str | N
 
 def _team_word(con: duckdb.DuckDBPyConnection, question: str) -> str | None:
     """The team the question names as a word: a singular or one-word
-    nickname first, then :func:`~association.query.compose.team.team_named_in`
+    nickname first, then :func:`~association.query.entities.team_named_in`
     (the roster table by whole word, the plural nicknames), then an
     abbreviation."""
     for w in _words(question.lower()):
@@ -1270,10 +1263,10 @@ def _apply_intent(subject: Subject, scope: Scope, intent: str) -> tuple[Scope, l
 def _apply_restored_player(subject: Subject, scope: Scope, intent: str) -> tuple[Scope, list[Decision]]:
     """Put back the one player the question names where the router left the
     player out - only for a template that cannot answer without one
-    (:data:`~association.query.templates.common.PLAYER_REQUIRED_INTENTS`:
+    (:data:`~association.query.reading.PLAYER_REQUIRED_INTENTS`:
     "Sga record 36 plus points" came back with no player at all) or where an
     empty slot has a real, different answer, the league
-    (:data:`~association.query.templates.common.SUBJECT_RESTORABLE_INTENTS`:
+    (:data:`~association.query.reading.SUBJECT_RESTORABLE_INTENTS`:
     "kawhi most threes in a game" answered the league's single-game leaders,
     Kawhi Leonard's own 7 never mentioned - yardstick-v2 F093). Anywhere
     else an empty player slot means the league, and filling it would turn a
@@ -1303,7 +1296,7 @@ def _apply_own_team(subject: Subject, scope: Scope, intent: str) -> tuple[Scope,
     vs jazz on tuesdays" carries ``team='Los Angeles Lakers'`` beside a real
     ``opponent='Utah Jazz'``, and silently narrowed 9 meetings to 4 before
     ``own_team`` existed. Only for the templates whose relation narrows by
-    it (:data:`~association.query.templates.common.OWN_TEAM_RESTORABLE_INTENTS`).
+    it (:data:`~association.query.reading.OWN_TEAM_RESTORABLE_INTENTS`).
 
     A historical team names a TENURE, not "now": with no season named in
     the question (:attr:`Subject.named_season`, never the router's own

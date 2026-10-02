@@ -26,7 +26,6 @@
   "compose.move:read_point",
   "compose.move:team_move_point",
   "compose.move:team_read_point",
-  "compose.team:team_named_in",
   "entities:_has_a_real_team",
   "entities:_named_only_by_a_common_word",
   "entities:_named_only_by_a_team_word",
@@ -38,6 +37,7 @@
   "entities:nicknames_in",
   "entities:player_named_on_a_team_only_question",
   "entities:players_named_in",
+  "entities:team_named_in",
   "history:RunHistory.write",
   "refusals:_bench_points",
   "refusals:_non_calendar_situation",
@@ -168,7 +168,6 @@
  "regex_outside_the_reader": [
   "calendar",
   "compose.move",
-  "compose.team",
   "entities",
   "metrics",
   "refusals",

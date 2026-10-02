@@ -32,12 +32,10 @@ import duckdb
 
 from association.query.compose.core import Refused, Unsupported
 from association.query.compose.move import read_point
-from association.query.compose.team import team_named_in
 from association.query.decisions import Decision
-from association.query.entities import _edit_budget, _question_derived_player, _words, find_players, find_teams, nicknames_in, suggest_players, team_abbreviations
-from association.query.measures import MEASURE_WORDS
+from association.query.entities import _edit_budget, _question_derived_player, _words, find_players, find_teams, nicknames_in, suggest_players, team_abbreviations, team_named_in
+from association.query.measures import MEASURE_WORDS, PERIOD_COLUMNS
 from association.query.metrics import EXTRA_FIELD_COLUMNS, TEAM_FIELD_WORDS
-from association.query.player_games import PERIOD_COLUMNS
 from association.query.reading import ConditionSpec, PeriodCondition, Reading, Scope, ScopeError, Split
 from association.query.router import Route, _period_asked, _route_calendar_slots_split, settle
 from association.query.subject import (
@@ -653,7 +651,7 @@ def read_period_condition(question: str) -> tuple[PeriodCondition, tuple[int, in
     count, as a :class:`~association.query.reading.PeriodCondition` with
     the span of the words that said it - or None where the question uses
     none, or words one whose stat the period's line does not rebuild
-    (:data:`~association.query.player_games.PERIOD_COLUMNS`; a refusal names
+    (:data:`~association.query.measures.PERIOD_COLUMNS`; a refusal names
     that, ``refusals._period_as_condition``). Read from the text alone, the
     way every slot but the names and the stat is (ROADMAP plan item 6).
     "At least N", "N+", "N or more" and "a"/"an" are at-least lines; a bare

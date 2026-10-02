@@ -68,9 +68,11 @@ fails rather than drifts.
 - **The reader does not import the answer side, and the answer side never
   reaches the model** (`[tool.importlinter]`). The reader's imports of
   `compose`, `templates` and the relations are listed by name and go in
-  Phase 1 (nine when the contract was written, eight since the planner left
-  the parser, seven since the reader stopped asking which cells the answer
-  honors; four of the seven are `parse -> compose`, for `read_point`);
+  Phase 1 (nine when the contract was written; two since 2026-10-02, both
+  `parse -> compose`, for `read_point` and the `Refused`/`Unsupported` it
+  raises - the rest were vocabulary and intent sets that now live on the
+  reader's side: `entities.team_named_in`, `reading`'s intent sets,
+  `measures.STAT_ALIASES` and `PERIOD_COLUMNS`);
   a new one fails, and so does a listed one that no longer exists.
 - **A change to the pipeline is proven stage by stage, on two
   populations.** `scripts/stage_snapshots.py run OUT.jsonl` answers the 628
