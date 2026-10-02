@@ -1,10 +1,10 @@
 # Roadmap
 
-**Status: ACCEPTED 2026-09-30, after two independent reviews; Phase 0 in
-progress** (see "Phase 0, as it stands"). The reviews corrected the
+**Status: ACCEPTED 2026-09-30, after two independent reviews; Phase 0
+closed 2026-10-01, Phase 1 in progress** (see "Phase 1, as it stands"). The reviews corrected the
 measurements below and changed the phases. Jeff's decisions are recorded
 under "Decisions"; one is still open (the season type a question that names
-none reads) and does not block Phase 0.
+none reads) and does not block Phase 1.
 
 The previous roadmap is `ROADMAP-2026-09.md` (archived verbatim; code and
 commits that cite "plan item N" or "ROADMAP step N" mean that file).
@@ -291,7 +291,7 @@ for refusals (a cause, then a phrase).
 | SQL statements the reader issues per question | about 100 (38.5 once the subject was read once; 2 since 2026-10-01, the index's two loads) | 0 |
 | records between question and answer | 8 | 4 |
 | result shapes, and web renderers | 25 and 22 | one per shape |
-| unread content words over the corpus (`scripts/claims_ledger.py`) | 684 of 2,415 (679 before the companions' one reader, which no longer needs "play" to see who played); 9 questions with an unread number | not grown; no unread number |
+| unread content words over the corpus (`scripts/claims_ledger.py`) | 683 of 2,409 on the replies re-recorded on the OVH devbox (2026-10-02); on the old box's replies 684 of 2,415, and 679 before the companions' one reader, which no longer needs "play" to see who played; 9 questions with an unread number | not grown; no unread number |
 | stage snapshots, questions and unit-test calls | baseline | identical at the stated tolerance |
 | tests bound to deleted structures | about 1,170 | 0: deleted, or re-seated at a stage |
 | score | 167/175, 156/166 | not lower |

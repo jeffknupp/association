@@ -88,14 +88,15 @@ fails rather than drifts.
 - **A word the reading does not depend on is counted, and a number among
   them is a bug.** `scripts/claims_ledger.py run` reads each recorded
   question whole and again with each content word deleted (no model, about
-  seven minutes), and reports the words whose deletion leaves the reading
+  twelve seconds since names come from the index), and reports the words whose deletion leaves the reading
   and the planned query unchanged. It measures from outside the reader, so
   the count means the same before and after the reader is replaced.
-  Baseline: 684 of 2,415 content words in 390 of 628 questions, most of
-  them words that restate the shape ("average", "record", "stats"). It was
-  679 at `011091f`; five more are the verb in "when Embiid and Paul George
-  play", which the one reader of companions no longer needs to see who
-  played (2026-10-01). Nine questions have an unread NUMBER, and three of
+  Baseline: 683 of 2,409 content words in 391 of 628 questions, most of
+  them words that restate the shape ("average", "record", "stats"),
+  measured at `42e95d3` on the replies re-recorded on the OVH devbox
+  (2026-10-02; below). On the old box's replies it was 679 of 2,415 at
+  `011091f` and 684 once the one reader of companions no longer needed
+  the verb in "when Embiid and Paul George play". Nine questions have an unread NUMBER, and three of
   those were fluent answers to a broader question (`ISSUES.md`). After a
   reader change, run it and read the unread numbers first; the count may
   not grow. It is blind to a word only the model could have dropped, and
@@ -902,6 +903,25 @@ model's. Two things follow, and both matter when you add a shape:
   `cmp_routes.py`, `holdout_compare.py`), which compared the answer's text
   and the route's trace line; `run_offline_parser.py` is still what
   predicts a live run's graded rows before the model is asked.
+- **The recorded replies are this machine's, and `~/association-research`
+  is a repository.** The stage snapshots, the ledger and every offline
+  harness put the normalizer's RECORDED replies in the model's place, so
+  they prove what production does only while the model still says the
+  same. It did not survive the move to the OVH devbox (ollama 0.33.3 to
+  0.35.0, another CPU): 53 of 628 replies differed, though the parser
+  absorbed all but one answer and the live run matched parser22 word for
+  word. The three reply files were re-recorded here on 2026-10-02 and the
+  baselines taken again. After a move, an ollama upgrade or a new pull of
+  the model, re-record before trusting an offline proof: every recorded
+  question through `normalizer.normalize`, one caller, in file order.
+  One thing is not a difference: the SAME question asked twice in a row
+  can get two replies (5 of 20 tried), because the second is answered
+  from the cached prompt; distinct questions in any order repeat exactly
+  (276 of 276 between two orders). The yardstick, the reply files, the
+  baselines and each spike's harnesses are versioned in
+  `~/association-research` (private, `jeffknupp/association-research`;
+  its own `AGENTS.md` says what is live and what is history): commit
+  there when you add a run, a baseline or a harness.
 - **Only one ollama caller at a time.** Two callers on one CPU-only ollama
   instance corrupted the router's output silently (ISSUES.md #171) or wedged
   it in a reload loop for minutes, and the normalizer runs the same model. A

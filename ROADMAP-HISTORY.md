@@ -620,6 +620,30 @@ agents' reports named here are in `~/association-research/stages/`.
    calls. Not reproduced: the order of two players sharing a
    `display_name`, which DuckDB's sort left unspecified.
 
+9. **The move to the OVH devbox, and a review of Phases 0 and 1
+   (2026-10-02).** A second agent reviewed the work so far on the new
+   machine and re-measured its claims: one subject reading, one planning,
+   two reader statements per question, the ratchets' counts, 628 of 628
+   snapshots identical across the two machines. It found one regression
+   the two populations could not see - since the subject is read before
+   the stages settle the season, a team named by a franchise's old name is
+   read without it, and "chris paul assists for the hornets in 2008" asks
+   which Hornets (#316) - and three paths kept beside their replacements
+   (the replayed route's own subject reading among them). The move itself
+   cost three things nobody had pinned. *The interpreter*: no
+   `.python-version`, so the new box took 3.14, where `names.sql_lower`
+   disagreed with DuckDB on 27 code points; it had only ever agreed on
+   3.12 and 3.13. Python 3.14 is now pinned and required, and the lowering
+   is a table generated from DuckDB itself (`206dd74`). *The model*:
+   ollama 0.33.3 became 0.35.0 on another CPU, and 53 of 628 normalizer
+   replies changed; the parser absorbed all but one answer, the live run
+   (parser23, `42e95d3`) is word for word parser22 - 167 of 175, 156 of
+   166, median 0.50s where it was 1.19s - and the replies were re-recorded
+   and the baselines retaken (the ledger: 683 of 2,409). *The research
+   directory*: it had no history at all; it is a private repository now.
+   Gates on the new box: the fast check 24s, the full check 37s, the
+   corpus snapshots 102s, the ledger 12s.
+
 ## The plan items, as written
 
 In order of lift per unit of structural change, each measured on the
