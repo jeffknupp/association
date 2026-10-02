@@ -225,3 +225,32 @@ def test_a_warehouse_without_players_raises_what_the_sql_raised() -> None:
     with pytest.raises(duckdb.CatalogException):
         players_named_in(c, "how did jokic do")
     assert entities._question_derived_player(c, "how did jokic do", "Nikola Jokic") is None
+
+
+def test_the_readers_own_team_lookups_come_from_the_index_too(con: duckdb.DuckDBPyConnection) -> None:
+    """A team named by one whole word of its name, and a team's
+    abbreviation: the three statements the parser, the subject reading and
+    the team compiler still issued per word after the entity module's own
+    went to the index. One read of ``teams`` inside the block serves them
+    all, and each gives what its SQL gave."""
+    from association.query.compose.team import team_named_in
+    from association.query.entities import team_abbreviations, teams_named_by_word
+    from association.query.parse import _classify_span_abbreviation
+    from association.query.subject import _team_abbreviation
+
+    assert teams_named_by_word(con, "blazers") == ["Portland Trail Blazers"] and teams_named_by_word(con, "trail") == ["Portland Trail Blazers"]
+    assert teams_named_by_word(con, "blazer") == [] and teams_named_by_word(con, "los") == ["Los Angeles Lakers"]
+    assert team_abbreviations(con) == {"lal": "Los Angeles Lakers", "por": "Portland Trail Blazers", "ind": "Indiana Pacers"}
+    counting = Counting(con)
+    with names.loaded(counting):
+        assert team_named_in(counting, "how many threes have the Blazers' guards made") == "Portland Trail Blazers"  # type: ignore[arg-type]
+        assert team_named_in(counting, "who led the league in scoring") is None  # type: ignore[arg-type]
+        assert _team_abbreviation(counting, "POR record 2026") == "Portland Trail Blazers" and _team_abbreviation(counting, "por record") is None  # type: ignore[arg-type]
+        assert _classify_span_abbreviation(counting, "ind") and not _classify_span_abbreviation(counting, "indy")  # type: ignore[arg-type]
+    assert counting.statements == ["SELECT * FROM teams"]
+    # A team with no abbreviation has none, and a warehouse with no teams raises what the SQL raised.
+    con.execute("INSERT INTO teams VALUES ('99', NULL, 'Seattle SuperSonics', 'Seattle', 'SuperSonics')")
+    assert "none" not in team_abbreviations(con) and len(team_abbreviations(con)) == 3
+    bare = duckdb.connect(":memory:")
+    with pytest.raises(duckdb.CatalogException):
+        teams_named_by_word(bare, "lakers")

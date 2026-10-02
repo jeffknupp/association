@@ -637,6 +637,22 @@ model's. Two things follow, and both matter when you add a shape:
 - **Names arrive as typed.** A typo reaches the entity index, which reads a
   single near spelling as that player and says so
   (`entities.read_near_spelling`); nothing corrects it upstream any more.
+- **A name is recognized from the in-memory index, never by a statement.**
+  `query/names.py` holds the `players` (3,101) and `teams` (30) tables as
+  two indexes, loaded once per question inside `Agent.ask`
+  (`names.loaded(con)`; outside a block each lookup reads the table and
+  reuses an index already built from the same rows). Every lookup in
+  `entities.py` that read only those tables is answered from them, with
+  DuckDB's own semantics reproduced and checked against it: its `lower`,
+  its split on every non-ASCII-lowercase letter, Damerau-Levenshtein over
+  UTF-8 bytes, RE2's case folding, ILIKE that lowers ASCII only on an
+  all-ASCII column, table order where the SQL had no `ORDER BY`. A new name
+  lookup goes through `entities._player_index` / `_team_index`; do not
+  write `FROM players` or `FROM teams` on the reader's path again. The
+  reader issued 38.5 statements a question before this and issues the two
+  loads now. One thing is not reproduced: the order of two players who
+  share a `display_name` (21 names), which DuckDB's sort left unspecified;
+  the index uses table order.
 - **Who stands beside the subject has one reader: the subject reading.**
   "without X", "with X out", "when X and Y play", "in games X missed" are
   read by `subject._conditions`, each name with its role, and the stages

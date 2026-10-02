@@ -97,6 +97,36 @@ def _team_index(con: duckdb.DuckDBPyConnection, *columns: str) -> names.TeamInde
     return index
 
 
+def teams_named_by_word(con: duckdb.DuckDBPyConnection, word: str) -> list[str]:
+    """The distinct display names of the teams ``word`` is a whole word of
+    ("blazers" for the Portland Trail Blazers), in table order - from the
+    teams' index, as every name lookup is (:mod:`association.query.names`).
+    The words are the SQL's own split of the lowercased name
+    (:func:`~association.query.names.sql_words`), which this replaced:
+    ``list_contains(regexp_split_to_array(lower(display_name), '[^a-z]+'), ?)``,
+    one statement per word of the question.
+
+    .. versionadded:: 5.0.0
+    """
+    found: list[str] = []
+    for team in _team_index(con, "display_name").rows:
+        name = team["display_name"]
+        if name is not None and name not in found and word in names.sql_words(str(name)):
+            found.append(name)
+    return found
+
+
+def team_abbreviations(con: duckdb.DuckDBPyConnection) -> dict[str, Any]:
+    """Each team's abbreviation, lowercased as the SQL's ``lower`` does it,
+    with its display name - from the teams' index. A team with no
+    abbreviation has none.
+
+    .. versionadded:: 5.0.0
+    """
+    index = _team_index(con, "abbreviation", "display_name")
+    return {names.sql_lower(str(team["abbreviation"])): team["display_name"] for team in index.rows if team["abbreviation"] is not None}
+
+
 def _team_like(index: names.TeamIndex, team: dict[str, Any], column: str, pattern: str) -> bool:
     """``<column> ILIKE pattern`` on one ``teams`` row (:func:`_ilike`)."""
     return _ilike(team[column], pattern, column in index.ascii_columns)

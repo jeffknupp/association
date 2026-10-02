@@ -64,6 +64,7 @@ from association.query.entities import (
     find_teams,
     nicknames_in,
     players_named_in,
+    team_abbreviations,
 )
 from association.query.reading import ConditionSpec, Scope
 from association.query.router import _ABSENCE_WORDS, _NAME_STOPWORDS, _THRESHOLD_WORDS, Beside, _threshold_from_text_scored, settle
@@ -485,7 +486,7 @@ def _is_a_team(con: duckdb.DuckDBPyConnection, name: str) -> bool:
 
 def _team_abbreviation(con: duckdb.DuckDBPyConnection, question: str) -> str | None:
     """A team named by its abbreviation, in capitals ("PHI record 2026")."""
-    rows = {str(abbr).casefold(): str(name) for abbr, name in con.execute("SELECT DISTINCT abbreviation, display_name FROM teams WHERE abbreviation IS NOT NULL").fetchall()}
+    rows = {str(abbr).casefold(): str(name) for abbr, name in team_abbreviations(con).items()}
     for w in _words(question):
         if len(w) == 3 and w.isupper() and w.casefold() in rows:
             return rows[w.casefold()]

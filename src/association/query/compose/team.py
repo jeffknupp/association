@@ -60,7 +60,7 @@ import duckdb
 from association.nba.coverage import unavailable
 from association.nba.season import current_season
 from association.query.conditions import _PLAYER_GAME_TABLES, _longest_runs
-from association.query.entities import _TEAM_NICKNAMES, Entity
+from association.query.entities import _TEAM_NICKNAMES, Entity, teams_named_by_word
 from association.query.reading import Scope
 from association.query.team_games import TeamNarrowed
 from association.query.team_games import aggregate_sql as team_aggregate_sql
@@ -105,12 +105,9 @@ def team_named_in(con: duckdb.DuckDBPyConnection, question: str) -> str | None:
         nickname = _TEAM_NICKNAMES.get(word)
         if nickname:
             return nickname
-        rows = con.execute(
-            "SELECT DISTINCT display_name FROM teams WHERE list_contains(regexp_split_to_array(lower(display_name), '[^a-z]+'), ?)",
-            [word],
-        ).fetchall()
-        if len(rows) == 1:
-            return str(rows[0][0])
+        named = teams_named_by_word(con, word)
+        if len(named) == 1:
+            return str(named[0])
     return None
 
 

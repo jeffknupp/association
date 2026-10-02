@@ -605,6 +605,21 @@ agents' reports named here are in `~/association-research/stages/`.
    intents. The ledger grew by five words, all the verb in "when X and Y
    play", which the one reader does not need.
 
+8. **Phase 1, step 4 - names from an in-memory index (2026-10-01,
+   `b8ac3a2` and the commit after it).** One Opus agent, about 67 minutes
+   and 364k tokens, confined to `entities.py` and a new `names.py`. Its
+   differential check - 478,304 calls of 31 lookups against the old code
+   on the real warehouse - is what made the change safe: it caught that
+   DuckDB's ILIKE lowers only ASCII on an all-ASCII column (so "İndiana"
+   finds no team), that its Damerau-Levenshtein counts UTF-8 bytes, and
+   that RE2 folds only the Kelvin sign and the long s. The lead then moved
+   the three team lookups the agent had been told to leave. Reader
+   statements over the 277 yardstick questions: 10,658 (38.5 a question,
+   down from about 100 when the subject was read three times) to 554, the
+   two loads per question. No answer moved: 628 of 628, 1,386 of 1,386
+   calls. Not reproduced: the order of two players sharing a
+   `display_name`, which DuckDB's sort left unspecified.
+
 ## The plan items, as written
 
 In order of lift per unit of structural change, each measured on the

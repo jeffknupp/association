@@ -34,7 +34,7 @@ from association.query.compose.core import Refused, Unsupported
 from association.query.compose.move import read_point
 from association.query.compose.team import team_named_in
 from association.query.decisions import Decision
-from association.query.entities import _edit_budget, _question_derived_player, _words, find_players, find_teams, nicknames_in, suggest_players
+from association.query.entities import _edit_budget, _question_derived_player, _words, find_players, find_teams, nicknames_in, suggest_players, team_abbreviations
 from association.query.measures import MEASURE_WORDS
 from association.query.metrics import EXTRA_FIELD_COLUMNS, TEAM_FIELD_WORDS
 from association.query.player_games import PERIOD_COLUMNS
@@ -418,7 +418,7 @@ def _classify_span_abbreviation(con: duckdb.DuckDBPyConnection, low: str) -> boo
     the team."""
     if not 2 <= len(low) <= 4 or not low.isalpha():
         return False
-    return con.execute("SELECT count(*) FROM teams WHERE lower(abbreviation) = ?", [low]).fetchone() != (0,)
+    return low in team_abbreviations(con)
 
 
 def _as_typed(question: str, name: str) -> str:

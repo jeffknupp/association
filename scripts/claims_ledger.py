@@ -165,6 +165,7 @@ def _reader(db_path: Path) -> Any:
     the season the Agent answers in."""
     from association.nba.season import season_on_record
     from association.query.connection import connect_read_only, latest_season_on_record
+    from association.query.names import loaded
     from association.query.parse import read_route, reading_from_route
     from association.query.reading import ScopeError
     from association.query.stages import read_stages
@@ -174,7 +175,9 @@ def _reader(db_path: Path) -> Any:
     on_record = latest_season_on_record(con)
 
     def read(question: str, names: list[str], stat: str) -> dict[str, Any]:
-        with season_on_record(on_record):
+        # As Agent.ask reads: inside the season on record, and with the
+        # players' and teams' names loaded once for the question.
+        with season_on_record(on_record), loaded(con):
             try:
                 routed, _subject, _parent = read_route(con, question, names, stat)
                 return read_stages(reading_from_route(con, question, routed))

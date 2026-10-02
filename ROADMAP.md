@@ -208,7 +208,7 @@ Proved by identical Reading and Query snapshots.
 | The stages run once | open |
 | The reader always writes the condition it read | open |
 | The reader's imports of the answer side | 8 of 9 left (`[tool.importlinter]`) |
-| Names from an in-memory index | open |
+| Names from an in-memory index | done 2026-10-01: `query/names.py` (an Opus agent, then the three team lookups it was told to leave). Every `players`/`teams` lookup is answered from two indexes loaded once per question inside `Agent.ask` (`names.loaded`). Reader statements over the 277 yardstick questions: 10,658 before, 554 after - the two loads. A differential check of 478,304 calls against the old code on the real warehouse found no difference except the order of two players who share one `display_name` (21 such names; the first candidate never differs). 628 of 628 recorded questions and 1,386 of 1,386 unit-test calls identical |
 
 **Phase 2 - The answer side, in slices.** Each slice ends with its
 presenter, template body, scoping rows, adapter branch and web renderer
@@ -287,8 +287,8 @@ for refusals (a cause, then a phrase).
 | stage runs per question | mean 1.7 | 1 |
 | planner runs per question | 2 (1 since 2026-10-01) | 1 |
 | functions outside the reader that take the question | 168 | 0 |
-| modules that execute SQL | 20 | `relations/` only |
-| SQL statements the reader issues per question | about 100 | 0 |
+| modules that execute SQL | 20 (19 listed by the ratchet since 2026-10-01: `parse` and `subject` no longer do) | `relations/` only |
+| SQL statements the reader issues per question | about 100 (38.5 once the subject was read once; 2 since 2026-10-01, the index's two loads) | 0 |
 | records between question and answer | 8 | 4 |
 | result shapes, and web renderers | 25 and 22 | one per shape |
 | unread content words over the corpus (`scripts/claims_ledger.py`) | 684 of 2,415 (679 before the companions' one reader, which no longer needs "play" to see who played); 9 questions with an unread number | not grown; no unread number |
