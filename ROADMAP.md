@@ -231,6 +231,28 @@ A reader change is also proven on wordings OUTSIDE the corpus, old tree
 against new, before it lands: the companions step did this and caught
 what the corpus could not; the subject step did not, and regressed.
 
+**The `read_point` move, in order (Jeff, 2026-10-02).** `compose/move.py`
+is the point reader: 1,101 lines, 40 functions, 26 of them taking the
+question, reader code in the answer package, reached from the parser
+through the last two imports the contract lists. It reads the point's
+shape, measures, aggregate, predicates and window into a Reading nested
+in the Reading (`Reading.point` - the nesting stays until Phase 3, where
+the Reading becomes the point), and it consults the answer side three
+ways: vocabulary (`core.COLUMNS`, `DERIVED`, `LINE`, `BOOLEAN_MEASURES`,
+`team.GAME_MEASURES`, `SEASON_MEASURES`, `HISTORY_COLUMNS`); "can the
+relation honor this" checks that raise `Unsupported` (a decline); and
+refusal sentences built as `TemplateResult`s that ride on the Reading as
+`point_refusal`. Each sub-step is proven on the 628 recorded questions,
+every unit-test outcome, and the 2,710 out-of-corpus readings.
+
+| Step | What | State |
+| --- | --- | --- |
+| 1 | Instrument: which decline and refusal sites fire, on the corpus, the feed and the unit tests | done 2026-10-02 (`~/association-research/stages/point-sites-1eb8677.txt`, `point_sites.py`). Of 40 raise sites the point reader reaches - 16 in `move.py` on the read path, 24 in `adapt.py`'s per-intent adapters - 18 fire on some population (10 and 8); 22 fire on none (6 and 16), four of those named by a unit test's expected message. Most of what fires is the reader saying what relation a question belongs to (`_everyone_guard`'s three: 56 corpus, 223 feed; `_everyone_point`: 29 and 67; "no adapter for" a chart intent: 73 and 21). The three refusals fire 10 times on the corpus and 4 on the feed, all rankings |
+| 2 | Vocabulary to `measures.py`, as `STAT_ALIASES` went: the closed Measure type of `ROADMAP-TYPES.md` arrives by necessity | open |
+| 3 | Declines to the planner, one site at a time: the reader writes the point regardless and `plan_point` says `declined` with the same reason - the condition item's shape. A site that fires on no population and that no test names is deleted, not moved | open |
+| 4 | Refusals become causes: `point_refusal` holds a cause, not a `TemplateResult`; the planner builds the sentence | open |
+| 5 | The file moves to `query/point.py`; the two ignores go; `point` joins the ratchet's reader set, so its 26 question-taking functions leave the list (a list edit, Jeff's) | open |
+
 **Phase 2 - The answer side, in slices.** Each slice ends with its
 presenter, template body, scoping rows, adapter branch and web renderer
 deleted in the same change. Method: split each body into a reader that

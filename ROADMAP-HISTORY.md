@@ -661,7 +661,14 @@ agents' reports named here are in `~/association-research/stages/`.
     `intent_reason` moving on the corpus, and 2,710 out-of-corpus wordings
     read the same but three that gained a stat. Cost: the ledger reads 690
     where it read 683, because a second run's decision records had been
-    counting as reads.
+    counting as reads. Then the condition always written (`0bd4754`: two
+    wrong answers found by hand become refusals by name; `subject` no
+    longer imports `compose`) and five of the reader's imports moved to
+    the reader's side (`1eb8677`; two left, both `read_point`), with one
+    push that went up red because a chain ran the hooks with `;`. The
+    `read_point` move was planned in five steps and its first taken: of
+    the 40 decline and refusal sites the point reader reaches, 18 fire on
+    some population and 22 on none.
 
 ## The plan items, as written
 
