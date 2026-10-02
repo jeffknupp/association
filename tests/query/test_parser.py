@@ -13,7 +13,7 @@ import pytest
 from association.query.decisions import Decision
 from association.query.parse import classify_span, measure, parent_intent, read_route, reading_from_route, window
 from association.query.reading import Reading
-from association.query.router import Route, _threshold_from_text, settle
+from association.query.router import Beside, Route, _threshold_from_text, settle
 from association.query.templates.common import TemplateUnsupported, check_scope
 
 
@@ -171,7 +171,7 @@ def test_a_player_after_a_versus_word_reaches_the_route_as_a_condition(con: duck
     pair = _read(con, "tyrese maxey vs tatum", ["tyrese maxey", "tatum"], "")
     assert pair.intent == "player_matchup" and pair.scope.conditions == () and len(pair.scope.players) == 2
     narrowed = _read(con, "tyrese maxey points vs boston without embiid", ["tyrese maxey", "boston", "embiid"], "points")
-    assert narrowed.intent == "player_stat" and narrowed.scope.opponent == "Boston Celtics" and narrowed.scope.without == ("embiid",)
+    assert narrowed.intent == "player_stat" and narrowed.scope.opponent == "Boston Celtics" and narrowed.scope.without == ("Joel Embiid",)
 
 
 def test_a_player_against_a_team_is_never_a_matchup(con: duckdb.DuckDBPyConnection) -> None:
@@ -405,15 +405,15 @@ def test_a_companion_who_sat_out_is_without_and_out_is_no_part_of_his_name(con: 
         ("warriors record with draymond green out", ["warriors", "draymond green"], "with_without"),
     ):
         route, _, _ = read_route(con, question, names, "")
-        assert (route.intent, route.slots["without"]) == (intent, ["draymond green"]) and "with_player" not in route.slots, question
+        assert (route.intent, route.slots["without"]) == (intent, ["Draymond Green"]) and "with_player" not in route.slots, question
     route, _, _ = read_route(con, "maxey points when embiid doesn't play", ["maxey", "embiid"], "points")
-    assert (route.intent, route.slots["without"]) == ("with_without", ["embiid"]) and "with_player" not in route.slots
+    assert (route.intent, route.slots["without"]) == ("with_without", ["Joel Embiid"]) and "with_player" not in route.slots
     # And on a log he is absent, never a teammate who played beside the absence.
     settled, slots = _settled(con, "maxey game log when embiid doesn't play", ["maxey", "embiid"])
-    assert (settled, slots["without"]) == ("game_log", ["embiid"]) and "conditions" not in slots
+    assert (settled, slots["without"]) == ("game_log", ["Joel Embiid"]) and "conditions" not in slots
     # Never a pair: "in games X missed" is X's absence from the subject's games.
     route, subject, _ = read_route(con, "maxey points in games embiid missed", ["maxey", "embiid"], "points")
-    assert (route.intent, subject.kind, route.slots["without"]) == ("player_stat", "player", ["embiid"])
+    assert (route.intent, subject.kind, route.slots["without"]) == ("player_stat", "player", ["Joel Embiid"])
 
 
 def test_a_record_with_a_teammate_out_is_the_split_from_the_other_side() -> None:
@@ -422,8 +422,10 @@ def test_a_record_with_a_teammate_out_is_the_split_from_the_other_side() -> None
     by his absence - never a teammate who played, named "draymond green
     out" or "draymond green" with the absence dropped."""
     for intent in ("record_when", "team_record"):
-        route = settle(intent, {"team": "Golden State Warriors", "season_type": 2}, "warriors record with draymond green out")
+        route = settle(intent, {"team": "Golden State Warriors", "season_type": 2}, "warriors record with draymond green out", Beside(absent=("draymond green",)))
         assert (route.intent, route.slots.get("without"), route.slots.get("with_player")) == ("with_without", ["draymond green"], None), intent
+        # Who sat out is the subject reading's: with nobody beside the team, the record stays a record.
+        assert settle(intent, {"team": "Golden State Warriors", "season_type": 2}, "warriors record with draymond green out").slots.get("without") is None
 
 
 def test_a_companion_who_played_is_a_condition_where_with_player_is_read_by_nothing(con: duckdb.DuckDBPyConnection) -> None:
@@ -438,7 +440,7 @@ def test_a_companion_who_played_is_a_condition_where_with_player_is_read_by_noth
         settled, slots = _settled(con, question, names)
         assert (settled, slots["conditions"]) == (intent, played) and "with_player" not in slots, question
     settled, slots = _settled(con, "stephen curry stats with draymond green playing", names)
-    assert (settled, slots["with_player"]) == ("with_without", ["draymond green"]) and "conditions" not in slots
+    assert (settled, slots["with_player"]) == ("with_without", ["Draymond Green"]) and "conditions" not in slots
 
 
 def test_a_number_after_a_scoring_verb_is_a_line_on_points(con: duckdb.DuckDBPyConnection) -> None:

@@ -54,6 +54,7 @@ from association.query.entities import (
     _initials,
     _named_only_by_a_team_word,
     _question_derived_player,
+    _suggest_players_by_spelling,
     _team_after_for,
     _team_after_versus,
     _team_grounded,
@@ -65,7 +66,7 @@ from association.query.entities import (
     players_named_in,
 )
 from association.query.reading import ConditionSpec, Scope
-from association.query.router import _ABSENCE_WORDS, _THRESHOLD_WORDS, _threshold_from_text_scored, settle
+from association.query.router import _ABSENCE_WORDS, _NAME_STOPWORDS, _THRESHOLD_WORDS, Beside, _threshold_from_text_scored, settle
 from association.query.season_text import season_from_text
 from association.query.templates.common import (
     FILLER_PLAYER_WORDS,
@@ -306,7 +307,13 @@ joins the two subjects; it is not a companion phrase (ISSUES.md #233)."""
 # "excluding" is "without" reworded and "featuring" is "with"; a question word ends the phrase, so a
 # fronted "Without Kevin Durant, what is Steph Curry's record" names Durant
 # alone, not Curry with him.
-_COMPANION = re.compile(r"\b(without|excluding|with|featuring|when|while)\s+((?:(?!\b(?:vs\.?|versus|against|in|for|this|last|the|what|who|how|which|where)\b)[\w'.,+-]+\s*){1,9})", re.IGNORECASE)
+# "with and without Tatum" is the split over Tatum, read from its "without":
+# the "with" names nobody.
+_COMPANION = re.compile(
+    r"\b(without|excluding|with(?!\s+(?:and|or)\s+without\b)|featuring|when|while)\s+"
+    r"((?:(?!\b(?:vs\.?|versus|against|in|for|this|last|the|what|who|how|which|where)\b)[\w'.,+-]+\s*){1,9})",
+    re.IGNORECASE,
+)
 # "in games Embiid started", "in the games Brown missed": the role stated after
 # the games it narrows, with no "when" or "with" before the name - "maxey
 # points in games embiid started" compared the two players, since nothing read
@@ -687,7 +694,7 @@ def _conditions(question: str, players: tuple[str, ...], scope: Scope) -> tuple[
     for match in _companion_phrases(question):
         word, text = match.group(1).lower(), match.group(2)
         predicate, stat, threshold = _condition_role(word, text)
-        names = _companion_names(text, players, scope)
+        names = _companion_names(text, players, scope, predicate)
         found.extend(Companion(name, predicate, stat, threshold) for name in names if not any(_same_person(name, [c.name]) for c in found))
     found.extend(_versus_companions(question, players, scope, found))
     return tuple(found)
@@ -705,14 +712,74 @@ def _companion_phrases(question: str) -> list[re.Match[str]]:
     return sorted([*phrases, *in_games], key=lambda m: m.start())
 
 
-def _companion_names(text: str, players: tuple[str, ...], scope: Scope) -> list[str]:
-    """Who one companion phrase names: the players the question holds that
-    its words support, then a router ``without``/``with_player`` name the
-    phrase misspells."""
+_NAME_PIECES = re.compile(r"[^\s,&+]+|[,&+]")
+_NAME_SHAPED = re.compile(r"[A-Za-z][A-Za-z.'\-]*")
+_NAME_JOINERS = frozenset({"and", "or", "nor", "&", "+", ","})
+_MAX_NAME_WORDS = 3
+
+
+def _name_segments(text: str) -> list[str]:
+    """The names a companion phrase holds BY POSITION, as typed and in
+    order: the words after the keyword up to one that cannot be part of a
+    name (:data:`~association.query.router._NAME_STOPWORDS`, a number),
+    split at each joiner ("and", "or", a comma). "Tatum, Brown and Holiday
+    this season" is three; "a turnover" is none ("a" is no name's word);
+    "and without Tatum" is none, a joiner with nothing before it.
+
+    This is what the stages' own reader of these phrases did until 5.0.0,
+    and why it is kept: a name read by position does not depend on the
+    model having copied it or on the word being nobody else's - "without
+    curry" and "without Tatum and Brown" name ordinary words two or ten
+    players share, which no lookup settles and the template asks about."""
+    names: list[str] = []
+    words: list[str] = []
+    for piece in _NAME_PIECES.findall(text):
+        lowered = piece.casefold()
+        if lowered in _NAME_JOINERS:
+            if not words:
+                break
+            names.append(" ".join(words))
+            words = []
+            continue
+        if not _NAME_SHAPED.fullmatch(piece) or lowered in _NAME_STOPWORDS or len(words) >= _MAX_NAME_WORDS:
+            break
+        words.append(piece)
+    if words:
+        names.append(" ".join(words))
+    return names
+
+
+def _companion_names(text: str, players: tuple[str, ...], scope: Scope, predicate: str = "played") -> list[str]:
+    """Who one companion phrase names, in the phrase's order: each name it
+    holds by position (:func:`_name_segments`) as the player the question
+    is known to hold where one supports it, then the known players its
+    words support that no position held ("when Embiid plays with Paul
+    George"), then a router ``without``/``with_player`` name the phrase
+    misspells. A name by position that is no known player is kept as typed
+    only for an ABSENCE ("without zzyzx" is refused by that name, never
+    answered as though nobody had been named); for any other role it has to
+    be one the reading found (:func:`_unrouted_companions`), since the words
+    after "with" and "when" are often no name at all ("with less than 15
+    fga")."""
     routed = [r for r in list(scope.without or []) + list(scope.with_player or []) + [c.player for c in scope.conditions] if isinstance(r, str)]
-    names = [p for p in players if question_supports(p, text)]
+    known = [p for p in players if question_supports(p, text)]
+    by_position = [_companion_names_segment(segment, known, routed, predicate) for segment in _name_segments(text)]
+    names = list(dict.fromkeys(name for name in by_position if name is not None))
+    names += [p for p in known if p not in names]
     names += [r for r in routed if not _same_person(r, names) and _near(r, text)]
     return names
+
+
+def _companion_names_segment(segment: str, known: list[str], routed: list[str], predicate: str) -> str | None:
+    """Who one name read by position is: the known player it supports, a
+    routed name it misspells, itself as typed for an absence - or nobody."""
+    for player in known:
+        if _same_person(player, [segment]):
+            return player
+    for name in routed:
+        if _near(name, segment):
+            return name
+    return segment if predicate == "absent" else None
 
 
 # A player after a versus word is on the OTHER side of the subject's games -
@@ -759,48 +826,102 @@ def _versus_companions(question: str, players: tuple[str, ...], scope: Scope, fo
     return versus
 
 
-_COMPANION_WORD = re.compile(r"[a-z][a-z'.-]+")
-
-
 def _unrouted_companions(con: duckdb.DuckDBPyConnection, question: str, players: tuple[str, ...], scope: Scope) -> tuple[str, ...]:
-    """A companion the router named nobody for, read from the phrase's own
-    leading words: "show me splits for the sixers when maxey scores 20+
-    points" arrived with an invented Joel Embiid and no Maxey anywhere in
-    the slots (yardstick-v2 F087), and a companion was only ever read from
-    the router's names - so the reading refused by Embiid's name where the
+    """A companion the model named nobody for, read from the phrase's own
+    words: "show me splits for the sixers when maxey scores 20+ points"
+    arrived with an invented Joel Embiid and no Maxey anywhere in the slots
+    (yardstick-v2 F087), and a companion was only ever read from the
+    model's names - so the reading refused by Embiid's name where the
     question had an answer (the 76ers' record, 35-28).
 
-    The phrase's leading run of up to two words that are not ordinary words
-    ("brown", "best" - the same dictionary guard :func:`_question_players`
-    keeps), not a team's word, not a stat's, and not a number, taken as a
-    name only where it is a whole word of some player's name (the pair first,
-    then the first word alone: "jalen brunson" before every Jalen). What is
-    kept is the QUESTION's spelling, never a resolution: the template
-    resolves it the way it resolves any open name and says how, so a bare
-    "maxey" is Tyrese because he is the one who still plays - visible and
-    correctable - and a word two active players share is asked about.
-    Fuzzy matching is deliberately not tried (the module docstring's
-    "season is one edit from Tari Eason").
+    Each name the phrase holds by position (:func:`_name_segments`) that no
+    known player supports is taken where its words are, together, the words
+    of some player's name - "curry", "brown", "paul george" - or a near
+    spelling of exactly one player's (:func:`_unrouted_near_spelling`:
+    "wembyanama"). A word a team or a stat is named by is no player
+    ("when the sixers ...", "with 20 points"), and one ordinary word that
+    is no name is nobody ("with less", "when starting"). What is kept is
+    the QUESTION's spelling, never a resolution: the template resolves it
+    the way it resolves any open name and says how, so a bare "maxey" is
+    Tyrese because he is the one who still plays - visible and correctable
+    - and a word two active players share is asked about.
+
+    .. versionchanged:: 5.0.0
+       Reads every name of the phrase by position, an ordinary word that is
+       a player's name included, where it read the leading two words and
+       skipped a dictionary word: the stages' own reader of these phrases is
+       gone (``ROADMAP.md``, Phase 1), and this is the only one.
     """
-    dictionary = _dictionary()
+    routed = [r for r in list(scope.without or []) + list(scope.with_player or []) + [c.player for c in scope.conditions] if isinstance(r, str)]
     found: list[str] = []
     for match in _companion_phrases(question):
-        text = match.group(2)
-        if _companion_names(text, players, scope):
-            continue
-        run: list[str] = []
-        for token in text.casefold().split():
-            word = token.strip("'.,-")
-            if not _COMPANION_WORD.fullmatch(word) or len(word) < 3 or word in dictionary or word in _THRESHOLD_WORDS or word in TEAM_SINGULARS or team_named_in(con, word):
-                break
-            run.append(word)
-            if len(run) == 2:
-                break
-        for span in ([run] if len(run) == 2 else []) + ([run[:1]] if run else []):
-            if _exact_name_span(con, span, limit=1) and not any(_same_person(" ".join(span), [p]) for p in (*players, *found)):
-                found.append(" ".join(span))
-                break
+        absent = _condition_role(match.group(1).lower(), match.group(2))[0] == "absent"
+        for segment in _name_segments(match.group(2)):
+            # Already somebody: a player the question is known to hold, or a
+            # replayed route's own name for him, which the phrase misspells.
+            if any(_same_person(segment, [p]) for p in (*players, *found)) or any(_near(r, segment) for r in routed):
+                continue
+            name = _unrouted_name(con, segment.split(), absent)
+            if name is not None and not any(_same_person(name, [p]) for p in (*players, *found)):
+                found.append(name)
     return tuple(found)
+
+
+def _unrouted_name(con: duckdb.DuckDBPyConnection, words: list[str], absent: bool) -> str | None:
+    """The player's name a phrase's words by position hold, as typed: the
+    whole run where its words are together some player's ("paul george",
+    "curry"), else its leading two words, else its first ("maxey scores"
+    is Maxey: what he did follows his name). An ordinary word standing for
+    a name ("brown", "green") is taken where it is the whole run or the
+    phrase states an absence - a name's place - and never as the leading
+    word of something else ("with strong shooting" names no Derek Strong).
+    A word a team or a stat is named by, a number and a word under three
+    letters name nobody."""
+    dictionary = _dictionary()
+    for size in dict.fromkeys((len(words), 2, 1)):
+        if size > len(words):
+            continue
+        span = [word.casefold().strip("'.,-").removesuffix("'s") for word in words[:size]]
+        if any(len(word) < 3 or word in _THRESHOLD_WORDS or word in TEAM_SINGULARS or team_named_in(con, word) for word in span):
+            continue
+        ordinary = any(word in dictionary for word in span)
+        if ordinary and size < len(words) and not absent:
+            continue
+        if _exact_name_span(con, span, limit=1) or _unrouted_near_spelling(con, span):
+            return " ".join(words[:size]) if size == len(words) else " ".join(span)
+    return None
+
+
+def _unrouted_near_spelling(con: duckdb.DuckDBPyConnection, span: list[str]) -> bool:
+    """Whether a companion phrase's leading words, which are no player's
+    name as spelled, are a near spelling of exactly ONE player's:
+    "without wembyanama". The words after "without" or "with" are a name's
+    place, not the question's leftover words, so the near-spelling pass
+    applies to them as it does to a name slot
+    (:func:`~association.query.entities.read_near_spelling`, and its three
+    refusals: two candidates ask, a team's name is no player's, and every
+    word must be close). The span is kept as typed; resolving it, and saying
+    it was read as a near spelling, stays the entity index's. Until 5.0.0
+    only the stages' own reader of "without X" carried such a name."""
+    text = " ".join(span)
+    if any(word in _dictionary() for word in span):
+        return False  # a typo is no ordinary word: "season" is one edit from Tari Eason
+    return _team_named(con, text) is None and len(_suggest_players_by_spelling(con, span)) == 1
+
+
+def beside(conditions: tuple[Companion, ...]) -> Beside:
+    """Who the reading found beside the subject, for the stages
+    (:class:`~association.query.router.Beside`): a teammate who played with
+    him, and anyone who sat the games out. A start, the bench and a line
+    reached are roles :func:`apply_subject` writes as conditions; a player
+    on the other side is the relation's condition, never a teammate.
+
+    .. versionadded:: 5.0.0
+    """
+    return Beside(
+        played=tuple(c.name for c in conditions if c.predicate == "played" and c.side == "own"),
+        absent=tuple(c.name for c in conditions if c.predicate == "absent"),
+    )
 
 
 def _condition_role(word: str, text: str) -> tuple[str, str | None, int | None]:
@@ -907,11 +1028,13 @@ def settle_subject(subject: Subject, intent: str, question: str, scope: Scope) -
     (``ROADMAP.md``, Phase 1: the subject is read once). What depends on the
     intent is decided here: two teams meeting are the ``teams`` kind under
     ``head_to_head``, and the intent the subject's shape settles
-    (:func:`_decide_intent`), with the words that named a child.
+    (:func:`_decide_intent`), with the words that named a child. Who
+    stands beside the subject is the reading's too, and the stages take it
+    from there (:func:`beside`).
 
     .. versionadded:: 5.0.0
     """
-    who = _settle_companions(subject, question, scope)
+    who = subject
     if who.kind == "team" and who.teams and who.opponent and intent == "head_to_head":
         who = replace(who, kind="teams", teams=(who.teams[0], who.opponent), opponent=None)
     evidence = tuple(line for line in who.evidence if not line.startswith("the words "))
@@ -922,26 +1045,6 @@ def settle_subject(subject: Subject, intent: str, question: str, scope: Scope) -
         intent_reason=_intent_reason(intent, settled, words),
         evidence=(*evidence, f"the words {words!r} name {settled}") if words else evidence,
     )
-
-
-def _settle_companions(subject: Subject, question: str, scope: Scope) -> Subject:
-    """``subject`` with the companions the stages named that the reading
-    had not: a companion phrase whose name the question misspells
-    ("without wembyanama") matches no player the reading knows, and is
-    carried by the stages' ``without`` / ``with_player`` slot, which the
-    phrase is a near spelling of (:func:`_companion_names`). No name is
-    resolved here and the warehouse is not asked; the roles are the same
-    words' (:func:`_conditions`). Without this a typo'd companion's role
-    would never reach the relation as a condition (:func:`_apply_conditions`),
-    and the answer would be about more games than were asked for."""
-    # Never the subject himself: the reading already decided whether the
-    # one player in a "games X played" phrase is the subject (_read_subject_alone).
-    known = [*(c.name for c in subject.conditions), *subject.players]
-    late = tuple(c for c in _conditions(question, (*subject.players, *subject.companions), scope) if not _same_person(c.name, known))
-    if not late:
-        return subject
-    companions = tuple(dict.fromkeys((*subject.companions, *(c.name for c in late))))
-    return replace(subject, conditions=(*subject.conditions, *late), companions=companions)
 
 
 def _intent_reason(intent: str, settled: str, words: str | None) -> str | None:
@@ -1006,7 +1109,7 @@ def _child_intent(subject: Subject, intent: str, question: str, scope: Scope) ->
         match = words.search(question)
         if match is None or intent not in parents or subject.kind not in kinds:
             continue
-        if settle(child, scope, question).intent == child:
+        if settle(child, scope, question, beside(subject.conditions)).intent == child:
             return child, match.group(0)
         return intent, None
     return intent, None

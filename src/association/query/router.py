@@ -306,6 +306,27 @@ class Route:
         return self.scope.to_slots()
 
 
+@dataclass(frozen=True)
+class Beside:
+    """The players the question names BESIDE its subject, as the one
+    reading of the subject found them
+    (:func:`association.query.subject.beside`): ``played`` with him ("with
+    Embiid", "when Embiid and Paul George play") and ``absent`` ("without
+    Embiid", "with Embiid out"). The stages write these names into
+    ``with_player`` and ``without`` and decide a with/without split from
+    them; they read no name themselves. Until 5.0.0 they had readers of
+    their own for the same phrases, which disagreed with the subject's on
+    seven of the 628 recorded questions - "When Embiid plays with Paul
+    George, what is the PHI record?" answered with and without Embiid alone
+    (ISSUES.md #310).
+
+    .. versionadded:: 5.0.0
+    """
+
+    played: tuple[str, ...] = ()
+    absent: tuple[str, ...] = ()
+
+
 def _validate_season(slots: dict[str, Any], question: str = "") -> int | None:
     """Resolve the season the code's way, not the model's. season_ref is
     deliberately an enum the model can only pick from, because relative-date
@@ -1025,37 +1046,12 @@ _ABSENCE_WORDS = (
     r"|(?:does|do|did)\s*n[o']?t\s+play|(?:is|are|was|were)\s*n[o']?t\s+playing|not\s+playing)"
 )
 
-# What separates one name from the next INSIDE the phrase, rather than ending
-# it. "or" joins exactly as "and" does - "without Tatum or Brown" is still the
-# games neither of them played - and a comma is how a list of three is written.
-_NAME_JOINERS = frozenset({"and", "or", "nor", "&", "+", ","})
-
-# A run of name-shaped words, joined by whitespace, commas or ampersands. The
-# first word must start with a letter, so "without 20 points" still names
-# nobody; the repetition is bounded because an unbounded one would read half a
-# sentence as a name.
-_NAME_PHRASE = r"[A-Za-z][A-Za-z.'\-]*(?:[\s,&+]+[A-Za-z][A-Za-z.'\-]*){0,8}"
-_WITHOUT = re.compile(rf"\b(?:without|excluding)\s+({_NAME_PHRASE})", re.IGNORECASE)
-_WITH = re.compile(rf"\b(?:with|featuring)\s+({_NAME_PHRASE})", re.IGNORECASE)
-
-# "when both Embiid and Paul George played", "when Embiid and Paul George
-# play". The same question as "record WITH X", written the other way, and
-# `record_when` is where the model files all of them: four phrasings of it in
-# one 2026-09-20 web session were refused because record_when needs a stat and
-# a threshold and this names neither (#156). Anchored on a playing verb so
-# "record when Embiid SCORES 30 points" - a real record_when question - cannot
-# match it.
-_WHEN_PLAYED = re.compile(rf"\bwhen\s+(?:both\s+)?({_NAME_PHRASE}?)\s+(?:are\s+playing|is\s+playing|were\s+playing|play|plays|played|suit\s+up|suited\s+up)\b", re.IGNORECASE)
-
-# "record when Embiid with Paul George" names one player on each side of the
-# "with", and reading only the side after it answered about Paul George alone
-# - the silent narrowing this module exists to stop. Rewritten to the "with A
-# and B" form the reader below already handles, rather than parsed twice.
-_WHEN_WITH = re.compile(rf"\bwhen\s+(?:both\s+)?({_NAME_PHRASE}?)\s+with\s+({_NAME_PHRASE})", re.IGNORECASE)
-
 # "with Embiid out", "when Tatum and Brown are injured", "in games Brown
-# missed": the names before an absence word, which sat those games out - the
-# same teammates "without" names, written the other way round. "stephen curry
+# missed": a player named before an absence word sat those games out - the
+# same teammates "without" names, written the other way round. The stages
+# read only that the question HAS this phrase (it is what makes a record a
+# with/without split); WHO it names is the subject reading's
+# (:class:`Beside`), since 5.0.0 the only reader of a companion's name. "stephen curry
 # game log with draymond green out" answered his whole log, and "... stats with
 # draymond green out" asked whether Bo or Travis Outlaw was meant ("with" read
 # "draymond green out" as a name that PLAYED). The names are runs of words that
@@ -1067,82 +1063,6 @@ _ABSENT_NAMED = re.compile(
     rf"\b(?:with|when|while|in\s+(?:the\s+)?games?(?:\s+(?:that|where|in\s+which))?)\s+(?:both\s+)?({_NAME_WORD}(?:[\s,&+]+{_NAME_WORD}){{0,8}})\s+(?:(?:is|are|was|were)\s+)?{_ABSENCE_WORDS}(?![A-Za-z])",
     re.IGNORECASE,
 )
-
-
-def _played_together(question: str) -> list[str]:
-    """Every player a record question says played TOGETHER, in order - "with A
-    and B", "when both A and B played", "when A with B". Empty when it names
-    none, which leaves the question where the model put it. A name the
-    question says sat out ("with A out", :data:`_ABSENT_NAMED`) is no player
-    who played, and is left out."""
-    rewritten = _WHEN_WITH.sub(lambda m: f"with {m.group(1)} and {m.group(2)}", question)
-    absent = {name.casefold() for name in _names_after(_ABSENT_NAMED, question)}
-
-    def _played(names: list[str]) -> list[str]:
-        return [name for name in names if name.casefold() not in absent]
-
-    return _played(_names_after(_WITH, rewritten)) or _played(_names_after(_WHEN_PLAYED, question))
-
-
-def _played_together_absent(question: str) -> list[str]:
-    """Every player the question says sat the games out, in order: "without A
-    and B" and "with A and B out" alike - the ``without`` slot's names."""
-    without = _names_after(_WITHOUT, question)
-    seen = {name.casefold() for name in without}
-    return [*without, *(name for name in _names_after(_ABSENT_NAMED, question) if name.casefold() not in seen)]
-
-
-_NAME_TOKENS = re.compile(r"[A-Za-z][A-Za-z.'\-]*|[,&+]")
-
-# As many words as the old single-name pattern allowed, now per name rather
-# than per phrase.
-_MAX_NAME_WORDS = 3
-
-
-def _names_after(pattern: re.Pattern[str], question: str) -> list[str]:
-    """Every name the phrase after ``pattern``'s keyword holds, in order.
-
-    Empty when no name follows at all - "without a turnover" names nobody, and
-    must not become a teammate called "a".
-
-    This reads ALL of them, and that is the whole point. Reading only the first
-    answered "Celtics record without Tatum and Brown" with the games Tatum
-    missed: a different question, answered fluently, with nothing in the answer
-    saying the second player had been dropped. The templates that honor
-    ``without`` require every name (see ``templates.with_without``), so the
-    parser must hand them every name or the requirement has nothing to work
-    with.
-
-    A name ends at a word that cannot be part of one (:data:`_NAME_STOPWORDS`),
-    which ends the whole phrase; a joiner (:data:`_NAME_JOINERS`) ends the name
-    and starts the next. A joiner with nothing before it names nobody, so
-    "with and without Tatum" reads no "with" name rather than an empty one.
-    """
-    match = pattern.search(question)
-    if match is None:
-        return []
-    names: list[str] = []
-    words: list[str] = []
-
-    def close() -> bool:
-        """End the name being read; False when there was none, which ends the phrase."""
-        if not words:
-            return False
-        names.append(" ".join(words))
-        words.clear()
-        return True
-
-    for token in _NAME_TOKENS.findall(match.group(1)):
-        lowered = token.casefold()
-        if lowered in _NAME_JOINERS:
-            if not close():
-                break
-            continue
-        if lowered in _NAME_STOPWORDS or len(words) >= _MAX_NAME_WORDS:
-            break
-        words.append(token)
-    close()
-    return names
 
 
 # Which split a player_splits question asks for. Exactly one or nothing.
@@ -2361,7 +2281,7 @@ def _route_matchup_against_team(raw: dict[str, Any], question: str, listed: list
 _PLAYED_TOGETHER_REROUTABLE = frozenset({"head_to_head", "team_record", "team_stat", "game_log", "other"})
 
 
-def _route_line_and_record_intents(raw: dict[str, Any], question: str) -> bool:
+def _route_line_and_record_intents(raw: dict[str, Any], question: str, beside: Beside) -> bool:
     """A history that is really a line, a record ranking, and a career high.
     Returns whether a history was rerouted to a line."""
     rerouted_to_line = False
@@ -2372,14 +2292,14 @@ def _route_line_and_record_intents(raw: dict[str, Any], question: str) -> bool:
         # "derozan career points vs knicks" refused on its opponent.
         raw["intent"] = "player_stat"
         rerouted_to_line = True
-    if raw["intent"] == "with_without" and not _played_together_absent(question) and not _played_together(question) and any(pattern.search(question) for pattern in ORDER_WORDS.values()):
+    if raw["intent"] == "with_without" and not beside.absent and not beside.played and any(pattern.search(question) for pattern in ORDER_WORDS.values()):
         # No teammate named, and "the last 7 games": a team's log, not a
         # split. "KNICKS point differential over the last 7 games" arrived
         # as with_without after the 5.0.0 prompt shrink (day5) and answered
         # the last seven REGULAR-season games where the last seven were the
         # Finals - game_log reads both types for "last N" (_route_game_log_recent_span).
         raw["intent"] = "game_log"
-    if raw["intent"] in _PLAYED_TOGETHER_REROUTABLE and _RECORD.search(question) and _threshold_from_text(question) is None and (_played_together(question) or _names_after(_ABSENT_NAMED, question)):
+    if raw["intent"] in _PLAYED_TOGETHER_REROUTABLE and _RECORD.search(question) and _threshold_from_text(question) is None and (beside.played or _absent_by_phrase(question, beside)):
         # "PHI record when Embiid and Paul George play" arrived as
         # head_to_head, the Pacers invented as the opponent, after the 5.0.0
         # prompt shrink; with no threshold it is the with/without split
@@ -2426,7 +2346,15 @@ def _route_season_slots(raw: dict[str, Any], question: str) -> dict[str, Any]:
     return slots
 
 
-def _route_threshold(raw: dict[str, Any], slots: dict[str, Any], question: str) -> None:
+def _absent_by_phrase(question: str, beside: Beside) -> bool:
+    """Whether a player named beside the subject sat out by an absence
+    phrase - "with Embiid out", "when Embiid is injured" - rather than by a
+    plain "without Embiid": the wording that makes a record a with/without
+    split."""
+    return bool(beside.absent) and _ABSENT_NAMED.search(question) is not None
+
+
+def _route_threshold(raw: dict[str, Any], slots: dict[str, Any], question: str, beside: Beside) -> None:
     """A threshold the model left out, and a count of games that has none."""
     if raw["intent"] in _THRESHOLD_INTENTS and not isinstance(slots.get("threshold"), int):
         # Measured: "Sixers record when Embiid scores 30 points" came back with
@@ -2447,8 +2375,8 @@ def _route_threshold(raw: dict[str, Any], slots: dict[str, Any], question: str) 
         # record when Embiid scores 30 points" is untouched. "When Embiid is
         # out" is the same split from the other side: `without`, which
         # `_route_filter_slots` reads.
-        together = _played_together(question)
-        if together or _names_after(_ABSENT_NAMED, question):
+        together = list(beside.played)
+        if together or _absent_by_phrase(question, beside):
             raw["intent"] = "with_without"
         if together:
             slots["with_player"] = together
@@ -2477,7 +2405,7 @@ def _route_threshold(raw: dict[str, Any], slots: dict[str, Any], question: str) 
         raw["intent"] = "leaderboard"
 
 
-def _route_filter_slots(slots: dict[str, Any], question: str) -> tuple[str | None, list[str]]:
+def _route_filter_slots(slots: dict[str, Any], question: str, beside: Beside) -> tuple[str | None, list[str]]:
     """Span, venue, teammates missing, a ceiling and a situation. Returns the span and the absent teammates."""
     # The scoping slots below are read from the question and never asked of the
     # model: none is in ROUTER_SCHEMA, so adding them changed no grammar and can
@@ -2496,7 +2424,7 @@ def _route_filter_slots(slots: dict[str, Any], question: str) -> tuple[str | Non
     # "with Embiid out" is "without Embiid" written the other way round, for
     # every intent the way "without" is: a template that cannot narrow by it
     # refuses (check_scope), never answers the games he played too.
-    without = _played_together_absent(question)
+    without = list(beside.absent)
     if without:
         slots["without"] = without
     # Every one, not the first: "less than 15 fga and with less than 35
@@ -2641,16 +2569,14 @@ def _route_since_dated(slots: dict[str, Any], named_date: re.Match[str]) -> None
     slots.pop("season", None)
 
 
-def _route_intent_slots(intent: str, slots: dict[str, Any], question: str, without: list[str]) -> None:
+def _route_intent_slots(intent: str, slots: dict[str, Any], question: str, without: list[str], beside: Beside) -> None:
     """Slots only one template reads."""
     # Intent-specific: each means nothing to any other template, so each is
     # only added where one reads it - the same rule `side` follows below.
     if intent == "with_without":
-        # The same reader the record_when reroute uses (#156), so the two
-        # cannot disagree about who the question named: reading "with" alone
-        # here overwrote ['Embiid', 'Paul George'] with ['Paul George'] on
-        # "PHI record when Embiid with Paul George".
-        with_player = _played_together(question)
+        # The same names the record_when reroute uses (#156) - the subject
+        # reading's, the one reader of who played beside him.
+        with_player = list(beside.played)
         if with_player and not without:
             slots["with_player"] = with_player
     if intent == "player_splits" and slots.get("split") == "home_away":
@@ -3059,7 +2985,7 @@ _MODEL_SLOTS: frozenset[str] = frozenset(
 )
 
 
-def settle(intent: str, slots: Mapping[str, Any] | Scope, question: str) -> Route:
+def settle(intent: str, slots: Mapping[str, Any] | Scope, question: str, beside: Beside | None = None) -> Route:
     """The route the stages settle on for ``intent`` over ``slots``: the
     parser's raw route (:func:`association.query.parse.read_route` runs them
     under the parent its grammar names), or a settled route run again under
@@ -3088,12 +3014,20 @@ def settle(intent: str, slots: Mapping[str, Any] | Scope, question: str) -> Rout
     stages' own working dict never leaves this module, and the Route they
     return carries the Scope.
 
+    ``beside`` is who the subject reading found beside the subject
+    (:class:`Beside`): the stages write those names and read none. Left
+    out - the stages run alone - nobody is beside him.
+
     .. versionadded:: 5.0.0
 
     .. versionchanged:: 5.0.0
        Takes a :class:`~association.query.reading.Scope` as well as a slot
        dict, and returns a Route carrying the typed Scope (ROADMAP plan item
        6, step (f)).
+
+    .. versionchanged:: 5.0.0
+       Takes ``beside``; the stages' own readers of the names after "with"
+       and "without" are gone (``ROADMAP.md``, Phase 1).
     """
     if isinstance(slots, Scope):
         slots = slots.to_slots()
@@ -3108,10 +3042,10 @@ def settle(intent: str, slots: Mapping[str, Any] | Scope, question: str) -> Rout
             raw["season_ref"] = "current"
         elif season == current_season() - 1:
             raw["season_ref"] = "previous"
-    return _settle(raw, question)
+    return _settle(raw, question, beside or Beside())
 
 
-def _settle(raw: dict[str, Any], question: str) -> Route:
+def _settle(raw: dict[str, Any], question: str, beside: Beside = Beside()) -> Route:  # noqa: B008 - a frozen, empty value
     """The stages, over a raw route or a reassigned one (:func:`settle`)."""
     # A coach question is refused whatever the model said, and carries no
     # slots, so it short-circuits before any of the stages below run.
@@ -3124,12 +3058,12 @@ def _settle(raw: dict[str, Any], question: str) -> Route:
     _route_period_intents(raw, question)
     _route_triple_double_abbreviation(raw, question)
     _route_team_and_player_intents(raw, question)
-    rerouted_to_line = _route_line_and_record_intents(raw, question)
+    rerouted_to_line = _route_line_and_record_intents(raw, question, beside)
     slots = _route_season_slots(raw, question)
-    _route_threshold(raw, slots, question)
-    span, without = _route_filter_slots(slots, question)
+    _route_threshold(raw, slots, question, beside)
+    span, without = _route_filter_slots(slots, question, beside)
     _route_calendar_slots(raw["intent"], slots, question, span)
-    _route_intent_slots(raw["intent"], slots, question, without)
+    _route_intent_slots(raw["intent"], slots, question, without, beside)
     _route_line_stat(raw["intent"], slots, question, rerouted_to_line)
     _route_game_score(raw["intent"], slots, question)
     _route_two_point_pct(raw["intent"], slots, question)

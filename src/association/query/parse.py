@@ -50,6 +50,7 @@ from association.query.subject import (
     _edit_distance,
     _near,
     apply_subject,
+    beside,
     question_supports,
     read_subject,
     settle_subject,
@@ -851,7 +852,7 @@ def read_route(con: duckdb.DuckDBPyConnection, question: str, names: list[str] |
     # The window before the stages: they read ``order``/``limit`` as the
     # model's (a bare "last 10 games" reads both season types only beside
     # them, ``_route_game_log_recent_span``).
-    staged = settle(parent, window(question, slots), question)
+    staged = settle(parent, window(question, slots), question, beside(read.conditions))
     child, settled = _read_route_child(question, staged, read)
     final = child.intent
     scope = _read_route_fields(final, _read_route_period(final, window_scope(question, child.scope), question), question)
@@ -904,7 +905,7 @@ def _read_route_child(question: str, route: Route, subject: Subject) -> tuple[Ro
     settled = settle_subject(subject, route.intent, question, route.scope)
     final = settled.intent or route.intent
     if final != route.intent and final in KIND_ASSIGNED_INTENTS:
-        again = settle(final, route.scope, question)
+        again = settle(final, route.scope, question, beside(subject.conditions))
         return Route(again.intent, again.scope), settled
     return Route(final, route.scope), settled
 

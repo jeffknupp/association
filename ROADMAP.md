@@ -204,7 +204,7 @@ Proved by identical Reading and Query snapshots.
 | --- | --- |
 | The planner runs once, outside the parser | done: `compose.plan.plan_point`, run by `Agent.ask` (`Agent.planned`) and handed to `compose.answer`; `parse.with_point` only reads. 628 of 628 questions identical in every stage; 8 of 1,378 unit-test calls differ, each the Reading now holding a point the planner later declines |
 | The subject is read once | done: `parse.read_route` reads it, `Route.subject` carries it, `subject.settle_subject` settles it under the stages' intent with no name read again. Before, every question read it three times and 18 of 628 disagreed between passes. After: no answer, query, scope or intent moves on either population (628 questions; 1,383 unit-test calls). The subject RECORD differs on 5 questions (a companion named as typed, "kd", where the third pass had re-read the resolved name; a model's filler name now recorded; a bogus player "first quarter" no longer in it), and 185 decisions say what the one reading rested on. The corpus run takes about 220s where it took about 285s |
-| A companion's name is read twice more (the stages' `without`/`with_player`, and settling) | open: the subject's companions should be the only reader (#310 is this) |
+| A companion's name has one reader | done 2026-10-01: the stages' readers of "with X" and "without X" are gone; `subject._conditions` reads every name by its position in the phrase and the stages take them as `router.Beside`. Four recorded answers moved, each to its graded sibling wording's answer: two that named fewer teammates than the question (#310) and two refusals. 14 more differ only in a name written as the known player rather than as typed; 610 of 628 identical. Of 1,386 unit-test calls, 26 differ, all in those names. 25 wordings outside the corpus, with and without the model's names, keep the same count of names and the same intent as before |
 | The stages run once | open |
 | The reader always writes the condition it read | open |
 | The reader's imports of the answer side | 8 of 9 left (`[tool.importlinter]`) |
@@ -291,7 +291,7 @@ for refusals (a cause, then a phrase).
 | SQL statements the reader issues per question | about 100 | 0 |
 | records between question and answer | 8 | 4 |
 | result shapes, and web renderers | 25 and 22 | one per shape |
-| unread content words over the corpus (`scripts/claims_ledger.py`) | 679 of 2,415; 9 questions with an unread number | not grown; no unread number |
+| unread content words over the corpus (`scripts/claims_ledger.py`) | 684 of 2,415 (679 before the companions' one reader, which no longer needs "play" to see who played); 9 questions with an unread number | not grown; no unread number |
 | stage snapshots, questions and unit-test calls | baseline | identical at the stated tolerance |
 | tests bound to deleted structures | about 1,170 | 0: deleted, or re-seated at a stage |
 | score | 167/175, 156/166 | not lower |

@@ -88,9 +88,11 @@ fails rather than drifts.
   seven minutes), and reports the words whose deletion leaves the reading
   and the planned query unchanged. It measures from outside the reader, so
   the count means the same before and after the reader is replaced.
-  Baseline at `011091f`: 679 of 2,415 content words in 390 of 628
-  questions, most of them words that restate the shape ("average",
-  "record", "stats"). Nine questions have an unread NUMBER, and three of
+  Baseline: 684 of 2,415 content words in 390 of 628 questions, most of
+  them words that restate the shape ("average", "record", "stats"). It was
+  679 at `011091f`; five more are the verb in "when Embiid and Paul George
+  play", which the one reader of companions no longer needs to see who
+  played (2026-10-01). Nine questions have an unread NUMBER, and three of
   those were fluent answers to a broader question (`ISSUES.md`). After a
   reader change, run it and read the unread numbers first; the count may
   not grow. It is blind to a word only the model could have dropped, and
@@ -632,6 +634,30 @@ model's. Two things follow, and both matter when you add a shape:
 - **Names arrive as typed.** A typo reaches the entity index, which reads a
   single near spelling as that player and says so
   (`entities.read_near_spelling`); nothing corrects it upstream any more.
+- **Who stands beside the subject has one reader: the subject reading.**
+  "without X", "with X out", "when X and Y play", "in games X missed" are
+  read by `subject._conditions`, each name with its role, and the stages
+  are HANDED those names (`router.Beside`, built by `subject.beside`): they
+  write `without` and `with_player` from it and decide a with/without split
+  from it, and read no name themselves. Until 5.0.0 the stages had readers
+  of their own for the same phrases; the two disagreed on seven of the 628
+  recorded questions, and "When Embiid plays with Paul George, what is the
+  PHI record?" answered for Embiid alone (#310). Do not give a stage a
+  name regex again. Three rules of that reading, each measured against the
+  old one on wordings outside the corpus before the stage readers went:
+  - **A name is read by its position in the phrase** (`_name_segments`:
+    the words after the keyword, split at "and", "or" and commas, ended by
+    a word no name holds), so it does not depend on the model having copied
+    it. "Tatum, Brown and Holiday" is three names though "brown" and
+    "holiday" are ordinary words ten players share.
+  - **An absence keeps a name nobody resolves, as typed.** "without zzyzx"
+    is refused by that name downstream; dropping it would answer the games
+    he played too. A player who PLAYED has to be one the reading found: the
+    words after "with" and "when" are often no name ("with less than 15
+    fga"), an ordinary word is a name there only when it stands alone
+    ("with green", never "with best shooting"), and a near spelling counts
+    only for a word that is no ordinary word and is near exactly one player.
+  - **"with and without X" is the split over X**, read from its "without".
 
 - **A template's `TemplateUnsupported` gets one more deterministic try before
   the refusal.** `query/compose` sits between the two: when `check_scope`

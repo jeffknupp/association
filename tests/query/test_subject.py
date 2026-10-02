@@ -670,9 +670,17 @@ def test_a_companion_the_router_named_nobody_for_is_read_from_the_question(con: 
     assert applied.intent == "record_when" and applied.dropped == [] and (applied.scope.player, applied.scope.team, applied.scope.threshold) == ("maxey", "Philadelphia 76ers", 20)
     s = _read(con, "thunder record with jalen williams out", "team_record", team="Oklahoma City Thunder")
     assert s.conditions == (Companion("jalen williams", "absent", None, None),)
-    for question in ("mikal bridges game log with less than 15 fga", "celtics record with brown out", "celtics record with 3 starters out"):
+    for question in (
+        "mikal bridges game log with less than 15 fga",
+        "celtics record with 3 starters out",
+        "celtics record with best shooting",
+    ):  # Travis Best is in the fixture: the leading word of something else is no name
         s = _read(con, question, "team_record", team="Boston Celtics")
-        assert not any(c.name in ("maxey", "brown", "less", "fga") for c in s.conditions), (question, s.conditions)
+        assert s.conditions == (), (question, s.conditions)
+    # An ordinary word in a name's place - before an absence word - IS the
+    # name, as typed: ten players are Brown, and the template asks which.
+    s = _read(con, "celtics record with brown out", "team_record", team="Boston Celtics")
+    assert s.conditions == (Companion("brown", "absent", None, None),)
 
 
 def test_a_possessive_team_word_names_the_team(con: duckdb.DuckDBPyConnection) -> None:
@@ -822,19 +830,82 @@ def test_a_subject_is_settled_under_the_intent_without_reading_a_name_again() ->
     assert counted.intent == "threshold_count" and counted.intent_reason is not None and counted.evidence[-1].endswith("name threshold_count")
 
 
-def test_a_companion_only_the_stages_named_is_settled_into_the_subject_and_the_subject_never_into_his_own() -> None:
-    """A misspelled companion matches no player the reading knows; the
-    stages carry the span in ``without``/``with_player``, and settling
-    reads his role from the same phrase - or a typo'd "with X starting"
-    would never reach the relation as a condition. The one player in a
-    "games X played" phrase whom the reading made the subject stays it."""
-    from association.query.subject import settle_subject
+@pytest.mark.parametrize(
+    ("text", "names"),
+    [
+        ("curry", ["curry"]),
+        ("Cade Cunningham this season", ["Cade Cunningham"]),
+        ("a turnover", []),  # "a" is no name's word
+        ("Tatum and Brown", ["Tatum", "Brown"]),
+        ("Lebron and AD this season", ["Lebron", "AD"]),
+        ("Tatum, Brown and Holiday", ["Tatum", "Brown", "Holiday"]),
+        ("brandon miller or lamelo", ["brandon miller", "lamelo"]),  # "or" joins as "and" does
+        ("and without Tatum", []),  # a joiner with nothing before it names nobody
+        ("20+ points", []),
+        ("draymond green out", ["draymond green"]),  # the absence word ends the name
+        ("maxey scores 20+ points", ["maxey scores"]),  # what he did follows: the reading takes the leading word
+    ],
+)
+def test_a_companion_phrases_names_are_read_by_position(text: str, names: list[str]) -> None:
+    """Every name a phrase holds, not the first: reading one answered
+    "Celtics record without Tatum and Brown" with the games Tatum missed - a
+    different question, answered fluently. The stages' own reader of these
+    phrases held these cases until 5.0.0; the subject's is the only one now."""
+    from association.query.subject import _name_segments
 
-    fox = Subject("player", players=("De'Aaron Fox",), opponent="Orlando Magic")
-    settled = settle_subject(fox, "game_log", "de'aaron fox vs magic last five games without wembyanama", Scope.from_slots({"player": "De'Aaron Fox", "without": ["wembyanama"]}))
-    assert settled.companions == ("wembyanama",) and [(c.name, c.predicate) for c in settled.conditions] == [("wembyanama", "absent")]
-    assert settled.players == ("De'Aaron Fox",)
+    assert _name_segments(text) == names
 
-    murray = Subject("player", players=("Jamal Murray",))
-    alone = settle_subject(murray, "player_stat", "2 threes in games Jamal Murray played including playoffs", Scope.from_slots({"player": "Jamal Murray"}))
-    assert alone.players == ("Jamal Murray",) and alone.companions == () and alone.conditions == ()
+
+def test_who_sat_out_and_who_played_is_read_from_the_question_without_the_model(con: duckdb.DuckDBPyConnection) -> None:
+    """The one reader of a companion's name: by position after "without"
+    (as typed where nobody is known by it - an ordinary word two players
+    share, a name nobody resolves), as the player the question is known to
+    hold where one is, and for "with and without X" from its "without"."""
+    from association.query.subject import Companion, _conditions, beside
+
+    absent = _conditions("Celtics record without Tatum, Brown and Holiday", ("Jayson Tatum",), Scope())
+    assert [(c.name, c.predicate) for c in absent] == [("Jayson Tatum", "absent"), ("Brown", "absent"), ("Holiday", "absent")]
+    assert beside(absent).absent == ("Jayson Tatum", "Brown", "Holiday") and beside(absent).played == ()
+    assert _conditions("Podziemski game log without zzyzx", ("Brandin Podziemski",), Scope()) == (Companion("zzyzx", "absent", None, None),)
+    assert _conditions("most games without a turnover", (), Scope()) == ()
+    split = _conditions("Celtics record with and without Tatum", ("Jayson Tatum",), Scope())
+    assert [(c.name, c.predicate) for c in split] == [("Jayson Tatum", "absent")]
+    # Who PLAYED has to be somebody the reading knows: the words after
+    # "with" are often no name at all.
+    played = _conditions("jjj stats with ja morant and desmond bane last season", ("Jaren Jackson Jr.", "ja morant", "desmond bane"), Scope())
+    assert beside(played).played == ("ja morant", "desmond bane")
+    assert _conditions("mikal bridges game log with less than 15 fga", ("Mikal Bridges",), Scope()) == ()
+    for question in (
+        "show me the 76ers record when both Embiid and Paul George played",
+        "show me PHI record with Embiid and Paul George",
+        "PHI record when Embiid and Paul George play",
+        "PHI record when Embiid with Paul George",
+        "When Embiid plays with Paul George, what is the PHI record?",
+        "PHI's record when Embiid and Paul George are both in the game",
+    ):
+        assert beside(_conditions(question, ("Joel Embiid", "Paul George"), Scope())).played == ("Joel Embiid", "Paul George"), question
+    # The whole reading, with the model naming nobody: the names are the question's.
+    s = _read(con, "76ers record without embiid", "team_record", team="Philadelphia 76ers")
+    assert s.kind == "team" and [(c.name, c.predicate) for c in s.conditions] == [("Joel Embiid", "absent")]
+
+
+def test_a_misspelled_companion_is_read_as_typed_where_it_is_one_players_near_spelling(con: duckdb.DuckDBPyConnection) -> None:
+    """ "without wembyanama" matches no player as spelled, and until 5.0.0
+    only the stages' reader carried it. The words after "without" are a
+    name's place, so the near-spelling pass applies as it does to a name
+    slot - one candidate, no ordinary word - and the span stays as typed
+    for the entity index to resolve and say so. The one player in a "games
+    X played" phrase whom the reading made the subject is never his own
+    companion."""
+    s = _read(con, "de'aaron fox last five games without wembyanama", "game_log", player="De'Aaron Fox")
+    assert s.players == ("De'Aaron Fox",) and [(c.name, c.predicate) for c in s.conditions] == [("wembyanama", "absent")]
+    # And where he PLAYED, a role that takes only a name the reading found.
+    s = _read(con, "de'aaron fox points with wembyanama playing", "player_stat", player="De'Aaron Fox")
+    assert [(c.name, c.predicate) for c in s.conditions] == [("wembyanama", "played")]
+    assert "companions the router named nobody for ['wembyanama']" in s.evidence
+    # Two near spellings name nobody: the question is asked, not guessed.
+    con.execute("INSERT INTO players VALUES ('31', 'Vince Wembyanamo')")
+    assert _read(con, "de'aaron fox points with wembyanama playing", "player_stat", player="De'Aaron Fox").conditions == ()
+    # An ordinary word is no typo, however near a name it is: "brow" is one
+    # edit from Jaylen Brown, as "season" is from Tari Eason.
+    assert _read(con, "de'aaron fox points with brow", "player_stat", player="De'Aaron Fox").conditions == ()
