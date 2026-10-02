@@ -97,7 +97,7 @@ def _team_index(con: duckdb.DuckDBPyConnection, *columns: str) -> names.TeamInde
     return index
 
 
-_NAME_WORD = re.compile(r"[a-zA-Z']+")
+_LETTER_RUN = re.compile(r"[a-zA-Z']+")
 
 
 def team_named_in(con: duckdb.DuckDBPyConnection, question: str) -> str | None:
@@ -126,7 +126,7 @@ def team_named_in(con: duckdb.DuckDBPyConnection, question: str) -> str | None:
     .. versionchanged:: 5.0.0
        A possessive ("the Sixers' record") names the team as the bare word does.
     """
-    for found in _NAME_WORD.findall(question.lower()):
+    for found in _LETTER_RUN.findall(question.lower()):
         # "the Sixers' record", "the Knicks' last 5 games": the possessive
         # is the question's, not the name's (ISSUES.md #232 - 11 of 277
         # paraphrases read no team at all).
