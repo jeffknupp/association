@@ -8,12 +8,12 @@ from typing import Any
 
 import duckdb
 import pytest
+from routed import planned_answer as compose_answer
 
 from association.fetch.repairs import real_games
 from association.nba.season import current_season
 from association.nba.season import eastern_date as _eastern_date_of
 from association.query import shotchart
-from association.query.compose import answer as compose_answer
 from association.query.compose.adapt import to_query, to_reading
 from association.query.compose.core import Unsupported, _compile_pair, _compile_run, _resolve_pair
 from association.query.compose.present import (

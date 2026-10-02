@@ -16,11 +16,11 @@ from typing import Any
 
 import duckdb
 import pytest
+from routed import planned_answer as compose_answer
 from test_templates import streak  # the compiler's, the template retired (compose.COMPILED_INTENTS)
 
 from association.fetch.repairs import real_games
 from association.nba.season import current_season
-from association.query.compose import answer as compose_answer
 from association.query.parse import with_point
 from association.query.reading import Reading
 from association.query.subject import Subject

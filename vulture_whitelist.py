@@ -65,3 +65,6 @@ answer
 # SCOPING_SLOTS with getattr), so the compiler answers a triple-double
 # ranking instead (compose.core.COMPILER_SLOTS).
 ranked_by
+
+# pytest: an autouse fixture, entered around every test (tests/conftest.py).
+_names_loaded

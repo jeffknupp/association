@@ -164,6 +164,7 @@ def _reader(db_path: Path) -> Any:
     records, or the refusal it stopped at - the parser's two steps, inside
     the season the Agent answers in."""
     from association.nba.season import season_on_record
+    from association.query.compose.plan import plan_point
     from association.query.connection import connect_read_only, latest_season_on_record
     from association.query.names import loaded
     from association.query.parse import read_route, reading_from_route
@@ -177,10 +178,11 @@ def _reader(db_path: Path) -> Any:
     def read(question: str, names: list[str], stat: str) -> dict[str, Any]:
         # As Agent.ask reads: inside the season on record, and with the
         # players' and teams' names loaded once for the question.
-        with season_on_record(on_record), loaded(con):
+        with season_on_record(on_record), loaded():
             try:
                 routed, _subject, _parent = read_route(con, question, names, stat)
-                return read_stages(reading_from_route(con, question, routed))
+                reading = reading_from_route(con, question, routed)
+                return read_stages(reading, planned=plan_point(reading))
             except ScopeError as exc:
                 return {"refused": str(exc)}
 

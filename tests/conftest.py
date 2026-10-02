@@ -18,6 +18,9 @@ stage boundary (``tests/stage_calls.py``).
 from __future__ import annotations
 
 import os
+from collections.abc import Iterator
+
+import pytest
 
 from association.nba.season import TODAY_ENV
 
@@ -35,3 +38,17 @@ if os.environ.get("ASSOCIATION_STAGE_CALLS"):
     from stage_calls import install
 
     install(Path(os.environ["ASSOCIATION_STAGE_CALLS"]))
+
+
+@pytest.fixture(autouse=True)
+def _names_loaded() -> Iterator[None]:
+    """Every test runs inside one ``names.loaded()`` block, as every
+    question does inside ``Agent.ask``: a name lookup outside a block is an
+    error (``names.NotLoaded``), so a test that calls a template, a matcher
+    or the parser directly needs one. The players' and teams' tables are
+    read once per connection per test; a test that changes one of them
+    after a lookup opens a block of its own to read it again."""
+    from association.query import names
+
+    with names.loaded():
+        yield

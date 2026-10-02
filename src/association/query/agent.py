@@ -218,7 +218,7 @@ class Agent:
             # sentence it stays in (query/notes.py; ROADMAP.md, Phase 0).
             # One read of the players' and teams' names for the whole
             # question (query/names.py), not a statement per word.
-            with season_on_record(on_record), names_loaded(self.con), collect_remarks() as remarks:
+            with season_on_record(on_record), names_loaded(), collect_remarks() as remarks:
                 answer = self._ask_inner(question, history)
             answer = replace(answer, notes=tuple(remarks.notes), decisions=(*answer.decisions, *remarks.decisions))
             self.unsaid = unsaid(remarks, answer.text)
@@ -532,6 +532,9 @@ class Agent:
         """
         from . import compose
 
+        # Planned once, beside the Reading (:meth:`_reading`), before anything
+        # answers; the compiler takes that planning and never plans.
+        assert self.planned is not None
         with collect_name_readings() as readings:
             composed = compose.answer(
                 TemplateContext(con=self.con, out_dir=self.out_dir),

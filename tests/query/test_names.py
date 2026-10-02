@@ -172,14 +172,16 @@ def test_rows_come_in_table_order(con: duckdb.DuckDBPyConnection) -> None:
 
 def test_a_question_reads_each_table_once_inside_the_block(con: duckdb.DuckDBPyConnection) -> None:
     counting = Counting(con)
-    with names.loaded(counting):
+    with names.loaded():
         assert players_named_in(counting, "how did jokic and seth curry do") == ["Nikola Jokic", "Seth Curry"]  # type: ignore[arg-type]
         assert find_teams(counting, "lakers") == [Entity("13", "Los Angeles Lakers")]  # type: ignore[arg-type]
         assert find_teams(counting, "blazers")[0].id == "22"  # type: ignore[arg-type]
         assert entities.suggest_players(counting, "jokci") == [Entity("4", "Nikola Jokic")]  # type: ignore[arg-type]
     assert counting.statements == ["SELECT athlete_id, display_name FROM players", "SELECT * FROM teams"]
-    # Released: outside the block every lookup reads its table again.
-    find_players(counting, "jokic")  # type: ignore[arg-type]
+    # The next block (the next question) reads again, once.
+    with names.loaded():
+        find_players(counting, "jokic")  # type: ignore[arg-type]
+        find_players(counting, "curry")  # type: ignore[arg-type]
     assert len(counting.statements) == 3
 
 
@@ -187,15 +189,26 @@ def test_a_block_serves_only_its_own_connection(con: duckdb.DuckDBPyConnection) 
     other = duckdb.connect(":memory:")
     other.execute("CREATE TABLE players (athlete_id VARCHAR, display_name VARCHAR)")
     other.execute("INSERT INTO players VALUES ('7', 'Seth Curry')")
-    with names.loaded(con):
+    with names.loaded():
         assert find_players(con, "seth curry") == [Entity("3", "Seth Curry")]
         assert find_players(other, "seth curry") == [Entity("7", "Seth Curry")]
 
 
-def test_outside_a_block_a_changed_table_is_read_again(con: duckdb.DuckDBPyConnection) -> None:
+def test_a_lookup_outside_a_block_is_refused_and_a_new_block_reads_a_changed_table(con: duckdb.DuckDBPyConnection) -> None:
+    # Every test runs inside a block (tests/conftest.py); step outside it.
+    token = names._LOADED.set(None)
+    try:
+        with pytest.raises(names.NotLoaded, match="outside names"):
+            find_players(con, "jokic")
+    finally:
+        names._LOADED.reset(token)
+    # Inside one, a table is read once: a row added after is not seen ...
     assert find_players(con, "wembanyama") == []
     con.execute("INSERT INTO players VALUES ('5', 'Victor Wembanyama')")
-    assert find_players(con, "wembanyama") == [Entity("5", "Victor Wembanyama")]
+    assert find_players(con, "wembanyama") == []
+    # ... until the next block, as the next question sees a reloaded warehouse.
+    with names.loaded():
+        assert find_players(con, "wembanyama") == [Entity("5", "Victor Wembanyama")]
 
 
 def test_a_warehouse_without_teams_raises_what_the_sql_raised() -> None:
@@ -244,7 +257,7 @@ def test_the_readers_own_team_lookups_come_from_the_index_too(con: duckdb.DuckDB
     assert teams_named_by_word(con, "blazer") == [] and teams_named_by_word(con, "los") == ["Los Angeles Lakers"]
     assert team_abbreviations(con) == {"lal": "Los Angeles Lakers", "por": "Portland Trail Blazers", "ind": "Indiana Pacers"}
     counting = Counting(con)
-    with names.loaded(counting):
+    with names.loaded():
         assert team_named_in(counting, "how many threes have the Blazers' guards made") == "Portland Trail Blazers"  # type: ignore[arg-type]
         assert team_named_in(counting, "who led the league in scoring") is None  # type: ignore[arg-type]
         assert _team_abbreviation(counting, "POR record 2026") == "Portland Trail Blazers" and _team_abbreviation(counting, "por record") is None  # type: ignore[arg-type]

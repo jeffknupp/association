@@ -30,7 +30,7 @@ from association.query.compose.adapt import to_query
 from association.query.compose.core import Query, Refused, Unsupported, compile_query, run
 from association.query.compose.move import _asc_or_desc, _career_scope, _everyone_career_scope, _ranking_minimum, read_point
 from association.query.compose.move import team_move_point as _team_move_point
-from association.query.compose.plan import plan
+from association.query.compose.plan import plan, plan_point
 from association.query.compose.sentence import sentence
 from association.query.compose.team import TeamQuery, run_team
 from association.query.parse import with_point
@@ -49,7 +49,8 @@ def _reading(con: duckdb.DuckDBPyConnection, intent: str, slots: dict[str, Any],
 
 def compose_answer(ctx: TemplateContext, intent: str, slots: dict[str, Any], question: str, subject: Subject | None = None, declined: Callable[[str], None] | None = None) -> TemplateResult | None:
     """``compose.answer`` over the point ``question`` moves for ``slots``."""
-    return compose.answer(ctx, with_point(ctx.con, question, _reading(ctx.con, intent, slots, question, subject)), declined=declined)
+    reading = with_point(ctx.con, question, _reading(ctx.con, intent, slots, question, subject))
+    return compose.answer(ctx, reading, planned=plan_point(reading), declined=declined)
 
 
 def move_point(con: duckdb.DuckDBPyConnection, intent: str, slots: dict[str, Any], question: str, subject: Subject | None = None) -> Query | TeamQuery:
@@ -1655,7 +1656,7 @@ def test_the_parser_reads_the_point_and_the_compiler_answers_it_unread(cx_ctx: T
         raise AssertionError("the compiler read the question")
 
     monkeypatch.setattr("association.query.compose.move.read_point", unread)
-    answered = compose.answer(cx_ctx, reading)
+    answered = compose.answer(cx_ctx, reading, planned=plan_point(reading))
     assert answered is not None and by_hand is not None
     assert (answered.answer, answered.data) == (by_hand.answer, by_hand.data)
 
@@ -1670,12 +1671,12 @@ def test_a_point_the_compiler_declines_or_refuses_travels_on_the_reading(cx_ctx:
     declined = reading_from_route(cx_ctx.con, "how many games", with_subject(cx_ctx.con, "how many games", slots_route("threshold_count", {"stat": "points"})))
     assert declined.point is None and declined.point_declined is not None
     why: list[str] = []
-    assert compose.answer(cx_ctx, declined, declined=why.append) is None
+    assert compose.answer(cx_ctx, declined, planned=plan_point(declined), declined=why.append) is None
     assert why == [declined.point_declined]
 
     refused = reading_from_route(cx_ctx.con, "most gizmos in a single game", with_subject(cx_ctx.con, "most gizmos in a single game", slots_route("single_game_high", {"stat": "gizmos"})))
     assert refused.point is None and refused.point_refusal is not None
-    answered = compose.answer(cx_ctx, refused)
+    answered = compose.answer(cx_ctx, refused, planned=plan_point(refused))
     assert answered is not None and answered.answer == refused.point_refusal.answer and answered is not refused.point_refusal
 
 
@@ -1715,7 +1716,6 @@ def test_the_planner_refuses_after_the_parser_has_read_and_only_once(cx_ctx: Tem
     template's list read after the fact - and the compiler answers from the
     planning it is handed without planning again."""
     from association.query.compose import plan as plan_module
-    from association.query.compose.plan import plan_point
     from association.query.parse import reading_from_route
 
     reading = reading_from_route(
@@ -1743,8 +1743,8 @@ def test_the_planner_refuses_after_the_parser_has_read_and_only_once(cx_ctx: Tem
         plan_module.plan = lambda point: calls.append(point) or original(point)  # type: ignore[assignment, func-returns-value]
         assert compose.answer(cx_ctx, answerable, planned=handed) is not None
         assert calls == []  # handed its planning, the compiler does not plan
-        assert compose.answer(cx_ctx, answerable) is not None
-        assert len(calls) == 1  # a caller with only a Reading has it planned here
+        with pytest.raises(TypeError):
+            compose.answer(cx_ctx, answerable)  # type: ignore[call-arg]  # no planning, no answer: nothing plans here
     finally:
         plan_module.plan = original
 

@@ -16,6 +16,7 @@ from routed import ask_routed, slots_route
 
 from association.query.agent import Agent
 from association.query.answer import Answer, Artifact, Timing
+from association.query.compose.plan import plan_point
 from association.query.decisions import Decision
 from association.query.reading import Reading, Scope
 from association.query.stages import STAGES, WORDING, Difference, differences, plain, read_stages, snapshot
@@ -40,7 +41,7 @@ def _answer(**changes: Any) -> Answer:
 
 
 def _snapshot(**changes: Any) -> dict[str, Any]:
-    return snapshot(_reading(), _answer(**changes))
+    return snapshot(_reading(), _answer(**changes), planned=plan_point(_reading()))
 
 
 def test_a_snapshot_holds_the_four_stages_as_json() -> None:
@@ -67,7 +68,7 @@ def test_the_reading_and_query_records_can_be_taken_without_an_answer() -> None:
     """What ``scripts/claims_ledger.py`` compares: the same two records a
     snapshot holds, for a caller that stops before the answer."""
     record = _snapshot()
-    assert read_stages(_reading()) == {"reading": record["reading"], "query": record["query"]}
+    assert read_stages(_reading(), planned=plan_point(_reading())) == {"reading": record["reading"], "query": record["query"]}
 
 
 def test_a_question_nothing_read_has_no_reading_or_query() -> None:
@@ -78,9 +79,9 @@ def test_a_question_nothing_read_has_no_reading_or_query() -> None:
 
 def test_a_point_the_compiler_has_none_of_says_why() -> None:
     declined = Reading(intent="shot_chart", point_declined="no player subject")
-    assert snapshot(declined, _answer())["query"] == {"declined": "no player subject"}
+    assert snapshot(declined, _answer(), planned=plan_point(declined))["query"] == {"declined": "no player subject"}
     refused = Reading(intent="leaderboard", point_refusal=TemplateResult(data={"refused": "bench points"}, answer="Nothing ranks bench points."))
-    assert snapshot(refused, _answer())["query"] == {"refused": {"refused": "bench points"}, "said": "Nothing ranks bench points."}
+    assert snapshot(refused, _answer(), planned=plan_point(refused))["query"] == {"refused": {"refused": "bench points"}, "said": "Nothing ranks bench points."}
 
 
 def test_plain_values_are_the_same_on_every_run() -> None:
@@ -103,8 +104,12 @@ def test_plain_values_are_the_same_on_every_run() -> None:
 
 
 def test_a_chart_written_to_another_directory_is_the_same_answer() -> None:
-    here = snapshot(_reading(), _answer(text="Chart: /tmp/a/out/chart.html", artifacts=[Artifact("shot_chart", Path("/tmp/a/out/chart.html"))]), mask={"/tmp/a/out": "<out>"})
-    there = snapshot(_reading(), _answer(text="Chart: /tmp/b/out/chart.html", artifacts=[Artifact("shot_chart", Path("/tmp/b/out/chart.html"))]), mask={"/tmp/b/out": "<out>"})
+    here = snapshot(
+        _reading(), _answer(text="Chart: /tmp/a/out/chart.html", artifacts=[Artifact("shot_chart", Path("/tmp/a/out/chart.html"))]), planned=plan_point(_reading()), mask={"/tmp/a/out": "<out>"}
+    )
+    there = snapshot(
+        _reading(), _answer(text="Chart: /tmp/b/out/chart.html", artifacts=[Artifact("shot_chart", Path("/tmp/b/out/chart.html"))]), planned=plan_point(_reading()), mask={"/tmp/b/out": "<out>"}
+    )
     assert differences(here, there) == [] and here["answer"]["artifacts"] == ["shot_chart"]
 
 
@@ -212,7 +217,9 @@ def test_the_agent_keeps_the_reading_it_answered_from_and_forgets_it_on_the_next
     agent = _agent(tmp_path)
     answer = ask_routed(agent, "who scored the most points", slots_route("leaderboard", {"stat": "points"}))
     assert agent.reading is not None and agent.reading.intent == "leaderboard"
-    record = snapshot(agent.reading, answer)
+    record = snapshot(agent.reading, answer, planned=agent.planned)
+    with pytest.raises(ValueError, match="needs its planning"):
+        snapshot(agent.reading, answer)
     assert record["reading"]["scope"]["stat"] == "points" and record["result"] == {"value": 1}
     # Refused before anything read it: the last question's Reading is not this one's.
     agent.ask("Tatum rec")

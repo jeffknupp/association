@@ -14,10 +14,10 @@ from typing import Any
 
 import duckdb
 import pytest
+from routed import planned_answer as compose_answer
 from test_templates import leaderboard  # the compiler's, leaderboard's template retired (compose.COMPILED_INTENTS)
 
 from association.nba.season import current_season
-from association.query.compose import answer as compose_answer
 from association.query.compose.present import STATED_SCOPING
 from association.query.leaderboard import resolve_metric
 from association.query.metrics import LEADERBOARD_METRICS

@@ -30,12 +30,13 @@ need, in the form the SQL they replace read it, because no answer may move:
 
 This module reads no warehouse itself and never sees a question: the caller
 runs the one statement each table takes (``read``) and the matchers hand it
-words. Inside ``with loaded(con):`` - entered once per question by the
-answering loop - each table is read at most once, the first time a lookup on
-``con`` needs it. Outside a block every lookup reads its table again, so a
-caller that changes a table between two calls never sees a stale index; the
-index BUILT from rows already seen is reused, which is what keeps that
-cheap (:func:`_players_from`).
+words. Inside ``with loaded():`` - entered once per question by the
+answering loop - each table is read at most once per connection, the first
+time a lookup needs it. A lookup outside a block is refused
+(:class:`NotLoaded`): there is one way to look a name up. The next block
+reads the table again, so a warehouse reloaded between two questions is
+seen; the index BUILT from rows already seen is reused, which is what keeps
+that cheap (:func:`_players_from`).
 
 .. versionadded:: 5.0.0
 """
@@ -286,9 +287,9 @@ class TeamIndex:
         )
 
 
-# Built once per distinct table content. The rows are read again for every
-# lookup outside a loaded() block (and once per question inside one), but
-# rows already seen are not indexed twice - 17ms of building, measured on the
+# Built once per distinct table content. The rows are read again in every
+# loaded() block (once per question), but rows already seen are not indexed
+# twice - 17ms of building, measured on the
 # 3,101 players, against well under 1ms to hash the rows read. The columns'
 # names AND types are part of the key, since 1 == 1.0 == True in Python and
 # an id is printed differently for each.
@@ -314,7 +315,7 @@ raised (then no columns and no rows).
 
 @dataclass
 class _Slot:
-    """The connection a :func:`loaded` block is for, and each table's index
+    """One connection's indexes inside a :func:`loaded` block: each table's,
     once a lookup has read it."""
 
     con: Any
@@ -322,39 +323,59 @@ class _Slot:
     teams: TeamIndex | None = None
 
 
-_LOADED: ContextVar[_Slot | None] = ContextVar("association_name_index", default=None)
+_LOADED: ContextVar[dict[int, _Slot] | None] = ContextVar("association_name_index", default=None)
+
+
+class NotLoaded(RuntimeError):
+    """A name was looked up outside a :func:`loaded` block.
+
+    .. versionadded:: 5.0.0
+    """
 
 
 @contextmanager
-def loaded(con: Any) -> Iterator[None]:
-    """While entered, lookups on ``con`` read each of ``players`` and
-    ``teams`` once - the first time one needs it, so a question that reads
-    no name reads neither.
+def loaded() -> Iterator[None]:
+    """While entered, lookups read each of ``players`` and ``teams`` once
+    per connection - the first time one needs it, so a question that reads
+    no name reads neither - and a lookup outside any block is refused
+    (:class:`NotLoaded`).
 
     Entered by the answering loop around each question, beside
     :func:`~association.nba.season.season_on_record`: per question rather
     than per connection, because a server outlives a reload of the warehouse
     it reads. A ``ContextVar`` and not a module global, since the web server
-    and the tests answer on more than one thread. A lookup on any other
-    connection inside the block reads its own, as it would outside.
+    and the tests answer on more than one thread. A block inside another
+    starts afresh and reads again.
+
+    There is one way to look a name up, and it is inside a block. Until
+    5.0.0's last change a lookup outside one read its table again every
+    time: the same answers, a statement per lookup, and nothing to say a
+    caller had forgotten the block - which is how a reader that is meant to
+    issue two statements a question would have gone back to hundreds
+    without a test failing.
 
     .. versionadded:: 5.0.0
     """
-    token = _LOADED.set(_Slot(con))
+    token = _LOADED.set({})
     try:
         yield
     finally:
         _LOADED.reset(token)
 
 
-def _slot_for(con: Any) -> _Slot | None:
-    slot = _LOADED.get()
-    return slot if slot is not None and slot.con is con else None
+def _slot_for(con: Any) -> _Slot:
+    block = _LOADED.get()
+    if block is None:
+        raise NotLoaded("a name was looked up outside names.loaded(): Agent.ask enters it around each question, and any other caller wraps its own lookups in one")
+    slot = block.get(id(con))
+    if slot is None or slot.con is not con:
+        slot = block[id(con)] = _Slot(con)
+    return slot
 
 
 def players_for(con: Any, read: TableRead) -> PlayerIndex:
-    """The players' index for ``con``: the one its :func:`loaded` block
-    holds (``read`` runs the first time), or one from ``read`` now.
+    """The players' index for ``con`` in the :func:`loaded` block the caller
+    is inside; ``read`` runs the first time a lookup needs it.
 
     ``read`` runs the statement; this module holds no SQL of its own
     (``scripts/check_ratchets.py``, ``sql_outside_the_relations``).
@@ -362,13 +383,10 @@ def players_for(con: Any, read: TableRead) -> PlayerIndex:
     .. versionadded:: 5.0.0
     """
     slot = _slot_for(con)
-    if slot is not None and slot.players is not None:
-        return slot.players
-    described, rows, error = read(con)
-    index = PlayerIndex.build((), error) if error is not None else _players_from(tuple(described), tuple(tuple(row) for row in rows))
-    if slot is not None:
-        slot.players = index
-    return index
+    if slot.players is None:
+        described, rows, error = read(con)
+        slot.players = PlayerIndex.build((), error) if error is not None else _players_from(tuple(described), tuple(tuple(row) for row in rows))
+    return slot.players
 
 
 def teams_for(con: Any, read: TableRead) -> TeamIndex:
@@ -378,10 +396,7 @@ def teams_for(con: Any, read: TableRead) -> TeamIndex:
     .. versionadded:: 5.0.0
     """
     slot = _slot_for(con)
-    if slot is not None and slot.teams is not None:
-        return slot.teams
-    described, rows, error = read(con)
-    index = TeamIndex.build((), (), error) if error is not None else _teams_from(tuple(described), tuple(tuple(row) for row in rows))
-    if slot is not None:
-        slot.teams = index
-    return index
+    if slot.teams is None:
+        described, rows, error = read(con)
+        slot.teams = TeamIndex.build((), (), error) if error is not None else _teams_from(tuple(described), tuple(tuple(row) for row in rows))
+    return slot.teams

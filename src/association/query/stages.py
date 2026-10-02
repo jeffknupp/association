@@ -142,15 +142,13 @@ def _reading_record(reading: Reading, mask: Mapping[str, str] | None) -> dict[st
     }
 
 
-def _query_record(reading: Reading, planned: Planned | None, mask: Mapping[str, str] | None) -> dict[str, Any]:
+def _query_record(reading: Reading, planned: Planned, mask: Mapping[str, str] | None) -> dict[str, Any]:
     """The point planned onto its relation, or why there is none: a refusal
     the reading or the planner came to, or the reason one of them declined.
-    ``planned`` is the answering loop's own planning of the question; a
-    caller without it (one that stops at the Reading) gets the same record
-    from planning the Reading here."""
-    from association.query.compose.plan import plan_point
-
-    verdict = planned if planned is not None else plan_point(reading)
+    ``planned`` is the caller's planning of the question
+    (:func:`~association.query.compose.plan.plan_point`); nothing here
+    plans."""
+    verdict = planned
     if verdict.refusal is not None:
         return {"refused": plain(verdict.refusal.data, mask=mask), "said": _masked(verdict.refusal.answer, mask)}
     point = reading.point
@@ -161,11 +159,11 @@ def _query_record(reading: Reading, planned: Planned | None, mask: Mapping[str, 
     return record
 
 
-def read_stages(reading: Reading, *, planned: Planned | None = None, mask: Mapping[str, str] | None = None) -> dict[str, Any]:
+def read_stages(reading: Reading, *, planned: Planned, mask: Mapping[str, str] | None = None) -> dict[str, Any]:
     """The two records a Reading holds - ``reading`` and ``query`` - as
     :func:`snapshot` writes them, for a caller that stops before the answer
     (``scripts/claims_ledger.py``, which asks which of a question's words
-    the reading depends on).
+    the reading depends on), with its own planning of the Reading.
 
     .. versionadded:: 5.0.0
     """
@@ -206,7 +204,7 @@ def snapshot(
             "decisions": [plain(decision.as_dict(), mask=mask) for decision in stated],
             "unsaid": list(unsaid or ()),
         },
-        **(read_stages(reading, planned=planned, mask=mask) if reading is not None else {"reading": None, "query": None}),
+        **(read_stages(reading, planned=_planned_for(reading, planned), mask=mask) if reading is not None else {"reading": None, "query": None}),
         "result": plain(answer.data, mask=mask),
         "answer": {
             "text": _masked(answer.text, mask),
@@ -216,6 +214,15 @@ def snapshot(
             "unanswered": unanswered,
         },
     }
+
+
+def _planned_for(reading: Reading, planned: Planned | None) -> Planned:
+    """``planned``, which a snapshot of a question that was read must be
+    handed: planning it here instead was a second planner path, taken by
+    whoever forgot."""
+    if planned is None:
+        raise ValueError("a snapshot of a Reading needs its planning (Agent.planned, or compose.plan.plan_point(reading))")
+    return planned
 
 
 @dataclass(frozen=True)

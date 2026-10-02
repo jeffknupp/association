@@ -15,23 +15,31 @@ by standing in for ``read_route``:
   before any intent is known - and puts it on the route;
 - :func:`ask_routed` answers a question through the whole ``Agent`` with
   ``read_route`` replaced by that route, and no model asked.
+
+And one stage on: :func:`planned_answer` is the compiler's answer to a
+Reading a test built, PLANNED first as the answering loop plans it
+(``compose.plan.plan_point``) - ``compose.answer`` takes its planning and
+never plans (step 2 of the same order).
 """
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import replace
 from typing import Any
 from unittest import mock
 
 import duckdb
 
+from association.query import compose
 from association.query.agent import Agent
 from association.query.answer import Answer
+from association.query.compose.plan import plan_point
 from association.query.normalizer import Normalized
-from association.query.reading import Scope
+from association.query.reading import Reading, Scope
 from association.query.router import Route
 from association.query.subject import read_subject
+from association.query.templates.common import TemplateContext, TemplateResult
 
 
 def slots_route(intent: str, slots: Mapping[str, Any] | None = None) -> Route:
@@ -62,3 +70,9 @@ def ask_routed(agent: Agent, question: str, route: Route, *, label: str = "") ->
         mock.patch("association.query.parse.read_route", read_route),
     ):
         return agent.ask(question, label=label)
+
+
+def planned_answer(ctx: TemplateContext, reading: Reading, *, declined: Callable[[str], None] | None = None) -> TemplateResult | None:
+    """``compose.answer`` for ``reading``, planned here as ``Agent.ask``
+    plans a question's Reading: once, before the compiler is handed it."""
+    return compose.answer(ctx, reading, planned=plan_point(reading), declined=declined)

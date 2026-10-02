@@ -43,7 +43,11 @@ BOUNDARIES: tuple[str, ...] = (
 
 # pytest's per-test directories, wherever the machine keeps them: two runs
 # never share one, and a chart's path is part of what a template returns.
-_TMP = re.compile(r"/[^\s\"']*?pytest-of-[^/\s\"']+/pytest-\d+/(popen-gw\d+/)?")
+# The test's own directory goes too: pytest cuts its name to 30 characters
+# and numbers the collisions in the order the workers reach them, so two
+# tests with one long prefix swap "..._na0" and "..._na1" between runs
+# (seen 2026-10-02, the one call of 1,388 that differed for no change).
+_TMP = re.compile(r"/[^\s\"']*?pytest-of-[^/\s\"']+/pytest-\d+/(popen-gw\d+/)?[^/\s\"']+")
 
 _calls: Counter[str] = Counter()
 
@@ -52,7 +56,7 @@ def _plain(value: Any) -> Any:
     """``stages.plain``, with each per-test directory masked."""
     from association.query.stages import plain
 
-    return json.loads(_TMP.sub("<tmp>/", json.dumps(plain(value))))
+    return json.loads(_TMP.sub("<tmp>", json.dumps(plain(value))))
 
 
 def _is_value(arg: Any) -> bool:

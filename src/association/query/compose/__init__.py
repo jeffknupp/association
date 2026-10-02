@@ -41,7 +41,7 @@ from association.query.templates.common import TemplateContext, TemplateResult, 
 
 from .core import Query, Refused, Unsupported, run
 from .move import games_reading
-from .plan import Planned, plan_point
+from .plan import Planned
 from .present import present, present_team
 from .sentence import _span_phrase
 from .sentence import sentence as _sentence
@@ -138,16 +138,17 @@ reading of a point, the question is refused with the reason
 def answer(
     ctx: TemplateContext,
     reading: Reading,
+    *,
+    planned: Planned,
     trace: Callable[[Reading], None] | None = None,
     declined: Callable[[str], None] | None = None,
-    planned: Planned | None = None,
 ) -> TemplateResult | None:
     """The point the parser read for a question (:attr:`Reading.point`,
     :func:`~association.query.parse.reading_from_route`), answered - run,
     never read from the question again. ``planned`` is the point planned
     onto its relation (:func:`~association.query.compose.plan.plan_point`):
-    the answering loop plans once and hands it over; a caller with only a
-    Reading (a test) leaves it out and it is planned here. Where there is
+    the PLAN stage's verdict, made once by whoever calls - the answering
+    loop, or a test - and never here. Where there is
     no query, the verdict stands: a refusal is the answer
     (:attr:`~association.query.compose.plan.Planned.refusal`), and a decline
     is ``None`` - the question is not a point on this relation, or carries a
@@ -185,9 +186,11 @@ def answer(
     .. versionchanged:: 5.0.0
        Takes ``planned``: the planner runs once per question, in the
        answering loop, where the parser used to plan the point as it read
-       it and this function again (``ROADMAP.md``, Phase 1).
+       it and this function again (``ROADMAP.md``, Phase 1). Required: until
+       the step after, a caller that left it out had the Reading planned
+       here, a second planner path only tests took.
     """
-    verdict = planned if planned is not None else plan_point(reading)
+    verdict = planned
     if verdict.refusal is not None:
         # A copy: the caller appends its notes to the answer it is handed.
         return copy.deepcopy(verdict.refusal)

@@ -23,12 +23,12 @@ from typing import Any
 
 import duckdb
 import pytest
+from routed import planned_answer as compose_answer
 from test_templates import player_matchup, player_splits, streak, with_without  # the compiler's, the templates retired (compose.COMPILED_INTENTS)
 
 from association.fetch.repairs import real_games
 from association.fetch.repairs.reconstructed_box import _FILLED_COLUMNS as FILLED_COLUMNS
 from association.nba.season import current_season
-from association.query.compose import answer as compose_answer
 from association.query.compose.present import STATED_SCOPING
 from association.query.conditions import RAW_BOX, UNGATED_ON_REBUILD, box_source
 from association.query.parse import with_point

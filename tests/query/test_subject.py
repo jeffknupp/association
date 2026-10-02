@@ -13,7 +13,7 @@ import pytest
 from routed import slots_route
 
 from association.nba.season import current_season
-from association.query import subject
+from association.query import names, subject
 from association.query.decisions import Decision
 from association.query.reading import Scope
 from association.query.subject import SUBJECT_KINDS, Subject, apply_subject, question_supports, read_subject
@@ -933,8 +933,10 @@ def test_a_misspelled_companion_is_read_as_typed_where_it_is_one_players_near_sp
     assert [(c.name, c.predicate) for c in s.conditions] == [("wembyanama", "played")]
     assert "companions the router named nobody for ['wembyanama']" in s.evidence
     # Two near spellings name nobody: the question is asked, not guessed.
+    # (A table is read once per block: the new row is seen in the next one.)
     con.execute("INSERT INTO players VALUES ('31', 'Vince Wembyanamo')")
-    assert _read(con, "de'aaron fox points with wembyanama playing", "player_stat", player="De'Aaron Fox").conditions == ()
-    # An ordinary word is no typo, however near a name it is: "brow" is one
-    # edit from Jaylen Brown, as "season" is from Tari Eason.
-    assert _read(con, "de'aaron fox points with brow", "player_stat", player="De'Aaron Fox").conditions == ()
+    with names.loaded():
+        assert _read(con, "de'aaron fox points with wembyanama playing", "player_stat", player="De'Aaron Fox").conditions == ()
+        # An ordinary word is no typo, however near a name it is: "brow" is one
+        # edit from Jaylen Brown, as "season" is from Tari Eason.
+        assert _read(con, "de'aaron fox points with brow", "player_stat", player="De'Aaron Fox").conditions == ()

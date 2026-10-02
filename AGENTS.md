@@ -665,8 +665,10 @@ model's. Two things follow, and both matter when you add a shape:
 - **A name is recognized from the in-memory index, never by a statement.**
   `query/names.py` holds the `players` (3,101) and `teams` (30) tables as
   two indexes, loaded once per question inside `Agent.ask`
-  (`names.loaded(con)`; outside a block each lookup reads the table and
-  reuses an index already built from the same rows). Every lookup in
+  (`names.loaded()`; a lookup outside a block raises `names.NotLoaded`, so
+  a caller that forgot one fails instead of quietly issuing a statement per
+  lookup - every test runs inside one, `tests/conftest.py`, and a script
+  that reads names enters its own). Every lookup in
   `entities.py` that read only those tables is answered from them, with
   DuckDB's own semantics reproduced and checked against it: its `lower`,
   its split on every non-ASCII-lowercase letter, Damerau-Levenshtein over

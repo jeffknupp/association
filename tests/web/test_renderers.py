@@ -21,10 +21,10 @@ from typing import Any
 
 import duckdb
 import pytest
+from routed import planned_answer as compose_answer
 
 from association.nba.netpoints import FINGERPRINT_CATEGORIES
 from association.query.compose import COMPILED_INTENTS
-from association.query.compose import answer as compose_answer
 from association.query.compose.sentence import _FRACTION_COLUMNS
 from association.query.parse import with_point
 from association.query.reading import Reading, Scope
