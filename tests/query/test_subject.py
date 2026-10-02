@@ -10,6 +10,7 @@ from typing import Any
 
 import duckdb
 import pytest
+from routed import slots_route
 
 from association.nba.season import current_season
 from association.query import subject
@@ -439,7 +440,7 @@ def _assigned(con: duckdb.DuckDBPyConnection, question: str, parent: str, **slot
     from association.query.parse import _read_route_child, reading_from_route
     from association.query.router import Route
 
-    route = Route.from_slots(parent, dict(slots))
+    route = slots_route(parent, dict(slots))
     # The subject is read once and carried: the child step and the last
     # step settle it, neither reads it again.
     who = read_subject(con, question, parent, route.scope)
@@ -817,10 +818,9 @@ def test_the_subject_is_read_once_per_question(con: duckdb.DuckDBPyConnection, m
     """``ROADMAP.md``, Phase 1: the parser reads who the question is about
     once (``read_route``), carries that reading on the route, and its child
     step and last step settle it (``settle_subject``) - three readings
-    until 5.0.0, each asking the warehouse for the same names. A replayed
-    route carries no subject, and has it read in the last step, once."""
+    until 5.0.0, each asking the warehouse for the same names. A route
+    with no subject is refused at the last step, not read for again."""
     import association.query.parse as parse
-    from association.query.router import Route
 
     seen: list[str] = []
     original = parse.read_subject
@@ -836,11 +836,8 @@ def test_the_subject_is_read_once_per_question(con: duckdb.DuckDBPyConnection, m
     reading = parse.reading_from_route(con, question, route)
     assert seen == ["other"]
     assert reading.intent == "threshold_count" and reading.subject is not None and reading.subject.intent == "threshold_count"
-
-    seen.clear()
-    replayed = parse.reading_from_route(con, question, Route.from_slots("threshold_count", route.slots))
-    assert seen == ["threshold_count"]
-    assert replayed.scope == reading.scope and replayed.intent == reading.intent
+    with pytest.raises(ValueError, match="needs the route's subject"):
+        parse.reading_from_route(con, question, slots_route(route.intent, route.slots))
 
 
 def test_a_subject_is_settled_under_the_intent_without_reading_a_name_again() -> None:

@@ -440,7 +440,16 @@ name and asks the warehouse nothing) - and `subject.apply_subject` writes
 those names into the scope (until 5.0.0 this was
 `entities.override_invented_players`) inside the parser's last step,
 `parse.reading_from_route`, whose `Reading` is all the agent answers from.
-Only a replayed route, which carries no subject, has it read there. Do not
+A route with no subject is refused there (`ValueError`), not read for
+again: until 2026-10-02 a recorded route replayed through
+`Agent.ask(route=...)` had its subject read in that last step, on the
+settled scope instead of the one `read_route` reads from, and the two paths
+disagreed on 9 of 12 wordings naming a franchise's old name. `Agent.ask`
+takes a question and nothing else; a test that needs a particular route
+stands in for `read_route` (`tests/routed.py`: `ask_routed`,
+`with_subject`), and a harness answers recorded QUESTIONS with their
+recorded normalizer replies, as `scripts/stage_snapshots.py` and
+`scripts/preview_answers.py` do. Do not
 add a second `read_subject` call to the live path: three readings of one
 question is what this replaced, and they disagreed on 18 of the 628 recorded
 questions. What counts as the question
@@ -601,7 +610,7 @@ re-phrasing it."), and no effort is spent on them - most of the StatMuse
 feed's two-word rows are a user hitting enter before the question was typed,
 and guessing at "Tatum rec" answered his splits. `refusals.too_short` (fewer
 than `MIN_QUESTION_WORDS`, three) runs in `Agent.ask` before the normalizer,
-so a short question costs no model call; a recorded route is still answered.
+so a short question costs no model call.
 Measured before the line was chosen: 215 of the large feed's 2,285 questions
 have one or two words, almost all bare names, and in the yardstick only
 "Tatum rec" has under three while every three-word question answers. Do not

@@ -7,6 +7,7 @@ from typing import Any, NoReturn
 
 import ollama
 import pytest
+from routed import ask_routed, slots_route
 
 from association.query.agent import Agent
 from association.query.reading import Reading
@@ -97,7 +98,6 @@ def test_the_fast_path_replaces_a_player_the_question_never_named(monkeypatch: p
     """Measured live: "compare sga and embiid" routed to Jusuf Nurkic in the
     second slot and answered with a confident table about him. The template is
     not reached until the names are the question's."""
-    from association.query.router import Route
     from association.query.templates.common import TemplateResult
 
     seen: list[str] = []
@@ -108,9 +108,7 @@ def test_the_fast_path_replaces_a_player_the_question_never_named(monkeypatch: p
 
     # player_compare is the compiler's (compose.COMPILED_INTENTS): the same Reading reaches compose.answer.
     monkeypatch.setattr("association.query.compose.answer", lambda ctx, reading, trace=None, declined=None, planned=None: record(ctx, reading))
-    _agent_with_players(tmp_path, "Joel Embiid", "Jusuf Nurkic").ask(
-        "compare sga and embiid", route=Route.from_slots(intent="player_compare", slots={"players": ["Shai Gilgeous-Alexander", "Jusuf Nurkic"]})
-    )
+    ask_routed(_agent_with_players(tmp_path, "Joel Embiid", "Jusuf Nurkic"), "compare sga and embiid", slots_route("player_compare", {"players": ["Shai Gilgeous-Alexander", "Jusuf Nurkic"]}))
     assert seen == ["Shai Gilgeous-Alexander", "Joel Embiid"]
 
 
@@ -119,12 +117,11 @@ def test_the_fast_path_records_who_the_question_was_read_to_be_about(monkeypatch
     and is recorded as decisions - values on the Answer and a `decisions:`
     section of the history record - beside the repair chain that still
     writes the slots. It writes none itself yet."""
-    from association.query.router import Route
     from association.query.templates.common import TemplateResult
 
     monkeypatch.setattr("association.query.compose.answer", lambda ctx, reading, trace=None, declined=None, planned=None: TemplateResult(data={}, answer="templated"))
     agent = _agent_with_players(tmp_path, "Joel Embiid", "Jusuf Nurkic")
-    answer = agent.ask("compare sga and embiid", route=Route.from_slots(intent="player_compare", slots={"players": ["Shai Gilgeous-Alexander", "Jusuf Nurkic"]}))
+    answer = ask_routed(agent, "compare sga and embiid", slots_route("player_compare", {"players": ["Shai Gilgeous-Alexander", "Jusuf Nurkic"]}))
     stages = [(d.stage, d.field, d.after) for d in answer.decisions]
     assert ("subject", "kind", "pair") in stages
     assert ("subject", "players", ["Shai Gilgeous-Alexander", "Joel Embiid"]) in stages  # in the question's own order; Nurkic, whom it never names, is not there
@@ -139,7 +136,6 @@ def test_a_team_only_intent_naming_one_player_refuses_rather_than_answering_the_
     all: team_leaderboard has no reading for a named player, so the
     question is refused, naming him, rather than answered about the wrong
     subject. Diacritics ("şengün") are already folded before this runs."""
-    from association.query.router import Route
 
     reached = False
 
@@ -149,7 +145,7 @@ def test_a_team_only_intent_naming_one_player_refuses_rather_than_answering_the_
         raise AssertionError("team_leaderboard should not run at all")
 
     monkeypatch.setattr("association.query.agent.TEMPLATES", {"team_leaderboard": record})
-    answer = _agent_with_players(tmp_path, "Alperen Sengun").ask("alperen şengün alltime record", route=Route.from_slots(intent="team_leaderboard", slots={"stat": "record", "limit": 1}))
+    answer = ask_routed(_agent_with_players(tmp_path, "Alperen Sengun"), "alperen şengün alltime record", slots_route("team_leaderboard", {"stat": "record", "limit": 1}))
     assert not reached
     assert "Alperen Sengun" in answer.text
     assert "team leaderboard" in answer.text
@@ -164,7 +160,6 @@ def test_a_team_only_intent_with_a_team_named_is_unaffected(monkeypatch: pytest.
     "no team found" the same way `entities._team_named` already does."""
     import duckdb
 
-    from association.query.router import Route
     from association.query.templates.common import TemplateResult
 
     db_path = tmp_path / "test.duckdb"
@@ -177,7 +172,7 @@ def test_a_team_only_intent_with_a_team_named_is_unaffected(monkeypatch: pytest.
     agent = Agent(str(db_path), tmp_path / "out", history_dir=tmp_path / ".history")
 
     monkeypatch.setattr("association.query.agent.TEMPLATES", {"team_leaderboard": lambda ctx, slots: TemplateResult(data={}, answer="templated")})
-    answer = agent.ask("alperen şengün rockets record", route=Route.from_slots(intent="team_leaderboard", slots={"stat": "record", "team": "Houston Rockets"}))
+    answer = ask_routed(agent, "alperen şengün rockets record", slots_route("team_leaderboard", {"stat": "record", "team": "Houston Rockets"}))
     assert answer.text == "templated"
 
 
@@ -217,7 +212,6 @@ def test_a_rerouted_intent_runs_the_path_it_was_rerouted_to(monkeypatch: pytest.
     can catch it. record_when is the compiler's alone now
     (compose.COMPILED_INTENTS): the compiler is asked, under record_when,
     and team_record's template never runs."""
-    from association.query.router import Route
     from association.query.templates.common import TemplateResult, TemplateUnsupported
 
     ran: list[str] = []
@@ -243,7 +237,7 @@ def test_a_rerouted_intent_runs_the_path_it_was_rerouted_to(monkeypatch: pytest.
 
     monkeypatch.setattr("association.query.agent.TEMPLATES", {"team_record": team_record})
     monkeypatch.setattr("association.query.compose.answer", composed)
-    answer = agent.ask("sixers record when maxey scored 20+ points", route=Route.from_slots(intent="team_record", slots={"team": "Philadelphia 76ers", "stat": "points", "season_type": 2}))
+    answer = ask_routed(agent, "sixers record when maxey scored 20+ points", slots_route("team_record", {"team": "Philadelphia 76ers", "stat": "points", "season_type": 2}))
     assert ran == ["compose record_when"]
     assert answer.intent == "record_when" and "composed" in (answer.text or "")
 
@@ -255,13 +249,10 @@ def test_a_player_the_question_cannot_account_for_is_refused_not_passed_on(monke
     check_coverage returning its refusal rather than raising it: the refusal
     is a fast answer naming the player, not the plain refusal for want of a
     reading."""
-    from association.query.router import Route
     from association.query.templates.common import TemplateResult
 
     monkeypatch.setattr("association.query.compose.answer", lambda ctx, reading, trace=None, declined=None, planned=None: TemplateResult(data={}, answer="templated"))
-    answer = _agent_with_players(tmp_path, "Joel Embiid", "Jusuf Nurkic").ask(
-        "compare the two best centers", route=Route.from_slots(intent="player_compare", slots={"players": ["Jusuf Nurkic", "Joel Embiid"]})
-    )
+    answer = ask_routed(_agent_with_players(tmp_path, "Joel Embiid", "Jusuf Nurkic"), "compare the two best centers", slots_route("player_compare", {"players": ["Jusuf Nurkic", "Joel Embiid"]}))
     assert "was not answered" in answer.text and "Jusuf Nurkic" in answer.text
     assert answer.answered_by == "fast" and "templated" not in answer.text
 
@@ -270,14 +261,10 @@ def test_a_stray_name_on_a_question_no_template_reads_one_for_changes_nothing(mo
     """head_to_head never looks at a player slot, so an invented one there
     cannot make the answer about the wrong person - and refusing over it would
     break a question that works."""
-    from association.query.router import Route
     from association.query.templates.common import TemplateResult
 
     monkeypatch.setattr("association.query.agent.TEMPLATES", {"head_to_head": lambda ctx, slots: TemplateResult(data={}, answer="templated")})
-    assert (
-        _agent_with_players(tmp_path, "Joel Embiid", "Jusuf Nurkic").ask("Lakers vs Celtics record", route=Route.from_slots(intent="head_to_head", slots={"player": "Jusuf Nurkic"})).text
-        == "templated"
-    )
+    assert ask_routed(_agent_with_players(tmp_path, "Joel Embiid", "Jusuf Nurkic"), "Lakers vs Celtics record", slots_route("head_to_head", {"player": "Jusuf Nurkic"})).text == "templated"
 
 
 def test_a_fingerprint_that_lost_a_player_to_a_typo_says_so(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -285,11 +272,10 @@ def test_a_fingerprint_that_lost_a_player_to_a_typo_says_so(monkeypatch: pytest.
     alone. The typo cannot be repaired, so the half-answer has to be stated -
     one polygon where two were asked for, with nothing saying so, is the
     failure shape this project keeps producing."""
-    from association.query.router import Route
     from association.query.templates.common import TemplateResult
 
     monkeypatch.setattr("association.query.agent.TEMPLATES", {"fingerprint": lambda ctx, slots: TemplateResult(data={}, answer="Rendered.")})
-    answer = _agent_with_players(tmp_path, "Joel Embiid").ask("generate fingerprints for embiid vs jolic in 2026", route=Route.from_slots(intent="fingerprint", slots={"player": "Joel Embiid"})).text
+    answer = ask_routed(_agent_with_players(tmp_path, "Joel Embiid"), "generate fingerprints for embiid vs jolic in 2026", slots_route("fingerprint", {"player": "Joel Embiid"})).text
     assert answer.startswith("Rendered.") and "only one of them matches" in answer
 
 
@@ -301,7 +287,6 @@ def test_the_fast_path_says_how_it_read_a_name_the_question_left_open(monkeypatc
     travels by entities.collect_name_readings and is attached here - removing
     that block leaves a right answer about a player nobody said was chosen."""
     from association.query.entities import Entity, _note_name_reading
-    from association.query.router import Route
     from association.query.templates.common import TemplateResult
 
     def reads_a_name(ctx: Any, reading: Reading) -> TemplateResult:
@@ -311,7 +296,7 @@ def test_the_fast_path_says_how_it_read_a_name_the_question_left_open(monkeypatc
     # player_stat is the compiler's (compose.COMPILED_INTENTS): the reading
     # travels the same way through agent._try_compose.
     monkeypatch.setattr("association.query.compose.answer", lambda ctx, reading, trace=None, declined=None, planned=None: reads_a_name(ctx, reading))
-    answer = _agent_with_players(tmp_path, "Marlon Maxey", "Tyrese Maxey").ask("how many points does maxey average?", route=Route.from_slots(intent="player_stat", slots={"player": "maxey"}))
+    answer = ask_routed(_agent_with_players(tmp_path, "Marlon Maxey", "Tyrese Maxey"), "how many points does maxey average?", slots_route("player_stat", {"player": "maxey"}))
     reading = "('maxey' was read as Tyrese Maxey, the only match who played in 2025-26. Marlon Maxey also matches - use the full name, or name a season he played, to ask about him.)"
     assert answer.text == f"Tyrese Maxey averaged 28.0 points. {reading}"
     # The reading rides in `notes` too, for the web page to show beneath a
@@ -325,7 +310,6 @@ def test_a_question_nothing_reads_is_refused_naming_why(monkeypatch: pytest.Monk
     answer since the SQL-writing agent went (5.0.0). No model is asked past
     the reader."""
     from association.query.agent import refusal_text
-    from association.query.router import Route
     from association.query.templates import TemplateResult, TemplateUnsupported
 
     def chat_must_not_run(**kw: Any) -> None:
@@ -334,7 +318,7 @@ def test_a_question_nothing_reads_is_refused_naming_why(monkeypatch: pytest.Monk
     monkeypatch.setattr(ollama, "chat", chat_must_not_run)
     agent = _agent_with_players(tmp_path)
 
-    answer = agent.ask("who had the most triple-doubles?", route=Route.from_slots(intent="other", slots={}))
+    answer = ask_routed(agent, "who had the most triple-doubles?", slots_route("other", {}))
     assert answer.answered_by == "refused"
     assert answer.text == refusal_text("intent 'other' has no template yet")
     assert answer.intent is None and answer.data is None
@@ -346,13 +330,13 @@ def test_a_question_nothing_reads_is_refused_naming_why(monkeypatch: pytest.Monk
         raise TemplateUnsupported("head_to_head needs two teams, got []")
 
     monkeypatch.setattr("association.query.agent.TEMPLATES", {"head_to_head": refusing})
-    answer = agent.ask("q", route=Route.from_slots(intent="head_to_head", slots={"team": "Philadelphia 76ers"}))
+    answer = ask_routed(agent, "a question nothing reads", slots_route("head_to_head", {"team": "Philadelphia 76ers"}))
     assert answer.answered_by == "refused" and "head_to_head: head_to_head needs two teams" in answer.text
     assert agent.unanswered == "head_to_head: head_to_head needs two teams, got []"
 
     # An intent the compiler alone answers (compose.COMPILED_INTENTS) is
     # refused with the compiler's reason: a count with no line to count.
-    answer = agent.ask("how many games", route=Route.from_slots(intent="threshold_count", slots={"stat": "points"}))
+    answer = ask_routed(agent, "how many games", slots_route("threshold_count", {"stat": "points"}))
     assert answer.answered_by == "refused" and "threshold_count: " in answer.text
     assert agent.unanswered is not None and agent.unanswered.startswith("threshold_count: ")
 
@@ -362,7 +346,7 @@ def test_a_question_nothing_reads_is_refused_naming_why(monkeypatch: pytest.Monk
 
     # A question a template answers is unaffected.
     monkeypatch.setattr("association.query.agent.TEMPLATES", {"head_to_head": lambda ctx, slots: TemplateResult(data={}, answer="answered")})
-    answer = agent.ask("q", route=Route.from_slots(intent="head_to_head", slots={}))
+    answer = ask_routed(agent, "a question nothing reads", slots_route("head_to_head", {}))
     assert (answer.text, answer.answered_by, agent.unanswered) == ("answered", "fast", None)
 
 
@@ -384,7 +368,6 @@ def test_a_templates_refusal_that_compose_answers_is_returned_as_fast_with_the_t
     like a template's own result - answered_by="fast", the intent kept - with
     a trace line naming the point on the relation it composed, the way
     "-> (router) intent=..." names what was routed."""
-    from association.query.router import Route
     from association.query.templates.common import TemplateResult
 
     def composed_answer(ctx: Any, reading: Reading, trace: Any = None, declined: Any = None, planned: Any = None) -> TemplateResult:
@@ -397,7 +380,7 @@ def test_a_templates_refusal_that_compose_answers_is_returned_as_fast_with_the_t
     agent = _agent_with_players(tmp_path, "Joel Embiid")
     agent.trace = seen.append
     agent.verbose = True
-    answer = agent.ask("how many points has embiid averaged since 2024?", route=Route.from_slots(intent="player_stat", slots={"player": "Joel Embiid", "since": 2024}))
+    answer = ask_routed(agent, "how many points has embiid averaged since 2024?", slots_route("player_stat", {"player": "Joel Embiid", "since": 2024}))
 
     assert answer.text == "Joel Embiid has averaged 30.0 points since 2024."
     assert answer.answered_by == "fast"
@@ -416,11 +399,10 @@ def test_a_compose_none_is_refused_with_the_templates_reason(monkeypatch: pytest
     compiler (association.query.compose) on an intent that is not a point on
     any relation - a fingerprint is a chart over NetPoints - so it declines
     with None, and the question is refused with the template's own reason."""
-    from association.query.router import Route
 
     monkeypatch.setattr("association.query.agent.TEMPLATES", {"fingerprint": _refusing_template})
 
-    answer = _agent_with_players(tmp_path, "Joel Embiid").ask("show me embiid's fingerprint for 2026", route=Route.from_slots(intent="fingerprint", slots={"player": "Joel Embiid", "season": 2026}))
+    answer = ask_routed(_agent_with_players(tmp_path, "Joel Embiid"), "show me embiid's fingerprint for 2026", slots_route("fingerprint", {"player": "Joel Embiid", "season": 2026}))
 
     assert answer.answered_by == "refused"
     assert "fingerprint: a test double's refusal" in answer.text
@@ -430,7 +412,6 @@ def test_a_compose_refusal_is_returned_as_the_answer_not_a_fall_through(monkeypa
     """A clarification or a no-match from the compiler is an answer, not a
     refusal for want of a reading: it looked at the question and had
     something to say."""
-    from association.query.router import Route
     from association.query.templates.common import TemplateResult
 
     def composed_refusal(ctx: Any, reading: Reading, trace: Any = None, declined: Any = None, planned: Any = None) -> TemplateResult:
@@ -439,7 +420,7 @@ def test_a_compose_refusal_is_returned_as_the_answer_not_a_fall_through(monkeypa
     monkeypatch.setattr("association.query.agent.TEMPLATES", {"player_stat": _refusing_template})
     monkeypatch.setattr("association.query.compose.answer", composed_refusal)
 
-    answer = _agent_with_players(tmp_path, "Joel Embiid").ask("embiid's line over the last few?", route=Route.from_slots(intent="player_stat", slots={"player": "Joel Embiid", "since": 2024}))
+    answer = ask_routed(_agent_with_players(tmp_path, "Joel Embiid"), "embiid's line over the last few?", slots_route("player_stat", {"player": "Joel Embiid", "since": 2024}))
 
     assert answer.text == "I can't tell which span 'the last few' means - a number of games, or a number of seasons?"
     assert answer.answered_by == "fast"
@@ -450,7 +431,6 @@ def test_a_composed_answer_carries_the_name_reading_it_noted(monkeypatch: pytest
     entities.collect_name_readings - so a default it chose ("maxey" is Tyrese)
     is visible in the answer here too, not only on the direct template path."""
     from association.query.entities import Entity, _note_name_reading
-    from association.query.router import Route
     from association.query.templates.common import TemplateResult
 
     def composed_with_reading(ctx: Any, reading: Reading, trace: Any = None, declined: Any = None, planned: Any = None) -> TemplateResult:
@@ -460,9 +440,7 @@ def test_a_composed_answer_carries_the_name_reading_it_noted(monkeypatch: pytest
     monkeypatch.setattr("association.query.agent.TEMPLATES", {"player_stat": _refusing_template})
     monkeypatch.setattr("association.query.compose.answer", composed_with_reading)
 
-    answer = _agent_with_players(tmp_path, "Marlon Maxey", "Tyrese Maxey").ask(
-        "how many points has maxey averaged since 2024?", route=Route.from_slots(intent="player_stat", slots={"player": "maxey", "since": 2024})
-    )
+    answer = ask_routed(_agent_with_players(tmp_path, "Marlon Maxey", "Tyrese Maxey"), "how many points has maxey averaged since 2024?", slots_route("player_stat", {"player": "maxey", "since": 2024}))
 
     reading = "('maxey' was read as Tyrese Maxey, the only match who played in 2025-26. Marlon Maxey also matches - use the full name, or name a season he played, to ask about him.)"
     assert answer.text == f"Tyrese Maxey has averaged 28.0 points since 2024. {reading}"
@@ -471,9 +449,8 @@ def test_a_composed_answer_carries_the_name_reading_it_noted(monkeypatch: pytest
 
 def test_an_unported_intent_is_refused_by_name(tmp_path: Path) -> None:
     """A shape with no template is refused naming the intent, in seconds."""
-    from association.query.router import Route
 
-    answer = _agent(tmp_path).ask("who had the most triple-doubles?", route=Route.from_slots(intent="other", slots={}))
+    answer = ask_routed(_agent(tmp_path), "who had the most triple-doubles?", slots_route("other", {}))
     assert answer.answered_by == "refused" and "intent 'other' has no template yet" in answer.text
 
 
@@ -487,12 +464,11 @@ def test_the_fast_path_carries_out_the_intent_and_data_it_used_to_discard(monkey
     """TemplateResult.data existed so a caller could render the answer itself,
     and _try_fast_path returned only result.answer, so nothing ever could.
     That is the whole reason Phase 0 of the 2.0 plan exists."""
-    from association.query.router import Route
     from association.query.templates.common import TemplateResult
 
     # leaderboard is the compiler's (compose.COMPILED_INTENTS): the same Reading reaches compose.answer.
     monkeypatch.setattr("association.query.compose.answer", lambda ctx, reading, trace=None, declined=None, planned=None: TemplateResult(data={"leaders": ["Jokic"]}, answer="Jokic."))
-    answer = _agent_with_players(tmp_path).ask("who leads the league in scoring?", route=Route.from_slots(intent="leaderboard", slots={"stat": "points"}))
+    answer = ask_routed(_agent_with_players(tmp_path), "who leads the league in scoring?", slots_route("leaderboard", {"stat": "points"}))
 
     assert answer.text == "Jokic."
     assert answer.answered_by == "fast"
@@ -514,12 +490,11 @@ def test_a_refused_answer_has_no_intent_or_data_rather_than_an_empty_one(monkeyp
 
 def test_a_fast_path_answer_carries_the_chart_the_template_wrote(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     from association.query.answer import Artifact
-    from association.query.router import Route
     from association.query.templates.common import TemplateResult
 
     drawn = Artifact("shot_chart", tmp_path / "shotchart_x.html")
     monkeypatch.setattr("association.query.agent.TEMPLATES", {"shot_chart": lambda con, slots: TemplateResult(data={}, answer="Rendered.", artifacts=[drawn])})
-    assert _agent(tmp_path).ask("chart x", route=Route.from_slots(intent="shot_chart", slots={"player": "x"})).artifacts == [drawn]
+    assert ask_routed(_agent(tmp_path), "a chart of x", slots_route("shot_chart", {"player": "x"})).artifacts == [drawn]
 
 
 def test_the_history_label_comes_from_the_caller_not_the_process(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -530,11 +505,10 @@ def test_the_history_label_comes_from_the_caller_not_the_process(monkeypatch: py
     db_path = tmp_path / "test.duckdb"
     duckdb.connect(str(db_path)).close()
     history_dir = tmp_path / ".history"
-    from association.query.router import Route
 
     agent = _agent_with_players(tmp_path)
     agent.history_dir = history_dir
-    agent.ask("q", label="POST /api/ask", route=Route.from_slots(intent="other", slots={}))
+    ask_routed(agent, "a question nothing reads", slots_route("other", {}), label="POST /api/ask")
 
     assert "command: POST /api/ask" in next(iter(history_dir.glob("*.log"))).read_text()
 
@@ -565,12 +539,10 @@ def test_the_refusal_names_what_the_fast_path_could_not_answer(tmp_path: Path) -
     The reason the templates declined it says which part of the question has
     no answer here yet, and the refusal is that reason and nothing else."""
     from association.query.agent import refusal_text
-    from association.query.router import Route
 
     agent = _agent_with_players(tmp_path)
-    answer = agent.ask("who had the most triple-doubles?", route=Route.from_slots(intent="other", slots={}))
+    answer = ask_routed(agent, "who had the most triple-doubles?", slots_route("other", {}))
     assert answer.text == refusal_text("intent 'other' has no template yet") == "Nothing here answers this question: intent 'other' has no template yet."
-    assert answer.timing.model_calls == 0
 
 
 def test_a_shape_nothing_reads_is_refused_with_its_cause(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -579,13 +551,12 @@ def test_a_shape_nothing_reads_is_refused_with_its_cause(monkeypatch: pytest.Mon
     with its cause as a fast answer - not with the template's slot. A
     playoff round is the worked case: no template honors the slot, and the
     games carry no round label."""
-    from association.query.router import Route
 
     monkeypatch.setattr("association.query.agent.TEMPLATES", {"game_log": _refusing_template})
     monkeypatch.setattr("association.query.compose.answer", lambda *a, **k: None)
 
     agent = _agent_with_players(tmp_path, "Joel Embiid")
-    answer = agent.ask("nba finals game log 2025", route=Route.from_slots(intent="game_log", slots={"team": "NBA Finals", "season": 2025, "season_type": 3, "round": "finals"}))
+    answer = ask_routed(agent, "nba finals game log 2025", slots_route("game_log", {"team": "NBA Finals", "season": 2025, "season_type": 3, "round": "finals"}))
 
     assert "not labeled by playoff round" in answer.text
     assert answer.answered_by == "fast"
@@ -596,10 +567,9 @@ def test_a_shape_nothing_reads_is_refused_even_where_no_template_exists(tmp_path
     """An intent with no template is refused by name; the refusals module
     gets its look first, so "bench points" (routed `other`) is refused with
     its cause rather than with the intent."""
-    from association.query.router import Route
 
     agent = _agent_with_players(tmp_path, "Joel Embiid")
-    answer = agent.ask("most opponent bench points allowed in the west at home by team this month", route=Route.from_slots(intent="other", slots={"stat": "points", "venue": "home"}))
+    answer = ask_routed(agent, "most opponent bench points allowed in the west at home by team this month", slots_route("other", {"stat": "points", "venue": "home"}))
 
     assert "Bench points are not read yet" in answer.text
     assert answer.answered_by == "fast"
@@ -614,12 +584,11 @@ def test_an_answer_names_the_history_file_it_was_recorded_to(monkeypatch: pytest
     db_path = tmp_path / "test.duckdb"
     duckdb.connect(str(db_path)).close()
     history_dir = tmp_path / ".history"
-    from association.query.router import Route
 
     agent = _agent_with_players(tmp_path)
     agent.history_dir = history_dir
     agent.trace = lambda line: None
-    answer = agent.ask("q", route=Route.from_slots(intent="other", slots={}))
+    answer = ask_routed(agent, "a question nothing reads", slots_route("other", {}))
 
     written = [p.name for p in history_dir.glob("*.log")]
     assert answer.history_file is not None and answer.history_file in written
@@ -634,7 +603,6 @@ def test_a_compiled_intent_is_read_planned_and_answered_by_the_compiler_alone(mo
     compiler declines, the question is refused naming the compiler's
     reason - there is no template behind it any more."""
     from association.query.reading import Scope
-    from association.query.router import Route
     from association.query.templates.common import TemplateResult
 
     calls: list[str] = []
@@ -659,7 +627,7 @@ def test_a_compiled_intent_is_read_planned_and_answered_by_the_compiler_alone(mo
         calls.append("template")
         return TemplateResult(data={}, answer="the template answered")
 
-    recorded = Route.from_slots(intent="threshold_count", slots={"player": "Joel Embiid", "stat": "points", "threshold": 30})
+    recorded = slots_route("threshold_count", {"player": "Joel Embiid", "stat": "points", "threshold": 30})
     monkeypatch.setattr("association.query.agent.TEMPLATES", {"threshold_count": never_template})
     monkeypatch.setattr("association.query.compose.answer", composed_first)
 
@@ -667,7 +635,7 @@ def test_a_compiled_intent_is_read_planned_and_answered_by_the_compiler_alone(mo
     agent = _agent_with_players(tmp_path, "Joel Embiid")
     agent.trace = seen.append
     agent.verbose = True
-    answer = agent.ask("how many 30 point games did embiid have?", route=recorded)
+    answer = ask_routed(agent, "how many 30 point games did embiid have?", recorded)
 
     assert answer.text == "Joel Embiid had 9 games with 30+ points." and answer.answered_by == "fast" and answer.intent == "threshold_count"
     assert calls == ["compose"]
@@ -684,7 +652,7 @@ def test_a_compiled_intent_is_read_planned_and_answered_by_the_compiler_alone(mo
         declined("a test double's reason for having no reading")
 
     monkeypatch.setattr("association.query.compose.answer", declining)
-    answer = agent.ask("how many 30 point games did embiid have?", route=recorded)
+    answer = ask_routed(agent, "how many 30 point games did embiid have?", recorded)
     assert answer.answered_by == "refused" and "a test double's reason" in answer.text
     assert calls == ["compose"]
     assert agent.unanswered == "threshold_count: a test double's reason for having no reading"
@@ -752,10 +720,9 @@ def test_a_compiled_intents_refusal_names_the_compilers_own_reason(tmp_path: Pat
     is the planner's, read at parse time - "the relation cannot honor
     ['rate']" - and not a template's list consulted afterwards, which named
     a slot even where the compiler had declined for another cause."""
-    from association.query.router import Route
 
     agent = _agent_with_players(tmp_path, "Joel Embiid")
-    answer = agent.ask("how many 30 point games has embiid had per 36", route=Route.from_slots("threshold_count", {"player": "Joel Embiid", "stat": "points", "threshold": 30, "rate": "per_36"}))
+    answer = ask_routed(agent, "how many 30 point games has embiid had per 36", slots_route("threshold_count", {"player": "Joel Embiid", "stat": "points", "threshold": 30, "rate": "per_36"}))
     assert answer.answered_by == "refused" and "the relation cannot honor" in answer.text
     assert agent.unanswered == "threshold_count: the relation cannot honor ['rate'] - it would answer for a different span than was asked"
 
@@ -768,7 +735,6 @@ def test_a_slot_the_reading_cannot_hold_is_refused_rather_than_crashing(monkeypa
     door, ``Route.from_slots``, before the answering loop sees it."""
     from association.query.normalizer import Normalized
     from association.query.reading import ScopeError
-    from association.query.router import Route
 
     monkeypatch.setattr("association.query.normalizer.normalize", lambda model, question: Normalized(["stephen curry"], ""))
     agent = _agent_with_players(tmp_path, "Stephen Curry")
@@ -776,37 +742,13 @@ def test_a_slot_the_reading_cannot_hold_is_refused_rather_than_crashing(monkeypa
     assert answer.answered_by == "refused" and "limit" in answer.text
     assert agent.unanswered is not None and "limit" in agent.unanswered
     with pytest.raises(ScopeError, match="limit"):
-        Route.from_slots("game_log", {"player": "Stephen Curry", "limit": 0})
-
-
-def test_a_recorded_route_is_answered_as_given_without_reading_the_question(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """``Agent.ask(..., route=)`` is the replay of a recorded route (golden,
-    previews): the parser never reads the question, and the rest of the path
-    is the one a read question takes."""
-    from association.query.router import Route
-    from association.query.templates.common import TemplateResult
-
-    def no_reader(*args: Any, **kwargs: Any) -> None:
-        raise AssertionError("the question was read although a route was given")
-
-    seen: list[str | None] = []
-
-    def record(ctx: Any, reading: Reading) -> TemplateResult:
-        seen.append(reading.scope.player)
-        return TemplateResult(data={}, answer="answered")
-
-    monkeypatch.setattr("association.query.normalizer.normalize", no_reader)
-    monkeypatch.setattr("association.query.compose.answer", lambda ctx, reading, trace=None, declined=None, planned=None: record(ctx, reading))
-    answer = _agent_with_players(tmp_path, "Joel Embiid").ask("how many points does embiid average", route=Route.from_slots(intent="player_stat", slots={"player": "Joel Embiid"}))
-    assert (answer.text, answer.intent, seen) == ("answered", "player_stat", ["Joel Embiid"])
+        slots_route("game_log", {"player": "Stephen Curry", "limit": 0})
 
 
 def test_a_short_question_is_refused_before_the_model_is_asked(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """ "Tatum rec" used to answer his splits; a question of fewer than three
     words is refused with the generic sentence and costs no model call
-    (refusals.too_short). A recorded route is still answered as given."""
-    from association.query.router import Route
-    from association.query.templates.common import TemplateResult
+    (refusals.too_short)."""
 
     def never(model: str, question: str) -> None:
         raise AssertionError("the normalizer must not be asked a two-word question")
@@ -817,8 +759,6 @@ def test_a_short_question_is_refused_before_the_model_is_asked(monkeypatch: pyte
     assert answer.answered_by == "refused" and answer.timing.model_calls == 0
     assert answer.text == "I couldn't understand your question, 'Tatum rec'. Please try re-phrasing it."
     assert agent.unanswered == "fewer than 3 words"
-    monkeypatch.setattr("association.query.compose.answer", lambda ctx, reading, trace=None, declined=None, planned=None: TemplateResult(data={}, answer="answered"))
-    assert agent.ask("Tatum rec", route=Route.from_slots(intent="player_stat", slots={"player": "Jayson Tatum"})).text == "answered"
 
 
 def test_a_question_is_answered_in_the_latest_season_on_record_not_the_calendars(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

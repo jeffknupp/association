@@ -3155,27 +3155,6 @@ those were found.
   index (new roadmap, Phase 1).
 - **GitHub:** #287
 
-### Research: the golden harness and the preview script replay recorded routes, which go with `Route`
-- **Found:** 2026-09-30, roadmap reviews (both agents); rewritten the same
-  day to what remains.
-- **Evidence:** `~/association-research/golden/golden_all.py` and
-  `scripts/preview_answers.py` (`--from-live`, `--from-history`) parse the
-  `(router) intent=... slots={...}` trace line and answer it through
-  `Agent.ask(route=...)`. `ROADMAP.md` Phase 3 deletes `Route` and the
-  intent. (Done 2026-09-30: `score_blind.py` reads the run it scores and
-  the one before it, and refuses while a moved answer has no grade for
-  the run, a wording is missing or a file is absent - enforced for runs
-  after parser22, watched to refuse; `run_live.py` records each answer's
-  stage snapshot, and "moved" is decided from values where both runs have
-  one; the rehearsal and the hold-out comparison are replaced by
-  `scripts/stage_snapshots.py`.)
-- **User sees:** nothing.
-- **Next step:** before Phase 3 deletes `Route`, the preview gallery
-  answers recorded QUESTIONS with their recorded normalizer replies (as
-  the stage snapshots do), and the golden harness is retired for the
-  snapshots.
-- **GitHub:** #288
-
 ### 2018's `teamTurnovers` is kept though it is not the game's
 - **Found:** 2026-09-29, period relation's team half
 - **Evidence:** `fetch/repairs/team_box_repair.py` keeps 2018's

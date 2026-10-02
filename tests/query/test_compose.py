@@ -21,6 +21,7 @@ from typing import Any
 
 import duckdb
 import pytest
+from routed import slots_route, with_subject
 
 from association.fetch.repairs import real_games
 from association.nba.season import current_season
@@ -1644,10 +1645,9 @@ def test_the_parser_reads_the_point_and_the_compiler_answers_it_unread(cx_ctx: T
     the answer is the one the same point gives read the test's own way
     (``compose_answer`` above, the subject and the point built by hand)."""
     from association.query.parse import reading_from_route
-    from association.query.router import Route
 
     question = "how many 15+ point games did podziemski have"
-    reading = reading_from_route(cx_ctx.con, question, Route.from_slots("threshold_count", {"player": "Brandin Podziemski", "stat": "points", "threshold": 15}))
+    reading = reading_from_route(cx_ctx.con, question, with_subject(cx_ctx.con, question, slots_route("threshold_count", {"player": "Brandin Podziemski", "stat": "points", "threshold": 15})))
     assert reading.point is not None and (reading.point.shape, reading.point.aggregate) == ("scalar", "count")
     by_hand = compose_answer(cx_ctx, "threshold_count", reading.scope.to_slots(), question, reading.subject)
 
@@ -1666,15 +1666,14 @@ def test_a_point_the_compiler_declines_or_refuses_travels_on_the_reading(cx_ctx:
     refusal as the answer - a copy, since the agent appends its notes to the
     answer it is handed."""
     from association.query.parse import reading_from_route
-    from association.query.router import Route
 
-    declined = reading_from_route(cx_ctx.con, "how many games", Route.from_slots("threshold_count", {"stat": "points"}))
+    declined = reading_from_route(cx_ctx.con, "how many games", with_subject(cx_ctx.con, "how many games", slots_route("threshold_count", {"stat": "points"})))
     assert declined.point is None and declined.point_declined is not None
     why: list[str] = []
     assert compose.answer(cx_ctx, declined, declined=why.append) is None
     assert why == [declined.point_declined]
 
-    refused = reading_from_route(cx_ctx.con, "most gizmos in a single game", Route.from_slots("single_game_high", {"stat": "gizmos"}))
+    refused = reading_from_route(cx_ctx.con, "most gizmos in a single game", with_subject(cx_ctx.con, "most gizmos in a single game", slots_route("single_game_high", {"stat": "gizmos"})))
     assert refused.point is None and refused.point_refusal is not None
     answered = compose.answer(cx_ctx, refused)
     assert answered is not None and answered.answer == refused.point_refusal.answer and answered is not refused.point_refusal
@@ -1718,10 +1717,11 @@ def test_the_planner_refuses_after_the_parser_has_read_and_only_once(cx_ctx: Tem
     from association.query.compose import plan as plan_module
     from association.query.compose.plan import plan_point
     from association.query.parse import reading_from_route
-    from association.query.router import Route
 
     reading = reading_from_route(
-        cx_ctx.con, "podziemski 30 point games per 36", Route.from_slots("threshold_count", {"player": "Brandin Podziemski", "stat": "points", "threshold": 30, "rate": "per_36"})
+        cx_ctx.con,
+        "podziemski 30 point games per 36",
+        with_subject(cx_ctx.con, "podziemski 30 point games per 36", slots_route("threshold_count", {"player": "Brandin Podziemski", "stat": "points", "threshold": 30, "rate": "per_36"})),
     )
     assert reading.point is not None and reading.point_declined is None and reading.point_refusal is None
     planned = plan_point(reading)
@@ -1730,7 +1730,11 @@ def test_the_planner_refuses_after_the_parser_has_read_and_only_once(cx_ctx: Tem
     why: list[str] = []
     assert compose.answer(cx_ctx, reading, declined=why.append, planned=planned) is None and why == [planned.declined]
 
-    answerable = reading_from_route(cx_ctx.con, "podziemski 30 point games", Route.from_slots("threshold_count", {"player": "Brandin Podziemski", "stat": "points", "threshold": 30}))
+    answerable = reading_from_route(
+        cx_ctx.con,
+        "podziemski 30 point games",
+        with_subject(cx_ctx.con, "podziemski 30 point games", slots_route("threshold_count", {"player": "Brandin Podziemski", "stat": "points", "threshold": 30})),
+    )
     handed = plan_point(answerable)
     assert isinstance(handed.query, Query)
     calls: list[Reading] = []

@@ -261,15 +261,15 @@ class Route:
     off the parent its grammar named, and each slot a child's stages moved,
     as values the Reading carries on
     (:func:`~association.query.parse.reading_from_route`). A route the stages
-    settle, or one replayed, carries none.
+    settle carries none.
 
     .. versionchanged:: 5.0.0
        ``scope`` (a :class:`~association.query.reading.Scope`) replaces
        ``slots`` (a dict): the stages write the typed Scope, and nothing after
-       the model holds a slot dict (ROADMAP plan item 6, step (f)). A recorded
-       route is replayed through :meth:`from_slots`, and :attr:`slots` is the
-       Scope projected to a slot dict - the trace's and a test's shape, read
-       nowhere on the answering path. ``decisions`` added.
+       the model holds a slot dict (ROADMAP plan item 6, step (f)).
+       :attr:`slots` is the Scope projected to a slot dict - the trace's and
+       a test's shape, read nowhere on the answering path. ``decisions``
+       added.
     """
 
     intent: str
@@ -278,23 +278,11 @@ class Route:
     #: Who the question was read to be about, where the parser read the
     #: question (:func:`~association.query.parse.read_route`): the one
     #: reading of the subject, which the parser's last step settles under
-    #: the route's intent rather than read again. ``None`` on a route
-    #: replayed from a record, whose subject is read there.
+    #: the route's intent rather than read again. ``None`` only on what
+    #: the stages hand back (:func:`settle`), before the parser attaches it.
     #:
     #: .. versionadded:: 5.0.0
     subject: Subject | None = None
-
-    @classmethod
-    def from_slots(cls, intent: str, slots: Mapping[str, Any], decisions: tuple[Decision, ...] = ()) -> Route:
-        """A route from a slot dict - a recorded route replayed, a test's
-        case - through the Scope's one door
-        (:meth:`~association.query.reading.Scope.from_slots`), which raises
-        :class:`~association.query.reading.ScopeError` for a value no field
-        holds.
-
-        .. versionadded:: 5.0.0
-        """
-        return cls(intent, Scope.from_slots(slots), decisions)
 
     @property
     def slots(self) -> dict[str, Any]:

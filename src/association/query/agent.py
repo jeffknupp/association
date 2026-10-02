@@ -165,7 +165,7 @@ class Agent:
         self.out_dir = out_dir
         self.out_dir.mkdir(parents=True, exist_ok=True)
 
-    def ask(self, question: str, label: str = "", *, route: Route | None = None) -> Answer:
+    def ask(self, question: str, label: str = "") -> Answer:
         """Answer one question.
 
         Wraps _ask_inner so a RunHistory is ALWAYS written on the way out -
@@ -180,9 +180,6 @@ class Agent:
                 A caller says what the request was; this used to be
                 ``shlex.join(sys.argv)``, which is only true of a CLI and says
                 nothing useful about a server handling many questions.
-            route: Answer this route instead of reading the question - the
-                replay of a recorded one (golden, previews). The rest of the
-                path is the one a read question takes; no model is asked.
 
         Returns:
             An :class:`association.query.answer.Answer`. ``answer.text`` is
@@ -194,17 +191,13 @@ class Agent:
            ``sys.argv``.
 
         .. versionchanged:: 5.0.0
-           Takes ``route``, a recorded route to answer in place of reading
-           the question.
-
-        .. versionchanged:: 5.0.0
            A question nothing here reads is answered with a refusal naming
            why (``answered_by="refused"``), never handed to a model.
 
         .. versionchanged:: 5.0.0
            A question of fewer than :data:`~association.query.refusals.MIN_QUESTION_WORDS`
            words is refused unread, with a generic sentence, before the
-           normalizer is asked (a recorded ``route`` is still answered).
+           normalizer is asked.
         """
         history = RunHistory(self.verbose, self.history_dir, sink=self.trace)
         self.reading = None
@@ -226,7 +219,7 @@ class Agent:
             # One read of the players' and teams' names for the whole
             # question (query/names.py), not a statement per word.
             with season_on_record(on_record), names_loaded(self.con), collect_remarks() as remarks:
-                answer = self._ask_inner(question, history, route)
+                answer = self._ask_inner(question, history)
             answer = replace(answer, notes=tuple(remarks.notes), decisions=(*answer.decisions, *remarks.decisions))
             self.unsaid = unsaid(remarks, answer.text)
             recorded = answer.text
@@ -279,7 +272,7 @@ class Agent:
         raw = list(scope.players) if scope.players else [scope.player]
         return [name for name in raw if isinstance(name, str) and name.strip()]
 
-    def _try_fast_path(self, question: str, history: RunHistory, given: Route | None = None) -> tuple[str, TemplateResult] | None:
+    def _try_fast_path(self, question: str, history: RunHistory) -> tuple[str, TemplateResult] | None:
         """Route -> Reading -> deterministic template -> answer, returning the
         intent alongside the template's whole result. Returns None, with
         :attr:`unanswered` naming why, where nothing here reads the question:
@@ -291,8 +284,7 @@ class Agent:
         produced - see TemplateResult.data, which nothing could reach before
         2.0."""
         self.unanswered = None
-        # A recorded route is answered as given; otherwise the question is read.
-        routed = given if given is not None else self._read_or_refuse(question, history)
+        routed = self._read_or_refuse(question, history)
         if routed is None:
             return None
         reading = self._reading(question, routed, history)
@@ -345,8 +337,7 @@ class Agent:
         with every decision it made recorded. Split out of
         :meth:`_try_fast_path` for the complexity gate. The route carries the
         typed Scope already: a slot nothing can hold stopped the parser at the
-        Scope's door (:meth:`_read_or_refuse`), or a replayed route at
-        its own (``Route.from_slots``)."""
+        Scope's door (:meth:`_read_or_refuse`)."""
         from association.query.parse import reading_from_route
 
         # What will answer, said beside the route: until 5.0.0 every intent
@@ -369,7 +360,7 @@ class Agent:
     def _read_or_refuse(self, question: str, history: RunHistory) -> Route | None:
         """The route the parser reads for ``question``, or None with the
         reason the question is being refused recorded. Split out of
-        :meth:`_try_fast_path` so a recorded route can skip it."""
+        :meth:`_try_fast_path` for the complexity gate."""
         t0 = time.monotonic()
         try:
             routed = self._read_question(question, history)
@@ -581,15 +572,15 @@ class Agent:
             result.data["name_readings"] = list(name_readings)
         return result
 
-    def _ask_inner(self, question: str, history: RunHistory, given: Route | None = None) -> Answer:
+    def _ask_inner(self, question: str, history: RunHistory) -> Answer:
         # A question too short to be one is refused before anything reads
         # it (refusals.too_short): no model call, no guess at "Tatum rec".
         short = too_short(question)
-        if short is not None and given is None:
+        if short is not None:
             self.unanswered = f"fewer than {MIN_QUESTION_WORDS} words"
             history.log(f"  -> (refused) {self.unanswered}")
             return self._answer(question, history, short, "refused")
-        fast = self._try_fast_path(question, history, given)
+        fast = self._try_fast_path(question, history)
         if fast is not None:
             intent, templated = fast
             return self._answer(question, history, templated.answer, "fast", intent=intent, data=templated.data, artifacts=templated.artifacts)

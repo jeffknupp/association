@@ -25,7 +25,7 @@ a span that is no player's and no team's is dropped, never made a subject
 from __future__ import annotations
 
 import re
-from dataclasses import fields, replace
+from dataclasses import replace
 from typing import Any, Literal, cast, get_args
 
 import duckdb
@@ -804,20 +804,6 @@ def _read_route_folded(text: str) -> str:
     return text.translate(_READ_ROUTE_APOSTROPHES)
 
 
-def _read_route_folded_scope(scope: Scope) -> Scope:
-    """``scope`` with every name and phrase in it folded as :func:`_read_route_folded`
-    folds the question - a route replayed rather than read may carry a
-    typed name, or a holiday, as the question spelled it."""
-    changes: dict[str, Any] = {}
-    for f in fields(scope):
-        value = getattr(scope, f.name)
-        if isinstance(value, str):
-            changes[f.name] = _read_route_folded(value)
-        elif isinstance(value, tuple) and value and all(isinstance(v, str) for v in value):
-            changes[f.name] = tuple(_read_route_folded(v) for v in value)
-    return replace(scope, **changes) if changes else scope
-
-
 def read_route(con: duckdb.DuckDBPyConnection, question: str, names: list[str] | None = None, stat: str = "") -> tuple[Route, Subject, str]:
     """The route the parser settles on for ``question`` - the intent and the
     slots a template reads, in the router's own shape - beside the subject
@@ -913,9 +899,10 @@ def _read_route_child(question: str, route: Route, subject: Subject) -> tuple[Ro
 def reading_from_route(con: duckdb.DuckDBPyConnection, question: str, route: Route) -> Reading:
     """The parser's last step: the :class:`~association.query.reading.Reading`
     everything after the parser answers from. ``route`` is what
-    :func:`read_route` settled, or a recorded route replayed; who the
-    question is about is read from its own words
-    (:func:`~association.query.subject.read_subject`) and written into the
+    :func:`read_route` settled, carrying the one reading of who the question
+    is about (:attr:`~association.query.router.Route.subject`); that
+    reading is settled under the route's intent
+    (:func:`~association.query.subject.settle_subject`) and written into the
     typed scope - the players it names, in the route's own shape, the one
     player a template that needs one was left without, a player's own team
     and the tenure it implies, a position group, the companions' roles
@@ -931,18 +918,23 @@ def reading_from_route(con: duckdb.DuckDBPyConnection, question: str, route: Rou
     (:attr:`~association.query.reading.Reading.misread`), which the agent
     refuses by name rather than answer about somebody the question never
     mentioned. The route's scope is the typed
-    Scope already (:class:`~association.query.router.Route`). A typographic apostrophe in the
-    question or in the route's slots is read as a straight one, as
-    :func:`read_route` reads it.
+    Scope already (:class:`~association.query.router.Route`), its names and
+    phrases folded by :func:`read_route`; a typographic apostrophe in the
+    question is read as a straight one here too.
 
     .. versionadded:: 5.0.0
     """
-    scope = _read_route_folded_scope(route.scope)
+    scope = route.scope
     question = _read_route_folded(question)
-    # The subject is read once: a route the parser read carries its
-    # subject, settled here under the route's intent; only a replayed route
-    # (a record, a test's case) has it read now.
-    subject = settle_subject(route.subject, route.intent, question, scope) if route.subject is not None else read_subject(con, question, route.intent, scope)
+    # The subject is read once, by read_route, and rides on the route; it is
+    # settled here under the route's intent. A route with none is a caller's
+    # mistake, said here: until 5.0.0's last change the subject was read
+    # again for one, a second reading that ran on a different scope than
+    # the first and disagreed with it (a team's old name read without the
+    # season; ROADMAP.md, Phase 1).
+    if route.subject is None:
+        raise ValueError("reading_from_route needs the route's subject - who the question is about, as read_route read it")
+    subject = settle_subject(route.subject, route.intent, question, scope)
     applied = apply_subject(subject, scope, intent=route.intent)
     reading = Reading(
         scope=applied.scope,

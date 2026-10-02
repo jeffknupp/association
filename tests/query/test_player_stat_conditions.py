@@ -29,6 +29,7 @@ from typing import Any
 
 import duckdb
 import pytest
+from routed import ask_routed, slots_route
 from test_templates import player_stat  # the compiler's, player_stat's template retired (compose.COMPILED_INTENTS)
 
 from association.fetch.repairs import real_games
@@ -228,12 +229,11 @@ def test_agent_with_a_recorded_route_also_honors_the_condition(tmp_path: Path) -
     route is given as recorded (``Agent.ask(route=...)``), so no model is
     asked."""
     from association.query.agent import Agent
-    from association.query.router import Route
 
     db_path = _agent_warehouse(tmp_path)
     agent = Agent(str(db_path), tmp_path / "out", history_dir=tmp_path / ".history")
-    route = Route.from_slots(intent="player_stat", slots={"player": "Tyrese Maxey", "stat": "points", "conditions": [_condition("started")]})
-    answer = agent.ask("Tyrese Maxey points when embiid starts", route=route)
+    route = slots_route("player_stat", {"player": "Tyrese Maxey", "stat": "points", "conditions": [_condition("started")]})
+    answer = ask_routed(agent, "Tyrese Maxey points when embiid starts", route)
     data = answer.data
     assert data is not None
     assert data["stats"] == {"gamesPlayed": 2, "avgPoints": 23.0, "points": 46}

@@ -9,11 +9,12 @@ from typing import Any
 
 import duckdb
 import pytest
+from routed import slots_route, with_subject
 
 from association.query.decisions import Decision
 from association.query.parse import classify_span, measure, parent_intent, read_route, reading_from_route, window
 from association.query.reading import Reading
-from association.query.router import Beside, Route, _threshold_from_text, settle
+from association.query.router import Beside, _threshold_from_text, settle
 from association.query.templates.common import TemplateUnsupported, check_scope
 
 
@@ -517,7 +518,7 @@ def test_the_reading_carries_the_parsers_decisions_between_who_and_what_it_wrote
         ("subject", "player"),
     ]
     assert (decisions[-1].before, decisions[-1].after) == ("maxey", "Tyrese Maxey")
-    replayed = reading_from_route(con, question, Route.from_slots(route.intent, {**route.slots, "player": "Tyrese Maxey"}))
+    replayed = reading_from_route(con, question, with_subject(con, question, slots_route(route.intent, {**route.slots, "player": "Tyrese Maxey"})))
     assert [(d.stage, d.field) for d in replayed.decisions] == [("subject", "kind"), ("subject", "teams"), ("subject", "companions")]
 
 
@@ -573,16 +574,6 @@ def test_a_name_the_model_copied_with_a_typographic_apostrophe_anchors_to_the_qu
         assert (first.intent, first.slots.get("player"), subject.kind) == ("player_stat", "De'Aaron", "player")
         full, _, _ = read_route(con, f"Kel{apostrophe}el Ware rebounds", [f"Kel{apostrophe}el Ware"], "rebounds")
         assert full.slots["player"] == "Kel'el Ware"
-
-
-def test_a_replayed_routes_typographic_apostrophe_reads_as_a_straight_one(con: duckdb.DuckDBPyConnection) -> None:
-    """The parser's last step takes a route it did not read (a recorded one,
-    replayed), so the fold is at its door as well: the question and every
-    string the route carries - a holiday, a name as the question typed it."""
-    question = "maxey points on new year\u2019s eve without jo\u2019el embiid"
-    route = Route.from_slots("player_stat", {"player": "Tyrese Maxey", "stat": "points", "situation": "new year\u2019s eve", "without": ["jo\u2019el embiid"]})
-    reading = reading_from_route(con, question, route)
-    assert (reading.scope.situation, reading.scope.without) == ("new year's eve", ("jo'el embiid",))
 
 
 def test_a_quarter_ranking_that_says_player_ranks_the_teams_players(con: duckdb.DuckDBPyConnection) -> None:

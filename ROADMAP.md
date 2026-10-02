@@ -220,7 +220,7 @@ next step builds on the same reading order:
 
 | Step | What | State |
 | --- | --- | --- |
-| 1 | The replay branch goes: `reading_from_route` no longer reads a subject of its own for a route that carries none, `Agent.ask` takes no `route`, and the preview script answers recorded questions with their recorded normalizer replies (#288). A test hands the agent a route at the reader's boundary | open |
+| 1 | The replay branch goes: `reading_from_route` no longer reads a subject of its own for a route that carries none, `Agent.ask` takes no `route`, and the preview script answers recorded questions with their recorded normalizer replies (#288). A test hands the agent a route at the reader's boundary | done 2026-10-02: 628 of 628 recorded questions identical; of 1,388 unit-test calls every outcome identical once five one-letter questions were lengthened. 2 tests deleted with the door, 39 call sites moved to `tests/routed.py` |
 | 2 | The other two kept paths go: `compose.answer` planning again when `planned` is left out, and a name lookup outside `names.loaded` reading its table again | open |
 | 3 | The snapshot's `query` stage records the planned `Query`, not the Reading's point; the snapshot's first line says the ollama version | open |
 | 4 | The ratchets tighten: SQL counted per module by statement, not listed by module; the D4 freeze holds presenters, scoping tables and web renderers as well as intents | open |

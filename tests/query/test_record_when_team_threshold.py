@@ -19,11 +19,11 @@ from pathlib import Path
 
 import duckdb
 import pytest
+from routed import ask_routed, slots_route
 
 from association.fetch.repairs import real_games
 from association.nba.season import current_season
 from association.query.agent import Agent
-from association.query.router import Route
 
 S = current_season()
 
@@ -85,10 +85,7 @@ def test_a_team_only_threshold_record_answers_the_record_not_the_season_total(tm
     agent = _agent_with_a_team_threshold_split(tmp_path)
     lines: list[str] = []
     agent.trace, agent.verbose = lines.append, True
-    answer = agent.ask(
-        "what was the celtics record when they scored 120 points",
-        route=Route.from_slots(intent="record_when", slots={"stat": "points", "team": "Boston Celtics", "season_type": 2, "threshold": 120}),
-    )
+    answer = ask_routed(agent, "what was the celtics record when they scored 120 points", slots_route("record_when", {"stat": "points", "team": "Boston Celtics", "season_type": 2, "threshold": 120}))
     assert answer.answered_by == "fast"
     assert answer.intent == "record_when"
     assert answer.text.startswith("Boston Celtics record when they had 120+ points")

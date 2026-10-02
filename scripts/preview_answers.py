@@ -3,11 +3,12 @@
 The page's renderers (``web/static/index.html``, ``RENDERERS``) draw an answer from
 the ``data`` a template returns, so a rendering problem is only visible with real
 data on the real page - and asking the live model for every case costs ollama a
-minute each and moves slots between runs. This script skips reading the question: it
-takes its RECORDED route (the ``-> (router) intent=... slots={...}`` line a live
-yardstick run or a history file holds), runs the fast path exactly as ``agent.py``
-would from that Route (entity repairs, coverage, the compiler, the refusals - the
-model is never called), serializes the answer the way ``POST /api/ask`` does, and
+minute each and moves its reply between runs. This script asks no model: it takes
+the normalizer's RECORDED reply (the ``-> (normalizer) names=[...] stat='...'`` line
+a live yardstick run or a history file holds) and answers the question through the
+whole ``Agent`` with that reply in the model's place, as ``scripts/stage_snapshots.py``
+does - the parser reads the question, so the answer is the one the page would give
+today. It serializes the answer the way ``POST /api/ask`` does, and
 writes a gallery page: ``index.html`` itself, with ``EventSource`` stubbed to answer
 each question from the recorded set and the questions asked one after another on
 load. Open ``gallery.html`` in a browser, or pass ``--screenshots`` to drive it in
@@ -19,7 +20,7 @@ and get one PNG per answer to look at.
 
     uv run python scripts/preview_answers.py --from-history ~/deploy/state/.history --since 2026-09-24 --out /tmp/preview --screenshots
 
-    uv run python scripts/preview_answers.py --case streak '{"stat": "wins", "season": 2026}' "Longest winning streak in the NBA this season" --out /tmp/preview
+    uv run python scripts/preview_answers.py --case "Longest winning streak in the NBA this season" '[]' wins --out /tmp/preview
 
 Runs against the warehouse at ``--db-path`` (default ``nba.duckdb`` in the current
 directory), read-only. Needs no ollama and no network: a question whose fast path
@@ -40,70 +41,75 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parent.parent
 STATIC = ROOT / "src" / "association" / "web" / "static"
-ROUTE_LINE = re.compile(r"intent='(\w+)' slots=(\{.*\})")
+REPLY_LINE = re.compile(r"\(normalizer\) names=(\[.*?\]) stat='([^']*)'")
 
 
-def recorded_routes(path: Path, matches: list[str]) -> list[tuple[str, str, dict[str, Any]]]:
-    """``(question, intent, slots)`` for every row of a live-run jsonl whose
-    question contains one of ``matches`` (all rows when none are given)."""
+def recorded_replies(path: Path, matches: list[str]) -> list[tuple[str, list[str], str]]:
+    """``(question, names, stat)`` - the normalizer's recorded reply - for
+    every row of a live-run jsonl whose question contains one of ``matches``
+    (all rows when none are given). A row with no normalizer line (a run
+    from before the parser read the question) is skipped."""
     cases = []
     for line in path.read_text().splitlines():
         if not line.strip():
             continue
         row = json.loads(line)
-        found = ROUTE_LINE.search(row.get("router") or "")
+        found = REPLY_LINE.search("\n".join(row.get("trace") or []))
         if found is None:
             continue
         if matches and not any(m.lower() in row["q"].lower() for m in matches):
             continue
         try:
-            cases.append((row["q"], found.group(1), ast.literal_eval(found.group(2))))
+            cases.append((row["q"], list(ast.literal_eval(found.group(1))), found.group(2)))
         except ValueError, SyntaxError:
             continue
     return cases
 
 
-def recorded_history(history_dir: Path, matches: list[str], since: str | None) -> list[tuple[str, str, dict[str, Any]]]:
-    """``(question, intent, slots)`` from a history directory's records - the
-    question line and the ``-> (router) ...`` trace line each record keeps -
+def recorded_history(history_dir: Path, matches: list[str], since: str | None) -> list[tuple[str, list[str], str]]:
+    """``(question, names, stat)`` from a history directory's records - the
+    question line and the ``-> (normalizer) ...`` trace line each record keeps -
     newest last; ``since`` (``YYYY-MM-DD``) keeps records modified that day
     or later. Duplicates of one question keep the newest record only."""
     import datetime as dt
 
     cutoff = dt.datetime.fromisoformat(since).timestamp() if since else None
-    seen: dict[str, tuple[str, str, dict[str, Any]]] = {}
+    seen: dict[str, tuple[str, list[str], str]] = {}
     for path in sorted(history_dir.glob("*.log"), key=lambda p: p.stat().st_mtime):
         if cutoff is not None and path.stat().st_mtime < cutoff:
             continue
         text = path.read_text()
         question = next((line[len("question: ") :].strip() for line in text.splitlines() if line.startswith("question: ")), None)
-        found = ROUTE_LINE.search(text)
+        found = REPLY_LINE.search(text)
         if not question or found is None:
             continue
         if matches and not any(m.lower() in question.lower() for m in matches):
             continue
         try:
-            seen[question] = (question, found.group(1), ast.literal_eval(found.group(2)))
+            seen[question] = (question, list(ast.literal_eval(found.group(1))), found.group(2))
         except ValueError, SyntaxError:
             continue
     return list(seen.values())
 
 
-def answer_without_the_router(db_path: str, out_dir: Path, question: str, intent: str, slots: dict[str, Any]) -> dict[str, Any]:
-    """The wire form of the fast path's answer from a fixed Route - the model
-    never called. A fall-through is reported as one rather than raised.
-
-    Named for the router it stubbed until the recorded route was answered as
-    given; the golden and hold-out harnesses import it by this name."""
+def answer_as_recorded(db_path: str, out_dir: Path, question: str, names: list[str], stat: str) -> dict[str, Any]:
+    """``question``'s answer through the whole ``Agent`` with the
+    normalizer's recorded reply (``names``, ``stat``) in the model's place,
+    serialized as ``POST /api/ask`` serializes it. Until 5.0.0's last change
+    this replayed a recorded ROUTE (``Agent.ask(route=...)``), a door the
+    agent no longer has: the parser reads every question it answers."""
+    import association.query.normalizer as normalizer
     from association.query.agent import Agent
-    from association.query.router import Route
     from association.web.app import as_response
 
-    # The recorded route is answered as given (Agent.ask's `route`): the
-    # question is not read, so no model is asked - nothing after the
-    # normalizer reaches one.
-    agent = Agent(db_path, out_dir, history_dir=out_dir / ".history", trace=lambda line: None)
-    answer = agent.ask(question, label="preview", route=Route.from_slots(intent, dict(slots)))
+    reply = normalizer.Normalized([name for name in names if name.strip()], stat if stat in normalizer.NORMALIZER_STATS else "")
+    real = normalizer.normalize
+    normalizer.normalize = lambda _model, _question: reply  # type: ignore[assignment]
+    try:
+        agent = Agent(db_path, out_dir, history_dir=out_dir / ".history", trace=lambda line: None)
+        answer = agent.ask(question, label="preview")
+    finally:
+        normalizer.normalize = real
     return as_response(answer, history_file=answer.history_file).model_dump(mode="json")
 
 
@@ -197,34 +203,36 @@ def screenshot(gallery: Path, out_dir: Path, count: int) -> list[Path]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    parser.add_argument("--from-live", type=Path, help="a live-run jsonl with recorded router lines")
-    parser.add_argument("--from-history", type=Path, help="a .history directory (the web server's, or the CLI's) whose records carry router lines")
+    parser.add_argument("--from-live", type=Path, help="a live-run jsonl whose rows carry the normalizer's trace line")
+    parser.add_argument("--from-history", type=Path, help="a .history directory (the web server's, or the CLI's) whose records carry the normalizer's trace line")
     parser.add_argument("--since", help="with --from-history: keep records modified on or after this day, YYYY-MM-DD")
     parser.add_argument("--match", action="append", default=[], help="keep only questions containing this text (repeatable)")
-    parser.add_argument("--case", nargs=3, action="append", default=[], metavar=("INTENT", "SLOTS_JSON", "QUESTION"), help="an explicit case")
+    parser.add_argument(
+        "--case", nargs=3, action="append", default=[], metavar=("QUESTION", "NAMES_JSON", "STAT"), help="an explicit case: the question, and the normalizer's reply to stand in for the model"
+    )
     parser.add_argument("--db-path", default="nba.duckdb")
     parser.add_argument("--out", type=Path, default=Path(tempfile.mkdtemp(prefix="preview-")))
     parser.add_argument("--limit", type=int, default=40)
     parser.add_argument("--screenshots", action="store_true", help="drive the gallery in headless Chromium and write one PNG per answer")
     args = parser.parse_args()
 
-    cases: list[tuple[str, str, dict[str, Any]]] = []
+    cases: list[tuple[str, list[str], str]] = []
     if args.from_live:
-        cases += recorded_routes(args.from_live, args.match)
+        cases += recorded_replies(args.from_live, args.match)
     if args.from_history:
         cases += recorded_history(args.from_history, args.match, args.since)
-    for intent, slots_json, question in args.case:
-        cases.append((question, intent, json.loads(slots_json)))
+    for question, names_json, stat in args.case:
+        cases.append((question, list(json.loads(names_json)), stat))
     if not cases:
         print("no cases: pass --from-live (with --match) or --case", file=sys.stderr)
         return 2
     cases = cases[: args.limit]
     args.out.mkdir(parents=True, exist_ok=True)
     answers = []
-    for question, intent, slots in cases:
-        answer = answer_without_the_router(args.db_path, args.out, question, intent, slots)
+    for question, names, stat in cases:
+        answer = answer_as_recorded(args.db_path, args.out, question, names, stat)
         answers.append(answer)
-        print(f"{answer['answered_by']:5s} {intent:18s} {question[:70]}", flush=True)
+        print(f"{answer['answered_by']:5s} {answer.get('intent') or '-':18s} {question[:70]}", flush=True)
     gallery = write_gallery(args.out, answers)
     print(f"\n{len(answers)} answers -> {gallery}")
     if args.screenshots:

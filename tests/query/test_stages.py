@@ -12,12 +12,12 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from routed import ask_routed, slots_route
 
 from association.query.agent import Agent
 from association.query.answer import Answer, Artifact, Timing
 from association.query.decisions import Decision
 from association.query.reading import Reading, Scope
-from association.query.router import Route
 from association.query.stages import STAGES, WORDING, Difference, differences, plain, read_stages, snapshot
 from association.query.subject import Subject
 from association.query.templates.common import TemplateResult
@@ -210,7 +210,7 @@ def _agent(tmp_path: Path) -> Agent:
 def test_the_agent_keeps_the_reading_it_answered_from_and_forgets_it_on_the_next_question(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setattr("association.query.compose.answer", lambda ctx, reading, trace=None, declined=None, planned=None: TemplateResult(data={"value": 1}, answer="templated"))
     agent = _agent(tmp_path)
-    answer = agent.ask("who scored the most points", route=Route.from_slots(intent="leaderboard", slots={"stat": "points"}))
+    answer = ask_routed(agent, "who scored the most points", slots_route("leaderboard", {"stat": "points"}))
     assert agent.reading is not None and agent.reading.intent == "leaderboard"
     record = snapshot(agent.reading, answer)
     assert record["reading"]["scope"]["stat"] == "points" and record["result"] == {"value": 1}

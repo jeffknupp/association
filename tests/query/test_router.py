@@ -10,6 +10,7 @@ import json
 from typing import Any, cast, get_args, get_type_hints
 
 import pytest
+from routed import slots_route
 
 from association.nba.season import current_season
 from association.query.reading import Reading, Scope
@@ -25,7 +26,7 @@ def _route(payload: str) -> Route:
 
 def test_parses_intent_and_slots() -> None:
     got = _route('{"intent":"threshold_count","stat":"points","threshold":30}')
-    assert got == Route.from_slots(intent="threshold_count", slots={"stat": "points", "threshold": 30, "season_type": 2})
+    assert got == slots_route("threshold_count", {"stat": "points", "threshold": 30, "season_type": 2})
 
 
 def test_season_type_defaults_to_regular_season() -> None:
