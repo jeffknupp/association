@@ -13,11 +13,14 @@ The record is what the stages hold today:
 ``reading``
     What the parser settled (:func:`~association.query.parse.reading_from_route`):
     the intent, the scope, who the question is about, the names it could
-    not place, and each decision it made.
+    not place, each decision it made, and the point it read
+    (:attr:`Reading.point <association.query.reading.Reading.point>`).
 ``query``
-    The point on a relation the compiler plans and runs
-    (:attr:`Reading.point <association.query.reading.Reading.point>`), or
-    why there is none.
+    What the planner built from that point
+    (:func:`~association.query.compose.plan.plan_point`): the
+    :class:`~association.query.compose.core.Query` or
+    :class:`~association.query.compose.team.TeamQuery` the compiler runs,
+    or why there is none.
 ``result``
     The answer's structured values (:attr:`Answer.data <association.query.answer.Answer.data>`).
 ``answer``
@@ -78,7 +81,8 @@ says so by listing ``notes`` here.
 # about how it was read, rather than what was read.
 _SUBJECT_TEXT = frozenset({"question", "evidence"})
 
-# The point's own fields - the algebra - in the order the trace prints them.
+# The point's own fields - the algebra as the reader read it - in the order
+# the trace prints them.
 _POINT_FIELDS = ("relation", "shape", "measures", "aggregate", "group", "predicates", "order", "direction", "limit", "offset", "minimum_games", "available", "span", "season", "source", "position")
 
 
@@ -133,29 +137,38 @@ def _reading_record(reading: Reading, mask: Mapping[str, str] | None) -> dict[st
     subject = None
     if reading.subject is not None:
         subject = {f.name: plain(getattr(reading.subject, f.name), mask=mask) for f in fields(reading.subject) if f.name not in _SUBJECT_TEXT}
+    point = None
+    if reading.point is not None:
+        point = {name: plain(getattr(reading.point, name), mask=mask) for name in _POINT_FIELDS}
+        point["scope"] = plain(reading.point.scope.to_slots(), mask=mask)
     return {
         "intent": reading.intent,
         "scope": plain(reading.scope.to_slots(), mask=mask),
         "subject": subject,
         "misread": list(reading.misread),
         "decisions": [plain(decision.as_dict(), mask=mask) for decision in reading.decisions],
+        "point": point,
     }
 
 
 def _query_record(reading: Reading, planned: Planned, mask: Mapping[str, str] | None) -> dict[str, Any]:
-    """The point planned onto its relation, or why there is none: a refusal
-    the reading or the planner came to, or the reason one of them declined.
-    ``planned`` is the caller's planning of the question
+    """What the planner built, or why there is none: a refusal the reading
+    or the planner came to, or the reason one of them declined. ``planned``
+    is the caller's planning of the question
     (:func:`~association.query.compose.plan.plan_point`); nothing here
-    plans."""
+    plans. Until 5.0.0's last change this was the Reading's point again,
+    so a planner that built something else from it went unseen; the point
+    is the reading's record now."""
     verdict = planned
     if verdict.refusal is not None:
         return {"refused": plain(verdict.refusal.data, mask=mask), "said": _masked(verdict.refusal.answer, mask)}
-    point = reading.point
-    if verdict.query is None or point is None:
+    query = verdict.query
+    if query is None or reading.point is None:
         return {"declined": verdict.declined}
-    record: dict[str, Any] = {name: plain(getattr(point, name), mask=mask) for name in _POINT_FIELDS}
-    record["scope"] = plain(point.scope.to_slots(), mask=mask)
+    # A TeamQuery has no ``subject``: the team IS the relation. Read by
+    # shape rather than imported, so this module stays clear of the compiler.
+    record: dict[str, Any] = {"relation": getattr(query, "subject", "team"), **plain(query, mask=mask)}
+    record["scope"] = plain(query.scope.to_slots(), mask=mask)
     return record
 
 

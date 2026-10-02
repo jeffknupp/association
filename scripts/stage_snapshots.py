@@ -19,7 +19,12 @@ count (``--threads 1``: a parallel SUM is not bit-reproducible) and the
 directory charts are written to (masked as ``<out>``). Its first line says
 which copy of the code it read, the build and the warehouse - a script run
 from a worktree resolves the INSTALLED package unless ``PYTHONPATH`` says
-otherwise, and a green comparison of a tree against itself proves nothing.
+otherwise, and a green comparison of a tree against itself proves nothing -
+and the versions of Python, DuckDB and ollama with the model's digest: the
+recorded replies this run stands in for the model with were said by one
+ollama build on one machine (53 of 628 moved between two, 2026-10-02), and
+a lowering or a sort can move with the interpreter or the engine.
+``compare`` warns when two runs differ in any of them.
 
 ``compare-calls`` is the same comparison over the second population a
 change is proven on: every call the unit tests make across a stage boundary,
@@ -76,14 +81,32 @@ def _build(root: Path) -> str:
     return described.stdout.strip() or "unknown"
 
 
+def _ollama(model: str) -> dict[str, Any]:
+    """The ollama server's version and ``model``'s digest, or what stood in
+    the way - the run asks no model, so an unreachable server is a fact to
+    record, not an error."""
+    import ollama
+
+    try:
+        client = ollama.Client()
+        digest = next((each.digest or "" for each in client.list().models if each.model == model), "not pulled")
+        version = subprocess.run(["ollama", "--version"], capture_output=True, text=True, check=False).stdout.strip().removeprefix("ollama version is ")
+        return {"version": version or "unknown", "model": model, "digest": digest[:12]}
+    except Exception as exc:  # noqa: BLE001 - whatever kept the server from answering is the record
+        return {"version": "unreachable", "model": model, "digest": f"{type(exc).__name__}"}
+
+
 def run(args: argparse.Namespace) -> int:
     """Answer every recorded question and write its stages, one line each."""
     # Before the package is imported: the date is read at call time, but a
     # pin set after the first answer would split the run in two.
     os.environ["ASSOCIATION_TODAY"] = args.today
+    import duckdb
+
     import association
     import association.query.normalizer as normalizer
     from association.query.agent import Agent
+    from association.query.models import DEFAULT_ROUTER_MODEL
     from association.query.stages import snapshot
 
     replies = _recorded_replies(args.recorded)
@@ -102,7 +125,17 @@ def run(args: argparse.Namespace) -> int:
     agent.con.execute(f"SET threads = {int(args.threads)}")
     mask = {str(scratch / "out"): "<out>"}
     code = Path(association.__file__).resolve()
-    meta = {"code": str(code), "build": _build(code.parents[2]), "db": str(args.db_path.resolve()), "today": args.today, "threads": args.threads, "questions": len(questions)}
+    meta = {
+        "code": str(code),
+        "build": _build(code.parents[2]),
+        "db": str(args.db_path.resolve()),
+        "today": args.today,
+        "threads": args.threads,
+        "questions": len(questions),
+        "python": sys.version.split()[0],
+        "duckdb": duckdb.__version__,
+        "ollama": _ollama(DEFAULT_ROUTER_MODEL),
+    }
     print(json.dumps(meta), flush=True)
     started = time.monotonic()
     with args.out.open("w") as out:
@@ -158,7 +191,7 @@ def compare(args: argparse.Namespace) -> int:
     after_meta, after = _load(args.after)
     print(f"before: {before_meta.get('build')} {before_meta.get('code')}")
     print(f"after:  {after_meta.get('build')} {after_meta.get('code')}")
-    for pinned in ("db", "today", "threads"):
+    for pinned in ("db", "today", "threads", "python", "duckdb", "ollama"):
         if before_meta.get(pinned) != after_meta.get(pinned):
             print(f"WARNING: the runs differ in {pinned}: {before_meta.get(pinned)!r} against {after_meta.get(pinned)!r}")
     only = sorted(before.keys() ^ after.keys())

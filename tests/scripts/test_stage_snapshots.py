@@ -134,6 +134,8 @@ def test_a_run_answers_each_recorded_question_with_no_model_and_pins_what_moves(
     meta, records = stage_snapshots._load(out)
     assert meta["today"] == "2026-09-30" and meta["threads"] == 1 and meta["questions"] == 3 and meta["db"] == str(db_path.resolve())
     assert Path(meta["code"]).name == "__init__.py"
+    # The versions a result can move with, and the model the recorded replies stand in for.
+    assert meta["python"] and meta["duckdb"] and set(meta["ollama"]) == {"version", "model", "digest"}
     coach = records["what did the lakers coach say last night"]
     assert coach["reading"]["intent"] == "coach" and coach["answer"]["answered_by"] == "fast"
     # Refused unread: no reading, no query, no result - and the reason kept.
