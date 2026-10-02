@@ -23,6 +23,7 @@ wrong name means no plot gets drawn."""
 
 from __future__ import annotations
 
+import functools
 import re
 import unicodedata
 from collections.abc import Iterator
@@ -35,9 +36,76 @@ import duckdb
 
 from association.nba.franchises import FRANCHISE_ERAS, FranchiseEra, season_name
 from association.nba.season import current_season
+from association.query import names
 from association.query.notes import decided
 
 MAX_CANDIDATES = 10
+
+
+def _read_table(con: duckdb.DuckDBPyConnection, sql: str) -> tuple[list[tuple[str, str]], list[tuple[Any, ...]], Exception | None]:
+    """One table's columns (name and type), rows and - instead of raising it
+    - the error reading it raised: a partial warehouse with no ``teams``
+    still names players, and each lookup raises the error where its own SQL
+    used to (:func:`_player_index`, :func:`_team_index`)."""
+    try:
+        cursor = con.execute(sql)
+        described = [(str(column[0]), str(column[1])) for column in cursor.description or []]
+        return described, cursor.fetchall(), None
+    except duckdb.Error as error:
+        return [], [], error
+
+
+def _read_players(con: duckdb.DuckDBPyConnection) -> tuple[list[tuple[str, str]], list[tuple[Any, ...]], Exception | None]:
+    """The one statement every player-name lookup is answered from
+    (:class:`association.query.names.PlayerIndex`)."""
+    return _read_table(con, "SELECT athlete_id, display_name FROM players")
+
+
+def _read_teams(con: duckdb.DuckDBPyConnection) -> tuple[list[tuple[str, str]], list[tuple[Any, ...]], Exception | None]:
+    """The one statement every team-name lookup is answered from
+    (:class:`association.query.names.TeamIndex`): every column, since which
+    ones exist decides what a lookup raises."""
+    return _read_table(con, "SELECT * FROM teams")
+
+
+def _again(error: Exception) -> Exception:
+    """A fresh copy of a kept error, to raise where the SQL would have."""
+    return type(error)(*error.args)
+
+
+def _player_index(con: duckdb.DuckDBPyConnection) -> names.PlayerIndex:
+    """The players' index, for a lookup that used to read ``players`` -
+    raising what reading ``players`` raised, as that lookup's SQL did."""
+    index = names.players_for(con, _read_players)
+    if index.error is not None:
+        raise _again(index.error)
+    return index
+
+
+def _team_index(con: duckdb.DuckDBPyConnection, *columns: str) -> names.TeamIndex:
+    """The teams' index, for a lookup whose SQL read ``columns`` of ``teams``
+    - raising what that SQL raised on a warehouse without the table
+    (:class:`duckdb.CatalogException`) or without one of the columns
+    (:class:`duckdb.BinderException`). Several tests build a ``teams`` with
+    no ``name`` or ``location``, and callers tell those errors apart."""
+    index = names.teams_for(con, _read_teams)
+    if index.error is not None:
+        raise _again(index.error)
+    missing = [column for column in columns if column not in index.columns]
+    if missing:
+        raise duckdb.BinderException(f'Binder Error: Referenced column "{missing[0]}" not found in FROM clause!')
+    return index
+
+
+def _team_like(index: names.TeamIndex, team: dict[str, Any], column: str, pattern: str) -> bool:
+    """``<column> ILIKE pattern`` on one ``teams`` row (:func:`_ilike`)."""
+    return _ilike(team[column], pattern, column in index.ascii_columns)
+
+
+def _entities(index: names.PlayerIndex, rows: list[int]) -> list[Entity]:
+    """``rows`` of the players' index, as entities."""
+    return [Entity(id=str(index.rows[row][0]), name=str(index.rows[row][1])) for row in rows]
+
 
 # Curated shorthand -> the player it unambiguously means. NOT the prominence
 # tiebreak that was measured and rejected: that ranked every candidate by
@@ -244,10 +312,9 @@ def players_named_in(con: duckdb.DuckDBPyConnection, question: str) -> list[str]
                 break
             if any(len(w) < 3 for w in span):
                 continue
-            where = " AND ".join(["list_contains(regexp_split_to_array(lower(display_name), '[^a-z]+'), ?)"] * size)
-            rows = con.execute(f"SELECT display_name FROM players WHERE {where} LIMIT 2", [w.casefold() for w in span]).fetchall()
+            rows = _exact_name_span(con, span)
             if len(rows) == 1:
-                found.append(rows[0][0])
+                found.append(rows[0].name)
                 index += size
                 break
         else:
@@ -265,27 +332,23 @@ def _exact_name_span(con: duckdb.DuckDBPyConnection, span: list[str], limit: int
     :func:`_question_derived_player` both need, so the query is written once.
 
     ``limit`` bounds the scan; 2 is enough to tell "exactly one" from "more
-    than one" without reading out a whole surname's worth of rows.
+    than one" without reading out a whole surname's worth of rows. Rows come
+    in table order, as the SQL this replaced returned them.
     """
-    where = " AND ".join(["list_contains(regexp_split_to_array(lower(display_name), '[^a-z]+'), ?)"] * len(span))
-    rows = con.execute(f"SELECT athlete_id, display_name FROM players WHERE {where} LIMIT {int(limit)}", [w.casefold() for w in span]).fetchall()
-    return [Entity(id=str(r[0]), name=r[1]) for r in rows]
+    index = _player_index(con)
+    return _entities(index, index.with_words([w.casefold() for w in span], int(limit)))
 
 
 def _fuzzy_name_span(con: duckdb.DuckDBPyConnection, span: list[str], limit: int) -> list[Entity]:
     """Players within :func:`_edit_budget` of every word of ``span``, each
     against its nearest word of the name - the near-spelling counterpart of
-    :func:`_exact_name_span`, and the same query :func:`suggest_players`
-    already runs for its own last pass. The AND across tokens is what keeps a
-    short span from matching everybody.
+    :func:`_exact_name_span`, and the same match :func:`suggest_players`
+    makes for its own last pass, in table order. The AND across tokens is
+    what keeps a short span from matching everybody.
     """
-    gaps = ", ".join(f"{_NEAREST_WORD} AS gap{i}" for i in range(len(span)))
-    where = " AND ".join(f"gap{i} <= ?" for i in range(len(span)))
-    rows = con.execute(
-        f"SELECT athlete_id, display_name FROM (SELECT athlete_id, display_name, {gaps} FROM players) WHERE {where} LIMIT {int(limit)}",
-        [*span, *(_edit_budget(w) for w in span)],
-    ).fetchall()
-    return [Entity(id=str(r[0]), name=r[1]) for r in rows]
+    index = _player_index(con)
+    near = index.near([(w, _edit_budget(w)) for w in span])
+    return _entities(index, [row for row, _total in near][: int(limit)])
 
 
 # players_named_in's own cap: a name is never longer than three words once
@@ -293,7 +356,7 @@ def _fuzzy_name_span(con: duckdb.DuckDBPyConnection, span: list[str], limit: int
 _SPAN_MAX_WORDS = 3
 
 
-def _anchor_word_position(con: duckdb.DuckDBPyConnection, q_words: list[str], lowered_q: list[str], word: str) -> int | None:
+def _anchor_word_position(q_words: list[str], lowered_q: list[str], word: str) -> int | None:
     """Where ``word`` (one word of the router's name) turns up in the
     question - exactly, or the nearest near spelling within
     :func:`_edit_budget` - or ``None`` when it turns up nowhere at all."""
@@ -302,15 +365,11 @@ def _anchor_word_position(con: duckdb.DuckDBPyConnection, q_words: list[str], lo
         return exact
     if len(word) < 3:
         return None  # a near spelling of a word this short is a different word
-    distances = con.execute(
-        "SELECT list_transform(?::VARCHAR[], q -> damerau_levenshtein(lower(q), ?))",
-        [q_words, word.casefold()],
-    ).fetchone()
-    row = distances[0] if distances else None
-    if row is None:
-        return None
+    # Measured as DuckDB's damerau_levenshtein(lower(q), word) measured it,
+    # when this asked the warehouse to do the arithmetic.
+    row = [names.distance(names.sql_lower(q), word.casefold()) for q in q_words]
     budget = _edit_budget(word)
-    near = [i for i, d in enumerate(row) if d is not None and d <= budget and len(lowered_q[i]) >= 3]
+    near = [i for i, d in enumerate(row) if d <= budget and len(lowered_q[i]) >= 3]
     return min(near, key=lambda i: row[i]) if near else None
 
 
@@ -406,7 +465,7 @@ def _question_derived_player(con: duckdb.DuckDBPyConnection, question: str, name
         return None
 
     lowered_q = [w.casefold() for w in q_words]
-    positions = [_anchor_word_position(con, q_words, lowered_q, word) for word in name_words]
+    positions = [_anchor_word_position(q_words, lowered_q, word) for word in name_words]
     anchors = {p for p in positions if p is not None}
     if not anchors:
         return None
@@ -744,7 +803,7 @@ def _franchise_in(con: duckdb.DuckDBPyConnection, text: str, season: int | None)
     if found is None:
         return None
     try:
-        rows = dict(con.execute("SELECT CAST(team_id AS VARCHAR), display_name FROM teams").fetchall())
+        rows = {_as_varchar(team["team_id"]): team["display_name"] for team in _team_index(con, "team_id", "display_name").rows}
     except duckdb.Error:
         return None
     today = {era.team_id: era.name for era in FRANCHISE_ERAS if era.last_season is None}
@@ -783,14 +842,14 @@ def _nickname_match(con: duckdb.DuckDBPyConnection, text: str, season: int | Non
         nickname, city = " ".join(words[-size:]), " ".join(words[:-size])
         named = _franchise_in(con, nickname, season)
         if named is None:
-            rows = con.execute("SELECT team_id, display_name FROM teams WHERE name ILIKE ? OR name ILIKE ?", [nickname, f"% {nickname}"]).fetchall()
-            named = [Entity(id=str(r[0]), name=r[1]) for r in rows]
+            index = _team_index(con, "team_id", "display_name", "name")
+            named = [Entity(id=str(t["team_id"]), name=t["display_name"]) for t in index.rows if _team_like(index, t, "name", nickname) or _team_like(index, t, "name", f"% {nickname}")]
         if len(named) != 1:
             continue
         in_city = _franchise_in(con, city, season)
         if in_city is None:
-            rows = con.execute("SELECT team_id FROM teams WHERE location ILIKE ?", [city]).fetchall()
-            in_city = [Entity(id=str(r[0]), name="") for r in rows]
+            index = _team_index(con, "team_id", "location")
+            in_city = [Entity(id=str(t["team_id"]), name="") for t in index.rows if _team_like(index, t, "location", city)]
         if not in_city or named[0].id in {team.id for team in in_city}:
             return named[0]
     return None
@@ -825,7 +884,7 @@ def _run_together_team(con: duckdb.DuckDBPyConnection, text: str, season: int | 
     """
     key = "".join(_words(text)).casefold()
     try:
-        rows = con.execute("SELECT team_id, display_name FROM teams").fetchall()
+        rows = [(t["team_id"], t["display_name"]) for t in _team_index(con, "team_id", "display_name").rows]
     except duckdb.CatalogException:
         # A partial warehouse with no `teams`; see `_team_named`.
         return None
@@ -855,10 +914,12 @@ def _team_named(con: duckdb.DuckDBPyConnection, text: Any, season: int | None = 
         return historic[0] if len(historic) == 1 else None
     text = _TEAM_NICKNAMES.get(text.strip().casefold(), text.strip())
     try:
-        rows = con.execute(
-            "SELECT team_id, display_name FROM teams WHERE team_id = ? OR abbreviation ILIKE ? OR display_name ILIKE ? OR display_name ILIKE ? LIMIT 2",
-            [text, text, f"{text}%", f"% {text}%"],
-        ).fetchall()
+        index = _team_index(con, "team_id", "abbreviation", "display_name")
+        rows = [
+            (t["team_id"], t["display_name"])
+            for t in index.rows
+            if t["team_id"] == text or _team_like(index, t, "abbreviation", text) or _team_like(index, t, "display_name", f"{text}%") or _team_like(index, t, "display_name", f"% {text}%")
+        ][:2]
     except duckdb.CatalogException:
         # A warehouse without `teams` (a partial load) has no team to find.
         # Everything here is best-effort: finding none leaves the slots exactly
@@ -947,7 +1008,7 @@ def _team_grounded(con: duckdb.DuckDBPyConnection, question: str, team: Entity) 
     """Whether the question shows any trace of ``team`` - a word of its name,
     its abbreviation, or a nickname: the team counterpart of the check a
     player's name is held to (:func:`~association.query.subject.question_supports`)."""
-    row = con.execute("SELECT abbreviation, display_name FROM teams WHERE team_id = ?", [team.id]).fetchone()
+    row = next(((t["abbreviation"], t["display_name"]) for t in _team_index(con, "abbreviation", "display_name", "team_id").rows if t["team_id"] == team.id), None)
     if row is None:
         return True  # nothing to check it against; leave it alone
     asked = {word.casefold() for word in _words(question)}
@@ -1110,11 +1171,6 @@ def _edit_budget(token: str) -> int:
     return 0 if len(token) <= 3 else 1 if len(token) <= 6 else 2
 
 
-# The distance from one query token to the NEAREST word of a display name,
-# split on non-letters so the halves of "Gilgeous-Alexander" are two words.
-_NEAREST_WORD = "list_min(list_transform(regexp_split_to_array(display_name, '[^A-Za-z]+'), w -> damerau_levenshtein(lower(w), lower(?))))"
-
-
 def suggest_players(con: duckdb.DuckDBPyConnection, text: str) -> list[Entity]:
     """Players ``text`` plausibly meant, when it matched none of them exactly.
 
@@ -1208,14 +1264,12 @@ def _suggest_players_by_spelling(con: duckdb.DuckDBPyConnection, tokens: list[st
     """:func:`suggest_players`' second pass: the players every one of whose
     ``tokens`` is within :func:`_edit_budget` of some word of the name,
     closest first - or nobody, when more than ``MAX_CLARIFY_CANDIDATES`` are."""
-    gaps = ", ".join(f"{_NEAREST_WORD} AS gap{i}" for i in range(len(tokens)))
-    where = " AND ".join(f"gap{i} <= ?" for i in range(len(tokens)))
-    order = " + ".join(f"gap{i}" for i in range(len(tokens)))
-    rows = con.execute(
-        f"SELECT athlete_id, display_name FROM (SELECT athlete_id, display_name, {gaps} FROM players) WHERE {where} ORDER BY {order}, display_name LIMIT {MAX_CLARIFY_CANDIDATES + 1}",
-        [*tokens, *(_edit_budget(t) for t in tokens)],
-    ).fetchall()
-    return [] if len(rows) > MAX_CLARIFY_CANDIDATES else [Entity(id=str(r[0]), name=r[1]) for r in rows]
+    index = _player_index(con)
+    # Closest first, then by name; two players of one name and one distance
+    # stay in table order (an ORDER BY leaves that tie to the engine).
+    near = sorted(index.near([(t, _edit_budget(t)) for t in tokens]), key=lambda found: (found[1], str(index.rows[found[0]][1])))
+    rows = [row for row, _total in near][: MAX_CLARIFY_CANDIDATES + 1]
+    return [] if len(rows) > MAX_CLARIFY_CANDIDATES else _entities(index, rows)
 
 
 def read_near_spelling(con: duckdb.DuckDBPyConnection, text: str) -> Entity | None:
@@ -1383,6 +1437,53 @@ def _exact(candidates: list[Entity], text: str, keys: tuple[str, ...] = ("name",
 # "Neal" for Shaquille O'Neal.
 _WORD_START = "(^|[^A-Za-z])"
 
+# The letters DuckDB's regexp_matches(..., 'i') folds onto an ASCII one beyond
+# its other case: RE2 folds by Unicode's simple case folding, under which the
+# Kelvin sign is a "k" and the long s an "s" - and nothing else that is not
+# ASCII is any ASCII letter (U+0130, a capital I with a dot, is NOT an "i" to
+# RE2, where Python's re says it is).
+_RE2_FOLDS = str.maketrans({"\u212a": "k", "\u017f": "s"})
+
+
+def _starts_a_word(name: str, token: str) -> bool:
+    """``regexp_matches(name, _WORD_START || <token, escaped>, 'i')``, as
+    DuckDB answered it: ``token`` occurs in ``name``, ignoring case, at the
+    start or after a character that is not a letter. ``token`` is ASCII here
+    (:func:`find_players` folds it first)."""
+    folded = "".join(char.lower() if char.isascii() else char for char in name.translate(_RE2_FOLDS))
+    wanted = token.lower()
+    start = folded.find(wanted)
+    while start != -1:
+        if start == 0 or not ("a" <= folded[start - 1] <= "z"):
+            return True
+        start = folded.find(wanted, start + 1)
+    return False
+
+
+@functools.lru_cache(maxsize=4096)
+def _like_pattern(pattern: str) -> re.Pattern[str]:
+    """A LIKE pattern as a regex: ``%`` any run, ``_`` any one character,
+    and no escape character - DuckDB's LIKE has none unless one is named."""
+    return re.compile("".join(".*" if char == "%" else "." if char == "_" else re.escape(char) for char in pattern), re.DOTALL)
+
+
+def _ilike(value: str | None, pattern: str, plain: bool) -> bool:
+    """``value ILIKE pattern`` as DuckDB answers it, ``plain`` saying whether
+    the column ``value`` comes from holds only ASCII (``PlayerIndex.ascii_only``).
+    There DuckDB lowers ASCII letters alone and compares the rest byte for
+    byte, so a pattern holding anything else matches no value; elsewhere both
+    sides are lowered as its ``lower()`` lowers them (:func:`names.sql_lower`).
+    Then the pattern is matched whole. A NULL value matches nothing."""
+    if value is None or (plain and not pattern.isascii()):
+        return False
+    return _like_pattern(names.sql_lower(pattern)).fullmatch(names.sql_lower(value)) is not None
+
+
+def _as_varchar(value: Any) -> Any:
+    """``CAST(value AS VARCHAR)`` for the ids ``teams`` holds - VARCHAR
+    already in every warehouse and fixture, so this is the identity there."""
+    return value if value is None or isinstance(value, str) else str(value)
+
 
 def find_players(con: duckdb.DuckDBPyConnection, text: str, limit: int | None = MAX_CANDIDATES) -> list[Entity]:
     """Every token must match, so "Luka Doncic" doesn't also match a player
@@ -1406,7 +1507,6 @@ def find_players(con: duckdb.DuckDBPyConnection, text: str, limit: int | None = 
     tokens = [t for t in text.split() if t]
     if not tokens:
         return []
-    where = " AND ".join(["display_name ILIKE ?"] * len(tokens))
     # Word-boundary matches rank first and, when there are any, are the whole
     # answer - the same two-step find_teams uses, and for the same reason:
     # substring matching keeps a name honestly ambiguous, but an INCIDENTAL hit
@@ -1417,14 +1517,17 @@ def find_players(con: duckdb.DuckDBPyConnection, text: str, limit: int | None = 
     # than filtering after it is load-bearing: LIMIT would otherwise be free to
     # truncate the strong matches away in favor of alphabetically earlier weak
     # ones.
-    strong = " AND ".join(["regexp_matches(display_name, ?, 'i')"] * len(tokens))
-    bound = "" if limit is None else f" LIMIT {int(limit)}"
-    rows = con.execute(
-        f"SELECT athlete_id, display_name, ({strong}) AS strong FROM players WHERE {where} ORDER BY strong DESC, display_name{bound}",
-        [_WORD_START + re.escape(t) for t in tokens] + [f"%{t}%" for t in tokens],
-    ).fetchall()
+    #
+    # Two players of one name stay in table order; ORDER BY display_name
+    # left that tie to the engine, whose order for it depended on which rows
+    # were being sorted.
+    index = _player_index(con)
+    rows = [(athlete_id, name, all(_starts_a_word(name, t) for t in tokens)) for athlete_id, name in index.rows if name is not None and all(_ilike(name, f"%{t}%", index.ascii_only) for t in tokens)]
+    rows.sort(key=lambda row: (not row[2], row[1]))
+    if limit is not None:
+        rows = rows[: int(limit)]
     matched = [row for row in rows if row[2]] or rows
-    return [Entity(id=str(r[0]), name=r[1]) for r in matched]
+    return [Entity(id=str(r[0]), name=str(r[1])) for r in matched]
 
 
 def find_teams(con: duckdb.DuckDBPyConnection, text: str, season: int | None = None) -> list[Entity]:
@@ -1449,17 +1552,13 @@ def find_teams(con: duckdb.DuckDBPyConnection, text: str, season: int | None = N
     # "Sixers" and "Cavs" are no word of any ESPN team name; the router emits
     # them verbatim often enough that they fell through to the agent.
     text = _TEAM_NICKNAMES.get(text.strip().casefold(), text)
-    rows = con.execute(
-        "SELECT team_id, display_name, "
-        "  CASE WHEN team_id = ? OR abbreviation ILIKE ? THEN 2 "
-        "       WHEN display_name ILIKE ? OR display_name ILIKE ? THEN 1 ELSE 0 END AS rank "
-        "FROM teams WHERE team_id = ? OR abbreviation ILIKE ? OR display_name ILIKE ? "
-        f"ORDER BY rank DESC, display_name LIMIT {MAX_CANDIDATES}",
-        # rank 2 is the team's own id or abbreviation; rank 1 a name match that
-        # starts a word ('LA%' catches "LA Clippers", '% LA%' catches "Los
-        # Angeles Lakers"); rank 0 an incidental substring.
-        [text, text, f"{text}%", f"% {text}%", text, text, f"%{text}%"],
-    ).fetchall()
+
+    index = _team_index(con, "team_id", "abbreviation", "display_name")
+    matched = [t for t in index.rows if t["team_id"] == text or _team_like(index, t, "abbreviation", text) or _team_like(index, t, "display_name", f"%{text}%")]
+    # Best tier first, then by name (a missing name last, as DuckDB sorts a
+    # NULL); two teams of one name stay in table order.
+    ranked = sorted(((t["team_id"], t["display_name"], _find_teams_rank(index, t, text)) for t in matched), key=lambda r: (-r[2], r[1] is None, r[1] or ""))
+    rows = ranked[:MAX_CANDIDATES]
     # Only the best tier survives, and the two steps do different jobs. Dropping
     # rank 0 keeps "LA" inside "Atlanta" out of a clarification, so it offers
     # plausible teams rather than everything the LIKE touched. Ranking an
@@ -1474,6 +1573,16 @@ def find_teams(con: duckdb.DuckDBPyConnection, text: str, season: int | None = N
         return [nicknamed] if nicknamed is not None else []
     best = max((r[2] for r in rows), default=0)
     return [Entity(id=str(r[0]), name=_named_for_season(str(r[0]), r[1], season)) for r in rows if r[2] == best]
+
+
+def _find_teams_rank(index: names.TeamIndex, team: dict[str, Any], text: str) -> int:
+    """:func:`find_teams`' tier for one matched team: 2 is the team's own id
+    or abbreviation; 1 a name match that starts a word ('LA%' catches "LA
+    Clippers", '% LA%' catches "Los Angeles Lakers"); 0 an incidental
+    substring."""
+    if team["team_id"] == text or _team_like(index, team, "abbreviation", text):
+        return 2
+    return 1 if _team_like(index, team, "display_name", f"{text}%") or _team_like(index, team, "display_name", f"% {text}%") else 0
 
 
 def _resolve(candidates: list[Entity], text: str, exact_keys: tuple[str, ...]) -> Resolution:

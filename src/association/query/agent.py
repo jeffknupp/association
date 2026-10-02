@@ -43,6 +43,7 @@ from .entities import (
 )
 from .history import DEFAULT_HISTORY_DIR, RunHistory, echo_to_stderr
 from .models import DEFAULT_ROUTER_MODEL
+from .names import loaded as names_loaded
 from .notes import collect as collect_remarks
 from .notes import unsaid
 from .reading import Reading, Scope, ScopeError
@@ -222,7 +223,9 @@ class Agent:
             # Every remark written on the way - a caveat, a stated default, a
             # definition - recorded as a kind and its facts beside the
             # sentence it stays in (query/notes.py; ROADMAP.md, Phase 0).
-            with season_on_record(on_record), collect_remarks() as remarks:
+            # One read of the players' and teams' names for the whole
+            # question (query/names.py), not a statement per word.
+            with season_on_record(on_record), names_loaded(self.con), collect_remarks() as remarks:
                 answer = self._ask_inner(question, history, route)
             answer = replace(answer, notes=tuple(remarks.notes), decisions=(*answer.decisions, *remarks.decisions))
             self.unsaid = unsaid(remarks, answer.text)
