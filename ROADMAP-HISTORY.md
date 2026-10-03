@@ -694,6 +694,27 @@ agents' reports named here are in `~/association-research/stages/`.
     metric and measure aliases) went to `reading` and `measures`, and the
     two functions that planned went to the planner and to the one test
     that used them. Identical on all three populations.
+12. **Phase 1 reviewed and closed (2026-10-03).** An Opus agent reviewed
+    the phase adversarially against the roadmap: every measured claim held
+    when re-run (628/628, 1,391/1,391, 2,710/2,710, the ledger's 690), and
+    the design goals held only where the gates looked. Fixed the same day:
+    "2,710 out-of-corpus" was 2,082 outside the corpus (`e8bff4a`, with the
+    harness committed to `association-research/stages`); the snapshot's
+    query stage recorded the planned query where `games_reading` re-ran a
+    different one on 3 of 628, and omitted the reader's verdict on the
+    point (`5d25df5`); six ways past the ratchets, each now caught and held
+    by a test, and a fifth ratchet for reader functions taking a
+    connection (`56f0422`); `Subject.question`, `adapt.to_query` and a
+    duplicate helper deleted (same); the streak's team and league cell
+    checks moved to the planner, the month names to the reader's side so
+    the contract could be checked on chains, the scoping freeze widened to
+    14 (`c38600f`). Filed: #318, #319. Then the live run the roadmap
+    requires: `live_parser24` at `9254804`, 167/175, families 156/166,
+    277 of 277 answers identical to parser23 (median 0.5s). The scorer's
+    "moved" test now compares result and answer values, since the reading
+    and query records are Phase 1's instruments and their shape moved with
+    the work. Cost: none measured in answers; the ratchet lists grew by
+    one check (26 reader functions take a connection, 24 now).
 
 ## The plan items, as written
 

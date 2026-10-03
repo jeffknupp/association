@@ -1,7 +1,11 @@
 # Roadmap
 
 **Status: ACCEPTED 2026-09-30, after two independent reviews; Phase 0
-closed 2026-10-01, Phase 1 in progress** (see "Phase 1, as it stands"). The reviews corrected the
+closed 2026-10-01, Phase 1 closed 2026-10-03** (see "Phase 1, as it stands";
+closed by the live run `live_parser24`: 167/175, families 156/166, every
+answer identical to parser23, after an Opus review of the phase whose
+findings are fixed or filed - `ROADMAP-HISTORY.md`, the working log, entry
+12). Next: Phase 2, slice (i). The reviews corrected the
 measurements below and changed the phases. Jeff's decisions are recorded
 under "Decisions"; one is still open (the season type a question that names
 none reads) and does not block Phase 1.
@@ -198,7 +202,17 @@ side, because it removes the coupling everything else trips on.
   teams.
 Proved by identical Reading and Query snapshots.
 
-**Phase 1, as it stands (2026-10-01).**
+**Phase 1, as it stands (2026-10-03, closed).** What it bought, as the
+review of 2026-10-03 re-measured it: the planner, the subject reading and
+the stages each run once in production (the stages twice on 4 of 628 and 59
+of 2,082 out-of-corpus wordings, a child the stages declined); names come
+from the index; the point reader is a reader module, and the reader reaches
+the answer side through one listed edge, `point -> compose.adapt`, checked
+on chains; the point's refusals are causes. What it did not buy, and where
+it stands: the adapters still decide the intent's default point on the
+answer side (Phase 2 deletes them); "refusals as causes" is true of the
+point reader's three, not of the ~170 refusal sentences elsewhere (Phase
+2's sayers); contracts 2, 4 and 5 are Phase 3's and 2's and are not started.
 
 | Item | State |
 | --- | --- |
