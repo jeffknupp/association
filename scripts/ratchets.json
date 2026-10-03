@@ -49,7 +49,6 @@
  "private_template_imports": [
   "compose.adapt:_BOX_SCORES",
   "compose.adapt:_DEFAULT_STREAK_LIMIT",
-  "compose.adapt:_clamp_limit",
   "compose.adapt:_log_extras",
   "compose.adapt:_period_split_measure",
   "compose.adapt:_player_stat_reads_box_scores",
@@ -73,7 +72,6 @@
   "compose.present:_PLAYER_LINE",
   "compose.present:_Span",
   "compose.present:_box_score_player_stat",
-  "compose.present:_clamp_limit",
   "compose.present:_condition_scope",
   "compose.present:_condition_team_no_games",
   "compose.present:_empty_box_scores",
@@ -129,7 +127,6 @@
   "compose.team:_DEFAULT_STREAK_LIMIT",
   "compose.team:_Span",
   "compose.team:_TEAM_STREAK_SELECT",
-  "compose.team:_clamp_limit",
   "compose.team:_game_log_mixed_where",
   "compose.team:_resolved_team",
   "compose.team:_span_of",

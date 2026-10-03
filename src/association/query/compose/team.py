@@ -61,11 +61,11 @@ from association.nba.season import current_season
 from association.query.conditions import _PLAYER_GAME_TABLES, _longest_runs
 from association.query.entities import Entity
 from association.query.entities import team_named_in as team_named_in
-from association.query.reading import Scope
+from association.query.reading import Scope, _clamp_limit
 from association.query.team_games import TeamNarrowed
 from association.query.team_games import aggregate_sql as team_aggregate_sql
 from association.query.team_games import named as team_named
-from association.query.templates.common import TemplateResult, TemplateUnsupported, _clamp_limit, _resolved_team, _Span, _span_of, scoped_team, whole_span
+from association.query.templates.common import TemplateResult, TemplateUnsupported, _resolved_team, _Span, _span_of, scoped_team, whole_span
 from association.query.templates.common import team_games as narrow_team_games
 from association.query.templates.splits import _DEFAULT_STREAK_LIMIT, _TEAM_STREAK_SELECT, PresenceSplit, _streak_league_team_narrowed, _team_season_range, _with_without_read
 

@@ -12,10 +12,10 @@ from dataclasses import replace
 from typing import Any
 
 from association.query.measures import MEASURE_WORDS
-from association.query.reading import Group, Reading, Scope
+from association.query.reading import Group, Reading, Scope, _clamp_limit
 from association.query.reading import named_player_in as _named_player_in
 from association.query.shotchart import SHOT_AVAILABILITY
-from association.query.templates.common import _BOX_SCORES, TemplateUnsupported, _clamp_limit, period_narrowing
+from association.query.templates.common import _BOX_SCORES, TemplateUnsupported, period_narrowing
 
 # One concept, one definition (scripts/check_duplicate_names.py): the default
 # row counts and the default stat line are the same constants the real

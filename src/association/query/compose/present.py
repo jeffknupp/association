@@ -44,14 +44,13 @@ from association.nba.season import current_season, eastern_date
 from association.query.conditions import _PLAYER_GAME_TABLES, _meeting_rows, _teammate_games, _totals
 from association.query.measures import stat_measure
 from association.query.player_games import REBUILT_STATS
-from association.query.reading import Scope
+from association.query.reading import Scope, _clamp_limit
 from association.query.templates.common import (
     HISTORY_COLUMNS,
     STAT_LABELS,
     THRESHOLD_STAT_COLUMNS,
     TemplateResult,
     TemplateUnsupported,
-    _clamp_limit,
     _condition_scope,
     _optional_team,
     _player_relation_season_type,

@@ -4358,3 +4358,16 @@ those were found.
 - **User sees:** nothing today; a name typed as "_" would ask among dozens of players.
 - **Next step:** treat `%` and `_` in a name slot as literal characters, with a test; then no name matches them.
 - **GitHub:** #315
+
+### The stages run twice on 59 of 2,082 out-of-corpus wordings (2.8%); the roadmap quotes the corpus figure alone
+- **Found:** 2026-10-03, the Opus review of Phase 1.
+- **Evidence:** `~/association-research/stages/reader_pop.py` at `c38600f`: 63 of 2,710 readings run the stages twice - 4 of the 628 corpus questions and 59 of the 2,082 outside it (every one a child the stages declined, then the parent). `ROADMAP.md`'s "stages run once" row and `CHANGES.md` state the corpus figure.
+- **User sees:** nothing; a second run costs no model call.
+- **Next step:** state both figures in the roadmap row; Phase 3's grammar (the child named from the words alone) removes the second run.
+
+### `tests/routed.with_subject` is a reading path production never takes: it names the child with no stage run and skips `_two_teams`
+- **Found:** 2026-10-03, the Opus review of Phase 1.
+- **Evidence:** `tests/routed.py` ("a child the stages would decline stands"); 39 call sites hand the stages a route this way. A test can pass on a route `read_route` would never produce.
+- **User sees:** nothing.
+- **Next step:** for each call site whose question is in the recorded corpus, assert the route `with_subject` builds equals `read_route`'s; or route `ask_routed` through `read_route` with the route's slots stubbed and record which tests differ.
+
