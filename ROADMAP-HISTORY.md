@@ -669,6 +669,21 @@ agents' reports named here are in `~/association-research/stages/`.
     `read_point` move was planned in five steps and its first taken: of
     the 40 decline and refusal sites the point reader reaches, 18 fire on
     some population and 22 on none.
+11. **The `read_point` move, steps 2-4 (2026-10-02 to 2026-10-03).** Step 2
+    (`579e533`): the measures closed by name in `measures.py`, the SQL
+    tables held to those names by a test; the reader imports no SQL to
+    learn a name. Step 3 (`e5b8954`): the five "cannot honor a cell" sites
+    are the planner's (`compose.plan._shape_declines`); 3 of 628 and 26 of
+    2,710 readings carry the point they declined before, every answer
+    identical. Scoped on the way: 5 sites are the reader's own verdict
+    about the relation and stay; 30 "needs a player / a stat" checks in
+    the adapters wait for Phase 2's slices; nothing deleted by coverage.
+    Step 4: the three refusals are a `reading.Cause` the planner says
+    (`compose.plan.refusal_result`), so the Reading carries no
+    `TemplateResult` and the reader builds no sentence; identical on all
+    three populations, 10 of 628 refusals said word for word. Cost of the
+    three steps: none measured - the stage records, the ledger and the
+    answers are unchanged. Next: step 5, the file to `query/point.py`.
 
 ## The plan items, as written
 

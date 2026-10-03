@@ -18,7 +18,7 @@ from association.query.agent import Agent
 from association.query.answer import Answer, Artifact, Timing
 from association.query.compose.plan import plan_point
 from association.query.decisions import Decision
-from association.query.reading import Reading, Scope
+from association.query.reading import Cause, Reading, Scope
 from association.query.stages import STAGES, WORDING, Difference, differences, plain, read_stages, snapshot
 from association.query.subject import Subject
 from association.query.templates.common import TemplateResult
@@ -100,8 +100,9 @@ def test_a_question_nothing_read_has_no_reading_or_query() -> None:
 def test_a_point_the_compiler_has_none_of_says_why() -> None:
     declined = Reading(intent="shot_chart", point_declined="no player subject")
     assert snapshot(declined, _answer(), planned=plan_point(declined))["query"] == {"declined": "no player subject"}
-    refused = Reading(intent="leaderboard", point_refusal=TemplateResult(data={"refused": "bench points"}, answer="Nothing ranks bench points."))
-    assert snapshot(refused, _answer(), planned=plan_point(refused))["query"] == {"refused": {"refused": "bench points"}, "said": "Nothing ranks bench points."}
+    refused = Reading(intent="leaderboard", point_refusal=Cause(kind="no_ranking_measure", facts={"stat": "bench points"}))
+    said = "No ranking reads 'bench points' on the player-games relation - it only ranks the box-score measures it knows, not a NetPoints or other outside figure."
+    assert snapshot(refused, _answer(), planned=plan_point(refused))["query"] == {"refused": {"message": said, "stat": "bench points"}, "said": said}
 
 
 def test_plain_values_are_the_same_on_every_run() -> None:

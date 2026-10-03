@@ -729,7 +729,12 @@ model's. Two things follow, and both matter when you add a shape:
   the compiler plans and runs it and never reads the question itself.
   There is no slot door: a caller with a Reading of its own (a test handing
   the compiler a subject it built) reads the point into it with
-  `parse.with_point`. A `TemplateResult` back is
+  `parse.with_point`. Where the point reader refuses (a ranking by shot
+  distance, by a stat nothing ranks, under a floor in a unit nothing
+  applies) the Reading carries a `reading.Cause` - a kind from the closed
+  `CAUSES` and plain facts - and the planner says it
+  (`compose.plan.refusal_result`): the reader builds no sentence, and a
+  new cause is an entry there and a sentence here. A `TemplateResult` back is
   answered exactly like a template's own - `answered_by="fast"`, the intent
   kept, the same name-reading and coverage-caveat attachment - including when
   that result is itself a refusal (a clarification, a "no match"): looking at

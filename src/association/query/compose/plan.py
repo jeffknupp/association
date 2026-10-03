@@ -11,16 +11,13 @@ field the Reading did not settle is not settled here either.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
 
-from association.query.reading import Reading
-from association.query.templates.common import RELATION_SCOPING_EXCLUDED, unhonored_scoping
+from association.query.reading import Cause, Reading
+from association.query.templates.common import RELATION_SCOPING_EXCLUDED, TemplateResult, unhonored_scoping
+from association.query.templates.players import leaderboard_shot_distance_refusal
 
 from .core import Query, Refused, Unsupported, _check_relation_scoping
 from .team import TeamQuery
-
-if TYPE_CHECKING:
-    from association.query.templates.common import TemplateResult
 
 #: The player-relation cells a team's log, splits and run refuse by name
 #: with a sentence of their own (``templates.games._team_game_log_refusals``,
@@ -145,6 +142,43 @@ class Planned:
     refusal: TemplateResult | None = None
 
 
+def no_ranking_for(stat: str) -> TemplateResult:
+    """The refusal for a ranking by a stat this relation has no measure for.
+
+    .. versionadded:: 5.0.0
+    """
+    message = f"No ranking reads {stat!r} on the player-games relation - it only ranks the box-score measures it knows, not a NetPoints or other outside figure."
+    return TemplateResult(data={"message": message, "stat": stat}, answer=message)
+
+
+def _ranking_floor_unit(unit: str, count: int) -> TemplateResult:
+    """The refusal for a ranking floor in a unit no ranking applies (F056:
+    "... with at least 100 attempts"). The sentence names the floor that IS
+    applied, so the question can be re-asked with it."""
+    message = f"A minimum of {count} {unit} is not a floor this ranking can apply yet - only a minimum number of games is. Ask with 'at least N games', or without the floor."
+    return TemplateResult(data={"message": message, "floor": {"unit": unit, "count": count}}, answer=message)
+
+
+def refusal_result(cause: Cause) -> TemplateResult:
+    """The refusal a point reading's :class:`~association.query.reading.Cause`
+    is said with: the sentence and the template-shaped data the answering
+    loop hands on, one per kind in :data:`~association.query.reading.CAUSES`.
+    The reader carries the cause and never the sentence (``ROADMAP.md``,
+    Phase 1, the ``read_point`` move, step 4).
+
+    .. versionadded:: 5.0.0
+    """
+    if cause.kind == "shot_distance_ranking":
+        # The retired leaderboard template's own refusal, naming the real
+        # cause (ISSUES.md #114).
+        return leaderboard_shot_distance_refusal()
+    if cause.kind == "no_ranking_measure":
+        return no_ranking_for(cause.facts["stat"])
+    if cause.kind == "ranking_floor_unit":
+        return _ranking_floor_unit(cause.facts["unit"], cause.facts["count"])
+    raise ValueError(f"no sentence for the cause {cause.kind!r}")
+
+
 def plan_point(reading: Reading) -> Planned:
     """The PLAN stage for one question (``ROADMAP.md``, Phase 1): the point
     the parser read (:attr:`Reading.point <association.query.reading.Reading.point>`)
@@ -158,7 +192,7 @@ def plan_point(reading: Reading) -> Planned:
     .. versionadded:: 5.0.0
     """
     if reading.point_refusal is not None:
-        return Planned(refusal=reading.point_refusal)
+        return Planned(refusal=refusal_result(reading.point_refusal))
     if reading.point is None:
         return Planned(declined=reading.point_declined or "the compiler has no reading of this point")
     try:

@@ -30,11 +30,11 @@ from association.query.compose.adapt import to_query
 from association.query.compose.core import Query, Refused, Unsupported, compile_query, run
 from association.query.compose.move import _asc_or_desc, _career_scope, _everyone_career_scope, _ranking_minimum, read_point
 from association.query.compose.move import team_move_point as _team_move_point
-from association.query.compose.plan import plan, plan_point
+from association.query.compose.plan import plan, plan_point, refusal_result
 from association.query.compose.sentence import sentence
 from association.query.compose.team import TeamQuery, run_team
 from association.query.parse import with_point
-from association.query.reading import Reading, Scope
+from association.query.reading import Cause, PointRefused, Reading, Scope
 from association.query.subject import Subject, read_subject
 from association.query.templates.common import TemplateContext, TemplateResult
 
@@ -1021,10 +1021,12 @@ def test_an_attempts_or_minutes_floor_is_refused_by_name_not_dropped_or_misappli
     :data:`~association.query.compose.core.Query.minimum_games`) - refused
     by name, never silently dropped (which would rank on an unqualified
     sample) and never misread as a games count (100 attempts is not 100
-    games)."""
-    with pytest.raises(Refused) as refused:
+    games). The reader gives the cause, and the planner says it."""
+    with pytest.raises(PointRefused) as refused:
         move_point(cx_ctx.con, "leaderboard", {"stat": "points", "season_type": 2}, "highest points per game by a point guard with at least 100 attempts")
-    assert "100 attempts" in refused.value.result.answer and "at least N games" in refused.value.result.answer
+    assert refused.value.cause == Cause(kind="ranking_floor_unit", facts={"unit": "attempts", "count": 100})
+    said = refusal_result(refused.value.cause).answer
+    assert "100 attempts" in said and "at least N games" in said
 
 
 def test_a_stat_this_relation_cannot_read_is_refused_not_defaulted_to_points(cx_ctx: TemplateContext) -> None:
@@ -1035,9 +1037,10 @@ def test_a_stat_this_relation_cannot_read_is_refused_not_defaulted_to_points(cx_
     looked like a real ranking of what was asked for and was not one. A
     ranking with no stat named at all still defaults to points - only a
     stat that was NAMED and failed to map is a refusal."""
-    with pytest.raises(Refused) as refused:
+    with pytest.raises(PointRefused) as refused:
         move_point(cx_ctx.con, "single_game_high", {"stat": "netpoints"}, "who had the highest netpoints game this season")
-    assert "netpoints" in refused.value.result.answer
+    assert refused.value.cause == Cause(kind="no_ranking_measure", facts={"stat": "netpoints"})
+    assert "netpoints" in refusal_result(refused.value.cause).answer
     # A leaderboard's NetPoints ranking is the season line's (its retired
     # template's reader, over the NetPoints tables): a point, not a refusal.
     netpoints = move_point(cx_ctx.con, "leaderboard", {"stat": "netpoints"}, "who leads the league in netpoints this season")
@@ -1675,9 +1678,13 @@ def test_a_point_the_compiler_declines_or_refuses_travels_on_the_reading(cx_ctx:
     assert why == [declined.point_declined]
 
     refused = reading_from_route(cx_ctx.con, "most gizmos in a single game", with_subject(cx_ctx.con, "most gizmos in a single game", slots_route("single_game_high", {"stat": "gizmos"})))
-    assert refused.point is None and refused.point_refusal is not None
-    answered = compose.answer(cx_ctx, refused, planned=plan_point(refused))
-    assert answered is not None and answered.answer == refused.point_refusal.answer and answered is not refused.point_refusal
+    assert refused.point is None and refused.point_refusal == Cause(kind="no_ranking_measure", facts={"stat": "gizmos"})
+    planned = plan_point(refused)
+    answered = compose.answer(cx_ctx, refused, planned=planned)
+    assert planned.refusal is not None and answered is not None
+    assert answered.answer == planned.refusal.answer
+    assert answered.answer == "No ranking reads 'gizmos' on the player-games relation - it only ranks the box-score measures it knows, not a NetPoints or other outside figure."
+    assert answered is not planned.refusal
 
 
 def test_a_summed_true_shooting_rate_is_a_fraction_like_its_column(cx_ctx: TemplateContext) -> None:

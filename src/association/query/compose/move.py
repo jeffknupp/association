@@ -21,13 +21,12 @@ import duckdb
 from association.query.leaderboard import resolve_metric
 from association.query.measures import BOOLEAN_MEASURES, DERIVED_LINES, DERIVED_MEASURES, GAME_COLUMNS, HISTORY_STATS, LINE, MEASURE_WORDS, TEAM_GAME_MEASURES, TEAM_SEASON_MEASURES
 from association.query.metrics import PER_GAME_MIN_GAMES, TEAM_FIELD_WORDS
-from association.query.reading import Aggregate, Reading, Scope
-from association.query.templates.common import DEFAULT_LIMIT, TEAM_ONLY_INTENTS, TemplateResult, _clamp_limit, ordinal_word
-from association.query.templates.players import leaderboard_shot_distance_refusal
+from association.query.reading import Aggregate, Cause, PointRefused, Reading, Scope
+from association.query.templates.common import DEFAULT_LIMIT, TEAM_ONLY_INTENTS, _clamp_limit, ordinal_word
 
 from .adapt import DEFAULT_GAME_LOG_LIMIT, DEFAULT_SINGLE_GAME_LIMIT, _named_player_in, _to_reading_scope
 from .core import Query, Refused, Unsupported
-from .plan import plan
+from .plan import no_ranking_for, plan
 from .team import TeamQuery
 
 if TYPE_CHECKING:
@@ -454,12 +453,6 @@ def _everyone_threshold_count(intent: str, scope: Scope, predicates: list[tuple[
     )
 
 
-def _no_ranking_for(stat: str) -> TemplateResult:
-    """The refusal for a ranking by a stat this relation has no measure for."""
-    message = f"No ranking reads {stat!r} on the player-games relation - it only ranks the box-score measures it knows, not a NetPoints or other outside figure."
-    return TemplateResult(data={"message": message, "stat": stat}, answer=message)
-
-
 def _everyone_ranking(intent: str, scope: Scope, question: str, measure: str | None, predicates: list[tuple[str, str, Any]], position: str | None) -> Reading | None:
     """A ranking word, or a leaderboard/single-game-high intent: grouped by
     player. A "with at least N games" phrase in the question replaces the
@@ -495,9 +488,9 @@ def _everyone_ranking(intent: str, scope: Scope, question: str, measure: str | N
         if stat == "shot_distance":
             # The parser's sentinel (router._route_leaderboard_shot_distance):
             # the retired template's own refusal, naming the real cause.
-            raise Refused(leaderboard_shot_distance_refusal())
+            raise PointRefused(Cause(kind="shot_distance_ranking"))
         if stat is not None and stat.strip():
-            raise Refused(_no_ranking_for(stat))
+            raise PointRefused(Cause(kind="no_ranking_measure", facts={"stat": stat}))
     aggregate: Aggregate = "total" if _TOTAL.search(question) else "per_game"
     minimum_games = PER_GAME_MIN_GAMES
     named_minimum = _ranking_minimum(question)
@@ -506,10 +499,9 @@ def _everyone_ranking(intent: str, scope: Scope, question: str, measure: str | N
         if not unit.startswith("game"):
             # A refusal, not a decline: nothing downstream reads an attempts or
             # minutes floor either, and "None" here sent yardstick-v2 F056 to
-            # the agent for a minute. The sentence names the floor that IS
-            # applied so the question can be re-asked with it.
-            message = f"A minimum of {count} {unit} is not a floor this ranking can apply yet - only a minimum number of games is. Ask with 'at least N games', or without the floor."
-            raise Refused(TemplateResult(data={"message": message, "floor": {"unit": unit, "count": count}}, answer=message))
+            # the agent for a minute. The planner's sentence names the floor
+            # that IS applied so the question can be re-asked with it.
+            raise PointRefused(Cause(kind="ranking_floor_unit", facts={"unit": unit, "count": count}))
         minimum_games = count
     return Reading(
         scope=scope,
@@ -755,7 +747,7 @@ def games_reading(q: Query) -> Query:
         # `rate` only the season line reads is not dropped.
         stat = q.scope.stat
         if stat is not None and stat.strip() and _stat_measure(stat) is None:
-            raise Refused(_no_ranking_for(stat))
+            raise Refused(no_ranking_for(stat))
         if q.scope.rate:
             raise Unsupported("the relation cannot honor ['rate'] - it would answer for a different span than was asked")
         if q.scope.fields:

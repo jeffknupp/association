@@ -32,7 +32,6 @@ if TYPE_CHECKING:
     from association.query.decisions import Decision
     from association.query.entities import Availability
     from association.query.subject import Subject
-    from association.query.templates.common import TemplateResult
 
 Shape = Literal["rows", "scalar", "grouped", "run", "pair"]
 """Which reader answers the point: rows, one number, one row per group, the
@@ -397,6 +396,53 @@ _CHECKS: dict[str, Callable[[str, Any], Any]] = {
 _SCOPE_FIELDS = frozenset(f.name for f in fields(Scope))
 
 
+CAUSES: frozenset[str] = frozenset({"shot_distance_ranking", "no_ranking_measure", "ranking_floor_unit"})
+"""The closed set of causes a point reading refuses by (:class:`Cause.kind`):
+a league-wide ranking by shot distance, which nothing ranks; a ranking by a
+named stat the relation has no measure for (``stat``); a ranking floor in a
+unit no ranking applies (``unit``, ``count``). The planner says each
+(``compose.plan.refusal_result``); a new cause is an entry here and a
+sentence there.
+
+.. versionadded:: 5.0.0
+"""
+
+
+@dataclass(frozen=True, kw_only=True)
+class Cause:
+    """Why a point reading refuses: a kind from :data:`CAUSES` and the plain
+    facts its sentence needs - never the sentence, which is the answer
+    side's to build (``ROADMAP-TYPES.md``: ``Refusal(cause, facts)``). Until
+    5.0.0's last change the reader built the refusal's ``TemplateResult``
+    itself and the Reading carried it (``ROADMAP.md``, Phase 1, the
+    ``read_point`` move, step 4).
+
+    .. versionadded:: 5.0.0
+    """
+
+    kind: str
+    facts: Mapping[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        """Hold ``kind`` to :data:`CAUSES`."""
+        if self.kind not in CAUSES:
+            raise ValueError(f"{self.kind!r} is not a cause a point reading refuses by: {sorted(CAUSES)}")
+
+
+class PointRefused(Exception):
+    """The point reader's refusal, carrying its :class:`Cause`: raised where
+    the reading comes to one, caught by the parser (``parse.with_point``),
+    which puts the cause on the Reading as ``point_refusal``.
+
+    .. versionadded:: 5.0.0
+    """
+
+    def __init__(self, cause: Cause) -> None:
+        """Wrap ``cause``."""
+        super().__init__(cause.kind)
+        self.cause = cause
+
+
 @dataclass(frozen=True, kw_only=True)
 class Reading:
     """One question, read. The point fields (shape, measures, aggregate,
@@ -456,11 +502,12 @@ class Reading:
     #: own, since it reads words the templates never see: its scope may carry
     #: a career the question's "ever" or "how many times" implies. ``None``
     #: where the compiler has no reading of the point - ``point_declined``
-    #: says why - or a refusal of its own to give (``point_refusal``: a stat
-    #: nothing ranks, a floor no ranking applies).
+    #: says why - or a refusal of its own to give (``point_refusal``: its
+    #: :class:`Cause` - a stat nothing ranks, a floor no ranking applies -
+    #: which the planner says, :func:`~association.query.compose.plan.refusal_result`).
     point: Reading | None = None
     point_declined: str | None = None
-    point_refusal: TemplateResult | None = None
+    point_refusal: Cause | None = None
 
     @classmethod
     def from_slots(cls, slots: Mapping[str, Any], *, intent: str = "", subject: Subject | None = None) -> Reading:

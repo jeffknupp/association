@@ -241,8 +241,8 @@ the Reading becomes the point), and it consults the answer side three
 ways: vocabulary (`core.COLUMNS`, `DERIVED`, `LINE`, `BOOLEAN_MEASURES`,
 `team.GAME_MEASURES`, `SEASON_MEASURES`, `HISTORY_COLUMNS`); "can the
 relation honor this" checks that raise `Unsupported` (a decline); and
-refusal sentences built as `TemplateResult`s that ride on the Reading as
-`point_refusal`. Each sub-step is proven on the 628 recorded questions,
+refusal sentences built as `TemplateResult`s that rode on the Reading as
+`point_refusal` (a `Cause` since step 4). Each sub-step is proven on the 628 recorded questions,
 every unit-test outcome, and the 2,710 out-of-corpus readings.
 
 | Step | What | State |
@@ -250,7 +250,7 @@ every unit-test outcome, and the 2,710 out-of-corpus readings.
 | 1 | Instrument: which decline and refusal sites fire, on the corpus, the feed and the unit tests | done 2026-10-02 (`~/association-research/stages/point-sites-1eb8677.txt`, `point_sites.py`). Of 40 raise sites the point reader reaches - 16 in `move.py` on the read path, 24 in `adapt.py`'s per-intent adapters - 18 fire on some population (10 and 8); 22 fire on none (6 and 16), four of those named by a unit test's expected message. Most of what fires is the reader saying what relation a question belongs to (`_everyone_guard`'s three: 56 corpus, 223 feed; `_everyone_point`: 29 and 67; "no adapter for" a chart intent: 73 and 21). The three refusals fire 10 times on the corpus and 4 on the feed, all rankings |
 | 2 | Vocabulary to `measures.py`, as `STAT_ALIASES` went: the closed Measure type of `ROADMAP-TYPES.md` arrives by necessity | done 2026-10-02: eight name sets in `measures` (`GAME_COLUMNS`, `DERIVED_MEASURES`, `DERIVED_LINES`, `BOOLEAN_MEASURES`, `LINE`, `TEAM_GAME_MEASURES`, `TEAM_SEASON_MEASURES`, `HISTORY_STATS`), the SQL tables held to them by a test; the reader imports no SQL to learn a name. Identical on all three populations |
 | 3 | Declines to the planner, one site at a time: the reader writes the point regardless and `plan_point` says `declined` with the same reason - the condition item's shape. A site that fires on no population and that no test names is deleted, not moved | done 2026-10-02 for the class the planner can judge (`e5b8954`): the five "cannot honor a cell" sites are `compose.plan._shape_declines`, with their sentences; 3 of 628 and 26 of 2,710 readings carry the point they declined before, every query, result and answer identical. The other 35 sites stay where they are, on purpose: 5 are the reader's own verdict that the question is no point on the player relation (`_everyone_guard`, `_everyone_point`, "no adapter for" a chart) - a reading, not a check against the answer; 30 are "the point needs a player / a stat / two names" checks inside the ten adapters, which Phase 2 deletes slice by slice, so restructuring them to hand the planner a partial point is work Phase 2 throws away. And nothing is deleted by coverage after all: Phase 3's rule ("the rest is mostly guards for recorded failure shapes") outranks the one written here; a silent site is left for its slice to judge |
-| 4 | Refusals become causes: `point_refusal` holds a cause, not a `TemplateResult`; the planner builds the sentence | open |
+| 4 | Refusals become causes: `point_refusal` holds a cause, not a `TemplateResult`; the planner builds the sentence | done 2026-10-03: `reading.Cause(kind, facts)` with the closed `CAUSES` (three kinds, all rankings), raised as `reading.PointRefused`, said by `compose.plan.refusal_result`; the reader imports no `TemplateResult` and no template. Identical on all three populations (10 of 628 and 14 of 2,710 refusals said word for word) |
 | 5 | The file moves to `query/point.py`; the two ignores go; `point` joins the ratchet's reader set, so its 26 question-taking functions leave the list (a list edit, Jeff's) | open |
 
 **Phase 2 - The answer side, in slices.** Each slice ends with its
