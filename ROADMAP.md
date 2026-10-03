@@ -267,6 +267,25 @@ every unit-test outcome, and the 2,710 readings old tree against new (the 628 co
 | 4 | Refusals become causes: `point_refusal` holds a cause, not a `TemplateResult`; the planner builds the sentence | done 2026-10-03: `reading.Cause(kind, facts)` with the closed `CAUSES` (three kinds, all rankings), raised as `reading.PointRefused`, said by `compose.plan.refusal_result`; the reader imports no `TemplateResult` and no template. Identical on all three populations (10 of 628 and 14 of 2,710 refusals said word for word) |
 | 5 | The file moves to `query/point.py`; the two ignores go; `point` joins the ratchet's reader set, so its 26 question-taking functions leave the list (a list edit, Jeff's) | done 2026-10-03: `query/point.py`; the two `parse -> compose` ignores gone, and ONE in their place, `point -> compose.adapt` - the intent's default point (`to_reading`, ten adapters that lean on the templates' helpers), which Phase 2 deletes slice by slice, so moving it now would be work thrown away. What the reader took besides went to its side: `Unsupported`, the limits, `ordinal_word`, `TEAM_ONLY_INTENTS`, `_career_scope` and `named_player_in` to `reading`; `METRIC_ALIASES`, `CAREER_METRIC_ALIASES`, `resolve_metric`, `MEASURE_ALIASES`, `WORD_MEASURES` and `stat_measure` to `measures`. `games_reading` (plans) went to `compose.plan`, `team_move_point` (read then plan, used by one test) to that test. `point` is in the ratchet's reader set; 28 entries left `ratchets.json`. Identical on all three populations |
 
+**Phase 1, reviewed (2026-10-03).** An Opus agent reviewed the phase
+adversarially at `423d559`, re-running every figure: the measured claims
+held; the design goals held only where the gates looked. Its report, the
+same-day response (six commits, two findings filed: #318, #319) and the
+live run that closed the phase are in
+`~/association-research/reviews/phase1-2026-10-03/` (`REVIEW.md` verbatim,
+`RESPONSE.md` by commit), and the write-up Jeff reads is the Claude doc
+"Phase 1 Review" (https://claude.ai/code/artifact/75355cb8-09ca-4cad-b559-753044d6d80d).
+What an agent starting Phase 2 should take from it: the reader contract is
+checked on chains and `point -> compose.adapt` is the one route, going with
+the last adapter; `compose.answer` still re-plans 3 of 628 through
+`games_reading` after the season-line presenter declines (the snapshot
+records what ran; the re-plan goes with slice (iii)); the ~170 refusal
+sentences outside the point reader become causes as each sayer is written;
+the five ratchets catch the bypasses the review found and are name-based
+still - a new way past one is a gate to add, not a trick to use; the
+ledger undercounts (a word that changes any decision-record prose counts
+as read), so 690 is not an upper bound.
+
 **Phase 2 - The answer side, in slices.** Each slice ends with its
 presenter, template body, scoping rows, adapter branch and web renderer
 deleted in the same change. Method: split each body into a reader that
@@ -289,6 +308,35 @@ construction - then merge readers where measured equal.
 - (v) **Charts** (39): see the open decision.
 Exit: `templates/`, `present.py`, `adapt.py`, `check_scope` and every
 scoping table but the per-relation cell tables are gone.
+
+**Phase 2, the expected steps (written 2026-10-03, before the phase; each
+step is re-planned in its own row as it lands, as Phase 1's were).** The
+unit of work is one intent: its reader and sayer written, measured both
+ways on every recorded question it answers and every unit-test call it
+makes, then its template body, presenter, adapter branch, scoping rows,
+freeze entries, ratchet entries and renderer deleted in the same change.
+Three rules hold throughout: `--values-only` is used for the sayer step
+alone, and a rewording is reviewed once; a boundary that moves
+(`compose.answer`, a presenter's call) is recorded in `tests/stage_calls.py`
+on both sides before the old side goes; a test whose subject is deleted
+(a template's sentence, a presenter, a scoping table) is deleted with it,
+and a test of visible behavior moves to the stage that owns it only where
+the snapshots do not already hold the case.
+
+| Step | What | Deletes | Proof |
+| --- | --- | --- | --- |
+| 0 | The Result type and the first sayer, on one intent: `game_log` (the simplest "compiled and discarded" shape - rows). `ROADMAP-TYPES.md`'s `Result`/`Part` declared in code here, as the first phase that uses them; the sayer takes a Result and nothing else (contract 3, gated for `compose.sentence` today - extend the gate to the sayer module); notes travel as kinds and facts on the Result and are said by the sayer (contract 5 becomes a gate: `stage_snapshots.py remarks` fails on an unsaid remark). This step sets the pattern every later slice copies, so it is reviewed once before step 1 | `templates.games.game_log`'s body and its presenter, the `game_log` adapter, its rows in `HONORED_SCOPING`/`STATED_SCOPING`, its renderer | values identical on every `game_log` answer (628 recorded; unit-test calls); the sentence compared by eye once and then held |
+| 1 | Slice (i), the rest: narrowed `player_stat`, `player_splits`, `record_when`, `period_split` - 55 answers that compiled a query and discarded it for the template's read. Execute the compiled SQL; the retired template's read goes | four template bodies, four presenters, four adapters, their scoping rows and renderers | values identical, per intent, both populations |
+| 2 | Slice (ii): `threshold_count`, `single_game_high`, `player_matchup`, `streak` - 29 answers the compiler reads and the template words. The wording moves into sayers, the notes into the Result; each refusal sentence in those bodies becomes a `Cause` the sayer says (the point reader's three kinds grow by what these carry) | four template bodies, four presenters, four adapters; `refusals.py`'s entries for these shapes | values and remarks identical; wording reviewed once (`--values-only`) |
+| 3 | Slice (iii): the season-line relation - `leaderboard`, `player_history`, `player_compare`, unnarrowed `player_stat`, 81 answers. The riskiest slice: the existing readers (`leaderboard.py`'s floors, traded-player dedup, qualifiers; `_leaderboard_ranking`, `_player_compare_lines`, `_player_history_read`) MOVE under the relation, not re-derived; `games_reading`'s re-plan in `compose.answer` goes here, since the relation says for itself whether it reads a point; `MAX_LIMIT` becomes one | the last four template bodies and presenters, `present.py` itself, `adapt.py`'s last branches and the file, with the `point -> compose.adapt` ignore (the reader takes the default point from the relation's declared shapes) | values identical on 81 answers; a live run before and after, since the floors are what stopped "Moses Malone led 1980" |
+| 4 | Slice (iv): team shapes, about 40 answers - the team log, with/without, `team_record`, `team_stat`, `team_leaderboard`, `team_outlook`, `team_quarter_points`, `head_to_head`, `period_leaderboard`, `coach`'s refusal. Standings and projections become a team-season relation; `compose/team.py` is the team compiler already and absorbs the team templates' reads | the team templates (seven of the twelve in `TEMPLATES`), `check_scope` and `HONORED_SCOPING` with the last template that used them | values identical, both populations |
+| 5 | Slice (v): charts - `shot_chart`, `fingerprint`, `shot_distance`, `player_netpoints`, 39 answers. Per the decision: declared shapes with their own readers and renderers, each named with its relation, the reader declining them from its own set rather than "no adapter for". No port onto shots/NetPoints relations until after Phase 3 | the four chart templates as templates (they remain as declared shapes); `TEMPLATES` empty or chart-only | values and artifacts identical (paths masked) |
+| 6 | Exit: `templates/` holds no body, `present.py`, `adapt.py`, `check_scope` and every scoping table but the per-relation cell tables are gone; `test_frozen_shapes.py` freezes only intents and renderers; the private-template-import ratchet is 0 and its check deleted; `AGENTS.md`'s template sections rewritten; a live run closes the phase and an independent review of it, as Phase 1 had | the freeze entries and ratchet checks that have nothing left to hold | the "What done means" table's Phase 2 rows at their Done values |
+
+Order between steps 1-5 is the roadmap's (least to most risk, the
+season line last among the player shapes, charts last of all); inside a
+slice the intents go one at a time, each its own commit. A slice that
+turns up a P1 fixes it in the code that exists before deleting that code.
 
 **Phase 3 - One reader.** A typed reader with claimed spans is built
 beside the old one and run in shadow: its Reading is projected to the old
