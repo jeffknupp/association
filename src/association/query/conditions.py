@@ -70,6 +70,7 @@ from association.nba.coverage import COVERAGE
 from association.nba.season import eastern_date_sql
 
 from .notes import note
+from .season_text import MONTH_NAMES
 from .team_games import TeamNarrowed, games_subquery, named
 
 if TYPE_CHECKING:
@@ -450,7 +451,7 @@ _SPLIT_SQL: dict[str, str] = {
 _SPLIT_GROUPS: dict[str, tuple[str, ...]] = {"home_away": ("home", "away"), "starter_bench": ("starter", "bench"), "wins_losses": ("wins", "losses")}
 _GROUP_LABELS = {"home": "Home", "away": "Away", "starter": "Starter", "bench": "Bench", "wins": "Wins", "losses": "Losses"}
 _SPLIT_TITLES = {"home_away": "home and away", "starter_bench": "starting and off the bench", "wins_losses": "in wins and losses", "month": "by month"}
-_MONTH_NAMES = ("January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December")
+_MONTH_NAMES = MONTH_NAMES
 
 
 def _season_month_order(month: int) -> int:

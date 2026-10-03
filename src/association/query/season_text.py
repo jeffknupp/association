@@ -20,6 +20,16 @@ from dataclasses import dataclass
 
 from association.nba.season import current_season
 
+MONTH_NAMES: tuple[str, ...] = ("January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December")
+"""The months by name, January first - the words a question narrows a
+season to a month by (``calendar``), and the label a monthly split prints.
+On the reader's side since 2026-10-03: ``calendar`` took it from
+``conditions``, which loads the team-games relation, so every reader module
+loaded the answer side through one tuple of names.
+
+.. versionadded:: 5.0.0
+"""
+
 MIN_SEASON = 1947
 """The earliest year read as a season: the league's first (1946-47).
 

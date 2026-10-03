@@ -14,8 +14,9 @@ from dataclasses import dataclass, replace
 
 from association.query.measures import stat_measure
 from association.query.reading import Cause, Reading, _career_scope
-from association.query.templates.common import RELATION_SCOPING_EXCLUDED, TemplateResult, unhonored_scoping
+from association.query.templates.common import RELATION_SCOPING_EXCLUDED, TemplateResult, TemplateUnsupported, unhonored_scoping
 from association.query.templates.players import leaderboard_shot_distance_refusal
+from association.query.templates.splits import _condition_needs_player_refusal, _streak_league_needs_named_subject
 
 from .adapt import WITH_WITHOUT_STATED
 from .core import Query, Refused, Unsupported, _check_relation_scoping
@@ -66,6 +67,21 @@ def _shape_declines(point: Reading) -> str | None:
     if intent == "with_without":
         ignored = unhonored_scoping(intent, scope, WITH_WITHOUT_STATED)
         return f"with_without cannot honor {ignored} - it would answer for a different span than was asked" if ignored else None
+    if intent == "streak" and point.relation != "player":
+        # A team's or the league's run: the cells only a named player's
+        # games can be narrowed by, and game_n (one numbered game of each
+        # series is not a run of CONSECUTIVE games); a league-wide run has
+        # no single subject for an opponent or a venue to narrow against.
+        # The retired template's two refusals, in the planner since
+        # 2026-10-03 (the Phase 1 review found them still in the adapter).
+        try:
+            _condition_needs_player_refusal(intent, scope, "game_n")
+            if not (scope.team and scope.team.strip()):
+                # The league's run (a win streak reads the team relation
+                # with no team named; a stat's run reads everyone).
+                _streak_league_needs_named_subject(scope)
+        except TemplateUnsupported as exc:
+            return str(exc)
     if intent in ("period_split", "streak", "player_matchup"):
         excluded = RELATION_SCOPING_EXCLUDED[intent]
         # A period condition is excluded from period_split's presenter's

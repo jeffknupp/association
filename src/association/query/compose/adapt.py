@@ -23,7 +23,7 @@ from association.query.templates.common import _BOX_SCORES, TemplateUnsupported,
 # reused rather than redeclared under the same name.
 from association.query.templates.games import DEFAULT_GAME_LOG_LIMIT, _log_extras, _period_split_measure
 from association.query.templates.players import DEFAULT_SINGLE_GAME_LIMIT, STAT_LINE, _threshold_count_ask
-from association.query.templates.splits import _DEFAULT_STREAK_LIMIT, _condition_needs_player_refusal, _streak_league_needs_named_subject, _streak_words, _with_without_named
+from association.query.templates.splits import _DEFAULT_STREAK_LIMIT, _streak_words, _with_without_named
 
 from .core import COLUMNS, DEFAULT_NAMED_RUNS, LINE, Unsupported, run_scope
 
@@ -307,14 +307,9 @@ def _adapt_streak(scope: Scope) -> Reading:
             span="career" if covered.season is None else None,
             season=covered.season,
         )
-    try:
-        # `game_n` stays refused for the team and league branches: one
-        # numbered game of each series is not a run of CONSECUTIVE games.
-        _condition_needs_player_refusal("streak", scope, "game_n")
-        if not (scope.team and scope.team.strip()):
-            _streak_league_needs_named_subject(scope)
-    except TemplateUnsupported as exc:
-        raise Unsupported(str(exc)) from exc
+    # The team and league branches' cell checks (game_n, the player-only
+    # cells, a league run's opponent or venue) are the planner's
+    # (compose.plan._shape_declines).
     if scope.team and scope.team.strip():
         if by_stat:
             raise Unsupported("a team's streak is of wins or losses, not of a stat")

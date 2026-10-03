@@ -76,12 +76,12 @@ from association.nba.season import eastern_date_sql
 
 from .entities import Entity
 
-# TYPE_CHECKING avoids a real circular import at module load: `calendar.py`
-# imports `_MONTH_NAMES` from `conditions.py`, which imports `TeamNarrowed`
-# from this module - so a top-level `from .calendar import ...` here would
-# cycle back on itself. `narrow_calendar` below imports the names it actually
-# calls at call time instead, by which point every module has finished
-# loading.
+# TYPE_CHECKING avoided a real circular import at module load: until
+# 2026-10-03 `calendar.py` imported `_MONTH_NAMES` from `conditions.py`,
+# which imports `TeamNarrowed` from this module, so a top-level
+# `from .calendar import ...` here cycled back on itself (the months are
+# `season_text.MONTH_NAMES` now). `narrow_calendar` below still imports the
+# names it calls at call time.
 if TYPE_CHECKING:
     from .calendar import AlignmentNarrowing, CalendarNarrowing
 

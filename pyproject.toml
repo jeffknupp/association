@@ -234,9 +234,12 @@ forbidden_modules = ["fastapi", "uvicorn", "pydantic"]
 [[tool.importlinter.contracts]]
 name = "The reader does not import the answer side"
 # ROADMAP contract 1 and Phase 1: what is read must not depend on what will
-# answer. Direct imports only - router reaches the relations through
-# calendar today, and that chain goes when calendar's words move to the
-# lexicon.
+# answer. Checked on CHAINS, not direct imports only, since 2026-10-03: until
+# then router, subject and normalizer loaded the team-games relation through
+# calendar -> conditions._MONTH_NAMES (the months are season_text's now), and
+# the contract could not see it. The one ignored edge below is the only
+# route from the reader to the answer side; everything it reaches, it
+# reaches through that edge.
 type = "forbidden"
 source_modules = [
     "association.query.normalizer",
@@ -257,7 +260,7 @@ forbidden_modules = [
     "association.query.shotchart",
     "association.query.fingerprint",
 ]
-allow_indirect_imports = true
+allow_indirect_imports = false
 ignore_imports = [
     # The point reader takes the intent's default point from the adapters
     # (compose.adapt.to_reading, ten per-intent readers that lean on the

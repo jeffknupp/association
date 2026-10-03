@@ -21,7 +21,7 @@ from dataclasses import dataclass
 from datetime import date
 from typing import Any
 
-from association.query.conditions import _MONTH_NAMES
+from association.query.season_text import MONTH_NAMES as _MONTH_NAMES
 
 WEEKDAYS: tuple[str, ...] = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
 """ISO order, Monday first - ``EXTRACT(ISODOW ...)`` numbers them 1-7."""

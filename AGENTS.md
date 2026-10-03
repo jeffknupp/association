@@ -45,8 +45,10 @@ fails rather than drifts.
   presenter, scoping table or per-intent renderer.
   `tests/query/test_frozen_shapes.py` holds the 25 intents the reader can
   name, and since 2026-10-02 the 12 templates, the 12 presenters and the
-  team-only one, the 10 adapters, the 12 scoping declarations (by module
-  and name, read from the source) and the page's 22 renderers: each
+  team-only one, the 10 adapters, the 14 scoping declarations (by module
+  and name, read from the source; 12 until 2026-10-03, when the two tables
+  of cells a reader refuses that its name pattern missed joined) and the
+  page's 22 renderers: each
   retires with its slice, none is added. A P1 wrong answer is
   still fixed, in the code that exists. The sections below still describe
   how templates, intents and presenters work, because they are what runs;

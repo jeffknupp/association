@@ -99,6 +99,8 @@ FROZEN_SCOPING_TABLES = frozenset(
         ("templates.common", "_BOX_SCORE_SCOPING"),
         ("templates.shots", "_SHOTS_GAME_NARROWING_SLOTS"),
         ("router", "_MODEL_SLOTS"),
+        ("compose.plan", "_TEAM_READER_REFUSES"),
+        ("templates.splits", "_CONDITION_PLAYER_ONLY_CELLS"),
     }
 )
 FROZEN_RENDERERS = frozenset(
@@ -151,7 +153,9 @@ def _scoping_tables_today() -> set[tuple[str, str]]:
                 if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name)
                 else []
             )
-            found.update((module, name) for name in names if re.search(r"SCOPING|STATED|_SLOTS$", name))
+            # Widened 2026-10-03 (the Phase 1 review): two tables of cells a
+            # reader refuses matched none of the first three words.
+            found.update((module, name) for name in names if re.search(r"SCOPING|STATED|_SLOTS$|CELLS|REFUSES|HONOR|EXCLUDED", name))
     return found
 
 
