@@ -658,7 +658,7 @@ agents' reports named here are in `~/association-research/stages/`.
     Then the stages run once: the child named from the grammar, the stages
     run under it first, the parent only where they decline - 1.00 runs a
     question where it was 1.68, nothing but decision records and
-    `intent_reason` moving on the corpus, and 2,710 out-of-corpus wordings
+    `intent_reason` moving on the corpus, and 2,710 wordings old tree against new (628 corpus, 2,082 outside it)
     read the same but three that gained a stat. Cost: the ledger reads 690
     where it read 683, because a second run's decision records had been
     counting as reads. Then the condition always written (`0bd4754`: two

@@ -687,7 +687,7 @@ def _has_a_real_team(con: duckdb.DuckDBPyConnection, slots: dict[str, Any], ques
     invents names"): "alperen şengün alltime record" arrived one run with no
     `team` at all, and another with `team='Alperen Şengün'` - the player's
     own name, filed as though it were a franchise, which
-    :func:`~association.query.templates.team_record.team_record`-shaped
+    :func:`~association.query.templates.teams.team_record`-shaped
     templates then refuse as "no team matching", the wrong cause. A team
     slot nothing resolves is functionally the same as no team slot at all.
 

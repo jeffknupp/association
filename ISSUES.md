@@ -274,7 +274,7 @@ those were found.
   season: "chris paul assists for the hornets in 2008" and "kobe points
   against the hornets in 2008" answer for New Orleans).
 - **Evidence:** the team a question is ABOUT is found by
-  `subject._team_word` -> `compose.team.team_named_in`, a whole-word match
+  `subject._team_word` -> `entities.team_named_in` (`compose.team.team_named_in` until 2026-10-02), a whole-word match
   against today's `teams` table that takes no season. "bobcats" reads as
   today's Charlotte Hornets, and with `season: 2012` that name is two
   franchises. Measured on the real warehouse at the fix's tree, the date

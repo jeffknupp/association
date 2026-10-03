@@ -867,8 +867,9 @@ def _read_route_staged(question: str, slots: dict[str, Any], parent: str, read: 
     player's line, a team's record under a companion's line), or under the
     parent itself. The stages may decline a child (a count with no
     threshold in the text is a ranking), and then run again under the
-    parent - the one case of a second run, measured at 14 of 628 recorded
-    questions, every one a history the stages read as a line. Until
+    parent - the one case of a second run, measured at 4 of 628 recorded
+    questions, every one a history the stages read as a line (and 59 of
+    2,082 wordings outside the corpus). Until
     5.0.0's last change they ran under the parent first and again under
     each child to see whether it held, and once more under the one that
     did: 1.7 runs a question on average, up to four.

@@ -429,7 +429,7 @@ _ADAPTERS: dict[str, Callable[[Scope], Reading]] = {
 def to_reading(intent: str, slots: dict[str, Any]) -> Reading:
     """The intent's default point of the algebra: the query a bare router
     intent means before any of the question's own words move it (see
-    :func:`association.query.point.move_point`). ``slots`` comes in
+    :func:`association.query.point.read_point`). ``slots`` comes in
     by :meth:`~association.query.reading.Scope.from_slots`, the one door a
     slot dict has, and the adapters read the typed scope.
 

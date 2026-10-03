@@ -2,7 +2,7 @@
 
 A question's subject - a player, two players, a team, two teams, a position
 group, or everyone - is today inferred in four places: the router's slots,
-:func:`association.query.entities.scope_from_question` and its siblings in
+``entities.scope_from_question`` (gone with 5.0.0) and its siblings in
 ``agent._try_fast_path``, the compiler's ``move_point``, and the refusals.
 Each repairs what the one before it got wrong, and each was written for the
 question that exposed it (AGENTS.md, "The router invents names"). This module

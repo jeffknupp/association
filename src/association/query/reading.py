@@ -498,7 +498,7 @@ class Reading:
     #: The compiler's point for the question - its word tables' reading of it
     #: on the relation it names (:func:`~association.query.point.read_point`),
     #: read once, by the parser, so the compiler only plans and runs it
-    #: (:func:`~association.query.compose.answer_reading`). A Reading of its
+    #: (:func:`~association.query.compose.answer`). A Reading of its
     #: own, since it reads words the templates never see: its scope may carry
     #: a career the question's "ever" or "how many times" implies. ``None``
     #: where the compiler has no reading of the point - ``point_declined``

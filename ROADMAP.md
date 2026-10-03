@@ -243,7 +243,7 @@ ways: vocabulary (`core.COLUMNS`, `DERIVED`, `LINE`, `BOOLEAN_MEASURES`,
 relation honor this" checks that raise `Unsupported` (a decline); and
 refusal sentences built as `TemplateResult`s that rode on the Reading as
 `point_refusal` (a `Cause` since step 4). Each sub-step is proven on the 628 recorded questions,
-every unit-test outcome, and the 2,710 out-of-corpus readings.
+every unit-test outcome, and the 2,710 readings old tree against new (the 628 corpus questions and 2,082 outside it: 2,067 StatMuse feed questions with no names, 15 franchise wordings).
 
 | Step | What | State |
 | --- | --- | --- |

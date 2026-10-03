@@ -41,7 +41,7 @@ What this module does NOT do, on purpose, because it needs a join
 made, rebounds, ...) narrowed to a window or an opponent - "3-pointers made
 by the Magic over their last 10 games" - refuses (``Unsupported``) rather than
 silently answering the season instead. A "last N games" question naming no
-season type (F128/F129's own shape) is answered by :func:`association.query.templates.games.game_log`'s
+season type (F128/F129's own shape) is answered by :func:`association.query.templates.games.team_game_log`'s
 existing team half directly (its ``_team_game_log_mixed`` already reads both
 season types and merges by date) rather than duplicated here; this module's
 narrowed reader is one season type at a time.

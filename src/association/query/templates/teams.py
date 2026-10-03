@@ -99,7 +99,7 @@ COACH_REFUSAL: str = (
 def coach(ctx: TemplateContext, reading: Reading) -> TemplateResult:
     """Refuse a question about a coach, naming the real cause.
 
-    Assigned by :func:`association.query.router.route` from the question's own
+    Assigned by the parser (``parse.read_route``) from the question's own
     words rather than by the model - it is in
     :data:`association.query.router.CODE_ASSIGNED_INTENTS`, so no
     ``ROUTER_PROMPT`` or ``ROUTER_SCHEMA`` change was needed and no other

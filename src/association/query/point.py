@@ -738,7 +738,7 @@ def _move_named(intent: str, scope: Scope, question: str) -> Reading:
 
 
 #: A word in the question naming a team's own measure directly - the team
-#: counterpart of :data:`WORD_MEASURES`, over :data:`~association.query.compose.team.GAME_MEASURES`
+#: counterpart of :data:`WORD_MEASURES`, over :data:`~association.query.measures.TEAM_GAME_MEASURES`
 #: and :data:`~association.query.compose.team.SEASON_MEASURES` rather than
 #: the player relation's columns.
 _TEAM_WORD_MEASURES: list[tuple[str, str]] = [
@@ -836,7 +836,7 @@ def team_splits_point(scope: Scope, subject: Subject) -> Reading | None:
 def team_read_point(con: duckdb.DuckDBPyConnection, scope: Scope, question: str, subject: Subject) -> Reading | None:
     """Whether ``question``/``scope`` name a team as the grammatical
     SUBJECT - no player, a team identifiable (the router's own ``team`` slot,
-    or :func:`~association.query.compose.team.team_named_in` when the router
+    or :func:`~association.query.entities.team_named_in` when the router
     dropped it, F127's shape), and no ranking/log/period/"who" framing that
     would make it a league-wide read of the PLAYER relation instead
     (``_everyone_point``'s own question - "who leads the Lakers in scoring"
@@ -849,11 +849,11 @@ def team_read_point(con: duckdb.DuckDBPyConnection, scope: Scope, question: str,
     .. versionchanged:: 4.4.0
        Ignores the router's ``"any_team"`` placeholder (K2's own corpus:
        "rebounds allowed per team", filed ``team: "any_team"``) rather than
-       treating it as a real name to resolve - it already fails
-       :func:`~association.query.templates.common._resolved_team` (which
-       RAISES for it, unlike a name with no match, which returns a
-       clarification), so returning a :class:`~association.query.compose.team.TeamQuery`
-       here only delayed the same decline `_everyone_point`'s own
+       treating it as a real name to resolve - it already fails the team
+       compiler's resolution (``templates.common._resolved_team`` RAISES
+       for it, unlike a name with no match, which returns a clarification),
+       so returning a team point here only delayed the same decline
+       `_everyone_point`'s own
        ``_NOT_PLAYERS`` guard already gives this exact question ("allowed" is
        in it) - through a noisier path, for no different an outcome.
 
@@ -886,7 +886,7 @@ def read_point(con: duckdb.DuckDBPyConnection, reading: Reading, question: str) 
     measure beyond a template's list, a skeleton move ("most ... in a game" =
     rows by measure; "how many ... won" = count with a predicate) - none of it
     through a prompt edit. A team named with no player
-    (:func:`team_move_point`) is tried before the league-wide reading, since a
+    (:func:`team_read_point`) is tried before the league-wide reading, since a
     team's own total or differential is a narrower, more specific claim than
     "no player subject" - the same priority a named player already gets over
     the league-wide read. Called by the parser, once
@@ -894,10 +894,10 @@ def read_point(con: duckdb.DuckDBPyConnection, reading: Reading, question: str) 
     and runs the Reading it returns.
 
     .. versionchanged:: 4.4.0
-       Tries :func:`team_move_point` (the team as a subject) before the
-       league-wide reading. May return a
-       :class:`~association.query.compose.team.TeamQuery` instead of a
-       :class:`~association.query.compose.core.Query`.
+       Tries :func:`team_read_point` (the team as a subject) before the
+       league-wide reading; the point it returns is the team relation's
+       (``relation="team"``), planned as a
+       :class:`~association.query.compose.team.TeamQuery`.
 
     .. versionchanged:: 5.0.0
        Takes the :class:`~association.query.reading.Reading` the parser
@@ -934,7 +934,8 @@ def _leaderboard_declines(scope: Scope, subject: Subject) -> None:
         # thunder all-time triple doubles vs west", leaderboard with the team
         # filed - day5): not a ranking this relation lacks a measure for, but
         # a team aggregate nothing reads. Declined here, where the subject
-        # is in hand (`repair` reads "vs west" as the team's opponent below),
+        # is in hand (the router-era `repair` read "vs west" as the team's
+        # opponent here),
         # so the refusals module names that cause
         # (refusals._team_boolean_count) rather than the ranking's sentence
         # naming the wrong one.
