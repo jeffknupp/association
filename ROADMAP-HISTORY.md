@@ -683,7 +683,17 @@ agents' reports named here are in `~/association-research/stages/`.
     `TemplateResult` and the reader builds no sentence; identical on all
     three populations, 10 of 628 refusals said word for word. Cost of the
     three steps: none measured - the stage records, the ledger and the
-    answers are unchanged. Next: step 5, the file to `query/point.py`.
+    answers are unchanged. Step 5 (2026-10-03): the file is
+    `query/point.py`, a reader module to the contract and the ratchet (28
+    entries left `ratchets.json`); the two `parse -> compose` ignores are
+    gone and one stands in their place, `point -> compose.adapt`, for the
+    intent's default point - the ten adapters lean on the templates'
+    helpers, and Phase 2 deletes them slice by slice, so moving them now
+    would be work thrown away. The vocabulary the reader took besides
+    (`Unsupported`, the limits, the ordinal, the team-only intents, the
+    metric and measure aliases) went to `reading` and `measures`, and the
+    two functions that planned went to the planner and to the one test
+    that used them. Identical on all three populations.
 
 ## The plan items, as written
 

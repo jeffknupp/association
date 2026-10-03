@@ -28,13 +28,12 @@ from association.nba.season import current_season
 from association.query import compose
 from association.query.compose.adapt import to_query
 from association.query.compose.core import Query, Refused, Unsupported, compile_query, run
-from association.query.compose.move import _asc_or_desc, _career_scope, _everyone_career_scope, _ranking_minimum, read_point
-from association.query.compose.move import team_move_point as _team_move_point
 from association.query.compose.plan import plan, plan_point, refusal_result
 from association.query.compose.sentence import sentence
 from association.query.compose.team import TeamQuery, run_team
 from association.query.parse import with_point
-from association.query.reading import Cause, PointRefused, Reading, Scope
+from association.query.point import _asc_or_desc, _everyone_career_scope, _ranking_minimum, read_point, team_read_point
+from association.query.reading import Cause, PointRefused, Reading, Scope, _career_scope
 from association.query.subject import Subject, read_subject
 from association.query.templates.common import TemplateContext, TemplateResult
 
@@ -42,7 +41,7 @@ from association.query.templates.common import TemplateContext, TemplateResult
 def _reading(con: duckdb.DuckDBPyConnection, intent: str, slots: dict[str, Any], question: str, subject: Subject | None = None) -> Reading:
     """A test's slot dict as the Reading the parser hands the compiler (5.0.0:
     the package takes the Reading alone): the typed scope, and the subject
-    read from the question the way ``compose.move`` read it for a caller
+    read from the question the way ``point`` read it for a caller
     with none - never applied to the slots, so a case says what it did."""
     return Reading(scope=Scope.from_slots(slots), intent=intent, subject=subject or read_subject(con, question, intent, Scope.from_slots(dict(slots))))
 
@@ -60,8 +59,16 @@ def move_point(con: duckdb.DuckDBPyConnection, intent: str, slots: dict[str, Any
 
 
 def team_move_point(con: duckdb.DuckDBPyConnection, slots: dict[str, Any], question: str) -> TeamQuery | None:
-    """``compose.move.team_move_point`` over ``slots``' scope and the subject read from the question."""
-    return _team_move_point(con, Scope.from_slots(slots), question, read_subject(con, question, "", Scope.from_slots(dict(slots))))
+    """``point.team_read_point`` over ``slots``' scope and the subject read
+    from the question, planned - the team's point as the team compiler runs
+    it, or ``None`` where the team is not the subject."""
+    scope = Scope.from_slots(slots)
+    reading = team_read_point(con, scope, question, read_subject(con, question, "", Scope.from_slots(dict(slots))))
+    if reading is None:
+        return None
+    query = plan(reading)
+    assert isinstance(query, TeamQuery)
+    return query
 
 
 #: Box-score columns, in the order ``_box`` below fills them - the same shape
@@ -895,7 +902,7 @@ def test_a_highest_scoring_boolean_measure_ranks_the_games_not_a_per_player_aver
 
 def test_biggest_with_no_stat_word_defaults_to_points(cx_ctx: TemplateContext) -> None:
     """ "Biggest triple double" names no stat word at all -
-    :func:`~association.query.compose.move._boolean_game_measure` falls
+    :func:`~association.query.point._boolean_game_measure` falls
     back to points, the same default a "career-high" question gets."""
     q = move_point(cx_ctx.con, "leaderboard", {"stat": "triple_double", "season_type": 2}, "biggest triple double ever")
     assert isinstance(q, Query)
@@ -967,7 +974,7 @@ def test_a_league_wide_read_since_a_season_reaches_every_season_from_it(cx_ctx: 
 
 
 def test_a_single_number_stat_line_still_counts_by_player(cx_ctx: TemplateContext) -> None:
-    """One line only is still :func:`~association.query.compose.move._everyone_threshold_count`'s
+    """One line only is still :func:`~association.query.point._everyone_threshold_count`'s
     ordinary per-player COUNT shape - the multi-line move stands aside for
     it (F161's move applies only once there are two or more lines to read).
     ``stat`` names a DIFFERENT column than the phrase itself on purpose
@@ -1367,7 +1374,7 @@ def test_a_league_count_on_the_routers_own_line_is_answered(cx_ctx: TemplateCont
 
 
 def test_a_history_by_season_keeps_the_newest_seasons(cx_ctx: TemplateContext) -> None:
-    """``player_history``'s game-level reading (``move.games_reading``, for a
+    """``player_history``'s game-level reading (``plan.games_reading``, for a
     stat the season line has no per-season column for), limited to one
     season, is his NEWEST one, newest first - it ordered by the label
     ascending and kept the oldest, so "the past 4 seasons" was answered with
@@ -1658,7 +1665,7 @@ def test_the_parser_reads_the_point_and_the_compiler_answers_it_unread(cx_ctx: T
     def unread(*args: Any, **kwargs: Any) -> Reading:
         raise AssertionError("the compiler read the question")
 
-    monkeypatch.setattr("association.query.compose.move.read_point", unread)
+    monkeypatch.setattr("association.query.point.read_point", unread)
     answered = compose.answer(cx_ctx, reading, planned=plan_point(reading))
     assert answered is not None and by_hand is not None
     assert (answered.answer, answered.data) == (by_hand.answer, by_hand.data)

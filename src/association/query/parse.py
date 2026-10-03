@@ -10,7 +10,7 @@ tables: the kind and the parent intent (:data:`PARENT_GRAMMAR`), then the
 scope, the window and the point through the readers the pipeline already
 has (:func:`~association.query.subject.read_subject`,
 :func:`~association.query.router.settle`,
-:func:`~association.query.compose.move.read_point`). Those readers are the
+:func:`~association.query.point.read_point`). Those readers are the
 source material the tables absorb one at a time; each table is measured on
 the day10 wordings and the held-out paraphrases before the next
 (``~/association-research/parser-greenfield/measure.py``).
@@ -30,13 +30,12 @@ from typing import Any, Literal, cast, get_args
 
 import duckdb
 
-from association.query.compose.core import Unsupported
-from association.query.compose.move import read_point
 from association.query.decisions import Decision
 from association.query.entities import _edit_budget, _question_derived_player, _words, find_players, find_teams, nicknames_in, suggest_players, team_abbreviations, team_named_in
 from association.query.measures import MEASURE_WORDS, PERIOD_COLUMNS
 from association.query.metrics import EXTRA_FIELD_COLUMNS, TEAM_FIELD_WORDS
-from association.query.reading import ConditionSpec, PeriodCondition, PointRefused, Reading, Scope, ScopeError, Split
+from association.query.point import read_point
+from association.query.reading import ConditionSpec, PeriodCondition, PointRefused, Reading, Scope, ScopeError, Split, Unsupported
 from association.query.router import Route, _period_asked, _route_calendar_slots_split, settle
 from association.query.subject import (
     TEAM_SINGULARS,
@@ -955,7 +954,7 @@ def reading_from_route(con: duckdb.DuckDBPyConnection, question: str, route: Rou
 
 def with_point(con: duckdb.DuckDBPyConnection, question: str, reading: Reading) -> Reading:
     """``reading`` with the compiler's point read from the question's words
-    (:func:`~association.query.compose.move.read_point`) - or with why
+    (:func:`~association.query.point.read_point`) - or with why
     there is none: no reading of the point (``point_declined``), or a
     refusal the reading itself comes to (``point_refusal``: its cause, which
     the planner says). Read here,

@@ -24,7 +24,7 @@ the slot shape a route is recorded and traced in.
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass, field, fields
+from dataclasses import dataclass, field, fields, replace
 from datetime import date
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -496,7 +496,7 @@ class Reading:
     #: mentioned (AGENTS.md: "when it cannot be repaired, say so").
     misread: tuple[str, ...] = ()
     #: The compiler's point for the question - its word tables' reading of it
-    #: on the relation it names (:func:`~association.query.compose.move.read_point`),
+    #: on the relation it names (:func:`~association.query.point.read_point`),
     #: read once, by the parser, so the compiler only plans and runs it
     #: (:func:`~association.query.compose.answer_reading`). A Reading of its
     #: own, since it reads words the templates never see: its scope may carry
@@ -652,9 +652,9 @@ POSITIONS: list[tuple[str, str]] = [
 .. versionadded:: 4.4.0
 
 .. versionchanged:: 5.0.0
-   Moved here from ``compose.move`` (which still re-exports it), so the
-   subject reading and the compiler share one list without importing each
-   other.
+   Moved here from the point reader (``query/point.py`` since 2026-10-03,
+   ``compose/move.py`` before), so the subject reading and the compiler
+   share one list without importing each other.
 """
 
 FILLER_PLAYER_WORDS: frozenset[str] = frozenset({"player", "players", "a player", "any player"})
@@ -665,3 +665,101 @@ them as a player, and the compiler clears the slot.
 
 .. versionadded:: 5.0.0
 """
+
+
+TEAM_ONLY_INTENTS: frozenset[str] = frozenset({"team_record", "team_leaderboard", "team_stat", "team_outlook"})
+"""Intents with no player-shaped reading at all - absent from
+``templates.common.PLAYER_INTENTS``, and so never checked by
+``subject.apply_subject`` or ``check_scope`` against a stray player name.
+
+A question naming exactly one real player and no team, routed to one of
+these, is answering a different subject than the one named -
+yardstick-v2 F111, "alperen şengün alltime record" routed to
+``team_leaderboard`` with no player and no team slot at all, and answered
+the league standings, entirely off Sengun. AGENTS.md's "Refuse by name
+where the intent cannot be about the subject" is exactly this shape;
+``entities.player_named_on_a_team_only_question`` is the check, called from
+``agent.py`` before the template runs, and its refusal names the player it
+read rather than answering the wrong one.
+
+Deliberately not every team-shaped intent: ``head_to_head`` is only ever
+two teams meeting - the parser reads a player's record against a team as
+his own games (``player_splits``, #163) from the subject's kind - and
+``coach`` is TABLELESS_INTENTS and already refuses on its own terms -
+neither needs a second, more general check that could only disagree with
+the first.
+
+.. versionadded:: 2.1.0
+
+.. versionchanged:: 5.0.0
+   Lives on the reader's side (``templates.common`` re-exports it).
+"""
+
+DEFAULT_LIMIT = 5
+"""How many rows a shape lists where the question named no count.
+
+.. versionchanged:: 5.0.0
+   Lives on the reader's side (``templates.common`` re-exports it).
+"""
+
+MAX_LIMIT = 50
+"""The most rows a question's ``limit`` reaches (:func:`_clamp_limit`).
+
+.. versionchanged:: 5.0.0
+   Lives on the reader's side (``templates.common`` re-exports it).
+"""
+
+DEFAULT_GAME_LOG_LIMIT = 10
+"""How many games a log lists by default.
+
+.. versionchanged:: 5.0.0
+   Lives on the reader's side (``templates.games`` re-exports it).
+"""
+
+DEFAULT_SINGLE_GAME_LIMIT = 3
+"""How many games a single-game high lists by default.
+
+.. versionchanged:: 5.0.0
+   Lives on the reader's side (``templates.players`` re-exports it).
+"""
+
+
+def _clamp_limit(limit: int | None, default: int = DEFAULT_LIMIT) -> int:
+    if limit is None:
+        return default
+    return min(limit, MAX_LIMIT)
+
+
+def ordinal_word(n: int) -> str:
+    """``1`` -> ``"1st"``, ``12`` -> ``"12th"``, ``23`` -> ``"23rd"``."""
+    suffix = "th" if 10 <= n % 100 <= 20 else {1: "st", 2: "nd", 3: "rd"}.get(n % 10, "th")  # codespell:ignore nd - an ordinal suffix
+    return f"{n}{suffix}"
+
+
+def _career_scope(scope: Scope) -> Scope:
+    """The point reader's rule (``route()``'s own, before it) for a count by a player (``_HOW_MANY_OR_OFTEN``, step 2
+    B5): with no season named, "how many ... has he" is his career."""
+    unscoped = scope.season is None and not scope.span and not scope.since
+    return replace(scope, span="career") if unscoped else scope
+
+
+def named_player_in(scope: Scope) -> bool:
+    """Whether ``scope`` names a player at all.
+
+    .. versionadded:: 5.0.0
+    """
+    return scope.player is not None and bool(scope.player.strip())
+
+
+class Unsupported(Exception):
+    """The reader has no reading of this point, or the planner cannot say
+    this query - a dimension value it lacks, or a scoping slot the relation
+    does not narrow by. The agent may still be able to answer it; this is
+    not a claim that nothing can.
+
+    .. versionadded:: 4.4.0
+
+    .. versionchanged:: 5.0.0
+       Declared on the reader's side, which raises it as a decline
+       (``compose.core`` re-exports it).
+    """

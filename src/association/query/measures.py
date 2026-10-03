@@ -13,6 +13,8 @@ agreed (`ISSUES.md` #164).
 
 from __future__ import annotations
 
+from association.query.metrics import LEADERBOARD_METRICS
+
 #: What a question calls a box-score column, for a line it asks games to be
 #: kept under or over. Keys are the question's words after the number,
 #: casefolded; values are `player_game_log` columns and never question text.
@@ -213,7 +215,7 @@ DERIVED_MEASURES: frozenset[str] = frozenset({"pra", "fg_pct", "three_pct", "ft_
 DERIVED_LINES: dict[str, tuple[str, int]] = {"fouled_out": ("fouls", 6)}
 """A derived measure that IS a line on one column - ``fouled_out`` is six
 fouls - so a count of it and a count over that line are one question
-(``compose.move._move_boolean_count_is_line``). The compiler's SQL for each
+(``point._move_boolean_count_is_line``). The compiler's SQL for each
 says the same thing, and the test checks it.
 
 .. versionadded:: 5.0.0
@@ -257,3 +259,150 @@ HISTORY_STATS: frozenset[str] = frozenset(
 
 .. versionadded:: 5.0.0
 """
+
+
+# The router has one stat vocabulary (the `stat` line of ROUTER_PROMPT) for
+# every intent, so each of its names needs a metric here: every one it taught
+# that had none - turnovers, minutes, fouls, the three kinds of make, the three
+# percentages - fell through to the agent. Keys are casefolded.
+#
+# Which reading a bare name gets follows the record books. The five a scoring,
+# rebounding, assist, steal or block title is decided on are per game, as they
+# always were here; a make is a season COUNT ("most threes this season" is the
+# 402-three kind of record, not a rate); turnovers, minutes and fouls are per
+# game, the way a league leaderboard lists them. Every answer names which it
+# ranked, and `rate` "total" asks for the other - see SEASON_TOTAL_OF.
+METRIC_ALIASES = {
+    "points": "avg_points",
+    "rebounds": "avg_rebounds",
+    "assists": "avg_assists",
+    "steals": "avg_steals",
+    "blocks": "avg_blocks",
+    "turnovers": "avg_turnovers",
+    "minutes": "avg_minutes",
+    "fouls": "avg_fouls",
+    "threepointfieldgoalsmade": "total_three_pointers_made",
+    "fieldgoalsmade": "total_field_goals_made",
+    "freethrowsmade": "total_free_throws_made",
+    "threepointfieldgoalpct": "three_pt_pct",
+    "fieldgoalpct": "fg_pct",
+    "freethrowpct": "ft_pct",
+    "double_double": "double_doubles",
+    "triple_double": "triple_doubles",
+    "netpoints": "netpoints_total",
+    "true_shooting": "ts_pct",
+    "usage": "usage_pct",
+}
+
+CAREER_METRIC_ALIASES = {
+    "points": "total_points",
+    "rebounds": "total_rebounds",
+    "assists": "total_assists",
+    "steals": "total_steals",
+    "blocks": "total_blocks",
+    "turnovers": "total_turnovers",
+}
+"""How a bare stat name reads in a CAREER ranking, where it differs.
+
+A career list is a list of totals: "career points leaders" is the all-time
+scoring list LeBron James tops at 43,440, not Michael Jordan's 30.1 a game.
+Names absent here read as they do for a season (minutes and fouls have no
+career-total metric, so they stay per game).
+
+.. versionadded:: 2.1.0
+"""
+
+
+def resolve_metric(name: str | None, *, career: bool = False) -> str | None:
+    """Router slot -> a real metric name, via an EXPLICIT alias table.
+
+    Deliberately not get_close_matches: fuzzy matching is fine for suggesting a
+    fix a person can act on, but a template silently ranking by whichever
+    metric happened to score highest is exactly the substitution failure this
+    architecture exists to prevent. An unmapped name returns None and the
+    question is refused.
+
+    With ``career``, a bare box-score name reads as the career TOTAL - see
+    ``CAREER_METRIC_ALIASES``. A real metric name is never reinterpreted, so a
+    career average stays reachable as ``avg_points``.
+
+    .. versionchanged:: 2.1.0
+       Added ``career``, and an alias for every stat name the router is taught.
+
+    .. versionchanged:: 5.0.0
+       Lives in ``measures`` with its alias tables (``leaderboard`` re-exports them).
+    """
+    if not isinstance(name, str):
+        return None
+    if name in LEADERBOARD_METRICS:
+        return name
+    key = name.strip().casefold()
+    if career and key in CAREER_METRIC_ALIASES:
+        return CAREER_METRIC_ALIASES[key]
+    return METRIC_ALIASES.get(key)
+
+
+#: The router's own stat names that are not relation columns, as measures.
+MEASURE_ALIASES: dict[str, str] = {
+    "ts_pct": "ts_pct",
+    "true_shooting": "ts_pct",
+    "efg_pct": "efg_pct",
+    "usage_pct": "usage_pct",
+    "game_score": "game_score",
+    "plus_minus": "plusMinus",
+    "plusMinus": "plusMinus",
+    "threePointFieldGoalPct": "three_pct",
+    "three_point_pct": "three_pct",
+    "fieldGoalPct": "fg_pct",
+    "fg_pct": "fg_pct",
+    "freeThrowPct": "ft_pct",
+    "points_per_game": "points",
+    "rebounds_per_game": "rebounds",
+    "assists_per_game": "assists",
+    "triple_double": "triple_double",
+    "triple_doubles": "triple_double",
+    "double_double": "double_double",
+    "double_doubles": "double_double",
+    "pra": "pra",
+    "wins": "won",
+}
+"""A router ``stat`` value that names a measure this package computes rather
+than a stored column, mapped to that measure's name.
+
+.. versionadded:: 4.4.0
+"""
+
+#: Words in the question for a measure the router may not have named.
+WORD_MEASURES: list[tuple[str, str]] = [
+    (r"\bts ?%|\btrue shooting\b", "ts_pct"),
+    (r"\befg\b|\beffective field goal", "efg_pct"),
+    (r"\bplus[ /-]?minus\b|\+/-", "plusMinus"),
+    (r"\bgame score\b", "game_score"),
+    (r"\busage\b", "usage_pct"),
+    (r"\btriple[ -]?doubles?\b|\btd3s?\b|\btds\b", "triple_double"),
+    (r"\bdouble[ -]?doubles?\b|\bdd\b", "double_double"),
+    (r"\bfg ?%|\bfg percentage\b|\bfield goal percentage\b", "fg_pct"),
+    (r"\b3 ?pt ?%|\b3 point percentage\b|\bthree point percentage\b|\b3p%", "three_pct"),
+    (r"\bft ?%|\bfree throw percentage\b", "ft_pct"),
+    (r"\bpra\b|\bpts\+reb\+ast\b|points\+rebounds\+assists", "pra"),
+    (r"\bfouled out\b|\bfoul(ed)? outs?\b", "fouled_out"),
+]
+"""``(pattern, measure)`` - a phrase the question carries that names a measure directly.
+
+.. versionadded:: 4.4.0
+"""
+
+
+def stat_measure(stat: str | None) -> str | None:
+    """A router ``stat`` as a measure this package knows, through
+    :data:`MEASURE_ALIASES` and then :data:`MEASURE_WORDS`.
+
+    .. versionadded:: 5.0.0
+    """
+    if stat is None or not stat.strip():
+        return None
+    if stat in MEASURE_ALIASES:
+        return MEASURE_ALIASES[stat]
+    if stat in GAME_COLUMNS or stat in DERIVED_MEASURES:
+        return stat
+    return MEASURE_WORDS.get(stat.strip().lower())

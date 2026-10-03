@@ -42,6 +42,7 @@ import duckdb
 
 from association.nba.season import current_season, eastern_date
 from association.query.conditions import _PLAYER_GAME_TABLES, _meeting_rows, _teammate_games, _totals
+from association.query.measures import stat_measure
 from association.query.player_games import REBUILT_STATS
 from association.query.reading import Scope
 from association.query.templates.common import (
@@ -122,7 +123,6 @@ from association.query.templates.splits import (
 
 from .adapt import DEFAULT_GAME_LOG_LIMIT, WITH_WITHOUT_STATED, _to_reading_scope
 from .core import LINE, Query, Refused, Unsupported, compile_query, run, run_scope
-from .move import _stat_measure
 from .team import TeamQuery, _team_games_narrowed, run_team
 
 #: A presenter: the connection and the compiled point (its scope the intent's
@@ -157,7 +157,7 @@ def _present_game_log(con: duckdb.DuckDBPyConnection, q: Query) -> TemplateResul
         return None
     # The router's own stat, which the log shows as its extra columns; a
     # measure the question's words moved in instead is the compiler's point.
-    if [m for m in q.measures if m not in LINE] not in ([], [_stat_measure(scope.stat)]):
+    if [m for m in q.measures if m not in LINE] not in ([], [stat_measure(scope.stat)]):
         return None
     compiled = compile_query(con, q)
     if compiled.player is None:
@@ -355,8 +355,8 @@ def _present_player_stat_season_line(con: duckdb.DuckDBPyConnection, q: Query) -
     # The router's own stat, whichever way the point carries it: the
     # adapter's measures, or the question's word for that same stat ("3pt
     # percentage" is three_pct, which the router filed threePointFieldGoalPct).
-    stat_measure = _stat_measure(stat)
-    if own.source != "seasons" or (q.measures != own.measures and (stat_measure is None or q.measures != [stat_measure])):
+    named = stat_measure(stat)
+    if own.source != "seasons" or (q.measures != own.measures and (named is None or q.measures != [named])):
         return None
     if not (stat is not None and (stat in ADVANCED_STATS or stat in SHOOTING_STATS)):
         # A stat with no per-game column ("avg_shot_distance") is the
@@ -379,7 +379,7 @@ def _present_leaderboard(con: duckdb.DuckDBPyConnection, q: Query) -> TemplateRe
     template declined a point the game-level ranking reads at least as well
     (``LeaderboardStepsAside``: a stat with no season metric, a position
     group) it steps aside and that ranking answers, as it did behind the
-    template's refusal, or refuses by name (``move.games_reading``); the
+    template's refusal, or refuses by name (``plan.games_reading``); the
     template's other refusals (an unknown field, an ambiguous team, a career
     list with columns) stand as the answer's reason.
 
@@ -478,12 +478,12 @@ def _present_player_history(con: duckdb.DuckDBPyConnection, q: Query) -> Templat
     Only where the point is a season-line history of the router's own stat:
     a stat with no per-season column or a measure the question's words moved
     in is the game-level reading's
-    (``move.games_reading``), answered by the compiler's sentence."""
+    (``plan.games_reading``), answered by the compiler's sentence."""
     scope = q.scope
     stat = scope.stat
     if q.source != "seasons" or q.group != "season" or stat is None or stat not in HISTORY_COLUMNS:
         return None
-    if _stat_measure(stat) not in (None, *q.measures[:1]):
+    if stat_measure(stat) not in (None, *q.measures[:1]):
         return None
     player = _player_history_subject(con, scope)
     if isinstance(player, TemplateResult):
@@ -664,7 +664,7 @@ STATED_SCOPING: dict[str, frozenset[str]] = {
     # compiler's sentence, which names both, answers.
     "period_split": _relation_scoping("period_split"),
     # player_compare's words state no narrowing at all; its point refuses
-    # one outright (compose.move._compare_point), as check_scope did.
+    # one outright (query/point.py._compare_point), as check_scope did.
     "player_compare": frozenset(),
     # streak's words: the relation's set less one date, a window and a
     # quarter (RELATION_SCOPING_EXCLUDED: a run is a run of whole games over

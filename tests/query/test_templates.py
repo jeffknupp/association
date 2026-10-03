@@ -3661,7 +3661,7 @@ def test_a_leaderboard_refuses_a_position_group_subject_for_the_compiler(lb_con:
     leaderboard metric narrows to. Refused, so the compiler reads the group
     - where the subject reading used to write the phrase into ``player`` for
     the named-player refusal to fire, and the compiler took it back out."""
-    from association.query.compose.move import read_point
+    from association.query.point import read_point
     from association.query.reading import Scope
     from association.query.templates.players import LeaderboardStepsAside, _leaderboard_ranking
 
@@ -5965,10 +5965,10 @@ def test_templates_on_the_relation_do_not_narrow_it_themselves() -> None:
 
     import association.query.compose.adapt as _compose_adapt
     import association.query.compose.core as _compose_core
-    import association.query.compose.move as _compose_move
     import association.query.compose.team as _compose_team
+    import association.query.point as _point
 
-    for module in (_compose_core, _compose_adapt, _compose_move, _compose_team):
+    for module in (_compose_core, _compose_adapt, _point, _compose_team):
         source = inspect.getsource(module)
         for token in forbidden:
             assert token not in source, f"{module.__name__} narrows the relation itself ({token!r}); use scoped_games / league_games / scoped_team / team_games"

@@ -47,6 +47,7 @@ from association.query.measures import GAME_COLUMNS
 from association.query.measures import LINE as LINE
 from association.query.player_games import PERIOD_COLUMNS, REBUILT_STATS, REGULATION_QUARTERS, Narrowed, aggregate_sql, games_subquery, grouped_sql, named, paired_rows_sql, rows_sql
 from association.query.reading import Scope
+from association.query.reading import Unsupported as Unsupported
 from association.query.templates.common import (
     _BOX_SCORES,
     _GAME_LOGS,
@@ -163,15 +164,6 @@ def _row_select(*, rebuilt: bool) -> str:
     """
     flag = "pgl.reconstructed" if rebuilt else "FALSE"
     return f"pgl.event_id, pgl.season, {EASTERN} AS day, pgl.opponent_abbr AS opponent, (g.home_team_id = pgl.team_id) AS home, (g.winner_team_id = pgl.team_id) AS won, {flag} AS reconstructed"
-
-
-class Unsupported(Exception):
-    """The compiler cannot say this query - a dimension value it lacks, or a
-    scoping slot the relation does not narrow by. The agent may still be able
-    to answer it; this is not a claim that nothing can.
-
-    .. versionadded:: 4.4.0
-    """
 
 
 class Refused(Exception):

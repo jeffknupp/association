@@ -15,6 +15,7 @@ from association.nba.coverage import COVERAGE, POSTSEASON
 from association.nba.franchises import season_name_sql
 from association.nba.season import current_season
 from association.nba.season import eastern_date as _eastern_date
+from association.query.reading import DEFAULT_SINGLE_GAME_LIMIT as DEFAULT_SINGLE_GAME_LIMIT
 from association.query.reading import Scope
 
 from ..entities import Availability, Entity
@@ -539,7 +540,7 @@ def _leaderboard_refuse_a_subject(scope: Scope, position: str | None) -> None:
         # A position group is part of the league no leaderboard metric
         # narrows to - "highest 3 point percentage ... by a shooting guard"
         # (F056) ranked the whole league before this refused it; the
-        # compiler reads the group off the subject (compose.move's
+        # compiler reads the group off the subject (query/point.py's
         # league-wide point). Refused here, where a named player is, so what
         # refuses first is unchanged.
         raise LeaderboardStepsAside(f"a leaderboard cannot narrow to a position group ({position!r})")
@@ -1708,9 +1709,6 @@ def _phrase_player_stat(name: str, period: str, values: dict[str, Any], wanted: 
     return sentence
 
 
-DEFAULT_SINGLE_GAME_LIMIT = 3
-
-
 def _single_game_high_result_data(data: dict[str, Any], headline: str, redirect: str) -> dict[str, Any]:
     """``single_game_high``'s own ``headline``/``notes`` - split out to keep
     the caller under the complexity gate. ``redirect`` is glued onto the
@@ -1814,7 +1812,7 @@ def _player_compare_lines(con: duckdb.DuckDBPyConnection, scope: Scope) -> Templ
     presenter (:func:`~association.query.compose.present._present_player_compare`),
     for a pair's point on the season line (``source="seasons"``), and the
     point itself refuses fewer than two distinct names and any narrowing
-    (:func:`~association.query.compose.move._compare_point`), as the
+    (:func:`~association.query.point._compare_point`), as the
     template's ``check_scope`` did.
 
     The agent wrote correct SQL but expanded "SGA" to '%Scottie G. Allen%' and

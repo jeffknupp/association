@@ -241,6 +241,7 @@ type = "forbidden"
 source_modules = [
     "association.query.normalizer",
     "association.query.parse",
+    "association.query.point",
     "association.query.router",
     "association.query.subject",
     "association.query.season_text",
@@ -258,15 +259,17 @@ forbidden_modules = [
 ]
 allow_indirect_imports = true
 ignore_imports = [
-    # The parser reads the compiler's point (compose.move.read_point, and
-    # the Refused/Unsupported it raises): the last of the nine the contract
-    # was written with, and the move Phase 1 ends on. The rest went by
-    # 2026-10-02: the planner left the parser, the subject reading stopped
-    # asking which cells the answer honors, and the team word's reader,
-    # five intent sets, the team metrics' words and the period columns
-    # moved to the reader's side (entities, reading, measures).
-    "association.query.parse -> association.query.compose.core",
-    "association.query.parse -> association.query.compose.move",
+    # The point reader takes the intent's default point from the adapters
+    # (compose.adapt.to_reading, ten per-intent readers that lean on the
+    # templates' own helpers): the last of the nine the contract was
+    # written with. Phase 2 deletes the adapters slice by slice, and this
+    # line with the last of them. The rest went by 2026-10-03: the planner
+    # left the parser, the subject reading stopped asking which cells the
+    # answer honors, the team word's reader, five intent sets, the team
+    # metrics' words, the period columns, the metric aliases, the limits
+    # and Unsupported moved to the reader's side (entities, reading,
+    # measures), and the point reader itself moved to query/point.py.
+    "association.query.point -> association.query.compose.adapt",
 ]
 
 [[tool.importlinter.contracts]]

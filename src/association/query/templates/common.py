@@ -21,8 +21,7 @@ from ..answer import Artifact
 from ..calendar import parse_alignment, parse_situation
 from ..conditions import _PLAYER_GAME_TABLES, _TEAM_GAME_TABLES, _game_scope, _Scope, box_source
 from ..entities import Ambiguous, Availability, Entity, clarification, find_players, resolve_player, resolve_team, suggest_players, suggestion, teammate_names
-from ..leaderboard import resolve_metric
-from ..measures import MEASURE_WORDS
+from ..measures import MEASURE_WORDS, resolve_metric
 from ..metrics import LEADERBOARD_METRICS
 from ..notes import decided, note
 from ..player_games import (  # noqa: F401 - the relation's names, re-exported for the templates and tests that read them here
@@ -47,12 +46,17 @@ from ..player_games import (  # noqa: F401 - the relation's names, re-exported f
     season_type_clause,
 )
 from ..player_games import _tenure_clause as _relation_tenure_clause
+from ..reading import DEFAULT_LIMIT as DEFAULT_LIMIT
 from ..reading import FILLER_PLAYER_WORDS as FILLER_PLAYER_WORDS
+from ..reading import MAX_LIMIT as MAX_LIMIT
 from ..reading import OWN_TEAM_RESTORABLE_INTENTS as OWN_TEAM_RESTORABLE_INTENTS
 from ..reading import PLAYER_REQUIRED_INTENTS as PLAYER_REQUIRED_INTENTS
 from ..reading import POSITIONS as POSITIONS
 from ..reading import SUBJECT_RESTORABLE_INTENTS as SUBJECT_RESTORABLE_INTENTS
+from ..reading import TEAM_ONLY_INTENTS as TEAM_ONLY_INTENTS
 from ..reading import ConditionSpec, PeriodCondition, Scope
+from ..reading import _clamp_limit as _clamp_limit
+from ..reading import ordinal_word as ordinal_word
 from ..team_games import TeamNarrowed
 from ..team_metrics import TEAM_METRICS, resolve_team_metric
 
@@ -87,12 +91,6 @@ STAT_LABELS = {
     "minutes": "minute",
     "fouls": "foul",
 }
-
-
-DEFAULT_LIMIT = 5
-
-
-MAX_LIMIT = 50
 
 
 # Named in every answer, so answering the wrong one is visible rather than silent.
@@ -646,32 +644,6 @@ PLAYER_INTENTS: frozenset[str] = frozenset(
 """
 
 
-TEAM_ONLY_INTENTS: frozenset[str] = frozenset({"team_record", "team_leaderboard", "team_stat", "team_outlook"})
-"""Intents with no player-shaped reading at all - absent from
-:data:`PLAYER_INTENTS`, and so never checked by ``subject.apply_subject``
-or `check_scope` against a stray player name.
-
-A question naming exactly one real player and no team, routed to one of
-these, is answering a different subject than the one named -
-yardstick-v2 F111, "alperen şengün alltime record" routed to
-``team_leaderboard`` with no player and no team slot at all, and answered
-the league standings, entirely off Sengun. AGENTS.md's "Refuse by name
-where the intent cannot be about the subject" is exactly this shape;
-``entities.player_named_on_a_team_only_question`` is the check, called from
-``agent.py`` before the template runs, and its refusal names the player it
-read rather than answering the wrong one.
-
-Deliberately not every team-shaped intent: ``head_to_head`` is only ever
-two teams meeting - the parser reads a player's record against a team as
-his own games (``player_splits``, #163) from the subject's kind - and
-``coach`` is TABLELESS_INTENTS and already refuses on its own terms -
-neither needs a second, more general check that could only disagree with
-the first.
-
-.. versionadded:: 4.4.0
-"""
-
-
 # Templates that rank players AGAINST each other, rather than reporting the
 # numbers of players the question named. The distinction is the whole reason
 # coverage.Coverage carries two floors: player_season_stats holds Michael
@@ -1028,12 +1000,6 @@ class TemplateResult:
     artifacts: list[Artifact] = field(default_factory=list)
 
 
-def _clamp_limit(limit: int | None, default: int = DEFAULT_LIMIT) -> int:
-    if limit is None:
-        return default
-    return min(limit, MAX_LIMIT)
-
-
 def _clarify(text: str, candidates: list[str], kind: str = "player", active: int = 0) -> TemplateResult:
     """A handled outcome, not a fall-through: the template knows exactly what
     is ambiguous, so it says so instead of passing the problem along.
@@ -1380,12 +1346,6 @@ def _span_of(span: Literal["career"] | None, season: int | None, season_type: in
         raise TemplateUnsupported(f"a career span and the {season} season at once")
     coverage = COVERAGE[table]
     return _Span(None, season_type, coverage.floor(season_type).season, coverage.phantom)
-
-
-def ordinal_word(n: int) -> str:
-    """``1`` -> ``"1st"``, ``12`` -> ``"12th"``, ``23`` -> ``"23rd"``."""
-    suffix = "th" if 10 <= n % 100 <= 20 else {1: "st", 2: "nd", 3: "rd"}.get(n % 10, "th")  # codespell:ignore nd - an ordinal suffix
-    return f"{n}{suffix}"
 
 
 def settle_ordinal_season(con: duckdb.DuckDBPyConnection, player: Entity, season_n: Any, span: _Span) -> _Span | TemplateResult:

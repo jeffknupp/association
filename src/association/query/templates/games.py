@@ -15,6 +15,7 @@ from association.nba.coverage import POSTSEASON
 from association.nba.franchises import season_name, season_name_sql
 from association.nba.season import current_season
 from association.nba.season import eastern_date as _eastern_date
+from association.query.reading import DEFAULT_GAME_LOG_LIMIT as DEFAULT_GAME_LOG_LIMIT
 from association.query.reading import ConditionSpec, Reading, Scope, Split
 
 from ..conditions import _PLAYER_GAME_TABLES, _cell, _matchup_line, _meetings, _names, _player_games, _Scope, _table, _totals, _unseen_meetings, box_source
@@ -84,9 +85,6 @@ def _rebuilt_readable(con: duckdb.DuckDBPyConnection, needed: list[str]) -> bool
     .. versionadded:: 2.2.0
     """
     return _log_carries_rebuilt(con) and all(_LOG_COLUMNS[h] in REBUILT_STATS for h in needed if _LOG_COLUMNS[h] != "minutes")
-
-
-DEFAULT_GAME_LOG_LIMIT = 10
 
 
 # A team's game log now reads association.query.team_games' relation

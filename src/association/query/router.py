@@ -78,7 +78,7 @@ _QUARTER_WORDS = re.compile(r"\b(?:first|second|third|fourth|1st|2nd|3rd|4th)[\s
 # "luka td3s home" came back as `other` with stat threePointFieldGoalsMade
 # and shot_value 3 (yardstick-v2 F098), and before that as his points per
 # game at home. The compiler's own measure words already read "td3s"
-# (compose/move.py), so only the slots have to say it.
+# (query/point.py), so only the slots have to say it.
 _TRIPLE_DOUBLE_ABBREVIATION = re.compile(r"\btd3s?\b", re.IGNORECASE)
 _DRAW_WORDS = re.compile(r"\b(?:plot|chart|draw|render|visuali[sz]e|graph|show me a)\b", re.IGNORECASE)
 
@@ -1523,7 +1523,7 @@ def _route_ranked_boolean_games(intent: str, slots: dict[str, Any], question: st
     tells the two apart ("scoring", "biggest") has to become a slot here:
     `ranked_by`, the measure the qualifying games are ranked by, which no
     template honors, so `check_scope` refuses and the compiler's
-    boolean-game ranking (compose.move) answers instead. A bare "most
+    boolean-game ranking (query/point.py) answers instead. A bare "most
     triple doubles" files nothing and keeps its count.
 
     .. versionadded:: 4.4.0

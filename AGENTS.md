@@ -68,12 +68,15 @@ fails rather than drifts.
 - **The reader does not import the answer side, and the answer side never
   reaches the model** (`[tool.importlinter]`). The reader's imports of
   `compose`, `templates` and the relations are listed by name and go in
-  Phase 1 (nine when the contract was written; two since 2026-10-02, both
-  `parse -> compose`, for `read_point` and the `Refused`/`Unsupported` it
-  raises - the rest were vocabulary and intent sets that now live on the
-  reader's side: `entities.team_named_in`, `reading`'s intent sets,
-  `measures.STAT_ALIASES` and `PERIOD_COLUMNS`);
-  a new one fails, and so does a listed one that no longer exists.
+  Phase 1 (nine when the contract was written; one since 2026-10-03,
+  `point -> compose.adapt`: the point reader, `query/point.py` since the
+  `read_point` move's step 5, takes the intent's default point from the
+  ten adapters, which Phase 2 deletes slice by slice - the rest were
+  vocabulary and intent sets that now live on the reader's side:
+  `entities.team_named_in`, `reading`'s intent sets, limits, `ordinal_word`
+  and `Unsupported`, `measures.STAT_ALIASES`, `PERIOD_COLUMNS`, the
+  metric and measure aliases and `resolve_metric`/`stat_measure`); a new
+  one fails, and so does a listed one that no longer exists.
 - **A change to the pipeline is proven stage by stage, on two
   populations.** `scripts/stage_snapshots.py run OUT.jsonl` answers the 628
   recorded questions through the whole agent with no model (the
@@ -794,7 +797,7 @@ model's. Two things follow, and both matter when you add a shape:
   answered both ways and compared - the recorded questions alone showed one
   shape the template still carried; the unit tests showed five.
 - **A team can be the subject, not only a narrowing.** `compose/team.py`
-  (`TeamQuery`/`TeamResult`/`run_team`, `move.team_move_point`,
+  (`TeamQuery`/`TeamResult`/`run_team`, `point.team_read_point`,
   `sentence.team_sentence`) is a second, separate compiler beside `core.py`'s
   player one, over the team-games relation instead - "how many 3-pointers
   have the Magic made", "total points scored by the Raptors in the last 10

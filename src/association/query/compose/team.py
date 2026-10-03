@@ -534,7 +534,7 @@ def run_team(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> TeamResult:
        scored 120 points" reaches here with a team, no player and a
        ``threshold`` - a record above and below a line, which neither reader
        this module has (a season sum, or a window sum) can represent - only
-       because :func:`~association.query.compose.move.team_read_point`
+       because :func:`~association.query.point.team_read_point`
        settles a team subject before ``record_when``'s own per-intent default
        (:func:`~association.query.compose.adapt._adapt_record_when`, which
        already refuses a team with no player) ever sees the question.

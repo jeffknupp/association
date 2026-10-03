@@ -40,8 +40,7 @@ from typing import TYPE_CHECKING, Any
 from association.query.templates.common import TemplateContext, TemplateResult, check_coverage
 
 from .core import Query, Refused, Unsupported, run
-from .move import games_reading
-from .plan import Planned
+from .plan import Planned, games_reading
 from .present import present, present_team
 from .sentence import _span_phrase
 from .sentence import sentence as _sentence

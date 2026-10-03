@@ -1,13 +1,22 @@
-"""The point moves. :func:`~association.query.compose.adapt.to_query` gives
-the intent's default point; the question's own words - read in code, the way
+"""The point reader: the question's own words, read in code - the way
 ``route()``'s ``CODE_ASSIGNED_INTENTS`` and its ``_validate_*`` helpers read
-them, never through the router prompt - may move the measure, the skeleton or
-the aggregate. Two slot repairs are included because the question text
-supports them exactly (the ``subject.apply_subject`` discipline described in
-``AGENTS.md``): a subject the router dropped, and player names the router
-filed as the ``opponent``.
+them, never through a prompt - move the measure, the skeleton or the
+aggregate off the intent's default point
+(:func:`~association.query.compose.adapt.to_reading`, the one reach into
+the answer side this module keeps until Phase 2 deletes the adapters slice
+by slice). :func:`read_point` is the parser's last step
+(``parse.with_point``): it writes the point into the Reading, or why there
+is none - a decline (:class:`~association.query.reading.Unsupported`) or a
+refusal's cause (:class:`~association.query.reading.PointRefused`) the
+planner says. Nothing here plans, runs or words an answer.
 
 .. versionadded:: 4.4.0
+
+.. versionchanged:: 5.0.0
+   ``query/point.py``, on the reader's side, where it was
+   ``compose/move.py`` (``ROADMAP.md``, Phase 1, the ``read_point`` move,
+   step 5); ``games_reading`` went to the planner and ``team_move_point``
+   to the test that used it.
 """
 
 from __future__ import annotations
@@ -18,70 +27,39 @@ from typing import TYPE_CHECKING, Any, Literal
 
 import duckdb
 
-from association.query.leaderboard import resolve_metric
-from association.query.measures import BOOLEAN_MEASURES, DERIVED_LINES, DERIVED_MEASURES, GAME_COLUMNS, HISTORY_STATS, LINE, MEASURE_WORDS, TEAM_GAME_MEASURES, TEAM_SEASON_MEASURES
+from association.query.compose.adapt import _to_reading_scope
+from association.query.measures import (
+    BOOLEAN_MEASURES,
+    DERIVED_LINES,
+    HISTORY_STATS,
+    LINE,
+    MEASURE_WORDS,
+    TEAM_GAME_MEASURES,
+    TEAM_SEASON_MEASURES,
+    WORD_MEASURES,
+    resolve_metric,
+    stat_measure,
+)
 from association.query.metrics import PER_GAME_MIN_GAMES, TEAM_FIELD_WORDS
-from association.query.reading import Aggregate, Cause, PointRefused, Reading, Scope
-from association.query.templates.common import DEFAULT_LIMIT, TEAM_ONLY_INTENTS, _clamp_limit, ordinal_word
-
-from .adapt import DEFAULT_GAME_LOG_LIMIT, DEFAULT_SINGLE_GAME_LIMIT, _named_player_in, _to_reading_scope
-from .core import Query, Refused, Unsupported
-from .plan import no_ranking_for, plan
-from .team import TeamQuery
+from association.query.reading import (
+    DEFAULT_GAME_LOG_LIMIT,
+    DEFAULT_LIMIT,
+    DEFAULT_SINGLE_GAME_LIMIT,
+    TEAM_ONLY_INTENTS,
+    Aggregate,
+    Cause,
+    PointRefused,
+    Reading,
+    Scope,
+    Unsupported,
+    _career_scope,
+    _clamp_limit,
+    ordinal_word,
+)
+from association.query.reading import named_player_in as _named_player_in
 
 if TYPE_CHECKING:
     from association.query.subject import Subject
-
-#: The router's own stat names that are not relation columns, as measures.
-MEASURE_ALIASES: dict[str, str] = {
-    "ts_pct": "ts_pct",
-    "true_shooting": "ts_pct",
-    "efg_pct": "efg_pct",
-    "usage_pct": "usage_pct",
-    "game_score": "game_score",
-    "plus_minus": "plusMinus",
-    "plusMinus": "plusMinus",
-    "threePointFieldGoalPct": "three_pct",
-    "three_point_pct": "three_pct",
-    "fieldGoalPct": "fg_pct",
-    "fg_pct": "fg_pct",
-    "freeThrowPct": "ft_pct",
-    "points_per_game": "points",
-    "rebounds_per_game": "rebounds",
-    "assists_per_game": "assists",
-    "triple_double": "triple_double",
-    "triple_doubles": "triple_double",
-    "double_double": "double_double",
-    "double_doubles": "double_double",
-    "pra": "pra",
-    "wins": "won",
-}
-"""A router ``stat`` value that names a measure this package computes rather
-than a stored column, mapped to that measure's name.
-
-.. versionadded:: 4.4.0
-"""
-
-#: Words in the question for a measure the router may not have named.
-WORD_MEASURES: list[tuple[str, str]] = [
-    (r"\bts ?%|\btrue shooting\b", "ts_pct"),
-    (r"\befg\b|\beffective field goal", "efg_pct"),
-    (r"\bplus[ /-]?minus\b|\+/-", "plusMinus"),
-    (r"\bgame score\b", "game_score"),
-    (r"\busage\b", "usage_pct"),
-    (r"\btriple[ -]?doubles?\b|\btd3s?\b|\btds\b", "triple_double"),
-    (r"\bdouble[ -]?doubles?\b|\bdd\b", "double_double"),
-    (r"\bfg ?%|\bfg percentage\b|\bfield goal percentage\b", "fg_pct"),
-    (r"\b3 ?pt ?%|\b3 point percentage\b|\bthree point percentage\b|\b3p%", "three_pct"),
-    (r"\bft ?%|\bfree throw percentage\b", "ft_pct"),
-    (r"\bpra\b|\bpts\+reb\+ast\b|points\+rebounds\+assists", "pra"),
-    (r"\bfouled out\b|\bfoul(ed)? outs?\b", "fouled_out"),
-]
-"""``(pattern, measure)`` - a phrase the question carries that names a measure directly.
-
-.. versionadded:: 4.4.0
-"""
-
 
 _TOP_IN_A_GAME = re.compile(r"\b(most|highest|best|career[- ]high|record)\b.*\b(in a\b.*\bgame|single[- ]game|career[- ]high)\b|\bcareer[- ]high\b", re.I)
 # Not this relation's question: a team as the subject, an opponent's or
@@ -112,18 +90,6 @@ def _measure_words(question: str) -> list[str]:
         if re.search(pattern, ql):
             found.append(name)
     return found
-
-
-def _stat_measure(stat: str | None) -> str | None:
-    """A router ``stat`` as a measure this package knows, through
-    :data:`MEASURE_ALIASES` and then :data:`~association.query.measures.MEASURE_WORDS`."""
-    if stat is None or not stat.strip():
-        return None
-    if stat in MEASURE_ALIASES:
-        return MEASURE_ALIASES[stat]
-    if stat in GAME_COLUMNS or stat in DERIVED_MEASURES:
-        return stat
-    return MEASURE_WORDS.get(stat.strip().lower())
 
 
 _RANKING = re.compile(r"\b(leaders?|most|highest|top|best|fewest|least|lowest)\b", re.I)
@@ -220,7 +186,7 @@ def _everyone_threshold_predicates(scope: Scope, question: str, measure: str | N
                 column = MEASURE_WORDS[candidate]
                 break
     if column is None and scope.stat:
-        column = _stat_measure(scope.stat)
+        column = stat_measure(scope.stat)
     if column and column != measure:
         return [*predicates, (column, ">=", threshold)]
     return predicates
@@ -404,7 +370,7 @@ def _everyone_threshold_count_line(scope: Scope) -> list[tuple[str, str, Any]]:
 
     .. versionadded:: 5.0.0
     """
-    column = _stat_measure(scope.stat)
+    column = stat_measure(scope.stat)
     threshold = scope.threshold
     if column is None or column in BOOLEAN_MEASURES or threshold is None or threshold < 1:
         return []
@@ -475,7 +441,7 @@ def _everyone_ranking(intent: str, scope: Scope, question: str, measure: str | N
        what was asked). ``measure`` is ``None`` for two different reasons -
        no stat was named at all (the plain "top scorers" ranking, still
        points by default) or a real one was named and did not map
-       (:func:`_stat_measure`) - and only the second is a refusal; the
+       (:func:`~association.query.measures.stat_measure`) - and only the second is a refusal; the
        first keeps its default.
     """
     if not (_RANKING.search(question) or intent in ("leaderboard", "single_game_high")):
@@ -541,7 +507,7 @@ def _leaderboard_season_line(intent: str, scope: Scope, question: str, measure: 
         return None
     if resolve_metric(scope.stat, career=scope.span == "career") is None:
         return None
-    if measure is not None and _stat_measure(scope.stat) not in (None, measure):
+    if measure is not None and stat_measure(scope.stat) not in (None, measure):
         return None
     return Reading(
         scope=scope,
@@ -624,15 +590,8 @@ def _everyone_point(intent: str, scope: Scope, question: str, measure: str | Non
 def _measure_for_named(scope: Scope, question: str) -> str | None:
     """The measure a named-player question moves to: the question's own word first, the router's stat otherwise."""
     words = _measure_words(question)
-    stat = _stat_measure(scope.stat)
+    stat = stat_measure(scope.stat)
     return words[0] if words else stat
-
-
-def _career_scope(scope: Scope) -> Scope:
-    """``route()``'s own rule for a count by a player (``_HOW_MANY_OR_OFTEN``, step 2
-    B5): with no season named, "how many ... has he" is his career."""
-    unscoped = scope.season is None and not scope.span and not scope.since
-    return replace(scope, span="career") if unscoped else scope
 
 
 def _move_single_game(scope: Scope, question: str, measure: str | None) -> Reading | None:
@@ -688,7 +647,7 @@ def _move_boolean_count_is_line(measure: str, scope: Scope) -> bool:
     """Whether a boolean measure is, by its one definition
     (:data:`~association.query.measures.DERIVED_LINES`), exactly the router's
     own ``stat``/``threshold`` line (``fouled_out`` is ``fouls >= 6``)."""
-    column = _stat_measure(scope.stat)
+    column = stat_measure(scope.stat)
     threshold = scope.threshold
     if column is None or threshold is None:
         return False
@@ -721,39 +680,6 @@ def _move_player_history(intent: str, scope: Scope, career: Scope, measure: str 
         limit=_clamp_limit(scope.limit, 10),
         source="seasons",
     )
-
-
-def games_reading(q: Query) -> Query:
-    """A season-line point (``source="seasons"``) the season line's own
-    readers declined, as the game-level relation reads it: a per-season
-    history becomes his career's games grouped by season (the reading the
-    compiler gave every history before the season line was a source). An
-    unnarrowed ``player_stat`` has no game-level reading that answers the
-    same question, so it raises :class:`~association.query.compose.core.Unsupported`,
-    as it did before.
-
-    .. versionadded:: 5.0.0
-    """
-    if q.source != "seasons":
-        return q
-    if q.group == "season":
-        return replace(q, scope=_career_scope(q.scope), source="games")
-    if q.group == "player" and q.subject == "everyone":
-        # The season line's ranking declined (leaderboard's retired refusals:
-        # a metric with no season form, an unknown field, an ambiguous team):
-        # the game-level ranking, exactly as it answered behind the template's
-        # refusal - except for what it cannot say. A stat this relation has no
-        # measure for is refused by name rather than ranked as points, and a
-        # `rate` only the season line reads is not dropped.
-        stat = q.scope.stat
-        if stat is not None and stat.strip() and _stat_measure(stat) is None:
-            raise Refused(no_ranking_for(stat))
-        if q.scope.rate:
-            raise Unsupported("the relation cannot honor ['rate'] - it would answer for a different span than was asked")
-        if q.scope.fields:
-            raise Unsupported("the game-level ranking shows no columns beside its measure")
-        return replace(q, source="games")
-    raise Unsupported("an unnarrowed player line the season line's reader did not say")
 
 
 def _compare_point(scope: Scope) -> Reading:
@@ -955,23 +881,6 @@ def team_read_point(con: duckdb.DuckDBPyConnection, scope: Scope, question: str,
     return Reading(scope=scope, shape="scalar", measures=[measure], aggregate="total", relation="team")
 
 
-def team_move_point(con: duckdb.DuckDBPyConnection, scope: Scope, question: str, subject: Subject) -> TeamQuery | None:
-    """:func:`team_read_point`, planned - the team's point as the team
-    compiler runs it, or ``None`` where the team is not the subject.
-
-    .. versionchanged:: 5.0.0
-       Plans :func:`team_read_point`'s :class:`~association.query.reading.Reading`,
-       over the typed :class:`~association.query.reading.Scope` and the
-       :class:`~association.query.subject.Subject` the parser read.
-    """
-    reading = team_read_point(con, scope, question, subject)
-    if reading is None:
-        return None
-    query = plan(reading)
-    assert isinstance(query, TeamQuery)
-    return query
-
-
 def read_point(con: duckdb.DuckDBPyConnection, reading: Reading, question: str) -> Reading:
     """``reading``'s intent's default point, moved by ``question``'s own words: a
     measure beyond a template's list, a skeleton move ("most ... in a game" =
@@ -1085,5 +994,5 @@ def _read_point(con: duckdb.DuckDBPyConnection, intent: str, scope: Scope, quest
             # branch above); naming neither, it has nobody to read - the
             # reason record_when's retired template gave.
             raise Unsupported("record_when needs a player or a team")
-        return _everyone_point(intent, scope, question, _stat_measure(scope.stat), subject.position)
+        return _everyone_point(intent, scope, question, stat_measure(scope.stat), subject.position)
     return _move_named(intent, scope, question)

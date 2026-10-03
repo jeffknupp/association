@@ -31,6 +31,9 @@ from association.nba.coverage import COVERAGE, POSTSEASON, REGULAR_SEASON
 from association.nba.season import current_season
 
 from .entities import Ambiguous, Entity, NotFound, resolve_team
+from .measures import CAREER_METRIC_ALIASES as CAREER_METRIC_ALIASES
+from .measures import METRIC_ALIASES as METRIC_ALIASES
+from .measures import resolve_metric as resolve_metric
 from .metrics import EXTRA_FIELD_COLUMNS, LEADERBOARD_METRICS, SEASON_TYPE_LABELS, CareerAggregate, LeaderboardMetric
 
 # `limit` is model-supplied on the agent path (the template clamps its own):
@@ -107,83 +110,6 @@ class CareerLeaderboardResult:
     pool_first_season: int
     rows: list[dict[str, Any]]
 
-
-def resolve_metric(name: str | None, *, career: bool = False) -> str | None:
-    """Router slot -> a real metric name, via an EXPLICIT alias table.
-
-    Deliberately not get_close_matches: fuzzy matching is fine for suggesting a
-    fix a person can act on, but a template silently ranking by whichever
-    metric happened to score highest is exactly the substitution failure this
-    architecture exists to prevent. An unmapped name returns None and the
-    question is refused.
-
-    With ``career``, a bare box-score name reads as the career TOTAL - see
-    ``CAREER_METRIC_ALIASES``. A real metric name is never reinterpreted, so a
-    career average stays reachable as ``avg_points``.
-
-    .. versionchanged:: 2.1.0
-       Added ``career``, and an alias for every stat name the router is taught.
-    """
-    if not isinstance(name, str):
-        return None
-    if name in LEADERBOARD_METRICS:
-        return name
-    key = name.strip().casefold()
-    if career and key in CAREER_METRIC_ALIASES:
-        return CAREER_METRIC_ALIASES[key]
-    return METRIC_ALIASES.get(key)
-
-
-# The router has one stat vocabulary (the `stat` line of ROUTER_PROMPT) for
-# every intent, so each of its names needs a metric here: every one it taught
-# that had none - turnovers, minutes, fouls, the three kinds of make, the three
-# percentages - fell through to the agent. Keys are casefolded.
-#
-# Which reading a bare name gets follows the record books. The five a scoring,
-# rebounding, assist, steal or block title is decided on are per game, as they
-# always were here; a make is a season COUNT ("most threes this season" is the
-# 402-three kind of record, not a rate); turnovers, minutes and fouls are per
-# game, the way a league leaderboard lists them. Every answer names which it
-# ranked, and `rate` "total" asks for the other - see SEASON_TOTAL_OF.
-METRIC_ALIASES = {
-    "points": "avg_points",
-    "rebounds": "avg_rebounds",
-    "assists": "avg_assists",
-    "steals": "avg_steals",
-    "blocks": "avg_blocks",
-    "turnovers": "avg_turnovers",
-    "minutes": "avg_minutes",
-    "fouls": "avg_fouls",
-    "threepointfieldgoalsmade": "total_three_pointers_made",
-    "fieldgoalsmade": "total_field_goals_made",
-    "freethrowsmade": "total_free_throws_made",
-    "threepointfieldgoalpct": "three_pt_pct",
-    "fieldgoalpct": "fg_pct",
-    "freethrowpct": "ft_pct",
-    "double_double": "double_doubles",
-    "triple_double": "triple_doubles",
-    "netpoints": "netpoints_total",
-    "true_shooting": "ts_pct",
-    "usage": "usage_pct",
-}
-
-CAREER_METRIC_ALIASES = {
-    "points": "total_points",
-    "rebounds": "total_rebounds",
-    "assists": "total_assists",
-    "steals": "total_steals",
-    "blocks": "total_blocks",
-    "turnovers": "total_turnovers",
-}
-"""How a bare stat name reads in a CAREER ranking, where it differs.
-
-A career list is a list of totals: "career points leaders" is the all-time
-scoring list LeBron James tops at 43,440, not Michael Jordan's 30.1 a game.
-Names absent here read as they do for a season (minutes and fouls have no
-career-total metric, so they stay per game).
-
-.. versionadded:: 2.1.0
-"""
 
 SEASON_TOTAL_OF = {
     "avg_points": "total_points",
