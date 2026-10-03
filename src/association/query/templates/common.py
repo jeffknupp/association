@@ -39,12 +39,13 @@ from ..player_games import (  # noqa: F401 - the relation's names, re-exported f
     Condition,
     Narrowed,
     _joined,
-    _log_carries_rebuilt,
     _teammate_played,
     _teammate_stints,
     league,
+    log_carries_rebuilt,
     season_type_clause,
 )
+from ..player_games import _log_carries_rebuilt as _log_carries_rebuilt
 from ..player_games import _tenure_clause as _relation_tenure_clause
 from ..reading import DEFAULT_LIMIT as DEFAULT_LIMIT
 from ..reading import FILLER_PLAYER_WORDS as FILLER_PLAYER_WORDS
@@ -294,8 +295,18 @@ RELATION_SCOPING_EXCLUDED["player_matchup"]["period_condition"] = "a meeting is 
 """
 
 
-def _relation_scoping(intent: str, *extra: str) -> frozenset[str]:
+def relation_scoping(intent: str, *extra: str) -> frozenset[str]:
+    """The player relation's cells ``intent`` honors: :data:`RELATION_SCOPING`
+    plus ``extra``, less the cells :data:`RELATION_SCOPING_EXCLUDED` names
+    for it.
+
+    .. versionadded:: 5.0.0
+       Public, as the relation's shared step; ``_relation_scoping`` is this.
+    """
     return frozenset((RELATION_SCOPING | set(extra)) - set(RELATION_SCOPING_EXCLUDED.get(intent, {})))
+
+
+_relation_scoping = relation_scoping
 
 
 # What the team-games relation narrows by, declared ONCE - the team
@@ -1010,13 +1021,25 @@ def _clarify(text: str, candidates: list[str], kind: str = "player", active: int
     return TemplateResult(data={"ambiguous": text, "candidates": candidates}, answer=clarification(text, candidates, kind, active))
 
 
-_GAME_LOGS = Availability("player_game_log")
+GAME_LOGS = Availability("player_game_log")
+"""The game logs as an availability (:class:`~association.query.entities.Availability`): the table a box-score answer or a log rests on.
+
+.. versionadded:: 5.0.0
+   Public, as the relation's shared step; ``_GAME_LOGS`` is this.
+"""
+_GAME_LOGS = GAME_LOGS
 
 
-_BOX_SCORES = Availability("player_box_stats")
+BOX_SCORES = Availability("player_box_stats")
+"""The box scores as an availability (:class:`~association.query.entities.Availability`): the table a box-score answer or a log rests on.
+
+.. versionadded:: 5.0.0
+   Public, as the relation's shared step; ``_BOX_SCORES`` is this.
+"""
+_BOX_SCORES = BOX_SCORES
 
 
-def _career_end(season: int | None) -> int | None:
+def career_end(season: int | None) -> int | None:
     """The ``through`` a span narrows a name by. None for one season, which
     narrows by ``season`` itself; the current season for a career, which keeps
     everybody with a row on record - Dell Curry's career is a real answer to
@@ -1025,7 +1048,10 @@ def _career_end(season: int | None) -> int | None:
     return current_season() if season is None else None
 
 
-def _resolved_player(
+_career_end = career_end
+
+
+def resolved_player(
     con: duckdb.DuckDBPyConnection,
     text: Any,
     missing: str = "no player named",
@@ -1069,7 +1095,10 @@ def _resolved_player(
             raise TemplateUnsupported(f"no player matching {text!r}")
 
 
-def _resolved_team(con: duckdb.DuckDBPyConnection, text: Any, season: int | None = None) -> Entity | TemplateResult:
+_resolved_player = resolved_player
+
+
+def resolved_team(con: duckdb.DuckDBPyConnection, text: Any, season: int | None = None) -> Entity | TemplateResult:
     """One team, a clarifying question, or a refusal - read for ``season``,
     because a franchise's name is a fact about a season. "Hornets" is New
     Orleans in 2008 and Charlotte in 2026; see entities.franchise_by_name."""
@@ -1084,14 +1113,28 @@ def _resolved_team(con: duckdb.DuckDBPyConnection, text: Any, season: int | None
             raise TemplateUnsupported(f"no team matching {text!r}")
 
 
-def _slot_season(scope: Scope) -> int | None:
+_resolved_team = resolved_team
+
+
+def slot_season(scope: Scope) -> int | None:
     """The season a question's team names are read for: the one it named, or
     None for "now" - the same default every template applies."""
     return scope.season
 
 
-def _period(season: int, season_type: int) -> str:
+_slot_season = slot_season
+
+
+def season_phrase(season: int, season_type: int) -> str:
+    """``"2026 regular season"``: a season and its type as an answer names them.
+
+    .. versionadded:: 5.0.0
+       Public, as the relation's shared step; ``_period`` is this.
+    """
     return f"{season} {SEASON_TYPE_NAMES.get(season_type, 'regular season')}"
+
+
+_period = season_phrase
 
 
 def _table_cell(value: Any) -> str:
@@ -1185,9 +1228,12 @@ HISTORY_COLUMNS: dict[str, tuple[str, list[tuple[str, str, str]]]] = {
 }
 
 
-def _season_name(season: int) -> str:
+def season_label(season: int) -> str:
     """1994 -> "1993-94": seasons are named for the year they end in."""
     return f"{season - 1}-{season % 100:02d}"
+
+
+_season_name = season_label
 
 
 def _count_games(count: int) -> str:
@@ -1195,7 +1241,7 @@ def _count_games(count: int) -> str:
 
 
 @dataclass(frozen=True)
-class _Span:
+class ResolvedSpan:
     """The seasons an answer covers: one (``season``), or a whole career
     (``season`` None) from ``first`` on, less any ``phantom`` season that is a
     copy of another.
@@ -1294,6 +1340,9 @@ class _Span:
         return f"over {whose} ({self.years(first, last)})"
 
 
+_Span = ResolvedSpan
+
+
 def _validated_until(until: int | None, since: int | None) -> int | None:
     """The validated ``until`` slot: an inclusive last season, named beside
     ``since`` only - the router never emits one without the other (a decade,
@@ -1315,7 +1364,7 @@ def _validated_until(until: int | None, since: int | None) -> int | None:
     return until
 
 
-def _span_of(span: Literal["career"] | None, season: int | None, season_type: int, table: str, since: int | None = None, until: int | None = None) -> _Span:
+def span_of(span: Literal["career"] | None, season: int | None, season_type: int, table: str, since: int | None = None, until: int | None = None) -> _Span:
     """The seasons a question covers. ``table`` sets how far back a career
     reaches - box scores from 1994, the season line from 1977 - since a career
     is only as long as the table it is summed from. ``since`` (a season) is a
@@ -1346,6 +1395,9 @@ def _span_of(span: Literal["career"] | None, season: int | None, season_type: in
         raise TemplateUnsupported(f"a career span and the {season} season at once")
     coverage = COVERAGE[table]
     return _Span(None, season_type, coverage.floor(season_type).season, coverage.phantom)
+
+
+_span_of = span_of
 
 
 def settle_ordinal_season(con: duckdb.DuckDBPyConnection, player: Entity, season_n: Any, span: _Span) -> _Span | TemplateResult:
@@ -1477,7 +1529,7 @@ def _narrow_player_games(
     return narrowed
 
 
-def _player_relation_season_type(scope: Scope) -> int:
+def player_relation_season_type(scope: Scope) -> int:
     """The ``season_type`` to read the player relation for: ``BOTH_SEASON_TYPES``
     when the question asked for both explicitly ("including the playoffs") or
     named none at all in a "last N games" question
@@ -1499,6 +1551,9 @@ def _player_relation_season_type(scope: Scope) -> int:
     if scope.season_type_unstated:
         return BOTH_SEASON_TYPES
     return scope.season_type or REGULAR_SEASON
+
+
+_player_relation_season_type = player_relation_season_type
 
 
 def scoped_player(
@@ -1609,12 +1664,15 @@ def _relation_window(scope: Scope) -> tuple[str, int] | None:
 _HALF_PERIODS: dict[int, tuple[int, ...]] = {1: (1, 2), 2: (3, 4)}
 
 
-def _period_label(period: int) -> str:
+def period_label(period: int) -> str:
     """``1`` -> ``"1st quarter"``, ``5`` -> ``"overtime"``, ``6`` -> ``"2nd overtime"``."""
     if 1 <= period <= 4:
         return f"{_ordinal(period)} quarter"
     ot = period - 4
     return "overtime" if ot == 1 else f"{_ordinal(ot)} overtime"
+
+
+_period_label = period_label
 
 
 def period_narrowing(scope: Scope) -> tuple[tuple[int, ...], str] | None:
@@ -1661,7 +1719,7 @@ def _apply_period_condition(con: duckdb.DuckDBPyConnection, narrowed: Narrowed, 
     return None
 
 
-def _apply_period(con: duckdb.DuckDBPyConnection, narrowed: Narrowed, scope: Scope) -> None:
+def apply_period(con: duckdb.DuckDBPyConnection, narrowed: Narrowed, scope: Scope) -> None:
     """A quarter or half narrows every read of the relation to that part of
     each game (:meth:`~association.query.player_games.Narrowed.narrow_periods`)
     - the ``period``/``half`` cells of :data:`RELATION_SCOPING`, applied here
@@ -1670,6 +1728,9 @@ def _apply_period(con: duckdb.DuckDBPyConnection, narrowed: Narrowed, scope: Sco
     if asked is not None:
         log_columns = frozenset(row[0] for row in con.execute("DESCRIBE player_game_log").fetchall())
         narrowed.narrow_periods(*asked, plays=_has_table(con, "plays"), log_columns=log_columns)
+
+
+_apply_period = apply_period
 
 
 def _has_table(con: duckdb.DuckDBPyConnection, name: str) -> bool:
@@ -2281,7 +2342,7 @@ def _defaulted_season_note(season_range: tuple[int, int] | None, kind: str, *, c
     return decided("season_redirected", said, field="season", chose=None, why="the season read by default holds nothing for him", first=first, last=last, what=kind)
 
 
-def _no_narrowed_games(con: duckdb.DuckDBPyConnection, player: Entity, span: _Span, narrowed: Narrowed, *, rebuilt: bool = False) -> str:
+def no_narrowed_games(con: duckdb.DuckDBPyConnection, player: Entity, span: _Span, narrowed: Narrowed, *, rebuilt: bool = False) -> str:
     """Why a narrowed question found no games, naming the fact that is really
     missing - his games in that span, the teammate, the match, or an empty box
     score. They are different sentences, and "X has no games" said of a player
@@ -2335,6 +2396,9 @@ def _no_narrowed_games(con: duckdb.DuckDBPyConnection, player: Entity, span: _Sp
     return f"{player.name} played {_count_games(total)} {during}, none of them{narrowed.filters()}."
 
 
+_no_narrowed_games = no_narrowed_games
+
+
 def box_score_notes_read(con: duckdb.DuckDBPyConnection, player: Entity, span: _Span, narrowed: Narrowed, *, career_note: bool = True, rebuilt: bool = False, rebuilt_shown: int = 0) -> list[Note]:
     """What a box-score answer has to say about itself, read as kinds and
     facts (:class:`~association.query.notes.Note`): what "without" was
@@ -2370,7 +2434,7 @@ def box_score_notes_read(con: duckdb.DuckDBPyConnection, player: Entity, span: _
     return notes
 
 
-def _box_score_notes(con: duckdb.DuckDBPyConnection, player: Entity, span: _Span, narrowed: Narrowed, *, career_note: bool = True, rebuilt: bool = False, rebuilt_shown: int = 0) -> list[str]:
+def box_score_notes(con: duckdb.DuckDBPyConnection, player: Entity, span: _Span, narrowed: Narrowed, *, career_note: bool = True, rebuilt: bool = False, rebuilt_shown: int = 0) -> list[str]:
     """:func:`box_score_notes_read`, each note phrased and recorded - the
     sentences the templates append.
 
@@ -2383,12 +2447,15 @@ def _box_score_notes(con: duckdb.DuckDBPyConnection, player: Entity, span: _Span
     return [note(each.kind, note_phrase(each), **each.facts) for each in box_score_notes_read(con, player, span, narrowed, career_note=career_note, rebuilt=rebuilt, rebuilt_shown=rebuilt_shown)]
 
 
+_box_score_notes = box_score_notes
+
+
 # The private name the templates import; one definition, `ordinal_word` -
 # the two were the same function written twice in this module.
 _ordinal = ordinal_word
 
 
-def _condition_scope(season: int | None, span: Literal["career"] | None, season_type: int | None, tables: tuple[str, ...], since: int | None = None) -> _Scope:
+def condition_scope(season: int | None, span: Literal["career"] | None, season_type: int | None, tables: tuple[str, ...], since: int | None = None) -> _Scope:
     """The games a question covers. No season means the current one - except
     for a career, where it means every season on record, which is what the
     word asked for. A season the question named beats "career": the router keeps
@@ -2417,15 +2484,30 @@ def _condition_scope(season: int | None, span: Literal["career"] | None, season_
     return _game_scope(None if span == "career" else current_season(), kind, tables)
 
 
-def _where_in(scope: _Scope) -> str:
+_condition_scope = condition_scope
+
+
+def where_in(scope: _Scope) -> str:
     """ "in the 2026 regular season", or "in any regular season on record" for a span with nothing in it."""
     return f"in the {scope.label()}" if scope.season is not None else f"in any {scope.kind} on record ({scope.first} onward)"
 
 
-def _optional_team(con: duckdb.DuckDBPyConnection, text: Any, season: int | None = None) -> Entity | TemplateResult | None:
+_where_in = where_in
+
+
+def optional_team(con: duckdb.DuckDBPyConnection, text: Any, season: int | None = None) -> Entity | TemplateResult | None:
+    """A team slot that may be empty: ``None`` for no text, else
+    :func:`resolved_team`'s entity or its refusal.
+
+    .. versionadded:: 5.0.0
+       Public, as the relation's shared step; ``_optional_team`` is this.
+    """
     if not isinstance(text, str) or not text.strip():
         return None
-    return _resolved_team(con, text, season=season)
+    return resolved_team(con, text, season=season)
+
+
+_optional_team = optional_team
 
 
 def _no_games(con: duckdb.DuckDBPyConnection, player: Entity, scope: _Scope, team: Entity | None) -> TemplateResult:

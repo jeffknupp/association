@@ -14,7 +14,7 @@ from typing import Any
 
 from association.query.notes import decided, note
 from association.query.player_games import BOTH_SEASON_TYPES
-from association.query.templates.common import _period_label
+from association.query.templates.common import period_label
 
 from .core import Query
 from .team import TeamQuery, TeamResult
@@ -76,7 +76,7 @@ def _span_phrase(span: Any, player_seasons: tuple[int, int] | None = None) -> st
 
     .. versionchanged:: 4.4.0
        A closed range says "(2020-2022)" rather than "(2020 on)" - the numbers
-       already stopped at ``until`` (`_span_of` bounds the read), so the
+       already stopped at ``until`` (`span_of` bounds the read), so the
        sentence saying otherwise was a stated scope that did not match the
        count (yardstick-v2 F036). A both-season-types span is named as such.
 
@@ -188,7 +188,7 @@ def _grouped_line(q: Query, r: dict[str, Any]) -> str:
     if "wins" in r:
         cells.append(f"{r.get('wins')}-{r.get('losses')}")
     cells += [f"{LABELS.get(m, m)} {_fmt(r.get(m), m)}" for m in q.measures]
-    label = _period_label(int(r["group"])) if q.group == "period" else str(r["group"])
+    label = period_label(int(r["group"])) if q.group == "period" else str(r["group"])
     return f"  {label:24s} " + "  ".join(cells)
 
 

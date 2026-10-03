@@ -65,7 +65,7 @@ from association.query.reading import Scope, _clamp_limit
 from association.query.team_games import TeamNarrowed
 from association.query.team_games import aggregate_sql as team_aggregate_sql
 from association.query.team_games import named as team_named
-from association.query.templates.common import TemplateResult, TemplateUnsupported, _resolved_team, _Span, _span_of, scoped_team, whole_span
+from association.query.templates.common import ResolvedSpan, TemplateResult, TemplateUnsupported, resolved_team, scoped_team, span_of, whole_span
 from association.query.templates.common import team_games as narrow_team_games
 from association.query.templates.splits import _DEFAULT_STREAK_LIMIT, _TEAM_STREAK_SELECT, PresenceSplit, _streak_league_team_narrowed, _team_season_range, _with_without_read
 
@@ -166,7 +166,7 @@ class TeamResult:
     #: The team - or ``None`` for the league's longest run, which has no one
     #: team (the ``run`` shape with no team named).
     team: Entity | None
-    span: _Span
+    span: ResolvedSpan
     measure: str
     aggregate: str
     value: float | None
@@ -222,7 +222,7 @@ def _resolved_team_subject(con: duckdb.DuckDBPyConnection, scope: Scope) -> Enti
     if team_text is None or not team_text.strip():
         raise Unsupported("no team named")
     season: int = scope.season if scope.season is not None else current_season()
-    team = _resolved_team(con, team_text, season=season)
+    team = resolved_team(con, team_text, season=season)
     if isinstance(team, TemplateResult):
         raise Refused(team)
     return team
@@ -268,10 +268,10 @@ def _compile_team_season(con: duckdb.DuckDBPyConnection, q: TeamQuery, team: Ent
         raise Refused(TemplateResult(data={"team": team.name, "season": season}, answer=message))
     value, games = found
     note = _team_season_note(con, team, season, column) if season_type == 2 else ""
-    return TeamResult(team=team, span=_Span(season, season_type), measure=q.measure, aggregate=q.aggregate, value=value, games=games, from_season_line=True, note=note)
+    return TeamResult(team=team, span=ResolvedSpan(season, season_type), measure=q.measure, aggregate=q.aggregate, value=value, games=games, from_season_line=True, note=note)
 
 
-def _team_games_narrowed(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> tuple[TeamNarrowed, Entity, _Span]:
+def _team_games_narrowed(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> tuple[TeamNarrowed, Entity, ResolvedSpan]:
     """``team``'s games, narrowed exactly as :func:`association.query.templates.games.team_quarter_points`
     narrows its own - through :func:`~association.query.templates.common.scoped_team`
     and :func:`~association.query.templates.common.team_games`, never a
@@ -415,7 +415,7 @@ def _compile_team_run(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> TeamResul
         limit, best = 3, False
     else:
         team = None
-        span = _span_of(scope.span, scope.season, scope.season_type or 2, "games", since=scope.since, until=scope.until)
+        span = span_of(scope.span, scope.season, scope.season_type or 2, "games", since=scope.since, until=scope.until)
         narrowed = _streak_league_team_narrowed(span)
         limit, best = _clamp_limit(scope.limit, _DEFAULT_STREAK_LIMIT), True
     base, params = team_named(*team_aggregate_sql(narrowed, list(_TEAM_STREAK_SELECT)))
@@ -454,7 +454,7 @@ def _compile_team_presence(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> Team
     split = _with_without_read(con, scope)
     if isinstance(split, TemplateResult):
         raise Refused(split)
-    span = _span_of(scope.span, scope.season, scope.season_type or 2, "games")
+    span = span_of(scope.span, scope.season, scope.season_type or 2, "games")
     return TeamResult(
         team=split.team,
         span=span,

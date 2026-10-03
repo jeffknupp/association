@@ -145,7 +145,7 @@ REBUILT_STATS: frozenset[str] = frozenset({"points", "rebounds", "assists", "ste
 _RECORDED_OR_REBUILT = "(pgl.minutes IS NOT NULL OR pgl.reconstructed)"
 
 
-def _log_carries_rebuilt(con: duckdb.DuckDBPyConnection) -> bool:
+def log_carries_rebuilt(con: duckdb.DuckDBPyConnection) -> bool:
     """Whether ``player_game_log`` has the ``reconstructed`` flag.
 
     Checked rather than assumed, for the reason `AGENTS.md` records under "A
@@ -158,6 +158,9 @@ def _log_carries_rebuilt(con: duckdb.DuckDBPyConnection) -> bool:
         return any(row[0] == "reconstructed" for row in con.execute("DESCRIBE player_game_log").fetchall())
     except duckdb.CatalogException:
         return False
+
+
+_log_carries_rebuilt = log_carries_rebuilt
 
 
 # One join serves venue and result both: games.home_team_id agrees with

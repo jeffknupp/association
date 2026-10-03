@@ -49,26 +49,26 @@ from association.query.player_games import PERIOD_COLUMNS, REBUILT_STATS, REGULA
 from association.query.reading import Scope
 from association.query.reading import Unsupported as Unsupported
 from association.query.templates.common import (
-    _BOX_SCORES,
-    _GAME_LOGS,
+    BOX_SCORES,
+    GAME_LOGS,
     RELATION_SCOPING,
     SCOPING_SLOTS,
     TEAM_RELATION_SCOPING,
+    ResolvedSpan,
     TemplateResult,
     TemplateUnsupported,
-    _apply_period,
-    _box_score_notes,
-    _career_end,
-    _condition_scope,
-    _resolved_player,
-    _resolved_team,
-    _Span,
-    _span_of,
+    apply_period,
+    box_score_notes,
+    career_end,
+    condition_scope,
     league_games,
     measure_filters,
     period_narrowing,
+    resolved_player,
+    resolved_team,
     scoped_games,
     scoped_player,
+    span_of,
 )
 from association.query.templates.games import PERIOD_RATES, _team_slot_for_player
 from association.query.templates.players import _seasons_on_record
@@ -394,7 +394,7 @@ def _check_split_category(q: Query) -> None:
         raise Unsupported("a starter/bench split is a table of both halves, not a filter - a grouped read answers it")
 
 
-def _resolve_everyone(con: duckdb.DuckDBPyConnection, q: Query) -> tuple[Entity | None, _Span, Narrowed]:
+def _resolve_everyone(con: duckdb.DuckDBPyConnection, q: Query) -> tuple[Entity | None, ResolvedSpan, Narrowed]:
     """The league-wide subject: every player's games in the span settled the
     way ``threshold_count``'s and ``single_game_high``'s no-player modes
     settle it, narrowed by :func:`~association.query.templates.common.league_games`.
@@ -406,7 +406,7 @@ def _resolve_everyone(con: duckdb.DuckDBPyConnection, q: Query) -> tuple[Entity 
     33 point and 13 rebound ... games since 2000-01" listed 2026's three
     games under a heading saying so, where the warehouse holds eleven since
     2001 (yardstick-v2 F161, #207). ``since`` beside a named season is the
-    same contradiction ``_span_of`` refuses for a player.
+    same contradiction ``span_of`` refuses for a player.
     """
     scope = q.scope
     season_type = scope.season_type or 2
@@ -414,7 +414,7 @@ def _resolve_everyone(con: duckdb.DuckDBPyConnection, q: Query) -> tuple[Entity 
     if season is None and scope.span != "career" and scope.since is None:
         season = current_season()
     try:
-        span = _span_of("career" if season is None else None, season, season_type, "player_game_log", since=scope.since, until=scope.until)
+        span = span_of("career" if season is None else None, season, season_type, "player_game_log", since=scope.since, until=scope.until)
     except TemplateUnsupported as exc:
         raise Unsupported(str(exc)) from exc
     # The shared steps read the slot dict until they take the Scope.
@@ -424,7 +424,7 @@ def _resolve_everyone(con: duckdb.DuckDBPyConnection, q: Query) -> tuple[Entity 
     return None, span, narrowed
 
 
-def _resolve_named(con: duckdb.DuckDBPyConnection, q: Query) -> tuple[Entity | None, _Span, Narrowed]:
+def _resolve_named(con: duckdb.DuckDBPyConnection, q: Query) -> tuple[Entity | None, ResolvedSpan, Narrowed]:
     """The named-player subject, settled and narrowed exactly as the six
     relation templates settle and narrow their own - through
     :func:`~association.query.templates.common.scoped_player` and
@@ -443,7 +443,7 @@ def _resolve_named(con: duckdb.DuckDBPyConnection, q: Query) -> tuple[Entity | N
         scope,
         "no player named",
         table="player_game_log",
-        available=q.available or _GAME_LOGS,
+        available=q.available or GAME_LOGS,
         span="career" if dated else (q.span if q.span is not None else scope.span),
         season=None if dated else (q.season if q.season is not None else scope.season),
     )
@@ -460,20 +460,20 @@ def _resolve_named(con: duckdb.DuckDBPyConnection, q: Query) -> tuple[Entity | N
     return player, span, narrowed
 
 
-def _resolve_subject(con: duckdb.DuckDBPyConnection, q: Query) -> tuple[Entity | None, _Span, Narrowed]:
+def _resolve_subject(con: duckdb.DuckDBPyConnection, q: Query) -> tuple[Entity | None, ResolvedSpan, Narrowed]:
     """The subject a point reads: a named player, or the league."""
     if q.subject == "everyone":
         return _resolve_everyone(con, q)
     return _resolve_named(con, q)
 
 
-def _resolve_pair(con: duckdb.DuckDBPyConnection, q: Query) -> tuple[Entity, Entity, _Span, Narrowed]:
+def _resolve_pair(con: duckdb.DuckDBPyConnection, q: Query) -> tuple[Entity, Entity, ResolvedSpan, Narrowed]:
     """The two players a ``pair`` read is about: the first settled and his
     games narrowed exactly as a named player's are (:func:`_resolve_named`,
     with no window and no opponent - the newest meetings are shown beneath
     averages over all of them, and two players' meetings have no third team
     to narrow to), the second resolved over the same span, as the matchup
-    template resolved both (``_resolved_player`` over the box scores). Two
+    template resolved both (``resolved_player`` over the box scores). Two
     names that resolve to one person are no pair.
 
     .. versionadded:: 5.0.0
@@ -485,7 +485,7 @@ def _resolve_pair(con: duckdb.DuckDBPyConnection, q: Query) -> tuple[Entity, Ent
     first = replace(q, scope=replace(scope, player=texts[0], limit=None, order=None, opponent=None))
     a, span, narrowed = _resolve_named(con, first)
     assert a is not None
-    b = _resolved_player(con, texts[1], available=_BOX_SCORES, season=span.season, through=_career_end(span.season))
+    b = resolved_player(con, texts[1], available=BOX_SCORES, season=span.season, through=career_end(span.season))
     if isinstance(b, TemplateResult):
         raise Refused(b)
     if a.id == b.id:
@@ -501,7 +501,7 @@ def _apply_predicates(narrowed: Narrowed, q: Query) -> None:
         narrowed.narrow(f"{measure_sql(name)} {OPS[op]} ?", value)
 
 
-def _apply_team_slot(con: duckdb.DuckDBPyConnection, q: Query, player: Entity | None, span: _Span, narrowed: Narrowed) -> Narrowed:
+def _apply_team_slot(con: duckdb.DuckDBPyConnection, q: Query, player: Entity | None, span: ResolvedSpan, narrowed: Narrowed) -> Narrowed:
     """A ``team`` beside the player: on a ``rows`` read it is ``game_log``'s
     rule (his own team is dropped, another is his opponent, a name nothing
     resolves to is refused); on the condition skeletons (a count, a record, a
@@ -527,7 +527,7 @@ def _apply_team_slot(con: duckdb.DuckDBPyConnection, q: Query, player: Entity | 
         return narrowed
     if not (q.aggregate in ("count", "record") or q.skeleton in ("grouped", "run")):
         return narrowed
-    team = _resolved_team(con, team_text, season=scope.season)
+    team = resolved_team(con, team_text, season=scope.season)
     if isinstance(team, TemplateResult):
         raise Refused(team)
     narrowed.narrow("pgl.team_id = ?", team.id)
@@ -587,7 +587,7 @@ def _rebuilt_for(box: BoxSource, q: Query) -> bool:
     return box.rebuilt and ((q.skeleton == "grouped" or q.aggregate == "record") or (bool(read) and all(m in REBUILT_STATS for m in read)))
 
 
-def _compile_rows(q: Query, narrowed: Narrowed, rebuilt: bool, player: Entity | None, span: _Span) -> Compiled:
+def _compile_rows(q: Query, narrowed: Narrowed, rebuilt: bool, player: Entity | None, span: ResolvedSpan) -> Compiled:
     """A ``rows`` read: a log, or the top game(s) by a measure."""
     # A rows read applies its own limit (rows_sql never consults the window),
     # so the relation's window is not what cut these rows and must not be said.
@@ -628,7 +628,7 @@ def _scalar_selects(q: Query, rebuilt: bool) -> list[str]:
     return selects
 
 
-def _compile_scalar(q: Query, narrowed: Narrowed, rebuilt: bool, player: Entity | None, span: _Span) -> Compiled:
+def _compile_scalar(q: Query, narrowed: Narrowed, rebuilt: bool, player: Entity | None, span: ResolvedSpan) -> Compiled:
     """A ``scalar`` read: one row of aggregates over the narrowed games."""
     selects = _scalar_selects(q, rebuilt)
     sql, params = aggregate_sql(narrowed, selects, rebuilt=rebuilt)
@@ -649,7 +649,7 @@ def _by_period_totals(q: Query, rebuilt: bool) -> list[str]:
     return extra
 
 
-def _compile_by_period(con: duckdb.DuckDBPyConnection, q: Query, narrowed: Narrowed, rebuilt: bool, player: Entity | None, span: _Span) -> Compiled:
+def _compile_by_period(con: duckdb.DuckDBPyConnection, q: Query, narrowed: Narrowed, rebuilt: bool, player: Entity | None, span: ResolvedSpan) -> Compiled:
     """A ``grouped`` read by ``period``: a named player's four quarters side
     by side ("Jokic points by quarter", #162). One statement, the union of
     four reads of the SAME narrowed games - the opponent, the venue, the
@@ -668,14 +668,14 @@ def _compile_by_period(con: duckdb.DuckDBPyConnection, q: Query, narrowed: Narro
     params: list[Any] = []
     for quarter in REGULATION_QUARTERS:
         each = copy.deepcopy(narrowed)
-        _apply_period(con, each, replace(q.scope, period=quarter, half=None))
+        apply_period(con, each, replace(q.scope, period=quarter, half=None))
         sql, each_params = aggregate_sql(each, [f'{quarter} AS "group"', *selects], rebuilt=rebuilt)
         parts.append(f"SELECT * FROM ({sql})")
         params += each_params
     return Compiled(" UNION ALL ".join(parts) + ' ORDER BY "group"', params, player, span, narrowed, rebuilt, list(q.measures))
 
 
-def _compile_grouped(q: Query, narrowed: Narrowed, rebuilt: bool, player: Entity | None, span: _Span) -> Compiled:
+def _compile_grouped(q: Query, narrowed: Narrowed, rebuilt: bool, player: Entity | None, span: ResolvedSpan) -> Compiled:
     """A ``grouped`` read: a split, or a ranking of players."""
     if q.group not in GROUPS:
         raise Unsupported(f"no grouping {q.group!r}")
@@ -718,11 +718,11 @@ def run_scope(scope: Scope, *, named: bool) -> Any:
     .. versionadded:: 5.0.0
     """
     if named:
-        return _condition_scope(scope.season, "career" if scope.season_n else scope.span, scope.season_type, _PLAYER_GAME_TABLES, since=scope.since)
-    return _condition_scope(scope.season, scope.span, scope.season_type, _PLAYER_GAME_TABLES)
+        return condition_scope(scope.season, "career" if scope.season_n else scope.span, scope.season_type, _PLAYER_GAME_TABLES, since=scope.since)
+    return condition_scope(scope.season, scope.span, scope.season_type, _PLAYER_GAME_TABLES)
 
 
-def _compile_run(q: Query, narrowed: Narrowed, box: BoxSource, player: Entity | None, span: _Span) -> Compiled:
+def _compile_run(q: Query, narrowed: Narrowed, box: BoxSource, player: Entity | None, span: ResolvedSpan) -> Compiled:
     """A ``run`` read: the longest runs of consecutive games the point's one
     predicate holds along, over the narrowed games in Eastern-date order -
     the streak's skeleton (ROADMAP plan item 6, step (g)), as
@@ -768,7 +768,7 @@ def _compile_run(q: Query, narrowed: Narrowed, box: BoxSource, player: Entity | 
     return Compiled(sql, {**row_params, **condition, "limit": limit}, player, span, narrowed, box.rebuilt, [], run_rows=rows, run_params=row_params)
 
 
-def _compile_pair(narrowed: Narrowed, box: BoxSource, a: Entity, b: Entity, span: _Span) -> Compiled:
+def _compile_pair(narrowed: Narrowed, box: BoxSource, a: Entity, b: Entity, span: ResolvedSpan) -> Compiled:
     """A ``pair`` read: the games ``a`` and ``b`` both played on opposite
     teams, newest first, with both lines - the matchup's skeleton (ROADMAP
     plan item 6, step (g)), the pair relation
@@ -871,7 +871,7 @@ def _box_notes(con: duckdb.DuckDBPyConnection, q: Query, c: Compiled, rows: list
     templates' own notes, threaded through here for the first time: #197,
     ISSUES.md). Only for a named player - the league-wide subject has no
     ONE player's career to check a floor against, which is what
-    ``_box_score_notes`` assumes.
+    ``box_score_notes`` assumes.
 
     .. versionchanged:: 4.4.0
        Pops the scratch ``rebuilt_shown`` column unconditionally, even for
@@ -888,7 +888,7 @@ def _box_notes(con: duckdb.DuckDBPyConnection, q: Query, c: Compiled, rows: list
     # parity, K1 rule 6), not what the answer is about - the same reason
     # `game_log`'s own notes turn this note off for one.
     career_note = c.narrowed.date is None
-    return _box_score_notes(con, c.player, c.span, c.narrowed, career_note=career_note, rebuilt=c.rebuilt, rebuilt_shown=rebuilt_shown)
+    return box_score_notes(con, c.player, c.span, c.narrowed, career_note=career_note, rebuilt=c.rebuilt, rebuilt_shown=rebuilt_shown)
 
 
 def _grouped_total(con: duckdb.DuckDBPyConnection, q: Query, c: Compiled, rows: list[dict[str, Any]]) -> int | None:
@@ -906,7 +906,7 @@ def _grouped_total(con: duckdb.DuckDBPyConnection, q: Query, c: Compiled, rows: 
     return sum(int(dict(zip(names, r, strict=True)).get("games") or 0) for r in cur.fetchall())
 
 
-def _player_own_seasons(con: duckdb.DuckDBPyConnection, player: Entity | None, span: _Span) -> tuple[int, int] | None:
+def _player_own_seasons(con: duckdb.DuckDBPyConnection, player: Entity | None, span: ResolvedSpan) -> tuple[int, int] | None:
     """A named player's own first and last season on record, for
     :func:`~association.query.compose.sentence._span_phrase` to name a plain
     career by instead of the relation's floor.

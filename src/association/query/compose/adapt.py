@@ -15,7 +15,7 @@ from association.query.measures import MEASURE_WORDS
 from association.query.reading import Group, Reading, Scope, _clamp_limit
 from association.query.reading import named_player_in as _named_player_in
 from association.query.shotchart import SHOT_AVAILABILITY
-from association.query.templates.common import _BOX_SCORES, TemplateUnsupported, period_narrowing
+from association.query.templates.common import BOX_SCORES, TemplateUnsupported, period_narrowing
 
 # One concept, one definition (scripts/check_duplicate_names.py): the default
 # row counts and the default stat line are the same constants the real
@@ -85,7 +85,7 @@ def _adapt_game_log(scope: Scope) -> Reading:
             raise Unsupported(str(exc)) from exc
     # ``season_type_unstated`` ("his last 5 games", no season type named) is
     # read over both types at once - ``scoped_player`` settles the span with
-    # ``_player_relation_season_type`` - and ``compose.present`` says it the
+    # ``player_relation_season_type`` - and ``compose.present`` says it the
     # way ``game_log`` does, one type at a time merged by date.
     # A team beside the player is settled in compile_query through game_log's own _team_slot_for_player.
     date = scope.date
@@ -155,7 +155,7 @@ def _adapt_threshold_count(scope: Scope) -> Reading:
             _threshold_count_ask(scope)
         except TemplateUnsupported as exc:
             raise Unsupported(f"threshold_count: {exc}") from exc
-        return Reading(scope=scope, shape="scalar", measures=[], aggregate="count", group="none", predicates=[], available=_BOX_SCORES)
+        return Reading(scope=scope, shape="scalar", measures=[], aggregate="count", group="none", predicates=[], available=BOX_SCORES)
     if col is None or threshold is None or threshold < 1:
         # The reason threshold_count's retired template gave, where it has one
         # (a threshold of 0 counts every game; no stat it keeps a line on).
@@ -168,7 +168,7 @@ def _adapt_threshold_count(scope: Scope) -> Reading:
     # misread as a threshold (threshold_count's own _threshold_count_lines).
     lines = [str(x) for x in (*scope.below, *scope.above)]
     predicates = [] if any(str(threshold) in line for line in lines) else [(col, ">=", threshold)]
-    return Reading(scope=scope, shape="scalar", measures=[], aggregate="count", group="none", predicates=predicates, available=_BOX_SCORES)
+    return Reading(scope=scope, shape="scalar", measures=[], aggregate="count", group="none", predicates=predicates, available=BOX_SCORES)
 
 
 def _adapt_single_game_high(scope: Scope) -> Reading:
@@ -198,7 +198,7 @@ def _adapt_player_splits(scope: Scope) -> Reading:
     # template's own fold (_STARTER_BENCH_SIDES); by venue it read the
     # half's games split by home/away instead.
     group: Group = "starter" if scope.split in ("starter_bench", "starter", "bench") else "venue"
-    return Reading(scope=scope, shape="grouped", measures=list(SPLIT_LINE), aggregate="record", group=group, predicates=[], available=_BOX_SCORES)
+    return Reading(scope=scope, shape="grouped", measures=list(SPLIT_LINE), aggregate="record", group=group, predicates=[], available=BOX_SCORES)
 
 
 def _adapt_period_split(scope: Scope) -> Reading:
@@ -304,7 +304,7 @@ def _adapt_streak(scope: Scope) -> Reading:
             group="none",
             predicates=predicates,
             limit=DEFAULT_NAMED_RUNS,
-            available=_BOX_SCORES,
+            available=BOX_SCORES,
             span="career" if covered.season is None else None,
             season=covered.season,
         )
@@ -350,7 +350,7 @@ def _adapt_player_matchup(scope: Scope) -> Reading:
         aggregate="none",
         group="none",
         predicates=[],
-        available=_BOX_SCORES,
+        available=BOX_SCORES,
         span="career" if dated else scope.span,
         season=None if dated else scope.season,
     )
@@ -397,7 +397,7 @@ def _adapt_record_when(scope: Scope) -> Reading:
         # A line of 0 is every game he played: never a record "when", as
         # record_when's retired template refused it too.
         raise Unsupported("record_when needs a player, a stat and a positive threshold here")
-    return Reading(scope=scope, shape="scalar", measures=[], aggregate="record", group="none", predicates=[(col, ">=", threshold)], available=_BOX_SCORES)
+    return Reading(scope=scope, shape="scalar", measures=[], aggregate="record", group="none", predicates=[(col, ">=", threshold)], available=BOX_SCORES)
 
 
 #: Intent -> its default-point adapter, over the typed scope. Kept as a

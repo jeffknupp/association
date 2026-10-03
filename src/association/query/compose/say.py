@@ -23,7 +23,7 @@ from typing import Any
 from association.query.notes import Note, note
 from association.query.player_games import _joined
 from association.query.result import Result, Rows
-from association.query.templates.common import SEASON_TYPE_NAMES, TemplateResult, _period, _season_name
+from association.query.templates.common import SEASON_TYPE_NAMES, TemplateResult, season_label, season_phrase
 
 from .logs import LOG_PERCENTAGES, log_key
 
@@ -36,7 +36,7 @@ def _say_window_short(facts: dict[str, Any], narrowing: str) -> str:
     if facts.get("season_type") == [2, 3]:
         return f"Only {count} game{plural}{narrowing} found across the regular season and postseason."
     season = facts.get("season")
-    found_in = "in his box scores" if season is None else f"in the {_period(season, facts['season_type'])} - ask about his career to reach earlier seasons"
+    found_in = "in his box scores" if season is None else f"in the {season_phrase(season, facts['season_type'])} - ask about his career to reach earlier seasons"
     return f"Only {count} game{plural}{narrowing} {found_in}."
 
 
@@ -61,7 +61,7 @@ def _say_games_unseen(facts: dict[str, Any]) -> str:
 
 def _say_floor(facts: dict[str, Any]) -> str:
     first, earliest = facts["first"], facts["earliest"]
-    return f"Box scores begin with the {_season_name(first)} season, so his {earliest}-{first - 1} seasons are not counted."
+    return f"Box scores begin with the {season_label(first)} season, so his {earliest}-{first - 1} seasons are not counted."
 
 
 def note_phrase(each: Note, *, narrowing: str = "") -> str:
@@ -134,7 +134,7 @@ def mixed_where(season: int, counts: dict[int, int]) -> str:
     """
     if len(counts) == 1:
         (season_type,) = counts
-        return f" of the {_period(season, season_type)}"
+        return f" of the {season_phrase(season, season_type)}"
     parts = [f"{count} {SEASON_TYPE_NAMES[season_type]}" for season_type, count in sorted(counts.items())]
     return f" ({_joined(parts)})"
 
@@ -158,7 +158,7 @@ def _player_log_header(result: Result, body: Rows) -> str:
         word = "first" if window.ascending else "last"
         scope_text = f"{word} {count} of {total} games" if cut else f"{word} {count} games"
     if span.season is not None:
-        where_text = f" of the {_period(span.season, span.season_type or 2)}"
+        where_text = f" of the {season_phrase(span.season, span.season_type or 2)}"
     elif span.date:
         where_text = f" ({span.years})"
     else:
@@ -275,7 +275,7 @@ def say_team_log(result: Result) -> TemplateResult:
         where = mixed_where(span.season or 0, dict(body.by_season_type))
         scope_text = _scope_words(len(games), False, None)
     else:
-        where = f" of the {_period(span.season, span.season_type or 2)}" if span.season is not None else (f" ({span.years})" if span.date else f" (all-time, {span.years})")
+        where = f" of the {season_phrase(span.season, span.season_type or 2)}" if span.season is not None else (f" ({span.years})" if span.date else f" (all-time, {span.years})")
         scope_text = _scope_words(len(games), window.ascending, span.date)
     header = f"{result.subject}{result.narrowing.phrase}, {scope_text}{where} ({record}):"
     mark = {True: "W", False: "L", None: "?"}

@@ -50,16 +50,16 @@ from association.query.templates.common import (
     HISTORY_COLUMNS,
     STAT_LABELS,
     THRESHOLD_STAT_COLUMNS,
+    ResolvedSpan,
     TemplateResult,
     TemplateUnsupported,
-    _condition_scope,
-    _optional_team,
-    _player_relation_season_type,
-    _relation_scoping,
-    _Span,
-    _where_in,
     check_coverage,
+    condition_scope,
+    optional_team,
+    player_relation_season_type,
+    relation_scoping,
     unhonored_scoping,
+    where_in,
 )
 from association.query.templates.games import (
     _period_scope,
@@ -206,13 +206,13 @@ def _present_player_splits(con: duckdb.DuckDBPyConnection, q: Query) -> Template
         _player_splits_line(scope.stat, _PLAYER_LINE, alias="p")
     except TemplateUnsupported:
         return None
-    team = _optional_team(con, scope.team, season=scope.season)
+    team = optional_team(con, scope.team, season=scope.season)
     if isinstance(team, TemplateResult):
         return team
-    opponent = _optional_team(con, scope.opponent, season=scope.season)
+    opponent = optional_team(con, scope.opponent, season=scope.season)
     if isinstance(opponent, TemplateResult):
         return opponent
-    covered = _condition_scope(scope.season, scope.span, scope.season_type, _PLAYER_GAME_TABLES, since=scope.since)
+    covered = condition_scope(scope.season, scope.span, scope.season_type, _PLAYER_GAME_TABLES, since=scope.since)
     compiled = compile_query(con, q)
     if compiled.player is None:
         return None
@@ -239,11 +239,11 @@ def _present_record_when(con: duckdb.DuckDBPyConnection, q: Query) -> TemplateRe
         return None
     # The template's own scope - it names the span in the heading, the floor
     # note and the unseen-games count - read off the same slots the same way.
-    covered = _condition_scope(scope.season, "career" if scope.season_n else scope.span, scope.season_type, _PLAYER_GAME_TABLES, since=scope.since)
+    covered = condition_scope(scope.season, "career" if scope.season_n else scope.span, scope.season_type, _PLAYER_GAME_TABLES, since=scope.since)
     compiled = compile_query(con, replace(q, predicates=[], measures=[]))
     if compiled.player is None:
         return None
-    team = _optional_team(con, scope.team, season=scope.season)
+    team = optional_team(con, scope.team, season=scope.season)
     if isinstance(team, TemplateResult):
         return team
     found = _record_when_query(con, covered, compiled.player, team, column, threshold, compiled.narrowed)
@@ -371,7 +371,7 @@ def _present_streak(con: duckdb.DuckDBPyConnection, q: Query) -> TemplateResult 
         return None
     scope = q.scope
     _column, by_stat, unit, want_win, result = _streak_words(scope)
-    team = _optional_team(con, scope.team, season=scope.season)
+    team = optional_team(con, scope.team, season=scope.season)
     if isinstance(team, TemplateResult):
         return team
     covered = run_scope(scope, named=q.subject == "player")
@@ -389,7 +389,7 @@ def _present_streak(con: duckdb.DuckDBPyConnection, q: Query) -> TemplateResult 
     # The span searched, not the seasons the leaders' runs happen to fall in:
     # "1997-2023" under a question about every season reads as a narrower search.
     _, first, last = _totals(con, compiled.run_rows or "", compiled.run_params or {})
-    return _streak_league_answer(runs, what, who, rule, covered.label(first, last), _where_in(covered), by_stat, scope.stat, scope.threshold, unit, want_win)
+    return _streak_league_answer(runs, what, who, rule, covered.label(first, last), where_in(covered), by_stat, scope.stat, scope.threshold, unit, want_win)
 
 
 def _present_player_matchup(con: duckdb.DuckDBPyConnection, q: Query) -> TemplateResult | None:
@@ -437,12 +437,12 @@ def _present_player_history(con: duckdb.DuckDBPyConnection, q: Query) -> Templat
     return _player_history_read(con, player, scope)
 
 
-def _count_season(scope: Scope, span: _Span) -> tuple[int | None, int, int | None]:
+def _count_season(scope: Scope, span: ResolvedSpan) -> tuple[int | None, int, int | None]:
     """The season a count or a single-game high covers (``None`` for a
     career), the season type named in its sentence, and the ordinal that
     named the season, if one did - read off the compiler's settled span,
     since that is the span the rows were counted over."""
-    return span.season, _player_relation_season_type(scope), span.ordinal
+    return span.season, player_relation_season_type(scope), span.ordinal
 
 
 def _present_single_game_high(con: duckdb.DuckDBPyConnection, q: Query) -> TemplateResult | None:
@@ -456,7 +456,7 @@ def _present_single_game_high(con: duckdb.DuckDBPyConnection, q: Query) -> Templ
     if stat is None or column is None or q.skeleton != "rows" or q.order != "measure" or q.direction != "desc" or q.predicates or q.position or not q.measures or q.measures[0] != column:
         return None
     out = run(con, q)
-    span: _Span = out["span"]
+    span: ResolvedSpan = out["span"]
     player = out["entity"]
     season, season_type, _ = _count_season(scope, span)
     career = season is None
@@ -516,7 +516,7 @@ def _present_threshold_count(con: duckdb.DuckDBPyConnection, q: Query) -> Templa
     except TemplateUnsupported:
         return None
     out = run(con, q)
-    span: _Span = out["span"]
+    span: ResolvedSpan = out["span"]
     player = out["entity"]
     season, season_type, ordinal = _count_season(scope, span)
     rows = _present_threshold_count_rows(q, out)
@@ -586,15 +586,15 @@ STATED_SCOPING: dict[str, frozenset[str]] = {
     # `season_type_unstated`: read over both season types merged by date for
     # a log (compose.logs, which takes this set since Phase 2's first
     # slice), and from box scores as one combined read for an average
-    # (`_player_stat_reads_box_scores`, `_player_relation_season_type`).
-    "game_log": _relation_scoping("game_log", "season_type_unstated"),
-    "player_stat": _relation_scoping("player_stat", "season_type_unstated"),
+    # (`_player_stat_reads_box_scores`, `player_relation_season_type`).
+    "game_log": relation_scoping("game_log", "season_type_unstated"),
+    "player_stat": relation_scoping("player_stat", "season_type_unstated"),
     # player_splits' words: the relation's set less a date and a window
     # (RELATION_SCOPING_EXCLUDED: one game has nothing to split).
-    "player_splits": _relation_scoping("player_splits"),
+    "player_splits": relation_scoping("player_splits"),
     # The retired templates' words, as they stated their narrowings when they
     # retired (ROADMAP plan item 6, step (d), part 4).
-    "record_when": _relation_scoping("record_when"),
+    "record_when": relation_scoping("record_when"),
     "player_history": frozenset({"span"}),
     # leaderboard's words: a career pool, and a season total or a unit it
     # refuses by name (the template's own HONORED_SCOPING when it retired).
@@ -607,7 +607,7 @@ STATED_SCOPING: dict[str, frozenset[str]] = {
     # fourth-quarter three") is not among those words either
     # (RELATION_SCOPING_EXCLUDED): the presenter steps aside and the
     # compiler's sentence, which names both, answers.
-    "period_split": _relation_scoping("period_split"),
+    "period_split": relation_scoping("period_split"),
     # player_compare's words state no narrowing at all; its point refuses
     # one outright (query/point.py._compare_point), as check_scope did.
     "player_compare": frozenset(),
@@ -616,11 +616,11 @@ STATED_SCOPING: dict[str, frozenset[str]] = {
     # every game in the span), which its point refuses outright
     # (compose.adapt._adapt_streak); its team and league branches refuse
     # the cells only a named player's games settle, by name, there too.
-    "streak": _relation_scoping("streak"),
+    "streak": relation_scoping("streak"),
     # player_matchup's words: the relation's set less a third team, a window,
     # an ordinal season and a quarter (RELATION_SCOPING_EXCLUDED), which its
     # point refuses outright (compose.adapt._adapt_player_matchup).
-    "player_matchup": _relation_scoping("player_matchup"),
+    "player_matchup": relation_scoping("player_matchup"),
     # with_without's words: a career, the teammates, one opponent and a
     # companion's role, the template's own declaration when it retired.
     "with_without": WITH_WITHOUT_STATED,
@@ -629,7 +629,7 @@ STATED_SCOPING: dict[str, frozenset[str]] = {
     # other way ("games with under 14 fta"), and a phrase carrying the count's
     # own number IS the count, misread - see _threshold_count_lines.
     # `season_type_unstated` is stated the way `scoped_player` reads it -
-    # one combined `season_type IN (2, 3)` read (_player_relation_season_type).
+    # one combined `season_type IN (2, 3)` read (player_relation_season_type).
     "threshold_count": frozenset({"span", "below", "above", "season_n", "season_type_unstated"}),
 }
 """Intent -> the scoping its presenter's WORDS state. A presenter answers in

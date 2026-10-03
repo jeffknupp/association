@@ -40,18 +40,18 @@ from association.query.templates.common import (
     REBUILT_STATS,
     THRESHOLD_STAT_COLUMNS,
     MeasureFilter,
+    Narrowed,
+    ResolvedSpan,
     TemplateResult,
     TemplateUnsupported,
-    _log_carries_rebuilt,
-    _Narrowed,
-    _no_narrowed_games,
-    _resolved_team,
-    _slot_season,
-    _Span,
-    _span_of,
     box_score_notes_read,
+    log_carries_rebuilt,
     measure_filters,
+    no_narrowed_games,
+    resolved_team,
     scoped_games,
+    slot_season,
+    span_of,
     team_games,
     unhonored_scoping,
     whole_span,
@@ -193,7 +193,7 @@ def _rebuilt_readable(con: duckdb.DuckDBPyConnection, needed: list[str]) -> bool
     to caveat one column. ``minutes`` is exempt rather than a failure:
     play-by-play cannot recover it, so it prints blank on a rebuilt row,
     which is the truth and is said in a note beneath the table."""
-    return _log_carries_rebuilt(con) and all(LOG_COLUMNS[h] in REBUILT_STATS for h in needed if LOG_COLUMNS[h] != "minutes")
+    return log_carries_rebuilt(con) and all(LOG_COLUMNS[h] in REBUILT_STATS for h in needed if LOG_COLUMNS[h] != "minutes")
 
 
 def _pct(made: Any, attempted: Any) -> float | None:
@@ -268,7 +268,7 @@ def _player_log_averages(headers: list[str], raws: list[dict[str, Any]]) -> dict
     return averages
 
 
-def _player_log_total(con: duckdb.DuckDBPyConnection, narrowed: _Narrowed, *, rebuilt: bool) -> int:
+def _player_log_total(con: duckdb.DuckDBPyConnection, narrowed: Narrowed, *, rebuilt: bool) -> int:
     """How many of the player's games match every narrowing the question
     carries, before the window (``order``/``limit``) cuts them to the rows
     listed - what the heading says "of how many" with (F149). Read through
@@ -289,7 +289,7 @@ def _player_log_select(needed: list[str], rebuilt: bool) -> str:
     )
 
 
-def _player_narrowing(narrowed: _Narrowed) -> Narrowing:
+def _player_narrowing(narrowed: Narrowed) -> Narrowing:
     return Narrowing(
         phrase=narrowed.filters(dated=False),
         opponent=narrowed.opponent.name if narrowed.opponent else None,
@@ -298,7 +298,9 @@ def _player_narrowing(narrowed: _Narrowed) -> Narrowing:
     )
 
 
-def _player_log(con: duckdb.DuckDBPyConnection, player_name: str, player: Any, span: _Span, narrowed: _Narrowed, extras: tuple[str, ...], *, limit: int, asked: int | None, ascending: bool) -> Result:
+def _player_log(
+    con: duckdb.DuckDBPyConnection, player_name: str, player: Any, span: ResolvedSpan, narrowed: Narrowed, extras: tuple[str, ...], *, limit: int, asked: int | None, ascending: bool
+) -> Result:
     """The listing over one season type, and the per-game averages over
     exactly the rows in it."""
     headers, needed, rebuilt = _player_log_columns(con, extras)
@@ -308,7 +310,7 @@ def _player_log(con: duckdb.DuckDBPyConnection, player_name: str, player: Any, s
     narrowing = _player_narrowing(narrowed)
     window = Window(limit=limit, asked=asked, ascending=ascending)
     if not rows:
-        message = _no_narrowed_games(con, player, span, narrowed, rebuilt=rebuilt)
+        message = no_narrowed_games(con, player, span, narrowed, rebuilt=rebuilt)
         return Result(subject=player_name, relation="player", span=about, narrowing=narrowing, window=window, empty=message)
     games, raws = _player_log_rows(rows, needed, headers)
     averages = _player_log_averages(headers, raws)
@@ -335,9 +337,9 @@ def _player_log_mixed(
     for a single type, once per type. The notes are read once per type and
     de-duplicated, since a rebuilt-line note or a ``without`` note reads
     identically whichever type it came from."""
-    per_type: dict[int, tuple[_Span, _Narrowed]] = {}
+    per_type: dict[int, tuple[ResolvedSpan, Narrowed]] = {}
     for season_type in (2, 3):
-        type_span = _Span(season, season_type)
+        type_span = ResolvedSpan(season, season_type)
         narrowed = scoped_games(con, player, type_span, scope, opponent=opponent, measures=measures)
         if isinstance(narrowed, TemplateResult):
             return narrowed
@@ -455,7 +457,7 @@ def _team_log_summary(games: list[dict[str, Any]]) -> dict[str, int]:
     return {"wins": wins, "losses": losses, "unknown": len(games) - wins - losses}
 
 
-def _team_log_none(con: duckdb.DuckDBPyConnection, team_name: str, span: _Span, narrowed: TeamNarrowed) -> str:
+def _team_log_none(con: duckdb.DuckDBPyConnection, team_name: str, span: ResolvedSpan, narrowed: TeamNarrowed) -> str:
     """Which fact is missing when no row matched: the team's games in that
     span, or the match - so the sentence names the right one. Reads
     ``narrowed`` WITHOUT its narrowing, the discipline
@@ -465,15 +467,15 @@ def _team_log_none(con: duckdb.DuckDBPyConnection, team_name: str, span: _Span, 
     found = con.execute(f"{TEAM_GAMES_SQL} SELECT COUNT(*), MIN({season_col}), MAX({season_col}) FROM team_games tg WHERE {where}", params).fetchone()
     total, first, last = found if found else (0, None, None)
     if not total:
-        from association.query.templates.common import _period
+        from association.query.templates.common import season_phrase
 
-        where_period = _period(span.season, span.season_type) if span.season is not None else f"{span.kind}s on record"
+        where_period = season_phrase(span.season, span.season_type) if span.season is not None else f"{span.kind}s on record"
         return f"No {where_period} games found for the {team_name}."
     on_date = f" on {narrowed.date}" if narrowed.date else ""
     return f"The {team_name} played {total:,} games {span.during(first, last, whose='all seasons on record')}, none of them{narrowed.filters()}{on_date}."
 
 
-def _team_log(con: duckdb.DuckDBPyConnection, team_name: str, span: _Span, narrowed: TeamNarrowed, *, limit: int, ascending: bool, stat: Any) -> Result:
+def _team_log(con: duckdb.DuckDBPyConnection, team_name: str, span: ResolvedSpan, narrowed: TeamNarrowed, *, limit: int, ascending: bool, stat: Any) -> Result:
     """A team's games in ``span``, narrowed as ``narrowed`` already reflects."""
     sql, params = team_rows_sql(narrowed, _TEAM_GAME_LOG_SELECT, order=f"tg.eastern_date {'ASC' if ascending else 'DESC'}", limit=limit, join=_TEAM_GAME_LOG_JOIN)
     rows = con.execute(sql, params).fetchall()
@@ -499,7 +501,7 @@ def _team_mixed_rows(con: duckdb.DuckDBPyConnection, team: Any, season: int, *, 
     rows_by_type: dict[int, list[tuple[Any, ...]]] = {}
     narrowed_text = ""
     for season_type in (2, 3):
-        narrowed = team_games(con, team, _Span(season, season_type), Scope(venue=venue), opponent=opponent)
+        narrowed = team_games(con, team, ResolvedSpan(season, season_type), Scope(venue=venue), opponent=opponent)
         if isinstance(narrowed, TemplateResult):
             return narrowed
         narrowed_text = narrowed.filters()
@@ -572,7 +574,7 @@ def read_team_log(con: duckdb.DuckDBPyConnection, q: TeamQuery, *, stated: froze
     team_text = scope.team
     if not team_text or scope.player:
         raise TemplateUnsupported("game_log needs a team or a player")
-    team = _resolved_team(con, team_text, season=_slot_season(scope))
+    team = resolved_team(con, team_text, season=slot_season(scope))
     if isinstance(team, TemplateResult):
         return team
     _team_log_refusals(without, measures, game_n)
@@ -582,11 +584,11 @@ def read_team_log(con: duckdb.DuckDBPyConnection, q: TeamQuery, *, stated: froze
         # the team compiler's window sum refuses the same read.
         raise TemplateUnsupported("a window over both season types is read for a plain 'last N games' only")
     if mixed:
-        resolved_season = _span_of(span, season, 2, "games").season
+        resolved_season = span_of(span, season, 2, "games").season
         if resolved_season is None:
             raise TemplateUnsupported("a career span has no single season to read both season types within")
         return _team_log_mixed(con, team.name, team, resolved_season, opponent=opponent, venue=venue, limit=limit, stat=scope.stat)
-    seasons = _span_of(span, season, season_type, "games", since=scope.since, until=scope.until)
+    seasons = span_of(span, season, season_type, "games", since=scope.since, until=scope.until)
     narrowed = team_games(con, team, seasons, Scope(venue=venue), opponent=opponent, date=date)
     if isinstance(narrowed, TemplateResult):
         return narrowed
