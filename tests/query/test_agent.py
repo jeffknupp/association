@@ -25,7 +25,7 @@ def test_ask_writes_history_file_even_without_verbose(monkeypatch: pytest.Monkey
     agent = _agent_with_players(tmp_path, "Joel Embiid")
     agent.history_dir = history_dir
     monkeypatch.setattr("association.query.normalizer.normalize", lambda model, question: Normalized(["embiid"], "points"))
-    monkeypatch.setattr("association.query.compose.answer", lambda ctx, reading, trace=None, declined=None, planned=None: TemplateResult(data={}, answer="Final answer."))
+    monkeypatch.setattr("association.query.compose.answer", lambda ctx, reading, trace=None, declined=None, planned=None, ran=None: TemplateResult(data={}, answer="Final answer."))
     result = agent.ask("how many points does embiid average").text
 
     assert result == "Final answer."
@@ -107,7 +107,7 @@ def test_the_fast_path_replaces_a_player_the_question_never_named(monkeypatch: p
         return TemplateResult(data={}, answer="templated")
 
     # player_compare is the compiler's (compose.COMPILED_INTENTS): the same Reading reaches compose.answer.
-    monkeypatch.setattr("association.query.compose.answer", lambda ctx, reading, trace=None, declined=None, planned=None: record(ctx, reading))
+    monkeypatch.setattr("association.query.compose.answer", lambda ctx, reading, trace=None, declined=None, planned=None, ran=None: record(ctx, reading))
     ask_routed(_agent_with_players(tmp_path, "Joel Embiid", "Jusuf Nurkic"), "compare sga and embiid", slots_route("player_compare", {"players": ["Shai Gilgeous-Alexander", "Jusuf Nurkic"]}))
     assert seen == ["Shai Gilgeous-Alexander", "Joel Embiid"]
 
@@ -119,7 +119,7 @@ def test_the_fast_path_records_who_the_question_was_read_to_be_about(monkeypatch
     writes the slots. It writes none itself yet."""
     from association.query.templates.common import TemplateResult
 
-    monkeypatch.setattr("association.query.compose.answer", lambda ctx, reading, trace=None, declined=None, planned=None: TemplateResult(data={}, answer="templated"))
+    monkeypatch.setattr("association.query.compose.answer", lambda ctx, reading, trace=None, declined=None, planned=None, ran=None: TemplateResult(data={}, answer="templated"))
     agent = _agent_with_players(tmp_path, "Joel Embiid", "Jusuf Nurkic")
     answer = ask_routed(agent, "compare sga and embiid", slots_route("player_compare", {"players": ["Shai Gilgeous-Alexander", "Jusuf Nurkic"]}))
     stages = [(d.stage, d.field, d.after) for d in answer.decisions]
@@ -214,14 +214,15 @@ def test_a_rerouted_intent_runs_the_path_it_was_rerouted_to(monkeypatch: pytest.
     and team_record's template never runs."""
     from association.query.templates.common import TemplateResult, TemplateUnsupported
 
-    ran: list[str] = []
+    paths: list[str] = []
 
     def team_record(ctx: Any, reading: Reading) -> TemplateResult:
-        ran.append("team_record")
+        paths.append("team_record")
         raise TemplateUnsupported("team_record cannot read a player's line")
 
-    def composed(ctx: Any, reading: Reading, trace: Any = None, declined: Any = None, planned: Any = None) -> TemplateResult:
-        ran.append(f"compose {reading.intent}")
+    def composed(ctx: Any, reading: Reading, trace: Any = None, declined: Any = None, planned: Any = None, ran: Any = None) -> TemplateResult:
+        del ran  # the agent's own callback, not this test's record of the paths taken
+        paths.append(f"compose {reading.intent}")
         return TemplateResult(data={}, answer="composed")
 
     import duckdb
@@ -238,7 +239,7 @@ def test_a_rerouted_intent_runs_the_path_it_was_rerouted_to(monkeypatch: pytest.
     monkeypatch.setattr("association.query.agent.TEMPLATES", {"team_record": team_record})
     monkeypatch.setattr("association.query.compose.answer", composed)
     answer = ask_routed(agent, "sixers record when maxey scored 20+ points", slots_route("team_record", {"team": "Philadelphia 76ers", "stat": "points", "season_type": 2}))
-    assert ran == ["compose record_when"]
+    assert paths == ["compose record_when"]
     assert answer.intent == "record_when" and "composed" in (answer.text or "")
 
 
@@ -251,7 +252,7 @@ def test_a_player_the_question_cannot_account_for_is_refused_not_passed_on(monke
     reading."""
     from association.query.templates.common import TemplateResult
 
-    monkeypatch.setattr("association.query.compose.answer", lambda ctx, reading, trace=None, declined=None, planned=None: TemplateResult(data={}, answer="templated"))
+    monkeypatch.setattr("association.query.compose.answer", lambda ctx, reading, trace=None, declined=None, planned=None, ran=None: TemplateResult(data={}, answer="templated"))
     answer = ask_routed(_agent_with_players(tmp_path, "Joel Embiid", "Jusuf Nurkic"), "compare the two best centers", slots_route("player_compare", {"players": ["Jusuf Nurkic", "Joel Embiid"]}))
     assert "was not answered" in answer.text and "Jusuf Nurkic" in answer.text
     assert answer.answered_by == "fast" and "templated" not in answer.text
@@ -295,7 +296,7 @@ def test_the_fast_path_says_how_it_read_a_name_the_question_left_open(monkeypatc
 
     # player_stat is the compiler's (compose.COMPILED_INTENTS): the reading
     # travels the same way through agent._try_compose.
-    monkeypatch.setattr("association.query.compose.answer", lambda ctx, reading, trace=None, declined=None, planned=None: reads_a_name(ctx, reading))
+    monkeypatch.setattr("association.query.compose.answer", lambda ctx, reading, trace=None, declined=None, planned=None, ran=None: reads_a_name(ctx, reading))
     answer = ask_routed(_agent_with_players(tmp_path, "Marlon Maxey", "Tyrese Maxey"), "how many points does maxey average?", slots_route("player_stat", {"player": "maxey"}))
     reading = "('maxey' was read as Tyrese Maxey, the only match who played in 2025-26. Marlon Maxey also matches - use the full name, or name a season he played, to ask about him.)"
     assert answer.text == f"Tyrese Maxey averaged 28.0 points. {reading}"
@@ -370,7 +371,7 @@ def test_a_templates_refusal_that_compose_answers_is_returned_as_fast_with_the_t
     "-> (router) intent=..." names what was routed."""
     from association.query.templates.common import TemplateResult
 
-    def composed_answer(ctx: Any, reading: Reading, trace: Any = None, declined: Any = None, planned: Any = None) -> TemplateResult:
+    def composed_answer(ctx: Any, reading: Reading, trace: Any = None, declined: Any = None, planned: Any = None, ran: Any = None) -> TemplateResult:
         return TemplateResult(data={"skeleton": "aggregate", "measures": ["points"], "rows": [{"points": 30.0}]}, answer="Joel Embiid has averaged 30.0 points since 2024.")
 
     monkeypatch.setattr("association.query.agent.TEMPLATES", {"player_stat": _refusing_template})
@@ -414,7 +415,7 @@ def test_a_compose_refusal_is_returned_as_the_answer_not_a_fall_through(monkeypa
     something to say."""
     from association.query.templates.common import TemplateResult
 
-    def composed_refusal(ctx: Any, reading: Reading, trace: Any = None, declined: Any = None, planned: Any = None) -> TemplateResult:
+    def composed_refusal(ctx: Any, reading: Reading, trace: Any = None, declined: Any = None, planned: Any = None, ran: Any = None) -> TemplateResult:
         return TemplateResult(data={"ambiguous": "since"}, answer="I can't tell which span 'the last few' means - a number of games, or a number of seasons?")
 
     monkeypatch.setattr("association.query.agent.TEMPLATES", {"player_stat": _refusing_template})
@@ -433,7 +434,7 @@ def test_a_composed_answer_carries_the_name_reading_it_noted(monkeypatch: pytest
     from association.query.entities import Entity, _note_name_reading
     from association.query.templates.common import TemplateResult
 
-    def composed_with_reading(ctx: Any, reading: Reading, trace: Any = None, declined: Any = None, planned: Any = None) -> TemplateResult:
+    def composed_with_reading(ctx: Any, reading: Reading, trace: Any = None, declined: Any = None, planned: Any = None, ran: Any = None) -> TemplateResult:
         _note_name_reading("maxey", Entity("1", "Tyrese Maxey"), [Entity("0", "Marlon Maxey")], 2026, named_in_full=False)
         return TemplateResult(data={}, answer="Tyrese Maxey has averaged 28.0 points since 2024.")
 
@@ -467,7 +468,7 @@ def test_the_fast_path_carries_out_the_intent_and_data_it_used_to_discard(monkey
     from association.query.templates.common import TemplateResult
 
     # leaderboard is the compiler's (compose.COMPILED_INTENTS): the same Reading reaches compose.answer.
-    monkeypatch.setattr("association.query.compose.answer", lambda ctx, reading, trace=None, declined=None, planned=None: TemplateResult(data={"leaders": ["Jokic"]}, answer="Jokic."))
+    monkeypatch.setattr("association.query.compose.answer", lambda ctx, reading, trace=None, declined=None, planned=None, ran=None: TemplateResult(data={"leaders": ["Jokic"]}, answer="Jokic."))
     answer = ask_routed(_agent_with_players(tmp_path), "who leads the league in scoring?", slots_route("leaderboard", {"stat": "points"}))
 
     assert answer.text == "Jokic."
@@ -607,7 +608,7 @@ def test_a_compiled_intent_is_read_planned_and_answered_by_the_compiler_alone(mo
 
     calls: list[str] = []
 
-    def composed_first(ctx: Any, reading: Reading, trace: Any = None, declined: Any = None, planned: Any = None) -> TemplateResult:
+    def composed_first(ctx: Any, reading: Reading, trace: Any = None, declined: Any = None, planned: Any = None, ran: Any = None) -> TemplateResult:
         calls.append("compose")
         if trace is not None:
             trace(
@@ -676,7 +677,7 @@ def test_the_parser_reads_the_question(monkeypatch: pytest.MonkeyPatch, tmp_path
         return TemplateResult(data={}, answer="templated")
 
     monkeypatch.setattr("association.query.normalizer.normalize", lambda model, question: Normalized(["embiid"], "points"))
-    monkeypatch.setattr("association.query.compose.answer", lambda ctx, reading, trace=None, declined=None, planned=None: record(ctx, reading))
+    monkeypatch.setattr("association.query.compose.answer", lambda ctx, reading, trace=None, declined=None, planned=None, ran=None: record(ctx, reading))
     db_path = tmp_path / "test.duckdb"
     con = duckdb.connect(str(db_path))
     con.execute("CREATE TABLE players (athlete_id VARCHAR, display_name VARCHAR)")

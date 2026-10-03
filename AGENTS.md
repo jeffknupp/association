@@ -81,8 +81,11 @@ fails rather than drifts.
   populations.** `scripts/stage_snapshots.py run OUT.jsonl` answers the 628
   recorded questions through the whole agent with no model (the
   normalizer's recorded replies, the date pinned, DuckDB single-threaded,
-  about two minutes) and writes what each stage produced: the reading,
-  the planned query, the result's values, the answer. `compare` reports
+  about two minutes) and writes what each stage produced: the reading
+  (with the reader's own verdict on the point: declined, or the cause it
+  refuses by), the query the compiler ran (the planned one, except where
+  the season line's presenter declined and `games_reading` re-read it:
+  3 of 628), the result's values, the answer. `compare` reports
   the first stage each question differs in and exits 1. The second
   population is every call the unit tests make across a stage boundary:
   run the suite on each tree with `ASSOCIATION_STAGE_CALLS=<dir>` and

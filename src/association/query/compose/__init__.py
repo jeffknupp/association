@@ -141,6 +141,7 @@ def answer(
     planned: Planned,
     trace: Callable[[Reading], None] | None = None,
     declined: Callable[[str], None] | None = None,
+    ran: Callable[[Query | TeamQuery], None] | None = None,
 ) -> TemplateResult | None:
     """The point the parser read for a question (:attr:`Reading.point`,
     :func:`~association.query.parse.reading_from_route`), answered - run,
@@ -188,6 +189,13 @@ def answer(
        it and this function again (``ROADMAP.md``, Phase 1). Required: until
        the step after, a caller that left it out had the Reading planned
        here, a second planner path only tests took.
+
+    .. versionchanged:: 5.0.0
+       Takes ``ran``: handed the query the compiler itself executed, which
+       is the planned one except where the season line's presenter declined
+       and :func:`~association.query.compose.plan.games_reading` re-read it
+       as the game-level query (3 of the 628 recorded questions). The stage
+       snapshot records that one, not the planned one, since 2026-10-03.
     """
     verdict = planned
     if verdict.refusal is not None:
@@ -197,11 +205,17 @@ def answer(
         if declined is not None:
             declined(verdict.declined or "the compiler has no reading of this point")
         return None
-    return _answer_point(ctx, reading.intent, reading.point, verdict.query, trace, declined)
+    return _answer_point(ctx, reading.intent, reading.point, verdict.query, trace, declined, ran)
 
 
 def _answer_point(
-    ctx: TemplateContext, intent: str, point: Reading, query: Query | TeamQuery, trace: Callable[[Reading], None] | None, declined: Callable[[str], None] | None
+    ctx: TemplateContext,
+    intent: str,
+    point: Reading,
+    query: Query | TeamQuery,
+    trace: Callable[[Reading], None] | None,
+    declined: Callable[[str], None] | None,
+    ran: Callable[[Query | TeamQuery], None] | None = None,
 ) -> TemplateResult | None:
     """``point``'s planned ``query``, run: the team subject's reader, the
     intent's own presenter, or the compiler's own sentence -
@@ -215,6 +229,8 @@ def _answer_point(
             own_team = present_team(ctx.con, intent, query)
             if own_team is not None:
                 return own_team
+            if ran is not None:
+                ran(query)
             result = run_team(ctx.con, query)
             return TemplateResult(data=_team_point_data(query, result), answer=_team_sentence(query, result), artifacts=[])
         # The shared checks read the slot dict until they take the Scope.
@@ -233,6 +249,8 @@ def _answer_point(
             refusal = check_coverage(intent, query.scope)
             if refusal is not None:
                 raise Refused(TemplateResult(data={"message": refusal, "season": query.scope.season}, answer=refusal))
+        if ran is not None:
+            ran(query)
         out = run(ctx.con, query)
     except Unsupported as exc:
         if declined is not None:
