@@ -277,12 +277,17 @@ ignore_imports = [
 
 [[tool.importlinter.contracts]]
 name = "The compiler's sentence reads no warehouse"
-# ROADMAP contract 3: a sayer takes a result and no connection. The one
-# module that already writes words from a result alone, held there; the
-# presenters and the template bodies are sql_outside_the_relations'
-# (scripts/check_ratchets.py) until their slices land.
+# ROADMAP contract 3: a sayer takes a result and no connection. The two
+# modules that write words from a result alone, held there: the compiler's
+# own sentence, and the sayer Phase 2 builds slice by slice (compose.say,
+# since 2026-10-03: the game log's words). The presenters and the template
+# bodies are sql_outside_the_relations' (scripts/check_ratchets.py) until
+# their slices land. Direct imports only: say imports templates.common for
+# its phrase helpers and the TemplateResult it hands back, and that module
+# imports duckdb for the readers still in it - checked on chains once the
+# phrase helpers leave templates with the last body.
 type = "forbidden"
-source_modules = ["association.query.compose.sentence"]
+source_modules = ["association.query.compose.sentence", "association.query.compose.say"]
 forbidden_modules = ["duckdb"]
 allow_indirect_imports = true
 

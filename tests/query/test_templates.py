@@ -16,11 +16,11 @@ from association.nba.season import current_season
 from association.nba.season import eastern_date as _eastern_date_of
 from association.query import shotchart
 from association.query.compose.adapt import to_reading
-from association.query.compose.core import Unsupported, _compile_pair, _compile_run, _resolve_pair
-from association.query.compose.plan import plan
+from association.query.compose.core import Query, Unsupported, _compile_pair, _compile_run, _resolve_pair
+from association.query.compose.logs import _player_log, _player_log_mixed, _rebuilt_readable, _team_log, _team_log_mixed, read_player_log, read_team_log
+from association.query.compose.plan import plan, plan_point
 from association.query.compose.present import (
     STATED_SCOPING,
-    _present_game_log,
     _present_period_split,
     _present_player_matchup,
     _present_player_splits,
@@ -47,13 +47,9 @@ from association.query.templates.games import (
     _period_split_reconciliation_refusal,
     _period_split_rows,
     _period_split_rows_from,
-    _player_game_log,
-    _player_game_log_mixed,
     _player_matchup_from,
-    _rebuilt_readable,
     head_to_head,
     period_leaderboard,
-    team_game_log,
     team_quarter_points,
 )
 from association.query.templates.netpoints import fingerprint, player_netpoints
@@ -4064,6 +4060,30 @@ def test_game_log_lists_only_the_games_against_the_named_opponent(pg_ctx: Templa
     assert result.answer.startswith(f"Brandin Podziemski vs the Detroit Pistons, last 2 games of the {current_season()} regular season:")
 
 
+def test_a_players_log_is_read_into_a_result_and_said_from_it_alone(pg_ctx: TemplateContext) -> None:
+    """Phase 2, step 0: ``compose.logs.read_player_log`` returns a Result - the
+    rows, the count before the window, the per-game summary, the notes as
+    kinds and facts - and ``compose.say.say`` words it into exactly the
+    answer ``compose.answer`` gives; the sayer is handed the Result and
+    nothing else."""
+    from association.query.compose.say import say
+    from association.query.result import Result
+
+    reading = with_point(
+        pg_ctx.con, "", Reading(scope=Scope.from_slots({"player": "Brandin Podziemski", "opponent": "Detroit Pistons"}), intent="game_log", subject=Subject("player", players=("Brandin Podziemski",)))
+    )
+    planned = plan_point(reading)
+    assert isinstance(planned.query, Query)
+    read = read_player_log(pg_ctx.con, planned.query, stated=STATED_SCOPING["game_log"])
+    assert isinstance(read, Result)
+    assert read.subject == "Brandin Podziemski" and read.relation == "player" and read.narrowing.opponent == "Detroit Pistons"
+    body = read.rows
+    assert body is not None and [g["opponent"] for g in body.rows] == ["DET", "DET"] and body.total_before_window == 2 and body.columns == ("MIN", "PTS", "REB", "AST")
+    assert all(isinstance(each.kind, str) and isinstance(each.facts, dict) for each in read.notes)
+    answered = compose_answer(pg_ctx, reading)
+    assert answered is not None and say(read).answer == answered.answer and say(read).data == answered.data
+
+
 def test_a_career_log_against_an_opponent_crosses_seasons(pg_ctx: TemplateContext) -> None:
     s = current_season()
     result = game_log(pg_ctx, Reading.from_slots({"player": "Brandin Podziemski", "opponent": "Detroit Pistons", "span": "career", "limit": 8}))
@@ -5917,7 +5937,7 @@ def test_templates_on_the_relation_do_not_narrow_it_themselves() -> None:
     readers["record_when"] = [_record_when_query, _record_when_answer, _record_when_team_answer]
     readers["period_split"] = [_present_period_split, _period_split_from, _period_split_rows, _period_split_rows_from, _period_split_empty, _period_split_cross_season_redirect]
     readers["player_splits"] = [_present_player_splits, _player_splits_from, _player_splits_team, team_splits]
-    readers["game_log"] = [team_game_log, _present_game_log, _player_game_log, _player_game_log_mixed]
+    readers["game_log"] = [read_team_log, read_player_log, _player_log, _player_log_mixed, _team_log, _team_log_mixed]
     readers["player_stat"] = [_present_player_stat, _present_player_stat_season_line, _box_score_player_stat, _player_stat_season_line, _player_stat_season_line_subject]
     # streak's template is retired too (the `run` shape): the compiler's
     # skeleton and the team compiler's, and the readers that say them.

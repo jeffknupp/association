@@ -21,11 +21,12 @@ from association.query.templates.common import _BOX_SCORES, TemplateUnsupported,
 # row counts and the default stat line are the same constants the real
 # templates already carry (association.query.templates.games/players),
 # reused rather than redeclared under the same name.
-from association.query.templates.games import DEFAULT_GAME_LOG_LIMIT, _log_extras, _period_split_measure
+from association.query.templates.games import DEFAULT_GAME_LOG_LIMIT, _period_split_measure
 from association.query.templates.players import DEFAULT_SINGLE_GAME_LIMIT, STAT_LINE, _threshold_count_ask
 from association.query.templates.splits import _DEFAULT_STREAK_LIMIT, _streak_words, _with_without_named
 
 from .core import COLUMNS, DEFAULT_NAMED_RUNS, LINE, Unsupported, run_scope
+from .logs import _log_extras
 
 #: The line a splits read carries, beyond the four :data:`~association.query.compose.core.LINE` measures.
 SPLIT_LINE: tuple[str, ...] = ("minutes", "points", "rebounds", "assists", "steals", "blocks", "turnovers", "threePointFieldGoalsMade", "fg_pct")

@@ -37,11 +37,14 @@ import copy
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
-from association.query.templates.common import TemplateContext, TemplateResult, check_coverage
+from association.query.result import Result
+from association.query.templates.common import TemplateContext, TemplateResult, TemplateUnsupported, check_coverage
 
 from .core import Query, Refused, Unsupported, run
+from .logs import read_player_log, read_team_log
 from .plan import Planned, games_reading
-from .present import present, present_team
+from .present import STATED_SCOPING, present, present_team
+from .say import say
 from .sentence import _span_phrase
 from .sentence import sentence as _sentence
 from .sentence import team_sentence as _team_sentence
@@ -208,6 +211,20 @@ def answer(
     return _answer_point(ctx, reading.intent, reading.point, verdict.query, trace, declined, ran)
 
 
+def _read_log(read: Callable[[], Result | TemplateResult | None]) -> TemplateResult | None:
+    """A log read and said: the relation's own refusal (a ``TemplateResult``)
+    as it stands, a Result through the sayer, ``None`` as ``None``. A cell
+    the relation refuses while reading is the compiler's decline, as
+    ``present`` made it."""
+    try:
+        read_log = read()
+    except TemplateUnsupported as exc:
+        raise Unsupported(f"relation: {exc}") from exc
+    if read_log is None or isinstance(read_log, TemplateResult):
+        return read_log
+    return say(read_log)
+
+
 def _answer_point(
     ctx: TemplateContext,
     intent: str,
@@ -224,6 +241,13 @@ def _answer_point(
         if trace is not None:
             trace(point)
         if isinstance(query, TeamQuery):
+            if intent == "game_log" and query.shape == "rows":
+                # The team's log: read into a Result, said by the sayer
+                # (Phase 2, step 0).
+                team_query = query
+                log = _read_log(lambda: read_team_log(ctx.con, team_query, stated=STATED_SCOPING["game_log"]))
+                if log is not None:
+                    return log
             # A team's record above and below its own line is said by
             # record_when's own team reader (compose.present.present_team).
             own_team = present_team(ctx.con, intent, query)
@@ -237,6 +261,16 @@ def _answer_point(
         refusal = check_coverage(intent, query.scope)
         if refusal is not None:
             raise Refused(TemplateResult(data={"message": refusal, "season": query.scope.season}, answer=refusal))
+        if query.skeleton == "rows" and intent in ("game_log", "player_stat"):
+            # A player's log - game_log's own point, or the window of games
+            # player_stat's retired template handed to the log ("stats over
+            # his last N games") - read into a Result and said by the sayer
+            # (Phase 2, step 0); None where the log's words do not say it.
+            stated = STATED_SCOPING[intent]
+            player_query = query
+            log = _read_log(lambda: read_player_log(ctx.con, player_query, stated=stated))
+            if log is not None:
+                return log
         # The intent's own default point is said the way its template says
         # it (compose.present, plan item 2 step 2a) - None for any other.
         own = present(ctx.con, intent, query)

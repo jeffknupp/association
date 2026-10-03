@@ -124,16 +124,29 @@ def test_a_fact_is_a_plain_value_whoever_is_listening() -> None:
 
 
 def _remark_calls() -> list[tuple[str, int, str, ast.Call]]:
-    """Every ``note(...)`` and ``decided(...)`` call under ``src``: the
-    file, the line, which of the two, and the call."""
+    """Every ``note(...)`` and ``decided(...)`` call under ``src``, and every
+    ``Note("kind", {...})`` a reader builds for the sayer to say
+    (``compose.say``, which records it under the kind it was built with):
+    the file, the line, which of the two, and the call. A
+    ``note(each.kind, ...)`` - a call whose kind is not a literal because
+    it re-records a Note already built with one (the sayer,
+    ``_box_score_notes``) - is left out."""
     found: list[tuple[str, int, str, ast.Call]] = []
     root = Path(notes.__file__).resolve().parents[1]
     for path in sorted(root.rglob("*.py")):
         if path.name == "notes.py":
             continue
         for node in ast.walk(ast.parse(path.read_text())):
-            if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id in {"note", "decided"} and node.args:
+            if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.args):
+                continue
+            if node.func.id in {"note", "decided"} and not (isinstance(node.args[0], ast.Attribute) and node.args[0].attr == "kind"):
+                # `note(each.kind, ...)` re-records a Note a reader built with a literal kind (the sayer, and _box_score_notes).
                 found += [(str(path.relative_to(root)), node.lineno, node.func.id, node)]
+            elif node.func.id == "Note" and len(node.args) == 2 and isinstance(node.args[1], ast.Dict):
+                # A reader's Note(kind, {fact: value, ...}): read as a note()
+                # call with those facts as keywords.
+                keywords = [ast.keyword(arg=str(key.value), value=value) for key, value in zip(node.args[1].keys, node.args[1].values, strict=True) if isinstance(key, ast.Constant)]
+                found += [(str(path.relative_to(root)), node.lineno, "note", ast.Call(func=ast.Name(id="note", ctx=ast.Load()), args=[node.args[0]], keywords=keywords))]
     return found
 
 

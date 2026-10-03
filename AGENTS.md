@@ -44,7 +44,8 @@ fails rather than drifts.
 - **New shapes are frozen** (decision D4). No new intent, template,
   presenter, scoping table or per-intent renderer.
   `tests/query/test_frozen_shapes.py` holds the 25 intents the reader can
-  name, and since 2026-10-02 the 12 templates, the 12 presenters and the
+  name, and since 2026-10-02 the 12 templates, the presenters (12 until
+  2026-10-03, 11 since the game log's went to a reader and a sayer) and the
   team-only one, the 10 adapters, the 14 scoping declarations (by module
   and name, read from the source; 12 until 2026-10-03, when the two tables
   of cells a reader refuses that its name pattern missed joined) and the
@@ -734,6 +735,41 @@ model's. Two things follow, and both matter when you add a shape:
     only for a word that is no ordinary word and is near exactly one player.
   - **"with and without X" is the split over X**, read from its "without".
 
+- **A shape Phase 2 has ported is a reader and a sayer, and nothing else
+  answers it.** The game log is the first (2026-10-03, `ROADMAP.md`,
+  "Phase 2, the expected steps", step 0): `compose/logs.py` reads a
+  player's or a team's log into a `Result` (`query/result.py` - the rows,
+  the count the window cut them from, the per-row summary, the remarks as
+  `Note(kind, facts)`), and `compose/say.py` words it, taking the Result and
+  nothing else (the import contract "The compiler's sentence reads no
+  warehouse" holds it, with `compose.sentence`). `compose.answer` reads a
+  rows-shaped `game_log` (and the `player_stat` window the retired template
+  handed to the log) through them before any presenter runs. Three rules
+  the slice set, which every later slice follows:
+  - **A note is written as data and said once.** The reader builds
+    `Note("window_short", {found, asked, ...})`; the sayer phrases it
+    (`say.note_phrase`, ONE phrase per kind) and records it through
+    `notes.note`, so the answer's remarks are the Result's notes. The
+    templates that still write sentences phrase the same kinds through
+    `note_phrase` too (`templates.common._box_score_notes`, over
+    `box_score_notes_read`); `tests/query/test_answer_notes.py` reads a
+    `Note(kind, {...})` as a write when it checks every kind is written.
+  - **The reader keeps the relation's shared steps; the sayer keeps the
+    words.** `read_player_log` narrows through `scoped_games`/`rows_sql`
+    exactly as the template did; `say_player_log` builds the heading, the
+    aligned table and the notes from the Result's values. What the Result
+    still carries as words, on purpose and to be cut as the sayers take it
+    over: the narrowing's phrase (`Narrowing.phrase`, the relation's
+    `filters()`), the span's `years`, and the "no games" sentence
+    (`Result.empty`, from the shared `_no_narrowed_games`).
+  - **Proved identical, text and all.** 628 of 628 recorded questions and
+    1,391 of 1,391 unit-test calls; the slice rewords nothing. The
+    private-template-import ratchet GREW by the shared steps the moved body
+    calls (`_Span`, `_span_of`, `_resolved_team`, `_slot_season`,
+    `_no_narrowed_games`, `_log_carries_rebuilt`, `_period`,
+    `_season_name`), listed with Jeff's say-so: they are the relation's
+    steps mis-homed in `templates.common`, and moving them to the relation
+    modules shrinks the list for every slice at once (step 1's first item).
 - **A template's `TemplateUnsupported` gets one more deterministic try before
   the refusal.** `query/compose` sits between the two: when `check_scope`
   or the template itself raises, `agent.py`'s `_try_compose` offers

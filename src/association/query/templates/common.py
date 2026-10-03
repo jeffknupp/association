@@ -23,7 +23,7 @@ from ..conditions import _PLAYER_GAME_TABLES, _TEAM_GAME_TABLES, _game_scope, _S
 from ..entities import Ambiguous, Availability, Entity, clarification, find_players, resolve_player, resolve_team, suggest_players, suggestion, teammate_names
 from ..measures import MEASURE_WORDS, resolve_metric
 from ..metrics import LEADERBOARD_METRICS
-from ..notes import decided, note
+from ..notes import Note, decided, note
 from ..player_games import (  # noqa: F401 - the relation's names, re-exported for the templates and tests that read them here
     _OPEN_END,
     _OPEN_START,
@@ -2335,32 +2335,30 @@ def _no_narrowed_games(con: duckdb.DuckDBPyConnection, player: Entity, span: _Sp
     return f"{player.name} played {_count_games(total)} {during}, none of them{narrowed.filters()}."
 
 
-def _box_score_notes(con: duckdb.DuckDBPyConnection, player: Entity, span: _Span, narrowed: Narrowed, *, career_note: bool = True, rebuilt: bool = False, rebuilt_shown: int = 0) -> list[str]:
-    """What a box-score answer has to say about itself: what "without" was
-    taken to mean, the empty lines left out, the figures that were rebuilt
-    rather than fetched, and - unless ``career_note`` is off, as it is for one
-    dated game - a career older than the box scores."""
-    notes = []
+def box_score_notes_read(con: duckdb.DuckDBPyConnection, player: Entity, span: _Span, narrowed: Narrowed, *, career_note: bool = True, rebuilt: bool = False, rebuilt_shown: int = 0) -> list[Note]:
+    """What a box-score answer has to say about itself, read as kinds and
+    facts (:class:`~association.query.notes.Note`): what "without" was
+    taken to mean, the figures that were rebuilt rather than fetched, the
+    empty lines left out, and - unless ``career_note`` is off, as it is for
+    one dated game - a career older than the box scores. The sayer phrases
+    each (``compose.say.note_phrase``); :func:`_box_score_notes` is that,
+    for the templates that still write sentences.
+
+    .. versionadded:: 5.0.0
+    """
+    notes: list[Note] = []
     if narrowed.without:
-        names = [mate.name for mate in narrowed.without]
-        who = "he did not play" if len(names) == 1 else ("neither of them played" if len(names) == 2 else "none of them played")
-        said = f"Without {_joined(names)} means games {who} while on the same team - a did-not-play entry, or no line in the box score at all, which is how most injuries appear."
-        notes.append(note("definition", said, term="without", names=names))
+        notes.append(Note("definition", {"term": "without", "names": [mate.name for mate in narrowed.without]}))
     if rebuilt_shown:
         # Said outright, because these numbers did not come from ESPN. Per game
         # they are close (see REBUILT_STATS) but they are not the box score, and
         # a reader quoting one should know which kind of number they hold.
-        said = (
-            f"{rebuilt_shown} of these game{'s have' if rebuilt_shown != 1 else ' has'} no box score from ESPN: "
-            f"{'their' if rebuilt_shown != 1 else 'its'} figures are rebuilt from play-by-play, and minutes cannot be recovered at all."
-        )
-        notes.append(note("lines_rebuilt", said, games=rebuilt_shown, what="shown"))
+        notes.append(Note("lines_rebuilt", {"games": rebuilt_shown, "what": "shown"}))
     where, params = narrowed.clauses(recorded=False, rebuilt=rebuilt)
     row = con.execute(f"SELECT COUNT(*) {_PLAYER_GAMES} WHERE {where}", params).fetchone()
     empty = row[0] if row else 0
     if empty:
-        said = f"Not counted: {empty} game{'s' if empty != 1 else ''} in this span whose box score lists him with no minutes and no stats."
-        notes.append(note("games_unseen", said, games=empty, why="empty_box_score"))
+        notes.append(Note("games_unseen", {"games": empty, "why": "empty_box_score"}))
     if span.career and career_note and span.since is None:
         row = con.execute(
             "SELECT MIN(season) FROM player_season_stats_deduped WHERE athlete_id = ? AND season_type = ? AND gamesPlayed > 0",
@@ -2368,9 +2366,21 @@ def _box_score_notes(con: duckdb.DuckDBPyConnection, player: Entity, span: _Span
         ).fetchone()
         earliest = row[0] if row else None
         if earliest is not None and earliest < span.first:
-            said = f"Box scores begin with the {_season_name(span.first)} season, so his {earliest}-{span.first - 1} seasons are not counted."
-            notes.append(note("floor", said, table="box_scores", first=span.first, earliest=earliest))
+            notes.append(Note("floor", {"table": "box_scores", "first": span.first, "earliest": earliest}))
     return notes
+
+
+def _box_score_notes(con: duckdb.DuckDBPyConnection, player: Entity, span: _Span, narrowed: Narrowed, *, career_note: bool = True, rebuilt: bool = False, rebuilt_shown: int = 0) -> list[str]:
+    """:func:`box_score_notes_read`, each note phrased and recorded - the
+    sentences the templates append.
+
+    .. versionchanged:: 5.0.0
+       Reads through :func:`box_score_notes_read` and phrases each kind
+       once, in the sayer (``compose.say.note_phrase``).
+    """
+    from association.query.compose.say import note_phrase
+
+    return [note(each.kind, note_phrase(each), **each.facts) for each in box_score_notes_read(con, player, span, narrowed, career_note=career_note, rebuilt=rebuilt, rebuilt_shown=rebuilt_shown)]
 
 
 # The private name the templates import; one definition, `ordinal_word` -

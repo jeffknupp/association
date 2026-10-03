@@ -302,7 +302,7 @@ def _team_mixed(scope: Scope) -> bool:
 def _compile_team_games_mixed(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> TeamResult:
     """The window sum over BOTH season types, for a "last N games" question
     naming neither: the games the team log lists for it
-    (``templates.games._team_mixed_games``), summed here - so the total is
+    (``compose.logs._team_mixed_rows``), summed here - so the total is
     over the same games the log shows, and the sentence says how many of
     each type it kept, the default made visible (AGENTS.md, "a reasonable
     default beats a question").
@@ -312,7 +312,9 @@ def _compile_team_games_mixed(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> T
        differential over the last 7 games" summed seven regular-season games
        (5-2) where the log listed the postseason's (6-1).
     """
-    from association.query.templates.games import DEFAULT_GAME_LOG_LIMIT, _game_log_mixed_where, _team_mixed_games
+    from association.query.compose.logs import _team_mixed_rows
+    from association.query.compose.say import mixed_where
+    from association.query.reading import DEFAULT_GAME_LOG_LIMIT
 
     scope = q.scope
     settled = scoped_team(con, scope, "no team named", span=None, season=scope.season)
@@ -322,7 +324,7 @@ def _compile_team_games_mixed(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> T
     if span.season is None:
         raise Unsupported("a career span has no single season to read both season types within")
     limit = _clamp_limit(scope.limit, DEFAULT_GAME_LOG_LIMIT)
-    mixed = _team_mixed_games(con, team, span.season, opponent=scope.opponent, venue=scope.venue, limit=limit)
+    mixed = _team_mixed_rows(con, team, span.season, opponent=scope.opponent, venue=scope.venue, limit=limit)
     if isinstance(mixed, TemplateResult):
         raise Refused(mixed)
     rows, counts, narrowed_text = mixed
@@ -338,7 +340,7 @@ def _compile_team_games_mixed(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> T
         value = float(sum(theirs for _, theirs, _ in scores))
     else:
         value = float(sum(own - theirs for own, theirs, _ in scores))
-    window = f" over their last {len(rows)} game{'s' if len(rows) != 1 else ''}{_game_log_mixed_where(span.season, counts)}" if rows else ""
+    window = f" over their last {len(rows)} game{'s' if len(rows) != 1 else ''}{mixed_where(span.season, counts)}" if rows else ""
     return TeamResult(
         team=team,
         span=span,

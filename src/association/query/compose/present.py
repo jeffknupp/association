@@ -19,9 +19,10 @@ subject, the span and every narrowing are the compiler's
 steps in :mod:`association.query.templates.common`); the numbers are either
 the compiler's own rows (``single_game_high``, ``threshold_count``, whose
 templates have no reader separate from their orchestration) or the template's
-own reader over the compiler's narrowing (``game_log``'s
-``_player_game_log`` and ``player_stat``'s ``_box_score_player_stat``, which
-take a settled narrowing already); and every sentence, caveat and ``data`` key
+own reader over the compiler's narrowing (``player_stat``'s
+``_box_score_player_stat``, which takes a settled narrowing already; the
+game log's went first, to ``compose.logs`` and ``compose.say``); and every
+sentence, caveat and ``data`` key
 comes from the template's own phrasing helpers - one definition each, never a
 second copy here.
 
@@ -44,7 +45,7 @@ from association.nba.season import current_season, eastern_date
 from association.query.conditions import _PLAYER_GAME_TABLES, _meeting_rows, _teammate_games, _totals
 from association.query.measures import stat_measure
 from association.query.player_games import REBUILT_STATS
-from association.query.reading import Scope, _clamp_limit
+from association.query.reading import Scope
 from association.query.templates.common import (
     HISTORY_COLUMNS,
     STAT_LABELS,
@@ -61,18 +62,13 @@ from association.query.templates.common import (
     unhonored_scoping,
 )
 from association.query.templates.games import (
-    _game_log_lines,
-    _log_extras,
     _period_scope,
     _period_split_by_quarter_from,
     _period_split_from,
     _period_split_measure,
     _period_split_reconciliation_refusal,
-    _player_game_log,
-    _player_game_log_mixed,
     _player_matchup_covered,
     _player_matchup_from,
-    team_game_log,
 )
 from association.query.templates.players import (
     ADVANCED_STATS,
@@ -120,8 +116,8 @@ from association.query.templates.splits import (
     team_splits,
 )
 
-from .adapt import DEFAULT_GAME_LOG_LIMIT, WITH_WITHOUT_STATED, _to_reading_scope
-from .core import LINE, Query, Refused, Unsupported, compile_query, run, run_scope
+from .adapt import WITH_WITHOUT_STATED, _to_reading_scope
+from .core import Query, Refused, Unsupported, compile_query, run, run_scope
 from .team import TeamQuery, _team_games_narrowed, run_team
 
 #: A presenter: the connection and the compiled point (its scope the intent's
@@ -134,54 +130,6 @@ def _stat_column(scope: Scope) -> str | None:
     """The router's ``stat`` as the box-score column the count and single-game
     templates whitelist (:data:`~association.query.templates.common.THRESHOLD_STAT_COLUMNS`)."""
     return THRESHOLD_STAT_COLUMNS.get(scope.stat) if scope.stat is not None else None
-
-
-def _present_game_log(con: duckdb.DuckDBPyConnection, q: Query) -> TemplateResult | None:
-    """``game_log``'s own listing, over the compiler's settled player, span
-    and narrowing: its columns (``_log_extras``), its rebuilt-line rule, its
-    heading, table, averages and notes (``templates.games._player_game_log``).
-
-    Only a named player's log in date order with no measure the question's
-    words added beyond the ones the log shows for the router's ``stat`` - a
-    threshold the log would refuse (``_game_log_lines``), a stat it has no
-    column for (``_log_extras`` - the usage rate of #222), or a measure the
-    words moved in are the compiler's own point, answered by its own sentence."""
-    if q.skeleton != "rows" or q.order != "date" or q.subject != "player" or q.predicates or q.group != "none":
-        return None
-    scope = q.scope
-    try:
-        extras = _log_extras(scope.stat)
-        _game_log_lines(scope.below, scope.above, scope.threshold)
-    except TemplateUnsupported:
-        return None
-    # The router's own stat, which the log shows as its extra columns; a
-    # measure the question's words moved in instead is the compiler's point.
-    if [m for m in q.measures if m not in LINE] not in ([], [stat_measure(scope.stat)]):
-        return None
-    compiled = compile_query(con, q)
-    if compiled.player is None:
-        return None
-    limit = _clamp_limit(scope.limit, DEFAULT_GAME_LOG_LIMIT)
-    asked = scope.limit
-    if scope.season_type_unstated and not compiled.narrowed.date and not scope.span and not scope.game_n:
-        # "His last N games" naming no season type: the template reads each
-        # type on its own and merges them by date, saying how many of each
-        # it kept (``_player_game_log_mixed``) - over the season the
-        # compiler settled, and the opponent it resolved.
-        if compiled.span.season is None:
-            return None
-        return _player_game_log_mixed(
-            con,
-            compiled.player,
-            compiled.span.season,
-            scope,
-            opponent=compiled.narrowed.opponent,
-            measures=_game_log_lines(scope.below, scope.above, scope.threshold),
-            extras=extras,
-            limit=limit,
-            asked=asked,
-        )
-    return _player_game_log(con, compiled.player, compiled.span, compiled.narrowed, extras, limit=limit, asked=asked, ascending=q.direction == "asc")
 
 
 def _present_period_split(con: duckdb.DuckDBPyConnection, q: Query) -> TemplateResult | None:
@@ -310,11 +258,10 @@ def _present_player_stat(con: duckdb.DuckDBPyConnection, q: Query) -> TemplateRe
     over the compiler's settled player, span and narrowing. An advanced rate
     reads its own table and is left to the compiler's sentence. An
     unnarrowed line is the season-line source's (:func:`_present_player_stat_season_line`)."""
-    if q.skeleton == "rows":
-        # A window ("stats over his last N games") is the log of those games
-        # with averages beneath, never the season line - the retired
-        # template handed the question to game_log, and the point is its.
-        return _present_game_log(con, q)
+    # A window ("stats over his last N games") is the log of those games
+    # with averages beneath, never the season line: the retired template
+    # handed it to game_log, and compose.answer reads it through the log's
+    # reader (compose.logs) before any presenter runs.
     if q.skeleton != "scalar" or q.aggregate != "per_game" or q.subject != "player" or q.predicates:
         return None
     if q.source == "seasons":
@@ -606,7 +553,6 @@ def _present_threshold_count_rows(q: Query, out: dict[str, Any]) -> list[tuple[A
 
 #: Intent -> the presenter for its own default point.
 PRESENTERS: dict[str, Presenter] = {
-    "game_log": _present_game_log,
     "player_stat": _present_player_stat,
     "player_splits": _present_player_splits,
     "single_game_high": _present_single_game_high,
@@ -638,8 +584,8 @@ entry for it. :data:`STATED_SCOPING` declares for both.
 STATED_SCOPING: dict[str, frozenset[str]] = {
     # game_log and player_stat retired stating the relation's whole set, and
     # `season_type_unstated`: read over both season types merged by date for
-    # a log (`_player_game_log_mixed`, `templates.games._team_mixed_games`),
-    # and from box scores as one combined read for an average
+    # a log (compose.logs, which takes this set since Phase 2's first
+    # slice), and from box scores as one combined read for an average
     # (`_player_stat_reads_box_scores`, `_player_relation_season_type`).
     "game_log": _relation_scoping("game_log", "season_type_unstated"),
     "player_stat": _relation_scoping("player_stat", "season_type_unstated"),
@@ -728,25 +674,6 @@ def present(con: duckdb.DuckDBPyConnection, intent: str, q: Query) -> TemplateRe
         raise Unsupported(f"relation: {exc}") from exc
 
 
-def _present_team_game_log(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> TemplateResult | None:
-    """A team's games listed (``templates.games.team_game_log``, the retired
-    template's team half) behind the same two checks the template ran
-    behind: the slots its words state (:data:`STATED_SCOPING`) and the
-    coverage floor.
-
-    .. versionadded:: 5.0.0
-    """
-    if unhonored_scoping("game_log", q.scope, STATED_SCOPING["game_log"]):
-        return None
-    refused = check_coverage("game_log", q.scope)
-    if refused is not None:
-        raise Refused(TemplateResult(data={"message": refused, "season": q.scope.season}, answer=refused))
-    try:
-        return team_game_log(con, q.scope)
-    except TemplateUnsupported as exc:
-        raise Unsupported(f"relation: {exc}") from exc
-
-
 def _present_team_splits(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> TemplateResult | None:
     """A team's own splits (``templates.splits.team_splits``, the retired
     template's team half) behind the checks the template ran behind.
@@ -809,8 +736,9 @@ def _present_with_without(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> Templ
 
 def present_team(con: duckdb.DuckDBPyConnection, intent: str, q: TeamQuery) -> TemplateResult | None:
     """A team subject's point said the way its intent's template says it -
-    two: a team's game log (``game_log``'s retired team half,
-    :func:`_present_team_game_log`), and ``record_when``'s team branch, a
+    ``record_when``'s team branch (a team's game log, the retired
+    template's other team half, is ``compose.logs.read_team_log``'s since
+    Phase 2's first slice), a
     team's record above and below its OWN line ("what was the celtics record
     when they scored 120 points", ISSUES.md #144), which the team subject's
     own readers (a season sum, a window sum) cannot represent. Read by the template's own team reader
@@ -821,8 +749,6 @@ def present_team(con: duckdb.DuckDBPyConnection, intent: str, q: TeamQuery) -> T
 
     .. versionadded:: 5.0.0
     """
-    if intent == "game_log" and q.shape == "rows":
-        return _present_team_game_log(con, q)
     if intent == "player_splits" and q.shape == "grouped":
         return _present_team_splits(con, q)
     if intent == "streak" and q.shape == "run":

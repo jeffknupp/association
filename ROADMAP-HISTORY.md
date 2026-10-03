@@ -715,6 +715,28 @@ agents' reports named here are in `~/association-research/stages/`.
     and query records are Phase 1's instruments and their shape moved with
     the work. Cost: none measured in answers; the ratchet lists grew by
     one check (26 reader functions take a connection, 24 now).
+13. **Phase 2, step 0 - the Result and the first sayer, on the game log
+    (2026-10-03).** Measured first: the compiler's own `run` of the planned
+    query gives the same games and values as the template's read on 41 of
+    41 player logs the template answered on the corpus (17 team logs and 8
+    compiler-said ones aside), so slice (i)'s "execute the compiled SQL" is
+    planned on numbers. Then the move: `query/result.py` (Result, Part,
+    Rows, Span, Narrowing, Window), `compose/logs.py` (the template's
+    body, reading into a Result), `compose/say.py` (the words, one phrase
+    per note kind, recording through `notes.note`); two presenters and the
+    log's ~600 lines in `templates/games.py` deleted. Identical on 628 of
+    628, text and remarks included, and 1,391 of 1,391 unit-test calls.
+    Kept on purpose: the `game_log` adapter (slice (i)'s five share
+    `measure_filters`, which moves to the reader's side once, in step 1),
+    `STATED_SCOPING["game_log"]` (one table declares for every compiled
+    intent), the page's intent-keyed renderer (Phase 4). Cost: the
+    private-template-import ratchet 87 -> 91, the relation's shared steps
+    (`_Span`, `_span_of`, `_resolved_team`, ...) now called from `compose`;
+    they are mis-homed in `templates.common` and step 1 moves them to the
+    relation modules, which shrinks the list for every later slice. The
+    Result still carries three things as words (`Narrowing.phrase`,
+    `Span.years`, `Result.empty`), named in its docstring as what the
+    sayers take over.
 
 ## The plan items, as written
 
