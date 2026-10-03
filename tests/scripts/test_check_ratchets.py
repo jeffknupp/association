@@ -49,6 +49,28 @@ def test_a_module_that_executes_sql_is_found() -> None:
     assert ratchets.sql_outside_the_relations(modules) == {"player_games": 1, "leaderboard": 1}
 
 
+def test_the_bypasses_the_phase_1_review_found_are_caught() -> None:
+    """Six ways past the ratchets that passed on 2026-10-03 (the review of
+    Phase 1): SQL through a string-SQL helper or ``.query``, a question
+    parameter under another name, ``re`` through importlib, a reader's
+    compiled pattern reused, a private template name through a module
+    alias."""
+    modules = _modules(
+        point="from association.query.entities import _read_table\ndef read(con):\n    return _read_table(con, 'SELECT 1')",
+        compose__present=(
+            "import importlib\n_re = importlib.import_module('re')\n"
+            "from association.query.point import _TEAM_NOT_SUBJECT\n"
+            "from association.query.templates import splits as _m\n_y = _m._condition_needs_player_refusal\n"
+            "def say(question_text, con):\n    return con.query('SELECT 1')"
+        ),
+    )
+    assert ratchets.sql_outside_the_relations(modules) == {"point": 1, "compose.present": 1}
+    assert ratchets.question_outside_the_reader(modules) == {"compose.present:say"}
+    assert ratchets.regex_outside_the_reader(modules) == {"compose.present", "compose.present:_TEAM_NOT_SUBJECT"}
+    assert ratchets.private_template_imports(modules) == {"compose.present:_condition_needs_player_refusal"}
+    assert ratchets.con_in_the_reader(modules) == {"point:read"}
+
+
 def test_sql_is_counted_per_module_and_a_count_may_only_fall() -> None:
     # Phase 1's order from here, step 4: a listed module could grow
     # statements freely while the ratchet listed modules; it counts them.

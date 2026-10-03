@@ -79,9 +79,10 @@ says so by listing ``notes`` here.
 .. versionadded:: 5.0.0
 """
 
-# What a Reading's subject carries that is the question's text, or prose
-# about how it was read, rather than what was read.
-_SUBJECT_TEXT = frozenset({"question", "evidence"})
+# What a Reading's subject carries that is prose about how it was read
+# rather than what was read (the question's text itself left the Subject on
+# 2026-10-03: nothing read it).
+_SUBJECT_TEXT = frozenset({"evidence"})
 
 # The point's own fields - the algebra as the reader read it - in the order
 # the trace prints them.

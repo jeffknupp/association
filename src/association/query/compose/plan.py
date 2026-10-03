@@ -17,6 +17,7 @@ from association.query.reading import Cause, Reading, _career_scope
 from association.query.templates.common import RELATION_SCOPING_EXCLUDED, TemplateResult, unhonored_scoping
 from association.query.templates.players import leaderboard_shot_distance_refusal
 
+from .adapt import WITH_WITHOUT_STATED
 from .core import Query, Refused, Unsupported, _check_relation_scoping
 from .team import TeamQuery
 
@@ -57,8 +58,6 @@ def _shape_declines(point: Reading) -> str | None:
     raised these itself while reading, so what was read depended on what
     would answer (``ROADMAP.md``, Phase 1, the ``read_point`` move, step 3).
     """
-    # At call time: the adapters import the planner.
-    from association.query.compose.adapt import WITH_WITHOUT_STATED
 
     intent, scope = point.intent, point.scope
     if intent == "player_compare":

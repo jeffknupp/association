@@ -8,8 +8,9 @@ from dataclasses import fields
 from typing import Any
 
 import pytest
+from routed import default_query
 
-from association.query.compose.adapt import to_query, to_reading
+from association.query.compose.adapt import to_reading
 from association.query.compose.core import Query
 from association.query.compose.plan import plan
 from association.query.compose.team import TeamQuery
@@ -25,7 +26,7 @@ def test_the_default_point_is_a_reading_and_its_plan_is_the_query_it_always_was(
     assert (reading.relation, reading.shape, reading.aggregate, reading.predicates) == ("player", "scalar", "count", [("points", ">=", 30)])
     planned = plan(reading)
     assert isinstance(planned, Query)
-    assert planned == to_query("threshold_count", slots)
+    assert planned == default_query("threshold_count", slots)
     assert planned.scope == Scope.from_slots(slots) and planned.scope.to_slots() == slots
     assert planned.skeleton == "scalar" and planned.aggregate == "count"
 

@@ -974,7 +974,7 @@ def with_point(con: duckdb.DuckDBPyConnection, question: str, reading: Reading) 
        planner runs once, outside the parser).
     """
     try:
-        point = read_point(con, reading, question)
+        point = read_point(reading, question)
     except Unsupported as exc:
         return replace(reading, point_declined=str(exc))
     except PointRefused as exc:

@@ -21,12 +21,11 @@ from typing import Any
 
 import duckdb
 import pytest
-from routed import slots_route, with_subject
+from routed import default_query, slots_route, with_subject
 
 from association.fetch.repairs import real_games
 from association.nba.season import current_season
 from association.query import compose
-from association.query.compose.adapt import to_query
 from association.query.compose.core import Query, Refused, Unsupported, compile_query, run
 from association.query.compose.plan import plan, plan_point, refusal_result
 from association.query.compose.sentence import sentence
@@ -55,7 +54,7 @@ def compose_answer(ctx: TemplateContext, intent: str, slots: dict[str, Any], que
 def move_point(con: duckdb.DuckDBPyConnection, intent: str, slots: dict[str, Any], question: str, subject: Subject | None = None) -> Query | TeamQuery:
     """The point ``question`` moves for ``slots``, planned - raising the
     compiler's own ``Unsupported``/``Refused`` as the reader does."""
-    return plan(read_point(con, _reading(con, intent, slots, question, subject), question))
+    return plan(read_point(_reading(con, intent, slots, question, subject), question))
 
 
 def team_move_point(con: duckdb.DuckDBPyConnection, slots: dict[str, Any], question: str) -> TeamQuery | None:
@@ -63,7 +62,7 @@ def team_move_point(con: duckdb.DuckDBPyConnection, slots: dict[str, Any], quest
     from the question, planned - the team's point as the team compiler runs
     it, or ``None`` where the team is not the subject."""
     scope = Scope.from_slots(slots)
-    reading = team_read_point(con, scope, question, read_subject(con, question, "", Scope.from_slots(dict(slots))))
+    reading = team_read_point(scope, question, read_subject(con, question, "", Scope.from_slots(dict(slots))))
     if reading is None:
         return None
     query = plan(reading)
@@ -238,21 +237,21 @@ def _run(con: duckdb.DuckDBPyConnection, q: Query) -> dict[str, Any]:
 
 def test_rows_skeleton_reads_a_log(cx_ctx: TemplateContext) -> None:
     """``game_log``'s point: the four-stat line, newest games first."""
-    q = to_query("game_log", {"player": "Brandin Podziemski"})
+    q = default_query("game_log", {"player": "Brandin Podziemski"})
     out = _run(cx_ctx.con, q)
     assert [r["points"] for r in out["rows"]] == [10, 28, 15, 20]  # g5, g3, g2, g1 - newest first, g4 (DNP) excluded
 
 
 def test_scalar_skeleton_reads_a_count_or_an_average(cx_ctx: TemplateContext) -> None:
     """``threshold_count``'s point: a scalar count over the narrowed games."""
-    q = to_query("threshold_count", {"player": "Brandin Podziemski", "stat": "points", "threshold": 15})
+    q = default_query("threshold_count", {"player": "Brandin Podziemski", "stat": "points", "threshold": 15})
     out = _run(cx_ctx.con, q)
     assert out["rows"][0]["games"] == 3  # g1 (20), g2 (15), g3 (28) - g5 (10) does not clear the line
 
 
 def test_grouped_skeleton_reads_a_split(cx_ctx: TemplateContext) -> None:
     """``player_splits``' point: a record grouped by venue."""
-    q = to_query("player_splits", {"player": "Brandin Podziemski"})
+    q = default_query("player_splits", {"player": "Brandin Podziemski"})
     out = _run(cx_ctx.con, q)
     by_group = {r["group"]: r["games"] for r in out["rows"]}
     assert by_group == {"home": 3, "away": 1}  # g2, g3, g5 home; g1 away (g4 DNP excluded)
@@ -267,9 +266,9 @@ def test_a_bare_limit_is_filler_on_a_count_but_the_newest_n_on_a_log(cx_ctx: Tem
     """Rule 1: ``limit`` with no ``order`` means "the newest N" on a rows
     read and is dropped as filler everywhere else - a count reads every
     game in the span."""
-    counted = _run(cx_ctx.con, to_query("threshold_count", {"player": "Brandin Podziemski", "stat": "points", "threshold": 15, "limit": 1}))
+    counted = _run(cx_ctx.con, default_query("threshold_count", {"player": "Brandin Podziemski", "stat": "points", "threshold": 15, "limit": 1}))
     assert counted["rows"][0]["games"] == 3  # the limit=1 filler does not cut this to one game
-    logged = _run(cx_ctx.con, to_query("game_log", {"player": "Brandin Podziemski", "limit": 2}))
+    logged = _run(cx_ctx.con, default_query("game_log", {"player": "Brandin Podziemski", "limit": 2}))
     assert [r["points"] for r in logged["rows"]] == [10, 28]  # g5, g3 - the newest two
 
 
@@ -277,7 +276,7 @@ def test_a_real_limit_with_no_order_is_refused_on_a_split(cx_ctx: TemplateContex
     """Rule 1's mirror image: a real limit (>1) with no ``order`` on a split
     is "his last N games" - a window ``player_splits`` refuses rather than
     silently answering for the whole span."""
-    q = to_query("player_splits", {"player": "Brandin Podziemski", "limit": 5})
+    q = default_query("player_splits", {"player": "Brandin Podziemski", "limit": 5})
     with pytest.raises(Unsupported, match="game_log's question"):
         compile_query(cx_ctx.con, q)
 
@@ -285,7 +284,7 @@ def test_a_real_limit_with_no_order_is_refused_on_a_split(cx_ctx: TemplateContex
 def test_a_team_beside_the_player_becomes_his_opponent_on_a_log(cx_ctx: TemplateContext) -> None:
     """Rule 3: on a ``rows`` read with no opponent already named, a team
     beside the player becomes his opponent."""
-    q = to_query("game_log", {"player": "Brandin Podziemski", "team": "Boston Celtics"})
+    q = default_query("game_log", {"player": "Brandin Podziemski", "team": "Boston Celtics"})
     out = _run(cx_ctx.con, q)
     assert [r["points"] for r in out["rows"]] == [10, 20]  # g5, g1 - his two games against Boston, newest first
 
@@ -295,8 +294,8 @@ def test_a_team_slot_narrows_to_his_games_for_that_team_on_a_condition_skeleton(
     the player narrows to his games for that team - a no-op here, since he
     never played for anyone else, but the same code path a traded player's
     question would take."""
-    with_team = _run(cx_ctx.con, to_query("threshold_count", {"player": "Brandin Podziemski", "stat": "points", "threshold": 15, "team": "Golden State Warriors"}))
-    without_team = _run(cx_ctx.con, to_query("threshold_count", {"player": "Brandin Podziemski", "stat": "points", "threshold": 15}))
+    with_team = _run(cx_ctx.con, default_query("threshold_count", {"player": "Brandin Podziemski", "stat": "points", "threshold": 15, "team": "Golden State Warriors"}))
+    without_team = _run(cx_ctx.con, default_query("threshold_count", {"player": "Brandin Podziemski", "stat": "points", "threshold": 15}))
     assert with_team["rows"][0]["games"] == without_team["rows"][0]["games"] == 3
 
 
@@ -306,7 +305,7 @@ def test_a_team_slot_is_ignored_entirely_on_a_per_game_average(cx_ctx: TemplateC
     a team the player never played for (as the router routinely invents
     beside a correct opponent) silently narrowed his own averages to zero
     games instead of being ignored."""
-    q = to_query("player_stat", {"player": "Brandin Podziemski", "opponent": "Boston Celtics", "team": "Detroit Pistons"})
+    q = default_query("player_stat", {"player": "Brandin Podziemski", "opponent": "Boston Celtics", "team": "Detroit Pistons"})
     out = _run(cx_ctx.con, q)
     row = out["rows"][0]
     assert row["games"] == 2  # g1 and g5, vs Boston - the bogus Pistons team narrows nothing
@@ -320,7 +319,7 @@ def test_situation_narrows_to_the_named_weekday(cx_ctx: TemplateContext) -> None
     games = {"g1": date(s - 1, 11, 1), "g2": date(s - 1, 12, 1), "g3": date(s, 1, 10), "g5": date(s, 3, 1), "g6": date(s - 1, 2, 1), "g7": date(s - 1, 3, 1)}
     weekday = games["g3"].strftime("%A").lower()
     matching = {event for event, day in games.items() if day.strftime("%A").lower() == weekday}
-    q = to_query("game_log", {"player": "Brandin Podziemski", "span": "career", "situation": f"{weekday}s"})
+    q = default_query("game_log", {"player": "Brandin Podziemski", "span": "career", "situation": f"{weekday}s"})
     out = _run(cx_ctx.con, q)
     assert len(out["rows"]) == len(matching)
     assert out["rows"][0]["points"] == 28  # g3 is always in the match set (it defines the weekday)
@@ -330,7 +329,7 @@ def test_starter_bench_category_is_refused_outside_a_grouped_read(cx_ctx: Templa
     """Rule 9: ``split: starter_bench`` names a category (a table of both
     halves), not a filter - refused on a ``rows``/``scalar`` read, honored
     only by a grouped read by starter."""
-    q = to_query("game_log", {"player": "Brandin Podziemski", "split": "starter_bench"})
+    q = default_query("game_log", {"player": "Brandin Podziemski", "split": "starter_bench"})
     with pytest.raises(Unsupported, match="a table of both halves"):
         compile_query(cx_ctx.con, q)
 
@@ -341,7 +340,7 @@ def test_an_unhonored_scoping_slot_is_refused(cx_ctx: TemplateContext) -> None:
     planned (``to_query`` plans); the compile step keeps the same check for
     a query built by hand."""
     with pytest.raises(Unsupported, match="cannot honor"):
-        to_query("game_log", {"player": "Brandin Podziemski", "round": "finals"})
+        default_query("game_log", {"player": "Brandin Podziemski", "round": "finals"})
 
 
 # ---------------------------------------------------------------------------
@@ -474,7 +473,7 @@ def test_refused_carries_the_relations_own_wording(cx_ctx: TemplateContext) -> N
     comes back as :class:`Refused`, carrying the template-shaped result. A
     plain typo of one player ("Podzemski") is no longer this shape: it is read
     as him (entities.read_near_spelling)."""
-    q = to_query("game_log", {"player": "Jemel Podziemski"})
+    q = default_query("game_log", {"player": "Jemel Podziemski"})
     with pytest.raises(Refused) as excinfo:
         run(cx_ctx.con, q)
     assert "podziemski" in excinfo.value.result.answer.lower()
@@ -484,7 +483,7 @@ def test_a_name_nothing_resolves_to_is_unsupported_not_refused(cx_ctx: TemplateC
     """A name with no near match at all (:func:`~association.query.entities.suggest_players`
     finds nothing) is the compiler declining outright - ``Unsupported``, which
     the agent may still do better with, not a handled ``Refused``."""
-    q = to_query("game_log", {"player": "Zzyzx Nobody"})
+    q = default_query("game_log", {"player": "Zzyzx Nobody"})
     with pytest.raises(Unsupported):
         run(cx_ctx.con, q)
 
@@ -1105,7 +1104,7 @@ def test_run_carries_the_not_counted_box_score_note(cx_ctx: TemplateContext) -> 
     at all, not a did-not-play entry (:func:`_add_empty_box_score`)."""
     s = current_season()
     _add_empty_box_score(cx_ctx.con, "g8", s, GS, DET, PODZ, f"{s}-03-15T20:00Z")
-    q = to_query("game_log", {"player": "Brandin Podziemski"})
+    q = default_query("game_log", {"player": "Brandin Podziemski"})
     out = run(cx_ctx.con, q)
     assert any("Not counted: 1 game" in note for note in out["notes"])
 
@@ -1131,7 +1130,7 @@ def test_a_career_predating_box_scores_gets_the_floor_note(cx_ctx: TemplateConte
     reads `player_season_stats`) agreeing with it."""
     cx_ctx.con.execute("INSERT INTO player_season_stats_deduped VALUES ('10', 1990, 2, 10)")
     cx_ctx.con.execute("INSERT INTO player_season_stats VALUES ('10', 1990, 2, NULL, 10, NULL)")
-    q = to_query("game_log", {"player": "Brandin Podziemski", "span": "career"})
+    q = default_query("game_log", {"player": "Brandin Podziemski", "span": "career"})
     out = run(cx_ctx.con, q)
     assert any("Box scores begin with the 1993-94 season" in note and "1990-1993" in note for note in out["notes"])
 
@@ -1141,7 +1140,7 @@ def test_no_career_floor_note_when_the_season_is_defaulted_not_career(cx_ctx: Te
     current-season read, even with the same older row on record."""
     cx_ctx.con.execute("INSERT INTO player_season_stats_deduped VALUES ('10', 1990, 2, 10)")
     cx_ctx.con.execute("INSERT INTO player_season_stats VALUES ('10', 1990, 2, NULL, 10, NULL)")
-    q = to_query("game_log", {"player": "Brandin Podziemski"})
+    q = default_query("game_log", {"player": "Brandin Podziemski"})
     out = run(cx_ctx.con, q)
     assert not any("Box scores begin with" in note for note in out["notes"])
 
@@ -1152,7 +1151,7 @@ def test_a_scalar_or_grouped_read_carries_no_leaked_rebuilt_shown_column(cx_ctx:
     caller, for a named player (a `scalar` read) and for the league-wide
     subject (a `grouped` read, which has no box-score notes of its own to
     read it for at all) alike."""
-    named = run(cx_ctx.con, to_query("threshold_count", {"player": "Brandin Podziemski", "stat": "points", "threshold": 15}))
+    named = run(cx_ctx.con, default_query("threshold_count", {"player": "Brandin Podziemski", "stat": "points", "threshold": 15}))
     assert "rebuilt_shown" not in named["rows"][0]
     q = move_point(cx_ctx.con, "other", {}, "top scorers this season")
     assert isinstance(q, Query)  # no team named in this fixture's own words
@@ -1458,7 +1457,7 @@ def test_a_season_line_point_the_words_moved_is_not_the_templates(cx_ctx: Templa
 def test_the_season_source_is_never_compiled_over_games() -> None:
     """A season-line point reaching the game-level compiler is refused, not
     read over box scores under the season line's name."""
-    q = to_query("player_stat", {"player": "Stephen Curry", "stat": "points"})
+    q = default_query("player_stat", {"player": "Stephen Curry", "stat": "points"})
     assert q.source == "seasons"
     with pytest.raises(Unsupported, match="seasons source"):
         compile_query(duckdb.connect(":memory:"), q)
@@ -1469,9 +1468,9 @@ def test_own_team_narrows_a_composed_average(cx_ctx: TemplateContext) -> None:
     compiler's read exactly as it narrows ``player_stat``'s: Curry never
     played for Boston, so his games "for Boston" are none - the compiler
     ignored the slot and averaged every game he played."""
-    q = to_query("player_stat", {"player": "Stephen Curry", "opponent": "Detroit Pistons", "own_team": "Boston Celtics"})
+    q = default_query("player_stat", {"player": "Stephen Curry", "opponent": "Detroit Pistons", "own_team": "Boston Celtics"})
     assert _run(cx_ctx.con, q)["rows"][0]["games"] == 0
-    q = to_query("player_stat", {"player": "Stephen Curry", "opponent": "Detroit Pistons", "own_team": "Golden State Warriors"})
+    q = default_query("player_stat", {"player": "Stephen Curry", "opponent": "Detroit Pistons", "own_team": "Golden State Warriors"})
     assert _run(cx_ctx.con, q)["rows"][0]["games"] == 1  # g3
 
 
@@ -1544,7 +1543,7 @@ def test_a_log_reads_a_rebuilt_game_with_its_minutes_blank(cx_ctx: TemplateConte
     con.execute("UPDATE player_box_stats SET reconstructed = FALSE")
     con.execute("UPDATE player_box_stats SET minutes = NULL, reconstructed = TRUE WHERE event_id = 'g5' AND athlete_id = ?", [PODZ])
     con.execute("CREATE VIEW player_box_stats_filled AS SELECT * FROM player_box_stats")
-    out = run(con, to_query("game_log", {"player": "Brandin Podziemski"}))
+    out = run(con, default_query("game_log", {"player": "Brandin Podziemski"}))
     newest = out["rows"][0]
     assert newest["points"] == 10 and newest["minutes"] is None and newest["reconstructed"]
     template, composed = _parity(cx_ctx, "game_log", {"player": "Brandin Podziemski"}, "podziemski's game log")
@@ -1564,7 +1563,7 @@ def test_a_teams_total_of_triple_doubles_is_declined_for_the_refusals_module(cx_
             "leaderboard",
             {"stat": "triple_double", "team": "Golden State Warriors", "span": "career"},
             "golden state warriors all-time triple doubles vs west",
-            Subject("team", teams=("Golden State Warriors",), question="golden state warriors all-time triple doubles vs west"),
+            Subject("team", teams=("Golden State Warriors",)),
         )
 
 
@@ -1771,5 +1770,5 @@ def test_a_presenter_steps_aside_for_a_narrowing_its_words_do_not_state(cx_ctx: 
     from association.query.compose.present import PRESENTERS, STATED_SCOPING, TEAM_ONLY_PRESENTERS, present
 
     assert set(STATED_SCOPING) == set(PRESENTERS) | TEAM_ONLY_PRESENTERS
-    narrowed = to_query("single_game_high", {"player": "Brandin Podziemski", "stat": "points", "opponent": "Boston Celtics"})
+    narrowed = default_query("single_game_high", {"player": "Brandin Podziemski", "stat": "points", "opponent": "Boston Celtics"})
     assert present(cx_ctx.con, "single_game_high", narrowed) is None

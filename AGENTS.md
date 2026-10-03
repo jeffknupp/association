@@ -54,10 +54,16 @@ fails rather than drifts.
 - **What the roadmap is deleting may not grow.** `scripts/check_ratchets.py`
   lists today's violations of each direction by name
   (`scripts/ratchets.json`): a function outside the reader that takes the
-  question's text, how many statements each module executes (103 in 19
+  question's text (any parameter holding it, not only one named
+  `question`), how many statements each module executes (105 in 19
   modules; counted per module since 2026-10-02, because a listed module
-  could grow statements freely), a private name `compose/` imports from
-  `templates/`, a module outside the reader that imports `re`. It fails
+  could grow statements freely; `.execute`, `.executemany`, `.sql`,
+  `.query` and the package's own string-SQL helpers since 2026-10-03,
+  when a statement through `entities._read_table` counted as none), a
+  private name `compose/` takes from `templates/` (imported by name or
+  read off a module imported whole), a module outside the reader that
+  imports `re` by any route or takes a reader's private pattern, and a
+  reader function that takes a DuckDB connection (24). It fails
   on a NEW one or a count that grew, and on a listed one that is GONE or a
   count that fell, so the lists only shrink. A NEW failure is fixed in the
   code - pass the Reading, not the question; narrow through the relation's

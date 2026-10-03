@@ -271,9 +271,6 @@ class Subject:
     #: where it is the route's own. What the parser's decision about the
     #: intent says (:func:`~association.query.parse.read_route`).
     intent_reason: str | None = None
-    #: The question this is a reading of - what :func:`apply_subject` settles
-    #: a kind-assigned intent's slots from (:func:`~association.query.router.settle`).
-    question: str = ""
     #: Every companion with the role the question states (:class:`Companion`);
     #: ``companions`` above is their names.
     conditions: tuple[Companion, ...] = ()
@@ -1012,7 +1009,7 @@ def read_subject(con: duckdb.DuckDBPyConnection, question: str, intent: str, sco
     # it), and :func:`settle_subject` writes it here. Until 5.0.0's last
     # change this ran the stages under each child the words named, before
     # the parser ran them at all.
-    return replace(subject, invented=tuple(invented), named_season=season_from_text(question), intent=intent, question=question, filler=filler)
+    return replace(subject, invented=tuple(invented), named_season=season_from_text(question), intent=intent, filler=filler)
 
 
 def settle_subject(subject: Subject, intent: str, *, parent: str | None = None, words: str | None = None) -> Subject:

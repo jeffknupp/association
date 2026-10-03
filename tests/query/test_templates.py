@@ -8,13 +8,14 @@ from typing import Any
 
 import duckdb
 import pytest
+from routed import default_query
 from routed import planned_answer as compose_answer
 
 from association.fetch.repairs import real_games
 from association.nba.season import current_season
 from association.nba.season import eastern_date as _eastern_date_of
 from association.query import shotchart
-from association.query.compose.adapt import to_query, to_reading
+from association.query.compose.adapt import to_reading
 from association.query.compose.core import Unsupported, _compile_pair, _compile_run, _resolve_pair
 from association.query.compose.plan import plan
 from association.query.compose.present import (
@@ -3669,7 +3670,7 @@ def test_a_leaderboard_refuses_a_position_group_subject_for_the_compiler(lb_con:
     with pytest.raises(LeaderboardStepsAside, match="position group"):
         _leaderboard_ranking(lb_con.con, reading.scope, position="SG")
     # The compiler's point reads the group over the box scores, not the season line.
-    point = read_point(lb_con.con, reading, "highest points per game by a shooting guard")
+    point = read_point(reading, "highest points per game by a shooting guard")
     assert (point.relation, point.position, point.source) == ("everyone", "SG", "games")
 
 
@@ -4563,7 +4564,7 @@ def test_the_matchup_point_still_refuses_an_unhonored_slot(pg_ctx: TemplateConte
     with pytest.raises(Unsupported, match="newest meetings"):
         plan(to_reading("player_matchup", {"players": ["Brandin Podziemski", "Stephen Curry"], "order": "recent"}))
     with pytest.raises(Unsupported, match="different span"):
-        to_query("player_matchup", {"players": ["Brandin Podziemski", "Stephen Curry"], "round": "finals"})
+        default_query("player_matchup", {"players": ["Brandin Podziemski", "Stephen Curry"], "round": "finals"})
 
 
 def test_player_matchup_honors_without_on_a_real_two_player_matchup(pg_ctx: TemplateContext) -> None:

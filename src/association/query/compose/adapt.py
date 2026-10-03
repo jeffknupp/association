@@ -13,6 +13,7 @@ from typing import Any
 
 from association.query.measures import MEASURE_WORDS
 from association.query.reading import Group, Reading, Scope
+from association.query.reading import named_player_in as _named_player_in
 from association.query.shotchart import SHOT_AVAILABILITY
 from association.query.templates.common import _BOX_SCORES, TemplateUnsupported, _clamp_limit, period_narrowing
 
@@ -24,8 +25,7 @@ from association.query.templates.games import DEFAULT_GAME_LOG_LIMIT, _log_extra
 from association.query.templates.players import DEFAULT_SINGLE_GAME_LIMIT, STAT_LINE, _threshold_count_ask
 from association.query.templates.splits import _DEFAULT_STREAK_LIMIT, _condition_needs_player_refusal, _streak_league_needs_named_subject, _streak_words, _with_without_named
 
-from .core import COLUMNS, DEFAULT_NAMED_RUNS, LINE, Query, Unsupported, run_scope
-from .plan import plan
+from .core import COLUMNS, DEFAULT_NAMED_RUNS, LINE, Unsupported, run_scope
 
 #: The line a splits read carries, beyond the four :data:`~association.query.compose.core.LINE` measures.
 SPLIT_LINE: tuple[str, ...] = ("minutes", "points", "rebounds", "assists", "steals", "blocks", "turnovers", "threePointFieldGoalsMade", "fg_pct")
@@ -43,11 +43,6 @@ def _stat_column(stat: str | None) -> str | None:
     if stat in COLUMNS:
         return stat
     return MEASURE_WORDS.get(stat.strip().lower())
-
-
-def _named_player_in(scope: Scope) -> bool:
-    """Whether ``scope`` names a player at all."""
-    return scope.player is not None and bool(scope.player.strip())
 
 
 def _game_log_threshold(scope: Scope) -> list[tuple[str, str, Any]]:
@@ -458,16 +453,3 @@ def _to_reading_scope(intent: str, scope: Scope) -> Reading:
     # (compose.plan._shape_declines) until intent leaves the reader in
     # Phase 3.
     return replace(adapter(scope), intent=intent)
-
-
-def to_query(intent: str, slots: dict[str, Any]) -> Query:
-    """:func:`to_reading`, planned: the default point as the compiler's own
-    :class:`~association.query.compose.core.Query`.
-
-    .. versionchanged:: 5.0.0
-       Plans :func:`to_reading`; the adapters build
-       :class:`~association.query.reading.Reading` records.
-    """
-    query = plan(to_reading(intent, slots))
-    assert isinstance(query, Query)
-    return query

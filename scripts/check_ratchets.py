@@ -89,49 +89,120 @@ def _functions(tree: ast.Module) -> list[tuple[str, ast.FunctionDef | ast.AsyncF
     return found
 
 
+def _parameters(function: ast.FunctionDef | ast.AsyncFunctionDef) -> list[str]:
+    """A function's parameter names, in order."""
+    arguments = function.args
+    return [arg.arg for arg in (*arguments.posonlyargs, *arguments.args, *arguments.kwonlyargs)]
+
+
 def question_outside_the_reader(modules: dict[str, ast.Module]) -> set[str]:
     """``module:function`` for each function outside the reader and the
-    answering loop with a parameter named ``question``."""
+    answering loop with a parameter that names the question (``question``,
+    or any name holding it - ``question_text``, ``the_question``: a
+    renamed parameter passed the exact match until 2026-10-03)."""
     found: set[str] = set()
     for name, tree in modules.items():
         if name in READER | ENTRY:
             continue
         for qualified, function in _functions(tree):
-            arguments = function.args
-            if any(arg.arg == "question" for arg in (*arguments.posonlyargs, *arguments.args, *arguments.kwonlyargs)):
+            if any("question" in parameter for parameter in _parameters(function)):
                 found.add(f"{name}:{qualified}")
     return found
 
 
+#: The connection methods that run a statement, and the helpers of this
+#: package that run one for their caller (``entities._read_table`` takes
+#: the SQL as a string): a statement through a helper counted as none
+#: until 2026-10-03.
+_EXECUTORS = frozenset({"execute", "executemany", "sql", "query", "_read_table"})
+
+
 def sql_outside_the_relations(modules: dict[str, ast.Module]) -> dict[str, int]:
-    """How many ``.execute(...)`` and ``.sql(...)`` calls each module makes,
-    for the modules that make any."""
-    counts = {name: sum(1 for node in ast.walk(tree) if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr in {"execute", "sql"}) for name, tree in modules.items()}
+    """How many statements each module runs - ``.execute``, ``.executemany``,
+    ``.sql`` and ``.query`` calls, and calls to the package's own
+    string-SQL helpers (:data:`_EXECUTORS`) - for the modules that run any."""
+
+    def runs(node: ast.AST) -> bool:
+        if not isinstance(node, ast.Call):
+            return False
+        callee = node.func.attr if isinstance(node.func, ast.Attribute) else node.func.id if isinstance(node.func, ast.Name) else None
+        return callee in _EXECUTORS
+
+    counts = {name: sum(1 for node in ast.walk(tree) if runs(node)) for name, tree in modules.items()}
     return {name: count for name, count in counts.items() if count}
 
 
+def con_in_the_reader(modules: dict[str, ast.Module]) -> set[str]:
+    """``module:function`` for each reader function that takes a DuckDB
+    connection (a parameter named ``con``): the reader reads names from
+    the in-memory index and should need none. Listed so it only shrinks;
+    the point reader's ``con`` was carried and never used."""
+    found: set[str] = set()
+    for name, tree in modules.items():
+        if name not in READER:
+            continue
+        for qualified, function in _functions(tree):
+            if "con" in _parameters(function):
+                found.add(f"{name}:{qualified}")
+    return found
+
+
+def _template_modules_bound(tree: ast.Module) -> set[str]:
+    """The local names a module binds to a template module, imported whole
+    (``from ..templates import splits as _m``, ``import ...templates.splits as x``)."""
+    bound: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and (node.module or "").endswith("templates"):
+            bound.update(alias.asname or alias.name for alias in node.names)
+        elif isinstance(node, ast.Import):
+            bound.update(alias.asname or alias.name.split(".")[-1] for alias in node.names if "templates." in alias.name)
+    return bound
+
+
 def private_template_imports(modules: dict[str, ast.Module]) -> set[str]:
-    """``module:name`` for each private name a compiler module imports from
-    a template module."""
+    """``module:name`` for each private name a compiler module takes from a
+    template module: imported by name, or read off a template module it
+    imported whole (``from ..templates import splits as _m; _m._x`` passed
+    until 2026-10-03)."""
     found: set[str] = set()
     for name, tree in modules.items():
         if name != "compose" and not name.startswith("compose."):
             continue
+        bound = _template_modules_bound(tree)
         for node in ast.walk(tree):
             if isinstance(node, ast.ImportFrom) and "templates" in (node.module or ""):
                 found.update(f"{name}:{alias.name}" for alias in node.names if alias.name.startswith("_"))
+            elif isinstance(node, ast.Attribute) and node.attr.startswith("_") and isinstance(node.value, ast.Name) and node.value.id in bound:
+                found.add(f"{name}:{node.attr}")
     return found
 
 
+def _imports_re(node: ast.AST) -> bool:
+    """Whether ``node`` imports the ``re`` module: a plain import, or
+    ``importlib.import_module("re")``/``__import__("re")`` (which passed
+    until 2026-10-03)."""
+    if isinstance(node, ast.Import):
+        return any(alias.name == "re" for alias in node.names)
+    if isinstance(node, ast.ImportFrom):
+        return node.module == "re"
+    if isinstance(node, ast.Call) and node.args and isinstance(node.args[0], ast.Constant) and node.args[0].value == "re":
+        callee = node.func.attr if isinstance(node.func, ast.Attribute) else node.func.id if isinstance(node.func, ast.Name) else None
+        return callee in {"import_module", "__import__"}
+    return False
+
+
 def regex_outside_the_reader(modules: dict[str, ast.Module]) -> set[str]:
-    """Each module outside the reader that imports ``re``."""
+    """Each module outside the reader that imports ``re``, or takes a
+    private name (a compiled pattern, say) from a reader module."""
     found: set[str] = set()
     for name, tree in modules.items():
         if name in READER:
             continue
         for node in ast.walk(tree):
-            if (isinstance(node, ast.Import) and any(alias.name == "re" for alias in node.names)) or (isinstance(node, ast.ImportFrom) and node.module == "re"):
+            if _imports_re(node):
                 found.add(name)
+            if isinstance(node, ast.ImportFrom) and (node.module or "").rsplit(".", 1)[-1] in READER and any(alias.name.startswith("_") for alias in node.names):
+                found.add(f"{name}:{','.join(alias.name for alias in node.names if alias.name.startswith('_'))}")
     return found
 
 
@@ -140,6 +211,7 @@ CHECKS: dict[str, Callable[[dict[str, ast.Module]], set[str] | dict[str, int]]] 
     "sql_outside_the_relations": sql_outside_the_relations,
     "private_template_imports": private_template_imports,
     "regex_outside_the_reader": regex_outside_the_reader,
+    "con_in_the_reader": con_in_the_reader,
 }
 
 Standing = list[str] | dict[str, int]

@@ -25,8 +25,6 @@ import re
 from dataclasses import replace
 from typing import TYPE_CHECKING, Any, Literal
 
-import duckdb
-
 from association.query.compose.adapt import _to_reading_scope
 from association.query.measures import (
     BOOLEAN_MEASURES,
@@ -833,7 +831,7 @@ def team_splits_point(scope: Scope, subject: Subject) -> Reading | None:
     return Reading(scope=log.scope, shape="grouped", measures=["points"], aggregate="record", group="venue", predicates=[], relation="team")
 
 
-def team_read_point(con: duckdb.DuckDBPyConnection, scope: Scope, question: str, subject: Subject) -> Reading | None:
+def team_read_point(scope: Scope, question: str, subject: Subject) -> Reading | None:
     """Whether ``question``/``scope`` name a team as the grammatical
     SUBJECT - no player, a team identifiable (the router's own ``team`` slot,
     or :func:`~association.query.entities.team_named_in` when the router
@@ -861,6 +859,11 @@ def team_read_point(con: duckdb.DuckDBPyConnection, scope: Scope, question: str,
        Takes the typed :class:`~association.query.reading.Scope` and the
        :class:`~association.query.subject.Subject` the parser read, in place
        of a slot dict and a subject read here for a caller with none.
+
+    .. versionchanged:: 5.0.0
+       Takes no connection: the reader reads names from the in-memory
+       index and asked the warehouse nothing here (the ``con`` was carried
+       and never used).
     """
     if _named_player_in(scope) or _PERIOD.search(question) or _RANKING.search(question) or _LOG.search(question) or _TEAM_NOT_SUBJECT.search(question):
         return None
@@ -881,7 +884,7 @@ def team_read_point(con: duckdb.DuckDBPyConnection, scope: Scope, question: str,
     return Reading(scope=scope, shape="scalar", measures=[measure], aggregate="total", relation="team")
 
 
-def read_point(con: duckdb.DuckDBPyConnection, reading: Reading, question: str) -> Reading:
+def read_point(reading: Reading, question: str) -> Reading:
     """``reading``'s intent's default point, moved by ``question``'s own words: a
     measure beyond a template's list, a skeleton move ("most ... in a game" =
     rows by measure; "how many ... won" = count with a predicate) - none of it
@@ -922,7 +925,7 @@ def read_point(con: duckdb.DuckDBPyConnection, reading: Reading, question: str) 
         # with none is a caller's mistake, said here rather than as an
         # AttributeError three moves down.
         raise ValueError("read_point needs the reading's subject - who the question is about, as the parser read it")
-    point = _read_point(con, reading.intent, reading.scope, question, subject)
+    point = _read_point(reading.intent, reading.scope, question, subject)
     return replace(point, intent=reading.intent, subject=subject, evidence=(*point.evidence, *subject.evidence))
 
 
@@ -948,7 +951,7 @@ def _leaderboard_declines(scope: Scope, subject: Subject) -> None:
         raise Unsupported(f"a leaderboard cannot answer about one named player ({scope.player!r})")
 
 
-def _read_point(con: duckdb.DuckDBPyConnection, intent: str, scope: Scope, question: str, subject: Subject) -> Reading:
+def _read_point(intent: str, scope: Scope, question: str, subject: Subject) -> Reading:
     """:func:`read_point`'s moves, in order; split out so the record carries
     the intent and the subject whichever move settled it."""
     if intent == "leaderboard":
@@ -982,7 +985,7 @@ def _read_point(con: duckdb.DuckDBPyConnection, intent: str, scope: Scope, quest
         # teammate (_adapt_with_without).
         return _to_reading_scope(intent, scope)
     if not _named_player_in(scope):
-        team_reading = team_read_point(con, scope, question, subject)
+        team_reading = team_read_point(scope, question, subject)
         if team_reading is not None:
             return team_reading
     # The parser's own scope: nothing here repairs it (the filler word, the
