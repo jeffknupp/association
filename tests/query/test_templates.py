@@ -17,7 +17,7 @@ from association.nba.season import eastern_date as _eastern_date_of
 from association.query import shotchart
 from association.query.compose.adapt import to_reading
 from association.query.compose.core import Query, Unsupported, _compile_pair, _compile_run, _resolve_pair
-from association.query.compose.logs import _player_log, _player_log_mixed, _rebuilt_readable, _team_log, _team_log_mixed, read_player_log, read_team_log
+from association.query.compose.logs import _player_log, _player_log_mixed, _team_log, _team_log_mixed, read_player_log, read_team_log
 from association.query.compose.plan import plan, plan_point
 from association.query.compose.present import (
     STATED_SCOPING,
@@ -2141,17 +2141,28 @@ def test_the_unseen_count_excludes_games_the_rebuild_answered(rebuilt_ctx: Templ
 
 
 def test_a_game_log_reads_rebuilt_lines_only_for_stats_a_rebuild_gets_right(rebuilt_ctx: TemplateContext) -> None:
-    """The gate `game_log` applies before showing a rebuilt row. A table has no
+    """The gate a listing applies before showing a rebuilt row. A table has no
     room to caveat one column, so a single untrustworthy column sends the whole
     log back to fetched lines. Asserted directly on the rule, because inline in
-    the query it could be relaxed with nothing noticing."""
-    con = rebuilt_ctx.con
-    assert _rebuilt_readable(con, ["MIN", "PTS", "REB", "AST"]) is True
-    assert _rebuilt_readable(con, ["MIN", "PTS", "STL", "BLK"]) is True
+    the query it could be relaxed with nothing noticing. The rule is the
+    compiler's (``core._rebuilt_for``) since the log executes the compiled
+    statement, over the columns the log shows as the point's measures."""
+    from association.query.compose.core import Query, _rebuilt_for
+    from association.query.compose.logs import LOG_COLUMNS
+    from association.query.conditions import box_source
+
+    box = box_source(rebuilt_ctx.con)
+    assert box.rebuilt
+
+    def readable(headers: list[str]) -> bool:
+        return _rebuilt_for(box, Query(scope=Scope(player="x"), skeleton="rows", measures=[LOG_COLUMNS[h] for h in headers]))
+
+    assert readable(["MIN", "PTS", "REB", "AST"]) is True
+    assert readable(["MIN", "PTS", "STL", "BLK"]) is True
     # 0.181 mean error a game, wrong in one game in six.
-    assert _rebuilt_readable(con, ["MIN", "PTS", "PF"]) is False
+    assert readable(["MIN", "PTS", "PF"]) is False
     # 0.080, wrong in one game in thirteen.
-    assert _rebuilt_readable(con, ["MIN", "PTS", "TO"]) is False
+    assert readable(["MIN", "PTS", "TO"]) is False
 
 
 def test_a_warehouse_without_the_flag_still_answers(rebuilt_ctx: TemplateContext) -> None:
@@ -3717,6 +3728,17 @@ def _box(
     return (event, season, season_type, team, opponent, athlete, False, minutes, pts, reb, ast, 1, 0, 2, 3, 0, pts // 2, pts, 0, 0, ftm, fta, 0, 0)
 
 
+_PG_LOG_VIEW_SELECT = (
+    "SELECT pbs.*, p.display_name AS player_name, g.date AS game_date, t.abbreviation AS team_abbr, o.abbreviation AS opponent_abbr "
+    "FROM player_box_stats pbs LEFT JOIN players p ON p.athlete_id = pbs.athlete_id LEFT JOIN games g ON g.event_id = pbs.event_id AND g.season = pbs.season "
+    "LEFT JOIN teams t ON t.team_id = pbs.team_id LEFT JOIN teams o ON o.team_id = pbs.opponent_team_id"
+)
+"""``pg_ctx``'s log: the warehouse's own view, joins and all - keyed on season
+as well as event_id, so the phantom 1993 row joins its own games row only.
+A test that adds the filled view rebuilds the log over it, as ``data load``
+does."""
+
+
 @pytest.fixture
 def pg_ctx(tmp_path: Path) -> TemplateContext:
     """A Warriors season in miniature, built to exercise every narrowing. ``s``
@@ -3809,13 +3831,7 @@ def pg_ctx(tmp_path: Path) -> TemplateContext:
             _box("p5", s, "1", "4", "10", pts=15, season_type=3),
         ],
     )
-    # The warehouse's own view, joins and all - keyed on season as well as
-    # event_id, so the phantom 1993 row joins its own games row only.
-    c.execute(
-        "CREATE VIEW player_game_log AS SELECT pbs.*, p.display_name AS player_name, g.date AS game_date, t.abbreviation AS team_abbr, o.abbreviation AS opponent_abbr "
-        "FROM player_box_stats pbs LEFT JOIN players p ON p.athlete_id = pbs.athlete_id LEFT JOIN games g ON g.event_id = pbs.event_id AND g.season = pbs.season "
-        "LEFT JOIN teams t ON t.team_id = pbs.team_id LEFT JOIN teams o ON o.team_id = pbs.opponent_team_id"
-    )
+    c.execute(f"CREATE VIEW player_game_log AS {_PG_LOG_VIEW_SELECT}")
     c.execute(
         "CREATE TABLE player_season_stats_deduped (athlete_id VARCHAR, season INTEGER, season_type INTEGER, gamesPlayed INTEGER, avgPoints DOUBLE, points INTEGER, "
         "avgRebounds DOUBLE, totalRebounds INTEGER, avgAssists DOUBLE, assists INTEGER, avgMinutes DOUBLE, threePointFieldGoalsMade INTEGER, threePointFieldGoalsAttempted INTEGER)"
@@ -4223,6 +4239,10 @@ def test_a_teammate_who_played_a_rebuilt_game_is_not_counted_as_absent(pg_ctx: T
         SELECT pbs.* REPLACE (CASE WHEN pbs.event_id = 'e2' AND pbs.athlete_id = '11' THEN 31 ELSE pbs.points END AS points),
                (pbs.event_id = 'e2' AND pbs.athlete_id = '11') AS reconstructed
         FROM player_box_stats pbs""")
+
+    # The warehouse builds the log OVER the filled view, so the log carries
+    # the flag the moment the view does; the fixture is rebuilt the same way.
+    con.execute(f"CREATE OR REPLACE VIEW player_game_log AS {_PG_LOG_VIEW_SELECT.replace('FROM player_box_stats pbs', 'FROM player_box_stats_filled pbs')}")
 
     result = game_log(pg_ctx, Reading.from_slots({"player": "Brandin Podziemski", "without": "Stephen Curry"}))
     assert sorted(g["date"] for g in result.data["games"]) == [f"{s}-01-10"], "e2 is a game Curry played, rebuilt"
@@ -4841,6 +4861,9 @@ def narrowed_rebuilt_ctx(tmp_path: Path) -> TemplateContext:
         "INSERT INTO player_game_log VALUES (?,?,2,'1','2','1','Anthony Davis',FALSE,NULL,?,?,?,?,?,?,?,?,'LAL',TRUE)",
         [("e1", s, 24, 8, 3, 3, 2, 9, 18, f"{s - 1}-11-01"), ("e2", s, 18, 6, 4, 5, 4, 7, 15, f"{s - 1}-12-01")],
     )
+    # The filled view the log is built over on a real warehouse: both of his
+    # games rebuilt, as the log's flags say.
+    c.execute("CREATE VIEW player_box_stats_filled AS SELECT pbs.*, TRUE AS reconstructed FROM player_box_stats pbs")
     return TemplateContext(con=c, out_dir=tmp_path)
 
 

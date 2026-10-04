@@ -144,10 +144,12 @@ def ctx(tmp_path: Path) -> TemplateContext:
         "away_team_id VARCHAR, winner_team_id VARCHAR, home_score INTEGER, away_score INTEGER, home_linescores VARCHAR, away_linescores VARCHAR, "
         "neutral_site BOOLEAN, venue_city VARCHAR)"
     )
+    # A UTC tip stamp, as ESPN stores every game's date: a bare day here read
+    # as midnight UTC, the evening before in the East, and dated a day early.
     con.execute(
         "INSERT INTO games VALUES "
-        "('e1', 2026, 2, '2026-01-01', '10', '11', '10', 110, 100, '28,27,30,25', '24,26,25,25', FALSE, 'Houston'),"
-        "('e2', 2026, 2, '2026-01-03', '11', '10', '10', 99, 120, '24,25,25,25', '30,32,28,30', FALSE, 'Dallas')"
+        "('e1', 2026, 2, '2026-01-02T00:30Z', '10', '11', '10', 110, 100, '28,27,30,25', '24,26,25,25', FALSE, 'Houston'),"
+        "('e2', 2026, 2, '2026-01-04T00:30Z', '11', '10', '10', 99, 120, '24,25,25,25', '30,32,28,30', FALSE, 'Dallas')"
     )
     # real_games is the one filtered view of `games` every template reads
     # instead (see conditions.py's module docstring) - a plain copy here, since

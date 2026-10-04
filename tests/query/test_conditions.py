@@ -330,7 +330,7 @@ def test_a_warehouse_without_the_filled_view_reads_as_it_always_did(league: Temp
     """The view arrives with a `data load`. An older warehouse has none, and
     every fixture here builds only `player_box_stats` - a query written as
     though the view were always there is a Binder error, not a value change.
-    Same escape as `_log_carries_rebuilt`."""
+    The one rule, for the view and the log alike."""
     assert box_source(league.con) == RAW_BOX
     assert player_splits(league, Reading.from_slots(_slots(player="Jayson Tatum", split="home_away"))).data["games"] == 3
 

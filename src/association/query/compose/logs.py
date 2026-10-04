@@ -20,6 +20,8 @@ of each type were kept.
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from dataclasses import replace
 from typing import Any
 
 import duckdb
@@ -29,20 +31,18 @@ from association.nba.season import current_season
 from association.nba.season import eastern_date as _eastern_date
 from association.query.measures import log_extras, stat_measure
 from association.query.notes import Note
-from association.query.player_games import aggregate_sql, rows_sql
+from association.query.player_games import aggregate_sql
 from association.query.reading import DEFAULT_GAME_LOG_LIMIT, Scope, _clamp_limit
 from association.query.result import Narrowing, Part, Result, Rows, Span, Window
 from association.query.team_games import TEAM_GAMES_SQL, TeamNarrowed
 from association.query.team_games import rows_sql as team_rows_sql
 from association.query.templates.common import (
-    REBUILT_STATS,
     MeasureFilter,
     Narrowed,
     ResolvedSpan,
     TemplateResult,
     TemplateUnsupported,
     box_score_notes_read,
-    log_carries_rebuilt,
     measure_filters,
     no_narrowed_games,
     resolved_team,
@@ -54,7 +54,7 @@ from association.query.templates.common import (
     whole_span,
 )
 
-from .core import LINE, Query, compile_query
+from .core import LINE, Compiled, Query, compile_over, compile_query
 from .team import TeamQuery
 
 _TEAM_GAME_LOG_JOIN = " JOIN teams o ON o.team_id = tg.opponent_id"
@@ -130,34 +130,21 @@ def _game_log_lines(below: Any, above: Any, threshold: Any) -> list[MeasureFilte
     return measures
 
 
-def _rebuilt_readable(con: duckdb.DuckDBPyConnection, needed: list[str]) -> bool:
-    """Whether a log may show rebuilt lines, given the columns it will display.
-
-    Every column shown has to be one a rebuild gets right - see
-    :data:`~association.query.templates.common.REBUILT_STATS`. Ask for a
-    player's fouls and the whole log falls back to fetched lines, because a
-    rebuilt foul is wrong in about one game in six and a table gives no room
-    to caveat one column. ``minutes`` is exempt rather than a failure:
-    play-by-play cannot recover it, so it prints blank on a rebuilt row,
-    which is the truth and is said in a note beneath the table."""
-    return log_carries_rebuilt(con) and all(LOG_COLUMNS[h] in REBUILT_STATS for h in needed if LOG_COLUMNS[h] != "minutes")
-
-
 def _pct(made: Any, attempted: Any) -> float | None:
     return 100.0 * made / attempted if made is not None and attempted else None
 
 
-def _merge_season_types(rows_by_type: dict[int, list[tuple[Any, ...]]], *, limit: int, ascending: bool) -> tuple[list[tuple[Any, ...]], dict[int, int]]:
+def _merge_season_types[R](rows_by_type: dict[int, list[R]], *, date_of: Callable[[R], Any], limit: int, ascending: bool) -> tuple[list[R], dict[int, int]]:
     """A "last N games" answer with no season type named reads both types
-    separately (each a normal, single-type query) and merges here. Every
-    row's first column is its date, which is how a player's and a team's
-    rows both sort; kept newest (or oldest, for ``ascending``) first, down
-    to ``limit`` overall. Returns the merged rows and how many of the kept
-    ones came from each season type - the count a "reasonable default" has
-    to show, per AGENTS.md: a user who gets 3 playoff games and 2
-    regular-season ones has to be told that split."""
+    separately (each a normal, single-type query) and merges here, by each
+    row's date (``date_of``: the compiled row's ``day`` for a player, the
+    first column for a team); kept newest (or oldest, for ``ascending``)
+    first, down to ``limit`` overall. Returns the merged rows and how many
+    of the kept ones came from each season type - the count a "reasonable
+    default" has to show, per AGENTS.md: a user who gets 3 playoff games and
+    2 regular-season ones has to be told that split."""
     tagged = [(row, season_type) for season_type, rows in rows_by_type.items() for row in rows]
-    tagged.sort(key=lambda item: item[0][0], reverse=not ascending)
+    tagged.sort(key=lambda item: date_of(item[0]), reverse=not ascending)
     kept = tagged[:limit]
     counts: dict[int, int] = {}
     for _, season_type in kept:
@@ -168,31 +155,32 @@ def _merge_season_types(rows_by_type: dict[int, list[tuple[Any, ...]]], *, limit
 # --- the player's log ------------------------------------------------------
 
 
-def _player_log_columns(con: duckdb.DuckDBPyConnection, extras: tuple[str, ...]) -> tuple[list[str], list[str], bool]:
-    """The columns to show, the raw columns fetched behind them, and whether a
-    rebuilt (play-by-play) line can stand in for a missing box score line."""
+def _player_log_columns(extras: tuple[str, ...]) -> tuple[list[str], list[str]]:
+    """The columns to show and the relation columns fetched behind them."""
     headers = list(dict.fromkeys([*_LOG_BASE, *extras]))
     # A percentage is never fetched: it is computed from the made/attempted pair
     # behind it, which is fetched whether or not it is shown.
     needed = list(dict.fromkeys([*(h for h in headers if h in LOG_COLUMNS), *(c for h in headers if h in LOG_PERCENTAGES for c in LOG_PERCENTAGES[h][:2])]))
-    return headers, needed, _rebuilt_readable(con, needed)
+    return headers, needed
 
 
-def _player_log_rows(rows: list[tuple[Any, ...]], needed: list[str], headers: list[str]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    """Each fetched row turned into a display game (with its percentages
-    derived) and the raw made/attempted values behind it, kept for the
-    averages."""
+def _player_log_rows(rows: list[dict[str, Any]], needed: list[str], headers: list[str]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Each row the compiled statement returned (:func:`~association.query.compose.core._row_select`'s
+    fixed columns, then the measures by name) turned into a display game
+    (with its percentages derived) and the raw made/attempted values behind
+    it, kept for the averages."""
     games: list[dict[str, Any]] = []
     raws: list[dict[str, Any]] = []
-    for game_date, season, opponent, home, winner, team_id, is_rebuilt, *values in rows:
-        raw = dict(zip(needed, values, strict=True))
+    for row in rows:
+        raw = {h: row[LOG_COLUMNS[h]] for h in needed}
+        won = row["won"]
         game: dict[str, Any] = {
-            "date": _eastern_date(game_date),
-            "season": season,
-            "opponent": opponent,
-            "home_away": "home" if home else "away",
-            "result": None if winner is None else ("W" if winner == team_id else "L"),
-            "reconstructed": bool(is_rebuilt),
+            "date": _eastern_date(row["day"]),
+            "season": row["season"],
+            "opponent": row["opponent"],
+            "home_away": "home" if row["home"] else "away",
+            "result": None if won is None else ("W" if won else "L"),
+            "reconstructed": bool(row["reconstructed"]),
         }
         for h in headers:
             game[log_key(h)] = _pct(raw[LOG_PERCENTAGES[h][0]], raw[LOG_PERCENTAGES[h][1]]) if h in LOG_PERCENTAGES else raw[h]
@@ -227,13 +215,11 @@ def _player_log_total(con: duckdb.DuckDBPyConnection, narrowed: Narrowed, *, reb
     return int(row[0]) if row and row[0] is not None else 0
 
 
-def _player_log_select(needed: list[str], rebuilt: bool) -> str:
-    """The columns a player log's row fetch selects, shared by the
-    single-season-type log and the mixed one."""
-    return (
-        f"pgl.game_date, pgl.season, pgl.opponent_abbr, g.home_team_id = pgl.team_id, g.winner_team_id, pgl.team_id, "
-        f"{'pgl.reconstructed' if rebuilt else 'FALSE'}, {', '.join(f'pgl.{LOG_COLUMNS[h]}' for h in needed)}"
-    )
+def _executed(con: duckdb.DuckDBPyConnection, compiled: Compiled) -> list[dict[str, Any]]:
+    """The compiled statement's rows, each by column name."""
+    cur = con.execute(compiled.sql, compiled.params)
+    columns = [d[0] for d in cur.description]
+    return [dict(zip(columns, r, strict=True)) for r in cur.fetchall()]
 
 
 def _player_narrowing(narrowed: Narrowed) -> Narrowing:
@@ -245,23 +231,21 @@ def _player_narrowing(narrowed: Narrowed) -> Narrowing:
     )
 
 
-def _player_log(
-    con: duckdb.DuckDBPyConnection, player_name: str, player: Any, span: ResolvedSpan, narrowed: Narrowed, extras: tuple[str, ...], *, limit: int, asked: int | None, ascending: bool
-) -> Result:
-    """The listing over one season type, and the per-game averages over
-    exactly the rows in it."""
-    headers, needed, rebuilt = _player_log_columns(con, extras)
-    sql, params = rows_sql(narrowed, _player_log_select(needed, rebuilt), order=f"pgl.game_date {'ASC' if ascending else 'DESC'}", limit=limit, rebuilt=rebuilt)
-    rows = con.execute(sql, params).fetchall()
+def _player_log(con: duckdb.DuckDBPyConnection, compiled: Compiled, headers: list[str], needed: list[str], *, asked: int | None, limit: int, ascending: bool) -> Result:
+    """The listing over one season type - the compiled statement's rows -
+    and the per-game averages over exactly the rows in it."""
+    player, span, narrowed = compiled.player, compiled.span, compiled.narrowed
+    assert player is not None
+    rows = _executed(con, compiled)
     about = Span(season=span.season, season_type=span.season_type, career=span.career and not narrowed.date, date=narrowed.date)
     narrowing = _player_narrowing(narrowed)
     window = Window(limit=limit, asked=asked, ascending=ascending)
     if not rows:
-        message = no_narrowed_games(con, player, span, narrowed, rebuilt=rebuilt)
-        return Result(subject=player_name, relation="player", span=about, narrowing=narrowing, window=window, empty=message)
+        message = no_narrowed_games(con, player, span, narrowed, rebuilt=compiled.rebuilt)
+        return Result(subject=player.name, relation="player", span=about, narrowing=narrowing, window=window, empty=message)
     games, raws = _player_log_rows(rows, needed, headers)
     averages = _player_log_averages(headers, raws)
-    total = _player_log_total(con, narrowed, rebuilt=rebuilt)
+    total = _player_log_total(con, narrowed, rebuilt=compiled.rebuilt)
     seasons = [g["season"] for g in games]
     about = Span(season=span.season, season_type=span.season_type, career=about.career, date=narrowed.date, first=min(seasons), last=max(seasons), years=span.years(min(seasons), max(seasons)))
     notes: list[Note] = []
@@ -269,45 +253,42 @@ def _player_log(
     if asked and count < asked and not narrowed.date:
         notes.append(Note("window_short", {"found": count, "asked": asked, "season": None if span.career else span.season or current_season(), "season_type": span.season_type}))
     rebuilt_shown = sum(1 for g in games if g["reconstructed"])
-    notes += box_score_notes_read(con, player, span, narrowed, career_note=not narrowed.date, rebuilt=rebuilt, rebuilt_shown=rebuilt_shown)
+    notes += box_score_notes_read(con, player, span, narrowed, career_note=not narrowed.date, rebuilt=compiled.rebuilt, rebuilt_shown=rebuilt_shown)
     body = Rows(columns=tuple(headers), rows=tuple(games), total_before_window=total, summary=averages)
-    return Result(subject=player_name, relation="player", span=about, narrowing=narrowing, window=window, parts=(Part(body=body),), notes=tuple(notes))
+    return Result(subject=player.name, relation="player", span=about, narrowing=narrowing, window=window, parts=(Part(body=body),), notes=tuple(notes))
 
 
-def _player_log_mixed(
-    con: duckdb.DuckDBPyConnection, player_name: str, player: Any, season: int, scope: Scope, *, opponent: Any, measures: list[MeasureFilter], extras: tuple[str, ...], limit: int, asked: int | None
-) -> Result | TemplateResult:
+def _player_log_mixed(con: duckdb.DuckDBPyConnection, q: Query, compiled: Compiled, headers: list[str], needed: list[str], *, asked: int | None, limit: int) -> Result | TemplateResult:
     """A player's "last N games" with no season type named: both types, read
     separately and merged by date. Every other narrowing resolves the same
-    under either type, so each type is composed exactly as
+    under either type, so each type is narrowed exactly as
     :func:`~association.query.templates.common.scoped_games` already does
-    for a single type, once per type. The notes are read once per type and
-    de-duplicated, since a rebuilt-line note or a ``without`` note reads
-    identically whichever type it came from."""
-    per_type: dict[int, tuple[ResolvedSpan, Narrowed]] = {}
+    for a single type, once per type, over the player and the season the
+    first compile settled, and compiled over that
+    (:func:`~association.query.compose.core.compile_over`). The notes are
+    read once per type and de-duplicated, since a rebuilt-line note or a
+    ``without`` note reads identically whichever type it came from."""
+    player, season, scope = compiled.player, compiled.span.season, q.scope
+    assert player is not None and season is not None
+    measures = measure_filters(scope.below, scope.above)
+    per_type: dict[int, Compiled] = {}
     for season_type in (2, 3):
         type_span = ResolvedSpan(season, season_type)
-        narrowed = scoped_games(con, player, type_span, scope, opponent=opponent, measures=measures)
+        narrowed = scoped_games(con, player, type_span, scope, opponent=compiled.narrowed.opponent, measures=measures)
         if isinstance(narrowed, TemplateResult):
             return narrowed
-        per_type[season_type] = (type_span, narrowed)
-    headers, needed, rebuilt = _player_log_columns(con, extras)
-    select = _player_log_select(needed, rebuilt)
-    rows_by_type: dict[int, list[tuple[Any, ...]]] = {}
-    for season_type, (_, narrowed) in per_type.items():
-        sql, params = rows_sql(narrowed, select, order="pgl.game_date DESC", limit=limit, rebuilt=rebuilt)
-        rows_by_type[season_type] = con.execute(sql, params).fetchall()
-    rows, counts = _merge_season_types(rows_by_type, limit=limit, ascending=False)
-    _, narrowed_2 = per_type[2]
-    narrowing = _player_narrowing(narrowed_2)
+        per_type[season_type] = compile_over(con, q, player, type_span, narrowed)
+    rows_by_type = {season_type: _executed(con, each) for season_type, each in per_type.items()}
+    rows, counts = _merge_season_types(rows_by_type, date_of=lambda row: row["day"], limit=limit, ascending=False)
+    narrowing = _player_narrowing(per_type[2].narrowed)
     about = Span(season=season)
     window = Window(limit=limit, asked=asked, ascending=False)
     if not rows:
         # Both types came back empty, so the missing fact really is "no games
         # this season" - the same sentence a single-type refusal gives, with
         # no season type to (wrongly) blame it on.
-        message = f"{player_name} has no games recorded in the {season} season{narrowing.phrase}."
-        return Result(subject=player_name, relation="player", span=about, narrowing=narrowing, window=window, facts={"mixed": True}, empty=message)
+        message = f"{player.name} has no games recorded in the {season} season{narrowing.phrase}."
+        return Result(subject=player.name, relation="player", span=about, narrowing=narrowing, window=window, facts={"mixed": True}, empty=message)
     games, raws = _player_log_rows(rows, needed, headers)
     averages = _player_log_averages(headers, raws)
     notes: list[Note] = []
@@ -317,17 +298,19 @@ def _player_log_mixed(
     rebuilt_shown = sum(1 for g in games if g["reconstructed"])
     seen: list[Note] = []
     for season_type in sorted(per_type):
-        type_span, narrowed = per_type[season_type]
-        for each in box_score_notes_read(con, player, type_span, narrowed, career_note=False, rebuilt=rebuilt, rebuilt_shown=rebuilt_shown):
-            if each not in seen:
-                seen.append(each)
+        each = per_type[season_type]
+        for note in box_score_notes_read(con, player, each.span, each.narrowed, career_note=False, rebuilt=each.rebuilt, rebuilt_shown=rebuilt_shown):
+            if note not in seen:
+                seen.append(note)
     notes += seen
     body = Rows(columns=tuple(headers), rows=tuple(games), summary=averages, by_season_type=counts)
-    return Result(subject=player_name, relation="player", span=about, narrowing=narrowing, window=window, parts=(Part(body=body),), notes=tuple(notes), facts={"mixed": True})
+    return Result(subject=player.name, relation="player", span=about, narrowing=narrowing, window=window, parts=(Part(body=body),), notes=tuple(notes), facts={"mixed": True})
 
 
 def read_player_log(con: duckdb.DuckDBPyConnection, q: Query, *, stated: frozenset[str]) -> Result | TemplateResult | None:
-    """A named player's log over the compiler's settled player, span and
+    """A named player's log: the compiled statement of the planned point,
+    its measures the log's columns (the four of the line and the named
+    stat's own), executed over the compiler's settled player, span and
     narrowing - or ``None`` where the log's own words do not say the point
     and the compiler's sentence answers instead: a point that is not rows
     in date order with no predicate, a stat the log has no column for
@@ -341,6 +324,11 @@ def read_player_log(con: duckdb.DuckDBPyConnection, q: Query, *, stated: frozens
     relation's own refusal (an ambiguous name), as before.
 
     .. versionadded:: 5.0.0
+
+    .. versionchanged:: 5.0.0
+       Executes the compiled statement (Phase 2, step 1's merge) where it
+       read the rows through its own ``rows_sql`` call beside it; measured
+       equal on every recorded player log first.
     """
     if q.skeleton != "rows" or q.order != "date" or q.subject != "player" or q.predicates or q.group != "none":
         return None
@@ -349,27 +337,29 @@ def read_player_log(con: duckdb.DuckDBPyConnection, q: Query, *, stated: frozens
     scope = q.scope
     try:
         extras = log_extras(scope.stat)
-        measures = _game_log_lines(scope.below, scope.above, scope.threshold)
+        _game_log_lines(scope.below, scope.above, scope.threshold)
     except TemplateUnsupported:
         return None
     # The router's own stat, which the log shows as its extra columns; a
     # measure the question's words moved in instead is the compiler's point.
     if [m for m in q.measures if m not in LINE] not in ([], [stat_measure(scope.stat)]):
         return None
-    compiled = compile_query(con, q)
+    headers, needed = _player_log_columns(extras)
+    limit = _clamp_limit(scope.limit, DEFAULT_GAME_LOG_LIMIT)
+    # The log's point, with the columns it shows as the measures: the rebuilt
+    # rule (core._rebuilt_for) is read over the columns shown, as the log's own was.
+    log_point = replace(q, measures=[LOG_COLUMNS[h] for h in needed], limit=limit)
+    compiled = compile_query(con, log_point)
     if compiled.player is None:
         return None
-    limit = _clamp_limit(scope.limit, DEFAULT_GAME_LOG_LIMIT)
     asked = scope.limit
     if scope.season_type_unstated and not compiled.narrowed.date and not scope.span and not scope.game_n:
         # "His last N games" naming no season type: each type on its own,
         # merged by date, over the season the compiler settled.
         if compiled.span.season is None:
             return None
-        return _player_log_mixed(
-            con, compiled.player.name, compiled.player, compiled.span.season, scope, opponent=compiled.narrowed.opponent, measures=measures, extras=extras, limit=limit, asked=asked
-        )
-    return _player_log(con, compiled.player.name, compiled.player, compiled.span, compiled.narrowed, extras, limit=limit, asked=asked, ascending=q.direction == "asc")
+        return _player_log_mixed(con, log_point, compiled, headers, needed, asked=asked, limit=limit)
+    return _player_log(con, compiled, headers, needed, asked=asked, limit=limit, ascending=q.direction == "asc")
 
 
 # --- the team's log --------------------------------------------------------
@@ -454,7 +444,7 @@ def _team_mixed_rows(con: duckdb.DuckDBPyConnection, team: Any, season: int, *, 
         narrowed_text = narrowed.filters()
         sql, params = team_rows_sql(narrowed, _TEAM_GAME_LOG_SELECT, order="tg.eastern_date DESC", limit=limit, join=_TEAM_GAME_LOG_JOIN)
         rows_by_type[season_type] = con.execute(sql, params).fetchall()
-    rows, counts = _merge_season_types(rows_by_type, limit=limit, ascending=False)
+    rows, counts = _merge_season_types(rows_by_type, date_of=lambda row: row[0], limit=limit, ascending=False)
     return rows, counts, narrowed_text
 
 

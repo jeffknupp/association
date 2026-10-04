@@ -146,24 +146,6 @@ REBUILT_STATS: frozenset[str] = frozenset({"points", "rebounds", "assists", "ste
 _RECORDED_OR_REBUILT = "(pgl.minutes IS NOT NULL OR pgl.reconstructed)"
 
 
-def log_carries_rebuilt(con: duckdb.DuckDBPyConnection) -> bool:
-    """Whether ``player_game_log`` has the ``reconstructed`` flag.
-
-    Checked rather than assumed, for the reason `AGENTS.md` records under "A
-    warehouse built before a view change is not detected": the column arrives
-    with a `data load`, and a query written as though it were always there
-    raises a Binder error against any older warehouse. Fixtures that build a
-    minimal log get the same answer, and keep their old behavior.
-    """
-    try:
-        return any(row[0] == "reconstructed" for row in con.execute("DESCRIBE player_game_log").fetchall())
-    except duckdb.CatalogException:
-        return False
-
-
-_log_carries_rebuilt = log_carries_rebuilt
-
-
 # One join serves venue and result both: games.home_team_id agrees with
 # team_box_stats.home_away on every row (checked, all 87,008 as of the warehouse
 # this was last verified against - the count grows with every pull). Keyed on

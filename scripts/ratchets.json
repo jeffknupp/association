@@ -27,7 +27,7 @@
  ],
  "sql_outside_the_relations": {
   "compose.core": 2,
-  "compose.logs": 6,
+  "compose.logs": 5,
   "compose.present": 3,
   "compose.records": 1,
   "compose.splits": 2,
@@ -38,7 +38,7 @@
   "fingerprint": 3,
   "game_label": 1,
   "leaderboard": 3,
-  "player_games": 2,
+  "player_games": 1,
   "shotchart": 1,
   "team_metrics": 3,
   "templates.common": 14,

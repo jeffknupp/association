@@ -738,6 +738,37 @@ agents' reports named here are in `~/association-research/stages/`.
     `Span.years`, `Result.empty`), named in its docstring as what the
     sayers take over.
 
+14. **Phase 2, step 1 - slice (i) split, then merged onto the compiled
+    statement (2026-10-03 to 2026-10-04).** Four sub-steps split the rest
+    of the slice as step 0 split the log, each identical on 628 of 628
+    (text and remarks) and every unit-test call: (a) the relation's shared
+    steps given public names (`89d6fa3`; the private-import ratchet 91 ->
+    59), (b) the five default points to the reader (`query/point.py`;
+    adapters 10 -> 5) with what they read moved first - `lines.py`,
+    `measures`, `reading`, `entities` - and `TemplateUnsupported` made
+    `reading.Unsupported` (`e05dae2`; 43 unit-test calls differ in the
+    exception's class name alone), (c) `record_when`'s reader and sayer
+    (`14d9757`), (d) `player_splits`' both branches into one sayer
+    (`5876bc2`; presenters 12 -> 9). Then the order question: the row's
+    title says "execute the compiled SQL", and what had landed was each
+    template's read moved into a reader that still ran its own statement
+    beside the compiled one. Jeff's rule (2026-10-04): whichever order
+    leaves the least temporary code - so the merge (g) goes before the two
+    shapes not yet split, (f) narrowed `player_stat` and (e)
+    `period_split`, which are then written once against the compiled
+    statement. The first merge, the player's log: `read_player_log`
+    compiles the point with the log's columns as measures and runs that;
+    the mixed read compiles each season type over the settled subject
+    through `compile_over`, the second half of `compile_query` made a
+    seam. Identical on 628 of 628 and 1,393 of 1,393. What it turned up and
+    fixed in passing (AGENTS.md, the rewrite's stance): two definitions of
+    "the warehouse carries rebuilt lines" (`log_carries_rebuilt` over the
+    log, `box_source` over the view - every compiled read was a latent
+    Binder error against a fixture holding one without the other), now one
+    in `box_source`; two fixtures built unlike the warehouse (a log not
+    over the filled view; a bare day where `games.date` holds a UTC
+    stamp), now built its way.
+
 ## The plan items, as written
 
 In order of lift per unit of structural change, each measured on the

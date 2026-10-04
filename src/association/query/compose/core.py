@@ -576,13 +576,13 @@ def _rebuilt_for(box: BoxSource, q: Query) -> bool:
         return box.rebuilt
     read = [*q.measures, *(name for name, _, _ in q.predicates)]
     if q.skeleton == "rows":
-        # A listing's own rule (``templates.games._rebuilt_readable``, which
-        # ``game_log`` reads by): ``minutes`` is exempt rather than a
-        # failure - play-by-play cannot recover it, so a rebuilt row prints
-        # it blank - and every other column shown must be one a rebuild gets
-        # right. Before this, a log or a top-games read carrying the default
-        # line never showed a rebuilt game at all, since that line carries
-        # minutes.
+        # A listing's rule (the game log's own, ``_rebuilt_readable``, until
+        # the log executed the compiled statement and this became the one
+        # copy): ``minutes`` is exempt rather than a failure - play-by-play
+        # cannot recover it, so a rebuilt row prints it blank - and every
+        # other column shown must be one a rebuild gets right. Before this,
+        # a log or a top-games read carrying the default line never showed a
+        # rebuilt game at all, since that line carries minutes.
         read = [m for m in read if m != "minutes"]
     return box.rebuilt and ((q.skeleton == "grouped" or q.aggregate == "record") or (bool(read) and all(m in REBUILT_STATS for m in read)))
 
@@ -806,6 +806,21 @@ def compile_query(con: duckdb.DuckDBPyConnection, q: Query) -> Compiled:
         player, other, span, narrowed = _resolve_pair(con, q)
     else:
         player, span, narrowed = _resolve_subject(con, q)
+    return compile_over(con, q, player, span, narrowed, other=other)
+
+
+def compile_over(con: duckdb.DuckDBPyConnection, q: Query, player: Entity | None, span: ResolvedSpan, narrowed: Narrowed, *, other: Entity | None = None) -> Compiled:
+    """``q`` as SQL over a subject already settled - the second half of
+    :func:`compile_query`, for a reader that has the player, the span and
+    the narrowed games from an earlier compile and reads them again under
+    another season type or without a predicate (the game log's "last N
+    games" naming no season type reads each type on its own; ``record_when``
+    reads every game, then groups by its line). The predicates, the team
+    slot, the window rule and the rebuilt-line rule are applied here, so a
+    statement built this way is the compiler's, never one written beside it.
+
+    .. versionadded:: 5.0.0
+    """
     if q.skeleton != "run":
         # A run's one predicate is the condition the run holds along, not a
         # row filter: a game that misses it ENDS the run rather than

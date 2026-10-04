@@ -783,9 +783,16 @@ model's. Two things follow, and both matter when you add a shape:
     `note_phrase` too (`templates.common._box_score_notes`, over
     `box_score_notes_read`); `tests/query/test_answer_notes.py` reads a
     `Note(kind, {...})` as a write when it checks every kind is written.
-  - **The reader keeps the relation's shared steps; the sayer keeps the
-    words.** `read_player_log` narrows through `scoped_games`/`rows_sql`
-    exactly as the template did; `say_player_log` builds the heading, the
+  - **The reader executes the compiled statement; the sayer keeps the
+    words.** `read_player_log` compiles the planned point with the log's
+    columns as its measures (`compose.core.compile_query`) and runs that
+    statement - since 2026-10-04; until then it ran the template's own
+    `rows_sql` call beside the compiled one, which is the shape step 1's
+    merge, sub-step (g), removes from each ported reader in turn. A reader
+    that already holds the settled subject and reads it again (the log's
+    "last N games" over each season type) compiles through
+    `compile_over`, the second half of `compile_query`, so no statement is
+    written beside the compiler's. `say_player_log` builds the heading, the
     aligned table and the notes from the Result's values. What the Result
     still carries as words, on purpose and to be cut as the sayers take it
     over: the narrowing's phrase (`Narrowing.phrase`, the relation's

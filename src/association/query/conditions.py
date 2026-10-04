@@ -180,15 +180,31 @@ def box_source(con: duckdb.DuckDBPyConnection) -> BoxSource:
     a test fixture that builds only `player_box_stats`.
 
     .. versionadded:: 2.2.0
+
+    .. versionchanged:: 5.0.0
+       Asks ``player_game_log`` for the flag as well as the filled view;
+       the one rule, where ``player_games.log_carries_rebuilt`` was a second.
     """
     try:
-        columns = {row[0] for row in con.execute("DESCRIBE player_box_stats_filled").fetchall()}
+        # DESCRIBE, not duckdb_columns(): a view's catalog row lists the
+        # columns it had when created, and a table altered beneath it (the
+        # fixtures that prove the no-flag case) shows the change to DESCRIBE alone.
+        found = con.execute("SELECT 'view', column_name FROM (DESCRIBE player_box_stats_filled) UNION ALL SELECT 'log', column_name FROM (DESCRIBE player_game_log)").fetchall()
     except duckdb.Error:
         return RAW_BOX
+    columns = {name for table, name in found if table == "view"}
+    log_columns = {name for table, name in found if table == "log"}
     # The columns are carried, not assumed: a warehouse built before one of
     # them existed - or a test fixture holding a thinner table - would
     # otherwise make the blanking below a Binder error rather than a no-op.
-    return BoxSource("player_box_stats_filled", True, frozenset(columns)) if "reconstructed" in columns else RAW_BOX
+    # The log is asked too: every reader of rebuilt lines reads the flag
+    # off ``player_game_log`` (``pgl.reconstructed``), which the warehouse
+    # builds OVER the filled view, so the two carry it together - and this
+    # is the one definition of "the warehouse carries rebuilt lines" (until
+    # 2026-10-04 ``player_games.log_carries_rebuilt`` asked the log alone,
+    # the compiler asked the view alone, and a fixture holding one without
+    # the other raised a Binder error on the compiled read).
+    return BoxSource("player_box_stats_filled", True, frozenset(columns)) if "reconstructed" in columns and "reconstructed" in log_columns else RAW_BOX
 
 
 def _played(alias: str, box: BoxSource = RAW_BOX) -> str:

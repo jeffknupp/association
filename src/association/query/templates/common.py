@@ -45,10 +45,8 @@ from ..player_games import (  # noqa: F401 - the relation's names, re-exported f
     _teammate_played,
     _teammate_stints,
     league,
-    log_carries_rebuilt,
     season_type_clause,
 )
-from ..player_games import _log_carries_rebuilt as _log_carries_rebuilt
 from ..player_games import _tenure_clause as _relation_tenure_clause
 from ..reading import DEFAULT_LIMIT as DEFAULT_LIMIT
 from ..reading import FILLER_PLAYER_WORDS as FILLER_PLAYER_WORDS

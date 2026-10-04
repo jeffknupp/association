@@ -19,6 +19,7 @@ from association.query.measures import STAT_LINE as STAT_LINE
 from association.query.reading import DEFAULT_SINGLE_GAME_LIMIT as DEFAULT_SINGLE_GAME_LIMIT
 from association.query.reading import Scope, scope_reads_box_scores
 
+from ..conditions import box_source
 from ..entities import Availability, Entity
 from ..leaderboard import SEASON_TOTAL_OF, LeaderboardError, LeaderboardResult, not_a_postseason_copy, resolve_metric, run_career_leaderboard, run_leaderboard
 from ..metrics import EXTRA_FIELD_COLUMNS, LEADERBOARD_METRICS, SEASON_TYPE_LABELS
@@ -39,7 +40,6 @@ from .common import (
     _count_games,
     _defaulted_season_note,
     _format_value,
-    _log_carries_rebuilt,
     _Narrowed,
     _no_narrowed_games,
     _period,
@@ -160,7 +160,7 @@ def _rebuilt_in_scope(con: duckdb.DuckDBPyConnection, season: int | None, season
 
     .. versionadded:: 2.2.0
     """
-    if not _log_carries_rebuilt(con):
+    if not box_source(con).rebuilt:
         return 0
     scope, params = scope_without_guard("l", season, season_type)
     where = f"{scope} AND l.reconstructed"
@@ -187,7 +187,7 @@ def _empty_box_scores(con: duckdb.DuckDBPyConnection, season: int | None, season
     beside "68 of his games have an empty box score, so a bigger game may be
     missing", where those 68 are the very games the 43 came from.
     """
-    if covered_by_rebuild and _log_carries_rebuilt(con):
+    if covered_by_rebuild and box_source(con).rebuilt:
         # What is still unseen: no minutes AND no rebuild to stand in for them.
         scope, params = scope_without_guard("l", season, season_type)
         if athlete_id is None:
@@ -1399,7 +1399,7 @@ def _box_score_stat_rebuilt(con: duckdb.DuckDBPyConnection, wanted: list[str], s
 
     .. versionadded:: 4.0.1
     """
-    return bool(wanted) and shooting is None and all(stat in REBUILT_STATS for stat in wanted) and _log_carries_rebuilt(con)
+    return bool(wanted) and shooting is None and all(stat in REBUILT_STATS for stat in wanted) and box_source(con).rebuilt
 
 
 def _pgl_qualified(column: str) -> str:
