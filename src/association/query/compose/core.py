@@ -97,6 +97,9 @@ DERIVED: dict[str, str] = {
     "triple_double": "(((pgl.points >= 10)::INT + (pgl.rebounds >= 10)::INT + (pgl.assists >= 10)::INT + (pgl.steals >= 10)::INT + (pgl.blocks >= 10)::INT) >= 3)",
     "won": "(g.winner_team_id = pgl.team_id)",
     "home": "(g.home_team_id = pgl.team_id)",
+    # His team's margin in the game, signed from his side - what a record
+    # over a line averages beside the wins and losses.
+    "margin": "(CASE WHEN g.home_team_id = pgl.team_id THEN g.home_score - g.away_score ELSE g.away_score - g.home_score END)",
     "fouled_out": "(pgl.fouls >= 6)",
 }
 """A measure name that is not a stored column, and the SQL that computes it per game.
@@ -675,8 +678,38 @@ def _compile_by_period(con: duckdb.DuckDBPyConnection, q: Query, narrowed: Narro
     return Compiled(" UNION ALL ".join(parts) + ' ORDER BY "group"', params, player, span, narrowed, rebuilt, list(q.measures))
 
 
+def _line_group(q: Query, rebuilt: bool) -> tuple[str, str, list[str]]:
+    """The ``line`` group: the games divided by whether the point's one
+    predicate holds - reached, fell short, or blank where the stat itself
+    is unrecorded (a rebuilt line's unfilled column) - ``record_when``'s
+    shape, one statement over the narrowed games. Beside the record, each
+    group's first and last season and the teams he reached it for, which
+    the heading and the span name. The line's value is written into the
+    statement as the integer it is, never bound: it is the GROUP BY key,
+    and the relation's statement binds its own parameters in text order.
+
+    .. versionadded:: 5.0.0
+    """
+    if len(q.predicates) != 1:
+        raise Unsupported("a line group divides the games by exactly one predicate")
+    name, op, value = q.predicates[0]
+    if op not in OPS or isinstance(value, bool) or not isinstance(value, int):
+        raise Unsupported(f"a line is an integer threshold on one measure, not {op!r} {value!r}")
+    key = f"({measure_sql(name, rebuilt=rebuilt)} {OPS[op]} {int(value)})"
+    label = f"CASE WHEN {key} THEN 'reached' WHEN NOT {key} THEN 'short' ELSE 'blank' END AS \"group\""
+    extras = ["MIN(pgl.season) AS first_season", "MAX(pgl.season) AS last_season", "list(DISTINCT pgl.team_id) AS team_ids"]
+    # Grouped by the label (the first select) rather than the key: DuckDB
+    # does not read the key inside the label's CASE as the grouped expression.
+    return "1", label, extras
+
+
 def _compile_grouped(q: Query, narrowed: Narrowed, rebuilt: bool, player: Entity | None, span: ResolvedSpan) -> Compiled:
-    """A ``grouped`` read: a split, or a ranking of players."""
+    """A ``grouped`` read: a split, a ranking of players, or the games
+    divided by a line (:func:`_line_group`)."""
+    if q.group == "line":
+        key, sel, extras = _line_group(q, rebuilt)
+        sql, params = grouped_sql(narrowed, key, [sel, *_scalar_selects(q, rebuilt), *extras], order="1", rebuilt=rebuilt)
+        return Compiled(sql, params, player, span, narrowed, rebuilt, list(q.measures))
     if q.group not in GROUPS:
         raise Unsupported(f"no grouping {q.group!r}")
     selects = _scalar_selects(q, rebuilt)
@@ -821,10 +854,11 @@ def compile_over(con: duckdb.DuckDBPyConnection, q: Query, player: Entity | None
 
     .. versionadded:: 5.0.0
     """
-    if q.skeleton != "run":
+    if q.skeleton != "run" and q.group != "line":
         # A run's one predicate is the condition the run holds along, not a
         # row filter: a game that misses it ENDS the run rather than
-        # leaving the pool (``_compile_run``).
+        # leaving the pool (``_compile_run``); a ``line`` group's is the key
+        # the games are divided by (``_line_group``).
         _apply_predicates(narrowed, q)
     narrowed = _apply_team_slot(con, q, player, span, narrowed)
     _apply_window_rule(q, narrowed)
