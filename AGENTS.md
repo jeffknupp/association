@@ -41,6 +41,35 @@ Phase 4 these rules apply to every change under `src/association/query/`,
 whoever makes it. Each is a gate or a test, so a change that breaks one
 fails rather than drifts.
 
+**This is a rewrite of how the data is used, and it is worked like one.**
+Jeff's standing instruction, 2026-10-04, to every agent and subagent on
+this tree:
+
+- **Make the large change when it is the right one.** The pipeline is
+  being replaced, not patched: a change that moves a whole shape, deletes
+  a module or reshapes a type is the expected size here, and "ambitious"
+  is not a reason to shrink it. The test of a change is that it is
+  technically right and proved on the populations above, not that it is
+  small.
+- **Do not route around essential complexity.** Where the problem is
+  complicated - a shape shared by three intents, a read with thirty
+  helpers - the work takes as long as it takes, and the gates (radon,
+  xenon) are met by splitting it into named steps, never by leaving the
+  hard part where it was. A step that avoids the difficult half and ports
+  the easy one is how the middle got half-ported.
+- **Fix what you can reach, whether or not it is your task.** An agent
+  that can make an immediate improvement in the code it is passing through
+  makes it, in its own commit, gated like any other. A bug found is fixed
+  as part of the work in hand wherever that is possible; `ISSUES.md` is
+  for what you CANNOT fix as part of the work you are doing - not for what
+  would be inconvenient, out of scope or larger than you expected. The
+  twenty-line budget under "Dispatching agents" is gone for the same
+  reason.
+- **Report every such finding and fix** - to Jeff, or to the lead agent
+  that dispatched you - in the change's report, with what was measured.
+  Silence about a fix is as bad as silence about a bug: the next decision
+  is made on the report.
+
 - **New shapes are frozen** (decision D4). No new intent, template,
   presenter, scoping table or per-intent renderer.
   `tests/query/test_frozen_shapes.py` holds the 25 intents the reader can
@@ -1559,7 +1588,9 @@ next agent has to rediscover from scratch, or never does.
   column, with the source, or with reality), a bug or wrong-answer risk you did
   not fix, a question shape that is refused or mis-routed, a tooling or gate
   problem, a doc that is wrong. Not ideas, not features nobody has asked for,
-  and not something you fix in the same change.
+  and not something you fix in the same change - and fixing it as part of
+  the work in hand is the first choice ("While the pipeline is rebuilt",
+  the rewrite's stance): an entry is for what you cannot fix there.
 - **Record it before you finish, even when it is out of scope.** Measure first
   where it is cheap: a count and a season beat "looks off". An entry needs a
   title, the evidence (the query or `file:line`, with numbers), what a user
@@ -1633,14 +1664,16 @@ closed):
   waits are on a process, never on a file appearing:
   `until [ -s out ]; do sleep; done` spins to the timeout when the job died
   before writing it.
-- **Fix what is cheap, file the rest, discard nothing.** "Recording
-  findings" was read as "stay in your lane", and bug sweeps filed as many
-  entries as they closed. A finding whose fix is small (about twenty lines),
-  in files the agent already owns, with a test, is fixed in its own commit
-  and reported; the rest is filed. A better approach than the one asked
-  for is treated the same way: taken when it is within the agent's files
-  and budget, otherwise stated in the report with its measured tradeoff.
-  Silence is the one outcome not allowed.
+- **Fix what you can, file only what you cannot, discard nothing.**
+  "Recording findings" was read as "stay in your lane", and bug sweeps
+  filed as many entries as they closed. A finding the agent can fix as part
+  of its work is fixed, in its own commit, with a test, and reported; only
+  what it cannot fix there is filed (until 2026-10-04 this had a
+  twenty-line budget; Jeff removed it - "While the pipeline is rebuilt").
+  A better approach than the one asked for is treated the same way: taken
+  when it is technically right and within the agent's files, otherwise
+  stated in the report with its measured tradeoff. Silence is the one
+  outcome not allowed.
 - **Parallelism is for disjoint, bounded, measurable work** - a fix with its
   own tests and a rehearsal to check it against, a relation over its own
   tables. The parser-compiler seam is one agent's at a time: two branches
