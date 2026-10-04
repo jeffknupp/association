@@ -23,8 +23,9 @@ from typing import Any
 from association.query.conditions import _SPLIT_TITLES, _margin, _split_cells, _split_label, _table, _win_pct
 from association.query.notes import Note, note
 from association.query.player_games import _joined
-from association.query.result import Result, Rows
-from association.query.templates.common import SEASON_TYPE_NAMES, STAT_LABELS, TemplateResult, season_label, season_phrase
+from association.query.result import Result, Rows, Scalar
+from association.query.templates.common import PLAYER_STAT_COLUMNS, SEASON_TYPE_NAMES, STAT_LABELS, TemplateResult, count_games, format_value, season_label, season_phrase
+from association.query.templates.players import MADE_STAT_ATTEMPTS, SHOOTING_STATS
 
 from .logs import LOG_PERCENTAGES, log_key
 
@@ -313,11 +314,13 @@ def say_team_log(result: Result) -> TemplateResult:
 
 
 def say(result: Result) -> TemplateResult:
-    """``result`` worded by its shape: a team's rows, a player's rows, or a
-    record grouped by a line.
+    """``result`` worded by its shape: a team's rows, a player's rows, a
+    record grouped by a line, splits, or a player's line.
 
     .. versionadded:: 5.0.0
     """
+    if result.scalar is not None:
+        return say_player_stat(result)
     if result.grouped is not None and result.grouped.by == "threshold":
         return say_record_when(result)
     if result.grouped is not None and result.grouped.by == "split":
@@ -401,3 +404,204 @@ def say_splits(result: Result) -> TemplateResult:
     answer += "\n" + " ".join(notes)
     data = {**facts["about"], "span": result.span.phrase, "games": facts["games"], "splits": by_kind, "headline": headline.rstrip(":"), "notes": notes}
     return TemplateResult(data=data, answer=answer.strip())
+
+
+# --- a player's line ---------------------------------------------------------------
+
+
+def rounded(value: Any) -> float | None:
+    """A computed per-game figure to one decimal, as ESPN's stored ones are -
+    "21.33 points" next to a stored "27.7" reads as a different unit.
+
+    .. versionadded:: 5.0.0
+       The sayer's, from ``templates.players._rounded``.
+    """
+    return None if value is None else round(float(value), 1)
+
+
+def stat_value_labels(wanted: list[str]) -> dict[str, str]:
+    """``data["stats"]``' own labels for a multi-stat ``player_stat`` line -
+    the page's static abbreviation table (``LABELS``,
+    ``web/static/index.html``) maps both the per-game column
+    (``avgPoints``) and the season total (``points``) to the same short
+    word ("PTS"), so a line naming both prints two tiles labeled identically
+    with no way to tell the average from the total apart (seen live on the
+    rendered page, 2026-09-24: "PTS" twice, one of them a season sum in the
+    hundreds sitting next to a per-game figure under 30). Every wanted
+    stat's own English label (``PLAYER_STAT_COLUMNS``' third element)
+    names both explicitly rather than leaving the page to guess a pair apart
+    that its own lookup collapses to one string.
+
+    .. versionadded:: 4.4.0
+
+    .. versionchanged:: 5.0.0
+       The sayer's, from ``templates.players._stat_value_labels``.
+    """
+    labels: dict[str, str] = {}
+    for name in wanted:
+        per_game, total, label = PLAYER_STAT_COLUMNS[name]
+        labels[per_game] = f"{label} per game"
+        if total:
+            labels[total] = f"{label} total"
+    return labels
+
+
+def shooting_result(name: str, scope: dict[str, Any], values: dict[str, Any], shooting: Any, *, when: str, games_note: str = "") -> TemplateResult:
+    """A percentage with the makes and attempts behind it - "out of how many?"
+    is the first thing anybody asks of a percentage without them.
+
+    ``shooting`` is the stat's entry in ``templates.players.SHOOTING_STATS``.
+    ``values`` carries the makes and attempts keyed by ``shooting.made``/
+    ``shooting.attempted`` - the SQL each was read through, which for every
+    stat but ``twoPointFieldGoalPct`` is already a real column name. The
+    ``data["stats"]`` this returns is keyed by ``shooting.made_key``/
+    ``attempted_key`` instead - the stable names, identical to the SQL for
+    three of the four stats and the whole fix for the fourth - with
+    ``data["labels"]`` carrying the short label a page prints beside each
+    one.
+
+    .. versionadded:: 4.4.0
+
+    .. versionchanged:: 5.0.0
+       The sayer's, from ``templates.players._shooting_result``.
+    """
+    made_col, attempted_col, how, noun = shooting.made, shooting.attempted, shooting.how, shooting.noun
+    made, attempted, games = values.get(made_col), values.get(attempted_col), values.get("gamesPlayed")
+    played = f" in {count_games(games)}{games_note}" if games else games_note
+    if attempted is None or made is None:
+        answer = f"{name} has no {noun} on record{played} {when}."
+        pct = None
+    elif not attempted:
+        answer = f"{name} attempted no {noun}{played} {when}."
+        pct = None
+    else:
+        pct = 100.0 * made / attempted
+        answer = f"{name} shot {pct:.1f}% {how} ({made:,} of {attempted:,}){played} {when}."
+    stats = {k: v for k, v in values.items() if k not in (made_col, attempted_col)}
+    stats[shooting.made_key] = made
+    stats[shooting.attempted_key] = attempted
+    stats["pct"] = pct
+    labels = {shooting.made_key: shooting.made_label, shooting.attempted_key: shooting.attempted_label, "pct": shooting.pct_label}
+    return TemplateResult(data={"player": name, **scope, "stats": stats, "labels": labels}, answer=answer)
+
+
+def phrase_player_stat(name: str, period: str, values: dict[str, Any], wanted: list[str], *, games_note: str = "", when: str | None = None, attempted: Any = None) -> str:
+    """A player's line in one sentence: each wanted stat per game, the games
+    and the span, and - for one stat alone - its total, or a made count's
+    makes of its attempts.
+
+    .. versionadded:: 5.0.0
+       The sayer's, from ``templates.players._phrase_player_stat``.
+    """
+    games = values.get("gamesPlayed")
+    parts = []
+    for stat in wanted:
+        per_game_col, _, label = PLAYER_STAT_COLUMNS[stat]
+        per_game = values.get(per_game_col)
+        if per_game is not None:
+            parts.append(f"{format_value(per_game)} {label}")
+    if not parts:
+        return f"{name} has no {period} numbers in the warehouse."
+    body = ", ".join(parts[:-1]) + f" and {parts[-1]}" if len(parts) > 1 else parts[0]
+    if games == 1 and when and when.startswith("on "):
+        # One game on one date is a line, not an average: "had 33 points, 3
+        # rebounds and 6 assists on 2026-03-01", and no total to add.
+        return f"{name} had {body}{games_note} {when}."
+    played = f" in {count_games(games)}{games_note}" if games else games_note
+    sentence = f"{name} averaged {body} per game{played} {when or f'in the {period}'}."
+    # The season total goes in its own clause rather than inline, and only when
+    # a single stat was asked for - inline it read as "33.5 points (2143 total)
+    # per game", which says something false.
+    if len(wanted) == 1:
+        total_col = PLAYER_STAT_COLUMNS[wanted[0]][1]
+        total = values.get(total_col) if total_col else None
+        if total is not None:
+            # A made-count stat with its attempted total on hand (F051,
+            # ISSUES.md): "90 of 228 (39.5%)" is the makes and attempts, and
+            # the percentage they make - the same reading a bare percentage
+            # answer always carries, since a made-count with no attempts
+            # beside it is the thing a reader immediately asks "out of how
+            # many?" about. Falls back to the plain total when the stat has
+            # no attempted sibling (points, rebounds, assists...).
+            if attempted:
+                sentence += f" That is {round(total):,} of {round(attempted):,} ({100.0 * total / attempted:.1f}%)."
+            else:
+                sentence += f" That is {total:,} in total."
+    return sentence
+
+
+def _player_stat_values(result: Result, line: Scalar) -> tuple[dict[str, Any], Any]:
+    """The line as ``data["stats"]`` holds it: the games, then each wanted
+    stat's per-game figure and total, then a made count's attempts - and
+    those attempts, for the sentence."""
+    wanted = list(result.facts["wanted"])
+    values: dict[str, Any] = {"gamesPlayed": line.games}
+    for stat in wanted:
+        per_game_col, total_col, _ = PLAYER_STAT_COLUMNS[stat]
+        values[per_game_col] = rounded(line.values[stat])
+        if total_col and line.sums.get(stat) is not None:
+            values[total_col] = int(line.sums[stat])
+    attempted_col = MADE_STAT_ATTEMPTS.get(wanted[0]) if len(wanted) == 1 else None
+    attempted = line.sums.get(attempted_col) if attempted_col else None
+    if attempted_col and attempted is not None:
+        values[attempted_col] = int(attempted)
+    return values, attempted
+
+
+def _player_stat_meetings(meetings: Rows) -> list[str]:
+    """The newest meetings behind an average against one opponent, as the
+    lines that end the answer."""
+    recent = meetings.rows
+    shown, total = len(recent), meetings.total_before_window or 0
+    if total > shown:
+        title = f"Most recent {shown} of the {total} meetings:"
+    elif shown == 1:
+        title = "The only meeting:"
+    else:
+        title = f"All {shown} meetings:"
+
+    def _count(value: Any) -> str:
+        return "-" if value is None else str(int(value))
+
+    return [title] + [
+        f"  {g['date']}  {'vs' if g['home_away'] == 'home' else '@'} {g['opponent']}  {g['result'] or '-'}  {_count(g['points'])} PTS, {_count(g['rebounds'])} REB, {_count(g['assists'])} AST"
+        for g in recent
+    ]
+
+
+def say_player_stat(result: Result) -> TemplateResult:
+    """A player's line over the games a question narrowed to, worded: one
+    sentence (a percentage with its makes and attempts, or each stat per
+    game with the total of one stat alone), the remarks after it, and
+    against one opponent the newest meetings beneath - the retired
+    ``player_stat`` template's words.
+
+    .. versionadded:: 5.0.0
+    """
+    line = result.scalar
+    assert line is not None
+    about, span = dict(result.facts["about"]), result.span
+    if not line.games:
+        assert result.empty is not None
+        return TemplateResult(data={"player": result.subject, **about, "games": 0, "stats": {}}, answer=result.empty)
+    notes = _said(result)
+    scope = {**about, "seasons": [span.first, span.last]}
+    when, games_note = span.phrase or "", result.narrowing.phrase
+    stat = result.facts["stat"]
+    if stat is not None:
+        shooting = SHOOTING_STATS[stat]
+        said = shooting_result(
+            result.subject, scope, {"gamesPlayed": line.games, shooting.made: line.sums["made"], shooting.attempted: line.sums["attempted"]}, shooting, when=when, games_note=games_note
+        )
+    else:
+        wanted = list(result.facts["wanted"])
+        values, attempted = _player_stat_values(result, line)
+        answer = phrase_player_stat(result.subject, season_phrase(span.first or 0, span.season_type or 2), values, wanted, games_note=games_note, when=when, attempted=attempted)
+        said = TemplateResult(data={"player": result.subject, **scope, "stats": values, "labels": stat_value_labels(wanted)}, answer=answer)
+    if notes:
+        said.answer = " ".join([said.answer, *notes])
+    if len(result.parts) > 1 and isinstance(result.parts[1].body, Rows):
+        meetings = result.parts[1].body
+        said.data["recent"] = [dict(g) for g in meetings.rows]
+        said.answer = "\n".join([said.answer, *_player_stat_meetings(meetings)])
+    return said

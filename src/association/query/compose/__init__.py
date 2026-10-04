@@ -52,6 +52,7 @@ from .sentence import _span_phrase
 from .sentence import sentence as _sentence
 from .sentence import team_sentence as _team_sentence
 from .splits import read_player_splits, read_team_splits
+from .stats import read_player_stat
 from .team import TeamQuery, TeamResult, run_team
 
 if TYPE_CHECKING:
@@ -231,10 +232,12 @@ def _read_log(read: Callable[[], Result | TemplateResult | None]) -> TemplateRes
 
 def _read_ported(con: duckdb.DuckDBPyConnection, intent: str, query: Query) -> TemplateResult | None:
     """The shapes Phase 2 has ported, read into a Result and said by the
-    sayer (``compose.logs``, ``compose.records``; ``compose.say``): a
-    player's log - ``game_log``'s own point, or the window of games
-    ``player_stat``'s retired template handed to the log ("stats over his
-    last N games") - and a player's record over a line. ``None`` where the
+    sayer (``compose.logs``, ``compose.records``, ``compose.splits``,
+    ``compose.stats``; ``compose.say``): a player's log - ``game_log``'s own
+    point, or the window of games ``player_stat``'s retired template handed
+    to the log ("stats over his last N games") - a player's record over a
+    line, his splits, and his line over the games a narrowing sent the read
+    to (``player_stat``'s narrowed point). ``None`` where the
     point is not one of them, or its words do not say it, and a presenter or
     the compiler's own sentence answers."""
     if query.skeleton == "rows" and intent in ("game_log", "player_stat"):
@@ -243,6 +246,8 @@ def _read_ported(con: duckdb.DuckDBPyConnection, intent: str, query: Query) -> T
         return _read_log(lambda: read_record_when(con, query, stated=STATED_SCOPING["record_when"]))
     if intent == "player_splits" and query.skeleton == "grouped":
         return _read_log(lambda: read_player_splits(con, query, stated=STATED_SCOPING["player_splits"]))
+    if intent == "player_stat" and query.skeleton == "scalar" and query.source == "games":
+        return _read_log(lambda: read_player_stat(con, query, stated=STATED_SCOPING["player_stat"]))
     return None
 
 

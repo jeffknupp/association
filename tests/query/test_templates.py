@@ -16,20 +16,20 @@ from association.nba.season import current_season
 from association.nba.season import eastern_date as _eastern_date_of
 from association.query import shotchart
 from association.query.compose.adapt import to_reading
-from association.query.compose.core import Query, Unsupported, _compile_pair, _compile_run, _resolve_pair
+from association.query.compose.core import Query, Unsupported, _compile_pair, _compile_run, _resolve_pair, compile_query
 from association.query.compose.logs import _player_log, _player_log_mixed, _team_log, _team_log_mixed, read_player_log, read_team_log
 from association.query.compose.plan import plan, plan_point
 from association.query.compose.present import (
     STATED_SCOPING,
     _present_period_split,
     _present_player_matchup,
-    _present_player_stat,
     _present_player_stat_season_line,
     _present_streak,
     _present_team_streak,
 )
 from association.query.compose.records import read_record_when
 from association.query.compose.splits import _player_splits, _team_splits, read_player_splits, read_team_splits
+from association.query.compose.stats import _player_stat_meetings, _player_stat_result, read_player_stat
 from association.query.compose.team import TeamQuery, _compile_team_run, run_team
 from association.query.entities import MAX_CANDIDATES, Availability, Entity, collect_name_readings, resolve_player
 from association.query.metrics import LEADERBOARD_METRICS, PER_GAME_MIN_GAMES, PER_GAME_MIN_POSTSEASON_GAMES
@@ -54,7 +54,7 @@ from association.query.templates.games import (
     team_quarter_points,
 )
 from association.query.templates.netpoints import fingerprint, player_netpoints
-from association.query.templates.players import SHOOTING_STATS, _box_score_player_stat, _box_score_stat_rebuilt, _player_stat_season_line, _player_stat_season_line_subject
+from association.query.templates.players import _player_stat_season_line, _player_stat_season_line_subject
 from association.query.templates.shots import shot_chart, shot_distance
 from association.query.templates.teams import team_record
 
@@ -4872,7 +4872,7 @@ def test_player_stat_reads_rebuilt_games_before_deciding_none_matched_the_oppone
     Davis's games here are covered by the rebuild, so a `points` question
     narrowed to an opponent he never faced is missing the OPPONENT, not a box
     score - `_no_narrowed_games` has to be given the same `rebuilt` reading
-    `_box_score_player_stat`'s own query used, or its diagnostic is stricter
+    the line's own compiled statement used, or its diagnostic is stricter
     than the answer it is explaining."""
     answer = player_stat(narrowed_rebuilt_ctx, Reading.from_slots({"player": "Anthony Davis", "opponent": "Boston Celtics", "stat": "points"})).answer
     assert answer == f"Anthony Davis played 2 games in the {current_season()} regular season, none of them vs the Boston Celtics."
@@ -4907,6 +4907,22 @@ def test_narrowed_player_stat_reads_a_rebuilt_line_for_a_trusted_stat(narrowed_r
     assert "rebuilt from play-by-play" in result.answer
 
 
+def test_a_made_count_over_rebuilt_lines_says_no_attempts_it_cannot_count(narrowed_rebuilt_ctx: TemplateContext) -> None:
+    """Field goals made is a stat a rebuild gets right, so the line reads
+    both rebuilt games - but their attempts are outside what the rebuild was
+    measured for (`UNGATED_ON_REBUILD`), so "16 of 33 (48.5%)" would be a
+    percentage of attempts nothing may read. The retired template said
+    exactly that, summing the rebuilt rows' attempts raw; the compiled line
+    reads a made count's attempts the way its rate does (over the games
+    that carry them) and says the total alone where rebuilt lines are in
+    it."""
+    result = player_stat(narrowed_rebuilt_ctx, Reading.from_slots({"player": "Anthony Davis", "opponent": "Los Angeles Lakers", "stat": "fieldGoalsMade"}))
+    assert result.data["stats"]["fieldGoalsMade"] == 16
+    assert "fieldGoalsAttempted" not in result.data["stats"]
+    assert "That is 16 in total." in result.answer
+    assert " of 33 " not in result.answer
+
+
 def test_narrowed_player_stat_still_refuses_a_rebuilt_line_for_an_untrusted_stat(narrowed_rebuilt_ctx: TemplateContext) -> None:
     """Turnovers are outside REBUILT_STATS, so the narrowed reading must not
     widen to the rebuild even though one exists here - and the refusal still
@@ -4920,15 +4936,14 @@ def test_narrowed_player_stat_never_reads_a_shooting_percentage_from_a_rebuilt_l
     """A rebuilt line's attempts are outside what the rebuild was measured for
     (`UNGATED_ON_REBUILD`), so a shooting percentage must never widen to it
     even though makes and attempts are both present here. Asserted directly on
-    the gate as well as through the template: `player_stat` itself never asks
-    for a shooting stat and a per-game stat at once (`wanted` is always empty
-    when `shooting` is set), so a query-level assertion alone cannot tell this
-    guard apart from that caller's own invariant - the same reasoning
-    `_rebuilt_readable` in `games.py` is asserted on directly for."""
+    the compiler's rule (the line the reader compiles: the rate as its one
+    measure) as well as through the answer, since the answer alone cannot
+    tell this rule apart from the reader's own choice of measures."""
     con = narrowed_rebuilt_ctx.con
-    assert _box_score_stat_rebuilt(con, ["points"], None) is True
-    assert _box_score_stat_rebuilt(con, ["points"], SHOOTING_STATS["fieldGoalPct"]) is False
-    assert _box_score_stat_rebuilt(con, [], SHOOTING_STATS["fieldGoalPct"]) is False
+    scope = Scope(player="Anthony Davis", opponent="Los Angeles Lakers")
+    assert compile_query(con, Query(scope=scope, skeleton="scalar", aggregate="line", measures=["points"])).rebuilt is True
+    assert compile_query(con, Query(scope=scope, skeleton="scalar", aggregate="line", measures=["fg_pct"])).rebuilt is False
+    assert compile_query(con, Query(scope=scope, skeleton="scalar", aggregate="line", measures=["points", "fg_pct"])).rebuilt is False
     answer = player_stat(narrowed_rebuilt_ctx, Reading.from_slots({"player": "Anthony Davis", "opponent": "Los Angeles Lakers", "stat": "fieldGoalPct"})).answer
     assert answer == f"Anthony Davis played 2 games in the {current_season()} regular season, but the box score is empty for all of them - ESPN served no minutes or stats for any."
 
@@ -5957,7 +5972,7 @@ def test_templates_on_the_relation_do_not_narrow_it_themselves() -> None:
     readers["period_split"] = [_present_period_split, _period_split_from, _period_split_rows, _period_split_rows_from, _period_split_empty, _period_split_cross_season_redirect]
     readers["player_splits"] = [read_player_splits, read_team_splits, _player_splits, _team_splits]
     readers["game_log"] = [read_team_log, read_player_log, _player_log, _player_log_mixed, _team_log, _team_log_mixed]
-    readers["player_stat"] = [_present_player_stat, _present_player_stat_season_line, _box_score_player_stat, _player_stat_season_line, _player_stat_season_line_subject]
+    readers["player_stat"] = [read_player_stat, _player_stat_result, _player_stat_meetings, _present_player_stat_season_line, _player_stat_season_line, _player_stat_season_line_subject]
     # streak's template is retired too (the `run` shape): the compiler's
     # skeleton and the team compiler's, and the readers that say them.
     readers["streak"] = [_compile_run, _compile_team_run, _present_streak, _present_team_streak, _streak_player_answer, _streak_team_answer, _streak_league_team_narrowed]

@@ -101,6 +101,25 @@ class Grouped:
 
 
 @dataclass(frozen=True, kw_only=True)
+class Scalar:
+    """The whole narrowed set reduced to one line (``ROADMAP-TYPES.md``,
+    "The shapes": ``scalar``): how many ``games`` it held, each measure's
+    figure over them (``values``, by measure name - a per-game average, or a
+    rate as the ratio of its sums), and the sums the line is said from
+    (``sums``: a stat's total by its name, a percentage's ``made`` and
+    ``attempted``, a made count's attempts by their column). Declared by the
+    first scalar shape to retire its template (``player_stat``'s narrowed
+    line), as the draft says a type is.
+
+    .. versionadded:: 5.0.0
+    """
+
+    games: int
+    values: Mapping[str, Any] = field(default_factory=dict)
+    sums: Mapping[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True, kw_only=True)
 class Part:
     """One part of an answer: its role and its body. The first part is the
     headline's.
@@ -109,7 +128,7 @@ class Part:
     """
 
     role: Literal["answer", "summary", "detail"] = "answer"
-    body: Rows | Grouped | None = None
+    body: Rows | Grouped | Scalar | None = None
     notes: tuple[Note, ...] = ()
 
 
@@ -155,6 +174,12 @@ class Result:
         """The first part's rows, where the answer is a table of items."""
         body = self.parts[0].body if self.parts else None
         return body if isinstance(body, Rows) else None
+
+    @property
+    def scalar(self) -> Scalar | None:
+        """The first part's line, where the answer is one row reduced from the whole set."""
+        body = self.parts[0].body if self.parts else None
+        return body if isinstance(body, Scalar) else None
 
     @property
     def grouped(self) -> Grouped | None:

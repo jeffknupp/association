@@ -102,21 +102,46 @@ DERIVED: dict[str, str] = {
     # over a line averages beside the wins and losses.
     "margin": "(CASE WHEN g.home_team_id = pgl.team_id THEN g.home_score - g.away_score ELSE g.away_score - g.home_score END)",
     "fouled_out": "(pgl.fouls >= 6)",
+    "two_pct": "((pgl.fieldGoalsMade - pgl.threePointFieldGoalsMade) * 100.0 / NULLIF(pgl.fieldGoalsAttempted - pgl.threePointFieldGoalsAttempted, 0))",
 }
 """A measure name that is not a stored column, and the SQL that computes it per game.
 
 .. versionadded:: 4.4.0
 """
 
+#: A shooting rate's makes and attempts per game, over a column renderer.
+SHOT_RATES: dict[str, tuple[Callable[[Callable[[str], str]], str], Callable[[Callable[[str], str]], str], tuple[str, ...]]] = {
+    "fg_pct": (lambda c: c("fieldGoalsMade"), lambda c: c("fieldGoalsAttempted"), ("fieldGoalsMade", "fieldGoalsAttempted")),
+    "three_pct": (lambda c: c("threePointFieldGoalsMade"), lambda c: c("threePointFieldGoalsAttempted"), ("threePointFieldGoalsMade", "threePointFieldGoalsAttempted")),
+    "ft_pct": (lambda c: c("freeThrowsMade"), lambda c: c("freeThrowsAttempted"), ("freeThrowsMade", "freeThrowsAttempted")),
+    # Neither table stores a 2-point count: field goals less threes, both ways.
+    "two_pct": (
+        lambda c: f"({c('fieldGoalsMade')} - {c('threePointFieldGoalsMade')})",
+        lambda c: f"({c('fieldGoalsAttempted')} - {c('threePointFieldGoalsAttempted')})",
+        ("fieldGoalsMade", "threePointFieldGoalsMade", "fieldGoalsAttempted", "threePointFieldGoalsAttempted"),
+    ),
+}
+"""A shooting percentage's two per-game counts - what is made and what is
+attempted - written over a column renderer, with the columns they read:
+the rate (:data:`RATES`) is the ratio of their sums, and a per-game line
+(the ``line`` aggregate, :func:`_line_selects`) says the sums themselves
+("68 of 163").
+
+.. versionadded:: 5.0.0
+"""
+
+
+def _shot_rate(
+    made: Callable[[Callable[[str], str]], str], attempted: Callable[[Callable[[str], str]], str], columns: tuple[str, ...]
+) -> tuple[Callable[[Callable[[str], str]], str], Callable[[Callable[[str], str]], str], tuple[str, ...]]:
+    """A :data:`SHOT_RATES` entry as a :data:`RATES` one: the made sum times
+    100 over the attempted sum."""
+    return (lambda c: f"SUM({made(c)}) * 100.0", lambda c: f"NULLIF(SUM({attempted(c)}), 0)", columns)
+
+
 #: Rates as ratios of sums, never means of per-game rates.
 RATES: dict[str, tuple[Callable[[Callable[[str], str]], str], Callable[[Callable[[str], str]], str], tuple[str, ...]]] = {
-    "fg_pct": (lambda c: f"SUM({c('fieldGoalsMade')}) * 100.0", lambda c: f"NULLIF(SUM({c('fieldGoalsAttempted')}), 0)", ("fieldGoalsMade", "fieldGoalsAttempted")),
-    "three_pct": (
-        lambda c: f"SUM({c('threePointFieldGoalsMade')}) * 100.0",
-        lambda c: f"NULLIF(SUM({c('threePointFieldGoalsAttempted')}), 0)",
-        ("threePointFieldGoalsMade", "threePointFieldGoalsAttempted"),
-    ),
-    "ft_pct": (lambda c: f"SUM({c('freeThrowsMade')}) * 100.0", lambda c: f"NULLIF(SUM({c('freeThrowsAttempted')}), 0)", ("freeThrowsMade", "freeThrowsAttempted")),
+    **{name: _shot_rate(*entry) for name, entry in SHOT_RATES.items()},
     # A fraction (0.57), like the per-game column the view stores and the
     # sentence and the page both print times 100 (sentence._FRACTION_COLUMNS,
     # the page's FRACTIONS) - computed times 100 here as well, a narrowed
@@ -135,7 +160,7 @@ RATES: dict[str, tuple[Callable[[Callable[[str], str]], str], Callable[[Callable
 }
 """A percentage measure's numerator and denominator, summed over games rather
 than averaged per game - on the scale its per-game column has: a percent for
-``fg_pct``/``three_pct``/``ft_pct``, a fraction for ``ts_pct``/``efg_pct``.
+``fg_pct``/``three_pct``/``ft_pct``/``two_pct``, a fraction for ``ts_pct``/``efg_pct``.
 Each is written over a column renderer, and names its columns, so
 :func:`_rate_sql` can leave a rebuilt row out of BOTH sums where the rebuild
 never measured one of them.
@@ -163,9 +188,17 @@ def _rate_sql(name: str, *, rebuilt: bool) -> str:
     .. versionadded:: 5.0.0
     """
     numerator, denominator, columns = RATES[name]
-    blank = rebuilt and any(column not in REBUILT_STATS and column in UNGATED_ON_REBUILD for column in columns)
-    render = (lambda column: f"CASE WHEN pgl.reconstructed THEN NULL ELSE pgl.{column} END") if blank else (lambda column: f"pgl.{column}")
+    render = _rate_render(columns, rebuilt=rebuilt)
     return f"({numerator(render)} / {denominator(render)})"
+
+
+def _rate_render(columns: tuple[str, ...], *, rebuilt: bool) -> Callable[[str], str]:
+    """How a rate reads its columns: raw, or - under the rebuilt guard, where
+    one of them is a column the rebuild never measured - with every one
+    blank on a rebuilt row, so all of the rate's sums cover the same games."""
+    if rebuilt and any(column not in REBUILT_STATS and column in UNGATED_ON_REBUILD for column in columns):
+        return lambda column: f"CASE WHEN pgl.reconstructed THEN NULL ELSE pgl.{column} END"
+    return lambda column: f"pgl.{column}"
 
 
 #: The comparisons a ``Query.predicates`` entry may use - an allowlist, so no
@@ -249,7 +282,9 @@ class Query:
     skeleton: str = "rows"
     #: The box-score columns (or derived measures) the point reads.
     measures: list[str] = field(default_factory=lambda: list(LINE))
-    #: ``"none"``, ``"per_game"``, ``"total"``, ``"count"`` or ``"record"``.
+    #: ``"none"``, ``"per_game"``, ``"total"``, ``"count"``, ``"record"``,
+    #: or ``"line"`` - each measure per game with the sums a player's line is
+    #: said from (:func:`_line_selects`).
     aggregate: str = "none"
     #: ``"none"`` or a key of :data:`GROUPS`.
     group: str = "none"
@@ -655,6 +690,44 @@ def _compile_rows(q: Query, narrowed: Narrowed, rebuilt: bool, player: Entity | 
     return Compiled(sql, params, player, span, narrowed, rebuilt, list(q.measures))
 
 
+#: A made count's rate: the ``line`` aggregate says "68 of 163" beside the
+#: average of a made count read alone, from the rate's two sums.
+_MADE_RATE: dict[str, str] = {"fieldGoalsMade": "fg_pct", "threePointFieldGoalsMade": "three_pct", "freeThrowsMade": "ft_pct"}
+
+
+def _shot_sums(name: str, *, rebuilt: bool) -> list[str]:
+    """A shooting rate's two sums, ``"<rate>_made"`` and ``"<rate>_attempted"``,
+    over the same games :func:`_rate_sql` takes the rate over: under the
+    rebuilt guard, a rate reading a column the rebuild never measured skips
+    rebuilt rows in both, so the two counts always make the rate."""
+    made, attempted, columns = SHOT_RATES[name]
+    render = _rate_render(columns, rebuilt=rebuilt)
+    return [f'SUM({made(render)}) AS "{name}_made"', f'SUM({attempted(render)}) AS "{name}_attempted"']
+
+
+def _line_selects(q: Query, rebuilt: bool) -> list[str]:
+    """What the ``line`` aggregate reads beside each measure's per-game
+    figure: the first and last season the games span, each column's sum
+    (``"<m>_total"``), each shooting rate's makes and attempts
+    (:func:`_shot_sums`), and a made count's rate's two sums too - the
+    total and the "out of how many" a player's line is said with
+    (``compose.stats``). Read beside the measures, never as measures: which
+    games count is the measures' rebuilt rule alone, so the attempts behind
+    a made count do not narrow the games its average is over.
+
+    .. versionadded:: 5.0.0
+    """
+    selects = ["MIN(pgl.season) AS first_season", "MAX(pgl.season) AS last_season"]
+    for m in q.measures:
+        if m in SHOT_RATES:
+            selects += _shot_sums(m, rebuilt=rebuilt)
+        elif m in COLUMNS:
+            selects.append(f'SUM({measure_sql(m, rebuilt=rebuilt)}) AS "{m}_total"')
+            if m in _MADE_RATE:
+                selects += _shot_sums(_MADE_RATE[m], rebuilt=rebuilt)
+    return selects
+
+
 def _scalar_selects(q: Query, rebuilt: bool) -> list[str]:
     """The SELECT list for a ``scalar`` or ``grouped`` read: a count, a
     win-loss record, one aggregate per measure, and - guarded the same way
@@ -669,6 +742,9 @@ def _scalar_selects(q: Query, rebuilt: bool) -> list[str]:
             "SUM(CASE WHEN g.winner_team_id IS NOT NULL AND g.winner_team_id <> pgl.team_id THEN 1 ELSE 0 END) AS losses",
         ]
         selects += [_agg(m, "per_game", rebuilt=rebuilt) for m in q.measures]
+    elif q.aggregate == "line":
+        selects += [_agg(m, "per_game", rebuilt=rebuilt) for m in q.measures]
+        selects += _line_selects(q, rebuilt)
     elif q.aggregate != "count":
         selects += [_agg(m, q.aggregate, rebuilt=rebuilt) for m in q.measures]
     selects.append("SUM(CASE WHEN pgl.reconstructed THEN 1 ELSE 0 END) AS rebuilt_shown" if rebuilt else "0 AS rebuilt_shown")

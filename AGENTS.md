@@ -773,8 +773,13 @@ model's. Two things follow, and both matter when you add a shape:
   nothing else (the import contract "The compiler's sentence reads no
   warehouse" holds it, with `compose.sentence`). `compose.answer` reads a
   rows-shaped `game_log` (and the `player_stat` window the retired template
-  handed to the log) through them before any presenter runs. Three rules
-  the slice set, which every later slice follows:
+  handed to the log) through them before any presenter runs, and so, since,
+  a player's record over a line, his splits and his line over the games a
+  narrowing sent the read to (`compose/records.py`, `splits.py`,
+  `stats.py`; the last a `Scalar` body read by the compiler's `line`
+  aggregate - each measure per game beside the sums the line is said
+  from); only the unnarrowed season line is still `player_stat`'s
+  presenter. Three rules the slice set, which every later slice follows:
   - **A note is written as data and said once.** The reader builds
     `Note("window_short", {found, asked, ...})`; the sayer phrases it
     (`say.note_phrase`, ONE phrase per kind) and records it through

@@ -19,9 +19,10 @@ subject, the span and every narrowing are the compiler's
 steps in :mod:`association.query.templates.common`); the numbers are either
 the compiler's own rows (``single_game_high``, ``threshold_count``, whose
 templates have no reader separate from their orchestration) or the template's
-own reader over the compiler's narrowing (``player_stat``'s
-``_box_score_player_stat``, which takes a settled narrowing already; the
-game log's went first, to ``compose.logs`` and ``compose.say``); and every
+own reader over the compiler's narrowing (the ported shapes - the game log,
+a record over a line, splits, a player's narrowed line - went to readers
+and the sayer, ``compose.logs``/``records``/``splits``/``stats`` and
+``compose.say``); and every
 sentence, caveat and ``data`` key
 comes from the template's own phrasing helpers - one definition each, never a
 second copy here.
@@ -72,7 +73,6 @@ from association.query.templates.players import (
     ADVANCED_STATS,
     SHOOTING_STATS,
     LeaderboardStepsAside,
-    _box_score_player_stat,
     _empty_box_scores,
     _game_span,
     _leaderboard_ranking,
@@ -89,7 +89,7 @@ from association.query.templates.players import (
     _threshold_count_ask,
     _threshold_count_lines,
     _threshold_count_notes,
-    _wanted_stats,
+    wanted_stats,
 )
 from association.query.templates.splits import (
     _condition_team_no_games,
@@ -178,45 +178,20 @@ def _present_period_by_quarter(con: duckdb.DuckDBPyConnection, q: Query) -> Temp
     return _period_split_by_quarter_from(scope, compiled.player, compiled.narrowed, rows, measure)
 
 
-def _present_player_stat(con: duckdb.DuckDBPyConnection, q: Query) -> TemplateResult | None:
-    """``player_stat``'s own narrowed average (``templates.players._box_score_player_stat``)
-    over the compiler's settled player, span and narrowing. An advanced rate
-    reads its own table and is left to the compiler's sentence. An
-    unnarrowed line is the season-line source's (:func:`_present_player_stat_season_line`)."""
-    # A window ("stats over his last N games") is the log of those games
-    # with averages beneath, never the season line: the retired template
-    # handed it to game_log, and compose.answer reads it through the log's
-    # reader (compose.logs) before any presenter runs.
-    if q.skeleton != "scalar" or q.aggregate != "per_game" or q.subject != "player" or q.predicates:
-        return None
-    if q.source == "seasons":
-        return _present_player_stat_season_line(con, q)
-    stat = q.scope.stat
-    if stat is not None and stat in ADVANCED_STATS:
-        return None
-    shooting = SHOOTING_STATS.get(stat) if stat is not None else None
-    try:
-        wanted = [] if shooting else _wanted_stats(q.scope)
-    except TemplateUnsupported:
-        return None
-    if not shooting and sorted(q.measures) != sorted(wanted):
-        return None
-    compiled = compile_query(con, q)
-    if compiled.player is None:
-        return None
-    return _box_score_player_stat(con, compiled.player, compiled.span, compiled.narrowed, wanted, shooting)
-
-
 def _present_player_stat_season_line(con: duckdb.DuckDBPyConnection, q: Query) -> TemplateResult | None:
     """``player_stat``'s unnarrowed line - a season or a career, read from
     the season line (``player_season_stats_deduped``) - over the player and
     span the template settles for it (``_player_stat_season_line_subject``)
     and read by its own reader (``_player_stat_season_line``): the second
-    relation, never re-derived from box scores.
+    relation, never re-derived from box scores. The narrowed line, over box
+    scores, is ``compose.stats``' (read before any presenter runs), and a
+    window ("stats over his last N games") the log's.
 
     Only where the question's own words left the router's stat alone (the
     adapter's own measures): a measure the words moved in is a point the
     season line does not say, and the compiler declines it as before."""
+    if q.skeleton != "scalar" or q.aggregate != "per_game" or q.subject != "player" or q.predicates or q.source != "seasons":
+        return None
     scope = q.scope
     stat = scope.stat
     try:
@@ -239,7 +214,7 @@ def _present_player_stat_season_line(con: duckdb.DuckDBPyConnection, q: Query) -
         # refusal names the stat rather than "a line the season line's
         # reader did not say" (the games relation has no column for it
         # either; `present` says it as the relation's).
-        _wanted_stats(scope)
+        wanted_stats(scope)
     subject = _player_stat_season_line_subject(con, scope)
     if isinstance(subject, TemplateResult):
         return subject
@@ -482,7 +457,7 @@ def _present_threshold_count_rows(q: Query, out: dict[str, Any]) -> list[tuple[A
 
 #: Intent -> the presenter for its own default point.
 PRESENTERS: dict[str, Presenter] = {
-    "player_stat": _present_player_stat,
+    "player_stat": _present_player_stat_season_line,
     "single_game_high": _present_single_game_high,
     "threshold_count": _present_threshold_count,
     "player_history": _present_player_history,

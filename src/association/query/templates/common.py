@@ -1069,10 +1069,19 @@ def _table_cell(value: Any) -> str:
     return f"{value:.1f}" if isinstance(value, float) else str(value)
 
 
-def _format_value(value: Any) -> str:
+def format_value(value: Any) -> str:
+    """A figure as an answer prints it: a float to two places (three below
+    one), trailing zeros dropped; anything else as itself.
+
+    .. versionadded:: 5.0.0
+       Public, as the sayer's phrase helper; ``_format_value`` is this.
+    """
     if isinstance(value, float):
         return f"{value:.3f}".rstrip("0").rstrip(".") if abs(value) < 1 else f"{value:.2f}".rstrip("0").rstrip(".")
     return str(value)
+
+
+_format_value = format_value
 
 
 # stat -> (per-game column, season-total column or None, display label).
@@ -1160,8 +1169,16 @@ def season_label(season: int) -> str:
 _season_name = season_label
 
 
-def _count_games(count: int) -> str:
+def count_games(count: int) -> str:
+    """``"1 game"``, ``"1,200 games"``.
+
+    .. versionadded:: 5.0.0
+       Public, as the sayer's phrase helper; ``_count_games`` is this.
+    """
     return f"{count:,} game{'' if count == 1 else 's'}"
+
+
+_count_games = count_games
 
 
 @dataclass(frozen=True)
