@@ -1139,7 +1139,7 @@ def _player_stat_season_line(con: duckdb.DuckDBPyConnection, player: Entity, spa
     # shooting percentage career" fell through while the leaderboard ranked the
     # same stat happily.
     if stat is not None and stat in ADVANCED_STATS:
-        return _player_stat_advanced(con, player, span, stat, False)
+        return _player_stat_advanced(con, player, span, stat)
 
     shooting = SHOOTING_STATS.get(stat) if stat is not None else None
     wanted = [] if shooting else wanted_stats(scope)
@@ -1287,23 +1287,18 @@ def _player_stat_advanced_gap(missing: int, spec: _AdvancedStat) -> str:
     return note("seasons_missing", said, seasons=missing, why="empty_box_score", stat=spec.column, label=spec.label)
 
 
-def _player_stat_advanced(con: duckdb.DuckDBPyConnection, player: Entity, span: _Span, stat: str, from_box_scores: bool) -> TemplateResult:
+def _player_stat_advanced(con: duckdb.DuckDBPyConnection, player: Entity, span: _Span, stat: str) -> TemplateResult:
     """One player's computed advanced stat, for a season or a career.
 
     Read from ``player_season_advanced_stats``, which starts in 1994 and has
     1993 as a phantom copy of it - a shorter reach than the season line this
     template normally uses, so the span is rebuilt against that table rather
-    than inherited, and a career excludes the phantom by name.
+    than inherited, and a career excludes the phantom by name. The season
+    line's alone: over a narrowed set of games the line's reader declines an
+    advanced stat (``compose.stats``), and the compiler's own sentence
+    answers it where it has the measure and declines it where not.
     """
     spec = ADVANCED_STATS[stat]
-    if from_box_scores:
-        # The per-game figures exist (`player_advanced_stats`, and the same
-        # columns on `player_game_log`), so this is a gap rather than an
-        # impossibility - but narrowing them to an opponent, a venue or a
-        # teammate's absence is the machinery in _narrow_player_games, and
-        # answering a season line to a question that narrowed the games is the
-        # substitution this module exists to stop. Refused with its own cause.
-        raise TemplateUnsupported(f"{spec.label} over a narrowed set of games is not supported yet - it is computed per season")
     if span.career and spec.weight is None:
         raise TemplateUnsupported(f"{spec.label} has no career figure - it has no volume column to weight the seasons by, so a career would be a mean of means")
     span = _span_of("career" if span.career else None, span.season, span.season_type, "player_season_advanced_stats") if span.career else span
