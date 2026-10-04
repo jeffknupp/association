@@ -49,8 +49,6 @@
  },
  "private_template_imports": [
   "compose.adapt:_DEFAULT_STREAK_LIMIT",
-  "compose.adapt:_period_split_measure",
-  "compose.adapt:_player_stat_reads_box_scores",
   "compose.adapt:_streak_words",
   "compose.adapt:_threshold_count_ask",
   "compose.adapt:_with_without_named",
@@ -115,7 +113,6 @@
   "refusals",
   "refusals:_PERIOD_AS_CONDITION",
   "team_metrics",
-  "templates.common",
   "templates.teams"
  ],
  "con_in_the_reader": [

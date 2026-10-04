@@ -22,20 +22,28 @@ planner says. Nothing here plans, runs or words an answer.
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from dataclasses import replace
 from typing import TYPE_CHECKING, Any, Literal
 
 from association.query.compose.adapt import _to_reading_scope
+from association.query.entities import BOX_SCORES, SHOT_AVAILABILITY
+from association.query.lines import measure_filters
 from association.query.measures import (
     BOOLEAN_MEASURES,
     DERIVED_LINES,
     HISTORY_STATS,
     LINE,
     MEASURE_WORDS,
+    SPLIT_LINE,
+    STAT_LINE,
     TEAM_GAME_MEASURES,
     TEAM_SEASON_MEASURES,
     WORD_MEASURES,
+    log_extras,
+    period_split_measure,
     resolve_metric,
+    stat_column,
     stat_measure,
 )
 from association.query.metrics import PER_GAME_MIN_GAMES, TEAM_FIELD_WORDS
@@ -46,6 +54,7 @@ from association.query.reading import (
     TEAM_ONLY_INTENTS,
     Aggregate,
     Cause,
+    Group,
     PointRefused,
     Reading,
     Scope,
@@ -53,6 +62,8 @@ from association.query.reading import (
     _career_scope,
     _clamp_limit,
     ordinal_word,
+    period_narrowing,
+    scope_reads_box_scores,
 )
 from association.query.reading import named_player_in as _named_player_in
 
@@ -696,9 +707,185 @@ def _compare_point(scope: Scope) -> Reading:
     return Reading(scope=scope, shape="grouped", measures=[], aggregate="per_game", group="player", predicates=[], source="seasons")
 
 
+# --- the default points -----------------------------------------------------------
+#
+# The point a bare intent means before any of the question's own words move
+# it, for the shapes Phase 2 has ported (``ROADMAP.md``, "Phase 2, the
+# expected steps", step 1): read from the Scope alone, on the reader's side.
+# The intents still answered by their presenters keep their default points
+# in ``compose.adapt`` until their slice lands.
+
+
+def _default_game_log(scope: Scope) -> Reading:
+    """``game_log``'s default point: the newest games, in date order. A REAL
+    stat neither the log's columns nor the relation carries is declined, as
+    the retired template refused it (:func:`~association.query.measures.log_extras`):
+    "luka shot distance log" listed without it would be the narrower answer
+    passed off as the one asked for. A ``threshold`` on a log is the line it
+    keeps games past ("games with 15+ fga"), on the stat's column - one that
+    is a below/above phrase's own number (the model files it twice) is that
+    phrase, and one beside no stat has no column to keep a line on. A date
+    names its game outright, so the span is the career and the season is the
+    date's."""
+    if not _named_player_in(scope):
+        raise Unsupported("a team's log is the team relation's")
+    if scope.stat and stat_column(scope.stat) is None:
+        log_extras(scope.stat)
+    date = scope.date
+    return Reading(
+        scope=scope,
+        shape="rows",
+        measures=list(LINE),
+        aggregate="none",
+        group="none",
+        predicates=_threshold_line(scope, "game_log cannot keep only the games past a threshold on no stat"),
+        order="date",
+        direction="asc" if scope.order == "first" else "desc",
+        limit=_clamp_limit(scope.limit, DEFAULT_GAME_LOG_LIMIT),
+        span="career" if date else scope.span,
+        season=None if date else scope.season,
+    )
+
+
+def _threshold_line(scope: Scope, why: str) -> list[tuple[str, str, Any]]:
+    """A ``threshold`` as the line a log keeps games past, or nothing where
+    it is a below/above phrase's own number; ``why`` is the decline for a
+    threshold beside no stat."""
+    threshold = scope.threshold
+    if threshold is None or any(line.value == threshold for line in measure_filters(scope.below, scope.above)):
+        return []
+    col = stat_column(scope.stat)
+    if col is None:
+        raise Unsupported(why)
+    return [(col, ">=", threshold)]
+
+
+def _default_player_stat(scope: Scope) -> Reading:
+    """``player_stat``'s default point: a per-game average over box scores
+    where a narrowing (or a date) sends the read there
+    (:func:`~association.query.reading.scope_reads_box_scores`), and the
+    season line (``source="seasons"``) for an unnarrowed season or career. A
+    window ("Jokic averages last 10 games") is the log of exactly those
+    games with averages beneath - the shape the question has - so the point
+    is ``game_log``'s."""
+    if not _named_player_in(scope):
+        raise Unsupported("player_stat needs a player")
+    col = stat_column(scope.stat)
+    measures = [col] if col else list(STAT_LINE)
+    if scope.limit or scope.order:
+        return _default_game_log(scope)
+    if not (scope_reads_box_scores(scope, measure_filters(scope.below, scope.above)) or scope.date):
+        return Reading(scope=scope, shape="scalar", measures=measures, aggregate="per_game", group="none", predicates=[], source="seasons")
+    date = scope.date
+    return Reading(
+        scope=scope,
+        shape="scalar",
+        measures=measures,
+        aggregate="per_game",
+        group="none",
+        predicates=[],
+        span="career" if date else scope.span,
+        season=None if date else scope.season,
+    )
+
+
+def _default_player_splits(scope: Scope) -> Reading:
+    """``player_splits``'s default point: a record by venue, or by starter and
+    bench. A named half ("as a starter") narrows the games (the relation's own
+    ``started``) while the category shown is still starter/bench; by venue it
+    read the half's games split by home/away instead."""
+    if not _named_player_in(scope):
+        raise Unsupported("a team's splits are the team relation's")
+    group: Group = "starter" if scope.split in ("starter_bench", "starter", "bench") else "venue"
+    return Reading(scope=scope, shape="grouped", measures=list(SPLIT_LINE), aggregate="record", group=group, predicates=[], available=BOX_SCORES)
+
+
+def _default_record_when(scope: Scope) -> Reading:
+    """``record_when``'s default point: the record in games clearing one line.
+    A line of 0 is every game he played: never a record "when"."""
+    col = stat_column(scope.stat)
+    threshold = scope.threshold
+    if not _named_player_in(scope) or col is None or threshold is None or threshold < 1:
+        raise Unsupported("record_when needs a player, a stat and a positive threshold here")
+    return Reading(scope=scope, shape="scalar", measures=[], aggregate="record", group="none", predicates=[(col, ">=", threshold)], available=BOX_SCORES)
+
+
+def _default_period_split(scope: Scope) -> Reading:
+    """``period_split``'s default point: a named player's games in date
+    order, each read as the quarter's or half's line (the relation's
+    ``period``/``half`` cells), measuring the column the period's line
+    rebuilds (:func:`~association.query.measures.period_split_measure`) -
+    points where no stat was named - or, with no period named, his four
+    quarters side by side, a ``grouped`` read by ``period`` (#162). The
+    player is settled over the shot table, as the template settled him,
+    and over his career when a date names the game."""
+    if not _named_player_in(scope):
+        raise Unsupported("period_split needs a player")
+    measure = period_split_measure(scope.stat)
+    date = scope.date
+    if period_narrowing(scope) is None:
+        return Reading(
+            scope=scope,
+            shape="grouped",
+            measures=[measure],
+            aggregate="per_game",
+            group="period",
+            predicates=[],
+            order="date",
+            direction="asc",
+            limit=None,
+            available=SHOT_AVAILABILITY,
+            span="career" if date else scope.span,
+            season=None if date else scope.season,
+        )
+    return Reading(
+        scope=scope,
+        shape="rows",
+        measures=[measure],
+        aggregate="none",
+        group="none",
+        predicates=[],
+        order="date",
+        direction="asc" if scope.order == "first" else "desc",
+        limit=_clamp_limit(scope.limit, DEFAULT_GAME_LOG_LIMIT),
+        available=SHOT_AVAILABILITY,
+        span="career" if date else scope.span,
+        season=None if date else scope.season,
+    )
+
+
+DEFAULT_POINTS: dict[str, Callable[[Scope], Reading]] = {
+    "game_log": _default_game_log,
+    "player_stat": _default_player_stat,
+    "player_splits": _default_player_splits,
+    "record_when": _default_record_when,
+    "period_split": _default_period_split,
+}
+"""Intent -> its default point, for the shapes whose default the reader
+reads itself (Phase 2, step 1: slice (i)'s five). The rest are
+``compose.adapt``'s until their slice lands.
+
+.. versionadded:: 5.0.0
+"""
+
+
+def default_point(intent: str, scope: Scope) -> Reading:
+    """The point a bare ``intent`` means over ``scope``, stamped with the
+    intent it is the default of (the planner declines by it until intent
+    leaves the reader in Phase 3): the reader's own
+    (:data:`DEFAULT_POINTS`), or the adapter's for a shape not yet ported.
+
+    .. versionadded:: 5.0.0
+    """
+    reader = DEFAULT_POINTS.get(intent)
+    if reader is None:
+        return _to_reading_scope(intent, scope)
+    return replace(reader(scope), intent=intent)
+
+
 def _move_default(intent: str, scope: Scope, measure: str | None) -> Reading:
     """The intent's default point, with the measure the question named added on."""
-    base = _to_reading_scope(intent, scope)
+    base = default_point(intent, scope)
     if measure and measure not in base.measures:
         return replace(base, measures=[measure, *base.measures] if base.shape == "rows" else [measure])
     return base
@@ -983,7 +1170,7 @@ def _read_point(intent: str, scope: Scope, question: str, subject: Subject) -> R
         # (compose.adapt._adapt_streak), two players' meetings
         # (_adapt_player_matchup), or a team's record with and without a
         # teammate (_adapt_with_without).
-        return _to_reading_scope(intent, scope)
+        return default_point(intent, scope)
     if not _named_player_in(scope):
         team_reading = team_read_point(scope, question, subject)
         if team_reading is not None:

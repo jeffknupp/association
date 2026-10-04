@@ -15,8 +15,9 @@ from association.nba.coverage import COVERAGE, POSTSEASON
 from association.nba.franchises import season_name_sql
 from association.nba.season import current_season
 from association.nba.season import eastern_date as _eastern_date
+from association.query.measures import STAT_LINE as STAT_LINE
 from association.query.reading import DEFAULT_SINGLE_GAME_LIMIT as DEFAULT_SINGLE_GAME_LIMIT
-from association.query.reading import Scope
+from association.query.reading import Scope, scope_reads_box_scores
 
 from ..entities import Availability, Entity
 from ..leaderboard import SEASON_TOTAL_OF, LeaderboardError, LeaderboardResult, not_a_postseason_copy, resolve_metric, run_career_leaderboard, run_leaderboard
@@ -28,7 +29,6 @@ from .common import (
     PLAYER_STAT_COLUMNS,
     REBUILT_STATS,
     SEASON_TYPE_NAMES,
-    STARTER_SIDES,
     STAT_LABELS,
     THRESHOLD_STAT_COLUMNS,
     MeasureFilter,
@@ -934,9 +934,6 @@ def _season_row(con: duckdb.DuckDBPyConnection, athlete_id: str, columns: list[s
     ).fetchone()
 
 
-STAT_LINE = ("points", "rebounds", "assists")
-
-
 # A comparison's default line is longer than a single player's, because the two
 # answers are read differently. "How many points did Luka average" wants the
 # number it asked for; "compare Luka and SGA" is asking which of them is
@@ -1187,64 +1184,7 @@ def _player_stat_season_line(con: duckdb.DuckDBPyConnection, player: Entity, spa
     return _season_player_stat(con, player, span, scope.season_type or 2, wanted, shooting)
 
 
-def _player_stat_reads_box_scores(scope: Scope, measures: list[MeasureFilter]) -> bool:
-    """Whether ANY narrowing sends the read to box scores rather than the
-    season line: the opponent, venue and absent teammates; a named half of the
-    starter/bench split (it narrows the GAMES - the season line has no such
-    column); a line on a box-score column ("under 14 fta"); a game of each
-    playoff series; a range of seasons; a calendar `situation`. The narrowings
-    themselves are applied by common.scoped_games.
-
-    .. versionchanged:: 4.4.0
-       Also true for ``season_type_unstated`` ("including the playoffs") - the
-       season line is one row per ``season_type`` and has no "both at once"
-       reading, so a question asking for both is answered from box scores,
-       the same as a ``since``-bounded one already is.
-
-    .. versionchanged:: 4.4.0
-       Also true for ``own_team`` - "lebron stats as a starter for Miami"
-       (yardstick-v2 F166) keeps only the games he played for that team,
-       which the season line (one row per season, not per team-within-season)
-       cannot narrow to. Deliberately ``own_team``, set only by
-       ``subject._apply_own_team``, and not the router's own
-       ``team`` slot - see that function's docstring for the recorded case
-       that slot silently narrowed before this distinction existed.
-
-    .. versionchanged:: 5.0.0
-       Also true for ``conditions`` - a teammate's role ("maxey points when
-       embiid starts") is a narrowing of the GAMES the same as an absent
-       teammate already was, and the season line has no column for it either.
-       ``check_scope`` already lets ``conditions`` through (``player_stat``
-       honors the whole relation's ``RELATION_SCOPING``), so a question
-       narrowed by nothing else silently read the season line with the
-       teammate's role nowhere in it - "maxey points when embiid starts"
-       answered his whole season (26.3 in 52 games) rather than the 16 games
-       Embiid actually started (23.8).
-
-    .. versionchanged:: 5.0.0
-       Also true for ``period_condition`` (ROADMAP step 2, #275): the games
-       whose quarter held a line are a narrowing of the games, and the
-       season line has no quarter in it.
-    """
-    split_side = scope.split if scope.split in STARTER_SIDES else None
-    # A `situation` (a weekday, a month, a holiday, "since <day>") is a
-    # narrowing of the GAMES too - the season line has no such column.
-    return any(
-        (
-            scope.opponent,
-            scope.venue,
-            scope.without,
-            split_side,
-            scope.since,
-            measures,
-            scope.game_n,
-            scope.situation,
-            scope.season_type_unstated,
-            scope.own_team,
-            scope.conditions,
-            scope.period_condition,
-        )
-    )
+_player_stat_reads_box_scores = scope_reads_box_scores
 
 
 def _season_player_stat(con: duckdb.DuckDBPyConnection, player: Entity, span: _Span, season_type: int, wanted: list[str], shooting: _ShootingStat | None) -> TemplateResult:

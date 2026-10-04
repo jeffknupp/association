@@ -27,7 +27,7 @@ import duckdb
 from association.nba.franchises import season_name_sql
 from association.nba.season import current_season
 from association.nba.season import eastern_date as _eastern_date
-from association.query.measures import resolve_metric, stat_measure
+from association.query.measures import log_extras, stat_measure
 from association.query.notes import Note
 from association.query.player_games import aggregate_sql, rows_sql
 from association.query.reading import DEFAULT_GAME_LOG_LIMIT, Scope, _clamp_limit
@@ -35,10 +35,7 @@ from association.query.result import Narrowing, Part, Result, Rows, Span, Window
 from association.query.team_games import TEAM_GAMES_SQL, TeamNarrowed
 from association.query.team_games import rows_sql as team_rows_sql
 from association.query.templates.common import (
-    HISTORY_COLUMNS,
-    PLAYER_STAT_COLUMNS,
     REBUILT_STATS,
-    THRESHOLD_STAT_COLUMNS,
     MeasureFilter,
     Narrowed,
     ResolvedSpan,
@@ -111,56 +108,6 @@ headers behind each, and the key the row carries it under.
 """
 
 _LOG_BASE = ("MIN", "PTS", "REB", "AST")
-
-
-GAME_LOG_STAT_COLUMNS: dict[str, tuple[str, ...]] = {
-    "points": (),
-    "rebounds": (),
-    "assists": (),
-    "minutes": (),
-    "steals": ("STL",),
-    "blocks": ("BLK",),
-    "turnovers": ("TO",),
-    "fouls": ("PF",),
-    "plusMinus": ("+/-",),
-    "offensiveRebounds": ("OREB",),
-    "defensiveRebounds": ("DREB",),
-    "fieldGoalsMade": ("FGM", "FGA"),
-    "fieldGoalsAttempted": ("FGM", "FGA"),
-    "fieldGoalPct": ("FGM", "FGA", "FG%"),
-    "threePointFieldGoalsMade": ("3PM", "3PA"),
-    "threePointFieldGoalsAttempted": ("3PM", "3PA"),
-    "threePointFieldGoalPct": ("3PM", "3PA", "3P%"),
-    "freeThrowsMade": ("FTM", "FTA"),
-    "freeThrowsAttempted": ("FTM", "FTA"),
-    "freeThrowPct": ("FTM", "FTA", "FT%"),
-}
-"""The columns a named ``stat`` adds to a player's game log, beyond minutes,
-points, rebounds and assists. A shooting stat always brings its makes and
-attempts, and a percentage is computed from them per game.
-
-.. versionadded:: 2.1.0
-
-.. versionchanged:: 5.0.0
-   Lives with the log's reader (``compose.logs``).
-"""
-
-
-def _log_extras(stat: Any) -> tuple[str, ...]:
-    """The columns a named stat adds to a player's log.
-
-    ``stat`` is required in ROUTER_SCHEMA, so the model fills it on every
-    question, including ones that name no stat at all - text that is not a stat
-    name adds nothing. A REAL stat the log has no column for refuses instead:
-    "luka ts% log" answered with no TS% in it would be the narrower answer
-    passed off as the one asked for."""
-    if not isinstance(stat, str) or not stat.strip():
-        return ()
-    if stat in GAME_LOG_STAT_COLUMNS:
-        return GAME_LOG_STAT_COLUMNS[stat]
-    if stat in PLAYER_STAT_COLUMNS or stat in HISTORY_COLUMNS or stat in THRESHOLD_STAT_COLUMNS or resolve_metric(stat) is not None:
-        raise TemplateUnsupported(f"a game log has no per-game column for {stat!r}")
-    return ()
 
 
 def log_key(header: str) -> str:
@@ -384,7 +331,7 @@ def read_player_log(con: duckdb.DuckDBPyConnection, q: Query, *, stated: frozens
     narrowing - or ``None`` where the log's own words do not say the point
     and the compiler's sentence answers instead: a point that is not rows
     in date order with no predicate, a stat the log has no column for
-    (:func:`_log_extras`), a bare
+    (:func:`~association.query.measures.log_extras`), a bare
     threshold, or a measure the question's words moved in beyond the log's
     own columns, or a narrowing beyond what the log's words state
     (``stated``: ``compose.present.STATED_SCOPING``'s set for the intent -
@@ -401,7 +348,7 @@ def read_player_log(con: duckdb.DuckDBPyConnection, q: Query, *, stated: frozens
         return None
     scope = q.scope
     try:
-        extras = _log_extras(scope.stat)
+        extras = log_extras(scope.stat)
         measures = _game_log_lines(scope.below, scope.above, scope.threshold)
     except TemplateUnsupported:
         return None

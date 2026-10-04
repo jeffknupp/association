@@ -50,6 +50,7 @@ from association.query.measures import PERIOD_COLUMNS as PERIOD_COLUMNS
 
 from .conditions import UNGATED_ON_REBUILD, BoxSource
 from .entities import Entity
+from .reading import STARTER_SIDES as STARTER_SIDES  # the one table, on the reader's side since Phase 2's step 1; a split names one half of it
 from .shotchart import SHOT_VALUE_SQL
 
 # A player-game ESPN lists as played but records no minutes for. Every such row
@@ -986,17 +987,6 @@ def grouped_sql(
     if limit is not None:
         sql += f" LIMIT {int(limit)}"
     return sql, params
-
-
-#: The two halves of the starter/bench split, as `router._split_side` narrows
-#: them when a question names one. ``starter_bench`` itself is NOT here: that is
-#: the category, and a question naming both halves is asking for a splits table
-#: rather than a filtered set of games.
-STARTER_SIDES: dict[str, bool] = {"starter": True, "bench": False}
-"""Which value of ``player_game_log.starter`` each named half of the split means.
-
-.. versionadded:: 4.3.0
-"""
 
 
 def column(alias: str, name: str, box: BoxSource) -> str:

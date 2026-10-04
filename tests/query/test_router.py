@@ -1975,11 +1975,12 @@ def test_the_router_and_the_templates_agree_on_what_a_stat_word_means() -> None:
     its map from it, so a spelling dropped there raises at import rather than
     silently narrowing what the threshold grammar understands. This pins that
     the derivation stays a derivation."""
+    from association.query.lines import MEASURE_WORDS as LINES_MEASURE_WORDS
     from association.query.measures import MEASURE_WORDS
     from association.query.router import _THRESHOLD_SPELLINGS, _THRESHOLD_WORDS
-    from association.query.templates.common import MEASURE_WORDS as TEMPLATES_MEASURE_WORDS
 
-    assert TEMPLATES_MEASURE_WORDS is MEASURE_WORDS
+    # The one table, read by the stages and by the below/above phrase reader alike.
+    assert LINES_MEASURE_WORDS is MEASURE_WORDS
     assert set(_THRESHOLD_WORDS) == set(_THRESHOLD_SPELLINGS)
     for word, means in _THRESHOLD_WORDS.items():
         assert MEASURE_WORDS[word] == means, word

@@ -763,3 +763,78 @@ class Unsupported(Exception):
        Declared on the reader's side, which raises it as a decline
        (``compose.core`` re-exports it).
     """
+
+
+_HALF_PERIODS: dict[int, tuple[int, ...]] = {1: (1, 2), 2: (3, 4)}
+
+
+def period_label(period: int) -> str:
+    """``1`` -> ``"1st quarter"``, ``5`` -> ``"overtime"``, ``6`` -> ``"2nd overtime"``.
+
+    .. versionadded:: 5.0.0
+       On the reader's side (``templates.common.period_label`` is this).
+    """
+    if 1 <= period <= 4:
+        return f"{ordinal_word(period)} quarter"
+    ot = period - 4
+    return "overtime" if ot == 1 else f"{ordinal_word(ot)} overtime"
+
+
+def period_narrowing(scope: Scope) -> tuple[tuple[int, ...], str] | None:
+    """The periods a question's ``period``/``half`` cell narrows each game to,
+    and how an answer names them - ``((3, 4), "2nd half")`` - or None for the
+    whole game. A half wins over a quarter, since the parser writes a half
+    only where the words said one; a period outside 1-10 is no period.
+
+    .. versionadded:: 5.0.0
+
+    .. versionchanged:: 5.0.0
+       On the reader's side (``templates.common.period_narrowing`` is this).
+    """
+    if scope.half is not None and scope.half in _HALF_PERIODS:
+        return _HALF_PERIODS[scope.half], f"{ordinal_word(scope.half)} half"
+    if scope.period is not None and 1 <= scope.period <= 10:
+        return (scope.period,), period_label(scope.period)
+    return None
+
+
+STARTER_SIDES: dict[str, bool] = {"starter": True, "bench": False}
+"""A ``split`` naming one half of the starter/bench split, and whether that
+half started (``player_games.STARTER_SIDES`` is this).
+
+.. versionadded:: 5.0.0
+"""
+
+
+def scope_reads_box_scores(scope: Scope, measures: list[Any]) -> bool:
+    """Whether ANY narrowing sends a player's average to box scores rather
+    than the season line: the opponent, venue and absent teammates; a named
+    half of the starter/bench split (it narrows the GAMES - the season line
+    has no such column); a line on a box-score column ("under 14 fta",
+    ``measures``); a game of each playoff series; a range of seasons; a
+    calendar ``situation``; a season type left unstated (the season line is
+    one row per type and has no "both at once" reading); his own team
+    ("lebron stats as a starter for Miami" keeps the games he played for
+    that team); a teammate's role; a quarter held as a condition. The
+    narrowings themselves are applied by the relation's shared steps.
+
+    .. versionadded:: 5.0.0
+       On the reader's side (``templates.players._player_stat_reads_box_scores`` is this).
+    """
+    split_side = scope.split if scope.split in STARTER_SIDES else None
+    return any(
+        (
+            scope.opponent,
+            scope.venue,
+            scope.without,
+            split_side,
+            scope.since,
+            measures,
+            scope.game_n,
+            scope.situation,
+            scope.season_type_unstated,
+            scope.own_team,
+            scope.conditions,
+            scope.period_condition,
+        )
+    )

@@ -56,7 +56,7 @@ QUERY = ROOT / "src" / "association" / "query"
 RATCHETS = pathlib.Path(__file__).resolve().parent / "ratchets.json"
 
 #: The modules that read the question's text today (ROADMAP's READ stage).
-READER = frozenset({"normalizer", "parse", "router", "subject", "season_text", "point"})
+READER = frozenset({"normalizer", "parse", "router", "subject", "season_text", "point", "lines"})
 #: The answering loop: it is handed the question and hands it to the reader.
 ENTRY = frozenset({"agent"})
 

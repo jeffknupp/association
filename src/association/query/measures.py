@@ -13,7 +13,10 @@ agreed (`ISSUES.md` #164).
 
 from __future__ import annotations
 
+from typing import Any
+
 from association.query.metrics import LEADERBOARD_METRICS
+from association.query.reading import Unsupported
 
 #: What a question calls a box-score column, for a line it asks games to be
 #: kept under or over. Keys are the question's words after the number,
@@ -406,3 +409,142 @@ def stat_measure(stat: str | None) -> str | None:
     if stat in GAME_COLUMNS or stat in DERIVED_MEASURES:
         return stat
     return MEASURE_WORDS.get(stat.strip().lower())
+
+
+STAT_LINE: tuple[str, ...] = ("points", "rebounds", "assists")
+"""The season line a bare ``player_stat`` question reads, by name.
+
+.. versionadded:: 5.0.0
+"""
+
+SPLIT_LINE: tuple[str, ...] = ("minutes", "points", "rebounds", "assists", "steals", "blocks", "turnovers", "threePointFieldGoalsMade", "fg_pct")
+"""The measures a ``player_splits`` read carries, by name.
+
+.. versionadded:: 5.0.0
+"""
+
+THRESHOLD_STAT_NAMES: frozenset[str] = frozenset({"turnovers", "fouls", "rebounds", "threePointFieldGoalsMade", "fieldGoalsMade", "points", "freeThrowsMade", "minutes", "steals", "blocks", "assists"})
+"""The stats a count or a record over a line reads, by name
+(``templates.common.THRESHOLD_STAT_COLUMNS`` says the columns).
+
+.. versionadded:: 5.0.0
+"""
+
+PLAYER_STAT_NAMES: frozenset[str] = frozenset({"turnovers", "fouls", "rebounds", "threePointFieldGoalsMade", "fieldGoalsMade", "points", "freeThrowsMade", "minutes", "steals", "blocks", "assists"})
+"""The stats the season line reads for one player, by name
+(``templates.common.PLAYER_STAT_COLUMNS`` says the columns).
+
+.. versionadded:: 5.0.0
+"""
+
+PERIOD_RATE_STATS: dict[str, str] = {
+    "fieldGoalPct": "fg_pct",
+    "fg_pct": "fg_pct",
+    "threePointFieldGoalPct": "three_pct",
+    "three_pct": "three_pct",
+    "freeThrowPct": "ft_pct",
+    "ft_pct": "ft_pct",
+}
+"""A ``stat`` naming a shooting percentage - the normalizer's spelling or the
+compiler's - mapped to its :data:`PERIOD_RATES` key. A two-point percentage,
+TS% and eFG% are not here: nothing measures them by period yet, and a
+question asking for one is refused naming what is.
+
+.. versionadded:: 5.0.0
+"""
+
+
+def period_split_measure(stat: str | None) -> str:
+    """The column a period question measures: points where it names none,
+    else the one it names - any column the period's line rebuilds
+    (:data:`~association.query.player_games.PERIOD_COLUMNS`), or a shooting
+    percentage over two of them (:data:`PERIOD_RATE_STATS`). Anything else
+    is refused, naming why: play-by-play records no minutes, plus-minus or
+    advanced rate per quarter, and a period answer read from the whole
+    game's box would be the wrong question answered fluently.
+
+    .. versionchanged:: 5.0.0
+       Reads a field goal, 3-point or free throw percentage.
+
+    .. versionchanged:: 5.0.0
+       Lives in ``measures``, on the reader's side (``templates.games._period_split_measure`` is this).
+    """
+    if stat is None or not stat.strip() or stat == "all":
+        return "points"
+    if stat in PERIOD_COLUMNS:
+        return stat
+    if stat in PERIOD_RATE_STATS:
+        return PERIOD_RATE_STATS[stat]
+    raise Unsupported(
+        f"period_split has no per-period {stat!r} - the period's line rebuilds {', '.join(PERIOD_COLUMNS)} from the plays, "
+        "and a field goal, 3-point or free throw percentage is a ratio of those; nothing else"
+    )
+
+
+def stat_column(stat: str | None) -> str | None:
+    """A router ``stat`` as a relation column - the router's own column names
+    (``points``, ``threePointFieldGoalsMade``) or a word :data:`MEASURE_WORDS`
+    knows - or ``None``.
+
+    .. versionadded:: 5.0.0
+       On the reader's side (``compose.adapt._stat_column`` was this).
+    """
+    if stat is None or not stat.strip():
+        return None
+    if stat in GAME_COLUMNS:
+        return stat
+    return MEASURE_WORDS.get(stat.strip().lower())
+
+
+GAME_LOG_STAT_COLUMNS: dict[str, tuple[str, ...]] = {
+    "points": (),
+    "rebounds": (),
+    "assists": (),
+    "minutes": (),
+    "steals": ("STL",),
+    "blocks": ("BLK",),
+    "turnovers": ("TO",),
+    "fouls": ("PF",),
+    "plusMinus": ("+/-",),
+    "offensiveRebounds": ("OREB",),
+    "defensiveRebounds": ("DREB",),
+    "fieldGoalsMade": ("FGM", "FGA"),
+    "fieldGoalsAttempted": ("FGM", "FGA"),
+    "fieldGoalPct": ("FGM", "FGA", "FG%"),
+    "threePointFieldGoalsMade": ("3PM", "3PA"),
+    "threePointFieldGoalsAttempted": ("3PM", "3PA"),
+    "threePointFieldGoalPct": ("3PM", "3PA", "3P%"),
+    "freeThrowsMade": ("FTM", "FTA"),
+    "freeThrowsAttempted": ("FTM", "FTA"),
+    "freeThrowPct": ("FTM", "FTA", "FT%"),
+}
+"""The columns a named ``stat`` adds to a player's game log, beyond minutes,
+points, rebounds and assists. A shooting stat always brings its makes and
+attempts, and a percentage is computed from them per game.
+
+.. versionadded:: 2.1.0
+
+.. versionchanged:: 5.0.0
+   Lives in ``measures``, on the reader's side.
+"""
+
+
+def log_extras(stat: Any) -> tuple[str, ...]:
+    """The columns a named stat adds to a player's log.
+
+    ``stat`` is required in ROUTER_SCHEMA, so the model fills it on every
+    question, including ones that name no stat at all - text that is not a stat
+    name adds nothing. A REAL stat the log has no column for refuses instead:
+    "luka ts% log" answered with no TS% in it would be the narrower answer
+    passed off as the one asked for.
+
+    .. versionadded:: 5.0.0
+       On the reader's side (``compose.logs._log_extras`` and ``templates.games._log_extras`` were this).
+    """
+    if not isinstance(stat, str) or not stat.strip():
+        return ()
+    if stat in GAME_LOG_STAT_COLUMNS:
+        return GAME_LOG_STAT_COLUMNS[stat]
+    if stat in PLAYER_STAT_NAMES or stat in HISTORY_STATS or stat in THRESHOLD_STAT_NAMES or resolve_metric(stat) is not None:
+        raise Unsupported(f"a game log has no per-game column for {stat!r}")
+    return ()

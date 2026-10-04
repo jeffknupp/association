@@ -1439,6 +1439,31 @@ class Availability:
     table: str
 
 
+GAME_LOGS = Availability("player_game_log")
+"""The game logs as an availability: the table a log rests on.
+
+.. versionadded:: 5.0.0
+   Declared beside :class:`Availability` (``templates.common.GAME_LOGS`` is this).
+"""
+
+BOX_SCORES = Availability("player_box_stats")
+"""The box scores as an availability: the table a box-score answer rests on.
+
+.. versionadded:: 5.0.0
+   Declared beside :class:`Availability` (``templates.common.BOX_SCORES`` is this).
+"""
+
+SHOT_AVAILABILITY = Availability("shot_chart")
+"""Where a shot chart's rows live, for narrowing an ambiguous name to the
+players who actually took shots in the season being charted.
+
+.. versionadded:: 2.1.0
+
+.. versionchanged:: 5.0.0
+   Declared beside :class:`Availability` (``shotchart.SHOT_AVAILABILITY`` is this).
+"""
+
+
 def narrow_to_available(
     con: duckdb.DuckDBPyConnection,
     candidates: list[Entity],

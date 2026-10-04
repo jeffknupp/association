@@ -6,7 +6,6 @@
 
 from __future__ import annotations
 
-import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -20,8 +19,12 @@ from association.nba.season import current_season, eastern_day_utc_range
 from ..answer import Artifact
 from ..calendar import parse_alignment, parse_situation
 from ..conditions import _PLAYER_GAME_TABLES, _TEAM_GAME_TABLES, _game_scope, _Scope, box_source
+from ..entities import BOX_SCORES as BOX_SCORES
+from ..entities import GAME_LOGS as GAME_LOGS
 from ..entities import Ambiguous, Availability, Entity, clarification, find_players, resolve_player, resolve_team, suggest_players, suggestion, teammate_names
-from ..measures import MEASURE_WORDS, resolve_metric
+from ..lines import MeasureFilter as MeasureFilter
+from ..lines import measure_filters as measure_filters
+from ..measures import resolve_metric
 from ..metrics import LEADERBOARD_METRICS
 from ..notes import Note, decided, note
 from ..player_games import (  # noqa: F401 - the relation's names, re-exported for the templates and tests that read them here
@@ -55,9 +58,12 @@ from ..reading import PLAYER_REQUIRED_INTENTS as PLAYER_REQUIRED_INTENTS
 from ..reading import POSITIONS as POSITIONS
 from ..reading import SUBJECT_RESTORABLE_INTENTS as SUBJECT_RESTORABLE_INTENTS
 from ..reading import TEAM_ONLY_INTENTS as TEAM_ONLY_INTENTS
-from ..reading import ConditionSpec, PeriodCondition, Scope
+from ..reading import ConditionSpec, PeriodCondition, Scope, Unsupported
 from ..reading import _clamp_limit as _clamp_limit
 from ..reading import ordinal_word as ordinal_word
+from ..reading import period_label as period_label
+from ..reading import period_narrowing as period_narrowing
+from ..reading import scope_reads_box_scores as scope_reads_box_scores
 from ..team_games import TeamNarrowed
 from ..team_metrics import TEAM_METRICS, resolve_team_metric
 
@@ -836,83 +842,6 @@ _SPLIT_SIDE_ONLY = frozenset({"game_log", "player_stat", "period_split", "shot_c
 .. versionadded:: 4.3.0
 """
 
-#: How the answer names each column a game was kept under or over.
-_MEASURE_LABELS: dict[str, str] = {
-    "fieldGoalsAttempted": "field goal attempts",
-    "fieldGoalsMade": "field goals made",
-    "freeThrowsAttempted": "free throw attempts",
-    "freeThrowsMade": "free throws made",
-    "threePointFieldGoalsAttempted": "3-point attempts",
-    "threePointFieldGoalsMade": "3-pointers",
-    "offensiveRebounds": "offensive rebounds",
-    "defensiveRebounds": "defensive rebounds",
-}
-
-# The number and the words after it in a `below` / `above` phrase. The
-# leading words ("under", "at most", "with") say which way the line faces.
-_MEASURE_PHRASE = re.compile(r"^(?P<lead>.*?)\b(?P<n>\d+)\+?%?\s*(?P<words>.*)$")
-_AT_MOST = ("at most", "no more than")
-_STRICTLY_BELOW = ("under", "fewer than", "less than", "below")
-
-
-@dataclass(frozen=True)
-class MeasureFilter:
-    """One line a question keeps games under or over: the box-score column,
-    the comparison (a key of :data:`association.query.player_games.MEASURE_OPS`),
-    the number, and how the answer says it.
-
-    .. versionadded:: 4.3.0
-    """
-
-    column: str
-    op: str
-    value: int
-    label: str
-
-
-def _measure_column(words: str) -> str | None:
-    """The column the words after a number name - the longest run of them
-    that is in MEASURE_WORDS, so "free throw attempts in his career" reads the
-    first three words and ignores the rest."""
-    tokens = words.casefold().replace("-", " ").split()
-    for width in (3, 2, 1):
-        candidate = " ".join(tokens[:width])
-        if candidate in MEASURE_WORDS:
-            return MEASURE_WORDS[candidate]
-    return None
-
-
-def measure_filters(below: Any, above: Any) -> list[MeasureFilter]:
-    """The lines a question keeps games under (the ``below`` slot) or over
-    (``above``), read from the phrases ``route()`` kept - "under 14 fta",
-    "with 25 minutes" - as filters on the ``player_game`` relation.
-
-    The model's own ``stat`` is not consulted: beside "under 14 fta" it said
-    ``freeThrowsMade``, the nearest name it knows, so the phrase is the only
-    honest carrier of which column was meant. A phrase whose words name no
-    column refuses (:class:`TemplateUnsupported`) rather than filtering on a
-    guess - the same rule ``check_scope`` applies to a slot nothing honors.
-
-    .. versionadded:: 4.3.0
-    """
-    filters: list[MeasureFilter] = []
-    for key, phrases, default_op in (("below", below, "<"), ("above", above, ">=")):
-        for phrase in [phrases] if isinstance(phrases, str) else (phrases or []):
-            match = _MEASURE_PHRASE.match(str(phrase).strip())
-            column = _measure_column(match.group("words")) if match else None
-            if match is None or column is None:
-                raise TemplateUnsupported(f"{phrase!r} names no box-score stat a game can be kept {'under' if key == 'below' else 'over'}")
-            lead, words = match.group("lead").strip().casefold(), match.group("words").casefold()
-            op = default_op
-            if key == "below" and (lead.startswith(_AT_MOST) or " or less" in words):
-                op = "<="
-            elif key == "below" and not lead.startswith(_STRICTLY_BELOW):
-                op = "<"
-            value = int(match.group("n"))
-            how = {"<": "under", "<=": "at most", ">=": "at least", ">": "over"}[op]
-            filters.append(MeasureFilter(column, op, value, f"{how} {value} {_MEASURE_LABELS.get(column, column)}"))
-    return filters
-
 
 def narrow_measures(narrowed: Narrowed, filters: list[MeasureFilter]) -> None:
     """Apply :func:`measure_filters`' lines to a relation read, each with its
@@ -962,10 +891,19 @@ def unhonored_scoping(intent: str, scope: Scope, honored: frozenset[str]) -> lis
     return ignored
 
 
-class TemplateUnsupported(Exception):
-    """Raised when slots don't validate. The caller offers the compiler the
-    same point and then refuses naming the reason, so a slip in the reading
-    degrades to a refusal rather than to a wrong answer."""
+TemplateUnsupported = Unsupported
+"""Raised when slots don't validate. The caller offers the compiler the
+same point and then refuses naming the reason, so a slip in the reading
+degrades to a refusal rather than to a wrong answer. The same exception as
+the reader's :class:`~association.query.reading.Unsupported` since Phase
+2's first slice: a template refusing a slot, the reader having no reading of
+a point and the planner unable to say a query are one verdict, "this
+cannot be answered as asked", and the reader-side phrase readers
+(``query/lines.py``) raise it for the templates too.
+
+.. versionchanged:: 5.0.0
+   An alias of ``reading.Unsupported``, not a class of its own.
+"""
 
 
 @dataclass(frozen=True)
@@ -1021,21 +959,9 @@ def _clarify(text: str, candidates: list[str], kind: str = "player", active: int
     return TemplateResult(data={"ambiguous": text, "candidates": candidates}, answer=clarification(text, candidates, kind, active))
 
 
-GAME_LOGS = Availability("player_game_log")
-"""The game logs as an availability (:class:`~association.query.entities.Availability`): the table a box-score answer or a log rests on.
-
-.. versionadded:: 5.0.0
-   Public, as the relation's shared step; ``_GAME_LOGS`` is this.
-"""
 _GAME_LOGS = GAME_LOGS
 
 
-BOX_SCORES = Availability("player_box_stats")
-"""The box scores as an availability (:class:`~association.query.entities.Availability`): the table a box-score answer or a log rests on.
-
-.. versionadded:: 5.0.0
-   Public, as the relation's shared step; ``_BOX_SCORES`` is this.
-"""
 _BOX_SCORES = BOX_SCORES
 
 
@@ -1659,35 +1585,6 @@ def _relation_window(scope: Scope) -> tuple[str, int] | None:
             return None
         order = "recent"
     return order, _clamp_limit(scope.limit, default=1)
-
-
-_HALF_PERIODS: dict[int, tuple[int, ...]] = {1: (1, 2), 2: (3, 4)}
-
-
-def period_label(period: int) -> str:
-    """``1`` -> ``"1st quarter"``, ``5`` -> ``"overtime"``, ``6`` -> ``"2nd overtime"``."""
-    if 1 <= period <= 4:
-        return f"{_ordinal(period)} quarter"
-    ot = period - 4
-    return "overtime" if ot == 1 else f"{_ordinal(ot)} overtime"
-
-
-_period_label = period_label
-
-
-def period_narrowing(scope: Scope) -> tuple[tuple[int, ...], str] | None:
-    """The periods a question's ``period``/``half`` cell narrows each game to,
-    and how an answer names them - ``((3, 4), "2nd half")`` - or None for the
-    whole game. A half wins over a quarter, since the parser writes a half
-    only where the words said one; a period outside 1-10 is no period.
-
-    .. versionadded:: 5.0.0
-    """
-    if scope.half is not None and scope.half in _HALF_PERIODS:
-        return _HALF_PERIODS[scope.half], f"{_ordinal(scope.half)} half"
-    if scope.period is not None and 1 <= scope.period <= 10:
-        return (scope.period,), _period_label(scope.period)
-    return None
 
 
 def _apply_period_condition(con: duckdb.DuckDBPyConnection, narrowed: Narrowed, condition: PeriodCondition) -> TemplateResult | None:

@@ -15,6 +15,7 @@ import duckdb
 from .answer import Artifact, RenderResult
 from .court import BEYOND_THE_ARC_SQL, HAS_POSITION_SQL, render_court_html
 from .entities import MAX_CANDIDATES, Ambiguous, Availability, Entity, clarification, collect_name_readings, find_players, narrow_to_available, no_match, read_near_spelling
+from .entities import SHOT_AVAILABILITY as SHOT_AVAILABILITY
 from .game_label import game_label
 from .notes import decided, note
 
@@ -95,12 +96,6 @@ described.
 .. versionadded:: 2.1.0
 """
 
-SHOT_AVAILABILITY = Availability("shot_chart")
-"""Where a shot chart's rows live, for narrowing an ambiguous name to the
-players who actually took shots in the season being charted.
-
-.. versionadded:: 2.1.0
-"""
 
 ChartResolution = tuple[Entity, list[str]] | Ambiguous | None
 """What resolving a chart's player can come to: the player and any other names

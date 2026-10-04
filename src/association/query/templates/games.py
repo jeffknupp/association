@@ -15,6 +15,8 @@ from association.nba.coverage import POSTSEASON
 from association.nba.franchises import season_name, season_name_sql
 from association.nba.season import current_season
 from association.nba.season import eastern_date as _eastern_date
+from association.query.measures import PERIOD_RATE_STATS as PERIOD_RATE_STATS
+from association.query.measures import period_split_measure as _period_split_measure
 from association.query.reading import DEFAULT_GAME_LOG_LIMIT as DEFAULT_GAME_LOG_LIMIT
 from association.query.reading import ConditionSpec, Reading, Scope, Split
 
@@ -1854,21 +1856,6 @@ is what makes a period's percentage a ratio away rather than a new read.
 .. versionadded:: 5.0.0
 """
 
-PERIOD_RATE_STATS: dict[str, str] = {
-    "fieldGoalPct": "fg_pct",
-    "fg_pct": "fg_pct",
-    "threePointFieldGoalPct": "three_pct",
-    "three_pct": "three_pct",
-    "freeThrowPct": "ft_pct",
-    "ft_pct": "ft_pct",
-}
-"""A ``stat`` naming a shooting percentage - the normalizer's spelling or the
-compiler's - mapped to its :data:`PERIOD_RATES` key. A two-point percentage,
-TS% and eFG% are not here: nothing measures them by period yet, and a
-question asking for one is refused naming what is.
-
-.. versionadded:: 5.0.0
-"""
 
 # How a rate is said: the percentage's own name, and what was shot.
 _PERIOD_RATE_WORDS: dict[str, str] = {"fg_pct": "field goal percentage", "three_pct": "3-point percentage", "ft_pct": "free throw percentage"}
@@ -1917,30 +1904,6 @@ def _period_split_figures(games: list[dict[str, Any]], measure: str) -> dict[str
         return {"total": made, "attempted": attempted, "average": pct}
     total = sum(g[measure] for g in games)
     return {"total": total, "average": total / len(games)}
-
-
-def _period_split_measure(stat: str | None) -> str:
-    """The column a period question measures: points where it names none,
-    else the one it names - any column the period's line rebuilds
-    (:data:`~association.query.player_games.PERIOD_COLUMNS`), or a shooting
-    percentage over two of them (:data:`PERIOD_RATE_STATS`). Anything else
-    is refused, naming why: play-by-play records no minutes, plus-minus or
-    advanced rate per quarter, and a period answer read from the whole
-    game's box would be the wrong question answered fluently.
-
-    .. versionchanged:: 5.0.0
-       Reads a field goal, 3-point or free throw percentage.
-    """
-    if stat is None or not stat.strip() or stat == "all":
-        return "points"
-    if stat in PERIOD_COLUMNS:
-        return stat
-    if stat in PERIOD_RATE_STATS:
-        return PERIOD_RATE_STATS[stat]
-    raise TemplateUnsupported(
-        f"period_split has no per-period {stat!r} - the period's line rebuilds {', '.join(PERIOD_COLUMNS)} from the plays, "
-        "and a field goal, 3-point or free throw percentage is a ratio of those; nothing else"
-    )
 
 
 def _period_split_unread(games: list[dict[str, Any]], measure: str) -> TemplateResult | None:

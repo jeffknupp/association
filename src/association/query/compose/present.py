@@ -116,7 +116,7 @@ from association.query.templates.splits import (
     team_splits,
 )
 
-from .adapt import WITH_WITHOUT_STATED, _to_reading_scope
+from .adapt import WITH_WITHOUT_STATED
 from .core import Query, Refused, Unsupported, compile_query, run, run_scope
 from .team import TeamQuery, _team_games_narrowed, run_team
 
@@ -295,7 +295,11 @@ def _present_player_stat_season_line(con: duckdb.DuckDBPyConnection, q: Query) -
     scope = q.scope
     stat = scope.stat
     try:
-        own = _to_reading_scope("player_stat", scope)
+        # At call time: the reader imports this package for the adapters
+        # still here, so a module-level import would cycle.
+        from association.query.point import default_point
+
+        own = default_point("player_stat", scope)
     except Unsupported:
         return None
     # The router's own stat, whichever way the point carries it: the
