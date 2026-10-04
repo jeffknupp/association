@@ -26,10 +26,9 @@
   "refusals:unanswerable"
  ],
  "sql_outside_the_relations": {
-  "compose.core": 2,
-  "compose.logs": 5,
+  "compose.core": 1,
+  "compose.logs": 4,
   "compose.present": 3,
-  "compose.records": 1,
   "compose.splits": 2,
   "compose.team": 2,
   "conditions": 11,

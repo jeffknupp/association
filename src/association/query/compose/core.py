@@ -34,6 +34,7 @@ exactly those tokens.
 from __future__ import annotations
 
 import copy
+from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from typing import Any
 
@@ -108,24 +109,64 @@ DERIVED: dict[str, str] = {
 """
 
 #: Rates as ratios of sums, never means of per-game rates.
-RATES: dict[str, tuple[str, str]] = {
-    "fg_pct": ("SUM(pgl.fieldGoalsMade) * 100.0", "NULLIF(SUM(pgl.fieldGoalsAttempted), 0)"),
-    "three_pct": ("SUM(pgl.threePointFieldGoalsMade) * 100.0", "NULLIF(SUM(pgl.threePointFieldGoalsAttempted), 0)"),
-    "ft_pct": ("SUM(pgl.freeThrowsMade) * 100.0", "NULLIF(SUM(pgl.freeThrowsAttempted), 0)"),
+RATES: dict[str, tuple[Callable[[Callable[[str], str]], str], Callable[[Callable[[str], str]], str], tuple[str, ...]]] = {
+    "fg_pct": (lambda c: f"SUM({c('fieldGoalsMade')}) * 100.0", lambda c: f"NULLIF(SUM({c('fieldGoalsAttempted')}), 0)", ("fieldGoalsMade", "fieldGoalsAttempted")),
+    "three_pct": (
+        lambda c: f"SUM({c('threePointFieldGoalsMade')}) * 100.0",
+        lambda c: f"NULLIF(SUM({c('threePointFieldGoalsAttempted')}), 0)",
+        ("threePointFieldGoalsMade", "threePointFieldGoalsAttempted"),
+    ),
+    "ft_pct": (lambda c: f"SUM({c('freeThrowsMade')}) * 100.0", lambda c: f"NULLIF(SUM({c('freeThrowsAttempted')}), 0)", ("freeThrowsMade", "freeThrowsAttempted")),
     # A fraction (0.57), like the per-game column the view stores and the
     # sentence and the page both print times 100 (sentence._FRACTION_COLUMNS,
     # the page's FRACTIONS) - computed times 100 here as well, a narrowed
     # line read "Joel Embiid averaged 4622.5% TS% per game ... vs the Boston
     # Celtics", and a ranking "TS% 9213.1%".
-    "ts_pct": ("CAST(SUM(pgl.points) AS DOUBLE)", "NULLIF(2 * (SUM(pgl.fieldGoalsAttempted) + 0.44 * SUM(pgl.freeThrowsAttempted)), 0)"),
-    "efg_pct": ("CAST(SUM(pgl.fieldGoalsMade) + 0.5 * SUM(pgl.threePointFieldGoalsMade) AS DOUBLE)", "NULLIF(SUM(pgl.fieldGoalsAttempted), 0)"),
+    "ts_pct": (
+        lambda c: f"CAST(SUM({c('points')}) AS DOUBLE)",
+        lambda c: f"NULLIF(2 * (SUM({c('fieldGoalsAttempted')}) + 0.44 * SUM({c('freeThrowsAttempted')})), 0)",
+        ("points", "fieldGoalsAttempted", "freeThrowsAttempted"),
+    ),
+    "efg_pct": (
+        lambda c: f"CAST(SUM({c('fieldGoalsMade')}) + 0.5 * SUM({c('threePointFieldGoalsMade')}) AS DOUBLE)",
+        lambda c: f"NULLIF(SUM({c('fieldGoalsAttempted')}), 0)",
+        ("fieldGoalsMade", "threePointFieldGoalsMade", "fieldGoalsAttempted"),
+    ),
 }
 """A percentage measure's numerator and denominator, summed over games rather
 than averaged per game - on the scale its per-game column has: a percent for
 ``fg_pct``/``three_pct``/``ft_pct``, a fraction for ``ts_pct``/``efg_pct``.
+Each is written over a column renderer, and names its columns, so
+:func:`_rate_sql` can leave a rebuilt row out of BOTH sums where the rebuild
+never measured one of them.
 
 .. versionadded:: 4.4.0
+
+.. versionchanged:: 5.0.0
+   Columns are rendered, not written in: under the widened (rebuilt) guard a
+   rate whose column the rebuild does not fill skips rebuilt rows in its
+   numerator and denominator alike. Before this the sums ran over the raw
+   columns, so one answer averaged attempts over the fetched games and divided
+   makes by attempts over all of them (the retired splits template had the
+   mirror fault - makes over every game, attempts over the fetched ones - and
+   printed a 93% FG% on a two-game split in a test fixture).
 """
+
+
+def _rate_sql(name: str, *, rebuilt: bool) -> str:
+    """A rate as a ratio of sums. Under the rebuilt guard, a rate that reads a
+    column the rebuild does not fill (:data:`~association.query.conditions.UNGATED_ON_REBUILD`)
+    is taken over the fetched games alone - the same rule
+    :func:`measure_sql` applies to that column on its own, applied to the
+    rate whole so its two sums cover the same games.
+
+    .. versionadded:: 5.0.0
+    """
+    numerator, denominator, columns = RATES[name]
+    blank = rebuilt and any(column not in REBUILT_STATS and column in UNGATED_ON_REBUILD for column in columns)
+    render = (lambda column: f"CASE WHEN pgl.reconstructed THEN NULL ELSE pgl.{column} END") if blank else (lambda column: f"pgl.{column}")
+    return f"({numerator(render)} / {denominator(render)})"
+
 
 #: The comparisons a ``Query.predicates`` entry may use - an allowlist, so no
 #: question text reaches SQL as an operator.
@@ -143,6 +184,10 @@ GROUPS: dict[str, tuple[str, str]] = {
     "season": ("pgl.season", 'pgl.season AS "group"'),
     "season_type": ("pgl.season_type", 'pgl.season_type AS "group"'),
     "month": (f"EXTRACT(YEAR FROM {EASTERN}), EXTRACT(MONTH FROM {EASTERN})", f'EXTRACT(YEAR FROM {EASTERN}) * 100 + EXTRACT(MONTH FROM {EASTERN}) AS "group"'),
+    # The month of the year alone, every season's Octobers together - a
+    # splits table "by month" over a career (``month`` above is one season's
+    # months in order, a history).
+    "month_of_year": (f"EXTRACT(MONTH FROM {EASTERN})", f'EXTRACT(MONTH FROM {EASTERN}) AS "group"'),
     "opponent": ("pgl.opponent_team_id, pgl.opponent_abbr", 'pgl.opponent_abbr AS "group"'),
     "won": ("(g.winner_team_id = pgl.team_id)", "CASE WHEN g.winner_team_id = pgl.team_id THEN 'win' ELSE 'loss' END AS \"group\""),
     "player": ("pgl.athlete_id, pgl.player_name", 'pgl.player_name AS "group"'),
@@ -308,8 +353,7 @@ def _agg(name: str, aggregate: str, *, rebuilt: bool = False) -> str:
         raise Unsupported(f"{name!r} is a condition, not a quantity - it is counted, never averaged or summed")
     if aggregate == "per_game":
         if name in RATES:
-            num, den = RATES[name]
-            return f'({num} / {den}) AS "{name}"'
+            return f'{_rate_sql(name, rebuilt=rebuilt)} AS "{name}"'
         return f'AVG({expr}) AS "{name}"'
     if aggregate == "total":
         return f'SUM({expr}) AS "{name}"'
@@ -950,9 +994,7 @@ def _grouped_total(con: duckdb.DuckDBPyConnection, q: Query, c: Compiled, rows: 
     if not q.limit or len(rows) < q.limit:
         return sum(int(r.get("games") or 0) for r in rows)
     whole = _compile_grouped(replace(q, limit=None), c.narrowed, c.rebuilt, c.player, c.span)
-    cur = con.execute(whole.sql, whole.params)
-    names = [d[0] for d in cur.description]
-    return sum(int(dict(zip(names, r, strict=True)).get("games") or 0) for r in cur.fetchall())
+    return sum(int(r.get("games") or 0) for r in rows_of(con, whole))
 
 
 def _player_own_seasons(con: duckdb.DuckDBPyConnection, player: Entity | None, span: ResolvedSpan) -> tuple[int, int] | None:
@@ -980,6 +1022,19 @@ def _player_own_seasons(con: duckdb.DuckDBPyConnection, player: Entity | None, s
     return began, ended
 
 
+def rows_of(con: duckdb.DuckDBPyConnection, compiled: Compiled) -> list[dict[str, Any]]:
+    """The compiled statement executed: its rows, each by column name. The
+    one place a compiled statement runs - the compiler's own :func:`run` and
+    every ported reader (``compose.logs``, ``compose.records``,
+    ``compose.splits``) read through it.
+
+    .. versionadded:: 5.0.0
+    """
+    cur = con.execute(compiled.sql, compiled.params)
+    names = [d[0] for d in cur.description]
+    return [dict(zip(names, r, strict=True)) for r in cur.fetchall()]
+
+
 def run(con: duckdb.DuckDBPyConnection, q: Query) -> dict[str, Any]:
     """Compile and execute: rows as dicts, with what the relation settled.
 
@@ -1005,9 +1060,7 @@ def run(con: duckdb.DuckDBPyConnection, q: Query) -> dict[str, Any]:
         c = compile_query(con, q)
     except TemplateUnsupported as exc:
         raise Unsupported(f"relation: {exc}") from exc
-    cur = con.execute(c.sql, c.params)
-    names = [d[0] for d in cur.description]
-    rows = [dict(zip(names, r, strict=True)) for r in cur.fetchall()]
+    rows = rows_of(con, c)
     # Each grouped row's own rebuilt count, read before _box_notes pops the
     # scratch column - a by-player count says how many of the LEADER's games
     # were rebuilt (compose.present, threshold_count's own note).

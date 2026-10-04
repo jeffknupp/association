@@ -767,7 +767,23 @@ agents' reports named here are in `~/association-research/stages/`.
     Binder error against a fixture holding one without the other), now one
     in `box_source`; two fixtures built unlike the warehouse (a log not
     over the filled view; a bare day where `games.date` holds a UTC
-    stamp), now built its way.
+    stamp), now built its way. The second and third merges the same day:
+    `record_when` as a grouped read by the compiler's new `line` group (the
+    point's one predicate as the key - reached, short, blank - with each
+    group's record, seasons and teams, and a `margin` measure), its planned
+    point untouched; a player's splits as four grouped reads by `venue`,
+    `starter`, `won` and the new `month_of_year` (measured 63 of 70
+    kind-reads equal before writing it, the seven apart the career month
+    tables, where the compiler's `month` is a season's year-and-month).
+    Each identical on 628 of 628, every unit-test call and every reading -
+    except three calls on the rebuilt fixture, where the splits' FG% moved
+    93.3 -> 50.0: the template summed makes over every game and attempts
+    over the fetched ones, the compiler summed both raw, and neither was
+    the rule every other unmeasured column follows; `core._rate_sql` now
+    skips rebuilt rows in both sums where a rate reads such a column, and
+    the test asserts it. One `core.rows_of` runs every compiled statement
+    (the statement ratchet: core 2 -> 1, logs 6 -> 4, records 1 -> 0,
+    player_games 2 -> 1).
 
 ## The plan items, as written
 

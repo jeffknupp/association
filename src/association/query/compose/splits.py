@@ -18,18 +18,19 @@ from typing import Any
 
 import duckdb
 
-from association.query.conditions import _PLAYER_GAME_TABLES, _PLAYER_LINE, _TEAM_LINE, _split_rows, _totals, _unseen, box_source
+from association.query.conditions import _PLAYER_GAME_TABLES, _PLAYER_LINE, _SPLIT_GROUPS, _TEAM_LINE, _season_month_order, _split_rows, _totals, _unseen, box_source
 from association.query.entities import Entity
 from association.query.lines import measure_filters
 from association.query.notes import Note
 from association.query.player_games import _PLAYER_GAMES, Narrowed, games_subquery
 from association.query.reading import SPLIT_KINDS, Scope, Unsupported
 from association.query.result import Grouped, Narrowing, Part, Result, Span
+from association.query.season_text import MONTH_NAMES
 from association.query.team_games import aggregate_sql as team_aggregate_sql
 from association.query.templates.common import TemplateResult, condition_scope, no_games, no_narrowed_games, optional_team, span_of, team_games, unhonored_scoping, whole_span
 from association.query.templates.splits import _condition_team_no_games, _team_season_range, _team_span_label
 
-from .core import Query, compile_query
+from .core import Compiled, Query, compile_over, compile_query, rows_of
 from .team import TeamQuery
 
 # Router stat name -> the standard split line's own key: naming one of these
@@ -118,10 +119,55 @@ def _kinds(split: Any, alias: str) -> tuple[str, list[str]]:
 
 
 def _groups(con: duckdb.DuckDBPyConnection, base: str, params: Any, alias: str, line: tuple[tuple[str, str, str], ...], kinds: list[str]) -> Grouped:
-    """One row per group of each kind, in reading order, each marked with its kind."""
+    """One row per group of each kind, in reading order, each marked with its
+    kind - the team's, over the relation's own grouped statements
+    (:func:`~association.query.conditions._split_rows`) until the team slice."""
     rows: list[dict[str, Any]] = []
     for kind in kinds:
         rows += [{"split": kind, **entry} for entry in _split_rows(con, base, params, alias, line, kind)]
+    return Grouped(by="split", rows=tuple(rows))
+
+
+#: A split kind -> the compiler's group that divides the games the same way.
+_SPLIT_GROUP: dict[str, str] = {"home_away": "venue", "starter_bench": "starter", "wins_losses": "won", "month": "month_of_year"}
+#: The compiler's group labels where the table's differ.
+_GROUP_AS_SHOWN: dict[str, str] = {"win": "wins", "loss": "losses"}
+#: A line entry's name where it is not the measure's own.
+_LINE_MEASURE: dict[str, str] = {"threes": "threePointFieldGoalsMade"}
+
+
+def _player_group_rows(found: list[dict[str, Any]], line: tuple[tuple[str, str, str], ...], kind: str) -> list[dict[str, Any]]:
+    """The compiled statement's groups as the table shows them: both halves
+    of a two-way split always (an empty one as zero games - "never came off
+    the bench" is an answer, and a missing row reads as a bug), a value
+    outside the expected pair shown rather than dropped, the months in
+    season order (October first) under their names."""
+    by_group = {_GROUP_AS_SHOWN.get(str(r["group"]), str(r["group"])): r for r in found if r["group"] is not None}
+    # The months in season order; a two-way split's pair first, then anything else.
+    keys = sorted(by_group, key=lambda m: _season_month_order(int(m))) if kind == "month" else [*_SPLIT_GROUPS[kind], *sorted(k for k in by_group if k not in _SPLIT_GROUPS[kind])]
+    rows: list[dict[str, Any]] = []
+    for key in keys:
+        row = by_group.get(key)
+        games = int(row["games"]) if row else 0
+        wins = int(row["wins"]) if row else 0
+        entry: dict[str, Any] = {"split": kind, "group": MONTH_NAMES[int(key) - 1] if kind == "month" else key, "games": games, "wins": wins, "losses": games - wins}
+        for name, _, _ in line:
+            entry[name] = row[_LINE_MEASURE.get(name, name)] if row else None
+        rows.append(entry)
+    return rows
+
+
+def _player_groups(con: duckdb.DuckDBPyConnection, q: Query, compiled: Compiled, line: tuple[tuple[str, str, str], ...], kinds: list[str]) -> Grouped:
+    """One row per group of each kind, in reading order - each kind one
+    compiled statement: the point as a grouped read by that kind's group
+    with the line's measures (:func:`~association.query.compose.core.compile_over`
+    over the subject the first compile settled)."""
+    assert compiled.player is not None
+    measures = [_LINE_MEASURE.get(name, name) for name, _, _ in line]
+    rows: list[dict[str, Any]] = []
+    for kind in kinds:
+        each = compile_over(con, replace(q, group=_SPLIT_GROUP[kind], measures=measures), compiled.player, compiled.span, compiled.narrowed)
+        rows += _player_group_rows(rows_of(con, each), line, kind)
     return Grouped(by="split", rows=tuple(rows))
 
 
@@ -169,14 +215,17 @@ def read_player_splits(con: duckdb.DuckDBPyConnection, q: Query, *, stated: froz
     compiled = compile_query(con, q)
     if compiled.player is None:
         return None
-    return _player_splits(con, scope, compiled.player, compiled.narrowed, covered, team, opponent, compiled.span, line)
+    return _player_splits(con, q, compiled, covered, team, opponent, line)
 
 
 def _player_splits(
-    con: duckdb.DuckDBPyConnection, scope: Scope, player: Entity, narrowed: Narrowed, covered: Any, team: Entity | None, opponent: Entity | None, span: Any, line: tuple[tuple[str, str, str], ...]
+    con: duckdb.DuckDBPyConnection, q: Query, compiled: Compiled, covered: Any, team: Entity | None, opponent: Entity | None, line: tuple[tuple[str, str, str], ...]
 ) -> Result | TemplateResult:
-    """The rows as the relation renders them (``games_subquery``), the
-    totals, the label and the remarks - :func:`read_player_splits`'s tail."""
+    """The groups from the compiled statements, the totals and the unseen
+    games over the relation's own steps (``games_subquery``), the label and
+    the remarks - :func:`read_player_splits`'s tail."""
+    scope, player, narrowed, span = q.scope, compiled.player, compiled.narrowed, compiled.span
+    assert player is not None
     base, params = games_subquery(narrowed, box_source(con))
     games, first, last = _totals(con, base, params)
     if not games:
@@ -202,7 +251,7 @@ def _player_splits(
         relation="player",
         span=Span(season=covered.season, season_type=covered.season_type, career=covered.season is None, first=first, last=last, phrase=covered.label(first, last)),
         narrowing=Narrowing(phrase=narrowed.filters(), opponent=opponent.name if opponent else None, venue=scope.venue, without=tuple(mate.name for mate in narrowed.without)),
-        parts=(Part(body=_groups(con, base, params, "p", line, kinds)),),
+        parts=(Part(body=_player_groups(con, q, compiled, line, kinds)),),
         notes=notes,
         facts=facts,
     )

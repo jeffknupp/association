@@ -54,7 +54,7 @@ from association.query.templates.common import (
     whole_span,
 )
 
-from .core import LINE, Compiled, Query, compile_over, compile_query
+from .core import LINE, Compiled, Query, compile_over, compile_query, rows_of
 from .team import TeamQuery
 
 _TEAM_GAME_LOG_JOIN = " JOIN teams o ON o.team_id = tg.opponent_id"
@@ -215,13 +215,6 @@ def _player_log_total(con: duckdb.DuckDBPyConnection, narrowed: Narrowed, *, reb
     return int(row[0]) if row and row[0] is not None else 0
 
 
-def _executed(con: duckdb.DuckDBPyConnection, compiled: Compiled) -> list[dict[str, Any]]:
-    """The compiled statement's rows, each by column name."""
-    cur = con.execute(compiled.sql, compiled.params)
-    columns = [d[0] for d in cur.description]
-    return [dict(zip(columns, r, strict=True)) for r in cur.fetchall()]
-
-
 def _player_narrowing(narrowed: Narrowed) -> Narrowing:
     return Narrowing(
         phrase=narrowed.filters(dated=False),
@@ -236,7 +229,7 @@ def _player_log(con: duckdb.DuckDBPyConnection, compiled: Compiled, headers: lis
     and the per-game averages over exactly the rows in it."""
     player, span, narrowed = compiled.player, compiled.span, compiled.narrowed
     assert player is not None
-    rows = _executed(con, compiled)
+    rows = rows_of(con, compiled)
     about = Span(season=span.season, season_type=span.season_type, career=span.career and not narrowed.date, date=narrowed.date)
     narrowing = _player_narrowing(narrowed)
     window = Window(limit=limit, asked=asked, ascending=ascending)
@@ -278,7 +271,7 @@ def _player_log_mixed(con: duckdb.DuckDBPyConnection, q: Query, compiled: Compil
         if isinstance(narrowed, TemplateResult):
             return narrowed
         per_type[season_type] = compile_over(con, q, player, type_span, narrowed)
-    rows_by_type = {season_type: _executed(con, each) for season_type, each in per_type.items()}
+    rows_by_type = {season_type: rows_of(con, each) for season_type, each in per_type.items()}
     rows, counts = _merge_season_types(rows_by_type, date_of=lambda row: row["day"], limit=limit, ascending=False)
     narrowing = _player_narrowing(per_type[2].narrowed)
     about = Span(season=season)

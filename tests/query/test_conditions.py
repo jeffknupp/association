@@ -297,6 +297,10 @@ def test_a_figure_the_rebuild_gets_wrong_is_left_out_rather_than_averaged_in(reb
     assert home["turnovers"] == pytest.approx(0.0), "e1 alone; averaging the rebuilt 9 in would give 4.5"
     assert home["threes"] == pytest.approx(1.0), "e1 alone; averaging the rebuilt 9 in would give 5.0"
     assert home["minutes"] == pytest.approx(30.0), "e1 alone; a rebuilt game has no minutes to count as zero"
+    # A rate whose attempts the rebuild never measured is over e1 alone in BOTH
+    # sums (core._rate_sql). Until 2026-10-04 the makes ran over both games and
+    # the attempts over e1, and this split printed 93.3%.
+    assert home["fg_pct"] == pytest.approx(50.0), "e1 alone, numerator and denominator alike"
 
 
 def test_a_teammate_in_a_rebuilt_game_is_not_counted_as_absent(rebuilt_league: TemplateContext) -> None:

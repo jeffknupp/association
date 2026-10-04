@@ -164,7 +164,8 @@ def test_every_scope_field_is_checked_and_every_group_is_the_compilers() -> None
     assert set(_CHECKS) == names
     # `presence` is the team relation's own group (compose.team._compile_team_presence), not a key of the player relation's GROUPS.
     # `period` is the player relation's own, four reads of the same games rather than a GROUP BY (compose.core._compile_by_period).
-    assert set(get_args(Group)) == {"none", "presence", "period", *GROUPS}
+    # `line` is keyed on the point's own predicate rather than a fixed column (compose.core._line_group).
+    assert set(get_args(Group)) == {"none", "presence", "period", "line", *GROUPS}
     assert names >= (SCOPING_SLOTS | RELATION_SCOPING)
 
 

@@ -28,7 +28,7 @@ from association.query.result import Grouped, Narrowing, Part, Result, Span
 from association.query.templates.common import THRESHOLD_STAT_COLUMNS, TemplateResult, condition_scope, no_games, optional_team, unhonored_scoping
 from association.query.templates.splits import _condition_span_label
 
-from .core import Compiled, Query, compile_query
+from .core import Compiled, Query, compile_query, rows_of
 
 
 def _group(by_hit: dict[str, dict[str, Any]], *keys: str) -> dict[str, Any]:
@@ -95,9 +95,7 @@ def read_record_when(con: duckdb.DuckDBPyConnection, q: Query, *, stated: frozen
     team = optional_team(con, scope.team, season=scope.season)
     if isinstance(team, TemplateResult):
         return team
-    cur = con.execute(compiled.sql, compiled.params)
-    columns = [d[0] for d in cur.description]
-    found = [dict(zip(columns, row, strict=True)) for row in cur.fetchall()]
+    found = rows_of(con, compiled)
     if not found:
         return no_games(con, compiled.player, covered, team)
     team_ids = {str(t) for row in found for t in row["team_ids"]}
