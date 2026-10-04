@@ -1,0 +1,344 @@
+"""The splits reader: a player's or a team's games divided by venue, by
+result, by month or (a player's) by starting and coming off the bench, read
+into a :class:`~association.query.result.Result` with a
+:class:`~association.query.result.Grouped` body - one row per group of each
+split asked for, with the record and the per-game line in it. Phase 2's
+slice (i): the retired ``player_splits`` template's two branches
+(``templates.splits._player_splits_from`` and ``_player_splits_team``, said
+by ``_player_splits_answer``) moved here whole, their remarks as kinds and
+facts; the sayer (:mod:`association.query.compose.say`) words both.
+
+.. versionadded:: 5.0.0
+"""
+
+from __future__ import annotations
+
+from dataclasses import replace
+from typing import Any
+
+import duckdb
+
+from association.query.conditions import _PLAYER_GAME_TABLES, _PLAYER_LINE, _TEAM_LINE, _split_rows, _totals, _unseen, box_source
+from association.query.entities import Entity
+from association.query.lines import measure_filters
+from association.query.notes import Note
+from association.query.player_games import _PLAYER_GAMES, Narrowed, games_subquery
+from association.query.reading import SPLIT_KINDS, Scope, Unsupported
+from association.query.result import Grouped, Narrowing, Part, Result, Span
+from association.query.team_games import aggregate_sql as team_aggregate_sql
+from association.query.templates.common import TemplateResult, condition_scope, no_games, no_narrowed_games, optional_team, span_of, team_games, unhonored_scoping, whole_span
+from association.query.templates.splits import _condition_team_no_games, _team_season_range, _team_span_label
+
+from .core import Query, compile_query
+from .team import TeamQuery
+
+# Router stat name -> the standard split line's own key: naming one of these
+# changes nothing about which columns are shown, since _PLAYER_LINE/_TEAM_LINE
+# already carry it. Kept apart from SPLIT_EXTRA_STATS below so a stat that IS
+# already on the table is neither refused nor given a redundant second column.
+_SPLIT_LINE_STATS: dict[str, frozenset[str]] = {
+    "p": frozenset({"points", "rebounds", "assists", "steals", "blocks", "turnovers", "minutes", "threePointFieldGoalsMade", "fieldGoalPct"}),
+    "t": frozenset({"points", "rebounds", "assists", "threePointFieldGoalsMade", "fieldGoalPct"}),
+}
+
+# A stat player_splits can add as its own column beside the standard line,
+# read straight off the player-games relation the way _PLAYER_LINE's own
+# entries are - never silently left off a table that has no such column
+# (F159: the usage rate asked for simply missing from the table). Player only:
+# a team split (alias "t") has no per-player rate like this to show.
+SPLIT_EXTRA_STATS: dict[str, tuple[str, str, str]] = {
+    "usage_pct": ("usage_pct", "USG%", "AVG(p.usage_pct)"),
+}
+"""``player_splits`` extra-column stats, keyed by the router's stat name.
+
+.. versionadded:: 4.4.0
+"""
+
+#: The two halves the stages narrow ``starter_bench`` to when the question
+#: names one. A splits answer is both groups side by side, so it folds them
+#: back to the category, while the log and the other filtering shapes read
+#: the half.
+_STARTER_BENCH_SIDES = frozenset({"starter", "bench"})
+
+#: A team's games under a splits read, over the relation
+#: (:data:`~association.query.team_games.TEAM_GAMES_SQL`) joined to
+#: ``team_box_stats`` for the box-score columns the relation itself does not
+#: carry (``_TEAM_LINE``'s rebounds/assists/threes/shooting).
+_TEAM_SPLIT_JOIN = " JOIN team_box_stats tbs ON tbs.event_id = tg.event_id AND tbs.season = tg.season AND tbs.team_id = tg.team_id"
+_TEAM_SPLIT_SELECT: tuple[str, ...] = (
+    "tg.season",
+    "tg.eastern_date AS day",
+    "tg.side AS home_away",
+    "tg.won",
+    "tg.team_score",
+    "tg.opponent_score",
+    "tbs.offensiveRebounds",
+    "tbs.defensiveRebounds",
+    "tbs.assists",
+    "tbs.threePointFieldGoalsMade",
+    "tbs.fieldGoalsMade",
+    "tbs.fieldGoalsAttempted",
+)
+
+
+def _splits_line(stat: str | None, base_line: tuple[tuple[str, str, str], ...], *, alias: str) -> tuple[tuple[str, str, str], ...]:
+    """``base_line`` (the player's or the team's), with a named ``stat`` the
+    table does not already carry added as its own column - or a refusal
+    naming the stat, never a table that quietly leaves it out (F159)."""
+    if stat is None or not stat.strip():
+        return base_line
+    if stat in _SPLIT_LINE_STATS.get(alias, frozenset()):
+        return base_line
+    extra = SPLIT_EXTRA_STATS.get(stat) if alias == "p" else None
+    if extra is None:
+        raise Unsupported(f"player_splits has no column for stat {stat!r}")
+    return (*base_line, extra)
+
+
+def _splits_refusals(scope: Scope) -> None:
+    """What no splits answer honors, refused before any name is resolved: a
+    window of recent games (this divides a whole span into groups and has no
+    notion of "his last N games"; answering the whole span under that
+    framing would be the silent substitution ``check_scope`` exists to
+    stop), and a home/away split beside a venue already narrowed to one
+    (the same axis asked twice; the narrowing wins)."""
+    if scope.limit is not None and scope.limit > 1:
+        raise Unsupported("player_splits has no notion of a limited number of recent games")
+    if scope.split == "home_away" and scope.venue is not None:
+        raise Unsupported("a home/away split conflicts with a venue already narrowed to one")
+
+
+def _kinds(split: Any, alias: str) -> tuple[str, list[str]]:
+    """The split asked (a named half folded to its category) and the kinds
+    the table shows: that one, or every kind the subject has."""
+    if split in _STARTER_BENCH_SIDES:
+        split = "starter_bench"
+    kinds = [split] if split else [k for k in SPLIT_KINDS if alias == "p" or k != "starter_bench"]
+    return split, kinds
+
+
+def _groups(con: duckdb.DuckDBPyConnection, base: str, params: Any, alias: str, line: tuple[tuple[str, str, str], ...], kinds: list[str]) -> Grouped:
+    """One row per group of each kind, in reading order, each marked with its kind."""
+    rows: list[dict[str, Any]] = []
+    for kind in kinds:
+        rows += [{"split": kind, **entry} for entry in _split_rows(con, base, params, alias, line, kind)]
+    return Grouped(by="split", rows=tuple(rows))
+
+
+def _narrowing_emptied(con: duckdb.DuckDBPyConnection, narrowed: Narrowed) -> bool:
+    """Whether the player has games under the base clauses alone - so it is
+    the narrowing (an opponent, a condition, a venue) that left none, and
+    the answer should name it rather than the span."""
+    if not narrowed.extra:
+        return False
+    where, params = narrowed.clauses(narrowed=False, rebuilt=box_source(con).rebuilt)
+    row = con.execute(f"SELECT COUNT(*) {_PLAYER_GAMES} WHERE {where}", params).fetchone()
+    return bool(row and row[0])
+
+
+def read_player_splits(con: duckdb.DuckDBPyConnection, q: Query, *, stated: frozenset[str]) -> Result | TemplateResult | None:
+    """A player's splits - one or all four, side by side - over the
+    compiler's settled player and narrowing (#228). ``None`` where the point
+    is not the splits' own (a grouped record by venue or by starter on the
+    player relation with no predicate), carries a narrowing the words did not
+    state (``stated``), or names a stat the line has no column for (the
+    compiler's own point, said by its sentence); the template's own early
+    refusals stand (a window, a home/away split beside a venue). A
+    :class:`~association.query.templates.common.TemplateResult` back is the
+    relation's refusal.
+
+    .. versionadded:: 5.0.0
+    """
+    if q.skeleton != "grouped" or q.subject != "player" or q.predicates or q.group not in ("venue", "starter"):
+        return None
+    scope = q.scope
+    if unhonored_scoping("player_splits", scope, stated):
+        return None
+    _splits_refusals(scope)
+    try:
+        line = _splits_line(scope.stat, _PLAYER_LINE, alias="p")
+    except Unsupported:
+        return None
+    team = optional_team(con, scope.team, season=scope.season)
+    if isinstance(team, TemplateResult):
+        return team
+    opponent = optional_team(con, scope.opponent, season=scope.season)
+    if isinstance(opponent, TemplateResult):
+        return opponent
+    covered = condition_scope(scope.season, scope.span, scope.season_type, _PLAYER_GAME_TABLES, since=scope.since)
+    compiled = compile_query(con, q)
+    if compiled.player is None:
+        return None
+    return _player_splits(con, scope, compiled.player, compiled.narrowed, covered, team, opponent, compiled.span, line)
+
+
+def _player_splits(
+    con: duckdb.DuckDBPyConnection, scope: Scope, player: Entity, narrowed: Narrowed, covered: Any, team: Entity | None, opponent: Entity | None, span: Any, line: tuple[tuple[str, str, str], ...]
+) -> Result | TemplateResult:
+    """The rows as the relation renders them (``games_subquery``), the
+    totals, the label and the remarks - :func:`read_player_splits`'s tail."""
+    base, params = games_subquery(narrowed, box_source(con))
+    games, first, last = _totals(con, base, params)
+    if not games:
+        if span is not None and _narrowing_emptied(con, narrowed):
+            # The narrowing emptied the games, not the span: "steph curry
+            # record vs lebron" with no meeting this season said "listed in
+            # 43 box scores but did not play in any of them" - a confident
+            # refusal naming the wrong missing fact. The relation's own
+            # sentence names the narrowing.
+            message = no_narrowed_games(con, player, span, narrowed, rebuilt=box_source(con).rebuilt)
+            return TemplateResult(data={"player": player.name, "team": team.name if team else None, "span": covered.label(), "games": 0, "message": message}, answer=message)
+        return no_games(con, player, covered, team)
+    if scope.season_n and first is not None and first == last and covered.season != first:
+        # An ordinal season ("his 18th season") is not a year until the player
+        # is known, so `covered` - built before the player was resolved -
+        # could not carry it; the narrowed rows just settled it.
+        covered = replace(covered, season=int(first))
+    split, kinds = _kinds(scope.split, "p")
+    notes = _player_notes(con, covered, base, params, first, kinds)
+    facts = _player_facts(scope, player, narrowed, team, opponent, line, split, kinds, games)
+    return Result(
+        subject=player.name,
+        relation="player",
+        span=Span(season=covered.season, season_type=covered.season_type, career=covered.season is None, first=first, last=last, phrase=covered.label(first, last)),
+        narrowing=Narrowing(phrase=narrowed.filters(), opponent=opponent.name if opponent else None, venue=scope.venue, without=tuple(mate.name for mate in narrowed.without)),
+        parts=(Part(body=_groups(con, base, params, "p", line, kinds)),),
+        notes=notes,
+        facts=facts,
+    )
+
+
+def _player_notes(con: duckdb.DuckDBPyConnection, covered: Any, base: str, params: Any, first: int | None, kinds: list[str]) -> tuple[Note, ...]:
+    """The remarks, in the order the template wrote them: the unseen games,
+    the floor, then what the table's words mean."""
+    notes: list[Note] = []
+    unseen = _unseen(con, covered, base, params, box_source(con))
+    if unseen:
+        notes.append(Note("games_unseen", {"games": unseen, "why": "no_box_score", "whose": "his team's"}))
+    if covered.season is None and first == covered.first:
+        notes.append(Note("floor", {"table": "box_scores", "first": covered.first, "what": covered.kind}))
+    notes.append(Note("definition", {"term": "played"}))
+    if "month" in kinds:
+        notes.append(Note("definition", {"term": "months_eastern"}))
+    return tuple(notes)
+
+
+def _player_facts(
+    scope: Scope, player: Entity, narrowed: Narrowed, team: Entity | None, opponent: Entity | None, line: tuple[tuple[str, str, str], ...], split: Any, kinds: list[str], games: int
+) -> dict[str, Any]:
+    """What the splits' sayer needs beside the rows: the split asked and the
+    kinds shown, the line's names and headers, the count the heading says,
+    and the plain values the page renders from."""
+    return {
+        "split": split,
+        "kinds": kinds,
+        "line": [(name, header) for name, header, _ in line],
+        "counted": f"{games} game{'s' if games != 1 else ''} he played",
+        "games": games,
+        "for_team": team.name if team else None,
+        "about": {
+            "player": player.name,
+            "team": team.name if team else None,
+            "venue": scope.venue,
+            "opponent": opponent.name if opponent else None,
+            "without": [mate.name for mate in narrowed.without],
+            "started": narrowed.started,
+            "measures": list(narrowed.measures),
+            "series_game": narrowed.series_game,
+        },
+    }
+
+
+def read_team_splits(con: duckdb.DuckDBPyConnection, q: TeamQuery, *, stated: frozenset[str]) -> Result | TemplateResult | None:
+    """A team's own splits ("76ers wins vs losses"): the team's per-game line
+    by venue, by result or by month, over the team-games relation. A team has
+    no starter/bench split of its own, and the narrowings only a settled
+    player's games take (a line on a box-score column, a game of a series, an
+    ordinal season, a teammate's absence or role) are refused by name rather
+    than silently ignored. ``None`` where the words do not state a narrowing
+    the scope carries (``stated``), so the team compiler's own sentence
+    answers.
+
+    .. versionadded:: 5.0.0
+    """
+    from association.query.templates.common import check_coverage
+
+    scope = q.scope
+    if unhonored_scoping("player_splits", scope, stated):
+        return None
+    refused = check_coverage("player_splits", scope)
+    if refused is not None:
+        return TemplateResult(data={"message": refused, "season": scope.season}, answer=refused)
+    _splits_refusals(scope)
+    measures = measure_filters(scope.below, scope.above)
+    team = optional_team(con, scope.team, season=scope.season)
+    if isinstance(team, TemplateResult):
+        return team
+    opponent = optional_team(con, scope.opponent, season=scope.season)
+    if isinstance(opponent, TemplateResult):
+        return opponent
+    if team is None:
+        raise Unsupported("player_splits needs a player or a team")
+    if measures or scope.game_n or scope.season_n or scope.without or scope.conditions:
+        # A team's own splits read the team tables directly, not the
+        # player-games relation these narrow - so a line on a box-score
+        # column, a playoff-series game, an ordinal season or a teammate's
+        # absence (or role) have nowhere to apply. Refused by name rather
+        # than silently ignored ("76ers splits without Embiid" once answered
+        # the whole season).
+        raise Unsupported("player_splits cannot honor below/above, game_n, season_n, without or conditions for a team with no player named")
+    if scope.split == "starter_bench" or scope.split in _STARTER_BENCH_SIDES:
+        # "Bench scoring" is a sum over a team's players - a different
+        # question from any this shape answers.
+        raise Unsupported("a team has no starter/bench split of its own")
+    return _team_splits(con, scope, team, opponent)
+
+
+def _team_splits(con: duckdb.DuckDBPyConnection, scope: Scope, team: Entity, opponent: Entity | None) -> Result | TemplateResult:
+    """A named team's own games, narrowed to an opponent and/or a venue the
+    same way every other team-facing read narrows them - the tail of
+    :func:`read_team_splits`."""
+    line = _splits_line(scope.stat, _TEAM_LINE, alias="t")
+    span = span_of(scope.span, scope.season, scope.season_type or 2, "games", since=scope.since, until=scope.until)
+    narrowed = team_games(con, team, span, scope, opponent=opponent)
+    if isinstance(narrowed, TemplateResult):
+        return narrowed
+    # A split, a record, a run: read over every game in the span.
+    whole_span(narrowed)
+    base, params = team_aggregate_sql(narrowed, list(_TEAM_SPLIT_SELECT), join=_TEAM_SPLIT_JOIN)
+    games, first, last = _team_season_range(con, base, params, span)
+    if not games:
+        return _condition_team_no_games(con, team, span, narrowed)
+    split, kinds = _kinds(scope.split, "t")
+    # The score of a game with no box score is still on record, but its
+    # team box stats are NULL - averaged over the rest, and said so.
+    blank = con.execute(f"SELECT COUNT(*) FILTER (WHERE fieldGoalsAttempted IS NULL) FROM ({base})", params).fetchone()
+    blanks = int(blank[0]) if blank else 0
+    notes: list[Note] = []
+    if blanks:
+        notes.append(Note("stat_blank", {"games": blanks, "columns": ["rebounds", "assists", "threes", "fg_pct"]}))
+    if span.season is None and span.since is None and first == span.first:
+        # Not shown for a since-bounded span: the question named its own
+        # starting year, so a note that games "start with" it would read as
+        # though the WAREHOUSE put the floor there.
+        notes.append(Note("floor", {"table": "box_scores", "first": span.first, "what": span.kind}))
+    if "month" in kinds:
+        notes.append(Note("definition", {"term": "months_eastern"}))
+    facts: dict[str, Any] = {
+        "split": split,
+        "kinds": kinds,
+        "line": [(name, header) for name, header, _ in line],
+        "counted": f"{games} game{'s' if games != 1 else ''}",
+        "games": games,
+        "for_team": None,
+        "about": {"player": None, "team": team.name, "venue": narrowed.venue, "opponent": narrowed.opponent.name if narrowed.opponent else None},
+    }
+    return Result(
+        subject=f"The {team.name}",
+        relation="team",
+        span=Span(season=span.season, season_type=span.season_type, career=span.season is None, first=first, last=last, phrase=_team_span_label(span, first, last)),
+        narrowing=Narrowing(phrase=narrowed.filters(), opponent=narrowed.opponent.name if narrowed.opponent else None, venue=narrowed.venue),
+        parts=(Part(body=_groups(con, base, params, "t", line, kinds)),),
+        notes=tuple(notes),
+        facts=facts,
+    )

@@ -90,6 +90,14 @@ Split = Literal["home_away", "starter_bench", "wins_losses", "month", "starter",
 .. versionadded:: 5.0.0
 """
 
+SPLIT_KINDS: tuple[str, ...] = ("home_away", "starter_bench", "wins_losses", "month")
+"""The splits a player's games divide by, in the order a table shows them
+when none is named; a team's games take all but ``starter_bench``.
+
+.. versionadded:: 5.0.0
+   On the reader's side (``templates.splits.SPLIT_KINDS`` is this).
+"""
+
 
 class ScopeError(ValueError):
     """A slot value the Scope cannot hold - a key nothing types, a value of

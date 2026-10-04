@@ -41,7 +41,7 @@ from typing import Any
 import duckdb
 
 from association.nba.season import current_season, eastern_date
-from association.query.conditions import _PLAYER_GAME_TABLES, _meeting_rows, _teammate_games, _totals
+from association.query.conditions import _meeting_rows, _teammate_games, _totals
 from association.query.measures import stat_measure
 from association.query.player_games import REBUILT_STATS
 from association.query.reading import Scope
@@ -53,7 +53,6 @@ from association.query.templates.common import (
     TemplateResult,
     TemplateUnsupported,
     check_coverage,
-    condition_scope,
     optional_team,
     player_relation_season_type,
     relation_scoping,
@@ -93,13 +92,8 @@ from association.query.templates.players import (
     _wanted_stats,
 )
 from association.query.templates.splits import (
-    _PLAYER_LINE,
     _condition_team_no_games,
     _misfiled_postseason,
-    _player_splits_answer,
-    _player_splits_from,
-    _player_splits_line,
-    _player_splits_refusals,
     _record_when_team_answer,
     _streak_league_answer,
     _streak_league_result_words,
@@ -110,7 +104,6 @@ from association.query.templates.splits import (
     _team_span_label,
     _team_where_in,
     _with_without_said,
-    team_splits,
 )
 
 from .adapt import WITH_WITHOUT_STATED
@@ -183,40 +176,6 @@ def _present_period_by_quarter(con: duckdb.DuckDBPyConnection, q: Query) -> Temp
     names = [d[0] for d in cur.description]
     rows = [dict(zip(names, r, strict=True)) for r in cur.fetchall()]
     return _period_split_by_quarter_from(scope, compiled.player, compiled.narrowed, rows, measure)
-
-
-def _present_player_splits(con: duckdb.DuckDBPyConnection, q: Query) -> TemplateResult | None:
-    """``player_splits``' own table - one split or all four, side by side -
-    over the compiler's settled player and narrowing
-    (``templates.splits._player_splits_from``, #228). The template's own
-    early refusals stand (a window, a home/away split beside a venue); a
-    stat its line has no column for is the compiler's own point, said by
-    its sentence (the fouls by venue the template refused).
-
-    .. versionadded:: 5.0.0
-    """
-    if q.skeleton != "grouped" or q.subject != "player" or q.predicates or q.group not in ("venue", "starter"):
-        return None
-    scope = q.scope
-    _player_splits_refusals(scope)
-    try:
-        _player_splits_line(scope.stat, _PLAYER_LINE, alias="p")
-    except TemplateUnsupported:
-        return None
-    team = optional_team(con, scope.team, season=scope.season)
-    if isinstance(team, TemplateResult):
-        return team
-    opponent = optional_team(con, scope.opponent, season=scope.season)
-    if isinstance(opponent, TemplateResult):
-        return opponent
-    covered = condition_scope(scope.season, scope.span, scope.season_type, _PLAYER_GAME_TABLES, since=scope.since)
-    compiled = compile_query(con, q)
-    if compiled.player is None:
-        return None
-    found = _player_splits_from(con, scope, compiled.player, compiled.narrowed, covered, team, scope.venue, opponent, span=compiled.span)
-    if isinstance(found, TemplateResult):
-        return found
-    return _player_splits_answer(con, found, scope.split)
 
 
 def _present_player_stat(con: duckdb.DuckDBPyConnection, q: Query) -> TemplateResult | None:
@@ -524,7 +483,6 @@ def _present_threshold_count_rows(q: Query, out: dict[str, Any]) -> list[tuple[A
 #: Intent -> the presenter for its own default point.
 PRESENTERS: dict[str, Presenter] = {
     "player_stat": _present_player_stat,
-    "player_splits": _present_player_splits,
     "single_game_high": _present_single_game_high,
     "threshold_count": _present_threshold_count,
     "player_history": _present_player_history,
@@ -643,23 +601,6 @@ def present(con: duckdb.DuckDBPyConnection, intent: str, q: Query) -> TemplateRe
         raise Unsupported(f"relation: {exc}") from exc
 
 
-def _present_team_splits(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> TemplateResult | None:
-    """A team's own splits (``templates.splits.team_splits``, the retired
-    template's team half) behind the checks the template ran behind.
-
-    .. versionadded:: 5.0.0
-    """
-    if unhonored_scoping("player_splits", q.scope, STATED_SCOPING["player_splits"]):
-        return None
-    refused = check_coverage("player_splits", q.scope)
-    if refused is not None:
-        raise Refused(TemplateResult(data={"message": refused, "season": q.scope.season}, answer=refused))
-    try:
-        return team_splits(con, q.scope)
-    except TemplateUnsupported as exc:
-        raise Unsupported(f"relation: {exc}") from exc
-
-
 def _present_team_streak(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> TemplateResult | None:
     """A team's longest run of wins or losses, or the league's with no team
     named (``streak``'s retired team and league branches), said in the
@@ -718,8 +659,6 @@ def present_team(con: duckdb.DuckDBPyConnection, intent: str, q: TeamQuery) -> T
 
     .. versionadded:: 5.0.0
     """
-    if intent == "player_splits" and q.shape == "grouped":
-        return _present_team_splits(con, q)
     if intent == "streak" and q.shape == "run":
         try:
             return _present_team_streak(con, q)

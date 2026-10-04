@@ -1770,6 +1770,6 @@ def test_a_presenter_steps_aside_for_a_narrowing_its_words_do_not_state(cx_ctx: 
     from association.query.compose.present import PRESENTERS, STATED_SCOPING, TEAM_ONLY_PRESENTERS, present
 
     # game_log's and record_when's words are the sayer's (compose.say); their stated sets stay listed in STATED_SCOPING so one table declares for every compiled intent.
-    assert set(STATED_SCOPING) == set(PRESENTERS) | TEAM_ONLY_PRESENTERS | {"game_log", "record_when"}
+    assert set(STATED_SCOPING) == set(PRESENTERS) | TEAM_ONLY_PRESENTERS | {"game_log", "record_when", "player_splits"}
     narrowed = default_query("single_game_high", {"player": "Brandin Podziemski", "stat": "points", "opponent": "Boston Celtics"})
     assert present(cx_ctx.con, "single_game_high", narrowed) is None

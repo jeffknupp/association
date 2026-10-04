@@ -6,20 +6,18 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from typing import Any
 
 import duckdb
 
 from association.nba.franchises import season_name
 from association.nba.season import current_season
+from association.query.reading import SPLIT_KINDS as SPLIT_KINDS
 from association.query.reading import ConditionSpec, Scope
 
 from ..conditions import (
     _PLAYER_GAME_TABLES,
-    _PLAYER_LINE,
-    _SPLIT_TITLES,
-    _TEAM_LINE,
     Params,
     _box_missing,
     _cell,
@@ -27,14 +25,10 @@ from ..conditions import (
     _names,
     _overlaps,
     _Scope,
-    _split_cells,
-    _split_label,
-    _split_rows,
     _stints,
     _table,
     _totals,
     _unseen,
-    _unseen_note,
     _win_pct,
     _with_without_games,
     _with_without_group,
@@ -42,7 +36,7 @@ from ..conditions import (
 )
 from ..entities import Entity, teammate_names
 from ..notes import note
-from ..player_games import _PLAYER_GAMES, Narrowed, games_subquery, named
+from ..player_games import Narrowed, games_subquery, named
 from ..team_games import TEAM_GAMES_SQL, TeamNarrowed
 from ..team_games import aggregate_sql as team_aggregate_sql
 from ..team_games import games_subquery as team_games_subquery
@@ -57,14 +51,12 @@ from .common import (
     _condition_scope,
     _joined,
     _no_games,
-    _no_narrowed_games,
     _optional_team,
     _period,
     _resolved_player,
     _Span,
     _span_of,
     _team_span_clause,
-    measure_filters,
     ordinal_word,
     team_games,
     whole_span,
@@ -74,57 +66,6 @@ from .common import (
 def _season_of_day(day: Any) -> int:
     """The season a calendar day falls in: season Y runs from October of Y-1."""
     return day.year + 1 if day.month >= 10 else day.year
-
-
-SPLIT_KINDS: tuple[str, ...] = ("home_away", "starter_bench", "wins_losses", "month")
-"""The splits :func:`player_splits` answers, and the values ``router.SPLIT_WORDS`` reads out of a question.
-
-.. versionadded:: 2.1.0
-"""
-
-
-# Router stat name -> the standard split line's own key: naming one of these
-# changes nothing about which columns are shown, since _PLAYER_LINE/_TEAM_LINE
-# already carry it. Kept apart from SPLIT_EXTRA_STATS below so a stat that IS
-# already on the table is neither refused nor given a redundant second column.
-_SPLIT_LINE_STATS: dict[str, frozenset[str]] = {
-    "p": frozenset({"points", "rebounds", "assists", "steals", "blocks", "turnovers", "minutes", "threePointFieldGoalsMade", "fieldGoalPct"}),
-    "t": frozenset({"points", "rebounds", "assists", "threePointFieldGoalsMade", "fieldGoalPct"}),
-}
-
-# A stat player_splits can add as its own column beside the standard line,
-# read straight off the player-games relation the way _PLAYER_LINE's own
-# entries are - never silently left off a table that has no such column.
-# "Quentin Grimes individual gamelog usage rating without joel embiid" showed
-# the standard split columns with no usage-rate column anywhere, and the
-# actually-asked-for stat simply missing (F159, ISSUES.md). Player only: a
-# team split (alias "t") has no per-player rate like this to show.
-SPLIT_EXTRA_STATS: dict[str, tuple[str, str, str]] = {
-    "usage_pct": ("usage_pct", "USG%", "AVG(p.usage_pct)"),
-}
-"""``player_splits`` extra-column stats, keyed by the router's stat name.
-
-.. versionadded:: 4.4.0
-"""
-
-
-def _player_splits_line(stat: str | None, base_line: tuple[tuple[str, str, str], ...], *, alias: str) -> tuple[tuple[str, str, str], ...]:
-    """``base_line`` (:data:`_PLAYER_LINE` or :data:`_TEAM_LINE`), with a
-    named ``stat`` the table does not already carry added as its own column -
-    or a refusal naming the stat, never a table that quietly leaves it out
-    (F159, ISSUES.md). No ``stat`` at all is the common case and returns
-    ``base_line`` unchanged.
-
-    .. versionadded:: 4.4.0
-    """
-    if stat is None or not stat.strip():
-        return base_line
-    if stat in _SPLIT_LINE_STATS.get(alias, frozenset()):
-        return base_line
-    extra = SPLIT_EXTRA_STATS.get(stat) if alias == "p" else None
-    if extra is None:
-        raise TemplateUnsupported(f"player_splits has no column for stat {stat!r}")
-    return (*base_line, extra)
 
 
 _DEFAULT_STREAK_LIMIT = 5
@@ -294,8 +235,15 @@ def _team_span_label(span: _Span, first: Any = None, last: Any = None) -> str:
     return f"every {span.kind} on record ({span.first} onward)"
 
 
+def _team_where_in(span: _Span) -> str:
+    """:func:`common._where_in`'s shape, over a ``_Span``: "in the 2026
+    regular season", or "in any regular season on record" for a span with
+    nothing in it."""
+    return f"in the {_team_span_label(span)}" if span.season is not None else f"in any {span.kind} on record ({span.first} onward)"
+
+
 def _team_span_floor_note(span: _Span, first: Any) -> str:
-    """:meth:`conditions._Scope.floor_note`'s shape, over a ``_Span``: a team
+    """The box-score floor caveat over a ``_Span`` (the player branches' is the sayer's ``floor`` phrase, ``compose.say``): a team
     career's own box-score-floor caveat - not shown for a since-bounded span
     (``span.since is not None``), the same guard
     :func:`~association.query.templates.common._box_score_notes` applies for a
@@ -305,13 +253,6 @@ def _team_span_floor_note(span: _Span, first: Any) -> str:
     if span.season is None and span.since is None and first == span.first:
         return note("floor", f" Box scores start with the {span.first} {span.kind}; anything earlier is not counted.", table="box_scores", first=span.first, what=span.kind)
     return ""
-
-
-def _team_where_in(span: _Span) -> str:
-    """:func:`common._where_in`'s shape, over a ``_Span``: "in the 2026
-    regular season", or "in any regular season on record" for a span with
-    nothing in it."""
-    return f"in the {_team_span_label(span)}" if span.season is not None else f"in any {span.kind} on record ({span.first} onward)"
 
 
 def _condition_team_no_games(con: duckdb.DuckDBPyConnection, team: Entity, span: _Span, narrowed: TeamNarrowed) -> TemplateResult:
@@ -356,262 +297,6 @@ def _team_season_range(con: duckdb.DuckDBPyConnection, base: str, params: Params
     season_col = "year(day)" if span.season_type == 3 else "season"
     row = con.execute(f"SELECT COUNT(*), MIN({season_col}), MAX({season_col}) FROM ({base})", params).fetchone()
     return (int(row[0]), row[1], row[2]) if row else (0, None, None)
-
-
-def _player_splits_refusals(scope: Scope) -> None:
-    """What no splits answer honors, refused before any name is resolved: a
-    window of recent games, and a home/away split beside a venue already
-    narrowed to one."""
-    if scope.limit is not None and scope.limit > 1:
-        # This divides a whole span into groups; it has no notion of "his last
-        # N games" the way game_log does, and answering the whole span under
-        # that framing would be the exact silent substitution check_scope
-        # exists to stop - "Pat Spencer st home last four games" would answer
-        # his entire 35-game home season instead. A bare 1 is the router's
-        # filler and never changes the answer.
-        raise TemplateUnsupported("player_splits has no notion of a limited number of recent games")
-    if scope.split == "home_away" and scope.venue is not None:
-        # Breaking games out by home/away while also narrowing to one of the
-        # two asks the same axis twice; the narrowing wins rather than showing
-        # one real row beside an empty one.
-        raise TemplateUnsupported("a home/away split conflicts with a venue already narrowed to one")
-
-
-def team_splits(con: duckdb.DuckDBPyConnection, scope: Scope) -> TemplateResult:
-    """A team's own splits ("76ers wins vs losses"), the team half of
-    ``player_splits``: the team's per-game line by venue, by result or by
-    month, over the team-games relation (:func:`_player_splits_team`) - said
-    for the compiler by :func:`~association.query.compose.present.present_team`
-    in the template's own words. A team has no starter/bench split of its
-    own, and the narrowings only a settled player's games take (a line on a
-    box-score column, a game of a series, an ordinal season, a teammate's
-    absence or role) are refused by name rather than silently ignored.
-
-    .. versionadded:: 5.0.0
-    """
-    _player_splits_refusals(scope)
-    measures = measure_filters(scope.below, scope.above)
-    team = _optional_team(con, scope.team, season=scope.season)
-    if isinstance(team, TemplateResult):
-        return team
-    opponent = _optional_team(con, scope.opponent, season=scope.season)
-    if isinstance(opponent, TemplateResult):
-        return opponent
-    if team is None:
-        raise TemplateUnsupported("player_splits needs a player or a team")
-    if measures or scope.game_n or scope.season_n or scope.without or scope.conditions:
-        # A team's own splits read the team tables directly, not the
-        # player-games relation these narrow - so a line on a box-score
-        # column, a playoff-series game, an ordinal season or a
-        # teammate's absence (or role: started, bench, reached a line)
-        # have nowhere to apply (ISSUES.md: "76ers splits without Embiid"
-        # answered his team's whole 82-game season, identical to the same
-        # call with no `without` at all - a silent narrowing check_scope
-        # exists to stop, missed here only because the slot IS declared
-        # honored, by the other subject the intent can have). Refused by
-        # name rather than silently ignored, the same way a starter/bench
-        # split is refused for a team just below - a real fix teaches
-        # `_player_splits_team` the same teammate-absence filter
-        # `with_without` already has.
-        raise TemplateUnsupported("player_splits cannot honor below/above, game_n, season_n, without or conditions for a team with no player named")
-    found = _player_splits_team(con, scope, team, scope.split, opponent)
-    if isinstance(found, TemplateResult):
-        return found
-    return _player_splits_answer(con, found, scope.split)
-
-
-#: The two halves `route()` narrows ``starter_bench`` to when the question names
-#: one. This template wants the CATEGORY - a splits answer is both groups side
-#: by side - so it folds them back, while `game_log` and the other filtering
-#: templates read the half. See ``router._split_side``.
-_STARTER_BENCH_SIDES = frozenset({"starter", "bench"})
-
-
-def _player_splits_answer(con: duckdb.DuckDBPyConnection, found: _SplitSubject, split: Any) -> TemplateResult:
-    """The shared table over whichever subject was resolved: one or all four
-    splits, each split's rows, and the notes that qualify them."""
-    if split in _STARTER_BENCH_SIDES:
-        split = "starter_bench"
-    kinds = [split] if split else [k for k in SPLIT_KINDS if found.alias == "p" or k != "starter_bench"]
-    splits = {kind: _split_rows(con, found.base, found.params, found.alias, found.line, kind) for kind in kinds}
-    label = found.label
-    rows: list[tuple[str, list[str]]] = []
-    for kind in kinds:
-        if rows:
-            rows.append(("", []))
-        rows += [(_split_label(kind, entry), _split_cells(entry, found.line)) for entry in splits[kind]]
-    what = _SPLIT_TITLES[split] if split else "splits"
-    notes = []
-    if found.alias == "p":
-        notes.append(note("definition", "Played means he appeared in the game, and W-L is his team's record in those games.", term="played"))
-    if "month" in kinds:
-        notes.append(note("definition", "Months go by the US Eastern date of the game.", term="months_eastern"))
-    headline = f"{found.subject}, {what}, {label} ({found.counted}):"
-    answer = _table(headline, ["G", "W-L", *(h for _, h, _ in found.line)], rows)
-    notes += [remark.strip() for remark in (found.floor_note, found.caveat) if remark]
-    answer += "\n" + " ".join(notes)
-    return TemplateResult(data={**found.data, "span": label, "games": found.games, "splits": splits, "headline": headline.rstrip(":"), "notes": notes}, answer=answer.strip())
-
-
-@dataclass(frozen=True)
-class _SplitSubject:
-    """What player_splits divides - a player's own games or a team's - with
-    the SQL already scoped and the label pieces ready for the shared table
-    player_splits builds from either.
-
-    .. versionchanged:: 4.4.0
-       Carries ``label``/``floor_note`` as plain strings rather than the
-       player branch's ``_Scope`` object: the team branch now settles its span
-       as a ``_Span`` (step 3, C4), which has neither ``.label()`` nor
-       ``.floor_note()`` - and this table only ever needed the two strings,
-       never the scope itself, so each branch computes them off whichever
-       object it holds and this stays free of both types.
-    """
-
-    label: str
-    floor_note: str
-    base: str
-    params: Params
-    games: int
-    first: int | None
-    last: int | None
-    subject: str
-    alias: str
-    line: tuple[tuple[str, str, str], ...]
-    counted: str
-    data: dict[str, Any]
-    caveat: str
-
-
-def _player_splits_narrowing_emptied(con: duckdb.DuckDBPyConnection, narrowed: Narrowed) -> bool:
-    """Whether the player has games under the base clauses alone - so it is
-    the narrowing (an opponent, a condition, a venue) that left none, and
-    the answer should name it rather than the span."""
-    if not narrowed.extra:
-        return False
-    where, params = narrowed.clauses(narrowed=False, rebuilt=box_source(con).rebuilt)
-    row = con.execute(f"SELECT COUNT(*) {_PLAYER_GAMES} WHERE {where}", params).fetchone()
-    return bool(row and row[0])
-
-
-def _player_splits_from(
-    con: duckdb.DuckDBPyConnection,
-    scope: Scope,
-    player: Entity,
-    narrowed: Narrowed,
-    covered: _Scope,
-    team: Entity | None,
-    venue: str | None,
-    opponent: Entity | None,
-    span: _Span | None = None,
-) -> _SplitSubject | TemplateResult:
-    """A player's splits over ``narrowed`` - his games already settled and
-    narrowed by the shared steps, whichever caller settled them: the
-    template (:func:`_player_splits_player`, through ``condition_player``) or
-    the compiler's presenter (``compose.present._present_player_splits``,
-    through ``compile_query``). The rows as the relation renders them
-    (``games_subquery``), the totals, the label and the caveats (#228).
-
-    .. versionadded:: 5.0.0
-    """
-    line = _player_splits_line(scope.stat, _PLAYER_LINE, alias="p")
-    base, base_params = games_subquery(narrowed, box_source(con))
-    games, first, last = _totals(con, base, base_params)
-    if not games:
-        if span is not None and _player_splits_narrowing_emptied(con, narrowed):
-            # The narrowing emptied the games, not the span: "steph curry
-            # record vs lebron" with no meeting this season said "listed in
-            # 43 box scores but did not play in any of them" - a confident
-            # refusal naming the wrong missing fact (AGENTS.md's mirror
-            # image). The relation's own sentence names the narrowing.
-            message = _no_narrowed_games(con, player, span, narrowed, rebuilt=box_source(con).rebuilt)
-            return TemplateResult(data={"player": player.name, "team": team.name if team else None, "span": covered.label(), "games": 0, "message": message}, answer=message)
-        return _no_games(con, player, covered, team)
-    if scope.season_n and first is not None and first == last and covered.season != first:
-        # An ordinal season ("his 18th season") is not a year until the player
-        # is known, so `covered` - built before condition_player resolved
-        # him - could not carry it; the narrowed rows just settled it, and the
-        # label has to agree with what they actually cover rather than with
-        # the "current season" `covered` defaulted to.
-        covered = replace(covered, season=int(first))
-    subject_text = player.name + (f" for the {team.name}" if team else "") + narrowed.filters()
-    alias, counted = "p", f"{games} game{'s' if games != 1 else ''} he played"
-    data: dict[str, Any] = {
-        "player": player.name,
-        "team": team.name if team else None,
-        "venue": venue,
-        "opponent": opponent.name if opponent else None,
-        "without": [mate.name for mate in narrowed.without],
-        "started": narrowed.started,
-        "measures": list(narrowed.measures),
-        "series_game": narrowed.series_game,
-    }
-    caveat = _unseen_note(_unseen(con, covered, base, base_params, box_source(con)))
-    return _SplitSubject(covered.label(first, last), covered.floor_note(first), base, base_params, games, first, last, subject_text, alias, line, counted, data, caveat)
-
-
-#: A team's games under a condition template, over the relation
-#: (:data:`~association.query.team_games.TEAM_GAMES_SQL`) joined to
-#: ``team_box_stats`` for the box-score columns the relation itself does not
-#: carry (``_TEAM_LINE``'s rebounds/assists/threes/shooting) - ``won``,
-#: ``team_score`` and ``opponent_score`` are already the relation's own
-#: columns, under these same names, so they need no join and no alias here.
-_TEAM_SPLIT_JOIN = " JOIN team_box_stats tbs ON tbs.event_id = tg.event_id AND tbs.season = tg.season AND tbs.team_id = tg.team_id"
-_TEAM_SPLIT_SELECT: tuple[str, ...] = (
-    "tg.season",
-    "tg.eastern_date AS day",
-    "tg.side AS home_away",
-    "tg.won",
-    "tg.team_score",
-    "tg.opponent_score",
-    "tbs.offensiveRebounds",
-    "tbs.defensiveRebounds",
-    "tbs.assists",
-    "tbs.threePointFieldGoalsMade",
-    "tbs.fieldGoalsMade",
-    "tbs.fieldGoalsAttempted",
-)
-
-
-def _player_splits_team(con: duckdb.DuckDBPyConnection, scope: Scope, team: Entity, split: Any, opponent: Any) -> _SplitSubject | TemplateResult:
-    """A named team's own games, with no player named, narrowed to an
-    opponent and/or a venue the same way :func:`common.team_games` narrows
-    every other team-facing template - a hand-rolled clause of its own no
-    longer, since step 3, C4 put this branch on the team-games relation.
-
-    .. versionchanged:: 4.4.0
-       Ported off ``conditions._team_games`` onto the team-games relation
-       (step 3, C4): a postseason before 1993-94 is now selected by the
-       calendar year it was played in, not ESPN's own-year label, so the
-       pre-1994 refusal that used to run here no longer applies, and a career
-       span now reaches its real 1989 floor instead of stopping at 1994 - see
-       CHANGES.md for the moved cases.
-    """
-    if split == "starter_bench" or split in _STARTER_BENCH_SIDES:
-        # "Bench scoring" is a sum over a team's players - a different
-        # question from any this template answers. True of one named half as
-        # much as of the category.
-        raise TemplateUnsupported("a team has no starter/bench split of its own")
-    line = _player_splits_line(scope.stat, _TEAM_LINE, alias="t")
-    span = _span_of(scope.span, scope.season, scope.season_type or 2, "games", since=scope.since, until=scope.until)
-    narrowed = team_games(con, team, span, scope, opponent=opponent)
-    if isinstance(narrowed, TemplateResult):
-        return narrowed
-    # A split, a record, a run: read over every game in the span (common.whole_span).
-    whole_span(narrowed)
-    base, params = team_aggregate_sql(narrowed, list(_TEAM_SPLIT_SELECT), join=_TEAM_SPLIT_JOIN)
-    games, first, last = _team_season_range(con, base, params, span)
-    if not games:
-        return _condition_team_no_games(con, team, span, narrowed)
-    subject, alias, counted = f"The {team.name}" + narrowed.filters(), "t", f"{games} game{'s' if games != 1 else ''}"
-    data: dict[str, Any] = {"player": None, "team": team.name, "venue": narrowed.venue, "opponent": narrowed.opponent.name if narrowed.opponent else None}
-    # The score of a game with no box score is still on record, but its
-    # team box stats are NULL - averaged over the rest, and said so.
-    blank = con.execute(f"SELECT COUNT(*) FILTER (WHERE fieldGoalsAttempted IS NULL) FROM ({base})", params).fetchone()
-    blanks = int(blank[0]) if blank else 0
-    said = f" Rebounds, assists, 3-pointers and FG% are missing from {blanks} of those games' box scores and are averaged over the rest." if blanks else ""
-    caveat = note("stat_blank", said, games=blanks, columns=["rebounds", "assists", "threes", "fg_pct"])
-    return _SplitSubject(_team_span_label(span, first, last), _team_span_floor_note(span, first), base, params, games, first, last, subject, alias, line, counted, data, caveat)
 
 
 @dataclass
@@ -1109,7 +794,7 @@ def _record_when_team_unseen(con: duckdb.DuckDBPyConnection, narrowed: TeamNarro
 
 
 def _record_when_team_unseen_note(count: int, unit: str, stat: Any) -> str:
-    """The team counterpart to conditions._unseen_note: how many of the
+    """The team counterpart to the player branches' ``games_unseen`` note (``compose.say``): how many of the
     team's games in this span carry no usable figure for this stat at all, so
     they sit in neither row. Not shown for `points`, which reads the game's
     own score and always has one."""

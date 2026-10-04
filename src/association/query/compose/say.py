@@ -20,7 +20,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from association.query.conditions import _margin, _table, _win_pct
+from association.query.conditions import _SPLIT_TITLES, _margin, _split_cells, _split_label, _table, _win_pct
 from association.query.notes import Note, note
 from association.query.player_games import _joined
 from association.query.result import Result, Rows
@@ -42,6 +42,10 @@ def _say_window_short(facts: dict[str, Any], narrowing: str) -> str:
 
 
 def _say_definition(facts: dict[str, Any]) -> str:
+    if facts.get("term") == "played":
+        return "Played means he appeared in the game, and W-L is his team's record in those games."
+    if facts.get("term") == "months_eastern":
+        return "Months go by the US Eastern date of the game."
     if facts.get("term") == "pool":
         return f"Over the {facts['games']} games he played; a game he missed is in neither row."
     if facts.get("term") != "without":
@@ -66,6 +70,8 @@ def _say_games_unseen(facts: dict[str, Any]) -> str:
 
 
 def _say_stat_blank(facts: dict[str, Any]) -> str:
+    if "columns" in facts:
+        return f" Rebounds, assists, 3-pointers and FG% are missing from {facts['games']} of those games' box scores and are averaged over the rest."
     unit = _unit(facts["stat"])
     return f" {facts['games']} of his games in that span have no {unit} figure on record, so they are in neither row."
 
@@ -314,6 +320,8 @@ def say(result: Result) -> TemplateResult:
     """
     if result.grouped is not None and result.grouped.by == "threshold":
         return say_record_when(result)
+    if result.grouped is not None and result.grouped.by == "split":
+        return say_splits(result)
     return say_team_log(result) if result.relation == "team" else say_player_log(result)
 
 
@@ -353,3 +361,43 @@ def say_record_when(result: Result) -> TemplateResult:
         "notes": [trailer],
     }
     return TemplateResult(data=data, answer=f"{table}\n{trailer}")
+
+
+# --- splits ----------------------------------------------------------------------------
+
+
+def say_splits(result: Result) -> TemplateResult:
+    """A player's or a team's splits, worded: the shared table over whichever
+    subject was read - one or all four splits, each split's rows under its
+    group label, a blank line between splits - and the notes that qualify
+    them, in the retired template's order: what the words mean, the floor,
+    the caveat.
+
+    .. versionadded:: 5.0.0
+    """
+    groups = result.grouped
+    assert groups is not None and result.span.phrase is not None
+    facts = result.facts
+    split, kinds, counted = facts["split"], list(facts["kinds"]), facts["counted"]
+    line = [(name, header, "") for name, header in facts["line"]]
+    by_kind: dict[str, list[dict[str, Any]]] = {kind: [] for kind in kinds}
+    for row in groups.rows:
+        by_kind[row["split"]].append({k: v for k, v in row.items() if k != "split"})
+    rows: list[tuple[str, list[str]]] = []
+    for kind in kinds:
+        if rows:
+            rows.append(("", []))
+        rows += [(_split_label(kind, entry), _split_cells(entry, line)) for entry in by_kind[kind]]
+    what = _SPLIT_TITLES[split] if split else "splits"
+    subject = result.subject + (f" for the {facts['for_team']}" if facts.get("for_team") else "") + result.narrowing.phrase
+    headline = f"{subject}, {what}, {result.span.phrase} ({counted}):"
+    answer = _table(headline, ["G", "W-L", *(header for _, header, _ in line)], rows)
+    said = list(zip(result.notes, _said(result), strict=True))
+    notes = (
+        [text for each, text in said if each.kind == "definition"]
+        + [text.strip() for each, text in said if each.kind == "floor"]
+        + [text.strip() for each, text in said if each.kind in ("games_unseen", "stat_blank")]
+    )
+    answer += "\n" + " ".join(notes)
+    data = {**facts["about"], "span": result.span.phrase, "games": facts["games"], "splits": by_kind, "headline": headline.rstrip(":"), "notes": notes}
+    return TemplateResult(data=data, answer=answer.strip())

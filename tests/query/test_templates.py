@@ -23,13 +23,13 @@ from association.query.compose.present import (
     STATED_SCOPING,
     _present_period_split,
     _present_player_matchup,
-    _present_player_splits,
     _present_player_stat,
     _present_player_stat_season_line,
     _present_streak,
     _present_team_streak,
 )
 from association.query.compose.records import read_record_when
+from association.query.compose.splits import _player_splits, _team_splits, read_player_splits, read_team_splits
 from association.query.compose.team import TeamQuery, _compile_team_run, run_team
 from association.query.entities import MAX_CANDIDATES, Availability, Entity, collect_name_readings, resolve_player
 from association.query.metrics import LEADERBOARD_METRICS, PER_GAME_MIN_GAMES, PER_GAME_MIN_POSTSEASON_GAMES
@@ -5919,13 +5919,10 @@ def test_templates_on_the_relation_do_not_narrow_it_themselves() -> None:
         "tg.eastern_date = ?",
     )
     from association.query.templates.splits import (
-        _player_splits_from,
-        _player_splits_team,
         _record_when_team_answer,
         _streak_league_team_narrowed,
         _streak_player_answer,
         _streak_team_answer,
-        team_splits,
     )
 
     readers: dict[str, list[Callable[..., Any]]] = {}
@@ -5935,7 +5932,7 @@ def test_templates_on_the_relation_do_not_narrow_it_themselves() -> None:
     # the same way.
     readers["record_when"] = [read_record_when, _record_when_team_answer]
     readers["period_split"] = [_present_period_split, _period_split_from, _period_split_rows, _period_split_rows_from, _period_split_empty, _period_split_cross_season_redirect]
-    readers["player_splits"] = [_present_player_splits, _player_splits_from, _player_splits_team, team_splits]
+    readers["player_splits"] = [read_player_splits, read_team_splits, _player_splits, _team_splits]
     readers["game_log"] = [read_team_log, read_player_log, _player_log, _player_log_mixed, _team_log, _team_log_mixed]
     readers["player_stat"] = [_present_player_stat, _present_player_stat_season_line, _box_score_player_stat, _player_stat_season_line, _player_stat_season_line_subject]
     # streak's template is retired too (the `run` shape): the compiler's

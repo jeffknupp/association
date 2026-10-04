@@ -51,6 +51,7 @@ from .say import say
 from .sentence import _span_phrase
 from .sentence import sentence as _sentence
 from .sentence import team_sentence as _team_sentence
+from .splits import read_player_splits, read_team_splits
 from .team import TeamQuery, TeamResult, run_team
 
 if TYPE_CHECKING:
@@ -240,6 +241,19 @@ def _read_ported(con: duckdb.DuckDBPyConnection, intent: str, query: Query) -> T
         return _read_log(lambda: read_player_log(con, query, stated=STATED_SCOPING[intent]))
     if intent == "record_when" and query.skeleton == "scalar":
         return _read_log(lambda: read_record_when(con, query, stated=STATED_SCOPING["record_when"]))
+    if intent == "player_splits" and query.skeleton == "grouped":
+        return _read_log(lambda: read_player_splits(con, query, stated=STATED_SCOPING["player_splits"]))
+    return None
+
+
+def _read_ported_team(con: duckdb.DuckDBPyConnection, intent: str, query: TeamQuery) -> TemplateResult | None:
+    """The team shapes Phase 2 has ported: a team's log and a team's splits,
+    read into a Result and said by the sayer. ``None`` where the point is
+    not one of them, or its words do not say it."""
+    if intent == "game_log" and query.shape == "rows":
+        return _read_log(lambda: read_team_log(con, query, stated=STATED_SCOPING["game_log"]))
+    if intent == "player_splits" and query.shape == "grouped":
+        return _read_log(lambda: read_team_splits(con, query, stated=STATED_SCOPING["player_splits"]))
     return None
 
 
@@ -259,13 +273,9 @@ def _answer_point(
         if trace is not None:
             trace(point)
         if isinstance(query, TeamQuery):
-            if intent == "game_log" and query.shape == "rows":
-                # The team's log: read into a Result, said by the sayer
-                # (Phase 2, step 0).
-                team_query = query
-                log = _read_log(lambda: read_team_log(ctx.con, team_query, stated=STATED_SCOPING["game_log"]))
-                if log is not None:
-                    return log
+            ported_team = _read_ported_team(ctx.con, intent, query)
+            if ported_team is not None:
+                return ported_team
             # A team's record above and below its own line is said by
             # record_when's own team reader (compose.present.present_team).
             own_team = present_team(ctx.con, intent, query)
