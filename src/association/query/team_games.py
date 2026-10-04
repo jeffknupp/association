@@ -377,7 +377,7 @@ _TEAM_SERIES_GAMES = (
 #   team-games, without them 98.4%.
 # - points are the linescore's, never the shots': it is ESPN's own official
 #   per-period score, where the shots' sum agrees with it in 76.5-99% of
-#   team-quarters by season (`templates.games.PERIOD_RECONCILIATION`).
+#   team-quarters by season (`player_games.PERIOD_RECONCILIATION`).
 TEAM_PERIOD_COLUMNS: tuple[str, ...] = (
     "points",
     "fieldGoalsMade",

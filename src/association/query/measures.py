@@ -446,7 +446,7 @@ PERIOD_RATE_STATS: dict[str, str] = {
     "ft_pct": "ft_pct",
 }
 """A ``stat`` naming a shooting percentage - the normalizer's spelling or the
-compiler's - mapped to its :data:`PERIOD_RATES` key. A two-point percentage,
+compiler's - mapped to its :data:`~association.query.player_games.PERIOD_RATES` key. A two-point percentage,
 TS% and eFG% are not here: nothing measures them by period yet, and a
 question asking for one is refused naming what is.
 

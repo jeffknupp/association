@@ -65,14 +65,14 @@ from .common import (
 # window - goes through the ONE shared relation reader,
 # `common.scoped_games` + `player_games.games_subquery` (`_shot_narrowed_rows`
 # below). There is no template-local narrowing left to write: the window
-# itself moved to `common.scoped_games` (`_relation_window`) so every
+# itself moved to `common.scoped_games` (`relation_window`) so every
 # template on the relation gets it, not just these two.
 
 
 def _shots_windowed(scope: Scope) -> bool:
     """Whether ``order``/``limit`` narrows this question to a window of
     games - the same reading :func:`common.scoped_games`'s own
-    ``_relation_window`` applies inside the relation. Checked here only to
+    ``relation_window`` applies inside the relation. Checked here only to
     decide whether the relation is needed at all, and whether a career span
     conflicts with a window it has no single "last N" for.
 

@@ -34,14 +34,13 @@ from association.query.compose.team import TeamQuery, _compile_team_run, run_tea
 from association.query.entities import MAX_CANDIDATES, Availability, Entity, collect_name_readings, resolve_player
 from association.query.metrics import LEADERBOARD_METRICS, PER_GAME_MIN_GAMES, PER_GAME_MIN_POSTSEASON_GAMES
 from association.query.parse import with_point
-from association.query.player_games import PERIOD_COLUMNS
+from association.query.player_games import PERIOD_COLUMNS, PERIOD_RATES
 from association.query.reading import Reading, Scope
 from association.query.shotchart import SHOT_AVAILABILITY
 from association.query.subject import Subject
 from association.query.templates.common import HONORED_SCOPING, SCOPING_SLOTS, TemplateContext, TemplateResult, TemplateUnsupported, check_scope, scoped_player, unhonored_scoping
 from association.query.templates.games import (
     PERIOD_RATE_STATS,
-    PERIOD_RATES,
     _period_split_cross_season_redirect,
     _period_split_empty,
     _period_split_from,
@@ -2657,7 +2656,7 @@ def test_team_quarter_points_reads_a_bare_limit_as_the_newest_games(tq_con: Temp
     """The router drops `order` and keeps `limit` on "last N games" phrasings
     (measured on the shot templates, four runs, three builds), so the team
     relation reads a bare limit the way the player relation does - through
-    the one `_relation_window` rule - rather than answering the whole season."""
+    the one `relation_window` rule - rather than answering the whole season."""
     result = team_quarter_points(tq_con, Reading.from_slots({"team": "Knicks", "period": 1, "season": current_season(), "limit": 2}))
     assert len(result.data["games"]) == 2 and "last 2 games" in (result.answer or "")
 

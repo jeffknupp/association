@@ -25,7 +25,20 @@ from ..entities import Entity, resolve_team
 from ..leaderboard import resolve_metric
 from ..metrics import PER_GAME_MIN_GAMES, PER_GAME_MIN_POSTSEASON_GAMES
 from ..notes import decided, note
-from ..player_games import PERIOD_AGREEMENT, PERIOD_COLUMNS, PERIOD_PLAYS_COLUMNS, REGULATION_QUARTERS, _joined, grouped_sql, rows_sql
+from ..player_games import (
+    PERIOD_AGREEMENT,
+    PERIOD_COLUMNS,
+    PERIOD_PLAYS_COLUMNS,
+    PERIOD_RATES,
+    PERIOD_RECONCILIATION,
+    PERIOD_REFUSE_BELOW,
+    REGULATION_QUARTERS,
+    _joined,
+    grouped_sql,
+    period_columns,
+    period_rate,
+    rows_sql,
+)
 from ..shotchart import UNSEPARABLE_SHOT_VALUES
 from ..team_games import TEAM_PERIOD_AGREEMENT, TEAM_PERIOD_COLUMNS, TeamNarrowed
 from ..team_games import games_subquery as team_games_subquery
@@ -43,7 +56,6 @@ from .common import (
     _no_games,
     _period,
     _player_relation_season_type,
-    _relation_window,
     _resolved_team,
     _slot_season,
     _Span,
@@ -53,6 +65,7 @@ from .common import (
     league_games,
     measure_filters,
     period_narrowing,
+    relation_window,
     scoped_games,
     scoped_team,
     team_games,
@@ -587,7 +600,7 @@ def _team_quarter_points_rebuilt(team: Entity, games: list[dict[str, Any]], seas
     """
     if measure == "points":
         return games, ""
-    columns = _period_split_columns(measure)
+    columns = period_columns(measure)
     reached = [(g, season) for g, season in zip(games, seasons, strict=True) if g["points"] is not None]
     known = [(g, season) for g, season in reached if all(g[column] is not None for column in columns)]
     # A rate is as weak as the weaker of the two columns it divides.
@@ -635,7 +648,7 @@ def _team_quarter_points_rebuilt_note(measure: str, weak: dict[int, float | None
         said = ", ".join(f"{pct:.1f}% of the time in {season}" for season, pct in listed)
         sentence = f"Rebuilt from play-by-play rather than an official per-quarter box score: a team-game's {noun} rebuilt this way match its box score {said} - treat a single game as approximate."
         seasons, pcts = [season for season, _ in listed], [pct for _, pct in listed]
-        notes.append(note("rebuilt_agreement", sentence, seasons=seasons, pct=pcts, columns=list(_period_split_columns(measure)), stat=measure, what="team_period_rebuilt"))
+        notes.append(note("rebuilt_agreement", sentence, seasons=seasons, pct=pcts, columns=list(period_columns(measure)), stat=measure, what="team_period_rebuilt"))
     return " ".join(f"({n})" for n in notes)
 
 
@@ -679,7 +692,7 @@ def _team_quarter_points_games(con: duckdb.DuckDBPyConnection, narrowed: TeamNar
     if narrowed.periods is None or (measure not in TEAM_PERIOD_COLUMNS and measure not in PERIOD_RATES):  # both set by the caller, in code
         raise ValueError(f"a period-narrowed read of a period column, got periods={narrowed.periods!r} measure={measure!r}")
     base, params = team_games_subquery(narrowed)
-    columns = _period_split_columns(measure)
+    columns = period_columns(measure)
     sql = f"""
         SELECT qp.eastern_date, qp.points, {", ".join(f"qp.{column}" for column in columns)},
                {season_name_sql("qp.opponent_id", "qp.season", "ot.display_name")} AS opponent,
@@ -699,7 +712,7 @@ def _team_quarter_points_games(con: duckdb.DuckDBPyConnection, narrowed: TeamNar
         if measure in PERIOD_RATES:
             # The game's own percentage, None where nothing was attempted
             # (or nothing was rebuilt - the caller reads the columns).
-            game[measure] = _period_split_rate([game], measure)[2] if all(game[column] is not None for column in columns) else None
+            game[measure] = period_rate([game], measure)[2] if all(game[column] is not None for column in columns) else None
         games.append(game)
         seasons.append(int(season_year))
     return games, seasons
@@ -765,7 +778,7 @@ def _team_quarter_points_answer(
 
     .. versionchanged:: 5.0.0
        Takes ``measure`` - a column of the period's line, or a shooting
-       percentage over two of them (:data:`PERIOD_RATES`), said through
+       percentage over two of them (:data:`~association.query.player_games.PERIOD_RATES`), said through
        :func:`_team_quarter_points_rate_answer`.
     """
     if dateless_extra is None:
@@ -814,14 +827,14 @@ def _team_quarter_points_rate_answer(
 ) -> TemplateResult:
     """A team's shooting percentage in the period, over the games that
     reached it: its makes over its attempts, the ratio of the two sums
-    (:func:`_period_split_rate`), one game said its own way and many listed
+    (:func:`~association.query.player_games.period_rate`), one game said its own way and many listed
     beneath the figure as made-attempted. A "most"/"fewest" question is
     refused rather than ranked: one quarter's best percentage is whichever
     game went 2 for 2, and the extreme sentence would name it as a record.
 
     .. versionadded:: 5.0.0
     """
-    made, attempted, pct = _period_split_rate(played, measure)
+    made, attempted, pct = period_rate(played, measure)
     word = _PERIOD_RATE_WORDS[measure]
     data: dict[str, Any] = {
         "team": team.name,
@@ -907,38 +920,6 @@ def _phrase_team_quarter_points_stat(team: str, opponent: str | None, period_lab
     return "\n".join([header, *lines])
 
 
-# Per-period points are summed from `shot_chart`, and how closely that sums to
-# ESPN's own linescore is a property of the SEASON, not of the method. Measured
-# 2026-09-16 over every regular season, one row per team-quarter, against
-# `games.home_linescores`/`away_linescores`: the percentage of team-quarters
-# where the sum is EXACTLY the official figure. Only the seasons below 99% are
-# listed; the other nineteen run 99.2-100.0%.
-#
-# The two bad ones have known causes rather than being noise. 2002 cannot be
-# answered at all - it is `UNSEPARABLE_SHOT_VALUES`, so `SHOT_VALUE_SQL` is
-# NULL for 20,534 of its made shots and a sum over them is meaningless (4.9%).
-# 2016 is the season `fetch/repairs/reconstructed_box` also singles out: its scoring
-# plays carry types no rule can classify, and it reconciles at 76.5%, which is
-# one quarter in four.
-PERIOD_RECONCILIATION: dict[int, float] = {2003: 93.5, 2004: 95.7, 2005: 95.9, 2006: 95.8, 2013: 93.7, 2016: 76.5}
-"""Per-season agreement between summed shot values and ESPN's linescores, for
-the seasons under 99%. Read by :func:`period_split` to caveat or refuse.
-
-.. versionadded:: 2.2.0
-"""
-
-
-PERIOD_REFUSE_BELOW = 90.0
-"""Below this agreement a period answer is refused rather than caveated.
-
-Set between 2016's 76.5% and 2003's 93.5% deliberately: a season that is right
-19 times in 20 is worth answering with a caveat, and one that is wrong in a
-quarter of its quarters is not an answer at all.
-
-.. versionadded:: 2.2.0
-"""
-
-
 def _period_scope(scope: Scope, intent: str = "period_split") -> tuple[tuple[int, ...], str]:
     """The periods a question asks for, and how to name them in an answer -
     the relation's own reading (:func:`common.period_narrowing`), refused here
@@ -951,7 +932,7 @@ def _period_scope(scope: Scope, intent: str = "period_split") -> tuple[tuple[int
 
 def _period_split_reconciliation_refusal(season: int, measure: str = "points") -> TemplateResult | None:
     """:func:`_period_split_refusal` for ``season``, over
-    :data:`PERIOD_RECONCILIATION` - the one line :func:`period_split` runs
+    :data:`~association.query.player_games.PERIOD_RECONCILIATION` - the one line :func:`period_split` runs
     twice: once up front for a named season (before any name is resolved,
     same as always), and again, only with a ``date``, once the game it names
     is found and its real season known.
@@ -961,7 +942,7 @@ def _period_split_reconciliation_refusal(season: int, measure: str = "points") -
     .. versionchanged:: 5.0.0
        A rate is refused where either of the columns it divides is.
     """
-    for column in _period_split_columns(measure):
+    for column in period_columns(measure):
         refusal = _period_split_column_refusal(season, column)
         if refusal is not None:
             return refusal
@@ -1017,7 +998,7 @@ def _period_split_from(con: duckdb.DuckDBPyConnection, scope: Scope, player: Ent
     does not.
 
     Accuracy is a property of the season, and this says so rather than
-    averaging it away - see :data:`PERIOD_RECONCILIATION`. 2002 and 2016 are
+    averaging it away - see :data:`~association.query.player_games.PERIOD_RECONCILIATION`. 2002 and 2016 are
     refused outright (4.9% and 76.5%); 2003-2006 and 2013 are answered with
     the measured figure attached.
 
@@ -1104,11 +1085,11 @@ def period_leaderboard(ctx: TemplateContext, reading: Reading) -> TemplateResult
     here applies (:data:`association.query.metrics.PER_GAME_MIN_GAMES`, five
     in the postseason), and the answer says which it used.
 
-    **One season, and its measured accuracy.** :data:`PERIOD_RECONCILIATION`
+    **One season, and its measured accuracy.** :data:`~association.query.player_games.PERIOD_RECONCILIATION`
     (points) and :data:`~association.query.player_games.PERIOD_AGREEMENT`
     (every other column) are measured per season, so a ranking is of one
     season, refused where the stat's season agrees under
-    :data:`PERIOD_REFUSE_BELOW` and caveated where it is under 99%. An
+    :data:`~association.query.player_games.PERIOD_REFUSE_BELOW` and caveated where it is under 99%. An
     opponent and a venue narrow the pool (the relation applies them), with
     a qualifier that is a share of the games the narrowing leaves
     (:func:`_period_leaderboard_minimum`, #185); a range of seasons and a
@@ -1438,7 +1419,7 @@ def _period_split_avg_cell(average: float | None) -> str:
 
 def _period_split_refusal(season: int, agreement: float | None) -> TemplateResult | None:
     """A refusal for a season whose per-period points do not reliably match
-    ESPN's own quarter scores (see :data:`PERIOD_RECONCILIATION`), or None
+    ESPN's own quarter scores (see :data:`~association.query.player_games.PERIOD_RECONCILIATION`), or None
     for a season trusted at face value."""
     if season in UNSEPARABLE_SHOT_VALUES or (agreement is not None and agreement < PERIOD_REFUSE_BELOW):
         why = UNSEPARABLE_SHOT_VALUES.get(season) or f"its per-period points agree with ESPN's own quarter scores only {agreement:.0f}% of the time"
@@ -1658,7 +1639,7 @@ def _period_split_cross_season_redirect(
     """ "Last N games" with no season named is the newest N over his whole
     CAREER, not "this (defaulted) season alone" - the same reading a bare
     ``limit`` already gets everywhere else on the player relation
-    (``common._relation_window``). ``period_split`` cannot simply widen
+    (``common.relation_window``). ``period_split`` cannot simply widen
     ``span`` to "career" through the normal slot path
     (``common.RELATION_SCOPING_EXCLUDED["period_split"]``: the accuracy
     caveat is measured per season, so summing across several would mix
@@ -1677,7 +1658,7 @@ def _period_split_cross_season_redirect(
 
     Only when the season was never named at all (``span.defaulted``) and the
     question asked for a window (``order``/a bare ``limit``,
-    :func:`common._relation_window`) - a question that DID name a season
+    :func:`common.relation_window`) - a question that DID name a season
     keeps the plain "no games" refusal, because that is the correct answer.
     Returns the found games ONLY when they land in exactly one season:
     ``PERIOD_RECONCILIATION``'s own caveat is measured per season, so a
@@ -1687,7 +1668,7 @@ def _period_split_cross_season_redirect(
 
     .. versionadded:: 4.4.0
     """
-    window = _relation_window(scope)
+    window = relation_window(scope)
     if not span.defaulted or window is None or window[0] != "recent":
         return None
     _, count = window
@@ -1742,13 +1723,13 @@ def _period_split_header(
        Takes ``measure`` - any :data:`~association.query.player_games.PERIOD_COLUMNS`
        column, said in its own word ("had 12 rebounds") - and a log that
        named no stat lists the period's whole line, the way a game log lists
-       a game's. A rate (:data:`PERIOD_RATES`) is said as its makes over
+       a game's. A rate (:data:`~association.query.player_games.PERIOD_RATES`) is said as its makes over
        its attempts ("shot 4 of 7 (57.1%) on 3-pointers"), with no average
        beside it: the percentage is the average.
     """
     plural = "game" if len(games) == 1 else "games"
     if measure in PERIOD_RATES:
-        made, attempted, pct = _period_split_rate(games, measure)
+        made, attempted, pct = period_rate(games, measure)
         did = _period_split_rate_said(made, attempted, pct, measure)
         header = f"{player.name} {did} in the {period_label} over {len(games)} {plural} of the {season_label}{vs}{at}."
     else:
@@ -1839,51 +1820,16 @@ _PERIOD_SPLIT_WORDS: dict[str, str] = {
     "defensiveRebounds": "defensive rebound",
 }
 
-PERIOD_RATES: dict[str, tuple[str, str]] = {
-    "fg_pct": ("fieldGoalsMade", "fieldGoalsAttempted"),
-    "three_pct": ("threePointFieldGoalsMade", "threePointFieldGoalsAttempted"),
-    "ft_pct": ("freeThrowsMade", "freeThrowsAttempted"),
-}
-"""A shooting percentage a period answer computes from the period's own makes
-and attempts - the ratio of the two sums over the games, never a mean of
-per-game rates - keyed by the compiler's own measure name
-(:data:`association.query.compose.core.RATES`), so the point the adapter plans
-with one compiles as it is. The makes and the attempts are both on the
-period's line (:data:`~association.query.player_games.PERIOD_COLUMNS`) and on
-the team's (:data:`~association.query.team_games.TEAM_PERIOD_COLUMNS`), which
-is what makes a period's percentage a ratio away rather than a new read.
-
-.. versionadded:: 5.0.0
-"""
-
-
 # How a rate is said: the percentage's own name, and what was shot.
 _PERIOD_RATE_WORDS: dict[str, str] = {"fg_pct": "field goal percentage", "three_pct": "3-point percentage", "ft_pct": "free throw percentage"}
 _PERIOD_RATE_SHOTS: dict[str, str] = {"fg_pct": "field goals", "three_pct": "3-pointers", "ft_pct": "free throws"}
-
-
-def _period_split_columns(measure: str) -> tuple[str, ...]:
-    """The period-line columns ``measure`` is read from: itself, or a rate's
-    makes and attempts - so a caveat or a refusal about a rate is about
-    both of the columns it divides."""
-    return PERIOD_RATES.get(measure, (measure,))
 
 
 def _period_split_columns_noun(measure: str) -> str:
     """ "rebounds", or for a rate the two columns it divides - "free throws
     and free throw attempts" - for a caveat that is about how those columns
     were rebuilt rather than about the percentage."""
-    return " and ".join(_period_split_noun(column, 2) for column in _period_split_columns(measure))
-
-
-def _period_split_rate(games: list[dict[str, Any]], measure: str) -> tuple[int, int, float | None]:
-    """A rate's makes, attempts and percentage over ``games`` - the ratio
-    of the sums, and None where nothing was attempted (no percentage is
-    a fact about zero attempts, not a zero)."""
-    made_column, attempted_column = PERIOD_RATES[measure]
-    made = sum(int(g[made_column]) for g in games)
-    attempted = sum(int(g[attempted_column]) for g in games)
-    return made, attempted, (made * 100.0 / attempted if attempted else None)
+    return " and ".join(_period_split_noun(column, 2) for column in period_columns(measure))
 
 
 def _period_split_rate_said(made: int, attempted: int, pct: float | None, measure: str) -> str:
@@ -1900,7 +1846,7 @@ def _period_split_figures(games: list[dict[str, Any]], measure: str) -> dict[str
     ``total``, its ``attempted``, and the percentage as ``average`` (None
     with no attempts)."""
     if measure in PERIOD_RATES:
-        made, attempted, pct = _period_split_rate(games, measure)
+        made, attempted, pct = period_rate(games, measure)
         return {"total": made, "attempted": attempted, "average": pct}
     total = sum(g[measure] for g in games)
     return {"total": total, "average": total / len(games)}
@@ -1910,7 +1856,7 @@ def _period_split_unread(games: list[dict[str, Any]], measure: str) -> TemplateR
     """A refusal where ``measure`` could not be rebuilt at all - a warehouse
     loaded without play-by-play leaves every plays column NULL, and summing
     NULLs as zeros would answer "no rebounds" for a man who had ten."""
-    if any(g[column] is None for g in games for column in _period_split_columns(measure)):
+    if any(g[column] is None for g in games for column in period_columns(measure)):
         message = f"Per-quarter {_period_split_columns_noun(measure)} cannot be answered here: they are rebuilt from play-by-play, and this warehouse holds none."
         return TemplateResult(data={"message": message}, answer=message)
     return None
@@ -1929,7 +1875,7 @@ def _period_split_games(rows: list[tuple[Any, ...]], measure: str = "points") ->
     games = [{"date": _eastern_date(d), "opponent": name, "home_away": side, **line, "line": line} for d, _game_season, side, name, line in rows]
     if measure in PERIOD_RATES:
         for g in games:
-            g[measure] = _period_split_rate([g], measure)[2] if all(g[column] is not None for column in PERIOD_RATES[measure]) else None
+            g[measure] = period_rate([g], measure)[2] if all(g[column] is not None for column in PERIOD_RATES[measure]) else None
     return games
 
 
@@ -1949,13 +1895,13 @@ def _period_split_caveat(season: int, agreement: float | None) -> str:
 def _period_split_measure_caveat(season: int, measure: str, *, full_line: bool = False) -> str:
     """The caveat a period answer carries for ``measure`` in ``season``:
     points by their per-period agreement with ESPN's own quarter scores
-    (:data:`PERIOD_RECONCILIATION`); any other column by how often a game's
+    (:data:`~association.query.player_games.PERIOD_RECONCILIATION`); any other column by how often a game's
     rebuilt figure, summed over its periods, equals its box score
     (:data:`~association.query.player_games.PERIOD_AGREEMENT`). A whole line
     names every column the season holds under 99%."""
     if measure == "points" and not full_line:
         return _period_split_caveat(season, PERIOD_RECONCILIATION.get(season))
-    columns = [column for column, _ in _PERIOD_SPLIT_LOG_LINE] if full_line else list(_period_split_columns(measure))
+    columns = [column for column, _ in _PERIOD_SPLIT_LOG_LINE] if full_line else list(period_columns(measure))
     weak = [(column, PERIOD_AGREEMENT[column][season]) for column in columns if season in PERIOD_AGREEMENT.get(column, {})]
     points = _period_split_caveat(season, PERIOD_RECONCILIATION.get(season)) if full_line else ""
     if not weak:

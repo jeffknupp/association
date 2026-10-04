@@ -200,7 +200,7 @@ SCOPING_SLOTS = frozenset(
 # N of the narrowed games - which the relation cuts after every row filter and
 # before whatever the template does with the rows, so "30-point games in his
 # last 10" counts inside the ten (step 3, C0's one skeleton-specific rule).
-# `scoped_games` sets it (`_relation_window`, below): a NAMED `order` wins
+# `scoped_games` sets it (`relation_window`, below): a NAMED `order` wins
 # outright, and a bare `limit` with no `order` still means the newest N - the
 # router's own traces for "Create a shot chart for Steph Curry's last two
 # games of the regular season" never emit `order` at all, only `limit`, so a
@@ -455,7 +455,7 @@ HONORED_SCOPING: dict[str, frozenset[str]] = {
     # `span` "career" by drawing (or averaging) every season on record rather
     # than the latest with data (shots._career_shot_note); `order` now honors
     # `limit` as a window of games rather than always exactly one
-    # (common._relation_window / the relation's own windowed read), which is
+    # (common.relation_window / the relation's own windowed read), which is
     # what fixes "his last two games" having drawn the whole season. No cell
     # is excluded - unlike period_split, a shot read has no reason a venue, an
     # opponent, a date or a box-score line on the games it draws from cannot
@@ -1575,7 +1575,7 @@ def _apply_situation[NarrowedT: (Narrowed, TeamNarrowed)](narrowed: NarrowedT, s
     )
 
 
-def _relation_window(scope: Scope) -> tuple[str, int] | None:
+def relation_window(scope: Scope) -> tuple[str, int] | None:
     """The WINDOW :func:`scoped_games` cuts the narrowed games to - the
     newest or oldest N, after every other filter
     (:attr:`association.query.player_games.Narrowed.window`) - or ``None``
@@ -1592,6 +1592,10 @@ def _relation_window(scope: Scope) -> tuple[str, int] | None:
     no other reading for one to collide with.
 
     .. versionadded:: 4.4.0
+
+    .. versionchanged:: 5.0.0
+       Public (was ``_relation_window``): the period reader cuts its
+       cross-season window by it (``compose.periods``).
     """
     order: str | None = scope.order
     if order is None:
@@ -1688,7 +1692,7 @@ def scoped_games(
 
     .. versionchanged:: 4.4.0
        Sets :attr:`Narrowed.window` from ``order``/``limit`` (step 3, C5) -
-       see :func:`_relation_window`. A no-op for a caller that reads its rows
+       see :func:`relation_window`. A no-op for a caller that reads its rows
        through :func:`association.query.player_games.rows_sql` directly
        (``game_log``, ``player_stat``, ``period_split``): that reader takes
        its own ``order``/``limit`` arguments and never consults ``.window``,
@@ -1739,7 +1743,7 @@ def scoped_games(
         refused = _apply_period_condition(con, narrowed, scope.period_condition)
         if refused is not None:
             return refused
-    narrowed.window = _relation_window(scope)
+    narrowed.window = relation_window(scope)
     return narrowed
 
 
@@ -1885,7 +1889,7 @@ def whole_span[NarrowedT: (Narrowed, TeamNarrowed)](narrowed: NarrowedT) -> Narr
     of them excludes ``order`` in :data:`RELATION_SCOPING_EXCLUDED` ("a
     limited number of recent games is game_log's question"). A bare ``limit``
     is the router's filler on those questions (``limit: 1`` beside "76ers
-    record when Maxey scores 20+"), and :func:`_relation_window` reads a bare
+    record when Maxey scores 20+"), and :func:`relation_window` reads a bare
     limit as the newest N for the templates that DO honor a window - so the
     skeleton that does not says so here, once, instead of the filler cutting a
     63-game record to one game. Measured on the step 3 golden set: three
@@ -2049,8 +2053,8 @@ def team_games(con: duckdb.DuckDBPyConnection, team: Entity, span: _Span, scope:
         # silently dropped) otherwise - see _apply_situation.
         _apply_situation(narrowed, scope.situation)
     # The same window rule as the player relation's - a named order, or a
-    # bare limit read as the newest N (see _relation_window).
-    narrowed.window = _relation_window(scope)
+    # bare limit read as the newest N (see relation_window).
+    narrowed.window = relation_window(scope)
     _team_games_apply_period(con, narrowed, scope)
     return narrowed
 

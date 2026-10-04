@@ -128,7 +128,7 @@ def _present_period_split(con: duckdb.DuckDBPyConnection, q: Query) -> TemplateR
     (``templates.games._period_split_from``). The template's own order is
     kept: a season whose per-period figures cannot be trusted is refused
     before any name is resolved (``_period_split_reconciliation_refusal``,
-    over :data:`~association.query.templates.games.PERIOD_RECONCILIATION`),
+    over :data:`~association.query.player_games.PERIOD_RECONCILIATION`),
     and again off the game a date names once it is found."""
     if q.skeleton == "grouped" and q.group == "period":
         return _present_period_by_quarter(con, q)

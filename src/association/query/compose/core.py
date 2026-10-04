@@ -46,7 +46,7 @@ from association.query.entities import Entity
 from association.query.measures import BOOLEAN_MEASURES as BOOLEAN_MEASURES
 from association.query.measures import GAME_COLUMNS
 from association.query.measures import LINE as LINE
-from association.query.player_games import PERIOD_COLUMNS, REBUILT_STATS, REGULATION_QUARTERS, Narrowed, aggregate_sql, games_subquery, grouped_sql, named, paired_rows_sql, rows_sql
+from association.query.player_games import PERIOD_COLUMNS, PERIOD_RATES, REBUILT_STATS, REGULATION_QUARTERS, Narrowed, aggregate_sql, games_subquery, grouped_sql, named, paired_rows_sql, rows_sql
 from association.query.reading import Scope
 from association.query.reading import Unsupported as Unsupported
 from association.query.templates.common import (
@@ -71,7 +71,7 @@ from association.query.templates.common import (
     scoped_player,
     span_of,
 )
-from association.query.templates.games import PERIOD_RATES, _team_slot_for_player
+from association.query.templates.games import _team_slot_for_player
 from association.query.templates.players import _seasons_on_record
 
 EASTERN = eastern_date_sql("g.date")

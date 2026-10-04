@@ -245,7 +245,7 @@ is refused (it is not in :data:`PERIOD_COLUMNS`).
 # a season of play-by-play with no shot values at all (UNSEPARABLE_SHOT_VALUES);
 # 2016's scoring plays carry the `Not Available` type `reconstructed_box`
 # records. Points are ALSO checked per period against ESPN's own linescores
-# (`templates.games.PERIOD_RECONCILIATION`), which is the stricter test and the
+# (`PERIOD_RECONCILIATION`, below), which is the stricter test and the
 # one a points answer is caveated by.
 PERIOD_AGREEMENT: dict[str, dict[int, float]] = {
     "points": {2002: 27.2, 2003: 93.7, 2004: 98.2, 2005: 97.7, 2006: 97.6, 2013: 97.4, 2016: 90.4},
@@ -272,6 +272,90 @@ column in a listed season says so, and refuses under 90%;
 
 .. versionadded:: 5.0.0
 """
+
+
+# Per-period points are summed from `shot_chart`, and how closely that sums to
+# ESPN's own linescore is a property of the SEASON, not of the method. Measured
+# 2026-09-16 over every regular season, one row per team-quarter, against
+# `games.home_linescores`/`away_linescores`: the percentage of team-quarters
+# where the sum is EXACTLY the official figure. Only the seasons below 99% are
+# listed; the other nineteen run 99.2-100.0%.
+#
+# The two bad ones have known causes rather than being noise. 2002 cannot be
+# answered at all - it is `UNSEPARABLE_SHOT_VALUES`, so `SHOT_VALUE_SQL` is
+# NULL for 20,534 of its made shots and a sum over them is meaningless (4.9%).
+# 2016 is the season `fetch/repairs/reconstructed_box` also singles out: its scoring
+# plays carry types no rule can classify, and it reconciles at 76.5%, which is
+# one quarter in four.
+PERIOD_RECONCILIATION: dict[int, float] = {2003: 93.5, 2004: 95.7, 2005: 95.9, 2006: 95.8, 2013: 93.7, 2016: 76.5}
+"""Per-season agreement between summed shot values and ESPN's linescores, for
+the seasons under 99%. Read by the period answers to caveat or refuse.
+
+.. versionadded:: 2.2.0
+
+.. versionchanged:: 5.0.0
+   Lives on the period relation; until Phase 2's step 1 it was
+   ``templates.games.PERIOD_RECONCILIATION``.
+"""
+
+
+PERIOD_REFUSE_BELOW = 90.0
+"""Below this agreement a period answer is refused rather than caveated.
+
+Set between 2016's 76.5% and 2003's 93.5% deliberately: a season that is right
+19 times in 20 is worth answering with a caveat, and one that is wrong in a
+quarter of its quarters is not an answer at all.
+
+.. versionadded:: 2.2.0
+
+.. versionchanged:: 5.0.0
+   Lives on the period relation (was ``templates.games.PERIOD_REFUSE_BELOW``).
+"""
+
+
+PERIOD_RATES: dict[str, tuple[str, str]] = {
+    "fg_pct": ("fieldGoalsMade", "fieldGoalsAttempted"),
+    "three_pct": ("threePointFieldGoalsMade", "threePointFieldGoalsAttempted"),
+    "ft_pct": ("freeThrowsMade", "freeThrowsAttempted"),
+}
+"""A shooting percentage a period answer computes from the period's own makes
+and attempts - the ratio of the two sums over the games, never a mean of
+per-game rates - keyed by the compiler's own measure name
+(:data:`association.query.compose.core.RATES`), so the point the reader plans
+with one compiles as it is. The makes and the attempts are both on the
+period's line (:data:`PERIOD_COLUMNS`) and on the team's
+(:data:`~association.query.team_games.TEAM_PERIOD_COLUMNS`), which is what
+makes a period's percentage a ratio away rather than a new read.
+
+.. versionadded:: 5.0.0
+
+.. versionchanged:: 5.0.0
+   Lives on the period relation (was ``templates.games.PERIOD_RATES``).
+"""
+
+
+def period_columns(measure: str) -> tuple[str, ...]:
+    """The period-line columns ``measure`` is read from: itself, or a rate's
+    makes and attempts (:data:`PERIOD_RATES`) - so a caveat or a refusal
+    about a rate is about both of the columns it divides.
+
+    .. versionadded:: 5.0.0
+    """
+    return PERIOD_RATES.get(measure, (measure,))
+
+
+def period_rate(games: list[dict[str, Any]], measure: str) -> tuple[int, int, float | None]:
+    """A rate's makes, attempts and percentage over ``games`` (each a mapping
+    holding the rate's two :data:`PERIOD_RATES` columns) - the ratio of the
+    sums, and None where nothing was attempted (no percentage is a fact
+    about zero attempts, not a zero).
+
+    .. versionadded:: 5.0.0
+    """
+    made_column, attempted_column = PERIOD_RATES[measure]
+    made = sum(int(g[made_column]) for g in games)
+    attempted = sum(int(g[attempted_column]) for g in games)
+    return made, attempted, (made * 100.0 / attempted if attempted else None)
 
 
 def period_line_sql(periods: tuple[int, ...] | None, games: str, *, plays: bool = True) -> str:
@@ -353,7 +437,7 @@ def _period_source(narrowed: Narrowed) -> tuple[str, list[Any]]:
     asking for a period's minutes is refused before this is read.
 
     Only games the shot table covers are kept - a game with no located shots
-    would otherwise contribute a confident zero (``_period_split_rows``'s own
+    would otherwise contribute a confident zero (the retired period template's own
     rule, now the relation's). The period line is summed over the games the
     base clauses (player, span, season type) select, never all 14 million
     plays.
