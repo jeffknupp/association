@@ -21,9 +21,11 @@ from __future__ import annotations
 from typing import Any
 
 from association.query.conditions import _SPLIT_TITLES, _margin, _split_cells, _split_label, _table, _win_pct
-from association.query.notes import Note, note
-from association.query.player_games import _joined
+from association.query.notes import Note, decided, note
+from association.query.player_games import PERIOD_LOG_COLUMNS, _joined, period_columns
+from association.query.reading import DEFAULT_GAME_LOG_LIMIT, _clamp_limit
 from association.query.result import Result, Rows, Scalar
+from association.query.shotchart import UNSEPARABLE_SHOT_VALUES
 from association.query.templates.common import PLAYER_STAT_COLUMNS, SEASON_TYPE_NAMES, STAT_LABELS, TemplateResult, count_games, format_value, season_label, season_phrase
 from association.query.templates.players import MADE_STAT_ATTEMPTS, SHOOTING_STATS
 
@@ -43,6 +45,8 @@ def _say_window_short(facts: dict[str, Any], narrowing: str) -> str:
 
 
 def _say_definition(facts: dict[str, Any]) -> str:
+    if facts.get("term") == "overtime_excluded":
+        return "Overtime is no quarter and is not counted."
     if facts.get("term") == "played":
         return "Played means he appeared in the game, and W-L is his team's record in those games."
     if facts.get("term") == "months_eastern":
@@ -111,6 +115,8 @@ def note_phrase(each: Note, *, narrowing: str = "") -> str:
         return _say_stat_blank(facts)
     if each.kind == "floor" and facts.get("table") == "box_scores":
         return _say_floor(facts)
+    if each.kind == "rebuilt_agreement" and facts.get("what") in ("period_points_from_shots", "period_rebuilt"):
+        return _say_period_agreement(facts)
     raise ValueError(f"no phrase for a {each.kind!r} note with {sorted(facts)}")
 
 
@@ -325,6 +331,10 @@ def say(result: Result) -> TemplateResult:
         return say_record_when(result)
     if result.grouped is not None and result.grouped.by == "split":
         return say_splits(result)
+    if result.grouped is not None and result.grouped.by == "period":
+        return say_period_by_quarter(result)
+    if result.rows is not None and "period" in result.facts:
+        return say_period_split(result)
     return say_team_log(result) if result.relation == "team" else say_player_log(result)
 
 
@@ -605,3 +615,316 @@ def say_player_stat(result: Result) -> TemplateResult:
         said.data["recent"] = [dict(g) for g in meetings.rows]
         said.answer = "\n".join([said.answer, *_player_stat_meetings(meetings)])
     return said
+
+
+# --- a player's quarter or half ------------------------------------------------------
+
+_PERIOD_WORDS: dict[str, str] = {
+    "fieldGoalsAttempted": "field goal attempt",
+    "threePointFieldGoalsAttempted": "3-point attempt",
+    "freeThrowsAttempted": "free throw attempt",
+    "offensiveRebounds": "offensive rebound",
+    "defensiveRebounds": "defensive rebound",
+}
+
+PERIOD_RATE_WORDS: dict[str, str] = {"fg_pct": "field goal percentage", "three_pct": "3-point percentage", "ft_pct": "free throw percentage"}
+"""A period rate's own name (:data:`~association.query.player_games.PERIOD_RATES`).
+
+.. versionadded:: 5.0.0
+"""
+
+PERIOD_RATE_SHOTS: dict[str, str] = {"fg_pct": "field goals", "three_pct": "3-pointers", "ft_pct": "free throws"}
+"""What a period rate's shots are called ("shot 4 of 7 on 3-pointers").
+
+.. versionadded:: 5.0.0
+"""
+
+
+def period_noun(measure: str, n: int) -> str:
+    """``"rebound"``/``"rebounds"`` - the word a period answer says a column
+    in; a rate's own name ("free throw percentage"), which has no plural.
+
+    .. versionadded:: 5.0.0
+    """
+    if measure in PERIOD_RATE_WORDS:
+        return PERIOD_RATE_WORDS[measure]
+    word = STAT_LABELS.get(measure) or _PERIOD_WORDS.get(measure, measure)
+    return word if n == 1 else f"{word}s"
+
+
+def period_columns_noun(measure: str) -> str:
+    """ "rebounds", or for a rate the two columns it divides - "free throws
+    and free throw attempts" - for a sentence about how those columns were
+    rebuilt rather than about the percentage.
+
+    .. versionadded:: 5.0.0
+    """
+    return " and ".join(period_noun(column, 2) for column in period_columns(measure))
+
+
+def period_rate_said(made: int, attempted: int, pct: float | None, measure: str) -> str:
+    """ "shot 4 of 7 (57.1%) on 3-pointers", or "attempted no free throws".
+
+    .. versionadded:: 5.0.0
+    """
+    shots = PERIOD_RATE_SHOTS[measure]
+    if pct is None:
+        return f"attempted no {shots}"
+    return f"shot {made} of {attempted} ({pct:.1f}%) on {shots}"
+
+
+def _say_period_agreement(facts: dict[str, Any]) -> str:
+    season = facts["season"]
+    if facts["what"] == "period_points_from_shots":
+        return (
+            f"(Summed from shot data rather than an official per-quarter box score. In {season} that sum matches ESPN's own "
+            f"quarter scores {facts['pct']:.0f}% of the time, so treat a single game as approximate.)"
+        )
+    said = ", ".join(f"{period_noun(column, 2)} {pct:.0f}%" for column, pct in zip(facts["columns"], facts["pct"], strict=True))
+    return (
+        f"(Rebuilt from play-by-play rather than an official per-quarter box score. In {season} a game's figures rebuilt this way match its box score "
+        f"this often: {said} - treat a single game as approximate.)"
+    )
+
+
+def period_caveat(notes: list[Note]) -> str:
+    """A period answer's agreement caveats (``player_games.period_agreement_notes``),
+    phrased and recorded, each on its own indented line - the text the answer
+    appends, empty where the season needs none.
+
+    .. versionadded:: 5.0.0
+    """
+    return "".join("\n  " + note(each.kind, note_phrase(each), **each.facts) for each in notes)
+
+
+def say_period_refusal(facts: dict[str, Any]) -> TemplateResult:
+    """The refusal for a season whose per-period figures cannot be trusted
+    (``player_games.period_distrust``'s facts): a shot's value the season
+    does not carry, points that disagree with ESPN's own quarter scores, or
+    a column whose rebuilt figure disagrees with the box score.
+
+    .. versionadded:: 5.0.0
+    """
+    season, column, agreement = facts["season"], facts["column"], facts["agreement"]
+    if facts["unseparable"]:
+        message = f"Per-quarter scoring cannot be answered for {season}: {UNSEPARABLE_SHOT_VALUES[season]}."
+    elif column == "points":
+        message = f"Per-quarter scoring cannot be answered for {season}: its per-period points agree with ESPN's own quarter scores only {agreement:.0f}% of the time."
+    else:
+        noun = period_noun(column, 2)
+        message = f"Per-quarter {noun} cannot be answered for {season}: rebuilt from play-by-play, a game's {noun} match its box score only {agreement:.0f}% of the time."
+    return TemplateResult(data={"season": season, "message": message}, answer=message)
+
+
+def say_period_unread(measure: str) -> TemplateResult:
+    """The refusal where a period's ``measure`` could not be rebuilt at all:
+    a warehouse loaded without play-by-play leaves every plays column NULL.
+
+    .. versionadded:: 5.0.0
+    """
+    message = f"Per-quarter {period_columns_noun(measure)} cannot be answered here: they are rebuilt from play-by-play, and this warehouse holds none."
+    return TemplateResult(data={"message": message}, answer=message)
+
+
+def _period_where_said(result: Result) -> str:
+    """What a period answer says it narrowed to, after the player and the
+    period - the venue, the starter/bench half, the teammates absent, the
+    lines on a box-score column, a single date, the game of a series - in
+    the words :meth:`~association.query.player_games.Narrowed.filters` uses
+    for the same narrowings. Said in the answer, like every other narrowing
+    here: a total over his starts, headed as though it covered every game,
+    is the silent narrowing ``check_scope`` exists to stop."""
+    facts, narrowing = result.facts, result.narrowing
+    venue, started, mates, measures = narrowing.venue, facts["started"], list(narrowing.without), list(facts["measures"])
+    said = f" at {'home' if venue == 'home' else 'away'}" if venue else ""
+    said += "" if started is None else (" as a starter" if started else " off the bench")
+    said += f" without {_joined(mates)}" if mates else ""
+    said += f" with {_joined(measures)}" if measures else ""
+    date = facts.get("date", result.span.date)
+    said += f" on {date}" if date else ""
+    # One opponent makes it "the" series, a whole postseason "each".
+    series_game = facts["series_game"]
+    said += f" in game {series_game} of {'the' if narrowing.opponent is not None else 'each'} series" if series_game is not None else ""
+    return said + "".join(f" {phrase}" for phrase in facts["also"])
+
+
+def _period_none_found(result: Result, season_label: str, vs: str, at: str) -> str:
+    """No games under the narrowing. A date names its own day (``at`` says
+    it), and no season was read for it: "No 2026 regular season games found
+    for Anthony Davis on 2015-01-10" named a season the date is not in."""
+    dated = result.facts.get("date", result.span.date)
+    return f"No games found for {result.subject}{vs}{at}." if dated else f"No {season_label} games found for {result.subject}{vs}{at}."
+
+
+def _period_about(result: Result) -> dict[str, Any]:
+    """The plain values a period answer's page renders from, before its games."""
+    return {
+        "player": result.subject,
+        **({"period": result.facts["period"]} if "period" in result.facts else {}),
+        "stat": result.facts["stat"],
+        "season": result.span.season,
+        "opponent": result.narrowing.opponent,
+        "venue": result.narrowing.venue,
+        "started": result.facts["started"],
+        "measures": list(result.facts["measures"]),
+    }
+
+
+# The period's whole line as a log shows it: each column's heading.
+_PERIOD_LOG_HEADINGS: tuple[str, ...] = ("PTS", "REB", "AST", "STL", "BLK", "TO", "PF")
+
+
+def _period_cell(value: Any) -> str:
+    return "-" if value is None else str(value)
+
+
+def _period_side(game: dict[str, Any]) -> str:
+    return f"{'vs' if game['home_away'] == 'home' else '@ '} {game['opponent'] or '?':<24}"
+
+
+def _period_log(games: list[dict[str, Any]], period_label: str, label: str, measure: str, *, full_line: bool) -> str:
+    """The log beneath a period answer: one column (the stat asked about),
+    or - where no stat was named - the period's whole line, with its field
+    goals and free throws as made-attempted, the way a box score prints them.
+    A column the warehouse cannot rebuild (no play-by-play) prints "-"."""
+    if measure in PERIOD_RATE_WORDS:
+        made_column, attempted_column = period_columns(measure)
+        rows = []
+        for g in games:
+            pct = "-" if g[measure] is None else f"{g[measure]:.1f}%"
+            rows.append(f"  {g['date']}  {_period_side(g)} {_period_cell(g[made_column])}-{_period_cell(g[attempted_column]):<4} {pct:>6}")
+        return f"  {period_label} {PERIOD_RATE_SHOTS[measure]} made-attempted, {label}:\n" + "\n".join(rows)
+    if not full_line:
+        rows = [f"  {g['date']}  {_period_side(g)} {_period_cell(g[measure]):>3}" for g in games]
+        return f"  {period_label} {period_noun(measure, 2)}, {label}:\n" + "\n".join(rows)
+    heading = f"  {'date':<10}  {'':<27} {'FG':>5} {'FT':>5} " + " ".join(f"{name:>3}" for name in _PERIOD_LOG_HEADINGS)
+    rows = []
+    for g in games:
+        line = g["line"]
+        fg = f"{_period_cell(line['fieldGoalsMade'])}-{_period_cell(line['fieldGoalsAttempted'])}"
+        ft = f"{_period_cell(line['freeThrowsMade'])}-{_period_cell(line['freeThrowsAttempted'])}"
+        figures = " ".join(f"{_period_cell(line[column]):>3}" for column in PERIOD_LOG_COLUMNS)
+        rows.append(f"  {g['date']}  {_period_side(g)} {fg:>5} {ft:>5} {figures}")
+    return f"  {period_label} line, {label}:\n{heading}\n" + "\n".join(rows)
+
+
+def _period_header(result: Result, games: list[dict[str, Any]], season_label: str, vs: str, at: str) -> str:
+    """The headline: one game's own wording when there is only one, the
+    recent-games log appended when the question asked for one ("log", "by
+    game", "each game"), or the plain season figure otherwise. The figure
+    stays over EVERY game; the log is the newest N (or the first N, for
+    ``order`` "first"), and says which."""
+    facts, summary = result.facts, result.rows.summary if result.rows is not None else {}
+    measure, period_label, subject = facts["stat"], facts["period"], result.subject
+    plural = "game" if len(games) == 1 else "games"
+    total = summary["total"]
+    if measure in PERIOD_RATE_WORDS:
+        did = period_rate_said(total, summary["attempted"], summary["average"], measure)
+        header = f"{subject} {did} in the {period_label} over {len(games)} {plural} of the {season_label}{vs}{at}."
+    else:
+        did = f"scored {total} points" if measure == "points" else f"had {total} {period_noun(measure, total)}"
+        header = f"{subject} {did} in the {period_label} over {len(games)} {plural} of the {season_label}{vs}{at}, averaging {summary['average']:.1f}."
+    if len(games) == 1:
+        g = games[0]
+        against = f"the {g['opponent']}" if g["opponent"] else "their opponent"
+        return f"{subject} {did} in the {period_label} {'vs' if g['home_away'] == 'home' else 'at'} {against} on {g['date']} ({season_label})."
+    if facts["per_game"]:
+        count = _clamp_limit(facts["limit"], default=DEFAULT_GAME_LOG_LIMIT)
+        earliest = facts["order"] == "first"
+        shown = games[:count] if earliest else games[-count:]
+        label = "every game" if len(shown) == len(games) else f"the {len(shown)} {'earliest' if earliest else 'most recent'}"
+        header += "\n" + _period_log(shown if earliest else list(reversed(shown)), period_label, label, measure, full_line=facts["full_line"])
+    return header
+
+
+def say_period_split(result: Result) -> TemplateResult:
+    """A player's figure in one quarter or half, worded: the heading over
+    every game (one game said its own way), the log beneath where one was
+    asked for, the season the games were found in when none were this
+    season, and the season's measured agreement.
+
+    .. versionadded:: 5.0.0
+    """
+    body = result.rows
+    assert body is not None and result.span.season is not None
+    season_label = season_phrase(result.span.season, result.span.season_type or 2)
+    vs = f" against the {result.narrowing.opponent}" if result.narrowing.opponent else ""
+    at = _period_where_said(result)
+    games = [dict(g) for g in body.rows]
+    data: dict[str, Any] = {**_period_about(result), "games": games, "games_played": len(games)}
+    if not games:
+        message = _period_none_found(result, season_label, vs, at)
+        return TemplateResult(data={**data, "message": message, "headline": message}, answer=message)
+    data |= dict(body.summary)
+    header = _period_header(result, games, season_label, vs, at)
+    fallback = result.facts["fallback"]
+    extra = None
+    if fallback is not None:
+        said = f"No games this season, so these are his most recent {len(games)}{at}, from the {season_label}."
+        extra = decided("season_fallback", said, field="season", chose=fallback["chose"], before=fallback["before"], games=fallback["games"], season_type=fallback["season_type"])
+    caveat = period_caveat(list(result.notes))
+    data["headline"] = header.split("\n")[0]
+    data["notes"] = [*([extra] if extra else []), *([caveat.strip()] if caveat else [])]
+    return TemplateResult(data=data, answer=header + (f"\n{extra}" if extra else "") + caveat)
+
+
+def _period_quarter_cells(values: list[str]) -> str:
+    return "".join(f"{value:>9}" for value in values[:-1]) + f"{values[-1]:>12}"
+
+
+def _period_quarter_table(result: Result, quarters: list[dict[str, Any]], season_label: str, vs: str, at: str) -> tuple[str, list[str]]:
+    """The four quarters' header and two-row table: per game and total (a
+    rate: percentage and made-attempted) in each quarter, then in
+    regulation - the four together."""
+    measure, games = result.facts["stat"], result.facts["games"]
+    heads = _period_quarter_cells([f"Q{q['quarter']}" for q in quarters] + ["regulation"])
+    if measure in PERIOD_RATE_WORDS:
+        made, attempted = sum(q["made"] for q in quarters), sum(q["attempted"] for q in quarters)
+
+        def _pct(pct: float | None) -> str:
+            return "-" if pct is None else f"{pct:.1f}%"
+
+        pct_row = _period_quarter_cells([_pct(q["pct"]) for q in quarters] + [_pct(made * 100.0 / attempted if attempted else None)])
+        made_row = _period_quarter_cells([f"{q['made']}-{q['attempted']}" for q in quarters] + [f"{made}-{attempted}"])
+        header = f"{result.subject}, {PERIOD_RATE_WORDS[measure]} by quarter in the {season_label}{vs}{at} ({games} games):"
+        return header, [f"  {'':<10}{heads}", f"  {'percentage':<10}{pct_row}", f"  {'made-att':<10}{made_row}"]
+
+    def _avg(average: float | None) -> str:
+        return "-" if average is None else f"{average:.1f}"
+
+    noun = "points" if measure == "points" else period_noun(measure, 2)
+    per_game = _period_quarter_cells([_avg(q["average"]) for q in quarters] + [_avg(sum(q["average"] or 0.0 for q in quarters))])
+    totals = _period_quarter_cells([str(q["total"]) for q in quarters] + [str(sum(q["total"] for q in quarters))])
+    header = f"{result.subject}, {noun} per game by quarter in the {season_label}{vs}{at} ({games} games):"
+    return header, [f"  {'':<10}{heads}", f"  {'per game':<10}{per_game}", f"  {'total':<10}{totals}"]
+
+
+def say_period_by_quarter(result: Result) -> TemplateResult:
+    """A player's four quarters side by side, worded: the header naming the
+    games (the same in every quarter, said once), the per-game and total
+    rows, that overtime is no quarter, and the season's measured agreement.
+
+    .. versionadded:: 5.0.0
+    """
+    groups = result.grouped
+    assert groups is not None and result.span.season is not None
+    facts = result.facts
+    season_label = season_phrase(result.span.season, result.span.season_type or 2)
+    vs = f" against the {result.narrowing.opponent}" if result.narrowing.opponent else ""
+    at = _period_where_said(result)
+    if facts["window"] is not None:
+        # The compiler's window cut these games (the same N in every
+        # quarter): `Narrowed.filters(windowed=True)`'s own phrase.
+        order, n = facts["window"]
+        at += f" over his {'last' if order == 'recent' else 'first'} {n} game{'s' if n != 1 else ''}"
+    quarters = [dict(row) for row in groups.rows]
+    data: dict[str, Any] = {**_period_about(result), "games_played": facts["games"], "quarters": quarters}
+    if not facts["games"]:
+        message = _period_none_found(result, season_label, vs, at)
+        return TemplateResult(data={**data, "message": message, "headline": message}, answer=message)
+    header, table = _period_quarter_table(result, quarters, season_label, vs, at)
+    overtime, *agreement = result.notes
+    said = note(overtime.kind, note_phrase(overtime), **overtime.facts)
+    caveat = period_caveat(agreement)
+    data |= {"headline": header.rstrip(":"), "notes": [said, *([caveat.strip()] if caveat else [])]}
+    return TemplateResult(data=data, answer="\n".join([header, *table, f"  {said}"]) + caveat)

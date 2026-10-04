@@ -2424,20 +2424,6 @@ those were found.
 - **Next step:** reproduce with an all-time by-month record; say which seasons the table starts from.
 - **GitHub:** #300
 
-### A period answer can apply a calendar narrowing or a companion condition without saying it
-- **Found:** 2026-09-30, the notes inventory for `ROADMAP-TYPES.md` (an Opus agent reading `011091f`; reported, not re-verified).
-- **Evidence:** the period sentence states venue, starter, teammates, line, date and series game (`templates/games.py:2208-2235`); `STATED_SCOPING` lets `situation` and `conditions` through for `period_split` (`compose/present.py:665`; `templates/common.py:293-294,205-206`). Medium confidence: needs a question that carries one.
-- **User sees:** a quarter's figure over fewer games than the sentence describes.
-- **Next step:** try "jokic first quarter points on back to backs" and a period question with a companion; add the phrase or step aside for the compiler's sentence.
-- **GitHub:** #301
-
-### A dated by-quarter answer takes its accuracy caveat from the wrong season
-- **Found:** 2026-09-30, the notes inventory for `ROADMAP-TYPES.md` (an Opus agent reading `011091f`; reported, not re-verified).
-- **Evidence:** with a date the refusal is skipped (`compose/present.py:231-234`) and the caveat reads `scope.season or current_season()` (`templates/games.py:2114,2149`), where `_period_split_from` re-reads the game's real season (`games.py:1814-1821`).
-- **User sees:** an agreement percentage for a season other than the game's.
-- **Next step:** reproduce with a by-quarter question on a 2019 date; pass the game's season.
-- **GitHub:** #302
-
 ### A league-wide compiled answer carries no box-score caveat
 - **Found:** 2026-09-30, the notes inventory for `ROADMAP-TYPES.md` (an Opus agent reading `011091f`; reported, not re-verified).
 - **Evidence:** `compose/core.py:899-900` reads the notes only for a named player; the `threshold_count` presenter does say them league-wide (`templates/players.py:259`).
@@ -2465,6 +2451,13 @@ those were found.
 - **User sees:** this season's players in their 15th year, where the best 15th seasons ever were asked for.
 - **Next step:** Jeff's call on the default (a `season_n` ranking with no season named reads every season); possibly known.
 - **GitHub:** #306
+
+### A player's quarter "over his last N games" answers his whole season when this season holds more than N
+- **Found:** 2026-10-04, porting `period_split` to a reader (`compose/periods.py`, Phase 2 step 1e), on the warehouse at `/home/jeff/code/association/nba.duckdb`.
+- **Evidence:** the point `{player: Giannis Antetokounmpo, period: 1, order: recent, limit: 5}` answers "Giannis Antetokounmpo scored 227 points in the 1st quarter over 36 games of the 2026 regular season, averaging 6.3." - before and after the port. The period read is every game of the span by design (`test_a_period_log_takes_the_end_of_the_season_the_question_asked_for`: "The header still answers the whole season either way"); a window only picks which games the log beneath shows, and with no "log"/"by game" in the question (`per_game` false) nothing shows them. The cross-season redirect (`_period_redirect`) DOES read the window, but only when this season holds no games at all - so "last 5 games as a starter" is 5 games for Zach Collins (no 2026 starts) and would be the whole season for anyone with starts.
+- **User sees:** a season figure for "last 5 games" - the count of games is in the sentence, so it is visible, but no wording reaches the five games.
+- **Next step:** Jeff's call, since the whole-season header is a tested decision: read the window (`relation_window`) as the games the figure is over, as the by-quarter read already does through the compiler ("over his last N games"), and say it in the header. Moves the answers of any recorded question with a window and more games than it in the season (none of the 19 today).
+- **Priority note:** P2 (misleading).
 
 ### A team's quarter over its last N games is refused as an unknown player: "display the first quarter scores for the Sixers' most recent 10 games" answers "No player found matching 'first quarter'"
 - **Found:** 2026-10-01, reading the subject once (ROADMAP Phase 1), in the stage snapshot of the 628 recorded questions at `7394ac5`; the answer is the same before and after that change.

@@ -74,8 +74,9 @@ this tree:
   presenter, scoping table or per-intent renderer.
   `tests/query/test_frozen_shapes.py` holds the 25 intents the reader can
   name, and since 2026-10-02 the 12 templates, the presenters (12 until
-  2026-10-03, 11 since the game log's went to a reader and a sayer) and the
-  team-only one, the 10 adapters, the 14 scoping declarations (by module
+  2026-10-03; the intents holding one are 8 since 2026-10-04, as the game
+  log, `record_when`, `player_splits` and `period_split` went to readers and
+  sayers) and the team-only one, the 10 adapters, the 14 scoping declarations (by module
   and name, read from the source; 12 until 2026-10-03, when the two tables
   of cells a reader refuses that its name pattern missed joined) and the
   page's 22 renderers: each
@@ -774,12 +775,13 @@ model's. Two things follow, and both matter when you add a shape:
   warehouse" holds it, with `compose.sentence`). `compose.answer` reads a
   rows-shaped `game_log` (and the `player_stat` window the retired template
   handed to the log) through them before any presenter runs, and so, since,
-  a player's record over a line, his splits and his line over the games a
-  narrowing sent the read to (`compose/records.py`, `splits.py`,
-  `stats.py`; the last a `Scalar` body read by the compiler's `line`
-  aggregate - each measure per game beside the sums the line is said
-  from); only the unnarrowed season line is still `player_stat`'s
-  presenter. Three rules the slice set, which every later slice follows:
+  a player's record over a line, his splits, his line over the games a
+  narrowing sent the read to and his quarter or half (`compose/records.py`,
+  `splits.py`, `stats.py`, `periods.py`; `stats.py`'s a `Scalar` body read
+  by the compiler's `line` aggregate - each measure per game beside the
+  sums the line is said from - and `periods.py`'s a `rows` read of the
+  period's line or a `grouped` read by `period`); only the unnarrowed
+  season line is still `player_stat`'s presenter. Three rules the slice set, which every later slice follows:
   - **A note is written as data and said once.** The reader builds
     `Note("window_short", {found, asked, ...})`; the sayer phrases it
     (`say.note_phrase`, ONE phrase per kind) and records it through
@@ -803,6 +805,17 @@ model's. Two things follow, and both matter when you add a shape:
     over: the narrowing's phrase (`Narrowing.phrase`, the relation's
     `filters()`), the span's `years`, and the "no games" sentence
     (`Result.empty`, from the shared `_no_narrowed_games`).
+  - **What the relation measures lives on the relation; what a sayer says
+    lives in the sayer - also where a template still shares it.** A
+    player's quarter or half (`compose/periods.py`, 2026-10-04) took its
+    data to `query/player_games.py` (`PERIOD_RECONCILIATION`,
+    `PERIOD_RATES`, `period_distrust` - why a season is refused, as facts
+    - and `period_agreement_notes` - its caveats, as notes) and its words
+    to `compose/say.py` (`period_noun`, `period_caveat`,
+    `say_period_refusal`); `period_leaderboard` and `team_quarter_points`,
+    which stay until slice (iv), read the same data and take the same
+    words through a call-time import, since `compose` imports the template
+    modules. No private alias is kept for a template.
   - **Proved identical, text and all.** 628 of 628 recorded questions and
     1,391 of 1,391 unit-test calls; the slice rewords nothing. The
     private-template-import ratchet GREW by the shared steps the moved body
@@ -853,8 +866,7 @@ model's. Two things follow, and both matter when you add a shape:
   (a team's log and splits through
   `templates.games.team_game_log` and `templates.splits.team_splits`; a
   ranking over the season line through
-  `templates.players._leaderboard_ranking`; a player's quarter or half
-  through `templates.games._period_split_from`; two players' season lines
+  `templates.players._leaderboard_ranking`; two players' season lines
   through `templates.players._player_compare_lines`; a streak through the
   `run` shape - a skeleton of its own, the longest runs of consecutive
   games one predicate holds along, `compose.core._compile_run` on the

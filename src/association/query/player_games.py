@@ -50,8 +50,9 @@ from association.query.measures import PERIOD_COLUMNS as PERIOD_COLUMNS
 
 from .conditions import UNGATED_ON_REBUILD, BoxSource
 from .entities import Entity
+from .notes import Note
 from .reading import STARTER_SIDES as STARTER_SIDES  # the one table, on the reader's side since Phase 2's step 1; a split names one half of it
-from .shotchart import SHOT_VALUE_SQL
+from .shotchart import SHOT_VALUE_SQL, UNSEPARABLE_SHOT_VALUES
 
 # A player-game ESPN lists as played but records no minutes for. Every such row
 # in the warehouse carries no stats either (checked, 1994-2026), and they are of
@@ -334,6 +335,18 @@ makes a period's percentage a ratio away rather than a new read.
 """
 
 
+PERIOD_LOG_COLUMNS: tuple[str, ...] = ("points", "rebounds", "assists", "steals", "blocks", "turnovers", "fouls")
+"""The period's whole line as a log shows it beside the field goals and free
+throws, and the columns a whole-line caveat names.
+
+.. versionadded:: 5.0.0
+"""
+
+# The columns whose figure needs a shot's VALUE (two or three), which 2002's
+# shots do not carry (UNSEPARABLE_SHOT_VALUES) - refused there like points.
+_PERIOD_SHOT_VALUED = frozenset({"threePointFieldGoalsMade", "threePointFieldGoalsAttempted"})
+
+
 def period_columns(measure: str) -> tuple[str, ...]:
     """The period-line columns ``measure`` is read from: itself, or a rate's
     makes and attempts (:data:`PERIOD_RATES`) - so a caveat or a refusal
@@ -356,6 +369,56 @@ def period_rate(games: list[dict[str, Any]], measure: str) -> tuple[int, int, fl
     made = sum(int(g[made_column]) for g in games)
     attempted = sum(int(g[attempted_column]) for g in games)
     return made, attempted, (made * 100.0 / attempted if attempted else None)
+
+
+def period_distrust(season: int, measure: str) -> dict[str, Any] | None:
+    """Why ``season``'s per-period ``measure`` cannot be trusted enough to
+    answer at all, as plain facts - or None for a season answered (perhaps
+    with a caveat, :func:`period_agreement_notes`). Points by their
+    agreement with ESPN's own quarter scores (:data:`PERIOD_RECONCILIATION`);
+    any other column by how often a game's rebuilt figure equals its box
+    score (:data:`PERIOD_AGREEMENT`); a shot's value in a season that does
+    not carry one (``UNSEPARABLE_SHOT_VALUES``). A rate is refused where
+    either of the columns it divides is. ``unseparable`` marks the last
+    cause, which is said as the points refusal is.
+
+    .. versionadded:: 5.0.0
+    """
+    for column in period_columns(measure):
+        if column == "points":
+            agreement = PERIOD_RECONCILIATION.get(season)
+            if season in UNSEPARABLE_SHOT_VALUES or (agreement is not None and agreement < PERIOD_REFUSE_BELOW):
+                return {"season": season, "column": column, "agreement": agreement, "unseparable": season in UNSEPARABLE_SHOT_VALUES}
+            return None
+        agreement = PERIOD_AGREEMENT.get(column, {}).get(season)
+        if agreement is not None and agreement < PERIOD_REFUSE_BELOW:
+            return {"season": season, "column": column, "agreement": agreement, "unseparable": False}
+        if column in _PERIOD_SHOT_VALUED and season in UNSEPARABLE_SHOT_VALUES:
+            return {"season": season, "column": column, "agreement": None, "unseparable": True}
+    return None
+
+
+def period_agreement_notes(season: int, measure: str, *, full_line: bool = False) -> list[Note]:
+    """The caveats a period answer carries for ``measure`` in ``season``, as
+    notes: points by their per-period agreement with ESPN's own quarter
+    scores (:data:`PERIOD_RECONCILIATION`); any other column by how often a
+    game's rebuilt figure, summed over its periods, equals its box score
+    (:data:`PERIOD_AGREEMENT`). A whole line (``full_line``) names every
+    :data:`PERIOD_LOG_COLUMNS` column the season holds under 99%, after the
+    points' own. Said by ``compose.say.period_caveat``.
+
+    .. versionadded:: 5.0.0
+    """
+    reconciled = PERIOD_RECONCILIATION.get(season)
+    points = [Note("rebuilt_agreement", {"season": season, "pct": reconciled, "columns": ["points"], "what": "period_points_from_shots"})] if reconciled is not None else []
+    if measure == "points" and not full_line:
+        return points
+    columns = PERIOD_LOG_COLUMNS if full_line else period_columns(measure)
+    weak = [(column, PERIOD_AGREEMENT[column][season]) for column in columns if season in PERIOD_AGREEMENT.get(column, {})]
+    notes = points if full_line else []
+    if weak:
+        notes = [*notes, Note("rebuilt_agreement", {"season": season, "columns": [column for column, _ in weak], "pct": [pct for _, pct in weak], "what": "period_rebuilt"})]
+    return notes
 
 
 def period_line_sql(periods: tuple[int, ...] | None, games: str, *, plays: bool = True) -> str:

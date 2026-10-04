@@ -40,11 +40,12 @@ from typing import Any
 
 import duckdb
 
+from association.nba.franchises import season_name_sql
 from association.nba.season import current_season, eastern_date_sql
 from association.query.conditions import _PLAYER_GAME_TABLES, MEETING_STATS, UNGATED_ON_REBUILD, BoxSource, _longest_runs_sql, _meetings_select, _player_streak_rows, box_source
 from association.query.entities import Entity
 from association.query.measures import BOOLEAN_MEASURES as BOOLEAN_MEASURES
-from association.query.measures import GAME_COLUMNS
+from association.query.measures import GAME_COLUMNS, LABEL_MEASURES
 from association.query.measures import LINE as LINE
 from association.query.player_games import PERIOD_COLUMNS, PERIOD_RATES, REBUILT_STATS, REGULATION_QUARTERS, Narrowed, aggregate_sql, games_subquery, grouped_sql, named, paired_rows_sql, rows_sql
 from association.query.reading import Scope
@@ -103,6 +104,12 @@ DERIVED: dict[str, str] = {
     "margin": "(CASE WHEN g.home_team_id = pgl.team_id THEN g.home_score - g.away_score ELSE g.away_score - g.home_score END)",
     "fouled_out": "(pgl.fouls >= 6)",
     "two_pct": "((pgl.fieldGoalsMade - pgl.threePointFieldGoalsMade) * 100.0 / NULLIF(pgl.fieldGoalsAttempted - pgl.threePointFieldGoalsAttempted, 0))",
+    # The opponent's name as it was in the game's own season - a label of
+    # the game, like ``won`` and ``home``, never aggregated (:func:`_agg`):
+    # a period's log names the team, where the fixed columns carry its
+    # abbreviation (``templates.games._period_split_rows_from`` read it
+    # beside its own statement until the period log ran the compiler's).
+    "opponent_name": f"(SELECT {season_name_sql('t.team_id', 'g.season', 't.display_name')} FROM teams t WHERE t.team_id = pgl.opponent_team_id)",
 }
 """A measure name that is not a stored column, and the SQL that computes it per game.
 
@@ -384,6 +391,8 @@ def _agg(name: str, aggregate: str, *, rebuilt: bool = False) -> str:
     name (#213), and a crash is the one shape worse than a wrong answer.
     """
     expr = measure_sql(name, rebuilt=rebuilt)
+    if name in LABEL_MEASURES:
+        raise Unsupported(f"{name!r} names something about a game - it is listed, never averaged, summed or counted")
     if name in BOOLEAN_MEASURES and aggregate in ("per_game", "total"):
         raise Unsupported(f"{name!r} is a condition, not a quantity - it is counted, never averaged or summed")
     if aggregate == "per_game":
@@ -446,7 +455,7 @@ def _check_relation_scoping(scope: Scope, subject: str = "player", honored_extra
 #: What a period-narrowed read may measure: the columns the period's line
 #: rebuilds, and the measures computed only from them (a rate is a ratio of
 #: the period's sums; a game's result is the game's).
-_PERIOD_READABLE: frozenset[str] = frozenset(PERIOD_COLUMNS) | {"pra", "fg_pct", "three_pct", "ft_pct", "double_double", "triple_double", "won", "home"}
+_PERIOD_READABLE: frozenset[str] = frozenset(PERIOD_COLUMNS) | {"pra", "fg_pct", "three_pct", "ft_pct", "double_double", "triple_double", "won", "home", "opponent_name"}
 
 
 def _check_period_measures(q: Query) -> None:
@@ -644,6 +653,30 @@ def _apply_window_rule(q: Query, narrowed: Narrowed) -> None:
         narrowed.window = None
 
 
+def _period_read(q: Query) -> bool:
+    """Whether ``q`` reads a quarter's or a half's line - a period narrowing,
+    or a grouped read by ``period`` - where every :data:`~association.query.player_games.PERIOD_COLUMNS`
+    figure is rebuilt from the shots and plays for every game, fetched or
+    rebuilt alike (``player_games._period_source``).
+
+    .. versionadded:: 5.0.0
+    """
+    return period_narrowing(q.scope) is not None or q.group == "period"
+
+
+def _blanks(q: Query, rebuilt: bool) -> bool:
+    """Whether a measure blanks the columns a rebuilt BOX line was never
+    measured for (:data:`~association.query.conditions.UNGATED_ON_REBUILD`):
+    under the rebuilt guard, except on a period's line, which is not the
+    box's - a rebuilt game's first-quarter turnovers come from its plays as
+    every game's do, and blanking them averaged a quarter over the fetched
+    games alone. The period templates never blanked them.
+
+    .. versionadded:: 5.0.0
+    """
+    return rebuilt and not _period_read(q)
+
+
 def _rebuilt_for(box: BoxSource, q: Query) -> bool:
     """The rebuilt-line rule, as the templates apply it. A grouped read and a
     record widen the guard to rebuilt lines and blank the columns a rebuild
@@ -655,6 +688,12 @@ def _rebuilt_for(box: BoxSource, q: Query) -> bool:
         # a rebuild does not fill is blank on a rebuilt row - a blank never
         # satisfies a run's condition, so the run ends there, and a meeting's
         # minutes are averaged over the games that carry them.
+        return box.rebuilt
+    if _period_read(q):
+        # A period's line is rebuilt from the shots and plays for every game
+        # (``_period_source``), so a game whose BOX line is rebuilt reads
+        # like any other: the guard widens whatever is measured, as the
+        # period templates always widened it (``box_source(con).rebuilt``).
         return box.rebuilt
     read = [*q.measures, *(name for name, _, _ in q.predicates)]
     if q.skeleton == "rows":
@@ -678,7 +717,7 @@ def _compile_rows(q: Query, narrowed: Narrowed, rebuilt: bool, player: Entity | 
     # its player; measured on yardstick-v2 F124, a ranking of triple-doubles
     # by points printed dates and figures and never said whose they were.
     who = ["pgl.player_name AS player"] if q.subject != "player" else []
-    select = ", ".join([_row_select(rebuilt=rebuilt), *who, *(f'{measure_sql(m, rebuilt=rebuilt)} AS "{m}"' for m in q.measures)])
+    select = ", ".join([_row_select(rebuilt=rebuilt), *who, *(f'{measure_sql(m, rebuilt=_blanks(q, rebuilt))} AS "{m}"' for m in q.measures)])
     if q.order == "measure":
         if not q.measures:
             raise Unsupported("ordering by a measure needs one")
@@ -717,14 +756,15 @@ def _line_selects(q: Query, rebuilt: bool) -> list[str]:
 
     .. versionadded:: 5.0.0
     """
+    blank = _blanks(q, rebuilt)
     selects = ["MIN(pgl.season) AS first_season", "MAX(pgl.season) AS last_season"]
     for m in q.measures:
         if m in SHOT_RATES:
-            selects += _shot_sums(m, rebuilt=rebuilt)
+            selects += _shot_sums(m, rebuilt=blank)
         elif m in COLUMNS:
-            selects.append(f'SUM({measure_sql(m, rebuilt=rebuilt)}) AS "{m}_total"')
+            selects.append(f'SUM({measure_sql(m, rebuilt=blank)}) AS "{m}_total"')
             if m in _MADE_RATE:
-                selects += _shot_sums(_MADE_RATE[m], rebuilt=rebuilt)
+                selects += _shot_sums(_MADE_RATE[m], rebuilt=blank)
     return selects
 
 
@@ -741,12 +781,12 @@ def _scalar_selects(q: Query, rebuilt: bool) -> list[str]:
             "SUM(CASE WHEN g.winner_team_id = pgl.team_id THEN 1 ELSE 0 END) AS wins",
             "SUM(CASE WHEN g.winner_team_id IS NOT NULL AND g.winner_team_id <> pgl.team_id THEN 1 ELSE 0 END) AS losses",
         ]
-        selects += [_agg(m, "per_game", rebuilt=rebuilt) for m in q.measures]
+        selects += [_agg(m, "per_game", rebuilt=_blanks(q, rebuilt)) for m in q.measures]
     elif q.aggregate == "line":
-        selects += [_agg(m, "per_game", rebuilt=rebuilt) for m in q.measures]
+        selects += [_agg(m, "per_game", rebuilt=_blanks(q, rebuilt)) for m in q.measures]
         selects += _line_selects(q, rebuilt)
     elif q.aggregate != "count":
-        selects += [_agg(m, q.aggregate, rebuilt=rebuilt) for m in q.measures]
+        selects += [_agg(m, q.aggregate, rebuilt=_blanks(q, rebuilt)) for m in q.measures]
     selects.append("SUM(CASE WHEN pgl.reconstructed THEN 1 ELSE 0 END) AS rebuilt_shown" if rebuilt else "0 AS rebuilt_shown")
     return selects
 
@@ -768,7 +808,7 @@ def _by_period_totals(q: Query, rebuilt: bool) -> list[str]:
             made, attempted = PERIOD_RATES[m]
             extra += [f'SUM(pgl.{made}) AS "{m}_made"', f'SUM(pgl.{attempted}) AS "{m}_attempted"']
         elif m not in BOOLEAN_MEASURES:
-            extra.append(f'SUM({measure_sql(m, rebuilt=rebuilt)}) AS "{m}_total"')
+            extra.append(f'SUM({measure_sql(m, rebuilt=_blanks(q, rebuilt))}) AS "{m}_total"')
     return extra
 
 
@@ -786,7 +826,9 @@ def _compile_by_period(con: duckdb.DuckDBPyConnection, q: Query, narrowed: Narro
 
     .. versionadded:: 5.0.0
     """
-    selects = [*_scalar_selects(q, rebuilt), *_by_period_totals(q, rebuilt)]
+    # The game's own season beside the quarters: a date names one game,
+    # whose season the answer is labeled and caveated by.
+    selects = [*_scalar_selects(q, rebuilt), *_by_period_totals(q, rebuilt), "MIN(pgl.season) AS first_season"]
     parts: list[str] = []
     params: list[Any] = []
     for quarter in REGULATION_QUARTERS:
@@ -815,7 +857,7 @@ def _line_group(q: Query, rebuilt: bool) -> tuple[str, str, list[str]]:
     name, op, value = q.predicates[0]
     if op not in OPS or isinstance(value, bool) or not isinstance(value, int):
         raise Unsupported(f"a line is an integer threshold on one measure, not {op!r} {value!r}")
-    key = f"({measure_sql(name, rebuilt=rebuilt)} {OPS[op]} {int(value)})"
+    key = f"({measure_sql(name, rebuilt=_blanks(q, rebuilt))} {OPS[op]} {int(value)})"
     label = f"CASE WHEN {key} THEN 'reached' WHEN NOT {key} THEN 'short' ELSE 'blank' END AS \"group\""
     extras = ["MIN(pgl.season) AS first_season", "MAX(pgl.season) AS last_season", "list(DISTINCT pgl.team_id) AS team_ids"]
     # Grouped by the label (the first select) rather than the key: DuckDB

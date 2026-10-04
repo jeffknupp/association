@@ -16,37 +16,32 @@ from association.nba.season import current_season
 from association.nba.season import eastern_date as _eastern_date_of
 from association.query import shotchart
 from association.query.compose.adapt import to_reading
-from association.query.compose.core import Query, Unsupported, _compile_pair, _compile_run, _resolve_pair, compile_query
+from association.query.compose.core import Query, Unsupported, _compile_pair, _compile_run, _resolve_pair, compile_over, compile_query, rows_of
 from association.query.compose.logs import _player_log, _player_log_mixed, _team_log, _team_log_mixed, read_player_log, read_team_log
+from association.query.compose.periods import _period_by_quarter, _period_log, _period_redirect, read_period_split
 from association.query.compose.plan import plan, plan_point
 from association.query.compose.present import (
     STATED_SCOPING,
-    _present_period_split,
     _present_player_matchup,
     _present_player_stat_season_line,
     _present_streak,
     _present_team_streak,
 )
 from association.query.compose.records import read_record_when
+from association.query.compose.say import say_period_refusal
 from association.query.compose.splits import _player_splits, _team_splits, read_player_splits, read_team_splits
 from association.query.compose.stats import _player_stat_meetings, _player_stat_result, read_player_stat
 from association.query.compose.team import TeamQuery, _compile_team_run, run_team
 from association.query.entities import MAX_CANDIDATES, Availability, Entity, collect_name_readings, resolve_player
 from association.query.metrics import LEADERBOARD_METRICS, PER_GAME_MIN_GAMES, PER_GAME_MIN_POSTSEASON_GAMES
 from association.query.parse import with_point
-from association.query.player_games import PERIOD_COLUMNS, PERIOD_RATES
+from association.query.player_games import PERIOD_COLUMNS, PERIOD_RATES, period_distrust
 from association.query.reading import Reading, Scope
 from association.query.shotchart import SHOT_AVAILABILITY
 from association.query.subject import Subject
-from association.query.templates.common import HONORED_SCOPING, SCOPING_SLOTS, TemplateContext, TemplateResult, TemplateUnsupported, check_scope, scoped_player, unhonored_scoping
+from association.query.templates.common import HONORED_SCOPING, SCOPING_SLOTS, TemplateContext, TemplateResult, TemplateUnsupported, check_scope, scoped_games, scoped_player, unhonored_scoping
 from association.query.templates.games import (
     PERIOD_RATE_STATS,
-    _period_split_cross_season_redirect,
-    _period_split_empty,
-    _period_split_from,
-    _period_split_reconciliation_refusal,
-    _period_split_rows,
-    _period_split_rows_from,
     _player_matchup_from,
     head_to_head,
     period_leaderboard,
@@ -3973,10 +3968,10 @@ def ps_redirect_ctx(tmp_path: Path) -> TemplateContext:
     )
     c.execute(
         "CREATE TABLE player_game_log (event_id VARCHAR, season INTEGER, season_type INTEGER, team_id VARCHAR, opponent_team_id VARCHAR, "
-        "athlete_id VARCHAR, player_name VARCHAR, did_not_play BOOLEAN, minutes INTEGER, starter BOOLEAN)"
+        "athlete_id VARCHAR, player_name VARCHAR, did_not_play BOOLEAN, minutes INTEGER, starter BOOLEAN, opponent_abbr VARCHAR)"
     )
     c.executemany(
-        "INSERT INTO player_game_log VALUES (?, ?, 2, '1', '2', '1', 'Test Player', FALSE, ?, ?)",
+        "INSERT INTO player_game_log VALUES (?, ?, 2, '1', '2', '1', 'Test Player', FALSE, ?, ?, 'BOS')",
         [("e1", s - 1, 30, True), ("e2", s - 1, 28, True), ("e3", s, 15, False)],
     )
     c.execute(
@@ -5197,9 +5192,10 @@ def period_ctx(tmp_path: Path) -> TemplateContext:
     c.execute(
         "CREATE VIEW player_game_log AS SELECT pbs.*, "
         "CASE WHEN g.home_team_id = pbs.team_id THEN g.away_team_id ELSE g.home_team_id END AS opponent_team_id, "
-        "TRUE AS starter, g.date AS game_date, p.display_name AS player_name "
+        "TRUE AS starter, g.date AS game_date, p.display_name AS player_name, o.abbreviation AS opponent_abbr "
         "FROM player_box_stats pbs JOIN games g ON g.event_id = pbs.event_id AND g.season = pbs.season "
-        "LEFT JOIN players p ON p.athlete_id = pbs.athlete_id"
+        "LEFT JOIN players p ON p.athlete_id = pbs.athlete_id "
+        "LEFT JOIN teams o ON o.team_id = CASE WHEN g.home_team_id = pbs.team_id THEN g.away_team_id ELSE g.home_team_id END"
     )
     return TemplateContext(con=c, out_dir=tmp_path / "out")
 
@@ -5318,10 +5314,11 @@ def test_a_rate_is_refused_where_either_of_its_columns_is() -> None:
     assert set(PERIOD_RATE_STATS.values()) == set(PERIOD_RATES)
     for made, attempted in PERIOD_RATES.values():
         assert made in PERIOD_COLUMNS and attempted in PERIOD_COLUMNS
-    refused = _period_split_reconciliation_refusal(2002, "three_pct")
-    assert refused is not None and "cannot be answered for 2002" in (refused.answer or "")
-    assert _period_split_reconciliation_refusal(2002, "ft_pct") is None
-    assert _period_split_reconciliation_refusal(SEASON, "fg_pct") is None
+    refused = period_distrust(2002, "three_pct")
+    assert refused is not None and refused["column"] == "threePointFieldGoalsMade" and refused["unseparable"]
+    assert "cannot be answered for 2002" in (say_period_refusal(refused).answer or "")
+    assert period_distrust(2002, "ft_pct") is None
+    assert period_distrust(SEASON, "fg_pct") is None
 
 
 def test_period_leaderboard_does_not_rank_a_shooting_percentage(period_ctx: TemplateContext) -> None:
@@ -5368,6 +5365,51 @@ def test_a_question_with_no_period_is_the_four_quarters_side_by_side(period_ctx:
         "e1 and e3: first quarters 2-5, then e3's Q2 make, both Q3 makes"
     )
     assert "against the Los Angeles Lakers (2 games)" in (threes.answer or "") and "made-att        2-5      1-1      2-2      0-0         5-8" in (threes.answer or "")
+
+
+def test_a_period_answer_says_the_calendar_it_was_narrowed_to(period_ctx: TemplateContext) -> None:
+    """A month narrows which games count, and the period sentence named the
+    venue, the half, the teammates, the line, the date and the game of a
+    series - never the month (ISSUES.md #301): "jokic first quarter points
+    in january" answered his January games headed as his season."""
+    quarters = period_split(period_ctx, Reading.from_slots({"player": "Stephen Curry", "season": SEASON, "season_type": 2, "situation": "november"}))
+    assert (quarters.answer or "").startswith(f"Stephen Curry, points per game by quarter in the {SEASON} regular season in November (4 games):"), (
+        "e1 tips at 00:30Z on November 1st, October 31st in Eastern time"
+    )
+    one = period_split(period_ctx, Reading.from_slots({"player": "Stephen Curry", "period": 1, "season": SEASON, "season_type": 2, "situation": "november"}))
+    assert f"over 4 games of the {SEASON} regular season in November, averaging" in (one.answer or "")
+
+
+def test_a_rebuilt_games_quarters_are_read_like_any_others(period_ctx: TemplateContext) -> None:
+    """A game whose BOX line ESPN never served is rebuilt from the plays
+    (Chicago and New Orleans, 2013-2018), and a rebuilt line cannot be
+    trusted for turnovers, fouls or attempts (``UNGATED_ON_REBUILD``) - but
+    a quarter's line is rebuilt from the plays for EVERY game, fetched or
+    not, so a rebuilt game's quarters read like any other's. The four
+    quarters side by side blanked those columns on rebuilt rows: a quarter's
+    turnovers were summed over the fetched games alone, and where every game
+    was rebuilt (Anthony Davis, 2015) the answer was "Per-quarter turnovers
+    cannot be answered here: ... this warehouse holds none" - a refusal
+    naming the wrong cause, about a warehouse holding every one of his
+    plays. Here e2 is rebuilt, and its first-quarter turnover counts."""
+    c = period_ctx.con
+    c.execute("CREATE TABLE plays (event_id VARCHAR, season BIGINT, season_type BIGINT, period BIGINT, athlete_id VARCHAR, participant_athlete_ids VARCHAR, type VARCHAR, text VARCHAR)")
+    for event, period in (("e1", 1), ("e2", 1), ("e2", 3)):
+        c.execute("INSERT INTO plays VALUES (?, ?, 2, ?, '1', '1', 'Bad Pass Turnover', 'Stephen Curry bad pass turnover')", [event, SEASON, period])
+    rebuilt_e2 = "CASE WHEN event_id = 'e2' THEN NULL ELSE minutes END AS minutes"
+    c.execute(f"CREATE VIEW player_box_stats_filled AS SELECT * REPLACE ({rebuilt_e2}), event_id = 'e2' AS reconstructed, 0 AS turnovers FROM player_box_stats")
+    c.execute(
+        "CREATE OR REPLACE VIEW player_game_log AS SELECT pbs.*, "
+        "CASE WHEN g.home_team_id = pbs.team_id THEN g.away_team_id ELSE g.home_team_id END AS opponent_team_id, "
+        "TRUE AS starter, g.date AS game_date, p.display_name AS player_name, o.abbreviation AS opponent_abbr "
+        "FROM player_box_stats_filled pbs JOIN games g ON g.event_id = pbs.event_id AND g.season = pbs.season "
+        "LEFT JOIN players p ON p.athlete_id = pbs.athlete_id "
+        "LEFT JOIN teams o ON o.team_id = CASE WHEN g.home_team_id = pbs.team_id THEN g.away_team_id ELSE g.home_team_id END"
+    )
+    result = period_split(period_ctx, Reading.from_slots({"player": "Stephen Curry", "season": SEASON, "season_type": 2, "stat": "turnovers"}))
+    assert [(q["quarter"], q["games"], q["total"]) for q in result.data["quarters"]] == [(1, 5, 2), (2, 5, 0), (3, 5, 1), (4, 5, 0)], "e1's and e2's first-quarter turnovers, e2's third"
+    one = period_split(period_ctx, Reading.from_slots({"player": "Stephen Curry", "period": 1, "season": SEASON, "season_type": 2, "stat": "turnovers"}))
+    assert one.data["total"] == 2 and one.data["games_played"] == 5, "a quarter of the rebuilt game, as the one-quarter read always counted it"
 
 
 def test_the_scoping_slots_this_template_filters_on_are_declared_honored() -> None:
@@ -5442,7 +5484,9 @@ def test_a_date_with_no_game_says_which_date_was_empty(period_ctx: TemplateConte
     narrowing here is said in the answer - a silent date would read as a
     season with nothing on record, which is a different (false) claim."""
     answer = period_split(period_ctx, Reading.from_slots({"player": "Stephen Curry", "period": 1, "date": "2019-07-04"})).answer or ""
-    assert "on 2019-07-04" in answer
+    assert answer == "No games found for Stephen Curry on 2019-07-04.", "no season the date is not in (it said 'No 2026 regular season games')"
+    quarters = period_split(period_ctx, Reading.from_slots({"player": "Stephen Curry", "date": "2019-07-04"})).answer or ""
+    assert quarters == "No games found for Stephen Curry on 2019-07-04."
 
 
 def test_a_date_in_a_badly_reconciled_season_is_refused_for_that_season(period_ctx: TemplateContext) -> None:
@@ -5452,6 +5496,12 @@ def test_a_date_in_a_badly_reconciled_season_is_refused_for_that_season(period_c
     named at all."""
     answer = period_split(period_ctx, Reading.from_slots({"player": "Stephen Curry", "period": 1, "date": "2003-11-04"})).answer or ""
     assert "96% of the time" in answer
+    # The four quarters of that one game the same way (ISSUES.md #302): read
+    # as "the 2026 regular season on 2003-11-04" and caveated by 2026's
+    # agreement - none - until the game's own season was read off its row.
+    quarters = period_split(period_ctx, Reading.from_slots({"player": "Stephen Curry", "date": "2003-11-04"}))
+    assert quarters.data["season"] == 2004 and (quarters.answer or "").startswith("Stephen Curry, points per game by quarter in the 2004 regular season on 2003-11-04 (1 games):")
+    assert "96% of the time" in (quarters.answer or "")
 
 
 def test_a_career_span_is_refused_for_the_reconciliation_caveat_it_cannot_apply(period_ctx: TemplateContext) -> None:
@@ -5480,17 +5530,18 @@ def test_a_career_read_sums_every_season_now_the_shot_join_needs_no_season_param
     joined to the relation's own selected games instead of a literal
     ``season = ?``/``season_type = ?`` pair.
     """
-    # The reader itself, over a career span: the point refuses a career
-    # (compose.adapt._adapt_period_split, the per-season caveat), so the
-    # join is exercised the way the cross-season redirect exercises it.
+    # The compiler's statement over a career span: the point refuses a
+    # career (the per-season caveat), so the join is exercised the way the
+    # cross-season redirect (compose.periods._period_redirect) exercises it.
     scope = Scope.from_slots({"player": "Stephen Curry", "period": 1, "span": "career"})
     subject = scoped_player(period_ctx.con, scope, "no player named", table="player_game_log", available=SHOT_AVAILABILITY, span="career", season=None)
     assert not isinstance(subject, TemplateResult)
     player, span = subject
-    read = _period_split_rows(period_ctx.con, player, span, (1,), scope, None)
-    assert not isinstance(read, TemplateResult), "the old bug: a false 'no games' refusal for a player with games on record"
-    rows, _, _, _ = read
-    assert sum(line["points"] for *_, line in rows) == 15, "e1(6) + e2(3) + e4(3) across SEASON, plus e04(3) in 2004"
+    narrowed = scoped_games(period_ctx.con, player, span, scope, opponent=None, measures=[])
+    assert not isinstance(narrowed, TemplateResult)
+    rows = rows_of(period_ctx.con, compile_over(period_ctx.con, Query(scope=scope, skeleton="rows", measures=[*PERIOD_COLUMNS, "opponent_name"], direction="asc"), player, span, narrowed))
+    assert rows, "the old bug: a false 'no games' refusal for a player with games on record"
+    assert sum(row["points"] for row in rows) == 15, "e1(6) + e2(3) + e4(3) across SEASON, plus e04(3) in 2004"
     assert len(rows) == 6, "e1,e2,e3,e4,e5 (SEASON) and e04 (2004); e6 a DNP, e7 uncovered by the shot table"
 
 
@@ -5968,7 +6019,7 @@ def test_templates_on_the_relation_do_not_narrow_it_themselves() -> None:
     # readers the compiler answers them with still read the relation, walked
     # the same way.
     readers["record_when"] = [read_record_when, _record_when_team_answer]
-    readers["period_split"] = [_present_period_split, _period_split_from, _period_split_rows, _period_split_rows_from, _period_split_empty, _period_split_cross_season_redirect]
+    readers["period_split"] = [read_period_split, _period_log, _period_redirect, _period_by_quarter]
     readers["player_splits"] = [read_player_splits, read_team_splits, _player_splits, _team_splits]
     readers["game_log"] = [read_team_log, read_player_log, _player_log, _player_log_mixed, _team_log, _team_log_mixed]
     readers["player_stat"] = [read_player_stat, _player_stat_result, _player_stat_meetings, _present_player_stat_season_line, _player_stat_season_line, _player_stat_season_line_subject]

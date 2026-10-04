@@ -41,7 +41,7 @@ from typing import Any
 
 import duckdb
 
-from association.nba.season import current_season, eastern_date
+from association.nba.season import eastern_date
 from association.query.conditions import _meeting_rows, _teammate_games, _totals
 from association.query.measures import stat_measure
 from association.query.player_games import REBUILT_STATS
@@ -60,15 +60,7 @@ from association.query.templates.common import (
     unhonored_scoping,
     where_in,
 )
-from association.query.templates.games import (
-    _period_scope,
-    _period_split_by_quarter_from,
-    _period_split_from,
-    _period_split_measure,
-    _period_split_reconciliation_refusal,
-    _player_matchup_covered,
-    _player_matchup_from,
-)
+from association.query.templates.games import _player_matchup_covered, _player_matchup_from
 from association.query.templates.players import (
     ADVANCED_STATS,
     SHOOTING_STATS,
@@ -120,62 +112,6 @@ def _stat_column(scope: Scope) -> str | None:
     """The router's ``stat`` as the box-score column the count and single-game
     templates whitelist (:data:`~association.query.templates.common.THRESHOLD_STAT_COLUMNS`)."""
     return THRESHOLD_STAT_COLUMNS.get(scope.stat) if scope.stat is not None else None
-
-
-def _present_period_split(con: duckdb.DuckDBPyConnection, q: Query) -> TemplateResult | None:
-    """``period_split``'s own sentence, log and caveats over the compiler's
-    settled player, span and period-narrowed games
-    (``templates.games._period_split_from``). The template's own order is
-    kept: a season whose per-period figures cannot be trusted is refused
-    before any name is resolved (``_period_split_reconciliation_refusal``,
-    over :data:`~association.query.player_games.PERIOD_RECONCILIATION`),
-    and again off the game a date names once it is found."""
-    if q.skeleton == "grouped" and q.group == "period":
-        return _present_period_by_quarter(con, q)
-    if q.skeleton != "rows" or q.order != "date" or q.subject != "player" or q.predicates or q.group != "none":
-        return None
-    scope = q.scope
-    periods, period_label = _period_scope(scope)
-    measure = _period_split_measure(scope.stat)
-    if q.measures != [measure]:
-        return None
-    if scope.date is None:
-        refusal = _period_split_reconciliation_refusal(scope.season or current_season(), measure)
-        if refusal is not None:
-            return refusal
-    compiled = compile_query(con, q)
-    if compiled.player is None:
-        return None
-    return _period_split_from(con, scope, compiled.player, compiled.span, compiled.narrowed, periods, period_label, measure)
-
-
-def _present_period_by_quarter(con: duckdb.DuckDBPyConnection, q: Query) -> TemplateResult | None:
-    """A named player's four quarters side by side (#162) - the compiler's
-    ``grouped``-by-``period`` read (:func:`~association.query.compose.core._compile_by_period`),
-    said the way ``period_split`` says a quarter and ``period_leaderboard``
-    says the league's table (``templates.games._period_split_by_quarter_from``).
-    The template's own order is kept: a season whose figures cannot be
-    trusted is refused before any name is resolved.
-
-    .. versionadded:: 5.0.0
-    """
-    scope = q.scope
-    if q.subject != "player" or q.predicates or q.aggregate != "per_game":
-        return None
-    measure = _period_split_measure(scope.stat)
-    if q.measures != [measure]:
-        return None
-    if scope.date is None:
-        refusal = _period_split_reconciliation_refusal(scope.season or current_season(), measure)
-        if refusal is not None:
-            return refusal
-    compiled = compile_query(con, q)
-    if compiled.player is None:
-        return None
-    cur = con.execute(compiled.sql, compiled.params)
-    names = [d[0] for d in cur.description]
-    rows = [dict(zip(names, r, strict=True)) for r in cur.fetchall()]
-    return _period_split_by_quarter_from(scope, compiled.player, compiled.narrowed, rows, measure)
 
 
 def _present_player_stat_season_line(con: duckdb.DuckDBPyConnection, q: Query) -> TemplateResult | None:
@@ -462,7 +398,6 @@ PRESENTERS: dict[str, Presenter] = {
     "threshold_count": _present_threshold_count,
     "player_history": _present_player_history,
     "leaderboard": _present_leaderboard,
-    "period_split": _present_period_split,
     "player_compare": _present_player_compare,
     "streak": _present_streak,
     "player_matchup": _present_player_matchup,

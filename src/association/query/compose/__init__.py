@@ -44,6 +44,7 @@ from association.query.templates.common import TemplateContext, TemplateResult, 
 
 from .core import Query, Refused, Unsupported, run
 from .logs import read_player_log, read_team_log
+from .periods import read_period_split
 from .plan import Planned, games_reading
 from .present import STATED_SCOPING, present, present_team
 from .records import read_record_when
@@ -233,11 +234,12 @@ def _read_log(read: Callable[[], Result | TemplateResult | None]) -> TemplateRes
 def _read_ported(con: duckdb.DuckDBPyConnection, intent: str, query: Query) -> TemplateResult | None:
     """The shapes Phase 2 has ported, read into a Result and said by the
     sayer (``compose.logs``, ``compose.records``, ``compose.splits``,
-    ``compose.stats``; ``compose.say``): a player's log - ``game_log``'s own
+    ``compose.stats``, ``compose.periods``; ``compose.say``): a player's log - ``game_log``'s own
     point, or the window of games ``player_stat``'s retired template handed
     to the log ("stats over his last N games") - a player's record over a
     line, his splits, and his line over the games a narrowing sent the read
-    to (``player_stat``'s narrowed point). ``None`` where the
+    to (``player_stat``'s narrowed point), and his quarter or half. ``None``
+    where the
     point is not one of them, or its words do not say it, and a presenter or
     the compiler's own sentence answers."""
     if query.skeleton == "rows" and intent in ("game_log", "player_stat"):
@@ -248,6 +250,8 @@ def _read_ported(con: duckdb.DuckDBPyConnection, intent: str, query: Query) -> T
         return _read_log(lambda: read_player_splits(con, query, stated=STATED_SCOPING["player_splits"]))
     if intent == "player_stat" and query.skeleton == "scalar" and query.source == "games":
         return _read_log(lambda: read_player_stat(con, query, stated=STATED_SCOPING["player_stat"]))
+    if intent == "period_split":
+        return _read_log(lambda: read_period_split(con, query, stated=STATED_SCOPING["period_split"]))
     return None
 
 

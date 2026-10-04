@@ -208,7 +208,7 @@ GAME_COLUMNS: frozenset[str] = frozenset(MEASURE_WORDS.values()) | frozenset(
 .. versionadded:: 5.0.0
 """
 
-DERIVED_MEASURES: frozenset[str] = frozenset({"pra", "fg_pct", "three_pct", "ft_pct", "double_double", "triple_double", "won", "home", "fouled_out", "margin", "two_pct"})
+DERIVED_MEASURES: frozenset[str] = frozenset({"pra", "fg_pct", "three_pct", "ft_pct", "double_double", "triple_double", "won", "home", "fouled_out", "margin", "two_pct", "opponent_name"})
 """Measures computed from columns per game, by name; the SQL is
 :data:`association.query.compose.core.DERIVED`'s.
 
@@ -220,6 +220,14 @@ DERIVED_LINES: dict[str, tuple[str, int]] = {"fouled_out": ("fouls", 6)}
 fouls - so a count of it and a count over that line are one question
 (``point._move_boolean_count_is_line``). The compiler's SQL for each
 says the same thing, and the test checks it.
+
+.. versionadded:: 5.0.0
+"""
+
+LABEL_MEASURES: frozenset[str] = frozenset({"opponent_name"})
+"""Measures that name something about a game rather than count it - listed
+beside a game's figures, never averaged, summed, counted or read as a stat
+a question asks about.
 
 .. versionadded:: 5.0.0
 """
@@ -406,7 +414,7 @@ def stat_measure(stat: str | None) -> str | None:
         return None
     if stat in MEASURE_ALIASES:
         return MEASURE_ALIASES[stat]
-    if stat in GAME_COLUMNS or stat in DERIVED_MEASURES:
+    if stat in GAME_COLUMNS or (stat in DERIVED_MEASURES and stat not in LABEL_MEASURES):
         return stat
     return MEASURE_WORDS.get(stat.strip().lower())
 
