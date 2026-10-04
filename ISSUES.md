@@ -2458,6 +2458,7 @@ those were found.
 - **User sees:** a season figure for "last 5 games" - the count of games is in the sentence, so it is visible, but no wording reaches the five games.
 - **Next step:** Jeff's call, since the whole-season header is a tested decision: read the window (`relation_window`) as the games the figure is over, as the by-quarter read already does through the compiler ("over his last N games"), and say it in the header. Moves the answers of any recorded question with a window and more games than it in the season (none of the 19 today).
 - **Priority note:** P2 (misleading).
+- **GitHub:** #320
 
 ### A team's quarter over its last N games is refused as an unknown player: "display the first quarter scores for the Sixers' most recent 10 games" answers "No player found matching 'first quarter'"
 - **Found:** 2026-10-01, reading the subject once (ROADMAP Phase 1), in the stage snapshot of the 628 recorded questions at `7394ac5`; the answer is the same before and after that change.

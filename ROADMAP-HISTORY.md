@@ -783,7 +783,27 @@ agents' reports named here are in `~/association-research/stages/`.
     skips rebuilt rows in both sums where a rate reads such a column, and
     the test asserts it. One `core.rows_of` runs every compiled statement
     (the statement ratchet: core 2 -> 1, logs 6 -> 4, records 1 -> 0,
-    player_games 2 -> 1).
+    player_games 2 -> 1). Then (f) and (e) in parallel, two Opus agents in
+    worktrees off pushed master, each measuring first and each written
+    once against the compiled statement: the narrowed `player_stat`
+    (`compose/stats.py`, a `Scalar` body, the compiler's `line` aggregate
+    reading the sums and shot rates the sentence is said from beside the
+    per-game figures; 19 of 19 corpus and 13 of 15 synthetic cases equal,
+    the two apart a made count over rebuilt lines stating attempts the
+    rebuild never measured, fixed; `662910a`) and `period_split`
+    (`compose/periods.py`, both shapes; the period relation's tables moved
+    to `player_games` first, `b15eef1`; 18 of 18 equal once the compiler
+    carried the opponent's name as a label measure; both presenters and 31
+    helpers gone, two remaining templates taking the moved names at call
+    time; #301 and #302 fixed with it; `7a1e91c`). The lead merged each
+    after re-running its gates, suite, ratchets and the 628 itself. Step 1
+    closed 2026-10-04: presenters 12 -> 8, adapters 10 -> 5, the
+    private-import ratchet 91 -> 47. What the agents said about the
+    pattern, for the next slice to settle: a one-quarter Result is
+    recognized in `say()` by a `"period"` key in `facts` because `Rows`
+    has no `by`; a `decided(...)` remark rides in `facts` because Notes
+    take note kinds only; the Result's `empty` sentence and `Narrowing.
+    phrase` are still words.
 
 ## The plan items, as written
 
