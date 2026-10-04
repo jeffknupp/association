@@ -88,3 +88,49 @@ def test_a_teams_log_is_said_with_its_record_and_the_total_asked_for() -> None:
     assert lines[1] == "  2026-04-10  W 110-100  vs Boston Celtics" and lines[3] == "  2026-04-06  ? 101-101  vs Miami Heat"
     assert lines[4] == "  Point differential: +6 (+2.00 per game)."
     assert said.data["wins"] == 1 and said.data["losses"] == 1 and said.data["differential"] == 6 and said.data["differential_per_game"] == 2.0
+
+
+def test_a_record_over_a_line_is_said_in_the_retired_templates_words() -> None:
+    """The three-row table under its heading, the pool and caveats glued in
+    the template's order (pool, floor, unseen, blank) while the notes are
+    recorded in the Result's (the template wrote its caveats first)."""
+    from association.query.result import Grouped
+
+    result = Result(
+        subject="Tyrese Maxey",
+        relation="player",
+        span=Span(career=True, first=2022, last=2026, phrase="since 2022 (2022-2026 regular seasons)"),
+        narrowing=Narrowing(phrase=" vs the Boston Celtics"),
+        parts=(
+            Part(
+                body=Grouped(
+                    by="threshold",
+                    rows=(
+                        {"key": "reached", "games": 4, "wins": 3, "losses": 1, "avg_margin": 6.25},
+                        {"key": "short", "games": 6, "wins": 2, "losses": 4, "avg_margin": -3.5},
+                        {"key": "all", "games": 11, "wins": 5, "losses": 6, "avg_margin": 0.0},
+                    ),
+                )
+            ),
+        ),
+        notes=(
+            Note("games_unseen", {"games": 2, "why": "no_box_score", "whose": "his team's"}),
+            Note("stat_blank", {"games": 1, "stat": "points", "whose": "player"}),
+            Note("definition", {"term": "pool", "games": 11, "what": "games_he_played"}),
+            Note("floor", {"table": "box_scores", "first": 2022, "what": "regular season"}),
+        ),
+        facts={"stat": "points", "threshold": 20, "teams": ["Philadelphia 76ers"]},
+    )
+    with collect() as collected:
+        said = say(result)
+    lines = said.answer.split("\n")
+    assert lines[0] == "Philadelphia 76ers record when Tyrese Maxey had 20+ points vs the Boston Celtics, since 2022 (2022-2026 regular seasons):"
+    assert lines[2].split() == ["20+", "points", "4", "3-1", ".750", "+6.2"]
+    assert lines[4].split() == ["all", "his", "games", "11", "5-6", ".455", "+0.0"]
+    assert lines[5] == (
+        "Over the 11 games he played; a game he missed is in neither row. Box scores start with the 2022 regular season; anything earlier is not counted."
+        " The warehouse has no box score for 2 of his team's games in that span - ESPN lacks about one game in eight from 2013 to 2018 - so any of them he played are not counted."
+        " 1 of his games in that span have no points figure on record, so they are in neither row."
+    )
+    assert [each.kind for each in collected.notes] == ["games_unseen", "stat_blank", "definition", "floor"]
+    assert said.data["reached"] == {"games": 4, "wins": 3, "losses": 1, "avg_margin": 6.25} and said.data["notes"] == [lines[5]]

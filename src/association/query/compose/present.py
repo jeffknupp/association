@@ -36,7 +36,6 @@ refused), and the compiler's generic sentence answers instead, as before.
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import replace
 from typing import Any
 
 import duckdb
@@ -101,8 +100,6 @@ from association.query.templates.splits import (
     _player_splits_from,
     _player_splits_line,
     _player_splits_refusals,
-    _record_when_answer,
-    _record_when_query,
     _record_when_team_answer,
     _streak_league_answer,
     _streak_league_result_words,
@@ -220,37 +217,6 @@ def _present_player_splits(con: duckdb.DuckDBPyConnection, q: Query) -> Template
     if isinstance(found, TemplateResult):
         return found
     return _player_splits_answer(con, found, scope.split)
-
-
-def _present_record_when(con: duckdb.DuckDBPyConnection, q: Query) -> TemplateResult | None:
-    """``record_when``'s own table - his team's record in the games he
-    reached the line, the games he fell short, and all of them, with the
-    margin, the teams' names and the unseen-games note - read by the
-    template's own ``_record_when_query``/``_record_when_answer`` over the
-    compiler's settled player and his games (the line itself taken off, since
-    the table groups by it rather than keeping only one side)."""
-    scope = q.scope
-    stat = scope.stat
-    column = _stat_column(scope)
-    threshold = scope.threshold
-    if stat is None or column is None or threshold is None or threshold < 1:
-        return None
-    if q.skeleton != "scalar" or q.aggregate != "record" or q.subject != "player" or q.predicates != [(column, ">=", threshold)] or [m for m in q.measures if m != column]:
-        return None
-    # The template's own scope - it names the span in the heading, the floor
-    # note and the unseen-games count - read off the same slots the same way.
-    covered = condition_scope(scope.season, "career" if scope.season_n else scope.span, scope.season_type, _PLAYER_GAME_TABLES, since=scope.since)
-    compiled = compile_query(con, replace(q, predicates=[], measures=[]))
-    if compiled.player is None:
-        return None
-    team = optional_team(con, scope.team, season=scope.season)
-    if isinstance(team, TemplateResult):
-        return team
-    found = _record_when_query(con, covered, compiled.player, team, column, threshold, compiled.narrowed)
-    if isinstance(found, TemplateResult):
-        return found
-    rows, names, base, params = found
-    return _record_when_answer(con, covered, compiled.player, stat, threshold, rows, names, base, params, compiled.narrowed, scope)
 
 
 def _present_player_stat(con: duckdb.DuckDBPyConnection, q: Query) -> TemplateResult | None:
@@ -561,7 +527,6 @@ PRESENTERS: dict[str, Presenter] = {
     "player_splits": _present_player_splits,
     "single_game_high": _present_single_game_high,
     "threshold_count": _present_threshold_count,
-    "record_when": _present_record_when,
     "player_history": _present_player_history,
     "leaderboard": _present_leaderboard,
     "period_split": _present_period_split,

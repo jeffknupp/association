@@ -20,10 +20,11 @@ from __future__ import annotations
 
 from typing import Any
 
+from association.query.conditions import _margin, _table, _win_pct
 from association.query.notes import Note, note
 from association.query.player_games import _joined
 from association.query.result import Result, Rows
-from association.query.templates.common import SEASON_TYPE_NAMES, TemplateResult, season_label, season_phrase
+from association.query.templates.common import SEASON_TYPE_NAMES, STAT_LABELS, TemplateResult, season_label, season_phrase
 
 from .logs import LOG_PERCENTAGES, log_key
 
@@ -41,6 +42,8 @@ def _say_window_short(facts: dict[str, Any], narrowing: str) -> str:
 
 
 def _say_definition(facts: dict[str, Any]) -> str:
+    if facts.get("term") == "pool":
+        return f"Over the {facts['games']} games he played; a game he missed is in neither row."
     if facts.get("term") != "without":
         raise ValueError(f"no phrase for the definition of {facts.get('term')!r}")
     names = list(facts["names"])
@@ -55,13 +58,29 @@ def _say_lines_rebuilt(facts: dict[str, Any]) -> str:
 
 
 def _say_games_unseen(facts: dict[str, Any]) -> str:
-    empty = facts["games"]
-    return f"Not counted: {empty} game{'s' if empty != 1 else ''} in this span whose box score lists him with no minutes and no stats."
+    count = facts["games"]
+    if facts.get("why") == "no_box_score":
+        whose = facts.get("whose", "his team's")
+        return f" The warehouse has no box score for {count} of {whose} games in that span - ESPN lacks about one game in eight from 2013 to 2018 - so any of them he played are not counted."
+    return f"Not counted: {count} game{'s' if count != 1 else ''} in this span whose box score lists him with no minutes and no stats."
+
+
+def _say_stat_blank(facts: dict[str, Any]) -> str:
+    unit = _unit(facts["stat"])
+    return f" {facts['games']} of his games in that span have no {unit} figure on record, so they are in neither row."
+
+
+def _unit(stat: Any) -> str:
+    """The unit a line is said in: the stat's label with an "s", as the
+    record template pluralized it ("point" -> "points")."""
+    return f"{STAT_LABELS.get(stat or '', stat or '')}s"
 
 
 def _say_floor(facts: dict[str, Any]) -> str:
-    first, earliest = facts["first"], facts["earliest"]
-    return f"Box scores begin with the {season_label(first)} season, so his {earliest}-{first - 1} seasons are not counted."
+    first = facts["first"]
+    if "earliest" in facts:
+        return f"Box scores begin with the {season_label(first)} season, so his {facts['earliest']}-{first - 1} seasons are not counted."
+    return f" Box scores start with the {first} {facts['what']}; anything earlier is not counted."
 
 
 def note_phrase(each: Note, *, narrowing: str = "") -> str:
@@ -81,6 +100,8 @@ def note_phrase(each: Note, *, narrowing: str = "") -> str:
         return _say_lines_rebuilt(facts)
     if each.kind == "games_unseen":
         return _say_games_unseen(facts)
+    if each.kind == "stat_blank":
+        return _say_stat_blank(facts)
     if each.kind == "floor" and facts.get("table") == "box_scores":
         return _say_floor(facts)
     raise ValueError(f"no phrase for a {each.kind!r} note with {sorted(facts)}")
@@ -286,8 +307,49 @@ def say_team_log(result: Result) -> TemplateResult:
 
 
 def say(result: Result) -> TemplateResult:
-    """``result`` worded by the shape its relation gives it.
+    """``result`` worded by its shape: a team's rows, a player's rows, or a
+    record grouped by a line.
 
     .. versionadded:: 5.0.0
     """
+    if result.grouped is not None and result.grouped.by == "threshold":
+        return say_record_when(result)
     return say_team_log(result) if result.relation == "team" else say_player_log(result)
+
+
+# --- a record over a line ----------------------------------------------------------
+
+
+def say_record_when(result: Result) -> TemplateResult:
+    """A player's team's record when he reached a line, worded: the three-row
+    table (reached, fell short, all his games) under its heading, then the
+    pool, the floor and the caveats in the retired template's order.
+
+    .. versionadded:: 5.0.0
+    """
+    groups = result.grouped
+    assert groups is not None and result.span.phrase is not None
+    stat, threshold, teams = result.facts["stat"], result.facts["threshold"], list(result.facts["teams"])
+    unit = _unit(stat)
+    by_key = {row["key"]: row for row in groups.rows}
+    reached, short, every = by_key["reached"], by_key["short"], by_key["all"]
+    whose = f"{teams[0]} record" if len(teams) == 1 else f"Record of {result.subject}'s teams ({', '.join(teams)})"
+    title = f"{whose} when {result.subject} had {threshold}+ {unit}{result.narrowing.phrase}, {result.span.phrase}:"
+    rows = [(f"{threshold}+ {unit}", reached), (f"under {threshold} {unit}", short), ("all his games", every)]
+    table = _table(title, ["G", "W-L", "Win%", "Margin"], [(name, [str(g["games"]), f"{g['wins']}-{g['losses']}", _win_pct(g["wins"], g["games"]), _margin(g["avg_margin"])]) for name, g in rows])
+    # Recorded in the Result's order (the template wrote the caveats first),
+    # said in the heading's: the pool, the floor, the caveats.
+    said = {each.kind: text for each, text in zip(result.notes, _said(result), strict=True)}
+    trailer = said.get("definition", "") + said.get("floor", "") + said.get("games_unseen", "") + said.get("stat_blank", "")
+    data = {
+        "player": result.subject,
+        "teams": teams,
+        "stat": stat,
+        "threshold": threshold,
+        "span": result.span.phrase,
+        "reached": {k: v for k, v in reached.items() if k != "key"},
+        "fell_short": {k: v for k, v in short.items() if k != "key"},
+        "headline": title.rstrip(":"),
+        "notes": [trailer],
+    }
+    return TemplateResult(data=data, answer=f"{table}\n{trailer}")

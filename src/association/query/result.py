@@ -49,6 +49,7 @@ class Span:
     first: int | None = None
     last: int | None = None
     years: str | None = None
+    phrase: str | None = None
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -87,6 +88,19 @@ class Rows:
 
 
 @dataclass(frozen=True, kw_only=True)
+class Grouped:
+    """One row per value of ``by``: a record split by whether a line was
+    reached, a splits table by venue, a ranking by player. Each row is a
+    plain mapping with its ``key`` and its values.
+
+    .. versionadded:: 5.0.0
+    """
+
+    by: str
+    rows: tuple[Mapping[str, Any], ...] = ()
+
+
+@dataclass(frozen=True, kw_only=True)
 class Part:
     """One part of an answer: its role and its body. The first part is the
     headline's.
@@ -95,7 +109,7 @@ class Part:
     """
 
     role: Literal["answer", "summary", "detail"] = "answer"
-    body: Rows | None = None
+    body: Rows | Grouped | None = None
     notes: tuple[Note, ...] = ()
 
 
@@ -138,5 +152,12 @@ class Result:
 
     @property
     def rows(self) -> Rows | None:
-        """The first part's rows, where the answer is a table."""
-        return self.parts[0].body if self.parts else None
+        """The first part's rows, where the answer is a table of items."""
+        body = self.parts[0].body if self.parts else None
+        return body if isinstance(body, Rows) else None
+
+    @property
+    def grouped(self) -> Grouped | None:
+        """The first part's groups, where the answer is one row per group."""
+        body = self.parts[0].body if self.parts else None
+        return body if isinstance(body, Grouped) else None

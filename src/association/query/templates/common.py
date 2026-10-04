@@ -2407,7 +2407,7 @@ def optional_team(con: duckdb.DuckDBPyConnection, text: Any, season: int | None 
 _optional_team = optional_team
 
 
-def _no_games(con: duckdb.DuckDBPyConnection, player: Entity, scope: _Scope, team: Entity | None) -> TemplateResult:
+def no_games(con: duckdb.DuckDBPyConnection, player: Entity, scope: _Scope, team: Entity | None) -> TemplateResult:
     """Nothing to report for a player, saying which fact is missing.
 
     Not the season: check_coverage has already refused any season the tables
@@ -2428,6 +2428,9 @@ def _no_games(con: duckdb.DuckDBPyConnection, player: Entity, scope: _Scope, tea
     else:
         message = f"{player.name} has no games{for_team} {_where_in(scope)} in the warehouse."
     return TemplateResult(data={"player": player.name, "team": team.name if team else None, "span": scope.label(), "games": 0}, answer=message)
+
+
+_no_games = no_games
 
 
 #: The relation's clause builder under the name the templates and tests knew it by.

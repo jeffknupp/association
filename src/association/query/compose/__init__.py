@@ -37,6 +37,8 @@ import copy
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
+import duckdb
+
 from association.query.result import Result
 from association.query.templates.common import TemplateContext, TemplateResult, TemplateUnsupported, check_coverage
 
@@ -44,6 +46,7 @@ from .core import Query, Refused, Unsupported, run
 from .logs import read_player_log, read_team_log
 from .plan import Planned, games_reading
 from .present import STATED_SCOPING, present, present_team
+from .records import read_record_when
 from .say import say
 from .sentence import _span_phrase
 from .sentence import sentence as _sentence
@@ -225,6 +228,21 @@ def _read_log(read: Callable[[], Result | TemplateResult | None]) -> TemplateRes
     return say(read_log)
 
 
+def _read_ported(con: duckdb.DuckDBPyConnection, intent: str, query: Query) -> TemplateResult | None:
+    """The shapes Phase 2 has ported, read into a Result and said by the
+    sayer (``compose.logs``, ``compose.records``; ``compose.say``): a
+    player's log - ``game_log``'s own point, or the window of games
+    ``player_stat``'s retired template handed to the log ("stats over his
+    last N games") - and a player's record over a line. ``None`` where the
+    point is not one of them, or its words do not say it, and a presenter or
+    the compiler's own sentence answers."""
+    if query.skeleton == "rows" and intent in ("game_log", "player_stat"):
+        return _read_log(lambda: read_player_log(con, query, stated=STATED_SCOPING[intent]))
+    if intent == "record_when" and query.skeleton == "scalar":
+        return _read_log(lambda: read_record_when(con, query, stated=STATED_SCOPING["record_when"]))
+    return None
+
+
 def _answer_point(
     ctx: TemplateContext,
     intent: str,
@@ -261,16 +279,9 @@ def _answer_point(
         refusal = check_coverage(intent, query.scope)
         if refusal is not None:
             raise Refused(TemplateResult(data={"message": refusal, "season": query.scope.season}, answer=refusal))
-        if query.skeleton == "rows" and intent in ("game_log", "player_stat"):
-            # A player's log - game_log's own point, or the window of games
-            # player_stat's retired template handed to the log ("stats over
-            # his last N games") - read into a Result and said by the sayer
-            # (Phase 2, step 0); None where the log's words do not say it.
-            stated = STATED_SCOPING[intent]
-            player_query = query
-            log = _read_log(lambda: read_player_log(ctx.con, player_query, stated=stated))
-            if log is not None:
-                return log
+        ported = _read_ported(ctx.con, intent, query)
+        if ported is not None:
+            return ported
         # The intent's own default point is said the way its template says
         # it (compose.present, plan item 2 step 2a) - None for any other.
         own = present(ctx.con, intent, query)

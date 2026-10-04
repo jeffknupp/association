@@ -29,6 +29,7 @@
   "compose.core": 2,
   "compose.logs": 6,
   "compose.present": 3,
+  "compose.records": 1,
   "compose.team": 2,
   "conditions": 11,
   "connection": 1,
@@ -44,7 +45,7 @@
   "templates.netpoints": 4,
   "templates.players": 13,
   "templates.shots": 3,
-  "templates.splits": 7,
+  "templates.splits": 6,
   "templates.teams": 14
  },
  "private_template_imports": [
@@ -81,8 +82,6 @@
   "compose.present:_player_stat_season_line",
   "compose.present:_player_stat_season_line_subject",
   "compose.present:_rebuilt_in_scope",
-  "compose.present:_record_when_answer",
-  "compose.present:_record_when_query",
   "compose.present:_record_when_team_answer",
   "compose.present:_single_game_high_answer",
   "compose.present:_single_game_high_redirect",
@@ -100,6 +99,7 @@
   "compose.present:_threshold_count_notes",
   "compose.present:_wanted_stats",
   "compose.present:_with_without_said",
+  "compose.records:_condition_span_label",
   "compose.team:_DEFAULT_STREAK_LIMIT",
   "compose.team:_TEAM_STREAK_SELECT",
   "compose.team:_streak_league_team_narrowed",

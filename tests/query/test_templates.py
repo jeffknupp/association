@@ -29,6 +29,7 @@ from association.query.compose.present import (
     _present_streak,
     _present_team_streak,
 )
+from association.query.compose.records import read_record_when
 from association.query.compose.team import TeamQuery, _compile_team_run, run_team
 from association.query.entities import MAX_CANDIDATES, Availability, Entity, collect_name_readings, resolve_player
 from association.query.metrics import LEADERBOARD_METRICS, PER_GAME_MIN_GAMES, PER_GAME_MIN_POSTSEASON_GAMES
@@ -5920,8 +5921,6 @@ def test_templates_on_the_relation_do_not_narrow_it_themselves() -> None:
     from association.query.templates.splits import (
         _player_splits_from,
         _player_splits_team,
-        _record_when_answer,
-        _record_when_query,
         _record_when_team_answer,
         _streak_league_team_narrowed,
         _streak_player_answer,
@@ -5934,7 +5933,7 @@ def test_templates_on_the_relation_do_not_narrow_it_themselves() -> None:
     # period_split's templates are retired (compose.COMPILED_INTENTS); the
     # readers the compiler answers them with still read the relation, walked
     # the same way.
-    readers["record_when"] = [_record_when_query, _record_when_answer, _record_when_team_answer]
+    readers["record_when"] = [read_record_when, _record_when_team_answer]
     readers["period_split"] = [_present_period_split, _period_split_from, _period_split_rows, _period_split_rows_from, _period_split_empty, _period_split_cross_season_redirect]
     readers["player_splits"] = [_present_player_splits, _player_splits_from, _player_splits_team, team_splits]
     readers["game_log"] = [read_team_log, read_player_log, _player_log, _player_log_mixed, _team_log, _team_log_mixed]
