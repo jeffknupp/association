@@ -36,28 +36,14 @@ refused), and the compiler's generic sentence answers instead, as before.
 
 from __future__ import annotations
 
-from collections.abc import Callable
-
 import duckdb
 
-from association.query.measures import stat_measure
 from association.query.templates.common import (
-    HISTORY_COLUMNS,
     TemplateResult,
     TemplateUnsupported,
     check_coverage,
     relation_scoping,
     unhonored_scoping,
-)
-from association.query.templates.players import (
-    ADVANCED_STATS,
-    SHOOTING_STATS,
-    _player_compare_lines,
-    _player_history_read,
-    _player_history_subject,
-    _player_stat_season_line,
-    _player_stat_season_line_subject,
-    wanted_stats,
 )
 from association.query.templates.splits import (
     _condition_team_no_games,
@@ -70,115 +56,16 @@ from association.query.templates.splits import (
 )
 
 from .adapt import WITH_WITHOUT_STATED
-from .core import Query, Refused, Unsupported
+from .core import Refused, Unsupported
 from .say import say_run_listing, streak_result
 from .team import TeamQuery, _team_games_narrowed, run_team
-
-#: A presenter: the connection and the compiled point (its scope the intent's
-#: slots, typed), to the template's own answer - or ``None`` where the point
-#: is not the intent's own. The templates' own helpers below take the Scope.
-Presenter = Callable[[duckdb.DuckDBPyConnection, Query], TemplateResult | None]
-
-
-def _present_player_stat_season_line(con: duckdb.DuckDBPyConnection, q: Query) -> TemplateResult | None:
-    """``player_stat``'s unnarrowed line - a season or a career, read from
-    the season line (``player_season_stats_deduped``) - over the player and
-    span the template settles for it (``_player_stat_season_line_subject``)
-    and read by its own reader (``_player_stat_season_line``): the second
-    relation, never re-derived from box scores. The narrowed line, over box
-    scores, is ``compose.stats``' (read before any presenter runs), and a
-    window ("stats over his last N games") the log's.
-
-    Only where the question's own words left the router's stat alone (the
-    adapter's own measures): a measure the words moved in is a point the
-    season line does not say, and the compiler declines it as before."""
-    if q.skeleton != "scalar" or q.aggregate != "per_game" or q.subject != "player" or q.predicates or q.source != "seasons":
-        return None
-    scope = q.scope
-    stat = scope.stat
-    try:
-        # At call time: the reader imports this package for the adapters
-        # still here, so a module-level import would cycle.
-        from association.query.point import default_point
-
-        own = default_point("player_stat", scope)
-    except Unsupported:
-        return None
-    # The router's own stat, whichever way the point carries it: the
-    # adapter's measures, or the question's word for that same stat ("3pt
-    # percentage" is three_pct, which the router filed threePointFieldGoalPct).
-    named = stat_measure(stat)
-    if own.source != "seasons" or (q.measures != own.measures and (named is None or q.measures != [named])):
-        return None
-    if not (stat is not None and (stat in ADVANCED_STATS or stat in SHOOTING_STATS)):
-        # A stat with no per-game column ("avg_shot_distance") is the
-        # template's own refusal, and its reason - raised, so the
-        # refusal names the stat rather than "a line the season line's
-        # reader did not say" (the games relation has no column for it
-        # either; `present` says it as the relation's).
-        wanted_stats(scope)
-    subject = _player_stat_season_line_subject(con, scope)
-    if isinstance(subject, TemplateResult):
-        return subject
-    return _player_stat_season_line(con, *subject, scope)
-
-
-def _present_player_compare(con: duckdb.DuckDBPyConnection, q: Query) -> TemplateResult | None:
-    """``player_compare``'s own table - each named player's season line side
-    by side, with the NetPoints summary beneath
-    (``templates.players._player_compare_lines``) - over the compiler's
-    point for a pair on the season line. The reader's own refusals (an
-    unknown or ambiguous name, a stat the line has no column for, names
-    that resolve to one person) stand as the answer's reason.
-
-    .. versionadded:: 5.0.0
-    """
-    if q.subject != "player" or q.source != "seasons" or q.skeleton != "grouped" or q.group != "player" or q.predicates or q.measures:
-        return None
-    return _player_compare_lines(con, q.scope)
-
-
-def _present_player_history(con: duckdb.DuckDBPyConnection, q: Query) -> TemplateResult | None:
-    """``player_history``'s own table - the stat season by season from the
-    season line, newest first, the default four or the count asked for, and
-    the career line under a career - over the player the template settles
-    (``_player_history_subject``) and read by its own reader
-    (``_player_history_read``).
-
-    Only where the point is a season-line history of the router's own stat:
-    a stat with no per-season column or a measure the question's words moved
-    in is the game-level reading's
-    (``plan.games_reading``), answered by the compiler's sentence."""
-    scope = q.scope
-    stat = scope.stat
-    if q.source != "seasons" or q.group != "season" or stat is None or stat not in HISTORY_COLUMNS:
-        return None
-    if stat_measure(stat) not in (None, *q.measures[:1]):
-        return None
-    player = _player_history_subject(con, scope)
-    if isinstance(player, TemplateResult):
-        return player
-    return _player_history_read(con, player, scope)
-
-
-#: Intent -> the presenter for its own default point.
-PRESENTERS: dict[str, Presenter] = {
-    "player_stat": _present_player_stat_season_line,
-    "player_history": _present_player_history,
-    "player_compare": _present_player_compare,
-}
-"""The intents whose own default point the compiler answers in that intent's
-template's words - see the module docstring.
-
-.. versionadded:: 5.0.0
-"""
 
 TEAM_ONLY_PRESENTERS: frozenset[str] = frozenset({"with_without"})
 """The intents whose only presenter is the team relation's
 (:func:`present_team`): ``with_without``'s split is the team's record, so
 its point is a :class:`~association.query.compose.team.TeamQuery` whoever
-the question names, and :data:`PRESENTERS` (the player relation's) has no
-entry for it. :data:`STATED_SCOPING` declares for both.
+the question names. :data:`STATED_SCOPING` declares for it as for every
+compiled intent.
 
 .. versionadded:: 5.0.0
 """
@@ -248,32 +135,6 @@ could name a slot where the compiler had declined for another cause.
 
 .. versionadded:: 5.0.0
 """
-
-
-def present(con: duckdb.DuckDBPyConnection, intent: str, q: Query) -> TemplateResult | None:
-    """``q`` answered as ``intent``'s template answers its own default point,
-    or ``None`` where ``q`` is not that point (or the intent has no presenter)
-    and the compiler's own sentence should answer instead. The intent's slots
-    are ``q``'s own scope.
-
-    .. versionadded:: 5.0.0
-    """
-    presenter = PRESENTERS.get(intent)
-    if presenter is None:
-        return None
-    # Only where the presenter's words state every narrowing asked: a
-    # scoping slot they do not (a league-wide ordinal season on
-    # single_game_high, an opponent on threshold_count) is exactly a point
-    # that is NOT the template's own, and the compiler's sentence says what
-    # was read (STATED_SCOPING).
-    if unhonored_scoping(intent, q.scope, STATED_SCOPING[intent]):
-        return None
-    try:
-        return presenter(con, q)
-    except TemplateUnsupported as exc:
-        # The relation refusing a slot while the point was settled - the
-        # same outcome core.run gives the compiler's own sentence.
-        raise Unsupported(f"relation: {exc}") from exc
 
 
 def _present_team_streak(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> TemplateResult | None:

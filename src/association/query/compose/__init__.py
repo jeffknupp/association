@@ -49,11 +49,12 @@ from .logs import read_player_log, read_team_log
 from .pairs import read_player_matchup
 from .periods import read_period_split
 from .plan import Planned, games_reading
-from .present import STATED_SCOPING, present, present_team
+from .present import STATED_SCOPING, present_team
 from .rankings import read_leaderboard
 from .records import read_record_when
 from .runs import read_streak
 from .say import say
+from .seasons import read_player_compare, read_player_history, read_player_line
 from .sentence import _span_phrase
 from .sentence import sentence as _sentence
 from .sentence import team_sentence as _team_sentence
@@ -270,9 +271,29 @@ def _read_ported(con: duckdb.DuckDBPyConnection, intent: str, query: Query) -> T
         return _read_log(lambda: read_streak(con, query, stated=STATED_SCOPING["streak"]))
     if intent == "player_matchup" and query.skeleton == "pair":
         return _read_log(lambda: read_player_matchup(con, query, stated=STATED_SCOPING["player_matchup"]))
-    if intent == "leaderboard" and query.source == "seasons":
-        return _read_log(lambda: read_leaderboard(con, query, stated=STATED_SCOPING["leaderboard"]))
+    if query.source == "seasons":
+        return _read_season_line(con, intent, query)
     return None
+
+
+#: The season line's ported readers, by intent (``compose.seasons``).
+_SEASON_LINE_READERS: dict[str, Callable[..., Result | TemplateResult | None]] = {
+    "leaderboard": read_leaderboard,
+    "player_stat": read_player_line,
+    "player_history": read_player_history,
+    "player_compare": read_player_compare,
+}
+
+
+def _read_season_line(con: duckdb.DuckDBPyConnection, intent: str, query: Query) -> TemplateResult | None:
+    """A point on the season line read by its intent's reader and said by
+    the sayer: the league's ranking, a player's unnarrowed line, his
+    history, a comparison. ``None`` for any other intent, or where the
+    reader declines the point."""
+    reader = _SEASON_LINE_READERS.get(intent)
+    if reader is None:
+        return None
+    return _read_log(lambda: reader(con, query, stated=STATED_SCOPING[intent]))
 
 
 def _read_ported_team(con: duckdb.DuckDBPyConnection, intent: str, query: TeamQuery) -> TemplateResult | None:
@@ -321,14 +342,19 @@ def _answer_point(
         ported = _read_ported(ctx.con, intent, query)
         if ported is not None:
             return ported
-        # The intent's own default point is said the way its template says
-        # it (compose.present, plan item 2 step 2a) - None for any other.
-        own = present(ctx.con, intent, query)
-        if own is not None:
-            return own
         if query.source != "games":
             # The season line's own reader declined: the game-level reading,
             # checked against its own floor, or nothing.
+            # step 3: needs the point reader to plan these as the game-level
+            # point itself, from the season line's own predicates
+            # (compose.seasons.player_line_reads / player_history_reads /
+            # player_compare_reads, and the leaderboard's own-point check in
+            # compose.rankings) - every re-plan that answers is a games read
+            # (3 of 628 recorded questions, all leaderboards: a 15th-season
+            # ranking twice and a "since 2000-01" ranking; 3 unit-test calls,
+            # player histories of turnovers or no stat). An unnarrowed
+            # player_stat the line declines has no games reading and is a
+            # decline here; that one can be the planner's.
             query = games_reading(query)
             refusal = check_coverage(intent, query.scope)
             if refusal is not None:

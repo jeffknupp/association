@@ -23,12 +23,12 @@ from association.query.compose.periods import _period_by_quarter, _period_log, _
 from association.query.compose.plan import plan, plan_point
 from association.query.compose.present import (
     STATED_SCOPING,
-    _present_player_stat_season_line,
     _present_team_streak,
 )
 from association.query.compose.records import read_record_when
 from association.query.compose.runs import _streak_league_result, _streak_player_result, read_streak
 from association.query.compose.say import say_period_refusal
+from association.query.compose.seasons import _player_line_advanced, _player_line_career, _player_line_season, read_player_line
 from association.query.compose.splits import _player_splits, _team_splits, read_player_splits, read_team_splits
 from association.query.compose.stats import _player_stat_meetings, _player_stat_result, read_player_stat
 from association.query.compose.team import TeamQuery, _compile_team_run, run_team
@@ -47,7 +47,6 @@ from association.query.templates.games import (
     team_quarter_points,
 )
 from association.query.templates.netpoints import fingerprint, player_netpoints
-from association.query.templates.players import _player_stat_season_line, _player_stat_season_line_subject
 from association.query.templates.shots import shot_chart, shot_distance
 from association.query.templates.teams import team_record
 
@@ -1867,7 +1866,7 @@ def test_player_compare_reports_a_player_with_no_rows_rather_than_dropping_them(
 
 
 def test_player_compare_is_capped(ps_con: TemplateContext) -> None:
-    from association.query.templates.players import MAX_COMPARED_PLAYERS
+    from association.query.season_line import MAX_COMPARED_PLAYERS
 
     ps_con.con.execute("INSERT INTO players VALUES ('9','A A'),('10','B B'),('11','C C'),('12','D D')")
     result = player_compare(ps_con, Reading.from_slots({"players": ["Luka Doncic", "Nikola Jokic", "A A", "B B", "C C", "D D"]}))
@@ -2768,7 +2767,7 @@ def test_player_stat_answers_two_point_percentage_for_a_season_and_a_career(ps_c
     an expression - makes and attempts less the threes - rather than a bare
     column name, unlike its two siblings. Proven here for both the season
     lookup and the career sum, which read the season table two different ways
-    (`_season_row`'s plain SELECT and `_career_player_stat`'s per-season SUM)."""
+    (``season_line.season_statement``'s plain SELECT and ``career_statement``'s per-season SUM)."""
     for col in ("fieldGoalsMade", "fieldGoalsAttempted", "threePointFieldGoalsMade", "threePointFieldGoalsAttempted"):
         ps_con.con.execute(f"ALTER TABLE player_season_stats_deduped ADD COLUMN {col} INTEGER")
     ps_con.con.execute("UPDATE player_season_stats_deduped SET fieldGoalsMade=700, fieldGoalsAttempted=1300, threePointFieldGoalsMade=200, threePointFieldGoalsAttempted=500 WHERE athlete_id='1'")
@@ -2945,7 +2944,7 @@ def test_player_history_spans_several_seasons(ps_con: TemplateContext) -> None:
 
 
 def test_player_history_defaults_to_four_seasons(ps_con: TemplateContext) -> None:
-    from association.query.templates.players import DEFAULT_HISTORY_SEASONS
+    from association.query.season_line import DEFAULT_HISTORY_SEASONS
 
     s = current_season()
     for offset in range(1, 8):
@@ -6026,7 +6025,7 @@ def test_templates_on_the_relation_do_not_narrow_it_themselves() -> None:
     readers["period_split"] = [read_period_split, _period_log, _period_redirect, _period_by_quarter]
     readers["player_splits"] = [read_player_splits, read_team_splits, _player_splits, _team_splits]
     readers["game_log"] = [read_team_log, read_player_log, _player_log, _player_log_mixed, _team_log, _team_log_mixed]
-    readers["player_stat"] = [read_player_stat, _player_stat_result, _player_stat_meetings, _present_player_stat_season_line, _player_stat_season_line, _player_stat_season_line_subject]
+    readers["player_stat"] = [read_player_stat, _player_stat_result, _player_stat_meetings, read_player_line, _player_line_season, _player_line_career, _player_line_advanced]
     # streak's template is retired too (the `run` shape): the compiler's
     # skeleton and the team compiler's, and the readers that say them.
     readers["streak"] = [_compile_run, _compile_team_run, read_streak, _streak_player_result, _streak_league_result, _present_team_streak, _streak_team_answer, _streak_league_team_narrowed]

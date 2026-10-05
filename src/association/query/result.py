@@ -41,7 +41,10 @@ class Span:
     the sayer words it from ``first`` and ``last``. ``floor`` is the first
     season a span over every season could reach (the relation's floor),
     which a span with nothing in it is named by ("in any regular season on
-    record (1994 onward)").
+    record (1994 onward)"). ``source`` is the relation the span was read
+    over: the player's games (``"games"``), or the season line
+    (``"seasons"``, one row per season: an unnarrowed line, a history, a
+    comparison - :mod:`association.query.season_line`).
 
     .. versionadded:: 5.0.0
     """
@@ -55,6 +58,7 @@ class Span:
     years: str | None = None
     phrase: str | None = None
     floor: int | None = None
+    source: Literal["games", "seasons"] = "games"
 
 
 @dataclass(frozen=True, kw_only=True)

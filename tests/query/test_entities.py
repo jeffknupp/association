@@ -261,14 +261,14 @@ def test_every_declared_availability_names_a_real_table() -> None:
     import pkgutil
 
     from association.nba.coverage import KNOWN_TABLES
-    from association.query import fingerprint, shotchart, templates
+    from association.query import fingerprint, season_line, shotchart, templates
     from association.query.entities import Availability
 
     # Every one each module declares, tuples included, rather than a list here
     # that a new template's narrowing table would have to remember to join.
     # templates is a package: every submodule of it, so a new subject module's
     # narrowing table is covered without being added here.
-    modules = [shotchart, fingerprint, templates, *(importlib.import_module(m.name) for m in pkgutil.iter_modules(templates.__path__, templates.__name__ + "."))]
+    modules = [shotchart, fingerprint, season_line, templates, *(importlib.import_module(m.name) for m in pkgutil.iter_modules(templates.__path__, templates.__name__ + "."))]
     declared = [v for module in modules for v in vars(module).values()]
     flat = [a for v in declared for a in (v if isinstance(v, tuple) else (v,)) if isinstance(a, Availability)]
     assert {a.table for a in flat} >= {"shot_chart", "net_points_player_fingerprint", "player_season_stats_deduped", "player_game_log"}

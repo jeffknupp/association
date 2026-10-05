@@ -26,9 +26,10 @@ from association.query.notes import Note, decided, note
 from association.query.player_games import PERIOD_LOG_COLUMNS, _joined, period_columns
 from association.query.reading import DEFAULT_GAME_LOG_LIMIT, _clamp_limit, ordinal_word
 from association.query.result import Decided, Grouped, Result, Rows, Run, Scalar, Span
+from association.query.season_line import NETPOINTS_COMPARE_ROWS
 from association.query.shotchart import UNSEPARABLE_SHOT_VALUES
-from association.query.templates.common import PLAYER_STAT_COLUMNS, SEASON_TYPE_NAMES, STAT_LABELS, TemplateResult, count_games, format_value, season_label, season_phrase, table_cell
-from association.query.templates.players import MADE_STAT_ATTEMPTS, SHOOTING_STATS
+from association.query.templates.common import HISTORY_COLUMNS, PLAYER_STAT_COLUMNS, SEASON_TYPE_NAMES, STAT_LABELS, TemplateResult, count_games, format_value, season_label, season_phrase, table_cell
+from association.query.templates.players import ADVANCED_STATS, MADE_STAT_ATTEMPTS, SHOOTING_STATS
 
 from .logs import LOG_PERCENTAGES, log_key
 
@@ -231,6 +232,10 @@ def note_phrase(each: Note, *, narrowing: str = "", consequence: str = "", liste
         return f"Careers that ended before {season_label(facts['first'])} are not in this warehouse, so this is not an all-time list."
     if each.kind == "rebuilt_agreement" and facts.get("what") in ("period_points_from_shots", "period_rebuilt"):
         return _say_period_agreement(facts)
+    if each.kind == "seasons_missing":
+        return _say_seasons_missing(facts)
+    if each.kind == "no_data_for" and "period" in facts:
+        return f"({', '.join(facts['names'])} has no {facts['period']} numbers in the warehouse.)"
     raise ValueError(f"no phrase for a {each.kind!r} note with {sorted(facts)}")
 
 
@@ -455,6 +460,8 @@ def say(result: Result) -> TemplateResult:
 
     .. versionadded:: 5.0.0
     """
+    if result.span.source == "seasons":
+        return _say_season_line(result)
     if result.scalar is not None and result.scalar.how == "count":
         return say_threshold_count(result)
     if result.runs is not None:
@@ -1582,3 +1589,233 @@ def _say_career_leaderboard(result: Result, body: Grouped) -> TemplateResult:
         },
         answer=answer,
     )
+
+
+# --- the season line: a player's line, a history, a comparison ------------------------
+
+
+def _say_seasons_missing(facts: dict[str, Any]) -> str:
+    """Seasons an advanced stat's career could not see. Silence here would
+    be the failure this project keeps producing: a precise number over a
+    span it does not actually cover, printed as fluently as a complete one.
+    The seasons are not scattered games - ESPN serves whole team-seasons of
+    empty box scores from 2013 to 2018 (``DATA.md``), and a player who
+    spent them on Chicago or New Orleans has nothing at all for those
+    years."""
+    missing = facts["seasons"]
+    subject = "season in that span is" if missing == 1 else "seasons in that span are"
+    them = "it" if missing == 1 else "them"
+    return f" {missing} {subject} not counted: ESPN's box scores for {them} are empty, so no {facts['label']} can be computed from {them}."
+
+
+def _advanced_value(percentage: bool, value: Any) -> str:
+    """One advanced figure as the sentence prints it. A percentage is
+    printed as a three-decimal fraction (``.622``), the way a shooting line
+    reads, because these are stored as 0-1 fractions; usage is already a
+    0-100 rate and game score is a raw composite, so both take one
+    decimal."""
+    if percentage:
+        return f"{float(value):.3f}".lstrip("0")
+    return f"{float(value):.1f}"
+
+
+def _say_player_line_advanced(result: Result, line: Scalar) -> TemplateResult:
+    """A computed advanced stat's line: the figure, its volume - a rate
+    without it is the thing people ask "out of how many?" about - the
+    games, and the seasons it could not see."""
+    stat, span, name = result.facts["stat"], result.span, result.subject
+    spec = ADVANCED_STATS[stat]
+    if not line.values:
+        message = f"{name} has no {spec.label} on record {span.phrase} - it is computed from box scores, which start in 1994."
+        return TemplateResult(data={"player": name, "stat": stat, "stats": {}}, answer=message)
+    value, volume, games = line.values[stat], line.sums["volume"], line.games
+    printed = _advanced_value(spec.percentage, value)
+    behind = f" on {int(volume):,} {spec.volume}" if volume is not None and spec.volume else ""
+    about: dict[str, Any] = {"span": "career", "seasons": [span.first, span.last], "season_count": result.facts["season_count"]} if span.career else {"season": span.first}
+    sentence = f"{name} has a {printed} {spec.label} {span.phrase}{behind}, in {int(games):,} games." if games else f"{name} has a {printed} {spec.label} {span.phrase}{behind}."
+    data = {"player": name, "stat": stat, **about, "stats": {spec.column: value, "games_played": int(games) if games is not None else None}, "seasons_missing": line.sums["seasons_missing"]}
+    return TemplateResult(data=data, answer=sentence + "".join(_said(result)))
+
+
+def _player_line_values(result: Result, line: Scalar, wanted: list[str]) -> tuple[dict[str, Any], Any]:
+    """The line as ``data["stats"]`` holds it, by column: the games, each
+    wanted stat's per-game figure and total, a made count's attempts - as
+    stored for a season, rounded as the retired template rounded a summed
+    career - and those attempts, for the sentence."""
+    career = result.span.career
+    values: dict[str, Any] = {"gamesPlayed": line.games}
+    for stat in wanted:
+        per_game_col, total_col, _ = PLAYER_STAT_COLUMNS[stat]
+        values[per_game_col] = rounded(line.values[stat]) if career else line.values[stat]
+        if total_col and stat in line.sums:
+            values[total_col] = round(line.sums[stat]) if career else line.sums[stat]
+    attempted_col = MADE_STAT_ATTEMPTS.get(wanted[0]) if len(wanted) == 1 else None
+    attempted = line.sums.get(attempted_col) if attempted_col else None
+    if attempted_col and attempted_col in line.sums:
+        values[attempted_col] = int(line.sums[attempted_col]) if career else line.sums[attempted_col]
+    return values, attempted
+
+
+def _player_line_empty(result: Result) -> TemplateResult:
+    """No line on record: the season's or the career's sentence, and where
+    the season was defaulted, the seasons he IS on record for."""
+    span, name = result.span, result.subject
+    if span.career:
+        kind = SEASON_TYPE_NAMES.get(span.season_type or 2, "regular season")
+        return TemplateResult(data={"player": name, "span": "career", "stats": {}}, answer=f"{name} has no {kind} numbers in the warehouse.")
+    assert span.season is not None
+    answer = f"{name} has no {season_phrase(span.season, span.season_type or 2)} numbers in the warehouse." + "".join(decision_phrase(each) for each in result.decisions)
+    return TemplateResult(data={"player": name, "season": span.season, "stats": {}}, answer=answer)
+
+
+def _say_season_line(result: Result) -> TemplateResult:
+    """The season line's own shapes, by body: a player's line, a history by
+    season, a comparison of players."""
+    if result.scalar is not None:
+        return say_player_line(result)
+    if result.grouped is not None and result.grouped.by == "season":
+        return say_player_history(result)
+    assert result.grouped is not None and result.grouped.by == "subject", "a season-line result with no season-line shape"
+    return say_player_compare(result)
+
+
+def say_player_line(result: Result) -> TemplateResult:
+    """A player's unnarrowed line from the season line, worded - one
+    season's ("averaged 27.7 points per game in 70 games in the 2026
+    regular season"), a career's ("over his career (8 regular seasons,
+    2019-2026)"), a percentage with its makes and attempts, or a computed
+    advanced stat - the retired ``player_stat`` template's words for the
+    season line.
+
+    .. versionadded:: 5.0.0
+    """
+    line = result.scalar
+    assert line is not None
+    if result.facts["stat"] in ADVANCED_STATS:
+        return _say_player_line_advanced(result, line)
+    if not line.values and not line.sums:
+        return _player_line_empty(result)
+    span, name, wanted = result.span, result.subject, list(result.facts["wanted"])
+    if span.career:
+        seasons, kind = result.facts["season_count"], SEASON_TYPE_NAMES.get(span.season_type or 2, "regular season")
+        plural = "" if seasons == 1 else "s"
+        when = f"over his career ({seasons} {kind}{plural}, {span.first}-{span.last})" if span.first != span.last else f"over his career (the {span.first} {kind})"
+        about: dict[str, Any] = {"span": "career", "seasons": [span.first, span.last], "season_count": seasons}
+        period = f"career {kind}s"
+    else:
+        assert span.season is not None and span.phrase is not None
+        when, about, period = span.phrase, {"season": span.season, "season_n": result.facts["season_n"]}, season_phrase(span.season, span.season_type or 2)
+    stat = result.facts["stat"]
+    if stat is not None:
+        shooting = SHOOTING_STATS[stat]
+        values = {"gamesPlayed": line.games, shooting.made: line.sums["made"], shooting.attempted: line.sums["attempted"]}
+        return shooting_result(name, about, values, shooting, when=when)
+    values, attempted = _player_line_values(result, line, wanted)
+    answer = phrase_player_stat(name, period, values, wanted, when=when, attempted=attempted)
+    return TemplateResult(data={"player": name, **about, "stats": values, "labels": stat_value_labels(wanted)}, answer=answer)
+
+
+def _history_table(name: str, label: str, period: str, history: list[dict[str, Any]], columns: list[tuple[str, str, str]], *, career: bool) -> str:
+    """The seasons, newest first, under a heading naming the stat, the
+    season type and the seasons shown."""
+    if not history:
+        return f"The warehouse has no {period} seasons on record for {name}."
+    headers = ["season", "G"] + [h for _, h, _ in columns]
+    keys = ["season", "games"] + [k for _, _, k in columns]
+    widths = [max(len(h), *(len(table_cell(row.get(k))) for row in history)) for h, k in zip(headers, keys, strict=True)]
+    newest, oldest = history[0]["season"], history[-1]["season"]
+    years = f"{oldest}" if oldest == newest else f"{oldest}-{newest}"
+    shown = f"career, {years}" if career else years
+    lines = [f"{name}, {label} by {period}, {shown} (most recent first):", "  ".join(h.rjust(w) for h, w in zip(headers, widths, strict=True))]
+    lines.extend("  ".join(table_cell(row.get(k)).rjust(w) for k, w in zip(keys, widths, strict=True)) for row in history)
+    return "\n".join(lines)
+
+
+def _history_career_line(name: str, label: str, summary: Scalar) -> str:
+    """The career line beneath a career's history: the games-weighted
+    percentage from the makes and attempts summed across every season shown
+    (never a mean of means, F041), or the plain career total."""
+    if "total" in summary.sums:
+        return f"{name}'s career total: {round(summary.sums['total']):,} {label.removesuffix(' per game')}."
+    made, attempted = summary.sums["made"], summary.sums["attempted"]
+    return f"{name}'s career {label}: {100.0 * made / attempted:.1f}% ({int(made):,} of {int(attempted):,})."
+
+
+def say_player_history(result: Result) -> TemplateResult:
+    """A player's stat season by season, worded: the aligned table under its
+    heading, and under a career the career line - the retired
+    ``player_history`` template's words. ``data["seasons"]`` keys each row
+    by the STABLE name (``HISTORY_COLUMNS``' third element), never the SQL a
+    column reads through, and ``data["labels"]`` carries each column's
+    printed header, so the page need not guess one back out of a key.
+
+    .. versionadded:: 5.0.0
+    """
+    groups = result.grouped
+    assert groups is not None
+    stat, name, span = result.facts["stat"], result.subject, result.span
+    label, columns = HISTORY_COLUMNS[stat]
+    period = SEASON_TYPE_NAMES.get(span.season_type or 2, "regular season")
+    history = [{"season": row["key"], **{k: v for k, v in row.items() if k != "key"}} for row in groups.rows]
+    answer = _history_table(name, label, period, history, columns, career=span.career)
+    summary = result.parts[1].body if len(result.parts) > 1 else None
+    if isinstance(summary, Scalar):
+        answer += f"\n{_history_career_line(name, label, summary)}"
+    labels = {k: h for _, h, k in columns}
+    return TemplateResult(data={"player": name, "stat": stat, "span": "career" if span.career else None, "seasons": history, "labels": labels}, answer=answer)
+
+
+def _signed_cell(value: Any) -> str:
+    """A NetPoints cell. Signed, because the sign is the whole reading of it -
+    an unmarked "0.42" beside "-1.10" loses which one helped their team."""
+    return "-" if value is None else f"{value:+.2f}"
+
+
+def _compare_table(rows: dict[str, dict[str, Any]], wanted: list[str], period: str, netpoints: dict[str, dict[str, Any]], missing_note: str) -> str:
+    """A fixed-width table rather than prose. Comparisons are the one shape
+    where a sentence actively hurts - the agent's prose version stated that a
+    player with 0.4 steals led one with 1.6."""
+    names = list(rows)
+    # A fixed decimal in every cell, not format_value: in an aligned column a
+    # trailing-zero-stripped "25" next to "27.7" reads as a different unit.
+    entries: list[tuple[str, list[str]]] = [("games", [table_cell(rows[name].get("gamesPlayed")) for name in names])]
+    for stat in wanted:
+        column, _, label = PLAYER_STAT_COLUMNS[stat]
+        entries.append((label, [table_cell(rows[name].get(column)) for name in names]))
+    # Shown only when somebody has a row: an empty NetPoints block under a
+    # comparison of two 1990s players would read as "both contributed nothing"
+    # rather than "this season predates the data".
+    if any(netpoints.get(name) for name in names):
+        entries.append(("", ["" for _ in names]))
+        for label, column in NETPOINTS_COMPARE_ROWS:
+            entries.append((label, [_signed_cell(netpoints.get(name, {}).get(column)) for name in names]))
+    label_width = max(len(label) for label, _ in entries)
+    name_width = max(len(text) for text in (*names, *(cell for _, cells in entries for cell in cells)))
+    # rstripped so the blank separator row is an empty line rather than a line
+    # of spaces, which shows up as trailing whitespace wherever this is stored.
+    lines = [f"{' vs '.join(names)}, {period}:", (f"{' ' * label_width}  " + "  ".join(name.rjust(name_width) for name in names)).rstrip()]
+    lines += [(f"{label.ljust(label_width)}  " + "  ".join(cell.rjust(name_width) for cell in cells)).rstrip() for label, cells in entries]
+    if missing_note:
+        lines.append(missing_note)
+    return "\n".join(lines)
+
+
+def say_player_compare(result: Result) -> TemplateResult:
+    """Two or more players' season lines side by side, worded: a table of
+    the games and each stat per game, the NetPoints summary beneath where
+    anybody has a row, and which players have no line that season - the
+    retired ``player_compare`` template's words.
+
+    .. versionadded:: 5.0.0
+    """
+    groups = result.grouped
+    assert groups is not None and result.span.season is not None
+    wanted = list(result.facts["wanted"])
+    columns = {stat: PLAYER_STAT_COLUMNS[stat][0] for stat in wanted}
+    rows = {line["key"]: ({"gamesPlayed": line["games"], **{columns[stat]: line[stat] for stat in wanted}} if "games" in line else {}) for line in groups.rows}
+    detail = result.parts[1].body if len(result.parts) > 1 else None
+    netpoints = {line["key"]: {k: v for k, v in line.items() if k != "key"} for line in detail.rows} if isinstance(detail, Grouped) else {}
+    missing_note = "".join(_said(result))
+    answer = _compare_table(rows, wanted, season_phrase(result.span.season, result.span.season_type or 2), netpoints, missing_note)
+    data = {"season": result.span.season, "players": rows, "netpoints": netpoints, "headline": answer.split("\n")[0].rstrip(":"), "notes": [missing_note] if missing_note else []}
+    return TemplateResult(data=data, answer=answer)

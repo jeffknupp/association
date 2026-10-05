@@ -50,6 +50,7 @@ from association.query.measures import LINE as LINE
 from association.query.player_games import PERIOD_COLUMNS, PERIOD_RATES, REBUILT_STATS, REGULATION_QUARTERS, Narrowed, aggregate_sql, games_subquery, grouped_sql, named, paired_rows_sql, rows_sql
 from association.query.reading import DEFAULT_NAMED_RUNS, Scope
 from association.query.reading import Unsupported as Unsupported
+from association.query.season_line import Statement
 from association.query.templates.common import (
     BOX_SCORES,
     GAME_LOGS,
@@ -1139,9 +1140,26 @@ def rows_of(con: duckdb.DuckDBPyConnection, compiled: Compiled) -> list[dict[str
 
     .. versionadded:: 5.0.0
     """
-    cur = con.execute(compiled.sql, compiled.params)
+    cur = _executed(con, compiled)
     names = [d[0] for d in cur.description]
     return [dict(zip(names, r, strict=True)) for r in cur.fetchall()]
+
+
+def values_of(con: duckdb.DuckDBPyConnection, statement: Statement) -> list[tuple[Any, ...]]:
+    """A season-line statement (:class:`~association.query.season_line.Statement`,
+    built by :mod:`association.query.season_line`) executed: its rows by
+    position, since two of its columns may share a name. Through the same
+    one execution as :func:`rows_of`.
+
+    .. versionadded:: 5.0.0
+    """
+    return _executed(con, statement).fetchall()
+
+
+def _executed(con: duckdb.DuckDBPyConnection, statement: Compiled | Statement) -> duckdb.DuckDBPyConnection:
+    """The one place a statement runs: a compiled point's, or the season
+    line's."""
+    return con.execute(statement.sql, statement.params)
 
 
 def run(con: duckdb.DuckDBPyConnection, q: Query) -> dict[str, Any]:

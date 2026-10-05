@@ -77,8 +77,10 @@ this tree:
   2026-10-03; the intents holding one are 8 since 2026-10-04, as the game
   log, `record_when`, `player_splits` and `period_split` went to readers and
   sayers, 6 once `threshold_count` and `single_game_high` did, 4 once
-  `streak` and `player_matchup` did, and 3 once `leaderboard` did,
-  2026-10-05) and the team-only one, the adapters
+  `streak` and `player_matchup` did, 3 once `leaderboard` did, and none
+  once the season line's `player_stat`, `player_history` and
+  `player_compare` did, 2026-10-05: `PRESENTERS` and `present()` are gone)
+  and the team-only one, the adapters
   (10; 5 since 2026-10-04, 3 once `threshold_count`'s and
   `single_game_high`'s default points went to the reader, and 1 -
   `with_without`'s - once the streak's and the matchup's did), the 14
@@ -806,15 +808,24 @@ model's. Two things follow, and both matter when you add a shape:
   are values and notes on the Result, and the high's redirect for a
   defaulted season is a `Decided`), and a player's or the league's
   longest run and two players' meetings (`compose/runs.py`,
-  `compose/pairs.py`; the next paragraph), and the league's leaders by a
+  `compose/pairs.py`; the next paragraph), the league's leaders by a
   season-line metric (`compose/rankings.py`, since 2026-10-05: a `Grouped`
   ranking by `player` whose `ranked_by` is the metric - a count of games
   over a line ranks by `"games"`, which is how the sayer tells the two
-  apart - read through the season line's one door,
-  `leaderboard.rank_season_line`, which keeps the dedup, the qualifier and
-  the career pool exactly; the qualifier is the `minimum` decision it
-  was, the career pool a `floor` note); only the unnarrowed
-  season line is still `player_stat`'s presenter. Three rules the slice set, which every later slice follows:
+  apart - read through `leaderboard.rank_season_line`, which keeps the
+  dedup, the qualifier and the career pool exactly; the qualifier is the
+  `minimum` decision it was, the career pool a `floor` note), and a
+  player's unnarrowed line, his stat season by season and two or more
+  players' lines side by side (`compose/seasons.py`, since 2026-10-05,
+  over the SEASON LINE - `query/season_line.py`: one row per player per
+  season in `player_season_stats_deduped`, and the advanced stats beside
+  it. That module settles the subject and builds each statement the
+  retired templates ran, moved whole; `compose.core.values_of` executes
+  them through the compiler's one `execute`. The line is a `Scalar` and
+  the history a `Grouped` by `season` with a career's `summary` part, the
+  comparison a `Grouped` by `subject`, each on a `Span` whose `source` is
+  `"seasons"`, which is how `say()` tells them from the games relation's
+  shapes). No player shape has a presenter now. Three rules the slice set, which every later slice follows:
   - **A note is written as data and said once.** The reader builds
     `Note("window_short", {found, asked, ...})`; the sayer phrases it
     (`say.note_phrase`, ONE phrase per kind) and records it through
@@ -915,8 +926,7 @@ model's. Two things follow, and both matter when you add a shape:
   find the presenter (`compose/present.py`) and follow it into
   `templates/`. `ROADMAP.md`, Phase 2, removes that detour slice by slice.
   The presenters' routes, as they stand
-  (two players' season lines
-  through `templates.players._player_compare_lines`; a team's streak
+  (a team's streak
   through the `run` shape on the team relation
   (`compose.team._compile_team_run`), said by `compose.say.say_one_run` and
   `say_run_listing`, the words a player's and the league's streak are said
