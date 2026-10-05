@@ -27,7 +27,7 @@ from association.query.reading import SPLIT_KINDS, Scope, Unsupported
 from association.query.result import Grouped, Narrowing, Part, Result, Span
 from association.query.season_text import MONTH_NAMES
 from association.query.templates.common import TemplateResult, condition_scope, no_games, no_narrowed_games, optional_team, span_of, team_games, unhonored_scoping
-from association.query.templates.splits import _condition_team_no_games, _team_span_label
+from association.query.templates.splits import condition_team_no_games, team_span_label
 
 from .core import Compiled, Query, compile_over, compile_query, rows_of
 from .team import TeamQuery, compile_team_over
@@ -333,7 +333,7 @@ def _team_splits(con: duckdb.DuckDBPyConnection, q: TeamQuery, team: Entity, opp
     each = found[kinds[0]]
     games = sum(int(r["games"]) for r in each)
     if not games:
-        return _condition_team_no_games(con, team, span, narrowed)
+        return condition_team_no_games(con, team, span, narrowed)
     first, last = min(r["first_season"] for r in each), max(r["last_season"] for r in each)
     # The score of a game with no box score is still on record, but its
     # team box stats are NULL - averaged over the rest, and said so.
@@ -360,7 +360,7 @@ def _team_splits(con: duckdb.DuckDBPyConnection, q: TeamQuery, team: Entity, opp
     return Result(
         subject=f"The {team.name}",
         relation="team",
-        span=Span(season=span.season, season_type=span.season_type, career=span.season is None, first=first, last=last, phrase=_team_span_label(span, first, last)),
+        span=Span(season=span.season, season_type=span.season_type, career=span.season is None, first=first, last=last, phrase=team_span_label(span, first, last)),
         narrowing=Narrowing(phrase=narrowed.filters(), opponent=narrowed.opponent.name if narrowed.opponent else None, venue=narrowed.venue),
         parts=(Part(body=Grouped(by="split", rows=tuple(row for kind in kinds for row in _group_rows(found[kind], line, kind)))),),
         notes=tuple(notes),

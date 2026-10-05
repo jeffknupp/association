@@ -46,20 +46,11 @@ from association.query.templates.common import (
     team_relation_scoping,
     unhonored_scoping,
 )
-from association.query.templates.splits import (
-    _condition_team_no_games,
-    _record_when_team_answer,
-    _streak_league_result_words,
-    _streak_team_answer,
-    _team_span_label,
-    _team_where_in,
-    _with_without_said,
-)
+from association.query.templates.splits import _record_when_team_answer, _with_without_said
 
 from .core import Refused, Unsupported
 from .plan import WITH_WITHOUT_STATED
-from .say import say_run_listing, streak_result
-from .team import TeamQuery, _team_games_narrowed, run_team
+from .team import TeamQuery, run_team
 
 TEAM_ONLY_PRESENTERS: frozenset[str] = frozenset({"with_without"})
 """The intents whose only presenter is the team relation's
@@ -147,32 +138,6 @@ could name a slot where the compiler had declined for another cause.
 """
 
 
-def _present_team_streak(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> TemplateResult | None:
-    """A team's longest run of wins or losses, or the league's with no team
-    named (``streak``'s retired team and league branches), said in the
-    template's words over the team compiler's ``run`` shape
-    (``compose.team._compile_team_run``, through :func:`~association.query.compose.team.run_team`,
-    which checks the coverage floor first).
-
-    .. versionadded:: 5.0.0
-    """
-    if unhonored_scoping("streak", q.scope, STATED_SCOPING["streak"]):
-        return None
-    want_win = q.scope.kind != "loss"
-    found = run_team(con, q)
-    if found.team is not None:
-        # The narrowing the run was read over, for the sentence - and, with
-        # no games in it, which fact is missing (the team's games in this
-        # span at all, or the match to an opponent/venue narrowing).
-        narrowed, team, span = _team_games_narrowed(con, q)
-        if not found.games:
-            return _condition_team_no_games(con, team, span, narrowed)
-        return _streak_team_answer(found.team, narrowed, found.span, found.first_season, found.last_season, found.runs, want_win)
-    runs, rule = _streak_league_result_words(con, found.span, found.runs)
-    label = _team_span_label(found.span, found.first_season, found.last_season)
-    return say_run_listing(runs, streak_result(want_win), rule, label, _team_where_in(found.span), by_stat=False, stat=None, threshold=None, unit="", want_win=want_win)
-
-
 def _present_with_without(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> TemplateResult | None:
     """A team's record with and without named teammates, said in the
     retired template's words (``templates.splits._with_without_said``) over
@@ -206,11 +171,6 @@ def present_team(con: duckdb.DuckDBPyConnection, intent: str, q: TeamQuery) -> T
 
     .. versionadded:: 5.0.0
     """
-    if intent == "streak" and q.shape == "run":
-        try:
-            return _present_team_streak(con, q)
-        except TemplateUnsupported as exc:
-            raise Unsupported(f"relation: {exc}") from exc
     if intent == "with_without" and q.shape == "grouped" and q.group == "presence":
         try:
             return _present_with_without(con, q)

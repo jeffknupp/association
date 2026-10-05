@@ -53,7 +53,7 @@ from .plan import Planned
 from .present import STATED_SCOPING, present_team
 from .rankings import read_leaderboard
 from .records import read_record_when
-from .runs import read_streak
+from .runs import read_streak, read_team_streak
 from .say import say
 from .seasons import read_player_compare, read_player_history, read_player_line
 from .sentence import _span_phrase
@@ -310,6 +310,8 @@ def _read_ported_team(con: duckdb.DuckDBPyConnection, intent: str, query: TeamQu
         return _read_log(lambda: read_team_log(con, query, stated=STATED_SCOPING["game_log"]))
     if intent == "player_splits" and query.shape == "grouped":
         return _read_log(lambda: read_team_splits(con, query, stated=STATED_SCOPING["player_splits"]))
+    if intent == "streak" and query.shape == "run":
+        return _read_log(lambda: read_team_streak(con, query, stated=STATED_SCOPING["streak"]))
     return None
 
 

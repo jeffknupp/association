@@ -973,7 +973,7 @@ def test_a_team_only_threshold_says_which_fact_is_missing_for_a_narrowing_with_n
     for that span, and it was against the Lakers - narrowed to the 76ers
     instead, the pool is empty, and which fact is missing is the MATCH, not
     the span: "played 1 games ... none of them vs the Philadelphia 76ers",
-    not the false "no games in the 1991 postseason" (`_condition_team_no_games`,
+    not the false "no games in the 1991 postseason" (`condition_team_no_games`,
     step 3, C4)."""
     result = record_when(old_postseason_and_cup_final, Reading.from_slots(_slots(team="Boston Celtics", stat="points", threshold=10, season=1991, season_type=3, opponent="Philadelphia 76ers")))
     assert result.data["games"] == 0
@@ -1316,7 +1316,7 @@ def test_a_team_streak_honors_since(league: TemplateContext) -> None:
     """``since`` (step 3, C4b): searched across every season from it on
     rather than only the current one - not across the boundary between them,
     since a team's own run is still counted within one season
-    (``_longest_runs``' own ``("team_id", "season")`` partition, unchanged by
+    (``_longest_runs_sql``' own ``("team_id", "season")`` partition, unchanged by
     this). The fixture's Celtics have a 3-game win streak in BOTH `last`
     (e0c, e0a, e0d) and this season (e3, e4, e5); with `since` bounded to the
     current season alone (the default), only the second would be found. The

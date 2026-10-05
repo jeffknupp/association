@@ -1259,7 +1259,7 @@ def test_record_when_team_game_n_regular_season_is_refused(team_ctx: TemplateCon
 
 def test_streak_team_since_searches_more_than_one_season(team_ctx: TemplateContext) -> None:
     """A team's own streak still runs within ONE season even under `since`
-    (:func:`_longest_runs`'s own ``("team_id", "season")`` partition, the
+    (:func:`_longest_runs_sql`'s own ``("team_id", "season")`` partition, the
     record-book rule the docstring already states) - `since` widens which
     SEASONS are searched, not whether a run crosses between them. The
     Celtics' postseason since 1991: one win in the 1991 Finals (old1) and one

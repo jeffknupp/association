@@ -12,14 +12,12 @@ from typing import Any
 import duckdb
 
 from association.nba.franchises import season_name
-from association.nba.season import current_season
 from association.query.reading import SPLIT_KINDS as SPLIT_KINDS
 from association.query.reading import Scope
 from association.query.subject import with_without_named
 
 from ..conditions import (
     _PLAYER_GAME_TABLES,
-    Params,
     _cell,
     _margin,
     _names,
@@ -33,8 +31,7 @@ from ..conditions import (
     _with_without_group,
 )
 from ..entities import Entity
-from ..notes import Note, note
-from ..result import Run, run_of
+from ..notes import note
 from ..team_games import TEAM_GAMES_SQL, TeamNarrowed
 from ..team_games import aggregate_sql as team_aggregate_sql
 from ..team_games import games_subquery as team_games_subquery
@@ -86,7 +83,7 @@ def condition_span_label(covered: _Scope, scope: Scope, first: Any, last: Any) -
 
     .. versionchanged:: 5.0.0
        Says "from X through Y" once ``scope.until`` bounds the other end too,
-       matching :meth:`_Span.during`'s wording (see :func:`_team_span_label`,
+       matching :meth:`_Span.during`'s wording (see :func:`team_span_label`,
        fixed the same way) - before this, "from 2019-20 to 2021-22" was
        labeled "since 2019 (...)", with the range's real upper bound nowhere
        in the sentence (ISSUES.md).
@@ -156,7 +153,7 @@ def _condition_needs_player_refusal(intent: str, scope: Scope, *extra: str) -> N
         raise TemplateUnsupported(f"{intent} cannot honor {claimed} without a named player - only his own games can be narrowed that way")
 
 
-def _team_span_label(span: _Span, first: Any = None, last: Any = None) -> str:
+def team_span_label(span: _Span, first: Any = None, last: Any = None) -> str:
     """The team span in words - :meth:`conditions._Scope.label`'s shape, over
     a :class:`~association.query.templates.common._Span` instead: one season,
     a since-bounded range, or the seasons the rows actually came from. Shared
@@ -190,11 +187,11 @@ def _team_span_label(span: _Span, first: Any = None, last: Any = None) -> str:
     return f"every {span.kind} on record ({span.first} onward)"
 
 
-def _team_where_in(span: _Span) -> str:
+def team_where_in(span: _Span) -> str:
     """:func:`common._where_in`'s shape, over a ``_Span``: "in the 2026
     regular season", or "in any regular season on record" for a span with
     nothing in it."""
-    return f"in the {_team_span_label(span)}" if span.season is not None else f"in any {span.kind} on record ({span.first} onward)"
+    return f"in the {team_span_label(span)}" if span.season is not None else f"in any {span.kind} on record ({span.first} onward)"
 
 
 def _team_span_floor_note(span: _Span, first: Any) -> str:
@@ -210,7 +207,7 @@ def _team_span_floor_note(span: _Span, first: Any) -> str:
     return ""
 
 
-def _condition_team_no_games(con: duckdb.DuckDBPyConnection, team: Entity, span: _Span, narrowed: TeamNarrowed) -> TemplateResult:
+def condition_team_no_games(con: duckdb.DuckDBPyConnection, team: Entity, span: _Span, narrowed: TeamNarrowed) -> TemplateResult:
     """Nothing to report for a team's own games under a condition template
     (:func:`_player_splits_team`, :func:`_record_when_team_answer`,
     :func:`_streak_team`) - which fact is missing, the team's games in this
@@ -226,32 +223,12 @@ def _condition_team_no_games(con: duckdb.DuckDBPyConnection, team: Entity, span:
     season_col = "year(tg.eastern_date)" if span.season_type == 3 else "tg.season"
     found = con.execute(f"{TEAM_GAMES_SQL} SELECT COUNT(*), MIN({season_col}), MAX({season_col}) FROM team_games tg WHERE {where}", params).fetchone()
     total, first, last = found if found else (0, None, None)
-    label = _team_span_label(span, first, last)
+    label = team_span_label(span, first, last)
     if not total:
-        message = f"The warehouse has no games with a result for the {team.name} {_team_where_in(span)}."
+        message = f"The warehouse has no games with a result for the {team.name} {team_where_in(span)}."
         return TemplateResult(data={"team": team.name, "span": label, "games": 0}, answer=message)
     message = f"The {team.name} played {total:,} games {span.during(first, last, whose='all seasons on record')}, none of them{narrowed.filters()}."
     return TemplateResult(data={"team": team.name, "span": label, "games": 0}, answer=message)
-
-
-def _team_season_range(con: duckdb.DuckDBPyConnection, base: str, params: Params, span: _Span) -> tuple[int, int | None, int | None]:
-    """:func:`conditions._totals`'s shape, over the team relation: for a
-    POSTSEASON, the seasons a range actually reaches are read from the
-    calendar year (``year(day)`` - every one of this module's team-branch
-    selects aliases ``tg.eastern_date`` to ``day``), not the ``season`` LABEL
-    column ``_totals`` reads. A pre-1994 postseason's label is the year ESPN
-    says the season STARTED, not the year it was played
-    (:mod:`association.query.team_games`), so a career-wide team streak or
-    split whose games reach back that far would otherwise print its label
-    year rather than the year it was actually played - the same fact
-    :func:`_condition_team_no_games` and
-    :func:`~association.query.templates.games._team_game_log_none` already
-    read this way. The regular season floor is 1994 either way, so the two
-    columns never disagree there, and this reads the label column the same
-    as ``_totals`` for it."""
-    season_col = "year(day)" if span.season_type == 3 else "season"
-    row = con.execute(f"SELECT COUNT(*), MIN({season_col}), MAX({season_col}) FROM ({base})", params).fetchone()
-    return (int(row[0]), row[1], row[2]) if row else (0, None, None)
 
 
 @dataclass
@@ -722,13 +699,13 @@ def _record_when_team_no_stat(team: Entity, span: _Span, narrowed: TeamNarrowed,
     """The team played ``games`` games under this narrowing, but not one of
     them carries a usable figure for the stat at all - the empty 2013-2018
     team boxes, reached through record_when's threshold rather than a plain
-    average. Distinct from :func:`_condition_team_no_games`, which fires when
+    average. Distinct from :func:`condition_team_no_games`, which fires when
     there are no NARROWED games at all: this fires when there are, and every
     one of them lacks the stat."""
     unit = f"{STAT_LABELS.get(stat or '', stat or '')}s"
     which = "it" if games == 1 else "any of them"
-    label = _team_span_label(span)
-    message = f"The warehouse has {games} game{'' if games == 1 else 's'} with a result for the {team.name}{narrowed.filters()} {_team_where_in(span)}, but no {unit} figure on record for {which}."
+    label = team_span_label(span)
+    message = f"The warehouse has {games} game{'' if games == 1 else 's'} with a result for the {team.name}{narrowed.filters()} {team_where_in(span)}, but no {unit} figure on record for {which}."
     return TemplateResult(data={"team": team.name, "span": label, "games": 0}, answer=message)
 
 
@@ -760,7 +737,7 @@ def _record_when_team_query(con: duckdb.DuckDBPyConnection, base: str, params: d
     own grouping query.
 
     The season range in each group's row reads the calendar year for a
-    postseason, not the ``season`` label - see :func:`_team_season_range`,
+    postseason, not the ``season`` label - see ``compose.team.compile_team_range``,
     whose column choice this repeats inline because it runs inside one
     grouped query rather than a separate totals read."""
     season_col = "year(t.day)" if span.season_type == 3 else "t.season"
@@ -780,7 +757,7 @@ def _record_when_team_answer_table(con: duckdb.DuckDBPyConnection, span: _Span, 
     by_hit: dict[bool | None, Any] = {bool(row[0]): row for row in found}
     unit = f"{STAT_LABELS.get(stat or '', stat or '')}s"
     reached, short, every = _record_when_group(by_hit, True), _record_when_group(by_hit, False), _record_when_group(by_hit, None)
-    label = _team_span_label(span, min(r[4] for r in found), max(r[5] for r in found))
+    label = team_span_label(span, min(r[4] for r in found), max(r[5] for r in found))
     title = f"{team.name} record when they had {threshold}+ {unit}{narrowed.filters()}, {label}:"
     rows = [(f"{threshold}+ {unit}", reached), (f"under {threshold} {unit}", short), ("all their games", every)]
     table = _table(title, ["G", "W-L", "Win%", "Margin"], [(name, [str(g["games"]), f"{g['wins']}-{g['losses']}", _win_pct(g["wins"], g["games"]), _margin(g["avg_margin"])]) for name, g in rows])
@@ -844,10 +821,10 @@ def _record_when_team_answer(con: duckdb.DuckDBPyConnection, scope: Scope) -> Te
     # The narrowed pool BEFORE any stat availability is checked, so a team
     # with real games in this span/narrowing but none carrying the stat
     # (`_record_when_team_no_stat`) is told apart from a team with no games
-    # matching the narrowing at all (`_condition_team_no_games`).
+    # matching the narrowing at all (`condition_team_no_games`).
     matched, _, _ = _totals(con, *team_games_subquery(narrowed))
     if not matched:
-        return _condition_team_no_games(con, team, span, narrowed)
+        return condition_team_no_games(con, team, span, narrowed)
     base, params = _record_when_team_base(narrowed, stat, column)
     found = _record_when_team_query(con, base, params, threshold, span)
     if not found:
@@ -857,36 +834,10 @@ def _record_when_team_answer(con: duckdb.DuckDBPyConnection, scope: Scope) -> Te
 
 #: A team's games for a streak, over the relation - `team_id`, `season`,
 #: `won` and an event ordering (`day`, a stand-in `stamp`, `event_id`) are all
-#: `_longest_runs` reads. The relation guarantees at most one row per team per
+#: `_longest_runs_sql` reads. The relation guarantees at most one row per team per
 #: Eastern date (`team_games.py`'s own docstring), so `day` doubling as
 #: `stamp` never actually breaks a tie - there is none to break.
 _TEAM_STREAK_SELECT: tuple[str, ...] = ("tg.team_id", "tg.season", "tg.event_id", "tg.eastern_date AS day", "tg.eastern_date AS stamp", "tg.won")
-
-
-def _streak_team_answer(team: Entity, narrowed: TeamNarrowed, span: _Span, first: Any, last: Any, runs: list[dict[str, Any]], want_win: bool) -> TemplateResult:
-    """A named team's longest run of wins or losses in a season, said - over
-    the team-games relation narrowed to an opponent and/or a venue where
-    the question named them, and the ``runs`` the team compiler's ``run``
-    shape read over it (``compose.team.run_team``), in the sayer's words
-    for one run (``compose.say.say_one_run``). The caller has already
-    found the team games in the span at all (:func:`_condition_team_no_games`
-    says which fact is missing otherwise).
-
-    .. versionadded:: 5.0.0
-    """
-    from association.query.compose.say import note_phrase, say_one_run, streak_result  # the sayer's words; a call-time import, since compose imports this module
-
-    label = _team_span_label(span, first, last)
-    if not runs:
-        message = f"The {team.name} did not {'win' if want_win else 'lose'} a game{narrowed.filters()} in the {label}."
-        return TemplateResult(data={"team": team.name, "span": label, "streaks": [], "headline": message}, answer=message)
-    rule = Note("definition", {"term": "streak_rule", "what": "team_within_season"})
-    said = note(rule.kind, note_phrase(rule), **rule.facts)
-    result = streak_result(want_win)
-    subject = (f"The {team.name}' longest {result}" if team.name.endswith("s") else f"The {team.name}'s longest {result}") + narrowed.filters()
-    top = runs[0]
-    still_open = bool(top["open"]) and (span.season is None or span.season == current_season())
-    return say_one_run(subject, label, [run_of(r) for r in runs], said, season=span.season, still_open=still_open, who={"team": team.name})
 
 
 def _streak_league_team_narrowed(span: _Span) -> TeamNarrowed:
@@ -904,22 +855,3 @@ def _streak_league_team_narrowed(span: _Span) -> TeamNarrowed:
     # turn up in a few regular-season rows (1992-2000), not franchises - the
     # same guard `_team_games` used to apply inline.
     return TeamNarrowed(base=["tg.team_id IN (SELECT team_id FROM teams)", "tg.season_type = ?", clause], base_params=[span.season_type, *clause_params])
-
-
-def _streak_league_result_words(con: duckdb.DuckDBPyConnection, span: _Span, runs: list[dict[str, Any]]) -> tuple[list[Run], str]:
-    """The league's longest win/loss runs, each under who had it (the team
-    as it was named that season, with the season where the span covers
-    several), and the rule under the table.
-
-    .. versionadded:: 5.0.0
-    """
-    from association.query.compose.say import note_phrase  # the sayer's words; a call-time import, since compose imports this module
-
-    names = _names(con, "teams", "team_id", [r["team_id"] for r in runs])
-    # Every run lies inside one season, so each is named as its team was
-    # that season. This used to add "franchises are named as they are
-    # today" to every all-seasons answer, which is what it was.
-    owned = [run_of(r, season_name(r["team_id"], int(r["season"]), names[r["team_id"]]) + (f" ({r['season']})" if span.season is None else "")) for r in runs]
-    rule = Note("definition", {"term": "streak_rule", "what": "league_team_within_season"})
-    # The rule qualifies a run: with none, the answer says so and nothing beneath it.
-    return owned, note(rule.kind, note_phrase(rule), **rule.facts) if runs else ""

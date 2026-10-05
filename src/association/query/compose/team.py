@@ -59,7 +59,7 @@ import duckdb
 from association.nba.coverage import unavailable
 from association.nba.franchises import season_name_sql
 from association.nba.season import current_season
-from association.query.conditions import _PLAYER_GAME_TABLES, _TEAM_LINE, _longest_runs
+from association.query.conditions import _PLAYER_GAME_TABLES, _TEAM_LINE, _longest_runs_sql
 from association.query.entities import Entity
 from association.query.entities import team_named_in as team_named_in
 from association.query.reading import DEFAULT_STREAK_LIMIT, Scope, _clamp_limit
@@ -70,9 +70,9 @@ from association.query.team_games import named as team_named
 from association.query.team_games import rows_sql as team_rows_sql
 from association.query.templates.common import ResolvedSpan, TemplateResult, TemplateUnsupported, resolved_team, scoped_team, span_of, whole_span
 from association.query.templates.common import team_games as narrow_team_games
-from association.query.templates.splits import _TEAM_STREAK_SELECT, PresenceSplit, _streak_league_team_narrowed, _team_season_range, _with_without_read
+from association.query.templates.splits import _TEAM_STREAK_SELECT, PresenceSplit, _streak_league_team_narrowed, _with_without_read
 
-from .core import Refused, Unsupported
+from .core import Refused, Unsupported, rows_of
 
 #: A team measure name -> the team-games relation column expression it
 #: reads, for a NARROWED read. Only game-outcome figures live on
@@ -233,6 +233,11 @@ class TeamCompiled:
     team: Entity | None
     span: ResolvedSpan
     narrowed: TeamNarrowed
+    #: A ``run`` read's games in date order, with their own names bound in
+    #: ``run_params`` - for the span's count and seasons
+    #: (:func:`compile_team_range`); ``None`` otherwise.
+    run_rows: str | None = None
+    run_params: dict[str, Any] | None = None
 
 
 @dataclass
@@ -266,7 +271,7 @@ class TeamResult:
     #: A note appended past the number - the season-total reader's own
     #: postseason addendum (F127: "...and added 78 more in the playoffs").
     note: str = ""
-    #: The ``run`` shape's runs (:func:`~association.query.conditions._longest_runs`'
+    #: The ``run`` shape's runs (:func:`~association.query.conditions._longest_runs_sql`'
     #: rows), longest first; empty for every other shape.
     runs: list[dict[str, Any]] = field(default_factory=list)
     #: The first and last season the ``run`` shape's games actually came
@@ -479,22 +484,23 @@ def _compile_team_games_total(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> T
     )
 
 
-def _compile_team_run(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> TeamResult:
-    """The ``run`` shape: a named team's longest run of wins or losses
-    (``scope.kind``) within a season, over the team-games relation narrowed
-    exactly as every team template narrows it (:func:`_team_games_narrowed`)
-    and read over every game in the span (``whole_span``) - or, with no team
-    named, each team-season's own longest, the league's list. The runs are
-    :func:`~association.query.conditions._longest_runs`', partitioned by
-    ``(team_id, season)``: a team's run is counted within one season, as the
-    record book counts them. ``streak``'s retired team and league branches
-    (ROADMAP plan item 6, step (g)).
+def compile_team_run(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> TeamCompiled:
+    """The ``run`` shape as SQL: a named team's longest run of wins or
+    losses (``scope.kind``) within a season, over the team-games relation
+    narrowed exactly as every team template narrows it
+    (:func:`_team_games_narrowed`) and read over every game in the span
+    (``whole_span``) - or, with no team named, each team-season's own
+    longest, the league's list. The runs are
+    :func:`~association.query.conditions._longest_runs_sql`'s, partitioned
+    by ``(team_id, season)``: a team's run is counted within one season, as
+    the record book counts them. The games the runs are read over are kept
+    as ``run_rows`` for :func:`compile_team_range`. ``streak``'s retired
+    team and league branches (ROADMAP plan item 6, step (g)).
 
     .. versionadded:: 5.0.0
     """
     scope = q.scope
-    want_win = scope.kind != "loss"
-    hit, condition = "x.won = $want", {"want": want_win}
+    team: Entity | None
     if scope.team and scope.team.strip():
         narrowed, team, span = _team_games_narrowed(con, q)
         whole_span(narrowed)
@@ -505,19 +511,46 @@ def _compile_team_run(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> TeamResul
         narrowed = _streak_league_team_narrowed(span)
         limit, best = _clamp_limit(scope.limit, DEFAULT_STREAK_LIMIT), True
     base, params = team_named(*team_aggregate_sql(narrowed, list(_TEAM_STREAK_SELECT)))
-    games, first, last = _team_season_range(con, base, params, span)
-    runs = _longest_runs(con, base, {**params, **condition}, ("team_id", "season"), hit, limit, best_per_partition=best) if games else []
+    sql = _longest_runs_sql(base, ("team_id", "season"), "x.won = $want", best_per_partition=best)
+    return TeamCompiled(sql, {**params, "want": scope.kind != "loss", "limit": limit}, team, span, narrowed, run_rows=base, run_params=params)
+
+
+def compile_team_range(compiled: TeamCompiled) -> TeamCompiled:
+    """How many games a ``run`` read is over, and the first and last season
+    among them - a postseason's by the calendar year it was played in
+    (``year(day)``), never ESPN's pre-1993-94 label, which the span's own
+    label has to name. Over the same games as the runs (``run_rows``).
+
+    .. versionadded:: 5.0.0
+    """
+    assert compiled.run_rows is not None and compiled.run_params is not None
+    season = "year(day)" if compiled.span.season_type == 3 else "season"
+    sql = f"SELECT COUNT(*) AS games, MIN({season}) AS first_season, MAX({season}) AS last_season FROM ({compiled.run_rows})"
+    return TeamCompiled(sql, compiled.run_params, compiled.team, compiled.span, compiled.narrowed)
+
+
+def _compile_team_run(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> TeamResult:
+    """The ``run`` shape read for the compiler's own sentence (a point the
+    streak's reader, ``compose.runs.read_team_streak``, does not say):
+    :func:`compile_team_run` and :func:`compile_team_range`, executed.
+
+    .. versionadded:: 5.0.0
+    """
+    compiled = compile_team_run(con, q)
+    (found,) = rows_of(con, compile_team_range(compiled))
+    games = int(found["games"])
+    runs = rows_of(con, compiled) if games else []
     return TeamResult(
-        team=team,
-        span=span,
+        team=compiled.team,
+        span=compiled.span,
         measure=q.measure,
         aggregate=q.aggregate,
         value=None,
         games=games,
-        narrowed_text=narrowed.filters(),
+        narrowed_text=compiled.narrowed.filters(),
         runs=runs,
-        first_season=first,
-        last_season=last,
+        first_season=found["first_season"],
+        last_season=found["last_season"],
     )
 
 

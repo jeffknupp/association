@@ -753,37 +753,21 @@ def _with_without_group(games: Sequence[dict[str, Any]]) -> dict[str, Any]:
 # ---------------- streaks ----------------
 
 
-def _longest_runs(
-    con: duckdb.DuckDBPyConnection,
-    base: str,
-    params: dict[str, Any],
-    partition: tuple[str, ...],
-    hit: str,
-    limit: int,
-    *,
-    best_per_partition: bool,
-) -> list[dict[str, Any]]:
+def _longest_runs_sql(base: str, partition: tuple[str, ...], hit: str, *, best_per_partition: bool) -> str:
     """The longest runs of consecutive rows where ``hit`` holds - gaps and
-    islands over games in Eastern-date order.
+    islands over games in Eastern-date order - as SQL, binding ``$limit``
+    beside ``base``'s own names: the relation cell the compiler's ``run``
+    shape reads (``compose.core._compile_run``, and the team compiler's,
+    ``compose.team.compile_team_run``), so a streak is one window over the
+    games in date order whoever asks for it.
 
     Numbering every game and, separately, every game that hit, the difference
     between the two is constant along a run and changes whenever one ends, so
     grouping on it yields the runs. ``partition`` decides what a run may
     cross: a team's is (team, season), a player's is just him. With
     ``best_per_partition`` each partition contributes only its own longest, so
-    a league-wide list is not one team's season listed five times.
-
-    ``open`` marks a run still going at the partition's last game."""
-    rows = con.execute(_longest_runs_sql(base, partition, hit, best_per_partition=best_per_partition), {**params, "limit": limit}).fetchall()
-    names = [*partition, "length", "first_day", "last_day", "first_season", "last_season", "open"]
-    return [dict(zip(names, row, strict=True)) for row in rows]
-
-
-def _longest_runs_sql(base: str, partition: tuple[str, ...], hit: str, *, best_per_partition: bool) -> str:
-    """:func:`_longest_runs`' statement - the run skeleton as SQL, binding
-    ``$limit`` beside ``base``'s own names: the relation cell the compiler's
-    ``run`` shape reads (``compose.core._compile_run``), so a streak is one
-    window over the games in date order whoever asks for it.
+    a league-wide list is not one team's season listed five times. ``open``
+    marks a run still going at the partition's last game.
 
     .. versionadded:: 5.0.0
     """

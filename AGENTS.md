@@ -815,7 +815,14 @@ model's. Two things follow, and both matter when you add a shape:
   are values and notes on the Result, and the high's redirect for a
   defaulted season is a `Decided`), and a player's or the league's
   longest run and two players' meetings (`compose/runs.py`,
-  `compose/pairs.py`; the next paragraph), the league's leaders by a
+  `compose/pairs.py`; the next paragraph), a team's or the league's
+  longest run of wins or losses (`compose/runs.py`'s `read_team_streak`,
+  since step 4: the team compiler's `run` shape,
+  `compose.team.compile_team_run`, into the same `Runs` body the player's
+  run is, said by the same `say_streak`), a team's log and splits
+  (`compose/logs.py`, `compose/splits.py`, executing the team compiler's
+  `rows` and `grouped` compiles, `compose.team.compile_team_over`, since
+  step 4), the league's leaders by a
   season-line metric (`compose/rankings.py`, since 2026-10-05: a `Grouped`
   ranking by `player` whose `ranked_by` is the metric - a count of games
   over a line ranks by `"games"`, which is how the sayer tells the two
@@ -949,11 +956,7 @@ model's. Two things follow, and both matter when you add a shape:
   find the presenter (`compose/present.py`) and follow it into
   `templates/`. `ROADMAP.md`, Phase 2, removes that detour slice by slice.
   The presenters' routes, as they stand
-  (a team's streak
-  through the `run` shape on the team relation
-  (`compose.team._compile_team_run`), said by `compose.say.say_one_run` and
-  `say_run_listing`, the words a player's and the league's streak are said
-  with too; a
+  (a
   with/without split through the team relation's `presence` group - a
   team's games inside named teammates' time on the team, each marked with
   who held the condition, `compose.team._compile_team_presence` over
