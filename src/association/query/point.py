@@ -1113,6 +1113,27 @@ def _default_fingerprint(scope: Scope) -> Reading:
     return Reading(scope=scope, shape="chart", relation="netpoints")
 
 
+def _default_shot_chart(scope: Scope) -> Reading:
+    """``shot_chart``'s default point: one player's located shots, drawn -
+    a ``chart`` on the declared ``shots`` relation (``compose.shots``, which
+    reads the player, the span, the games the relation narrows to and the
+    shot value from the scope).
+
+    .. versionadded:: 5.0.0
+    """
+    return Reading(scope=scope, shape="chart", relation="shots")
+
+
+def _default_shot_distance(scope: Scope) -> Reading:
+    """``shot_distance``'s default point: one player's average shot distance
+    over the same shots - a ``scalar`` on the declared ``shots`` relation
+    (``compose.shots``).
+
+    .. versionadded:: 5.0.0
+    """
+    return Reading(scope=scope, shape="scalar", relation="shots")
+
+
 DEFAULT_POINTS: dict[str, Callable[[Scope], Reading]] = {
     "game_log": _default_game_log,
     "player_stat": _default_player_stat,
@@ -1130,12 +1151,14 @@ DEFAULT_POINTS: dict[str, Callable[[Scope], Reading]] = {
     "team_record": _default_team_record,
     "player_netpoints": _default_player_netpoints,
     "fingerprint": _default_fingerprint,
+    "shot_chart": _default_shot_chart,
+    "shot_distance": _default_shot_distance,
 }
 """Intent -> its default point, read by the reader itself (Phase 2, step 1:
 slice (i)'s five; step 2: ``threshold_count``, ``single_game_high``, the
 streak and the matchup; step 3: the with/without split, the last of the
 adapters, which went with ``compose.adapt``; step 5: the NetPoints relation's
-two, :data:`~association.query.reading.CHART_INTENTS`). An intent with no entry here
+two and the shot relation's two, :data:`~association.query.reading.CHART_INTENTS`). An intent with no entry here
 has its point read elsewhere in this module (:func:`read_point`) or none.
 
 .. versionadded:: 5.0.0
@@ -1465,7 +1488,8 @@ def _read_point(intent: str, scope: Scope, question: str, subject: Subject) -> R
     if intent in CHART_INTENTS:
         # A declared relation's own point, whatever the words: the retired
         # templates read their slots alone, and a player's games are not
-        # where a NetPoints rating or a fingerprint is read (Phase 2, step 5).
+        # where a NetPoints rating, a fingerprint or a shot chart is read
+        # (Phase 2, step 5).
         return default_point(intent, scope)
     if intent == "leaderboard":
         _leaderboard_declines(scope, subject)

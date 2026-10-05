@@ -26,6 +26,7 @@ from .core import Query, Refused, Unsupported, _check_relation_scoping
 from .netpoints import NetPointsQuery
 from .rankings import leaderboard_reads
 from .seasons import player_compare_reads, player_history_reads, player_line_reads
+from .shots import ShotQuery
 from .team import TeamQuery
 from .team_stats import TeamSeasonQuery, team_season_declines
 
@@ -128,6 +129,12 @@ STATED_SCOPING: dict[str, frozenset[str]] = {
     # question from a date (``compose.netpoints``).
     "player_netpoints": frozenset({"order"}),
     "fingerprint": frozenset({"order", "date"}),
+    # The shot relation's readers (compose.shots, Phase 2, step 5): every
+    # cell of the player relation they take their games from, less a quarter
+    # and a half (RELATION_SCOPING_EXCLUDED: a shot read draws every shot of
+    # each game) - the retired templates' HONORED_SCOPING rows, moved.
+    "shot_chart": relation_scoping("shot_chart"),
+    "shot_distance": relation_scoping("shot_distance"),
 }
 """Intent -> the scoping its reader's WORDS state. A compiled intent's
 sayer answers in its retired template's sentence, which names the
@@ -247,7 +254,7 @@ def _shape_declines(point: Reading) -> str | None:
     return None
 
 
-def plan(reading: Reading) -> Query | TeamQuery | TeamSeasonQuery | NetPointsQuery:
+def plan(reading: Reading) -> Query | TeamQuery | TeamSeasonQuery | NetPointsQuery | ShotQuery:
     """The point ``reading`` names, on the relation it names - see
     :func:`_plan`. A team-season intent's point on another relation (a
     team's own total, "how many 3-pointers have the Magic made") that the
@@ -275,7 +282,7 @@ def plan(reading: Reading) -> Query | TeamQuery | TeamSeasonQuery | NetPointsQue
         return TeamSeasonQuery(scope=reading.scope, relation=relation, shape=shape)
 
 
-def _plan(reading: Reading) -> Query | TeamQuery | TeamSeasonQuery | NetPointsQuery:
+def _plan(reading: Reading) -> Query | TeamQuery | TeamSeasonQuery | NetPointsQuery | ShotQuery:
     """The point ``reading`` names, on the relation it names - or
     :class:`~association.query.compose.core.Unsupported` where that relation
     cannot honor a narrowing the scope carries (``round``, ``rate``, a
@@ -298,6 +305,10 @@ def _plan(reading: Reading) -> Query | TeamQuery | TeamSeasonQuery | NetPointsQu
         # A declared relation's point (Phase 2, slice (v)): its reader reads
         # the scope as the retired template read its slots.
         return NetPointsQuery(scope=reading.scope, shape="chart" if reading.shape == "chart" else "scalar")
+    if reading.relation == "shots":
+        # A declared chart relation's point: its reader reads the scope
+        # whole, held above to what its words state.
+        return ShotQuery(scope=reading.scope, shape="chart" if reading.shape == "chart" else "scalar")
     if reading.relation in ("team_seasons", "team_snapshots"):
         # A team's own season: its reader holds the question to the
         # narrowings its words state (team_season_declines), in the retired
@@ -399,7 +410,7 @@ class Planned:
     .. versionadded:: 5.0.0
     """
 
-    query: Query | TeamQuery | TeamSeasonQuery | NetPointsQuery | None = None
+    query: Query | TeamQuery | TeamSeasonQuery | NetPointsQuery | ShotQuery | None = None
     declined: str | None = None
     refusal: TemplateResult | None = None
 

@@ -30,6 +30,7 @@ from association.query.compose.core import Query, Refused, Unsupported, compile_
 from association.query.compose.netpoints import NetPointsQuery
 from association.query.compose.plan import plan, plan_point, refusal_result
 from association.query.compose.sentence import sentence
+from association.query.compose.shots import ShotQuery
 from association.query.compose.team import TeamQuery, run_team
 from association.query.compose.team_stats import TeamSeasonQuery
 from association.query.parse import with_point
@@ -53,7 +54,7 @@ def compose_answer(ctx: TemplateContext, intent: str, slots: dict[str, Any], que
     return compose.answer(ctx, reading, planned=plan_point(reading), declined=declined)
 
 
-def move_point(con: duckdb.DuckDBPyConnection, intent: str, slots: dict[str, Any], question: str, subject: Subject | None = None) -> Query | TeamQuery | TeamSeasonQuery | NetPointsQuery:
+def move_point(con: duckdb.DuckDBPyConnection, intent: str, slots: dict[str, Any], question: str, subject: Subject | None = None) -> Query | TeamQuery | TeamSeasonQuery | NetPointsQuery | ShotQuery:
     """The point ``question`` moves for ``slots``, planned - raising the
     compiler's own ``Unsupported``/``Refused`` as the reader does."""
     return plan(read_point(_reading(con, intent, slots, question, subject), question))
@@ -1822,9 +1823,10 @@ def test_a_presenter_steps_aside_for_a_narrowing_its_words_do_not_state(cx_ctx: 
     }
     # And the team-season readers' (compose.team_stats, Phase 2, step 4).
     team_seasons = {"team_stat", "team_leaderboard", "team_outlook"}
-    # And the NetPoints relation's (compose.netpoints, Phase 2, step 5).
+    # And the NetPoints relation's (compose.netpoints, Phase 2, step 5), and the shot relation's (compose.shots).
     netpoints = {"player_netpoints", "fingerprint"}
-    assert set(STATED_SCOPING) == ported | team_seasons | netpoints
+    shots = {"shot_chart", "shot_distance"}
+    assert set(STATED_SCOPING) == ported | team_seasons | netpoints | shots
     narrowed = default_query("single_game_high", {"player": "Brandin Podziemski", "stat": "points", "opponent": "Boston Celtics"})
     assert read_single_game_high(cx_ctx.con, narrowed, stated=STATED_SCOPING["single_game_high"]) is None
     assert read_single_game_high(cx_ctx.con, replace(narrowed, scope=replace(narrowed.scope, opponent=None)), stated=STATED_SCOPING["single_game_high"]) is not None

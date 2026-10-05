@@ -61,6 +61,7 @@ from .seasons import read_player_compare, read_player_history, read_player_line
 from .sentence import _span_phrase
 from .sentence import sentence as _sentence
 from .sentence import team_sentence as _team_sentence
+from .shots import ShotQuery
 from .splits import read_player_splits, read_team_splits
 from .stats import read_player_stat
 from .team import TeamQuery, TeamResult, run_team
@@ -421,7 +422,7 @@ def _answer_point(
     ctx: TemplateContext,
     intent: str,
     point: Reading,
-    query: Query | TeamQuery | TeamSeasonQuery | NetPointsQuery,
+    query: Query | TeamQuery | TeamSeasonQuery | NetPointsQuery | ShotQuery,
     trace: Callable[[Reading], None] | None,
     declined: Callable[[str], None] | None,
 ) -> TemplateResult | None:
@@ -437,6 +438,8 @@ def _answer_point(
             trace(point)
         if isinstance(query, NetPointsQuery):
             return _read_netpoints(ctx, intent, query)
+        if isinstance(query, ShotQuery):
+            raise Unsupported("the shot relation's readers are not ported yet")
         if intent in _TEAM_SEASON_READERS:
             try:
                 return _read_team_season(ctx.con, intent, query)
