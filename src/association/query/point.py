@@ -64,7 +64,6 @@ from association.query.reading import (
     Unsupported,
     _career_scope,
     _clamp_limit,
-    ordinal_word,
     period_narrowing,
     scope_reads_box_scores,
 )
@@ -403,16 +402,16 @@ def _everyone_threshold_count(intent: str, scope: Scope, predicates: list[tuple[
         if scope.threshold is not None and scope.threshold < 1:
             # threshold_count's own refusal: measured, "most 3 pointers made
             # since 2020" arrived as threshold 0 and would count every game.
-            raise Unsupported(f"a threshold of {scope.threshold} counts every game - not a question threshold_count answers")
+            raise PointRefused(Cause(kind="threshold_counts_every_game", facts={"intent": "threshold_count", "threshold": scope.threshold}))
         predicates = _everyone_threshold_count_line(scope)
     if not predicates:
-        raise Unsupported("a league-wide count needs the line(s) it counts; none could be read from the question")
+        raise PointRefused(Cause(kind="needs_line"))
     if scope.season_n:
         # The refusal threshold_count's retired template gave:
         # "his 15th season" is a place in one career, and the league has none -
         # read over everyone it narrowed to players in their 15th season of the
         # default year while the sentence named only the year.
-        raise Unsupported(f"the {ordinal_word(scope.season_n)} season is a place in one player's career, and no player was named")
+        raise PointRefused(Cause(kind="career_place_needs_player", facts={"season_n": scope.season_n}))
     # threshold_count's own leaderboard length (DEFAULT_LIMIT, five names)
     # where it is that intent's question; ten for a team's roster count
     # (F152), which also states the whole count beneath the ones listed.
@@ -518,10 +517,17 @@ def _leaderboard_season_line(intent: str, scope: Scope, question: str, measure: 
     own_boolean = all(name == scope.stat and value is True for name, _, value in predicates)
     if intent != "leaderboard" or not own_boolean or position is not None or _ranking_minimum(question) is not None:
         return None
-    if resolve_metric(scope.stat, career=scope.span == "career") is None:
+    metric = resolve_metric(scope.stat, career=scope.span == "career")
+    if metric is None:
         return None
     if measure is not None and stat_measure(scope.stat) not in (None, measure):
         return None
+    if scope.rate is not None and scope.rate != "total":
+        # A unit the metric has no form of ("who were the top 10 in
+        # defensive netpoints / 90"): the ranking's refusal, naming the
+        # forms THIS metric has (the planner's sentence) - "total" is a
+        # season total, the one other form every metric's rate reads.
+        raise PointRefused(Cause(kind="ranking_unit", facts={"metric": metric, "rate": scope.rate}))
     return Reading(
         scope=scope,
         shape="grouped",
@@ -741,7 +747,7 @@ def _default_game_log(scope: Scope) -> Reading:
         measures=list(LINE),
         aggregate="none",
         group="none",
-        predicates=_threshold_line(scope, "game_log cannot keep only the games past a threshold on no stat"),
+        predicates=_threshold_line(scope),
         order="date",
         direction="asc" if scope.order == "first" else "desc",
         limit=_clamp_limit(scope.limit, DEFAULT_GAME_LOG_LIMIT),
@@ -750,16 +756,16 @@ def _default_game_log(scope: Scope) -> Reading:
     )
 
 
-def _threshold_line(scope: Scope, why: str) -> list[tuple[str, str, Any]]:
+def _threshold_line(scope: Scope) -> list[tuple[str, str, Any]]:
     """A ``threshold`` as the line a log keeps games past, or nothing where
-    it is a below/above phrase's own number; ``why`` is the decline for a
-    threshold beside no stat."""
+    it is a below/above phrase's own number; a threshold beside no stat is
+    refused for the stat."""
     threshold = scope.threshold
     if threshold is None or any(line.value == threshold for line in measure_filters(scope.below, scope.above)):
         return []
     col = stat_column(scope.stat)
     if col is None:
-        raise Unsupported(why)
+        raise PointRefused(Cause(kind="threshold_needs_stat", facts={"intent": "game_log", "threshold": threshold}))
     return [(col, ">=", threshold)]
 
 
@@ -805,11 +811,24 @@ def _default_player_splits(scope: Scope) -> Reading:
 
 def _default_record_when(scope: Scope) -> Reading:
     """``record_when``'s default point: the record in games clearing one line.
-    A line of 0 is every game he played: never a record "when"."""
+    A line of 0 is every game he played: never a record "when". Refused by
+    the fact missing - the stat, a stat with no per-game column, the number,
+    or a number every game clears - where it named one line only in part."""
     col = stat_column(scope.stat)
     threshold = scope.threshold
-    if not _named_player_in(scope) or col is None or threshold is None or threshold < 1:
+    if not _named_player_in(scope):
+        # read_point reads a named player's moves only; a caller's mistake.
         raise Unsupported("record_when needs a player, a stat and a positive threshold here")
+    if col is None and scope.stat and scope.stat.strip():
+        raise PointRefused(Cause(kind="unknown_stat", facts={"intent": "record_when", "stat": scope.stat}))
+    if col is None:
+        raise PointRefused(
+            Cause(kind="threshold_needs_stat", facts={"intent": "record_when", "threshold": threshold}) if threshold is not None else Cause(kind="needs_stat", facts={"intent": "record_when"})
+        )
+    if threshold is None:
+        raise PointRefused(Cause(kind="needs_threshold", facts={"intent": "record_when", "stat": col}))
+    if threshold < 1:
+        raise PointRefused(Cause(kind="threshold_counts_every_game", facts={"intent": "record_when", "threshold": threshold}))
     return Reading(scope=scope, shape="scalar", measures=[], aggregate="record", group="none", predicates=[(col, ">=", threshold)], available=BOX_SCORES)
 
 
@@ -870,18 +889,14 @@ def _default_threshold_count(scope: Scope) -> Reading:
     if not _named_player_in(scope):
         raise Unsupported("a league-wide count is not on the one-player relation")
     if threshold is None and (scope.below or scope.above):
-        try:
-            threshold_count_line(scope)
-        except Unsupported as exc:
-            raise Unsupported(f"threshold_count: {exc}") from exc
+        # Refuses (PointRefused) by the fact missing: a phrase naming no
+        # stat, a stat with no per-game column.
+        threshold_count_line(scope)
         return Reading(scope=scope, shape="scalar", measures=[], aggregate="count", group="none", predicates=[], available=BOX_SCORES)
     if col is None or threshold is None or threshold < 1:
         # The reason the count gives, where it has one (a threshold of 0
-        # counts every game; no stat it keeps a line on).
-        try:
-            threshold_count_line(scope)
-        except Unsupported as exc:
-            raise Unsupported(f"threshold_count: {exc}") from exc
+        # counts every game; no stat it keeps a line on), by its cause.
+        threshold_count_line(scope)
         raise Unsupported("threshold_count refuses; nothing to compare")
     # A below/above phrase carrying the threshold's own number IS the count,
     # misread as a threshold (the count's sayer words it as the phrase).
@@ -898,7 +913,7 @@ def _default_single_game_high(scope: Scope) -> Reading:
     was given: "brice sensabaugh career high asistss" named its player."""
     col = stat_column(scope.stat)
     if col is None:
-        raise Unsupported(f"single_game_high cannot rank games by {scope.stat!r}" if scope.stat else "single_game_high needs a stat to rank games by, and none was read")
+        raise PointRefused(Cause(kind="unknown_stat", facts={"intent": "single_game_high", "stat": scope.stat}) if scope.stat else Cause(kind="needs_stat", facts={"intent": "single_game_high"}))
     if not _named_player_in(scope):
         raise Unsupported("single_game_high needs a named player here")
     return Reading(
@@ -965,7 +980,7 @@ def _default_streak(scope: Scope) -> Reading:
         )
     if scope.team and scope.team.strip():
         if column is not None:
-            raise Unsupported("a team's streak is of wins or losses, not of a stat")
+            raise PointRefused(Cause(kind="team_streak_of_stat", facts={"stat": column}))
         return Reading(scope=scope, shape="run", measures=["won"], aggregate="count", group="none", predicates=predicates, relation="team")
     limit = _clamp_limit(scope.limit, DEFAULT_STREAK_LIMIT)
     if column is not None:
@@ -987,7 +1002,7 @@ def _default_player_matchup(scope: Scope) -> Reading:
     """
     texts = list(dict.fromkeys(n.strip() for n in [*scope.players, scope.player] if n is not None and n.strip()))
     if len(texts) != 2:
-        raise Unsupported(f"player_matchup needs exactly two players, got {texts!r}")
+        raise PointRefused(Cause(kind="matchup_needs_two", facts={"names": texts}))
     dated = bool(scope.date)
     return Reading(
         scope=scope,
@@ -1367,6 +1382,6 @@ def _read_point(intent: str, scope: Scope, question: str, subject: Subject) -> R
             # A record "when" is a player's line or a team's own (the team
             # branch above); naming neither, it has nobody to read - the
             # reason record_when's retired template gave.
-            raise Unsupported("record_when needs a player or a team")
+            raise PointRefused(Cause(kind="needs_subject", facts={"intent": "record_when"}))
         return _everyone_point(intent, scope, question, stat_measure(scope.stat), subject.position)
     return _move_named(intent, scope, question)

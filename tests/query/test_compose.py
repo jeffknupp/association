@@ -991,8 +991,9 @@ def test_a_league_wide_count_with_no_line_at_all_is_still_refused(cx_ctx: Templa
     """The K2 guard :func:`_numbered_stat_lines`'s move does not weaken: a
     league-wide ``threshold_count`` naming no line at all - not even in the
     question's own text - is refused, not turned into a whole-league listing."""
-    with pytest.raises(Unsupported, match="needs the line"):
+    with pytest.raises(PointRefused) as refused:
         move_point(cx_ctx.con, "threshold_count", {}, "players with a good game this season")
+    assert refused.value.cause == Cause(kind="needs_line")
 
 
 # ---------------------------------------------------------------------------
@@ -1608,9 +1609,8 @@ def test_a_record_over_a_line_of_zero_is_declined_as_the_template_refused_it(cx_
     """A line of 0 is every game he played - never a record "when". The
     template refused it; the compiler answered "went 2-1 in the 3 games
     points >= 0" until it refused the same way, with the reason."""
-    why: list[str] = []
-    assert compose_answer(cx_ctx, "record_when", {"player": "Stephen Curry", "stat": "points", "threshold": 0}, "", declined=why.append) is None
-    assert why and "positive threshold" in why[0]
+    refused = compose_answer(cx_ctx, "record_when", {"player": "Stephen Curry", "stat": "points", "threshold": 0}, "")
+    assert refused is not None and refused.answer == "A threshold of 0 counts every game - there is no line there to keep games past."
 
 
 def test_a_single_game_high_with_no_stat_is_declined_for_the_stat_not_the_player() -> None:
@@ -1620,12 +1620,14 @@ def test_a_single_game_high_with_no_stat_is_declined_for_the_stat_not_the_player
     named its player, sending the reader to look for the wrong thing."""
     from association.query.point import default_point
 
-    with pytest.raises(Unsupported) as no_stat:
+    with pytest.raises(PointRefused) as no_stat:
         default_point("single_game_high", Scope.from_slots({"player": "Brice Sensabaugh", "span": "career"}))
-    assert str(no_stat.value) == "single_game_high needs a stat to rank games by, and none was read"
-    with pytest.raises(Unsupported) as unknown:
+    assert no_stat.value.cause == Cause(kind="needs_stat", facts={"intent": "single_game_high"})
+    assert refusal_result(no_stat.value.cause).answer == "A single-game high needs a stat to rank games by, and none was read."
+    with pytest.raises(PointRefused) as unknown:
         default_point("single_game_high", Scope.from_slots({"player": "Brice Sensabaugh", "stat": "asistss"}))
-    assert str(unknown.value) == "single_game_high cannot rank games by 'asistss'"
+    assert unknown.value.cause == Cause(kind="unknown_stat", facts={"intent": "single_game_high", "stat": "asistss"})
+    assert refusal_result(unknown.value.cause).answer == "A single-game high cannot rank games by 'asistss' - only by a box-score stat each game has a number for."
     with pytest.raises(Unsupported, match="needs a named player"):
         default_point("single_game_high", Scope.from_slots({"stat": "points"}))
 
@@ -1635,9 +1637,8 @@ def test_a_league_count_in_an_ordinal_season_is_declined_not_narrowed_silently(c
     count seasons in. Read over everyone, the compiler narrowed to players in
     their 15th season OF THE DEFAULT YEAR while its sentence named only the
     year; it declines now, as the template did, saying why."""
-    why: list[str] = []
-    assert compose_answer(cx_ctx, "threshold_count", {"stat": "points", "threshold": 20, "season_n": 15}, "", declined=why.append) is None
-    assert why and "15th season is a place in one player's career" in why[0]
+    refused = compose_answer(cx_ctx, "threshold_count", {"stat": "points", "threshold": 20, "season_n": 15}, "")
+    assert refused is not None and refused.answer == "The 15th season is a place in one player's career, and no player was named."
 
 
 def test_a_history_naming_no_stat_is_points_and_says_so(cx_ctx: TemplateContext) -> None:
@@ -1694,8 +1695,8 @@ def test_a_point_the_compiler_declines_or_refuses_travels_on_the_reading(cx_ctx:
     answer it is handed."""
     from association.query.parse import reading_from_route
 
-    declined = reading_from_route(cx_ctx.con, "how many games", with_subject(cx_ctx.con, "how many games", slots_route("threshold_count", {"stat": "points"})))
-    assert declined.point is None and declined.point_declined is not None
+    declined = reading_from_route(cx_ctx.con, "Embiid's game log", with_subject(cx_ctx.con, "Embiid's game log", slots_route("game_log", {})))
+    assert declined.point is None and declined.point_declined == "no player subject and no ranking or position-group reading of the question"
     why: list[str] = []
     assert compose.answer(cx_ctx, declined, planned=plan_point(declined), declined=why.append) is None
     assert why == [declined.point_declined]
@@ -1809,3 +1810,58 @@ def test_a_presenter_steps_aside_for_a_narrowing_its_words_do_not_state(cx_ctx: 
     narrowed = default_query("single_game_high", {"player": "Brandin Podziemski", "stat": "points", "opponent": "Boston Celtics"})
     assert read_single_game_high(cx_ctx.con, narrowed, stated=STATED_SCOPING["single_game_high"]) is None
     assert read_single_game_high(cx_ctx.con, replace(narrowed, scope=replace(narrowed.scope, opponent=None)), stated=STATED_SCOPING["single_game_high"]) is not None
+
+
+#: One example of each cause's facts, for the sentence check below.
+_CAUSE_EXAMPLES: dict[str, dict[str, Any]] = {
+    "shot_distance_ranking": {},
+    "no_ranking_measure": {"stat": "gizmos"},
+    "ranking_floor_unit": {"unit": "attempts", "count": 100},
+    "ranking_unit": {"metric": "avg_points", "rate": "/ 90"},
+    "needs_stat": {"intent": "single_game_high"},
+    "unknown_stat": {"intent": "streak", "stat": "double_double"},
+    "needs_threshold": {"intent": "record_when", "stat": "points"},
+    "threshold_needs_stat": {"intent": "game_log", "threshold": 15},
+    "threshold_counts_every_game": {"intent": "threshold_count", "threshold": 0},
+    "line_names_no_stat": {"phrase": "under 30 gizmos", "side": "under"},
+    "needs_line": {},
+    "career_place_needs_player": {"season_n": 15},
+    "needs_subject": {"intent": "record_when"},
+    "team_streak_of_stat": {"stat": "points"},
+    "matchup_needs_two": {"names": ["Jayson Tatum"]},
+    "no_period_stat": {"stat": "minutes"},
+}
+
+
+def test_every_cause_a_reading_refuses_by_is_said_naming_its_fact() -> None:
+    """Each kind in the closed ``CAUSES`` has a sentence in the planner, and
+    it carries the fact the reading named - the stat, the number, the
+    names - rather than only the slot (Phase 2, step 3: the declines of
+    slices (i) and (ii) became causes)."""
+    from association.query.reading import CAUSES
+
+    assert set(_CAUSE_EXAMPLES) == set(CAUSES)
+    for kind, facts in _CAUSE_EXAMPLES.items():
+        said = refusal_result(Cause(kind=kind, facts=facts)).answer
+        assert said and said.endswith(".") and "{" not in said, kind
+        for value in facts.values():
+            if (
+                isinstance(value, str)
+                and kind not in ("unknown_stat", "needs_threshold", "ranking_unit", "team_streak_of_stat")
+                and value not in ("game_log", "single_game_high", "record_when", "threshold_count", "under")
+            ):
+                assert value in said, (kind, value, said)
+    assert refusal_result(Cause(kind="matchup_needs_two", facts={"names": []})).answer == "A matchup needs two players, and none was read."
+    assert refusal_result(Cause(kind="needs_threshold", facts={"intent": "streak", "stat": "threePointFieldGoalsMade"})).answer == (
+        "A streak needs the number of 3-pointers each game has to reach, and none was read."
+    )
+
+
+def test_a_ranking_in_a_unit_its_metric_has_no_form_of_is_the_readings_cause(cx_ctx: TemplateContext) -> None:
+    """ "who were the top 10 in defensive netpoints / 90": the season-line
+    ranking's refusal, a sentence the ranking reader wrote until the point
+    reader carried its cause (``ranking_unit``) - said by the planner, word
+    for word as before."""
+    reading = with_point(cx_ctx.con, "top 10 in points / 90", Reading(scope=Scope.from_slots({"stat": "points", "rate": "/ 90"}), intent="leaderboard", subject=Subject("everyone")))
+    assert reading.point is None and reading.point_refusal == Cause(kind="ranking_unit", facts={"metric": "avg_points", "rate": "/ 90"})
+    assert refusal_result(reading.point_refusal).answer == "No leaderboard ranks avg points per 90 minutes - the warehouse stores it only per game or as a season total."

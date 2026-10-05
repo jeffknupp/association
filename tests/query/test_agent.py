@@ -336,10 +336,16 @@ def test_a_question_nothing_reads_is_refused_naming_why(monkeypatch: pytest.Monk
     assert agent.unanswered == "head_to_head: head_to_head needs two teams, got []"
 
     # An intent the compiler alone answers (compose.COMPILED_INTENTS) is
-    # refused with the compiler's reason: a count with no line to count.
+    # refused with the compiler's reason where it has no reading: a log of
+    # nobody.
+    answer = ask_routed(agent, "a game log", slots_route("game_log", {}))
+    assert answer.answered_by == "refused" and "game_log: no player subject" in answer.text
+    assert agent.unanswered is not None and agent.unanswered.startswith("game_log: ")
+    # And says a cause where the reading came to one, as an answer: a count
+    # with no line to count (Phase 2, step 3).
     answer = ask_routed(agent, "how many games", slots_route("threshold_count", {"stat": "points"}))
-    assert answer.answered_by == "refused" and "threshold_count: " in answer.text
-    assert agent.unanswered is not None and agent.unanswered.startswith("threshold_count: ")
+    assert answer.answered_by == "fast" and answer.text.startswith("A count of games across the league needs the line it counts")
+    assert agent.unanswered is None
 
     monkeypatch.setattr("association.query.normalizer.normalize", lambda model, question: None)
     answer = agent.ask("what is this question")

@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from association.query.measures import MEASURE_WORDS, THRESHOLD_STAT_NAMES
-from association.query.reading import Scope, Unsupported
+from association.query.reading import Cause, PointRefused, Scope
 
 #: How the answer names each column a game was kept under or over.
 _MEASURE_LABELS: dict[str, str] = {
@@ -73,7 +73,8 @@ def measure_filters(below: Any, above: Any) -> list[MeasureFilter]:
     The model's own ``stat`` is not consulted: beside "under 14 fta" it said
     ``freeThrowsMade``, the nearest name it knows, so the phrase is the only
     honest carrier of which column was meant. A phrase whose words name no
-    column refuses (:class:`~association.query.reading.Unsupported`) rather
+    column refuses (:class:`~association.query.reading.PointRefused`, a
+    decline to the answer side, a cause to the point reader) rather
     than filtering on a guess - the same rule ``check_scope`` applies to a
     slot nothing honors.
 
@@ -88,7 +89,8 @@ def measure_filters(below: Any, above: Any) -> list[MeasureFilter]:
             match = _MEASURE_PHRASE.match(str(phrase).strip())
             column = _measure_column(match.group("words")) if match else None
             if match is None or column is None:
-                raise Unsupported(f"{phrase!r} names no box-score stat a game can be kept {'under' if key == 'below' else 'over'}")
+                side = "under" if key == "below" else "over"
+                raise PointRefused(Cause(kind="line_names_no_stat", facts={"phrase": str(phrase), "side": side}), f"{phrase!r} names no box-score stat a game can be kept {side}")
             lead, words = match.group("lead").strip().casefold(), match.group("words").casefold()
             op = default_op
             if key == "below" and (lead.startswith(_AT_MOST) or " or less" in words):
@@ -103,7 +105,7 @@ def measure_filters(below: Any, above: Any) -> list[MeasureFilter]:
 
 def threshold_count_line(scope: Scope) -> tuple[str, int | None]:
     """The box-score column and the threshold a count of games is over;
-    raises (:class:`~association.query.reading.Unsupported`) for a stat no
+    raises (:class:`~association.query.reading.PointRefused`, by the missing fact) for a stat no
     line is kept on or a threshold that counts every game. A below/above
     phrase carries a line of its own, in which case the count may have no
     threshold at all ("Sga games with under 14 fta" - the phrase IS the
@@ -128,12 +130,22 @@ def threshold_count_line(scope: Scope) -> tuple[str, int | None]:
     # A threshold is a whole number or absent (the Scope's own type), and
     # absent is a count only where a below/above phrase carries the line.
     if column is None or (threshold is None and not lined):
-        raise Unsupported(f"threshold_count needs a known stat and an integer threshold, got {stat!r}/{threshold!r}")
+        message = f"threshold_count needs a known stat and an integer threshold, got {stat!r}/{threshold!r}"
+        if column is None and stat is not None and stat.strip():
+            raise PointRefused(Cause(kind="unknown_stat", facts={"intent": "threshold_count", "stat": stat}), message)
+        if column is None and threshold is not None:
+            raise PointRefused(Cause(kind="threshold_needs_stat", facts={"intent": "threshold_count", "threshold": threshold}), message)
+        if column is None:
+            raise PointRefused(Cause(kind="needs_stat", facts={"intent": "threshold_count"}), message)
+        raise PointRefused(Cause(kind="needs_threshold", facts={"intent": "threshold_count", "stat": column}), message)
     if threshold is None:
         return column, None
     if threshold < 1:
         # ">= 0" counts every game, which is never the question: measured, "most 3
         # pointers made since 2020" arrived as threshold 0 and was answered as
         # "the most games with 0+ 3-pointers".
-        raise Unsupported(f"a threshold of {threshold} counts every game - not a question threshold_count answers")
+        raise PointRefused(
+            Cause(kind="threshold_counts_every_game", facts={"intent": "threshold_count", "threshold": threshold}),
+            f"a threshold of {threshold} counts every game - not a question threshold_count answers",
+        )
     return column, threshold

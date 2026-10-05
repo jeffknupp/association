@@ -11,10 +11,13 @@ field the Reading did not settle is not settled here either.
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
+from typing import Any
 
-from association.query.measures import stat_measure
-from association.query.reading import Cause, Reading, Scope, _career_scope
-from association.query.templates.common import RELATION_SCOPING_EXCLUDED, TemplateResult, TemplateUnsupported, unhonored_scoping
+from association.query.leaderboard import SEASON_TOTAL_OF
+from association.query.measures import PERIOD_COLUMNS, stat_measure
+from association.query.metrics import LEADERBOARD_METRICS
+from association.query.reading import Cause, Reading, Scope, _career_scope, ordinal_word
+from association.query.templates.common import RELATION_SCOPING_EXCLUDED, STAT_LABELS, TemplateResult, TemplateUnsupported, unhonored_scoping
 from association.query.templates.players import leaderboard_shot_distance_refusal
 from association.query.templates.splits import _condition_needs_player_refusal
 
@@ -199,6 +202,108 @@ def _ranking_floor_unit(unit: str, count: int) -> TemplateResult:
     return TemplateResult(data={"message": message, "floor": {"unit": unit, "count": count}}, answer=message)
 
 
+def _ranking_unit(metric: str, rate: Any) -> TemplateResult:
+    """The refusal for a ranking in a unit the metric has no form of,
+    naming the forms THIS metric has ("who were the top 10 in defensive
+    netpoints / 90": per 90 minutes is a football unit, and nothing in the
+    warehouse is stored in it). Only the three NetPoints metrics have a
+    per-100 sibling, so a generic list of units would be the
+    refusal-with-the-wrong-cause shape. The retired leaderboard template's
+    sentence, word for word (``compose.rankings._leaderboard_no_such_rate``
+    until the point reader carried the cause)."""
+    forms = ["as a season total" if metric.startswith("total_") else "per game"]
+    if metric in SEASON_TOTAL_OF:
+        forms.append("as a season total")
+    # `netpoints_total`'s per-100 sibling is `netpoints_per_100`, not
+    # `netpoints_total_per_100`, so the suffix comes off before looking.
+    if f"{metric.removeprefix('avg_').removesuffix('_total')}_per_100" in LEADERBOARD_METRICS:
+        forms.append("per 100 possessions")
+    asked = "per 90 minutes" if "90" in str(rate) else str(rate).replace("_", " ")
+    message = f"No leaderboard ranks {metric.replace('_', ' ')} {asked} - the warehouse stores it only {' or '.join(forms)}."
+    return TemplateResult(data={"message": message, "headline": message}, answer=message)
+
+
+#: How each shape over a line is named in its refusal, by the intent the
+#: cause carries.
+_LINE_SHAPES: dict[str, str] = {
+    "single_game_high": "a single-game high",
+    "record_when": "a record in the games over a line",
+    "threshold_count": "a count of games over a line",
+    "streak": "a streak",
+    "game_log": "keeping only the games past a number",
+}
+
+#: What the stat is for, in each shape's refusal.
+_STAT_FOR: dict[str, str] = {
+    "single_game_high": "to rank games by",
+    "record_when": "the line is on",
+    "threshold_count": "the line is on",
+    "streak": "each game has to reach",
+    "game_log": "the games have to reach it in",
+}
+
+
+#: A shape over a line by the number its games reach, for a number read
+#: with no stat.
+_REACHING: dict[str, str] = {
+    "game_log": "Keeping only the games past {}",
+    "streak": "A streak of games reaching {}",
+    "record_when": "A record in the games reaching {}",
+    "threshold_count": "A count of games reaching {}",
+}
+
+
+def _stat_words(stat: Any) -> str:
+    """A stat column as the answer names it, plural: "points", "3-pointers"."""
+    label = STAT_LABELS.get(stat)
+    return f"{label}s" if label else str(stat)
+
+
+def _cause_sentence(kind: str, facts: Any) -> str | None:
+    """The sentence each cause of a shape over a line - and the other
+    declines slices (i) and (ii) gave a user as "Nothing here answers this
+    question" (Phase 2, step 3) - is said with, naming the fact that is
+    missing; ``None`` for a kind said elsewhere."""
+    shape = _LINE_SHAPES.get(facts.get("intent", ""), "this answer")
+    sentences = {
+        "needs_stat": lambda: f"{shape.capitalize()} needs a stat {_STAT_FOR.get(facts.get('intent', ''), 'to read')}, and none was read.",
+        "unknown_stat": lambda: _unknown_stat(facts.get("intent", ""), facts["stat"], shape),
+        "needs_threshold": lambda: f"{shape.capitalize()} needs the number of {_stat_words(facts['stat'])} each game has to reach, and none was read.",
+        "threshold_needs_stat": lambda: f"{_REACHING.get(facts.get('intent', ''), 'Games reaching {}').format(facts['threshold'])} needs the stat they reach it in, and none was read.",
+        "threshold_counts_every_game": lambda: f"A threshold of {facts['threshold']} counts every game - there is no line there to keep games past.",
+        "line_names_no_stat": lambda: f"{facts['phrase']!r} names no box-score stat a game can be kept {facts['side']}.",
+        "needs_line": lambda: "A count of games across the league needs the line it counts - a stat and a number, as in '40-point games' - and none could be read from the question.",
+        "career_place_needs_player": lambda: f"The {ordinal_word(facts['season_n'])} season is a place in one player's career, and no player was named.",
+        "needs_subject": lambda: f"{shape.capitalize()} needs a player or a team to read it for, and neither was named.",
+        "team_streak_of_stat": lambda: f"A team's streak is of wins or losses - a run of games reaching a number of {_stat_words(facts['stat'])} is read for a player, not a team.",
+        "matchup_needs_two": lambda: _matchup_needs_two(list(facts["names"])),
+        "no_period_stat": lambda: (
+            f"A quarter or half has no per-period {facts['stat']!r} - the period's line rebuilds {', '.join(PERIOD_COLUMNS)} from the plays, "
+            "and a field goal, 3-point or free throw percentage is a ratio of those; nothing else."
+        ),
+    }
+    say = sentences.get(kind)
+    return say() if say is not None else None
+
+
+def _unknown_stat(intent: str, stat: Any, shape: str) -> str:
+    """The refusal for a stat with no per-game column, in the shape's words."""
+    if intent == "single_game_high":
+        return f"A single-game high cannot rank games by {stat!r} - only by a box-score stat each game has a number for."
+    if intent == "game_log":
+        return f"A game log has no per-game column for {stat!r}."
+    return f"{shape.capitalize()} cannot be read over {stat!r} - it has no per-game box-score column."
+
+
+def _matchup_needs_two(names: list[str]) -> str:
+    """A matchup's refusal for the count of players read: none, one, or more than two."""
+    if not names:
+        return "A matchup needs two players, and none was read."
+    if len(names) == 1:
+        return f"A matchup needs two players, and only {names[0]} was read."
+    return f"A matchup is between two players, and {len(names)} were read: {', '.join(names)}."
+
+
 def refusal_result(cause: Cause) -> TemplateResult:
     """The refusal a point reading's :class:`~association.query.reading.Cause`
     is said with: the sentence and the template-shaped data the answering
@@ -216,7 +321,12 @@ def refusal_result(cause: Cause) -> TemplateResult:
         return no_ranking_for(cause.facts["stat"])
     if cause.kind == "ranking_floor_unit":
         return _ranking_floor_unit(cause.facts["unit"], cause.facts["count"])
-    raise ValueError(f"no sentence for the cause {cause.kind!r}")
+    if cause.kind == "ranking_unit":
+        return _ranking_unit(cause.facts["metric"], cause.facts["rate"])
+    message = _cause_sentence(cause.kind, cause.facts)
+    if message is None:
+        raise ValueError(f"no sentence for the cause {cause.kind!r}")
+    return TemplateResult(data={"message": message, **cause.facts}, answer=message)
 
 
 def games_reading(q: Query) -> Query:

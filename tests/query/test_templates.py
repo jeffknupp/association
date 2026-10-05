@@ -149,10 +149,12 @@ def test_a_line_below_a_number_counts_the_games_under_it_on_the_stat_the_words_n
 
 
 def test_a_line_whose_words_name_no_stat_refuses_rather_than_filtering_on_a_guess(con: TemplateContext) -> None:
+    # A league count reads its line on the relation, which declines it there.
     with pytest.raises(TemplateUnsupported, match="names no box-score stat"):
         threshold_count(con, Reading.from_slots({"stat": "points", "threshold": 30, "below": ["under 30 gizmos"]}))
-    with pytest.raises(TemplateUnsupported, match="names no box-score stat"):
-        player_stat(con, Reading.from_slots({"player": "Luka Doncic", "stat": "points", "below": ["under 30 gizmos"]}))
+    # A named player's point reads it first, and refuses by its cause (Phase 2, step 3).
+    said = player_stat(con, Reading.from_slots({"player": "Luka Doncic", "stat": "points", "below": ["under 30 gizmos"]})).answer
+    assert said == "'under 30 gizmos' names no box-score stat a game can be kept under."
 
 
 def test_stats_against_one_opponent_end_with_the_meetings_behind_the_average(pg_ctx: TemplateContext) -> None:
@@ -190,8 +192,7 @@ def test_a_season_named_by_its_place_in_a_career_settles_to_that_year_once_the_p
     assert [g["season"] for g in log.data["games"]] == [s - 1]
     none = game_log(pg_ctx, Reading.from_slots({"player": "Brandin Podziemski", "season_n": 3}))
     assert "has 2 seasons on record" in (none.answer or "") and "no 3rd season" in (none.answer or "")
-    with pytest.raises(TemplateUnsupported, match="no player was named"):
-        threshold_count(pg_ctx, Reading.from_slots({"stat": "points", "threshold": 40, "season_n": 15}))
+    assert threshold_count(pg_ctx, Reading.from_slots({"stat": "points", "threshold": 40, "season_n": 15})).answer == "The 15th season is a place in one player's career, and no player was named."
 
 
 def test_one_game_of_each_playoff_series_is_numbered_by_date_over_the_series_own_games(pg_ctx: TemplateContext) -> None:
@@ -259,13 +260,16 @@ def test_filters_to_a_named_player_on_every_token(con: TemplateContext) -> None:
 
 
 def test_unknown_stat_falls_through_instead_of_reaching_sql(con: TemplateContext) -> None:
-    with pytest.raises(TemplateUnsupported):
-        threshold_count(con, Reading.from_slots({"stat": "points); DROP TABLE players; --", "threshold": 30}))
+    """Refused by its cause (Phase 2, step 3), never read into SQL."""
+    refused = threshold_count(con, Reading.from_slots({"stat": "points); DROP TABLE players; --", "threshold": 30}))
+    assert refused.answer == "A count of games across the league needs the line it counts - a stat and a number, as in '40-point games' - and none could be read from the question."
 
 
 def test_missing_threshold_falls_through(con: TemplateContext) -> None:
-    with pytest.raises(TemplateUnsupported):
-        threshold_count(con, Reading.from_slots({"stat": "points"}))
+    assert (
+        threshold_count(con, Reading.from_slots({"stat": "points"})).answer
+        == "A count of games across the league needs the line it counts - a stat and a number, as in '40-point games' - and none could be read from the question."
+    )
 
 
 def test_limit_is_clamped(con: TemplateContext) -> None:
@@ -3681,8 +3685,7 @@ def test_a_leaderboard_refuses_a_position_group_subject_for_the_compiler(lb_con:
 
 def test_a_zero_threshold_is_refused_rather_than_counting_every_game(con: TemplateContext) -> None:
     """Measured: "most 3 pointers made since 2020" arrived as threshold 0."""
-    with pytest.raises(TemplateUnsupported, match="counts every game"):
-        threshold_count(con, Reading.from_slots({"stat": "points", "threshold": 0}))
+    assert threshold_count(con, Reading.from_slots({"stat": "points", "threshold": 0})).answer == "A threshold of 0 counts every game - there is no line there to keep games past."
 
 
 @pytest.mark.parametrize(("intent", "slots"), [("player_stat", {"player": "Joe Ingles", "split": "starter_bench"}), ("leaderboard", {"stat": "points", "since": 2020})])
@@ -4178,8 +4181,7 @@ def test_an_unnarrowed_line_on_a_stat_with_no_column_names_the_stat(pg_ctx: Temp
 
 
 def test_a_real_stat_the_log_cannot_show_is_refused_rather_than_dropped(pg_ctx: TemplateContext) -> None:
-    with pytest.raises(TemplateUnsupported, match="no per-game column"):
-        game_log(pg_ctx, Reading.from_slots({"player": "Brandin Podziemski", "stat": "assist_o_net_pts"}))
+    assert game_log(pg_ctx, Reading.from_slots({"player": "Brandin Podziemski", "stat": "assist_o_net_pts"})).answer == "A game log has no per-game column for 'assist_o_net_pts'."
     # Not a stat at all - the required slot filled with something - adds nothing.
     assert game_log(pg_ctx, Reading.from_slots({"player": "Brandin Podziemski", "stat": "game log"})).data["columns"] == ["MIN", "PTS", "REB", "AST"]
     # A rate the relation derives per game is the compiler's own measure and
@@ -4359,8 +4361,7 @@ def test_game_log_keeps_only_the_games_past_a_threshold_rather_than_ignoring_it(
     there being no column to keep a line on."""
     kept = game_log(pg_ctx, Reading.from_slots({"player": "Brandin Podziemski", "stat": "fieldGoalsAttempted", "threshold": 15}))
     assert "FGA >= 15" in kept.answer and len(kept.data["rows"]) == 2 and {r["fieldGoalsAttempted"] for r in kept.data["rows"]} == {15, 20}
-    with pytest.raises(TemplateUnsupported, match="no stat"):
-        game_log(pg_ctx, Reading.from_slots({"player": "Brandin Podziemski", "threshold": 15}))
+    assert game_log(pg_ctx, Reading.from_slots({"player": "Brandin Podziemski", "threshold": 15})).answer == "Keeping only the games past 15 needs the stat they reach it in, and none was read."
 
 
 def test_player_stat_on_one_date_is_that_games_line(pg_ctx: TemplateContext) -> None:
@@ -4567,8 +4568,7 @@ def test_player_matchup_needs_two_players(pg_ctx: TemplateContext) -> None:
     parser reads it that way (``test_parser.test_a_player_against_a_team_is_never_a_matchup``),
     and the router-era fallback that folded it into ``game_log`` from here
     is gone (5.0.0)."""
-    with pytest.raises(TemplateUnsupported, match="exactly two players"):
-        player_matchup(pg_ctx, Reading.from_slots({"player": "Brandin Podziemski"}))
+    assert player_matchup(pg_ctx, Reading.from_slots({"player": "Brandin Podziemski"})).answer == "A matchup needs two players, and only Brandin Podziemski was read."
 
 
 def test_the_matchup_point_refuses_a_team_opponent(pg_ctx: TemplateContext) -> None:
@@ -5267,11 +5267,12 @@ def test_a_stat_the_period_line_cannot_rebuild_is_refused_rather_than_approximat
     refused by name rather than read off the whole game's box. And rebounds,
     which the plays DO carry, are refused where the warehouse holds no plays
     (this fixture) - summed as zeros they would answer "no rebounds"."""
-    with pytest.raises(TemplateUnsupported, match="no per-period 'minutes'"):
-        period_split(period_ctx, Reading.from_slots({"player": "Stephen Curry", "period": 1, "season": SEASON, "season_type": 2, "stat": "minutes"}))
+    minutes = period_split(period_ctx, Reading.from_slots({"player": "Stephen Curry", "period": 1, "season": SEASON, "season_type": 2, "stat": "minutes"})).answer
+    assert minutes is not None and minutes.startswith("A quarter or half has no per-period 'minutes' - the period's line rebuilds points, fieldGoalsMade,")
+    assert minutes.endswith("from the plays, and a field goal, 3-point or free throw percentage is a ratio of those; nothing else.")
     # An advanced rate is not a ratio of two period-line columns.
-    with pytest.raises(TemplateUnsupported, match="no per-period 'ts_pct'"):
-        period_split(period_ctx, Reading.from_slots({"player": "Stephen Curry", "period": 1, "season": SEASON, "season_type": 2, "stat": "ts_pct"}))
+    ts = period_split(period_ctx, Reading.from_slots({"player": "Stephen Curry", "period": 1, "season": SEASON, "season_type": 2, "stat": "ts_pct"})).answer
+    assert ts is not None and ts.startswith("A quarter or half has no per-period 'ts_pct'")
     answer = period_split(period_ctx, Reading.from_slots({"player": "Stephen Curry", "period": 1, "season": SEASON, "season_type": 2, "stat": "rebounds"})).answer
     assert answer == "Per-quarter rebounds cannot be answered here: they are rebuilt from play-by-play, and this warehouse holds none."
 

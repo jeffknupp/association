@@ -898,11 +898,21 @@ model's. Two things follow, and both matter when you add a shape:
   There is no slot door: a caller with a Reading of its own (a test handing
   the compiler a subject it built) reads the point into it with
   `parse.with_point`. Where the point reader refuses (a ranking by shot
-  distance, by a stat nothing ranks, under a floor in a unit nothing
-  applies) the Reading carries a `reading.Cause` - a kind from the closed
-  `CAUSES` and plain facts - and the planner says it
-  (`compose.plan.refusal_result`): the reader builds no sentence, and a
-  new cause is an entry there and a sentence here. A `TemplateResult` back is
+  distance, by a stat nothing ranks, under a floor or in a unit nothing
+  applies; a shape over a line missing its stat, its number or its
+  subject; a matchup without two players; a quarter's figure the plays do
+  not rebuild - sixteen kinds since 2026-10-05) the Reading carries a
+  `reading.Cause` - a kind from the closed `CAUSES` and plain facts - and
+  the planner says it (`compose.plan.refusal_result`): the reader builds
+  no sentence, and a new cause is an entry there and a sentence here. It
+  is raised as `reading.PointRefused`, a kind of `Unsupported`, so a shared
+  helper the answer side also calls (`lines.measure_filters`,
+  `measures.streak_column`) stays a decline there with its old message. A
+  plain `Unsupported` out of the point reader is a decline, kept only where
+  the reading hands the question on (another relation's question, an
+  intent with no default point) or where `read_point`'s order makes it
+  unreachable; one the user would see as "Nothing here answers this
+  question" becomes a Cause (Jeff's rule, "Identical means identical"). A `TemplateResult` back is
   answered exactly like a template's own - `answered_by="fast"`, the intent
   kept, the same name-reading and coverage-caveat attachment - including when
   that result is itself a refusal (a clarification, a "no match"): looking at

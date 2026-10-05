@@ -2446,6 +2446,39 @@ those were found.
 
 ## P3: refusal or gap
 
+### League-wide questions read under the wrong intent are refused "Nothing here answers" with the relation's hand-off
+- **Found:** 2026-10-05, inventorying the point reader's declines for the
+  declines -> Causes move (Phase 2, step 3;
+  `~/association-research/stages/decline_sites.py`, the whole agent over
+  the 2,710 readings of `reader_pop.py`).
+- **Evidence:** 36 readings reach the user as a decline the point reader
+  meant as a hand-off to another relation, all on intents the compiler
+  alone answers: 17 `leaderboard` questions about teams ("1997 nba team
+  defensive rating rankings", "Least points allowed nba teams this season
+  per game", "Teams to score 90 points in their first 2 games") declined
+  "a team, an opponent's figure or a franchise is the team relation's
+  question" (`point._everyone_guard`); 2 `leaderboard` questions about a
+  half ("rj barrett most assist in a single half") declined "a quarter or
+  half is the period relation's question"; 17 `game_log` questions with no
+  player read ("andrew iggins game log vs mavericks", "this season's bane
+  game log excluding anthony black and franz wagner" - the one in the
+  recorded corpus) declined "no player subject and no ranking or
+  position-group reading of the question" (`point._everyone_point`). The
+  feed readings carry no normalizer names, so production (where the model
+  copies names) reaches fewer of the 17 logs; the 19 leaderboards do not
+  depend on names. The same sites are hand-offs for template intents (the
+  team or period template answers; 340 more readings), so they stay
+  declines rather than causes.
+- **User sees:** a refusal, "Nothing here answers this question:
+  leaderboard: a team, an opponent's figure or a franchise is the team
+  relation's question." - true, but the question had an answer
+  (`team_leaderboard`, `period_leaderboard`) the stages did not route to.
+- **Next step:** route a league-wide ranking whose words name teams (or a
+  half) to `team_leaderboard`/`period_leaderboard` in the stages, measured
+  on these 19 and the corpus; for the logs, check how many survive with the
+  recorded normalizer's names before deciding whether "a game log needs a
+  player or a team" should be a Cause.
+
 ### The planner lets five player cells through to a team's readers on trust, with no test per cell
 - **Found:** 2026-09-30, roadmap reviews (both agents), about the fix in
   `35d1676`.

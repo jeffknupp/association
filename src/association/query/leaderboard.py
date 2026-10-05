@@ -36,7 +36,6 @@ from .measures import CAREER_METRIC_ALIASES as CAREER_METRIC_ALIASES
 from .measures import METRIC_ALIASES as METRIC_ALIASES
 from .measures import resolve_metric as resolve_metric
 from .metrics import EXTRA_FIELD_COLUMNS, LEADERBOARD_METRICS, SEASON_TYPE_LABELS, CareerAggregate, LeaderboardMetric
-from .result import Grouped
 
 # The most rows a ranking lists: the reader's one cap on a question's count
 # (``reading.MAX_LIMIT``, which ``_clamp_limit`` applies before a ranking is
@@ -45,6 +44,7 @@ from .result import Grouped
 # agent's model-supplied ``limit``; with the agent gone the ranking reader's
 # clamped count (``compose.rankings``) is the only one that reaches here.
 from .reading import MAX_LIMIT
+from .result import Grouped
 
 # What a `scales_with_schedule` floor was calibrated against - see
 # `metrics.LeaderboardMetric.scales_with_schedule` and `default_min_sample`

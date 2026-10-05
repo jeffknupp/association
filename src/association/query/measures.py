@@ -16,7 +16,7 @@ from __future__ import annotations
 from typing import Any
 
 from association.query.metrics import LEADERBOARD_METRICS
-from association.query.reading import Unsupported
+from association.query.reading import Cause, PointRefused
 
 #: What a question calls a box-score column, for a line it asks games to be
 #: kept under or over. Keys are the question's words after the number,
@@ -452,7 +452,7 @@ must not come back as the Lakers' best run of wins.
 def streak_column(stat: str | None, threshold: int | None) -> str | None:
     """The per-game column a streak holds a line on (``None`` for a run of
     wins or losses), read from the question's stat and threshold. Raises
-    :class:`~association.query.reading.Unsupported` for a named stat with no
+    :class:`~association.query.reading.PointRefused` (by the missing fact) for a named stat with no
     per-game column, or a stat/threshold pair that only half-names a
     condition - "most consecutive double-doubles" must not come back as a
     win streak.
@@ -463,9 +463,14 @@ def streak_column(stat: str | None, threshold: int | None) -> str | None:
     column = stat if stat in THRESHOLD_STAT_NAMES else None
     named_stat = stat is not None and bool(stat.strip()) and stat.strip().casefold() not in STREAK_RESULT_STATS
     if named_stat and column is None:
-        raise Unsupported(f"no per-game column for stat {stat!r}")
-    if (threshold is not None) != (column is not None) or (threshold is not None and threshold < 1):
-        raise Unsupported(f"a streak of a stat needs both a known stat and a positive threshold, got {stat!r}/{threshold!r}")
+        raise PointRefused(Cause(kind="unknown_stat", facts={"intent": "streak", "stat": stat}), f"no per-game column for stat {stat!r}")
+    message = f"a streak of a stat needs both a known stat and a positive threshold, got {stat!r}/{threshold!r}"
+    if column is not None and threshold is None:
+        raise PointRefused(Cause(kind="needs_threshold", facts={"intent": "streak", "stat": column}), message)
+    if column is None and threshold is not None:
+        raise PointRefused(Cause(kind="threshold_needs_stat", facts={"intent": "streak", "threshold": threshold}), message)
+    if threshold is not None and threshold < 1:
+        raise PointRefused(Cause(kind="threshold_counts_every_game", facts={"intent": "streak", "threshold": threshold}), message)
     return column
 
 
@@ -514,9 +519,10 @@ def period_split_measure(stat: str | None) -> str:
         return stat
     if stat in PERIOD_RATE_STATS:
         return PERIOD_RATE_STATS[stat]
-    raise Unsupported(
+    raise PointRefused(
+        Cause(kind="no_period_stat", facts={"stat": stat}),
         f"period_split has no per-period {stat!r} - the period's line rebuilds {', '.join(PERIOD_COLUMNS)} from the plays, "
-        "and a field goal, 3-point or free throw percentage is a ratio of those; nothing else"
+        "and a field goal, 3-point or free throw percentage is a ratio of those; nothing else",
     )
 
 
@@ -585,5 +591,5 @@ def log_extras(stat: Any) -> tuple[str, ...]:
     if stat in GAME_LOG_STAT_COLUMNS:
         return GAME_LOG_STAT_COLUMNS[stat]
     if stat in PLAYER_STAT_NAMES or stat in HISTORY_STATS or stat in THRESHOLD_STAT_NAMES or resolve_metric(stat) is not None:
-        raise Unsupported(f"a game log has no per-game column for {stat!r}")
+        raise PointRefused(Cause(kind="unknown_stat", facts={"intent": "game_log", "stat": stat}), f"a game log has no per-game column for {stat!r}")
     return ()

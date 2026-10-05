@@ -75,29 +75,6 @@ def _leaderboard_career(scope: Scope) -> bool:
     return True
 
 
-def _leaderboard_no_such_rate(rate: Any, metric: str) -> TemplateResult:
-    """Refuse a ranking in a unit the metric has no form of, naming the forms
-    THIS metric has ("who were the top 10 in defensive netpoints / 90": per
-    90 minutes is a football unit, and nothing in the warehouse is stored in
-    it). Only the three NetPoints metrics have a per-100 sibling, so a
-    generic list of units would be the refusal-with-the-wrong-cause shape.
-
-    # step 3: needs a ``ranking_unit`` Cause from the reader seam - this is
-    # a refusal sentence in the reader, kept word for word until the point
-    # reader carries the verdict (a reading move, enumerated on its own).
-    """
-    forms = ["as a season total" if metric.startswith("total_") else "per game"]
-    if metric in SEASON_TOTAL_OF:
-        forms.append("as a season total")
-    # `netpoints_total`'s per-100 sibling is `netpoints_per_100`, not
-    # `netpoints_total_per_100`, so the suffix comes off before looking.
-    if f"{metric.removeprefix('avg_').removesuffix('_total')}_per_100" in LEADERBOARD_METRICS:
-        forms.append("per 100 possessions")
-    asked = "per 90 minutes" if "90" in str(rate) else str(rate).replace("_", " ")
-    message = f"No leaderboard ranks {metric.replace('_', ' ')} {asked} - the warehouse stores it only {' or '.join(forms)}."
-    return TemplateResult(data={"message": message, "headline": message}, answer=message)
-
-
 def _leaderboard_refuse_a_subject(scope: Scope, position: str | None) -> bool:
     """Whether the ranking steps aside for a subject it cannot rank for - a
     position group, which the game-level ranking reads (F056: "highest 3
@@ -128,9 +105,8 @@ def _leaderboard_fields(scope: Scope, metric: str) -> list[str]:
     return [f for f in dict.fromkeys(requested) if metric != f"avg_{f}"]
 
 
-def _leaderboard_metric(scope: Scope, career: bool) -> str | TemplateResult | None:
-    """The metric the ranking reads, or the refusal of a unit it has no form
-    of, or ``None`` where no season-line metric reads the stat (the
+def _leaderboard_metric(scope: Scope, career: bool) -> str | None:
+    """The metric the ranking reads (a unit it has no form of declined), or ``None`` where no season-line metric reads the stat (the
     game-level ranking reads it instead). ``rate`` "total" ranks a season
     total: ``stat`` names a category, never which of its two readings ("most
     points this season" is a total, "leads in points" a per-game rate)."""
@@ -140,7 +116,11 @@ def _leaderboard_metric(scope: Scope, career: bool) -> str | TemplateResult | No
     if scope.rate == "total":
         return SEASON_TOTAL_OF.get(metric, metric)
     if scope.rate is not None:
-        return _leaderboard_no_such_rate(scope.rate, metric)
+        # A unit the metric has no form of is the point reader's refusal
+        # (the ``ranking_unit`` Cause, said by the planner) before the
+        # point is planned; read here it is declined, never ranked as
+        # another unit.
+        raise TemplateUnsupported(f"leaderboard has no {scope.rate!r} form of {metric}")
     return metric
 
 
@@ -154,7 +134,7 @@ def read_leaderboard(con: duckdb.DuckDBPyConnection, q: Query, *, stated: frozen
     no season-line metric reads, or ranks a position group: the game-level
     ranking answers those, as it did behind the retired template's refusal
     (``plan.games_reading``). A ``TemplateResult`` back is the ranking's own
-    refusal (a shot-distance ranking, a unit the metric has no form of); a
+    refusal (a shot-distance ranking); a
     ``TemplateUnsupported`` the relation's decline (an unknown field, an
     ambiguous team, a career list with columns or a franchise's).
 
@@ -171,8 +151,8 @@ def read_leaderboard(con: duckdb.DuckDBPyConnection, q: Query, *, stated: frozen
         return leaderboard_shot_distance_refusal()
     career = _leaderboard_career(scope)
     metric = _leaderboard_metric(scope, career)
-    if metric is None or isinstance(metric, TemplateResult):
-        return metric
+    if metric is None:
+        return None
     if _leaderboard_refuse_a_subject(scope, q.position):
         return None
     fields = _leaderboard_fields(scope, metric)

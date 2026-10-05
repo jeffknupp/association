@@ -975,10 +975,11 @@ def with_point(con: duckdb.DuckDBPyConnection, question: str, reading: Reading) 
     """
     try:
         point = read_point(reading, question)
+    except PointRefused as exc:
+        # Before the decline: a refusal with a cause is a kind of decline.
+        return replace(reading, point_refusal=exc.cause)
     except Unsupported as exc:
         return replace(reading, point_declined=str(exc))
-    except PointRefused as exc:
-        return replace(reading, point_refusal=exc.cause)
     return replace(reading, point=point)
 
 

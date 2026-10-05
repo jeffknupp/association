@@ -710,9 +710,16 @@ def test_record_when_divides_his_games_by_the_threshold(league: TemplateContext)
 
 
 def test_record_when_refuses_what_it_cannot_whitelist(league: TemplateContext) -> None:
-    for slots in ({"stat": "double_double", "threshold": 1}, {"stat": "points"}, {"stat": "points", "threshold": 0}):
-        with pytest.raises(TemplateUnsupported):
-            record_when(league, Reading.from_slots(_slots(player="Jayson Tatum", **slots)))
+    # Each refused by the fact missing (Phase 2, step 3).
+    said = [
+        record_when(league, Reading.from_slots(_slots(player="Jayson Tatum", **slots))).answer
+        for slots in ({"stat": "double_double", "threshold": 1}, {"stat": "points"}, {"stat": "points", "threshold": 0})
+    ]
+    assert said == [
+        "A record in the games over a line cannot be read over 'double_double' - it has no per-game box-score column.",
+        "A record in the games over a line needs the number of points each game has to reach, and none was read.",
+        "A threshold of 0 counts every game - there is no line there to keep games past.",
+    ]
     # A threshold that is not a number never gets as far as the template.
     with pytest.raises(ValueError, match="threshold"):
         Reading.from_slots(_slots(player="Jayson Tatum", stat="points", threshold=True))
@@ -905,8 +912,7 @@ def test_a_bare_threshold_names_the_real_missing_thing(league: TemplateContext) 
     """Neither a player nor a team - unanswerable, and the refusal says so
     rather than naming only the player half (the mirror-image bug AGENTS.md
     warns about: a wrong cause reads as honest)."""
-    with pytest.raises(TemplateUnsupported, match="record_when needs a player or a team"):
-        record_when(league, Reading.from_slots(_slots(stat="points", threshold=100)))
+    assert record_when(league, Reading.from_slots(_slots(stat="points", threshold=100))).answer == "A record in the games over a line needs a player or a team to read it for, and neither was named."
 
 
 def test_a_team_rebounds_threshold_reads_oreb_plus_dreb_not_totalrebounds(league: TemplateContext) -> None:
@@ -1100,8 +1106,7 @@ def test_a_log_since_a_season_reaches_back_that_far(league: TemplateContext) -> 
 
 
 def test_a_matchup_needs_two_different_players(league: TemplateContext) -> None:
-    with pytest.raises(TemplateUnsupported):
-        player_matchup(league, Reading.from_slots(_slots(players=["Jayson Tatum"])))
+    assert player_matchup(league, Reading.from_slots(_slots(players=["Jayson Tatum"]))).answer == "A matchup needs two players, and only Jayson Tatum was read."
     with pytest.raises(TemplateUnsupported):
         player_matchup(league, Reading.from_slots(_slots(players=["Jayson Tatum", "Tatum"])))
 
@@ -1158,11 +1163,21 @@ def test_a_losing_streak_is_a_run_of_losses(league: TemplateContext) -> None:
 def test_a_stat_without_a_threshold_is_not_read_as_a_winning_streak(league: TemplateContext) -> None:
     """ "Most consecutive double-doubles" must not come back as the Celtics'
     best run of wins."""
-    for slots in ({"stat": "double_double"}, {"stat": "points"}, {"threshold": 30}, {"stat": "points", "threshold": 0}):
-        with pytest.raises(TemplateUnsupported):
-            streak(league, Reading.from_slots(_slots(team="Boston Celtics", **slots)))
-    with pytest.raises(TemplateUnsupported):
-        streak(league, Reading.from_slots(_slots(team="Boston Celtics", stat="points", threshold=30)))
+    # Each refused by the fact missing (Phase 2, step 3).
+    said = [
+        streak(league, Reading.from_slots(_slots(team="Boston Celtics", **slots))).answer
+        for slots in ({"stat": "double_double"}, {"stat": "points"}, {"threshold": 30}, {"stat": "points", "threshold": 0})
+    ]
+    assert said == [
+        "A streak cannot be read over 'double_double' - it has no per-game box-score column.",
+        "A streak needs the number of points each game has to reach, and none was read.",
+        "A streak of games reaching 30 needs the stat they reach it in, and none was read.",
+        "A threshold of 0 counts every game - there is no line there to keep games past.",
+    ]
+    assert (
+        streak(league, Reading.from_slots(_slots(team="Boston Celtics", stat="points", threshold=30))).answer
+        == "A team's streak is of wins or losses - a run of games reaching a number of points is read for a player, not a team."
+    )
 
 
 def test_the_models_word_for_a_winning_streak_is_not_a_stat(league: TemplateContext) -> None:

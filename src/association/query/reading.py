@@ -404,13 +404,55 @@ _CHECKS: dict[str, Callable[[str, Any], Any]] = {
 _SCOPE_FIELDS = frozenset(f.name for f in fields(Scope))
 
 
-CAUSES: frozenset[str] = frozenset({"shot_distance_ranking", "no_ranking_measure", "ranking_floor_unit"})
-"""The closed set of causes a point reading refuses by (:class:`Cause.kind`):
-a league-wide ranking by shot distance, which nothing ranks; a ranking by a
-named stat the relation has no measure for (``stat``); a ranking floor in a
-unit no ranking applies (``unit``, ``count``). The planner says each
-(``compose.plan.refusal_result``); a new cause is an entry here and a
-sentence there.
+CAUSES: frozenset[str] = frozenset(
+    {
+        "shot_distance_ranking",
+        "no_ranking_measure",
+        "ranking_floor_unit",
+        "ranking_unit",
+        "needs_stat",
+        "unknown_stat",
+        "needs_threshold",
+        "threshold_needs_stat",
+        "threshold_counts_every_game",
+        "line_names_no_stat",
+        "needs_line",
+        "career_place_needs_player",
+        "needs_subject",
+        "team_streak_of_stat",
+        "matchup_needs_two",
+        "no_period_stat",
+    }
+)
+"""The closed set of causes a point reading refuses by (:class:`Cause.kind`),
+each named for the fact that is missing (AGENTS.md, "A refusal names the
+missing thing, never only the slot"):
+
+- a league-wide ranking by shot distance, which nothing ranks
+  (``shot_distance_ranking``); a ranking by a named stat the relation has
+  no measure for (``no_ranking_measure``: ``stat``); a ranking floor in a
+  unit no ranking applies (``ranking_floor_unit``: ``unit``, ``count``); a
+  season-line ranking in a unit its metric has no form of
+  (``ranking_unit``: ``metric``, ``rate``);
+- a shape over a line on a stat - a single-game high, a record or a count
+  of games over a line, a streak, a log kept past a number - with no stat
+  read (``needs_stat``: ``intent``), a stat with no per-game column
+  (``unknown_stat``: ``intent``, ``stat``), a stat with no number
+  (``needs_threshold``: ``intent``, ``stat``), a number with no stat
+  (``threshold_needs_stat``: ``intent``, ``threshold``), a number every
+  game clears (``threshold_counts_every_game``: ``intent``,
+  ``threshold``), or a below/above phrase naming no stat
+  (``line_names_no_stat``: ``phrase``, ``side``);
+- a league-wide count with no line read at all (``needs_line``); an
+  ordinal season with no player to be a place in (``career_place_needs_player``:
+  ``season_n``); a record over a line with neither a player nor a team
+  (``needs_subject``: ``intent``); a team's run of a stat line
+  (``team_streak_of_stat``: ``stat``); a matchup without exactly two
+  players (``matchup_needs_two``: ``names``); a quarter's or half's figure
+  the period's line does not rebuild (``no_period_stat``: ``stat``).
+
+The planner says each (``compose.plan.refusal_result``); a new cause is an
+entry here and a sentence there.
 
 .. versionadded:: 5.0.0
 """
@@ -435,20 +477,6 @@ class Cause:
         """Hold ``kind`` to :data:`CAUSES`."""
         if self.kind not in CAUSES:
             raise ValueError(f"{self.kind!r} is not a cause a point reading refuses by: {sorted(CAUSES)}")
-
-
-class PointRefused(Exception):
-    """The point reader's refusal, carrying its :class:`Cause`: raised where
-    the reading comes to one, caught by the parser (``parse.with_point``),
-    which puts the cause on the Reading as ``point_refusal``.
-
-    .. versionadded:: 5.0.0
-    """
-
-    def __init__(self, cause: Cause) -> None:
-        """Wrap ``cause``."""
-        super().__init__(cause.kind)
-        self.cause = cause
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -793,6 +821,29 @@ class Unsupported(Exception):
        Declared on the reader's side, which raises it as a decline
        (``compose.core`` re-exports it).
     """
+
+
+class PointRefused(Unsupported):
+    """The point reader's refusal, carrying its :class:`Cause`: raised where
+    the reading comes to one, caught by the parser (``parse.with_point``),
+    which puts the cause on the Reading as ``point_refusal``.
+
+    A kind of :class:`Unsupported`, so the reader's shared helpers that
+    raise it (``lines.measure_filters``, ``measures.streak_column``,
+    ``measures.log_extras``, ``measures.period_split_measure``,
+    ``lines.threshold_count_line``) stay declines to the answer side's
+    callers, which catch ``Unsupported`` and read ``message`` - the sentence
+    those callers have always said; the point reader's caller reads the
+    cause.
+
+    .. versionadded:: 5.0.0
+    """
+
+    def __init__(self, cause: Cause, message: str | None = None) -> None:
+        """Wrap ``cause``; ``message`` is what an answer-side caller that
+        catches it as a decline says (the kind where none is given)."""
+        super().__init__(message or cause.kind)
+        self.cause = cause
 
 
 _HALF_PERIODS: dict[int, tuple[int, ...]] = {1: (1, 2), 2: (3, 4)}
