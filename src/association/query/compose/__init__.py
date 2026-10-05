@@ -48,7 +48,7 @@ from .highs import read_single_game_high
 from .logs import read_player_log, read_team_log
 from .pairs import read_player_matchup
 from .periods import read_period_split
-from .plan import Planned, games_reading
+from .plan import Planned
 from .present import STATED_SCOPING, present_team
 from .rankings import read_leaderboard
 from .records import read_record_when
@@ -206,11 +206,11 @@ def answer(
        here, a second planner path only tests took.
 
     .. versionchanged:: 5.0.0
-       Takes ``ran``: handed the query the compiler itself executed, which
-       is the planned one except where the season line's presenter declined
-       and :func:`~association.query.compose.plan.games_reading` re-read it
-       as the game-level query (3 of the 628 recorded questions). The stage
-       snapshot records that one, not the planned one, since 2026-10-03.
+       Takes ``ran``: handed the query the compiler itself executed - the
+       planned one, since the planner plans a season-line point its reader
+       does not read as the game-level query (Phase 2, step 3; until then
+       ``plan.games_reading`` re-planned it here, 3 of the 628 recorded
+       questions). The stage snapshot records it.
     """
     verdict = planned
     if verdict.refusal is not None:
@@ -342,23 +342,6 @@ def _answer_point(
         ported = _read_ported(ctx.con, intent, query)
         if ported is not None:
             return ported
-        if query.source != "games":
-            # The season line's own reader declined: the game-level reading,
-            # checked against its own floor, or nothing.
-            # step 3: needs the point reader to plan these as the game-level
-            # point itself, from the season line's own predicates
-            # (compose.seasons.player_line_reads / player_history_reads /
-            # player_compare_reads, and the leaderboard's own-point check in
-            # compose.rankings) - every re-plan that answers is a games read
-            # (3 of 628 recorded questions, all leaderboards: a 15th-season
-            # ranking twice and a "since 2000-01" ranking; 3 unit-test calls,
-            # player histories of turnovers or no stat). An unnarrowed
-            # player_stat the line declines has no games reading and is a
-            # decline here; that one can be the planner's.
-            query = games_reading(query)
-            refusal = check_coverage(intent, query.scope)
-            if refusal is not None:
-                raise Refused(TemplateResult(data={"message": refusal, "season": query.scope.season}, answer=refusal))
         if ran is not None:
             ran(query)
         out = run(ctx.con, query)

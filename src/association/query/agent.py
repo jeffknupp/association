@@ -156,9 +156,8 @@ class Agent:
         self.planned: Planned | None = None
         #: The query the compiler itself executed for the last question, or
         #: None: a template's answer, a presenter's (which runs the retired
-        #: template's own read), a refusal. The planned query except where
-        #: the season line's presenter declined and ``games_reading`` re-read
-        #: it (``compose.answer``'s ``ran``); the stage snapshot records it.
+        #: template's own read), a refusal: the planned query
+        #: (``compose.answer``'s ``ran``); the stage snapshot records it.
         #:
         #: .. versionadded:: 5.0.0
         self.ran: Query | TeamQuery | None = None

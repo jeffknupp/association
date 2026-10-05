@@ -60,6 +60,30 @@ def _leaderboard_is_own_point(q: Query) -> bool:
     return q.subject == "everyone" and q.source == "seasons" and q.skeleton == "grouped" and q.group == "player" and not q.predicates
 
 
+def leaderboard_reads(q: Query, stated: frozenset[str]) -> bool:
+    """Whether :func:`read_leaderboard` reads ``q`` (or refuses it with a
+    sentence or a decline of its own) rather than stepping aside for the
+    game-level ranking: the league's ranking on the season line, narrowed
+    only by what its words state, and - unless a shot-distance ranking, a
+    career with a year named or a unit the metric has no form of, which it
+    says itself - a stat a season-line metric reads, over no position group.
+    Read from the point alone, so the planner plans the rest as the
+    game-level ranking (``compose.plan.plan``) before anything runs.
+
+    .. versionadded:: 5.0.0
+    """
+    if not _leaderboard_is_own_point(q) or unhonored_scoping("leaderboard", q.scope, stated):
+        return False
+    scope = q.scope
+    if scope.stat == "shot_distance" or (scope.span is not None and scope.season is not None):
+        return True
+    if resolve_metric(scope.stat, career=scope.span is not None) is None:
+        return False
+    if scope.rate is not None and scope.rate != "total":
+        return True
+    return q.position is None
+
+
 def _leaderboard_career(scope: Scope) -> bool:
     """True for a career ranking, False for a one-season one; raises for a
     career with a year named. The router keeps a year the question named
@@ -75,19 +99,15 @@ def _leaderboard_career(scope: Scope) -> bool:
     return True
 
 
-def _leaderboard_refuse_a_subject(scope: Scope, position: str | None) -> bool:
-    """Whether the ranking steps aside for a subject it cannot rank for - a
-    position group, which the game-level ranking reads (F056: "highest 3
-    point percentage ... by a shooting guard" ranked the whole league
-    before this) - and a refusal for one named player: a leaderboard ranks
-    the league or a team, never one person ("Klay Thompson's 3pt percentage
-    over the past 4 seasons" came back with the league's true-shooting
-    leaders, Klay silently dropped). In that order, as the template had."""
-    if position is not None:
-        return True
+def _leaderboard_refuse_a_player(scope: Scope) -> None:
+    """A refusal for one named player: a leaderboard ranks the league or a
+    team, never one person ("Klay Thompson's 3pt percentage over the past 4
+    seasons" came back with the league's true-shooting leaders, Klay
+    silently dropped). A position group, which the game-level ranking reads
+    (F056), is the planner's (:func:`leaderboard_reads`), and was checked
+    first, as the template had it."""
     if scope.player is not None and scope.player.strip():
         raise TemplateUnsupported(f"a leaderboard cannot answer about one named player ({scope.player!r})")
-    return False
 
 
 def _leaderboard_fields(scope: Scope, metric: str) -> list[str]:
@@ -133,14 +153,14 @@ def read_leaderboard(con: duckdb.DuckDBPyConnection, q: Query, *, stated: frozen
     state (``stated``: ``compose.present.STATED_SCOPING``'s set), names a stat
     no season-line metric reads, or ranks a position group: the game-level
     ranking answers those, as it did behind the retired template's refusal
-    (``plan.games_reading``). A ``TemplateResult`` back is the ranking's own
+    (planned so: :func:`leaderboard_reads`). A ``TemplateResult`` back is the ranking's own
     refusal (a shot-distance ranking); a
     ``TemplateUnsupported`` the relation's decline (an unknown field, an
     ambiguous team, a career list with columns or a franchise's).
 
     .. versionadded:: 5.0.0
     """
-    if not _leaderboard_is_own_point(q) or unhonored_scoping("leaderboard", q.scope, stated):
+    if not leaderboard_reads(q, stated):
         return None
     scope = q.scope
     if scope.stat == "shot_distance":
@@ -151,10 +171,10 @@ def read_leaderboard(con: duckdb.DuckDBPyConnection, q: Query, *, stated: frozen
         return leaderboard_shot_distance_refusal()
     career = _leaderboard_career(scope)
     metric = _leaderboard_metric(scope, career)
-    if metric is None:
-        return None
-    if _leaderboard_refuse_a_subject(scope, q.position):
-        return None
+    # leaderboard_reads settled it: a stat no season-line metric reads is the
+    # game-level ranking's, planned so; and so is a position group.
+    assert metric is not None
+    _leaderboard_refuse_a_player(scope)
     fields = _leaderboard_fields(scope, metric)
     if career:
         _leaderboard_career_refusals(scope, fields)

@@ -1374,7 +1374,7 @@ def test_a_league_count_on_the_routers_own_line_is_answered(cx_ctx: TemplateCont
 
 
 def test_a_history_by_season_keeps_the_newest_seasons(cx_ctx: TemplateContext) -> None:
-    """``player_history``'s game-level reading (``plan.games_reading``, for a
+    """``player_history``'s game-level reading (planned so by ``plan.plan``, for a
     stat the season line has no per-season column for), limited to one
     season, is his NEWEST one, newest first - it ordered by the label
     ascending and kept the oldest, so "the past 4 seasons" was answered with

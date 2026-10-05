@@ -676,8 +676,8 @@ def _move_boolean_count_is_line(measure: str, scope: Scope) -> bool:
 def _move_player_history(intent: str, scope: Scope, career: Scope, measure: str | None) -> Reading | None:
     """``player_history``: a per-season history, read from the season line
     (``source="seasons"``) over the question's own slots - the template's own
-    read. Where the season line does not say it, :func:`games_reading` turns
-    it into a career of games grouped by season, newest first."""
+    read. Where the season line does not say it, the planner plans it as a
+    career of games grouped by season, newest first (``compose.plan.plan``)."""
     if intent != "player_history":
         return None
     if measure is None and scope.stat is not None and scope.stat not in HISTORY_STATS:
@@ -686,7 +686,7 @@ def _move_player_history(intent: str, scope: Scope, career: Scope, measure: str 
         # refused it - never drawn as the points history the default measure
         # below would read in its place.
         raise Unsupported(f"no per-season history for stat {scope.stat!r}")
-    del career  # the season line reads the question's own span; games_reading widens it
+    del career  # the season line reads the question's own span; the planner's game-level point widens it
     return Reading(
         scope=scope,
         shape="grouped",

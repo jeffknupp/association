@@ -113,9 +113,11 @@ def test_a_point_the_compiler_has_none_of_says_why() -> None:
 
 
 def test_the_query_stage_is_the_query_the_compiler_ran_where_that_differs() -> None:
-    """``compose.answer`` re-reads a season-line point the presenter declined
-    as the game-level query (``plan.games_reading``); the record took the
-    planned one for it until 2026-10-03."""
+    """The record is the query the compiler ran where a caller hands one
+    (``Agent.ran``); until Phase 2, step 3 ``compose.answer`` re-planned a
+    season-line point its reader declined as the game-level query
+    (``plan.games_reading``), and the record took the planned one for it
+    until 2026-10-03."""
     reading = _reading()
     planned = plan_point(reading)
     assert isinstance(planned.query, Query)

@@ -172,9 +172,11 @@ def _query_record(reading: Reading, planned: Planned, mask: Mapping[str, str] | 
     so a planner that built something else from it went unseen; the point
     is the reading's record now. ``ran`` is the query the compiler itself
     executed (:attr:`Agent.ran <association.query.agent.Agent.ran>`), where
-    the caller has one: the planned query except where the season line's
-    presenter declined and ``games_reading`` re-read it, which the record
-    took for the planned one until 2026-10-03."""
+    the caller has one: the planned query, since the planner plans a
+    season-line point its reader does not read as the game-level one
+    (Phase 2, step 3); until then ``games_reading`` re-planned it in
+    ``compose.answer``, which the record took for the planned one until
+    2026-10-03."""
     verdict = planned
     if verdict.refusal is not None:
         return {"refused": plain(verdict.refusal.data, mask=mask), "said": _masked(verdict.refusal.answer, mask)}

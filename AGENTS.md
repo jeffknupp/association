@@ -132,9 +132,10 @@ this tree:
   normalizer's recorded replies, the date pinned, DuckDB single-threaded,
   about two minutes) and writes what each stage produced: the reading
   (with the reader's own verdict on the point: declined, or the cause it
-  refuses by), the query the compiler ran (the planned one, except where
-  the season line's presenter declined and `games_reading` re-read it:
-  3 of 628), the result's values, the answer. `compare` reports
+  refuses by), the query the compiler ran (the planned one: since
+  2026-10-05 the planner plans a season-line point its reader does not
+  read as the game-level one, where `games_reading` re-planned it after
+  the reader declined, 3 of 628), the result's values, the answer. `compare` reports
   the first stage each question differs in and exits 1. The second
   population is every call the unit tests make across a stage boundary:
   run the suite on each tree with `ASSOCIATION_STAGE_CALLS=<dir>` and

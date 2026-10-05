@@ -17,11 +17,13 @@ from association.query.leaderboard import SEASON_TOTAL_OF
 from association.query.measures import PERIOD_COLUMNS, stat_measure
 from association.query.metrics import LEADERBOARD_METRICS
 from association.query.reading import Cause, Reading, Scope, _career_scope, ordinal_word
-from association.query.templates.common import RELATION_SCOPING_EXCLUDED, STAT_LABELS, TemplateResult, TemplateUnsupported, unhonored_scoping
+from association.query.templates.common import RELATION_SCOPING_EXCLUDED, STAT_LABELS, TemplateResult, TemplateUnsupported, check_coverage, unhonored_scoping
 from association.query.templates.players import leaderboard_shot_distance_refusal
 from association.query.templates.splits import _condition_needs_player_refusal
 
 from .core import Query, Refused, Unsupported, _check_relation_scoping
+from .rankings import leaderboard_reads
+from .seasons import player_compare_reads, player_history_reads, player_line_reads
 from .team import TeamQuery
 
 WITH_WITHOUT_STATED: frozenset[str] = frozenset({"span", "without", "opponent", "conditions"})
@@ -146,9 +148,9 @@ def plan(reading: Reading) -> Query | TeamQuery:
     subject = "everyone" if reading.relation == "everyone" else "player"
     # The season line's ranking (leaderboard's retired reader) honors `rate`
     # - a season total, or a unit refused by name - which no game-level read
-    # does; a point its reader declines is refused with it (plan.games_reading).
+    # does; a point its reader declines is refused with it (_game_level).
     _check_relation_scoping(reading.scope, subject, frozenset({"rate"}) if reading.source == "seasons" and subject == "everyone" else frozenset())
-    return Query(
+    planned = Query(
         scope=reading.scope,
         skeleton=reading.shape,
         measures=list(reading.measures),
@@ -167,6 +169,63 @@ def plan(reading: Reading) -> Query | TeamQuery:
         subject=subject,
         position=reading.position,
     )
+    if planned.source == "seasons" and not _season_line_reads(reading.intent, planned):
+        return _game_level(reading.intent, planned)
+    return planned
+
+
+#: The season line's readers' own checks, by intent: whether the reader
+#: reads a point on the line (``compose.rankings``, ``compose.seasons``),
+#: from the point alone.
+_SEASON_LINE_READS = {
+    "leaderboard": leaderboard_reads,
+    "player_stat": player_line_reads,
+    "player_history": player_history_reads,
+    "player_compare": player_compare_reads,
+}
+
+
+def _season_line_reads(intent: str | None, q: Query) -> bool:
+    """Whether the season line's reader for ``intent`` reads ``q`` - the
+    relation saying for itself whether it reads a point, with the scoping
+    its words state (``compose.present.STATED_SCOPING``)."""
+    # At call time: compose.present imports this module (WITH_WITHOUT_STATED).
+    from .present import STATED_SCOPING
+
+    reads = _SEASON_LINE_READS.get(intent or "")
+    return reads is not None and reads(q, STATED_SCOPING[intent or ""])
+
+
+def _game_level(intent: str | None, q: Query) -> Query:
+    """A season-line point (``source="seasons"``) its reader does not read,
+    as the game-level relation reads it: a per-season history becomes his
+    career's games grouped by season (the reading the compiler gave every
+    history before the season line was a source); a ranking is the
+    game-level ranking, exactly as it answered behind the retired
+    template's refusal - except for what it cannot say: a stat this
+    relation has no measure for is refused by name rather than ranked as
+    points, and a ``rate`` only the season line reads is not dropped. An
+    unnarrowed ``player_stat`` has no game-level reading that answers the
+    same question, so it is declined. The season's coverage floor is
+    checked first, as the answering loop checked the season-line point
+    before it re-planned it (until Phase 2, step 3, ``games_reading``, in
+    ``compose.answer``).
+    """
+    refusal = check_coverage(intent or "", q.scope)
+    if refusal is not None:
+        raise Refused(TemplateResult(data={"message": refusal, "season": q.scope.season}, answer=refusal))
+    if q.group == "season":
+        return replace(q, scope=_career_scope(q.scope), source="games")
+    if q.group == "player" and q.subject == "everyone":
+        stat = q.scope.stat
+        if stat is not None and stat.strip() and stat_measure(stat) is None:
+            raise Refused(no_ranking_for(stat))
+        if q.scope.rate:
+            raise Unsupported("the relation cannot honor ['rate'] - it would answer for a different span than was asked")
+        if q.scope.fields:
+            raise Unsupported("the game-level ranking shows no columns beside its measure")
+        return replace(q, source="games")
+    raise Unsupported("an unnarrowed player line the season line's reader did not say")
 
 
 @dataclass(frozen=True)
@@ -327,42 +386,6 @@ def refusal_result(cause: Cause) -> TemplateResult:
     if message is None:
         raise ValueError(f"no sentence for the cause {cause.kind!r}")
     return TemplateResult(data={"message": message, **cause.facts}, answer=message)
-
-
-def games_reading(q: Query) -> Query:
-    """A season-line point (``source="seasons"``) the season line's own
-    readers declined, as the game-level relation reads it: a per-season
-    history becomes his career's games grouped by season (the reading the
-    compiler gave every history before the season line was a source). An
-    unnarrowed ``player_stat`` has no game-level reading that answers the
-    same question, so it raises :class:`~association.query.compose.core.Unsupported`,
-    as it did before.
-
-    .. versionadded:: 5.0.0
-
-    .. versionchanged:: 5.0.0
-       Lives with the planner (it was ``point.games_reading``).
-    """
-    if q.source != "seasons":
-        return q
-    if q.group == "season":
-        return replace(q, scope=_career_scope(q.scope), source="games")
-    if q.group == "player" and q.subject == "everyone":
-        # The season line's ranking declined (leaderboard's retired refusals:
-        # a metric with no season form, an unknown field, an ambiguous team):
-        # the game-level ranking, exactly as it answered behind the template's
-        # refusal - except for what it cannot say. A stat this relation has no
-        # measure for is refused by name rather than ranked as points, and a
-        # `rate` only the season line reads is not dropped.
-        stat = q.scope.stat
-        if stat is not None and stat.strip() and stat_measure(stat) is None:
-            raise Refused(no_ranking_for(stat))
-        if q.scope.rate:
-            raise Unsupported("the relation cannot honor ['rate'] - it would answer for a different span than was asked")
-        if q.scope.fields:
-            raise Unsupported("the game-level ranking shows no columns beside its measure")
-        return replace(q, source="games")
-    raise Unsupported("an unnarrowed player line the season line's reader did not say")
 
 
 def plan_point(reading: Reading) -> Planned:
