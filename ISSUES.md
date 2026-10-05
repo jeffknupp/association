@@ -3132,6 +3132,12 @@ those were found.
 
 ## P4: tooling, docs, low impact
 
+### The sayer's import contract is checked on direct imports only: `compose.say` reaches duckdb through four modules' constants
+- **Found:** 2026-10-05, Phase 2 step 6, when the last phrase helpers left `templates/` (the condition `pyproject.toml` named for checking the contract on chains).
+- **Evidence:** `allow_indirect_imports = false` on "The compiler's sentence reads no warehouse" breaks it: `compose.say` imports `compose.logs` (`LOG_PERCENTAGES`, `log_key`), `conditions` (the split tables and labels), `player_games` (`PERIOD_LOG_COLUMNS`, `PERIOD_RATES`, `period_columns`) and `season_line` (`NETPOINTS_COMPARE_ROWS`, the season line's column tables), each of which imports duckdb for its statements.
+- **User sees:** nothing; a sayer that reached the warehouse through one of those modules would pass the gate.
+- **Next step:** move those constants into modules with no statements (the relation's vocabulary beside `measures.py`), then set `allow_indirect_imports = false` and watch it fail on a planted import.
+
 ### A log narrowed by a season range is headed "last 7 games of his career"
 - **Found:** 2026-09-30, roadmap review (agent A).
 - **Evidence:** "show maxey's games against boston in the past two
