@@ -4,10 +4,12 @@ Orientation for agents (and people) making changes here. It covers what is
 *not* obvious from reading the code: the gates, the conventions that are
 enforced, and the specific shapes of bug this project keeps producing.
 
-For how the system is designed — the three stages, the parser in front of the
-templates and the compiler, why templates instead of better prompting — read
+For how the system is designed — the stages, the parser in front of the
+compiler, why deterministic readers instead of better prompting — read
 `docs/architecture.rst`. That is
-the source of truth for design, and this file does not restate it.
+the source of truth for design, and this file does not restate it (Phase 4
+rewrites it; its "Templates" passages describe what Phase 2's readers and
+sayer replaced).
 
 Where the work is going - the goal, where it stands, and the next steps in
 order - is `ROADMAP.md` (accepted 2026-09-30: the four-stage pipeline, READ
@@ -73,54 +75,35 @@ this tree:
 - **New shapes are frozen** (decision D4). No new intent, template,
   presenter, scoping table or per-intent renderer.
   `tests/query/test_frozen_shapes.py` holds the 25 intents the reader can
-  name, and since 2026-10-02 the templates (12; 8 since 2026-10-05, when
-  `coach` became the reading's cause and `team_outlook`, `team_stat` and
-  `team_leaderboard` readers and sayers over the team-season relations,
-  `query/team_seasons.py` and `compose/team_stats.py`; 4 - the charts - once
-  `head_to_head`, `team_quarter_points`, `period_leaderboard` and
-  `team_record` went to readers and sayers; 3 once `player_netpoints` went
-  to a reader and a sayer over the NetPoints relation,
-  `compose/netpoints.py`, and 2 once `fingerprint` did, its chart drawn
-  between the two; 1 once `shot_distance` went to the declared shot
-  relation's reader, `compose/shots.py`, and none once `shot_chart` did,
-  its chart drawn between the two - the registry stands empty until step 6
-  deletes it), the presenters (12 until
-  2026-10-03; the intents holding one are 8 since 2026-10-04, as the game
-  log, `record_when`, `player_splits` and `period_split` went to readers and
-  sayers, 6 once `threshold_count` and `single_game_high` did, 4 once
-  `streak` and `player_matchup` did, 3 once `leaderboard` did, and none
-  once the season line's `player_stat`, `player_history` and
-  `player_compare` did, 2026-10-05: `PRESENTERS` and `present()` went)
-  and the team's (with/without, a team's streak and a team's record over
-  its own line, retired in step 4 with `compose/present.py` itself: the
-  freeze now holds only that the module does not come back), the adapters
-  (10; 5 since 2026-10-04, 3 once `threshold_count`'s and
-  `single_game_high`'s default points went to the reader, 1 -
-  `with_without`'s - once the streak's and the matchup's did, and none
-  since 2026-10-05: `compose/adapt.py` is deleted and every default point
-  is `point.DEFAULT_POINTS`'s, so that freeze retired), the 14
-  scoping declarations (by module
-  and name, read from the source; 12 until 2026-10-03, when the two tables
-  of cells a reader refuses that its name pattern missed joined) and the
-  page's 22 renderers: each
-  retires with its slice, none is added. A P1 wrong answer is
-  still fixed, in the code that exists. The sections below still describe
-  how templates and intents work (and what the presenters were), because
-  the templates are what runs;
-  they are not an invitation to add one.
+  name and the page's 22 renderers, each of which retires with its slice
+  and none of which is added; and that `templates/` and
+  `compose/present.py` do not come back. Phase 2 (2026-10-03 to
+  2026-10-05) removed what the rest of the freeze held: the twelve
+  templates (the registry stood empty after the shot chart, and step 6
+  deleted it with `check_scope`, `HONORED_SCOPING` and the `templates`
+  package), the presenters and `compose/present.py`, the ten adapters and
+  `compose/adapt.py`, and the freeze of fourteen scoping declarations -
+  what remains of those is the per-relation cell tables the roadmap keeps
+  (`RELATION_SCOPING*` on `query/player_relation.py`,
+  `TEAM_RELATION_SCOPING*` on `query/team_relation.py`) and the planner's
+  `STATED_SCOPING`, which Phase 3's cells replace. A P1 wrong answer is
+  still fixed, in the code that exists. The sections below describe the
+  readers and the sayer, because they are what runs; they are not an
+  invitation to add a shape.
 - **What the roadmap is deleting may not grow.** `scripts/check_ratchets.py`
   lists today's violations of each direction by name
   (`scripts/ratchets.json`): a function outside the reader that takes the
   question's text (any parameter holding it, not only one named
   `question`), how many statements each module executes (105 in 19
-  modules; counted per module since 2026-10-02, because a listed module
-  could grow statements freely; `.execute`, `.executemany`, `.sql`,
-  `.query` and the package's own string-SQL helpers since 2026-10-03,
-  when a statement through `entities._read_table` counted as none), a
-  private name `compose/` takes from `templates/` (imported by name or
-  read off a module imported whole), a module outside the reader that
-  imports `re` by any route or takes a reader's private pattern, and a
-  reader function that takes a DuckDB connection (24). It fails
+  modules when it was first counted, 2026-10-02; 38 in 11 since Phase 2's
+  step 6 - counted per module because a listed module could grow
+  statements freely; `.execute`, `.executemany`, `.sql`, `.query` and the
+  package's own string-SQL helpers since 2026-10-03, when a statement
+  through `entities._read_table` counted as none), a module outside the
+  reader that imports `re` by any route or takes a reader's private
+  pattern, and a reader function that takes a DuckDB connection (23). A
+  fifth ratchet, a private name `compose/` took from `templates/`, reached
+  0 and was deleted with `templates/` (step 6). It fails
   on a NEW one or a count that grew, and on a listed one that is GONE or a
   count that fell, so the lists only shrink. A NEW failure is fixed in the
   code - pass the Reading, not the question; narrow through the relation's
@@ -175,7 +158,7 @@ this tree:
     sentence identical or the change named. A Cause is what Phase 3
     reads; a decline is a dead end the user gets no help from. The same
     class, under the same terms (2026-10-05, slice (iv)): an intent whose
-    reading declined while its template answered GAINS a point when it is
+    reading declined while its retired template answered GAINED a point when it was
     ported, because a planned query needs one - the readings and the
     planned query move for exactly those questions, the answers do not.
   - **A boundary that moves is recorded on both sides first.** A phase
@@ -226,7 +209,7 @@ this tree:
   dispatcher between an old and a new implementation outlives its slice;
   that is how the middle got half-ported.
 - **A test goes with what it tests.** A test whose subject is a structure
-  the change deletes (a presenter, a scoping table, a template's exact
+  the change deletes (a scoping table, a retired template's exact
   sentence, the stages' intermediate slots) is deleted with it, not ported.
   A test of behavior a user can see moves to the stage that owns the
   behavior, and only if the stage snapshots do not already hold the case.
@@ -415,7 +398,11 @@ gets turned off.
     the tables built beside them.
   - `check/` - the coverage report. `query/` - the reader (`parse.py`, with
     what the model sees in `normalizer.py` and the stages it runs in
-    `router.py`), templates, entities, renderers, the answering loop
+    `router.py`), entities, the relations (`player_games.py` and its
+    shared steps `player_relation.py`, `team_games.py` and
+    `team_relation.py`, `season_line.py`, `team_seasons.py`), the
+    compiler's readers and the sayer (`compose/`), the coverage
+    declaration (`coverage.py`), renderers, the answering loop
     (`agent.py`). `web/` - the local web interface.
 - **The package layers are a contract.** `cli` > `web` > `query | check` >
   `fetch` > `nba`, with `fetch` and `query` independent and the core free of
@@ -481,33 +468,38 @@ template covered the real one and something adjacent matched instead.
 
 The consequence for how you work: **an answer that looks right is not
 evidence.** Check that the shape you added is the shape being exercised. This
-is why templates now refuse rather than approximate — see `check_scope()` and
-`HONORED_SCOPING` in `query/templates/common.py`, which make a template declare which
-scoping slots it honors and raise on the rest, instead of silently ignoring
-`order` or `date` and returning a whole-season answer to a single-game
-question.
+is why the readers refuse rather than approximate: each intent declares the
+scoping slots its words state (`STATED_SCOPING` in `query/compose/plan.py`,
+checked by `reading.unhonored_scoping`), a reader steps aside for one it does
+not state so the compiler's own sentence answers, and the planner refuses a
+slot the relation cannot honor at all - instead of silently ignoring `order`
+or `date` and returning a whole-season answer to a single-game question.
+Until Phase 2, step 6 the templates did the same through `check_scope()` and
+`HONORED_SCOPING`; both went with the last template.
 
-**A template on a relation does not declare, or apply, scoping of its own.**
-The player-games relation (`query/player_games.py`) and the team-games relation
-(`query/team_games.py`) each carry the narrowing once - opponent, venue, date,
-span, since, without, split, game_n, season_n, below/above, a quarter or half
-(`period`/`half`, which changes what a read SEES of each game rather than which
-games), and order+limit as a window cut after every other filter - applied in
-the shared steps
+**A reader on a relation does not declare, or apply, scoping of its own.**
+The player-games relation (`query/player_games.py`, its shared steps in
+`query/player_relation.py`) and the team-games relation (`query/team_games.py`,
+its steps in `query/team_relation.py`) each carry the narrowing once -
+opponent, venue, date, span, since, without, split, game_n, season_n,
+below/above, a quarter or half (`period`/`half`, which changes what a read SEES
+of each game rather than which games), and order+limit as a window cut after
+every other filter - applied in the shared steps
 (`scoped_player`/`scoped_games`, `scoped_team`/`team_games`,
 `condition_player`) and declared once (`RELATION_SCOPING`, with a reasoned
-per-cell `RELATION_SCOPING_EXCLUDED`; `HONORED_SCOPING` entries for those
-templates are `_relation_scoping(intent)`). Two source-reading tests in
+per-cell `RELATION_SCOPING_EXCLUDED`; a reader on the relation states
+`relation_scoping(intent)` in `STATED_SCOPING`). Two source-reading tests in
 `tests/query/test_templates.py` enforce it, and they were watched to fail: a
-template on the relation that lists its own frozenset, or that writes
-`pgl.opponent_team_id = ?` or `g.date >= ? AND g.date < ?` anywhere it reaches,
-fails the suite. So a new scoping dimension is one clause on `Narrowed` plus a
-warehouse-verified test per template it turns on - never a slot taught to one
-template at a time, which is how twelve slots ended up honored on `game_log`
-and one on `single_game_high` over the same relation. An exclusion's reason is
+reader on the relation whose declaration is not the relation's less its
+exclusions, or that writes `pgl.opponent_team_id = ?` or
+`g.date >= ? AND g.date < ?` anywhere it reaches, fails the suite. So a new
+scoping dimension is one clause on `Narrowed` plus a warehouse-verified test
+per reader it turns on - never a slot taught to one reader at a time, which is
+how twelve slots ended up honored on `game_log` and one on `single_game_high`
+over the same relation when they were templates. An exclusion's reason is
 about the answer ("one game is not a run"), never about the code ("not wired").
 
-When adding a template, prefer refusing to guessing. `resolve_*` in
+When adding a reader, prefer refusing to guessing. `resolve_*` in
 `query/entities.py` never guesses between candidate players; `leaderboard`
 rejects a named `player`; `team_record` rejects `limit`.
 
@@ -531,7 +523,7 @@ cleanly. The nickname version of this was known first (the router filled "The
 Answer" in as Klay Thompson); the general version is that **any** name a model
 supplies may be fiction - the router's then, the normalizer's now.
 
-So a name is checked against the question before a template reads it:
+So a name is checked against the question before a reader reads it:
 `subject.read_subject` reads who the question is about from its own spans -
 ONCE per question, in `parse.read_route`, which carries that reading on the
 route (`Route.subject`); the parser's child step and its last step settle it
@@ -599,8 +591,9 @@ about what happens next, and the third is the one that was got wrong first:
   silence from its own weights, and the measurement that retired the agent
   (5.0.0). Without it the difference is between a refusal that names the
   player and the plain refusal for want of a reading, which names only the
-  slot. Refuse only where the template would actually be about
-  that player (`PLAYER_INTENTS`, checked against the templates' own source): a
+  slot. Refuse only where the answer would actually be about
+  that player (`reading.PLAYER_INTENTS`; it was checked against the
+  templates' own source while they existed): a
   stray name on a `head_to_head` question changes no answer, and refusing over
   it would break a question that works.
 
@@ -693,7 +686,7 @@ Smith Jr., where it used to answer "no 2026 games" about the father
 (`_named_in_full`). Both say so in the answer - "('maxey' was read as Tyrese
 Maxey, the only match who played in 2025-26. Marlon Maxey also matches - use the
 full name, or name a season he played, to ask about him.)" - carried by
-`entities.collect_name_readings` and attached in `agent.py`, so a template called
+`entities.collect_name_readings` and attached in `agent.py`, so a reader called
 directly does not show it. The sentence is not optional: of 391 surnames two or
 more players share, 124 now resolve, and in 67 of those a retired namesake has
 more games on record than the active one ("wade" is Dean Wade, "pippen" is
@@ -730,16 +723,20 @@ rejected.
 
 ## Working on the query path
 
-The pipeline is parser → template or compiler → deterministic answer, and a
-refusal naming why where nothing has a reading of the question. There is no
-fall-through: until 5.0.0 a question the fast path could not answer went to
-a tool-calling agent that wrote SQL by hand, and measured (ISSUES.md #129,
-24 questions at production defaults) it answered 1 in 23, did not finish 61%
-of the time, and was wrong five times in six where it finished - so it is
-gone, with its prompt, its tools and its budget. `Agent.ask` (`agent.py`)
-answers `answered_by="refused"` with the reason the parser, the template or
-the compiler gave the question up with (`agent.refusal_text`), in the same
-second; a template's or the compiler's own refusal (a clarification, a "no
+The pipeline is parser → planner → a reader over a relation → the sayer →
+deterministic answer, and a refusal naming why where nothing has a reading of
+the question. There are no templates: Phase 2 (2026-10-03 to 2026-10-05)
+moved every intent's read into a reader that returns a `Result` and every
+sentence into the sayer, and step 6 deleted `templates/` with the relations'
+shared steps moved home. There is no fall-through either: until 5.0.0 a
+question the fast path could not answer went to a tool-calling agent that
+wrote SQL by hand, and measured (ISSUES.md #129, 24 questions at production
+defaults) it answered 1 in 23, did not finish 61% of the time, and was wrong
+five times in six where it finished - so it is gone, with its prompt, its
+tools and its budget. `Agent.ask` (`agent.py`) answers
+`answered_by="refused"` with the reason the parser or the compiler gave the
+question up with (`agent.refusal_text`; an intent nothing reads "has no
+reader"), in the same second; a reader's own refusal (a clarification, a "no
 match", a shape nothing reads named by its cause) is `"fast"`, since looking
 at the question and having something to say is an answer. A question the
 yardstick grades as "fell through" is one of these refusals now.
@@ -872,9 +869,9 @@ model's. Two things follow, and both matter when you add a shape:
     `Note("window_short", {found, asked, ...})`; the sayer phrases it
     (`say.note_phrase`, ONE phrase per kind) and records it through
     `notes.note`, so the answer's remarks are the Result's notes. The
-    templates that still write sentences phrase the same kinds through
-    `note_phrase` too (`templates.common._box_score_notes`, over
-    `box_score_notes_read`); `tests/query/test_answer_notes.py` reads a
+    compiler's own sentence phrases the same kinds through `note_phrase`
+    too (`player_relation.box_score_notes`, over `box_score_notes_read`);
+    `tests/query/test_answer_notes.py` reads a
     `Note(kind, {...})` as a write when it checks every kind is written.
   - **The reader executes the compiled statement; the sayer keeps the
     words.** `read_player_log` compiles the planned point with the log's
@@ -890,26 +887,34 @@ model's. Two things follow, and both matter when you add a shape:
     still carries as words, on purpose and to be cut as the sayers take it
     over: the narrowing's phrase (`Narrowing.phrase`, the relation's
     `filters()`), the span's `years`, and the "no games" sentence
-    (`Result.empty`, from the shared `_no_narrowed_games`).
+    (`Result.empty`, from the shared `player_relation.no_narrowed_games`).
   - **What the relation measures lives on the relation; what a sayer says
-    lives in the sayer - also where a template still shares it.** A
-    player's quarter or half (`compose/periods.py`, 2026-10-04) took its
-    data to `query/player_games.py` (`PERIOD_RECONCILIATION`,
-    `PERIOD_RATES`, `period_distrust` - why a season is refused, as facts
-    - and `period_agreement_notes` - its caveats, as notes) and its words
-    to `compose/say.py` (`period_noun`, `period_caveat`,
-    `say_period_refusal`); `period_leaderboard` and `team_quarter_points`,
-    which stay until slice (iv), read the same data and take the same
-    words through a call-time import, since `compose` imports the template
-    modules. No private alias is kept for a template.
+    lives in the sayer.** A player's quarter or half (`compose/periods.py`,
+    2026-10-04) took its data to `query/player_games.py`
+    (`PERIOD_RECONCILIATION`, `PERIOD_RATES`, `period_distrust` - why a
+    season is refused, as facts - and `period_agreement_notes` - its
+    caveats, as notes) and its words to `compose/say.py` (`period_noun`,
+    `period_caveat`, `say_period_refusal`). The relations' shared steps
+    went home in step 6 (2026-10-05): the player relation's to
+    `query/player_relation.py`, the team relation's to
+    `query/team_relation.py`, the entity settlers (`resolved_player`,
+    `resolved_team`, `optional_team`, `clarify`) to `entities.py`, the
+    season words (`season_phrase`, `season_label`, `SEASON_TYPE_NAMES`) to
+    `season_text.py`, the value words (`format_value`, `table_cell`,
+    `count_games`) to `compose/say.py`, the season line's columns
+    (`PLAYER_STAT_COLUMNS`, `HISTORY_COLUMNS`, `SHOOTING_STATS`,
+    `ADVANCED_STATS`) to `season_line.py`, and the floors' declaration
+    (`check_coverage`, `coverage_caveat`, `SOURCES`) to `coverage.py` -
+    under public names, with no private alias kept. A step a relation
+    calls that phrases words (`no_narrowed_games`' "no games" sentence,
+    `box_score_notes`) takes the sayer's helper through a call-time import,
+    since `compose` imports the relations.
   - **Proved identical, text and all.** 628 of 628 recorded questions and
-    1,391 of 1,391 unit-test calls; the slice rewords nothing. The
-    private-template-import ratchet GREW by the shared steps the moved body
-    calls (`_Span`, `_span_of`, `_resolved_team`, `_slot_season`,
-    `_no_narrowed_games`, `_log_carries_rebuilt`, `_period`,
-    `_season_name`), listed with Jeff's say-so: they are the relation's
-    steps mis-homed in `templates.common`, and moving them to the relation
-    modules shrinks the list for every slice at once (step 1's first item).
+    1,391 of 1,391 unit-test calls; the slice rewords nothing. Step 0 grew
+    the private-template-import ratchet by the shared steps the moved body
+    called, with Jeff's say-so, because they were the relation's steps
+    mis-homed in `templates.common`; step 6 moved them home and the
+    ratchet reached 0 and was deleted.
 - **Two shapes have skeletons of their own, and are readers and sayers since
   Phase 2's step 2.** A streak is the `run` shape - the longest runs of
   consecutive games one predicate holds along, `compose.core._compile_run`
@@ -929,50 +934,52 @@ model's. Two things follow, and both matter when you add a shape:
   it, and with the teammate playing, to say how often they met. The games
   the two shared as teammates are the pair relation's own read
   (`conditions._teammate_games`), which no compiled shape expresses.
-- **A template's `TemplateUnsupported` gets one more deterministic try before
-  the refusal.** `query/compose` sits between the two: when `check_scope`
-  or the template itself raises, `agent.py`'s `_try_compose` offers
-  `compose.answer(ctx, reading)` the same point on the relation the
-  template could not narrow to - the point the parser read from the
-  question's words once (`Reading.point`, `parse.reading_from_route`), so
-  the compiler plans and runs it and never reads the question itself.
-  There is no slot door: a caller with a Reading of its own (a test handing
-  the compiler a subject it built) reads the point into it with
-  `parse.with_point`. Where the point reader refuses (a ranking by shot
-  distance, by a stat nothing ranks, under a floor or in a unit nothing
-  applies; a shape over a line missing its stat, its number or its
-  subject; a matchup without two players; a quarter's figure the plays do
-  not rebuild - sixteen kinds since 2026-10-05) the Reading carries a
-  `reading.Cause` - a kind from the closed `CAUSES` and plain facts - and
-  the planner says it (`compose.plan.refusal_result`): the reader builds
-  no sentence, and a new cause is an entry there and a sentence here. It
-  is raised as `reading.PointRefused`, a kind of `Unsupported`, so a shared
-  helper the answer side also calls (`lines.measure_filters`,
-  `measures.streak_column`) stays a decline there with its old message. A
-  plain `Unsupported` out of the point reader is a decline, kept only where
-  the reading hands the question on (another relation's question, an
-  intent with no default point) or where `read_point`'s order makes it
-  unreachable; one the user would see as "Nothing here answers this
-  question" becomes a Cause (Jeff's rule, "Identical means identical"). A `TemplateResult` back is
-  answered exactly like a template's own - `answered_by="fast"`, the intent
-  kept, the same name-reading and coverage-caveat attachment - including when
-  that result is itself a refusal (a clarification, a "no match"): looking at
-  the question and having something to say about it is an answer. `None`
-  is refused with the template's own reason. Nothing in the package may
-  reach ollama - it is a compiler, not a model - and it narrows the relation
-  only through the shared steps in
-  `templates/common.py`, the same discipline the relation templates keep
-  (see "A template on a relation does not declare, or apply, scoping of its
-  own" above). Twenty-five intents have no entry in `TEMPLATES`
-  (`compose.COMPILED_INTENTS`: `threshold_count`, `single_game_high`,
-  `record_when`, `player_history`, `game_log`, `player_stat`,
-  `player_splits`, `leaderboard`, `period_split`, `player_compare`,
-  `streak`, `player_matchup`, `with_without`, `head_to_head`,
-  `team_quarter_points`, `period_leaderboard`, `team_record`, `team_stat`,
-  `team_leaderboard`, `team_outlook`, `coach`, `player_netpoints`,
-  `fingerprint`, `shot_distance`, `shot_chart`); `TEMPLATES` is empty. The NetPoints
-  relation's two (`reading.CHART_INTENTS`, read as their default points on
-  the declared `netpoints` relation and planned as
+- **Every intent is the compiler's, and the answering loop asks it once.**
+  `agent.py`'s `_run_compiled` hands `compose.answer(ctx, reading)` the
+  point the parser read from the question's words once (`Reading.point`,
+  `parse.reading_from_route`) and the planner's verdict on it, planned once
+  per question AFTER the parser has read the point
+  (`compose.plan.plan_point`, kept on `Agent.planned`; the parser reads
+  and does not plan), so the compiler plans and runs it and never reads
+  the question itself. There is no slot door: a caller with a Reading of
+  its own (a test handing the compiler a subject it built) reads the point
+  into it with `parse.with_point`. Where the point reader refuses (a
+  ranking by shot distance, by a stat nothing ranks, under a floor or in a
+  unit nothing applies; a shape over a line missing its stat, its number
+  or its subject; a matchup without two players; a quarter's figure the
+  plays do not rebuild - seventeen kinds since 2026-10-05) the Reading
+  carries a `reading.Cause` - a kind from the closed `CAUSES` and plain
+  facts - and the planner says it (`compose.plan.refusal_result`): the
+  reader builds no sentence, and a new cause is an entry there and a
+  sentence here. It is raised as `reading.PointRefused`, a kind of
+  `Unsupported`, so a shared helper the answer side also calls
+  (`lines.measure_filters`, `measures.streak_column`) stays a decline
+  there with its old message. A plain `Unsupported` out of the point
+  reader is a decline, kept only where the reading hands the question on
+  (another relation's question, an intent with no default point) or where
+  `read_point`'s order makes it unreachable; one the user would see as
+  "Nothing here answers this question" becomes a Cause (Jeff's rule,
+  "Identical means identical"). A `Reply` back (`query/answer.py`, the
+  type every reader and the sayer return; `TemplateResult` until step 6)
+  is answered `answered_by="fast"`, the intent kept, with the name
+  readings and the coverage caveat attached - including when it is itself
+  a refusal (a clarification, a "no match"): looking at the question and
+  having something to say about it is an answer. `None` is refused with
+  the compiler's reason (`Planned.declined`), after the coverage floor
+  and the named refusals (`query/refusals.py`) have had their look.
+  Nothing in the package may reach ollama - it is a compiler, not a
+  model - and it narrows the relation only through the shared steps
+  (`query/player_relation.py`, `query/team_relation.py`; see "A reader on
+  a relation does not declare, or apply, scoping of its own" above). The
+  twenty-five intents are `compose.COMPILED_INTENTS` (`threshold_count`,
+  `single_game_high`, `record_when`, `player_history`, `game_log`,
+  `player_stat`, `player_splits`, `leaderboard`, `period_split`,
+  `player_compare`, `streak`, `player_matchup`, `with_without`,
+  `head_to_head`, `team_quarter_points`, `period_leaderboard`,
+  `team_record`, `team_stat`, `team_leaderboard`, `team_outlook`, `coach`,
+  `player_netpoints`, `fingerprint`, `shot_distance`, `shot_chart`). The
+  NetPoints relation's two (`reading.CHART_INTENTS`, read as their default
+  points on the declared `netpoints` relation and planned as
   `compose.netpoints.NetPointsQuery`) keep their own readers and renderer,
   per the decision "Charts are declared shapes": `read_player_netpoints`
   builds its statements and runs them through `core.values_of`;
@@ -985,43 +992,41 @@ model's. Two things follow, and both matter when you add a shape:
   (`entities.compared_but_unmatched`) reads the question, so the answering
   loop attaches it (`agent._unmatched_fingerprint`). The shot relation's
   (`compose.shots.ShotQuery` on the declared `shots` relation, declined
-  beyond its retired template's `HONORED_SCOPING` row - now in
-  `compose.plan.STATED_SCOPING` - in `check_scope`'s sentence) is read the
-  same way: `read_shot_chart` and `read_shot_distance` are the templates'
-  statements moved whole (`shotchart.render_for_player`'s with them),
-  executed through `core.values_of`, and said by the sayer - a shot chart's
-  `Chart` (the marks, the counts drawn, the caption, the file name) drawn
-  first by `compose.shots.draw_shot_chart` over `court.render_court_html`,
-  between the read and the sayer, as the fingerprint is. A shape Phase 2's slice (iv) ported from a template the reader
-  gave no point has a default point of its own (`point.DEFAULT_POINTS`:
-  its readings gained one when it moved), is declined beyond the scoping
-  its retired words state (`compose.plan.STATED_SCOPING`, where its
-  `HONORED_SCOPING` row moved) by the planner in `check_scope`'s own
-  sentence (`compose.plan.PORTED_SHAPES`), and is read and said with
-  nothing after it: a decline is refused, never handed to the compilers'
-  own sentences (`compose._read_ported_shape`). **"The compiler answers
-  them" means each is a reader and the sayer over a compiled statement**
-  (the paragraphs above). Until Phase 2 most were still read and worded by
-  the retired template's body through a presenter (`compose/present.py`):
-  measured over the 277 yardstick questions (2026-09-30), of 205 answers
-  by these intents the compiler's own SQL read 45 and its own sentence
-  worded 16. The presenters went slice by slice, the last of them (a
-  team's streak, with/without, a team's record over its own line) with
-  step 4, and `compose/present.py` with them. Where the compiler has no
-  reading the question is refused with the compiler's reason
-  (`agent._run_compiled`). A reader says what its retired template's
-  words state (`compose.plan.STATED_SCOPING`) and steps aside for a
-  narrowing beyond them, so the compiler's own sentence, which states every
-  narrowing the relation applied, answers; a narrowing the relation cannot
-  honor at all is refused by the planner, which the answering loop runs
-  once per question AFTER the parser has read the point
-  (`compose.plan.plan_point`, kept on `Agent.planned` and handed to
-  `compose.answer`; the parser reads and does not plan) - the refusal
-  names the planner's reason, never a template's list. Retiring a template
-  this way is measured first:
-  every call its unit tests make, and every recorded question it answers,
-  answered both ways and compared - the recorded questions alone showed one
-  shape the template still carried; the unit tests showed five.
+  beyond what its retired template's words state, `compose.plan.STATED_SCOPING`)
+  is read the same way: `read_shot_chart` and `read_shot_distance` are the
+  retired templates' statements moved whole (`shotchart.render_for_player`'s
+  with them), executed through `core.values_of`, and said by the sayer - a
+  shot chart's `Chart` (the marks, the counts drawn, the caption, the file
+  name) drawn first by `compose.shots.draw_shot_chart` over
+  `court.render_court_html`, between the read and the sayer, as the
+  fingerprint is. A shape Phase 2's slice (iv) ported from a template the
+  reader gave no point has a default point of its own
+  (`point.DEFAULT_POINTS`: its readings gained one when it moved), is
+  declined beyond the scoping its retired words state
+  (`compose.plan.STATED_SCOPING`) by the planner, in the sentence the
+  retired scope check refused it with (`compose.plan.PORTED_SHAPES`), and
+  is read and said with nothing after it: a decline is refused, never
+  handed to the compilers' own sentences (`compose._read_ported_shape`).
+  **"The compiler answers them" means each is a reader and the sayer over
+  a compiled statement** (the paragraphs above). Until Phase 2 most were
+  still read and worded by the retired template's body through a
+  presenter (`compose/present.py`): measured over the 277 yardstick
+  questions (2026-09-30), of 205 answers by these intents the compiler's
+  own SQL read 45 and its own sentence worded 16. The presenters went
+  slice by slice, the last of them with step 4; the templates' registry
+  emptied with step 5, and step 6 deleted `check_scope`,
+  `HONORED_SCOPING`, `TEMPLATES`, the answering loop's template branch and
+  `templates/` itself. A reader says what its retired template's words
+  state (`STATED_SCOPING`, the one declaration left until Phase 3's cells)
+  and steps aside for a narrowing beyond them, so the compiler's own
+  sentence, which states every narrowing the relation applied, answers; a
+  narrowing the relation cannot honor at all is refused by the planner,
+  and the refusal names the planner's reason. Retiring a template was
+  measured first: every call its unit tests made, and every recorded
+  question it answered, answered both ways and compared - the recorded
+  questions alone showed one shape the template still carried; the unit
+  tests showed five. A change to a reader is proved the same way, on the
+  stage snapshots and the unit-test calls.
 - **A team can be the subject, not only a narrowing.** `compose/team.py`
   (`TeamQuery`/`TeamResult`/`run_team`, `point.team_read_point`,
   `sentence.team_sentence`) is a second, separate compiler beside `core.py`'s
@@ -1037,7 +1042,7 @@ model's. Two things follow, and both matter when you add a shape:
   opponent, a venue, a date, `since`/`until`, a game of a series, a calendar
   `situation`, or an `order`/`limit` window) sums the team-games relation's
   own game-level columns (points, points allowed, differential) through
-  `scoped_team`/`team_games`, the same shared steps every team template
+  `scoped_team`/`team_games`, the same shared steps every team reader
   narrows through - never a hand-written clause here either. A box-score
   count (3-pointers made, not a game-outcome figure) narrowed to a window
   refuses rather than answering the season instead, since the relation has no
@@ -1062,8 +1067,8 @@ model's. Two things follow, and both matter when you add a shape:
   enum, and every comparison routed to `player_stat`.
   `test_the_prompt_and_the_schema_agree` (`tests/query/test_normalizer.py`)
   holds the normalizer's examples to its enum; the other half of what the
-  router's pair of tests guarded - that every template is reachable - is
-  `test_every_template_is_reachable_from_the_reader`
+  router's pair of tests guarded - that every intent is reachable - is
+  `test_every_intent_is_reachable_from_the_reader`
   (`tests/query/test_router.py`): the parser's `PARENT_GRAMMAR`, the stages'
   `CODE_ASSIGNED_INTENTS` or the subject reading's `KIND_ASSIGNED_INTENTS`.
 - **A prompt has a token budget, and ollama enforces none.** ollama
@@ -1131,8 +1136,8 @@ model's. Two things follow, and both matter when you add a shape:
   cause (`reading.Cause("no_coach_table")`, `point._read_point`) and the
   planner says it (`compose.plan.refusal_result`, `COACH_REFUSAL`) - a
   refusal the reading comes to is a cause, not a body to run. An intent
-  that reads no table still goes in `TABLELESS_INTENTS`, or the coverage
-  gate fails.
+  that reads no table still goes in `coverage.TABLELESS_INTENTS`, or the
+  coverage gate fails.
 
   The children come one step later, where the subject's KIND is known:
   `subject.KIND_ASSIGNED_INTENTS` (`_CHILD_GRAMMARS`). A child of a parent
@@ -1490,7 +1495,7 @@ everything about it is constrained by things measured elsewhere in this file.
   and what is before each floor**; `association/nba/coverage.py` is the enforced
   copy. Three rules to carry while writing code:
   - **Select a postseason by the calendar year it was played in, never by
-    label** (`templates._season_games`, `team_metrics.games_scope`,
+    label** (`team_relation.team_span_clause`, `team_metrics.games_scope`,
     `check_coverage.py`). Before 1993-94 ESPN labels a season by the year it
     STARTED, so matched by label "the 1991 playoffs" answered 1992's.
   - **Season 1993 is a phantom** — its 1,185 events are the identical rows
@@ -1539,17 +1544,20 @@ everything about it is constrained by things measured elsewhere in this file.
 
 **Those floors are enforced, not just documented.** `association/nba/coverage.py`
 holds them as a table — `COVERAGE`, one entry per queryable table — and
-`templates.check_coverage()` refuses a question that lands under one. Add an
-entry whenever a template reads a new table, and declare the template's tables
-in `TEMPLATE_SOURCES`; a template missing from it is one no floor can refuse.
+`query/coverage.py`'s `check_coverage()` refuses a question that lands under
+one. Add an entry whenever a reader reads a new table, and declare the
+intent's tables in `coverage.SOURCES` (one table for every reader, resolved
+per question where the table depends on what was asked; `TEMPLATE_SOURCES`
+until 2026-10-05); an intent missing from it is one no floor can refuse.
 Three things about that module are load-bearing:
 
 - **It returns the refusal rather than raising it.** That is the opposite of
-  `check_scope()`, and deliberate: `check_scope` raises so the compiler gets
-  its turn at the same point, and may do better. Nothing does better here: a
-  season under the floor is empty for every reader, and (while the agent
-  existed) an agent handed it queried the same empty tables, more slowly,
-  and was then free to fill the silence from its own weights.
+  a reader declining a narrowing, and deliberate: a decline lets the
+  compiler's own sentence take its turn at the same point, and it may do
+  better. Nothing does better here: a season under the floor is empty for
+  every reader, and (while the agent existed) an agent handed it queried the
+  same empty tables, more slowly, and was then free to fill the silence from
+  its own weights.
 - **A lookup and a ranking have different floors.** `player_season_stats` holds
   Michael Jordan's real 1990 line, so his own average is answerable from it;
   ranking that season is not, because the pool is 217 players against a
@@ -1557,7 +1565,7 @@ Three things about that module are load-bearing:
   "who led the league in scoring in 1980" answered "Moses Malone, at 25.8.
   Next: Bill Cartwright (21.7)". Kareem, Bird and Erving are not in `players`
   at all. `first_ranking_season` is that second floor, and `RANKING_INTENTS`
-  says which templates it applies to.
+  says which intents it applies to.
 - **A missing season and an unrepresentative one need different sentences.**
   Saying "there is no data for 1980" about a warehouse holding Moses Malone's
   real 1980 line is the same false-cause answer in the other direction, which
@@ -1699,8 +1707,8 @@ prompted them:
   what was true when it was written. Two of its counts had already been fixed
   by other work in the same week.
 - **Say which copy of the code and which warehouse you measured**, and never
-  report a template's behavior from a direct call when the answering loop adds
-  something - `agent.py` appends the coverage caveat, so a template called
+  report a reader's behavior from a direct call when the answering loop adds
+  something - `agent.py` appends the coverage caveat, so a reader called
   directly looks like it is missing one. Compare against `real_games` rather
   than `games` for anything counted against `team_season_stats`; two "new
   findings" in one session were known phantom rows seen through the unfiltered

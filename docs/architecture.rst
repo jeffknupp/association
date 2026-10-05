@@ -116,8 +116,12 @@ scored 162/175 against the router's 160, with fewer wrong answers, in half the
 time (1.1s a question against 2.3s median), and the router's classification
 went in 5.0.0 (ROADMAP plan item 6).
 
-**Templates** (:mod:`association.query.templates`) do the deterministic half.
-Each owns one question shape. The ones that read a player's box scores - game
+**Templates** did the deterministic half until Phase 2 of ``ROADMAP.md``
+moved each into a reader that returns a Result and a sayer that words it
+(:mod:`association.query.compose`; the ``templates`` package was deleted
+with step 6, 2026-10-05, and this section is rewritten in Phase 4). What
+follows describes them as they were, and the relations they read, which
+are what the readers read now. Each owned one question shape. The ones that read a player's box scores - game
 logs, per-game averages, threshold counts, single-game highs, matchups, streaks,
 splits, a record with or without a teammate - compose one shared relation,
 :mod:`association.query.player_games`, rather than writing their own joins, so
@@ -157,15 +161,12 @@ minimum-sample floors, the home/away perspective flip, the string
 than ESPN's UTC timestamp (:func:`association.nba.season.eastern_date`). They phrase their own answers, so the
 common case is a single model call end to end.
 
-A template's refusal is not the end of the fast path. When ``check_scope`` or
-the template itself raises ``TemplateUnsupported``,
-:mod:`association.query.compose` gets a turn before the agent does:
-``compose.answer(ctx, reading)`` compiles the same point on the
-relation the template could not narrow to - the point the parser read from
-the question's words once (``Reading.point``) - and phrases its own answer
-exactly like a template's - a sentence, ``data``, no model call - or returns
+Every intent is the compiler's now: :mod:`association.query.compose` is
+handed the point the parser read from the question's words once
+(``Reading.point``) and the planner's verdict on it, and answers through a
+reader and the sayer - a sentence, ``data``, no model call - or returns
 ``None`` to say "not a point on this relation", and the question is then
-refused with the template's own reason. A refusal it hands back instead - a
+refused with the compiler's reason. A refusal it hands back instead - a
 clarification, a "no match" - is answered, not passed along: it looked at the
 question and had something to say. Nothing here reaches ollama; it is another
 deterministic step, not a model.
@@ -303,13 +304,13 @@ that:
 
 * Templates refuse a named stat they cannot provide rather than falling back to
   a default (a default is only safe where the user named nothing).
-* Templates declare which scope slots they honor
-  (:func:`association.query.templates.check_scope`) - the ones on a relation
-  through the relation's single declaration, the rest each for themselves - and
-  a question scoped to particular games is offered to
-  :mod:`association.query.compose` before it is refused, rather than being
-  answered for a season. Only when the compiler also has nothing to say -
-  ``None``, not a refusal - is the question refused, with the template's reason.
+* Readers declare which scope slots their words state
+  (:data:`association.query.compose.plan.STATED_SCOPING`, checked by
+  :func:`association.query.reading.unhonored_scoping`) - the ones on a
+  relation through the relation's single declaration - and a reader steps
+  aside for a narrowing beyond them so the compiler's own sentence answers,
+  rather than answering for a season. A narrowing the relation cannot honor
+  at all is refused by the planner, with its reason.
 * A question about a season a table cannot reach is refused, with the reason
   (:func:`association.query.coverage.check_coverage`). The refusal is returned
   as the answer rather than raised, because a season under the floor is empty
