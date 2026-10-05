@@ -24,10 +24,10 @@ from association.query.compose.present import (
     STATED_SCOPING,
     _present_player_matchup,
     _present_player_stat_season_line,
-    _present_streak,
     _present_team_streak,
 )
 from association.query.compose.records import read_record_when
+from association.query.compose.runs import _streak_league_result, _streak_player_result, read_streak
 from association.query.compose.say import say_period_refusal
 from association.query.compose.splits import _player_splits, _team_splits, read_player_splits, read_team_splits
 from association.query.compose.stats import _player_stat_meetings, _player_stat_result, read_player_stat
@@ -6009,7 +6009,6 @@ def test_templates_on_the_relation_do_not_narrow_it_themselves() -> None:
     from association.query.templates.splits import (
         _record_when_team_answer,
         _streak_league_team_narrowed,
-        _streak_player_answer,
         _streak_team_answer,
     )
 
@@ -6025,7 +6024,7 @@ def test_templates_on_the_relation_do_not_narrow_it_themselves() -> None:
     readers["player_stat"] = [read_player_stat, _player_stat_result, _player_stat_meetings, _present_player_stat_season_line, _player_stat_season_line, _player_stat_season_line_subject]
     # streak's template is retired too (the `run` shape): the compiler's
     # skeleton and the team compiler's, and the readers that say them.
-    readers["streak"] = [_compile_run, _compile_team_run, _present_streak, _present_team_streak, _streak_player_answer, _streak_team_answer, _streak_league_team_narrowed]
+    readers["streak"] = [_compile_run, _compile_team_run, read_streak, _streak_player_result, _streak_league_result, _present_team_streak, _streak_team_answer, _streak_league_team_narrowed]
     # player_matchup's too (the `pair` shape).
     readers["player_matchup"] = [_resolve_pair, _compile_pair, _present_player_matchup, _player_matchup_from]
     # with_without (the team relation's `presence` group) is not walked, as

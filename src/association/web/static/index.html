@@ -1385,8 +1385,8 @@
         // "Never had one" is a real answer that carries "streaks": [].
         if (!d.streaks.length) return null;
         // The league-wide shape (one row per player or team-season) carries a
-        // "name" the single-subject shape does not - templates.splits._streak_league
-        // vs _single_streak.
+        // "name" the single-subject shape does not - compose.say.say_run_listing
+        // vs say_one_run.
         const league = "name" in d.streaks[0];
         const row = (s, i) => {
           const length = num(s.length) + (s.open ? " *" : "");

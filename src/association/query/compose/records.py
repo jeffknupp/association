@@ -26,7 +26,7 @@ from association.query.player_games import games_subquery
 from association.query.reading import Scope
 from association.query.result import Grouped, Narrowing, Part, Result, Span
 from association.query.templates.common import THRESHOLD_STAT_COLUMNS, TemplateResult, condition_scope, no_games, optional_team, unhonored_scoping
-from association.query.templates.splits import _condition_span_label
+from association.query.templates.splits import condition_span_label
 
 from .core import Compiled, Query, compile_query, rows_of
 
@@ -136,7 +136,7 @@ def _record_result(con: duckdb.DuckDBPyConnection, scope: Scope, covered: Any, c
     return Result(
         subject=compiled.player.name,
         relation="player",
-        span=Span(season=covered.season, season_type=covered.season_type, career=covered.season is None, first=first, last=last, phrase=_condition_span_label(covered, scope, first, last)),
+        span=Span(season=covered.season, season_type=covered.season_type, career=covered.season is None, first=first, last=last, phrase=condition_span_label(covered, scope, first, last)),
         narrowing=Narrowing(phrase=compiled.narrowed.filters()),
         parts=(Part(body=groups),),
         notes=tuple(notes),

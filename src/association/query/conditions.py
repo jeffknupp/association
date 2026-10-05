@@ -269,21 +269,12 @@ class _Scope:
             return f"{first} {self.kind}" if first == last else f"{first}-{last} {self.kind}s"
         return f"every {self.kind} on record ({self.first} onward)"
 
-    @property
-    def misfiled(self) -> bool:
-        """Whether this is one postseason from before 1993-94, which the
-        warehouse files under the wrong year: ESPN labels those seasons by the
-        year they began, so "1990" holds the April-June 1991 playoffs. Measured
-        from the games' own dates, 1988 through 1992 alike; 1993 is the
-        phantom copy of 1994. Only the postseason reaches back that far - the
-        regular season's floor is already 1994."""
-        return self.season_type == 3 and self.season is not None and self.season < _FIRST_END_YEAR_SEASON
-
 
 def _game_scope(season: int | None, season_type: int, tables: Iterable[str]) -> _Scope:
     known = [COVERAGE[t] for t in tables if t in COVERAGE]
     # Never before 1994, even for the team tables' playoff games that reach
-    # 1988: those seasons are filed under the wrong year (see _Scope.misfiled).
+    # 1988: ESPN files those seasons under the year they began, so "1990"
+    # holds the April-June 1991 playoffs (DATA.md, "Coverage floors").
     first = max(_FIRST_END_YEAR_SEASON, *(c.floor(season_type).season for c in known))
     phantoms = tuple(sorted({p for c in known for p in c.phantom}))
     return _Scope(season, season_type, first, phantoms)

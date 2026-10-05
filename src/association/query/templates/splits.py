@@ -13,14 +13,12 @@ import duckdb
 
 from association.nba.franchises import season_name
 from association.nba.season import current_season
-from association.query.measures import streak_column
 from association.query.reading import SPLIT_KINDS as SPLIT_KINDS
 from association.query.reading import ConditionSpec, Scope
 
 from ..conditions import (
     _PLAYER_GAME_TABLES,
     Params,
-    _box_missing,
     _cell,
     _margin,
     _names,
@@ -29,15 +27,13 @@ from ..conditions import (
     _stints,
     _table,
     _totals,
-    _unseen,
     _win_pct,
     _with_without_games,
     _with_without_group,
-    box_source,
 )
 from ..entities import Entity, teammate_names
-from ..notes import note
-from ..player_games import Narrowed, games_subquery, named
+from ..notes import Note, note
+from ..result import Run, run_of
 from ..team_games import TEAM_GAMES_SQL, TeamNarrowed
 from ..team_games import aggregate_sql as team_aggregate_sql
 from ..team_games import games_subquery as team_games_subquery
@@ -51,7 +47,6 @@ from .common import (
     _career_end,
     _condition_scope,
     _joined,
-    _no_games,
     _optional_team,
     _period,
     _resolved_player,
@@ -69,28 +64,7 @@ def _season_of_day(day: Any) -> int:
     return day.year + 1 if day.month >= 10 else day.year
 
 
-_UNSEEN_ENDS_RUN = " A game with no box score in the warehouse ends a run rather than being carried across, since it cannot be checked."
-
-
-def _misfiled_postseason(scope: _Scope) -> TemplateResult | None:
-    """A refusal for a single postseason before 1993-94, or None.
-
-    The team tables hold playoff games back to 1988, but ESPN files every
-    season before 1993-94 under the year it began: the warehouse's "1990"
-    postseason runs from April to June 1991. Answered as asked, "Bulls 1990
-    playoffs" would describe the 1991 playoffs under a 1990 label - the
-    right-looking answer about another year this project keeps producing. A
-    span of seasons starts in 1994 for the same reason (``_game_scope``)."""
-    if not scope.misfiled:
-        return None
-    message = (
-        f"The warehouse files playoff games from before 1993-94 under the year the season began - its {scope.season} postseason is the "
-        f"{(scope.season or 0) + 1} playoffs - so an answer for {scope.season} would be about the wrong year."
-    )
-    return TemplateResult(data={"message": message, "season": scope.season}, answer=message)
-
-
-def _condition_span_label(covered: _Scope, scope: Scope, first: Any, last: Any) -> str:
+def condition_span_label(covered: _Scope, scope: Scope, first: Any, last: Any) -> str:
     """The season(s) a condition answer covers, in words: "since 2022
     (2022-2026 regular seasons)" or "in his 18th season (2021 regular
     season)" when the question named it that way - the same phrasing
@@ -197,7 +171,7 @@ def _team_span_label(span: _Span, first: Any = None, last: Any = None) -> str:
     a :class:`~association.query.templates.common._Span` instead: one season,
     a since-bounded range, or the seasons the rows actually came from. Shared
     by :func:`_player_splits_team`, :func:`_record_when_team_answer` and
-    :func:`_streak_team`, the same way :func:`_condition_span_label` is shared
+    :func:`_streak_team`, the same way :func:`condition_span_label` is shared
     by the player branches - and, like that function, has to check ``since``
     itself rather than merely a career's own ``first``/``last``: a since-bounded
     span is career-SHAPED (``span.season`` is None the same way a career's is),
@@ -931,65 +905,6 @@ def _record_when_team_answer(con: duckdb.DuckDBPyConnection, scope: Scope) -> Te
     return _record_when_team_answer_table(con, span, team, narrowed, stat, column, threshold, found)
 
 
-def _streak_words(scope: Scope) -> tuple[str | None, bool, str, bool, str]:
-    """A streak question's settled reading, for the compiler's presenter and
-    its point alike: the per-game column (``None`` for a run of results),
-    whether it is a stat streak at all, the unit its threshold is counted
-    in, whether wins are wanted, and the result word ("winning streak") -
-    :func:`~association.query.measures.streak_column`'s refusals included.
-
-    .. versionadded:: 5.0.0
-    """
-    column = streak_column(scope.stat, scope.threshold)
-    by_stat = column is not None
-    unit = f"{STAT_LABELS.get(scope.stat or '', scope.stat or '')}s"
-    want_win = scope.kind != "loss"
-    return column, by_stat, unit, want_win, "winning streak" if want_win else "losing streak"
-
-
-def _streak_player_answer(
-    con: duckdb.DuckDBPyConnection,
-    scope: Scope,
-    covered: _Scope,
-    player: Entity,
-    narrowed: Narrowed,
-    team: Entity | None,
-    runs: list[dict[str, Any]],
-    by_stat: bool,
-    threshold: Any,
-    unit: str,
-    want_win: bool,
-    result: str,
-) -> TemplateResult:
-    """A named player's longest run of games meeting the condition, said -
-    over the games the relation narrowed to ("longest run of 20+ point
-    games vs Boston" is a run over his Boston games only, said so beside
-    the run) and the ``runs`` the compiler's ``run`` skeleton read over them
-    (``compose.core._compile_run``, ROADMAP plan item 6, step (g)). The
-    span, the "only games he played" rule and the unseen-games note are
-    read off the same relation subquery the runs were.
-
-    .. versionadded:: 5.0.0
-    """
-    # Named parameters: the played subquery binds beside `covered`'s own
-    # $season/$first in the unseen-games read.
-    base, params = named(*games_subquery(narrowed, box_source(con)))
-    games, first, last = _totals(con, base, params)
-    if not games:
-        return _no_games(con, player, covered, team)
-    label = _condition_span_label(covered, scope, first, last)
-    what = f"consecutive games with {threshold}+ {unit}" if by_stat else f"{result} in games he played"
-    said = "Only games he played count: a game he missed neither extends the run nor ends it" + (", and a run carries on from one season into the next." if covered.season is None else ".")
-    rule = note("definition", said, term="streak_rule", what="player_games_played", across_seasons=covered.season is None)
-    rule += note("definition", _UNSEEN_ENDS_RUN, term="unseen_ends_run") if _unseen(con, covered, base, {**params, **covered.params()}, box_source(con)) else ""
-    if not runs:
-        never = f"never had a game with {threshold}+ {unit}" if by_stat else f"never {'won' if want_win else 'lost'} a game he played"
-        message = f"{player.name} {never}{narrowed.filters()} in the {label}."
-        return TemplateResult(data={"player": player.name, "span": label, "streaks": [], "headline": message}, answer=message)
-    subject_text = (f"{player.name}'s longest run of {what}" if by_stat else f"{player.name}'s longest {what}") + narrowed.filters()
-    return _single_streak(subject_text, label, runs, rule, covered, {"player": player.name})
-
-
 #: A team's games for a streak, over the relation - `team_id`, `season`,
 #: `won` and an event ordering (`day`, a stand-in `stamp`, `event_id`) are all
 #: `_longest_runs` reads. The relation guarantees at most one row per team per
@@ -998,28 +913,30 @@ def _streak_player_answer(
 _TEAM_STREAK_SELECT: tuple[str, ...] = ("tg.team_id", "tg.season", "tg.event_id", "tg.eastern_date AS day", "tg.eastern_date AS stamp", "tg.won")
 
 
-def _streak_team_answer(team: Entity, narrowed: TeamNarrowed, span: _Span, first: Any, last: Any, runs: list[dict[str, Any]], want_win: bool, result: str) -> TemplateResult:
+def _streak_team_answer(team: Entity, narrowed: TeamNarrowed, span: _Span, first: Any, last: Any, runs: list[dict[str, Any]], want_win: bool) -> TemplateResult:
     """A named team's longest run of wins or losses in a season, said - over
     the team-games relation narrowed to an opponent and/or a venue where
     the question named them, and the ``runs`` the team compiler's ``run``
-    shape read over it (``compose.team.run_team``). The caller has already
+    shape read over it (``compose.team.run_team``), in the sayer's words
+    for one run (``compose.say.say_one_run``). The caller has already
     found the team games in the span at all (:func:`_condition_team_no_games`
     says which fact is missing otherwise).
 
     .. versionadded:: 5.0.0
     """
+    from association.query.compose.say import note_phrase, say_one_run, streak_result  # the sayer's words; a call-time import, since compose imports this module
+
     label = _team_span_label(span, first, last)
     if not runs:
         message = f"The {team.name} did not {'win' if want_win else 'lose'} a game{narrowed.filters()} in the {label}."
         return TemplateResult(data={"team": team.name, "span": label, "streaks": [], "headline": message}, answer=message)
-    return _single_streak(
-        (f"The {team.name}' longest {result}" if team.name.endswith("s") else f"The {team.name}'s longest {result}") + narrowed.filters(),
-        label,
-        runs,
-        note("definition", "Streaks are counted within one season.", term="streak_rule", what="team_within_season"),
-        span,
-        {"team": team.name},
-    )
+    rule = Note("definition", {"term": "streak_rule", "what": "team_within_season"})
+    said = note(rule.kind, note_phrase(rule), **rule.facts)
+    result = streak_result(want_win)
+    subject = (f"The {team.name}' longest {result}" if team.name.endswith("s") else f"The {team.name}'s longest {result}") + narrowed.filters()
+    top = runs[0]
+    still_open = bool(top["open"]) and (span.season is None or span.season == current_season())
+    return say_one_run(subject, label, [run_of(r) for r in runs], said, season=span.season, still_open=still_open, who={"team": team.name})
 
 
 def _streak_league_team_narrowed(span: _Span) -> TeamNarrowed:
@@ -1039,95 +956,19 @@ def _streak_league_team_narrowed(span: _Span) -> TeamNarrowed:
     return TeamNarrowed(base=["tg.team_id IN (SELECT team_id FROM teams)", "tg.season_type = ?", clause], base_params=[span.season_type, *clause_params])
 
 
-def _streak_league_result_words(con: duckdb.DuckDBPyConnection, span: _Span, runs: list[dict[str, Any]], result: str) -> tuple[str, list[str], str]:
-    """What the league's longest win/loss runs are runs OF, who had each
-    (the team as it was named that season, with the season where the span
-    covers several), and the rule under the table.
+def _streak_league_result_words(con: duckdb.DuckDBPyConnection, span: _Span, runs: list[dict[str, Any]]) -> tuple[list[Run], str]:
+    """The league's longest win/loss runs, each under who had it (the team
+    as it was named that season, with the season where the span covers
+    several), and the rule under the table.
 
     .. versionadded:: 5.0.0
     """
+    from association.query.compose.say import note_phrase  # the sayer's words; a call-time import, since compose imports this module
+
     names = _names(con, "teams", "team_id", [r["team_id"] for r in runs])
     # Every run lies inside one season, so each is named as its team was
     # that season. This used to add "franchises are named as they are
     # today" to every all-seasons answer, which is what it was.
-    who = [season_name(r["team_id"], int(r["season"]), names[r["team_id"]]) + (f" ({r['season']})" if span.season is None else "") for r in runs]
-    return result, who, note("definition", "Each team's longest in a season, counted within that season.", term="streak_rule", what="league_team_within_season")
-
-
-def _streak_league_stat_words(con: duckdb.DuckDBPyConnection, covered: _Scope, runs: list[dict[str, Any]], threshold: Any, unit: str) -> tuple[str, list[str], str]:
-    """What the league's longest stat runs are runs OF, who had each (one
-    per player), and the rule under the table - with the unseen-games note
-    where the span holds a game with no box score.
-
-    .. versionadded:: 5.0.0
-    """
-    names = _names(con, "players", "athlete_id", [r["athlete_id"] for r in runs])
-    what, who = f"run of consecutive games with {threshold}+ {unit}", [names[r["athlete_id"]] for r in runs]
-    said = "Each player's longest run, counting only games he played" + (", carried across seasons." if covered.season is None else ".")
-    rule = note("definition", said, term="streak_rule", what="league_player_games_played", across_seasons=covered.season is None)
-    rule += note("definition", _UNSEEN_ENDS_RUN, term="unseen_ends_run") if _totals(con, _box_missing(covered, box_source(con)), covered.params())[0] else ""
-    return what, who, rule
-
-
-def _streak_league_answer(
-    runs: list[dict[str, Any]], what: str, who: list[str], rule: str, label: str, where_in_text: str, by_stat: bool, stat: Any, threshold: Any, unit: str, want_win: bool
-) -> TemplateResult:
-    """The league's longest run with nobody named, said: one per player (a
-    stat streak) or one per team-season (a win/loss streak), a tie reported
-    as a tie the way threshold_count reports one, and the rule and the
-    open-run footnote under the table - carried in ``data["notes"]`` too, so
-    the web page shows them under the rendered table (rendered, the "*"
-    beside a run had no key anywhere on screen - Jeff's note, 2026-09-24).
-
-    .. versionadded:: 5.0.0
-    """
-    if not runs:
-        nobody = f"No player had a game with {threshold}+ {unit}" if by_stat else "No team has a game with a result"
-        message = f"{nobody} {where_in_text}."
-        return TemplateResult(data={"span": label, "streaks": [], "headline": message}, answer=message)
-    streaks = [
-        {"name": n, "season": r["first_season"] if not by_stat else None, "length": r["length"], "from": str(r["first_day"]), "to": str(r["last_day"]), "open": bool(r["open"])}
-        for n, r in zip(who, runs, strict=True)
-    ]
-    top = [s for s in streaks if s["length"] == streaks[0]["length"]]
-    leaders = " and ".join(s["name"] for s in top)
-    headline = f"{leaders} {'shared' if len(top) > 1 else 'had'} the longest {what} of the {label}: {streaks[0]['length']} {'game' if streaks[0]['length'] == 1 else 'games'}."
-    rows = [(s["name"], [str(s["length"]), s["from"], s["to"] + (" *" if s["open"] else "")]) for s in streaks]
-    footnote = note("still_open", " * still going at the last game on record.") if any(s["open"] for s in streaks) else ""
-    answer = f"{headline}\n" + _table(f"Longest, {label}:", ["games", "from", "to"], rows) + f"\n{rule}{footnote}"
-    return TemplateResult(
-        data={
-            "span": label,
-            "stat": stat if by_stat else None,
-            "threshold": threshold if by_stat else None,
-            "kind": None if by_stat else ("win" if want_win else "loss"),
-            "streaks": streaks,
-            "headline": headline,
-            "notes": _streak_league_notes(rule, footnote),
-        },
-        answer=answer,
-    )
-
-
-def _streak_league_notes(rule: str, footnote: str) -> list[str]:
-    """The rule and, where a run is open, the footnote's key - as data notes."""
-    return [rule.strip(), *([footnote.strip()] if footnote else [])]
-
-
-def _single_streak(subject: str, label: str, runs: list[dict[str, Any]], rule: str, scope: _Scope | _Span, who: dict[str, Any]) -> TemplateResult:
-    """One named player's or team's longest run, with any run that ties it.
-
-    ``scope`` is only ever read for ``.season`` here, which both the player
-    branch's ``_Scope`` and the team branch's ``_Span`` (step 3, C4) carry -
-    so this stays shared rather than forking into a per-branch copy."""
-    top = runs[0]
-    ties = [r for r in runs[1:] if r["length"] == top["length"]]
-    season = f" (the {top['first_season']} season)" if scope.season is None and top["first_season"] == top["last_season"] else ""
-    games = "game" if top["length"] == 1 else "games"
-    answer = f"{subject}, {label}: {top['length']} {games}, {top['first_day']} to {top['last_day']}{season}."
-    if ties:
-        answer += " Matched by " + ", ".join(f"{r['first_day']} to {r['last_day']}" for r in ties) + "."
-    if top["open"] and (scope.season is None or scope.season == current_season()):
-        answer += note("still_open", " It was still going at the last game on record.")
-    streaks = [{"length": r["length"], "from": str(r["first_day"]), "to": str(r["last_day"]), "open": bool(r["open"])} for r in [top, *ties]]
-    return TemplateResult(data={**who, "span": label, "streaks": streaks, "headline": answer, "notes": [rule.strip()]}, answer=f"{answer}\n{rule}")
+    owned = [run_of(r, season_name(r["team_id"], int(r["season"]), names[r["team_id"]]) + (f" ({r['season']})" if span.season is None else "")) for r in runs]
+    rule = Note("definition", {"term": "streak_rule", "what": "league_team_within_season"})
+    return owned, note(rule.kind, note_phrase(rule), **rule.facts)

@@ -61,7 +61,7 @@ def test_no_intent_is_added_and_a_retired_one_leaves_the_list() -> None:
 # held the same way - the set as it stood, which may lose a member with its
 # slice and gain none.
 
-FROZEN_PRESENTERS = frozenset({"leaderboard", "player_compare", "player_history", "player_matchup", "player_stat", "streak"})
+FROZEN_PRESENTERS = frozenset({"leaderboard", "player_compare", "player_history", "player_matchup", "player_stat"})
 FROZEN_TEAM_ONLY_PRESENTERS = frozenset({"with_without"})
 FROZEN_ADAPTERS = frozenset({"with_without"})
 FROZEN_TEMPLATES = frozenset(

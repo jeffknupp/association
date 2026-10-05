@@ -878,11 +878,12 @@ model's. Two things follow, and both matter when you add a shape:
   `templates.games.team_game_log` and `templates.splits.team_splits`; a
   ranking over the season line through
   `templates.players._leaderboard_ranking`; two players' season lines
-  through `templates.players._player_compare_lines`; a streak through the
-  `run` shape - a skeleton of its own, the longest runs of consecutive
-  games one predicate holds along, `compose.core._compile_run` on the
-  player relation and `compose.team._compile_team_run` on the team's, said
-  by `templates.splits._streak_player_answer` and its siblings; a matchup
+  through `templates.players._player_compare_lines`; a team's streak
+  through the `run` shape on the team relation
+  (`compose.team._compile_team_run`), said by `compose.say.say_one_run` and
+  `say_run_listing` - a player's and the league's stat run are a reader and
+  a sayer since Phase 2's step 2 (`compose.runs.read_streak`, executing
+  `compose.core._compile_run`'s statement, the `Runs` body, `say_streak`); a matchup
   through the `pair` shape - two named players' lines over the games they
   met in, the pair relation `player_games.paired_rows_sql` over the first
   player's narrowed games, `compose.core._resolve_pair` and

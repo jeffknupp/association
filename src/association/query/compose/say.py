@@ -18,13 +18,14 @@ reproduced from the Result word for word.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Any
 
 from association.query.conditions import _SPLIT_TITLES, _margin, _split_cells, _split_label, _table, _win_pct
 from association.query.notes import Note, decided, note
 from association.query.player_games import PERIOD_LOG_COLUMNS, _joined, period_columns
 from association.query.reading import DEFAULT_GAME_LOG_LIMIT, _clamp_limit, ordinal_word
-from association.query.result import Decided, Result, Rows, Scalar
+from association.query.result import Decided, Result, Rows, Run, Scalar, Span
 from association.query.shotchart import UNSEPARABLE_SHOT_VALUES
 from association.query.templates.common import PLAYER_STAT_COLUMNS, SEASON_TYPE_NAMES, STAT_LABELS, TemplateResult, count_games, format_value, season_label, season_phrase
 from association.query.templates.players import MADE_STAT_ATTEMPTS, SHOOTING_STATS
@@ -53,11 +54,31 @@ def _say_definition(facts: dict[str, Any]) -> str:
         return "Months go by the US Eastern date of the game."
     if facts.get("term") == "pool":
         return f"Over the {facts['games']} games he played; a game he missed is in neither row."
+    if facts.get("term") == "streak_rule":
+        return _say_streak_rule(facts)
+    if facts.get("term") == "unseen_ends_run":
+        return " A game with no box score in the warehouse ends a run rather than being carried across, since it cannot be checked."
     if facts.get("term") != "without":
         raise ValueError(f"no phrase for the definition of {facts.get('term')!r}")
     names = list(facts["names"])
     who = "he did not play" if len(names) == 1 else ("neither of them played" if len(names) == 2 else "none of them played")
     return f"Without {_joined(names)} means games {who} while on the same team - a did-not-play entry, or no line in the box score at all, which is how most injuries appear."
+
+
+#: What a run is counted over, by who has it - the rule beneath a streak.
+_STREAK_RULES: dict[str, str] = {
+    "team_within_season": "Streaks are counted within one season.",
+    "league_team_within_season": "Each team's longest in a season, counted within that season.",
+}
+
+
+def _say_streak_rule(facts: dict[str, Any]) -> str:
+    what = facts["what"]
+    if what == "player_games_played":
+        return "Only games he played count: a game he missed neither extends the run nor ends it" + (", and a run carries on from one season into the next." if facts["across_seasons"] else ".")
+    if what == "league_player_games_played":
+        return "Each player's longest run, counting only games he played" + (", carried across seasons." if facts["across_seasons"] else ".")
+    return _STREAK_RULES[what]
 
 
 def _say_lines_rebuilt(facts: dict[str, Any]) -> str:
@@ -169,16 +190,20 @@ def decision_phrase(each: Decided, **said_with: Any) -> str:
     return decided(each.kind, text, field=each.field, chose=each.chose, before=each.before, instead_of=each.instead_of, why=each.why, **each.facts)
 
 
-def note_phrase(each: Note, *, narrowing: str = "", consequence: str = "") -> str:
+def note_phrase(each: Note, *, narrowing: str = "", consequence: str = "", listed: bool = False) -> str:
     """The one sentence a note of ``each.kind`` is said with, from its facts.
     ``narrowing`` is the read's own phrase for what it was narrowed to
     (``Result.narrowing.phrase``), which a window note follows a count
     with; ``consequence`` is what empty box scores do to the answer around
     the note ("the count may be low"), which only that answer can say.
+    ``listed`` says the note keys a table whose open rows are starred
+    (a run still going, beneath the league's listing).
 
     .. versionadded:: 5.0.0
     """
     facts = dict(each.facts)
+    if each.kind == "still_open":
+        return " * still going at the last game on record." if listed else " It was still going at the last game on record."
     if each.kind == "window_short":
         return _say_window_short(facts, narrowing)
     if each.kind == "definition":
@@ -407,6 +432,8 @@ def say(result: Result) -> TemplateResult:
     """
     if result.scalar is not None and result.scalar.how == "count":
         return say_threshold_count(result)
+    if result.runs is not None:
+        return say_streak(result)
     if result.scalar is not None:
         return say_player_stat(result)
     if result.grouped is not None and result.grouped.by == "player":
@@ -1189,3 +1216,113 @@ def say_single_game_high(result: Result) -> TemplateResult:
         "notes": [redirect.strip()] if redirect else [],
     }
     return TemplateResult(data=data, answer=headline + redirect)
+
+
+# --- runs ------------------------------------------------------------------------------
+
+
+def streak_result(want_win: bool) -> str:
+    """What a run of results is called: "winning streak" or "losing streak".
+
+    .. versionadded:: 5.0.0
+    """
+    return "winning streak" if want_win else "losing streak"
+
+
+def say_one_run(subject: str, label: str, runs: Sequence[Run], rule: str, *, season: int | None, still_open: bool, who: dict[str, Any]) -> TemplateResult:
+    """One named player's or team's longest run, with any run that ties it,
+    under ``subject`` ("Nikola Jokic's longest run of consecutive games with
+    20+ points") and ``label`` (the span): its length and days, the season
+    it fell in where the span covers several, and - ``still_open`` - that
+    it was still going at the last game on record. ``rule`` is the
+    definition beneath it, already phrased. A team's streak (``streak``'s
+    team branch, ``templates.splits._streak_team_answer``) is said here
+    too, until the team slice.
+
+    .. versionadded:: 5.0.0
+    """
+    top = runs[0]
+    ties = [r for r in runs[1:] if r.length == top.length]
+    in_season = f" (the {top.first_season} season)" if season is None and top.first_season == top.last_season else ""
+    games = "game" if top.length == 1 else "games"
+    answer = f"{subject}, {label}: {top.length} {games}, {top.first} to {top.last}{in_season}."
+    if ties:
+        answer += " Matched by " + ", ".join(f"{r.first} to {r.last}" for r in ties) + "."
+    if still_open:
+        still = Note("still_open")
+        answer += note(still.kind, note_phrase(still))
+    streaks = [{"length": r.length, "from": str(r.first), "to": str(r.last), "open": r.still_open} for r in [top, *ties]]
+    return TemplateResult(data={**who, "span": label, "streaks": streaks, "headline": answer, "notes": [rule.strip()]}, answer=f"{answer}\n{rule}")
+
+
+def say_run_listing(runs: Sequence[Run], what: str, rule: str, label: str, where: str, *, by_stat: bool, stat: Any, threshold: Any, unit: str, want_win: bool) -> TemplateResult:
+    """The league's longest runs with nobody named: one per player (a stat
+    streak) or one per team-season (a win/loss streak, the team relation's,
+    ``compose.present._present_team_streak``), each under its ``owner``, a
+    tie reported as a tie, and the rule and the open-run footnote under the
+    table - carried in ``data["notes"]`` too, so the web page shows them
+    under the rendered table (rendered, the "*" beside a run had no key
+    anywhere on screen - Jeff's note, 2026-09-24). ``where`` names a span
+    with no run in it ("in the 2026 regular season").
+
+    .. versionadded:: 5.0.0
+    """
+    if not runs:
+        nobody = f"No player had a game with {threshold}+ {unit}" if by_stat else "No team has a game with a result"
+        message = f"{nobody} {where}."
+        return TemplateResult(data={"span": label, "streaks": [], "headline": message}, answer=message)
+    streaks = [{"name": r.owner, "season": r.first_season if not by_stat else None, "length": r.length, "from": str(r.first), "to": str(r.last), "open": r.still_open} for r in runs]
+    longest = runs[0].length
+    top = [r for r in runs if r.length == longest]
+    leaders = " and ".join(str(r.owner) for r in top)
+    headline = f"{leaders} {'shared' if len(top) > 1 else 'had'} the longest {what} of the {label}: {longest} {'game' if longest == 1 else 'games'}."
+    rows = [(str(r.owner), [str(r.length), str(r.first), str(r.last) + (" *" if r.still_open else "")]) for r in runs]
+    still = Note("still_open")
+    footnote = note(still.kind, note_phrase(still, listed=True)) if any(r.still_open for r in runs) else ""
+    answer = f"{headline}\n" + _table(f"Longest, {label}:", ["games", "from", "to"], rows) + f"\n{rule}{footnote}"
+    data = {
+        "span": label,
+        "stat": stat if by_stat else None,
+        "threshold": threshold if by_stat else None,
+        "kind": None if by_stat else ("win" if want_win else "loss"),
+        "streaks": streaks,
+        "headline": headline,
+        "notes": [rule.strip(), *([footnote.strip()] if footnote else [])],
+    }
+    return TemplateResult(data=data, answer=answer)
+
+
+def _streak_where(span: Span) -> str:
+    """A span with no run in it, in words: the season, or every season of
+    its type from the relation's floor on."""
+    return f"in the {span.phrase}" if span.season is not None else f"in any {SEASON_TYPE_NAMES.get(span.season_type or 2, 'regular season')} on record ({span.floor} onward)"
+
+
+def say_streak(result: Result) -> TemplateResult:
+    """A player's longest run, or the league's longest one per player,
+    worded: the run (and any that tie it) under the player's name and the
+    span, or the listing under its leader, then the rule beneath - only
+    games he played count, and a game with no box score ends a run - and
+    whether a run is still going.
+
+    .. versionadded:: 5.0.0
+    """
+    body = result.runs
+    assert body is not None and result.span.phrase is not None
+    facts = result.facts
+    stat, threshold, by_stat, want_win = facts["stat"], facts["threshold"], facts["by_stat"], facts["want_win"]
+    unit = _unit(stat)
+    label = result.span.phrase
+    rule = "".join(note(each.kind, note_phrase(each), **each.facts) for each in result.notes if each.kind == "definition")
+    if result.relation == "everyone":
+        what = f"run of consecutive games with {threshold}+ {unit}"
+        return say_run_listing(body.runs, what, rule, label, _streak_where(result.span), by_stat=True, stat=stat, threshold=threshold, unit=unit, want_win=want_win)
+    filters = result.narrowing.phrase
+    if not body.runs:
+        never = f"never had a game with {threshold}+ {unit}" if by_stat else f"never {'won' if want_win else 'lost'} a game he played"
+        message = f"{result.subject} {never}{filters} in the {label}."
+        return TemplateResult(data={"player": result.subject, "span": label, "streaks": [], "headline": message}, answer=message)
+    what = f"consecutive games with {threshold}+ {unit}" if by_stat else f"{streak_result(want_win)} in games he played"
+    subject = (f"{result.subject}'s longest run of {what}" if by_stat else f"{result.subject}'s longest {what}") + filters
+    still_open = any(each.kind == "still_open" for each in result.notes)
+    return say_one_run(subject, label, body.runs, rule, season=result.span.season, still_open=still_open, who={"player": result.subject})

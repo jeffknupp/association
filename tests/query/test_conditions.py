@@ -775,7 +775,7 @@ def test_record_when_honors_since_and_says_so(league: TemplateContext) -> None:
 
 
 def test_record_when_honors_since_and_until_together_and_says_so(league: TemplateContext) -> None:
-    """``_condition_span_label`` used to read ``since`` only (ISSUES.md), so
+    """``condition_span_label`` used to read ``since`` only (ISSUES.md), so
     a range with both ends named ("from 2019-20 to 2021-22") was labeled as
     though it were still open-ended - even though the player branch's own
     narrowing (``condition_player``/``scoped_player``) already bounded the
@@ -1193,6 +1193,34 @@ def test_streak_narrows_by_opponent_and_says_so(league: TemplateContext) -> None
     result = streak(league, Reading.from_slots(_slots(player="Jayson Tatum", stat="points", threshold=25, span="career", opponent="Los Angeles Lakers")))
     assert result.data["streaks"][0]["length"] == 3
     assert "vs the Los Angeles Lakers" in result.answer
+
+
+def test_a_player_with_no_run_records_no_remark_he_is_not_told(league: TemplateContext) -> None:
+    """A named player who never reached the line answers "never had a game
+    with 60+ points" and nothing else, so it records no remark: the retired
+    template wrote the run's rule ("only games he played count") before it
+    knew there was no run, and the remark reached no answer (``compose.runs``
+    attaches the rule only to a run; on the real warehouse, "tatum longest
+    streak of 25 point games vs the knicks" recorded it and said nothing)."""
+    from association.query.notes import collect
+
+    with collect() as remarks:
+        result = streak(league, Reading.from_slots(_slots(player="Jayson Tatum", stat="points", threshold=60, span="career")))
+    assert result.data["streaks"] == []
+    assert "never had a game with 60+ points" in result.answer
+    assert remarks.notes == []
+
+
+def test_a_league_run_in_a_postseason_before_1994_is_the_floors_refusal() -> None:
+    """The league's stat run over one postseason before 1993-94 - the seasons
+    ESPN files under the year they began - never reaches a reader: the
+    player box scores' floor refuses it first (``check_coverage``, run
+    before any reader), which is why the retired presenter's own refusal of
+    the misfiled label (``templates.splits._misfiled_postseason``) went
+    with it, unreached."""
+    for season in (1988, 1990, 1992, 1993):
+        refusal = check_coverage("streak", Scope.from_slots({"stat": "points", "threshold": 30, "season": season, "season_type": 3}))
+        assert refusal is not None and "1994" in refusal, season
 
 
 def test_streak_narrows_by_a_teammates_absence_and_says_so(league: TemplateContext) -> None:

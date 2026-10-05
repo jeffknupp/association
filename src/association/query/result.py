@@ -38,7 +38,10 @@ class Span:
     (``career``) whose first and last seasons the rows name, or one dated
     game (``date``). ``years`` is the span's own wording of a range
     ("2024-25 to 2025-26"), the relation's ``_Span.years``, carried until
-    the sayer words it from ``first`` and ``last``.
+    the sayer words it from ``first`` and ``last``. ``floor`` is the first
+    season a span over every season could reach (the relation's floor),
+    which a span with nothing in it is named by ("in any regular season on
+    record (1994 onward)").
 
     .. versionadded:: 5.0.0
     """
@@ -51,6 +54,7 @@ class Span:
     last: int | None = None
     years: str | None = None
     phrase: str | None = None
+    floor: int | None = None
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -132,6 +136,58 @@ class Scalar:
 
 
 @dataclass(frozen=True, kw_only=True)
+class Run:
+    """One run of consecutive games a condition held along (``ROADMAP-TYPES.md``,
+    "The shapes": ``runs``): whose it is where a listing names several
+    (``owner``; ``None`` for one named subject's own), how many games, the
+    first and last day and season, and whether it was still going at the
+    owner's last game on record (``still_open``).
+
+    .. versionadded:: 5.0.0
+    """
+
+    owner: str | None = None
+    length: int
+    first: Any
+    last: Any
+    first_season: int
+    last_season: int
+    still_open: bool = False
+
+
+def run_of(row: Mapping[str, Any], owner: str | None = None) -> Run:
+    """One row of a run statement - the columns ``conditions._longest_runs_sql``
+    and the team compiler's run read return (``length``, ``first_day``,
+    ``last_day``, ``first_season``, ``last_season``, ``open``) - as a
+    :class:`Run`, under ``owner`` where a listing names several.
+
+    .. versionadded:: 5.0.0
+    """
+    return Run(
+        owner=owner,
+        length=row["length"],
+        first=row["first_day"],
+        last=row["last_day"],
+        first_season=row["first_season"],
+        last_season=row["last_season"],
+        still_open=bool(row["open"]),
+    )
+
+
+@dataclass(frozen=True, kw_only=True)
+class Runs:
+    """The longest runs a read found, longest first (``ROADMAP-TYPES.md``,
+    "The shapes": ``runs``) - a named subject's longest and any that tie
+    it, or one per owner over the league. Declared by the first runs shape
+    to retire its template (``streak``).
+
+    .. versionadded:: 5.0.0
+    """
+
+    runs: tuple[Run, ...] = ()
+
+
+@dataclass(frozen=True, kw_only=True)
 class Decided:
     """One decision the read made where the question left a field open
     (``ROADMAP-TYPES.md``, "Outcome": ``decisions``): the ``kind`` from
@@ -163,7 +219,7 @@ class Part:
     """
 
     role: Literal["answer", "summary", "detail"] = "answer"
-    body: Rows | Grouped | Scalar | None = None
+    body: Rows | Grouped | Scalar | Runs | None = None
     notes: tuple[Note, ...] = ()
 
 
@@ -223,3 +279,9 @@ class Result:
         """The first part's groups, where the answer is one row per group."""
         body = self.parts[0].body if self.parts else None
         return body if isinstance(body, Grouped) else None
+
+    @property
+    def runs(self) -> Runs | None:
+        """The first part's runs, where the answer is the longest runs of consecutive games."""
+        body = self.parts[0].body if self.parts else None
+        return body if isinstance(body, Runs) else None
