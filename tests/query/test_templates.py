@@ -3683,6 +3683,25 @@ def test_a_leaderboard_refuses_a_position_group_subject_for_the_compiler(lb_con:
     assert read_leaderboard(lb_con.con, on_the_season_line, stated=STATED_SCOPING["leaderboard"]) is None
 
 
+def test_a_ranking_names_the_season_line_as_its_relation(lb_con: TemplateContext) -> None:
+    """A ranking is read from the season line, and its Result says so
+    (``Span.source``), as the line, the history and the comparison do - the
+    relation is part of what a Result is (ROADMAP-TYPES.md). Until step 4
+    the ranking's span said ``"games"``, and ``say()`` reached its sayer
+    only because it never asked."""
+    from association.query.compose.rankings import read_leaderboard
+    from association.query.compose.say import say, say_leaderboard
+    from association.query.point import read_point
+    from association.query.result import Result
+
+    reading = Reading(scope=Scope.from_slots({"stat": "points", "season": 2024}), intent="leaderboard", subject=Subject("everyone"))
+    planned = plan(read_point(reading, "who led the league in points in 2024"))
+    assert isinstance(planned, Query) and planned.source == "seasons"
+    result = read_leaderboard(lb_con.con, planned, stated=STATED_SCOPING["leaderboard"])
+    assert isinstance(result, Result) and result.span.source == "seasons"
+    assert say(result).answer == say_leaderboard(result).answer
+
+
 def test_a_zero_threshold_is_refused_rather_than_counting_every_game(con: TemplateContext) -> None:
     """Measured: "most 3 pointers made since 2020" arrived as threshold 0."""
     assert threshold_count(con, Reading.from_slots({"stat": "points", "threshold": 0})).answer == "A threshold of 0 counts every game - there is no line there to keep games past."

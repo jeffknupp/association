@@ -198,12 +198,12 @@ def read_leaderboard(con: duckdb.DuckDBPyConnection, q: Query, *, stated: frozen
     facts: dict[str, Any] = {"label": found.label, "ratio": list(ratio) if ratio else None, "fields": fields}
     if isinstance(found, CareerLeaderboardResult):
         pool = found.pool_first_season
-        span = Span(season=None, season_type=found.season_type, career=True, first=pool)
+        span = Span(season=None, season_type=found.season_type, career=True, first=pool, source="seasons")
         notes: tuple[Note, ...] = (Note("floor", {"table": "season_line", "first": pool, "what": "career_pool"}),)
     else:
         # season_type is None for a metric with no season type (a
         # fingerprint-shaped one); the sayer names it the regular season.
-        span = Span(season=found.season, season_type=found.season_type)
+        span = Span(season=found.season, season_type=found.season_type, source="seasons")
         notes = (Note("definition", {"term": "most_recent_team"}),) if ranking.traded else ()
         facts["team"] = found.team_name
         if scope.season is None:

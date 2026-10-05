@@ -274,7 +274,7 @@ def test_a_career_ranking_says_its_pool_every_time() -> None:
     result = Result(
         subject="every player",
         relation="everyone",
-        span=Span(season_type=2, career=True, first=1994),
+        span=Span(season_type=2, career=True, first=1994, source="seasons"),
         parts=(Part(body=Grouped(by="player", ranked_by="total_points", rows=rows)),),
         notes=(Note("floor", {"table": "season_line", "first": 1994, "what": "career_pool"}),),
         facts={"label": "total points", "ratio": None, "fields": []},

@@ -1677,9 +1677,11 @@ def _player_line_empty(result: Result) -> TemplateResult:
 
 def _say_season_line(result: Result) -> TemplateResult:
     """The season line's own shapes, by body: a player's line, a history by
-    season, a comparison of players."""
+    season, a ranking by player, a comparison of players."""
     if result.scalar is not None:
         return say_player_line(result)
+    if result.grouped is not None and result.grouped.by == "player":
+        return say_leaderboard(result)
     if result.grouped is not None and result.grouped.by == "season":
         return say_player_history(result)
     assert result.grouped is not None and result.grouped.by == "subject", "a season-line result with no season-line shape"
