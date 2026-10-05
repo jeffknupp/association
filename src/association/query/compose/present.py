@@ -46,21 +46,11 @@ from association.query.templates.common import (
     team_relation_scoping,
     unhonored_scoping,
 )
-from association.query.templates.splits import _record_when_team_answer, _with_without_said
+from association.query.templates.splits import _record_when_team_answer
 
 from .core import Refused, Unsupported
 from .plan import WITH_WITHOUT_STATED
-from .team import TeamQuery, run_team
-
-TEAM_ONLY_PRESENTERS: frozenset[str] = frozenset({"with_without"})
-"""The intents whose only presenter is the team relation's
-(:func:`present_team`): ``with_without``'s split is the team's record, so
-its point is a :class:`~association.query.compose.team.TeamQuery` whoever
-the question names. :data:`STATED_SCOPING` declares for it as for every
-compiled intent.
-
-.. versionadded:: 5.0.0
-"""
+from .team import TeamQuery
 
 STATED_SCOPING: dict[str, frozenset[str]] = {
     # game_log and player_stat retired stating the relation's whole set, and
@@ -138,24 +128,6 @@ could name a slot where the compiler had declined for another cause.
 """
 
 
-def _present_with_without(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> TemplateResult | None:
-    """A team's record with and without named teammates, said in the
-    retired template's words (``templates.splits._with_without_said``) over
-    the team compiler's ``presence`` group
-    (``compose.team._compile_team_presence``, through
-    :func:`~association.query.compose.team.run_team`, which checks the
-    coverage floor first).
-
-    .. versionadded:: 5.0.0
-    """
-    if unhonored_scoping("with_without", q.scope, STATED_SCOPING["with_without"]):
-        return None
-    found = run_team(con, q)
-    if found.presence is None:
-        return None
-    return _with_without_said(found.presence)
-
-
 def present_team(con: duckdb.DuckDBPyConnection, intent: str, q: TeamQuery) -> TemplateResult | None:
     """A team subject's point said the way its intent's template says it -
     ``record_when``'s team branch (a team's game log, the retired
@@ -171,11 +143,6 @@ def present_team(con: duckdb.DuckDBPyConnection, intent: str, q: TeamQuery) -> T
 
     .. versionadded:: 5.0.0
     """
-    if intent == "with_without" and q.shape == "grouped" and q.group == "presence":
-        try:
-            return _present_with_without(con, q)
-        except TemplateUnsupported as exc:
-            raise Unsupported(f"relation: {exc}") from exc
     if intent != "record_when" or q.scope.threshold is None:
         return None
     if unhonored_scoping(intent, q.scope, STATED_SCOPING[intent]):

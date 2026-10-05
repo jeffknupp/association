@@ -6060,7 +6060,7 @@ def test_templates_on_the_relation_do_not_narrow_it_themselves() -> None:
     readers["player_matchup"] = [_resolve_pair, _compile_pair, read_player_matchup, _pair_result, _pair_no_meetings, _pair_absence]
     # with_without (the team relation's `presence` group) is not walked, as
     # its template never was: its games are read by the relation module's
-    # own cell (`conditions._with_without_games`, which narrows the team
+    # own cell (`conditions.presence_games_sql`, which narrows the team
     # relation to the windows' teams and the opponent), and this walk cannot
     # tell the relation writing a clause from a template writing one.
     for intent, functions in readers.items():

@@ -83,7 +83,8 @@ this tree:
   `streak` and `player_matchup` did, 3 once `leaderboard` did, and none
   once the season line's `player_stat`, `player_history` and
   `player_compare` did, 2026-10-05: `PRESENTERS` and `present()` are gone)
-  and the team-only one, the adapters
+  and the team-only one (`with_without`'s, retired in step 4: the freeze
+  holds that none comes back), the adapters
   (10; 5 since 2026-10-04, 3 once `threshold_count`'s and
   `single_game_high`'s default points went to the reader, 1 -
   `with_without`'s - once the streak's and the matchup's did, and none
@@ -822,7 +823,11 @@ model's. Two things follow, and both matter when you add a shape:
   run is, said by the same `say_streak`), a team's log and splits
   (`compose/logs.py`, `compose/splits.py`, executing the team compiler's
   `rows` and `grouped` compiles, `compose.team.compile_team_over`, since
-  step 4), the league's leaders by a
+  step 4), a team's record with and without named teammates
+  (`compose/presence.py`, since step 4: the team compiler's `presence`
+  statement, `compose.team.compile_team_presence` over the relation cell
+  `conditions.presence_games_sql`, into a `Grouped` by `presence`, said by
+  `say.say_with_without`), the league's leaders by a
   season-line metric (`compose/rankings.py`, since 2026-10-05: a `Grouped`
   ranking by `player` whose `ranked_by` is the metric - a count of games
   over a line ranks by `"games"`, which is how the sayer tells the two
@@ -955,13 +960,9 @@ model's. Two things follow, and both matter when you add a shape:
   trace one of these, do not assume `compose.core` produced the numbers:
   find the presenter (`compose/present.py`) and follow it into
   `templates/`. `ROADMAP.md`, Phase 2, removes that detour slice by slice.
-  The presenters' routes, as they stand
-  (a
-  with/without split through the team relation's `presence` group - a
-  team's games inside named teammates' time on the team, each marked with
-  who held the condition, `compose.team._compile_team_presence` over
-  `templates.splits._with_without_read` and the relation cell
-  `conditions._with_without_games`, said by `_with_without_said`), and
+  The last presenter's route, as it stands: a team's record above and
+  below its own line (`compose.present.present_team`, over
+  `templates.splits._record_when_team_answer`); and
   where it has no reading
   the question is refused with the compiler's reason
   (`agent._run_compiled`). A presenter says what its retired template's

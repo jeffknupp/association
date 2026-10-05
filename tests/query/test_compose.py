@@ -1795,9 +1795,9 @@ def test_a_presenter_steps_aside_for_a_narrowing_its_words_do_not_state(cx_ctx: 
     from dataclasses import replace
 
     from association.query.compose.highs import read_single_game_high
-    from association.query.compose.present import STATED_SCOPING, TEAM_ONLY_PRESENTERS
+    from association.query.compose.present import STATED_SCOPING
 
-    # Every player shape's words are the sayer's (compose.say) since slice (iii); their stated sets stay listed in
+    # Every shape's words are the sayer's (compose.say) since slice (iv); their stated sets stay listed in
     # STATED_SCOPING so one table declares for every compiled intent.
     ported = {
         "game_log",
@@ -1812,10 +1812,11 @@ def test_a_presenter_steps_aside_for_a_narrowing_its_words_do_not_state(cx_ctx: 
         "player_stat",
         "player_history",
         "player_compare",
+        "with_without",
     }
     # And the team-season readers' (compose.team_stats, Phase 2, step 4).
     team_seasons = {"team_stat", "team_leaderboard", "team_outlook"}
-    assert set(STATED_SCOPING) == TEAM_ONLY_PRESENTERS | ported | team_seasons
+    assert set(STATED_SCOPING) == ported | team_seasons
     narrowed = default_query("single_game_high", {"player": "Brandin Podziemski", "stat": "points", "opponent": "Boston Celtics"})
     assert read_single_game_high(cx_ctx.con, narrowed, stated=STATED_SCOPING["single_game_high"]) is None
     assert read_single_game_high(cx_ctx.con, replace(narrowed, scope=replace(narrowed.scope, opponent=None)), stated=STATED_SCOPING["single_game_high"]) is not None

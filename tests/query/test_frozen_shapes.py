@@ -62,7 +62,6 @@ def test_no_intent_is_added_and_a_retired_one_leaves_the_list() -> None:
 # slice and gain none.
 
 # The leaderboard's retired 2026-10-05 (slice (iii)): compose.rankings reads it, compose.say words it.
-FROZEN_TEAM_ONLY_PRESENTERS = frozenset({"with_without"})
 # coach's retired 2026-10-05 (slice (iv)): the reading refuses by its cause, the planner says it;
 # team_outlook's, team_stat's and team_leaderboard's the same day: compose.team_stats reads them, compose.say words them.
 FROZEN_TEMPLATES = frozenset(
@@ -173,12 +172,12 @@ def _frozen(name: str, today: set[Any], frozen: frozenset[Any]) -> None:
 
 def test_no_template_presenter_scoping_table_or_renderer_is_added() -> None:
     from association.query.compose import present
-    from association.query.compose.present import TEAM_ONLY_PRESENTERS
 
     _frozen("template", set(TEMPLATES), FROZEN_TEMPLATES)
     # The player relation's presenters are all retired (slice iii, 2026-10-05):
     # the table and its dispatcher went with the last of them, and none comes back.
     assert not hasattr(present, "PRESENTERS") and not hasattr(present, "present"), "a player presenter came back: ROADMAP.md decision D4"
-    _frozen("team-only presenter", set(TEAM_ONLY_PRESENTERS), FROZEN_TEAM_ONLY_PRESENTERS)
+    # The team-only presenter (with_without's) retired in slice (iv), 2026-10-05: compose.presence reads it.
+    assert not hasattr(present, "TEAM_ONLY_PRESENTERS"), "a team presenter came back: ROADMAP.md decision D4"
     _frozen("scoping table", _scoping_tables_today(), FROZEN_SCOPING_TABLES)
     _frozen("renderer", _renderers_today(), FROZEN_RENDERERS)

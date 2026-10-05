@@ -51,6 +51,7 @@ narrowed reader is one season type at a time.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -59,7 +60,7 @@ import duckdb
 from association.nba.coverage import unavailable
 from association.nba.franchises import season_name_sql
 from association.nba.season import current_season
-from association.query.conditions import _PLAYER_GAME_TABLES, _TEAM_LINE, _longest_runs_sql
+from association.query.conditions import _PLAYER_GAME_TABLES, _TEAM_LINE, _longest_runs_sql, box_source, presence_games_sql
 from association.query.entities import Entity
 from association.query.entities import team_named_in as team_named_in
 from association.query.reading import DEFAULT_STREAK_LIMIT, Scope, _clamp_limit
@@ -70,7 +71,7 @@ from association.query.team_games import named as team_named
 from association.query.team_games import rows_sql as team_rows_sql
 from association.query.templates.common import ResolvedSpan, TemplateResult, TemplateUnsupported, resolved_team, scoped_team, span_of, whole_span
 from association.query.templates.common import team_games as narrow_team_games
-from association.query.templates.splits import _TEAM_STREAK_SELECT, PresenceSplit, _streak_league_team_narrowed, _with_without_read
+from association.query.templates.splits import _TEAM_STREAK_SELECT, _streak_league_team_narrowed
 
 from .core import Refused, Unsupported, rows_of
 
@@ -213,7 +214,7 @@ class TeamQuery:
     #: (``player_splits``' team half, which compiles one read per kind by a
     #: key of :data:`TEAM_GROUPS`), or ``"presence"`` - the team's games
     #: divided by whether named teammates played (``with_without``'s retired
-    #: template, read by :func:`_compile_team_presence`).
+    #: template, compiled by :func:`compile_team_presence`).
     group: str = "none"
 
 
@@ -231,7 +232,9 @@ class TeamCompiled:
     sql: str
     params: list[Any] | dict[str, Any]
     team: Entity | None
-    span: ResolvedSpan
+    #: The seasons read: a :class:`~association.query.templates.common.ResolvedSpan`,
+    #: or the ``presence`` group's :class:`~association.query.conditions._Scope`.
+    span: Any
     narrowed: TeamNarrowed
     #: A ``run`` read's games in date order, with their own names bound in
     #: ``run_params`` - for the span's count and seasons
@@ -279,10 +282,6 @@ class TeamResult:
     #: span's label; ``None`` otherwise.
     first_season: int | None = None
     last_season: int | None = None
-    #: The ``presence`` group's read (:func:`_compile_team_presence`): the
-    #: games inside the teammates' time on the team, each marked with who
-    #: held the condition; ``None`` for every other shape.
-    presence: PresenceSplit | None = None
 
 
 def _team_narrowed(scope: Scope) -> bool:
@@ -554,38 +553,31 @@ def _compile_team_run(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> TeamResul
     )
 
 
-def _compile_team_presence(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> TeamResult:
-    """The ``presence`` group: a team's games inside the named teammates'
-    time on the team, each marked with how many of them held their
-    condition (played, started, came off the bench, reached a line) and
-    the subject's line where a player is named - ``with_without``'s retired
-    template (ROADMAP plan item 6, step (g)), read through
-    :func:`~association.query.templates.splits._with_without_read` over
-    the team relation narrowed to the windows' teams and the opponent
-    (:func:`~association.query.conditions._with_without_games`). A reading
-    that gives the question up - which player was meant, a teammate with no
-    box score, a time together outside the span - is the answer, raised as
-    :class:`~association.query.compose.core.Refused`.
+def compile_team_presence(
+    con: duckdb.DuckDBPyConnection,
+    covered: Any,
+    windows: Sequence[Any],
+    mates: Sequence[str],
+    subject: str | None,
+    opponent: str | None,
+    predicates: Sequence[tuple[str, tuple[str, int] | None]],
+) -> TeamCompiled:
+    """The ``presence`` group as SQL: a team's games across the named
+    teammates' windows on it (``covered``, the
+    :class:`~association.query.conditions._Scope` they are counted in),
+    each marked with how many of them held their condition (played,
+    started, came off the bench, reached a line), the subject's line where
+    a player is named, and whether the game has a box score - the relation
+    cell :func:`~association.query.conditions.presence_games_sql`, over the
+    team relation narrowed to the windows' teams and the opponent.
+    ``with_without``'s retired template (ROADMAP plan item 6, step (g));
+    read by ``compose.presence.read_with_without``, which keeps the games
+    inside the windows (:func:`~association.query.conditions.presence_games`).
 
     .. versionadded:: 5.0.0
     """
-    scope = q.scope
-    split = _with_without_read(con, scope)
-    if isinstance(split, TemplateResult):
-        raise Refused(split)
-    span = span_of(scope.span, scope.season, scope.season_type or 2, "games")
-    return TeamResult(
-        team=split.team,
-        span=span,
-        measure=q.measure,
-        aggregate=q.aggregate,
-        value=None,
-        games=len(split.games),
-        wins=sum(1 for g in split.games if g["won"]),
-        losses=sum(1 for g in split.games if not g["won"]),
-        narrowed_text=f" vs the {split.against.name}" if split.against is not None else "",
-        presence=split,
-    )
+    sql, params, narrowed = presence_games_sql(covered, windows, mates, subject, opponent, predicates, box_source(con))
+    return TeamCompiled(sql, params, None, covered, narrowed)
 
 
 def _compile_team_rows(narrowed: TeamNarrowed, team: Entity | None, span: ResolvedSpan, *, limit: int | None, ascending: bool) -> TeamCompiled:
@@ -716,20 +708,24 @@ def run_team(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> TeamResult:
        branch (:func:`~association.query.templates.splits._record_when_team_answer`),
        which answers a threshold record for real.
     """
-    if q.shape == "run" or q.group == "presence":
+    if q.shape == "run":
         refusal = team_coverage_refusal(q)
         if refusal is not None:
             raise Refused(refusal)
         try:
-            return _compile_team_run(con, q) if q.shape == "run" else _compile_team_presence(con, q)
+            return _compile_team_run(con, q)
         except TemplateUnsupported as exc:
             raise Unsupported(f"relation: {exc}") from exc
+    if q.group == "presence":
+        # The with/without split is compose.presence's reader; reaching here
+        # means a narrowing its words do not state, which no sum answers.
+        raise Unsupported("a with/without split narrowed beyond its own words has no reader")
     if q.scope.threshold is not None:
         raise Unsupported("a threshold names a record above and below a line, not a total - this module has no reader for one")
     if q.shape in ("rows", "grouped"):
-        # The team's games listed, or split, are the presenters'
-        # (compose.present.present_team); reaching here means a narrowing
-        # their words do not state, which no sum here answers either.
+        # The team's games listed, or split, are compose.logs' and
+        # compose.splits' readers; reaching here means a narrowing their
+        # words do not state, which no sum here answers either.
         raise Unsupported("a team's log or splits narrowed beyond their own words has no reader")
     refusal = team_coverage_refusal(q)
     if refusal is not None:

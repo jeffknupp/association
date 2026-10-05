@@ -30,7 +30,7 @@
   "compose.logs": 2,
   "compose.splits": 1,
   "compose.team": 2,
-  "conditions": 8,
+  "conditions": 7,
   "connection": 1,
   "entities": 4,
   "fingerprint": 3,
@@ -49,10 +49,8 @@
   "compose.core:_team_slot_for_player",
   "compose.plan:_condition_needs_player_refusal",
   "compose.present:_record_when_team_answer",
-  "compose.present:_with_without_said",
   "compose.team:_TEAM_STREAK_SELECT",
-  "compose.team:_streak_league_team_narrowed",
-  "compose.team:_with_without_read"
+  "compose.team:_streak_league_team_narrowed"
  ],
  "regex_outside_the_reader": [
   "calendar",

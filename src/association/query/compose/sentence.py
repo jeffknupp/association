@@ -253,10 +253,6 @@ def team_sentence(q: TeamQuery, result: TeamResult) -> str:
     span = _span_phrase(result.span)
     if q.shape == "run":
         return _team_run_sentence(q, result, span)
-    if result.presence is not None:
-        who = f"The {result.team.name}" if result.team is not None else "The team"
-        mates = ", ".join(m.name for m in result.presence.mates)
-        return f"{who} went {result.wins}-{result.losses} over {result.games} games inside {mates}'s time on the team{result.narrowed_text} in the {span}, divided by whether they played."
     if result.team is None:
         # Only the league's run has no team, and it is said just above.
         return f"The warehouse has no {label} on record for the league in the {span}."

@@ -80,11 +80,19 @@ def _say_window_short(facts: dict[str, Any], narrowing: str) -> str:
     return f"Only {count} game{plural}{narrowing} {found_in}."
 
 
-def _say_definition(facts: dict[str, Any]) -> str:
+def _say_definition(facts: dict[str, Any], about: str = "") -> str:
     if facts.get("term") == "overtime_excluded":
         return "Overtime is no quarter and is not counted."
+    if facts.get("term") == "played" and "names" in facts:
+        return _say_presence_played(list(facts["names"]))
     if facts.get("term") == "played":
         return "Played means he appeared in the game, and W-L is his team's record in those games."
+    if facts.get("term") == "out":
+        return f"Out means none of {_joined(list(facts['names']))} appeared in the game - a DNP or no box-score row at all; the other row is every game at least one of them played."
+    if facts.get("term") == "tenure_counted":
+        return _say_tenure_counted(facts, about)
+    if facts.get("term") == "columns":
+        return f"G, W-L and margin are the team's; Played counts {facts['whose']}'s games, and his averages are over those."
     if facts.get("term") == "months_eastern":
         return "Months go by the US Eastern date of the game."
     if facts.get("term") == "pool":
@@ -105,6 +113,24 @@ def _say_definition(facts: dict[str, Any]) -> str:
     names = list(facts["names"])
     who = "he did not play" if len(names) == 1 else ("neither of them played" if len(names) == 2 else "none of them played")
     return f"Without {_joined(names)} means games {who} while on the same team - a did-not-play entry, or no line in the box score at all, which is how most injuries appear."
+
+
+def _say_presence_played(names: list[str]) -> str:
+    """What "played" means on a with/without split: one teammate's
+    appearance, or every one of several teammates'."""
+    if len(names) == 1:
+        return f"Played means {names[0]} appeared in the game; out is a DNP or no box-score row at all."
+    return f"Played means every one of {_joined(names)} appeared in the game; the other row is every game at least one of them missed - a DNP or no box-score row at all."
+
+
+def _say_tenure_counted(facts: dict[str, Any], about: str) -> str:
+    """The games a with/without split counted: inside ``about`` (whose time
+    on the team, which only the answer's heading names), each stint spelled
+    out - under its team's name where the stints span several teams."""
+    stints = list(facts["stints"])
+    several = len({stint["team"] for stint in stints}) > 1
+    spelled = "; ".join(f"{stint['team']} {stint['from']} to {stint['to']}" if several else f"{stint['from']} to {stint['to']}" for stint in stints)
+    return f"Counted: games inside {about} ({spelled}), which runs from the first box score that lists {'him' if len(facts['names']) == 1 else 'them'} there to the last."
 
 
 #: What a run is counted over, by who has it - the rule beneath a streak.
@@ -170,8 +196,12 @@ def _say_empty_box_scores(facts: dict[str, Any], consequence: str) -> str:
     return f" {whose} {between} {'has' if count == 1 else 'have'} an empty box score in this warehouse, so {consequence}."
 
 
-def _say_games_unseen(facts: dict[str, Any]) -> str:
+def _say_games_unseen(facts: dict[str, Any], consequence: str = "") -> str:
     count = facts["games"]
+    if facts.get("why") == "no_box_score" and consequence:
+        # Games inside a with/without split's time with no box score: the
+        # answer says what that does to its two rows.
+        return f"{count} game{'' if count == 1 else 's'} inside that time {'has' if count == 1 else 'have'} no box score, so {consequence}."
     if facts.get("what") == "meetings":
         return f" {count} game{'' if count == 1 else 's'} between their teams while both were playing for them {'has' if count == 1 else 'have'} no box score, so a meeting there is not counted."
     if facts.get("why") == "no_box_score":
@@ -238,14 +268,15 @@ def decision_phrase(each: Decided, **said_with: Any) -> str:
     return decided(each.kind, text, field=each.field, chose=each.chose, before=each.before, instead_of=each.instead_of, why=each.why, **each.facts)
 
 
-def note_phrase(each: Note, *, narrowing: str = "", consequence: str = "", listed: bool = False) -> str:
+def note_phrase(each: Note, *, narrowing: str = "", consequence: str = "", listed: bool = False, about: str = "") -> str:
     """The one sentence a note of ``each.kind`` is said with, from its facts.
     ``narrowing`` is the read's own phrase for what it was narrowed to
     (``Result.narrowing.phrase``), which a window note follows a count
     with; ``consequence`` is what empty box scores do to the answer around
     the note ("the count may be low"), which only that answer can say.
     ``listed`` says the note keys a table whose open rows are starred
-    (a run still going, beneath the league's listing).
+    (a run still going, beneath the league's listing). ``about`` is whose
+    time on a team a with/without split counted, as its heading names it.
 
     .. versionadded:: 5.0.0
     """
@@ -255,7 +286,7 @@ def note_phrase(each: Note, *, narrowing: str = "", consequence: str = "", liste
     if each.kind == "window_short":
         return _say_window_short(facts, narrowing)
     if each.kind == "definition":
-        return _say_definition(facts)
+        return _say_definition(facts, about)
     if each.kind == "lines_rebuilt":
         return _say_lines_rebuilt(facts)
     if each.kind == "stat_withheld":
@@ -263,7 +294,7 @@ def note_phrase(each: Note, *, narrowing: str = "", consequence: str = "", liste
     if each.kind == "games_unseen" and "first" in facts:
         return _say_empty_box_scores(facts, consequence)
     if each.kind == "games_unseen":
-        return _say_games_unseen(facts)
+        return _say_games_unseen(facts, consequence)
     if each.kind == "stat_blank":
         return _say_stat_blank(facts)
     if each.kind == "floor" and facts.get("table") == "box_scores":
@@ -502,7 +533,7 @@ def _say_grouped(result: Result) -> TemplateResult | None:
         return None
     if body.by == "player":
         return say_threshold_count(result) if body.ranked_by == "games" else say_leaderboard(result)
-    sayers = {"subject": say_player_matchup, "threshold": say_record_when, "split": say_splits, "period": say_period_by_quarter}
+    sayers = {"subject": say_player_matchup, "threshold": say_record_when, "split": say_splits, "period": say_period_by_quarter, "presence": say_with_without}
     sayer = sayers.get(body.by)
     return sayer(result) if sayer is not None else None
 
@@ -2269,3 +2300,85 @@ def say_team_leaderboard(result: Result) -> TemplateResult:
     return TemplateResult(
         data={"question_shape": title, "season": season, "order": end, "teams": teams, "headline": headline.rstrip(":"), "notes": notes}, answer="\n".join([headline, *lines, *notes])
     )
+
+# --- a team with and without named teammates ---------------------------------
+
+
+def _with_without_verbs(predicates: list[Any]) -> tuple[str, str]:
+    """How the two rows name their side: "played"/"out" for appearances,
+    "started"/"did not start" for starts, "came off the bench"/"started or
+    out" for the bench, "had 20+ points"/"did not" for a line - the words
+    the question used, never "played" for a start it asked about."""
+    kinds = {p for p, _ in predicates}
+    if kinds == {"started"}:
+        return "started", "did not start"
+    if kinds == {"bench"}:
+        return "came off the bench", "started or out"
+    if kinds == {"reached"}:
+        lines = [f"{line[1]}+ {STAT_LABELS.get(line[0], line[0])}s" for _, line in predicates if line is not None]
+        return f"had {_joined(sorted(set(lines)))}", "did not"
+    if kinds == {"played"}:
+        return "played", "out"
+    return "met the condition", "did not"
+
+
+def _with_without_heading(result: Result, named: list[str], all_of: str) -> tuple[str, list[str], str]:
+    """The table's title and headers, and the phrase naming whose time
+    together is counted - with a player subject's own columns added to the
+    headers. An opponent the question named goes in the TITLE: a record
+    over one opponent's games, headed as though it covered every game, is
+    the silent narrowing the split exists to stop."""
+    subject, counted_teams, label = result.facts["player"], ", ".join(result.facts["teams"]), result.span.phrase
+    headers = ["G", "W-L", "Win%", "Margin"]
+    versus = result.narrowing.phrase
+    if subject is None:
+        whose = f"{all_of}'s time with the team" if len(named) == 1 else f"the time {all_of} were on the team together"
+        return f"{counted_teams} with and without {all_of}{versus}, {label}:", headers, whose
+    whose = f"the time {subject} and {all_of} were both on the team" if len(named) == 1 else f"the time {_joined([subject, *named])} were on the team together"
+    return f"{subject} with and without {all_of} ({counted_teams}){versus}, {label}:", [*headers, "Played", "MIN", "PTS", "REB", "AST", "FG%"], whose
+
+
+def say_with_without(result: Result) -> TemplateResult:
+    """A team's record with and without named teammates, worded as the
+    retired ``with_without`` template said it: the two rows side by side
+    per team (the question's own side first), with the subject's averages
+    where a player is named, under a title naming the teams, the opponent
+    and the span; then what was counted, what "played" (or "out") means,
+    the games no box score shows and a player subject's columns.
+
+    .. versionadded:: 5.0.0
+    """
+    groups = result.grouped
+    assert groups is not None
+    facts = result.facts
+    named = list(facts["teammates"])
+    all_of, any_of = _joined(named), _joined(named, "or")
+    subject, asked_without, teams = facts["player"], facts["asked_without"], list(facts["teams"])
+    verbs = _with_without_verbs(list(facts["predicates"]))
+    rows: list[tuple[str, list[str]]] = []
+    for group in groups.rows:
+        played = group["teammate_played"]
+        cells = [str(group["games"]), f"{group['wins']}-{group['losses']}", _win_pct(group["wins"], group["games"]), _margin(group["avg_margin"])]
+        if subject is not None:
+            cells += [str(group["player_games"]), *(_cell(group[k]) for k in ("minutes", "points", "rebounds", "assists", "fg_pct"))]
+        prefix = f"{group['team']}, " if len(teams) > 1 else ""
+        # "A and B out" against "A or B played": the row label says which
+        # of the two it is, since with two names they are not opposites.
+        whom = (any_of if asked_without else all_of) if played else (all_of if asked_without else any_of)
+        rows.append((f"{prefix}{whom} {verbs[0] if played else verbs[1]}", cells))
+    title, headers, whose = _with_without_heading(result, named, all_of)
+    unknown = "whether he played is unknown; they are on neither side"
+    notes = [note(each.kind, note_phrase(each, about=whose, consequence=unknown), **each.facts) for each in result.notes]
+    tenure = next(list(each.facts["stints"]) for each in result.notes if each.facts.get("term") == "tenure_counted")
+    data = {
+        "teammate": all_of,
+        "teammates": named,
+        "player": subject,
+        "teams": teams,
+        "span": result.span.phrase,
+        "groups": list(groups.rows),
+        "tenure": tenure,
+        "headline": title.rstrip(":"),
+        "notes": notes,
+    }
+    return TemplateResult(data=data, answer=_table(title, headers, rows) + "\n" + " ".join(notes))

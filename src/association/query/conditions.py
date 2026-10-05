@@ -566,7 +566,7 @@ def _within(windows: Sequence[_Stint], team_id: str, day: date) -> bool:
 
 
 def _with_without_team_span_clause(scope: _Scope) -> tuple[str, list[Any]]:
-    """``team_games``' season clause for :func:`_with_without_games`'s window
+    """``team_games``' season clause for :func:`presence_games_sql`'s window
     read, over ``tg.season`` / ``tg.eastern_date``
     (:data:`association.query.team_games.TEAM_GAMES_SQL`) - the same rule
     :func:`association.query.templates.common._team_span_clause` applies for
@@ -593,7 +593,7 @@ def _with_without_team_span_clause(scope: _Scope) -> tuple[str, list[Any]]:
 
 
 def _with_without_team_games(scope: _Scope, teams: Sequence[str]) -> TeamNarrowed:
-    """The narrowed ``team_games`` relation for :func:`_with_without_games`'s
+    """The narrowed ``team_games`` relation for :func:`presence_games_sql`'s
     window read: every team a window names at once (``list_contains`` rather
     than one id, because a player's stints can span more than one team inside
     the scope), across the season(s) ``scope`` covers.
@@ -621,7 +621,7 @@ def _with_without_held(mates: Sequence[str], predicates: Sequence[tuple[str, tup
     "held" side: each by his own predicate (ROADMAP plan item 3 - "record
     when Embiid, Maxey and Edgecombe start"), binding ``$c<i>``/``$v<i>``
     into ``params``; or, with none stated, that he appeared - the one clause
-    :func:`_with_without_games` always had, over ``$mates``.
+    :func:`presence_games_sql` always had, over ``$mates``.
 
     .. versionadded:: 5.0.0
     """
@@ -643,19 +643,23 @@ def _with_without_held(mates: Sequence[str], predicates: Sequence[tuple[str, tup
     return "(" + " OR ".join(held_parts) + ")"
 
 
-def _with_without_games(
-    con: duckdb.DuckDBPyConnection,
+def presence_games_sql(
     scope: _Scope,
     windows: Sequence[_Stint],
     mates: Sequence[str],
     subject: str | None,
-    opponent: str | None = None,
-    predicates: Sequence[tuple[str, tuple[str, int] | None]] | None = None,
-) -> tuple[list[dict[str, Any]], int]:
-    """Every game a window's team played inside that window, marked with HOW
-    MANY of the named teammates played it, and the subject's line where he did
-    - and, separately, how many games inside the windows have no box score,
-    which belong on neither side.
+    opponent: str | None,
+    predicates: Sequence[tuple[str, tuple[str, int] | None]] | None,
+    box: BoxSource,
+) -> tuple[str, dict[str, Any], TeamNarrowed]:
+    """The statement behind the team relation's ``presence`` group: every
+    game a window's team played across the windows' seasons, marked with
+    HOW MANY of the named teammates held their condition, the subject's
+    line where he played, and whether the game has a box score at all
+    (``box``, the last column) - and the narrowed relation it reads. The
+    team compiler wraps it (``compose.team.compile_team_presence``) and the
+    one door executes it; :func:`presence_games` keeps the games inside the
+    windows.
 
     A count rather than a flag, because with two teammates the two questions
     stop being one split: "without A and B" is the games NEITHER played, "with
@@ -666,13 +670,14 @@ def _with_without_games(
     Counted in a correlated subquery rather than a join per teammate: a join
     would have to be repeated per name, and a single join over a list would
     return one row per teammate who played rather than one row per game.
+    Reads the ``team_games`` relation (:func:`_with_without_team_games`);
+    ``named`` turns the relation's own positional clauses into the ``$t*``
+    names this binds beside its own ``$mates``/``$subject``/``$opponent``
+    (DuckDB will not mix ``?`` and ``$name`` in one statement).
 
-    .. versionchanged:: 4.4.0
-       Reads the ``team_games`` relation (:func:`_with_without_team_games`)
-       instead of ``_team_games(scope, ...)`` - step 3, C4. ``named`` turns
-       the relation's own positional clauses into the ``$t*`` names this
-       binds beside its own ``$mates``/``$subject``/``$opponent`` (DuckDB will
-       not mix ``?`` and ``$name`` in one statement).
+    .. versionadded:: 5.0.0
+       ``_with_without_games``' statement, which executed it here until
+       Phase 2's slice (iv).
     """
     teams = sorted({w.team_id for w in windows})
     narrowed = _with_without_team_games(scope, teams)
@@ -684,7 +689,6 @@ def _with_without_games(
         # out of BOTH groups, which is what keeps the split honest.
         narrowed.narrow("tg.opponent_id = ?", opponent)
     base_sql, base_params = named(*games_subquery(narrowed))
-    box = box_source(con)
     played_by = f"LEFT JOIN {box.table} s ON s.event_id = t.event_id AND s.season = t.season AND s.team_id = t.team_id AND s.athlete_id = $subject AND {_played('s', box)}"
     params: dict[str, Any] = {**base_params, "mates": list(mates)}
     if subject is not None:
@@ -694,24 +698,35 @@ def _with_without_games(
     # and Edgecombe start"), or, with none stated, that he appeared, which is
     # the one clause this always had.
     held = _with_without_held(mates, predicates, params)
-    rows = con.execute(
-        f"""
+    line = (
+        "s.minutes, s.points, s.rebounds, s.assists, s.fieldGoalsMade AS fgm, s.fieldGoalsAttempted AS fga"
+        if subject
+        else "NULL AS minutes, NULL AS points, NULL AS rebounds, NULL AS assists, NULL AS fgm, NULL AS fga"
+    )
+    sql = f"""
         WITH t AS ({base_sql})
-        SELECT t.team_id, t.season, t.eastern_date, t.won, t.team_score - t.opponent_score,
+        SELECT t.team_id, t.season, t.eastern_date AS day, t.won, t.team_score - t.opponent_score AS margin,
                (SELECT COUNT(*) FROM {box.table} m
                  WHERE m.event_id = t.event_id AND m.season = t.season AND m.team_id = t.team_id AND {held} AND {_played("m", box)}) AS mates_played,
-               {"s.athlete_id IS NOT NULL" if subject else "FALSE"} AS subject_played,
-               {"s.minutes, s.points, s.rebounds, s.assists, s.fieldGoalsMade, s.fieldGoalsAttempted" if subject else "NULL, NULL, NULL, NULL, NULL, NULL"},
+               {"s.athlete_id IS NOT NULL" if subject else "FALSE"} AS played,
+               {line},
                EXISTS (
                    SELECT 1 FROM {box.table} q WHERE q.event_id = t.event_id AND q.team_id = t.team_id AND q.season = t.season AND {_appeared("q", box)}
                ) AS box
         FROM t
-        {played_by if subject else ""}""",
-        params,
-    ).fetchall()
-    keys = ("team_id", "season", "day", "won", "margin", "mates_played", "played", "minutes", "points", "rebounds", "assists", "fgm", "fga")
-    inside = [row for row in rows if _within(windows, str(row[0]), row[2])]
-    return [dict(zip(keys, row[:-1], strict=True)) for row in inside if row[-1]], sum(1 for row in inside if not row[-1])
+        {played_by if subject else ""}"""
+    return sql, params, narrowed
+
+
+def presence_games(rows: Sequence[dict[str, Any]], windows: Sequence[_Stint]) -> tuple[list[dict[str, Any]], int]:
+    """:func:`presence_games_sql`'s rows kept to the games inside a window -
+    each game without its ``box`` column - and, separately, how many games
+    inside the windows have no box score, which belong on neither side.
+
+    .. versionadded:: 5.0.0
+    """
+    inside = [row for row in rows if _within(windows, str(row["team_id"]), row["day"])]
+    return [{key: value for key, value in row.items() if key != "box"} for row in inside if row["box"]], sum(1 for row in inside if not row["box"])
 
 
 def _with_without_group(games: Sequence[dict[str, Any]]) -> dict[str, Any]:

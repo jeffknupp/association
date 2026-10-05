@@ -50,6 +50,7 @@ from .logs import read_player_log, read_team_log
 from .pairs import read_player_matchup
 from .periods import read_period_split
 from .plan import Planned
+from .presence import read_with_without
 from .present import STATED_SCOPING, present_team
 from .rankings import read_leaderboard
 from .records import read_record_when
@@ -312,6 +313,8 @@ def _read_ported_team(con: duckdb.DuckDBPyConnection, intent: str, query: TeamQu
         return _read_log(lambda: read_team_splits(con, query, stated=STATED_SCOPING["player_splits"]))
     if intent == "streak" and query.shape == "run":
         return _read_log(lambda: read_team_streak(con, query, stated=STATED_SCOPING["streak"]))
+    if intent == "with_without" and query.shape == "grouped" and query.group == "presence":
+        return _read_log(lambda: read_with_without(con, query, stated=STATED_SCOPING["with_without"]))
     return None
 
 

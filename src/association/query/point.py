@@ -1020,7 +1020,7 @@ def _default_player_matchup(scope: Scope) -> Reading:
 def _default_with_without(scope: Scope) -> Reading:
     """``with_without``'s default point: a team's record in the games named
     teammates played against the games they missed - the team relation's
-    ``presence`` group (``compose.team._compile_team_presence``) - with the
+    ``presence`` group (``compose.team.compile_team_presence``) - with the
     subject's averages in each where a player is named. The retired
     template's own early refusal is the point's (ROADMAP plan item 6, step
     (g)): no teammate to divide by - the teammates come from ``without`` or

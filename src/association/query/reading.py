@@ -59,7 +59,7 @@ Group = Literal["none", "venue", "starter", "season", "season_type", "month", "m
 """``"none"`` or a key of :data:`~association.query.compose.core.GROUPS` (a
 test holds the two to the same names) - or ``"presence"``, the team
 relation's own group: a team's games divided by whether named teammates
-played (``with_without``'s retired template, ``compose.team._compile_team_presence``)
+played (``with_without``'s retired template, ``compose.team.compile_team_presence``)
 - or ``"period"``, the player relation's own: each game divided into its
 four quarters, one group per quarter over the same games
 (``compose.core._compile_by_period``; "Jokic points by quarter").

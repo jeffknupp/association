@@ -304,7 +304,7 @@ def test_a_figure_the_rebuild_gets_wrong_is_left_out_rather_than_averaged_in(reb
 
 
 def test_a_teammate_in_a_rebuilt_game_is_not_counted_as_absent(rebuilt_league: TemplateContext) -> None:
-    """The other half of the P1: `_with_without_games` asked for minutes too,
+    """The other half of the P1: `_with_without_games` (now `presence_games_sql`) asked for minutes too,
     so a teammate who played a rebuilt game read as out and the game was
     counted on the "without" side."""
     result = with_without(rebuilt_league, Reading.from_slots(_slots(team="Boston Celtics", without="Jayson Tatum")))
