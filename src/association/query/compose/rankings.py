@@ -205,6 +205,12 @@ def read_leaderboard(con: duckdb.DuckDBPyConnection, q: Query, *, stated: frozen
         span = Span(season=found.season, season_type=found.season_type)
         notes = (Note("definition", {"term": "most_recent_team"}),) if ranking.traded else ()
         facts["team"] = found.team_name
+        if scope.season is None:
+            # The season was the reader's choice (the latest on record), not
+            # the question's: recorded as the decision it is, said by the
+            # span the heading names anyway (Jeff, 2026-10-05: the default is
+            # visible there and a season named reaches the alternative).
+            decisions = (*decisions, Decided(kind="season_default", field="season", chose=found.season, why="latest_on_record", facts={"season_type": found.season_type or 2}))
     return Result(subject="every player", relation="everyone", span=span, parts=(Part(body=ranking.body),), notes=notes, decisions=decisions, facts=facts)
 
 

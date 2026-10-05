@@ -71,6 +71,7 @@ DECISION_KINDS: dict[str, str] = {
     "also_matched": "the best match was answered; others matched too",
     "season_redirected": "the season read by default holds nothing for him; the seasons that do",
     "season_fallback": "no games this season, so an earlier one was read",
+    "season_default": "no season named, so the latest on record was read - said as the span the heading names",
     "minimum": "the fewest games or attempts a ranking required",
     "cut": "how many qualified, and how many are shown",
 }
@@ -108,6 +109,7 @@ FACTS: dict[str, frozenset[str]] = {
     "name_left_out": frozenset({"names"}),
     "also_matched": frozenset(),
     "season_redirected": frozenset({"first", "last", "what"}),
+    "season_default": frozenset({"season_type"}),
     "season_fallback": frozenset({"games", "season_type"}),
     "minimum": frozenset({"of", "column"}),
     "cut": frozenset({"total"}),

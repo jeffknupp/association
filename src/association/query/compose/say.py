@@ -182,6 +182,8 @@ def decision_phrase(each: Decided, **said_with: Any) -> str:
     """
     if each.kind == "minimum":
         text = f" (minimum {each.chose:,} {each.facts['of']})"
+    elif each.kind == "season_default":
+        text = season_phrase(int(each.chose), int(each.facts["season_type"]))
     elif each.kind == "season_fallback":
         text = f"No games this season, so these are his most recent {said_with['games']}{said_with['at']}, from the {said_with['season_label']}."
     elif each.kind == "season_redirected":
@@ -1531,6 +1533,11 @@ def say_leaderboard(result: Result) -> TemplateResult:
     season = result.span.season
     assert season is not None
     period = season_phrase(season, result.span.season_type or 2)
+    for each in result.decisions:
+        if each.kind == "season_default":
+            # The heading's own span phrase, written through the decision so
+            # the answer records that the season was chosen, not asked.
+            period = decision_phrase(each)
     where = f"the {facts['team']}" if facts["team"] else "the league"
     # The remark beneath the table is written before the table's qualifier,
     # in the order the template wrote them.
