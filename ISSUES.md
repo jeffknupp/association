@@ -265,6 +265,13 @@ those were found.
 - **Source:** ours.
 - **GitHub:** #270
 
+### A date written as numbers is not read: "sga game log on 2026-01-02" lists his last 10 games, "sga fingerprint on 2026-01-02" draws his season
+- **Found:** 2026-10-05, Phase 2 step 5 (the NetPoints charts), measuring synthetic fingerprint wordings.
+- **Evidence:** through the whole agent on the main warehouse, normalizer stubbed to names `["sga"]`, `ASSOCIATION_TODAY=2026-09-30`, at `70eba2b`: "sga game log on 2026-01-02" reads `game_log {'player': 'sga', 'season_type': 2}` (no `date`, no season) and answers "Shai Gilgeous-Alexander, last 10 of 68 games of the 2026 regular season: ..."; "sga points on 2026-01-02" answers his 2026 season average (31.1 in 68 games); "sga fingerprint on 2026-01-02" draws his 2026 season fingerprint - where "sga fingerprint on january 2, 2026" reads `date: '2026-01-02'` and is refused in the fingerprint's own words, and "sga points on january 2, 2026" reads the date. `router._validate_date` reads only a month name (`_CALENDAR_DATE`); an ISO date, and a bare "1/2/2026" outside a range word (`_NUMERIC_DATE_RANGE` needs "since"/"after"/"from"), are read as nothing.
+- **User sees:** a wrong answer - a window, a season line or a season's chart where one dated game was asked, the heading naming the span it did read.
+- **Next step:** read `YYYY-MM-DD` (and `M/D/YYYY` outside a range word, which a shooting line like "7/14" never has a year for) as a day in `router._validate_date`; a case per form in `tests/query/test_parser.py`; the readings population will move for every question holding one (none of the 628 recorded questions does).
+- **Source:** ours.
+
 ## P2: misleading or incomplete
 
 ### A team that is the SUBJECT, named by a franchise's old name, is read without the question's season: "what was the bobcats record against the hornets in 2012" asks "did you mean New Orleans Hornets or Charlotte Bobcats?"
