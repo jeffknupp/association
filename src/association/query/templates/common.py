@@ -50,7 +50,6 @@ from ..player_games import (  # noqa: F401 - the relation's names, re-exported f
 from ..player_games import _tenure_clause as _relation_tenure_clause
 from ..reading import DEFAULT_LIMIT as DEFAULT_LIMIT
 from ..reading import FILLER_PLAYER_WORDS as FILLER_PLAYER_WORDS
-from ..reading import MAX_LIMIT as MAX_LIMIT
 from ..reading import OWN_TEAM_RESTORABLE_INTENTS as OWN_TEAM_RESTORABLE_INTENTS
 from ..reading import PLAYER_REQUIRED_INTENTS as PLAYER_REQUIRED_INTENTS
 from ..reading import POSITIONS as POSITIONS

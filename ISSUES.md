@@ -3686,24 +3686,6 @@ those were found.
   for the traded-player dedup.
 - **GitHub:** #93
 
-### `MAX_LIMIT` is 100 in one module and 50 in another
-- **Found:** 2026-09-15, in the cross-module constant scan written after #6/#9
-- **Evidence:** `query/leaderboard.py:38` declares `MAX_LIMIT = 100` (the cap
-  `run_leaderboard` clamps a limit to); `query/templates/common.py` declares
-  `MAX_LIMIT = 50` (what `_clamp_limit` clamps a template to). Same name, two
-  different facts, neither importing the other.
-- **User sees:** nothing wrong today - each is used only in its own module, and
-  both caps are deliberate. The risk is a reader or an agent who learns one and
-  applies it to the other, or a future refactor that "deduplicates" them into
-  whichever value it happened to see first.
-- **Next step:** rename by what each governs - `AGENT_MAX_LIMIT` and
-  `TEMPLATE_MAX_LIMIT` - rather than unifying them, since the two caps are
-  answering different questions. Then drop the name from `ALLOWED` in
-  `scripts/check_duplicate_names.py`.
-- **Priority note:** P4 because no answer is wrong; it is a trap laid for the
-  next change, not a fault in this one.
-- **GitHub:** #81
-
 ### One rule, two hand-maintained copies: the traded-player dedup
 - **Found:** 2026-09-15, while fixing #9
 - **Evidence:** "prefer the combined row over the per-team stints" is written

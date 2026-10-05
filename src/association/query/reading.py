@@ -711,10 +711,16 @@ DEFAULT_LIMIT = 5
 """
 
 MAX_LIMIT = 50
-"""The most rows a question's ``limit`` reaches (:func:`_clamp_limit`).
+"""The most rows a question's ``limit`` reaches (:func:`_clamp_limit`): the
+games a log lists, the players or teams a ranking lists, the runs a streak
+listing shows. One cap for every shape; the season-line ranking
+(``leaderboard.run_leaderboard``) applies it to its SQL as well.
 
 .. versionchanged:: 5.0.0
-   Lives on the reader's side (``templates.common`` re-exports it).
+   Lives on the reader's side, and is the only one: ``leaderboard`` had a
+   ``MAX_LIMIT`` of its own (100, for the retired agent's model-supplied
+   count) that no answer reached, since every ranking's count was clamped
+   to this one first.
 """
 
 DEFAULT_GAME_LOG_LIMIT = 10

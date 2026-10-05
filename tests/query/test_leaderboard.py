@@ -361,10 +361,12 @@ def seeded(db_path: str) -> duckdb.DuckDBPyConnection:
 
 
 def test_get_leaderboard_limit_is_clamped(seeded: duckdb.DuckDBPyConnection) -> None:
-    from association.query.leaderboard import MAX_LIMIT
+    """A direct caller's count is held to the reader's one cap
+    (``reading.MAX_LIMIT``) in the SQL itself - 200 players qualify."""
+    from association.query.reading import MAX_LIMIT
 
     result = lb(seeded, metric="avg_points", season=2026, min_sample=1, limit=5000)
-    assert result["row_count"] <= MAX_LIMIT
+    assert result["row_count"] == MAX_LIMIT == 50
 
 
 def test_the_season_lines_door_ranks_with_ties_sharing_a_place(db_path: str) -> None:

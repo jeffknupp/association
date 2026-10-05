@@ -1634,9 +1634,9 @@ prompted them:
 
 **One concept, one definition.** Ruff's F811 and mypy's `no-redef` catch a name
 defined twice in one module and are blind to the same name in two - so
-`MAX_LIMIT` is 100 in `query/leaderboard.py` and 50 in `query/templates/common.py`,
-and the NBA's five-hour Eastern offset was once declared six times under five
-names.
+`MAX_LIMIT` was 100 in `query/leaderboard.py` and 50 in `query/templates/common.py`
+until 2026-10-05 (one cap now, `reading.MAX_LIMIT`), and the NBA's five-hour
+Eastern offset was once declared six times under five names.
 `scripts/check_duplicate_names.py` reports cross-module constant collisions
 against an allowlist of the ones already filed, so it fails only on a new one.
 It is deliberately name-only: comparing values pairs `DEFAULT_LIMIT` with

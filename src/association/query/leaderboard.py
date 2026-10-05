@@ -38,10 +38,13 @@ from .measures import resolve_metric as resolve_metric
 from .metrics import EXTRA_FIELD_COLUMNS, LEADERBOARD_METRICS, SEASON_TYPE_LABELS, CareerAggregate, LeaderboardMetric
 from .result import Grouped
 
-# `limit` is model-supplied on the agent path (the template clamps its own):
-# a leaderboard of 5,000 helps nobody and floods the context window. Applied to
-# the SQL LIMIT itself, so the fetch below cannot return more than this.
-MAX_LIMIT = 100
+# The most rows a ranking lists: the reader's one cap on a question's count
+# (``reading.MAX_LIMIT``, which ``_clamp_limit`` applies before a ranking is
+# asked for). Applied to the SQL LIMIT itself as well, so a direct caller's
+# count cannot fetch more. It was a cap of its own, 100, for the retired
+# agent's model-supplied ``limit``; with the agent gone the ranking reader's
+# clamped count (``compose.rankings``) is the only one that reaches here.
+from .reading import MAX_LIMIT
 
 # What a `scales_with_schedule` floor was calibrated against - see
 # `metrics.LeaderboardMetric.scales_with_schedule` and `default_min_sample`

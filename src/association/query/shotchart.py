@@ -379,7 +379,7 @@ def _render_for_player_filename(
 
     .. versionchanged:: 4.4.0
        A multi-game window (``event_ids``) names its size and its two ends -
-       not every id, which could run to :data:`association.query.templates.common.MAX_LIMIT`.
+       not every id, which could run to :data:`association.query.reading.MAX_LIMIT`.
     """
     safe_name = "".join(c if c.isalnum() else "_" for c in resolved_name.lower())
     scope = "_".join(
