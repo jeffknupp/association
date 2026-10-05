@@ -321,9 +321,9 @@ def test_a_question_nothing_reads_is_refused_naming_why(monkeypatch: pytest.Monk
 
     answer = ask_routed(agent, "who had the most triple-doubles?", slots_route("other", {}))
     assert answer.answered_by == "refused"
-    assert answer.text == refusal_text("intent 'other' has no template yet")
+    assert answer.text == refusal_text("intent 'other' has no reader")
     assert answer.intent is None and answer.data is None
-    assert agent.unanswered == "intent 'other' has no template yet"
+    assert agent.unanswered == "intent 'other' has no reader"
 
     # A reader's own refusal while reading, with its reason: a fingerprint of
     # nobody (the compiler's since Phase 2's slice (v); with_without,
@@ -427,7 +427,7 @@ def test_an_unported_intent_is_refused_by_name(tmp_path: Path) -> None:
     """A shape with no template is refused naming the intent, in seconds."""
 
     answer = ask_routed(_agent(tmp_path), "who had the most triple-doubles?", slots_route("other", {}))
-    assert answer.answered_by == "refused" and "intent 'other' has no template yet" in answer.text
+    assert answer.answered_by == "refused" and "intent 'other' has no reader" in answer.text
 
 
 def test_a_reader_failure_is_refused_rather_than_erroring(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -518,7 +518,7 @@ def test_the_refusal_names_what_the_fast_path_could_not_answer(tmp_path: Path) -
 
     agent = _agent_with_players(tmp_path)
     answer = ask_routed(agent, "who had the most triple-doubles?", slots_route("other", {}))
-    assert answer.text == refusal_text("intent 'other' has no template yet") == "Nothing here answers this question: intent 'other' has no template yet."
+    assert answer.text == refusal_text("intent 'other' has no reader") == "Nothing here answers this question: intent 'other' has no reader."
 
 
 def test_a_shape_nothing_reads_is_refused_with_its_cause(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

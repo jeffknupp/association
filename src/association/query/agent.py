@@ -417,7 +417,7 @@ class Agent:
         if refusal is not None:
             history.log(f"  -> (refusal) {refusal.data['refused']}: nothing here reads that shape")
             return reading.intent, refusal
-        self.unanswered = f"intent {reading.intent!r} has no template yet"
+        self.unanswered = f"intent {reading.intent!r} has no reader"
         return None
 
     def _run_compiled(self, question: str, reading: Reading, history: RunHistory) -> tuple[str, Reply] | None:
