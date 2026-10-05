@@ -24,6 +24,7 @@ it does for the templates that have not retired.
 
 from __future__ import annotations
 
+import dataclasses
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any, Literal
@@ -120,6 +121,29 @@ class Scalar:
 
 
 @dataclass(frozen=True, kw_only=True)
+class Decided:
+    """One decision the read made where the question left a field open
+    (``ROADMAP-TYPES.md``, "Outcome": ``decisions``): the ``kind`` from
+    :data:`~association.query.notes.DECISION_KINDS`, the ``field`` it
+    settled, what the question typed (``before``), what was chosen and
+    what it could have been, and the facts the sentence is made of - never
+    the sentence. The sayer phrases it once and records it through
+    :func:`~association.query.notes.decided`, as it does a :class:`Note`.
+
+    .. versionadded:: 5.0.0
+    """
+
+    kind: str
+    field: str
+    chose: Any
+    before: Any = None
+    instead_of: tuple[Any, ...] = ()
+    why: str = ""
+    # ``dataclasses.field`` by its module: the attribute above named ``field`` shadows the import.
+    facts: Mapping[str, Any] = dataclasses.field(default_factory=dict)
+
+
+@dataclass(frozen=True, kw_only=True)
 class Part:
     """One part of an answer: its role and its body. The first part is the
     headline's.
@@ -151,7 +175,8 @@ class Result:
     """What one read produced. ``subject`` names who it is about (a player,
     a team), ``relation`` which relation it read; ``parts`` hold the rows
     or figures, ``notes`` what the sayer must say about the data (kinds and
-    facts, never sentences), ``facts`` the plain values a shape's sayer
+    facts, never sentences), ``decisions`` what it chose where the question
+    left a field open (:class:`Decided`), ``facts`` the plain values a shape's sayer
     needs beside them (a team log's ``stat`` for its total line). ``empty``
     is the sentence a read with no rows gives its reason with - see the
     module docstring for why it is a sentence still.
@@ -166,6 +191,7 @@ class Result:
     window: Window | None = None
     parts: tuple[Part, ...] = ()
     notes: tuple[Note, ...] = ()
+    decisions: tuple[Decided, ...] = ()
     facts: Mapping[str, Any] = field(default_factory=dict)
     empty: str | None = None
 

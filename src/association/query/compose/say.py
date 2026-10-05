@@ -24,7 +24,7 @@ from association.query.conditions import _SPLIT_TITLES, _margin, _split_cells, _
 from association.query.notes import Note, decided, note
 from association.query.player_games import PERIOD_LOG_COLUMNS, _joined, period_columns
 from association.query.reading import DEFAULT_GAME_LOG_LIMIT, _clamp_limit
-from association.query.result import Result, Rows, Scalar
+from association.query.result import Decided, Result, Rows, Scalar
 from association.query.shotchart import UNSEPARABLE_SHOT_VALUES
 from association.query.templates.common import PLAYER_STAT_COLUMNS, SEASON_TYPE_NAMES, STAT_LABELS, TemplateResult, count_games, format_value, season_label, season_phrase
 from association.query.templates.players import MADE_STAT_ATTEMPTS, SHOOTING_STATS
@@ -92,6 +92,22 @@ def _say_floor(facts: dict[str, Any]) -> str:
     if "earliest" in facts:
         return f"Box scores begin with the {season_label(first)} season, so his {facts['earliest']}-{first - 1} seasons are not counted."
     return f" Box scores start with the {first} {facts['what']}; anything earlier is not counted."
+
+
+def decision_phrase(each: Decided, **said_with: Any) -> str:
+    """ONE phrase per decision kind (:data:`~association.query.notes.DECISION_KINDS`),
+    recorded through :func:`~association.query.notes.decided` as it is
+    said - the decision counterpart of :func:`note_phrase`. ``said_with``
+    is what the sentence needs from the answer around it (a count the
+    heading also states), never a fact the decision should carry itself.
+
+    .. versionadded:: 5.0.0
+    """
+    if each.kind == "season_fallback":
+        text = f"No games this season, so these are his most recent {said_with['games']}{said_with['at']}, from the {said_with['season_label']}."
+    else:
+        raise ValueError(f"no phrase for decision kind {each.kind!r}")
+    return decided(each.kind, text, field=each.field, chose=each.chose, before=each.before, instead_of=each.instead_of, why=each.why, **each.facts)
 
 
 def note_phrase(each: Note, *, narrowing: str = "") -> str:
@@ -857,11 +873,9 @@ def say_period_split(result: Result) -> TemplateResult:
         return TemplateResult(data={**data, "message": message, "headline": message}, answer=message)
     data |= dict(body.summary)
     header = _period_header(result, games, season_label, vs, at)
-    fallback = result.facts["fallback"]
     extra = None
-    if fallback is not None:
-        said = f"No games this season, so these are his most recent {len(games)}{at}, from the {season_label}."
-        extra = decided("season_fallback", said, field="season", chose=fallback["chose"], before=fallback["before"], games=fallback["games"], season_type=fallback["season_type"])
+    for each in result.decisions:
+        extra = decision_phrase(each, games=len(games), at=at, season_label=season_label)
     caveat = period_caveat(list(result.notes))
     data["headline"] = header.split("\n")[0]
     data["notes"] = [*([extra] if extra else []), *([caveat.strip()] if caveat else [])]

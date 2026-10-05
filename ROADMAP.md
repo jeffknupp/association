@@ -338,6 +338,39 @@ season line last among the player shapes, charts last of all); inside a
 slice the intents go one at a time, each its own commit. A slice that
 turns up a P1 fixes it in the code that exists before deleting that code.
 
+**Open from step 1, for the next slices to settle (the agents' notes,
+2026-10-04).** What the five ported readers still carry against the
+target types, named so a slice takes it over rather than copies it:
+
+- **A sayer branches on the body's type, and on nothing else**
+  (`ROADMAP-TYPES.md`, "The shapes"). Two places break that today: a
+  one-quarter `period_split` Result is a `Rows` body recognized in
+  `say()` by a `"period"` key in `Result.facts`, because `Rows` has no
+  `by` and the period is a cell the Result does not carry; and
+  `read_ported` dispatches by INTENT (`game_log`, `record_when`, ...)
+  before the sayer sees the body. The draft's answer is that the period
+  is a cell (`Part.cells`) and one `rows` sayer says every log; the
+  slice that declares `Cell` (Phase 3's reading, or slice (ii) if it
+  needs it first) collapses the two log sayers into one.
+- **A decision rides on `Result.decisions` as a value** - decided
+  2026-10-04 after step 1 (f) and (e): `result.Decided(kind, field,
+  chose, before, instead_of, why, facts)`, phrased ONCE by
+  `say.decision_phrase` and recorded through `notes.decided`, exactly as a
+  `Note` is through `note_phrase`. The period redirect's `season_fallback`
+  is the first; a slice that finds a `decided(...)` in a template body
+  moves it onto the Result the same way, never into `facts`.
+- **Words the Result still carries, on purpose:** `Narrowing.phrase` (the
+  relation's `filters()`), `Span.years`/`Span.phrase`, and the `empty`
+  sentence (the shared "which fact is missing" writer). Each goes when a
+  sayer words it from cells; the Result's docstring lists them.
+- **`STATED_SCOPING` stays until Phase 3** (one table declares, for every
+  compiled intent, which narrowings the retired words state); the
+  planner's cell checks take it over with the Reading's typed filters.
+- **The team log and the team splits read the team relation themselves:**
+  the team compiler has no `rows` or `grouped` compile. Slice (iv) gives it
+  them and the two readers execute the compiled statement like the
+  player's.
+
 **Phase 3 - One reader.** A typed reader with claimed spans is built
 beside the old one and run in shadow: its Reading is projected to the old
 shape and diffed on the whole corpus and on every reader test. The router's

@@ -46,7 +46,7 @@ from association.query.measures import period_split_measure
 from association.query.notes import Note
 from association.query.player_games import PERIOD_COLUMNS, PERIOD_RATES, REGULATION_QUARTERS, Narrowed, period_agreement_notes, period_columns, period_distrust, period_rate
 from association.query.reading import STARTER_SIDES, Scope, period_narrowing
-from association.query.result import Grouped, Narrowing, Part, Result, Rows, Span
+from association.query.result import Decided, Grouped, Narrowing, Part, Result, Rows, Span
 from association.query.templates.common import TemplateResult, TemplateUnsupported, measure_filters, relation_window, scoped_games, span_of, unhonored_scoping
 
 from .core import Compiled, Query, compile_over, compile_query, rows_of
@@ -187,10 +187,12 @@ def _period_unread(games: list[dict[str, Any]], measure: str) -> bool:
 
 
 def _period_log_result(
-    compiled: Compiled, scope: Scope, rows: list[dict[str, Any]], season: int, period_label: str, measure: str, where: dict[str, Any], *, fallback: dict[str, Any] | None = None
+    compiled: Compiled, scope: Scope, rows: list[dict[str, Any]], season: int, period_label: str, measure: str, where: dict[str, Any], *, fallback: Decided | None = None
 ) -> Result | TemplateResult:
     """The games read, the figures over them and the caveats - or, with no
-    games, the Result the sayer says "no games found" from."""
+    games, the Result the sayer says "no games found" from. ``fallback`` is
+    the redirect's decision (:class:`~association.query.result.Decided`),
+    carried on ``Result.decisions``."""
     assert compiled.player is not None
     games = _period_games(rows, measure)
     if games and _period_unread(games, measure):
@@ -207,7 +209,6 @@ def _period_log_result(
         "full_line": scope.stat is None,
         "order": scope.order,
         "limit": scope.limit,
-        "fallback": fallback,
     }
     body = Rows(columns=PERIOD_COLUMNS, rows=tuple(games), summary=_period_figures(games, measure) if games else {})
     return Result(
@@ -217,6 +218,7 @@ def _period_log_result(
         narrowing=_period_narrowing(compiled.narrowed, where["venue"]),
         parts=(Part(body=body),),
         notes=tuple(notes),
+        decisions=(fallback,) if fallback is not None else (),
         facts=facts,
     )
 
@@ -265,7 +267,7 @@ def _period_redirect(con: duckdb.DuckDBPyConnection, read: Query, compiled: Comp
     if _period_unread(_period_games(rows, measure), measure):
         return None
     where = _period_where(scope, widened.narrowed)
-    fallback = {"chose": season, "before": span.season, "games": len(rows), "season_type": span.season_type}
+    fallback = Decided(kind="season_fallback", field="season", chose=season, before=span.season, facts={"games": len(rows), "season_type": span.season_type})
     return _period_log_result(widened, scope, rows, season, period_label, measure, where, fallback=fallback)
 
 

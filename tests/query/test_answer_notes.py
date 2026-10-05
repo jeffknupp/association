@@ -125,8 +125,9 @@ def test_a_fact_is_a_plain_value_whoever_is_listening() -> None:
 
 def _remark_calls() -> list[tuple[str, int, str, ast.Call]]:
     """Every ``note(...)`` and ``decided(...)`` call under ``src``, and every
-    ``Note("kind", {...})`` a reader builds for the sayer to say
-    (``compose.say``, which records it under the kind it was built with):
+    ``Note("kind", {...})`` or ``Decided(kind="...", ...)`` a reader builds
+    for the sayer to say (``compose.say``, which records it under the kind
+    it was built with):
     the file, the line, which of the two, and the call. A
     ``note(each.kind, ...)`` - a call whose kind is not a literal because
     it re-records a Note already built with one (the sayer,
@@ -137,7 +138,21 @@ def _remark_calls() -> list[tuple[str, int, str, ast.Call]]:
         if path.name == "notes.py":
             continue
         for node in ast.walk(ast.parse(path.read_text())):
-            if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.args):
+            if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)):
+                continue
+            if node.func.id == "Decided":
+                # A reader's Decided(kind="...", field=..., chose=..., facts={...}): read
+                # as a decided() call with the kind first and the facts as keywords.
+                by_name = {k.arg: k.value for k in node.keywords if k.arg}
+                kind = by_name.get("kind")
+                facts = by_name.get("facts")
+                if isinstance(kind, ast.Constant):
+                    keywords = [ast.keyword(arg=n, value=v) for n, v in by_name.items() if n in {"field", "chose", "before", "instead_of", "why"}]
+                    if isinstance(facts, ast.Dict):
+                        keywords += [ast.keyword(arg=str(key.value), value=value) for key, value in zip(facts.keys, facts.values, strict=True) if isinstance(key, ast.Constant)]
+                    found += [(str(path.relative_to(root)), node.lineno, "decided", ast.Call(func=ast.Name(id="decided", ctx=ast.Load()), args=[kind], keywords=keywords))]
+                continue
+            if not node.args:
                 continue
             if node.func.id in {"note", "decided"} and not (isinstance(node.args[0], ast.Attribute) and node.args[0].attr == "kind"):
                 # `note(each.kind, ...)` re-records a Note a reader built with a literal kind (the sayer, and _box_score_notes).
