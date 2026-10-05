@@ -58,20 +58,20 @@ from typing import Any
 
 import duckdb
 
-from association.nba.franchises import season_name_sql
-
 from .measures import STAT_ALIASES as STAT_ALIASES
-from .team_games import TEAM_GAMES_SQL
+from .team_games import TEAM_GAMES_SQL as TEAM_GAMES_SQL
 
 
 @dataclass(frozen=True)
 class TeamMetric:
     """One thing a team can be measured or ranked by.
 
-    ``expression`` is SQL over the per-team row :func:`season_table` builds -
-    its column names, never a slot value. None marks the two record metrics,
+    ``expression`` is SQL over the per-team row
+    :func:`association.query.team_seasons.team_lines_statement` builds - its
+    column names, never a slot value. None marks the two record metrics,
     which come from ``standings`` (or ``games`` for a postseason) rather than
-    from ``team_season_stats`` and are built by :func:`record_table`.
+    from ``team_season_stats`` and are read by
+    :func:`association.query.team_seasons.team_records_statement`.
 
     ``lower_is_better`` decides what "best" means: True for a stat a team wants
     little of (turnovers, points allowed), False for one it wants more of, and
@@ -258,7 +258,7 @@ def games_scope(season_type: int, season: int | None) -> tuple[str, list[Any]]:
 class TeamLine:
     """One team's season, every :data:`TEAM_METRICS` value that is not a
     record, keyed by metric. A value is None where it cannot be computed
-    honestly - see :func:`season_table`.
+    honestly - see :func:`association.query.team_seasons.team_lines`.
 
     .. versionadded:: 2.1.0
     """
@@ -267,52 +267,6 @@ class TeamLine:
     games: int
     listed_games: int | None
     values: dict[str, float | None] = field(default_factory=dict)
-
-
-def season_table(con: duckdb.DuckDBPyConnection, season: int, season_type: int) -> list[TeamLine]:
-    """Every team's line for one season, from ``team_season_stats`` with
-    opponent points from ``real_games``.
-
-    A metric needing opponent points is None for a team whose games in
-    ``real_games`` do not number its ``gamesPlayed`` - the points allowed would
-    cover a different set of games than everything they are divided by. A
-    metric is None for every team before its own ``first_season``.
-
-    .. versionadded:: 2.1.0
-    """
-    scope, params = games_scope(season_type, season)
-    metrics = {key: metric for key, metric in TEAM_METRICS.items() if metric.expression is not None}
-    selected = ", ".join(f"{metric.expression} AS {key}" for key, metric in metrics.items())
-    sql = f"""
-{TEAM_GAMES_SQL},
-opp AS (
-    SELECT team_id, count(*) AS games, sum(opponent_score) AS opp_points FROM team_games WHERE {scope} GROUP BY team_id
-),
-base AS (
-    SELECT {season_name_sql("t.team_id", "ts.season", "t.display_name")} AS team, ts.gamesPlayed, o.games AS listed_games,
-           CASE WHEN o.games = ts.gamesPlayed THEN o.opp_points END AS opp_points,
-           ts.points, {POSSESSIONS} AS possessions, {TURNOVERS} AS turnovers_all,
-           ts.avgPoints, ts.fieldGoalPct, ts.threePointFieldGoalPct, ts.freeThrowPct, ts.trueShootingPct, ts.effectiveFGPct,
-           ts.avgRebounds, ts.avgOffensiveRebounds, ts.avgDefensiveRebounds, ts.avgAssists, ts.avgSteals, ts.avgBlocks, ts.avgFouls,
-           ts.avgThreePointFieldGoalsMade, ts.avgThreePointFieldGoalsAttempted, ts.avgFieldGoalsMade, ts.avgFreeThrowsMade, ts.avgFreeThrowsAttempted,
-           ts.pointsInPaint, ts.fastBreakPoints
-    FROM team_season_stats ts
-    JOIN teams t ON t.team_id = ts.team_id
-    LEFT JOIN opp o ON o.team_id = ts.team_id
-    WHERE ts.season = ? AND ts.season_type = ? AND ts.gamesPlayed > 0
-)
-SELECT team, gamesPlayed, listed_games, {selected} FROM base ORDER BY team
-"""
-    rows = con.execute(sql, [*params, season, season_type]).fetchall()
-    lines = []
-    for row in rows:
-        team, games, listed = row[0], row[1], row[2]
-        values: dict[str, float | None] = {}
-        for index, (key, metric) in enumerate(metrics.items()):
-            value = row[3 + index]
-            values[key] = None if value is None or season < metric.first_season else float(value)
-        lines.append(TeamLine(team=team, games=int(games), listed_games=None if listed is None else int(listed), values=values))
-    return lines
 
 
 @dataclass(frozen=True)
@@ -333,27 +287,34 @@ class TeamRecord:
         return self.wins / games if games else 0.0
 
 
-def record_table(con: duckdb.DuckDBPyConnection, season: int, season_type: int) -> list[TeamRecord]:
-    """Every team's record for one season: ``standings`` for a regular season,
-    the authoritative source, and a tally of ``real_games`` for a postseason,
-    which standings do not cover.
+def season_table(con: duckdb.DuckDBPyConnection, season: int, season_type: int) -> list[TeamLine]:
+    """Every team's line for one season (:func:`association.query.team_seasons.team_lines_statement`).
 
     .. versionadded:: 2.1.0
+
+    .. versionchanged:: 5.0.0
+       Its statement is the team-season relation's; this runs it for the
+       ``team_leaderboard`` template until that retires.
     """
-    if season_type == 2:
-        rows = con.execute(
-            f"SELECT {season_name_sql('t.team_id', 's.season', 't.display_name')}, s.wins, s.losses "
-            "FROM standings s JOIN teams t ON t.team_id = s.team_id WHERE s.season = ? AND s.wins + s.losses > 0 ORDER BY 1",
-            [season],
-        ).fetchall()
-    else:
-        scope, params = games_scope(season_type, season)
-        rows = con.execute(
-            f"{TEAM_GAMES_SQL} SELECT {season_name_sql('t.team_id', 'tg.season', 't.display_name')}, sum(won::INT), sum((NOT won)::INT) "
-            f"FROM team_games tg JOIN teams t ON t.team_id = tg.team_id WHERE {scope} GROUP BY 1 ORDER BY 1",
-            params,
-        ).fetchall()
-    return [TeamRecord(team=name, wins=int(wins), losses=int(losses)) for name, wins, losses in rows]
+    from association.query.team_seasons import team_lines, team_lines_statement
+
+    statement = team_lines_statement(season, season_type)
+    return team_lines(con.execute(statement.sql, statement.params).fetchall(), season)
+
+
+def record_table(con: duckdb.DuckDBPyConnection, season: int, season_type: int) -> list[TeamRecord]:
+    """Every team's record for one season (:func:`association.query.team_seasons.team_records_statement`).
+
+    .. versionadded:: 2.1.0
+
+    .. versionchanged:: 5.0.0
+       Its statements are the team-season relation's; this runs them for the
+       ``team_leaderboard`` template until that retires.
+    """
+    from association.query.team_seasons import team_records, team_records_statement
+
+    statement = team_records_statement(season, season_type)
+    return team_records(con.execute(statement.sql, statement.params).fetchall())
 
 
 def ranked(values: dict[str, float], descending: bool) -> list[tuple[int, str, float]]:

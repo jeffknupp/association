@@ -23,7 +23,104 @@ from __future__ import annotations
 
 from typing import Any
 
+from association.nba.franchises import season_name_sql
 from association.query.season_line import Statement
+from association.query.team_games import TEAM_GAMES_SQL
+from association.query.team_metrics import POSSESSIONS, TEAM_METRICS, TURNOVERS, TeamLine, TeamRecord, games_scope
+
+# --- the season line and the standings (team_seasons) ----------------------------
+
+
+def team_lines_statement(season: int, season_type: int) -> Statement:
+    """Every team's line for one season, from ``team_season_stats`` with
+    opponent points from ``real_games``: ``(team, gamesPlayed, listed_games,
+    <each TEAM_METRICS value that is not a record>)``, read by
+    :func:`team_lines`.
+
+    A metric needing opponent points is NULL for a team whose games in
+    ``real_games`` do not number its ``gamesPlayed`` - the points allowed would
+    cover a different set of games than everything they are divided by.
+
+    .. versionadded:: 5.0.0
+       ``team_metrics.season_table``'s statement, moved whole.
+    """
+    scope, params = games_scope(season_type, season)
+    selected = ", ".join(f"{metric.expression} AS {key}" for key, metric in _line_metrics().items())
+    sql = f"""
+{TEAM_GAMES_SQL},
+opp AS (
+    SELECT team_id, count(*) AS games, sum(opponent_score) AS opp_points FROM team_games WHERE {scope} GROUP BY team_id
+),
+base AS (
+    SELECT {season_name_sql("t.team_id", "ts.season", "t.display_name")} AS team, ts.gamesPlayed, o.games AS listed_games,
+           CASE WHEN o.games = ts.gamesPlayed THEN o.opp_points END AS opp_points,
+           ts.points, {POSSESSIONS} AS possessions, {TURNOVERS} AS turnovers_all,
+           ts.avgPoints, ts.fieldGoalPct, ts.threePointFieldGoalPct, ts.freeThrowPct, ts.trueShootingPct, ts.effectiveFGPct,
+           ts.avgRebounds, ts.avgOffensiveRebounds, ts.avgDefensiveRebounds, ts.avgAssists, ts.avgSteals, ts.avgBlocks, ts.avgFouls,
+           ts.avgThreePointFieldGoalsMade, ts.avgThreePointFieldGoalsAttempted, ts.avgFieldGoalsMade, ts.avgFreeThrowsMade, ts.avgFreeThrowsAttempted,
+           ts.pointsInPaint, ts.fastBreakPoints
+    FROM team_season_stats ts
+    JOIN teams t ON t.team_id = ts.team_id
+    LEFT JOIN opp o ON o.team_id = ts.team_id
+    WHERE ts.season = ? AND ts.season_type = ? AND ts.gamesPlayed > 0
+)
+SELECT team, gamesPlayed, listed_games, {selected} FROM base ORDER BY team
+"""
+    return Statement(sql, [*params, season, season_type])
+
+
+def _line_metrics() -> dict[str, Any]:
+    """The metrics a team's line carries: every one that is not a record."""
+    return {key: metric for key, metric in TEAM_METRICS.items() if metric.expression is not None}
+
+
+def team_lines(rows: list[tuple[Any, ...]], season: int) -> list[TeamLine]:
+    """:func:`team_lines_statement`'s rows as each team's line. A metric is
+    None for every team before its own ``first_season``.
+
+    .. versionadded:: 5.0.0
+       ``team_metrics.season_table``'s reading of its rows.
+    """
+    lines = []
+    for row in rows:
+        team, games, listed = row[0], row[1], row[2]
+        values: dict[str, float | None] = {}
+        for index, (key, metric) in enumerate(_line_metrics().items()):
+            value = row[3 + index]
+            values[key] = None if value is None or season < metric.first_season else float(value)
+        lines.append(TeamLine(team=team, games=int(games), listed_games=None if listed is None else int(listed), values=values))
+    return lines
+
+
+def team_records_statement(season: int, season_type: int) -> Statement:
+    """Every team's record for one season: ``standings`` for a regular season,
+    the authoritative source, and a tally of ``real_games`` for a postseason,
+    which standings do not cover - ``(team, wins, losses)``.
+
+    .. versionadded:: 5.0.0
+       ``team_metrics.record_table``'s two statements, moved whole.
+    """
+    if season_type == 2:
+        return Statement(
+            f"SELECT {season_name_sql('t.team_id', 's.season', 't.display_name')}, s.wins, s.losses "
+            "FROM standings s JOIN teams t ON t.team_id = s.team_id WHERE s.season = ? AND s.wins + s.losses > 0 ORDER BY 1",
+            [season],
+        )
+    scope, params = games_scope(season_type, season)
+    return Statement(
+        f"{TEAM_GAMES_SQL} SELECT {season_name_sql('t.team_id', 'tg.season', 't.display_name')}, sum(won::INT), sum((NOT won)::INT) "
+        f"FROM team_games tg JOIN teams t ON t.team_id = tg.team_id WHERE {scope} GROUP BY 1 ORDER BY 1",
+        params,
+    )
+
+
+def team_records(rows: list[tuple[Any, ...]]) -> list[TeamRecord]:
+    """A record statement's ``(team, wins, losses)`` rows as records.
+
+    .. versionadded:: 5.0.0
+    """
+    return [TeamRecord(team=name, wins=int(wins), losses=int(losses)) for name, wins, losses in rows]
+
 
 # --- the power index (team_snapshots) ------------------------------------------
 

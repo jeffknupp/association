@@ -20,13 +20,18 @@ from association.query.entities import Entity
 from association.query.notes import Note
 from association.query.reading import Scope, Unsupported
 from association.query.result import Grouped, Part, Result, Scalar, Span
+from association.query.team_metrics import DEFAULT_TEAM_LINE, TEAM_METRICS, TeamLine, TeamMetric, descending_for, ranked, resolve_team_metric
 from association.query.team_seasons import (
     BPI_CHANCES,
     BPI_SNAPSHOT_NAMES,
     snapshot_facts,
+    team_lines,
+    team_lines_statement,
     team_outlook_chosen,
     team_outlook_row_statement,
     team_outlook_snapshots_statement,
+    team_records,
+    team_records_statement,
 )
 from association.query.templates.common import TemplateResult, check_coverage, resolved_team, slot_season, unhonored_scoping
 from association.query.templates.teams import conference_refusal
@@ -182,3 +187,121 @@ def _team_outlook_result(team: Entity, season: int, postseason: bool, chosen: tu
     parts = (Part(body=Scalar(games=played, values=values)), Part(role="detail", body=Grouped(by="round", rows=rounds)))
     facts = {**facts, "snapshot": name, "kind": kind, "updated": str(updated), "teams_in_snapshot": teams}
     return Result(subject=team.name, relation="team", span=span, parts=parts, notes=tuple(notes), facts=facts)
+
+
+# --- a team's season line (team_stat) ----------------------------------------------
+
+#: The metrics counted over possessions, beneath which the formula is said.
+_POSSESSION_METRICS = frozenset({"offensive_rating", "defensive_rating", "net_rating", "pace"})
+
+
+def _team_stat_metric(scope: Scope) -> str | None:
+    """The metric the ``stat`` slot names through the whitelist
+    (``team_metrics.STAT_ALIASES``), ``None`` for no stat - and a word it does
+    not know declined rather than matched to something close."""
+    key = resolve_team_metric(scope.stat)
+    if key is None and scope.stat and scope.stat.strip():
+        raise Unsupported(f"no team metric for stat {scope.stat!r}")
+    return key
+
+
+def read_team_stat(con: duckdb.DuckDBPyConnection, q: TeamSeasonQuery, *, stated: frozenset[str]) -> Result | TemplateResult:
+    """One team's season numbers, each with its rank in the league, from the
+    team-season relation (:mod:`association.query.team_seasons`), as a
+    :class:`~association.query.result.Result` on a span whose ``source`` is
+    ``"team_seasons"``: a :class:`~association.query.result.Grouped` by
+    ``metric`` - each row a metric's key, value, rank and how many teams it
+    ranks among - for the one named (``facts["metric"]``) or for the
+    compact line (``team_metrics.DEFAULT_TEAM_LINE``) where none was; a
+    record as a :class:`~association.query.result.Scalar` of wins, losses
+    and the record's rank. Where nothing can be given, a Result with no
+    parts and ``facts["missing"]`` naming which fact is missing: the
+    metric's first season (``"metric_season"``), the team's line
+    (``"line"``, with whether it played the regular season) or its record
+    (``"record"``). A metric needing points allowed that ESPN's game list
+    cannot give is ``facts["short"]``: the team the answer names, its
+    listed and played games, and how many other teams are short.
+
+    ``templates.teams.team_stat`` was this, with its words; its statements
+    are the relation's (``team_metrics.season_table`` and ``record_table``,
+    moved whole).
+
+    .. versionadded:: 5.0.0
+    """
+    scope = q.scope
+    team = _team_season_subject(con, "team_stat", scope, stated)
+    if isinstance(team, TemplateResult):
+        return team
+    key = _team_stat_metric(scope)
+    season = scope.season or current_season()
+    season_type = scope.season_type or 2
+    span = Span(season=season, season_type=season_type, source="team_seasons")
+    if key is not None and TEAM_METRICS[key].expression is None:
+        return _team_stat_record(con, team, key, span)
+    if key is not None and season < TEAM_METRICS[key].first_season:
+        return Result(subject=team.name, relation="team", span=span, facts={"metric": key, "missing": "metric_season"})
+    lines = team_lines(values_of(con, team_lines_statement(season, season_type)), season)
+    mine = next((line for line in lines if line.team == team.name), None)
+    if mine is None:
+        # Which fact is missing decides the sentence: a team that did not
+        # reach the postseason is not a team the warehouse lacks numbers for.
+        played = season_type == 3 and any(line.team == team.name for line in team_lines(values_of(con, team_lines_statement(season, 2)), season))
+        return Result(subject=team.name, relation="team", span=span, facts={"metric": key, "missing": "line", "played_regular_season": played})
+    return _team_stat_line(team, key, span, lines, mine)
+
+
+def _team_stat_record(con: duckdb.DuckDBPyConnection, team: Entity, key: str, span: Span) -> Result:
+    """A record metric: the team's record and where it ranks among the
+    league's, from the standings (a tally of the games for a postseason)."""
+    assert span.season is not None and span.season_type is not None
+    records = team_records(values_of(con, team_records_statement(span.season, span.season_type)))
+    mine = next((r for r in records if r.team == team.name), None)
+    if mine is None:
+        return Result(subject=team.name, relation="team", span=span, facts={"metric": key, "missing": "record"})
+    rank = next(r for r, t, _ in ranked({r.team: r.win_pct for r in records}, True) if t == team.name)
+    line = Scalar(games=mine.wins + mine.losses, values={"wins": mine.wins, "losses": mine.losses, "rank": rank, "of": len(records)})
+    return Result(subject=team.name, relation="team", span=span, parts=(Part(body=line),), facts={"metric": key})
+
+
+def short_of_games(metric_key: str, lines: list[TeamLine], subject: str | None = None) -> dict[str, Any]:
+    """Why an opponent-based metric has no value, as plain values: the games
+    behind the points allowed do not number the games behind everything
+    else. Names the team asked about when it is one of the short ones, the
+    first short one otherwise, and how many others are short.
+
+    .. versionadded:: 5.0.0
+       ``templates.teams._incomplete_opponents``' facts.
+    """
+    short = [line for line in lines if line.values.get(metric_key) is None]
+    example = next((line for line in short if line.team == subject), short[0])
+    return {"team": example.team, "listed": example.listed_games or 0, "games": example.games, "others": len(short) - 1}
+
+
+def _team_stat_rank(lines: list[TeamLine], name: str, metric: TeamMetric, team: str, value: float | None) -> int | None:
+    """Where ``team`` ranks by ``name`` - None where its value is missing, or
+    any team's is."""
+    if value is None or not all(line.values.get(name) is not None for line in lines):
+        return None
+    return next(r for r, t, _ in ranked({line.team: line.values[name] or 0.0 for line in lines}, descending_for(metric, "best")) if t == team)
+
+
+def _team_stat_line(team: Entity, key: str | None, span: Span, lines: list[TeamLine], mine: TeamLine) -> Result:
+    """The team's value and league rank for each metric asked for, and the
+    notes beneath them: the rating formula (and, for the line, what a rank
+    means and a value or rank left out)."""
+    wanted = [key] if key else list(DEFAULT_TEAM_LINE)
+    rows = tuple({"key": name, "value": mine.values.get(name), "rank": _team_stat_rank(lines, name, TEAM_METRICS[name], team.name, mine.values.get(name)), "of": len(lines)} for name in wanted)
+    facts: dict[str, Any] = {"metric": key, "games": mine.games}
+    notes: list[Note] = []
+    if key is not None:
+        if rows[0]["value"] is None:
+            facts["short"] = short_of_games(key, lines, team.name)
+        elif key in _POSSESSION_METRICS:
+            notes.append(Note("definition", {"term": "rating_formula"}))
+    else:
+        notes += [Note("definition", {"term": "rank_meaning"}), Note("definition", {"term": "rating_formula"})]
+        if any(row["value"] is None for row in rows):
+            notes.append(Note("value_withheld", {"what": "points_allowed", "why": "game list short for this team", "team": team.name, "season": span.season}))
+        elif any(row["rank"] is None for row in rows):
+            notes.append(Note("value_withheld", {"what": "rank", "why": "game list short for other teams", "team": team.name, "season": span.season}))
+    return Result(subject=team.name, relation="team", span=span, parts=(Part(body=Grouped(by="metric", rows=rows)),), notes=tuple(notes), facts=facts)

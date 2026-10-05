@@ -64,7 +64,7 @@ def test_no_intent_is_added_and_a_retired_one_leaves_the_list() -> None:
 # The leaderboard's retired 2026-10-05 (slice (iii)): compose.rankings reads it, compose.say words it.
 FROZEN_TEAM_ONLY_PRESENTERS = frozenset({"with_without"})
 # coach's retired 2026-10-05 (slice (iv)): the reading refuses by its cause, the planner says it;
-# team_outlook's the same day: compose.team_stats reads it, compose.say words it.
+# team_outlook's and team_stat's the same day: compose.team_stats reads them, compose.say words them.
 FROZEN_TEMPLATES = frozenset(
     {
         "fingerprint",
@@ -76,7 +76,6 @@ FROZEN_TEMPLATES = frozenset(
         "team_leaderboard",
         "team_quarter_points",
         "team_record",
-        "team_stat",
     }
 )
 # Every module-level declaration of what a reader honors, states or

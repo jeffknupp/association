@@ -28,7 +28,7 @@ from association.query.reading import DEFAULT_GAME_LOG_LIMIT, _clamp_limit, ordi
 from association.query.result import Decided, Grouped, Result, Rows, Run, Scalar, Span
 from association.query.season_line import NETPOINTS_COMPARE_ROWS
 from association.query.shotchart import UNSEPARABLE_SHOT_VALUES
-from association.query.team_metrics import RATING_NOTE
+from association.query.team_metrics import RATING_NOTE, TEAM_METRICS, TeamMetric
 from association.query.templates.common import HISTORY_COLUMNS, PLAYER_STAT_COLUMNS, SEASON_TYPE_NAMES, STAT_LABELS, TemplateResult, count_games, format_value, season_label, season_phrase, table_cell
 from association.query.templates.players import ADVANCED_STATS, MADE_STAT_ATTEMPTS, SHOOTING_STATS
 
@@ -515,6 +515,8 @@ def say(result: Result) -> TemplateResult:
     """
     if result.span.source == "team_snapshots":
         return say_team_outlook(result)
+    if result.span.source == "team_seasons":
+        return say_team_stat(result)
     if result.span.source == "seasons":
         return _say_season_line(result)
     if result.scalar is not None and result.scalar.how == "count":
@@ -2035,3 +2037,133 @@ def say_team_outlook(result: Result) -> TemplateResult:
     data["headline"] = lines[0].rstrip(":")
     data["notes"] = [each.strip() for each in (bpi_line, sos_line, others_line) if each is not None]
     return TemplateResult(data=data, answer="\n".join(lines))
+
+
+# --- a team's own season: its line ---------------------------------------------------
+
+
+def tally(wins: int, losses: int) -> str:
+    """A record and its percentage: "53-29 (.646)", or "0-0".
+
+    .. versionadded:: 5.0.0
+       ``templates.teams._tally``, for the team-season sayers.
+    """
+    return f"{wins:,}-{losses:,} ({record_pct(wins / (wins + losses))})" if wins + losses else "0-0"
+
+
+def possessive(name: str) -> str:
+    """ "the Knicks'" but "the Thunder's" - a team name is plural only sometimes.
+
+    .. versionadded:: 5.0.0
+       ``templates.teams._possessive``, for the team-season sayers.
+    """
+    return f"{name}'" if name.endswith("s") else f"{name}'s"
+
+
+def metric_cell(metric: TeamMetric, value: float) -> str:
+    """A team metric's value as a table shows it: one decimal, a percentage marked.
+
+    .. versionadded:: 5.0.0
+       ``templates.teams._metric_cell``.
+    """
+    return f"{value:.1f}%" if metric.percent else f"{value:.1f}"
+
+
+def short_of_games_said(metric: TeamMetric, period: str, short: dict[str, Any]) -> str:
+    """Why an opponent-based metric has no value: ESPN's game list holds
+    fewer of a team's games than its season totals count, and points allowed
+    over fewer games than everything else would make the figure wrong
+    without looking wrong.
+
+    .. versionadded:: 5.0.0
+       ``templates.teams._incomplete_opponents``' sentence.
+    """
+    others = short["others"]
+    return (
+        f"{metric.label.capitalize()} can't be given for the {period}: ESPN's game list holds "
+        f"{short['listed']} of the {possessive(short['team'])} {short['games']} games"
+        + (f", and is short for {others} other team{'s' if others != 1 else ''}" if others else "")
+        + " - points allowed over fewer games than everything else would make the figure wrong without looking wrong."
+    )
+
+
+def _team_stat_missing(result: Result, period: str) -> TemplateResult:
+    """Nothing to give, by which fact is missing: the metric's first season,
+    the team's record, or its line - a team that did not reach the
+    postseason is not a team the warehouse lacks numbers for."""
+    team, season, facts = result.subject, result.span.season, result.facts
+    if facts["missing"] == "metric_season":
+        metric = TEAM_METRICS[facts["metric"]]
+        message = f"{metric.label.capitalize()} can't be given for {season}: {metric.first_season_reason}."
+        return TemplateResult(data={"message": message, "season": season}, answer=message)
+    if facts["missing"] == "record":
+        return TemplateResult(data={"team": team, "season": season}, answer=f"The {team} have no {period} record in the warehouse.")
+    answer = f"The {team} did not play in the {period}." if facts["played_regular_season"] else f"The warehouse has no {period} team stats for the {team}."
+    return TemplateResult(data={"team": team, "season": season, "stats": {}, "headline": answer}, answer=answer)
+
+
+def _team_stat_single(result: Result, period: str, stats: dict[str, dict[str, Any]], row: dict[str, Any]) -> TemplateResult:
+    """One named metric: its value and rank, or why points allowed leave it blank."""
+    team, season, facts = result.subject, result.span.season, result.facts
+    metric = TEAM_METRICS[row["key"]]
+    if row["value"] is None:
+        answer = short_of_games_said(metric, period, facts["short"])
+        return TemplateResult(data={"team": team, "season": season, "stats": stats, "message": answer}, answer=answer)
+    where = ""
+    if row["rank"] is not None:
+        order = "best" if metric.lower_is_better is not None else "highest"
+        where = f", {ordinal_word(row['rank'])}-{order} of {row['of']} teams"
+    answer = f"The {possessive(team)} {metric.label} was {metric_cell(metric, row['value'])} in the {period} ({facts['games']} games){where}."
+    for each in result.notes:
+        answer += f" {note(each.kind, note_phrase(each), **each.facts)}"
+    # `headline` matches the page's own firstLine(text) fallback exactly (the
+    # whole thing - this answer is one line even with the rating note glued
+    # on) rather than the note-free sentence alone: the renderer's own
+    # `caption` is `firstLine(text)`, and a shorter headline here would make
+    # the two disagree and print the caption a second time, duplicating the
+    # note (measured on the rendered page, 2026-09-24). No separate `notes`
+    # entry either, for the same reason - the note is already inside
+    # `headline`, and `notes` has no way here to say it is the same text.
+    return TemplateResult(data={"team": team, "season": season, "games": facts["games"], "stats": stats, "headline": answer, "notes": []}, answer=answer)
+
+
+def _team_stat_table(result: Result, period: str, stats: dict[str, dict[str, Any]], rows: Sequence[dict[str, Any]]) -> TemplateResult:
+    """The compact line: a table of value and rank, with the notes beneath."""
+    games = result.facts["games"]
+    label_width = max(len(label) for label in stats)
+    cells = {TEAM_METRICS[row["key"]].label: "-" if row["value"] is None else metric_cell(TEAM_METRICS[row["key"]], row["value"]) for row in rows}
+    value_width = max(5, *(len(c) for c in cells.values()))
+    lines = [f"{result.subject}, {period} ({games} games):", f"{' ' * label_width}  {'value'.rjust(value_width)}  rank"]
+    for label, entry in stats.items():
+        rank_cell = f"{ordinal_word(entry['rank'])} of {entry['of']}" if entry["rank"] is not None else "-"
+        lines.append(f"{label.ljust(label_width)}  {cells[label].rjust(value_width)}  {rank_cell}")
+    notes = _said(result)
+    return TemplateResult(
+        data={"team": result.subject, "season": result.span.season, "games": games, "stats": stats, "headline": lines[0].rstrip(":"), "notes": notes},
+        answer="\n".join([*lines, *notes]),
+    )
+
+
+def say_team_stat(result: Result) -> TemplateResult:
+    """One team's season numbers, worded: a record and its rank, one metric's
+    value and rank (with the rating formula beneath a rating or the pace),
+    or the compact line as a table with what a rank means and what was left
+    out - or, with nothing to give, which fact is missing.
+    ``templates.teams.team_stat``'s words, from the Result.
+
+    .. versionadded:: 5.0.0
+    """
+    assert result.span.season is not None and result.span.season_type is not None
+    period = season_phrase(result.span.season, result.span.season_type)
+    line = result.scalar
+    if line is not None:
+        values = line.values
+        answer = f"The {result.subject} were {tally(values['wins'], values['losses'])} in the {period}, the {ordinal_word(values['rank'])}-best record of {values['of']} teams."
+        return TemplateResult(data={"team": result.subject, "season": result.span.season, **values}, answer=answer)
+    body = result.grouped
+    if body is None:
+        return _team_stat_missing(result, period)
+    stats = {TEAM_METRICS[row["key"]].label: {"value": row["value"], "rank": row["rank"], "of": row["of"]} for row in body.rows}
+    if result.facts["metric"] is not None:
+        return _team_stat_single(result, period, stats, dict(body.rows[0]))
+    return _team_stat_table(result, period, stats, [dict(row) for row in body.rows])
