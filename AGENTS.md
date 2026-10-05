@@ -167,7 +167,11 @@ this tree:
     moved reading and answer enumerated in the commit message and
     `CHANGES.md` (the population, the count, before and after), the
     sentence identical or the change named. A Cause is what Phase 3
-    reads; a decline is a dead end the user gets no help from.
+    reads; a decline is a dead end the user gets no help from. The same
+    class, under the same terms (2026-10-05, slice (iv)): an intent whose
+    reading declined while its template answered GAINS a point when it is
+    ported, because a planned query needs one - the readings and the
+    planned query move for exactly those questions, the answers do not.
   - **A boundary that moves is recorded on both sides first.** A phase
     that replaces `compose.answer` adds the new boundary to
     `tests/stage_calls.py` before it deletes the old one.

@@ -852,6 +852,30 @@ agents' reports named here are in `~/association-research/stages/`.
     share a `Grouped` by subject and are told apart by `Span.source`; the
     `ran` boundary now always equals the planned query and could go.
 
+17. **Phase 2, step 4 - the team shapes, four agents at once (2026-10-05).**
+    After step 3 the lead did two things first: a leaderboard's defaulted
+    season became a `Decided` the heading's own phrase is written through
+    (no new remark - the value was already visible), and the agents' notes
+    went to the roadmap. Then four Opus agents off `1f66894`: the season
+    line's fold and the `ran` boundary; the team compiler's `rows`/`grouped`
+    compiles, merged FIRST so the two template agents could compile
+    through them; `team_stat`/`team_leaderboard`/`team_outlook`/`coach`
+    with the team-season relation; `team_record`/`head_to_head` and the two
+    period shapes. Merge order was finish order, each later branch rebased
+    (one squash-merged after three moves of master) and re-proved on the
+    merged tree, the lead re-running gates, suite, ratchets and the 628
+    before every merge, and bracketing the slice with live runs (parser26,
+    parser27: one answer moved, the Warriors floor fix). Two enumerated
+    reading moves beyond the Cause rule - seven intents gaining a point so
+    they can be planned (69 recorded readings in all, 296 of 2,710,
+    answers identical) - taken by the lead as the same class and recorded
+    in AGENTS.md for Jeff to confirm. `templates/teams.py` is gone,
+    `present.py` is gone, `leaderboard.py` is gone; `TEMPLATES` holds the
+    four charts. What the middle still carries, for slice (v) and Phase 3:
+    `check_scope`/`HONORED_SCOPING` (the charts' last callers),
+    `STATED_SCOPING` in `plan.py`, `facts["missing"]` on an empty
+    team-season Result, two note phrases branching on a call argument.
+
 ## The plan items, as written
 
 In order of lift per unit of structural change, each measured on the

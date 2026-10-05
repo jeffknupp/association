@@ -2446,6 +2446,13 @@ those were found.
 
 ## P3: refusal or gap
 
+### A team's log drops a calendar, quarter or half narrowing silently
+- **Found:** 2026-10-05, porting the team log onto the team compiler (Phase 2, step 4)
+- **Evidence:** `compose/logs.py` `read_team_log` narrows the team's games with `Scope(venue=...)` and the opponent/date alone (`team_games`), while `compose.plan.STATED_SCOPING["game_log"]` declares `situation`, `period` and `half` as stated - so a team log asked "in January" or "in the 4th quarter" lists the whole span under a heading that does not say so. It was the retired template's behavior too; not measured on any population yet.
+- **User sees:** a whole-season team log for "knicks games in january" with no mention of January (a narrower question answered broader - the failure shape at the top of AGENTS.md), if any such question reaches the log.
+- **Next step:** count the readings whose team log carries one of the three cells (`~/association-research/stages/reader_pop.py` output); then either narrow through `narrow_team_games` with the full scope, or remove the three cells from the team log's stated set so the planner declines them by name.
+- **GitHub:** #322
+
 ### League-wide questions read under the wrong intent are refused "Nothing here answers" with the relation's hand-off
 - **Found:** 2026-10-05, inventorying the point reader's declines for the
   declines -> Causes move (Phase 2, step 3;
