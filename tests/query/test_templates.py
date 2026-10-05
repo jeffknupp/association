@@ -37,13 +37,9 @@ from association.query.subject import Subject
 from association.query.templates.common import HONORED_SCOPING, SCOPING_SLOTS, TemplateContext, TemplateResult, TemplateUnsupported, check_scope, scoped_games, scoped_player, unhonored_scoping
 from association.query.templates.games import (
     PERIOD_RATE_STATS,
-    head_to_head,
-    period_leaderboard,
-    team_quarter_points,
 )
 from association.query.templates.netpoints import fingerprint, player_netpoints
 from association.query.templates.shots import shot_chart, shot_distance
-from association.query.templates.teams import team_record
 
 
 def _compiled(intent: str) -> Callable[[TemplateContext, Reading], TemplateResult]:
@@ -80,6 +76,10 @@ player_splits = _compiled("player_splits")
 player_matchup = _compiled("player_matchup")
 player_stat = _compiled("player_stat")
 streak = _compiled("streak")
+head_to_head = _compiled("head_to_head")
+team_quarter_points = _compiled("team_quarter_points")
+period_leaderboard = _compiled("period_leaderboard")
+team_record = _compiled("team_record")
 with_without = _compiled("with_without")
 single_game_high = _compiled("single_game_high")
 threshold_count = _compiled("threshold_count")
@@ -2724,7 +2724,10 @@ def test_team_quarter_points_summarizes_rather_than_tables_many_games(tq_con: Te
     # A whole-season, no-opponent question can span dozens of games - listing
     # every one is unreadable, so above a small cap this reports the total
     # and average instead of a per-game breakdown.
-    monkeypatch.setattr("association.query.templates.games._QUARTER_BREAKDOWN_LIMIT", 1)
+    import sys
+
+    # By the module object: `association.query.compose.say` names the package's `say` function too.
+    monkeypatch.setattr(sys.modules["association.query.compose.say"], "_QUARTER_BREAKDOWN_LIMIT", 1)
     result = team_quarter_points(tq_con, Reading.from_slots({"team": "Knicks", "period": 1, "season": current_season()}))
     answer = result.answer or ""
     assert "averaging" in answer
@@ -3643,7 +3646,8 @@ def test_shot_distance_narrows_by_opponent_and_names_it_in_the_answer(sc_ctx: Te
 
 
 def test_team_quarter_points_still_honors_the_opponent_it_always_read() -> None:
-    check_scope("team_quarter_points", {"team": "Philadelphia 76ers", "period": 4, "opponent": "Boston Celtics"})
+    # The compiler's since Phase 2's slice (iv): its words state the opponent and the period.
+    assert unhonored_scoping("team_quarter_points", Scope.from_slots({"team": "Philadelphia 76ers", "period": 4, "opponent": "Boston Celtics"}), STATED_SCOPING["team_quarter_points"]) == []
 
 
 def test_no_template_narrows_to_a_playoff_round() -> None:
@@ -5115,7 +5119,6 @@ def test_a_team_log_labels_an_early_playoffs_by_its_year(playoff_ctx: TemplateCo
 
 def test_head_to_head_takes_the_opponent_as_the_other_team(playoff_ctx: TemplateContext) -> None:
     """ "Celtics vs Bulls head to head record" arrived as team + opponent and was refused."""
-    check_scope("head_to_head", {"team": "Chicago Bulls", "opponent": "Los Angeles Lakers"})
     got = head_to_head(playoff_ctx, Reading.from_slots({"team": "Chicago Bulls", "opponent": "Los Angeles Lakers", "season": 1991, "season_type": 3}))
     assert got.data["games"] == 2
 
@@ -5870,15 +5873,24 @@ def test_a_tied_extreme_names_every_game_that_reached_it() -> None:
     """Two games at the same high are both the answer. Resolving the tie by
     whichever row sorted first would report one game as though it stood
     alone."""
-    from association.query.entities import Entity
-    from association.query.templates.games import _team_quarter_points_answer
+    from association.query.compose.say import say_team_quarter_points
+    from association.query.result import Narrowing, Part, Result, Rows, Scalar, Span
 
-    games = [
+    games = (
         {"date": "2026-01-02", "opponent": "Boston Celtics", "points": 60},
         {"date": "2026-01-09", "opponent": "Chicago Bulls", "points": 60},
         {"date": "2026-01-16", "opponent": "Miami Heat", "points": 41},
-    ]
-    result = _team_quarter_points_answer(Entity(id="18", name="New York Knicks"), None, games, periods=(1, 2), period_label="1st half", period_str="2026 regular season", rank="most")
+    )
+    line = Scalar(games=3, values={"points": 53.67, "most": 60, "fewest": 41}, sums={"points": 161})
+    read = Result(
+        subject="New York Knicks",
+        relation="team",
+        span=Span(season=2026, season_type=2, phrase="2026 regular season"),
+        narrowing=Narrowing(period="1st half"),
+        parts=(Part(body=line), Part(role="detail", body=Rows(rows=games))),
+        facts={"measure": "points", "periods": [1, 2], "rank": "most", "dateless": ""},
+    )
+    result = say_team_quarter_points(read)
     assert result.data["extreme"] == 60 and len(result.data["extreme_games"]) == 2
     assert "vs the Boston Celtics on 2026-01-02 and vs the Chicago Bulls on 2026-01-09" in (result.answer or "")
 

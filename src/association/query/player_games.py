@@ -1118,6 +1118,48 @@ def grouped_sql(
     return sql, params
 
 
+def period_ranking_sql(narrowed: Narrowed, measure: str, *, minimum: int, limit: int, rebuilt: bool) -> tuple[str, list[Any]]:
+    """(name, games, total, average) per player with ``minimum`` games or
+    more in the period-narrowed relation, best average first - the league's
+    ranking by one quarter's or half's ``measure``, whose played guard and
+    covered-games rule are the denominator.
+
+    .. versionadded:: 5.0.0
+       ``templates.games._period_leaderboard_rows``' statement, moved here.
+    """
+    return grouped_sql(
+        narrowed,
+        "pgl.athlete_id, pgl.player_name",
+        ["pgl.player_name", "COUNT(*) AS games", f"SUM(pgl.{measure}) AS total", f"AVG(pgl.{measure}) AS average"],
+        having=f"COUNT(*) >= {int(minimum)}",
+        order="average DESC, games DESC, pgl.player_name",
+        limit=limit,
+        rebuilt=rebuilt,
+    )
+
+
+def period_quarter_sql(narrowed: Narrowed, *, minimum: int, rebuilt: bool) -> tuple[str, list[Any]]:
+    """(athlete, name, games, average points) per player with ``minimum``
+    games or more in one quarter of the period-narrowed relation - one of
+    the four reads the league's points-by-quarter table joins by player.
+
+    .. versionadded:: 5.0.0
+       ``templates.games._period_leaderboard_by_quarter``'s statement, moved here.
+    """
+    return grouped_sql(narrowed, "pgl.athlete_id, pgl.player_name", ["pgl.athlete_id", "pgl.player_name", "COUNT(*)", "AVG(pgl.points)"], having=f"COUNT(*) >= {int(minimum)}", rebuilt=rebuilt)
+
+
+def most_games_sql(narrowed: Narrowed, *, rebuilt: bool) -> tuple[str, list[Any]]:
+    """The most games any one player has in the narrowed relation - what a
+    pool narrowed to an opponent or a venue sets its ranking's minimum as a
+    share of.
+
+    .. versionadded:: 5.0.0
+       ``templates.games._period_leaderboard_minimum``'s statement, moved here.
+    """
+    return grouped_sql(narrowed, "pgl.athlete_id", ["COUNT(*) AS games"], order="games DESC", limit=1, rebuilt=rebuilt)
+
+
 def column(alias: str, name: str, box: BoxSource) -> str:
     """A box-score column as a reader may trust it: blanked on a rebuilt row
     when it is one the rebuild fills but was never measured for

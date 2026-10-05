@@ -14,9 +14,10 @@ import inspect
 import re
 from typing import Any
 
+from association.query.compose.meetings import read_head_to_head
+from association.query.compose.periods import read_team_quarter_points
 from association.query.compose.plan import STATED_SCOPING
-from association.query.templates import TEMPLATES
-from association.query.templates.common import HONORED_SCOPING, TEAM_RELATION_SCOPING, TEAM_RELATION_SCOPING_EXCLUDED, _team_relation_scoping
+from association.query.templates.common import TEAM_RELATION_SCOPING, TEAM_RELATION_SCOPING_EXCLUDED, _team_relation_scoping
 
 
 def test_team_templates_declare_scoping_through_the_shared_helper() -> None:
@@ -35,20 +36,14 @@ def test_team_templates_declare_scoping_through_the_shared_helper() -> None:
     # `situation` moved from `team_record`'s own extra into `TEAM_RELATION_SCOPING`
     # itself (step 3, K1): every team template now honors it through the base
     # set, `team_record` included, so it is no longer listed as its own here.
-    on_the_relation = {
-        "team_record": {"split", "season_type_unstated"},
-        "head_to_head": set(),
-        # A quarter or half is the template's own cell on the team side: the
-        # linescore reads one period, and the team relation has no period
-        # narrowing of its own (plan item 4 put it on the PLAYER relation).
-        "team_quarter_points": {"period", "half"},
-    }
+    # The team shapes' readers declare in compose.plan.STATED_SCOPING (Phase 2, slice (iv)).
+    on_the_relation = {"team_record": {"split", "season_type_unstated"}, "head_to_head": set(), "team_quarter_points": {"period", "half"}}
     for intent, extra in on_the_relation.items():
         excluded = TEAM_RELATION_SCOPING_EXCLUDED.get(intent, {})
         for slot, reason in excluded.items():
             assert slot in TEAM_RELATION_SCOPING, f"{intent} excludes {slot!r}, which is not a team-relation cell at all"
             assert reason.strip(), f"{intent} excludes {slot!r} without a reason"
-        assert HONORED_SCOPING[intent] == (TEAM_RELATION_SCOPING | extra) - set(excluded), f"{intent} declares scoping of its own rather than through _team_relation_scoping"
+        assert STATED_SCOPING[intent] == (TEAM_RELATION_SCOPING | extra) - set(excluded), f"{intent} declares scoping of its own rather than through _team_relation_scoping"
 
 
 def test_team_relation_scoping_helper_matches_the_declared_dict() -> None:
@@ -56,11 +51,11 @@ def test_team_relation_scoping_helper_matches_the_declared_dict() -> None:
     HONORED_SCOPING entry for a template on this relation - proven by
     reconstructing each one from the helper directly, the way the test above
     checks the dict but this checks the FUNCTION agrees with itself."""
-    assert _team_relation_scoping("team_record", "split", "season_type_unstated") == HONORED_SCOPING["team_record"]
+    assert _team_relation_scoping("team_record", "split", "season_type_unstated") == STATED_SCOPING["team_record"]
     # team_leaderboard's reader (compose.team_stats, Phase 2, step 4) declares through the same helper.
     assert _team_relation_scoping("team_leaderboard") == STATED_SCOPING["team_leaderboard"]
-    assert _team_relation_scoping("head_to_head") == HONORED_SCOPING["head_to_head"]
-    assert _team_relation_scoping("team_quarter_points", "period", "half") == HONORED_SCOPING["team_quarter_points"]
+    assert _team_relation_scoping("head_to_head") == STATED_SCOPING["head_to_head"]
+    assert _team_relation_scoping("team_quarter_points", "period", "half") == STATED_SCOPING["team_quarter_points"]
 
 
 def _source_with_private_steps(handler: Any) -> str:
@@ -106,7 +101,7 @@ _FORBIDDEN_TOKENS = ("tg.opponent_id = ?", "tg.side = ?", "tg.eastern_date = ?")
 # (step 3, C4b for the second; C4 already had the first). `team_record` and
 # `team_leaderboard` are NOT here, and each is exempted for a different,
 # written reason rather than silently dropped - see the test below.
-_FULLY_ON_THE_SHARED_STEP = ("head_to_head", "team_quarter_points")
+_FULLY_ON_THE_SHARED_STEP = {"head_to_head": read_head_to_head, "team_quarter_points": read_team_quarter_points}
 
 
 def test_team_templates_on_the_shared_step_do_not_narrow_it_themselves() -> None:
@@ -121,8 +116,8 @@ def test_team_templates_on_the_shared_step_do_not_narrow_it_themselves() -> None
     ``narrowed.narrow("tg.opponent_id = ?", ...)`` directly inside
     ``team_quarter_points`` does.
     """
-    for intent in _FULLY_ON_THE_SHARED_STEP:
-        source = _source_with_private_steps(TEMPLATES[intent])
+    for intent, reader in _FULLY_ON_THE_SHARED_STEP.items():
+        source = _source_with_private_steps(reader)
         for token in _FORBIDDEN_TOKENS:
             assert token not in source, f"{intent} narrows the relation itself ({token!r}); use common.team_games"
 
@@ -134,16 +129,16 @@ def test_team_record_is_exempted_from_the_shared_step_for_a_written_reason() -> 
     regular-season record, which ``common.team_games`` does not do (a plain
     game list or a head-to-head count is not a record - see both modules'
     own docstrings) - so it narrows an opponent
-    (``_games_record_games``'s ``narrowed.narrow("tg.opponent_id = ?", ...)``)
+    (``compose.team_records._record_games``' ``narrowed.narrow("tg.opponent_id = ?", ...)``)
     on its own, bespoke ``TeamNarrowed``, never through ``common.team_games``.
     This is watched by asserting the token IS present, so a future refactor
     that quietly moves ``team_record`` onto the shared step (fixing this
     exemption for real) fails this assertion and is a signal to delete it,
     not a false pass.
     """
-    from association.query.templates.teams import team_record
+    from association.query.compose.team_records import read_team_record
 
-    source = _source_with_private_steps(team_record)
+    source = _source_with_private_steps(read_team_record)
     assert "tg.opponent_id = ?" in source, "team_record no longer narrows opponent by hand - delete this exemption and add it to _FULLY_ON_THE_SHARED_STEP"
 
 

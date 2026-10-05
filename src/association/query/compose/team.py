@@ -124,6 +124,9 @@ TEAM_ROW_COLUMNS: tuple[str, ...] = (
     "tg.opponent_score",
     "tg.won",
     "CASE WHEN tg.season_type = 3 THEN year(tg.eastern_date) ELSE tg.season END AS season",
+    # Whether the game was played on neither team's floor: a record counts
+    # it as neither home nor away (compose.team_records).
+    "tg.neutral",
 )
 """The columns a team's ``rows`` read selects, each by name.
 

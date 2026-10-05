@@ -76,7 +76,9 @@ this tree:
   name, and since 2026-10-02 the templates (12; 8 since 2026-10-05, when
   `coach` became the reading's cause and `team_outlook`, `team_stat` and
   `team_leaderboard` readers and sayers over the team-season relations,
-  `query/team_seasons.py` and `compose/team_stats.py`), the presenters (12 until
+  `query/team_seasons.py` and `compose/team_stats.py`; 4 - the charts - once
+  `head_to_head`, `team_quarter_points`, `period_leaderboard` and
+  `team_record` went to readers and sayers), the presenters (12 until
   2026-10-03; the intents holding one are 8 since 2026-10-04, as the game
   log, `record_when`, `player_splits` and `period_split` went to readers and
   sayers, 6 once `threshold_count` and `single_game_high` did, 4 once
@@ -951,11 +953,21 @@ model's. Two things follow, and both matter when you add a shape:
   only through the shared steps in
   `templates/common.py`, the same discipline the relation templates keep
   (see "A template on a relation does not declare, or apply, scoping of its
-  own" above). Thirteen intents have no entry in `TEMPLATES`
+  own" above). Twenty-one intents have no entry in `TEMPLATES`
   (`compose.COMPILED_INTENTS`: `threshold_count`, `single_game_high`,
   `record_when`, `player_history`, `game_log`, `player_stat`,
   `player_splits`, `leaderboard`, `period_split`, `player_compare`,
-  `streak`, `player_matchup`, `with_without`). **"The compiler answers
+  `streak`, `player_matchup`, `with_without`, `head_to_head`,
+  `team_quarter_points`, `period_leaderboard`, `team_record`, `team_stat`,
+  `team_leaderboard`, `team_outlook`, `coach`); `TEMPLATES` holds the four
+  charts. A shape Phase 2's slice (iv) ported from a template the reader
+  gave no point has a default point of its own (`point.DEFAULT_POINTS`:
+  its readings gained one when it moved), is declined beyond the scoping
+  its retired words state (`compose.plan.STATED_SCOPING`, where its
+  `HONORED_SCOPING` row moved) by the planner in `check_scope`'s own
+  sentence (`compose.plan.PORTED_SHAPES`), and is read and said with
+  nothing after it: a decline is refused, never handed to the compilers'
+  own sentences (`compose._read_ported_shape`). **"The compiler answers
   them" means each is a reader and the sayer over a compiled statement**
   (the paragraphs above). Until Phase 2 most were still read and worded by
   the retired template's body through a presenter (`compose/present.py`):

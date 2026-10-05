@@ -14,7 +14,8 @@ Phase 2's slice (iv) (``ROADMAP.md``): the statements are the retired
 templates' (``templates.teams.team_outlook``'s two power-index reads,
 ``team_metrics.season_table`` and ``record_table``,
 ``templates.teams._venue_records`` and
-``_team_leaderboard_since_records``), moved whole.
+``_team_leaderboard_since_records``; ``templates.teams._standings_season``,
+``_standings_career`` and ``_standings_gap``, for ``team_record``), moved whole.
 
 .. versionadded:: 5.0.0
 """
@@ -122,6 +123,54 @@ def team_records(rows: list[tuple[Any, ...]]) -> list[TeamRecord]:
     .. versionadded:: 5.0.0
     """
     return [TeamRecord(team=name, wins=int(wins), losses=int(losses)) for name, wins, losses in rows]
+
+
+# --- the standings, read for one team's record (team_seasons) --------------------
+
+_STANDINGS_SEASON_COLUMNS = 'wins, losses, winPercent, streak, playoffSeed, gamesBehind, "Home", "Road", "Last Ten Games", avgPointsFor, avgPointsAgainst, differential'
+
+
+def standings_season(team_id: str, season: int) -> Statement:
+    """A team's standings row for one season: wins, losses, win percentage,
+    streak, playoff seed, games behind, the "Home" and "Road" records as
+    ESPN writes them ("30-10"), the last ten games, and points for and
+    against per game with the differential.
+
+    .. versionadded:: 5.0.0
+    """
+    return Statement(f"SELECT {_STANDINGS_SEASON_COLUMNS} FROM standings WHERE team_id = ? AND season = ?", [team_id, season])
+
+
+def standings_career(team_id: str) -> Statement:
+    """Every season a team's standings hold a game for, oldest first: the
+    season, wins, losses, and the "Home" and "Road" records.
+
+    .. versionadded:: 5.0.0
+    """
+    return Statement('SELECT season, wins, losses, "Home", "Road" FROM standings WHERE team_id = ? AND wins + losses > 0 ORDER BY season', [team_id])
+
+
+def standings_first_season() -> Statement:
+    """The first season the standings hold for any team - where a career
+    that starts there is the warehouse's start, not the franchise's.
+
+    .. versionadded:: 5.0.0
+    """
+    return Statement("SELECT MIN(season) FROM standings", [])
+
+
+def games_played(team_id: str, seasons: list[int]) -> Statement:
+    """(season, games played) in a team's regular seasons among
+    ``seasons``, from ``team_season_stats`` - what the standings are
+    checked against: ESPN's 2000 standings stop two games short for most
+    teams, and nothing in the row says so.
+
+    .. versionadded:: 5.0.0
+    """
+    return Statement(
+        f"SELECT season, gamesPlayed FROM team_season_stats WHERE team_id = ? AND season_type = 2 AND season IN ({', '.join('?' for _ in seasons)})",
+        [team_id, *seasons],
+    )
 
 
 # --- the power index (team_snapshots) ------------------------------------------
@@ -289,9 +338,12 @@ def team_venue_records_statement(season: int, season_type: int, venue: str) -> S
     )
 
 
-def _record_text(text: Any) -> tuple[int, int] | None:
+def record_text(text: Any) -> tuple[int, int] | None:
     """The standings' "Home"/"Road" strings: '30-10' -> (30, 10), anything
-    else None - ``templates.teams._parse_record``'s reading, by its digits."""
+    else None - ``templates.teams._parse_record``'s reading, by its digits.
+
+    .. versionadded:: 5.0.0
+    """
     if not isinstance(text, str):
         return None
     wins, dash, losses = text.strip().partition("-")
@@ -308,7 +360,7 @@ def venue_records(rows: list[tuple[Any, ...]], season_type: int) -> list[TeamRec
     """
     if season_type != 2:
         return team_records(rows)
-    parsed = [(name, _record_text(text)) for name, text in rows]
+    parsed = [(name, record_text(text)) for name, text in rows]
     return [TeamRecord(team=name, wins=r[0], losses=r[1]) for name, r in parsed if r and sum(r) > 0]
 
 

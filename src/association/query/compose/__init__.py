@@ -1,5 +1,5 @@
 """One compiler over the player-games and team-games relations: the only
-answer thirteen intents have (:data:`COMPILED_INTENTS`), the step after a
+answer seventeen intents have (:data:`COMPILED_INTENTS`), the step after a
 live template's refusal, and the last one before a refusal naming why.
 
 The pipeline is parser -> template or compiler -> refusal. :func:`answer`
@@ -47,8 +47,9 @@ from .core import Query, Refused, Unsupported, run
 from .counts import read_threshold_count
 from .highs import read_single_game_high
 from .logs import read_player_log, read_team_log
+from .meetings import read_head_to_head
 from .pairs import read_player_matchup
-from .periods import read_period_split
+from .periods import read_period_leaderboard, read_period_split, read_team_quarter_points
 from .plan import STATED_SCOPING, Planned
 from .presence import read_with_without
 from .rankings import read_leaderboard
@@ -62,6 +63,7 @@ from .sentence import team_sentence as _team_sentence
 from .splits import read_player_splits, read_team_splits
 from .stats import read_player_stat
 from .team import TeamQuery, TeamResult, run_team
+from .team_records import read_team_record
 from .team_stats import TeamSeasonQuery, read_team_leaderboard, read_team_outlook, read_team_stat
 
 if TYPE_CHECKING:
@@ -134,6 +136,10 @@ COMPILED_INTENTS: frozenset[str] = frozenset(
         "team_outlook",
         "team_stat",
         "team_leaderboard",
+        "head_to_head",
+        "team_quarter_points",
+        "period_leaderboard",
+        "team_record",
     }
 )
 """The intents the compiler alone answers - the four whose templates it
@@ -145,7 +151,11 @@ reproduced exactly (``~/association-research/intent-shrink/parity.py``:
 ``intent-shrink/g/``, every unit-test call and recorded question answered
 both ways; ``streak`` is the ``run`` shape, ``player_matchup`` the ``pair``
 shape and ``with_without`` the team relation's ``presence`` group, skeletons
-the compiler gained for them). Each is read by its reader and said in its
+the compiler gained for them), and the team shapes of Phase 2's slice
+(iv): ``head_to_head`` (:mod:`~association.query.compose.meetings`),
+``team_quarter_points`` and ``period_leaderboard``
+(:mod:`~association.query.compose.periods`) and ``team_record``
+(:mod:`~association.query.compose.team_records`). Each is read by its reader and said in its
 retired template's own words by the sayer
 (:mod:`~association.query.compose.say`); where the compiler has no
 reading of a point, the question is refused with the reason
@@ -276,6 +286,8 @@ def _read_ported(con: duckdb.DuckDBPyConnection, intent: str, query: Query) -> T
         return _read_log(lambda: read_streak(con, query, stated=STATED_SCOPING["streak"]))
     if intent == "player_matchup" and query.skeleton == "pair":
         return _read_log(lambda: read_player_matchup(con, query, stated=STATED_SCOPING["player_matchup"]))
+    if intent in _PORTED_SHAPE_READERS:
+        return _read_ported_shape(con, intent, query)
     if query.source == "seasons":
         return _read_season_line(con, intent, query)
     return None
@@ -301,10 +313,37 @@ def _read_season_line(con: duckdb.DuckDBPyConnection, intent: str, query: Query)
     return _read_log(lambda: reader(con, query, stated=STATED_SCOPING[intent]))
 
 
+#: The team shapes slice (iv) ported, by intent: each the only answer its
+#: intent has, so a decline is the planner's and a refusal the relation's.
+_PORTED_SHAPE_READERS: dict[str, Callable[..., Result | TemplateResult | None]] = {
+    "head_to_head": read_head_to_head,
+    "team_quarter_points": read_team_quarter_points,
+    "period_leaderboard": read_period_leaderboard,
+    "team_record": read_team_record,
+}
+
+
+def _read_ported_shape(con: duckdb.DuckDBPyConnection, intent: str, query: Query | TeamQuery) -> TemplateResult:
+    """A team shape slice (iv) ported, read and said - the intent's only
+    answer, as its retired template was: a cell its reader refuses while
+    reading is the compiler's decline, with the reader's own reason (the
+    template's sentence, no prefix), and a point its reader does not read
+    is declined too, never handed to the team compiler's sums."""
+    try:
+        read = _PORTED_SHAPE_READERS[intent](con, query, stated=STATED_SCOPING[intent])
+    except TemplateUnsupported as exc:
+        raise Unsupported(str(exc)) from exc
+    if read is None:
+        raise Unsupported(f"{intent} has no reading of this point")
+    return read if isinstance(read, TemplateResult) else say(read)
+
+
 def _read_ported_team(con: duckdb.DuckDBPyConnection, intent: str, query: TeamQuery) -> TemplateResult | None:
     """The team shapes Phase 2 has ported: a team's log and a team's splits,
     read into a Result and said by the sayer. ``None`` where the point is
     not one of them, or its words do not say it."""
+    if intent in _PORTED_SHAPE_READERS:
+        return _read_ported_shape(con, intent, query)
     if intent == "game_log" and query.shape == "rows":
         return _read_log(lambda: read_team_log(con, query, stated=STATED_SCOPING["game_log"]))
     if intent == "player_splits" and query.shape == "grouped":

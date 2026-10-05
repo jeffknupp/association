@@ -72,6 +72,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
+from association.nba.franchises import season_name_sql
 from association.nba.season import eastern_date_sql
 
 from .entities import Entity
@@ -881,6 +882,76 @@ def games_subquery(narrowed: TeamNarrowed, *, join: str = "") -> tuple[str, list
     """
     source, params = _windowed(narrowed, join=join)
     return f"{_TEAM_GAMES} SELECT tg.* {source}", params
+
+
+def period_games_sql(narrowed: TeamNarrowed, columns: tuple[str, ...]) -> tuple[str, list[Any]]:
+    """Each narrowed game's Eastern date, the period's ``points`` and
+    ``columns`` beside them (the period-narrowed relation's own rows,
+    :meth:`TeamNarrowed.narrow_periods`: points are the linescore's, the
+    rest rebuilt from the plays, NULL where a game never reached the period
+    or has no plays), the opponent as that season named it and the season
+    the game was played in - a postseason by its calendar year, never its
+    label - in date order. A team's quarter or half, read
+    (``compose.periods.read_team_quarter_points``).
+
+    Every alias here is one the relation's own statement does not use
+    inside itself (``tg``, ``g``): the subquery embeds :data:`TEAM_GAMES_SQL`'s
+    ``WITH`` clause, and DuckDB resolved a reused alias at this outer level
+    against the CTE's own (a ``BinderException`` nowhere near this line).
+
+    .. versionadded:: 5.0.0
+       ``templates.games._team_quarter_points_games``'s statement, moved here.
+    """
+    if narrowed.periods is None:
+        raise ValueError("a period-narrowed read needs the period narrowed")
+    base, params = games_subquery(narrowed)
+    sql = f"""
+        SELECT qp.eastern_date, qp.points, {", ".join(f"qp.{column}" for column in columns)},
+               {season_name_sql("qp.opponent_id", "qp.season", "ot.display_name")} AS opponent,
+               CASE WHEN qp.season_type = 3 THEN year(qp.eastern_date) ELSE qp.season END AS season_year
+        FROM ({base}) qp
+        JOIN teams ot ON ot.team_id = qp.opponent_id
+        ORDER BY qp.eastern_date
+    """
+    return sql, params
+
+
+def season_game_counts_sql(scope: str, scope_params: list[Any], team_id: str) -> tuple[str, list[Any]]:
+    """How many games the relation holds in a season scope (``scope``, a
+    ``WHERE`` predicate over ``team_games`` - ``team_metrics.games_scope``'s)
+    for any team, and how many of them are ``team_id``'s: what tells "the
+    warehouse holds no games that season" from "the team played none".
+
+    .. versionadded:: 5.0.0
+       ``templates.teams._no_team_games``' statement, moved here.
+    """
+    return f"{TEAM_GAMES_SQL} SELECT count(*), count(*) FILTER (WHERE team_id = ?) FROM team_games WHERE {scope}", [team_id, *scope_params]
+
+
+def game_list_gaps_sql(narrowed: TeamNarrowed, team_id: str, season_type: int, *, season: int | None, since: int | None, until: int | None, floor: int) -> tuple[str, list[Any]]:
+    """(season, games listed, games played) for each season from ``floor``
+    where the narrowed games tallied for a team do not number its games in
+    ``team_season_stats`` - the check that makes a tally from the game list
+    safe to state. A postseason is counted by the calendar year it was
+    played in.
+
+    .. versionadded:: 5.0.0
+       ``templates.teams._game_list_gaps``' statement, moved here.
+    """
+    subquery, sub_params = games_subquery(narrowed)
+    by_season = "year(eastern_date)" if season_type == 3 else "season"
+    season_filter = "" if season is None else "AND ts.season = ?"
+    since_filter = "" if since is None else "AND ts.season >= ?"
+    until_filter = "" if until is None else "AND ts.season <= ?"
+    sql = f"""
+WITH tallied AS (SELECT {by_season} AS season, count(*) AS games FROM ({subquery}) t GROUP BY 1),
+totals AS (SELECT ts.season, ts.gamesPlayed AS games FROM team_season_stats ts WHERE ts.team_id = ? AND ts.season_type = ? {season_filter}{since_filter}{until_filter})
+SELECT coalesce(l.season, t.season) AS season, coalesce(l.games, 0), coalesce(t.games, 0)
+FROM tallied l FULL OUTER JOIN totals t ON t.season = l.season
+WHERE coalesce(l.season, t.season) >= ? AND coalesce(l.games, 0) <> coalesce(t.games, 0)
+ORDER BY 1"""
+    params = [*sub_params, team_id, season_type, *([season] if season is not None else []), *([since] if since is not None else []), *([until] if until is not None else []), floor]
+    return sql, params
 
 
 def named(sql: str, params: list[Any], prefix: str = "r") -> tuple[str, dict[str, Any]]:

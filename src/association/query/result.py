@@ -77,6 +77,11 @@ class Narrowing:
     opponent: str | None = None
     venue: str | None = None
     without: tuple[str, ...] = ()
+    #: The quarter or half the read sees of each game, as the answer names
+    #: it ("1st quarter", "2nd half") - the period relation's cell on a
+    #: team's games (``TeamNarrowed.narrow_periods``); None for whole games.
+    #: Declared by the first team shape to carry one (``team_quarter_points``).
+    period: str | None = None
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -140,7 +145,9 @@ class Scalar:
     measure per game beside its sums (``"per_game"``, a line), or the games
     counted (``"count"``, ``threshold_count``'s one player: ``games`` is the
     figure, ``values`` is empty, and ``sums`` holds how many of the counted
-    games are rebuilt from play-by-play, ``rebuilt``).
+    games are rebuilt from play-by-play, ``rebuilt``), or a team's games
+    won and lost (``"record"``, ``team_record``'s: ``values`` holds
+    ``wins`` and ``losses`` and what the record's source says beside them).
 
     .. versionadded:: 5.0.0
     """
@@ -148,7 +155,7 @@ class Scalar:
     games: int
     values: Mapping[str, Any] = field(default_factory=dict)
     sums: Mapping[str, Any] = field(default_factory=dict)
-    how: Literal["per_game", "count"] = "per_game"
+    how: Literal["per_game", "count", "record"] = "per_game"
 
 
 @dataclass(frozen=True, kw_only=True)

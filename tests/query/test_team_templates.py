@@ -21,13 +21,12 @@ from test_templates import streak  # the compiler's, the template retired (compo
 
 from association.fetch.repairs import real_games
 from association.nba.season import current_season
+from association.query.compose.plan import STATED_SCOPING
 from association.query.parse import with_point
-from association.query.reading import Reading
+from association.query.reading import Reading, Scope
 from association.query.subject import Subject
 from association.query.team_metrics import TEAM_METRICS, descending_for, resolve_team_metric
-from association.query.templates.common import TemplateContext, TemplateResult, TemplateUnsupported, check_coverage, check_scope
-from association.query.templates.games import team_quarter_points
-from association.query.templates.teams import team_record
+from association.query.templates.common import TemplateContext, TemplateResult, TemplateUnsupported, check_coverage, unhonored_scoping
 
 
 def _compiled(intent: str) -> Callable[[TemplateContext, Reading], TemplateResult]:
@@ -58,6 +57,8 @@ record_when = _compiled("record_when")
 team_outlook = _compiled("team_outlook")
 team_stat = _compiled("team_stat")
 team_leaderboard = _compiled("team_leaderboard")
+team_quarter_points = _compiled("team_quarter_points")
+team_record = _compiled("team_record")
 
 S = current_season()
 LAST = f"{S - 1}-{S % 100:02d}"
@@ -395,17 +396,18 @@ def test_the_team_as_its_own_opponent_falls_through(team_ctx: TemplateContext) -
 
 
 def test_team_record_honors_venue_opponent_and_span_but_not_order() -> None:
-    check_scope("team_record", {"venue": "home", "opponent": "Boston Celtics", "span": "career"})
-    with pytest.raises(TemplateUnsupported, match="different span"):
-        check_scope("team_record", {"order": "recent"})
+    # The compiler's since Phase 2's slice (iv): its words state these, and the planner declines `order`.
+    stated = STATED_SCOPING["team_record"]
+    assert unhonored_scoping("team_record", Scope.from_slots({"venue": "home", "opponent": "Boston Celtics", "span": "career"}), stated) == []
+    assert unhonored_scoping("team_record", Scope.from_slots({"order": "recent"}), stated) == ["order"]
 
 
-def test_team_record_honors_situation_and_split_at_the_check_scope_level() -> None:
-    """check_scope only checks that the slot is declared - team_record itself
+def test_team_record_honors_situation_and_split_at_the_declaration_level() -> None:
+    """The declaration only says the slot is stated - the reader itself
     still refuses a `situation` that names no month and a `split` that is not
     "month" (see the tests above), the same way it always refused `order`."""
-    check_scope("team_record", {"situation": "in october"})
-    check_scope("team_record", {"split": "month"})
+    stated = STATED_SCOPING["team_record"]
+    assert unhonored_scoping("team_record", Scope.from_slots({"situation": "in october", "split": "month"}), stated) == []
 
 
 # ---------------- team_stat ----------------
@@ -933,7 +935,9 @@ def test_team_record_combines_both_season_types_for_one_season(team_ctx: Templat
     assert result.data["regular_season"] == {"wins": 53, "losses": 29, "first_season": None}
     assert result.data["postseason"] == {"wins": 3, "losses": 1, "first_season": S}
     assert "56-30" in result.answer
-    assert "53-29 (.646) regular season," in result.answer
+    # The regular half's neutral-site game is said inside its own record
+    # (written and not said until Phase 2, slice (iv)).
+    assert "53-29 (.646) regular season (1 neutral-site game counts as neither home nor away)," in result.answer
     assert f"3-1 (.750) playoffs from {S})" in result.answer
 
 
@@ -1277,3 +1281,44 @@ def test_streak_league_since_reads_every_teams_seasons_in_the_span(team_ctx: Tem
     result = streak(team_ctx, Reading.from_slots({"season_type": 3, "since": 1991}))
     assert result.data["streaks"][0]["length"] == 2
     assert "New York Knicks" in result.data["streaks"][0]["name"]
+
+
+def test_a_combined_record_says_where_each_halfs_source_starts() -> None:
+    """ "warriors all-time record including playoff record at away" wrote two
+    floors - the standings' home/road split from 1993-94, the game list's
+    playoffs from 1989 - and said neither (`stage_snapshots.py remarks`):
+    the combined sentence kept only each half's "Note:" tail. Each floor is
+    said after the half it bounds now, and nothing written goes unsaid."""
+    from association.query import notes
+    from association.query.compose.say import say_team_record
+    from association.query.notes import Note
+    from association.query.result import Grouped, Narrowing, Part, Result, Scalar, Span
+
+    halves = Grouped(
+        by="season_type",
+        rows=(
+            {"key": 2, "wins": 523, "losses": 791, "first_season": 1994, "notes": 2, "tail": "", "placed": "career"},
+            {"key": 3, "wins": 51, "losses": 52, "first_season": 1989, "notes": 1, "tail": "", "placed": "tally"},
+        ),
+    )
+    read = Result(
+        subject="Golden State Warriors",
+        relation="team",
+        span=Span(career=True),
+        narrowing=Narrowing(venue="away"),
+        parts=(Part(body=Scalar(games=1417, values={"wins": 574, "losses": 843}, how="record")), Part(role="detail", body=halves)),
+        notes=(
+            Note("floor", {"table": "standings", "first": 1994, "what": "home_road_split"}),
+            Note("standings_short", {"team": "Golden State Warriors", "seasons": [{"season": 2000, "held": 81, "played": 82}]}),
+            Note("floor", {"table": "games", "first": 1989, "what": "postseason"}),
+        ),
+    )
+    with notes.collect() as recorded:
+        said = say_team_record(read)
+    assert said.answer == (
+        "The Golden State Warriors are 574-843 (.405) combined on the road, including the playoffs (523-791 (.398) regular season from 1993-94"
+        " - ESPN's standings carry no home/road split before 1993-94, 51-52 (.495) playoffs from 1989 - the warehouse's game list starts with the 1989 playoffs).\n"
+        "  Note: ESPN's standings do not cover the Golden State Warriors' whole season in 2000 (81 of 82 games), so this record is short by those games."
+    )
+    assert [each.kind for each in recorded.notes] == ["floor", "standings_short", "floor"]
+    assert notes.unsaid(recorded, said.answer or "") == []

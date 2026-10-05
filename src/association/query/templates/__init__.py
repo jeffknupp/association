@@ -10,8 +10,8 @@ are handled; anything else - including a recognized intent whose slots don't
 validate - is refused naming why.
 
 The templates live in one module per subject; this package holds the registry,
-:data:`TEMPLATES` (eight intents), and re-exports what callers outside it
-use. Thirteen more intents have no entry here
+:data:`TEMPLATES` (four intents), and re-exports what callers outside it
+use. Twenty-one more intents have no entry here
 (:data:`association.query.compose.COMPILED_INTENTS`): the compiler plans
 them, and each is read by its reader and worded by the sayer
 (``association.query.compose.say``) since Phase 2 moved them out of these
@@ -39,17 +39,11 @@ from .common import TemplateUnsupported as TemplateUnsupported
 from .common import check_coverage as check_coverage
 from .common import check_scope as check_scope
 from .common import coverage_caveat as coverage_caveat
-from .games import head_to_head, period_leaderboard, team_quarter_points
 from .netpoints import fingerprint, player_netpoints
 from .shots import shot_chart, shot_distance
-from .teams import team_record
 
 TEMPLATES: dict[str, Callable[[TemplateContext, Reading], TemplateResult]] = {
-    "team_record": team_record,
     "shot_chart": shot_chart,
-    "head_to_head": head_to_head,
-    "team_quarter_points": team_quarter_points,
-    "period_leaderboard": period_leaderboard,
     "shot_distance": shot_distance,
     "player_netpoints": player_netpoints,
     "fingerprint": fingerprint,

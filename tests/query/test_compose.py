@@ -1813,6 +1813,11 @@ def test_a_presenter_steps_aside_for_a_narrowing_its_words_do_not_state(cx_ctx: 
         "player_history",
         "player_compare",
         "with_without",
+        # The team shapes slice (iv) ported (compose.plan.PORTED_SHAPES).
+        "head_to_head",
+        "team_quarter_points",
+        "period_leaderboard",
+        "team_record",
     }
     # And the team-season readers' (compose.team_stats, Phase 2, step 4).
     team_seasons = {"team_stat", "team_leaderboard", "team_outlook"}

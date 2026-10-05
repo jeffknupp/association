@@ -100,6 +100,25 @@ STATED_SCOPING: dict[str, frozenset[str]] = {
     "team_stat": frozenset(),
     "team_outlook": frozenset(),
     "team_leaderboard": team_relation_scoping("team_leaderboard"),
+    # The shapes Phase 2's slice (iv) ported from templates (PORTED_SHAPES):
+    # each retired template's HONORED_SCOPING row, moved with it. Every
+    # meeting in a season, on a date, at a venue, or over a since-bounded or
+    # whole-career span; `order` and `game_n` pick out a subset of the tally
+    # (TEAM_RELATION_SCOPING_EXCLUDED says why).
+    "head_to_head": team_relation_scoping("head_to_head"),
+    # A team's quarter or half: the team relation's whole set (its games
+    # from `team_games`, its team and span from `scoped_team`), the quarter
+    # or half the relation's own narrowing.
+    "team_quarter_points": team_relation_scoping("team_quarter_points"),
+    # The league's ranking by a quarter or half reads one season's pool,
+    # narrowed by an opponent or a venue; a range of seasons and one date are
+    # refused (the accuracy is measured per season, and one game ranks
+    # nothing per game).
+    "period_leaderboard": frozenset({"period", "half", "opponent", "venue"}),
+    # A team's record: the team relation's cells less a date and a window
+    # (TEAM_RELATION_SCOPING_EXCLUDED says why), a split by month, and both
+    # season types together ("including the playoffs").
+    "team_record": team_relation_scoping("team_record", "split", "season_type_unstated"),
 }
 """Intent -> the scoping its reader's WORDS state. A compiled intent's
 sayer answers in its retired template's sentence, which names the
@@ -120,6 +139,17 @@ could name a slot where the compiler had declined for another cause.
    ``compose/present.py`` was deleted (Phase 2, slice (iv)).
 """
 
+PORTED_SHAPES: frozenset[str] = frozenset({"head_to_head", "team_quarter_points", "period_leaderboard", "team_record"})
+"""The shapes Phase 2's slice (iv) ported from templates the reader gave
+no point: each is declined beyond the scoping its retired template's words
+state (:data:`STATED_SCOPING`, where that template's ``HONORED_SCOPING``
+row moved) by name, in the sentence ``check_scope`` refused it with
+(:func:`_shape_declines`), before the relation's own cells are checked.
+
+.. versionadded:: 5.0.0
+"""
+
+
 #: The player-relation cells a team's log, splits and run refuse by name
 #: with a sentence of their own (``templates.games._team_game_log_refusals``,
 #: ``templates.splits.team_splits``, ``point._default_streak``): let
@@ -134,6 +164,9 @@ def _team_shape_cells(reading: Reading) -> frozenset[str]:
     splits table its category, a sum the unit it is asked in (which its
     mover refuses or reads), and the log, the splits and the run refuse a
     handful of player cells with their own sentence."""
+    if reading.intent in PORTED_SHAPES:
+        # Declined beyond these first, in the shape's own words.
+        return STATED_SCOPING[reading.intent]
     if reading.group == "presence":
         return frozenset({"without", "conditions"})
     if reading.shape == "grouped":
@@ -177,6 +210,9 @@ def _shape_declines(point: Reading) -> str | None:
     if intent == "with_without":
         ignored = unhonored_scoping(intent, scope, WITH_WITHOUT_STATED)
         return f"with_without cannot honor {ignored} - it would answer for a different span than was asked" if ignored else None
+    if intent in PORTED_SHAPES:
+        ignored = unhonored_scoping(intent, scope, STATED_SCOPING[intent])
+        return f"{intent} cannot honor {ignored} - it would answer for a different span than was asked" if ignored else None
     if intent == "streak" and point.relation != "player":
         # A team's or the league's run: the cells only a named player's
         # games can be narrowed by, and game_n (one numbered game of each

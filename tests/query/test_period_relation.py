@@ -14,6 +14,7 @@ from typing import Any
 
 import duckdb
 import pytest
+from test_templates import team_quarter_points  # the compiler's since Phase 2's slice (iv) (compose.COMPILED_INTENTS)
 
 from association.fetch.repairs import real_games
 from association.query.player_games import PERIOD_AGREEMENT, PERIOD_COLUMNS, Narrowed, aggregate_sql, period_line_sql, rows_sql
@@ -22,7 +23,6 @@ from association.query.team_games import TEAM_PERIOD_AGREEMENT, TEAM_PERIOD_COLU
 from association.query.team_games import aggregate_sql as team_aggregate_sql
 from association.query.team_games import rows_sql as team_rows_sql
 from association.query.templates.common import RELATION_SCOPING, RELATION_SCOPING_EXCLUDED, TEAM_RELATION_SCOPING, TEAM_RELATION_SCOPING_EXCLUDED, TemplateContext, period_narrowing
-from association.query.templates.games import team_quarter_points
 
 SEASON = 2026
 

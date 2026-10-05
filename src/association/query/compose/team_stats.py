@@ -37,9 +37,9 @@ from association.query.team_seasons import (
     venue_records,
 )
 from association.query.templates.common import TemplateResult, check_coverage, resolved_team, slot_season, unhonored_scoping, validated_until
-from association.query.templates.teams import conference_refusal
 
 from .core import Refused, values_of
+from .say import say_conference_refusal
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -59,6 +59,20 @@ class TeamSeasonQuery:
     scope: Scope
     relation: Literal["team_seasons", "team_snapshots"] = "team_seasons"
     shape: Literal["scalar", "grouped"] = "scalar"
+
+
+def conference_refusal(scope: Scope) -> TemplateResult | None:
+    """The refusal naming the real cause, where a team slot holds a
+    conference or a division rather than a team (``refusals.conference_named``,
+    said by ``compose.say.say_conference_refusal``) - None otherwise.
+
+    .. versionadded:: 5.0.0
+       ``templates.teams.conference_refusal`` was this.
+    """
+    from association.query.refusals import conference_named
+
+    named = conference_named(scope)
+    return say_conference_refusal(named) if named is not None else None
 
 
 def team_season_declines(intent: str, scope: Scope, stated: frozenset[str]) -> str | None:

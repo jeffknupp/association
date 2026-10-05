@@ -1043,6 +1043,54 @@ def _default_with_without(scope: Scope) -> Reading:
     return Reading(scope=scope, shape="grouped", measures=["record"], aggregate="record", group="presence", predicates=[], relation="team")
 
 
+def _default_head_to_head(scope: Scope) -> Reading:
+    """``head_to_head``'s default point: two teams' meetings - a record on
+    the team relation grouped by which team won each (``compose.meetings``).
+    The two teams are the scope's ``teams``, ``team`` and ``opponent``, read
+    by the meetings' reader; a narrowing its words do not state is the
+    planner's to decline (``compose.plan.TEAM_SHAPES_STATED``).
+
+    .. versionadded:: 5.0.0
+    """
+    return Reading(scope=scope, shape="grouped", measures=["record"], aggregate="record", group="opponent", predicates=[], relation="team")
+
+
+def _default_team_quarter_points(scope: Scope) -> Reading:
+    """``team_quarter_points``' default point: a team's figure in one quarter
+    or half - a total on the team relation over its games, the period the
+    relation's own narrowing (``compose.periods.read_team_quarter_points``,
+    which reads the stat, the period and the team from the scope and
+    refuses what is not on the period's line).
+
+    .. versionadded:: 5.0.0
+    """
+    return Reading(scope=scope, shape="scalar", measures=["points"], aggregate="total", group="period", predicates=[], relation="team")
+
+
+def _default_period_leaderboard(scope: Scope) -> Reading:
+    """``period_leaderboard``'s default point: the league's players (or one
+    team's) ranked per game by a stat in one quarter or half, or by their
+    points in each quarter - a grouped read by player on the league-wide
+    relation, the period the relation's own narrowing
+    (``compose.periods.read_period_leaderboard``).
+
+    .. versionadded:: 5.0.0
+    """
+    return Reading(scope=scope, shape="grouped", measures=["points"], aggregate="per_game", group="player", predicates=[], order="measure", relation="everyone")
+
+
+def _default_team_record(scope: Scope) -> Reading:
+    """``team_record``'s default point: a team's games won and lost - a
+    record on the team relation (``compose.team_records``, which reads the
+    team, the opponent, the span, the venue, a month or calendar narrowing,
+    a game of each series and a split by month from the scope, and reads a
+    plain regular season's from the standings).
+
+    .. versionadded:: 5.0.0
+    """
+    return Reading(scope=scope, shape="scalar", measures=["record"], aggregate="record", group="none", predicates=[], relation="team")
+
+
 DEFAULT_POINTS: dict[str, Callable[[Scope], Reading]] = {
     "game_log": _default_game_log,
     "player_stat": _default_player_stat,
@@ -1054,6 +1102,10 @@ DEFAULT_POINTS: dict[str, Callable[[Scope], Reading]] = {
     "streak": _default_streak,
     "player_matchup": _default_player_matchup,
     "with_without": _default_with_without,
+    "head_to_head": _default_head_to_head,
+    "team_quarter_points": _default_team_quarter_points,
+    "period_leaderboard": _default_period_leaderboard,
+    "team_record": _default_team_record,
 }
 """Intent -> its default point, read by the reader itself (Phase 2, step 1:
 slice (i)'s five; step 2: ``threshold_count``, ``single_game_high``, the
@@ -1408,12 +1460,16 @@ def _read_point(intent: str, scope: Scope, question: str, subject: Subject) -> R
             return team_splits
     if intent == "player_compare":
         return _compare_point(scope)
-    if intent in ("streak", "player_matchup", "with_without"):
+    if intent in ("streak", "player_matchup", "with_without", "head_to_head", "team_quarter_points", "period_leaderboard", "team_record"):
         # The retired templates read their slots alone, so no word moves the
         # point: a player's, a team's or the league's longest run
         # (_default_streak), two players' meetings
-        # (_default_player_matchup), or a team's record with and without a
-        # teammate (_default_with_without).
+        # (_default_player_matchup), a team's record with and without a
+        # teammate (_default_with_without), two teams' meetings
+        # (_default_head_to_head), a team's quarter or half
+        # (_default_team_quarter_points), the league's ranking by one
+        # (_default_period_leaderboard), or a team's record
+        # (_default_team_record).
         return default_point(intent, scope)
     if not _named_player_in(scope):
         team_reading = team_read_point(scope, question, subject)

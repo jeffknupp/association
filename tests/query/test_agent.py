@@ -265,7 +265,9 @@ def test_a_stray_name_on_a_question_no_template_reads_one_for_changes_nothing(mo
     break a question that works."""
     from association.query.templates.common import TemplateResult
 
-    monkeypatch.setattr("association.query.agent.TEMPLATES", {"head_to_head": lambda ctx, slots: TemplateResult(data={}, answer="templated")})
+    # head_to_head is the compiler's (Phase 2, slice (iv)): the stray name
+    # changes nothing on the way to its answer either.
+    monkeypatch.setattr("association.query.compose.answer", lambda ctx, reading, trace=None, declined=None, planned=None, ran=None: TemplateResult(data={}, answer="templated"))
     assert ask_routed(_agent_with_players(tmp_path, "Joel Embiid", "Jusuf Nurkic"), "Lakers vs Celtics record", slots_route("head_to_head", {"player": "Jusuf Nurkic"})).text == "templated"
 
 
@@ -326,15 +328,16 @@ def test_a_question_nothing_reads_is_refused_naming_why(monkeypatch: pytest.Monk
     assert answer.intent is None and answer.data is None
     assert agent.unanswered == "intent 'other' has no template yet"
 
-    # A template's own refusal (head_to_head still has one; with_without,
-    # which this used, is the compiler's since step (g)).
+    # A template's own refusal (fingerprint still has one; with_without and
+    # head_to_head, which this used, are the compiler's since step (g) and
+    # Phase 2's slice (iv)).
     def refusing(ctx: Any, reading: Reading) -> TemplateResult:
-        raise TemplateUnsupported("head_to_head needs two teams, got []")
+        raise TemplateUnsupported("fingerprint needs a player, got []")
 
-    monkeypatch.setattr("association.query.agent.TEMPLATES", {"head_to_head": refusing})
-    answer = ask_routed(agent, "a question nothing reads", slots_route("head_to_head", {"team": "Philadelphia 76ers"}))
-    assert answer.answered_by == "refused" and "head_to_head: head_to_head needs two teams" in answer.text
-    assert agent.unanswered == "head_to_head: head_to_head needs two teams, got []"
+    monkeypatch.setattr("association.query.agent.TEMPLATES", {"fingerprint": refusing})
+    answer = ask_routed(agent, "a question nothing reads", slots_route("fingerprint", {}))
+    assert answer.answered_by == "refused" and "fingerprint: fingerprint needs a player" in answer.text
+    assert agent.unanswered == "fingerprint: fingerprint needs a player, got []"
 
     # An intent the compiler alone answers (compose.COMPILED_INTENTS) is
     # refused with the compiler's reason where it has no reading: a log of
@@ -353,8 +356,8 @@ def test_a_question_nothing_reads_is_refused_naming_why(monkeypatch: pytest.Monk
     assert answer.answered_by == "refused" and "no usable reply" in answer.text
 
     # A question a template answers is unaffected.
-    monkeypatch.setattr("association.query.agent.TEMPLATES", {"head_to_head": lambda ctx, slots: TemplateResult(data={}, answer="answered")})
-    answer = ask_routed(agent, "a question nothing reads", slots_route("head_to_head", {}))
+    monkeypatch.setattr("association.query.agent.TEMPLATES", {"fingerprint": lambda ctx, slots: TemplateResult(data={}, answer="answered")})
+    answer = ask_routed(agent, "a question nothing reads", slots_route("fingerprint", {}))
     assert (answer.text, answer.answered_by, agent.unanswered) == ("answered", "fast", None)
 
 

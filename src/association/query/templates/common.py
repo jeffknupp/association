@@ -445,20 +445,12 @@ HONORED_SCOPING: dict[str, frozenset[str]] = {
     # player_stat is the compiler's too (step (g)): its retired words state
     # the relation's set and `season_type_unstated`, read from box scores
     # (`_player_stat_reads_box_scores`, `_player_relation_season_type`).
-    # The team relation's whole set (step 3, C4b / K1): its games now come
-    # from `team_games` (`opponent`, `venue`, `date`, `game_n`, `situation`,
-    # the `order`/`limit` window) and its team and span from `scoped_team`
-    # (`since`, `until`, `span`).
-    "team_quarter_points": _team_relation_scoping("team_quarter_points"),
-    # The ranking is of one quarter or half, the only cells it reads beyond
-    # its own team and season.
-    "period_leaderboard": frozenset({"period", "half", "opponent", "venue"}),
-    # `since`/`until` and `span` ("career") are honored (step 3, team cells /
-    # K1): every meeting in a since-bounded, optionally until-bounded, or
-    # whole-career span, read the same way team_record's own `since`/`until`/
-    # `span` are. See TEAM_RELATION_SCOPING_EXCLUDED["head_to_head"] for why
-    # `order`, `game_n` and `situation` are still not here.
-    "head_to_head": _team_relation_scoping("head_to_head"),
+    # team_quarter_points is the compiler's (Phase 2, slice (iv)):
+    # compose.present.STATED_SCOPING.
+    # period_leaderboard is the compiler's (Phase 2, slice (iv)):
+    # compose.present.STATED_SCOPING.
+    # head_to_head is the compiler's (Phase 2, slice (iv)): what its retired
+    # words state is compose.present.STATED_SCOPING's.
     # A shot read that takes its games from the relation by event id (step 3,
     # C5), the same shape as period_split: every relation slot is answerable -
     # `span` "career" by drawing (or averaging) every season on record rather
@@ -504,29 +496,7 @@ HONORED_SCOPING: dict[str, frozenset[str]] = {
     # narrow the first player's games as they do on every relation template.
     # player_matchup and streak are the compiler's too (step (g), the `pair`
     # and `run` shapes): compose.plan.STATED_SCOPING.
-    # The home/road split, the record against one team, and every season at
-    # once - "Knicks home record" was answered with their overall 53-29.
-    # `situation` is now the full calendar narrowing TEAM_RELATION_SCOPING
-    # declares (step 3, K1: a weekday, a fixed holiday or "since <month day>",
-    # not only a bare month) - before it, team_record refused every value but
-    # a real calendar month ("in october", see ISSUES.md #84), and a
-    # non-month narrowing still refuses where it would combine with the month
-    # split (`_team_record_month_and_split`). `split` is honored only as
-    # "month" - a record broken out by calendar month, read from the same
-    # per-game date a calendar filter uses, and now also over a
-    # `since`/`until`-bounded span (step 3, K1: `_team_record_by_month_span`,
-    # ISSUES.md - "Knicks record by month 2024 2025"). `since`/`until` (a
-    # since-bounded, optionally until-bounded career, the same `_Span` shape a
-    # whole one already is) and `game_n` (one game of each playoff series) are
-    # honored too (step 3, team cells / K1). `season_type_unstated` ("including
-    # the playoffs"/"and the playoffs", c9930ad's flag on the player relation)
-    # is honored by combining both types (`_team_record_combined_types`, F116,
-    # ISSUES.md) rather than silently answering one - "warriors all-time
-    # record including playoff record at away" now reads the road record from
-    # both, stated separately and summed. See
-    # TEAM_RELATION_SCOPING_EXCLUDED["team_record"] for why `date` and `order`
-    # still are not here.
-    "team_record": _team_relation_scoping("team_record", "split", "season_type_unstated"),
+    # team_record is the compiler's (Phase 2, slice (iv)): compose.plan.STATED_SCOPING.
 }
 
 
@@ -1953,7 +1923,7 @@ def scoped_team(con: duckdb.DuckDBPyConnection, scope: Scope, missing: str, *, s
     return team, seasons
 
 
-def _team_span_clause(span: _Span) -> tuple[str, list[Any]]:
+def team_span_clause(span: _Span) -> tuple[str, list[Any]]:
     """``tg.season``/``tg.eastern_date`` clause for a team's games in
     ``span``, over :data:`association.query.team_games.TEAM_GAMES_SQL`'s
     ``team_games``.
@@ -1973,6 +1943,9 @@ def _team_span_clause(span: _Span) -> tuple[str, list[Any]]:
 
     .. versionchanged:: 4.4.0
        Bounds the upper end too when ``span.until`` is set (step 3, K1).
+
+    .. versionadded:: 5.0.0
+       Public, as the relation's shared step; ``_team_span_clause`` is this.
     """
     if span.season_type == 3:
         if span.season is not None:
@@ -1981,6 +1954,9 @@ def _team_span_clause(span: _Span) -> tuple[str, list[Any]]:
             return "year(tg.eastern_date) BETWEEN ? AND ?", [span.first, span.until]
         return "year(tg.eastern_date) >= ?", [span.first]
     return span.clause("tg.season")
+
+
+_team_span_clause = team_span_clause
 
 
 def team_games(con: duckdb.DuckDBPyConnection, team: Entity, span: _Span, scope: Scope, *, opponent: Any, date: str | None = None) -> TeamNarrowed | TemplateResult:

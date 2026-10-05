@@ -38,12 +38,11 @@
   "player_games": 1,
   "shotchart": 1,
   "templates.common": 13,
-  "templates.games": 7,
+  "templates.games": 1,
   "templates.netpoints": 3,
   "templates.players": 3,
   "templates.shots": 2,
-  "templates.splits": 1,
-  "templates.teams": 9
+  "templates.splits": 1
  },
  "private_template_imports": [
   "compose.core:_team_slot_for_player",
@@ -55,8 +54,7 @@
   "metrics",
   "refusals",
   "refusals:_PERIOD_AS_CONDITION",
-  "team_metrics",
-  "templates.teams"
+  "team_metrics"
  ],
  "con_in_the_reader": [
   "parse:_as_typed_part",

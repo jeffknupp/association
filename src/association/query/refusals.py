@@ -48,6 +48,25 @@ _AGE = re.compile(r"\b(?:\d+\s+years?\s+old|(?:before|after|by|at)\s+(?:turning|
 _CONFERENCE_OR_DIVISION = re.compile(r"\b(?:east(?:ern)?|west(?:ern)?|conference|division|atlantic|central|southeast|northwest|pacific|southwest)\b", re.IGNORECASE)
 
 
+# Conference and division words. The warehouse holds no membership for either:
+# no table maps a team to one, and standings carry only each team's record in
+# its OWN conference's and division's games. So a team slot naming one cannot be
+# answered, and is refused by name; resolved as a team it would match nothing
+# and be refused for the wrong cause.
+_CONFERENCE_WORDS = re.compile(r"\b(?:conferences?|divisions?|east(?:ern)?|west(?:ern)?|atlantic|central|southeast|northwest|pacific|southwest)\b", re.IGNORECASE)
+
+
+def conference_named(scope: Scope) -> str | None:
+    """The team slot (``team``, ``opponent`` or one of ``teams``) that holds
+    a conference or a division rather than a team, or None - a team's record
+    is refused naming it (``compose.say.say_conference_refusal``).
+
+    .. versionadded:: 5.0.0
+       ``templates.teams._conference_refusal``'s reading.
+    """
+    return next((c for c in (scope.team, scope.opponent, *scope.teams) if c and _CONFERENCE_WORDS.search(c)), None)
+
+
 def unanswerable(con: duckdb.DuckDBPyConnection, reading: Reading, question: str) -> TemplateResult | None:
     """The refusal for a question shape nothing here reads, or None where
     this module has nothing to add to the template's or compiler's own

@@ -189,6 +189,29 @@ class AlignmentNarrowing:
     label: str
 
 
+# A record's own month filter: only a bare "in <month>" - anchored to that
+# exact shape, so "since january 31st" (a window) is not mistaken for one.
+_BARE_MONTH = re.compile(r"^in (january|february|march|april|may|june|july|august|september|october|november|december)$", re.IGNORECASE)
+
+
+def bare_month(situation: str | None) -> int | None:
+    """The calendar month a ``situation`` of exactly "in <month>" names
+    ("in october" -> 10), or None for anything else - a weekday, a holiday,
+    "since <day>", or no month at all. A team's record filters a bare month
+    by the game's own Eastern date; anything else is a fuller calendar
+    narrowing (:func:`parse_situation`).
+
+    .. versionadded:: 5.0.0
+       ``templates.teams._team_record_month`` was this.
+    """
+    if situation is None:
+        return None
+    match = _BARE_MONTH.fullmatch(situation.strip())
+    if match is None:
+        return None
+    return [name.lower() for name in _MONTH_NAMES].index(match.group(1).lower()) + 1
+
+
 def parse_situation(text: Any) -> CalendarNarrowing | None:
     """The calendar narrowing ``text`` names, or None when it names none - an
     age, a conference, a division, a return from injury. A None is refused by
