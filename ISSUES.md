@@ -2466,13 +2466,6 @@ those were found.
 
 ## P3: refusal or gap
 
-### The SQL ratchet does not count statements run through `core.rows_of`/`core.values_of`
-- **Found:** 2026-10-05, the Phase 2 review (`~/association-research/reviews/phase2-2026-10-05/REVIEW.md`)
-- **Evidence:** 67 call sites, 35 of them hand-written statements moved whole into `season_line.py`, `team_seasons.py`, `compose/shots.py`, `compose/netpoints.py`; the ratchet reads 38 where every executing site counted is 105 - the same 105 as before Phase 2 (review, section 3 and `harness/stmt_sites.py`).
-- **User sees:** nothing; a tooling gap - the ratchet can be grown past by moving a statement behind the door.
-- **Next step:** count a `rows_of`/`values_of` call over a `Statement` as a statement of the module that builds it, listed per module; regenerate the list once with Jeff's say-so.
-- **GitHub:** #329
-
 ### A team's log drops a calendar, quarter or half narrowing silently
 - **Found:** 2026-10-05, porting the team log onto the team compiler (Phase 2, step 4)
 - **Evidence:** `compose/logs.py` `read_team_log` narrows the team's games with `Scope(venue=...)` and the opponent/date alone (`team_games`), while `compose.plan.STATED_SCOPING["game_log"]` declares `situation`, `period` and `half` as stated - so a team log asked "in January" or "in the 4th quarter" lists the whole span under a heading that does not say so. It was the retired template's behavior too; not measured on any population yet.

@@ -67,6 +67,41 @@ def test_the_bypasses_the_phase_1_review_found_are_caught() -> None:
     assert ratchets.con_in_the_reader(modules) == {"point:read"}
 
 
+def test_a_hand_built_statement_through_the_compilers_door_counts_and_a_compiled_one_does_not() -> None:
+    """The bypass the Phase 2 review found (2026-10-05): 35 hand-written
+    statements moved whole behind ``core.rows_of``/``core.values_of``, which
+    the count did not see. A statement the compiler built passes through
+    the same door and is not counted; a function that only hands its
+    parameter on is a door too, and its callers are counted."""
+    modules = _modules(
+        compose__stats=(
+            "def read(con, q, c: Compiled):\n"
+            "    compiled = compile_query(con, q)\n"
+            "    per_type: dict[int, Compiled] = {}\n"
+            "    per_type[2] = compile_over(con, q)\n"
+            "    rows = {k: rows_of(con, each) for k, each in per_type.items()}\n"
+            "    one = per_type[2]\n"
+            "    return rows_of(con, compiled), rows_of(con, c), rows_of(con, one), rows_of(con, compile_team_over(q))"
+        ),
+        compose__seasons=(
+            "def line(con, player):\n"
+            "    statement, column = career_statement(player)\n"
+            "    values_of(con, statement)\n"
+            "    values_of(con, Statement(*games_sql(player)))\n"
+            "    return values_of(con, season_statement(player))"
+        ),
+        season_line=(
+            "def _values(con, statement: Statement):\n"
+            "    return values_of(con, statement)\n"
+            "def _raw(con, sql: str):\n"
+            "    return values_of(con, Statement(sql, []))\n"
+            "def first(con):\n"
+            "    return _values(con, first_statement()), _raw(con, 'SELECT 1'), _raw(con, 'SELECT 2')"
+        ),
+    )
+    assert ratchets.sql_outside_the_relations(modules) == {"compose.seasons": 3, "season_line": 3}
+
+
 def test_sql_is_counted_per_module_and_a_count_may_only_fall() -> None:
     # Phase 1's order from here, step 4: a listed module could grow
     # statements freely while the ratchet listed modules; it counts them.

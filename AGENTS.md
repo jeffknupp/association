@@ -102,11 +102,17 @@ this tree:
   (`scripts/ratchets.json`): a function outside the reader that takes the
   question's text (any parameter holding it, not only one named
   `question`), how many statements each module executes (105 in 19
-  modules when it was first counted, 2026-10-02; 38 in 11 since Phase 2's
-  step 6 - counted per module because a listed module could grow
+  modules when it was first counted, 2026-10-02; 80 in 20 since
+  2026-10-05 - counted per module because a listed module could grow
   statements freely; `.execute`, `.executemany`, `.sql`, `.query` and the
   package's own string-SQL helpers since 2026-10-03, when a statement
-  through `entities._read_table` counted as none), a module outside the
+  through `entities._read_table` counted as none; and since 2026-10-05
+  every `core.rows_of`/`core.values_of` call over a statement the compiler
+  did not build, in the module making the call, and every call of a
+  function that only hands its parameter to one, such as
+  `season_line._values` - Phase 2 moved 35 hand-written statements behind
+  that door, where the count read 38 and the sites were 105 still; the
+  argument's tracing is `_origin`'s docstring), a module outside the
   reader that imports `re` by any route or takes a reader's private
   pattern, and a reader function that takes a DuckDB connection (23). A
   fifth ratchet, a private name `compose/` took from `templates/`, reached

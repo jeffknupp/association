@@ -28,14 +28,23 @@
  "sql_outside_the_relations": {
   "compose.core": 1,
   "compose.logs": 2,
+  "compose.netpoints": 3,
+  "compose.periods": 4,
+  "compose.seasons": 7,
+  "compose.shots": 3,
   "compose.splits": 1,
+  "compose.standings": 4,
   "compose.team": 2,
+  "compose.team_records": 2,
+  "compose.team_stats": 9,
   "conditions": 7,
   "connection": 1,
   "entities": 4,
+  "fingerprint": 3,
   "game_label": 1,
   "player_games": 1,
   "player_relation": 16,
+  "season_line": 7,
   "team_relation": 2
  },
  "regex_outside_the_reader": [
