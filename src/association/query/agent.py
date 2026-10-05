@@ -29,6 +29,8 @@ from typing import Any
 import duckdb
 
 from association.nba.season import calendar_season, season_on_record
+from association.query.answer import AnswerContext, Reply
+from association.query.reading import Unsupported
 
 from .answer import Answer, AnsweredBy, Artifact, Timing
 from .compose import COMPILED_INTENTS
@@ -50,18 +52,9 @@ from .reading import Reading, Scope, ScopeError
 from .refusals import MIN_QUESTION_WORDS, by_question, too_short, unanswerable
 from .router import Route, RouterUnavailable
 from .templates import TEMPLATES
-from .templates.common import (
-    PLAYER_INTENTS,
-    TEAM_ONLY_INTENTS,
-    TemplateContext,
-    TemplateResult,
-    TemplateUnsupported,
-    check_coverage,
-    check_scope,
-    coverage_caveat,
-)
+from .templates.common import PLAYER_INTENTS, TEAM_ONLY_INTENTS, check_coverage, check_scope, coverage_caveat
 
-# The subset of TemplateResult.data a compose.answer() carries that describes
+# The subset of Reply.data a compose.answer() carries that describes
 # WHAT was answered - the point on the relation - rather than the rows
 # themselves. Traced so a refusal that becomes a composed answer says what it
 # composed, the same way "-> (router) intent=..." says what was routed. See
@@ -69,7 +62,7 @@ from .templates.common import (
 _COMPOSE_POINT_KEYS = ("skeleton", "measures", "aggregate", "group", "predicates", "window", "span", "narrowing", "player")
 
 
-def _note(result: TemplateResult, note: str) -> None:
+def _note(result: Reply, note: str) -> None:
     """Record a sentence appended to a template's answer on its ``data`` too,
     so a caller rendering from ``data`` (the web page) does not lose what the
     text-only reader is told: which name a default chose, how much of a
@@ -272,16 +265,16 @@ class Agent:
         raw = list(scope.players) if scope.players else [scope.player]
         return [name for name in raw if isinstance(name, str) and name.strip()]
 
-    def _try_fast_path(self, question: str, history: RunHistory) -> tuple[str, TemplateResult] | None:
+    def _try_fast_path(self, question: str, history: RunHistory) -> tuple[str, Reply] | None:
         """Route -> Reading -> deterministic template -> answer, returning the
         intent alongside the template's whole result. Returns None, with
         :attr:`unanswered` naming why, where nothing here reads the question:
         an unported intent, slots that fail validation, or any reader or
         template failure the compiler and the named refusals could not take.
 
-        The intent and the TemplateResult are returned, rather than just its
+        The intent and the Reply are returned, rather than just its
         `answer` text, because that text is only one of the things the template
-        produced - see TemplateResult.data, which nothing could reach before
+        produced - see Reply.data, which nothing could reach before
         2.0."""
         self.unanswered = None
         routed = self._read_or_refuse(question, history)
@@ -301,7 +294,7 @@ class Agent:
         if reading.misread and reading.intent in PLAYER_INTENTS:
             misread = misread_players(list(reading.misread))
             history.log(f"  -> (player) {misread}")
-            return reading.intent, TemplateResult(data={"message": misread, "misread": list(reading.misread)}, answer=misread)
+            return reading.intent, Reply(data={"message": misread, "misread": list(reading.misread)}, answer=misread)
         # The handler goes with the intent the Reading settled - where the
         # route's cannot be about the subject, or where the question's own
         # words name a child of it (subject.KIND_ASSIGNED_INTENTS: a count of
@@ -327,7 +320,7 @@ class Agent:
             if named_player is not None:
                 message = team_only_question_names_a_player(named_player, reading.intent)
                 history.log(f"  -> (player) {message}")
-                return reading.intent, TemplateResult(data={"message": message, "named_player": named_player}, answer=message)
+                return reading.intent, Reply(data={"message": message, "named_player": named_player}, answer=message)
         if reading.intent in COMPILED_INTENTS:
             return self._run_compiled(question, reading, history)
         if handler is None:
@@ -408,7 +401,7 @@ class Agent:
         history.log(f"  -> (parser) parent={parent!r} kind={subject.kind!r} intent={routed.intent!r}")
         return routed
 
-    def _settled_before_template(self, question: str, reading: Reading, handler: Callable[..., TemplateResult] | None, history: RunHistory) -> tuple[str, TemplateResult] | None:
+    def _settled_before_template(self, question: str, reading: Reading, handler: Callable[..., Reply] | None, history: RunHistory) -> tuple[str, Reply] | None:
         """What is decided before any template runs: a shape the question's
         own words settle (a championship question a team ranking would
         answer fluently and wrongly - refusals.by_question), and, where no
@@ -429,10 +422,10 @@ class Agent:
         self.unanswered = f"intent {reading.intent!r} has no template yet"
         return None
 
-    def _run_scoped_template(self, question: str, reading: Reading, handler: Callable[[TemplateContext, Reading], TemplateResult], history: RunHistory) -> tuple[str, TemplateResult] | None:
+    def _run_scoped_template(self, question: str, reading: Reading, handler: Callable[[AnswerContext, Reading], Reply], history: RunHistory) -> tuple[str, Reply] | None:
         """Check scope and coverage, run the template, and attach the notes
         every fast-path answer carries. On a scoping refusal
-        (``TemplateUnsupported``, from ``check_scope`` or the template itself),
+        (``Unsupported``, from ``check_scope`` or the template itself),
         try the compiled answer, then a named refusal, before giving the
         question up - split out of ``_try_fast_path`` to keep it under the
         complexity gate, and because it is one coherent step: "run what the
@@ -446,7 +439,7 @@ class Agent:
             refused = check_coverage(intent, scope)
             if refused is not None:
                 history.log(f"  -> (coverage) {refused}")
-                result = TemplateResult(data={"message": refused, "season": scope.season}, answer=refused)
+                result = Reply(data={"message": refused, "season": scope.season}, answer=refused)
             else:
                 result = self._run_template(handler, reading, history)
                 # A season that IS covered but only partly says so, rather than
@@ -455,7 +448,7 @@ class Agent:
                 if note:
                     result.answer = f"{result.answer} {note}"
                     _note(result, note)
-        except TemplateUnsupported as exc:
+        except Unsupported as exc:
             # The template could not honor the scoping asked for - see whether
             # the compiler can answer the same point on the relation. A
             # refusal it hands back (a clarification, a "no match") is still
@@ -478,10 +471,10 @@ class Agent:
             return None
         history.record_tool_call(f"template {intent}", time.monotonic() - t0)
         # No second model call, ever: templates phrase their own answers. See
-        # TemplateResult for why that is both faster and safer than narrating.
+        # Reply for why that is both faster and safer than narrating.
         return intent, result
 
-    def _run_compiled(self, question: str, reading: Reading, history: RunHistory) -> tuple[str, TemplateResult] | None:
+    def _run_compiled(self, question: str, reading: Reading, history: RunHistory) -> tuple[str, Reply] | None:
         """An intent the compiler alone answers (``compose.COMPILED_INTENTS``:
         the four whose templates it reproduced exactly, retired in ROADMAP
         plan item 6, step (d), part 4, and ``game_log``, ``player_stat`` and
@@ -503,7 +496,7 @@ class Agent:
         refused = check_coverage(intent, scope)
         if refused is not None:
             history.log(f"  -> (coverage) {refused}")
-            return intent, TemplateResult(data={"message": refused, "season": scope.season}, answer=refused)
+            return intent, Reply(data={"message": refused, "season": scope.season}, answer=refused)
         refusal = unanswerable(self.con, reading, question)
         if refusal is not None:
             history.log(f"  -> (compose) {why} - refused ({refusal.data['refused']}): nothing here reads that shape")
@@ -512,7 +505,7 @@ class Agent:
         self.unanswered = f"{intent}: {why}"
         return None
 
-    def _try_compose(self, question: str, reading: Reading, history: RunHistory, declined: Callable[[str], None] | None = None) -> TemplateResult | None:
+    def _try_compose(self, question: str, reading: Reading, history: RunHistory, declined: Callable[[str], None] | None = None) -> Reply | None:
         """The compiler's answer to the point the parser read
         (``association.query.compose.answer``): the compiled intents' only
         answer, and the step after a template's refusal. Answered exactly
@@ -531,7 +524,7 @@ class Agent:
         assert self.planned is not None
         with collect_name_readings() as readings:
             composed = compose.answer(
-                TemplateContext(con=self.con, out_dir=self.out_dir),
+                AnswerContext(con=self.con, out_dir=self.out_dir),
                 reading,
                 trace=lambda point: history.log(f"  -> (reading) {point.describe()}"),
                 declined=declined,
@@ -554,7 +547,7 @@ class Agent:
         history.log(f"  -> (compose) intent={reading.intent!r} point={point}")
         return composed
 
-    def _unmatched_fingerprint(self, question: str, reading: Reading, composed: TemplateResult) -> None:
+    def _unmatched_fingerprint(self, question: str, reading: Reading, composed: Reply) -> None:
         """A "vs" fingerprint that drew one polygon answered half of itself:
         :func:`~association.query.entities.compared_but_unmatched` says which
         name the question compares matched nobody, or was left out - see its
@@ -570,14 +563,14 @@ class Agent:
             composed.answer = f"{composed.answer} {unmatched_note}"
             _note(composed, unmatched_note)
 
-    def _run_template(self, handler: Callable[[TemplateContext, Reading], TemplateResult], reading: Reading, history: RunHistory) -> TemplateResult:
+    def _run_template(self, handler: Callable[[AnswerContext, Reading], Reply], reading: Reading, history: RunHistory) -> Reply:
         """The template's answer, with how it read any name the question left
         open. "maxey" is Tyrese because he is the only Maxey who still plays -
         a default, and a default is allowed only where it is visible and can be
         corrected, so the sentence naming who else matched and what to type for
         him is part of the answer (entities.collect_name_readings)."""
         with collect_name_readings() as name_readings:
-            result = handler(TemplateContext(con=self.con, out_dir=self.out_dir), reading)
+            result = handler(AnswerContext(con=self.con, out_dir=self.out_dir), reading)
         for name_reading in name_readings:
             history.log(f"  -> (player) {name_reading}")
             result.answer = f"{result.answer} {name_reading}"

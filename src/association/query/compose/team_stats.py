@@ -16,6 +16,7 @@ from typing import Any, Literal
 import duckdb
 
 from association.nba.season import current_season
+from association.query.answer import Reply
 from association.query.entities import Entity
 from association.query.notes import Note
 from association.query.reading import Scope, Unsupported, _clamp_limit
@@ -36,7 +37,7 @@ from association.query.team_seasons import (
     team_venue_records_statement,
     venue_records,
 )
-from association.query.templates.common import TemplateResult, check_coverage, resolved_team, slot_season, unhonored_scoping, validated_until
+from association.query.templates.common import check_coverage, resolved_team, slot_season, unhonored_scoping, validated_until
 
 from .core import Refused, values_of
 from .say import say_conference_refusal
@@ -61,7 +62,7 @@ class TeamSeasonQuery:
     shape: Literal["scalar", "grouped"] = "scalar"
 
 
-def conference_refusal(scope: Scope) -> TemplateResult | None:
+def conference_refusal(scope: Scope) -> Reply | None:
     """The refusal naming the real cause, where a team slot holds a
     conference or a division rather than a team (``refusals.conference_named``,
     said by ``compose.say.say_conference_refusal``) - None otherwise.
@@ -88,7 +89,7 @@ def team_season_declines(intent: str, scope: Scope, stated: frozenset[str]) -> s
     return f"{intent} cannot honor {ignored} - it would answer for a different span than was asked" if ignored else None
 
 
-def _team_season_subject(con: duckdb.DuckDBPyConnection, intent: str, scope: Scope, stated: frozenset[str]) -> Entity | TemplateResult:
+def _team_season_subject(con: duckdb.DuckDBPyConnection, intent: str, scope: Scope, stated: frozenset[str]) -> Entity | Reply:
     """The team a one-team team-season read is about, after the checks the
     answering loop and the retired template made first, in their order: a
     narrowing the words do not state (a decline), the coverage floor, a
@@ -99,7 +100,7 @@ def _team_season_subject(con: duckdb.DuckDBPyConnection, intent: str, scope: Sco
         raise Unsupported(declined)
     refused = check_coverage(intent, scope)
     if refused is not None:
-        raise Refused(TemplateResult(data={"message": refused, "season": scope.season}, answer=refused))
+        raise Refused(Reply(data={"message": refused, "season": scope.season}, answer=refused))
     conference = conference_refusal(scope)
     if conference is not None:
         return conference
@@ -109,7 +110,7 @@ def _team_season_subject(con: duckdb.DuckDBPyConnection, intent: str, scope: Sco
 # --- the power index (team_outlook) --------------------------------------------
 
 
-def read_team_outlook(con: duckdb.DuckDBPyConnection, q: TeamSeasonQuery, *, stated: frozenset[str]) -> Result | TemplateResult:
+def read_team_outlook(con: duckdb.DuckDBPyConnection, q: TeamSeasonQuery, *, stated: frozenset[str]) -> Result | Reply:
     """A team's ESPN Basketball Power Index - its rating and where it sits,
     its record and projection, its playoff and title chances, and its
     strength of schedule - from one snapshot of ``team_power_index``, as a
@@ -124,7 +125,7 @@ def read_team_outlook(con: duckdb.DuckDBPyConnection, q: TeamSeasonQuery, *, sta
     The snapshots the season holds are ``facts["snapshots"]``, so a team
     missing from the one asked for is told which exist rather than that
     there is "no data" (a Result with no parts). A
-    :class:`~association.query.templates.common.TemplateResult` back is the
+    :class:`~association.query.answer.Reply` back is the
     relation's refusal (a conference named as a team, an ambiguous team).
 
     ``templates.teams.team_outlook`` was this, with its words; its two
@@ -133,7 +134,7 @@ def read_team_outlook(con: duckdb.DuckDBPyConnection, q: TeamSeasonQuery, *, sta
     .. versionadded:: 5.0.0
     """
     team = _team_season_subject(con, "team_outlook", q.scope, stated)
-    if isinstance(team, TemplateResult):
+    if isinstance(team, Reply):
         return team
     season = q.scope.season or current_season()
     postseason = (q.scope.season_type or 2) == 3
@@ -222,7 +223,7 @@ def _team_stat_metric(scope: Scope) -> str | None:
     return key
 
 
-def read_team_stat(con: duckdb.DuckDBPyConnection, q: TeamSeasonQuery, *, stated: frozenset[str]) -> Result | TemplateResult:
+def read_team_stat(con: duckdb.DuckDBPyConnection, q: TeamSeasonQuery, *, stated: frozenset[str]) -> Result | Reply:
     """One team's season numbers, each with its rank in the league, from the
     team-season relation (:mod:`association.query.team_seasons`), as a
     :class:`~association.query.result.Result` on a span whose ``source`` is
@@ -247,7 +248,7 @@ def read_team_stat(con: duckdb.DuckDBPyConnection, q: TeamSeasonQuery, *, stated
     """
     scope = q.scope
     team = _team_season_subject(con, "team_stat", scope, stated)
-    if isinstance(team, TemplateResult):
+    if isinstance(team, Reply):
         return team
     key = _team_stat_metric(scope)
     season = scope.season or current_season()
@@ -334,7 +335,7 @@ DEFAULT_TEAM_LEADERBOARD_LIMIT = 10
 """
 
 
-def _team_leaderboard_checks(scope: Scope, stated: frozenset[str]) -> TemplateResult | None:
+def _team_leaderboard_checks(scope: Scope, stated: frozenset[str]) -> Reply | None:
     """What the answering loop and the retired template checked before
     reading, in their order: a narrowing the words do not state (a
     decline), the coverage floor, a conference or division in a team slot."""
@@ -343,7 +344,7 @@ def _team_leaderboard_checks(scope: Scope, stated: frozenset[str]) -> TemplateRe
         raise Unsupported(declined)
     refused = check_coverage("team_leaderboard", scope)
     if refused is not None:
-        raise Refused(TemplateResult(data={"message": refused, "season": scope.season}, answer=refused))
+        raise Refused(Reply(data={"message": refused, "season": scope.season}, answer=refused))
     return conference_refusal(scope)
 
 
@@ -358,7 +359,7 @@ def _team_leaderboard_span(scope: Scope, season: int, season_type: int) -> Span:
     return Span(season=season, season_type=season_type, first=since, last=until, source="team_seasons")
 
 
-def read_team_leaderboard(con: duckdb.DuckDBPyConnection, q: TeamSeasonQuery, *, stated: frozenset[str]) -> Result | TemplateResult:
+def read_team_leaderboard(con: duckdb.DuckDBPyConnection, q: TeamSeasonQuery, *, stated: frozenset[str]) -> Result | Reply:
     """Every team ranked by one metric - of the season line
     (``team_metrics.TEAM_METRICS``) or of the standings (a record, home or
     road, or across the seasons from ``since`` on) - as a
@@ -393,7 +394,7 @@ def read_team_leaderboard(con: duckdb.DuckDBPyConnection, q: TeamSeasonQuery, *,
     season_type = scope.season_type or 2
     span = _team_leaderboard_span(scope, season, season_type)
     named = resolved_team(con, scope.team, season=slot_season(scope)) if scope.team and scope.team.strip() else None
-    if isinstance(named, TemplateResult):
+    if isinstance(named, Reply):
         return named
     facts: dict[str, Any] = {"metric": key, "venue": scope.venue, "rank": scope.rank, "descending": descending_for(TEAM_METRICS[key], scope.rank)}
     read = _team_leaderboard_values(con, key, span, scope.venue) if TEAM_METRICS[key].expression is None else _team_leaderboard_metric(con, key, span, scope.venue)

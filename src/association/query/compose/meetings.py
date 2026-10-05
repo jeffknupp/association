@@ -21,22 +21,12 @@ from typing import Literal
 import duckdb
 
 from association.nba.season import current_season
+from association.query.answer import Reply
 from association.query.entities import Entity
-from association.query.reading import Scope
+from association.query.reading import Scope, Unsupported
 from association.query.result import Grouped, Narrowing, Part, Result, Span
 from association.query.team_games import TeamNarrowed
-from association.query.templates.common import (
-    ResolvedSpan,
-    TemplateResult,
-    TemplateUnsupported,
-    check_coverage,
-    resolved_team,
-    slot_season,
-    span_of,
-    team_games,
-    unhonored_scoping,
-    validated_until,
-)
+from association.query.templates.common import ResolvedSpan, check_coverage, resolved_team, slot_season, span_of, team_games, unhonored_scoping, validated_until
 
 from .core import rows_of
 from .team import TeamQuery, compile_team_over
@@ -58,25 +48,25 @@ def _head_to_head_names(teams_slot: tuple[str, ...], team_slot: str | None, oppo
     if opponent_slot is not None and opponent_slot.strip() and opponent_slot not in names:
         names = [*names, opponent_slot]
     if len(set(names)) < 2:
-        raise TemplateUnsupported("head_to_head needs two team names")
+        raise Unsupported("head_to_head needs two team names")
     return names
 
 
-def _head_to_head_teams(con: duckdb.DuckDBPyConnection, names: list[str], season: int | None) -> tuple[Entity, Entity] | TemplateResult:
+def _head_to_head_teams(con: duckdb.DuckDBPyConnection, names: list[str], season: int | None) -> tuple[Entity, Entity] | Reply:
     """Until two DIFFERENT teams resolve, not the first two names: "Celtics" in
     `team` and "Boston Celtics" in `teams` are one team, and the opponent
     after them is the second."""
     resolved: list[Entity] = []
     for name in names:
         team = resolved_team(con, name, season=season)
-        if isinstance(team, TemplateResult):
+        if isinstance(team, Reply):
             return team
         if team.id not in {t.id for t in resolved}:
             resolved.append(team)
         if len(resolved) == 2:
             break
     if len(resolved) != 2:
-        raise TemplateUnsupported("the named teams resolved to the same team")
+        raise Unsupported("the named teams resolved to the same team")
     return resolved[0], resolved[1]
 
 
@@ -88,9 +78,9 @@ def _head_to_head_span_slots(scope: Scope, date: str | None) -> tuple[int | None
     until = validated_until(scope.until, since)
     career = scope.span == "career"
     if (since is not None or career or until is not None) and date:
-        raise TemplateUnsupported("a date and a since-bounded or career span of meetings at once")
+        raise Unsupported("a date and a since-bounded or career span of meetings at once")
     if since is not None and career:
-        raise TemplateUnsupported(f"since {since} and a career span of meetings at once")
+        raise Unsupported(f"since {since} and a career span of meetings at once")
     # `until` needs no separate career check: `validated_until` above already
     # raises for `until` with no `since`, and `career` never carries a `since`.
     return since, until, career
@@ -98,7 +88,7 @@ def _head_to_head_span_slots(scope: Scope, date: str | None) -> tuple[int | None
 
 def _head_to_head_narrowed(
     con: duckdb.DuckDBPyConnection, a: Entity, b: Entity, venue: Literal["home", "away"] | None, date: str | None, season_slot: int | None, season_type: int
-) -> tuple[TeamNarrowed | TemplateResult, int | None]:
+) -> tuple[TeamNarrowed | Reply, int | None]:
     """``a``'s games against ``b``, from ``a``'s own row of the team relation
     (:func:`association.query.templates.common.team_games`) - which already
     carries both home and away meetings without a venue named - and the
@@ -129,14 +119,14 @@ def _head_to_head_wins(a: Entity, b: Entity, won: list[bool | None]) -> Grouped:
     return Grouped(by="team", rows=({"key": a.name, "wins": sum(1 for w in won if w)}, {"key": b.name, "wins": sum(1 for w in won if w is False)}))
 
 
-def read_head_to_head(con: duckdb.DuckDBPyConnection, q: TeamQuery, *, stated: frozenset[str]) -> Result | TemplateResult | None:
+def read_head_to_head(con: duckdb.DuckDBPyConnection, q: TeamQuery, *, stated: frozenset[str]) -> Result | Reply | None:
     """``head_to_head``'s point - two teams' meetings - read: the two teams
     from the scope's ``teams``, ``team`` and ``opponent``, every meeting in
     the season (the current one where none is named), on one date, or over a
     since-bounded or whole-career span, from the first team's side. ``None``
     where the scope carries a narrowing the meetings' words do not state
     (``stated``; the planner declines it first); a
-    :class:`~association.query.templates.common.TemplateResult` back is the
+    :class:`~association.query.answer.Reply` back is the
     relation's own refusal (an ambiguous team, a coverage floor).
 
     .. versionadded:: 5.0.0
@@ -147,10 +137,10 @@ def read_head_to_head(con: duckdb.DuckDBPyConnection, q: TeamQuery, *, stated: f
         return None
     refused = check_coverage("head_to_head", scope)
     if refused is not None:
-        return TemplateResult(data={"message": refused, "season": scope.season}, answer=refused)
+        return Reply(data={"message": refused, "season": scope.season}, answer=refused)
     names = _head_to_head_names(scope.teams, scope.team, scope.opponent)
     teams = _head_to_head_teams(con, names, slot_season(scope))
-    if isinstance(teams, TemplateResult):
+    if isinstance(teams, Reply):
         return teams
     a, b = teams
     season_type = scope.season_type or 2
@@ -159,7 +149,7 @@ def read_head_to_head(con: duckdb.DuckDBPyConnection, q: TeamQuery, *, stated: f
     if since is not None or career or until is not None:
         return _head_to_head_over_span(con, replace(q, shape="rows"), a, b, venue, season_type, since=since, until=until, career=career)
     narrowed, season = _head_to_head_narrowed(con, a, b, venue, date, scope.season, season_type)
-    if isinstance(narrowed, TemplateResult):
+    if isinstance(narrowed, Reply):
         return narrowed
     won = [row["won"] for row in rows_of(con, compile_team_over(replace(q, shape="rows"), a, ResolvedSpan(season, season_type), narrowed, ascending=True))]
     return Result(
@@ -174,7 +164,7 @@ def read_head_to_head(con: duckdb.DuckDBPyConnection, q: TeamQuery, *, stated: f
 
 def _head_to_head_over_span(
     con: duckdb.DuckDBPyConnection, q: TeamQuery, a: Entity, b: Entity, venue: Literal["home", "away"] | None, season_type: int, *, since: int | None, until: int | None, career: bool
-) -> Result | TemplateResult:
+) -> Result | Reply:
     """Every meeting in a since-bounded or whole-career span, tallied once,
     with the seasons the games actually came from (``tg.season``, or
     ``year(tg.eastern_date)`` for a postseason, whose label is not the year
@@ -182,7 +172,7 @@ def _head_to_head_over_span(
     (``Span.phrase``, :meth:`~association.query.templates.common.ResolvedSpan.during`)."""
     span = span_of("career" if career else None, None, season_type, "games", since=since, until=until)
     narrowed = team_games(con, a, span, Scope(venue=venue), opponent=b)
-    if isinstance(narrowed, TemplateResult):
+    if isinstance(narrowed, Reply):
         return narrowed
     # The team compiler's rows read: each meeting's result and the season it
     # was played in (a postseason's by its calendar year), oldest first.

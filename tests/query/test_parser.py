@@ -13,9 +13,9 @@ from routed import slots_route, with_subject
 
 from association.query.decisions import Decision
 from association.query.parse import classify_span, measure, parent_intent, read_route, reading_from_route, window
-from association.query.reading import Reading
+from association.query.reading import Reading, Unsupported
 from association.query.router import Beside, _threshold_from_text, settle
-from association.query.templates.common import TemplateUnsupported, check_scope
+from association.query.templates.common import check_scope
 
 
 @pytest.fixture
@@ -395,7 +395,7 @@ def test_the_subjects_own_split_still_reads_beside_a_teammates_role(con: duckdb.
     assert route.intent == "team_quarter_points" and "split" not in route.slots
     reading = reading_from_route(con, question, route)
     assert [c.predicate for c in reading.scope.conditions] == ["started"]
-    with pytest.raises(TemplateUnsupported, match="conditions"):
+    with pytest.raises(Unsupported, match="conditions"):
         check_scope(reading.intent, reading.scope)
 
 

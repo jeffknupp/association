@@ -32,6 +32,7 @@ from typing import Any
 import duckdb
 
 from association.nba.coverage import COVERAGE
+from association.query.answer import Reply
 from association.query.entities import Entity
 from association.query.lines import measure_filters, threshold_count_line
 from association.query.notes import Note
@@ -39,7 +40,7 @@ from association.query.player_games import REBUILT_STATS
 from association.query.reading import Unsupported
 from association.query.result import Grouped, Part, Result, Scalar, Span
 from association.query.season_line import seasons_on_record
-from association.query.templates.common import STAT_LABELS, TemplateResult, player_relation_season_type, unhonored_scoping
+from association.query.templates.common import STAT_LABELS, player_relation_season_type, unhonored_scoping
 from association.query.templates.players import empty_box_scores, rebuilt_in_scope
 
 from .core import Query, compile_query, rows_of
@@ -95,7 +96,7 @@ def _threshold_count_rows(q: Query, player: Entity | None, rows: list[dict[str, 
     return [(r["group"], int(r["games"]), int(r.get("rebuilt_shown") or 0)) for r in rows]
 
 
-def read_threshold_count(con: duckdb.DuckDBPyConnection, q: Query, *, stated: frozenset[str]) -> Result | TemplateResult | None:
+def read_threshold_count(con: duckdb.DuckDBPyConnection, q: Query, *, stated: frozenset[str]) -> Result | Reply | None:
     """``threshold_count``'s own point - a named player's games clearing a
     line, counted, or the league's count by player - read into a Result
     over the compiled statement. ``None`` where the point is not that (a

@@ -69,10 +69,10 @@ def _is_value(arg: Any) -> bool:
     prints its address, which no two runs share)."""
     import duckdb
 
+    from association.query.answer import AnswerContext
     from association.query.stages import plain
-    from association.query.templates.common import TemplateContext
 
-    if isinstance(arg, (duckdb.DuckDBPyConnection, TemplateContext)) or callable(arg):
+    if isinstance(arg, (duckdb.DuckDBPyConnection, AnswerContext)) or callable(arg):
         return False
     shown = plain(arg)
     return not (isinstance(shown, dict) and set(shown) == {"unknown", "repr"})

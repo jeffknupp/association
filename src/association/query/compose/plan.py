@@ -13,12 +13,13 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from typing import Any
 
+from association.query.answer import Reply
 from association.query.measures import PERIOD_COLUMNS, stat_measure
 from association.query.metrics import LEADERBOARD_METRICS
 from association.query.point import TEAM_SEASON_POINTS
 from association.query.reading import CHART_INTENTS, Cause, Reading, Scope, _career_scope, ordinal_word
 from association.query.season_line import SEASON_TOTAL_OF
-from association.query.templates.common import RELATION_SCOPING_EXCLUDED, STAT_LABELS, TemplateResult, TemplateUnsupported, check_coverage, relation_scoping, team_relation_scoping, unhonored_scoping
+from association.query.templates.common import RELATION_SCOPING_EXCLUDED, STAT_LABELS, check_coverage, relation_scoping, team_relation_scoping, unhonored_scoping
 from association.query.templates.players import leaderboard_shot_distance_refusal
 from association.query.templates.splits import condition_needs_player_refusal
 
@@ -203,7 +204,7 @@ def _streak_league_cells(scope: Scope) -> None:
     this, the retired template's refusal."""
     claimed = sorted(cell for cell in ("opponent", "venue") if getattr(scope, cell))
     if claimed:
-        raise TemplateUnsupported(f"streak cannot honor {claimed} without a named team or player - the league-wide streak has no single subject to narrow")
+        raise Unsupported(f"streak cannot honor {claimed} without a named team or player - the league-wide streak has no single subject to narrow")
 
 
 def _shape_declines(point: Reading) -> str | None:
@@ -242,7 +243,7 @@ def _shape_declines(point: Reading) -> str | None:
                 # The league's run (a win streak reads the team relation
                 # with no team named; a stat's run reads everyone).
                 _streak_league_cells(scope)
-        except TemplateUnsupported as exc:
+        except Unsupported as exc:
             return str(exc)
     if intent in ("period_split", "streak", "player_matchup"):
         excluded = RELATION_SCOPING_EXCLUDED[intent]
@@ -384,7 +385,7 @@ def _game_level(intent: str | None, q: Query) -> Query:
     """
     refusal = check_coverage(intent or "", q.scope)
     if refusal is not None:
-        raise Refused(TemplateResult(data={"message": refusal, "season": q.scope.season}, answer=refusal))
+        raise Refused(Reply(data={"message": refusal, "season": q.scope.season}, answer=refusal))
     if q.group == "season":
         return replace(q, scope=_career_scope(q.scope), source="games")
     if q.group == "player" and q.subject == "everyone":
@@ -412,27 +413,27 @@ class Planned:
 
     query: Query | TeamQuery | TeamSeasonQuery | NetPointsQuery | ShotQuery | None = None
     declined: str | None = None
-    refusal: TemplateResult | None = None
+    refusal: Reply | None = None
 
 
-def no_ranking_for(stat: str) -> TemplateResult:
+def no_ranking_for(stat: str) -> Reply:
     """The refusal for a ranking by a stat this relation has no measure for.
 
     .. versionadded:: 5.0.0
     """
     message = f"No ranking reads {stat!r} on the player-games relation - it only ranks the box-score measures it knows, not a NetPoints or other outside figure."
-    return TemplateResult(data={"message": message, "stat": stat}, answer=message)
+    return Reply(data={"message": message, "stat": stat}, answer=message)
 
 
-def _ranking_floor_unit(unit: str, count: int) -> TemplateResult:
+def _ranking_floor_unit(unit: str, count: int) -> Reply:
     """The refusal for a ranking floor in a unit no ranking applies (F056:
     "... with at least 100 attempts"). The sentence names the floor that IS
     applied, so the question can be re-asked with it."""
     message = f"A minimum of {count} {unit} is not a floor this ranking can apply yet - only a minimum number of games is. Ask with 'at least N games', or without the floor."
-    return TemplateResult(data={"message": message, "floor": {"unit": unit, "count": count}}, answer=message)
+    return Reply(data={"message": message, "floor": {"unit": unit, "count": count}}, answer=message)
 
 
-def _ranking_unit(metric: str, rate: Any) -> TemplateResult:
+def _ranking_unit(metric: str, rate: Any) -> Reply:
     """The refusal for a ranking in a unit the metric has no form of,
     naming the forms THIS metric has ("who were the top 10 in defensive
     netpoints / 90": per 90 minutes is a football unit, and nothing in the
@@ -450,7 +451,7 @@ def _ranking_unit(metric: str, rate: Any) -> TemplateResult:
         forms.append("per 100 possessions")
     asked = "per 90 minutes" if "90" in str(rate) else str(rate).replace("_", " ")
     message = f"No leaderboard ranks {metric.replace('_', ' ')} {asked} - the warehouse stores it only {' or '.join(forms)}."
-    return TemplateResult(data={"message": message, "headline": message}, answer=message)
+    return Reply(data={"message": message, "headline": message}, answer=message)
 
 
 #: How each shape over a line is named in its refusal, by the intent the
@@ -574,7 +575,7 @@ def _matchup_needs_two(names: list[str]) -> str:
     return f"A matchup is between two players, and {len(names)} were read: {', '.join(names)}."
 
 
-def refusal_result(cause: Cause) -> TemplateResult:
+def refusal_result(cause: Cause) -> Reply:
     """The refusal a point reading's :class:`~association.query.reading.Cause`
     is said with: the sentence and the template-shaped data the answering
     loop hands on, one per kind in :data:`~association.query.reading.CAUSES`.
@@ -596,7 +597,7 @@ def refusal_result(cause: Cause) -> TemplateResult:
     message = _cause_sentence(cause.kind, cause.facts)
     if message is None:
         raise ValueError(f"no sentence for the cause {cause.kind!r}")
-    return TemplateResult(data={"message": message, **cause.facts}, answer=message)
+    return Reply(data={"message": message, **cause.facts}, answer=message)
 
 
 def plan_point(reading: Reading) -> Planned:

@@ -24,13 +24,13 @@ import pytest
 from routed import planned_answer as compose_answer
 
 from association.nba.netpoints import FINGERPRINT_CATEGORIES
+from association.query.answer import AnswerContext, Reply
 from association.query.compose import COMPILED_INTENTS
 from association.query.compose.sentence import _FRACTION_COLUMNS
 from association.query.parse import with_point
 from association.query.reading import Reading, Scope
 from association.query.subject import read_subject
 from association.query.templates import TEMPLATES
-from association.query.templates.common import TemplateContext, TemplateResult
 from association.web.app import INDEX_HTML
 
 # One set of slots per intent that has a renderer, chosen to produce the shape
@@ -127,7 +127,7 @@ def test_the_test_cases_here_cover_every_renderer() -> None:
 
 
 @pytest.fixture
-def ctx(tmp_path: Path) -> TemplateContext:
+def ctx(tmp_path: Path) -> AnswerContext:
     """A warehouse small enough to reason about, holding whatever every
     template under test needs to return a populated result."""
     con = duckdb.connect()
@@ -302,10 +302,10 @@ def ctx(tmp_path: Path) -> TemplateContext:
         "FROM player_box_stats pbs LEFT JOIN players p ON p.athlete_id = pbs.athlete_id LEFT JOIN games g ON g.event_id = pbs.event_id "
         "LEFT JOIN teams t ON t.team_id = pbs.team_id LEFT JOIN teams o ON o.team_id = pbs.opponent_team_id"
     )
-    return TemplateContext(con=con, out_dir=tmp_path / "out")
+    return AnswerContext(con=con, out_dir=tmp_path / "out")
 
 
-def _answered(ctx: TemplateContext, intent: str) -> TemplateResult:
+def _answered(ctx: AnswerContext, intent: str) -> Reply:
     """``intent``'s answer to its case: its template's, or - for an intent
     the compiler alone answers (``compose.COMPILED_INTENTS``) - the
     compiler's, with no question words to move its own point."""
@@ -317,7 +317,7 @@ def _answered(ctx: TemplateContext, intent: str) -> TemplateResult:
     return result
 
 
-def test_every_key_a_renderer_reads_is_a_key_its_template_produces(ctx: TemplateContext, subtests: Any) -> None:
+def test_every_key_a_renderer_reads_is_a_key_its_template_produces(ctx: AnswerContext, subtests: Any) -> None:
     """The point of the whole file. A template that renames a key leaves the
     page silently falling back to text; this fails instead."""
     for intent, needs in sorted(_renderers().items()):
@@ -327,7 +327,7 @@ def test_every_key_a_renderer_reads_is_a_key_its_template_produces(ctx: Template
             assert missing == [], f"{intent} no longer produces {missing} - the page's renderer would fall back to text"
 
 
-def test_the_data_a_renderer_reads_is_json_serializable_as_is(ctx: TemplateContext) -> None:
+def test_the_data_a_renderer_reads_is_json_serializable_as_is(ctx: AnswerContext) -> None:
     """It reaches the page over HTTP. Serialized with a `default=` fallback, a
     Decimal or a date would arrive as a *string*, and a column the renderer
     formats as a number would quietly become left-aligned text. So this

@@ -26,6 +26,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
+from association.query.answer import AnswerContext, Reply
 from association.query.reading import Reading
 
 from .common import HONORED_SCOPING as HONORED_SCOPING
@@ -34,10 +35,8 @@ from .common import PLAYER_REQUIRED_INTENTS as PLAYER_REQUIRED_INTENTS
 from .common import RANKING_INTENTS as RANKING_INTENTS
 from .common import TABLELESS_INTENTS as TABLELESS_INTENTS
 from .common import TEMPLATE_SOURCES as TEMPLATE_SOURCES
-from .common import TemplateContext, TemplateResult
-from .common import TemplateUnsupported as TemplateUnsupported
 from .common import check_coverage as check_coverage
 from .common import check_scope as check_scope
 from .common import coverage_caveat as coverage_caveat
 
-TEMPLATES: dict[str, Callable[[TemplateContext, Reading], TemplateResult]] = {}
+TEMPLATES: dict[str, Callable[[AnswerContext, Reading], Reply]] = {}

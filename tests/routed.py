@@ -33,7 +33,7 @@ import duckdb
 
 from association.query import compose
 from association.query.agent import Agent
-from association.query.answer import Answer
+from association.query.answer import Answer, AnswerContext, Reply
 from association.query.compose.core import Query
 from association.query.compose.plan import plan, plan_point
 from association.query.normalizer import Normalized
@@ -41,7 +41,6 @@ from association.query.point import default_point
 from association.query.reading import Reading, Scope
 from association.query.router import Route
 from association.query.subject import child_named, read_subject, settle_subject
-from association.query.templates.common import TemplateContext, TemplateResult
 
 
 def slots_route(intent: str, slots: Mapping[str, Any] | None = None) -> Route:
@@ -80,7 +79,7 @@ def ask_routed(agent: Agent, question: str, route: Route, *, label: str = "") ->
         return agent.ask(question, label=label)
 
 
-def planned_answer(ctx: TemplateContext, reading: Reading, *, declined: Callable[[str], None] | None = None) -> TemplateResult | None:
+def planned_answer(ctx: AnswerContext, reading: Reading, *, declined: Callable[[str], None] | None = None) -> Reply | None:
     """``compose.answer`` for ``reading``, planned here as ``Agent.ask``
     plans a question's Reading: once, before the compiler is handed it."""
     return compose.answer(ctx, reading, planned=plan_point(reading), declined=declined)

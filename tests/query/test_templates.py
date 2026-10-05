@@ -15,6 +15,7 @@ from association.fetch.repairs import real_games
 from association.nba.season import current_season
 from association.nba.season import eastern_date as _eastern_date_of
 from association.query import shotchart
+from association.query.answer import AnswerContext, Reply
 from association.query.compose.core import Query, Unsupported, _compile_pair, _compile_run, _resolve_pair, compile_over, compile_query, rows_of
 from association.query.compose.logs import _player_log, _player_log_mixed, _team_log, _team_log_mixed, read_player_log, read_team_log
 from association.query.compose.pairs import _pair_absence, _pair_no_meetings, _pair_result, read_player_matchup
@@ -35,33 +36,22 @@ from association.query.player_games import PERIOD_COLUMNS, PERIOD_RATES, period_
 from association.query.reading import Reading, Scope
 from association.query.shotchart import SHOT_AVAILABILITY
 from association.query.subject import Subject
-from association.query.templates.common import (
-    HONORED_SCOPING,
-    SCOPING_SLOTS,
-    TemplateContext,
-    TemplateResult,
-    TemplateUnsupported,
-    check_scope,
-    scoped_games,
-    scoped_player,
-    season_phrase,
-    unhonored_scoping,
-)
+from association.query.templates.common import HONORED_SCOPING, SCOPING_SLOTS, check_scope, scoped_games, scoped_player, season_phrase, unhonored_scoping
 from association.query.templates.games import (
     PERIOD_RATE_STATS,
 )
 
 
-def _compiled(intent: str) -> Callable[[TemplateContext, Reading], TemplateResult]:
+def _compiled(intent: str) -> Callable[[AnswerContext, Reading], Reply]:
     """``intent`` answered the way its retired template was called - a
-    Reading in, a TemplateResult out, ``TemplateUnsupported`` with the
+    Reading in, a Reply out, ``Unsupported`` with the
     reason where the compiler has no reading of the point - now that the
     compiler alone answers it (``compose.COMPILED_INTENTS``, ROADMAP plan item
     6, step (d), part 4). No question words, which would move the point:
     these are the intent's own. The subject is the one the slots name, as a
     question naming just them reads."""
 
-    def answered(ctx: TemplateContext, reading: Reading) -> TemplateResult:
+    def answered(ctx: AnswerContext, reading: Reading) -> Reply:
         scope = reading.scope
         named = tuple(name for name in (scope.player, *scope.players) if name)
         kind = "pair" if len(named) > 1 else "player" if named else "team" if scope.team else "everyone"
@@ -71,7 +61,7 @@ def _compiled(intent: str) -> Callable[[TemplateContext, Reading], TemplateResul
         why: list[str] = []
         result = compose_answer(ctx, with_point(ctx.con, "", Reading(scope=scope, intent=intent, subject=subject)), declined=why.append)
         if result is None:
-            raise TemplateUnsupported(why[0] if why else f"the compiler has no reading of this {intent} point")
+            raise Unsupported(why[0] if why else f"the compiler has no reading of this {intent} point")
         return result
 
     return answered
@@ -100,7 +90,7 @@ threshold_count = _compiled("threshold_count")
 
 
 @pytest.fixture
-def con(tmp_path: Path) -> TemplateContext:
+def con(tmp_path: Path) -> AnswerContext:
     c = duckdb.connect(":memory:")
     c.execute("CREATE TABLE players (athlete_id VARCHAR, display_name VARCHAR)")
     # event_id/minutes/did_not_play are what an empty box score is detected by;
@@ -130,16 +120,16 @@ def con(tmp_path: Path) -> TemplateContext:
     # The date, home side and winner the compiler reads off `games` beside the
     # log (compose.core._row_select), as the warehouse view carries them.
     c.execute("CREATE VIEW games AS SELECT DISTINCT event_id, season, season_type, game_date AS date, NULL::VARCHAR AS home_team_id, NULL::VARCHAR AS winner_team_id FROM player_game_log")
-    return TemplateContext(con=c, out_dir=tmp_path)
+    return AnswerContext(con=c, out_dir=tmp_path)
 
 
-def test_answers_the_question_the_agent_kept_getting_wrong(con: TemplateContext) -> None:
+def test_answers_the_question_the_agent_kept_getting_wrong(con: AnswerContext) -> None:
     result = threshold_count(con, Reading.from_slots({"stat": "points", "threshold": 30}))
     assert result.data["leaders"][0] == {"player": "Bench Guy", "games": 9}
     assert {"player": "Luka Doncic", "games": 4} in result.data["leaders"]
 
 
-def test_a_line_below_a_number_counts_the_games_under_it_on_the_stat_the_words_name(con: TemplateContext) -> None:
+def test_a_line_below_a_number_counts_the_games_under_it_on_the_stat_the_words_name(con: AnswerContext) -> None:
     """ "Sga games with under 14 fta" arrived as threshold 14 on freeThrowsMade -
     the model's nearest stat - and was answered as 14 or MORE free throws made.
     The phrase carries the count's own number, so it IS the count, misread:
@@ -158,16 +148,16 @@ def test_a_line_below_a_number_counts_the_games_under_it_on_the_stat_the_words_n
     assert lined.data["leaders"] == [{"player": "Luka Doncic", "games": 3}]
 
 
-def test_a_line_whose_words_name_no_stat_refuses_rather_than_filtering_on_a_guess(con: TemplateContext) -> None:
+def test_a_line_whose_words_name_no_stat_refuses_rather_than_filtering_on_a_guess(con: AnswerContext) -> None:
     # A league count reads its line on the relation, which declines it there.
-    with pytest.raises(TemplateUnsupported, match="names no box-score stat"):
+    with pytest.raises(Unsupported, match="names no box-score stat"):
         threshold_count(con, Reading.from_slots({"stat": "points", "threshold": 30, "below": ["under 30 gizmos"]}))
     # A named player's point reads it first, and refuses by its cause (Phase 2, step 3).
     said = player_stat(con, Reading.from_slots({"player": "Luka Doncic", "stat": "points", "below": ["under 30 gizmos"]})).answer
     assert said == "'under 30 gizmos' names no box-score stat a game can be kept under."
 
 
-def test_stats_against_one_opponent_end_with_the_meetings_behind_the_average(pg_ctx: TemplateContext) -> None:
+def test_stats_against_one_opponent_end_with_the_meetings_behind_the_average(pg_ctx: AnswerContext) -> None:
     """Product decision, 2026-09-19: "stats vs X" is the averages, the count,
     and a short footer of the meetings themselves, newest first - what makes
     "in 1 game" honest. Podziemski met Detroit twice this season: at Detroit
@@ -186,7 +176,7 @@ def test_stats_against_one_opponent_end_with_the_meetings_behind_the_average(pg_
     assert "recent" not in home.data and "meetings" not in (home.answer or "")
 
 
-def test_a_season_named_by_its_place_in_a_career_settles_to_that_year_once_the_player_is_known(pg_ctx: TemplateContext) -> None:
+def test_a_season_named_by_its_place_in_a_career_settles_to_that_year_once_the_player_is_known(pg_ctx: AnswerContext) -> None:
     """ "how many 40+ points games does lebron james have in his 18th season?"
     arrived as season 2018 - the ordinal read as a year. Podziemski's two
     seasons on record are last season and this one, so his 1st is last
@@ -205,7 +195,7 @@ def test_a_season_named_by_its_place_in_a_career_settles_to_that_year_once_the_p
     assert threshold_count(pg_ctx, Reading.from_slots({"stat": "points", "threshold": 40, "season_n": 15})).answer == "The 15th season is a place in one player's career, and no player was named."
 
 
-def test_one_game_of_each_playoff_series_is_numbered_by_date_over_the_series_own_games(pg_ctx: TemplateContext) -> None:
+def test_one_game_of_each_playoff_series_is_numbered_by_date_over_the_series_own_games(pg_ctx: AnswerContext) -> None:
     """ "Ayton stats in game 4 playoff games": the nth game by date between two
     teams in one postseason. Podziemski's series vs Detroit was inserted with
     game 2 first, so a count by insertion order would name the wrong game."""
@@ -216,13 +206,13 @@ def test_one_game_of_each_playoff_series_is_numbered_by_date_over_the_series_own
     assert second.data["stats"]["gamesPlayed"] == 2 and second.data["stats"]["avgPoints"] == 17.5 and second.data["series_game"] == 2
     one_series = game_log(pg_ctx, Reading.from_slots({"player": "Brandin Podziemski", "season_type": 3, "game_n": 2, "opponent": "Detroit Pistons"}))
     assert [g["points"] for g in one_series.data["games"]] == [20] and "in game 2 of the series" in (one_series.answer or "")
-    with pytest.raises(TemplateUnsupported, match="playoff series"):
+    with pytest.raises(Unsupported, match="playoff series"):
         game_log(pg_ctx, Reading.from_slots({"player": "Brandin Podziemski", "game_n": 3}))
-    with pytest.raises(TemplateUnsupported, match="team's log"):
+    with pytest.raises(Unsupported, match="team's log"):
         game_log(pg_ctx, Reading.from_slots({"team": "Golden State Warriors", "season_type": 3, "game_n": 3}))
 
 
-def test_a_game_log_keeps_only_the_games_under_a_line_on_the_stat_the_words_name(pg_ctx: TemplateContext) -> None:
+def test_a_game_log_keeps_only_the_games_under_a_line_on_the_stat_the_words_name(pg_ctx: AnswerContext) -> None:
     """ "mikal bridges game log with less than 15 fga" used to refuse (the
     model's `threshold` beside it) or list every game. Podziemski's three
     played games this season have 3, 4 and 2 free throw attempts."""
@@ -232,11 +222,11 @@ def test_a_game_log_keeps_only_the_games_under_a_line_on_the_stat_the_words_name
     two = game_log(pg_ctx, Reading.from_slots({"player": "Brandin Podziemski", "below": ["under 4 fta", "less than 12 points"]}))
     assert [g["date"][5:] for g in two.data["games"]] == ["11-01"]
     assert "under 4 free throw attempts and under 12 points" in (two.answer or "")
-    with pytest.raises(TemplateUnsupported, match="PLAYER's games"):
+    with pytest.raises(Unsupported, match="PLAYER's games"):
         game_log(pg_ctx, Reading.from_slots({"team": "Golden State Warriors", "above": ["with 20 minutes"]}))
 
 
-def test_player_stat_averages_over_exactly_the_games_under_a_line(con: TemplateContext) -> None:
+def test_player_stat_averages_over_exactly_the_games_under_a_line(con: AnswerContext) -> None:
     """A line on a box-score column narrows the games the way an opponent
     does, so the average is read from box scores and says what it kept."""
     result = player_stat(con, Reading.from_slots({"player": "Luka Doncic", "stat": "points", "below": ["under 20 points"]}))
@@ -246,75 +236,75 @@ def test_player_stat_averages_over_exactly_the_games_under_a_line(con: TemplateC
     assert floor.data["stats"]["gamesPlayed"] == 7  # every fixture game is 30 minutes
 
 
-def test_defaults_to_the_current_season(con: TemplateContext) -> None:
+def test_defaults_to_the_current_season(con: AnswerContext) -> None:
     # The old path lost this rule to prompt truncation and answered for 2024.
     result = threshold_count(con, Reading.from_slots({"stat": "points", "threshold": 30}))
     assert result.data["season"] == current_season()
 
 
-def test_explicit_season_is_honored(con: TemplateContext) -> None:
+def test_explicit_season_is_honored(con: AnswerContext) -> None:
     result = threshold_count(con, Reading.from_slots({"stat": "points", "threshold": 40, "season": current_season() - 1}))
     assert result.data["leaders"] == [{"player": "Shai Gilgeous-Alexander", "games": 7}]
 
 
-def test_restricted_to_regular_season(con: TemplateContext) -> None:
+def test_restricted_to_regular_season(con: AnswerContext) -> None:
     # Bench Guy has 9 regular-season and 9 postseason 40-point games; only the
     # regular-season ones count.
     result = threshold_count(con, Reading.from_slots({"stat": "points", "threshold": 40}))
     assert result.data["leaders"] == [{"player": "Bench Guy", "games": 9}]
 
 
-def test_filters_to_a_named_player_on_every_token(con: TemplateContext) -> None:
+def test_filters_to_a_named_player_on_every_token(con: AnswerContext) -> None:
     result = threshold_count(con, Reading.from_slots({"stat": "rebounds", "threshold": 20, "player": "Luka Doncic"}))
     assert result.data["leaders"] == [{"player": "Luka Doncic", "games": 3}]
 
 
-def test_unknown_stat_falls_through_instead_of_reaching_sql(con: TemplateContext) -> None:
+def test_unknown_stat_falls_through_instead_of_reaching_sql(con: AnswerContext) -> None:
     """Refused by its cause (Phase 2, step 3), never read into SQL."""
     refused = threshold_count(con, Reading.from_slots({"stat": "points); DROP TABLE players; --", "threshold": 30}))
     assert refused.answer == "A count of games across the league needs the line it counts - a stat and a number, as in '40-point games' - and none could be read from the question."
 
 
-def test_missing_threshold_falls_through(con: TemplateContext) -> None:
+def test_missing_threshold_falls_through(con: AnswerContext) -> None:
     assert (
         threshold_count(con, Reading.from_slots({"stat": "points"})).answer
         == "A count of games across the league needs the line it counts - a stat and a number, as in '40-point games' - and none could be read from the question."
     )
 
 
-def test_limit_is_clamped(con: TemplateContext) -> None:
+def test_limit_is_clamped(con: AnswerContext) -> None:
     result = threshold_count(con, Reading.from_slots({"stat": "points", "threshold": 1, "limit": 10_000}))
     assert len(result.data["leaders"]) <= 50
 
 
-def test_empty_result_is_reported_as_empty_not_invented(con: TemplateContext) -> None:
+def test_empty_result_is_reported_as_empty_not_invented(con: AnswerContext) -> None:
     result = threshold_count(con, Reading.from_slots({"stat": "points", "threshold": 999}))
     assert result.data["leaders"] == []
 
 
-def test_answer_is_deterministic_prose_so_no_model_call_is_needed(con: TemplateContext) -> None:
+def test_answer_is_deterministic_prose_so_no_model_call_is_needed(con: AnswerContext) -> None:
     result = threshold_count(con, Reading.from_slots({"stat": "points", "threshold": 30}))
     assert result.answer == (f"Bench Guy had the most games with 30+ points in the {current_season()} regular season, with 9. Next: Luka Doncic (4), Shai Gilgeous-Alexander (2).")
 
 
-def test_answer_always_names_the_season_explicitly(con: TemplateContext) -> None:
+def test_answer_always_names_the_season_explicitly(con: AnswerContext) -> None:
     # The original failure silently answered for 2024 when the user meant the
     # current season; naming it makes that class of mistake visible.
     assert f"{current_season()} regular season" in (threshold_count(con, Reading.from_slots({"stat": "points", "threshold": 30})).answer or "")
 
 
-def test_answer_reports_an_empty_result_honestly(con: TemplateContext) -> None:
+def test_answer_reports_an_empty_result_honestly(con: AnswerContext) -> None:
     result = threshold_count(con, Reading.from_slots({"stat": "points", "threshold": 999}))
     assert result.answer == f"No player had a game with 999+ points in the {current_season()} regular season."
 
 
-def test_answer_for_a_single_named_player(con: TemplateContext) -> None:
+def test_answer_for_a_single_named_player(con: AnswerContext) -> None:
     result = threshold_count(con, Reading.from_slots({"stat": "rebounds", "threshold": 20, "player": "Luka Doncic"}))
     assert result.answer == f"Luka Doncic had 3 games with 20+ rebounds in the {current_season()} regular season."
 
 
 @pytest.fixture
-def currys(tmp_path: Path) -> TemplateContext:
+def currys(tmp_path: Path) -> AnswerContext:
     c = duckdb.connect(":memory:")
     c.execute("CREATE TABLE players (athlete_id VARCHAR, display_name VARCHAR)")
     c.execute("INSERT INTO players VALUES ('7','Stephen Curry'),('8','Seth Curry')")
@@ -334,11 +324,11 @@ def currys(tmp_path: Path) -> TemplateContext:
     # The date, home side and winner the compiler reads off `games` beside the
     # log (compose.core._row_select), as the warehouse view carries them.
     c.execute("CREATE VIEW games AS SELECT DISTINCT event_id, season, season_type, game_date AS date, NULL::VARCHAR AS home_team_id, NULL::VARCHAR AS winner_team_id FROM player_game_log")
-    return TemplateContext(con=c, out_dir=tmp_path)
+    return AnswerContext(con=c, out_dir=tmp_path)
 
 
 @pytest.mark.parametrize("back", [0, 2, 3])
-def test_a_name_two_players_could_answer_to_is_asked_about(currys: TemplateContext, back: int) -> None:
+def test_a_name_two_players_could_answer_to_is_asked_about(currys: AnswerContext, back: int) -> None:
     """Asked, not counted for whichever Curry leads. Two seasons back only Seth
     has a qualifying game, but both played: narrowing on the answer rather than
     on who played would be the prominence tiebreak by another route. Three back
@@ -347,7 +337,7 @@ def test_a_name_two_players_could_answer_to_is_asked_about(currys: TemplateConte
     assert result.data == {"ambiguous": "Curry", "candidates": ["Seth Curry", "Stephen Curry"]}
 
 
-def test_a_name_only_one_player_with_games_that_season_answers_to_is_answered(currys: TemplateContext) -> None:
+def test_a_name_only_one_player_with_games_that_season_answers_to_is_answered(currys: AnswerContext) -> None:
     season = current_season() - 1
     result = threshold_count(currys, Reading.from_slots({"stat": "points", "threshold": 30, "player": "Curry", "season": season}))
     assert result.answer == f"Stephen Curry had 2 games with 30+ points in the {season} regular season."
@@ -366,18 +356,18 @@ def test_a_name_at_the_candidate_cap_is_asked_about_rather_than_narrowed(tmp_pat
     )
     played = [("0", current_season(), 2, 30), (str(MAX_CANDIDATES), current_season(), 2, 30)]  # the first Jones, and the one the cap cuts off
     c.executemany("INSERT INTO player_box_stats (athlete_id, season, season_type, points) VALUES (?,?,?,?)", played)
-    result = threshold_count(TemplateContext(con=c, out_dir=tmp_path), Reading.from_slots({"stat": "points", "threshold": 30, "player": "Jones"}))
+    result = threshold_count(AnswerContext(con=c, out_dir=tmp_path), Reading.from_slots({"stat": "points", "threshold": 30, "player": "Jones"}))
     assert result.data.get("ambiguous") == "Jones", result.answer
 
 
-def test_answer_reports_a_tie_as_a_tie(con: TemplateContext) -> None:
+def test_answer_reports_a_tie_as_a_tie(con: AnswerContext) -> None:
     con.con.execute("INSERT INTO player_box_stats (athlete_id, season, season_type, points, rebounds) SELECT '1', season, 2, 35, 5 FROM player_box_stats LIMIT 5")
     result = threshold_count(con, Reading.from_slots({"stat": "points", "threshold": 30}))
     assert "tied for the most" in (result.answer or "")
 
 
 @pytest.fixture
-def rebuilt_counts(tmp_path: Path) -> TemplateContext:
+def rebuilt_counts(tmp_path: Path) -> AnswerContext:
     """The warehouse's real shape for an empty-box season: EVERY game keeps its
     `player_box_stats` row - ESPN serves the line, just zeroed - while the log
     carries the rebuilt figures with `reconstructed` marking exactly those.
@@ -423,10 +413,10 @@ def rebuilt_counts(tmp_path: Path) -> TemplateContext:
     # The warehouse builds the log over the filled box view; the relation
     # learns rebuilt lines exist from it (conditions.box_source).
     c.execute("CREATE VIEW player_box_stats_filled AS SELECT * FROM player_game_log")
-    return TemplateContext(con=c, out_dir=tmp_path)
+    return AnswerContext(con=c, out_dir=tmp_path)
 
 
-def test_a_nameless_athlete_is_never_counted_as_a_leader(rebuilt_counts: TemplateContext) -> None:
+def test_a_nameless_athlete_is_never_counted_as_a_leader(rebuilt_counts: AnswerContext) -> None:
     """The log LEFT JOINs `players`, so an athlete missing from it reads back
     with a NULL name. The stored table's INNER JOIN drops him; the log branch
     must too, or the league board's top line is a blank name with 2 games."""
@@ -435,7 +425,7 @@ def test_a_nameless_athlete_is_never_counted_as_a_leader(rebuilt_counts: Templat
     assert None not in [leader["player"] for leader in result.data["leaders"]]
 
 
-def test_a_threshold_count_counts_rebuilt_games(rebuilt_counts: TemplateContext) -> None:
+def test_a_threshold_count_counts_rebuilt_games(rebuilt_counts: AnswerContext) -> None:
     """The P1 remainder this closes. Reading `player_box_stats`, the two empty
     games are zeros and the count is 1; reading the log, the rebuilt 25 and 31
     both clear 20 and the count is 3. This is the whole behavior change."""
@@ -444,7 +434,7 @@ def test_a_threshold_count_counts_rebuilt_games(rebuilt_counts: TemplateContext)
     assert result.data["rebuilt_games"] == 2
 
 
-def test_a_rebuilt_count_says_how_many_it_rebuilt(rebuilt_counts: TemplateContext) -> None:
+def test_a_rebuilt_count_says_how_many_it_rebuilt(rebuilt_counts: AnswerContext) -> None:
     """A count resting on figures ESPN never served has to say so, or it reads
     as a count of box scores. The disclosure the opt-in is conditional on."""
     answer = threshold_count(rebuilt_counts, Reading.from_slots({"stat": "points", "threshold": 20, "player": "Anthony Davis"})).answer or ""
@@ -452,7 +442,7 @@ def test_a_rebuilt_count_says_how_many_it_rebuilt(rebuilt_counts: TemplateContex
     assert "rebuilt from play-by-play" in answer
 
 
-def test_a_count_of_only_fetched_games_says_nothing_about_rebuilding(rebuilt_counts: TemplateContext) -> None:
+def test_a_count_of_only_fetched_games_says_nothing_about_rebuilding(rebuilt_counts: AnswerContext) -> None:
     """The note is about the number given, not about what was read. Drop the
     rebuilt games under the threshold and the count is an ordinary one, with
     nothing to disclose - even though the rebuilt lines were still read."""
@@ -463,7 +453,7 @@ def test_a_count_of_only_fetched_games_says_nothing_about_rebuilding(rebuilt_cou
     assert "rebuilt" not in (result.answer or "")
 
 
-def test_fouls_are_never_counted_from_a_rebuilt_line(rebuilt_counts: TemplateContext) -> None:
+def test_fouls_are_never_counted_from_a_rebuilt_line(rebuilt_counts: AnswerContext) -> None:
     """A rebuilt foul is wrong in one game in six, so fouls sit outside
     REBUILT_STATS. The rebuilt 6 must not be counted - and the count of none
     must name the DECISION rather than implying the games are missing."""
@@ -473,7 +463,7 @@ def test_fouls_are_never_counted_from_a_rebuilt_line(rebuilt_counts: TemplateCon
     assert "not counted from a rebuilt line" in answer
 
 
-def test_the_low_count_caveat_drops_the_games_the_rebuild_counted(rebuilt_counts: TemplateContext) -> None:
+def test_the_low_count_caveat_drops_the_games_the_rebuild_counted(rebuilt_counts: AnswerContext) -> None:
     """The self-contradiction this avoids: counting a game from its rebuilt
     line and then reporting that same game as one the count could not see.
     Counted from player_box_stats, e3 and e4 are "empty"; counted from the log,
@@ -483,7 +473,7 @@ def test_the_low_count_caveat_drops_the_games_the_rebuild_counted(rebuilt_counts
     assert "the count may be low" not in answer
 
 
-def test_a_warehouse_without_the_flag_counts_only_fetched_games(rebuilt_counts: TemplateContext) -> None:
+def test_a_warehouse_without_the_flag_counts_only_fetched_games(rebuilt_counts: AnswerContext) -> None:
     """The column arrives with a `data load`; an older warehouse has none, and
     the query must not be written as though it were always there - the Binder
     error AGENTS.md records for view changes. The count falls back to 1."""
@@ -493,7 +483,7 @@ def test_a_warehouse_without_the_flag_counts_only_fetched_games(rebuilt_counts: 
     assert "rebuilt" not in (result.answer or "")
 
 
-def test_a_count_made_entirely_of_rebuilt_games_says_so_outright(rebuilt_counts: TemplateContext) -> None:
+def test_a_count_made_entirely_of_rebuilt_games_says_so_outright(rebuilt_counts: AnswerContext) -> None:
     """Anthony Davis's real 2015: every single qualifying game is rebuilt, and
     the live answer read "52 of those 52 games have no box score from ESPN" -
     true, and it reads as a bug, which costs the sentence the trust it exists
@@ -510,7 +500,7 @@ def test_a_count_made_entirely_of_rebuilt_games_says_so_outright(rebuilt_counts:
 
 
 @pytest.fixture
-def lb_con(tmp_path: Path) -> TemplateContext:
+def lb_con(tmp_path: Path) -> AnswerContext:
     c = duckdb.connect(":memory:")
     c.execute("CREATE TABLE players (athlete_id VARCHAR, display_name VARCHAR)")
     c.execute("CREATE TABLE teams (team_id VARCHAR, abbreviation VARCHAR, display_name VARCHAR)")
@@ -522,20 +512,20 @@ def lb_con(tmp_path: Path) -> TemplateContext:
     # `rate: "total"` ranks by - 33.5 x 70 and 27.1 x 68, rounded as ESPN
     # stores them.
     c.execute("INSERT INTO player_season_stats VALUES ('1','6',?,2,70,33.5,2345),('2','9',?,2,68,27.1,1843),('2','9',?,3,10,31.0,310)", [s, s, s])
-    return TemplateContext(con=c, out_dir=tmp_path)
+    return AnswerContext(con=c, out_dir=tmp_path)
 
 
-def test_leaderboard_maps_a_plain_stat_slot_onto_a_real_metric(lb_con: TemplateContext) -> None:
+def test_leaderboard_maps_a_plain_stat_slot_onto_a_real_metric(lb_con: AnswerContext) -> None:
     result = leaderboard(lb_con, Reading.from_slots({"stat": "points"}))
     assert result.data["leaders"][0]["display_name"] == "Luka Doncic"
 
 
-def test_leaderboard_phrases_its_own_answer(lb_con: TemplateContext) -> None:
+def test_leaderboard_phrases_its_own_answer(lb_con: AnswerContext) -> None:
     result = leaderboard(lb_con, Reading.from_slots({"stat": "points", "limit": 2}))
     assert result.answer == (f"Luka Doncic led the league in points per game in the {current_season()} regular season (minimum 20 games), at 33.5. Next: Stephen Curry (27.1).")
 
 
-def test_leaderboard_shows_each_players_team_when_asked(lb_con: TemplateContext) -> None:
+def test_leaderboard_shows_each_players_team_when_asked(lb_con: AnswerContext) -> None:
     """F017 (ISSUES.md): "who are the top 50 in total adjusted netpoints with
     the team they play for" asked for each player's team beside the name and
     got none. `fields: ["team"]` (the template-side half of the fix - the
@@ -560,7 +550,7 @@ def test_leaderboard_shows_each_players_team_when_asked(lb_con: TemplateContext)
     assert result.data["headline"] == result.answer.splitlines()[0].rstrip(":")
 
 
-def test_leaderboard_team_field_says_nothing_when_nobody_was_traded(lb_con: TemplateContext) -> None:
+def test_leaderboard_team_field_says_nothing_when_nobody_was_traded(lb_con: AnswerContext) -> None:
     """The trade note is said once, and only when it is true: with nobody
     shown having played for more than one team, it does not appear."""
     lb_con.con.execute("CREATE TABLE player_game_log (athlete_id VARCHAR, team_id VARCHAR, season INTEGER, season_type INTEGER, game_date VARCHAR)")
@@ -574,17 +564,17 @@ def test_leaderboard_team_field_says_nothing_when_nobody_was_traded(lb_con: Temp
     assert {r["team"] for r in result.data["leaders"]} == {"Dallas Mavericks", "Golden State Warriors"}
 
 
-def test_leaderboard_names_the_team_when_filtered(lb_con: TemplateContext) -> None:
+def test_leaderboard_names_the_team_when_filtered(lb_con: AnswerContext) -> None:
     result = leaderboard(lb_con, Reading.from_slots({"stat": "points", "team": "Warriors"}))
     assert "led the Golden State Warriors" in (result.answer or "")
 
 
-def test_leaderboard_honors_playoffs(lb_con: TemplateContext) -> None:
+def test_leaderboard_honors_playoffs(lb_con: AnswerContext) -> None:
     result = leaderboard(lb_con, Reading.from_slots({"stat": "points", "season_type": 3}))
     assert "postseason" in (result.answer or "") and result.data["leaders"][0]["value"] == 31.0
 
 
-def test_leaderboard_unmapped_stat_falls_through_rather_than_fuzzy_matching(lb_con: TemplateContext) -> None:
+def test_leaderboard_unmapped_stat_falls_through_rather_than_fuzzy_matching(lb_con: AnswerContext) -> None:
     # Deliberately NOT get_close_matches: silently ranking by whichever metric
     # scored highest is the substitution failure this design exists to prevent.
     # The template raised; the compiler refuses by name (move._no_ranking_for).
@@ -592,7 +582,7 @@ def test_leaderboard_unmapped_stat_falls_through_rather_than_fuzzy_matching(lb_c
     assert "No ranking reads 'clutchness'" in result.answer
 
 
-def test_leaderboard_refuses_a_unit_the_metric_has_no_form_of(lb_con: TemplateContext) -> None:
+def test_leaderboard_refuses_a_unit_the_metric_has_no_form_of(lb_con: AnswerContext) -> None:
     """ "who were the top 10 in defensive netpoints / 90" fell through: `rate`
     was in no template's HONORED_SCOPING, so check_scope raised - which reads
     as a refusal in the trace and is not one. The question reached an agent
@@ -612,7 +602,7 @@ def test_leaderboard_refuses_a_unit_the_metric_has_no_form_of(lb_con: TemplateCo
     assert "leaders" not in result.data
 
 
-def test_leaderboard_reads_a_season_total_now_that_rate_reaches_it(lb_con: TemplateContext) -> None:
+def test_leaderboard_reads_a_season_total_now_that_rate_reaches_it(lb_con: AnswerContext) -> None:
     """The other half of the same omission: `leaderboard` already had a
     `rate == "total"` branch, and check_scope refused before it could ever
     run, so "most points this season" as a TOTAL was unreachable through the
@@ -624,18 +614,18 @@ def test_leaderboard_reads_a_season_total_now_that_rate_reaches_it(lb_con: Templ
     assert result.data["leaders"][0]["display_name"] == "Luka Doncic"
 
 
-def test_leaderboard_ambiguous_team_falls_through_rather_than_picking_one(lb_con: TemplateContext) -> None:
+def test_leaderboard_ambiguous_team_falls_through_rather_than_picking_one(lb_con: AnswerContext) -> None:
     lb_con.con.execute("INSERT INTO teams VALUES ('12','LAC','LA Clippers'),('13','LAL','Los Angeles Lakers')")
-    with pytest.raises(TemplateUnsupported, match="LA"):
+    with pytest.raises(Unsupported, match="LA"):
         leaderboard(lb_con, Reading.from_slots({"stat": "points", "team": "LA"}))
 
 
-def test_leaderboard_unknown_team_falls_through(lb_con: TemplateContext) -> None:
-    with pytest.raises(TemplateUnsupported):
+def test_leaderboard_unknown_team_falls_through(lb_con: AnswerContext) -> None:
+    with pytest.raises(Unsupported):
         leaderboard(lb_con, Reading.from_slots({"stat": "points", "team": "Not A Team"}))
 
 
-def test_threshold_count_honors_playoffs(con: TemplateContext) -> None:
+def test_threshold_count_honors_playoffs(con: AnswerContext) -> None:
     result = threshold_count(con, Reading.from_slots({"stat": "points", "threshold": 40, "season_type": 3}))
     assert "postseason" in (result.answer or "")
     assert result.data["leaders"] == [{"player": "Bench Guy", "games": 9}]
@@ -644,7 +634,7 @@ def test_threshold_count_honors_playoffs(con: TemplateContext) -> None:
 
 
 @pytest.fixture
-def shooting_ctx(tmp_path: Path) -> TemplateContext:
+def shooting_ctx(tmp_path: Path) -> AnswerContext:
     """Real 2025 rows. On a 20-game qualifier, Kai Jones's 109 shots led the
     league in true shooting at .804, with Patrick Baldwin Jr.'s 35 third; in
     the playoffs, the same qualifier kept Thomas Bryant's 33 shots and dropped
@@ -669,16 +659,16 @@ def shooting_ctx(tmp_path: Path) -> TemplateContext:
             (3, "4", 14, 268, 312.44, 0.587, 0.539),
         ],
     )
-    return TemplateContext(con=c, out_dir=tmp_path)
+    return AnswerContext(con=c, out_dir=tmp_path)
 
 
-def test_true_shooting_says_which_qualifier_it_ranked_under(shooting_ctx: TemplateContext) -> None:
+def test_true_shooting_says_which_qualifier_it_ranked_under(shooting_ctx: AnswerContext) -> None:
     result = leaderboard(shooting_ctx, Reading.from_slots({"stat": "true_shooting", "season": 2025}))
     assert result.answer == "Jarrett Allen led the league in true shooting % in the 2025 regular season (minimum 550 true-shooting attempts), at 0.724. Next: Nikola Jokic (0.663)."
 
 
 @pytest.mark.parametrize(("stat", "qualifier"), [("true_shooting", "550 true-shooting attempts"), ("efg_pct", "480 field-goal attempts")])
-def test_a_shooting_percentage_qualifies_on_attempts_not_games(shooting_ctx: TemplateContext, stat: str, qualifier: str) -> None:
+def test_a_shooting_percentage_qualifies_on_attempts_not_games(shooting_ctx: AnswerContext, stat: str, qualifier: str) -> None:
     """Both low-volume players have the games; neither has the shots."""
     result = leaderboard(shooting_ctx, Reading.from_slots({"stat": stat, "season": 2025}))
     assert [r["display_name"] for r in result.data["leaders"]] == ["Jarrett Allen", "Nikola Jokic"]
@@ -686,7 +676,7 @@ def test_a_shooting_percentage_qualifies_on_attempts_not_games(shooting_ctx: Tem
 
 
 @pytest.mark.parametrize(("stat", "qualifier"), [("true_shooting", "67 true-shooting attempts"), ("efg_pct", "59 field-goal attempts")])
-def test_a_shooting_percentage_scales_its_qualifier_for_the_postseason(shooting_ctx: TemplateContext, stat: str, qualifier: str) -> None:
+def test_a_shooting_percentage_scales_its_qualifier_for_the_postseason(shooting_ctx: AnswerContext, stat: str, qualifier: str) -> None:
     """The season floor is more than one player reached in the whole 2025
     postseason, so it cannot carry over, and games cannot stand in for it."""
     result = leaderboard(shooting_ctx, Reading.from_slots({"stat": stat, "season": 2025, "season_type": 3}))
@@ -694,13 +684,13 @@ def test_a_shooting_percentage_scales_its_qualifier_for_the_postseason(shooting_
     assert f"2025 postseason (minimum {qualifier})," in (result.answer or "")
 
 
-def test_an_empty_board_says_what_nobody_met(shooting_ctx: TemplateContext) -> None:
+def test_an_empty_board_says_what_nobody_met(shooting_ctx: AnswerContext) -> None:
     result = leaderboard(shooting_ctx, Reading.from_slots({"stat": "true_shooting", "season": 2024}))
     assert result.answer == "No players qualified for true shooting % in the league in the 2024 regular season (minimum 550 true-shooting attempts)."
 
 
 @pytest.fixture
-def games_ctx(tmp_path: Path) -> TemplateContext:
+def games_ctx(tmp_path: Path) -> AnswerContext:
     """Real rows in the two shapes that had no games qualifier.
 
     Danny Fortson played 6 games in 2000-01 and averaged 16.3 rebounds, which
@@ -726,10 +716,10 @@ def games_ctx(tmp_path: Path) -> TemplateContext:
             ("6", "10", 2023, 3, 5, 6.0, 30, 31.6, 158),
         ],
     )
-    return TemplateContext(con=c, out_dir=tmp_path)
+    return AnswerContext(con=c, out_dir=tmp_path)
 
 
-def test_a_per_game_leaderboard_qualifies_on_games(games_ctx: TemplateContext) -> None:
+def test_a_per_game_leaderboard_qualifies_on_games(games_ctx: AnswerContext) -> None:
     """Regression: "who led the league in rebounding in 2001" answered Danny
     Fortson, on 6 games. Measured over 1994-2026 against the warehouse, two
     regular-season boards (2000 and 2001 rebounding) and 15 postseason ones
@@ -739,14 +729,14 @@ def test_a_per_game_leaderboard_qualifies_on_games(games_ctx: TemplateContext) -
     assert result.data["min_sample"] == PER_GAME_MIN_GAMES
 
 
-def test_a_per_game_leaderboard_names_the_qualifier_it_applied(games_ctx: TemplateContext) -> None:
+def test_a_per_game_leaderboard_names_the_qualifier_it_applied(games_ctx: AnswerContext) -> None:
     """A floor nobody is told about is why "why isn't Fortson here?" has no
     answer - and the leader's own 79 games are the reason he is."""
     answer = leaderboard(games_ctx, Reading.from_slots({"stat": "rebounds", "season": 2001})).answer
     assert answer == "Dikembe Mutombo led the league in rebounds per game in the 2001 regular season (minimum 20 games), at 13.5. Next: Ben Wallace (13.2)."
 
 
-def test_a_per_game_leaderboard_scales_its_qualifier_for_the_postseason(games_ctx: TemplateContext) -> None:
+def test_a_per_game_leaderboard_scales_its_qualifier_for_the_postseason(games_ctx: AnswerContext) -> None:
     """20 games is more than a title run, so the season floor cannot carry
     over; 5 is more than a first-round sweep. Kawhi Leonard's 2 games led 2023
     playoff scoring, and Anthony Edwards's 5 still qualify."""
@@ -775,7 +765,7 @@ def test_every_per_game_metric_carries_both_games_qualifiers() -> None:
 
 
 @pytest.fixture
-def ps_con(tmp_path: Path) -> TemplateContext:
+def ps_con(tmp_path: Path) -> AnswerContext:
     c = duckdb.connect(":memory:")
     c.execute("CREATE TABLE players (athlete_id VARCHAR, display_name VARCHAR)")
     c.execute(
@@ -793,10 +783,10 @@ def ps_con(tmp_path: Path) -> TemplateContext:
         "CREATE TABLE net_points_player (athlete_id VARCHAR, season INTEGER, net_points_season_type VARCHAR, overall_per_100_poss DOUBLE, offense_per_100_poss DOUBLE, defense_per_100_poss DOUBLE)"
     )
     c.execute("INSERT INTO net_points_player VALUES ('1',?,'Regular Season',5.87,5.20,0.67)", [s])
-    return TemplateContext(con=c, out_dir=tmp_path)
+    return AnswerContext(con=c, out_dir=tmp_path)
 
 
-def test_player_stat_reports_one_named_stat_with_its_total(ps_con: TemplateContext) -> None:
+def test_player_stat_reports_one_named_stat_with_its_total(ps_con: AnswerContext) -> None:
     result = player_stat(ps_con, Reading.from_slots({"player": "Luka Doncic", "stat": "points"}))
     assert result.answer == (f"Luka Doncic averaged 33.5 points per game in 64 games in the {current_season()} regular season. That is 2,143 in total.")
     # The page's own label table maps BOTH "avgPoints" and "points" to "PTS"
@@ -808,12 +798,12 @@ def test_player_stat_reports_one_named_stat_with_its_total(ps_con: TemplateConte
     assert result.data["labels"] == {"avgPoints": "points per game", "points": "points total"}
 
 
-def test_player_stat_with_no_stat_gives_a_stat_line(ps_con: TemplateContext) -> None:
+def test_player_stat_with_no_stat_gives_a_stat_line(ps_con: AnswerContext) -> None:
     result = player_stat(ps_con, Reading.from_slots({"player": "Nikola Jokic"}))
     assert result.answer == (f"Nikola Jokic averaged 27.7 points, 12.9 rebounds and 10.7 assists per game in 65 games in the {current_season()} regular season.")
 
 
-def test_player_stat_asks_instead_of_guessing_between_players(ps_con: TemplateContext) -> None:
+def test_player_stat_asks_instead_of_guessing_between_players(ps_con: AnswerContext) -> None:
     """Neither guess nor fall through: the template knows exactly what is
     ambiguous, so it says so in ~1.5s instead of handing the agent a problem
     it would spend minutes guessing at."""
@@ -822,22 +812,22 @@ def test_player_stat_asks_instead_of_guessing_between_players(ps_con: TemplateCo
     assert result.data["candidates"] == ["Seth Curry", "Stephen Curry"]
 
 
-def test_player_stat_unknown_player_falls_through(ps_con: TemplateContext) -> None:
-    with pytest.raises(TemplateUnsupported):
+def test_player_stat_unknown_player_falls_through(ps_con: AnswerContext) -> None:
+    with pytest.raises(Unsupported):
         player_stat(ps_con, Reading.from_slots({"player": "Nobody At All"}))
 
 
-def test_player_stat_missing_player_slot_falls_through(ps_con: TemplateContext) -> None:
-    with pytest.raises(TemplateUnsupported):
+def test_player_stat_missing_player_slot_falls_through(ps_con: AnswerContext) -> None:
+    with pytest.raises(Unsupported):
         player_stat(ps_con, Reading.from_slots({"stat": "points"}))
 
 
-def test_player_stat_reports_a_missing_season_honestly(ps_con: TemplateContext) -> None:
+def test_player_stat_reports_a_missing_season_honestly(ps_con: AnswerContext) -> None:
     result = player_stat(ps_con, Reading.from_slots({"player": "Luka Doncic", "season": 1999}))
     assert result.answer == "Luka Doncic has no 1999 regular season numbers in the warehouse."
 
 
-def test_player_stat_defaulted_season_redirects_to_a_retired_players_range(ps_con: TemplateContext) -> None:
+def test_player_stat_defaulted_season_redirects_to_a_retired_players_range(ps_con: AnswerContext) -> None:
     """The season was never named - it defaulted to "now" - so a retired
     player with nothing there gets pointed at what the warehouse DOES hold for
     him instead of a refusal that reads as though his whole career were
@@ -852,7 +842,7 @@ def test_player_stat_defaulted_season_redirects_to_a_retired_players_range(ps_co
     )
 
 
-def test_player_stat_defaulted_season_with_nothing_on_record_stays_plain(ps_con: TemplateContext) -> None:
+def test_player_stat_defaulted_season_with_nothing_on_record_stays_plain(ps_con: AnswerContext) -> None:
     """A defaulted season is only a redirect when there is somewhere to
     redirect to. A player with no rows in the table at all - as opposed to no
     rows in the current season - has nothing to point at, and the plain
@@ -862,7 +852,7 @@ def test_player_stat_defaulted_season_with_nothing_on_record_stays_plain(ps_con:
     assert answer == f"Nobody Yet has no {current_season()} regular season numbers in the warehouse."
 
 
-def test_player_stat_a_named_season_keeps_the_plain_refusal(ps_con: TemplateContext) -> None:
+def test_player_stat_a_named_season_keeps_the_plain_refusal(ps_con: AnswerContext) -> None:
     """The season the question named IS the fact the answer is about - unlike
     the defaulted case above, redirecting a season asked for outright would be
     a fluent answer to a question nobody asked."""
@@ -872,7 +862,7 @@ def test_player_stat_a_named_season_keeps_the_plain_refusal(ps_con: TemplateCont
     assert answer == "Old Timer has no 1999 regular season numbers in the warehouse."
 
 
-def test_player_stat_never_reports_a_total_as_a_per_game_number(ps_con: TemplateContext) -> None:
+def test_player_stat_never_reports_a_total_as_a_per_game_number(ps_con: AnswerContext) -> None:
     # Regression on phrasing: the total used to be inlined as "33.5 points
     # (2143 total) per game", which states something false.
     answer = player_stat(ps_con, Reading.from_slots({"player": "Luka Doncic", "stat": "points"})).answer or ""
@@ -883,7 +873,7 @@ def test_player_stat_never_reports_a_total_as_a_per_game_number(ps_con: Template
 
 
 @pytest.fixture
-def curry_ctx(tmp_path: Path) -> TemplateContext:
+def curry_ctx(tmp_path: Path) -> AnswerContext:
     """The six Currys the warehouse really holds. "How did curry do against the
     celtics this year" asked about five of them - Dell, Eddy, JamesOn, Michael
     and Seth - and hid Stephen behind "(1 others also match)", because the list
@@ -909,10 +899,10 @@ def curry_ctx(tmp_path: Path) -> TemplateContext:
         "opponent_abbr VARCHAR, minutes DOUBLE, points INTEGER, rebounds INTEGER, assists INTEGER)"
     )
     c.execute("INSERT INTO player_game_log VALUES ('6',?,2,'2026-01-02','BOS',34.0,31,5,6)", [s])
-    return TemplateContext(con=c, out_dir=tmp_path)
+    return AnswerContext(con=c, out_dir=tmp_path)
 
 
-def test_a_surname_asks_only_about_the_players_who_played_that_season(curry_ctx: TemplateContext) -> None:
+def test_a_surname_asks_only_about_the_players_who_played_that_season(curry_ctx: AnswerContext) -> None:
     """The reported answer, verbatim, was "did you mean Dell Curry, Eddy Curry,
     JamesOn Curry, Michael Curry or Seth Curry (1 others also match)?" - the
     player almost certainly meant was the one it left out. Seth and Stephen
@@ -922,7 +912,7 @@ def test_a_surname_asks_only_about_the_players_who_played_that_season(curry_ctx:
     assert result.data["candidates"] == ["Seth Curry", "Stephen Curry"]
 
 
-def test_a_surname_resolves_when_only_one_candidate_played_that_season(curry_ctx: TemplateContext) -> None:
+def test_a_surname_resolves_when_only_one_candidate_played_that_season(curry_ctx: AnswerContext) -> None:
     """Elimination, not preference: the other five have no row to answer
     from, so there is nothing left to choose between."""
     curry_ctx.con.execute("DELETE FROM player_season_stats_deduped WHERE athlete_id = '5'")
@@ -930,7 +920,7 @@ def test_a_surname_resolves_when_only_one_candidate_played_that_season(curry_ctx
     assert answer == f"Stephen Curry averaged 26.6 points per game in 60 games in the {current_season()} regular season. That is 1,600 in total."
 
 
-def test_narrowing_that_eliminates_everybody_still_asks_about_everybody(curry_ctx: TemplateContext) -> None:
+def test_narrowing_that_eliminates_everybody_still_asks_about_everybody(curry_ctx: AnswerContext) -> None:
     """No Curry played in 1990, so no answer to "which one?" has numbers - but
     picking one because the season is empty would be a guess, so the question
     is asked exactly as it was before narrowing existed."""
@@ -938,7 +928,7 @@ def test_narrowing_that_eliminates_everybody_still_asks_about_everybody(curry_ct
     assert result.data["candidates"] == ["Dell Curry", "Eddy Curry", "JamesOn Curry", "Michael Curry", "Seth Curry", "Stephen Curry"]
 
 
-def _paytons(ctx: TemplateContext) -> None:
+def _paytons(ctx: AnswerContext) -> None:
     """ "Gary Payton" is one player's whole name and also matches Gary Payton
     II; only the son has a line this season - as in the warehouse, where the
     father's last is 2007. Not "Dell Curry": that name matches one player, so it
@@ -948,7 +938,7 @@ def _paytons(ctx: TemplateContext) -> None:
     ctx.con.execute("INSERT INTO player_season_stats_deduped VALUES ('7',2007,2,70,5.0,350,2.0,3.0,210),('8',?,2,60,7.0,420,3.0,2.0,120)", [current_season()])
 
 
-def test_a_name_given_in_full_is_its_owner_wherever_he_has_numbers(curry_ctx: TemplateContext) -> None:
+def test_a_name_given_in_full_is_its_owner_wherever_he_has_numbers(curry_ctx: AnswerContext) -> None:
     """The father's name in full, in a season he played and over a career, is
     the father - the son being the Payton who plays now changes nothing."""
     _paytons(curry_ctx)
@@ -957,7 +947,7 @@ def test_a_name_given_in_full_is_its_owner_wherever_he_has_numbers(curry_ctx: Te
     assert isinstance(career, Entity) and career.name == "Gary Payton"
 
 
-def test_a_name_given_in_full_yields_to_the_one_namesake_with_numbers(curry_ctx: TemplateContext) -> None:
+def test_a_name_given_in_full_yields_to_the_one_namesake_with_numbers(curry_ctx: AnswerContext) -> None:
     """This used to answer "Gary Payton has no 2026 regular season numbers" -
     true, and about the wrong man when the question was the son's (the filed
     case was "Jabari Smith", the retired father's exact name, where the son is
@@ -972,7 +962,7 @@ def test_a_name_given_in_full_yields_to_the_one_namesake_with_numbers(curry_ctx:
     assert readings == [f"('Gary Payton' was read as Gary Payton II, the only match who played in {s - 1}-{s % 100:02d}. Gary Payton also matches - name a season he played to ask about him.)"]
 
 
-def test_a_name_left_open_is_whoever_played_the_last_season_of_the_span(curry_ctx: TemplateContext) -> None:
+def test_a_name_left_open_is_whoever_played_the_last_season_of_the_span(curry_ctx: AnswerContext) -> None:
     """A history through 2005 reads each Curry's seasons up to 2005, so Dell and
     Michael could answer it too - and it used to ask which of the three. Eddy is
     the only one who played in 2005, so it is his, said with the others named:
@@ -985,13 +975,13 @@ def test_a_name_left_open_is_whoever_played_the_last_season_of_the_span(curry_ct
     ]
 
 
-def test_a_reading_is_collected_only_where_somebody_is_listening(curry_ctx: TemplateContext) -> None:
+def test_a_reading_is_collected_only_where_somebody_is_listening(curry_ctx: AnswerContext) -> None:
     """Outside collect_name_readings the resolution is the same and nothing is
     kept - a template called directly has nowhere to put the sentence."""
     assert player_history(curry_ctx, Reading.from_slots({"player": "Curry", "stat": "points", "season": 2005})).answer.startswith("Eddy Curry")
 
 
-def test_a_history_names_whoever_reached_its_last_season_first(curry_ctx: TemplateContext) -> None:
+def test_a_history_names_whoever_reached_its_last_season_first(curry_ctx: AnswerContext) -> None:
     """ "Curry's scoring over the last 4 seasons" keeps all six Currys - each
     has seasons through 2026 to answer with - and so hid Stephen behind the
     cap exactly as the one-season question did. The two who played in the
@@ -1000,7 +990,7 @@ def test_a_history_names_whoever_reached_its_last_season_first(curry_ctx: Templa
     assert result.answer == "'Curry' matches more than one player - did you mean Seth Curry, Stephen Curry, Dell Curry, Eddy Curry or JamesOn Curry (1 other also matches)?"
 
 
-def test_a_career_keeps_every_curry_but_names_the_active_ones_first(curry_ctx: TemplateContext) -> None:
+def test_a_career_keeps_every_curry_but_names_the_active_ones_first(curry_ctx: AnswerContext) -> None:
     """A career question has every season in scope, so Dell's career is as real
     an answer as Stephen's and nobody is eliminated. Narrowed like one season,
     it would have been; left unordered, the cap would hide Stephen again."""
@@ -1009,7 +999,7 @@ def test_a_career_keeps_every_curry_but_names_the_active_ones_first(curry_ctx: T
     assert result.answer == "'Curry' matches more than one player - did you mean Seth Curry, Stephen Curry, Dell Curry, Eddy Curry or JamesOn Curry (1 other also matches)?"
 
 
-def test_a_game_log_narrows_to_whoever_has_games_that_season(curry_ctx: TemplateContext) -> None:
+def test_a_game_log_narrows_to_whoever_has_games_that_season(curry_ctx: AnswerContext) -> None:
     """No season named means the current one. Dell has games in 2000 and Seth
     and Stephen this season, so only the two of them are asked about.
 
@@ -1040,7 +1030,7 @@ def test_a_without_teammate_is_found_past_the_first_page_of_matches() -> None:
     assert got == Entity(id="10", name="Kenrich Williams")
 
 
-def test_a_career_high_names_the_currys_playing_now_first(curry_ctx: TemplateContext) -> None:
+def test_a_career_high_names_the_currys_playing_now_first(curry_ctx: AnswerContext) -> None:
     """single_game_high reads a career as every season on record, so Dell stays
     a candidate - but left unanchored, the list was in name order and the cap
     would cut Stephen behind the retired Currys."""
@@ -1049,7 +1039,7 @@ def test_a_career_high_names_the_currys_playing_now_first(curry_ctx: TemplateCon
     assert result.data["candidates"] == ["Seth Curry", "Stephen Curry", "Dell Curry"]
 
 
-def test_netpoints_narrows_against_either_of_the_tables_it_reads(curry_ctx: TemplateContext) -> None:
+def test_netpoints_narrows_against_either_of_the_tables_it_reads(curry_ctx: AnswerContext) -> None:
     """player_netpoints answers from the season totals OR the fingerprint, and
     the two disagree about who they hold - 63 player-seasons are in the first
     only and 8 in the second only. A candidate with a row in either one has an
@@ -1062,7 +1052,7 @@ def test_netpoints_narrows_against_either_of_the_tables_it_reads(curry_ctx: Temp
     assert result.data["candidates"] == ["Seth Curry", "Stephen Curry"]
 
 
-def test_netpoints_without_its_tables_asks_as_it_always_did(curry_ctx: TemplateContext) -> None:
+def test_netpoints_without_its_tables_asks_as_it_always_did(curry_ctx: AnswerContext) -> None:
     """NetPoints is an opt-in fetch, so its tables may not exist at all. With
     nothing to narrow against, an ambiguous name gets the question it always
     got, rather than a catalog error out of the resolver."""
@@ -1070,7 +1060,7 @@ def test_netpoints_without_its_tables_asks_as_it_always_did(curry_ctx: TemplateC
     assert len(result.data["candidates"]) == 6
 
 
-def test_leaderboard_handles_triple_doubles_as_a_metric_not_a_recount(lb_con: TemplateContext) -> None:
+def test_leaderboard_handles_triple_doubles_as_a_metric_not_a_recount(lb_con: AnswerContext) -> None:
     """ESPN precomputes doubleDouble/tripleDouble as a season count, so "most
     triple-doubles" is a leaderboard rather than a per-game threshold recount."""
     lb_con.con.execute("ALTER TABLE player_season_stats ADD COLUMN tripleDouble INTEGER")
@@ -1084,7 +1074,7 @@ def test_leaderboard_handles_triple_doubles_as_a_metric_not_a_recount(lb_con: Te
 
 
 @pytest.fixture
-def gl_con(tmp_path: Path) -> TemplateContext:
+def gl_con(tmp_path: Path) -> AnswerContext:
     c = duckdb.connect(":memory:")
     c.execute("CREATE TABLE teams (team_id VARCHAR, abbreviation VARCHAR, display_name VARCHAR)")
     c.execute("CREATE TABLE standings (team_id VARCHAR, season INTEGER, wins DOUBLE, losses DOUBLE, winPercent DOUBLE, streak DOUBLE, playoffSeed DOUBLE)")
@@ -1113,11 +1103,11 @@ def gl_con(tmp_path: Path) -> TemplateContext:
     )
     c.execute("INSERT INTO team_box_stats VALUES ('e3',?,2,'18','2','home'),('e1b',?,2,'18','2','home')", [s, s])
     real_games.build_table(c, {"games", "teams"})
-    return TemplateContext(con=c, out_dir=tmp_path)
+    return AnswerContext(con=c, out_dir=tmp_path)
 
 
 @pytest.fixture
-def tq_con(tmp_path: Path) -> TemplateContext:
+def tq_con(tmp_path: Path) -> AnswerContext:
     """games.home_linescores/away_linescores plus the team_box_stats rows for
     BOTH sides of each game (team_quarter_points needs a team's own
     perspective row regardless of which side of the matchup it queries from,
@@ -1155,35 +1145,35 @@ def tq_con(tmp_path: Path) -> TemplateContext:
         [s, s, s, s, s, s],
     )
     real_games.build_table(c, {"games", "teams"})
-    return TemplateContext(con=c, out_dir=tmp_path)
+    return AnswerContext(con=c, out_dir=tmp_path)
 
 
 # team_record's own tests are in test_team_templates.py, over a fixture with
 # the standings columns it reads.
 
 
-def test_game_log_includes_home_and_away_games(gl_con: TemplateContext) -> None:
+def test_game_log_includes_home_and_away_games(gl_con: AnswerContext) -> None:
     """Regression: joining games by home_team_id only silently returns a
     team's home games and drops every away game, with no error."""
     games = game_log(gl_con, Reading.from_slots({"team": "Knicks"})).data["games"]
     assert {g["home_away"] for g in games} == {"home", "away"}
 
 
-def test_game_log_reports_each_games_own_score_from_that_teams_side(gl_con: TemplateContext) -> None:
+def test_game_log_reports_each_games_own_score_from_that_teams_side(gl_con: AnswerContext) -> None:
     by_date = {g["date"]: g for g in game_log(gl_con, Reading.from_slots({"team": "Knicks"})).data["games"]}
     assert (by_date["2026-04-10"]["team_score"], by_date["2026-04-10"]["opponent_score"]) == (112, 95)
     # Away game: the Knicks' score is the AWAY score, not the home one.
     assert (by_date["2026-04-12"]["team_score"], by_date["2026-04-12"]["opponent_score"]) == (96, 110)
 
 
-def test_game_log_tallies_the_record_over_exactly_the_rows_shown(gl_con: TemplateContext) -> None:
+def test_game_log_tallies_the_record_over_exactly_the_rows_shown(gl_con: AnswerContext) -> None:
     result = game_log(gl_con, Reading.from_slots({"team": "Knicks"}))
     assert result.data["wins"] == 1
     assert "(1-1)" in (result.answer or "")
     assert result.data["headline"] == (result.answer or "").splitlines()[0].rstrip(":")
 
 
-def test_game_log_order_first_is_ascending(gl_con: TemplateContext) -> None:
+def test_game_log_order_first_is_ascending(gl_con: AnswerContext) -> None:
     # LIMIT 1 without an explicit ORDER BY returns an arbitrary row, not the
     # earliest one.
     first = game_log(gl_con, Reading.from_slots({"team": "Knicks", "order": "first", "limit": 1})).data["games"]
@@ -1192,7 +1182,7 @@ def test_game_log_order_first_is_ascending(gl_con: TemplateContext) -> None:
     assert recent[0]["date"] == "2026-04-12"
 
 
-def test_game_log_filters_an_exact_calendar_date(gl_con: TemplateContext) -> None:
+def test_game_log_filters_an_exact_calendar_date(gl_con: AnswerContext) -> None:
     # games.date is a full ISO timestamp, so `= 'YYYY-MM-DD'` is valid SQL that
     # silently matches nothing.
     games = game_log(gl_con, Reading.from_slots({"team": "Knicks", "date": "2026-04-12"})).data["games"]
@@ -1207,24 +1197,24 @@ def test_a_malformed_date_never_reaches_the_game_log() -> None:
         Reading.from_slots({"team": "Knicks", "date": "April 12"})
 
 
-def test_game_log_ambiguous_team_asks(gl_con: TemplateContext) -> None:
+def test_game_log_ambiguous_team_asks(gl_con: AnswerContext) -> None:
     gl_con.con.execute("INSERT INTO teams VALUES ('12','LAC','LA Clippers'),('13','LAL','Los Angeles Lakers')")
     assert "did you mean" in (game_log(gl_con, Reading.from_slots({"team": "LA"})).answer or "")
 
 
-def test_game_log_without_team_or_player_falls_through(gl_con: TemplateContext) -> None:
-    with pytest.raises(TemplateUnsupported):
+def test_game_log_without_team_or_player_falls_through(gl_con: AnswerContext) -> None:
+    with pytest.raises(Unsupported):
         game_log(gl_con, Reading.from_slots({"limit": 5}))
 
 
-def test_team_record_refuses_a_limited_set_rather_than_reporting_the_full_season(gl_con: TemplateContext) -> None:
+def test_team_record_refuses_a_limited_set_rather_than_reporting_the_full_season(gl_con: AnswerContext) -> None:
     """ "How did they do in their last 10?" answered with the full-season record
     is a silent substitution - game_log tallies over exactly the games shown."""
-    with pytest.raises(TemplateUnsupported):
+    with pytest.raises(Unsupported):
         team_record(gl_con, Reading.from_slots({"team": "Knicks", "limit": 10}))
 
 
-def _add_knicks_postseason(gl_con: TemplateContext) -> None:
+def _add_knicks_postseason(gl_con: AnswerContext) -> None:
     """Two postseason games after `gl_con`'s two regular-season ones, so a
     "last N games" question has real games of both types to mix - the shape
     ISSUES.md's "'Last N games' means the last N regular-season games, even
@@ -1238,7 +1228,7 @@ def _add_knicks_postseason(gl_con: TemplateContext) -> None:
     real_games.build_table(gl_con.con, {"games", "teams"})
 
 
-def test_a_teams_last_n_games_with_no_season_type_named_reads_both(gl_con: TemplateContext) -> None:
+def test_a_teams_last_n_games_with_no_season_type_named_reads_both(gl_con: AnswerContext) -> None:
     """ "Show me the Knicks last 5 games" (ISSUES.md): the real last three are
     both playoff games newer than the regular-season ones, so the default
     game_log used before this fix - the regular season alone - would have
@@ -1254,7 +1244,7 @@ def test_a_teams_last_n_games_with_no_season_type_named_reads_both(gl_con: Templ
     assert result.data["wins"] == 2 and result.data["losses"] == 1
 
 
-def test_a_teams_last_n_games_states_the_total_points_asked_for(gl_con: TemplateContext) -> None:
+def test_a_teams_last_n_games_states_the_total_points_asked_for(gl_con: AnswerContext) -> None:
     """F128 (ISSUES.md): "total points scored by the raptors in the last 10
     games" narrowed correctly but never stated the total - the games were
     right and the question's own number was still missing. e2 (away, 96),
@@ -1277,11 +1267,11 @@ def test_a_teams_last_n_games_states_the_total_points_asked_for(gl_con: Template
         run_team(gl_con.con, TeamQuery(scope=Scope.from_slots({"team": "Knicks", "order": "recent", "limit": 3, "season_type_unstated": True, "since": 2024}), measure="points"))
     # The log's own both-types read refuses the same narrowings rather than
     # listing the plain window with them dropped (it did, silently).
-    with pytest.raises(TemplateUnsupported, match="both season types"):
+    with pytest.raises(Unsupported, match="both season types"):
         game_log(gl_con, Reading.from_slots({"team": "Knicks", "order": "recent", "limit": 3, "season_type_unstated": True, "situation": "on tuesdays"}))
 
 
-def test_a_teams_last_n_games_states_the_point_differential_asked_for(gl_con: TemplateContext) -> None:
+def test_a_teams_last_n_games_states_the_point_differential_asked_for(gl_con: AnswerContext) -> None:
     """F129 (ISSUES.md): "Knicks point differential over the last 7 games" -
     e2 (-14), p1 (+11) and p2 (+6) sum to +3 over 3 games, +1.00 per game."""
     _add_knicks_postseason(gl_con)
@@ -1289,7 +1279,7 @@ def test_a_teams_last_n_games_states_the_point_differential_asked_for(gl_con: Te
     assert "\n  Point differential: +3 (+1.00 per game)." in (result.answer or "")
 
 
-def test_a_teams_single_type_log_also_states_a_total(gl_con: TemplateContext) -> None:
+def test_a_teams_single_type_log_also_states_a_total(gl_con: AnswerContext) -> None:
     """The single-season-type reader (``_team_game_log``, not the mixed one)
     gets the same line: the Knicks' two regular-season games (112 home, 96
     away) total 208 points."""
@@ -1297,7 +1287,7 @@ def test_a_teams_single_type_log_also_states_a_total(gl_con: TemplateContext) ->
     assert "\n  Total points: 208." in (result.answer or "")
 
 
-def test_a_teams_plain_stat_names_no_total_line(gl_con: TemplateContext) -> None:
+def test_a_teams_plain_stat_names_no_total_line(gl_con: AnswerContext) -> None:
     """A `stat` this module does not map to a total (or none at all) changes
     nothing about the plain listing - the fix is additive, not a rewording of
     every log."""
@@ -1306,7 +1296,7 @@ def test_a_teams_plain_stat_names_no_total_line(gl_con: TemplateContext) -> None
     assert "Total points" not in answer and "Point differential" not in answer
 
 
-def test_a_teams_last_n_games_naming_its_season_type_is_unchanged(gl_con: TemplateContext) -> None:
+def test_a_teams_last_n_games_naming_its_season_type_is_unchanged(gl_con: AnswerContext) -> None:
     """The correction: saying "playoff games" or "regular season games"
     outright still means only that - the shape this fix must not touch."""
     _add_knicks_postseason(gl_con)
@@ -1318,7 +1308,7 @@ def test_a_teams_last_n_games_naming_its_season_type_is_unchanged(gl_con: Templa
     assert "of the 2026 regular season" in (regular.answer or "")
 
 
-def test_a_teams_last_n_games_all_one_type_reads_exactly_as_before(gl_con: TemplateContext) -> None:
+def test_a_teams_last_n_games_all_one_type_reads_exactly_as_before(gl_con: AnswerContext) -> None:
     """When the last N happen to be all one type - most teams and players
     never reach the postseason at all - the header reads exactly as it always
     did, not "1 regular season" repeated N times."""
@@ -1327,14 +1317,14 @@ def test_a_teams_last_n_games_all_one_type_reads_exactly_as_before(gl_con: Templ
     assert "last 2 games of the 2026 regular season" in (result.answer or "")
 
 
-def test_a_teams_last_n_games_with_no_games_at_all_says_so_without_blaming_a_type(gl_con: TemplateContext) -> None:
+def test_a_teams_last_n_games_with_no_games_at_all_says_so_without_blaming_a_type(gl_con: AnswerContext) -> None:
     gl_con.con.execute("INSERT INTO teams VALUES ('99','LAC','LA Clippers')")
     result = game_log(gl_con, Reading.from_slots({"team": "LA Clippers", "order": "recent", "limit": 5, "season_type_unstated": True}))
     assert result.data["games"] == []
     assert "No 2026 games found for the LA Clippers" in (result.answer or "")
 
 
-def test_a_players_last_n_games_with_no_season_type_named_reads_both(pg_ctx: TemplateContext) -> None:
+def test_a_players_last_n_games_with_no_season_type_named_reads_both(pg_ctx: AnswerContext) -> None:
     """The player-log counterpart, over `pg_ctx`'s season: Podziemski's five
     newest games this season are all postseason (p5 down to p1), and his
     sixth-newest is the regular-season e3 - so a limit of 6 mixes the two
@@ -1356,7 +1346,7 @@ def test_a_players_last_n_games_with_no_season_type_named_reads_both(pg_ctx: Tem
     assert mixed.data["averages"]["points"] == pytest.approx((10 + 20 + 30 + 5 + 15 + 15) / 6)
 
 
-def test_a_players_last_n_games_keeps_its_other_narrowings_under_both_types(pg_ctx: TemplateContext) -> None:
+def test_a_players_last_n_games_keeps_its_other_narrowings_under_both_types(pg_ctx: AnswerContext) -> None:
     """`opponent` still narrows a mixed-type log - Podziemski's games against
     Detroit span both season types (e2, e3 regular season; p1-p3 postseason),
     so "last 3 games vs Detroit" with no season type stated finds the three
@@ -1366,7 +1356,7 @@ def test_a_players_last_n_games_keeps_its_other_narrowings_under_both_types(pg_c
     assert "vs the Detroit Pistons" in (result.answer or "")
 
 
-def test_a_players_last_n_games_with_no_games_this_season_says_so(pg_ctx: TemplateContext) -> None:
+def test_a_players_last_n_games_with_no_games_this_season_says_so(pg_ctx: AnswerContext) -> None:
     result = game_log(pg_ctx, Reading.from_slots({"player": "Brandin Podziemski", "order": "recent", "limit": 5, "season_type_unstated": True, "season": 2005}))
     assert result.data["games"] == []
     assert "no games recorded in the 2005 season" in (result.answer or "")
@@ -1382,7 +1372,7 @@ def test_a_players_last_n_games_with_no_games_this_season_says_so(pg_ctx: Templa
 
 
 @pytest.fixture
-def sc_ctx(tmp_path: Path) -> TemplateContext:
+def sc_ctx(tmp_path: Path) -> AnswerContext:
     c = duckdb.connect(":memory:")
     c.execute("CREATE TABLE players (athlete_id VARCHAR, display_name VARCHAR)")
     c.execute(
@@ -1416,16 +1406,16 @@ def sc_ctx(tmp_path: Path) -> TemplateContext:
         "INSERT INTO shot_chart VALUES ('1',?,2,'e1',1,'10:00',?,'Jump Shot',25,26,3,'26-foot three point jumper')",
         [(current_season(), True), (current_season(), False)],
     )
-    return TemplateContext(con=c, out_dir=tmp_path / "out")
+    return AnswerContext(con=c, out_dir=tmp_path / "out")
 
 
-def test_shot_chart_writes_a_file_and_reports_its_path(sc_ctx: TemplateContext) -> None:
+def test_shot_chart_writes_a_file_and_reports_its_path(sc_ctx: AnswerContext) -> None:
     result = shot_chart(sc_ctx, Reading.from_slots({"player": "Stephen Curry", "season": current_season()}))
     assert "Rendered shot chart for Stephen Curry" in (result.answer or "")
     assert list((sc_ctx.out_dir).glob("*.html"))
 
 
-def test_shot_chart_reads_a_nickname_token_by_token(sc_ctx: TemplateContext) -> None:
+def test_shot_chart_reads_a_nickname_token_by_token(sc_ctx: AnswerContext) -> None:
     """Regression: "Steph" is not a substring of "Stephen" (whole-phrase ILIKE
     matching failed for this exact query). Per-token AND matching fixes it.
     Re-seated from ``shotchart.render_shot_chart``'s tests, which went with it."""
@@ -1433,7 +1423,7 @@ def test_shot_chart_reads_a_nickname_token_by_token(sc_ctx: TemplateContext) -> 
     assert "Rendered shot chart for Stephen Curry" in (result.answer or "")
 
 
-def test_shot_chart_says_how_it_read_a_near_spelling(sc_ctx: TemplateContext) -> None:
+def test_shot_chart_says_how_it_read_a_near_spelling(sc_ctx: AnswerContext) -> None:
     """A near spelling of one player is drawn for him, and the reading is
     collected for the answer (the answering loop appends it)."""
     with collect_name_readings() as readings:
@@ -1442,13 +1432,13 @@ def test_shot_chart_says_how_it_read_a_near_spelling(sc_ctx: TemplateContext) ->
     assert readings == ["('Stephen Cury' matches no player exactly and was read as Stephen Curry, the only near spelling on record - spell the name exactly to ask about someone else.)"]
 
 
-def test_shot_chart_names_a_player_nothing_matched(sc_ctx: TemplateContext) -> None:
+def test_shot_chart_names_a_player_nothing_matched(sc_ctx: AnswerContext) -> None:
     result = shot_chart(sc_ctx, Reading.from_slots({"player": "Nobody Real", "season": current_season()}))
     assert "No player found" in (result.answer or "")
     assert result.artifacts == []
 
 
-def test_shot_chart_narrows_a_surname_to_whoever_took_shots_that_season(sc_ctx: TemplateContext) -> None:
+def test_shot_chart_narrows_a_surname_to_whoever_took_shots_that_season(sc_ctx: AnswerContext) -> None:
     """Seth exists and Stephen has the shots, so "Curry" is not a question this
     season - only one of them can have produced the chart being asked for."""
     sc_ctx.con.execute("INSERT INTO players VALUES ('2','Seth Curry')")
@@ -1456,7 +1446,7 @@ def test_shot_chart_narrows_a_surname_to_whoever_took_shots_that_season(sc_ctx: 
     assert "Rendered shot chart for Stephen Curry" in (result.answer or "")
 
 
-def test_shot_chart_asks_which_player_when_both_took_shots(sc_ctx: TemplateContext) -> None:
+def test_shot_chart_asks_which_player_when_both_took_shots(sc_ctx: AnswerContext) -> None:
     """And when narrowing cannot separate them it asks, rather than drawing
     whichever sorts first and titling the plot with the wrong Curry."""
     sc_ctx.con.execute("INSERT INTO players VALUES ('2','Seth Curry')")
@@ -1466,7 +1456,7 @@ def test_shot_chart_asks_which_player_when_both_took_shots(sc_ctx: TemplateConte
     assert not list(sc_ctx.out_dir.glob("*.html"))
 
 
-def test_shot_chart_reports_no_matching_shots_rather_than_falling_through(sc_ctx: TemplateContext) -> None:
+def test_shot_chart_reports_no_matching_shots_rather_than_falling_through(sc_ctx: AnswerContext) -> None:
     # The agent has no better source for a chart than the table just queried,
     # so an empty result is the answer, not a reason to spend minutes.
     # 2010: a season the shot table covers (1999 is under its floor, refused by the floor first).
@@ -1474,7 +1464,7 @@ def test_shot_chart_reports_no_matching_shots_rather_than_falling_through(sc_ctx
     assert result.answer == "No shots found for Stephen Curry with the given filters."
 
 
-def test_shot_chart_defaulted_season_redirects_to_a_retired_players_range(sc_ctx: TemplateContext) -> None:
+def test_shot_chart_defaulted_season_redirects_to_a_retired_players_range(sc_ctx: AnswerContext) -> None:
     """No season was named - "now" defaulted - so a player with shots only in
     an earlier season is pointed at it instead of "with the given filters",
     which blames a filter that was never given and reads as though the
@@ -1487,7 +1477,7 @@ def test_shot_chart_defaulted_season_redirects_to_a_retired_players_range(sc_ctx
     assert result.artifacts == []
 
 
-def test_shot_chart_a_named_season_keeps_the_plain_refusal(sc_ctx: TemplateContext) -> None:
+def test_shot_chart_a_named_season_keeps_the_plain_refusal(sc_ctx: AnswerContext) -> None:
     """The season the question named is the fact the refusal is about, so it
     is left exactly as it read before this fix - unlike the defaulted case
     above."""
@@ -1503,8 +1493,8 @@ def test_a_nonsense_shot_value_never_reaches_the_chart() -> None:
         Reading.from_slots({"player": "Stephen Curry", "season": current_season(), "shot_value": 0})
 
 
-def test_shot_chart_without_a_player_falls_through(sc_ctx: TemplateContext) -> None:
-    with pytest.raises(TemplateUnsupported):
+def test_shot_chart_without_a_player_falls_through(sc_ctx: AnswerContext) -> None:
+    with pytest.raises(Unsupported):
         shot_chart(sc_ctx, Reading.from_slots({"season": current_season()}))
 
 
@@ -1551,7 +1541,7 @@ def test_a_scoped_chart_uses_the_same_player_it_looked_the_game_up_for(tmp_path:
         "INSERT INTO shot_chart VALUES (?,?,2,?,1,'10:00',true,'Jump Shot',25,26,3,'26-foot three point jumper')",
         [("1", current_season() - 1, "seth_old_game"), ("2", current_season(), "steph_game")],
     )
-    ctx = TemplateContext(con=c, out_dir=tmp_path / "out")
+    ctx = AnswerContext(con=c, out_dir=tmp_path / "out")
 
     calls = []
     real = shotchart.find_players
@@ -1577,7 +1567,7 @@ def test_a_scoped_chart_uses_the_same_player_it_looked_the_game_up_for(tmp_path:
     assert "seth_game" not in written[0] and "steph_game" in written[0]
 
 
-def test_shot_chart_defaults_an_unspecified_season_to_the_current_one(sc_ctx: TemplateContext) -> None:
+def test_shot_chart_defaults_an_unspecified_season_to_the_current_one(sc_ctx: AnswerContext) -> None:
     """Passing None through charted a player's entire career in one plot
     (confirmed live: 3,665 Curry attempts across every season)."""
     sc_ctx.con.execute("INSERT INTO shot_chart VALUES ('1',2019,2,'e9',1,'5:00',TRUE,'Jump Shot',10,10,2,'makes 18-foot jumper')")
@@ -1604,7 +1594,7 @@ def _add_career_table(con: duckdb.DuckDBPyConnection, rows: list[tuple[str, int,
     con.executemany("INSERT INTO player_season_stats_deduped VALUES (?,?,?,?)", rows)
 
 
-def test_shot_chart_honors_a_career_span(sc_ctx: TemplateContext) -> None:
+def test_shot_chart_honors_a_career_span(sc_ctx: AnswerContext) -> None:
     """Draws every regular season on record, not only the one the season slot
     would have defaulted to - the fixture's two current-season shots AND a
     2019 one, 2/3 made where a single season drew 1/2."""
@@ -1615,7 +1605,7 @@ def test_shot_chart_honors_a_career_span(sc_ctx: TemplateContext) -> None:
     assert f"Covers his whole regular season career on record (2019-{current_season()})." in answer
 
 
-def test_shot_chart_career_span_names_a_career_entirely_before_the_floor(sc_ctx: TemplateContext) -> None:
+def test_shot_chart_career_span_names_a_career_entirely_before_the_floor(sc_ctx: AnswerContext) -> None:
     """A career that ends before shots begin has nothing to draw, and the
     answer says why - not a plain "No shots found ... with the given
     filters", which would blame a filter that was never given and read as
@@ -1625,7 +1615,7 @@ def test_shot_chart_career_span_names_a_career_entirely_before_the_floor(sc_ctx:
     assert answer == "No shots found for Stephen Curry with the given filters. Stephen Curry's postseason career (1997-1998) ends before shot data begins, in 2002, so none of it can be shown."
 
 
-def test_shot_chart_career_span_names_the_seasons_the_floor_leaves_out(sc_ctx: TemplateContext) -> None:
+def test_shot_chart_career_span_names_the_seasons_the_floor_leaves_out(sc_ctx: AnswerContext) -> None:
     """A career that straddles 2002 draws what it can and names what it
     can't, the same discipline a defaulted single season's redirect uses."""
     _add_career_table(sc_ctx.con, [("1", 1999, 2, 50), ("1", current_season(), 2, 60)])
@@ -1633,23 +1623,23 @@ def test_shot_chart_career_span_names_the_seasons_the_floor_leaves_out(sc_ctx: T
     assert "Shot data begins with the 2002 season, so his 1999-2001 regular seasons are not shown." in answer
 
 
-def test_shot_chart_refuses_a_career_span_with_a_named_season(sc_ctx: TemplateContext) -> None:
+def test_shot_chart_refuses_a_career_span_with_a_named_season(sc_ctx: AnswerContext) -> None:
     """ "Career" and a named year at once answer different questions - the same
     conflict `_span_of` raises on elsewhere."""
     _add_career_table(sc_ctx.con, [("1", current_season(), 2, 60)])
-    with pytest.raises(TemplateUnsupported, match="career span and the 2020 season"):
+    with pytest.raises(Unsupported, match="career span and the 2020 season"):
         shot_chart(sc_ctx, Reading.from_slots({"player": "Stephen Curry", "season": 2020, "span": "career"}))
 
 
-def test_shot_chart_refuses_a_career_span_with_an_order(sc_ctx: TemplateContext) -> None:
+def test_shot_chart_refuses_a_career_span_with_an_order(sc_ctx: AnswerContext) -> None:
     """ "His last game" picks one game inside one season; a career asks for
     every one of them. Falls through rather than silently picking one."""
     _add_career_table(sc_ctx.con, [("1", current_season(), 2, 60)])
-    with pytest.raises(TemplateUnsupported, match="career span"):
+    with pytest.raises(Unsupported, match="career span"):
         shot_chart(sc_ctx, Reading.from_slots({"player": "Stephen Curry", "span": "career", "order": "recent"}))
 
 
-def test_shot_distance_honors_a_career_span(sc_ctx: TemplateContext) -> None:
+def test_shot_distance_honors_a_career_span(sc_ctx: AnswerContext) -> None:
     """Averages across every season on record instead of only the latest,
     the same shape as shot_chart."""
     _add_career_table(sc_ctx.con, [("1", 2019, 2, 70), ("1", current_season(), 2, 60)])
@@ -1659,7 +1649,7 @@ def test_shot_distance_honors_a_career_span(sc_ctx: TemplateContext) -> None:
     assert f"Covers his whole regular season career on record (2019-{current_season()})." in answer
 
 
-def test_shot_distance_career_span_names_a_career_entirely_before_the_floor(sc_ctx: TemplateContext) -> None:
+def test_shot_distance_career_span_names_a_career_entirely_before_the_floor(sc_ctx: AnswerContext) -> None:
     _add_career_table(sc_ctx.con, [("1", 1997, 3, 20), ("1", 1998, 3, 15)])
     answer = shot_distance(sc_ctx, Reading.from_slots({"player": "Stephen Curry", "season_type": 3, "span": "career"})).answer or ""
     assert answer == (
@@ -1671,13 +1661,13 @@ def test_shot_distance_career_span_names_a_career_entirely_before_the_floor(sc_c
 # ---------------- player_compare ----------------
 
 
-def test_player_compare_puts_players_side_by_side(ps_con: TemplateContext) -> None:
+def test_player_compare_puts_players_side_by_side(ps_con: AnswerContext) -> None:
     answer = player_compare(ps_con, Reading.from_slots({"players": ["Luka Doncic", "Nikola Jokic"]})).answer or ""
     assert "Luka Doncic vs Nikola Jokic" in answer
     assert "points" in answer and "33.5" in answer and "27.7" in answer
 
 
-def test_player_compare_defaults_to_the_whole_stat_line(ps_con: TemplateContext) -> None:
+def test_player_compare_defaults_to_the_whole_stat_line(ps_con: AnswerContext) -> None:
     """A comparison asks which player is better, and three counting stats
     cannot answer that - they omit both halves of the defensive line and
     everything a player gives back. A table costs nothing per row, so the rows
@@ -1689,7 +1679,7 @@ def test_player_compare_defaults_to_the_whole_stat_line(ps_con: TemplateContext)
     assert "4.0" in answer and "3.6" in answer  # turnovers, which the old line omitted
 
 
-def test_player_compare_shows_the_netpoints_summary(ps_con: TemplateContext) -> None:
+def test_player_compare_shows_the_netpoints_summary(ps_con: AnswerContext) -> None:
     """Per 100 possessions, not season totals: a comparison is exactly the
     question totals answer badly, since they mostly rank by playing time."""
     result = player_compare(ps_con, Reading.from_slots({"players": ["Luka Doncic", "Nikola Jokic"]}))
@@ -1699,7 +1689,7 @@ def test_player_compare_shows_the_netpoints_summary(ps_con: TemplateContext) -> 
     assert result.data["netpoints"]["Luka Doncic"]["overall_per_100_poss"] == 5.87
 
 
-def test_a_player_with_no_netpoints_row_is_blank_rather_than_zero(ps_con: TemplateContext) -> None:
+def test_a_player_with_no_netpoints_row_is_blank_rather_than_zero(ps_con: AnswerContext) -> None:
     """Only Luka has a row in the fixture. Drawing Jokic as +0.00 would read as
     "contributed nothing" rather than "not on record"."""
     answer = player_compare(ps_con, Reading.from_slots({"players": ["Luka Doncic", "Nikola Jokic"]})).answer or ""
@@ -1707,7 +1697,7 @@ def test_a_player_with_no_netpoints_row_is_blank_rather_than_zero(ps_con: Templa
     assert "+5.87" in netpoints_row and "+0.00" not in netpoints_row and netpoints_row.rstrip().endswith("-")
 
 
-def test_player_compare_omits_netpoints_entirely_when_nobody_has_any(ps_con: TemplateContext) -> None:
+def test_player_compare_omits_netpoints_entirely_when_nobody_has_any(ps_con: AnswerContext) -> None:
     """An empty NetPoints block under two 1990s players would read as "both
     contributed nothing" rather than "this season predates the data"."""
     ps_con.con.execute("DELETE FROM net_points_player")
@@ -1716,7 +1706,7 @@ def test_player_compare_omits_netpoints_entirely_when_nobody_has_any(ps_con: Tem
     assert "33.5" in answer  # the rest of the comparison is unaffected
 
 
-def test_player_compare_survives_a_warehouse_with_no_netpoints_table(ps_con: TemplateContext) -> None:
+def test_player_compare_survives_a_warehouse_with_no_netpoints_table(ps_con: AnswerContext) -> None:
     """NetPoints is a separate opt-in fetch, so the table may not exist at all.
     Unlike per-game NetPoints, which has nothing else to say, a comparison is
     complete without it - so this drops the section instead of falling through
@@ -1726,14 +1716,14 @@ def test_player_compare_survives_a_warehouse_with_no_netpoints_table(ps_con: Tem
     assert "net pts/100" not in answer and "33.5" in answer
 
 
-def test_a_named_stat_still_narrows_the_comparison(ps_con: TemplateContext) -> None:
+def test_a_named_stat_still_narrows_the_comparison(ps_con: AnswerContext) -> None:
     """ "Who scores more" gets scoring, not a wall."""
     answer = player_compare(ps_con, Reading.from_slots({"players": ["Luka Doncic", "Nikola Jokic"], "stat": "points"})).answer or ""
     assert "\npoints" in answer
     assert "\nrebounds" not in answer and "\nsteals" not in answer
 
 
-def test_a_comparison_is_not_refused_before_netpoints_begins(ps_con: TemplateContext) -> None:
+def test_a_comparison_is_not_refused_before_netpoints_begins(ps_con: AnswerContext) -> None:
     """The NetPoints table is deliberately absent from player_compare's
     TEMPLATE_SOURCES: listing it would put a 2019 coverage floor on every
     comparison and refuse the 1994-2018 ones outright."""
@@ -1742,26 +1732,26 @@ def test_a_comparison_is_not_refused_before_netpoints_begins(ps_con: TemplateCon
     assert check_coverage("player_compare", {"season": 2005, "season_type": 2}) is None
 
 
-def test_player_compare_uses_a_table_not_prose(ps_con: TemplateContext) -> None:
+def test_player_compare_uses_a_table_not_prose(ps_con: AnswerContext) -> None:
     """The agent's prose version of this stated that a player with 0.4 steals
     led one with 1.6. A table cannot make that mistake."""
     lines = (player_compare(ps_con, Reading.from_slots({"players": ["Luka Doncic", "Nikola Jokic"]})).answer or "").splitlines()
     assert len(lines) >= 5 and lines[1].strip().startswith("Luka Doncic")
 
 
-def test_player_compare_aligns_decimals_consistently(ps_con: TemplateContext) -> None:
+def test_player_compare_aligns_decimals_consistently(ps_con: AnswerContext) -> None:
     ps_con.con.execute("UPDATE player_season_stats_deduped SET avgPoints = 25.0 WHERE athlete_id = '3'")
     answer = player_compare(ps_con, Reading.from_slots({"players": ["Luka Doncic", "Nikola Jokic"], "stat": "points"})).answer or ""
     assert "25.0" in answer  # not a trailing-zero-stripped "25" beside "33.5"
 
 
-def test_player_compare_resolves_a_nickname(ps_con: TemplateContext) -> None:
+def test_player_compare_resolves_a_nickname(ps_con: AnswerContext) -> None:
     ps_con.con.execute("INSERT INTO players VALUES ('9','Shai Gilgeous-Alexander')")
     answer = player_compare(ps_con, Reading.from_slots({"players": ["Luka Doncic", "SGA"]})).answer or ""
     assert "Shai Gilgeous-Alexander" in answer
 
 
-def test_player_compare_asks_rather_than_guessing_an_ambiguous_name(ps_con: TemplateContext) -> None:
+def test_player_compare_asks_rather_than_guessing_an_ambiguous_name(ps_con: AnswerContext) -> None:
     answer = player_compare(ps_con, Reading.from_slots({"players": ["Curry", "Nikola Jokic"]})).answer or ""
     assert "did you mean Seth Curry or Stephen Curry?" in answer
 
@@ -1849,7 +1839,7 @@ def test_no_template_outside_player_intents_reads_a_player_slot() -> None:
         assert reads == (intent in PLAYER_INTENTS), f"{intent} reads a player slot: {reads}, listed: {intent in PLAYER_INTENTS}"
 
 
-def test_player_compare_suggests_the_player_a_fabricated_name_meant(ps_con: TemplateContext) -> None:
+def test_player_compare_suggests_the_player_a_fabricated_name_meant(ps_con: AnswerContext) -> None:
     """The router answered "compare sga and embid" with 'Jemel Embiid' - the
     surname corrected, the given name invented - and every token has to match,
     so a name the warehouse holds was buried by one made-up word."""
@@ -1857,7 +1847,7 @@ def test_player_compare_suggests_the_player_a_fabricated_name_meant(ps_con: Temp
     assert answer == "No player found matching 'Jemel Jokic' - did you mean Nikola Jokic?"
 
 
-def test_player_compare_answers_a_near_miss_rather_than_falling_through(ps_con: TemplateContext) -> None:
+def test_player_compare_answers_a_near_miss_rather_than_falling_through(ps_con: AnswerContext) -> None:
     """Handled here for the same reason ambiguity is: the agent would resolve
     the same name against the same table, more slowly. "Jemel Jokic" is the
     surname back-off - a given name that is nobody's beside a surname that is
@@ -1867,7 +1857,7 @@ def test_player_compare_answers_a_near_miss_rather_than_falling_through(ps_con: 
     assert "did you mean Nikola Jokic?" in answer
 
 
-def test_player_compare_reads_a_single_near_spelling_as_that_player(ps_con: TemplateContext) -> None:
+def test_player_compare_reads_a_single_near_spelling_as_that_player(ps_con: AnswerContext) -> None:
     """A typo of exactly one player's name is that player, and the answer says
     so (entities.read_near_spelling): "Nikoal Jokic" used to ask "did you mean
     Nikola Jokic?", and once the router copies names as typed, every typo
@@ -1879,21 +1869,21 @@ def test_player_compare_reads_a_single_near_spelling_as_that_player(ps_con: Temp
     assert readings == ["('Nikoal Jokic' matches no player exactly and was read as Nikola Jokic, the only near spelling on record - spell the name exactly to ask about someone else.)"]
 
 
-def test_a_name_with_nothing_near_it_still_falls_through(ps_con: TemplateContext) -> None:
-    with pytest.raises(TemplateUnsupported):
+def test_a_name_with_nothing_near_it_still_falls_through(ps_con: AnswerContext) -> None:
+    with pytest.raises(Unsupported):
         player_compare(ps_con, Reading.from_slots({"players": ["Luka Doncic", "Asdf Qwerty"]}))
 
 
-def test_player_compare_needs_two_distinct_players(ps_con: TemplateContext) -> None:
-    with pytest.raises(TemplateUnsupported):
+def test_player_compare_needs_two_distinct_players(ps_con: AnswerContext) -> None:
+    with pytest.raises(Unsupported):
         player_compare(ps_con, Reading.from_slots({"players": ["Luka Doncic"]}))
-    with pytest.raises(TemplateUnsupported):
+    with pytest.raises(Unsupported):
         player_compare(ps_con, Reading.from_slots({"players": ["Luka Doncic", "Luka Doncic"]}))
-    with pytest.raises(TemplateUnsupported):
+    with pytest.raises(Unsupported):
         player_compare(ps_con, Reading.from_slots({"player": "Luka Doncic"}))
 
 
-def test_player_compare_reports_a_player_with_no_rows_rather_than_dropping_them(ps_con: TemplateContext) -> None:
+def test_player_compare_reports_a_player_with_no_rows_rather_than_dropping_them(ps_con: AnswerContext) -> None:
     ps_con.con.execute("INSERT INTO players VALUES ('9','Shai Gilgeous-Alexander')")
     result = player_compare(ps_con, Reading.from_slots({"players": ["Luka Doncic", "Shai Gilgeous-Alexander"]}))
     answer = result.answer or ""
@@ -1902,7 +1892,7 @@ def test_player_compare_reports_a_player_with_no_rows_rather_than_dropping_them(
     assert result.data["headline"] == answer.splitlines()[0].rstrip(":")
 
 
-def test_player_compare_is_capped(ps_con: TemplateContext) -> None:
+def test_player_compare_is_capped(ps_con: AnswerContext) -> None:
     from association.query.season_line import MAX_COMPARED_PLAYERS
 
     ps_con.con.execute("INSERT INTO players VALUES ('9','A A'),('10','B B'),('11','C C'),('12','D D')")
@@ -1910,7 +1900,7 @@ def test_player_compare_is_capped(ps_con: TemplateContext) -> None:
     assert len(result.data["players"]) <= MAX_COMPARED_PLAYERS
 
 
-def test_shot_chart_reads_threes_from_either_slot(sc_ctx: TemplateContext) -> None:
+def test_shot_chart_reads_threes_from_either_slot(sc_ctx: AnswerContext) -> None:
     """ "Curry's threes" comes back as shot_value 3 or as the equivalent
     box-score stat depending on wording; both mean the same thing."""
     sc_ctx.con.execute("INSERT INTO shot_chart VALUES ('1',?,2,'e2',1,'9:00',TRUE,'Layup',5,5,2,'makes layup')", [current_season()])
@@ -1919,7 +1909,7 @@ def test_shot_chart_reads_threes_from_either_slot(sc_ctx: TemplateContext) -> No
     assert "1/2 made" in by_value and "1/2 made" in by_stat
 
 
-def test_leaderboard_includes_requested_extra_fields(lb_con: TemplateContext) -> None:
+def test_leaderboard_includes_requested_extra_fields(lb_con: AnswerContext) -> None:
     """Regression: "top N in X alongside their points per game" was answered
     without the second half, and without saying so."""
     lb_con.con.execute("ALTER TABLE player_season_stats ADD COLUMN avgRebounds DOUBLE")
@@ -1929,38 +1919,38 @@ def test_leaderboard_includes_requested_extra_fields(lb_con: TemplateContext) ->
     assert "rebounds" in (result.answer or "") and "7.7" in (result.answer or "")
 
 
-def test_leaderboard_with_fields_renders_a_table(lb_con: TemplateContext) -> None:
+def test_leaderboard_with_fields_renders_a_table(lb_con: AnswerContext) -> None:
     lb_con.con.execute("ALTER TABLE player_season_stats ADD COLUMN avgRebounds DOUBLE")
     answer = leaderboard(lb_con, Reading.from_slots({"stat": "points", "fields": ["rebounds"]})).answer or ""
     assert len(answer.splitlines()) >= 3
 
 
-def test_leaderboard_without_fields_stays_a_sentence(lb_con: TemplateContext) -> None:
+def test_leaderboard_without_fields_stays_a_sentence(lb_con: AnswerContext) -> None:
     answer = leaderboard(lb_con, Reading.from_slots({"stat": "points"})).answer or ""
     assert len(answer.splitlines()) == 1 and "led the league" in answer
 
 
-def test_leaderboard_unknown_field_falls_through_rather_than_being_dropped(lb_con: TemplateContext) -> None:
+def test_leaderboard_unknown_field_falls_through_rather_than_being_dropped(lb_con: AnswerContext) -> None:
     # Silently ignoring it would answer a narrower question than was asked.
-    with pytest.raises(TemplateUnsupported):
+    with pytest.raises(Unsupported):
         leaderboard(lb_con, Reading.from_slots({"stat": "points", "fields": ["clutchness"]}))
 
 
-def test_leaderboard_table_keeps_the_metrics_own_precision(lb_con: TemplateContext) -> None:
+def test_leaderboard_table_keeps_the_metrics_own_precision(lb_con: AnswerContext) -> None:
     lb_con.con.execute("ALTER TABLE player_season_stats ADD COLUMN avgRebounds DOUBLE")
     lb_con.con.execute("UPDATE player_season_stats SET avgPoints = 9.91 WHERE athlete_id = '1'")
     answer = leaderboard(lb_con, Reading.from_slots({"stat": "points", "fields": ["rebounds"]})).answer or ""
     assert "9.91" in answer  # not rounded to 9.9 by the table's field formatting
 
 
-def test_leaderboard_table_names_the_qualifying_minimum(lb_con: TemplateContext) -> None:
+def test_leaderboard_table_names_the_qualifying_minimum(lb_con: AnswerContext) -> None:
     """ "Why isn't X on this list?" should have a visible answer."""
     lb_con.con.execute("ALTER TABLE player_season_stats ADD COLUMN avgRebounds DOUBLE")
     answer = leaderboard(lb_con, Reading.from_slots({"stat": "points", "fields": ["rebounds"], "limit": 2})).answer or ""
     assert "minimum" not in answer or "games" in answer or "minutes" in answer
 
 
-def test_leaderboard_tolerates_a_repeated_field(lb_con: TemplateContext) -> None:
+def test_leaderboard_tolerates_a_repeated_field(lb_con: AnswerContext) -> None:
     """Confirmed live: the router returned ["points","minutes","minutes"]. A
     repeat is a harmless slip, not a reason to fall through to the agent."""
     lb_con.con.execute("ALTER TABLE player_season_stats ADD COLUMN avgRebounds DOUBLE")
@@ -1969,7 +1959,7 @@ def test_leaderboard_tolerates_a_repeated_field(lb_con: TemplateContext) -> None
     assert (result.answer or "").splitlines()[1].count("rebounds") == 1
 
 
-def test_leaderboard_drops_a_field_that_restates_the_ranked_metric(lb_con: TemplateContext) -> None:
+def test_leaderboard_drops_a_field_that_restates_the_ranked_metric(lb_con: AnswerContext) -> None:
     """Confirmed live: asked for "top scorers with their rebounds", the router
     also returned "points", which rendered the same 33.5 twice under two
     different headings."""
@@ -1982,7 +1972,7 @@ def test_leaderboard_drops_a_field_that_restates_the_ranked_metric(lb_con: Templ
 
 
 @pytest.fixture
-def sgh_ctx(tmp_path: Path) -> TemplateContext:
+def sgh_ctx(tmp_path: Path) -> AnswerContext:
     c = duckdb.connect(":memory:")
     # `minutes` is last so the positional INSERTs below (and in the tests that
     # add a row of their own) keep their order. A NULL there is the empty line
@@ -2012,10 +2002,10 @@ def sgh_ctx(tmp_path: Path) -> TemplateContext:
     # The date, home side and winner the compiler reads off `games` beside the
     # log (compose.core._row_select), as the warehouse view carries them.
     c.execute("CREATE VIEW games AS SELECT DISTINCT event_id, season, season_type, game_date AS date, NULL::VARCHAR AS home_team_id, NULL::VARCHAR AS winner_team_id FROM player_game_log")
-    return TemplateContext(con=c, out_dir=tmp_path)
+    return AnswerContext(con=c, out_dir=tmp_path)
 
 
-def test_single_game_high_answers_the_question_a_leaderboard_answered_wrongly(sgh_ctx: TemplateContext) -> None:
+def test_single_game_high_answers_the_question_a_leaderboard_answered_wrongly(sgh_ctx: AnswerContext) -> None:
     """Confirmed live: with no such intent, "who had the most assists in a
     single game" was answered "Nikola Jokic led the league in assists per game,
     at 10.7" in 1.76s. The real answer was Ryan Nembhard with 23."""
@@ -2025,33 +2015,33 @@ def test_single_game_high_answers_the_question_a_leaderboard_answered_wrongly(sg
     assert "23" in answer and "2026-04-12" in answer and "CHI" in answer
 
 
-def test_single_game_high_is_a_maximum_not_an_average(sgh_ctx: TemplateContext) -> None:
+def test_single_game_high_is_a_maximum_not_an_average(sgh_ctx: AnswerContext) -> None:
     games = single_game_high(sgh_ctx, Reading.from_slots({"stat": "assists"})).data["games"]
     assert games[0]["value"] == 23  # not Jokic's 15.0 average across his two games
 
 
-def test_single_game_high_defaults_to_the_regular_season(sgh_ctx: TemplateContext) -> None:
+def test_single_game_high_defaults_to_the_regular_season(sgh_ctx: AnswerContext) -> None:
     # Nembhard's 30-assist game is postseason and must not win the default.
     assert single_game_high(sgh_ctx, Reading.from_slots({"stat": "assists"})).data["games"][0]["value"] == 23
     assert single_game_high(sgh_ctx, Reading.from_slots({"stat": "assists", "season_type": 3})).data["games"][0]["value"] == 30
 
 
-def test_single_game_high_defaults_to_the_current_season(sgh_ctx: TemplateContext) -> None:
+def test_single_game_high_defaults_to_the_current_season(sgh_ctx: AnswerContext) -> None:
     assert single_game_high(sgh_ctx, Reading.from_slots({"stat": "assists"})).data["season"] == current_season()
     assert single_game_high(sgh_ctx, Reading.from_slots({"stat": "assists", "season": current_season() - 1})).data["games"][0]["value"] == 25
 
 
-def test_single_game_high_for_a_named_player(sgh_ctx: TemplateContext) -> None:
+def test_single_game_high_for_a_named_player(sgh_ctx: AnswerContext) -> None:
     answer = single_game_high(sgh_ctx, Reading.from_slots({"stat": "assists", "player": "Nikola Jokic"})).answer or ""
     assert answer == f"Nikola Jokic's highest assist total in a single game in the {current_season()} regular season was 19, on 2026-03-25 vs DAL."
 
 
-def test_single_game_high_reports_a_tie_as_a_tie(sgh_ctx: TemplateContext) -> None:
+def test_single_game_high_reports_a_tie_as_a_tie(sgh_ctx: AnswerContext) -> None:
     sgh_ctx.con.execute("UPDATE player_game_log_rows SET assists = 23 WHERE player_name = 'Nikola Jokic' AND opponent_abbr = 'DAL' AND season_type = 2")
     assert "tied for the most" in (single_game_high(sgh_ctx, Reading.from_slots({"stat": "assists"})).answer or "")
 
 
-def test_single_game_high_refuses_an_unknown_stat_before_any_sql(sgh_ctx: TemplateContext) -> None:
+def test_single_game_high_refuses_an_unknown_stat_before_any_sql(sgh_ctx: AnswerContext) -> None:
     """A stat nothing ranks is refused by name - the compiler's own refusal,
     which the retired template gave as a fall-through - and never reaches
     SQL: the players table is still there to count."""
@@ -2060,7 +2050,7 @@ def test_single_game_high_refuses_an_unknown_stat_before_any_sql(sgh_ctx: Templa
     assert sgh_ctx.con.execute("SELECT COUNT(*) FROM players").fetchone() == (2,)
 
 
-def test_single_game_high_ambiguous_player_asks(sgh_ctx: TemplateContext) -> None:
+def test_single_game_high_ambiguous_player_asks(sgh_ctx: AnswerContext) -> None:
     # Jovic needs a game this season to be a candidate at all. A name is
     # narrowed to the players with a row where the answer is read from, and
     # with Jokic alone in this season's log, "Nikola" is answered about him.
@@ -2070,7 +2060,7 @@ def test_single_game_high_ambiguous_player_asks(sgh_ctx: TemplateContext) -> Non
 
 
 @pytest.fixture
-def rebuilt_ctx(tmp_path: Path) -> TemplateContext:
+def rebuilt_ctx(tmp_path: Path) -> AnswerContext:
     """A season where ESPN served some box scores and left others empty, with
     the empty ones rebuilt from play-by-play. `reconstructed` marks those, and
     a rebuilt line has NULL minutes because play-by-play cannot recover them."""
@@ -2107,24 +2097,24 @@ def rebuilt_ctx(tmp_path: Path) -> TemplateContext:
     # The warehouse builds the log over the filled box view; the relation
     # learns rebuilt lines exist from it (conditions.box_source).
     c.execute("CREATE VIEW player_box_stats_filled AS SELECT * FROM player_game_log")
-    return TemplateContext(con=c, out_dir=tmp_path)
+    return AnswerContext(con=c, out_dir=tmp_path)
 
 
-def test_a_rebuilt_game_can_win_a_single_game_high(rebuilt_ctx: TemplateContext) -> None:
+def test_a_rebuilt_game_can_win_a_single_game_high(rebuilt_ctx: AnswerContext) -> None:
     """The whole point of the rebuild: before it, a season ESPN served empty had
     no per-game answer at all. 43 beats every fetched game here."""
     answer = single_game_high(rebuilt_ctx, Reading.from_slots({"stat": "points", "player": "Anthony Davis"})).answer or ""
     assert "43" in answer
 
 
-def test_a_rebuilt_answer_says_it_was_rebuilt(rebuilt_ctx: TemplateContext) -> None:
+def test_a_rebuilt_answer_says_it_was_rebuilt(rebuilt_ctx: AnswerContext) -> None:
     """A figure that did not come from ESPN has to say so, or it reads as a box
     score. This is the disclosure the whole opt-in is conditional on."""
     answer = single_game_high(rebuilt_ctx, Reading.from_slots({"stat": "points", "player": "Anthony Davis"})).answer or ""
     assert "rebuilt from its play-by-play" in answer
 
 
-def test_a_fetched_winner_says_nothing_about_rebuilding(rebuilt_ctx: TemplateContext) -> None:
+def test_a_fetched_winner_says_nothing_about_rebuilding(rebuilt_ctx: AnswerContext) -> None:
     """The note is about the number given, not about what was read. Drop the
     rebuilt games below the fetched ones and the answer is an ordinary one."""
     rebuilt_ctx.con.execute("UPDATE player_game_log_rows SET points = 5 WHERE reconstructed")
@@ -2133,7 +2123,7 @@ def test_a_fetched_winner_says_nothing_about_rebuilding(rebuilt_ctx: TemplateCon
     assert "rebuilt" not in answer
 
 
-def test_fouls_are_never_read_from_a_rebuilt_line(rebuilt_ctx: TemplateContext) -> None:
+def test_fouls_are_never_read_from_a_rebuilt_line(rebuilt_ctx: AnswerContext) -> None:
     """A rebuilt foul is wrong in one game in six (83.3% exact against 98.3% for
     points), so fouls are outside REBUILT_STATS. The rebuilt 6 must lose to the
     fetched 5 rather than win the answer."""
@@ -2142,7 +2132,7 @@ def test_fouls_are_never_read_from_a_rebuilt_line(rebuilt_ctx: TemplateContext) 
     assert "rebuilt from its play-by-play" not in answer
 
 
-def test_a_withheld_stat_says_it_was_withheld_not_missing(rebuilt_ctx: TemplateContext) -> None:
+def test_a_withheld_stat_says_it_was_withheld_not_missing(rebuilt_ctx: AnswerContext) -> None:
     """When every fetched line is gone and only rebuilt ones remain, asking for
     a stat outside REBUILT_STATS must name the decision. "No games with a box
     score" is true of the fetched lines and hides that the data exists and was
@@ -2153,7 +2143,7 @@ def test_a_withheld_stat_says_it_was_withheld_not_missing(rebuilt_ctx: TemplateC
     assert "not read from a rebuilt line" in answer
 
 
-def test_the_unseen_count_excludes_games_the_rebuild_answered(rebuilt_ctx: TemplateContext) -> None:
+def test_the_unseen_count_excludes_games_the_rebuild_answered(rebuilt_ctx: AnswerContext) -> None:
     """The contradiction this fixes: the answer used to give a rebuilt figure
     and then report the same games as ones it could not see."""
     # An empty box row for a game the rebuild DID answer. Counting from
@@ -2169,7 +2159,7 @@ def test_the_unseen_count_excludes_games_the_rebuild_answered(rebuilt_ctx: Templ
     assert "empty box score" not in answer
 
 
-def test_a_game_log_reads_rebuilt_lines_only_for_stats_a_rebuild_gets_right(rebuilt_ctx: TemplateContext) -> None:
+def test_a_game_log_reads_rebuilt_lines_only_for_stats_a_rebuild_gets_right(rebuilt_ctx: AnswerContext) -> None:
     """The gate a listing applies before showing a rebuilt row. A table has no
     room to caveat one column, so a single untrustworthy column sends the whole
     log back to fetched lines. Asserted directly on the rule, because inline in
@@ -2194,7 +2184,7 @@ def test_a_game_log_reads_rebuilt_lines_only_for_stats_a_rebuild_gets_right(rebu
     assert readable(["MIN", "PTS", "TO"]) is False
 
 
-def test_a_warehouse_without_the_flag_still_answers(rebuilt_ctx: TemplateContext) -> None:
+def test_a_warehouse_without_the_flag_still_answers(rebuilt_ctx: AnswerContext) -> None:
     """The column arrives with a `data load`. An older warehouse has no such
     column, and the query must not be written as though it were always there -
     that is the Binder error AGENTS.md records for view changes."""
@@ -2204,11 +2194,11 @@ def test_a_warehouse_without_the_flag_still_answers(rebuilt_ctx: TemplateContext
     assert "rebuilt" not in answer
 
 
-def test_single_game_high_reports_an_empty_season_honestly(sgh_ctx: TemplateContext) -> None:
+def test_single_game_high_reports_an_empty_season_honestly(sgh_ctx: AnswerContext) -> None:
     assert "no 1999 regular season games" in (single_game_high(sgh_ctx, Reading.from_slots({"stat": "assists", "season": 1999})).answer or "")
 
 
-def test_single_game_high_defaulted_season_redirects_to_a_retired_players_range(sgh_ctx: TemplateContext) -> None:
+def test_single_game_high_defaulted_season_redirects_to_a_retired_players_range(sgh_ctx: AnswerContext) -> None:
     """No season was named - the question asked about "now" - so a player
     with games only long before it gets pointed at his own range rather than a
     refusal that reads as though he never played at all (issue #18)."""
@@ -2229,7 +2219,7 @@ def test_single_game_high_defaulted_season_redirects_to_a_retired_players_range(
     assert result.data["notes"] == [f"He last appears in {past}. The warehouse holds his {past} regular season; name one, or ask for his career."]
 
 
-def test_single_game_high_a_named_season_keeps_the_plain_refusal(sgh_ctx: TemplateContext) -> None:
+def test_single_game_high_a_named_season_keeps_the_plain_refusal(sgh_ctx: AnswerContext) -> None:
     """The season the question named is the fact the refusal is about; a
     redirect there would answer a season nobody asked about."""
     past = current_season() - 16
@@ -2239,7 +2229,7 @@ def test_single_game_high_a_named_season_keeps_the_plain_refusal(sgh_ctx: Templa
     assert answer == "Old Timer has no 1999 regular season games in the warehouse."
 
 
-def _all_box_scores_empty(ctx: TemplateContext, name: str) -> None:
+def _all_box_scores_empty(ctx: AnswerContext, name: str) -> None:
     """One player whose whole season is the empty line ESPN leaves: listed as
     having played, no minutes, every stat 0. Anthony Davis's 2015 in miniature."""
     s = current_season()
@@ -2251,7 +2241,7 @@ def _all_box_scores_empty(ctx: TemplateContext, name: str) -> None:
     ctx.con.executemany("INSERT INTO player_box_stats VALUES (?,?,2,'9',NULL,FALSE)", [("x1", s), ("x2", s)])
 
 
-def test_a_zero_from_an_empty_box_score_never_wins_a_single_game_high(sgh_ctx: TemplateContext) -> None:
+def test_a_zero_from_an_empty_box_score_never_wins_a_single_game_high(sgh_ctx: AnswerContext) -> None:
     """The P1 this fixes. Every Chicago and New Orleans box score from 2013 to
     2018 is zeros, so before the guard the maximum over them WAS one of those
     zeros, reported with a date: "Anthony Davis's highest point total in a
@@ -2263,7 +2253,7 @@ def test_a_zero_from_an_empty_box_score_never_wins_a_single_game_high(sgh_ctx: T
     assert f"no {current_season()} regular season games with a box score" in answer
 
 
-def test_an_empty_box_score_season_says_which_fact_is_missing(sgh_ctx: TemplateContext) -> None:
+def test_an_empty_box_score_season_says_which_fact_is_missing(sgh_ctx: AnswerContext) -> None:
     """The mirror-image bug the guard could have introduced: "he has no games"
     is false of a player who played them, and sends the reader to look for a
     missing season rather than a missing box score. The count and the years
@@ -2285,7 +2275,7 @@ def test_an_empty_box_score_season_says_which_fact_is_missing(sgh_ctx: TemplateC
 # ---------------- head_to_head ----------------
 
 
-def test_head_to_head_counts_games_in_both_directions(gl_con: TemplateContext) -> None:
+def test_head_to_head_counts_games_in_both_directions(gl_con: AnswerContext) -> None:
     """Regression: `games` is home/away-oriented, and the agent's version also
     compared team_id to an abbreviation, so it reported that two teams who met
     four times had never played."""
@@ -2293,7 +2283,7 @@ def test_head_to_head_counts_games_in_both_directions(gl_con: TemplateContext) -
     assert result.data["games"] == 2  # one home, one away
 
 
-def test_head_to_head_counts_only_rows_that_are_games(gl_con: TemplateContext) -> None:
+def test_head_to_head_counts_only_rows_that_are_games(gl_con: AnswerContext) -> None:
     """Regression: it counted every row of `games`, so "how many times did the
     Mavs play the 76ers in 2003" answered 3 for a season holding 2 - one game
     stored under two event ids - and 1999-2000 matchups counted 0-0 meetings
@@ -2301,7 +2291,7 @@ def test_head_to_head_counts_only_rows_that_are_games(gl_con: TemplateContext) -
     assert head_to_head(gl_con, Reading.from_slots({"teams": ["Knicks", "Celtics"], "season": current_season()})).data["games"] == 2
 
 
-def test_a_team_log_leaves_out_rows_that_are_not_games(gl_con: TemplateContext) -> None:
+def test_a_team_log_leaves_out_rows_that_are_not_games(gl_con: AnswerContext) -> None:
     """The same two rows, through the team game log. This was believed to be
     safe because the log joins team_box_stats - but EVERY `games` row has a
     team_box_stats row, so the join filtered nothing and a 1999 or 2000 Bulls
@@ -2311,24 +2301,24 @@ def test_a_team_log_leaves_out_rows_that_are_not_games(gl_con: TemplateContext) 
     assert all(g["opponent_score"] is not None and g["won"] is not None for g in games)
 
 
-def test_head_to_head_reports_the_series_record(gl_con: TemplateContext) -> None:
+def test_head_to_head_reports_the_series_record(gl_con: AnswerContext) -> None:
     result = head_to_head(gl_con, Reading.from_slots({"teams": ["Knicks", "Celtics"], "season": current_season()}))
     answer = result.answer or ""
     assert "met 2 times" in answer and "splitting them 1-1" in answer
     assert result.data["headline"] == answer  # one sentence, no table beneath it
 
 
-def test_head_to_head_applies_the_season_to_the_whole_matchup(gl_con: TemplateContext) -> None:
+def test_head_to_head_applies_the_season_to_the_whole_matchup(gl_con: AnswerContext) -> None:
     # `A OR B AND season = ...` binds the season to one side only; the template
     # parenthesizes the matchup so the filter covers both orderings.
     assert head_to_head(gl_con, Reading.from_slots({"teams": ["Knicks", "Celtics"], "season": 1999})).data["games"] == 0
 
 
-def test_head_to_head_reports_no_meetings_honestly(gl_con: TemplateContext) -> None:
+def test_head_to_head_reports_no_meetings_honestly(gl_con: AnswerContext) -> None:
     assert "no" in (head_to_head(gl_con, Reading.from_slots({"teams": ["Knicks", "Celtics"], "season": 1999})).answer or "").lower()
 
 
-def test_head_to_head_defaults_to_the_current_season(gl_con: TemplateContext) -> None:
+def test_head_to_head_defaults_to_the_current_season(gl_con: AnswerContext) -> None:
     """Not all-time: answering a different span than every other template,
     silently, is the substitution this design exists to prevent."""
     gl_con.con.execute("INSERT INTO games VALUES ('e9',?,2,'2020-01-01T00:00Z','18','2',100,90,'18',false,'New York')", [current_season() - 3])
@@ -2337,19 +2327,19 @@ def test_head_to_head_defaults_to_the_current_season(gl_con: TemplateContext) ->
     assert f"{current_season()} regular season" in (result.answer or "")
 
 
-def test_head_to_head_needs_two_distinct_teams(gl_con: TemplateContext) -> None:
-    with pytest.raises(TemplateUnsupported):
+def test_head_to_head_needs_two_distinct_teams(gl_con: AnswerContext) -> None:
+    with pytest.raises(Unsupported):
         head_to_head(gl_con, Reading.from_slots({"teams": ["Knicks"]}))
-    with pytest.raises(TemplateUnsupported):
+    with pytest.raises(Unsupported):
         head_to_head(gl_con, Reading.from_slots({"teams": ["Knicks", "New York Knicks"]}))
 
 
-def test_head_to_head_asks_on_an_ambiguous_team(gl_con: TemplateContext) -> None:
+def test_head_to_head_asks_on_an_ambiguous_team(gl_con: AnswerContext) -> None:
     gl_con.con.execute("INSERT INTO teams VALUES ('12','LAC','LA Clippers'),('13','LAL','Los Angeles Lakers')")
     assert "did you mean" in (head_to_head(gl_con, Reading.from_slots({"teams": ["LA", "Celtics"]})).answer or "")
 
 
-def test_head_to_head_reads_the_second_team_from_the_team_slot(gl_con: TemplateContext) -> None:
+def test_head_to_head_reads_the_second_team_from_the_team_slot(gl_con: AnswerContext) -> None:
     """Regression: "how many times did the Knicks play Boston?" - a city name
     with no nickname - routes the router to split the two teams across `team`
     and a one-element `teams`, rather than both into `teams` as its prompt
@@ -2361,12 +2351,12 @@ def test_head_to_head_reads_the_second_team_from_the_team_slot(gl_con: TemplateC
     assert result.data["games"] == 2
 
 
-def test_head_to_head_ignores_a_team_slot_that_only_restates_teams(gl_con: TemplateContext) -> None:
-    with pytest.raises(TemplateUnsupported):
+def test_head_to_head_ignores_a_team_slot_that_only_restates_teams(gl_con: AnswerContext) -> None:
+    with pytest.raises(Unsupported):
         head_to_head(gl_con, Reading.from_slots({"team": "Knicks", "teams": ["Knicks"]}))
 
 
-def test_head_to_head_narrows_to_the_first_named_teams_home_games(gl_con: TemplateContext) -> None:
+def test_head_to_head_narrows_to_the_first_named_teams_home_games(gl_con: AnswerContext) -> None:
     """ "lakers vs mavs record last 10 home games played" - `venue` used to be
     refused outright. The fixture's two meetings split one home, one away for
     the Knicks (named first); "home" keeps only their home game."""
@@ -2375,7 +2365,7 @@ def test_head_to_head_narrows_to_the_first_named_teams_home_games(gl_con: Templa
     assert "New York Knicks" in (result.answer or "") and "home games" in (result.answer or "")
 
 
-def test_head_to_head_venue_possessive_drops_the_extra_s(gl_con: TemplateContext) -> None:
+def test_head_to_head_venue_possessive_drops_the_extra_s(gl_con: AnswerContext) -> None:
     """ "New York Knicks's" reads as a typo - most team names already end in
     "s" (Celtics, Warriors, Nets...), so the possessive is just an apostrophe."""
     answer = head_to_head(gl_con, Reading.from_slots({"teams": ["Knicks", "Celtics"], "season": current_season(), "venue": "home"})).answer or ""
@@ -2383,7 +2373,7 @@ def test_head_to_head_venue_possessive_drops_the_extra_s(gl_con: TemplateContext
     assert "Knicks's" not in answer
 
 
-def test_head_to_head_narrows_to_the_first_named_teams_road_games(gl_con: TemplateContext) -> None:
+def test_head_to_head_narrows_to_the_first_named_teams_road_games(gl_con: AnswerContext) -> None:
     result = head_to_head(gl_con, Reading.from_slots({"teams": ["Knicks", "Celtics"], "season": current_season(), "venue": "away"}))
     games = result.data["games"]
     assert games == 1
@@ -2391,14 +2381,14 @@ def test_head_to_head_narrows_to_the_first_named_teams_road_games(gl_con: Templa
     assert result.data["wins"]["New York Knicks"] == 0
 
 
-def test_head_to_head_venue_is_said_in_the_answer_not_silently_applied(gl_con: TemplateContext) -> None:
+def test_head_to_head_venue_is_said_in_the_answer_not_silently_applied(gl_con: AnswerContext) -> None:
     """Honoring a scoping slot means filtering by it AND saying so - a table
     with fewer rows and no note reads exactly like the whole-season answer."""
     answer = head_to_head(gl_con, Reading.from_slots({"teams": ["Knicks", "Celtics"], "season": current_season(), "venue": "home"})).answer or ""
     assert "home games" in answer
 
 
-def test_head_to_head_filters_an_exact_calendar_date(gl_con: TemplateContext) -> None:
+def test_head_to_head_filters_an_exact_calendar_date(gl_con: AnswerContext) -> None:
     """ "celtics record vs sixers on november 11" - a date names its game
     outright, the same way it does for game_log."""
     result = head_to_head(gl_con, Reading.from_slots({"teams": ["Knicks", "Celtics"], "date": "2026-04-12"}))
@@ -2406,7 +2396,7 @@ def test_head_to_head_filters_an_exact_calendar_date(gl_con: TemplateContext) ->
     assert "on 2026-04-12" in (result.answer or "")
 
 
-def test_head_to_head_date_is_not_scoped_to_a_named_season(gl_con: TemplateContext) -> None:
+def test_head_to_head_date_is_not_scoped_to_a_named_season(gl_con: AnswerContext) -> None:
     """A date pins one exact game, so - like game_log's own `date` - it is not
     additionally filtered to "the current season": a season from a year the
     game was not actually played in must not hide it."""
@@ -2414,14 +2404,14 @@ def test_head_to_head_date_is_not_scoped_to_a_named_season(gl_con: TemplateConte
     assert result.data["games"] == 1
 
 
-def test_head_to_head_no_game_on_that_date_is_reported_honestly(gl_con: TemplateContext) -> None:
+def test_head_to_head_no_game_on_that_date_is_reported_honestly(gl_con: AnswerContext) -> None:
     result = head_to_head(gl_con, Reading.from_slots({"teams": ["Knicks", "Celtics"], "date": "2026-04-11"}))
     assert result.data["games"] == 0
     assert "no games" in (result.answer or "").lower()
     assert "on 2026-04-11" in (result.answer or "")
 
 
-def test_head_to_head_plain_wording_is_unchanged_by_the_venue_and_date_additions(gl_con: TemplateContext) -> None:
+def test_head_to_head_plain_wording_is_unchanged_by_the_venue_and_date_additions(gl_con: AnswerContext) -> None:
     """The existing (no venue, no date) sentence must read exactly as it did
     before - a regression on wording nobody asked to change."""
     answer = head_to_head(gl_con, Reading.from_slots({"teams": ["Knicks", "Celtics"], "season": current_season()})).answer or ""
@@ -2436,7 +2426,7 @@ _TC_S2 = _TC_S - 2
 
 
 @pytest.fixture
-def team_cells_con(tmp_path: Path) -> TemplateContext:
+def team_cells_con(tmp_path: Path) -> AnswerContext:
     """Three regular seasons (S-2, S-1, S) of Celtics games against the
     Knicks and the Pistons, plus two playoff series - an early one (1989, the
     warehouse's own postseason floor) and a current-season one - each best
@@ -2506,10 +2496,10 @@ def team_cells_con(tmp_path: Path) -> TemplateContext:
             (_TC_S, 3, "18", 3),
         ],
     )
-    return TemplateContext(con=c, out_dir=tmp_path)
+    return AnswerContext(con=c, out_dir=tmp_path)
 
 
-def test_team_record_honors_since_as_a_since_bounded_span(team_cells_con: TemplateContext) -> None:
+def test_team_record_honors_since_as_a_since_bounded_span(team_cells_con: AnswerContext) -> None:
     """ "Celtics record since {S-1}" (ISSUES.md): a since-bounded span is
     counted the same shape a whole career already is, not one season."""
     result = team_record(team_cells_con, Reading.from_slots({"team": "Celtics", "since": _TC_S1}))
@@ -2517,7 +2507,7 @@ def test_team_record_honors_since_as_a_since_bounded_span(team_cells_con: Templa
     assert result.answer == f"The Boston Celtics are 3-0 (1.000) in the regular seasons since {_TC_S1}.\n  Home 2-0, away 1-0."
 
 
-def test_team_record_since_narrows_to_a_named_opponent(team_cells_con: TemplateContext) -> None:
+def test_team_record_since_narrows_to_a_named_opponent(team_cells_con: AnswerContext) -> None:
     """ "Celtics record vs Knicks since {S-1}" - `since` and `opponent` compose,
     the same way `opponent` already composes with a single season."""
     result = team_record(team_cells_con, Reading.from_slots({"team": "Celtics", "opponent": "Knicks", "since": _TC_S1}))
@@ -2525,13 +2515,13 @@ def test_team_record_since_narrows_to_a_named_opponent(team_cells_con: TemplateC
     assert result.answer == f"The Boston Celtics are 2-0 (1.000) against the New York Knicks in the regular seasons since {_TC_S1}.\n  Home 1-0, away 1-0."
 
 
-def test_team_record_since_narrows_by_venue(team_cells_con: TemplateContext) -> None:
+def test_team_record_since_narrows_by_venue(team_cells_con: AnswerContext) -> None:
     result = team_record(team_cells_con, Reading.from_slots({"team": "Celtics", "since": _TC_S1, "venue": "home"}))
     assert result.data["wins"] == 2 and result.data["losses"] == 0
     assert result.answer == f"The Boston Celtics are 2-0 (1.000) at home in the regular seasons since {_TC_S1}."
 
 
-def test_team_record_since_with_no_games_names_the_since_bound(team_cells_con: TemplateContext) -> None:
+def test_team_record_since_with_no_games_names_the_since_bound(team_cells_con: AnswerContext) -> None:
     """The empty-result sentence says which narrowing emptied it - the same
     false-cause discipline AGENTS.md requires everywhere else - rather than
     reading as no games on record at all."""
@@ -2539,7 +2529,7 @@ def test_team_record_since_with_no_games_names_the_since_bound(team_cells_con: T
     assert result.answer == f"The warehouse holds no regular-season games for the Detroit Pistons since {_TC_S + 10}."
 
 
-def test_team_record_honors_game_n_within_one_named_postseason(team_cells_con: TemplateContext) -> None:
+def test_team_record_honors_game_n_within_one_named_postseason(team_cells_con: AnswerContext) -> None:
     """ "Celtics record in game 1 of the {S} playoffs" - one game of each
     series the relation's own `narrow_series_game` already numbers."""
     result = team_record(team_cells_con, Reading.from_slots({"team": "Celtics", "season_type": 3, "season": _TC_S, "game_n": 1}))
@@ -2547,7 +2537,7 @@ def test_team_record_honors_game_n_within_one_named_postseason(team_cells_con: T
     assert result.answer == f"The Boston Celtics went 1-0 (1.000) in game 1 of each series in the {_TC_S} postseason.\n  Home 1-0, away 0-0."
 
 
-def test_team_record_game_n_combines_with_since_across_postseasons(team_cells_con: TemplateContext) -> None:
+def test_team_record_game_n_combines_with_since_across_postseasons(team_cells_con: AnswerContext) -> None:
     """ "Celtics record in game 1 of each series since 1989" - the warehouse's
     own playoff-game-list floor (AGENTS.md, "Coverage floors"), reaching the
     1989 postseason the same way `head_to_head`'s own since-bounded postseason
@@ -2557,24 +2547,24 @@ def test_team_record_game_n_combines_with_since_across_postseasons(team_cells_co
     assert result.answer == "The Boston Celtics are 2-0 (1.000) in game 1 of each series in the postseasons since 1989.\n  Home 2-0, away 0-0."
 
 
-def test_team_record_game_n_refuses_a_regular_season(team_cells_con: TemplateContext) -> None:
+def test_team_record_game_n_refuses_a_regular_season(team_cells_con: AnswerContext) -> None:
     """A series has games 1-7; a regular season has nothing "game 4" names -
     the same check `common.team_games` makes for every other team template."""
-    with pytest.raises(TemplateUnsupported):
+    with pytest.raises(Unsupported):
         team_record(team_cells_con, Reading.from_slots({"team": "Celtics", "game_n": 1}))
 
 
-def test_team_record_since_conflicts_with_a_named_season(team_cells_con: TemplateContext) -> None:
-    with pytest.raises(TemplateUnsupported):
+def test_team_record_since_conflicts_with_a_named_season(team_cells_con: AnswerContext) -> None:
+    with pytest.raises(Unsupported):
         team_record(team_cells_con, Reading.from_slots({"team": "Celtics", "since": _TC_S1, "season": _TC_S}))
 
 
-def test_team_record_since_conflicts_with_career(team_cells_con: TemplateContext) -> None:
-    with pytest.raises(TemplateUnsupported):
+def test_team_record_since_conflicts_with_career(team_cells_con: AnswerContext) -> None:
+    with pytest.raises(Unsupported):
         team_record(team_cells_con, Reading.from_slots({"team": "Celtics", "since": _TC_S1, "span": "career"}))
 
 
-def test_team_record_since_answers_a_month_split_with_one_table_per_season(team_cells_con: TemplateContext) -> None:
+def test_team_record_since_answers_a_month_split_with_one_table_per_season(team_cells_con: AnswerContext) -> None:
     """Step 3, K1 (F095, ISSUES.md - "Knicks record by month 2024 2025"): a
     month split with `since` set now reads one table PER SEASON in the span
     rather than refusing outright. Every Celtics game in this fixture is in
@@ -2594,15 +2584,15 @@ def test_team_record_since_answers_a_month_split_with_one_table_per_season(team_
     assert f"the {_TC_S1} regular season" in result.data["headline"]
 
 
-def test_team_record_since_month_split_refuses_game_n(team_cells_con: TemplateContext) -> None:
+def test_team_record_since_month_split_refuses_game_n(team_cells_con: AnswerContext) -> None:
     """`game_n` still has no month-split form - the one combination step 3, K1
     leaves refused, since a series-game number and a whole-season table of
     months answer two different shapes of question."""
-    with pytest.raises(TemplateUnsupported):
+    with pytest.raises(Unsupported):
         team_record(team_cells_con, Reading.from_slots({"team": "Celtics", "since": _TC_S1, "split": "month", "game_n": 1}))
 
 
-def test_head_to_head_honors_since_over_every_meeting_in_the_span(team_cells_con: TemplateContext) -> None:
+def test_head_to_head_honors_since_over_every_meeting_in_the_span(team_cells_con: AnswerContext) -> None:
     """ "Celtics vs Knicks since {S-1}" (ISSUES.md): every meeting in the span,
     not one season."""
     result = head_to_head(team_cells_con, Reading.from_slots({"teams": ["Celtics", "Knicks"], "since": _TC_S1}))
@@ -2610,7 +2600,7 @@ def test_head_to_head_honors_since_over_every_meeting_in_the_span(team_cells_con
     assert result.answer == f"The Boston Celtics and the New York Knicks have met 2 times since {_TC_S1} ({_TC_S1}-{_TC_S} regular seasons); the Boston Celtics lead the all-time series 2-0."
 
 
-def test_head_to_head_honors_until_bounding_the_since_span(team_cells_con: TemplateContext) -> None:
+def test_head_to_head_honors_until_bounding_the_since_span(team_cells_con: AnswerContext) -> None:
     """Step 3, K1: "Celtics vs Knicks from {S-2} to {S-1}" reads a BOUNDED
     range - r1 ({S-2}) and r3 ({S-1}) count, r4 ({S}) does not, unlike the
     open-ended since-only test above, which also picks up r4."""
@@ -2619,12 +2609,12 @@ def test_head_to_head_honors_until_bounding_the_since_span(team_cells_con: Templ
     assert f"from {_TC_S2} through {_TC_S1}" in (result.answer or "")
 
 
-def test_head_to_head_until_with_no_since_is_refused(team_cells_con: TemplateContext) -> None:
-    with pytest.raises(TemplateUnsupported, match="until"):
+def test_head_to_head_until_with_no_since_is_refused(team_cells_con: AnswerContext) -> None:
+    with pytest.raises(Unsupported, match="until"):
         head_to_head(team_cells_con, Reading.from_slots({"teams": ["Celtics", "Knicks"], "until": _TC_S1}))
 
 
-def test_head_to_head_honors_career_over_every_meeting_on_record(team_cells_con: TemplateContext) -> None:
+def test_head_to_head_honors_career_over_every_meeting_on_record(team_cells_con: AnswerContext) -> None:
     """ "All-time Celtics vs Knicks" (ISSUES.md) - `span` "career", the same
     shape team_record's own whole-career answer already reads."""
     result = head_to_head(team_cells_con, Reading.from_slots({"teams": ["Celtics", "Knicks"], "span": "career"}))
@@ -2634,7 +2624,7 @@ def test_head_to_head_honors_career_over_every_meeting_on_record(team_cells_con:
     )
 
 
-def test_head_to_head_since_reaches_the_1989_postseason_floor(team_cells_con: TemplateContext) -> None:
+def test_head_to_head_since_reaches_the_1989_postseason_floor(team_cells_con: AnswerContext) -> None:
     """The team tables reach 1988-89 for the postseason (AGENTS.md, "Coverage
     floors") - "Celtics vs Pistons since 1989" reads the one series the
     warehouse holds that far back."""
@@ -2643,12 +2633,12 @@ def test_head_to_head_since_reaches_the_1989_postseason_floor(team_cells_con: Te
     assert result.answer == "The Boston Celtics and the Detroit Pistons have met 3 times since 1989 (1989 postseason); the Boston Celtics lead the all-time series 2-1."
 
 
-def test_head_to_head_since_with_no_meetings_names_the_since_bound(team_cells_con: TemplateContext) -> None:
+def test_head_to_head_since_with_no_meetings_names_the_since_bound(team_cells_con: AnswerContext) -> None:
     result = head_to_head(team_cells_con, Reading.from_slots({"teams": ["Celtics", "Pistons"], "since": _TC_S + 10}))
     assert result.answer == f"The Boston Celtics and the Detroit Pistons have not played each other since {_TC_S + 10}."
 
 
-def test_head_to_head_since_narrows_by_venue(team_cells_con: TemplateContext) -> None:
+def test_head_to_head_since_narrows_by_venue(team_cells_con: AnswerContext) -> None:
     """`since` composes with `venue` the same way a single season already
     does - narrowed to the first-named team's home games."""
     result = head_to_head(team_cells_con, Reading.from_slots({"teams": ["Celtics", "Knicks"], "since": _TC_S1, "venue": "home"}))
@@ -2656,17 +2646,17 @@ def test_head_to_head_since_narrows_by_venue(team_cells_con: TemplateContext) ->
     assert result.answer == f"The Boston Celtics and the New York Knicks met once in the Boston Celtics' home games since {_TC_S1}; the Boston Celtics won the series 1-0."
 
 
-def test_head_to_head_since_conflicts_with_a_date(team_cells_con: TemplateContext) -> None:
-    with pytest.raises(TemplateUnsupported):
+def test_head_to_head_since_conflicts_with_a_date(team_cells_con: AnswerContext) -> None:
+    with pytest.raises(Unsupported):
         head_to_head(team_cells_con, Reading.from_slots({"teams": ["Celtics", "Knicks"], "since": _TC_S1, "date": "2026-01-01"}))
 
 
-def test_head_to_head_since_conflicts_with_career(team_cells_con: TemplateContext) -> None:
-    with pytest.raises(TemplateUnsupported):
+def test_head_to_head_since_conflicts_with_career(team_cells_con: AnswerContext) -> None:
+    with pytest.raises(Unsupported):
         head_to_head(team_cells_con, Reading.from_slots({"teams": ["Celtics", "Knicks"], "since": _TC_S1, "span": "career"}))
 
 
-def test_team_quarter_points_reads_each_games_own_side_of_linescores(tq_con: TemplateContext) -> None:
+def test_team_quarter_points_reads_each_games_own_side_of_linescores(tq_con: AnswerContext) -> None:
     """Regression: "how many points did the 76ers score in the 4th quarter
     against Boston this season?" forced the router's _QUARTER_WORDS override to
     the agent, which spent 3 model calls (~150s) filtering a nonexistent
@@ -2682,7 +2672,7 @@ def test_team_quarter_points_reads_each_games_own_side_of_linescores(tq_con: Tem
     assert result.data["headline"] == (result.answer or "").splitlines()[0].rstrip(":")
 
 
-def test_team_quarter_points_reads_a_bare_limit_as_the_newest_games(tq_con: TemplateContext) -> None:
+def test_team_quarter_points_reads_a_bare_limit_as_the_newest_games(tq_con: AnswerContext) -> None:
     """The router drops `order` and keeps `limit` on "last N games" phrasings
     (measured on the shot templates, four runs, three builds), so the team
     relation reads a bare limit the way the player relation does - through
@@ -2691,14 +2681,14 @@ def test_team_quarter_points_reads_a_bare_limit_as_the_newest_games(tq_con: Temp
     assert len(result.data["games"]) == 2 and "last 2 games" in (result.answer or "")
 
 
-def test_team_quarter_points_filters_to_a_named_opponent(tq_con: TemplateContext) -> None:
+def test_team_quarter_points_filters_to_a_named_opponent(tq_con: AnswerContext) -> None:
     result = team_quarter_points(tq_con, Reading.from_slots({"team": "Knicks", "opponent": "Celtics", "period": 4, "season": current_season()}))
     assert result.data["total"] == 57  # 29 (e1) + 28 (e2) - e3 (vs Lakers) excluded
     assert len(result.data["games"]) == 2
     assert "Boston Celtics" in (result.answer or "")
 
 
-def test_team_quarter_points_reports_no_games_honestly(tq_con: TemplateContext) -> None:
+def test_team_quarter_points_reports_no_games_honestly(tq_con: AnswerContext) -> None:
     # The Lakers and Celtics never played each other in this fixture (only
     # each played the Knicks) - an empty result must say so, not answer 0.
     result = team_quarter_points(tq_con, Reading.from_slots({"team": "Lakers", "opponent": "Celtics", "period": 1, "season": current_season()}))
@@ -2706,7 +2696,7 @@ def test_team_quarter_points_reports_no_games_honestly(tq_con: TemplateContext) 
     assert "no" in (result.answer or "").lower()
 
 
-def test_team_quarter_points_reports_a_period_no_game_reached(tq_con: TemplateContext) -> None:
+def test_team_quarter_points_reports_a_period_no_game_reached(tq_con: AnswerContext) -> None:
     # Every game in the fixture has exactly 4 quarters on record - asking for
     # a 5th (overtime) must say none of the games went there, not silently
     # answer 0 or crash on a short list index.
@@ -2715,12 +2705,12 @@ def test_team_quarter_points_reports_a_period_no_game_reached(tq_con: TemplateCo
     assert "total" not in result.data
 
 
-def test_team_quarter_points_refuses_a_named_player(tq_con: TemplateContext) -> None:
-    with pytest.raises(TemplateUnsupported):
+def test_team_quarter_points_refuses_a_named_player(tq_con: AnswerContext) -> None:
+    with pytest.raises(Unsupported):
         team_quarter_points(tq_con, Reading.from_slots({"team": "Knicks", "period": 4, "player": "Jalen Brunson"}))
 
 
-def test_team_quarter_points_refuses_a_stat_no_period_splits_and_one_it_cannot_rebuild_here(tq_con: TemplateContext) -> None:
+def test_team_quarter_points_refuses_a_stat_no_period_splits_and_one_it_cannot_rebuild_here(tq_con: AnswerContext) -> None:
     """A linescore holds one number per period - the score - so answering a
     team's three-point or rebounding average by quarter with POINTS is the
     fluent wrong answer this project keeps producing ("trailblazers stats
@@ -2742,23 +2732,23 @@ def test_team_quarter_points_refuses_a_stat_no_period_splits_and_one_it_cannot_r
         assert result.data["total"] == 60
 
 
-def test_team_quarter_points_refuses_a_missing_period(tq_con: TemplateContext) -> None:
-    with pytest.raises(TemplateUnsupported):
+def test_team_quarter_points_refuses_a_missing_period(tq_con: AnswerContext) -> None:
+    with pytest.raises(Unsupported):
         team_quarter_points(tq_con, Reading.from_slots({"team": "Knicks"}))
 
 
-def test_team_quarter_points_refuses_the_team_as_its_own_opponent(tq_con: TemplateContext) -> None:
-    with pytest.raises(TemplateUnsupported):
+def test_team_quarter_points_refuses_the_team_as_its_own_opponent(tq_con: AnswerContext) -> None:
+    with pytest.raises(Unsupported):
         team_quarter_points(tq_con, Reading.from_slots({"team": "Knicks", "opponent": "New York Knicks", "period": 1}))
 
 
-def test_team_quarter_points_phrases_a_single_game_directly(tq_con: TemplateContext) -> None:
+def test_team_quarter_points_phrases_a_single_game_directly(tq_con: AnswerContext) -> None:
     result = team_quarter_points(tq_con, Reading.from_slots({"team": "Knicks", "opponent": "Lakers", "period": 1, "season": current_season()}))
     assert result.data["total"] == 10
     assert "2026-04-14" in (result.answer or "") or str(current_season()) in (result.answer or "")
 
 
-def test_team_quarter_points_summarizes_rather_than_tables_many_games(tq_con: TemplateContext, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_team_quarter_points_summarizes_rather_than_tables_many_games(tq_con: AnswerContext, monkeypatch: pytest.MonkeyPatch) -> None:
     # A whole-season, no-opponent question can span dozens of games - listing
     # every one is unreadable, so above a small cap this reports the total
     # and average instead of a per-game breakdown.
@@ -2772,24 +2762,24 @@ def test_team_quarter_points_summarizes_rather_than_tables_many_games(tq_con: Te
     assert "2026-04-10" not in answer
 
 
-def test_player_stat_refuses_a_named_stat_it_cannot_provide(ps_con: TemplateContext) -> None:
+def test_player_stat_refuses_a_named_stat_it_cannot_provide(ps_con: AnswerContext) -> None:
     """Confirmed live: an unsupported stat fell back to the default stat line,
     so "avg 3pt shot distance" was answered with points/rebounds/assists."""
-    with pytest.raises(TemplateUnsupported):
+    with pytest.raises(Unsupported):
         player_stat(ps_con, Reading.from_slots({"player": "Luka Doncic", "stat": "shot_distance"}))
 
 
-def test_player_stat_still_defaults_when_no_stat_was_named(ps_con: TemplateContext) -> None:
+def test_player_stat_still_defaults_when_no_stat_was_named(ps_con: AnswerContext) -> None:
     assert "points" in (player_stat(ps_con, Reading.from_slots({"player": "Luka Doncic"})).answer or "")
     assert "points" in (player_stat(ps_con, Reading.from_slots({"player": "Luka Doncic", "stat": ""})).answer or "")
 
 
-def test_player_compare_refuses_a_named_stat_it_cannot_provide(ps_con: TemplateContext) -> None:
-    with pytest.raises(TemplateUnsupported):
+def test_player_compare_refuses_a_named_stat_it_cannot_provide(ps_con: AnswerContext) -> None:
+    with pytest.raises(Unsupported):
         player_compare(ps_con, Reading.from_slots({"players": ["Luka Doncic", "Nikola Jokic"], "stat": "shot_distance"}))
 
 
-def test_player_stat_supports_the_shooting_stats_the_router_emits(ps_con: TemplateContext) -> None:
+def test_player_stat_supports_the_shooting_stats_the_router_emits(ps_con: AnswerContext) -> None:
     ps_con.con.execute("ALTER TABLE player_season_stats_deduped ADD COLUMN avgThreePointFieldGoalsMade DOUBLE")
     ps_con.con.execute("ALTER TABLE player_season_stats_deduped ADD COLUMN threePointFieldGoalsMade INTEGER")
     ps_con.con.execute("ALTER TABLE player_season_stats_deduped ADD COLUMN threePointFieldGoalsAttempted INTEGER")
@@ -2801,7 +2791,7 @@ def test_player_stat_supports_the_shooting_stats_the_router_emits(ps_con: Templa
     assert "4.4 3-pointers" in answer and "282 of 620 (45.5%)" in answer
 
 
-def test_player_stat_answers_two_point_percentage_for_a_season_and_a_career(ps_con: TemplateContext) -> None:
+def test_player_stat_answers_two_point_percentage_for_a_season_and_a_career(ps_con: AnswerContext) -> None:
     """ISSUES.md #114: no stored 2-point percentage column exists in either
     table (checked against the warehouse), so SHOOTING_STATS' entry for it is
     an expression - makes and attempts less the threes - rather than a bare
@@ -2827,7 +2817,7 @@ def test_player_stat_answers_two_point_percentage_for_a_season_and_a_career(ps_c
     assert "58.3% on 2-pointers (700 of 1,200)" in career
 
 
-def test_player_stat_answers_two_point_percentage_narrowed_to_box_scores(pg_ctx: TemplateContext) -> None:
+def test_player_stat_answers_two_point_percentage_narrowed_to_box_scores(pg_ctx: AnswerContext) -> None:
     """The box-score-narrowed path joins `games` and qualifies every shooting
     column with the `pgl.` alias - blindly prepending it to this stat's
     expression would read "pgl.(fieldGoalsMade - threePointFieldGoalsMade)",
@@ -2840,7 +2830,7 @@ def test_player_stat_answers_two_point_percentage_narrowed_to_box_scores(pg_ctx:
 # ---------------- shot_distance ----------------
 
 
-def test_shot_distance_filters_to_the_shot_value_asked_for(sc_ctx: TemplateContext) -> None:
+def test_shot_distance_filters_to_the_shot_value_asked_for(sc_ctx: AnswerContext) -> None:
     """Confirmed live: the agent wrote the right distance formula, then dropped
     both the 3-point filter and the season filter and reported an all-shots,
     all-seasons average of 16.94 as a current-season three-point distance."""
@@ -2851,7 +2841,7 @@ def test_shot_distance_filters_to_the_shot_value_asked_for(sc_ctx: TemplateConte
     assert threes.data["avg_feet"] > everything.data["avg_feet"]
 
 
-def test_shot_distance_measures_from_the_rim(sc_ctx: TemplateContext) -> None:
+def test_shot_distance_measures_from_the_rim(sc_ctx: AnswerContext) -> None:
     """The rim is at (25, 0) in ESPN's coordinates - y is measured from it, not
     from the baseline - so the fixture's shot at (25, 26) is 26 feet out. The
     old frame put the rim at (25, 5.25) and made it 20.75, which is how Stephen
@@ -2860,7 +2850,7 @@ def test_shot_distance_measures_from_the_rim(sc_ctx: TemplateContext) -> None:
     assert result.data["avg_feet"] == pytest.approx(26.0)
 
 
-def test_shot_distance_counts_threes_espn_left_unlabeled(sc_ctx: TemplateContext) -> None:
+def test_shot_distance_counts_threes_espn_left_unlabeled(sc_ctx: AnswerContext) -> None:
     """``points_attempted`` is 0 for an unlabeled shot, not a zero-point one,
     and 96% of 2022 is unlabeled: filtered on it, "Curry's threes in 2022"
     averaged 38 of his 751 attempts, every one a miss. The description names
@@ -2872,7 +2862,7 @@ def test_shot_distance_counts_threes_espn_left_unlabeled(sc_ctx: TemplateContext
     assert shot_distance(sc_ctx, Reading.from_slots({"player": "Stephen Curry", "shot_value": 3})).data["attempts"] == 4
 
 
-def test_shot_distance_leaves_out_free_throws_that_carry_a_position(sc_ctx: TemplateContext) -> None:
+def test_shot_distance_leaves_out_free_throws_that_carry_a_position(sc_ctx: AnswerContext) -> None:
     """From 2002 to 2018 every free throw has a position under the rim, so
     "has coordinates" does not exclude them - they averaged in as zero-foot
     shots."""
@@ -2882,12 +2872,12 @@ def test_shot_distance_leaves_out_free_throws_that_carry_a_position(sc_ctx: Temp
     assert result.data["avg_feet"] == pytest.approx(26.0)
 
 
-def test_shot_distance_leaves_out_shots_with_no_position(sc_ctx: TemplateContext) -> None:
+def test_shot_distance_leaves_out_shots_with_no_position(sc_ctx: AnswerContext) -> None:
     sc_ctx.con.execute("INSERT INTO shot_chart VALUES ('1',?,2,'e1',1,'4:00',TRUE,'Layup Shot',0,0,2,'makes layup')", [current_season()])
     assert shot_distance(sc_ctx, Reading.from_slots({"player": "Stephen Curry"})).data["attempts"] == 2
 
 
-def test_shot_distance_refuses_threes_in_a_season_that_cannot_tell_them_apart(sc_ctx: TemplateContext) -> None:
+def test_shot_distance_refuses_threes_in_a_season_that_cannot_tell_them_apart(sc_ctx: AnswerContext) -> None:
     """2002 has no labels and descriptions that miss threes, so answering from
     what it has would be a narrower answer with nothing saying so. The refusal
     names that cause - not an absence of data, since the same season still
@@ -2902,7 +2892,7 @@ def test_shot_distance_refuses_threes_in_a_season_that_cannot_tell_them_apart(sc
     assert shot_distance(sc_ctx, Reading.from_slots({"player": "Stephen Curry", "season": 2002})).data["attempts"] == 2
 
 
-def test_shot_distance_says_when_a_seasons_shot_values_are_derived(sc_ctx: TemplateContext) -> None:
+def test_shot_distance_says_when_a_seasons_shot_values_are_derived(sc_ctx: AnswerContext) -> None:
     sc_ctx.con.execute("INSERT INTO shot_chart VALUES ('1',2022,2,'e9',1,'6:00',TRUE,'Jump Shot',25,26,0,'makes 26-foot three point jumper')")
     threes = shot_distance(sc_ctx, Reading.from_slots({"player": "Stephen Curry", "season": 2022, "shot_value": 3}))
     assert threes.data["attempts"] == 1
@@ -2911,33 +2901,33 @@ def test_shot_distance_says_when_a_seasons_shot_values_are_derived(sc_ctx: Templ
     assert "Note" not in (shot_distance(sc_ctx, Reading.from_slots({"player": "Stephen Curry", "season": 2022})).answer or "")
 
 
-def test_shot_chart_draws_threes_espn_left_unlabeled(sc_ctx: TemplateContext) -> None:
+def test_shot_chart_draws_threes_espn_left_unlabeled(sc_ctx: AnswerContext) -> None:
     sc_ctx.con.execute("INSERT INTO shot_chart VALUES ('1',?,2,'e7',1,'2:00',TRUE,'Jump Shot',2,3,0,'makes 23-foot step back jumpshot')", [current_season()])
     result = shot_chart(sc_ctx, Reading.from_slots({"player": "Stephen Curry", "season": current_season(), "shot_value": 3}))
     assert "(2/3 made" in (result.answer or "")
 
 
-def test_shot_chart_refuses_threes_in_a_season_that_cannot_tell_them_apart(sc_ctx: TemplateContext) -> None:
+def test_shot_chart_refuses_threes_in_a_season_that_cannot_tell_them_apart(sc_ctx: AnswerContext) -> None:
     sc_ctx.con.execute("INSERT INTO shot_chart VALUES ('1',2002,2,'e8',1,'5:00',TRUE,'Jump Shot',25,25,0,'made 25 ft Three Point Jumper.')")
     result = shot_chart(sc_ctx, Reading.from_slots({"player": "Stephen Curry", "season": 2002, "shot_value": 3}))
     assert (result.answer or "").startswith(shotchart.UNSEPARABLE_SHOT_VALUES[2002])
     assert not list(sc_ctx.out_dir.glob("*.html"))
 
 
-def test_shot_chart_leaves_free_throws_off_the_court(sc_ctx: TemplateContext) -> None:
+def test_shot_chart_leaves_free_throws_off_the_court(sc_ctx: AnswerContext) -> None:
     """A 2002-2018 free throw has a position under the rim, and was drawn
     there as a shot."""
     sc_ctx.con.execute("INSERT INTO shot_chart VALUES ('1',?,2,'e1',1,'3:00',TRUE,'Free Throw - 1 of 2',25,0,1,'makes free throw 1 of 2')", [current_season()])
     assert "(1/2 made" in (shot_chart(sc_ctx, Reading.from_slots({"player": "Stephen Curry", "season": current_season()})).answer or "")
 
 
-def test_a_free_throw_chart_is_refused_rather_than_drawn(sc_ctx: TemplateContext) -> None:
+def test_a_free_throw_chart_is_refused_rather_than_drawn(sc_ctx: AnswerContext) -> None:
     result = shot_chart(sc_ctx, Reading.from_slots({"player": "Stephen Curry", "season": current_season(), "shot_value": 1}))
     assert "no free-throw chart" in (result.answer or "")
     assert not list(sc_ctx.out_dir.glob("*.html"))
 
 
-def test_a_free_throw_chart_in_a_defaulted_season_is_refused_without_a_redirect(sc_ctx: TemplateContext) -> None:
+def test_a_free_throw_chart_in_a_defaulted_season_is_refused_without_a_redirect(sc_ctx: AnswerContext) -> None:
     """The season was defaulted and nothing was drawn - because a free-throw
     chart never is, not because the season is empty. The redirect a
     defaulted empty season gets (#18) named the season he was drawn for as
@@ -2950,7 +2940,7 @@ def test_a_free_throw_chart_in_a_defaulted_season_is_refused_without_a_redirect(
     assert result.artifacts == []
 
 
-def test_a_chart_a_shot_value_emptied_in_a_defaulted_season_keeps_the_plain_refusal(sc_ctx: TemplateContext) -> None:
+def test_a_chart_a_shot_value_emptied_in_a_defaulted_season_keeps_the_plain_refusal(sc_ctx: AnswerContext) -> None:
     """ISSUES.md #296: a player with shots this season and none of the value
     asked for ("Deandre Ayton's threes": 601 shots in 2026, no three) was told
     he "last appears in 2026" and to name a season - the filter emptied the
@@ -2966,7 +2956,7 @@ def test_a_chart_a_shot_value_emptied_in_a_defaulted_season_keeps_the_plain_refu
     assert distance.answer == f"No 3-point shots with recorded coordinates for Big Man in the {season_phrase(current_season(), 2)}."
 
 
-def test_a_career_chart_says_which_shots_it_left_out(sc_ctx: TemplateContext) -> None:
+def test_a_career_chart_says_which_shots_it_left_out(sc_ctx: AnswerContext) -> None:
     """One unseparable season is refused outright. Across seasons the chart
     draws what can be told apart and says what it could not, rather than
     dropping it where nobody would know."""
@@ -2979,29 +2969,29 @@ def test_a_career_chart_says_which_shots_it_left_out(sc_ctx: TemplateContext) ->
     assert "left out 1 shot that cannot be told apart as twos or threes" in (rendered.answer or "")
 
 
-def test_shot_distance_scopes_to_the_current_season_by_default(sc_ctx: TemplateContext) -> None:
+def test_shot_distance_scopes_to_the_current_season_by_default(sc_ctx: AnswerContext) -> None:
     sc_ctx.con.execute("INSERT INTO shot_chart VALUES ('1',2019,2,'e6',1,'1:00',TRUE,'Jump Shot',25,40,3,'40-foot three point jumper')")
     assert shot_distance(sc_ctx, Reading.from_slots({"player": "Stephen Curry", "shot_value": 3})).data["attempts"] == 2
 
 
-def test_shot_distance_reads_the_shot_value_from_either_slot(sc_ctx: TemplateContext) -> None:
+def test_shot_distance_reads_the_shot_value_from_either_slot(sc_ctx: AnswerContext) -> None:
     by_stat = shot_distance(sc_ctx, Reading.from_slots({"player": "Stephen Curry", "stat": "threePointFieldGoalsMade"}))
     assert by_stat.data["shot_value"] == 3
 
 
-def test_shot_distance_declines_free_throws(sc_ctx: TemplateContext) -> None:
-    with pytest.raises(TemplateUnsupported):
+def test_shot_distance_declines_free_throws(sc_ctx: AnswerContext) -> None:
+    with pytest.raises(Unsupported):
         shot_distance(sc_ctx, Reading.from_slots({"player": "Stephen Curry", "shot_value": 1}))
 
 
-def test_shot_distance_reports_no_coordinates_honestly(sc_ctx: TemplateContext) -> None:
+def test_shot_distance_reports_no_coordinates_honestly(sc_ctx: AnswerContext) -> None:
     # A season the shot table covers (1999 is under its floor, and the floor's refusal answers it now that the
     # compiler checks coverage before the reader runs, as the answering loop did before the template ran).
     answer = shot_distance(sc_ctx, Reading.from_slots({"player": "Stephen Curry", "season": 2010})).answer or ""
     assert answer == "No shots with recorded coordinates for Stephen Curry in the 2010 regular season."
 
 
-def test_shot_distance_in_a_defaulted_season_redirects_to_a_retired_players_range(sc_ctx: TemplateContext) -> None:
+def test_shot_distance_in_a_defaulted_season_redirects_to_a_retired_players_range(sc_ctx: AnswerContext) -> None:
     """The chart's #18 rule, for the distance: no season was named, "now" has
     no shots of his, and the answer names the seasons he IS on record for
     rather than only "none in the 2026 regular season". A distance answers a
@@ -3017,15 +3007,15 @@ def test_shot_distance_in_a_defaulted_season_redirects_to_a_retired_players_rang
     assert named.answer == "No shots with recorded coordinates for Old Timer in the 2009 regular season."
 
 
-def test_shot_distance_without_a_player_falls_through(sc_ctx: TemplateContext) -> None:
-    with pytest.raises(TemplateUnsupported):
+def test_shot_distance_without_a_player_falls_through(sc_ctx: AnswerContext) -> None:
+    with pytest.raises(Unsupported):
         shot_distance(sc_ctx, Reading.from_slots({"shot_value": 3}))
 
 
 # ---------------- player_history ----------------
 
 
-def test_player_history_spans_several_seasons(ps_con: TemplateContext) -> None:
+def test_player_history_spans_several_seasons(ps_con: AnswerContext) -> None:
     """Every other template answers about one season, so a multi-season
     question had nowhere to go and was absorbed by leaderboard."""
     s = current_season()
@@ -3034,7 +3024,7 @@ def test_player_history_spans_several_seasons(ps_con: TemplateContext) -> None:
     assert [row["season"] for row in result.data["seasons"]] == [s, s - 1, s - 2]
 
 
-def test_player_history_defaults_to_four_seasons(ps_con: TemplateContext) -> None:
+def test_player_history_defaults_to_four_seasons(ps_con: AnswerContext) -> None:
     from association.query.season_line import DEFAULT_HISTORY_SEASONS
 
     s = current_season()
@@ -3044,7 +3034,7 @@ def test_player_history_defaults_to_four_seasons(ps_con: TemplateContext) -> Non
     assert len(result.data["seasons"]) == DEFAULT_HISTORY_SEASONS
 
 
-def test_player_history_reports_a_percentage_with_its_volume(ps_con: TemplateContext) -> None:
+def test_player_history_reports_a_percentage_with_its_volume(ps_con: AnswerContext) -> None:
     # A percentage without makes/attempts is the thing people immediately ask
     # "out of how many?" about.
     for col, typ in [("threePointFieldGoalPct", "DOUBLE"), ("threePointFieldGoalsMade", "INTEGER"), ("threePointFieldGoalsAttempted", "INTEGER")]:
@@ -3055,21 +3045,21 @@ def test_player_history_reports_a_percentage_with_its_volume(ps_con: TemplateCon
     assert "38.3" in answer and "202" in answer and "527" in answer
 
 
-def test_player_history_refuses_a_stat_it_has_no_history_for(ps_con: TemplateContext) -> None:
+def test_player_history_refuses_a_stat_it_has_no_history_for(ps_con: AnswerContext) -> None:
     """A stat neither the season line nor the games carry is refused - never
     drawn as the points history the compiler's default measure would read in
     its place (it did, from step (a) until part 4). A history naming no stat
     at all is the points default, stated in its heading
     (test_compose.test_a_history_naming_no_stat_is_points_and_says_so)."""
-    with pytest.raises(TemplateUnsupported, match="no per-season history for stat 'shot_distance'"):
+    with pytest.raises(Unsupported, match="no per-season history for stat 'shot_distance'"):
         player_history(ps_con, Reading.from_slots({"player": "Luka Doncic", "stat": "shot_distance"}))
 
 
-def test_player_history_asks_on_an_ambiguous_player(ps_con: TemplateContext) -> None:
+def test_player_history_asks_on_an_ambiguous_player(ps_con: AnswerContext) -> None:
     assert "did you mean" in (player_history(ps_con, Reading.from_slots({"player": "Curry", "stat": "points"})).answer or "")
 
 
-def test_player_history_answers_two_point_percentage_computed_not_stored(ps_con: TemplateContext) -> None:
+def test_player_history_answers_two_point_percentage_computed_not_stored(ps_con: AnswerContext) -> None:
     """ISSUES.md #114: there is no stored 2-point percentage column (checked
     against the warehouse - only fieldGoalPct and threePointFieldGoalPct
     exist), so it has to be computed from field goals less the threes, the
@@ -3086,15 +3076,15 @@ def test_player_history_answers_two_point_percentage_computed_not_stored(ps_con:
     assert "53.8" not in answer
 
 
-def test_leaderboard_refuses_when_a_player_is_named(lb_con: TemplateContext) -> None:
+def test_leaderboard_refuses_when_a_player_is_named(lb_con: AnswerContext) -> None:
     """A leaderboard ranks the league or a team, never one named person.
     Confirmed live: it answered a question about Klay Thompson with the
     league's true-shooting leaders, Klay silently dropped."""
-    with pytest.raises(TemplateUnsupported):
+    with pytest.raises(Unsupported):
         leaderboard(lb_con, Reading.from_slots({"stat": "points", "player": "Klay Thompson"}))
 
 
-def test_leaderboard_refuses_a_shot_distance_ranking_naming_the_real_cause(lb_con: TemplateContext) -> None:
+def test_leaderboard_refuses_a_shot_distance_ranking_naming_the_real_cause(lb_con: AnswerContext) -> None:
     """ISSUES.md #114: "who lead the league in avg 3 point distance" used to
     resolve to the nearest real metric (threePointFieldGoalPct) and answer a
     PERCENTAGE; its "shot distance" sibling used to arrive with a filler
@@ -3116,7 +3106,7 @@ def test_leaderboard_refuses_a_shot_distance_ranking_naming_the_real_cause(lb_co
     # The filler player slot the router once left ("player": "player") is the
     # parser's to drop now (subject.apply_subject); given one, the compiler
     # refuses the named player in the template's own words.
-    with pytest.raises(TemplateUnsupported, match="one named player"):
+    with pytest.raises(Unsupported, match="one named player"):
         leaderboard(lb_con, Reading.from_slots({"stat": "points", "player": "Klay Thompson"}))
 
 
@@ -3124,7 +3114,7 @@ def test_leaderboard_refuses_a_shot_distance_ranking_naming_the_real_cause(lb_co
 
 
 @pytest.fixture
-def np_ctx(tmp_path: Path) -> TemplateContext:
+def np_ctx(tmp_path: Path) -> AnswerContext:
     from association.nba.netpoints import FINGERPRINT_CATEGORIES
 
     c = duckdb.connect(":memory:")
@@ -3141,10 +3131,10 @@ def np_ctx(tmp_path: Path) -> TemplateContext:
     values = ", ".join("1.0" for _ in cats for _ in range(3))
     c.execute(f"INSERT INTO net_points_player_fingerprint VALUES ('1', {current_season()}, 4725, {values})")
     c.execute("UPDATE net_points_player_fingerprint SET two_pt_t_net_pts = 250.9, two_pt_o_net_pts = 251.3")
-    return TemplateContext(con=c, out_dir=tmp_path)
+    return AnswerContext(con=c, out_dir=tmp_path)
 
 
-def test_player_netpoints_answers_about_the_named_player(np_ctx: TemplateContext) -> None:
+def test_player_netpoints_answers_about_the_named_player(np_ctx: AnswerContext) -> None:
     """Confirmed live: this fell through and the agent answered "Nikola Jokic
     leads the team in NetPoints", with SGA dropped entirely."""
     answer = player_netpoints(np_ctx, Reading.from_slots({"player": "Shai Gilgeous-Alexander"})).answer or ""
@@ -3152,25 +3142,25 @@ def test_player_netpoints_answers_about_the_named_player(np_ctx: TemplateContext
     assert "468.3" in answer and "403.9" in answer and "64.4" in answer
 
 
-def test_player_netpoints_includes_the_play_type_fingerprint(np_ctx: TemplateContext) -> None:
+def test_player_netpoints_includes_the_play_type_fingerprint(np_ctx: AnswerContext) -> None:
     result = player_netpoints(np_ctx, Reading.from_slots({"player": "SGA"}))
     categories = {row["category"] for row in result.data["fingerprint"]}
     assert "two pt" in categories and "driving" in categories
     assert "total" not in categories  # the summary, reported on the headline
 
 
-def test_player_netpoints_orders_the_fingerprint_by_magnitude(np_ctx: TemplateContext) -> None:
+def test_player_netpoints_orders_the_fingerprint_by_magnitude(np_ctx: AnswerContext) -> None:
     rows = player_netpoints(np_ctx, Reading.from_slots({"player": "SGA"})).data["fingerprint"]
     assert rows[0]["category"] == "two pt"
 
 
-def test_player_netpoints_uses_the_string_season_type(np_ctx: TemplateContext) -> None:
+def test_player_netpoints_uses_the_string_season_type(np_ctx: AnswerContext) -> None:
     """net_points_player has its OWN string season_type; filtering it with the
     numeric one every other table uses silently matches nothing."""
     assert player_netpoints(np_ctx, Reading.from_slots({"player": "SGA"})).data["headline"] is not None
 
 
-def test_player_netpoints_headline_is_the_display_sentence_not_the_raw_row(np_ctx: TemplateContext) -> None:
+def test_player_netpoints_headline_is_the_display_sentence_not_the_raw_row(np_ctx: AnswerContext) -> None:
     """`data["headline"]` used to be the raw SQL row (overall, offense,
     defense, per-100 rate, minutes, games) under the same key every other
     template's `data["headline"]` uses for the display sentence - the page's
@@ -3183,19 +3173,19 @@ def test_player_netpoints_headline_is_the_display_sentence_not_the_raw_row(np_ct
     assert result.data["headline"].startswith("Shai Gilgeous-Alexander, NetPoints in the")
 
 
-def test_player_netpoints_totals_is_a_stable_dict(np_ctx: TemplateContext) -> None:
+def test_player_netpoints_totals_is_a_stable_dict(np_ctx: AnswerContext) -> None:
     """The season row that used to sit raw under `data["headline"]` is now
     `data["totals"]`, with named keys rather than positional ones."""
     totals = player_netpoints(np_ctx, Reading.from_slots({"player": "SGA"})).data["totals"]
     assert totals == {"overall": 468.33, "offense": 403.9, "defense": 64.43, "per_100": 9.91, "minutes": 2259, "games": 68}
 
 
-def test_player_netpoints_totals_is_none_without_a_season_row(np_ctx: TemplateContext) -> None:
+def test_player_netpoints_totals_is_none_without_a_season_row(np_ctx: AnswerContext) -> None:
     np_ctx.con.execute("DELETE FROM net_points_player")
     assert player_netpoints(np_ctx, Reading.from_slots({"player": "SGA"})).data["totals"] is None
 
 
-def test_player_netpoints_fingerprint_rows_mark_the_six_partition_categories(np_ctx: TemplateContext) -> None:
+def test_player_netpoints_fingerprint_rows_mark_the_six_partition_categories(np_ctx: AnswerContext) -> None:
     """`partition` is read by the page's own renderer to split the Offense/
     Defense sections from the play-type detail table without a second copy of
     FINGERPRINT_PARTITION in JavaScript."""
@@ -3204,7 +3194,7 @@ def test_player_netpoints_fingerprint_rows_mark_the_six_partition_categories(np_
     assert rows["driving"] is False and rows["rim"] is False
 
 
-def test_player_netpoints_notes_carry_the_headline_detail_and_units(np_ctx: TemplateContext) -> None:
+def test_player_netpoints_notes_carry_the_headline_detail_and_units(np_ctx: AnswerContext) -> None:
     result = player_netpoints(np_ctx, Reading.from_slots({"player": "SGA"}))
     notes = result.data["notes"]
     assert any("2,259 minutes" in n and "68 games" in n for n in notes)
@@ -3212,16 +3202,16 @@ def test_player_netpoints_notes_carry_the_headline_detail_and_units(np_ctx: Temp
     assert any("do not add up" in n for n in notes)
 
 
-def test_player_netpoints_missing_season_refusal_carries_a_headline(np_ctx: TemplateContext) -> None:
+def test_player_netpoints_missing_season_refusal_carries_a_headline(np_ctx: AnswerContext) -> None:
     result = player_netpoints(np_ctx, Reading.from_slots({"player": "SGA", "season": 2020}))
     assert result.data["headline"] == result.answer
 
 
-def test_player_netpoints_reports_a_missing_season_honestly(np_ctx: TemplateContext) -> None:
+def test_player_netpoints_reports_a_missing_season_honestly(np_ctx: AnswerContext) -> None:
     assert "no 2020 regular season NetPoints" in (player_netpoints(np_ctx, Reading.from_slots({"player": "SGA", "season": 2020})).answer or "")
 
 
-def test_player_netpoints_defaulted_season_redirects_to_a_retired_players_range(np_ctx: TemplateContext) -> None:
+def test_player_netpoints_defaulted_season_redirects_to_a_retired_players_range(np_ctx: AnswerContext) -> None:
     """No season was named - "now" defaulted - so a player with NetPoints only
     on record in an earlier season is pointed at it instead of a flat refusal
     that reads as though the warehouse held nothing of his at all (issue #18).
@@ -3234,7 +3224,7 @@ def test_player_netpoints_defaulted_season_redirects_to_a_retired_players_range(
     assert answer == f"The warehouse has no {s} regular season NetPoints for Old Timer. He last appears in 2020. The warehouse holds his 2020 regular season; name one."
 
 
-def test_player_netpoints_a_named_season_keeps_the_plain_refusal(np_ctx: TemplateContext) -> None:
+def test_player_netpoints_a_named_season_keeps_the_plain_refusal(np_ctx: AnswerContext) -> None:
     """The season the question named is the fact the refusal is about - unlike
     the defaulted case above, redirecting it would be a different question."""
     np_ctx.con.execute("INSERT INTO players VALUES ('2','Old Timer')")
@@ -3243,12 +3233,12 @@ def test_player_netpoints_a_named_season_keeps_the_plain_refusal(np_ctx: Templat
     assert answer == "The warehouse has no 2021 regular season NetPoints for Old Timer."
 
 
-def test_player_netpoints_without_a_player_falls_through(np_ctx: TemplateContext) -> None:
-    with pytest.raises(TemplateUnsupported):
+def test_player_netpoints_without_a_player_falls_through(np_ctx: AnswerContext) -> None:
+    with pytest.raises(Unsupported):
         player_netpoints(np_ctx, Reading.from_slots({}))
 
 
-def test_player_netpoints_fingerprint_defaults_to_per_100_possessions(np_ctx: TemplateContext) -> None:
+def test_player_netpoints_fingerprint_defaults_to_per_100_possessions(np_ctx: AnswerContext) -> None:
     """Season totals mostly rank by playing time; per 100 possessions is the
     unit that compares players, which is what the fingerprint is for."""
     result = player_netpoints(np_ctx, Reading.from_slots({"player": "SGA"}))
@@ -3258,7 +3248,7 @@ def test_player_netpoints_fingerprint_defaults_to_per_100_possessions(np_ctx: Te
     assert "per 100 possessions" in (result.answer or "")
 
 
-def test_player_netpoints_falls_back_to_totals_without_a_possession_count(np_ctx: TemplateContext) -> None:
+def test_player_netpoints_falls_back_to_totals_without_a_possession_count(np_ctx: AnswerContext) -> None:
     # No possession count: report totals and say so, rather than dividing by
     # nothing or showing an unlabeled unit.
     np_ctx.con.execute("UPDATE net_points_player_fingerprint SET total_poss = NULL")
@@ -3267,7 +3257,7 @@ def test_player_netpoints_falls_back_to_totals_without_a_possession_count(np_ctx
     assert "season totals" in (result.answer or "")
 
 
-def test_player_netpoints_gives_defense_its_own_section(np_ctx: TemplateContext) -> None:
+def test_player_netpoints_gives_defense_its_own_section(np_ctx: AnswerContext) -> None:
     """A single table sorted by total renders the defensive profile invisible:
     for SGA, `turnover` carries the largest defensive value of any play type
     and lands 15th of 21 by total, below categories whose defense is ~0."""
@@ -3278,20 +3268,20 @@ def test_player_netpoints_gives_defense_its_own_section(np_ctx: TemplateContext)
     assert defense_section.strip().splitlines()[1].strip().startswith("turnover")
 
 
-def test_player_netpoints_sorts_each_section_by_its_own_side(np_ctx: TemplateContext) -> None:
+def test_player_netpoints_sorts_each_section_by_its_own_side(np_ctx: AnswerContext) -> None:
     np_ctx.con.execute("UPDATE net_points_player_fingerprint SET turnover_d_net_pts = 170.9, turnover_o_net_pts = 0.5")
     answer = player_netpoints(np_ctx, Reading.from_slots({"player": "SGA"})).answer or ""
     offense_section = answer.split("Offense,")[1].split("Defense,")[0]
     assert not offense_section.strip().splitlines()[1].strip().startswith("turnover")
 
 
-def test_player_netpoints_warns_that_the_detail_slices_overlap(np_ctx: TemplateContext) -> None:
+def test_player_netpoints_warns_that_the_detail_slices_overlap(np_ctx: AnswerContext) -> None:
     # A driving layup at the rim counts in driving, layup AND rim, so the
     # detail rows are not additive - unlike the six partition categories.
     assert "do not add up" in (player_netpoints(np_ctx, Reading.from_slots({"player": "SGA"})).answer or "")
 
 
-def test_the_six_core_categories_partition_the_total(np_ctx: TemplateContext) -> None:
+def test_the_six_core_categories_partition_the_total(np_ctx: AnswerContext) -> None:
     """two_pt, three_pt, free_throw, turnover, rebound and foul sum exactly to
     the offensive and defensive totals - verified against the separately stored
     net_points_player.offense/.defense for every top-minutes player in 2026,
@@ -3305,14 +3295,14 @@ def test_the_six_core_categories_partition_the_total(np_ctx: TemplateContext) ->
     assert pytest.approx(sum(float(v) for v in listed[:-1]), rel=1e-6) == float(listed[-1])
 
 
-def test_overlapping_play_types_are_kept_out_of_the_summing_column(np_ctx: TemplateContext) -> None:
+def test_overlapping_play_types_are_kept_out_of_the_summing_column(np_ctx: AnswerContext) -> None:
     answer = player_netpoints(np_ctx, Reading.from_slots({"player": "SGA"})).answer or ""
     offense = answer.split("Offense,")[1].split("Defense,")[0]
     assert "rim" not in offense and "layup" not in offense  # detail, not partition
     assert "do not add up" in answer and "rim" in answer.split("Play-type detail")[1]
 
 
-def _sc_ctx_add_games(sc_ctx: TemplateContext, rows: list[tuple[str, str]]) -> None:
+def _sc_ctx_add_games(sc_ctx: AnswerContext, rows: list[tuple[str, str]]) -> None:
     """Two player_game_log/games rows per ``(event_id, tip)`` pair, for the
     order-scoping tests below - Curry starts, plays, on team 9 vs team 13,
     which is all the relation's played guard and window need."""
@@ -3326,7 +3316,7 @@ def _sc_ctx_add_games(sc_ctx: TemplateContext, rows: list[tuple[str, str]]) -> N
     )
 
 
-def test_shot_chart_scopes_to_a_single_game_when_order_is_set(sc_ctx: TemplateContext) -> None:
+def test_shot_chart_scopes_to_a_single_game_when_order_is_set(sc_ctx: AnswerContext) -> None:
     """Confirmed live: "a shot chart of Curry's last regular season game"
     charted the whole season - 803 attempts instead of that game's 14."""
     _sc_ctx_add_games(sc_ctx, [("e1", "2026-01-01T00:00Z"), ("eLast", "2026-04-13T00:30Z")])
@@ -3336,17 +3326,17 @@ def test_shot_chart_scopes_to_a_single_game_when_order_is_set(sc_ctx: TemplateCo
     assert "eLast" in answer
 
 
-def test_shot_chart_order_first_picks_the_earliest_game(sc_ctx: TemplateContext) -> None:
+def test_shot_chart_order_first_picks_the_earliest_game(sc_ctx: AnswerContext) -> None:
     _sc_ctx_add_games(sc_ctx, [("e1", "2026-01-01T00:00Z"), ("eLast", "2026-04-13T00:30Z")])
     assert "e1" in (shot_chart(sc_ctx, Reading.from_slots({"player": "Stephen Curry", "order": "first"})).answer or "")
 
 
-def test_shot_chart_without_order_still_covers_the_season(sc_ctx: TemplateContext) -> None:
+def test_shot_chart_without_order_still_covers_the_season(sc_ctx: AnswerContext) -> None:
     # Both of the fixture's shots (one made, one missed), not one game's worth.
     assert "1/2 made" in (shot_chart(sc_ctx, Reading.from_slots({"player": "Stephen Curry"})).answer or "")
 
 
-def test_threshold_count_supports_fouls(con: TemplateContext) -> None:
+def test_threshold_count_supports_fouls(con: AnswerContext) -> None:
     con.con.execute("ALTER TABLE player_box_stats ADD COLUMN fouls INTEGER")
     con.con.execute("UPDATE player_box_stats SET fouls = 6 WHERE athlete_id = '1'")
     result = threshold_count(con, Reading.from_slots({"stat": "fouls", "threshold": 6}))
@@ -3354,7 +3344,7 @@ def test_threshold_count_supports_fouls(con: TemplateContext) -> None:
     assert result.data["leaders"][0]["player"] == "Luka Doncic"
 
 
-def _add_per_game_netpoints(ctx: TemplateContext) -> None:
+def _add_per_game_netpoints(ctx: AnswerContext) -> None:
     ctx.con.execute("CREATE TABLE games (event_id VARCHAR, date VARCHAR)")
     ctx.con.execute("INSERT INTO games VALUES ('eFirst','2025-10-22T00:00Z'),('eLast','2026-04-13T00:30Z')")
     ctx.con.execute(
@@ -3368,7 +3358,7 @@ def _add_per_game_netpoints(ctx: TemplateContext) -> None:
     )
 
 
-def test_player_netpoints_scopes_to_one_game_when_order_is_set(np_ctx: TemplateContext) -> None:
+def test_player_netpoints_scopes_to_one_game_when_order_is_set(np_ctx: AnswerContext) -> None:
     """Confirmed live: "netpoints from his last regular season game" returned
     the whole season - 43 games - because nothing scoped it."""
     _add_per_game_netpoints(np_ctx)
@@ -3386,13 +3376,13 @@ def test_player_netpoints_scopes_to_one_game_when_order_is_set(np_ctx: TemplateC
     assert "possessions" in result.data["notes"][0] and "win probability added" in result.data["notes"][0]
 
 
-def test_player_netpoints_order_first_picks_the_earliest_game(np_ctx: TemplateContext) -> None:
+def test_player_netpoints_order_first_picks_the_earliest_game(np_ctx: AnswerContext) -> None:
     _add_per_game_netpoints(np_ctx)
     # 2025-10-22T00:00Z is 8pm Eastern on October 21st.
     assert player_netpoints(np_ctx, Reading.from_slots({"player": "SGA", "order": "first"})).data["game"]["date"] == "2025-10-21"
 
 
-def test_single_game_netpoints_points_at_the_fingerprint_for_the_split(np_ctx: TemplateContext) -> None:
+def test_single_game_netpoints_points_at_the_fingerprint_for_the_split(np_ctx: AnswerContext) -> None:
     """This template answers one game's NetPoints TOTAL and has no play-type
     split of its own. Saying nothing would read as the split not existing -
     which is what it used to say, back when it did not."""
@@ -3400,15 +3390,15 @@ def test_single_game_netpoints_points_at_the_fingerprint_for_the_split(np_ctx: T
     assert "Ask for a fingerprint of that game" in (player_netpoints(np_ctx, Reading.from_slots({"player": "SGA", "order": "recent"})).answer or "")
 
 
-def test_player_netpoints_without_order_still_gives_the_season(np_ctx: TemplateContext) -> None:
+def test_player_netpoints_without_order_still_gives_the_season(np_ctx: AnswerContext) -> None:
     _add_per_game_netpoints(np_ctx)
     assert "Offense," in (player_netpoints(np_ctx, Reading.from_slots({"player": "SGA"})).answer or "")
 
 
-def test_single_game_netpoints_falls_through_without_the_optin_table(np_ctx: TemplateContext) -> None:
+def test_single_game_netpoints_falls_through_without_the_optin_table(np_ctx: AnswerContext) -> None:
     # net_points_player_game only exists if fetched with
     # --include-net-points-daily; say so rather than answering for the season.
-    with pytest.raises(TemplateUnsupported):
+    with pytest.raises(Unsupported):
         player_netpoints(np_ctx, Reading.from_slots({"player": "SGA", "order": "recent"}))
 
 
@@ -3429,7 +3419,7 @@ def test_scope_guard_blocks_a_template_that_would_ignore_a_game_scope() -> None:
         # relation behind it still refuses one.
         ("player_history", {"date": "2026-04-12"}),
     ]:
-        with pytest.raises(TemplateUnsupported, match="different span"):
+        with pytest.raises(Unsupported, match="different span"):
             check_scope(intent, slots)
 
 
@@ -3459,7 +3449,7 @@ def test_scope_guard_lets_only_the_templates_that_read_it_honor_season_type_unst
     # relation honors the slot for a named player, and the count's own words
     # state it (compose.plan.STATED_SCOPING).
     assert unhonored_scoping("threshold_count", Scope.from_slots({"season_type_unstated": True}), STATED_SCOPING["threshold_count"]) == []
-    with pytest.raises(TemplateUnsupported, match="different span"):
+    with pytest.raises(Unsupported, match="different span"):
         check_scope("leaderboard", {"season_type_unstated": True})
     # single_game_high's words do not state it: its presenter steps aside and
     # the compiler's sentence, which does, answers.
@@ -3485,7 +3475,7 @@ def test_every_template_honoring_a_scope_slot_actually_reads_it() -> None:
             assert _reads_slot(source, slot), f"{intent} claims to honor {slot} but never reads it"
 
 
-def test_shot_distance_scopes_to_one_game(sc_ctx: TemplateContext) -> None:
+def test_shot_distance_scopes_to_one_game(sc_ctx: AnswerContext) -> None:
     # A second game whose shots must NOT be counted.
     _sc_ctx_add_games(sc_ctx, [("e1", "2026-04-13T00:30Z"), ("e2", "2026-01-01T00:00Z")])
     sc_ctx.con.execute("INSERT INTO shot_chart VALUES ('1',?,2,'e2',1,'2:00',TRUE,'Jump Shot',25,40,3,'40-foot three point jumper')", [current_season()])
@@ -3500,7 +3490,7 @@ def test_shot_distance_scopes_to_one_game(sc_ctx: TemplateContext) -> None:
 
 
 @pytest.fixture
-def fp_ctx(tmp_path: Path) -> TemplateContext:
+def fp_ctx(tmp_path: Path) -> AnswerContext:
     from association.nba.netpoints import FINGERPRINT_CATEGORIES
 
     c = duckdb.connect(":memory:")
@@ -3533,16 +3523,16 @@ def fp_ctx(tmp_path: Path) -> TemplateContext:
                     "INSERT INTO net_points_player_game_fingerprint VALUES (?, ?, 2, '9', ?, ?, ?, ?, ?)",
                     [event_id, current_season(), athlete_id, category, size, size, size * 2],
                 )
-    return TemplateContext(con=c, out_dir=tmp_path)
+    return AnswerContext(con=c, out_dir=tmp_path)
 
 
-def test_fingerprint_writes_a_file_and_reports_its_path(fp_ctx: TemplateContext) -> None:
+def test_fingerprint_writes_a_file_and_reports_its_path(fp_ctx: AnswerContext) -> None:
     result = fingerprint(fp_ctx, Reading.from_slots({"player": "Shai Gilgeous-Alexander"}))
     assert "Rendered NetPoints fingerprint (total) for Shai Gilgeous-Alexander" in result.answer
     assert list(fp_ctx.out_dir.glob("*.html"))
 
 
-def test_fingerprint_honors_the_side_slot(fp_ctx: TemplateContext) -> None:
+def test_fingerprint_honors_the_side_slot(fp_ctx: AnswerContext) -> None:
     assert fingerprint(fp_ctx, Reading.from_slots({"player": "Shai", "side": "defense"})).data["side"] == "defense"
 
 
@@ -3552,11 +3542,11 @@ def test_a_nonsense_side_never_reaches_the_fingerprint() -> None:
         Reading.from_slots({"player": "Shai", "side": "sideways"})
 
 
-def test_fingerprint_defaults_to_the_current_season(fp_ctx: TemplateContext) -> None:
+def test_fingerprint_defaults_to_the_current_season(fp_ctx: AnswerContext) -> None:
     assert fingerprint(fp_ctx, Reading.from_slots({"player": "Shai"})).data["season"] == current_season()
 
 
-def test_fingerprint_draws_the_game_that_was_asked_for(fp_ctx: TemplateContext) -> None:
+def test_fingerprint_draws_the_game_that_was_asked_for(fp_ctx: AnswerContext) -> None:
     """The whole point of the scoping: "his last game" draws that game, and the
     plot is titled with its date rather than with the season - so a reader can
     tell which game they are looking at."""
@@ -3567,13 +3557,13 @@ def test_fingerprint_draws_the_game_that_was_asked_for(fp_ctx: TemplateContext) 
     assert list(fp_ctx.out_dir.glob("*_recent_game_*.html"))
 
 
-def test_the_other_end_of_the_season_draws_a_different_game(fp_ctx: TemplateContext) -> None:
+def test_the_other_end_of_the_season_draws_a_different_game(fp_ctx: AnswerContext) -> None:
     result = fingerprint(fp_ctx, Reading.from_slots({"player": "Shai", "order": "first"}))
 
     assert "2026-01-05" in result.answer
 
 
-def test_a_game_plot_is_not_captioned_as_a_per_100_rate(fp_ctx: TemplateContext) -> None:
+def test_a_game_plot_is_not_captioned_as_a_per_100_rate(fp_ctx: AnswerContext) -> None:
     """A single game's numbers are that game's net points - a per-100 rate over
     ~30 possessions turns one made three into a league-leading season figure.
     The caption has to say which quantity is on the page, or the plot is the
@@ -3585,7 +3575,7 @@ def test_a_game_plot_is_not_captioned_as_a_per_100_rate(fp_ctx: TemplateContext)
     assert "in this game" in page
 
 
-def test_a_season_plot_still_says_per_100(fp_ctx: TemplateContext) -> None:
+def test_a_season_plot_still_says_per_100(fp_ctx: AnswerContext) -> None:
     """The other half of the check above: a unit label that stopped appearing
     anywhere would pass it."""
     fingerprint(fp_ctx, Reading.from_slots({"player": "Shai"}))
@@ -3594,7 +3584,7 @@ def test_a_season_plot_still_says_per_100(fp_ctx: TemplateContext) -> None:
     assert "per 100 poss" in page
 
 
-def test_a_fingerprint_for_a_particular_date_still_says_it_cannot(fp_ctx: TemplateContext) -> None:
+def test_a_fingerprint_for_a_particular_date_still_says_it_cannot(fp_ctx: AnswerContext) -> None:
     """`date` is a different question from `order`: the router gives a calendar
     date and the loader picks a player's first or last game. Answering one with
     the other is exactly the substitution this template exists to refuse."""
@@ -3604,7 +3594,7 @@ def test_a_fingerprint_for_a_particular_date_still_says_it_cannot(fp_ctx: Templa
     assert not list(fp_ctx.out_dir.glob("*.html"))
 
 
-def test_fingerprint_declares_the_game_scoping_it_handles(fp_ctx: TemplateContext) -> None:
+def test_fingerprint_declares_the_game_scoping_it_handles(fp_ctx: AnswerContext) -> None:
     # It handles them by refusing; the planner must therefore NOT decline the
     # request out from under it, for a refusal naming only the slot.
     assert unhonored_scoping("fingerprint", Scope.from_slots({"player": "Shai", "order": "recent", "date": "2026-01-02"}), STATED_SCOPING["fingerprint"]) == []
@@ -3613,22 +3603,22 @@ def test_fingerprint_declares_the_game_scoping_it_handles(fp_ctx: TemplateContex
     assert {"order", "date"} <= STATED_SCOPING["fingerprint"] <= SCOPING_SLOTS
 
 
-def test_fingerprint_without_a_player_falls_through(fp_ctx: TemplateContext) -> None:
-    with pytest.raises(TemplateUnsupported):
+def test_fingerprint_without_a_player_falls_through(fp_ctx: AnswerContext) -> None:
+    with pytest.raises(Unsupported):
         fingerprint(fp_ctx, Reading.from_slots({}))
 
 
-def test_fingerprint_reports_an_unknown_player_rather_than_falling_through(fp_ctx: TemplateContext) -> None:
+def test_fingerprint_reports_an_unknown_player_rather_than_falling_through(fp_ctx: AnswerContext) -> None:
     assert "No player found" in fingerprint(fp_ctx, Reading.from_slots({"player": "Nobody At All"})).answer
 
 
-def test_fingerprint_reports_a_season_with_no_data_rather_than_falling_through(fp_ctx: TemplateContext) -> None:
+def test_fingerprint_reports_a_season_with_no_data_rather_than_falling_through(fp_ctx: AnswerContext) -> None:
     # Nothing has a better source than the table this just read. (A season
     # under NetPoints' floor, 2019, is the coverage check's refusal first.)
     assert "no NetPoints fingerprint data for season 2020" in fingerprint(fp_ctx, Reading.from_slots({"player": "Shai", "season": 2020})).answer
 
 
-def test_fingerprint_plots_two_players_on_one_radar(fp_ctx: TemplateContext) -> None:
+def test_fingerprint_plots_two_players_on_one_radar(fp_ctx: AnswerContext) -> None:
     """Two polygons on shared axes IS the comparison, so "compare their
     fingerprints" needs no second intent - only the `players` slot."""
     result = fingerprint(fp_ctx, Reading.from_slots({"players": ["Shai Gilgeous-Alexander", "Bench Guy"]}))
@@ -3636,13 +3626,13 @@ def test_fingerprint_plots_two_players_on_one_radar(fp_ctx: TemplateContext) -> 
     assert "Shai Gilgeous-Alexander vs Bench Guy" in result.answer
 
 
-def test_fingerprint_does_not_compare_a_player_with_himself(fp_ctx: TemplateContext) -> None:
+def test_fingerprint_does_not_compare_a_player_with_himself(fp_ctx: AnswerContext) -> None:
     # Two spellings of one name drew one polygon over itself and called it a
     # comparison.
     assert fingerprint(fp_ctx, Reading.from_slots({"players": ["Shai Gilgeous-Alexander", "Shai"]})).data["players"] == ["Shai Gilgeous-Alexander"]
 
 
-def test_a_chart_template_reports_the_file_it_wrote_as_an_artifact(sc_ctx: TemplateContext) -> None:
+def test_a_chart_template_reports_the_file_it_wrote_as_an_artifact(sc_ctx: AnswerContext) -> None:
     """The path used to exist only inside the message, so showing the chart
     meant parsing a sentence. It is a value now, and this is what says so."""
     result = shot_chart(sc_ctx, Reading.from_slots({"player": "Stephen Curry", "season": current_season()}))
@@ -3652,7 +3642,7 @@ def test_a_chart_template_reports_the_file_it_wrote_as_an_artifact(sc_ctx: Templ
     assert result.data["path"] == str(result.artifacts[0].path)
 
 
-def test_a_chart_template_that_drew_nothing_reports_no_artifact(sc_ctx: TemplateContext) -> None:
+def test_a_chart_template_that_drew_nothing_reports_no_artifact(sc_ctx: AnswerContext) -> None:
     """ "No shots found" is a real answer, not a failure - but there is no file,
     and claiming one would give a caller a path that does not exist."""
     result = shot_chart(sc_ctx, Reading.from_slots({"player": "Stephen Curry", "season": 2010}))
@@ -3660,13 +3650,13 @@ def test_a_chart_template_that_drew_nothing_reports_no_artifact(sc_ctx: Template
     assert result.data["path"] is None
 
 
-def test_the_fingerprint_template_reports_the_file_it_wrote_as_an_artifact(fp_ctx: TemplateContext) -> None:
+def test_the_fingerprint_template_reports_the_file_it_wrote_as_an_artifact(fp_ctx: AnswerContext) -> None:
     result = fingerprint(fp_ctx, Reading.from_slots({"player": "Shai Gilgeous-Alexander"}))
     assert [a.kind for a in result.artifacts] == ["fingerprint"]
     assert result.artifacts[0].path.exists()
 
 
-def test_templates_that_write_nothing_report_no_artifacts(lb_con: TemplateContext) -> None:
+def test_templates_that_write_nothing_report_no_artifacts(lb_con: AnswerContext) -> None:
     """The default has to be empty, not unset: a caller iterates artifacts on
     every answer, and a None here would be an AttributeError on the common path."""
     assert leaderboard(lb_con, Reading.from_slots({"stat": "points"})).artifacts == []
@@ -3686,7 +3676,7 @@ def test_templates_that_write_nothing_report_no_artifacts(lb_con: TemplateContex
 def test_scope_guard_refuses_what_the_question_text_narrowed_to(intent: str, slots: dict[str, Any]) -> None:
     """The real StatMuse queries behind these slots were each answered for
     every opponent, every venue, one season, or every game respectively."""
-    with pytest.raises(TemplateUnsupported, match="different span"):
+    with pytest.raises(Unsupported, match="different span"):
         check_scope(intent, slots)
 
 
@@ -3705,7 +3695,7 @@ def test_scope_guard_lets_through_what_the_player_templates_now_honor() -> None:
     assert unhonored_scoping("shot_distance", Scope.from_slots({"player": "Jaylen Brown", "opponent": "Detroit Pistons"}), STATED_SCOPING["shot_distance"]) == []
 
 
-def test_shot_distance_narrows_by_opponent_and_names_it_in_the_answer(sc_ctx: TemplateContext) -> None:
+def test_shot_distance_narrows_by_opponent_and_names_it_in_the_answer(sc_ctx: AnswerContext) -> None:
     """`shot_distance` used to refuse `opponent` outright - the real query
     behind it was "Jaylen Brown's average shot distance against the Detroit
     Pistons". Ported onto the relation (step 3, C5), it now narrows to it and
@@ -3733,12 +3723,12 @@ def test_no_template_narrows_to_a_playoff_round() -> None:
     """Nothing in the warehouse records a round or a series game number."""
     assert not any("round" in honored for honored in HONORED_SCOPING.values())
     assert not any("round" in stated for stated in STATED_SCOPING.values())
-    with pytest.raises(TemplateUnsupported, match="different span"):
+    with pytest.raises(Unsupported, match="different span"):
         check_scope("player_compare", {"players": ["Jayson Tatum", "Jaylen Brown"], "round": "finals"})
     assert unhonored_scoping("player_stat", Scope.from_slots({"player": "Jayson Tatum", "round": "finals"}), STATED_SCOPING["player_stat"]) == ["round"]
 
 
-def test_a_leaderboard_refuses_a_position_group_subject_for_the_compiler(lb_con: TemplateContext) -> None:
+def test_a_leaderboard_refuses_a_position_group_subject_for_the_compiler(lb_con: AnswerContext) -> None:
     """F056 ("highest 3 point percentage in a season. by a shooting guard
     with at least 400 attempts"): a position group is part of the league no
     leaderboard metric narrows to. Refused, so the compiler reads the group
@@ -3762,7 +3752,7 @@ def test_a_leaderboard_refuses_a_position_group_subject_for_the_compiler(lb_con:
     assert read_leaderboard(lb_con.con, on_the_season_line, stated=STATED_SCOPING["leaderboard"]) is None
 
 
-def test_a_ranking_names_the_season_line_as_its_relation(lb_con: TemplateContext) -> None:
+def test_a_ranking_names_the_season_line_as_its_relation(lb_con: AnswerContext) -> None:
     """A ranking is read from the season line, and its Result says so
     (``Span.source``), as the line, the history and the comparison do - the
     relation is part of what a Result is (ROADMAP-TYPES.md). Until step 4
@@ -3781,14 +3771,14 @@ def test_a_ranking_names_the_season_line_as_its_relation(lb_con: TemplateContext
     assert say(result).answer == say_leaderboard(result).answer
 
 
-def test_a_zero_threshold_is_refused_rather_than_counting_every_game(con: TemplateContext) -> None:
+def test_a_zero_threshold_is_refused_rather_than_counting_every_game(con: AnswerContext) -> None:
     """Measured: "most 3 pointers made since 2020" arrived as threshold 0."""
     assert threshold_count(con, Reading.from_slots({"stat": "points", "threshold": 0})).answer == "A threshold of 0 counts every game - there is no line there to keep games past."
 
 
 @pytest.mark.parametrize(("intent", "slots"), [("player_stat", {"player": "Joe Ingles", "split": "starter_bench"}), ("leaderboard", {"stat": "points", "since": 2020})])
 def test_a_split_or_a_range_is_refused_where_nothing_honors_it(intent: str, slots: dict[str, Any]) -> None:
-    with pytest.raises(TemplateUnsupported, match="different span"):
+    with pytest.raises(Unsupported, match="different span"):
         check_scope(intent, slots)
 
 
@@ -3838,7 +3828,7 @@ does."""
 
 
 @pytest.fixture
-def pg_ctx(tmp_path: Path) -> TemplateContext:
+def pg_ctx(tmp_path: Path) -> AnswerContext:
     """A Warriors season in miniature, built to exercise every narrowing. ``s``
     is the current season.
 
@@ -3971,10 +3961,10 @@ def pg_ctx(tmp_path: Path) -> TemplateContext:
         ],
     )
     real_games.build_table(c, {"games", "teams"})
-    return TemplateContext(con=c, out_dir=tmp_path)
+    return AnswerContext(con=c, out_dir=tmp_path)
 
 
-def test_a_situation_naming_the_calendar_narrows_the_relation(pg_ctx: TemplateContext) -> None:
+def test_a_situation_naming_the_calendar_narrows_the_relation(pg_ctx: AnswerContext) -> None:
     """`situation` is a cell of the relation (step 3, K3): a weekday, a month,
     a holiday and "since <day>" each narrow Podziemski's games by their US
     Eastern day, every template on the relation reads it through
@@ -3998,17 +3988,17 @@ def test_a_situation_naming_the_calendar_narrows_the_relation(pg_ctx: TemplateCo
     assert christmas.data.get("games", []) == [] and "on Christmas Day" in (christmas.answer or "")
 
 
-def test_a_situation_naming_no_calendar_is_refused_by_value(pg_ctx: TemplateContext) -> None:
+def test_a_situation_naming_no_calendar_is_refused_by_value(pg_ctx: AnswerContext) -> None:
     """An age or a return from injury is nothing the relation can filter on.
     Refused with the value in the message and the shapes that ARE read named
     - never dropped, which would answer every game under a heading that
     promised "as an 18 year old"."""
     for situation in ("18 year old", "since returning", "before turning 27"):
-        with pytest.raises(TemplateUnsupported, match=re.escape(situation)):
+        with pytest.raises(Unsupported, match=re.escape(situation)):
             game_log(pg_ctx, Reading.from_slots({"player": "Brandin Podziemski", "situation": situation}))
 
 
-def test_a_situation_naming_a_conference_or_division_narrows_the_relation(pg_ctx: TemplateContext) -> None:
+def test_a_situation_naming_a_conference_or_division_narrows_the_relation(pg_ctx: AnswerContext) -> None:
     """`situation`'s other half (K3-2): the opponent's conference or division,
     for that game's own season. Podziemski's `s` games actually played: e1 vs
     BOS (East/Atlantic, {s-1}-11-01), e2 and e3 vs DET (East/Central,
@@ -4028,15 +4018,15 @@ def test_a_situation_naming_a_conference_or_division_narrows_the_relation(pg_ctx
     assert "against the Atlantic Division" in (atlantic.answer or "")
 
 
-def test_a_situation_naming_a_conference_in_no_recognized_shape_is_refused_by_value(pg_ctx: TemplateContext) -> None:
+def test_a_situation_naming_a_conference_in_no_recognized_shape_is_refused_by_value(pg_ctx: AnswerContext) -> None:
     """A conference/division word that is not one of `parse_alignment`'s
     shapes still refuses BY VALUE, the same as any other unread situation -
     not silently as though the slot had never been set."""
-    with pytest.raises(TemplateUnsupported, match=re.escape("western conference these days")):
+    with pytest.raises(Unsupported, match=re.escape("western conference these days")):
         game_log(pg_ctx, Reading.from_slots({"player": "Brandin Podziemski", "situation": "western conference these days"}))
 
 
-def test_period_split_reads_one_game_of_each_series(pg_ctx: TemplateContext) -> None:
+def test_period_split_reads_one_game_of_each_series(pg_ctx: AnswerContext) -> None:
     """`game_n` reaches period_split through the relation like every other
     slot. It was declared honored and never applied: `_period_split_rows`
     handed `scoped_games` a dict it built itself, with no `game_n` key, so
@@ -4049,7 +4039,7 @@ def test_period_split_reads_one_game_of_each_series(pg_ctx: TemplateContext) -> 
 
 
 @pytest.fixture
-def ps_redirect_ctx(tmp_path: Path) -> TemplateContext:
+def ps_redirect_ctx(tmp_path: Path) -> AnswerContext:
     """A minimal warehouse for period_split's cross-season redirect
     (yardstick-v2 F050): one player who started two games with 1st-quarter
     shots in season ``s - 1`` (5 and 2 points) and played, but did not
@@ -4086,10 +4076,10 @@ def ps_redirect_ctx(tmp_path: Path) -> TemplateContext:
         "INSERT INTO shot_chart VALUES ('1', ?, 2, ?, '1', 1, '10:00', TRUE, 'Jump Shot', 25, ?, ?, 'a shot')",
         [(s - 1, "e1", 22, 3), (s - 1, "e1", 23, 2), (s - 1, "e2", 23, 2), (s, "e3", 23, 2)],
     )
-    return TemplateContext(con=c, out_dir=tmp_path)
+    return AnswerContext(con=c, out_dir=tmp_path)
 
 
-def test_period_split_crosses_into_an_earlier_season_when_the_current_one_has_no_starts(ps_redirect_ctx: TemplateContext) -> None:
+def test_period_split_crosses_into_an_earlier_season_when_the_current_one_has_no_starts(ps_redirect_ctx: AnswerContext) -> None:
     """yardstick-v2 F050: "zach collins first quarter stats last 5 games as
     a starter" answered "No 2026 regular season games found ... as a
     starter" - true of the box scores read, and about the wrong year, since
@@ -4111,7 +4101,7 @@ def test_period_split_crosses_into_an_earlier_season_when_the_current_one_has_no
     assert "No games this season" not in (named.answer or "")
 
 
-def test_period_split_does_not_cross_seasons_with_no_window_asked(ps_redirect_ctx: TemplateContext) -> None:
+def test_period_split_does_not_cross_seasons_with_no_window_asked(ps_redirect_ctx: AnswerContext) -> None:
     """The redirect is for a "last N games" WINDOW - a plain defaulted-season
     question with nothing found stays the plain refusal, since there is no
     window to widen."""
@@ -4120,7 +4110,7 @@ def test_period_split_does_not_cross_seasons_with_no_window_asked(ps_redirect_ct
     assert "No games this season" not in (result.answer or "")
 
 
-def test_game_log_drops_the_players_own_team(pg_ctx: TemplateContext) -> None:
+def test_game_log_drops_the_players_own_team(pg_ctx: AnswerContext) -> None:
     """#147: `game_log` took its `team` branch before it read `player`, so a
     `team` slot beside a named player answered the TEAM's log instead of his -
     here, his own team, which narrows nothing and is dropped."""
@@ -4130,7 +4120,7 @@ def test_game_log_drops_the_players_own_team(pg_ctx: TemplateContext) -> None:
     assert with_team.answer == without_team.answer
 
 
-def test_game_log_promotes_a_different_team_to_opponent(pg_ctx: TemplateContext) -> None:
+def test_game_log_promotes_a_different_team_to_opponent(pg_ctx: AnswerContext) -> None:
     """The Curry shape from #147: "steph curry vs 76ers last 4 games" put the
     76ers in `team` rather than `opponent`, and used to answer the 76ers' own
     games instead of Curry's games against them."""
@@ -4140,7 +4130,7 @@ def test_game_log_promotes_a_different_team_to_opponent(pg_ctx: TemplateContext)
     assert [g["opponent"] for g in as_team.data["games"]] == ["DET", "DET"]
 
 
-def test_game_log_drops_a_team_that_resolves_to_nothing(pg_ctx: TemplateContext) -> None:
+def test_game_log_drops_a_team_that_resolves_to_nothing(pg_ctx: AnswerContext) -> None:
     """#147: Payton Pritchard's question arrived with an invented "Phoenix
     Suns" in `team`. A name nothing resolves to is dropped, not refused -
     exactly like an invented player name."""
@@ -4149,7 +4139,7 @@ def test_game_log_drops_a_team_that_resolves_to_nothing(pg_ctx: TemplateContext)
     assert with_bad_team.data["games"] == without_team.data["games"]
 
 
-def test_game_log_own_team_beside_a_real_opponent_keeps_the_opponent(pg_ctx: TemplateContext) -> None:
+def test_game_log_own_team_beside_a_real_opponent_keeps_the_opponent(pg_ctx: AnswerContext) -> None:
     """#147, the Kobe Bryant shape: `team` held his own Lakers and `opponent`
     already held the Rockets - his own team narrows nothing, so the real
     opponent stands."""
@@ -4157,7 +4147,7 @@ def test_game_log_own_team_beside_a_real_opponent_keeps_the_opponent(pg_ctx: Tem
     assert [g["opponent"] for g in result.data["games"]] == ["DET", "DET"]
 
 
-def test_game_log_an_opponent_already_named_wins_over_a_disagreeing_team(pg_ctx: TemplateContext) -> None:
+def test_game_log_an_opponent_already_named_wins_over_a_disagreeing_team(pg_ctx: AnswerContext) -> None:
     """A `team` beside an already-named `opponent` is dropped rather than
     reconciled or refused: measured on the filed corpus row, "Phoenix Suns" is
     a real, resolvable team, so comparing it against an already-correct
@@ -4167,7 +4157,7 @@ def test_game_log_an_opponent_already_named_wins_over_a_disagreeing_team(pg_ctx:
     assert [g["opponent"] for g in result.data["games"]] == ["DET", "DET"]
 
 
-def test_game_log_lists_only_the_games_against_the_named_opponent(pg_ctx: TemplateContext) -> None:
+def test_game_log_lists_only_the_games_against_the_named_opponent(pg_ctx: AnswerContext) -> None:
     """Before the contract commit, "jaylen brown last 8 games vs pistons" listed
     the Celtics' last eight games against anybody."""
     result = game_log(pg_ctx, Reading.from_slots({"player": "Brandin Podziemski", "opponent": "Detroit Pistons"}))
@@ -4175,7 +4165,7 @@ def test_game_log_lists_only_the_games_against_the_named_opponent(pg_ctx: Templa
     assert result.answer.startswith(f"Brandin Podziemski vs the Detroit Pistons, last 2 games of the {current_season()} regular season:")
 
 
-def test_a_players_log_is_read_into_a_result_and_said_from_it_alone(pg_ctx: TemplateContext) -> None:
+def test_a_players_log_is_read_into_a_result_and_said_from_it_alone(pg_ctx: AnswerContext) -> None:
     """Phase 2, step 0: ``compose.logs.read_player_log`` returns a Result - the
     rows, the count before the window, the per-game summary, the notes as
     kinds and facts - and ``compose.say.say`` words it into exactly the
@@ -4199,7 +4189,7 @@ def test_a_players_log_is_read_into_a_result_and_said_from_it_alone(pg_ctx: Temp
     assert answered is not None and say(read).answer == answered.answer and say(read).data == answered.data
 
 
-def test_a_career_log_against_an_opponent_crosses_seasons(pg_ctx: TemplateContext) -> None:
+def test_a_career_log_against_an_opponent_crosses_seasons(pg_ctx: AnswerContext) -> None:
     s = current_season()
     result = game_log(pg_ctx, Reading.from_slots({"player": "Brandin Podziemski", "opponent": "Detroit Pistons", "span": "career", "limit": 8}))
     assert [g["season"] for g in result.data["games"]] == [s, s, s - 1]
@@ -4207,19 +4197,19 @@ def test_a_career_log_against_an_opponent_crosses_seasons(pg_ctx: TemplateContex
     assert "Only 3 games vs the Detroit Pistons in his box scores." in result.answer
 
 
-def test_a_short_season_log_says_how_many_there_were_and_where_the_rest_are(pg_ctx: TemplateContext) -> None:
+def test_a_short_season_log_says_how_many_there_were_and_where_the_rest_are(pg_ctx: AnswerContext) -> None:
     answer = game_log(pg_ctx, Reading.from_slots({"player": "Brandin Podziemski", "opponent": "Detroit Pistons", "limit": 8})).answer
     assert f"Only 2 games vs the Detroit Pistons in the {current_season()} regular season - ask about his career to reach earlier seasons." in answer
 
 
-def test_game_log_honors_venue(pg_ctx: TemplateContext) -> None:
+def test_game_log_honors_venue(pg_ctx: AnswerContext) -> None:
     home = game_log(pg_ctx, Reading.from_slots({"player": "Brandin Podziemski", "venue": "home"})).data["games"]
     away = game_log(pg_ctx, Reading.from_slots({"player": "Brandin Podziemski", "venue": "away"})).data["games"]
     assert [g["home_away"] for g in home] == ["home", "home"]
     assert [g["opponent"] for g in away] == ["DET"]
 
 
-def test_game_log_lists_only_games_he_played_and_says_what_it_left_out(pg_ctx: TemplateContext) -> None:
+def test_game_log_lists_only_games_he_played_and_says_what_it_left_out(pg_ctx: AnswerContext) -> None:
     """The DNP in e4 is not a game he played; the empty line in e6 is not a
     game anybody can average. The empty line is counted in the answer, since in
     2013-2018 about one team-game in eight looks like it."""
@@ -4231,7 +4221,7 @@ def test_game_log_lists_only_games_he_played_and_says_what_it_left_out(pg_ctx: T
     assert "Not counted: 1 game in this span whose box score lists him with no minutes and no stats." in result.data["notes"]
 
 
-def test_game_log_averages_exactly_the_games_it_lists(pg_ctx: TemplateContext) -> None:
+def test_game_log_averages_exactly_the_games_it_lists(pg_ctx: AnswerContext) -> None:
     result = game_log(pg_ctx, Reading.from_slots({"player": "Brandin Podziemski", "limit": 2}))
     assert [g["points"] for g in result.data["games"]] == [15, 20]
     assert result.data["averages"]["points"] == pytest.approx(17.5)
@@ -4239,7 +4229,7 @@ def test_game_log_averages_exactly_the_games_it_lists(pg_ctx: TemplateContext) -
     assert "17.5" in average_row
 
 
-def test_game_log_says_how_many_games_the_window_cut_from(pg_ctx: TemplateContext) -> None:
+def test_game_log_says_how_many_games_the_window_cut_from(pg_ctx: AnswerContext) -> None:
     """F149 (ISSUES.md): a limit (default or asked) that keeps fewer games
     than qualified used to head the log "last N games" with no word about
     the rest. Podziemski has 3 played regular-season games this season (e1,
@@ -4262,7 +4252,7 @@ def test_game_log_says_how_many_games_the_window_cut_from(pg_ctx: TemplateContex
     assert "of 3" not in full.answer.splitlines()[0]
 
 
-def test_a_named_stat_adds_its_columns_to_the_log(pg_ctx: TemplateContext) -> None:
+def test_a_named_stat_adds_its_columns_to_the_log(pg_ctx: AnswerContext) -> None:
     result = game_log(pg_ctx, Reading.from_slots({"player": "Brandin Podziemski", "stat": "freeThrowPct"}))
     titles = result.answer.splitlines()[1].split()
     assert titles[-3:] == ["FTM", "FTA", "FT%"]
@@ -4270,15 +4260,15 @@ def test_a_named_stat_adds_its_columns_to_the_log(pg_ctx: TemplateContext) -> No
     assert result.data["averages"]["freeThrowPct"] == pytest.approx(100 * 7 / 9)
 
 
-def test_an_unnarrowed_line_on_a_stat_with_no_column_names_the_stat(pg_ctx: TemplateContext) -> None:
+def test_an_unnarrowed_line_on_a_stat_with_no_column_names_the_stat(pg_ctx: AnswerContext) -> None:
     """ "what was steph curry's avg shot distance" fell through as "an
     unnarrowed player line the season line's reader did not say" once the
     template retired; the retired template's own reason names the stat."""
-    with pytest.raises(TemplateUnsupported, match="no per-game column for stat 'avg_shot_distance'"):
+    with pytest.raises(Unsupported, match="no per-game column for stat 'avg_shot_distance'"):
         player_stat(pg_ctx, Reading.from_slots({"player": "Brandin Podziemski", "stat": "avg_shot_distance"}))
 
 
-def test_a_real_stat_the_log_cannot_show_is_refused_rather_than_dropped(pg_ctx: TemplateContext) -> None:
+def test_a_real_stat_the_log_cannot_show_is_refused_rather_than_dropped(pg_ctx: AnswerContext) -> None:
     assert game_log(pg_ctx, Reading.from_slots({"player": "Brandin Podziemski", "stat": "assist_o_net_pts"})).answer == "A game log has no per-game column for 'assist_o_net_pts'."
     # Not a stat at all - the required slot filled with something - adds nothing.
     assert game_log(pg_ctx, Reading.from_slots({"player": "Brandin Podziemski", "stat": "game log"})).data["columns"] == ["MIN", "PTS", "REB", "AST"]
@@ -4290,7 +4280,7 @@ def test_a_real_stat_the_log_cannot_show_is_refused_rather_than_dropped(pg_ctx: 
     assert "TS% 55.0%" in shown.answer and shown.data["rows"][0]["ts_pct"] == 0.55
 
 
-def test_game_log_dates_are_the_eastern_day_the_game_was_played(pg_ctx: TemplateContext) -> None:
+def test_game_log_dates_are_the_eastern_day_the_game_was_played(pg_ctx: AnswerContext) -> None:
     """e2 tipped at 00:30 UTC on the 2nd - 7:30pm Eastern on the 1st. Matching
     the UTC day found it under the wrong date and missed it under the right one."""
     s = current_season()
@@ -4300,13 +4290,13 @@ def test_game_log_dates_are_the_eastern_day_the_game_was_played(pg_ctx: Template
     assert game_log(pg_ctx, Reading.from_slots({"player": "Brandin Podziemski", "date": f"{s - 1}-12-02"})).data["games"] == []
 
 
-def test_a_date_finds_its_game_whatever_season_the_router_assumed(pg_ctx: TemplateContext) -> None:
+def test_a_date_finds_its_game_whatever_season_the_router_assumed(pg_ctx: AnswerContext) -> None:
     s = current_season()
     result = game_log(pg_ctx, Reading.from_slots({"player": "Brandin Podziemski", "date": f"{s - 1}-02-28", "season": s}))
     assert [g["season"] for g in result.data["games"]] == [s - 1]
 
 
-def test_without_counts_a_did_not_play_entry_and_a_missing_row_alike(pg_ctx: TemplateContext) -> None:
+def test_without_counts_a_did_not_play_entry_and_a_missing_row_alike(pg_ctx: AnswerContext) -> None:
     """An injured player mostly has no row at all: Stephen Curry's 2026 is 43
     rows for an 82-game Warriors season, none of them did-not-play."""
     s = current_season()
@@ -4315,7 +4305,7 @@ def test_without_counts_a_did_not_play_entry_and_a_missing_row_alike(pg_ctx: Tem
     assert "a did-not-play entry, or no line in the box score at all" in result.answer
 
 
-def test_a_teammate_who_played_a_rebuilt_game_is_not_counted_as_absent(pg_ctx: TemplateContext) -> None:
+def test_a_teammate_who_played_a_rebuilt_game_is_not_counted_as_absent(pg_ctx: AnswerContext) -> None:
     """The `without` half of the P1 the rebuild left behind.
 
     `_teammate_played` asked the stored table for minutes, and a line rebuilt
@@ -4345,7 +4335,7 @@ def test_a_teammate_who_played_a_rebuilt_game_is_not_counted_as_absent(pg_ctx: T
     assert sorted(g["date"] for g in result.data["games"]) == [f"{s}-01-10"], "e2 is a game Curry played, rebuilt"
 
 
-def test_without_falls_back_when_the_warehouse_has_no_rebuilt_lines(pg_ctx: TemplateContext) -> None:
+def test_without_falls_back_when_the_warehouse_has_no_rebuilt_lines(pg_ctx: AnswerContext) -> None:
     """The same question against a warehouse with no filled view: unchanged.
     The view arrives with a `data load`, and every older warehouse - and every
     other fixture here - has only the stored table."""
@@ -4354,7 +4344,7 @@ def test_without_falls_back_when_the_warehouse_has_no_rebuilt_lines(pg_ctx: Temp
     assert sorted(g["date"] for g in result.data["games"]) == [f"{s - 1}-12-01", f"{s}-01-10"]
 
 
-def test_without_two_teammates_means_neither_of_them_played(pg_ctx: TemplateContext) -> None:
+def test_without_two_teammates_means_neither_of_them_played(pg_ctx: AnswerContext) -> None:
     """ "Celtics record without Tatum and Brown" read only the first name, so
     the answer covered the games without ONE of them. Podziemski played e1, e2
     and e3 this season: Curry played e1 and missed e2 and e3, Kuminga played e3
@@ -4368,49 +4358,49 @@ def test_without_two_teammates_means_neither_of_them_played(pg_ctx: TemplateCont
     assert len(game_log(pg_ctx, Reading.from_slots({"player": "Brandin Podziemski", "without": ["Stephen Curry"]})).data["games"]) == 2
 
 
-def test_without_asks_between_two_teammates_who_share_a_name(pg_ctx: TemplateContext) -> None:
+def test_without_asks_between_two_teammates_who_share_a_name(pg_ctx: AnswerContext) -> None:
     answer = game_log(pg_ctx, Reading.from_slots({"player": "Brandin Podziemski", "without": "curry"})).answer
     assert answer == "'curry' matches more than one player - did you mean Seth Curry or Stephen Curry?"
 
 
-def test_without_narrows_a_shared_name_to_that_seasons_teammates(pg_ctx: TemplateContext) -> None:
+def test_without_narrows_a_shared_name_to_that_seasons_teammates(pg_ctx: AnswerContext) -> None:
     # Last season Seth was a Celtic and Dell was long retired: only one Curry could be meant.
     result = game_log(pg_ctx, Reading.from_slots({"player": "Brandin Podziemski", "without": "curry", "season": current_season() - 1}))
     assert result.data["without"] == ["Stephen Curry"]
 
 
-def test_a_mid_season_arrival_is_not_missing_from_the_games_before_he_came(pg_ctx: TemplateContext) -> None:
+def test_a_mid_season_arrival_is_not_missing_from_the_games_before_he_came(pg_ctx: AnswerContext) -> None:
     """Seth Curry joins at e3. The Warriors' games before that were not played
     "without" a man who was on another team's books."""
     answer = game_log(pg_ctx, Reading.from_slots({"player": "Brandin Podziemski", "without": "Seth Curry"})).answer
     assert answer == f"Brandin Podziemski played 3 games in the {current_season()} regular season, none of them without Seth Curry."
 
 
-def test_a_teammate_carried_over_is_on_the_team_before_his_first_game(pg_ctx: TemplateContext) -> None:
+def test_a_teammate_carried_over_is_on_the_team_before_his_first_game(pg_ctx: AnswerContext) -> None:
     """LeBron James's first 2026 row is 2025-11-19; the Lakers' games before it
     were played without him. Kuminga here is the same shape."""
     result = game_log(pg_ctx, Reading.from_slots({"player": "Brandin Podziemski", "without": "Jonathan Kuminga"}))
     assert [g["opponent"] for g in result.data["games"]] == ["DET", "BOS"]
 
 
-def test_without_somebody_who_was_never_a_teammate_says_so(pg_ctx: TemplateContext) -> None:
+def test_without_somebody_who_was_never_a_teammate_says_so(pg_ctx: AnswerContext) -> None:
     answer = game_log(pg_ctx, Reading.from_slots({"player": "Brandin Podziemski", "without": "Jaylen Brown"})).answer
     assert answer == f"Jaylen Brown was not Brandin Podziemski's teammate in any of his 3 games in the {current_season()} regular season."
 
 
-def test_no_games_against_an_opponent_is_not_no_games(pg_ctx: TemplateContext) -> None:
+def test_no_games_against_an_opponent_is_not_no_games(pg_ctx: AnswerContext) -> None:
     """The refusal names the missing fact: he has games, none of them against
     that team. "No games found for him" would send the reader to the wrong place."""
     answer = game_log(pg_ctx, Reading.from_slots({"player": "Brandin Podziemski", "opponent": "Los Angeles Lakers"})).answer
     assert answer == f"Brandin Podziemski played 3 games in the {current_season()} regular season, none of them vs the Los Angeles Lakers."
 
 
-def test_a_season_with_no_games_at_all_says_that(pg_ctx: TemplateContext) -> None:
+def test_a_season_with_no_games_at_all_says_that(pg_ctx: AnswerContext) -> None:
     s = current_season() - 5
     assert game_log(pg_ctx, Reading.from_slots({"player": "Brandin Podziemski", "season": s})).answer == f"No {s} regular season games found for Brandin Podziemski."
 
 
-def test_a_defaulted_season_with_no_games_redirects_to_a_retired_players_range(pg_ctx: TemplateContext) -> None:
+def test_a_defaulted_season_with_no_games_redirects_to_a_retired_players_range(pg_ctx: AnswerContext) -> None:
     """The season was never named - it defaulted to "now" - so a player whose
     only games are long past gets pointed at his own range instead of a
     refusal that reads as though his whole career were missing (issue #18).
@@ -4426,7 +4416,7 @@ def test_a_defaulted_season_with_no_games_redirects_to_a_retired_players_range(p
     assert answer == f"No {s} regular season games found for Old Timer. He last appears in 1995. The warehouse holds his 1995 regular season; name one, or ask for his career."
 
 
-def test_a_named_season_with_no_games_keeps_the_plain_refusal(pg_ctx: TemplateContext) -> None:
+def test_a_named_season_with_no_games_keeps_the_plain_refusal(pg_ctx: AnswerContext) -> None:
     """Unlike the default case above, the season here is what the question is
     about - redirecting it would answer a year nobody asked for."""
     pg_ctx.con.execute("INSERT INTO players VALUES ('30','Old Timer')")
@@ -4438,7 +4428,7 @@ def test_a_named_season_with_no_games_keeps_the_plain_refusal(pg_ctx: TemplateCo
     assert answer == "No 1999 regular season games found for Old Timer."
 
 
-def test_a_career_never_counts_the_phantom_season_twice(pg_ctx: TemplateContext) -> None:
+def test_a_career_never_counts_the_phantom_season_twice(pg_ctx: AnswerContext) -> None:
     """1993 is a full copy of 1993-94 under another label; a career that read it
     would list every one of those games twice."""
     result = game_log(pg_ctx, Reading.from_slots({"player": "Michael Jordan", "span": "career"}))
@@ -4447,12 +4437,12 @@ def test_a_career_never_counts_the_phantom_season_twice(pg_ctx: TemplateContext)
 
 
 @pytest.mark.parametrize("template", [game_log, player_stat])
-def test_a_career_and_a_named_season_at_once_is_refused(pg_ctx: TemplateContext, template: Any) -> None:
-    with pytest.raises(TemplateUnsupported):
+def test_a_career_and_a_named_season_at_once_is_refused(pg_ctx: AnswerContext, template: Any) -> None:
+    with pytest.raises(Unsupported):
         template(pg_ctx, Reading.from_slots({"player": "Brandin Podziemski", "span": "career", "season": current_season()}))
 
 
-def test_game_log_keeps_only_the_games_past_a_threshold_rather_than_ignoring_it(pg_ctx: TemplateContext) -> None:
+def test_game_log_keeps_only_the_games_past_a_threshold_rather_than_ignoring_it(pg_ctx: AnswerContext) -> None:
     """The retired template refused a threshold outright, and the compiler
     then listed every game with it dropped (5.0.0): now the line is kept -
     e1 15 FGA and e2 20 stay, e3 10 goes - and one beside no stat is refused,
@@ -4462,7 +4452,7 @@ def test_game_log_keeps_only_the_games_past_a_threshold_rather_than_ignoring_it(
     assert game_log(pg_ctx, Reading.from_slots({"player": "Brandin Podziemski", "threshold": 15})).answer == "Keeping only the games past 15 needs the stat they reach it in, and none was read."
 
 
-def test_player_stat_on_one_date_is_that_games_line(pg_ctx: TemplateContext) -> None:
+def test_player_stat_on_one_date_is_that_games_line(pg_ctx: AnswerContext) -> None:
     """A date is one game (step 3, C2: the relation's `date` reaches
     player_stat as it always reached game_log). e2 tipped {s-1}-12-02T00:30Z,
     which is the evening of December 1 Eastern - the UTC day would find
@@ -4484,7 +4474,7 @@ def test_player_stat_on_one_date_is_that_games_line(pg_ctx: TemplateContext) -> 
     assert none.answer.startswith(f"No regular season game on {s}-07-04 found for Brandin Podziemski")
 
 
-def test_the_relation_window_is_cut_after_the_row_filters(pg_ctx: TemplateContext) -> None:
+def test_the_relation_window_is_cut_after_the_row_filters(pg_ctx: AnswerContext) -> None:
     """ "His average over his last 2 games vs Detroit" averages the last two
     DETROIT games, not the last two games of which some were vs Detroit. C0's
     one skeleton-specific rule: the window is cut after every row filter and
@@ -4496,7 +4486,7 @@ def test_the_relation_window_is_cut_after_the_row_filters(pg_ctx: TemplateContex
     s = current_season()
     span = _span_of("career", None, 2, "player_game_log")
     narrowed = _narrow_player_games(pg_ctx.con, Entity("10", "Brandin Podziemski"), span, opponent="Detroit Pistons", venue=None, without=None)
-    assert not isinstance(narrowed, TemplateResult)
+    assert not isinstance(narrowed, Reply)
     narrowed.window = ("recent", 2)
     sql, params = aggregate_sql(narrowed, ["COUNT(*)", "AVG(pgl.points)", "MIN(g.date)"])
     row = pg_ctx.con.execute(sql, params).fetchone()
@@ -4516,7 +4506,7 @@ def test_the_relation_window_is_cut_after_the_row_filters(pg_ctx: TemplateContex
     assert pg_ctx.con.execute(sql, params).fetchone() == (1, 8.0)
 
 
-def test_player_stat_averages_the_games_against_an_opponent(pg_ctx: TemplateContext) -> None:
+def test_player_stat_averages_the_games_against_an_opponent(pg_ctx: AnswerContext) -> None:
     """ "evan mobley avg against bucks" refused before this - and before the
     refusal, it was answered with his whole season."""
     result = player_stat(pg_ctx, Reading.from_slots({"player": "Brandin Podziemski", "opponent": "Detroit Pistons", "stat": "points"}))
@@ -4524,13 +4514,13 @@ def test_player_stat_averages_the_games_against_an_opponent(pg_ctx: TemplateCont
     assert (result.answer or "").startswith(f"Brandin Podziemski averaged 17.5 points per game in 2 games vs the Detroit Pistons in the {current_season()} regular season. That is 35 in total.")
 
 
-def test_player_stat_honors_venue_and_a_teammates_absence(pg_ctx: TemplateContext) -> None:
+def test_player_stat_honors_venue_and_a_teammates_absence(pg_ctx: AnswerContext) -> None:
     assert player_stat(pg_ctx, Reading.from_slots({"player": "Brandin Podziemski", "venue": "home", "stat": "points"})).data["stats"]["avgPoints"] == 12.5
     without = player_stat(pg_ctx, Reading.from_slots({"player": "Brandin Podziemski", "without": "Stephen Curry", "stat": "points"})).data["stats"]
     assert (without["gamesPlayed"], without["avgPoints"]) == (2, 17.5)
 
 
-def test_player_stat_without_two_teammates_averages_only_the_games_neither_played(pg_ctx: TemplateContext) -> None:
+def test_player_stat_without_two_teammates_averages_only_the_games_neither_played(pg_ctx: AnswerContext) -> None:
     """e2 is the one game Podziemski played without both of them - 20 points.
     Read as a question about Curry alone it was 2 games and 17.5."""
     result = player_stat(pg_ctx, Reading.from_slots({"player": "Brandin Podziemski", "without": ["Stephen Curry", "Jonathan Kuminga"], "stat": "points"}))
@@ -4538,12 +4528,12 @@ def test_player_stat_without_two_teammates_averages_only_the_games_neither_playe
     assert "without Stephen Curry and Jonathan Kuminga" in result.answer
 
 
-def test_player_stat_says_one_game_not_one_games(pg_ctx: TemplateContext) -> None:
+def test_player_stat_says_one_game_not_one_games(pg_ctx: AnswerContext) -> None:
     answer = player_stat(pg_ctx, Reading.from_slots({"player": "Brandin Podziemski", "opponent": "Boston Celtics", "stat": "points"})).answer
     assert "per game in 1 game vs the Boston Celtics" in answer
 
 
-def test_player_stat_career_is_totals_over_games_not_an_average_of_averages(pg_ctx: TemplateContext) -> None:
+def test_player_stat_career_is_totals_over_games_not_an_average_of_averages(pg_ctx: AnswerContext) -> None:
     """(980 + 240) / (70 + 30) = 12.2. The mean of the two season averages would
     be 11.0 - a number no reader could reproduce from the career line."""
     s = current_season()
@@ -4552,7 +4542,7 @@ def test_player_stat_career_is_totals_over_games_not_an_average_of_averages(pg_c
     assert f"in 100 games over his career (2 regular seasons, {s - 1}-{s})" in result.answer
 
 
-def test_player_stat_answers_a_shooting_percentage_with_its_makes_and_attempts(pg_ctx: TemplateContext) -> None:
+def test_player_stat_answers_a_shooting_percentage_with_its_makes_and_attempts(pg_ctx: AnswerContext) -> None:
     """ "What is Jokic's 3 point percentage this season" fell through to the agent."""
     s = current_season()
     season = player_stat(pg_ctx, Reading.from_slots({"player": "Brandin Podziemski", "stat": "threePointFieldGoalPct"})).answer
@@ -4563,7 +4553,7 @@ def test_player_stat_answers_a_shooting_percentage_with_its_makes_and_attempts(p
     assert "83.3% on free throws (5 of 6) in 2 games vs the Detroit Pistons" in against
 
 
-def test_player_stat_answers_a_made_count_stat_with_its_attempts_and_percentage(pg_ctx: TemplateContext) -> None:
+def test_player_stat_answers_a_made_count_stat_with_its_attempts_and_percentage(pg_ctx: AnswerContext) -> None:
     """F051 (ISSUES.md): "davion mitchell 3 point stats" (stat=
     threePointFieldGoalsMade) printed the makes and the games and nothing
     else - not the attempts or the percentage they make, both
@@ -4582,7 +4572,7 @@ def test_player_stat_answers_a_made_count_stat_with_its_attempts_and_percentage(
     assert "of 6" not in default_line and "%" not in default_line
 
 
-def test_player_stat_over_the_last_n_games_is_the_log_with_its_averages(pg_ctx: TemplateContext) -> None:
+def test_player_stat_over_the_last_n_games_is_the_log_with_its_averages(pg_ctx: AnswerContext) -> None:
     """The product decision: "stats over his last N games" is a log of those
     games with averages beneath, never the season line - so player_stat hands
     the question to game_log rather than refusing it or answering the season."""
@@ -4596,13 +4586,13 @@ def test_player_stat_over_the_last_n_games_is_the_log_with_its_averages(pg_ctx: 
     assert "last 2 of 3 games" in result.answer
 
 
-def test_check_scope_lets_player_stat_honor_since_and_order(pg_ctx: TemplateContext) -> None:
+def test_check_scope_lets_player_stat_honor_since_and_order(pg_ctx: AnswerContext) -> None:
 
     assert unhonored_scoping("player_stat", Scope.from_slots({"player": "Brandin Podziemski", "since": 2024}), STATED_SCOPING["player_stat"]) == []
     assert unhonored_scoping("player_stat", Scope.from_slots({"player": "Brandin Podziemski", "order": "recent", "limit": 3}), STATED_SCOPING["player_stat"]) == []
 
 
-def test_until_closes_a_since_bounded_range_rather_than_reading_through_now(pg_ctx: TemplateContext) -> None:
+def test_until_closes_a_since_bounded_range_rather_than_reading_through_now(pg_ctx: AnswerContext) -> None:
     """``until`` stops a range at the far end instead of reading every season
     since the start through the present - AGENTS.md's own worst-failure-shape
     example ("best 3 point shooters of the 2010s" answering 2010 through now,
@@ -4625,7 +4615,7 @@ def test_until_closes_a_since_bounded_range_rather_than_reading_through_now(pg_c
     assert open_ended.data["seasons"] == [s - 1, s]
 
 
-def test_player_stat_honors_an_own_team_slot_as_his_tenure(pg_ctx: TemplateContext) -> None:
+def test_player_stat_honors_an_own_team_slot_as_his_tenure(pg_ctx: AnswerContext) -> None:
     """yardstick-v2 F166: "lebron stats as a starter for Miami" used to
     answer his current season, with no way to narrow to a team he no longer
     plays for at all - `own_team` (distinct from `opponent`, and from the
@@ -4643,7 +4633,7 @@ def test_player_stat_honors_an_own_team_slot_as_his_tenure(pg_ctx: TemplateConte
     assert warriors.data["stats"]["gamesPlayed"] == 2
 
 
-def test_player_stat_names_the_real_cause_when_nothing_matches(pg_ctx: TemplateContext) -> None:
+def test_player_stat_names_the_real_cause_when_nothing_matches(pg_ctx: AnswerContext) -> None:
     answer = player_stat(pg_ctx, Reading.from_slots({"player": "Brandin Podziemski", "opponent": "Los Angeles Lakers"})).answer
     assert answer == f"Brandin Podziemski played 3 games in the {current_season()} regular season, none of them vs the Los Angeles Lakers."
 
@@ -4661,7 +4651,7 @@ def test_a_narrowed_question_carries_the_box_score_floor() -> None:
 # ---------------- player_matchup with a team opponent, not a second player ----------------
 
 
-def test_player_matchup_needs_two_players(pg_ctx: TemplateContext) -> None:
+def test_player_matchup_needs_two_players(pg_ctx: AnswerContext) -> None:
     """One name and a team is a player's own question, never a matchup: the
     parser reads it that way (``test_parser.test_a_player_against_a_team_is_never_a_matchup``),
     and the router-era fallback that folded it into ``game_log`` from here
@@ -4669,7 +4659,7 @@ def test_player_matchup_needs_two_players(pg_ctx: TemplateContext) -> None:
     assert player_matchup(pg_ctx, Reading.from_slots({"player": "Brandin Podziemski"})).answer == "A matchup needs two players, and only Brandin Podziemski was read."
 
 
-def test_the_matchup_point_refuses_a_team_opponent(pg_ctx: TemplateContext) -> None:
+def test_the_matchup_point_refuses_a_team_opponent(pg_ctx: AnswerContext) -> None:
     """Two players' meetings are the games they played against each other, so
     there is no third team to narrow them to - refused by declaration
     (``RELATION_SCOPING_EXCLUDED``, read by the planner,
@@ -4684,7 +4674,7 @@ def test_the_matchup_point_refuses_a_team_opponent(pg_ctx: TemplateContext) -> N
     assert "opponent" not in STATED_SCOPING["player_matchup"]
 
 
-def test_the_matchup_point_honors_without_too(pg_ctx: TemplateContext) -> None:
+def test_the_matchup_point_honors_without_too(pg_ctx: AnswerContext) -> None:
     """A teammate's absence narrows the first player's games on a genuine
     two-player matchup, as it does on every reader of the relation."""
     scope = Scope.from_slots({"players": ["Brandin Podziemski", "Stephen Curry"], "without": ["Jaylen Brown"]})
@@ -4692,7 +4682,7 @@ def test_the_matchup_point_honors_without_too(pg_ctx: TemplateContext) -> None:
     assert unhonored_scoping("player_matchup", scope, STATED_SCOPING["player_matchup"]) == []
 
 
-def test_the_matchup_point_still_refuses_an_unhonored_slot(pg_ctx: TemplateContext) -> None:
+def test_the_matchup_point_still_refuses_an_unhonored_slot(pg_ctx: AnswerContext) -> None:
     """The relation's slots being honored must not quietly let every other
     scoping slot through too: `order` is excluded (the newest meetings are
     shown beneath averages over all of them), and `round` no relation has -
@@ -4703,7 +4693,7 @@ def test_the_matchup_point_still_refuses_an_unhonored_slot(pg_ctx: TemplateConte
         default_query("player_matchup", {"players": ["Brandin Podziemski", "Stephen Curry"], "round": "finals"})
 
 
-def test_player_matchup_honors_without_on_a_real_two_player_matchup(pg_ctx: TemplateContext) -> None:
+def test_player_matchup_honors_without_on_a_real_two_player_matchup(pg_ctx: AnswerContext) -> None:
     """ "jokic vs embiid without jamal murray" names no team, so this stays
     the genuine two-player matchup it looks like - and the first player's
     games are narrowed through the shared step now (the pair relation is on
@@ -4722,7 +4712,7 @@ def test_player_matchup_honors_without_on_a_real_two_player_matchup(pg_ctx: Temp
 # ---------------- game_log: a teammate named absent, read by the index ----------------
 
 
-def test_a_near_spelling_of_without_is_taken_and_the_reading_is_visible(pg_ctx: TemplateContext) -> None:
+def test_a_near_spelling_of_without_is_taken_and_the_reading_is_visible(pg_ctx: AnswerContext) -> None:
     """yardstick-v2 F157: "de'aaron fox vs magic last five games without
     wembyanama" refused "did you mean Victor Wembanyama?" over a typo the
     question's own key note says resolves cleanly - the true reason the
@@ -4738,7 +4728,7 @@ def test_a_near_spelling_of_without_is_taken_and_the_reading_is_visible(pg_ctx: 
     assert readings == ["('Stephen Cury' matches no player exactly and was read as Stephen Curry, the only near spelling on record - spell the name exactly to ask about someone else.)"]
 
 
-def test_a_surname_backoff_in_without_asks_as_it_does_everywhere(pg_ctx: TemplateContext) -> None:
+def test_a_surname_backoff_in_without_asks_as_it_does_everywhere(pg_ctx: AnswerContext) -> None:
     """ "Jemel Kuminga" is a given name that is nobody's beside one player's
     surname - the back-off, not a misspelling - and `without` used to take it
     where every other name slot asked. It asks here too now, and reads
@@ -4753,7 +4743,7 @@ def test_a_surname_backoff_in_without_asks_as_it_does_everywhere(pg_ctx: Templat
 
 
 @pytest.fixture
-def pm_ctx(tmp_path: Path) -> TemplateContext:
+def pm_ctx(tmp_path: Path) -> AnswerContext:
     """Two Warriors/Lakers meetings, Stephen Curry (athlete ``1``) and LeBron
     James (athlete ``2``) both playing in each, in season ``s - 1`` - not the
     current one, so a bug that silently defaults the season back to "now"
@@ -4812,10 +4802,10 @@ def pm_ctx(tmp_path: Path) -> TemplateContext:
     # have a real box-score row in both games.
     c.execute("CREATE TABLE team_box_stats (event_id VARCHAR, season INTEGER, season_type INTEGER, team_id VARCHAR, opponent_team_id VARCHAR, home_away VARCHAR)")
     real_games.build_table(c, {"games", "teams"})
-    return TemplateContext(con=c, out_dir=tmp_path / "out")
+    return AnswerContext(con=c, out_dir=tmp_path / "out")
 
 
-def test_player_matchup_honors_date_over_a_season_full_of_meetings(pm_ctx: TemplateContext) -> None:
+def test_player_matchup_honors_date_over_a_season_full_of_meetings(pm_ctx: AnswerContext) -> None:
     """The core bug: with the season given correctly (matching where the
     games actually are), a `date` naming g1 must narrow to it alone, not
     the season's 2 meetings averaged together."""
@@ -4827,7 +4817,7 @@ def test_player_matchup_honors_date_over_a_season_full_of_meetings(pm_ctx: Templ
     assert f"on {s - 2}-11-10" in result.answer
 
 
-def test_player_matchup_date_replaces_even_an_explicitly_wrong_season(pm_ctx: TemplateContext) -> None:
+def test_player_matchup_date_replaces_even_an_explicitly_wrong_season(pm_ctx: AnswerContext) -> None:
     """The same override `game_log`'s own date handling makes (its
     `test_player_stat_on_one_date_is_that_games_line` proves the identical
     shape for `player_stat`): a date names its game outright, so it replaces
@@ -4853,7 +4843,7 @@ def test_player_matchup_date_replaces_even_an_explicitly_wrong_season(pm_ctx: Te
 
 
 @pytest.fixture
-def empty_season_ctx(tmp_path: Path) -> TemplateContext:
+def empty_season_ctx(tmp_path: Path) -> AnswerContext:
     """One player whose whole season is the empty box score ESPN leaves - every
     Chicago and New Orleans game from 2013 to 2018 in miniature. Built to
     exercise `game_log` and `player_stat`'s narrowed reading, which `sgh_ctx`
@@ -4886,10 +4876,10 @@ def empty_season_ctx(tmp_path: Path) -> TemplateContext:
         "LEFT JOIN games g ON g.event_id = pbs.event_id AND g.season = pbs.season "
         "LEFT JOIN teams t ON t.team_id = pbs.team_id LEFT JOIN teams o ON o.team_id = pbs.opponent_team_id"
     )
-    return TemplateContext(con=c, out_dir=tmp_path)
+    return AnswerContext(con=c, out_dir=tmp_path)
 
 
-def test_game_log_says_the_box_score_is_empty_not_that_the_games_are_missing(empty_season_ctx: TemplateContext) -> None:
+def test_game_log_says_the_box_score_is_empty_not_that_the_games_are_missing(empty_season_ctx: AnswerContext) -> None:
     """The named case in ISSUES.md #72: naming a stat outside REBUILT_STATS
     sent the log back to the fetched lines - empty for his whole season - and
     the refusal named the wrong missing fact. "No games found for Anthony
@@ -4900,7 +4890,7 @@ def test_game_log_says_the_box_score_is_empty_not_that_the_games_are_missing(emp
     assert answer == f"Anthony Davis played 2 games in the {current_season()} regular season, but the box score is empty for all of them - ESPN served no minutes or stats for any."
 
 
-def test_player_stat_narrowed_by_opponent_says_the_box_score_is_empty(empty_season_ctx: TemplateContext) -> None:
+def test_player_stat_narrowed_by_opponent_says_the_box_score_is_empty(empty_season_ctx: AnswerContext) -> None:
     """The other named case: any `player_stat` narrowed by `opponent`, `venue`
     or `without` over an empty-box-score season gave the same wrong-cause
     refusal, for a stat the rebuild does not trust either."""
@@ -4908,7 +4898,7 @@ def test_player_stat_narrowed_by_opponent_says_the_box_score_is_empty(empty_seas
     assert answer == f"Anthony Davis played 2 games in the {current_season()} regular season, but the box score is empty for all of them - ESPN served no minutes or stats for any."
 
 
-def test_a_season_with_no_games_at_all_is_still_told_apart_from_an_empty_one(empty_season_ctx: TemplateContext) -> None:
+def test_a_season_with_no_games_at_all_is_still_told_apart_from_an_empty_one(empty_season_ctx: AnswerContext) -> None:
     """The guard above must not fire for a season with no games in it at all -
     that is still "no games found", never "empty box score". Perturbing the
     fix to always claim an empty box score is exactly what this catches."""
@@ -4917,7 +4907,7 @@ def test_a_season_with_no_games_at_all_is_still_told_apart_from_an_empty_one(emp
 
 
 @pytest.fixture
-def narrowed_rebuilt_ctx(tmp_path: Path) -> TemplateContext:
+def narrowed_rebuilt_ctx(tmp_path: Path) -> AnswerContext:
     """The same empty season as ``empty_season_ctx``, but with a `reconstructed`
     log the way the real warehouse builds one: `player_box_stats` keeps ESPN's
     zeroed rows, and `player_game_log` carries the figures rebuilt from
@@ -4959,10 +4949,10 @@ def narrowed_rebuilt_ctx(tmp_path: Path) -> TemplateContext:
     # The filled view the log is built over on a real warehouse: both of his
     # games rebuilt, as the log's flags say.
     c.execute("CREATE VIEW player_box_stats_filled AS SELECT pbs.*, TRUE AS reconstructed FROM player_box_stats pbs")
-    return TemplateContext(con=c, out_dir=tmp_path)
+    return AnswerContext(con=c, out_dir=tmp_path)
 
 
-def test_player_stat_reads_rebuilt_games_before_deciding_none_matched_the_opponent(narrowed_rebuilt_ctx: TemplateContext) -> None:
+def test_player_stat_reads_rebuilt_games_before_deciding_none_matched_the_opponent(narrowed_rebuilt_ctx: AnswerContext) -> None:
     """The `player_stat` mirror of the `game_log` case below: both of Anthony
     Davis's games here are covered by the rebuild, so a `points` question
     narrowed to an opponent he never faced is missing the OPPONENT, not a box
@@ -4974,7 +4964,7 @@ def test_player_stat_reads_rebuilt_games_before_deciding_none_matched_the_oppone
     assert "empty box score" not in answer
 
 
-def test_game_log_reads_rebuilt_games_before_deciding_none_matched_the_opponent(narrowed_rebuilt_ctx: TemplateContext) -> None:
+def test_game_log_reads_rebuilt_games_before_deciding_none_matched_the_opponent(narrowed_rebuilt_ctx: AnswerContext) -> None:
     """The fact that is really missing when a rebuilt season is narrowed to an
     opponent it never faced is the opponent, not the season - and telling them
     apart needs `_no_narrowed_games` to check for a recorded game under the
@@ -4987,7 +4977,7 @@ def test_game_log_reads_rebuilt_games_before_deciding_none_matched_the_opponent(
     assert "empty box score" not in answer
 
 
-def test_narrowed_player_stat_reads_a_rebuilt_line_for_a_trusted_stat(narrowed_rebuilt_ctx: TemplateContext) -> None:
+def test_narrowed_player_stat_reads_a_rebuilt_line_for_a_trusted_stat(narrowed_rebuilt_ctx: AnswerContext) -> None:
     """The P2 this closes for `player_stat`: before it, ANY narrowing
     (``opponent``, ``venue`` or ``without``) read only the stored table, which
     is empty for every one of these games - even for points, the one stat the
@@ -5002,7 +4992,7 @@ def test_narrowed_player_stat_reads_a_rebuilt_line_for_a_trusted_stat(narrowed_r
     assert "rebuilt from play-by-play" in result.answer
 
 
-def test_a_made_count_over_rebuilt_lines_says_no_attempts_it_cannot_count(narrowed_rebuilt_ctx: TemplateContext) -> None:
+def test_a_made_count_over_rebuilt_lines_says_no_attempts_it_cannot_count(narrowed_rebuilt_ctx: AnswerContext) -> None:
     """Field goals made is a stat a rebuild gets right, so the line reads
     both rebuilt games - but their attempts are outside what the rebuild was
     measured for (`UNGATED_ON_REBUILD`), so "16 of 33 (48.5%)" would be a
@@ -5018,7 +5008,7 @@ def test_a_made_count_over_rebuilt_lines_says_no_attempts_it_cannot_count(narrow
     assert " of 33 " not in result.answer
 
 
-def test_narrowed_player_stat_still_refuses_a_rebuilt_line_for_an_untrusted_stat(narrowed_rebuilt_ctx: TemplateContext) -> None:
+def test_narrowed_player_stat_still_refuses_a_rebuilt_line_for_an_untrusted_stat(narrowed_rebuilt_ctx: AnswerContext) -> None:
     """Turnovers are outside REBUILT_STATS, so the narrowed reading must not
     widen to the rebuild even though one exists here - and the refusal still
     has to name the fact that is really missing (the box score, not the
@@ -5027,7 +5017,7 @@ def test_narrowed_player_stat_still_refuses_a_rebuilt_line_for_an_untrusted_stat
     assert answer == f"Anthony Davis played 2 games in the {current_season()} regular season, but the box score is empty for all of them - ESPN served no minutes or stats for any."
 
 
-def test_narrowed_player_stat_never_reads_a_shooting_percentage_from_a_rebuilt_line(narrowed_rebuilt_ctx: TemplateContext) -> None:
+def test_narrowed_player_stat_never_reads_a_shooting_percentage_from_a_rebuilt_line(narrowed_rebuilt_ctx: AnswerContext) -> None:
     """A rebuilt line's attempts are outside what the rebuild was measured for
     (`UNGATED_ON_REBUILD`), so a shooting percentage must never widen to it
     even though makes and attempts are both present here. Asserted directly on
@@ -5043,7 +5033,7 @@ def test_narrowed_player_stat_never_reads_a_shooting_percentage_from_a_rebuilt_l
     assert answer == f"Anthony Davis played 2 games in the {current_season()} regular season, but the box score is empty for all of them - ESPN served no minutes or stats for any."
 
 
-def test_player_history_career_is_every_season(ps_con: TemplateContext) -> None:
+def test_player_history_career_is_every_season(ps_con: AnswerContext) -> None:
     """ "Jokic's scoring by year, career" came back as the default four seasons,
     under a heading that did not say how many it had left out."""
     s = current_season()
@@ -5056,7 +5046,7 @@ def test_player_history_career_is_every_season(ps_con: TemplateContext) -> None:
     assert four.startswith(f"Luka Doncic, points per game by regular season, {s - 3}-{s} (most recent first):")
 
 
-def test_player_history_career_states_the_combined_percentage(ps_con: TemplateContext) -> None:
+def test_player_history_career_states_the_combined_percentage(ps_con: AnswerContext) -> None:
     """F041 (ISSUES.md): "show me sga's career 2pt percentage" answered a
     season-by-season table whose rows summed exactly to the combined career
     figure the question asked for, without ever stating it. The career line
@@ -5083,7 +5073,7 @@ def test_player_history_career_states_the_combined_percentage(ps_con: TemplateCo
     assert "career" not in windowed
 
 
-def test_player_history_career_states_the_combined_total(ps_con: TemplateContext) -> None:
+def test_player_history_career_states_the_combined_total(ps_con: AnswerContext) -> None:
     """The counting-stat sibling of the percentage career line above: the
     plain career total, summed the same way `_career_player_stat` sums one."""
     s = current_season()
@@ -5093,31 +5083,31 @@ def test_player_history_career_states_the_combined_total(ps_con: TemplateContext
     assert answer.endswith("Luka Doncic's career total: 3,543 points.")
 
 
-def test_team_game_log_honors_opponent_and_venue(gl_con: TemplateContext) -> None:
+def test_team_game_log_honors_opponent_and_venue(gl_con: AnswerContext) -> None:
     home = game_log(gl_con, Reading.from_slots({"team": "Knicks", "venue": "home"}))
     assert [g["date"] for g in home.data["games"]] == ["2026-04-10"]
     assert home.answer.startswith(f"New York Knicks at home, most recent game of the {current_season()} regular season (1-0):")
     assert len(game_log(gl_con, Reading.from_slots({"team": "Knicks", "opponent": "Boston Celtics"})).data["games"]) == 2
 
 
-def test_team_game_log_says_when_it_never_met_the_opponent(gl_con: TemplateContext) -> None:
+def test_team_game_log_says_when_it_never_met_the_opponent(gl_con: AnswerContext) -> None:
     gl_con.con.execute("INSERT INTO teams VALUES ('13','LAL','Los Angeles Lakers')")
     answer = game_log(gl_con, Reading.from_slots({"team": "Knicks", "opponent": "Los Angeles Lakers"})).answer
     assert answer == f"The New York Knicks played 2 games in the {current_season()} regular season, none of them vs the Los Angeles Lakers."
 
 
-def test_team_game_log_leaves_without_to_with_without(gl_con: TemplateContext) -> None:
-    with pytest.raises(TemplateUnsupported):
+def test_team_game_log_leaves_without_to_with_without(gl_con: AnswerContext) -> None:
+    with pytest.raises(Unsupported):
         game_log(gl_con, Reading.from_slots({"team": "Knicks", "without": "Jalen Brunson"}))
 
 
-def test_team_game_log_career_says_all_time(gl_con: TemplateContext) -> None:
+def test_team_game_log_career_says_all_time(gl_con: AnswerContext) -> None:
     result = game_log(gl_con, Reading.from_slots({"team": "Knicks", "span": "career"}))
     assert len(result.data["games"]) == 2
     assert f"(all-time, {current_season()} regular season) (1-1):" in result.answer
 
 
-def test_team_game_log_is_not_doubled_by_a_phantom_season(gl_con: TemplateContext) -> None:
+def test_team_game_log_is_not_doubled_by_a_phantom_season(gl_con: AnswerContext) -> None:
     """The phantom 1993 shares every event id with 1994, and a join on event_id
     alone listed each of those games twice - 164 rows for the Celtics' 82."""
     gl_con.con.execute("INSERT INTO games VALUES ('e1',?,2,'2026-04-10T22:00Z','18','2',112,95,'18',false,'New York')", [current_season() - 1])
@@ -5129,7 +5119,7 @@ def test_team_game_log_is_not_doubled_by_a_phantom_season(gl_con: TemplateContex
     assert len(game_log(gl_con, Reading.from_slots({"team": "Knicks"})).data["games"]) == 2
 
 
-def test_team_game_log_does_not_call_a_missing_result_a_loss(gl_con: TemplateContext) -> None:
+def test_team_game_log_does_not_call_a_missing_result_a_loss(gl_con: AnswerContext) -> None:
     """ "Not the winner" is not the same fact as "lost".
 
     Perturbed into `real_games` rather than into `games` underneath it, because
@@ -5148,7 +5138,7 @@ def test_team_game_log_does_not_call_a_missing_result_a_loss(gl_con: TemplateCon
 
 
 @pytest.fixture
-def playoff_ctx(tmp_path: Path) -> TemplateContext:
+def playoff_ctx(tmp_path: Path) -> AnswerContext:
     """ESPN's labels before 1993-94: the postseason games labeled 1990 are the
     1991 Finals, and the phantom 1993 is a copy of 1994's games."""
     c = duckdb.connect(":memory:")
@@ -5171,10 +5161,10 @@ def playoff_ctx(tmp_path: Path) -> TemplateContext:
         boxes += [(event, season, season_type, home, away, "home"), (event, season, season_type, away, home, "away")]
     c.executemany("INSERT INTO team_box_stats VALUES (?,?,?,?,?,?)", boxes)
     real_games.build_table(c, {"games", "teams"})
-    return TemplateContext(con=c, out_dir=tmp_path)
+    return AnswerContext(con=c, out_dir=tmp_path)
 
 
-def test_an_early_playoffs_is_found_by_the_year_it_was_played(playoff_ctx: TemplateContext) -> None:
+def test_an_early_playoffs_is_found_by_the_year_it_was_played(playoff_ctx: AnswerContext) -> None:
     """ESPN labels the 1991 Finals season 1990. Matched by label, "the 1991
     playoffs" found 1992's, and "the 1990 playoffs" found 1991's."""
     both = ["Chicago Bulls", "Los Angeles Lakers"]
@@ -5182,27 +5172,27 @@ def test_an_early_playoffs_is_found_by_the_year_it_was_played(playoff_ctx: Templ
     assert head_to_head(playoff_ctx, Reading.from_slots({"teams": both, "season": 1990, "season_type": 3})).data["games"] == 0
 
 
-def test_the_phantom_season_does_not_double_a_playoffs(playoff_ctx: TemplateContext) -> None:
+def test_the_phantom_season_does_not_double_a_playoffs(playoff_ctx: AnswerContext) -> None:
     assert head_to_head(playoff_ctx, Reading.from_slots({"teams": ["Chicago Bulls", "Los Angeles Lakers"], "season": 1994, "season_type": 3})).data["games"] == 1
 
 
-def test_team_quarter_points_finds_an_early_playoffs_by_its_year(playoff_ctx: TemplateContext) -> None:
+def test_team_quarter_points_finds_an_early_playoffs_by_its_year(playoff_ctx: AnswerContext) -> None:
     got = team_quarter_points(playoff_ctx, Reading.from_slots({"team": "Chicago Bulls", "period": 1, "season": 1991, "season_type": 3}))
     assert [g["points"] for g in got.data["games"]] == [20, 27]
 
 
-def test_a_team_log_labels_an_early_playoffs_by_its_year(playoff_ctx: TemplateContext) -> None:
+def test_a_team_log_labels_an_early_playoffs_by_its_year(playoff_ctx: AnswerContext) -> None:
     got = game_log(playoff_ctx, Reading.from_slots({"team": "Chicago Bulls", "season": 1991, "season_type": 3}))
     assert [g["season"] for g in got.data["games"]] == [1991, 1991]
 
 
-def test_head_to_head_takes_the_opponent_as_the_other_team(playoff_ctx: TemplateContext) -> None:
+def test_head_to_head_takes_the_opponent_as_the_other_team(playoff_ctx: AnswerContext) -> None:
     """ "Celtics vs Bulls head to head record" arrived as team + opponent and was refused."""
     got = head_to_head(playoff_ctx, Reading.from_slots({"team": "Chicago Bulls", "opponent": "Los Angeles Lakers", "season": 1991, "season_type": 3}))
     assert got.data["games"] == 2
 
 
-def test_head_to_head_reads_past_a_team_named_twice(playoff_ctx: TemplateContext) -> None:
+def test_head_to_head_reads_past_a_team_named_twice(playoff_ctx: AnswerContext) -> None:
     """The first two names are one team; the opponent after them is the second."""
     slots = {"team": "Chicago Bulls", "teams": ["Bulls"], "opponent": "Los Angeles Lakers", "season": 1991, "season_type": 3}
     assert head_to_head(playoff_ctx, Reading.from_slots(slots)).data["games"] == 2
@@ -5214,7 +5204,7 @@ SEASON = current_season()
 
 
 @pytest.fixture
-def period_ctx(tmp_path: Path) -> TemplateContext:
+def period_ctx(tmp_path: Path) -> AnswerContext:
     """One player, six games, and shots whose value has to be DERIVED rather
     than read off a label - which is the whole point of the template.
 
@@ -5297,10 +5287,10 @@ def period_ctx(tmp_path: Path) -> TemplateContext:
         "LEFT JOIN players p ON p.athlete_id = pbs.athlete_id "
         "LEFT JOIN teams o ON o.team_id = CASE WHEN g.home_team_id = pbs.team_id THEN g.away_team_id ELSE g.home_team_id END"
     )
-    return TemplateContext(con=c, out_dir=tmp_path / "out")
+    return AnswerContext(con=c, out_dir=tmp_path / "out")
 
 
-def test_a_quarter_is_summed_from_the_shots_position_not_its_label(period_ctx: TemplateContext) -> None:
+def test_a_quarter_is_summed_from_the_shots_position_not_its_label(period_ctx: AnswerContext) -> None:
     """Curry's first quarters: 2 threes in e1, 1 in e2, 1 in e4 - 12 points.
     Every one carries `points_attempted = 0`, so a template that trusted ESPN's
     label would answer 0, and one that looked for the words "three point" in
@@ -5321,7 +5311,7 @@ def test_a_quarter_is_summed_from_the_shots_position_not_its_label(period_ctx: T
     assert "12 points in the 1st quarter over 5 games" in (result.answer or "")
 
 
-def test_a_half_is_the_two_quarters_it_holds_and_never_overtime(period_ctx: TemplateContext) -> None:
+def test_a_half_is_the_two_quarters_it_holds_and_never_overtime(period_ctx: AnswerContext) -> None:
     """First half is periods 1 and 2; second half is 3 and 4. e4's overtime
     three belongs to neither - a game that went to overtime still had a second
     half, and folding OT in would quietly answer a different question for
@@ -5332,7 +5322,7 @@ def test_a_half_is_the_two_quarters_it_holds_and_never_overtime(period_ctx: Temp
     assert second.data["total"] == 12, "e1 Q3, e2 two in Q4, e3 Q3 - and NOT e4's overtime"
 
 
-def test_an_opponent_and_a_venue_narrow_which_games_count(period_ctx: TemplateContext) -> None:
+def test_an_opponent_and_a_venue_narrow_which_games_count(period_ctx: AnswerContext) -> None:
     """Both are in HONORED_SCOPING for this template, so both filter rather
     than refuse. Against the Lakers: e1 and e3. At home: e1, e3, e4 and e5."""
     vs_lakers = period_split(period_ctx, Reading.from_slots({"player": "Stephen Curry", "period": 1, "season": SEASON, "season_type": 2, "opponent": "Lakers"}))
@@ -5341,7 +5331,7 @@ def test_an_opponent_and_a_venue_narrow_which_games_count(period_ctx: TemplateCo
     assert at_home.data["total"] == 9 and at_home.data["games_played"] == 4, "e1, e3, e4, e5 at home; e2 away; e6 a DNP"
 
 
-def test_a_season_whose_shots_cannot_be_valued_is_refused(period_ctx: TemplateContext) -> None:
+def test_a_season_whose_shots_cannot_be_valued_is_refused(period_ctx: AnswerContext) -> None:
     """2002 is `UNSEPARABLE_SHOT_VALUES`: `SHOT_VALUE_SQL` is NULL for 20,534 of
     its made shots, so a sum over them means nothing. Measured against ESPN's
     linescores it reconciles 4.9% of the time. The refusal names that, rather
@@ -5350,7 +5340,7 @@ def test_a_season_whose_shots_cannot_be_valued_is_refused(period_ctx: TemplateCo
     assert "cannot be answered for 2002" in answer
 
 
-def test_the_worst_reconcilable_season_is_refused_and_the_merely_poor_ones_are_caveated(period_ctx: TemplateContext) -> None:
+def test_the_worst_reconcilable_season_is_refused_and_the_merely_poor_ones_are_caveated(period_ctx: AnswerContext) -> None:
     """2016 reconciles at 76.5% - one quarter in four - and is refused. 2004 is
     95.7%, which is worth answering with the figure attached rather than
     withholding. `PERIOD_REFUSE_BELOW` sits between them on purpose."""
@@ -5359,7 +5349,7 @@ def test_the_worst_reconcilable_season_is_refused_and_the_merely_poor_ones_are_c
     assert "96% of the time" in caveated, "a poor season answers, and says how poor"
 
 
-def test_a_stat_the_period_line_cannot_rebuild_is_refused_rather_than_approximated(period_ctx: TemplateContext) -> None:
+def test_a_stat_the_period_line_cannot_rebuild_is_refused_rather_than_approximated(period_ctx: AnswerContext) -> None:
     """Play-by-play records no minutes per quarter, so a period's minutes are
     refused by name rather than read off the whole game's box. And rebounds,
     which the plays DO carry, are refused where the warehouse holds no plays
@@ -5374,7 +5364,7 @@ def test_a_stat_the_period_line_cannot_rebuild_is_refused_rather_than_approximat
     assert answer == "Per-quarter rebounds cannot be answered here: they are rebuilt from play-by-play, and this warehouse holds none."
 
 
-def test_a_shooting_percentage_in_a_period_is_the_periods_makes_over_its_attempts(period_ctx: TemplateContext) -> None:
+def test_a_shooting_percentage_in_a_period_is_the_periods_makes_over_its_attempts(period_ctx: AnswerContext) -> None:
     """ "vj edgecombe 1st quarter 3pt percentage by game" (yardstick-v2) was
     refused as a stat the period line does not rebuild - but the line holds
     the makes and the attempts, so the percentage is the ratio of the two
@@ -5422,7 +5412,7 @@ def test_a_rate_is_refused_where_either_of_its_columns_is() -> None:
     assert period_distrust(SEASON, "fg_pct") is None
 
 
-def test_period_leaderboard_does_not_rank_a_shooting_percentage(period_ctx: TemplateContext) -> None:
+def test_period_leaderboard_does_not_rank_a_shooting_percentage(period_ctx: AnswerContext) -> None:
     """A games-played minimum is not an attempts minimum: ranked by
     first-quarter free throw percentage, the leader is whoever went 3 for 3.
     Refused naming that, before any read, and the refusal points at the one
@@ -5431,7 +5421,7 @@ def test_period_leaderboard_does_not_rank_a_shooting_percentage(period_ctx: Temp
     assert "leaders" not in result.data and "Players are not ranked by free throw percentage in a quarter or half" in (result.answer or "")
 
 
-def test_a_stat_beyond_points_is_read_from_the_plays(period_ctx: TemplateContext) -> None:
+def test_a_stat_beyond_points_is_read_from_the_plays(period_ctx: AnswerContext) -> None:
     """Plan item 4: a period's rebounds are the rebound plays in it - two in
     e1's first quarter, one in its third - and a quarter with none is a zero
     over a game he played, the denominator rule points already keep."""
@@ -5444,7 +5434,7 @@ def test_a_stat_beyond_points_is_read_from_the_plays(period_ctx: TemplateContext
     assert (result.answer or "").startswith("Stephen Curry had 2 rebounds in the 1st quarter over 5 games of the 2026 regular season, averaging 0.4.")
 
 
-def test_a_question_with_no_period_is_the_four_quarters_side_by_side(period_ctx: TemplateContext) -> None:
+def test_a_question_with_no_period_is_the_four_quarters_side_by_side(period_ctx: AnswerContext) -> None:
     """ "Jokic points by quarter" (#162): period_split with no period is the
     breakdown across all four - the compiler's grouped read by period
     (`compose.core._compile_by_period`), four reads of the SAME five games.
@@ -5468,7 +5458,7 @@ def test_a_question_with_no_period_is_the_four_quarters_side_by_side(period_ctx:
     assert "against the Los Angeles Lakers (2 games)" in (threes.answer or "") and "made-att        2-5      1-1      2-2      0-0         5-8" in (threes.answer or "")
 
 
-def test_a_period_answer_says_the_calendar_it_was_narrowed_to(period_ctx: TemplateContext) -> None:
+def test_a_period_answer_says_the_calendar_it_was_narrowed_to(period_ctx: AnswerContext) -> None:
     """A month narrows which games count, and the period sentence named the
     venue, the half, the teammates, the line, the date and the game of a
     series - never the month (ISSUES.md #301): "jokic first quarter points
@@ -5481,7 +5471,7 @@ def test_a_period_answer_says_the_calendar_it_was_narrowed_to(period_ctx: Templa
     assert f"over 4 games of the {SEASON} regular season in November, averaging" in (one.answer or "")
 
 
-def test_a_rebuilt_games_quarters_are_read_like_any_others(period_ctx: TemplateContext) -> None:
+def test_a_rebuilt_games_quarters_are_read_like_any_others(period_ctx: AnswerContext) -> None:
     """A game whose BOX line ESPN never served is rebuilt from the plays
     (Chicago and New Orleans, 2013-2018), and a rebuilt line cannot be
     trusted for turnovers, fouls or attempts (``UNGATED_ON_REBUILD``) - but
@@ -5545,7 +5535,7 @@ def test_the_scoping_slots_this_template_filters_on_are_declared_honored() -> No
             plan(default_reading("period_split", {"player": "Stephen Curry", "period": 1, slot: value}))
 
 
-def test_a_log_lists_the_games_and_keeps_the_season_in_the_header(period_ctx: TemplateContext) -> None:
+def test_a_log_lists_the_games_and_keeps_the_season_in_the_header(period_ctx: AnswerContext) -> None:
     """ "rj barrett 4th qtr log" got a total and an average, and 7 of the 11
     questions this template answered in its first replay asked for a log. The
     rows list every played game, zeros included, and the header still answers
@@ -5558,7 +5548,7 @@ def test_a_log_lists_the_games_and_keeps_the_season_in_the_header(period_ctx: Te
     assert "1st quarter points, every game:" in points, "a stat named: that column alone"
 
 
-def test_a_date_narrows_to_that_one_game(period_ctx: TemplateContext) -> None:
+def test_a_date_narrows_to_that_one_game(period_ctx: AnswerContext) -> None:
     """Step 3, C5: `date` now reaches this template through `scoped_games`,
     the same as every other narrowing here, instead of being refused. e1 is
     the only game on its own Eastern date (a team plays at most one game a
@@ -5580,7 +5570,7 @@ def test_a_date_narrows_to_that_one_game(period_ctx: TemplateContext) -> None:
     assert f"vs the Los Angeles Lakers on {e1_date}" in (result.answer or "")
 
 
-def test_a_date_with_no_game_says_which_date_was_empty(period_ctx: TemplateContext) -> None:
+def test_a_date_with_no_game_says_which_date_was_empty(period_ctx: AnswerContext) -> None:
     """The "no games found" refusal names the date, the same way every other
     narrowing here is said in the answer - a silent date would read as a
     season with nothing on record, which is a different (false) claim."""
@@ -5590,7 +5580,7 @@ def test_a_date_with_no_game_says_which_date_was_empty(period_ctx: TemplateConte
     assert quarters == "No games found for Stephen Curry on 2019-07-04."
 
 
-def test_a_date_in_a_badly_reconciled_season_is_refused_for_that_season(period_ctx: TemplateContext) -> None:
+def test_a_date_in_a_badly_reconciled_season_is_refused_for_that_season(period_ctx: AnswerContext) -> None:
     """The accuracy refusal is read off the game a date finds, not assumed
     from a season slot the router usually defaults to "now" - so a date from
     2004 (labeled `PERIOD_RECONCILIATION`) is caveated even with no season
@@ -5605,7 +5595,7 @@ def test_a_date_in_a_badly_reconciled_season_is_refused_for_that_season(period_c
     assert "96% of the time" in (quarters.answer or "")
 
 
-def test_a_career_span_is_refused_for_the_reconciliation_caveat_it_cannot_apply(period_ctx: TemplateContext) -> None:
+def test_a_career_span_is_refused_for_the_reconciliation_caveat_it_cannot_apply(period_ctx: AnswerContext) -> None:
     """`span` "career" moved from silently honored (and silently WRONG - see
     the SQL fix below) to explicitly excluded: `PERIOD_RECONCILIATION` is
     measured per season, and summing points across a career would need to
@@ -5614,11 +5604,11 @@ def test_a_career_span_is_refused_for_the_reconciliation_caveat_it_cannot_apply(
     the same as every other excluded cell here - see
     `test_the_scoping_slots_this_template_filters_on_are_declared_honored`.
     """
-    with pytest.raises(TemplateUnsupported, match="different span"):
+    with pytest.raises(Unsupported, match="different span"):
         check_scope("period_split", {"player": "Stephen Curry", "period": 1, "span": "career"})
 
 
-def test_a_career_read_sums_every_season_now_the_shot_join_needs_no_season_param(period_ctx: TemplateContext) -> None:
+def test_a_career_read_sums_every_season_now_the_shot_join_needs_no_season_param(period_ctx: AnswerContext) -> None:
     """The bug the join-based rewrite fixes, called directly (check_scope is
     what actually refuses `span` "career" in the pipeline - see the test
     above): before, `span.season` was `None` for a career, and the shot
@@ -5636,17 +5626,17 @@ def test_a_career_read_sums_every_season_now_the_shot_join_needs_no_season_param
     # cross-season redirect (compose.periods._period_redirect) exercises it.
     scope = Scope.from_slots({"player": "Stephen Curry", "period": 1, "span": "career"})
     subject = scoped_player(period_ctx.con, scope, "no player named", table="player_game_log", available=SHOT_AVAILABILITY, span="career", season=None)
-    assert not isinstance(subject, TemplateResult)
+    assert not isinstance(subject, Reply)
     player, span = subject
     narrowed = scoped_games(period_ctx.con, player, span, scope, opponent=None, measures=[])
-    assert not isinstance(narrowed, TemplateResult)
+    assert not isinstance(narrowed, Reply)
     rows = rows_of(period_ctx.con, compile_over(period_ctx.con, Query(scope=scope, skeleton="rows", measures=[*PERIOD_COLUMNS, "opponent_name"], direction="asc"), player, span, narrowed))
     assert rows, "the old bug: a false 'no games' refusal for a player with games on record"
     assert sum(row["points"] for row in rows) == 15, "e1(6) + e2(3) + e4(3) across SEASON, plus e04(3) in 2004"
     assert len(rows) == 6, "e1,e2,e3,e4,e5 (SEASON) and e04 (2004); e6 a DNP, e7 uncovered by the shot table"
 
 
-def test_a_team_log_names_each_opponent_as_it_was_that_season(gl_con: TemplateContext) -> None:
+def test_a_team_log_names_each_opponent_as_it_was_that_season(gl_con: AnswerContext) -> None:
     """ESPN files the Nets under one id in New Jersey and Brooklyn, and `teams`
     holds only today's name, so a 2005 Knicks log listed a game "vs Brooklyn
     Nets" eight years before the team moved."""
@@ -5660,7 +5650,7 @@ def test_a_team_log_names_each_opponent_as_it_was_that_season(gl_con: TemplateCo
 
 
 @pytest.fixture
-def period_rank_ctx(tmp_path: Path) -> TemplateContext:
+def period_rank_ctx(tmp_path: Path) -> AnswerContext:
     """Three players over six postseason games, built to exercise the three
     things a per-game period ranking gets wrong.
 
@@ -5728,10 +5718,10 @@ def period_rank_ctx(tmp_path: Path) -> TemplateContext:
         "FROM player_box_stats pbs JOIN games g ON g.event_id = pbs.event_id AND g.season = pbs.season "
         "LEFT JOIN players p ON p.athlete_id = pbs.athlete_id"
     )
-    return TemplateContext(con=c, out_dir=tmp_path)
+    return AnswerContext(con=c, out_dir=tmp_path)
 
 
-def test_a_period_ranking_averages_over_games_played_not_games_scored_in(period_rank_ctx: TemplateContext) -> None:
+def test_a_period_ranking_averages_over_games_played_not_games_scored_in(period_rank_ctx: AnswerContext) -> None:
     """The mistake period_split records, in the ranking: counting only the
     games with a made shot in the period drops every scoreless quarter and
     lifts the average. Ace scored in five of six first quarters, so his
@@ -5744,7 +5734,7 @@ def test_a_period_ranking_averages_over_games_played_not_games_scored_in(period_
     assert "led the league in 1st quarter points per game" in (result.answer or "")
 
 
-def test_a_period_ranking_states_and_applies_its_games_qualifier(period_rank_ctx: TemplateContext) -> None:
+def test_a_period_ranking_states_and_applies_its_games_qualifier(period_rank_ctx: AnswerContext) -> None:
     """Cameo averages 3.0, the best here, over two games. A per-game ranking
     without a minimum is whoever played once and scored, so he is out - and
     the answer says which minimum it used rather than leaving a reader to
@@ -5755,7 +5745,7 @@ def test_a_period_ranking_states_and_applies_its_games_qualifier(period_rank_ctx
     assert "(minimum 5 games)" in (result.answer or "")
 
 
-def test_a_period_ranking_reads_the_shots_value_from_its_position(period_rank_ctx: TemplateContext) -> None:
+def test_a_period_ranking_reads_the_shots_value_from_its_position(period_rank_ctx: AnswerContext) -> None:
     """Every shot here is unlabeled (`points_attempted = 0`) and 26 feet out.
     Read off the label these are worth nothing; read through SHOT_VALUE_SQL
     each is a three, which is the difference between 76.8% and 99.95%
@@ -5764,13 +5754,13 @@ def test_a_period_ranking_reads_the_shots_value_from_its_position(period_rank_ct
     assert result.data["leaders"][0]["points"] == 15  # five threes, not five zeros
 
 
-def test_a_period_ranking_narrowed_to_a_team_says_so(period_rank_ctx: TemplateContext) -> None:
+def test_a_period_ranking_narrowed_to_a_team_says_so(period_rank_ctx: AnswerContext) -> None:
     result = period_leaderboard(period_rank_ctx, Reading.from_slots({"period": 1, "season": SEASON, "season_type": 3, "team": "Golden State Warriors"}))
     assert "led the Golden State Warriors in 1st quarter points per game" in (result.answer or "")
     assert result.data["team"] == "Golden State Warriors"
 
 
-def test_a_period_ranking_covers_a_half_as_well_as_a_quarter(period_rank_ctx: TemplateContext) -> None:
+def test_a_period_ranking_covers_a_half_as_well_as_a_quarter(period_rank_ctx: AnswerContext) -> None:
     """Ace's six threes are five in the first quarter and one in the second,
     so a first-half ranking sees all six: 18 points over 6 games."""
     result = period_leaderboard(period_rank_ctx, Reading.from_slots({"half": 1, "season": SEASON, "season_type": 3}))
@@ -5778,17 +5768,17 @@ def test_a_period_ranking_covers_a_half_as_well_as_a_quarter(period_rank_ctx: Te
     assert "1st half points per game" in (result.answer or "")
 
 
-def test_a_period_ranking_refuses_a_stat_it_cannot_rank(period_rank_ctx: TemplateContext) -> None:
+def test_a_period_ranking_refuses_a_stat_it_cannot_rank(period_rank_ctx: AnswerContext) -> None:
     """Minutes are not split by period in any source, so they are refused by
     name; rebounds are rebuilt from the plays, and refused only where the
     warehouse holds none (this fixture) - never ranked as zeros."""
-    with pytest.raises(TemplateUnsupported, match="no per-period 'minutes'"):
+    with pytest.raises(Unsupported, match="no per-period 'minutes'"):
         period_leaderboard(period_rank_ctx, Reading.from_slots({"period": 1, "season": SEASON, "season_type": 3, "stat": "minutes"}))
     answer = period_leaderboard(period_rank_ctx, Reading.from_slots({"period": 1, "season": SEASON, "season_type": 3, "stat": "rebounds"})).answer
     assert answer == "Per-quarter rebounds cannot be ranked here: they are rebuilt from play-by-play, and this warehouse holds none."
 
 
-def test_points_by_quarter_is_every_quarter_side_by_side(period_rank_ctx: TemplateContext) -> None:
+def test_points_by_quarter_is_every_quarter_side_by_side(period_rank_ctx: AnswerContext) -> None:
     """yardstick-v2 F048, "nba playerspoints by quarter average": no period
     named is the four quarters per player, ranked by the four together. Ace:
     five first-quarter threes and one second-quarter one over six games -
@@ -5802,7 +5792,7 @@ def test_points_by_quarter_is_every_quarter_side_by_side(period_rank_ctx: Templa
     assert "Overtime is no quarter" in (result.answer or "")
 
 
-def test_a_period_ranking_narrowed_to_an_opponent_or_venue_keeps_a_share_of_the_narrowed_games(period_rank_ctx: TemplateContext) -> None:
+def test_a_period_ranking_narrowed_to_an_opponent_or_venue_keeps_a_share_of_the_narrowed_games(period_rank_ctx: AnswerContext) -> None:
     """#185, Jeff's call (2026-09-30): a pool narrowed to an opponent or a
     venue cannot keep the season's minimum (nobody plays twenty games
     against one team), so the qualifier is half of the most anyone played
@@ -5839,7 +5829,7 @@ def test_a_period_ranking_narrowed_to_an_opponent_or_venue_keeps_a_share_of_the_
     assert table.data["minimum_games"] == 1 and "vs the Boston Celtics (minimum 1 games, half of the 2 anyone played)" in (table.answer or "")
 
 
-def test_a_period_ranking_nobody_qualifies_for_says_so(period_rank_ctx: TemplateContext) -> None:
+def test_a_period_ranking_nobody_qualifies_for_says_so(period_rank_ctx: AnswerContext) -> None:
     """A regular season needs 20 games and this fixture has six postseason
     ones, so the honest answer names the qualifier rather than reading as
     though nobody scored."""
@@ -5848,7 +5838,7 @@ def test_a_period_ranking_nobody_qualifies_for_says_so(period_rank_ctx: Template
     assert "played the 20 games needed to rank" in (result.answer or "")
 
 
-def test_a_period_is_narrowed_by_a_teammates_absence(period_ctx: TemplateContext) -> None:
+def test_a_period_is_narrowed_by_a_teammates_absence(period_ctx: AnswerContext) -> None:
     """ "scottie barnes stats 2nd half log without rj" was refused for a slot
     no period template honored, while the relation had been answering exactly
     that narrowing for four other templates since the port. Klay plays e1-e3
@@ -5864,7 +5854,7 @@ def test_a_period_is_narrowed_by_a_teammates_absence(period_ctx: TemplateContext
     assert whole.data["games_played"] == 5 and "without" not in (whole.answer or "")
 
 
-def test_a_period_is_narrowed_by_a_line_on_a_box_score_column(period_ctx: TemplateContext) -> None:
+def test_a_period_is_narrowed_by_a_line_on_a_box_score_column(period_ctx: AnswerContext) -> None:
     """A line on a stat narrows which of the player's games the period sum
     covers, the same as every other template on the relation (step 3, C2) -
     and since the relation carries the period (plan item 4), the line reads
@@ -5883,11 +5873,11 @@ def test_a_period_is_narrowed_by_a_line_on_a_box_score_column(period_ctx: Templa
     assert low.data["games_played"] == 2
     assert low.data["total"] == 0
     assert "with under 3 points" in (low.answer or "")
-    with pytest.raises(TemplateUnsupported):
+    with pytest.raises(Unsupported):
         period_split(period_ctx, Reading.from_slots({"player": "Stephen Curry", "period": 1, "season": SEASON, "season_type": 2, "above": "24 vibes"}))
 
 
-def test_a_period_log_takes_the_end_of_the_season_the_question_asked_for(period_ctx: TemplateContext) -> None:
+def test_a_period_log_takes_the_end_of_the_season_the_question_asked_for(period_ctx: AnswerContext) -> None:
     """`order` picks which end the rows come from, as it does for game_log.
     Before it was honored, "his first 5 games" showed his last five - a
     different five games, with nothing saying so."""
@@ -5903,16 +5893,16 @@ def test_a_period_log_takes_the_end_of_the_season_the_question_asked_for(period_
     assert "over 5 games" in (first.answer or "") and "over 5 games" in (recent.answer or "")
 
 
-def test_a_period_without_a_teammate_nothing_resolves_refuses_rather_than_dropping_him(period_ctx: TemplateContext) -> None:
+def test_a_period_without_a_teammate_nothing_resolves_refuses_rather_than_dropping_him(period_ctx: AnswerContext) -> None:
     """A name the roster does not hold falls through, exactly as it does for
     every other template on the relation. What must not happen is the name
     being dropped and the period totaled over every game, which would answer
     a wider question than was asked with nothing saying so."""
-    with pytest.raises(TemplateUnsupported, match="no player matching"):
+    with pytest.raises(Unsupported, match="no player matching"):
         period_split(period_ctx, Reading.from_slots({"player": "Stephen Curry", "period": 1, "season": SEASON, "season_type": 2, "without": ["Nobody At All"]}))
 
 
-def test_a_teams_half_is_the_two_quarters_of_its_own_linescore(tq_con: TemplateContext) -> None:
+def test_a_teams_half_is_the_two_quarters_of_its_own_linescore(tq_con: AnswerContext) -> None:
     """A team's half had no template and fell through, because the model maps
     "first half" onto period 1 - wrong for a team the same way it is for a
     player. The linescore already holds both quarters, so it is addition, not
@@ -5924,7 +5914,7 @@ def test_a_teams_half_is_the_two_quarters_of_its_own_linescore(tq_con: TemplateC
     assert "2nd half" in (result.answer or "")
 
 
-def test_a_teams_most_in_a_half_is_one_game_not_the_average(tq_con: TemplateContext) -> None:
+def test_a_teams_most_in_a_half_is_one_game_not_the_average(tq_con: AnswerContext) -> None:
     """ "Detroit Pistons most points in a first half this season" asks for ONE
     game. The Knicks' first halves are 30+25, 20+20 and 10+32, so the most is
     55 against Boston and the fewest 40, and the answer names the game rather
@@ -5940,7 +5930,7 @@ def test_a_teams_most_in_a_half_is_one_game_not_the_average(tq_con: TemplateCont
     assert "extreme" not in plain.data and plain.data["total"] == 137
 
 
-def test_a_teams_quarter_is_unchanged_by_halves_arriving(tq_con: TemplateContext) -> None:
+def test_a_teams_quarter_is_unchanged_by_halves_arriving(tq_con: AnswerContext) -> None:
     """The quarter path is what it was: one period of the linescore, read by
     number rather than summed."""
     result = team_quarter_points(tq_con, Reading.from_slots({"team": "Knicks", "period": 1, "season": current_season(), "season_type": 2}))
@@ -6220,6 +6210,6 @@ def test_a_leaderboard_ranked_by_another_measure_refuses_to_the_compiler() -> No
     scoring triple doubles"; no template honors it, so check_scope refuses
     and the compiler's boolean-game ranking answers. The bare count - the
     same slots without it - is untouched."""
-    with pytest.raises(TemplateUnsupported, match="ranked_by"):
+    with pytest.raises(Unsupported, match="ranked_by"):
         check_scope("leaderboard", {"stat": "triple_double", "limit": 10, "ranked_by": "points"})
     check_scope("leaderboard", {"stat": "triple_double", "limit": 10})

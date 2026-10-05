@@ -39,27 +39,18 @@ import duckdb
 
 from association.nba.coverage import unavailable
 from association.nba.season import current_season
+from association.query.answer import Reply
 from association.query.calendar import CalendarNarrowing, bare_month, parse_situation
 from association.query.conditions import _season_month_order
 from association.query.entities import Entity
 from association.query.notes import Note
+from association.query.reading import Unsupported
 from association.query.result import Grouped, Narrowing, Part, Result, Rows, Scalar, Span
 from association.query.season_line import Statement
 from association.query.season_text import MONTH_NAMES
 from association.query.team_games import TeamNarrowed, game_list_gaps_sql, season_game_counts_sql
 from association.query.team_metrics import FIRST_FULL_REGULAR_SEASON, games_scope
-from association.query.templates.common import (
-    ResolvedSpan,
-    TemplateResult,
-    TemplateUnsupported,
-    check_coverage,
-    resolved_team,
-    slot_season,
-    span_of,
-    team_span_clause,
-    unhonored_scoping,
-    validated_until,
-)
+from association.query.templates.common import ResolvedSpan, check_coverage, resolved_team, slot_season, span_of, team_span_clause, unhonored_scoping, validated_until
 
 from .core import rows_of, values_of
 from .say import say_conference_refusal
@@ -76,20 +67,20 @@ def _team_record_month_and_split(split: str | None, situation: str | None, limit
     split, or a bare ``limit`` with none of the three ("last 10 games" is a
     game log's question: standings hold only the full season)."""
     if split is not None and split != "month":
-        raise TemplateUnsupported(f"no split named {split!r}")
+        raise Unsupported(f"no split named {split!r}")
     month = bare_month(situation)
     narrowing = None
     if situation and month is None:
         narrowing = parse_situation(situation)
         if narrowing is None:
-            raise TemplateUnsupported(f'no calendar narrowing in situation {situation!r} - a weekday, a month, a holiday or "since <day>" is read; an age, a conference or a division is not')
+            raise Unsupported(f'no calendar narrowing in situation {situation!r} - a weekday, a month, a holiday or "since <day>" is read; an age, a conference or a division is not')
         if split == "month":
-            raise TemplateUnsupported("a month split already covers every month; narrowing it further to one weekday or holiday is not built")
+            raise Unsupported("a month split already covers every month; narrowing it further to one weekday or holiday is not built")
     if limit and split is None and month is None and narrowing is None:
         # Measured over the corpus, a month narrowing or a by-month split
         # never carries a real limit of its own (the router fills a default),
         # so only a bare limit is read as "last N games".
-        raise TemplateUnsupported("a record over a limited set of games is a game_log question")
+        raise Unsupported("a record over a limited set of games is a game_log question")
     return split, month, narrowing
 
 
@@ -99,13 +90,13 @@ def _team_record_since(since: int | None, career: bool, season: int | None) -> i
     if not since:
         return None
     if season is not None:
-        raise TemplateUnsupported(f"since {since} and the {season} season at once")
+        raise Unsupported(f"since {since} and the {season} season at once")
     if career:
-        raise TemplateUnsupported(f"since {since} and a career span at once")
+        raise Unsupported(f"since {since} and a career span at once")
     return since
 
 
-def _team_record_teams(con: duckdb.DuckDBPyConnection, scope: Any) -> tuple[Entity, Entity | None] | TemplateResult:
+def _team_record_teams(con: duckdb.DuckDBPyConnection, scope: Any) -> tuple[Entity, Entity | None] | Reply:
     """The team a record is for and the opponent it is against, if any - or
     the clarifying question one of the names needs. "celtics vs bulls
     record" can land both teams in ``teams``; the first is the subject."""
@@ -114,32 +105,32 @@ def _team_record_teams(con: duckdb.DuckDBPyConnection, scope: Any) -> tuple[Enti
     if not (team_text and team_text.strip()) and listed:
         team_text, listed = listed[0], listed[1:]
     team = resolved_team(con, team_text, season=slot_season(scope))
-    if isinstance(team, TemplateResult):
+    if isinstance(team, Reply):
         return team
     opponent_text = scope.opponent
     if opponent_text and opponent_text.strip():
         found = resolved_team(con, opponent_text, season=slot_season(scope))
-        if isinstance(found, TemplateResult):
+        if isinstance(found, Reply):
             return found
         if found.id == team.id:
-            raise TemplateUnsupported("team_record's opponent must differ from the team")
+            raise Unsupported("team_record's opponent must differ from the team")
         return team, found
     for text in listed:
         found = resolved_team(con, text, season=slot_season(scope))
-        if isinstance(found, TemplateResult):
+        if isinstance(found, Reply):
             return found
         if found.id != team.id:
             return team, found
     return team, None
 
 
-def read_team_record(con: duckdb.DuckDBPyConnection, q: TeamQuery, *, stated: frozenset[str]) -> Result | TemplateResult | None:
+def read_team_record(con: duckdb.DuckDBPyConnection, q: TeamQuery, *, stated: frozenset[str]) -> Result | Reply | None:
     """``team_record``'s point read: which of its shapes the settled slots
     pick out - a standings season or career, a tally of the team's games, a
     table by month, or both season types together - with the refusals that
     are the record's own. ``None`` where the scope carries a narrowing its
     words do not state (the planner declines it first); a
-    :class:`~association.query.templates.common.TemplateResult` back is a
+    :class:`~association.query.answer.Reply` back is a
     refusal (a conference named as a team, a season under the game list's
     floor, the relation's own).
 
@@ -153,13 +144,13 @@ def read_team_record(con: duckdb.DuckDBPyConnection, q: TeamQuery, *, stated: fr
         return None
     refused = check_coverage("team_record", scope)
     if refused is not None:
-        return TemplateResult(data={"message": refused, "season": scope.season}, answer=refused)
+        return Reply(data={"message": refused, "season": scope.season}, answer=refused)
     named = conference_named(scope)
     if named is not None:
         return say_conference_refusal(named)
     split, month, calendar = _team_record_month_and_split(scope.split, scope.situation, scope.limit)
     teams = _team_record_teams(con, scope)
-    if isinstance(teams, TemplateResult):
+    if isinstance(teams, Reply):
         return teams
     team, opponent = teams
     season_type = scope.season_type or 2
@@ -167,19 +158,19 @@ def read_team_record(con: duckdb.DuckDBPyConnection, q: TeamQuery, *, stated: fr
     season = scope.season
     if career and season is not None:
         # "all-time ... in 2020" is either a slip or a range this cannot read.
-        raise TemplateUnsupported("a career span and a single season at once")
+        raise Unsupported("a career span and a single season at once")
     since = _team_record_since(scope.since, career, season)
     asked = _Asked(team=team, opponent=opponent, month=month, venue=scope.venue, career=career, season=season, since=since, until=validated_until(scope.until, since), calendar=calendar)
     if scope.season_type_unstated:
         # "including the playoffs": checked before the game_n/season_type
         # conflict below, which assumes one named type.
         if scope.game_n:
-            raise TemplateUnsupported("a game of a playoff series needs one named season type, not both combined")
+            raise Unsupported("a game of a playoff series needs one named season type, not both combined")
         if split == "month":
-            raise TemplateUnsupported("a month split has no combined-season-type form yet")
+            raise Unsupported("a month split has no combined-season-type form yet")
         return _combined(con, q, asked)
     if scope.game_n and season_type != 3:
-        raise TemplateUnsupported(f"game {scope.game_n} names a game of a playoff series, and this is a regular season question")
+        raise Unsupported(f"game {scope.game_n} names a game of a playoff series, and this is a regular season question")
     return _route(con, q, replace(asked, game_n=scope.game_n, split=split), season_type)
 
 
@@ -201,12 +192,12 @@ class _Asked:
     split: str | None = None
 
 
-def _route(con: duckdb.DuckDBPyConnection, q: TeamQuery, asked: _Asked, season_type: int) -> Result | TemplateResult:
+def _route(con: duckdb.DuckDBPyConnection, q: TeamQuery, asked: _Asked, season_type: int) -> Result | Reply:
     """Which shape the settled slots pick out: a table by month, a tally
     since a season, the standings, or a tally of one season or every one."""
     if asked.split == "month":
         if asked.game_n:
-            raise TemplateUnsupported("a month split has no one-game-of-a-series form yet")
+            raise Unsupported("a month split has no one-game-of-a-series form yet")
         if asked.since is not None:
             return _by_month_span(con, q, asked, season_type)
         return _by_month(con, q, asked, None if asked.career else (asked.season or current_season()), season_type)
@@ -251,7 +242,7 @@ def _record_games(con: duckdb.DuckDBPyConnection, q: TeamQuery, asked: _Asked, s
         narrowed.narrow_calendar(asked.calendar)
     if narrowed_by and asked.game_n:
         if season_type != 3:
-            raise TemplateUnsupported(f"game {asked.game_n} names a game of a playoff series, and this is a regular-season question")
+            raise Unsupported(f"game {asked.game_n} names a game of a playoff series, and this is a regular-season question")
         narrowed.narrow_series_game(asked.game_n)
     rows = rows_of(con, compile_team_over(replace(q, shape="rows"), asked.team, span, narrowed, ascending=True))
     games = [_record_game(r) for r in rows]
@@ -330,7 +321,7 @@ def _cup_finals(con: duckdb.DuckDBPyConnection, q: TeamQuery, asked: _Asked, sea
     return [{"date": str(r["day"]), "won": bool(r["won"]), "team_score": r["team_score"], "opponent_score": r["opponent_score"]} for r in rows]
 
 
-def _games_record(con: duckdb.DuckDBPyConnection, q: TeamQuery, asked: _Asked, season: int | None, season_type: int) -> Result | TemplateResult:
+def _games_record(con: duckdb.DuckDBPyConnection, q: TeamQuery, asked: _Asked, season: int | None, season_type: int) -> Result | Reply:
     """A record tallied from the game list: against one team, or in a
     postseason, for one season, since a season, or every season it holds,
     optionally in one month or calendar narrowing or in game N of each
@@ -343,7 +334,7 @@ def _games_record(con: duckdb.DuckDBPyConnection, q: TeamQuery, asked: _Asked, s
         # standings' floor instead.
         refused = unavailable(("games",), season, season_type)
         if refused is not None:
-            return TemplateResult(data={"team": asked.team.name, "season": season, "message": refused}, answer=refused)
+            return Reply(data={"team": asked.team.name, "season": season, "message": refused}, answer=refused)
     games, narrowed = _record_games(con, q, asked, season, season_type)
     seasons = [g["season"] for g in games]
     # One named season is trivially itself; a span's are the seasons its
@@ -401,14 +392,14 @@ def _month_rows(games: list[dict[str, Any]], season: int | None) -> list[dict[st
     return rows
 
 
-def _by_month(con: duckdb.DuckDBPyConnection, q: TeamQuery, asked: _Asked, season: int | None, season_type: int) -> Result | TemplateResult:
+def _by_month(con: duckdb.DuckDBPyConnection, q: TeamQuery, asked: _Asked, season: int | None, season_type: int) -> Result | Reply:
     """The team's record broken out by calendar month, for one season or
     every season it holds: the standings have no game-level date to group a
     month from, so the game list is tallied, as for a single month."""
     if season is not None:
         refused = unavailable(("games",), season, season_type)
         if refused is not None:
-            return TemplateResult(data={"team": asked.team.name, "season": season, "message": refused}, answer=refused)
+            return Reply(data={"team": asked.team.name, "season": season, "message": refused}, answer=refused)
     games, _narrowed = _record_games(con, q, asked, season, season_type, narrowed_by=False)
     shown = [g for g in games if asked.venue is None or g["venue"] == asked.venue]
     facts: dict[str, Any] = {"since": None}
@@ -449,11 +440,11 @@ def _by_month_span(con: duckdb.DuckDBPyConnection, q: TeamQuery, asked: _Asked, 
     )
 
 
-def _half(read: Result | TemplateResult) -> tuple[int, int, Any, tuple[Note, ...], str, str]:
+def _half(read: Result | Reply) -> tuple[int, int, Any, tuple[Note, ...], str, str]:
     """One season type's half of a combined record: its wins, losses, first
     season and remarks, and - for a half that was a refusal - any "Note:"
     tail its answer carried."""
-    if isinstance(read, TemplateResult):
+    if isinstance(read, Reply):
         answer = read.answer or ""
         index = answer.find("Note:")
         return int(read.data.get("wins") or 0), int(read.data.get("losses") or 0), read.data.get("first_season"), (), answer[index:].strip() if index != -1 else "", ""

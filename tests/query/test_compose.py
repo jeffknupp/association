@@ -26,6 +26,7 @@ from routed import default_query, slots_route, with_subject
 from association.fetch.repairs import real_games
 from association.nba.season import current_season
 from association.query import compose
+from association.query.answer import AnswerContext, Reply
 from association.query.compose.core import Query, Refused, Unsupported, compile_query, run
 from association.query.compose.netpoints import NetPointsQuery
 from association.query.compose.plan import plan, plan_point, refusal_result
@@ -37,7 +38,6 @@ from association.query.parse import with_point
 from association.query.point import _asc_or_desc, _everyone_career_scope, _ranking_minimum, read_point, team_read_point
 from association.query.reading import Cause, PointRefused, Reading, Scope, _career_scope
 from association.query.subject import Subject, read_subject
-from association.query.templates.common import TemplateContext, TemplateResult
 
 
 def _reading(con: duckdb.DuckDBPyConnection, intent: str, slots: dict[str, Any], question: str, subject: Subject | None = None) -> Reading:
@@ -48,7 +48,7 @@ def _reading(con: duckdb.DuckDBPyConnection, intent: str, slots: dict[str, Any],
     return Reading(scope=Scope.from_slots(slots), intent=intent, subject=subject or read_subject(con, question, intent, Scope.from_slots(dict(slots))))
 
 
-def compose_answer(ctx: TemplateContext, intent: str, slots: dict[str, Any], question: str, subject: Subject | None = None, declined: Callable[[str], None] | None = None) -> TemplateResult | None:
+def compose_answer(ctx: AnswerContext, intent: str, slots: dict[str, Any], question: str, subject: Subject | None = None, declined: Callable[[str], None] | None = None) -> Reply | None:
     """``compose.answer`` over the point ``question`` moves for ``slots``."""
     reading = with_point(ctx.con, question, _reading(ctx.con, intent, slots, question, subject))
     return compose.answer(ctx, reading, planned=plan_point(reading), declined=declined)
@@ -119,7 +119,7 @@ PODZ, CURRY, BROWN, SABONIS = "10", "11", "12", "13"
 
 
 @pytest.fixture
-def cx_ctx(tmp_path: Path) -> TemplateContext:
+def cx_ctx(tmp_path: Path) -> AnswerContext:
     """A small two-season warehouse: Golden State (Podziemski, Curry),
     Boston (Brown) and Detroit (Sabonis), plus two extra players with 22
     games each (Marcus Fillmore, Derek Vollmer) for the league-ranking tests,
@@ -226,7 +226,7 @@ def cx_ctx(tmp_path: Path) -> TemplateContext:
         "INSERT INTO player_season_stats VALUES (?, ?, 2, NULL, 1, NULL)",
         [(pid, season) for pid in (PODZ, CURRY, BROWN, SABONIS, "90", "91") for season in (s - 1, s)],
     )
-    return TemplateContext(con=c, out_dir=tmp_path)
+    return AnswerContext(con=c, out_dir=tmp_path)
 
 
 def _run(con: duckdb.DuckDBPyConnection, q: Query) -> dict[str, Any]:
@@ -238,21 +238,21 @@ def _run(con: duckdb.DuckDBPyConnection, q: Query) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
-def test_rows_skeleton_reads_a_log(cx_ctx: TemplateContext) -> None:
+def test_rows_skeleton_reads_a_log(cx_ctx: AnswerContext) -> None:
     """``game_log``'s point: the four-stat line, newest games first."""
     q = default_query("game_log", {"player": "Brandin Podziemski"})
     out = _run(cx_ctx.con, q)
     assert [r["points"] for r in out["rows"]] == [10, 28, 15, 20]  # g5, g3, g2, g1 - newest first, g4 (DNP) excluded
 
 
-def test_scalar_skeleton_reads_a_count_or_an_average(cx_ctx: TemplateContext) -> None:
+def test_scalar_skeleton_reads_a_count_or_an_average(cx_ctx: AnswerContext) -> None:
     """``threshold_count``'s point: a scalar count over the narrowed games."""
     q = default_query("threshold_count", {"player": "Brandin Podziemski", "stat": "points", "threshold": 15})
     out = _run(cx_ctx.con, q)
     assert out["rows"][0]["games"] == 3  # g1 (20), g2 (15), g3 (28) - g5 (10) does not clear the line
 
 
-def test_grouped_skeleton_reads_a_split(cx_ctx: TemplateContext) -> None:
+def test_grouped_skeleton_reads_a_split(cx_ctx: AnswerContext) -> None:
     """``player_splits``' point: a record grouped by venue."""
     q = default_query("player_splits", {"player": "Brandin Podziemski"})
     out = _run(cx_ctx.con, q)
@@ -265,7 +265,7 @@ def test_grouped_skeleton_reads_a_split(cx_ctx: TemplateContext) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_a_bare_limit_is_filler_on_a_count_but_the_newest_n_on_a_log(cx_ctx: TemplateContext) -> None:
+def test_a_bare_limit_is_filler_on_a_count_but_the_newest_n_on_a_log(cx_ctx: AnswerContext) -> None:
     """Rule 1: ``limit`` with no ``order`` means "the newest N" on a rows
     read and is dropped as filler everywhere else - a count reads every
     game in the span."""
@@ -275,7 +275,7 @@ def test_a_bare_limit_is_filler_on_a_count_but_the_newest_n_on_a_log(cx_ctx: Tem
     assert [r["points"] for r in logged["rows"]] == [10, 28]  # g5, g3 - the newest two
 
 
-def test_a_real_limit_with_no_order_is_refused_on_a_split(cx_ctx: TemplateContext) -> None:
+def test_a_real_limit_with_no_order_is_refused_on_a_split(cx_ctx: AnswerContext) -> None:
     """Rule 1's mirror image: a real limit (>1) with no ``order`` on a split
     is "his last N games" - a window ``player_splits`` refuses rather than
     silently answering for the whole span."""
@@ -284,7 +284,7 @@ def test_a_real_limit_with_no_order_is_refused_on_a_split(cx_ctx: TemplateContex
         compile_query(cx_ctx.con, q)
 
 
-def test_a_team_beside_the_player_becomes_his_opponent_on_a_log(cx_ctx: TemplateContext) -> None:
+def test_a_team_beside_the_player_becomes_his_opponent_on_a_log(cx_ctx: AnswerContext) -> None:
     """Rule 3: on a ``rows`` read with no opponent already named, a team
     beside the player becomes his opponent."""
     q = default_query("game_log", {"player": "Brandin Podziemski", "team": "Boston Celtics"})
@@ -292,7 +292,7 @@ def test_a_team_beside_the_player_becomes_his_opponent_on_a_log(cx_ctx: Template
     assert [r["points"] for r in out["rows"]] == [10, 20]  # g5, g1 - his two games against Boston, newest first
 
 
-def test_a_team_slot_narrows_to_his_games_for_that_team_on_a_condition_skeleton(cx_ctx: TemplateContext) -> None:
+def test_a_team_slot_narrows_to_his_games_for_that_team_on_a_condition_skeleton(cx_ctx: AnswerContext) -> None:
     """Rule 3: on a condition skeleton (count, record, grouped) a team beside
     the player narrows to his games for that team - a no-op here, since he
     never played for anyone else, but the same code path a traded player's
@@ -302,7 +302,7 @@ def test_a_team_slot_narrows_to_his_games_for_that_team_on_a_condition_skeleton(
     assert with_team["rows"][0]["games"] == without_team["rows"][0]["games"] == 3
 
 
-def test_a_team_slot_is_ignored_entirely_on_a_per_game_average(cx_ctx: TemplateContext) -> None:
+def test_a_team_slot_is_ignored_entirely_on_a_per_game_average(cx_ctx: AnswerContext) -> None:
     """Rule 3, the case the real ``player_stat`` template also takes: a
     per-game average reads no ``team`` slot at all. Before this was fixed,
     a team the player never played for (as the router routinely invents
@@ -315,7 +315,7 @@ def test_a_team_slot_is_ignored_entirely_on_a_per_game_average(cx_ctx: TemplateC
     assert row["points"] == pytest.approx(15.0)  # (20 + 10) / 2
 
 
-def test_situation_narrows_to_the_named_weekday(cx_ctx: TemplateContext) -> None:
+def test_situation_narrows_to_the_named_weekday(cx_ctx: AnswerContext) -> None:
     """``situation`` is a cell of the relation: a weekday narrows the games
     to the ones played on it, over the whole career."""
     s = current_season()
@@ -328,7 +328,7 @@ def test_situation_narrows_to_the_named_weekday(cx_ctx: TemplateContext) -> None
     assert out["rows"][0]["points"] == 28  # g3 is always in the match set (it defines the weekday)
 
 
-def test_starter_bench_category_is_refused_outside_a_grouped_read(cx_ctx: TemplateContext) -> None:
+def test_starter_bench_category_is_refused_outside_a_grouped_read(cx_ctx: AnswerContext) -> None:
     """Rule 9: ``split: starter_bench`` names a category (a table of both
     halves), not a filter - refused on a ``rows``/``scalar`` read, honored
     only by a grouped read by starter."""
@@ -337,7 +337,7 @@ def test_starter_bench_category_is_refused_outside_a_grouped_read(cx_ctx: Templa
         compile_query(cx_ctx.con, q)
 
 
-def test_an_unhonored_scoping_slot_is_refused(cx_ctx: TemplateContext) -> None:
+def test_an_unhonored_scoping_slot_is_refused(cx_ctx: AnswerContext) -> None:
     """Rule 7: a scoping slot the relation cannot narrow by (``round``) is
     refused rather than silently dropped - by the planner, as the point is
     planned (``to_query`` plans); the compile step keeps the same check for
@@ -351,7 +351,7 @@ def test_an_unhonored_scoping_slot_is_refused(cx_ctx: TemplateContext) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_a_measure_word_the_router_did_not_name_moves_the_point(cx_ctx: TemplateContext) -> None:
+def test_a_measure_word_the_router_did_not_name_moves_the_point(cx_ctx: AnswerContext) -> None:
     """A measure word in the question ("plus-minus") is added to a log's
     line even though the router's own ``stat`` slot said nothing about it."""
     q = move_point(cx_ctx.con, "game_log", {"player": "Brandin Podziemski"}, "Podziemski's plus-minus each game this season")
@@ -361,7 +361,7 @@ def test_a_measure_word_the_router_did_not_name_moves_the_point(cx_ctx: Template
     assert g3["plusMinus"] == 17
 
 
-def test_most_in_a_game_moves_to_rows_by_measure(cx_ctx: TemplateContext) -> None:
+def test_most_in_a_game_moves_to_rows_by_measure(cx_ctx: AnswerContext) -> None:
     """ "Career-high" moves a ``player_stat``-shaped point to rows ordered by
     the named measure - the top game(s), not an average."""
     q = move_point(cx_ctx.con, "player_stat", {"player": "Brandin Podziemski", "stat": "points"}, "Podziemski's career-high in points")
@@ -371,7 +371,7 @@ def test_most_in_a_game_moves_to_rows_by_measure(cx_ctx: TemplateContext) -> Non
     assert out["rows"][0]["points"] == 28  # g3, his career high
 
 
-def test_how_many_won_is_a_career_count_with_a_predicate(cx_ctx: TemplateContext) -> None:
+def test_how_many_won_is_a_career_count_with_a_predicate(cx_ctx: AnswerContext) -> None:
     """ "How many ... has he won" moves to a career count with the ``won``
     predicate, whatever season was (or was not) named - route()'s own
     unscoped-count-is-career rule, read here in code."""
@@ -382,7 +382,7 @@ def test_how_many_won_is_a_career_count_with_a_predicate(cx_ctx: TemplateContext
     assert out["rows"][0]["games"] == 4  # g1, g3, g5, g7 - every win across both seasons (g4 DNP excluded)
 
 
-def test_a_boolean_measure_on_a_per_game_intent_is_counted_never_averaged(cx_ctx: TemplateContext) -> None:
+def test_a_boolean_measure_on_a_per_game_intent_is_counted_never_averaged(cx_ctx: AnswerContext) -> None:
     """yardstick-v2 F055 "alperen sengun double-doubles vs southeast division
     career away" routes ``player_splits``, whose figure is a per-game line;
     a double-double is a condition, so its only figure is the count. Before
@@ -411,7 +411,7 @@ def test_career_scope_forces_a_career_span_only_when_nothing_else_scoped_it() ->
     assert _career_scope(Scope(player="X", since=2020)) == Scope(player="X", since=2020)
 
 
-def test_a_ranking_word_with_no_player_groups_by_player_league_wide(cx_ctx: TemplateContext) -> None:
+def test_a_ranking_word_with_no_player_groups_by_player_league_wide(cx_ctx: AnswerContext) -> None:
     """A ranking word with no player subject reads the league-wide grouped
     point - the leaderboard shape a template refuses because no player was
     named."""
@@ -423,7 +423,7 @@ def test_a_ranking_word_with_no_player_groups_by_player_league_wide(cx_ctx: Temp
     assert out["rows"][0]["points"] == pytest.approx(30.0)
 
 
-def test_a_position_word_with_no_player_reads_that_positions_log(cx_ctx: TemplateContext) -> None:
+def test_a_position_word_with_no_player_reads_that_positions_log(cx_ctx: AnswerContext) -> None:
     """A position word with no player subject reads that group's log, rows -
     not a ranking, since no ranking word was asked for."""
     q = move_point(cx_ctx.con, "other", {}, "centers game log this season")
@@ -433,7 +433,7 @@ def test_a_position_word_with_no_player_reads_that_positions_log(cx_ctx: Templat
     assert {r["points"] for r in out["rows"]} == {18, 14}  # Sabonis - the only center on record
 
 
-def test_the_questions_own_number_names_its_column_not_the_routers_stat(cx_ctx: TemplateContext) -> None:
+def test_the_questions_own_number_names_its_column_not_the_routers_stat(cx_ctx: AnswerContext) -> None:
     """A threshold's own words ("30 point") name its column, even where the
     router's ``stat`` slot names a different one entirely."""
     q = move_point(cx_ctx.con, "threshold_count", {"threshold": 30, "stat": "rebounds"}, "players with a 30 point game this season")
@@ -449,14 +449,14 @@ def test_the_questions_own_number_names_its_column_not_the_routers_stat(cx_ctx: 
 # ---------------------------------------------------------------------------
 
 
-def test_a_team_subject_question_is_refused_not_ranked(cx_ctx: TemplateContext) -> None:
+def test_a_team_subject_question_is_refused_not_ranked(cx_ctx: AnswerContext) -> None:
     """A period ("first half") is not this relation's question - refused,
     never answered with a ranking of players over the whole game."""
     with pytest.raises(Unsupported, match="period relation"):
         move_point(cx_ctx.con, "other", {}, "least points scored by the Warriors in the first half this season")
 
 
-def test_an_opponents_or_allowed_figure_is_refused_not_ranked(cx_ctx: TemplateContext) -> None:
+def test_an_opponents_or_allowed_figure_is_refused_not_ranked(cx_ctx: AnswerContext) -> None:
     """A team's own figure - "allowed", "by team" - is the team relation's
     question; refused rather than answered as a ranking of players, which
     silently substituted a different question until this guard existed."""
@@ -469,7 +469,7 @@ def test_an_opponents_or_allowed_figure_is_refused_not_ranked(cx_ctx: TemplateCo
 # ---------------------------------------------------------------------------
 
 
-def test_refused_carries_the_relations_own_wording(cx_ctx: TemplateContext) -> None:
+def test_refused_carries_the_relations_own_wording(cx_ctx: AnswerContext) -> None:
     """A near miss the index will not settle alone ("Jemel Podziemski": a
     given name that is nobody's, beside one player's surname) is a handled
     refusal - the relation's own suggestion - not a bare "cannot answer": it
@@ -482,7 +482,7 @@ def test_refused_carries_the_relations_own_wording(cx_ctx: TemplateContext) -> N
     assert "podziemski" in excinfo.value.result.answer.lower()
 
 
-def test_a_name_nothing_resolves_to_is_unsupported_not_refused(cx_ctx: TemplateContext) -> None:
+def test_a_name_nothing_resolves_to_is_unsupported_not_refused(cx_ctx: AnswerContext) -> None:
     """A name with no near match at all (:func:`~association.query.entities.suggest_players`
     finds nothing) is the compiler declining outright - ``Unsupported``, which
     the agent may still do better with, not a handled ``Refused``."""
@@ -491,14 +491,14 @@ def test_a_name_nothing_resolves_to_is_unsupported_not_refused(cx_ctx: TemplateC
         run(cx_ctx.con, q)
 
 
-def test_answer_returns_none_for_a_question_the_compiler_cannot_say(cx_ctx: TemplateContext) -> None:
+def test_answer_returns_none_for_a_question_the_compiler_cannot_say(cx_ctx: AnswerContext) -> None:
     """``answer()`` reports "not a point on this relation" as ``None`` -
     which is a fall-through to the agent, not a refusal."""
     assert compose_answer(cx_ctx, "game_log", {}, "some team's log") is None
 
 
-def test_answer_composes_a_sentence_and_the_point_it_rests_on(cx_ctx: TemplateContext) -> None:
-    """``answer()``'s ``TemplateResult`` carries a sentence and the point's
+def test_answer_composes_a_sentence_and_the_point_it_rests_on(cx_ctx: AnswerContext) -> None:
+    """``answer()``'s ``Reply`` carries a sentence and the point's
     own values - what a caller checks an answer against. The question's
     "plus-minus" moves the point off ``player_stat``'s own line, so this is
     the compiler's sentence rather than the template's (``compose.present``,
@@ -512,7 +512,7 @@ def test_answer_composes_a_sentence_and_the_point_it_rests_on(cx_ctx: TemplateCo
     assert result.artifacts == []
 
 
-def test_a_closed_range_is_named_as_one_and_counted_as_one(cx_ctx: TemplateContext) -> None:
+def test_a_closed_range_is_named_as_one_and_counted_as_one(cx_ctx: AnswerContext) -> None:
     """``since``/``until`` bound the read at both ends, and the sentence says
     the range it counted - "(2025-2026)", not "(2025 on)" - so the stated
     scope matches the number (yardstick-v2 F036, where a 2024-2026 count read
@@ -530,7 +530,7 @@ def test_a_closed_range_is_named_as_one_and_counted_as_one(cx_ctx: TemplateConte
     assert one.data["rows"][0]["games"] == 2
 
 
-def test_an_absence_is_read_on_the_other_side_where_the_man_was_never_a_teammate(cx_ctx: TemplateContext) -> None:
+def test_an_absence_is_read_on_the_other_side_where_the_man_was_never_a_teammate(cx_ctx: AnswerContext) -> None:
     """ROADMAP step 3 (Jeff's call, 2026-09-30): "without X" is the games X
     missed on the subject's team - or, where X was never his teammate in
     the span and the games are narrowed to an opponent X played for, the
@@ -555,7 +555,7 @@ def test_an_absence_is_read_on_the_other_side_where_the_man_was_never_a_teammate
     assert neither is not None and "Domantas Sabonis was not Brandin Podziemski's teammate" in (neither.answer or "")
 
 
-def test_an_empty_splits_read_names_the_narrowing_not_a_phantom_did_not_play(cx_ctx: TemplateContext) -> None:
+def test_an_empty_splits_read_names_the_narrowing_not_a_phantom_did_not_play(cx_ctx: AnswerContext) -> None:
     """ "steph curry record vs lebron" with no meeting this season said
     "listed in 43 box scores but did not play in any of them" - a confident
     refusal naming the wrong missing fact. Podziemski's one Lakers game
@@ -567,7 +567,7 @@ def test_an_empty_splits_read_names_the_narrowing_not_a_phantom_did_not_play(cx_
     assert "none of them vs the Los Angeles Lakers" in (result.answer or "") and "did not play in any" not in (result.answer or "")
 
 
-def test_a_plain_career_names_the_players_own_seasons_not_the_floor(cx_ctx: TemplateContext) -> None:
+def test_a_plain_career_names_the_players_own_seasons_not_the_floor(cx_ctx: AnswerContext) -> None:
     """A career with no ``since``/``until`` named used to read the relation's
     floor - "(1994 on)", true of every player and naming nothing about the
     one asked about (ISSUES.md, "The compiler's career span says '(1994 on)'
@@ -606,7 +606,7 @@ def test_a_plain_career_names_the_players_own_seasons_not_the_floor(cx_ctx: Temp
     assert out["player_seasons"] is None
 
 
-def test_a_refusal_from_answer_is_the_relations_own(cx_ctx: TemplateContext) -> None:
+def test_a_refusal_from_answer_is_the_relations_own(cx_ctx: AnswerContext) -> None:
     """A near-miss name is a handled refusal from ``answer()``, not ``None``."""
     result = compose_answer(cx_ctx, "game_log", {"player": "Podzemski"}, "Podzemski's last 5 games")
     assert result is not None
@@ -627,7 +627,7 @@ _TS = current_season()
 
 
 @pytest.fixture
-def team_cx_ctx(tmp_path: Path) -> TemplateContext:
+def team_cx_ctx(tmp_path: Path) -> AnswerContext:
     """The Magic (season total, plus a finished postseason for the addendum)
     and the Raptors (five regular-season games, for a narrowed
     total/differential window). ``players`` is empty but present, since
@@ -666,10 +666,10 @@ def team_cx_ctx(tmp_path: Path) -> TemplateContext:
             (_TS, 3, "1", 7, 780, 78),  # Orlando's finished playoff run
         ],
     )
-    return TemplateContext(con=c, out_dir=tmp_path)
+    return AnswerContext(con=c, out_dir=tmp_path)
 
 
-def test_team_move_point_reads_an_unnarrowed_season_total(team_cx_ctx: TemplateContext) -> None:
+def test_team_move_point_reads_an_unnarrowed_season_total(team_cx_ctx: AnswerContext) -> None:
     """F127's shape: "how many 3 pointers have the magic made" - a plain
     season total from ``team_season_stats``, not a per-game average, and the
     finished postseason is named too rather than left unmentioned."""
@@ -682,7 +682,7 @@ def test_team_move_point_reads_an_unnarrowed_season_total(team_cx_ctx: TemplateC
     assert "78" in result.note and "playoff" in result.note
 
 
-def test_team_move_point_finds_a_team_the_router_dropped(team_cx_ctx: TemplateContext) -> None:
+def test_team_move_point_finds_a_team_the_router_dropped(team_cx_ctx: AnswerContext) -> None:
     """The router filed no ``team`` slot at all for this exact question, live
     (ISSUES.md) - ``team_named_in`` reads "magic" from the text itself, the
     same repair :func:`association.query.entities.players_named_in` already
@@ -692,7 +692,7 @@ def test_team_move_point_finds_a_team_the_router_dropped(team_cx_ctx: TemplateCo
     assert q.scope.team == "Orlando Magic"
 
 
-def test_team_move_point_is_not_fooled_by_magic_johnson(team_cx_ctx: TemplateContext) -> None:
+def test_team_move_point_is_not_fooled_by_magic_johnson(team_cx_ctx: AnswerContext) -> None:
     """ "Magic" is also Magic Johnson's given name - ``players_named_in``
     finds him from this exact question text, and ``repair``'s dropped-subject
     restoration would turn this into a question about him UNLESS the team
@@ -703,7 +703,7 @@ def test_team_move_point_is_not_fooled_by_magic_johnson(team_cx_ctx: TemplateCon
     assert q.scope.player is None
 
 
-def test_team_move_point_reads_a_narrowed_total(team_cx_ctx: TemplateContext) -> None:
+def test_team_move_point_reads_a_narrowed_total(team_cx_ctx: AnswerContext) -> None:
     """F128's shape (one season type - the mixed-type "last N games" reader
     is ``game_log``'s own ``_team_game_log_mixed``, not this module's): from
     Toronto's own side, their last 3 regular-season games are r3 (110, a
@@ -717,7 +717,7 @@ def test_team_move_point_reads_a_narrowed_total(team_cx_ctx: TemplateContext) ->
     assert not result.from_season_line
 
 
-def test_a_teams_quarter_is_never_read_as_its_season_line(team_cx_ctx: TemplateContext) -> None:
+def test_a_teams_quarter_is_never_read_as_its_season_line(team_cx_ctx: AnswerContext) -> None:
     """A quarter or half narrows the team's games (the period relation's
     team half): "the magic's first-quarter threes" read as unnarrowed would
     answer their season's 961 - a whole-game total under a quarter's
@@ -729,7 +729,7 @@ def test_a_teams_quarter_is_never_read_as_its_season_line(team_cx_ctx: TemplateC
             run_team(team_cx_ctx.con, q)
 
 
-def test_team_move_point_reads_a_narrowed_differential(team_cx_ctx: TemplateContext) -> None:
+def test_team_move_point_reads_a_narrowed_differential(team_cx_ctx: AnswerContext) -> None:
     """F129's shape: Toronto's last 3 games (r3 110-120 L, r4 90-100 W, r5
     115-108 W) sum to a -13 differential (-10 -10 +7), not the season's."""
     q = team_move_point(team_cx_ctx.con, {"stat": "pointsDifference", "team": "Toronto Raptors", "order": "recent", "limit": 3, "season_type": 2}, "raptors point differential over their last 3 games")
@@ -739,20 +739,20 @@ def test_team_move_point_reads_a_narrowed_differential(team_cx_ctx: TemplateCont
     assert result.wins == 2 and result.losses == 1
 
 
-def test_team_move_point_never_hijacks_a_player_ranking(team_cx_ctx: TemplateContext) -> None:
+def test_team_move_point_never_hijacks_a_player_ranking(team_cx_ctx: AnswerContext) -> None:
     """ "Who leads the Lakers in scoring" narrows a PLAYER ranking by team -
     it is not the team's own subject, and must fall through to the
     league-wide reading (``_everyone_point``'s own question) unchanged."""
     assert team_move_point(team_cx_ctx.con, {"stat": "points", "team": "Los Angeles Lakers"}, "who leads the lakers in scoring") is None
 
 
-def test_team_move_point_never_hijacks_a_named_player(team_cx_ctx: TemplateContext) -> None:
+def test_team_move_point_never_hijacks_a_named_player(team_cx_ctx: AnswerContext) -> None:
     """A player already named makes the team a narrowing of him, never the
     subject - ``move_point``'s own player path, untouched."""
     assert team_move_point(team_cx_ctx.con, {"stat": "points", "team": "Orlando Magic", "player": "Paolo Banchero"}, "how many points has banchero scored for the magic") is None
 
 
-def test_team_move_point_ignores_the_routers_any_team_placeholder(team_cx_ctx: TemplateContext) -> None:
+def test_team_move_point_ignores_the_routers_any_team_placeholder(team_cx_ctx: AnswerContext) -> None:
     """K2's own corpus: "rebounds allowed per team" files ``team: "any_team"``
     - a router placeholder, not a name, that ``_resolved_team`` RAISES for
     rather than returning a clarification. Treating it as a real team to
@@ -773,7 +773,7 @@ def test_team_move_point_ignores_the_routers_any_team_placeholder(team_cx_ctx: T
     )
 
 
-def test_a_box_stat_measure_narrowed_to_a_window_is_unsupported(team_cx_ctx: TemplateContext) -> None:
+def test_a_box_stat_measure_narrowed_to_a_window_is_unsupported(team_cx_ctx: AnswerContext) -> None:
     """A box-score count (3-pointers made, not a game-outcome figure) narrowed
     to a window needs a join the team-games relation does not have yet
     (ISSUES.md) - refused rather than silently answering the season instead."""
@@ -825,7 +825,7 @@ def test_a_team_point_refuses_a_cell_only_a_players_games_carry() -> None:
         assert isinstance(plan(team_point(shape, **cells)), TeamQuery), (shape, cells)
 
 
-def test_answer_composes_a_team_subject_sentence(team_cx_ctx: TemplateContext) -> None:
+def test_answer_composes_a_team_subject_sentence(team_cx_ctx: AnswerContext) -> None:
     """``answer()``'s dispatch to the team subject, end to end - the same
     surface :func:`association.query.agent.Agent._try_compose` calls."""
     result = compose_answer(team_cx_ctx, "leaderboard", {"stat": "threePointFieldGoalsMade", "team": "Orlando Magic"}, "how many 3 pointers have the magic made so far this season")
@@ -844,7 +844,7 @@ def test_answer_composes_a_team_subject_sentence(team_cx_ctx: TemplateContext) -
 # ---------------------------------------------------------------------------
 
 
-def test_answer_refuses_a_season_under_the_players_coverage_floor(cx_ctx: TemplateContext) -> None:
+def test_answer_refuses_a_season_under_the_players_coverage_floor(cx_ctx: AnswerContext) -> None:
     """Box scores (and so ``threshold_count``) reach back only to 1994 -
     #197's first gap: the compiler used to answer an empty result as
     confidently as a real one for a season no template would ever reach."""
@@ -853,7 +853,7 @@ def test_answer_refuses_a_season_under_the_players_coverage_floor(cx_ctx: Templa
     assert "1994" in result.answer and "1990" in result.answer
 
 
-def test_answer_carries_a_coverage_caveat_for_a_partly_covered_season(cx_ctx: TemplateContext) -> None:
+def test_answer_carries_a_coverage_caveat_for_a_partly_covered_season(cx_ctx: AnswerContext) -> None:
     """A season the floor reaches but only partly still answers - #197's
     caveat, not a refusal - with the note appended past the sentence.
     ESPN's 2001 postseason is missing ten games (`association.nba.coverage`),
@@ -866,7 +866,7 @@ def test_answer_carries_a_coverage_caveat_for_a_partly_covered_season(cx_ctx: Te
     assert "Note:" not in result.answer  # the current season carries no caveat - proves one is not added where none applies
 
 
-def test_answer_refuses_a_season_under_the_teams_coverage_floor(team_cx_ctx: TemplateContext) -> None:
+def test_answer_refuses_a_season_under_the_teams_coverage_floor(team_cx_ctx: AnswerContext) -> None:
     """``team_season_stats`` reaches back only to 1994 - #197's gap on the
     team subject's own unnarrowed (season-line) reader."""
     result = compose_answer(team_cx_ctx, "leaderboard", {"stat": "threePointFieldGoalsMade", "team": "Orlando Magic", "season": 1990}, "how many 3 pointers did the magic make in 1990")
@@ -874,7 +874,7 @@ def test_answer_refuses_a_season_under_the_teams_coverage_floor(team_cx_ctx: Tem
     assert "1994" in result.answer and "1990" in result.answer
 
 
-def test_answer_carries_a_coverage_caveat_on_a_narrowed_team_question(team_cx_ctx: TemplateContext) -> None:
+def test_answer_carries_a_coverage_caveat_on_a_narrowed_team_question(team_cx_ctx: AnswerContext) -> None:
     """The narrowed (game-level) team reader carries the same caveat call -
     ESPN's 2001 postseason gap does not touch this fixture's games, so the
     assertion is that answering a real, covered narrowed question adds no
@@ -893,7 +893,7 @@ def test_answer_carries_a_coverage_caveat_on_a_narrowed_team_question(team_cx_ct
 # ---------------------------------------------------------------------------
 
 
-def test_a_highest_scoring_boolean_measure_ranks_the_games_not_a_per_player_average(cx_ctx: TemplateContext) -> None:
+def test_a_highest_scoring_boolean_measure_ranks_the_games_not_a_per_player_average(cx_ctx: AnswerContext) -> None:
     """ "Players with the highest scoring triple doubles" is rows over
     everyone, ordered by points, with `triple_double` as a predicate - not
     `_everyone_ranking`'s per-player AVERAGE (which would need
@@ -908,7 +908,7 @@ def test_a_highest_scoring_boolean_measure_ranks_the_games_not_a_per_player_aver
     assert [r["points"] for r in out["rows"]] == [28]  # Podziemski's g3, the fixture's only triple-double
 
 
-def test_biggest_with_no_stat_word_defaults_to_points(cx_ctx: TemplateContext) -> None:
+def test_biggest_with_no_stat_word_defaults_to_points(cx_ctx: AnswerContext) -> None:
     """ "Biggest triple double" names no stat word at all -
     :func:`~association.query.point._boolean_game_measure` falls
     back to points, the same default a "career-high" question gets."""
@@ -935,7 +935,7 @@ def test_everyone_career_scope_reads_ever_and_all_time_only_with_no_season_named
 # ---------------------------------------------------------------------------
 
 
-def test_several_number_stat_lines_read_the_qualifying_games_not_a_count(cx_ctx: TemplateContext) -> None:
+def test_several_number_stat_lines_read_the_qualifying_games_not_a_count(cx_ctx: AnswerContext) -> None:
     """ "33 point and 13 rebound and 10 assist 2 blocks and 2 steals" (F161)
     reads every "<N> <stat>" pair in the question into predicates and lists
     the games clearing all of them - rows over everyone, not a per-player
@@ -951,7 +951,7 @@ def test_several_number_stat_lines_read_the_qualifying_games_not_a_count(cx_ctx:
     assert sorted(r["points"] for r in out["rows"]) == [28, 31]
 
 
-def test_a_league_wide_read_since_a_season_reaches_every_season_from_it(cx_ctx: TemplateContext) -> None:
+def test_a_league_wide_read_since_a_season_reaches_every_season_from_it(cx_ctx: AnswerContext) -> None:
     """``since``/``until`` bound a league-wide read exactly as they bound a
     named player's (F161, #207: "... games since 2000-01" listed the current
     season's games alone, under a heading that said so, because
@@ -981,7 +981,7 @@ def test_a_league_wide_read_since_a_season_reaches_every_season_from_it(cx_ctx: 
         run(cx_ctx.con, both)
 
 
-def test_a_single_number_stat_line_still_counts_by_player(cx_ctx: TemplateContext) -> None:
+def test_a_single_number_stat_line_still_counts_by_player(cx_ctx: AnswerContext) -> None:
     """One line only is still :func:`~association.query.point._everyone_threshold_count`'s
     ordinary per-player COUNT shape - the multi-line move stands aside for
     it (F161's move applies only once there are two or more lines to read).
@@ -996,7 +996,7 @@ def test_a_single_number_stat_line_still_counts_by_player(cx_ctx: TemplateContex
     assert q.subject == "everyone" and q.skeleton == "grouped" and q.group == "player"
 
 
-def test_a_league_wide_count_with_no_line_at_all_is_still_refused(cx_ctx: TemplateContext) -> None:
+def test_a_league_wide_count_with_no_line_at_all_is_still_refused(cx_ctx: AnswerContext) -> None:
     """The K2 guard :func:`_numbered_stat_lines`'s move does not weaken: a
     league-wide ``threshold_count`` naming no line at all - not even in the
     question's own text - is refused, not turned into a whole-league listing."""
@@ -1014,7 +1014,7 @@ def test_a_league_wide_count_with_no_line_at_all_is_still_refused(cx_ctx: Templa
 # ---------------------------------------------------------------------------
 
 
-def test_a_position_group_subject_reads_that_positions_ranking(cx_ctx: TemplateContext) -> None:
+def test_a_position_group_subject_reads_that_positions_ranking(cx_ctx: AnswerContext) -> None:
     """F056 ("highest 3 point percentage in a season. by a shooting guard
     with at least 400 attempts"), the shape: a position group as the
     subject is read off the subject reading - the phrase no longer rides in
@@ -1031,7 +1031,7 @@ def test_a_position_group_subject_reads_that_positions_ranking(cx_ctx: TemplateC
     assert out["rows"][0]["points"] == pytest.approx(30.5)  # (35 + 40 + 25 + 22) / 4
 
 
-def test_an_attempts_or_minutes_floor_is_refused_by_name_not_dropped_or_misapplied(cx_ctx: TemplateContext) -> None:
+def test_an_attempts_or_minutes_floor_is_refused_by_name_not_dropped_or_misapplied(cx_ctx: AnswerContext) -> None:
     """F056's own shape: "... with at least 100 attempts" names a floor the
     relation has no HAVING clause for yet (only a minimum GAMES count,
     :data:`~association.query.compose.core.Query.minimum_games`) - refused
@@ -1045,7 +1045,7 @@ def test_an_attempts_or_minutes_floor_is_refused_by_name_not_dropped_or_misappli
     assert "100 attempts" in said and "at least N games" in said
 
 
-def test_a_stat_this_relation_cannot_read_is_refused_not_defaulted_to_points(cx_ctx: TemplateContext) -> None:
+def test_a_stat_this_relation_cannot_read_is_refused_not_defaulted_to_points(cx_ctx: AnswerContext) -> None:
     """ "Who had the highest netpoints game this season" (no player named, so
     the league-wide reading) named a real stat - NetPoints - this relation
     has no measure for. Before this, ``measure`` came back ``None`` and
@@ -1108,7 +1108,7 @@ def _add_empty_box_score(con: duckdb.DuckDBPyConnection, event: str, season: int
     con.execute(f"INSERT INTO player_box_stats VALUES ({', '.join('?' for _ in range(24))})", (event, season, 2, team, opponent, athlete, False, *([None] * 17)))
 
 
-def test_run_carries_the_not_counted_box_score_note(cx_ctx: TemplateContext) -> None:
+def test_run_carries_the_not_counted_box_score_note(cx_ctx: AnswerContext) -> None:
     """A game_log read now says how many of the span's games it left out for
     an empty box score - ESPN listing Podziemski with no minutes or stats
     at all, not a did-not-play entry (:func:`_add_empty_box_score`)."""
@@ -1119,7 +1119,7 @@ def test_run_carries_the_not_counted_box_score_note(cx_ctx: TemplateContext) -> 
     assert any("Not counted: 1 game" in note for note in out["notes"])
 
 
-def test_answer_appends_the_box_score_notes_to_the_sentence(cx_ctx: TemplateContext) -> None:
+def test_answer_appends_the_box_score_notes_to_the_sentence(cx_ctx: AnswerContext) -> None:
     """``answer()`` appends ``out["notes"]`` to the sentence the same way it
     already appends the coverage caveat, and carries the same list on
     ``data`` for a caller that reads values rather than the prose."""
@@ -1131,7 +1131,7 @@ def test_answer_appends_the_box_score_notes_to_the_sentence(cx_ctx: TemplateCont
     assert any("Not counted: 1 game" in note for note in result.data["notes"])
 
 
-def test_a_career_predating_box_scores_gets_the_floor_note(cx_ctx: TemplateContext) -> None:
+def test_a_career_predating_box_scores_gets_the_floor_note(cx_ctx: AnswerContext) -> None:
     """A career reaching further back than box scores do (the real 1994
     floor, `nba.coverage` - not derived from this fixture) says so.
     Podziemski's `player_season_stats_deduped` row for 1990, added here
@@ -1145,7 +1145,7 @@ def test_a_career_predating_box_scores_gets_the_floor_note(cx_ctx: TemplateConte
     assert any("Box scores begin with the 1993-94 season" in note and "1990-1993" in note for note in out["notes"])
 
 
-def test_no_career_floor_note_when_the_season_is_defaulted_not_career(cx_ctx: TemplateContext) -> None:
+def test_no_career_floor_note_when_the_season_is_defaulted_not_career(cx_ctx: AnswerContext) -> None:
     """The floor note is a CAREER note - it says nothing about a plain
     current-season read, even with the same older row on record."""
     cx_ctx.con.execute("INSERT INTO player_season_stats_deduped VALUES ('10', 1990, 2, 10)")
@@ -1155,7 +1155,7 @@ def test_no_career_floor_note_when_the_season_is_defaulted_not_career(cx_ctx: Te
     assert not any("Box scores begin with" in note for note in out["notes"])
 
 
-def test_a_scalar_or_grouped_read_carries_no_leaked_rebuilt_shown_column(cx_ctx: TemplateContext) -> None:
+def test_a_scalar_or_grouped_read_carries_no_leaked_rebuilt_shown_column(cx_ctx: AnswerContext) -> None:
     """The scratch ``rebuilt_shown`` column :func:`~association.query.compose.core._scalar_selects`
     adds for the box-score notes is popped back off before the rows reach a
     caller, for a named player (a `scalar` read) and for the league-wide
@@ -1169,7 +1169,7 @@ def test_a_scalar_or_grouped_read_carries_no_leaked_rebuilt_shown_column(cx_ctx:
     assert "rebuilt_shown" not in everyone["rows"][0]
 
 
-def test_a_ranked_by_marker_is_the_compilers_own_slot_not_an_unhonored_one(cx_ctx: TemplateContext) -> None:
+def test_a_ranked_by_marker_is_the_compilers_own_slot_not_an_unhonored_one(cx_ctx: AnswerContext) -> None:
     """yardstick-v2 F124, measured live: route() files `ranked_by` so
     `leaderboard` refuses "highest scoring triple doubles" to the compiler -
     which then refused it too, as a scoping slot the relation does not
@@ -1185,7 +1185,7 @@ def test_a_ranked_by_marker_is_the_compilers_own_slot_not_an_unhonored_one(cx_ct
     assert "Brandin Podziemski" in result.answer
 
 
-def test_an_ordinal_season_over_everyone_is_each_players_own(cx_ctx: TemplateContext) -> None:
+def test_an_ordinal_season_over_everyone_is_each_players_own(cx_ctx: AnswerContext) -> None:
     """yardstick-v2 F099 "Most points in 15th season played": no player,
     and `season_n` over everyone is each player's Nth regular season - every fixture player's 1st is s-1 and
     2nd is s, so the top single game moves from Brown's 26 (g6, s-1) to
@@ -1198,7 +1198,7 @@ def test_an_ordinal_season_over_everyone_is_each_players_own(cx_ctx: TemplateCon
     assert "in their 2nd season" in second.answer
 
 
-def test_a_team_with_no_player_is_the_teams_players_games(cx_ctx: TemplateContext) -> None:
+def test_a_team_with_no_player_is_the_teams_players_games(cx_ctx: AnswerContext) -> None:
     """yardstick-v2 F152 "oklahoma city thunder all-time triple doubles":
     the team named with no player is the `team` narrowing of a league-wide
     read - the Warriors' players' triple-doubles are Podziemski's one (g3,
@@ -1224,7 +1224,7 @@ def test_a_team_with_no_player_is_the_teams_players_games(cx_ctx: TemplateContex
     assert as_stat is not None and as_stat.data["rows"][0]["games"] == 1
 
 
-def test_a_grouped_by_player_count_carries_the_whole_total_a_window_cut(cx_ctx: TemplateContext) -> None:
+def test_a_grouped_by_player_count_carries_the_whole_total_a_window_cut(cx_ctx: AnswerContext) -> None:
     """ "Players with 10 points this season", limited to the top 2: the page's
     Total row (``renderComposed``'s ``grouped`` skeleton) needs the WHOLE
     count behind the listed rows, not just the two shown - ``core.run``
@@ -1278,7 +1278,7 @@ def _add_condition_tables(con: duckdb.DuckDBPyConnection) -> None:
 _RETIRED = json.loads((Path(__file__).parent / "retired_templates.json").read_text())
 
 
-def _retired_template_answer(intent: str, slots: dict[str, Any], question: str) -> TemplateResult:
+def _retired_template_answer(intent: str, slots: dict[str, Any], question: str) -> Reply:
     """The answer ``intent``'s retired template gave for this case
     (``retired_templates.json``), the fixture's seasons put back."""
     s = current_season()
@@ -1286,11 +1286,11 @@ def _retired_template_answer(intent: str, slots: dict[str, Any], question: str) 
         if (case["intent"], case["slots"], case["question"]) == (intent, slots, question):
             text = case["expected"].replace("{S-1}-{s}", f"{s - 1}-{s % 100:02d}").replace("{S-2}-{s-1}", f"{s - 2}-{(s - 1) % 100:02d}")
             frozen = json.loads(text.replace("{S-2}", str(s - 2)).replace("{S-1}", str(s - 1)).replace("{S}", str(s)))
-            return TemplateResult(data=frozen["data"], answer=frozen["answer"])
+            return Reply(data=frozen["data"], answer=frozen["answer"])
     raise AssertionError(f"no frozen answer for {intent} {slots} {question!r}")
 
 
-def _parity(ctx: TemplateContext, intent: str, slots: dict[str, Any], question: str) -> tuple[Any, Any]:
+def _parity(ctx: AnswerContext, intent: str, slots: dict[str, Any], question: str) -> tuple[Any, Any]:
     """The template's answer and the compiler's for the same slots, the
     compiler's with no template in front of it. For an intent the compiler
     alone answers now (``compose.COMPILED_INTENTS``), the template's answer is
@@ -1304,7 +1304,7 @@ def _parity(ctx: TemplateContext, intent: str, slots: dict[str, Any], question: 
     if intent in COMPILED_INTENTS:
         composed = compose_answer(ctx, intent, dict(slots), question)
         assert composed is not None
-        return _retired_template_answer(intent, slots, question), TemplateResult(data=json.loads(json.dumps(composed.data, default=str)), answer=composed.answer)
+        return _retired_template_answer(intent, slots, question), Reply(data=json.loads(json.dumps(composed.data, default=str)), answer=composed.answer)
     template = TEMPLATES[intent](ctx, Reading.from_slots(dict(slots)))
     composed = compose_answer(ctx, intent, dict(slots), question)
     assert composed is not None
@@ -1330,7 +1330,7 @@ def _parity(ctx: TemplateContext, intent: str, slots: dict[str, Any], question: 
         ("player_splits", {"player": "Brandin Podziemski", "split": "wins_losses", "span": "career"}, "podziemski's career splits in wins and losses"),
     ],
 )
-def test_an_intents_own_point_reads_as_its_template(cx_ctx: TemplateContext, intent: str, slots: dict[str, Any], question: str) -> None:
+def test_an_intents_own_point_reads_as_its_template(cx_ctx: AnswerContext, intent: str, slots: dict[str, Any], question: str) -> None:
     """Step 2a's parity, per intent: the compiler's answer to the intent's
     own default point is the template's, word for word and key for key -
     what folding the template into the compiler needs. The numbers are the
@@ -1341,7 +1341,7 @@ def test_an_intents_own_point_reads_as_its_template(cx_ctx: TemplateContext, int
     assert composed.data == template.data
 
 
-def test_a_point_the_words_moved_keeps_the_compilers_own_sentence(cx_ctx: TemplateContext) -> None:
+def test_a_point_the_words_moved_keeps_the_compilers_own_sentence(cx_ctx: AnswerContext) -> None:
     """A measure the question's words add ("PRA", which player_stat's line
     does not carry) is not the intent's own point, so the compiler's own
     sentence and point data answer it, as before step 2a."""
@@ -1351,7 +1351,7 @@ def test_a_point_the_words_moved_keeps_the_compilers_own_sentence(cx_ctx: Templa
     assert result.data["rows"][0]["games"] == 2
 
 
-def test_a_slot_the_template_refuses_keeps_the_compilers_own_sentence(cx_ctx: TemplateContext) -> None:
+def test_a_slot_the_template_refuses_keeps_the_compilers_own_sentence(cx_ctx: AnswerContext) -> None:
     """``check_scope`` gates the template's presentation: an opponent is a
     slot ``threshold_count`` does not honor, so the count against Boston is
     the compiler's point, said the compiler's way."""
@@ -1361,7 +1361,7 @@ def test_a_slot_the_template_refuses_keeps_the_compilers_own_sentence(cx_ctx: Te
     assert result.data["rows"][0]["games"] == 1  # g1 (20) - g5 (10) does not clear the line
 
 
-def test_a_single_game_high_question_is_one_game_even_without_in_a_game(cx_ctx: TemplateContext) -> None:
+def test_a_single_game_high_question_is_one_game_even_without_in_a_game(cx_ctx: AnswerContext) -> None:
     """ "What was the highest scoring game against Detroit" names no "in a
     game", and the league-wide read ranked per-game AVERAGES for it - the
     intent itself names one game: Curry's 40 in g3. (An opponent is a slot
@@ -1372,7 +1372,7 @@ def test_a_single_game_high_question_is_one_game_even_without_in_a_game(cx_ctx: 
     assert result.data["skeleton"] == "rows" and result.data["rows"][0]["points"] == 40
 
 
-def test_a_league_count_on_the_routers_own_line_is_answered(cx_ctx: TemplateContext) -> None:
+def test_a_league_count_on_the_routers_own_line_is_answered(cx_ctx: AnswerContext) -> None:
     """ "Most games with 10+ assists": the router's stat and threshold are
     the whole line, and the league-wide count declined for want of one
     (``_everyone_threshold_predicates`` adds none on the measure it would
@@ -1382,7 +1382,7 @@ def test_a_league_count_on_the_routers_own_line_is_answered(cx_ctx: TemplateCont
     assert result.data["leaders"] == [{"player": "Brandin Podziemski", "games": 1}]
 
 
-def test_a_history_by_season_keeps_the_newest_seasons(cx_ctx: TemplateContext) -> None:
+def test_a_history_by_season_keeps_the_newest_seasons(cx_ctx: AnswerContext) -> None:
     """``player_history``'s game-level reading (planned so by ``plan.plan``, for a
     stat the season line has no per-season column for), limited to one
     season, is his NEWEST one, newest first - it ordered by the label
@@ -1442,7 +1442,7 @@ def _add_season_line(con: duckdb.DuckDBPyConnection) -> None:
         ("player_history", {"player": "Stephen Curry", "stat": "points", "span": "career"}, "curry's ppg every season of his career"),
     ],
 )
-def test_the_season_line_reads_as_its_template(cx_ctx: TemplateContext, intent: str, slots: dict[str, Any], question: str) -> None:
+def test_the_season_line_reads_as_its_template(cx_ctx: AnswerContext, intent: str, slots: dict[str, Any], question: str) -> None:
     """The season line as the compiler's second source: an unnarrowed
     ``player_stat`` and a ``player_history`` are the template's own answer,
     word for word and key for key - the numbers from the season line
@@ -1455,7 +1455,7 @@ def test_the_season_line_reads_as_its_template(cx_ctx: TemplateContext, intent: 
     assert composed.data == template.data
 
 
-def test_a_season_line_point_the_words_moved_is_not_the_templates(cx_ctx: TemplateContext) -> None:
+def test_a_season_line_point_the_words_moved_is_not_the_templates(cx_ctx: AnswerContext) -> None:
     """A measure the question's words add ("PRA") to an unnarrowed line is a
     point the season line's reader does not say, so the compiler declines it
     exactly as it declined every unnarrowed line before - never the default
@@ -1473,7 +1473,7 @@ def test_the_season_source_is_never_compiled_over_games() -> None:
         compile_query(duckdb.connect(":memory:"), q)
 
 
-def test_own_team_narrows_a_composed_average(cx_ctx: TemplateContext) -> None:
+def test_own_team_narrows_a_composed_average(cx_ctx: AnswerContext) -> None:
     """``own_team`` ("lebron stats as a starter for Miami") narrows the
     compiler's read exactly as it narrows ``player_stat``'s: Curry never
     played for Boston, so his games "for Boston" are none - the compiler
@@ -1484,7 +1484,7 @@ def test_own_team_narrows_a_composed_average(cx_ctx: TemplateContext) -> None:
     assert _run(cx_ctx.con, q)["rows"][0]["games"] == 1  # g3
 
 
-def test_a_composed_answer_carries_no_coverage_caveat_of_its_own(cx_ctx: TemplateContext) -> None:
+def test_a_composed_answer_carries_no_coverage_caveat_of_its_own(cx_ctx: AnswerContext) -> None:
     """The agent appends ``coverage_caveat`` to a composed answer exactly as
     to a template's (``agent._try_compose``); the compiler appending it too
     printed ESPN's 2001-playoffs note twice. The note is the agent's to add."""
@@ -1494,7 +1494,7 @@ def test_a_composed_answer_carries_no_coverage_caveat_of_its_own(cx_ctx: Templat
     assert not any("Note:" in note for note in result.data.get("notes", []))
 
 
-def test_a_single_games_usage_is_the_percent_the_split_averages(cx_ctx: TemplateContext) -> None:
+def test_a_single_games_usage_is_the_percent_the_split_averages(cx_ctx: AnswerContext) -> None:
     """#222: ``usage_pct`` is stored as a percent (``player_advanced_stats``
     computes ``100.0 * ...``), not a fraction - one game's 24.35 printed as
     "2435.0%". The per-game row now reads the figure ``player_splits``' USG%
@@ -1516,7 +1516,7 @@ def test_a_single_games_usage_is_the_percent_the_split_averages(cx_ctx: Template
     assert "2435" not in log.answer
 
 
-def test_a_player_beside_a_team_subject_is_not_read_as_the_team(cx_ctx: TemplateContext) -> None:
+def test_a_player_beside_a_team_subject_is_not_read_as_the_team(cx_ctx: AnswerContext) -> None:
     """ "show me stats for the warriors when podziemski scored 15+ points"
     reads as a TEAM subject with Podziemski beside it; the router's
     ``player`` slot holds him, and moving it into ``team`` resolved a team
@@ -1529,7 +1529,7 @@ def test_a_player_beside_a_team_subject_is_not_read_as_the_team(cx_ctx: Template
     assert result.answer.startswith("Golden State Warriors record when Brandin Podziemski had 15+ points")
 
 
-def test_a_narrowed_advanced_rate_is_read_over_the_games_not_the_season_line(cx_ctx: TemplateContext) -> None:
+def test_a_narrowed_advanced_rate_is_read_over_the_games_not_the_season_line(cx_ctx: AnswerContext) -> None:
     """ "klay ts% vs boston": the retired player_stat template refused a
     narrowed advanced rate ("computed per season"); the compiler reads it
     over exactly the narrowed games as a ratio of sums (``core.RATES``), in
@@ -1541,7 +1541,7 @@ def test_a_narrowed_advanced_rate_is_read_over_the_games_not_the_season_line(cx_
     assert result.data["measures"] == ["ts_pct"] and result.data["skeleton"] == "scalar" and result.data["rows"][0]["games"] == 2
 
 
-def test_a_log_reads_a_rebuilt_game_with_its_minutes_blank(cx_ctx: TemplateContext) -> None:
+def test_a_log_reads_a_rebuilt_game_with_its_minutes_blank(cx_ctx: AnswerContext) -> None:
     """A listing's rebuilt-line rule is ``game_log``'s own
     (``templates.games._rebuilt_readable``): ``minutes`` is exempt - play-by-
     play cannot recover it, so a rebuilt row shows it blank - and the other
@@ -1560,7 +1560,7 @@ def test_a_log_reads_a_rebuilt_game_with_its_minutes_blank(cx_ctx: TemplateConte
     assert composed.answer == template.answer
 
 
-def test_a_teams_total_of_triple_doubles_is_declined_for_the_refusals_module(cx_ctx: TemplateContext) -> None:
+def test_a_teams_total_of_triple_doubles_is_declined_for_the_refusals_module(cx_ctx: AnswerContext) -> None:
     """ "oklahoma city thunder all-time triple doubles vs west" (day5): a team
     subject on a leaderboard with a boolean stat is a team aggregate nothing
     reads - declined here, so refusals._team_boolean_count names that cause
@@ -1585,7 +1585,7 @@ def test_a_teams_total_of_triple_doubles_is_declined_for_the_refusals_module(cx_
 # ---------------------------------------------------------------------------
 
 
-def test_a_count_under_a_ceiling_with_no_threshold_is_counted(cx_ctx: TemplateContext) -> None:
+def test_a_count_under_a_ceiling_with_no_threshold_is_counted(cx_ctx: AnswerContext) -> None:
     """ "Sga games with under 14 fta in his whole career": the below phrase
     IS the count - no threshold arrives - and the compiler declined it, so
     the template's fallback answered. Counted now, in the template's words:
@@ -1596,7 +1596,7 @@ def test_a_count_under_a_ceiling_with_no_threshold_is_counted(cx_ctx: TemplateCo
     assert result.data["leaders"] == [{"player": "Stephen Curry", "games": 4}]
 
 
-def test_a_teams_own_threshold_record_is_said_by_record_whens_team_reader(cx_ctx: TemplateContext) -> None:
+def test_a_teams_own_threshold_record_is_said_by_record_whens_team_reader(cx_ctx: AnswerContext) -> None:
     """ "What was the warriors record when they scored 100 points" (ISSUES.md
     #144's shape): a team's record above and below its OWN line, which the
     team subject's readers (a season sum, a window sum) cannot represent -
@@ -1614,7 +1614,7 @@ def test_a_teams_own_threshold_record_is_said_by_record_whens_team_reader(cx_ctx
     assert result.data["fell_short"]["games"] == 2 and result.data["fell_short"]["wins"] == 0
 
 
-def test_a_record_over_a_line_of_zero_is_declined_as_the_template_refused_it(cx_ctx: TemplateContext) -> None:
+def test_a_record_over_a_line_of_zero_is_declined_as_the_template_refused_it(cx_ctx: AnswerContext) -> None:
     """A line of 0 is every game he played - never a record "when". The
     template refused it; the compiler answered "went 2-1 in the 3 games
     points >= 0" until it refused the same way, with the reason."""
@@ -1641,7 +1641,7 @@ def test_a_single_game_high_with_no_stat_is_declined_for_the_stat_not_the_player
         default_point("single_game_high", Scope.from_slots({"stat": "points"}))
 
 
-def test_a_league_count_in_an_ordinal_season_is_declined_not_narrowed_silently(cx_ctx: TemplateContext) -> None:
+def test_a_league_count_in_an_ordinal_season_is_declined_not_narrowed_silently(cx_ctx: AnswerContext) -> None:
     """ "Most 20+ point games in a 15th season": a league has no career to
     count seasons in. Read over everyone, the compiler narrowed to players in
     their 15th season OF THE DEFAULT YEAR while its sentence named only the
@@ -1650,7 +1650,7 @@ def test_a_league_count_in_an_ordinal_season_is_declined_not_narrowed_silently(c
     assert refused is not None and refused.answer == "The 15th season is a place in one player's career, and no player was named."
 
 
-def test_a_history_naming_no_stat_is_points_and_says_so(cx_ctx: TemplateContext) -> None:
+def test_a_history_naming_no_stat_is_points_and_says_so(cx_ctx: AnswerContext) -> None:
     """A per-season history that names no stat reads points per game, and its
     heading says so - a default that is displayed and corrected by naming a
     stat (AGENTS.md). The retired template refused it; the compiler, which
@@ -1660,7 +1660,7 @@ def test_a_history_naming_no_stat_is_points_and_says_so(cx_ctx: TemplateContext)
     assert "points per game" in result.answer.split("\n")[0]
 
 
-def test_a_history_of_a_stat_nothing_carries_is_declined_not_swapped_for_points(cx_ctx: TemplateContext) -> None:
+def test_a_history_of_a_stat_nothing_carries_is_declined_not_swapped_for_points(cx_ctx: AnswerContext) -> None:
     """ "shot_distance" has no per-season column and no game-level measure:
     the compiler drew Luka Doncic's POINTS by season for it, a stat named and
     silently replaced, until it declined as the retired template did."""
@@ -1675,7 +1675,7 @@ def test_a_history_of_a_stat_nothing_carries_is_declined_not_swapped_for_points(
 # ---------------------------------------------------------------------------
 
 
-def test_the_parser_reads_the_point_and_the_compiler_answers_it_unread(cx_ctx: TemplateContext, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_the_parser_reads_the_point_and_the_compiler_answers_it_unread(cx_ctx: AnswerContext, monkeypatch: pytest.MonkeyPatch) -> None:
     """``parse.reading_from_route`` reads the compiler's point from the
     question's words (``Reading.point``), and ``compose.answer`` plans and
     runs it without the question: with the point reader disabled outright,
@@ -1697,7 +1697,7 @@ def test_the_parser_reads_the_point_and_the_compiler_answers_it_unread(cx_ctx: T
     assert (answered.answer, answered.data) == (by_hand.answer, by_hand.data)
 
 
-def test_a_point_the_compiler_declines_or_refuses_travels_on_the_reading(cx_ctx: TemplateContext) -> None:
+def test_a_point_the_compiler_declines_or_refuses_travels_on_the_reading(cx_ctx: AnswerContext) -> None:
     """The compiler's verdict, read at parse time, is what ``compose.answer``
     gives: a decline's reason (a league count with no line to count), and a
     refusal as the answer - a copy, since the agent appends its notes to the
@@ -1720,7 +1720,7 @@ def test_a_point_the_compiler_declines_or_refuses_travels_on_the_reading(cx_ctx:
     assert answered is not planned.refusal
 
 
-def test_a_summed_true_shooting_rate_is_a_fraction_like_its_column(cx_ctx: TemplateContext) -> None:
+def test_a_summed_true_shooting_rate_is_a_fraction_like_its_column(cx_ctx: AnswerContext) -> None:
     """``ts_pct`` and ``efg_pct`` are stored per game as fractions (0.57) and
     printed times 100 (``sentence._FRACTION_COLUMNS``, the page's
     ``FRACTIONS``). Their ratio-of-sums rate (``core.RATES``) was computed
@@ -1749,7 +1749,7 @@ def test_the_planner_refuses_a_narrowing_the_relation_cannot_honor() -> None:
     assert isinstance(plan(default_reading("threshold_count", {"player": "Brandin Podziemski", "stat": "points", "threshold": 30})), Query)
 
 
-def test_the_planner_refuses_after_the_parser_has_read_and_only_once(cx_ctx: TemplateContext) -> None:
+def test_the_planner_refuses_after_the_parser_has_read_and_only_once(cx_ctx: AnswerContext) -> None:
     """The parser reads the point and does not plan it (``ROADMAP.md``,
     Phase 1): a narrowing the relation cannot honor is the PLAN stage's
     verdict (``plan_point``) - the reason the refusal names, never a
@@ -1789,7 +1789,7 @@ def test_the_planner_refuses_after_the_parser_has_read_and_only_once(cx_ctx: Tem
         plan_module.plan = original
 
 
-def test_a_presenter_steps_aside_for_a_narrowing_its_words_do_not_state(cx_ctx: TemplateContext) -> None:
+def test_a_presenter_steps_aside_for_a_narrowing_its_words_do_not_state(cx_ctx: AnswerContext) -> None:
     """A retired template's words name the narrowings it honored and no
     other (``compose.plan.STATED_SCOPING``): an opponent on a single-game
     high is the relation's to narrow by and the compiler's sentence's to
@@ -1878,7 +1878,7 @@ def test_every_cause_a_reading_refuses_by_is_said_naming_its_fact() -> None:
     )
 
 
-def test_a_ranking_in_a_unit_its_metric_has_no_form_of_is_the_readings_cause(cx_ctx: TemplateContext) -> None:
+def test_a_ranking_in_a_unit_its_metric_has_no_form_of_is_the_readings_cause(cx_ctx: AnswerContext) -> None:
     """ "who were the top 10 in defensive netpoints / 90": the season-line
     ranking's refusal, a sentence the ranking reader wrote until the point
     reader carried its cause (``ranking_unit``) - said by the planner, word

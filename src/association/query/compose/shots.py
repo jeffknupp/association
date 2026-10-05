@@ -31,13 +31,14 @@ from typing import Any, Literal
 import duckdb
 
 from association.nba.coverage import COVERAGE
+from association.query.answer import Reply
 from association.query.conditions import box_source
 from association.query.court import HAS_POSITION_SQL, SHOT_DISTANCE_SQL, render_court_html
 from association.query.entities import SHOT_AVAILABILITY, Ambiguous, Entity, no_match
 from association.query.game_label import game_label
 from association.query.notes import Note
 from association.query.player_games import Narrowed, games_subquery
-from association.query.reading import Scope
+from association.query.reading import Scope, Unsupported
 from association.query.result import Chart, Decided, Narrowing, Part, Result, Scalar, Span
 from association.query.season_line import Statement, season_redirect, seasons_played
 from association.query.shotchart import DERIVED_SHOT_VALUES, SHOT_VALUE_SQL, UNSEPARABLE_SHOT_VALUES, resolve_chart_player
@@ -46,8 +47,6 @@ from association.query.templates.common import (
     SEASON_TYPE_NAMES,
     MeasureFilter,
     ResolvedSpan,
-    TemplateResult,
-    TemplateUnsupported,
     clarify,
     measure_filters,
     no_narrowed_games,
@@ -140,7 +139,7 @@ def _shots_has_narrowing(scope: Scope, date: str | None, measures: list[MeasureF
     return _shots_other_narrowing(scope, date, measures) or _shots_windowed(scope)
 
 
-def _shots_narrowed_rows(con: duckdb.DuckDBPyConnection, player: Entity, span: ResolvedSpan, narrowed: Narrowed) -> tuple[list[str], list[str]] | TemplateResult:
+def _shots_narrowed_rows(con: duckdb.DuckDBPyConnection, player: Entity, span: ResolvedSpan, narrowed: Narrowed) -> tuple[list[str], list[str]] | Reply:
     """The event ids (and their Eastern dates) an already-narrowed-and-windowed
     ``narrowed`` draws from, read through the relation's own
     :func:`~association.query.player_games.games_subquery` - or the
@@ -152,7 +151,7 @@ def _shots_narrowed_rows(con: duckdb.DuckDBPyConnection, player: Entity, span: R
     rows = values_of(con, Statement(f"SELECT event_id, day FROM ({base_sql}) g", list(base_params)))
     if not rows:
         message = no_narrowed_games(con, player, span, narrowed, rebuilt=box.rebuilt)
-        return TemplateResult(data={"player": player.name, "message": message}, answer=message)
+        return Reply(data={"player": player.name, "message": message}, answer=message)
     return [r[0] for r in rows], [str(r[1]) for r in rows]
 
 
@@ -212,7 +211,7 @@ def _shot_distance_statement(athlete_id: str, span: ResolvedSpan, shot_value: in
     return Statement(f"SELECT AVG({SHOT_DISTANCE_SQL}), COUNT(*), COUNT(DISTINCT event_id) FROM shot_chart WHERE {' AND '.join(where)}", params)
 
 
-def _shot_distance_unseparable(player: Entity, span: ResolvedSpan, shot_value: int | None, period: str, kind: str) -> TemplateResult | None:
+def _shot_distance_unseparable(player: Entity, span: ResolvedSpan, shot_value: int | None, period: str, kind: str) -> Reply | None:
     """The refusal in place of an answer, where :data:`~association.query.shotchart.UNSEPARABLE_SHOT_VALUES`
     makes one named season's twos and threes unreadable - or ``None``. A
     career's ``season`` is None, so a career sum leaves such shots out
@@ -221,22 +220,20 @@ def _shot_distance_unseparable(player: Entity, span: ResolvedSpan, shot_value: i
     if shot_value is None or season not in UNSEPARABLE_SHOT_VALUES:
         return None
     message = f"{UNSEPARABLE_SHOT_VALUES[season]}. {player.name}'s average {kind}shot distance in the {period} cannot be given; his average over all shots can."
-    return TemplateResult(data={"player": player.name, "season": season, "shot_value": shot_value, "message": message}, answer=message)
+    return Reply(data={"player": player.name, "season": season, "shot_value": shot_value, "message": message}, answer=message)
 
 
-def _shot_distance_games(
-    con: duckdb.DuckDBPyConnection, player: Entity, span: ResolvedSpan, scope: Scope, measures: list[MeasureFilter]
-) -> tuple[list[str], Narrowing, dict[str, Any]] | TemplateResult:
+def _shot_distance_games(con: duckdb.DuckDBPyConnection, player: Entity, span: ResolvedSpan, scope: Scope, measures: list[MeasureFilter]) -> tuple[list[str], Narrowing, dict[str, Any]] | Reply:
     """The games a narrowed distance read is pinned to, with the narrowing
     as the answer names it: one game a window alone reached keeps its own
     words ("in his most recent game (2026-04-12)"), as facts; any other set
     is said as the span and the relation's own phrase for the narrowing
     (:meth:`~association.query.player_games.Narrowed.filters`)."""
     narrowed = scoped_games(con, player, span, scope, opponent=scope.opponent, measures=measures, date=scope.date)
-    if isinstance(narrowed, TemplateResult):
+    if isinstance(narrowed, Reply):
         return narrowed
     found = _shots_narrowed_rows(con, player, span, narrowed)
-    if isinstance(found, TemplateResult):
+    if isinstance(found, Reply):
         return found
     ids, dates = found
     opponent = narrowed.opponent.name if narrowed.opponent else None
@@ -245,7 +242,7 @@ def _shot_distance_games(
     return ids, Narrowing(phrase=f" {_shots_span_prefix(span)}{narrowed.filters(windowed=True)}", opponent=opponent, venue=narrowed.venue), {}
 
 
-def read_shot_distance(con: duckdb.DuckDBPyConnection, q: ShotQuery, *, stated: frozenset[str]) -> Result | TemplateResult | None:
+def read_shot_distance(con: duckdb.DuckDBPyConnection, q: ShotQuery, *, stated: frozenset[str]) -> Result | Reply | None:
     """``shot_distance``'s point - one player's average shot distance from
     the rim, optionally of one shot value, over a season, a career or the
     games a narrowing or a window sends the read to - read into a
@@ -254,9 +251,9 @@ def read_shot_distance(con: duckdb.DuckDBPyConnection, q: ShotQuery, *, stated: 
     ``avg_feet``, the shots under ``attempts``, ``games`` the games they
     came from). ``None`` where the point is not that or carries a narrowing
     the retired template's words did not state (``stated``); a
-    :class:`~association.query.templates.common.TemplateResult` back is the
+    :class:`~association.query.answer.Reply` back is the
     relation's refusal (a name, a season, no games, an unseparable season),
-    and ``TemplateUnsupported`` what the template refused outright: a
+    and ``Unsupported`` what the template refused outright: a
     career and a window at once, a free throw's distance.
 
     .. versionadded:: 5.0.0
@@ -267,14 +264,14 @@ def read_shot_distance(con: duckdb.DuckDBPyConnection, q: ShotQuery, *, stated: 
         return None
     measures = measure_filters(scope.below, scope.above)
     subject = scoped_player(con, scope, "shot_distance needs a player name", table="player_game_log", available=SHOT_AVAILABILITY, span=scope.span, season=scope.season)
-    if isinstance(subject, TemplateResult):
+    if isinstance(subject, Reply):
         return subject
     player, span = subject
     if span.career and _shots_windowed(scope):
-        raise TemplateUnsupported("shot_distance cannot combine a career span with a single game's order")
+        raise Unsupported("shot_distance cannot combine a career span with a single game's order")
     shot_value = shot_value_of(scope)
     if shot_value == 1:
-        raise TemplateUnsupported("free throws have no meaningful shot distance")
+        raise Unsupported("free throws have no meaningful shot distance")
     # A career has no single year to name: its season type alone.
     period = f"career {span.kind}" if span.season is None else season_phrase(span.season, span.season_type)
     kind = {2: "2-point ", 3: "3-point "}.get(shot_value or 0, "")
@@ -285,7 +282,7 @@ def read_shot_distance(con: duckdb.DuckDBPyConnection, q: ShotQuery, *, stated: 
     narrowing, game = Narrowing(), dict[str, Any]()
     if _shots_has_narrowing(scope, scope.date, measures):
         pinned = _shot_distance_games(con, player, span, scope, measures)
-        if isinstance(pinned, TemplateResult):
+        if isinstance(pinned, Reply):
             return pinned
         ids, narrowing, game = pinned
     ((average, attempts, games),) = values_of(con, _shot_distance_statement(player.id, span, shot_value, ids))
@@ -345,7 +342,7 @@ class _ShotChartGames:
         return self.event_id is not None or self.event_ids is not None
 
 
-def _shot_chart_settle_player(con: duckdb.DuckDBPyConnection, name: str, scope: Scope) -> tuple[Entity, list[str], ResolvedSpan, bool] | TemplateResult:
+def _shot_chart_settle_player(con: duckdb.DuckDBPyConnection, name: str, scope: Scope) -> tuple[Entity, list[str], ResolvedSpan, bool] | Reply:
     """The player, the other names that also matched, the span, and whether
     the season was defaulted - ``scoped_player``'s order (the span first,
     since it narrows an ambiguous name; ``season_n`` the same way), with the
@@ -358,17 +355,17 @@ def _shot_chart_settle_player(con: duckdb.DuckDBPyConnection, name: str, scope: 
     resolved = resolve_chart_player(con, name, SHOT_AVAILABILITY, seasons.season)
     if resolved is None:
         message = no_match(con, name)
-        return TemplateResult(data={"message": message}, answer=message)
+        return Reply(data={"message": message}, answer=message)
     if isinstance(resolved, Ambiguous):
         return clarify(name, resolved.candidates, active=resolved.active)
     player, ambiguous = resolved
     settled = settle_ordinal_season(con, player, season_n, seasons)
-    if isinstance(settled, TemplateResult):
+    if isinstance(settled, Reply):
         return settled
     return player, ambiguous, settled, seasons.defaulted
 
 
-def _shot_chart_games(con: duckdb.DuckDBPyConnection, player: Entity, span: ResolvedSpan, scope: Scope, measures: list[MeasureFilter]) -> _ShotChartGames | TemplateResult:
+def _shot_chart_games(con: duckdb.DuckDBPyConnection, player: Entity, span: ResolvedSpan, scope: Scope, measures: list[MeasureFilter]) -> _ShotChartGames | Reply:
     """The games a chart draws from: none pinned where nothing narrows the
     question, else the relation's own read (``scoped_games``,
     :func:`_shots_narrowed_rows`) - one game, or a set named by the span
@@ -376,10 +373,10 @@ def _shot_chart_games(con: duckdb.DuckDBPyConnection, player: Entity, span: Reso
     if not _shots_has_narrowing(scope, scope.date, measures):
         return _ShotChartGames()
     narrowed = scoped_games(con, player, span, scope, opponent=scope.opponent, measures=measures, date=scope.date)
-    if isinstance(narrowed, TemplateResult):
+    if isinstance(narrowed, Reply):
         return narrowed
     found = _shots_narrowed_rows(con, player, span, narrowed)
-    if isinstance(found, TemplateResult):
+    if isinstance(found, Reply):
         return found
     ids, _dates = found
     if len(ids) == 1:
@@ -507,7 +504,7 @@ def _shot_chart_drawn(con: duckdb.DuckDBPyConnection, player: Entity, span: Reso
     return chart, notes, game or (games.window if games.event_ids else None), None
 
 
-def read_shot_chart(con: duckdb.DuckDBPyConnection, q: ShotQuery, *, stated: frozenset[str]) -> Result | TemplateResult | None:
+def read_shot_chart(con: duckdb.DuckDBPyConnection, q: ShotQuery, *, stated: frozenset[str]) -> Result | Reply | None:
     """``shot_chart``'s point - one player's located shots over a season, a
     career or the games a narrowing or a window sends the read to, made and
     missed - read into a :class:`~association.query.result.Result` whose one
@@ -515,9 +512,9 @@ def read_shot_chart(con: duckdb.DuckDBPyConnection, q: ShotQuery, *, stated: fro
     counts, the caption and the file name; :func:`draw_shot_chart` writes
     it). ``None`` where the point is not that or carries a narrowing the
     retired template's words did not state (``stated``); a
-    :class:`~association.query.templates.common.TemplateResult` back is the
+    :class:`~association.query.answer.Reply` back is the
     relation's refusal (no such player, which one, no games), and
-    ``TemplateUnsupported`` what the template refused outright: no name, a
+    ``Unsupported`` what the template refused outright: no name, a
     career and a window at once. Its remarks: the shots a value filter left
     out or derived, the other names that matched (``also_matched``), and
     for a career the floor's note, or for a defaulted season that drew
@@ -532,17 +529,17 @@ def read_shot_chart(con: duckdb.DuckDBPyConnection, q: ShotQuery, *, stated: fro
         return None
     name = scope.player
     if name is None or not name.strip():
-        raise TemplateUnsupported("shot_chart needs a player name")
+        raise Unsupported("shot_chart needs a player name")
     measures = measure_filters(scope.below, scope.above)
     subject = _shot_chart_settle_player(con, name, scope)
-    if isinstance(subject, TemplateResult):
+    if isinstance(subject, Reply):
         return subject
     player, ambiguous, span, defaulted = subject
     if span.career and _shots_windowed(scope):
         # "his last game" picks games inside one season; a career asks for every one.
-        raise TemplateUnsupported("shot_chart cannot combine a career span with a single game's order")
+        raise Unsupported("shot_chart cannot combine a career span with a single game's order")
     games = _shot_chart_games(con, player, span, scope, measures)
-    if isinstance(games, TemplateResult):
+    if isinstance(games, Reply):
         return games
     shot_value = shot_value_of(scope)
     chart, notes, drawn_from, refused = _shot_chart_drawn(con, player, span, games, shot_value)

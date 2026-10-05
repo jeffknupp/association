@@ -17,10 +17,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from association.query.decisions import Decision
 from association.query.notes import Note
+
+if TYPE_CHECKING:
+    import duckdb
 
 AnsweredBy = Literal["fast", "refused"]
 """Whether the question was answered, or refused with no reading of it.
@@ -87,11 +90,58 @@ class RenderResult:
 
 
 @dataclass(frozen=True)
+class AnswerContext:
+    """What a reader is given: the warehouse, and somewhere to write output.
+
+    Readers took a bare connection until the shot chart needed an output
+    directory too. A small context rather than the whole answering loop keeps
+    the readers testable with a plain in-memory DuckDB connection.
+
+    .. versionadded:: 5.0.0
+       ``association.query.templates.TemplateContext`` until the templates
+       were gone (Phase 2, step 6).
+    """
+
+    con: duckdb.DuckDBPyConnection
+    out_dir: Path
+
+
+@dataclass
+class Reply:
+    """What the answer side hands the answering loop: the final prose, the
+    same result as values, and the files it wrote - an answer, a clarifying
+    question or a refusal naming its cause alike.
+
+    ``answer`` is the final prose, so the fast path makes NO model call after
+    the normalizer. Required, not optional: ollama keeps one KV cache slot per
+    model, so a second call with a different system prompt evicts the
+    reader's prefix (measured: three consecutive router calls run 11.6s /
+    1.3s / 1.7s, but interleaving one narration call puts the next back to
+    11.2s). Phrasing every answer here also removes the last place on this
+    path where a number could be invented.
+
+    ``data`` is the same result as structured values - resolved names and
+    numbers, no ids and no schema. Tests assert against it, and it is carried
+    out to the caller in :class:`Answer`.
+
+    ``artifacts`` is whatever the reader wrote to disk - a chart, or nothing.
+
+    .. versionadded:: 5.0.0
+       ``association.query.templates.TemplateResult`` until the templates
+       were gone (Phase 2, step 6), with the same fields.
+    """
+
+    data: dict[str, Any]
+    answer: str
+    artifacts: list[Artifact] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
 class Timing:
     """Where a run's wall time went, split into model inference and everything
     else. The call counts matter as much as the seconds: on the fast path one
     model call is the whole cost, and a second one would mean the KV cache
-    eviction described in :class:`association.query.templates.TemplateResult`.
+    eviction described in :class:`Reply`.
 
     .. versionadded:: 2.0.0
     """

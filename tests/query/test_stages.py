@@ -15,14 +15,13 @@ import pytest
 from routed import ask_routed, slots_route
 
 from association.query.agent import Agent
-from association.query.answer import Answer, Artifact, Timing
+from association.query.answer import Answer, Artifact, Reply, Timing
 from association.query.compose.core import Query
 from association.query.compose.plan import plan_point
 from association.query.decisions import Decision
 from association.query.reading import Cause, Reading, Scope
 from association.query.stages import STAGES, WORDING, Difference, differences, plain, read_stages, snapshot
 from association.query.subject import Subject
-from association.query.templates.common import TemplateResult
 
 QUESTION = "how many points did jokic score against boston"
 _TIMING = Timing(total_seconds=0.0, model_seconds=0.0, model_calls=0, tool_seconds=0.0, tool_calls=0)
@@ -239,7 +238,7 @@ def _agent(tmp_path: Path) -> Agent:
 
 
 def test_the_agent_keeps_the_reading_it_answered_from_and_forgets_it_on_the_next_question(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    monkeypatch.setattr("association.query.compose.answer", lambda ctx, reading, trace=None, declined=None, planned=None: TemplateResult(data={"value": 1}, answer="templated"))
+    monkeypatch.setattr("association.query.compose.answer", lambda ctx, reading, trace=None, declined=None, planned=None: Reply(data={"value": 1}, answer="templated"))
     agent = _agent(tmp_path)
     answer = ask_routed(agent, "who scored the most points", slots_route("leaderboard", {"stat": "points"}))
     assert agent.reading is not None and agent.reading.intent == "leaderboard"

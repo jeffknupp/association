@@ -29,25 +29,26 @@ from test_templates import player_matchup, player_splits, streak, with_without  
 from association.fetch.repairs import real_games
 from association.fetch.repairs.reconstructed_box import _FILLED_COLUMNS as FILLED_COLUMNS
 from association.nba.season import current_season
+from association.query.answer import AnswerContext, Reply
 from association.query.compose.plan import STATED_SCOPING
 from association.query.conditions import RAW_BOX, UNGATED_ON_REBUILD, box_source
 from association.query.parse import with_point
-from association.query.reading import Reading, Scope
+from association.query.reading import Reading, Scope, Unsupported
 from association.query.subject import Subject
-from association.query.templates.common import REBUILT_STATS, TemplateContext, TemplateResult, TemplateUnsupported, check_coverage, unhonored_scoping
+from association.query.templates.common import REBUILT_STATS, check_coverage, unhonored_scoping
 from association.query.templates.splits import SPLIT_KINDS
 
 
-def _compiled(intent: str) -> Callable[[TemplateContext, Reading], TemplateResult]:
+def _compiled(intent: str) -> Callable[[AnswerContext, Reading], Reply]:
     """``intent`` answered the way its retired template was called - a
-    Reading in, a TemplateResult out, ``TemplateUnsupported`` with the
+    Reading in, a Reply out, ``Unsupported`` with the
     reason where the compiler has no reading of the point - now that the
     compiler alone answers it (``compose.COMPILED_INTENTS``, ROADMAP plan item
     6, step (d), part 4). No question words, which would move the point:
     these are the intent's own. The subject is the one the slots name, as a
     question naming just them reads."""
 
-    def answered(ctx: TemplateContext, reading: Reading) -> TemplateResult:
+    def answered(ctx: AnswerContext, reading: Reading) -> Reply:
         scope = reading.scope
         named = tuple(name for name in (scope.player, *scope.players) if name)
         kind = "pair" if len(named) > 1 else "player" if named else "team" if scope.team else "everyone"
@@ -55,7 +56,7 @@ def _compiled(intent: str) -> Callable[[TemplateContext, Reading], TemplateResul
         why: list[str] = []
         result = compose_answer(ctx, with_point(ctx.con, "", Reading(scope=scope, intent=intent, subject=subject)), declined=why.append)
         if result is None:
-            raise TemplateUnsupported(why[0] if why else f"the compiler has no reading of this {intent} point")
+            raise Unsupported(why[0] if why else f"the compiler has no reading of this {intent} point")
         return result
 
     return answered
@@ -144,7 +145,7 @@ def _game(
 
 
 @pytest.fixture
-def league(tmp_path: Path) -> TemplateContext:
+def league(tmp_path: Path) -> AnswerContext:
     c = duckdb.connect(":memory:")
     c.execute("CREATE TABLE players (athlete_id VARCHAR, display_name VARCHAR)")
     c.execute("CREATE TABLE teams (team_id VARCHAR, abbreviation VARCHAR, display_name VARCHAR)")
@@ -208,14 +209,14 @@ def league(tmp_path: Path) -> TemplateContext:
         "FROM player_box_stats pbs LEFT JOIN players p ON p.athlete_id = pbs.athlete_id LEFT JOIN games g ON g.event_id = pbs.event_id AND g.season = pbs.season "
         "LEFT JOIN teams t ON t.team_id = pbs.team_id LEFT JOIN teams o ON o.team_id = pbs.opponent_team_id"
     )
-    return TemplateContext(con=c, out_dir=tmp_path)
+    return AnswerContext(con=c, out_dir=tmp_path)
 
 
 def _slots(**given: Any) -> dict[str, Any]:
     return {"season_type": 2, **given}
 
 
-def _rows(result: TemplateResult, split: str) -> dict[str, dict[str, Any]]:
+def _rows(result: Reply, split: str) -> dict[str, dict[str, Any]]:
     return {row["group"]: row for row in result.data["splits"][split]}
 
 
@@ -223,7 +224,7 @@ def _rows(result: TemplateResult, split: str) -> dict[str, dict[str, Any]]:
 
 
 @pytest.fixture
-def rebuilt_league(league: TemplateContext) -> TemplateContext:
+def rebuilt_league(league: AnswerContext) -> AnswerContext:
     """The same league, with e5 rebuilt from its play-by-play.
 
     e5 is already the shape ESPN really serves for every Chicago and New
@@ -262,7 +263,7 @@ def rebuilt_league(league: TemplateContext) -> TemplateContext:
     return league
 
 
-def test_a_rebuilt_game_counts_as_a_game_he_played(rebuilt_league: TemplateContext) -> None:
+def test_a_rebuilt_game_counts_as_a_game_he_played(rebuilt_league: AnswerContext) -> None:
     """The P1 this fixes. A rebuilt line has no minutes, so before the source
     was resolved every such game read as one he missed - and a season with
     nothing but rebuilt games answered "was listed in N box scores but did not
@@ -272,7 +273,7 @@ def test_a_rebuilt_game_counts_as_a_game_he_played(rebuilt_league: TemplateConte
     assert "did not play in any of them" not in (result.answer or "")
 
 
-def test_a_rebuilt_game_is_no_longer_an_unknown_game(rebuilt_league: TemplateContext) -> None:
+def test_a_rebuilt_game_is_no_longer_an_unknown_game(rebuilt_league: AnswerContext) -> None:
     """`_box_missing` has to widen with `_played`, or the same answer both
     counts a game and reports it as one with no box score - the contradiction
     `_empty_box_scores(covered_by_rebuild=...)` exists to stop elsewhere."""
@@ -280,7 +281,7 @@ def test_a_rebuilt_game_is_no_longer_an_unknown_game(rebuilt_league: TemplateCon
     assert "no box score" not in answer
 
 
-def test_a_figure_the_rebuild_gets_wrong_is_left_out_rather_than_averaged_in(rebuilt_league: TemplateContext) -> None:
+def test_a_figure_the_rebuild_gets_wrong_is_left_out_rather_than_averaged_in(rebuilt_league: AnswerContext) -> None:
     """The filled view substitutes more columns than the rebuild was measured
     for. Tatum's two home games are e1 (played: 30 points, 0 turnovers, 1
     three, 30 minutes) and e5 (rebuilt: 26 points, and a deliberately absurd 9
@@ -303,7 +304,7 @@ def test_a_figure_the_rebuild_gets_wrong_is_left_out_rather_than_averaged_in(reb
     assert home["fg_pct"] == pytest.approx(50.0), "e1 alone, numerator and denominator alike"
 
 
-def test_a_teammate_in_a_rebuilt_game_is_not_counted_as_absent(rebuilt_league: TemplateContext) -> None:
+def test_a_teammate_in_a_rebuilt_game_is_not_counted_as_absent(rebuilt_league: AnswerContext) -> None:
     """The other half of the P1: `_with_without_games` (now `presence_games_sql`) asked for minutes too,
     so a teammate who played a rebuilt game read as out and the game was
     counted on the "without" side."""
@@ -312,7 +313,7 @@ def test_a_teammate_in_a_rebuilt_game_is_not_counted_as_absent(rebuilt_league: T
     assert played["games"] == 4, "e5 is a game Tatum played, not one he missed"
 
 
-def test_the_subjects_own_average_counts_his_rebuilt_game(rebuilt_league: TemplateContext) -> None:
+def test_the_subjects_own_average_counts_his_rebuilt_game(rebuilt_league: AnswerContext) -> None:
     """The Python half of the same fault, and the one no SQL guard covers:
     `_with_without_group` picks his games out of the group in Python, and did
     it with `minutes is not None` - so a rebuilt game passed every query-side
@@ -330,7 +331,7 @@ def test_the_subjects_own_average_counts_his_rebuilt_game(rebuilt_league: Templa
     assert groups[True]["minutes"] == pytest.approx(30.0), "the three games that carry minutes, not 22.5 over four"
 
 
-def test_a_warehouse_without_the_filled_view_reads_as_it_always_did(league: TemplateContext) -> None:
+def test_a_warehouse_without_the_filled_view_reads_as_it_always_did(league: AnswerContext) -> None:
     """The view arrives with a `data load`. An older warehouse has none, and
     every fixture here builds only `player_box_stats` - a query written as
     though the view were always there is a Binder error, not a value change.
@@ -339,7 +340,7 @@ def test_a_warehouse_without_the_filled_view_reads_as_it_always_did(league: Temp
     assert player_splits(league, Reading.from_slots(_slots(player="Jayson Tatum", split="home_away"))).data["games"] == 3
 
 
-def test_record_when_group_sums_every_game_regardless_of_order(league: TemplateContext) -> None:
+def test_record_when_group_sums_every_game_regardless_of_order(league: AnswerContext) -> None:
     """The record-over-a-line reader's grouping (`compose.records._group`,
     which `templates.splits._record_when_group` was until slice (iv)): "every
     game" sums all three groups - reached, fell short, and a blank-stat game,
@@ -362,7 +363,7 @@ def test_record_when_group_sums_every_game_regardless_of_order(league: TemplateC
         assert every["avg_margin"] == pytest.approx((5 * 2.5 + 10 * -1.0 + 2 * 0.5) / 17)
 
 
-def test_record_when_keeps_a_blank_stat_game_off_both_threshold_rows(rebuilt_league: TemplateContext) -> None:
+def test_record_when_keeps_a_blank_stat_game_off_both_threshold_rows(rebuilt_league: AnswerContext) -> None:
     """The P1 this fixes (ISSUES.md): `_record_when_answer` used to key its
     threshold groups by `bool(row[0])`, so a blank-stat game (NULL on a
     rebuilt row) collided with the "fell short" group - `bool(None) ==
@@ -394,7 +395,7 @@ def test_the_ungated_rebuild_columns_are_the_ones_no_template_may_read() -> None
 # ---------------- player_splits ----------------
 
 
-def test_splits_count_only_games_he_played(league: TemplateContext) -> None:
+def test_splits_count_only_games_he_played(league: AnswerContext) -> None:
     """A DNP row, no row and a missing box score are three games Tatum did not
     play in this season as far as any box score says; he played e1, e4, e7."""
     result = player_splits(league, Reading.from_slots(_slots(player="Jayson Tatum", split="home_away")))
@@ -406,7 +407,7 @@ def test_splits_count_only_games_he_played(league: TemplateContext) -> None:
     assert "Played means he appeared in the game" in " ".join(result.data["notes"])
 
 
-def test_a_month_is_the_eastern_date_the_game_was_played(league: TemplateContext) -> None:
+def test_a_month_is_the_eastern_date_the_game_was_played(league: AnswerContext) -> None:
     """e1 is stored as November 1st UTC and was played on October 31st; e7 is
     December 1st UTC and November 30th Eastern. On the UTC date the split would
     be one game in each of three months."""
@@ -414,30 +415,30 @@ def test_a_month_is_the_eastern_date_the_game_was_played(league: TemplateContext
     assert [(name, row["games"]) for name, row in rows.items()] == [("October", 1), ("November", 2)]
 
 
-def test_an_empty_half_of_a_split_is_shown_not_dropped(league: TemplateContext) -> None:
+def test_an_empty_half_of_a_split_is_shown_not_dropped(league: AnswerContext) -> None:
     rows = _rows(player_splits(league, Reading.from_slots(_slots(player="Jaylen Brown", split="starter_bench"))), "starter_bench")
     assert rows["bench"]["games"] == 0 and rows["starter"]["games"] == 5  # e1, e2, e3, e4, e7
 
 
-def test_no_split_named_shows_all_four(league: TemplateContext) -> None:
+def test_no_split_named_shows_all_four(league: AnswerContext) -> None:
     result = player_splits(league, Reading.from_slots(_slots(player="Jayson Tatum")))
     assert set(result.data["splits"]) == set(SPLIT_KINDS)
     wins = _rows(result, "wins_losses")
     assert (wins["wins"]["games"], wins["losses"]["games"]) == (2, 1)
 
 
-def test_splits_say_a_missing_box_score_was_not_counted(league: TemplateContext) -> None:
+def test_splits_say_a_missing_box_score_was_not_counted(league: AnswerContext) -> None:
     answer = player_splits(league, Reading.from_slots(_slots(player="Jayson Tatum", split="home_away"))).answer
     assert "no box score for 1 of his team's games" in answer
 
 
-def test_a_career_is_every_season_not_the_current_one(league: TemplateContext) -> None:
+def test_a_career_is_every_season_not_the_current_one(league: AnswerContext) -> None:
     result = player_splits(league, Reading.from_slots(_slots(player="Jayson Tatum", split="home_away", span="career")))
     assert result.data["games"] == 7
     assert result.data["span"] == f"{S - 1}-{S} regular seasons"
 
 
-def test_a_team_split_uses_the_teams_own_games(league: TemplateContext) -> None:
+def test_a_team_split_uses_the_teams_own_games(league: AnswerContext) -> None:
     """The placeholder e6 is no game at all; e5's result stands even though its
     box score is missing, and the averages its box would feed say so."""
     result = player_splits(league, Reading.from_slots(_slots(team="Boston Celtics", split="wins_losses")))
@@ -446,7 +447,7 @@ def test_a_team_split_uses_the_teams_own_games(league: TemplateContext) -> None:
     assert "missing from 1 of those games' box scores" in result.answer
 
 
-def test_a_team_splits_rebounds_are_offensive_plus_defensive_not_the_raw_total(league: TemplateContext) -> None:
+def test_a_team_splits_rebounds_are_offensive_plus_defensive_not_the_raw_total(league: AnswerContext) -> None:
     """`totalRebounds` stops meaning the same thing across 2021/2022 - DATA.md,
     "The team `totalRebounds` column stops including team rebounds in 2022".
     `_TEAM_LINE` reads offensiveRebounds + defensiveRebounds instead, which is
@@ -459,23 +460,23 @@ def test_a_team_splits_rebounds_are_offensive_plus_defensive_not_the_raw_total(l
     assert rows["losses"]["rebounds"] == pytest.approx(35.0)
 
 
-def test_a_team_has_no_starter_split(league: TemplateContext) -> None:
-    with pytest.raises(TemplateUnsupported):
+def test_a_team_has_no_starter_split(league: AnswerContext) -> None:
+    with pytest.raises(Unsupported):
         player_splits(league, Reading.from_slots(_slots(team="Boston Celtics", split="starter_bench")))
 
 
-def test_a_team_subject_refuses_without_rather_than_silently_dropping_it(league: TemplateContext) -> None:
+def test_a_team_subject_refuses_without_rather_than_silently_dropping_it(league: AnswerContext) -> None:
     """`_player_splits_team` reads the team tables directly and has no
     teammate-absence filter (ISSUES.md, "player_splits cannot honor a
     teammate's absence ... when the subject is a team") - "Celtics splits
     without Tatum" used to answer the Celtics' whole season, identical to
     leaving `without` out and with nothing saying so. Refused now, the same
     way a starter/bench split already is for a team."""
-    with pytest.raises(TemplateUnsupported, match="without"):
+    with pytest.raises(Unsupported, match="without"):
         player_splits(league, Reading.from_slots(_slots(team="Boston Celtics", without="Jayson Tatum")))
 
 
-def test_a_team_split_honors_until(league: TemplateContext) -> None:
+def test_a_team_split_honors_until(league: AnswerContext) -> None:
     """``until`` (ISSUES.md): before this, `_player_splits_team` never passed
     it to `_span_of`, so bounding the range to just `last` (the fixture's
     ``since=until={S - 1}``) silently answered the same 11-game pool an
@@ -494,22 +495,22 @@ def test_a_team_split_honors_until(league: TemplateContext) -> None:
     assert f"since {S - 1} ({S - 1}-{S}" in (unbounded.answer or "")
 
 
-def test_a_team_subject_refuses_a_condition_rather_than_silently_dropping_it(league: TemplateContext) -> None:
+def test_a_team_subject_refuses_a_condition_rather_than_silently_dropping_it(league: AnswerContext) -> None:
     """The same discipline as ``without`` just above (ISSUES.md): a
     ``conditions`` entry names a role - a start, a bench game, a line
     reached - for one specific player, and the team branch has no settled
     player to check it against."""
-    with pytest.raises(TemplateUnsupported, match="conditions"):
+    with pytest.raises(Unsupported, match="conditions"):
         player_splits(league, Reading.from_slots(_slots(team="Boston Celtics", conditions=[{"player": "Jayson Tatum", "predicate": "started"}])))
 
 
-def test_an_unknown_split_is_refused(league: TemplateContext) -> None:
+def test_an_unknown_split_is_refused(league: AnswerContext) -> None:
     # Refused at the Reading's door (Scope.from_slots) before any template runs.
     with pytest.raises(ValueError, match="split"):
         player_splits(league, Reading.from_slots(_slots(player="Jayson Tatum", split="by_weekday")))
 
 
-def test_a_stat_the_standard_line_does_not_carry_gets_its_own_column(league: TemplateContext) -> None:
+def test_a_stat_the_standard_line_does_not_carry_gets_its_own_column(league: AnswerContext) -> None:
     """F159 (ISSUES.md): "Quentin Grimes individual gamelog usage rating
     without joel embiid" showed the standard split columns, which have no
     usage-rate column at all, so the actually-asked-for stat was simply
@@ -533,7 +534,7 @@ def test_a_stat_the_standard_line_does_not_carry_gets_its_own_column(league: Tem
     assert already_shown.answer.count("PTS") == 1
 
 
-def test_player_splits_refuses_a_stat_it_has_no_column_for(league: TemplateContext) -> None:
+def test_player_splits_refuses_a_stat_it_has_no_column_for(league: AnswerContext) -> None:
     """The other half of F159's fix: a stat neither on the standard line nor
     in SPLIT_EXTRA_STATS is refused by name rather than silently answered
     without it - and a team subject, which has no per-player rate column at
@@ -543,11 +544,11 @@ def test_player_splits_refuses_a_stat_it_has_no_column_for(league: TemplateConte
     # the stat by group instead of refusing it.
     shown = player_splits(league, Reading.from_slots(_slots(player="Jayson Tatum", stat="fouls", split="home_away")))
     assert "by venue (fouls" in shown.answer and {r["group"] for r in shown.data["rows"]} == {"home", "away"}
-    with pytest.raises(TemplateUnsupported, match="usage_pct"):
+    with pytest.raises(Unsupported, match="usage_pct"):
         player_splits(league, Reading.from_slots(_slots(team="Boston Celtics", stat="usage_pct", split="wins_losses")))
 
 
-def test_a_player_with_only_dnp_rows_is_told_apart_from_one_with_none(league: TemplateContext) -> None:
+def test_a_player_with_only_dnp_rows_is_told_apart_from_one_with_none(league: AnswerContext) -> None:
     listed = player_splits(league, Reading.from_slots(_slots(player="Jayson Tatum", team="Boston Celtics", season=S - 2))).answer
     assert listed == f"Jayson Tatum has no games for the Boston Celtics in the {S - 2} regular season in the warehouse."
     # Leave him only e2's DNP row and e5's NULL-minutes one this season.
@@ -559,7 +560,7 @@ def test_a_player_with_only_dnp_rows_is_told_apart_from_one_with_none(league: Te
 # ---------------- with_without ----------------
 
 
-def test_with_and_without_is_counted_inside_his_time_on_the_team(league: TemplateContext) -> None:
+def test_with_and_without_is_counted_inside_his_time_on_the_team(league: AnswerContext) -> None:
     """With Tatum: e1 W, e4 W, e7 L. Without: e2 (DNP) L, e3 (no row) W. e5's
     box score is missing, so it is on neither side; the placeholder is not a
     game."""
@@ -571,7 +572,7 @@ def test_with_and_without_is_counted_inside_his_time_on_the_team(league: Templat
     assert result.answer.splitlines()[2].startswith("Jayson Tatum out")  # a "without" question leads with it
 
 
-def test_with_and_without_narrows_to_one_opponent_and_says_so(league: TemplateContext) -> None:
+def test_with_and_without_narrows_to_one_opponent_and_says_so(league: AnswerContext) -> None:
     """#163: "Embiid career record vs boston" is his team's record in the games
     it played BOSTON, and there was no way to ask it - `opponent` was honored
     by nothing here, so the question fell through.
@@ -598,7 +599,7 @@ def test_with_and_without_narrows_to_one_opponent_and_says_so(league: TemplateCo
     assert {g["teammate_played"]: (g["wins"], g["losses"]) for g in every.data["groups"]} == {True: (2, 1), False: (1, 1)}
 
 
-def test_without_two_teammates_counts_only_the_games_neither_played(league: TemplateContext) -> None:
+def test_without_two_teammates_counts_only_the_games_neither_played(league: AnswerContext) -> None:
     """The measured bug: "Celtics record without Tatum and Brown" dropped the
     second name and answered about Tatum alone (1-1 here). With Brown sitting
     out e3 as well, e3 is the only game neither of them played."""
@@ -615,7 +616,7 @@ def test_without_two_teammates_counts_only_the_games_neither_played(league: Temp
     assert "Jayson Tatum and Jaylen Brown out" in result.answer
 
 
-def test_with_two_teammates_counts_only_the_games_both_played(league: TemplateContext) -> None:
+def test_with_two_teammates_counts_only_the_games_both_played(league: AnswerContext) -> None:
     """The mirror of the same rule: "record when A and B play" is the games
     both of them played, not the games either did."""
     league.con.execute(
@@ -630,7 +631,7 @@ def test_with_two_teammates_counts_only_the_games_both_played(league: TemplateCo
     assert result.answer.splitlines()[2].startswith("Jayson Tatum and Jaylen Brown played")
 
 
-def test_a_game_before_he_arrived_is_not_a_game_without_him(league: TemplateContext) -> None:
+def test_a_game_before_he_arrived_is_not_a_game_without_him(league: AnswerContext) -> None:
     """The StatMuse failure: "Nets record without KD all-time" counted decades
     of Nets games before he arrived. e0z is a Celtics win before Tatum's first
     box score; counted, "without" would be 2-1."""
@@ -641,7 +642,7 @@ def test_a_game_before_he_arrived_is_not_a_game_without_him(league: TemplateCont
     assert result.data["tenure"] == [{"team": "Boston Celtics", "from": f"{S - 2}-10-20", "to": f"{S - 1}-11-30"}]
 
 
-def test_a_traded_player_is_not_missing_from_his_old_team(league: TemplateContext) -> None:
+def test_a_traded_player_is_not_missing_from_his_old_team(league: AnswerContext) -> None:
     """Journeyman left the Celtics last season: this season's Celtics games are
     not games they played without him, and the refusal says why."""
     answer = with_without(league, Reading.from_slots(_slots(team="Boston Celtics", without="Journeyman Guy"))).answer
@@ -649,7 +650,7 @@ def test_a_traded_player_is_not_missing_from_his_old_team(league: TemplateContex
     assert "falls outside the" in answer and f"Boston Celtics {S - 2}-10-20 to {S - 2}-11-09" in answer
 
 
-def test_a_player_who_left_and_came_back_has_two_spells_not_one(league: TemplateContext) -> None:
+def test_a_player_who_left_and_came_back_has_two_spells_not_one(league: AnswerContext) -> None:
     """LeBron James' two Cleveland spells are two stints: the Cavaliers' Miami
     years are not games they played without him. Here a Celtic plays e0z, is a
     Laker in e0a, and is a Celtic again in e3. Read as one spell, every Celtics
@@ -667,12 +668,12 @@ def test_a_player_who_left_and_came_back_has_two_spells_not_one(league: Template
     assert [t["team"] for t in result.data["tenure"]] == ["Boston Celtics", "Boston Celtics"]
 
 
-def test_a_teammate_who_never_played_for_the_team_is_refused_by_name(league: TemplateContext) -> None:
+def test_a_teammate_who_never_played_for_the_team_is_refused_by_name(league: AnswerContext) -> None:
     answer = with_without(league, Reading.from_slots(_slots(team="Philadelphia 76ers", without="Tatum"))).answer
     assert answer.startswith("Jayson Tatum never appeared in a box score for the Philadelphia 76ers")
 
 
-def test_a_player_subject_gets_his_averages_in_each_group(league: TemplateContext) -> None:
+def test_a_player_subject_gets_his_averages_in_each_group(league: AnswerContext) -> None:
     """Brown played every Celtics game with a box score. With Tatum: e1 20, e4
     10, e7 12. Without: e2 25, e3 18."""
     result = with_without(league, Reading.from_slots(_slots(player="Jaylen Brown", without="Jayson Tatum")))
@@ -684,25 +685,25 @@ def test_a_player_subject_gets_his_averages_in_each_group(league: TemplateContex
     assert result.data["notes"]  # at least the "Played means ..." caveat
 
 
-def test_the_teammate_repeated_in_the_player_slot_is_not_a_subject(league: TemplateContext) -> None:
+def test_the_teammate_repeated_in_the_player_slot_is_not_a_subject(league: AnswerContext) -> None:
     result = with_without(league, Reading.from_slots(_slots(team="Boston Celtics", player="Jayson Tatum", without="Tatum")))
     assert result.data["player"] is None and result.data["teammate"] == "Jayson Tatum"
 
 
-def test_with_without_needs_a_teammate(league: TemplateContext) -> None:
-    with pytest.raises(TemplateUnsupported):
+def test_with_without_needs_a_teammate(league: AnswerContext) -> None:
+    with pytest.raises(Unsupported):
         with_without(league, Reading.from_slots(_slots(team="Boston Celtics")))
 
 
-def test_three_names_and_no_without_is_not_guessed(league: TemplateContext) -> None:
-    with pytest.raises(TemplateUnsupported):
+def test_three_names_and_no_without_is_not_guessed(league: AnswerContext) -> None:
+    with pytest.raises(Unsupported):
         with_without(league, Reading.from_slots(_slots(team="Boston Celtics", players=["Jayson Tatum", "Jaylen Brown", "Journeyman Guy"])))
 
 
 # ---------------- record_when ----------------
 
 
-def test_record_when_divides_his_games_by_the_threshold(league: TemplateContext) -> None:
+def test_record_when_divides_his_games_by_the_threshold(league: AnswerContext) -> None:
     """Tatum this season: e1 30 W, e4 35 W, e7 31 L."""
     result = record_when(league, Reading.from_slots(_slots(player="Jayson Tatum", stat="points", threshold=31)))
     assert (result.data["reached"]["wins"], result.data["reached"]["losses"]) == (1, 1)
@@ -712,7 +713,7 @@ def test_record_when_divides_his_games_by_the_threshold(league: TemplateContext)
     assert result.data["notes"] and result.data["notes"][0].startswith("Over the")
 
 
-def test_record_when_refuses_what_it_cannot_whitelist(league: TemplateContext) -> None:
+def test_record_when_refuses_what_it_cannot_whitelist(league: AnswerContext) -> None:
     # Each refused by the fact missing (Phase 2, step 3).
     said = [
         record_when(league, Reading.from_slots(_slots(player="Jayson Tatum", **slots))).answer
@@ -735,14 +736,14 @@ def test_record_when_refuses_what_it_cannot_whitelist(league: TemplateContext) -
 # L) - e2 is a DNP, e3 has no row, e5's box score is blank.
 
 
-def test_record_when_narrows_by_venue_and_says_so(league: TemplateContext) -> None:
+def test_record_when_narrows_by_venue_and_says_so(league: AnswerContext) -> None:
     """Only e1 is a home game; e4 and e7 are on the road."""
     result = record_when(league, Reading.from_slots(_slots(player="Jayson Tatum", stat="points", threshold=25, venue="home")))
     assert (result.data["reached"]["games"], result.data["fell_short"]["games"]) == (1, 0)
     assert result.answer.startswith(f"Boston Celtics record when Jayson Tatum had 25+ points at home, {S} regular season:")
 
 
-def test_record_when_narrows_by_opponent_and_says_so(league: TemplateContext) -> None:
+def test_record_when_narrows_by_opponent_and_says_so(league: AnswerContext) -> None:
     """Tatum vs the 76ers, across both seasons on record: e0b (last season,
     20, L), e0c (last season, 25, W), e4 (this season, 35, W)."""
     result = record_when(league, Reading.from_slots(_slots(player="Jayson Tatum", stat="points", threshold=25, opponent="Philadelphia 76ers", span="career")))
@@ -751,7 +752,7 @@ def test_record_when_narrows_by_opponent_and_says_so(league: TemplateContext) ->
     assert "vs the Philadelphia 76ers" in result.answer
 
 
-def test_record_when_narrows_by_a_teammates_absence_and_says_so(league: TemplateContext) -> None:
+def test_record_when_narrows_by_a_teammates_absence_and_says_so(league: AnswerContext) -> None:
     """Brown's only box score in Tatum's rookie (last) season is e0z, a game
     Tatum is not even in - so every one of Tatum's last-season games is
     "without" him: e0b (20, L), e0c (25, W), e0a (30, W), e0d (28, W)."""
@@ -761,21 +762,21 @@ def test_record_when_narrows_by_a_teammates_absence_and_says_so(league: Template
     assert "without Jaylen Brown" in result.answer
 
 
-def test_record_when_narrows_by_a_named_half_of_the_split_and_says_so(league: TemplateContext) -> None:
+def test_record_when_narrows_by_a_named_half_of_the_split_and_says_so(league: AnswerContext) -> None:
     """Tatum comes off the bench only once: e4, 35 points, a win."""
     result = record_when(league, Reading.from_slots(_slots(player="Jayson Tatum", stat="points", threshold=30, split="bench")))
     assert (result.data["reached"]["games"], result.data["fell_short"]["games"]) == (1, 0)
     assert "off the bench" in result.answer
 
 
-def test_record_when_narrows_by_one_game_of_a_playoff_series_and_says_so(league: TemplateContext) -> None:
+def test_record_when_narrows_by_one_game_of_a_playoff_series_and_says_so(league: AnswerContext) -> None:
     """p1 and p2 are a two-game series vs Philadelphia; game 2 is p2 (26 points, by date, not insertion order)."""
     result = record_when(league, Reading.from_slots(_slots(player="Playoff Guy", stat="points", threshold=25, season_type=3, game_n=2)))
     assert (result.data["reached"]["games"], result.data["fell_short"]["games"]) == (1, 0)
     assert "game 2 of each series" in result.answer
 
 
-def test_record_when_honors_since_and_says_so(league: TemplateContext) -> None:
+def test_record_when_honors_since_and_says_so(league: AnswerContext) -> None:
     """Since last season: every one of Tatum's played games on record, both
     seasons - e0b (20, L), e0c (25, W), e0a (30, W), e0d (28, W), e1 (30, W),
     e4 (35, W), e7 (31, W)."""
@@ -784,7 +785,7 @@ def test_record_when_honors_since_and_says_so(league: TemplateContext) -> None:
     assert result.answer.startswith(f"Boston Celtics record when Jayson Tatum had 25+ points, since {S - 1} ({S - 1}-{S} regular seasons):")
 
 
-def test_record_when_honors_since_and_until_together_and_says_so(league: TemplateContext) -> None:
+def test_record_when_honors_since_and_until_together_and_says_so(league: AnswerContext) -> None:
     """``condition_span_label`` used to read ``since`` only (ISSUES.md), so
     a range with both ends named ("from 2019-20 to 2021-22") was labeled as
     though it were still open-ended - even though the player branch's own
@@ -798,7 +799,7 @@ def test_record_when_honors_since_and_until_together_and_says_so(league: Templat
     assert bounded.answer.startswith(f"Boston Celtics record when Jayson Tatum had 25+ points, from {S - 1} through {S - 1} ({S - 1} regular season):")
 
 
-def test_record_when_settles_season_n_and_says_so(league: TemplateContext) -> None:
+def test_record_when_settles_season_n_and_says_so(league: AnswerContext) -> None:
     """Tatum's 1st season on record (player_season_stats_deduped) is last
     season: e0b (20, L), e0c (25, W), e0a (30, W), e0d (28, W)."""
     result = record_when(league, Reading.from_slots(_slots(player="Jayson Tatum", stat="points", threshold=25, season_n=1)))
@@ -807,7 +808,7 @@ def test_record_when_settles_season_n_and_says_so(league: TemplateContext) -> No
     assert "in his 1st season (" in result.answer
 
 
-def test_record_when_narrows_by_a_box_score_line_and_says_so(league: TemplateContext) -> None:
+def test_record_when_narrows_by_a_box_score_line_and_says_so(league: AnswerContext) -> None:
     """Every played row in this fixture carries exactly 3 assists (`Line`'s own
     comment), so a line every game already satisfies changes no number but
     does say so in the title - proof the filter reaches the query rather than
@@ -818,7 +819,7 @@ def test_record_when_narrows_by_a_box_score_line_and_says_so(league: TemplateCon
     assert "with at least 3 assists" in with_line.answer
 
 
-def test_record_when_a_box_score_line_narrows_to_no_games(league: TemplateContext) -> None:
+def test_record_when_a_box_score_line_narrows_to_no_games(league: AnswerContext) -> None:
     """A line no played row meets admits none at all - the same fixture's
     fixed 3 assists, asked for under. Confirmed: the refusal this reaches is
     `common._no_games`'s box-score-count branch, which says "did not play in
@@ -829,7 +830,7 @@ def test_record_when_a_box_score_line_narrows_to_no_games(league: TemplateContex
     assert "did not play in any of them" in empty.answer
 
 
-def test_record_when_cannot_honor_a_relation_cell_without_a_player(league: TemplateContext) -> None:
+def test_record_when_cannot_honor_a_relation_cell_without_a_player(league: AnswerContext) -> None:
     """The team branch settles no player, so it still cannot narrow by a
     teammate's absence, a box-score line or anything else only
     condition_player reads - refusing by name rather than silently answering
@@ -838,11 +839,11 @@ def test_record_when_cannot_honor_a_relation_cell_without_a_player(league: Templ
     test_an_opponent_narrows_a_team_only_threshold_too,
     test_a_venue_narrows_a_team_only_threshold_too and
     test_a_team_only_threshold_honors_since below."""
-    with pytest.raises(TemplateUnsupported, match=r"record_when cannot honor \['below'\]"):
+    with pytest.raises(Unsupported, match=r"record_when cannot honor \['below'\]"):
         record_when(league, Reading.from_slots(_slots(team="Boston Celtics", stat="points", threshold=100, below=["under 3 assists"])))
 
 
-def test_a_team_only_threshold_honors_since(league: TemplateContext) -> None:
+def test_a_team_only_threshold_honors_since(league: AnswerContext) -> None:
     """``since`` (step 3, C4b): a team-only record now spans more than one
     season instead of refusing - the fixture's Celtics have real games in
     both `last` (e0z-e0d) and this season (e1-e7), and ``since=last`` reaches
@@ -855,7 +856,7 @@ def test_a_team_only_threshold_honors_since(league: TemplateContext) -> None:
     assert f"since {S - 1}" in (result.answer or "")
 
 
-def test_a_team_only_threshold_honors_until(league: TemplateContext) -> None:
+def test_a_team_only_threshold_honors_until(league: AnswerContext) -> None:
     """``until`` (ISSUES.md): before this, `_record_when_team_answer` never
     passed it to `_span_of`, so bounding the range to just `last` (the
     fixture's ``since=until={S - 1}``) silently answered the same 11-game
@@ -870,12 +871,12 @@ def test_a_team_only_threshold_honors_until(league: TemplateContext) -> None:
     assert f"since {S - 1} ({S - 1}-{S}" in (unbounded.answer or "")
 
 
-def test_a_team_only_threshold_refuses_a_condition(league: TemplateContext) -> None:
+def test_a_team_only_threshold_refuses_a_condition(league: AnswerContext) -> None:
     """The team branch settles no player, so a ``conditions`` entry (a
     teammate's start, bench game or line) has no subject to check it
     against - refused by name rather than silently answering the team's
     whole span as though the condition were never named (ISSUES.md)."""
-    with pytest.raises(TemplateUnsupported, match=r"record_when cannot honor \['conditions'\]"):
+    with pytest.raises(Unsupported, match=r"record_when cannot honor \['conditions'\]"):
         record_when(
             league,
             Reading.from_slots(_slots(team="Boston Celtics", stat="points", threshold=100, conditions=[{"player": "Jayson Tatum", "predicate": "started"}])),
@@ -889,7 +890,7 @@ def test_a_team_only_threshold_refuses_a_condition(league: TemplateContext) -> N
 # e5 101 W (team_box_stats NULL for both sides), e7 105 L. 4-2 overall.
 
 
-def test_a_team_only_threshold_divides_the_teams_own_games(league: TemplateContext) -> None:
+def test_a_team_only_threshold_divides_the_teams_own_games(league: AnswerContext) -> None:
     """No player named at all - "what was the celtics record when they scored
     120 points" (ISSUES.md #144). Reached (>=105): e1 110 W, e3 120 W, e7 105 L
     (2-1). Fell short (<105): e2 100 L, e4 99 W, e5 101 W (2-1) - e5 included,
@@ -901,7 +902,7 @@ def test_a_team_only_threshold_divides_the_teams_own_games(league: TemplateConte
     assert "player" not in result.data
 
 
-def test_a_team_only_threshold_needs_no_player(league: TemplateContext) -> None:
+def test_a_team_only_threshold_needs_no_player(league: AnswerContext) -> None:
     """The router's own recorded output for this shape carries no `player`
     slot at all (tests/query/test_router.py,
     test_a_record_when_about_a_team_gains_no_player) - confirming record_when
@@ -911,14 +912,14 @@ def test_a_team_only_threshold_needs_no_player(league: TemplateContext) -> None:
     assert result.data["team"] == "Boston Celtics"
 
 
-def test_a_bare_threshold_names_the_real_missing_thing(league: TemplateContext) -> None:
+def test_a_bare_threshold_names_the_real_missing_thing(league: AnswerContext) -> None:
     """Neither a player nor a team - unanswerable, and the refusal says so
     rather than naming only the player half (the mirror-image bug AGENTS.md
     warns about: a wrong cause reads as honest)."""
     assert record_when(league, Reading.from_slots(_slots(stat="points", threshold=100))).answer == "A record in the games over a line needs a player or a team to read it for, and neither was named."
 
 
-def test_a_team_rebounds_threshold_reads_oreb_plus_dreb_not_totalrebounds(league: TemplateContext) -> None:
+def test_a_team_rebounds_threshold_reads_oreb_plus_dreb_not_totalrebounds(league: AnswerContext) -> None:
     """The fixture's totalRebounds (40) is deliberately not
     offensiveRebounds + defensiveRebounds (35) - see `_game`'s own comment.
     36 is between them: reading the stale totalRebounds column would put
@@ -929,7 +930,7 @@ def test_a_team_rebounds_threshold_reads_oreb_plus_dreb_not_totalrebounds(league
     assert result.data["fell_short"]["games"] == 5, "the 5 games with a team_box_stats row; e5's is NULL"
 
 
-def test_a_team_non_points_threshold_excludes_the_empty_box_game(league: TemplateContext) -> None:
+def test_a_team_non_points_threshold_excludes_the_empty_box_game(league: AnswerContext) -> None:
     """e5's team_box_stats row is NULL for both sides (the 2013-2018
     Chicago/New Orleans shape, AGENTS.md "Whole team-seasons of box scores
     are empty") - unlike `points`, `assists` cannot read it, so it is in
@@ -940,15 +941,15 @@ def test_a_team_non_points_threshold_excludes_the_empty_box_game(league: Templat
     assert "1 of their games in that span have no assists figure on record" in result.answer
 
 
-def test_a_team_threshold_refuses_a_stat_with_no_team_figure(league: TemplateContext) -> None:
+def test_a_team_threshold_refuses_a_stat_with_no_team_figure(league: AnswerContext) -> None:
     """minutes is a real record_when stat for a PLAYER, but a team has no
     minutes total - the refusal names that, not "record_when needs a
     player" (the wrong cause: a team WAS named)."""
-    with pytest.raises(TemplateUnsupported, match="record_when has no team figure for minutes"):
+    with pytest.raises(Unsupported, match="record_when has no team figure for minutes"):
         record_when(league, Reading.from_slots(_slots(team="Boston Celtics", stat="minutes", threshold=240)))
 
 
-def test_an_opponent_narrows_a_team_only_threshold_too(league: TemplateContext) -> None:
+def test_an_opponent_narrows_a_team_only_threshold_too(league: AnswerContext) -> None:
     """Step 3, C4: the Celtics' four games against the Lakers this season are
     e1 110 W (home), e2 100 L (away), e5 101 W (home), e7 105 L (away).
     Narrowed to LAL and a 105-point threshold: reached (>=105) is e1 (W) and
@@ -961,7 +962,7 @@ def test_an_opponent_narrows_a_team_only_threshold_too(league: TemplateContext) 
     assert "vs the Los Angeles Lakers" in result.answer
 
 
-def test_a_venue_narrows_a_team_only_threshold_too(league: TemplateContext) -> None:
+def test_a_venue_narrows_a_team_only_threshold_too(league: AnswerContext) -> None:
     """The Celtics' three home games this season are e1 110 W, e3 120 W, e5
     101 W - all wins, so at a 105-point threshold reached is 2-0 (e1, e3) and
     fell short is 1-0 (e5), with none of their three road games counted."""
@@ -971,7 +972,7 @@ def test_a_venue_narrows_a_team_only_threshold_too(league: TemplateContext) -> N
     assert "at home" in result.answer
 
 
-def test_a_team_only_threshold_says_which_fact_is_missing_for_a_narrowing_with_no_games(old_postseason_and_cup_final: TemplateContext) -> None:
+def test_a_team_only_threshold_says_which_fact_is_missing_for_a_narrowing_with_no_games(old_postseason_and_cup_final: AnswerContext) -> None:
     """``old1`` (1991 postseason) is the Celtics' only playoff game on record
     for that span, and it was against the Lakers - narrowed to the 76ers
     instead, the pool is empty, and which fact is missing is the MATCH, not
@@ -984,7 +985,7 @@ def test_a_team_only_threshold_says_which_fact_is_missing_for_a_narrowing_with_n
     assert "no games with a result" not in result.answer
 
 
-def test_a_streaks_opponent_and_venue_narrow_a_teams_own_run_too(league: TemplateContext) -> None:
+def test_a_streaks_opponent_and_venue_narrow_a_teams_own_run_too(league: AnswerContext) -> None:
     """Step 3, C4: narrowed to home games only, the Celtics won all three
     (e1, e3, e5) - their whole home slate, in order - so the streak is 3, not
     the 1-game runs their overall 4-2 record (interrupted by two road losses)
@@ -997,18 +998,18 @@ def test_a_streaks_opponent_and_venue_narrow_a_teams_own_run_too(league: Templat
     assert "vs the Philadelphia 76ers" in (against_phi.answer or "")
 
 
-def test_a_league_wide_streak_still_refuses_venue_and_opponent(league: TemplateContext) -> None:
+def test_a_league_wide_streak_still_refuses_venue_and_opponent(league: AnswerContext) -> None:
     """Unlike a named team (just above), the league-wide streak (nobody
     named at all) has no single team's rival or home/road split to read -
     `compose.plan._streak_league_cells` refuses by name rather than
     silently narrowing nothing or picking one team to mean."""
-    with pytest.raises(TemplateUnsupported, match=r"streak cannot honor \['venue'\] without a named team or player"):
+    with pytest.raises(Unsupported, match=r"streak cannot honor \['venue'\] without a named team or player"):
         streak(league, Reading.from_slots(_slots(kind="win", venue="home")))
-    with pytest.raises(TemplateUnsupported, match=r"streak cannot honor \['opponent'\] without a named team or player"):
+    with pytest.raises(Unsupported, match=r"streak cannot honor \['opponent'\] without a named team or player"):
         streak(league, Reading.from_slots(_slots(kind="win", opponent="Boston Celtics")))
 
 
-def test_a_league_streak_honors_until(league: TemplateContext) -> None:
+def test_a_league_streak_honors_until(league: AnswerContext) -> None:
     """``until`` (ISSUES.md): before this, `_streak_league_team_branch` never
     passed it to `_span_of` either, so a league-wide search bounded to just
     `last` (the fixture's ``since=until={S - 1}``) silently searched every
@@ -1038,7 +1039,7 @@ def test_a_team_turnovers_threshold_reads_totalturnovers() -> None:
     assert _record_when_team_stat("turnovers", 15) == ("turnovers", 15)
 
 
-def test_a_named_player_beats_the_team_branch_end_to_end(league: TemplateContext) -> None:
+def test_a_named_player_beats_the_team_branch_end_to_end(league: AnswerContext) -> None:
     """The two branches meeting, which is what the pair of changes could break.
     A question naming a player is about HIM even where the subject grammar does
     not fire, and one naming nobody is about the team. Run through
@@ -1077,7 +1078,7 @@ def test_record_when_still_restores_a_player_the_question_names() -> None:
 # ---------------- player_matchup ----------------
 
 
-def test_a_matchup_is_the_games_both_played_on_opposite_teams(league: TemplateContext) -> None:
+def test_a_matchup_is_the_games_both_played_on_opposite_teams(league: AnswerContext) -> None:
     """e1 and e7. Not e2 (Tatum DNP), and not e5, where the Celtics' box score
     is missing - which is said."""
     result = player_matchup(league, Reading.from_slots(_slots(players=["LeBron James", "Jayson Tatum"])))
@@ -1087,12 +1088,12 @@ def test_a_matchup_is_the_games_both_played_on_opposite_teams(league: TemplateCo
     assert "1 game between their teams" in result.answer
 
 
-def test_teammates_never_met_and_the_answer_says_why(league: TemplateContext) -> None:
+def test_teammates_never_met_and_the_answer_says_why(league: AnswerContext) -> None:
     answer = player_matchup(league, Reading.from_slots(_slots(players=["Jayson Tatum", "Jaylen Brown"]))).answer
     assert answer.endswith("they were teammates in all 3 games they both played.")
 
 
-def test_a_matchup_since_a_season_reaches_back_that_far_and_no_further(league: TemplateContext) -> None:
+def test_a_matchup_since_a_season_reaches_back_that_far_and_no_further(league: AnswerContext) -> None:
     """``since`` is a scope on the relation: every season from the one named,
     where the default is this season alone. LeBron and Tatum met twice last
     season and twice this one with both playing."""
@@ -1101,7 +1102,7 @@ def test_a_matchup_since_a_season_reaches_back_that_far_and_no_further(league: T
     assert (this_season, since_last) == (2, 4)
 
 
-def test_a_log_since_a_season_reaches_back_that_far(league: TemplateContext) -> None:
+def test_a_log_since_a_season_reaches_back_that_far(league: AnswerContext) -> None:
     from test_templates import game_log  # the compiler's, game_log's template retired (compose.COMPILED_INTENTS)
 
     this_season = game_log(league, Reading.from_slots(_slots(player="Jayson Tatum", limit=50))).data["games"]
@@ -1110,23 +1111,23 @@ def test_a_log_since_a_season_reaches_back_that_far(league: TemplateContext) -> 
     assert {g["season"] for g in since_last} == {S - 1, S}
 
 
-def test_a_matchup_needs_two_different_players(league: TemplateContext) -> None:
+def test_a_matchup_needs_two_different_players(league: AnswerContext) -> None:
     assert player_matchup(league, Reading.from_slots(_slots(players=["Jayson Tatum"]))).answer == "A matchup needs two players, and only Jayson Tatum was read."
-    with pytest.raises(TemplateUnsupported):
+    with pytest.raises(Unsupported):
         player_matchup(league, Reading.from_slots(_slots(players=["Jayson Tatum", "Tatum"])))
 
 
 # ---------------- streak ----------------
 
 
-def test_a_teams_streak_skips_a_game_that_has_no_result(league: TemplateContext) -> None:
+def test_a_teams_streak_skips_a_game_that_has_no_result(league: AnswerContext) -> None:
     """e3, e4, e5: three wins with the placeholder e6 sitting between e3 and
     e4. Read as a loss, it would split the run in two."""
     result = streak(league, Reading.from_slots(_slots(team="Boston Celtics", kind="win")))
     assert result.data["streaks"][0] == {"length": 3, "from": f"{S - 1}-11-04", "to": f"{S - 1}-11-08", "open": False}
 
 
-def test_a_teams_streak_does_not_cross_seasons(league: TemplateContext) -> None:
+def test_a_teams_streak_does_not_cross_seasons(league: AnswerContext) -> None:
     """Last season ends on three wins and this one opens with a fourth.
     Counted across the break that is a run of 4; the record book says 3."""
     result = streak(league, Reading.from_slots(_slots(team="Boston Celtics", kind="win", span="career")))
@@ -1134,7 +1135,7 @@ def test_a_teams_streak_does_not_cross_seasons(league: TemplateContext) -> None:
     assert "counted within one season" in result.answer
 
 
-def test_a_players_run_skips_missed_games_and_stops_at_unknown_ones(league: TemplateContext) -> None:
+def test_a_players_run_skips_missed_games_and_stops_at_unknown_ones(league: AnswerContext) -> None:
     """25+ points: e0c 25, e0a 30, e0d 28, e1 30, (e2 DNP, e3 no row), e4 35,
     then e5 with no box score, then e7 31. Missed games neither extend nor end
     the run; the unknown one ends it. A run of 5 across the season break."""
@@ -1143,7 +1144,7 @@ def test_a_players_run_skips_missed_games_and_stops_at_unknown_ones(league: Temp
     assert "ends a run" in result.answer
 
 
-def test_the_league_streak_reports_a_tie_as_a_tie(league: TemplateContext) -> None:
+def test_the_league_streak_reports_a_tie_as_a_tie(league: AnswerContext) -> None:
     """25+ points this season: Tatum e1, e4 (then e5 unknown); LeBron e1, e2
     (then 20 in e5)."""
     result = streak(league, Reading.from_slots(_slots(stat="points", threshold=25)))
@@ -1151,21 +1152,21 @@ def test_the_league_streak_reports_a_tie_as_a_tie(league: TemplateContext) -> No
     assert result.answer.startswith("Jayson Tatum and LeBron James shared the longest")
 
 
-def test_the_leagues_longest_winning_streak_names_the_team(league: TemplateContext) -> None:
+def test_the_leagues_longest_winning_streak_names_the_team(league: AnswerContext) -> None:
     result = streak(league, Reading.from_slots(_slots(kind="win")))
     assert result.answer.startswith(f"Boston Celtics had the longest winning streak of the {S} regular season: 3 games.")
     assert result.data["headline"] == f"Boston Celtics had the longest winning streak of the {S} regular season: 3 games."
     assert result.data["notes"]  # the "only games he played count" rule, at minimum
 
 
-def test_a_losing_streak_is_a_run_of_losses(league: TemplateContext) -> None:
+def test_a_losing_streak_is_a_run_of_losses(league: AnswerContext) -> None:
     result = streak(league, Reading.from_slots(_slots(team="Philadelphia 76ers", kind="loss")))
     assert result.data["streaks"][0]["length"] == 2
     assert result.data["headline"] == (result.answer or "").split("\n")[0]
     assert result.data["notes"]
 
 
-def test_a_stat_without_a_threshold_is_not_read_as_a_winning_streak(league: TemplateContext) -> None:
+def test_a_stat_without_a_threshold_is_not_read_as_a_winning_streak(league: AnswerContext) -> None:
     """ "Most consecutive double-doubles" must not come back as the Celtics'
     best run of wins."""
     # Each refused by the fact missing (Phase 2, step 3).
@@ -1185,7 +1186,7 @@ def test_a_stat_without_a_threshold_is_not_read_as_a_winning_streak(league: Temp
     )
 
 
-def test_the_models_word_for_a_winning_streak_is_not_a_stat(league: TemplateContext) -> None:
+def test_the_models_word_for_a_winning_streak_is_not_a_stat(league: AnswerContext) -> None:
     assert streak(league, Reading.from_slots(_slots(team="Boston Celtics", stat="wins", kind="win"))).data["streaks"][0]["length"] == 3
 
 
@@ -1196,7 +1197,7 @@ def test_the_models_word_for_a_winning_streak_is_not_a_stat(league: TemplateCont
 # score before e7) is the baseline these narrow further.
 
 
-def test_streak_narrows_by_venue_and_says_so(league: TemplateContext) -> None:
+def test_streak_narrows_by_venue_and_says_so(league: AnswerContext) -> None:
     """Tatum's home games only: e0c, e0a, e0d, e1 - e4 and e7 are on the road,
     and dropping them shortens the career run below the unnarrowed 5."""
     result = streak(league, Reading.from_slots(_slots(player="Jayson Tatum", stat="points", threshold=25, span="career", venue="home")))
@@ -1204,7 +1205,7 @@ def test_streak_narrows_by_venue_and_says_so(league: TemplateContext) -> None:
     assert "at home" in result.answer
 
 
-def test_streak_narrows_by_opponent_and_says_so(league: TemplateContext) -> None:
+def test_streak_narrows_by_opponent_and_says_so(league: AnswerContext) -> None:
     """Tatum vs the Lakers only: e0a, e0d, e1 (25+ each) then e7, with e5 -
     a missing box score, unaffected by the opponent narrowing since the
     "unseen" read is not filtered by it - sitting between e1 and e7 and
@@ -1215,7 +1216,7 @@ def test_streak_narrows_by_opponent_and_says_so(league: TemplateContext) -> None
     assert "vs the Los Angeles Lakers" in result.answer
 
 
-def test_a_player_with_no_run_records_no_remark_he_is_not_told(league: TemplateContext) -> None:
+def test_a_player_with_no_run_records_no_remark_he_is_not_told(league: AnswerContext) -> None:
     """A named player who never reached the line answers "never had a game
     with 60+ points" and nothing else, so it records no remark: the retired
     template wrote the run's rule ("only games he played count") before it
@@ -1231,7 +1232,7 @@ def test_a_player_with_no_run_records_no_remark_he_is_not_told(league: TemplateC
     assert remarks.notes == []
 
 
-def test_a_league_with_no_run_records_no_remark_it_is_not_told(league: TemplateContext) -> None:
+def test_a_league_with_no_run_records_no_remark_it_is_not_told(league: AnswerContext) -> None:
     """The league's longest winning streak in a postseason nothing was played
     in answers "No team has a game with a result" and records no remark: the
     team-season rule was written before anyone knew there was no run, and
@@ -1257,7 +1258,7 @@ def test_a_league_run_in_a_postseason_before_1994_is_the_floors_refusal() -> Non
         assert refusal is not None and "1994" in refusal, season
 
 
-def test_streak_narrows_by_a_teammates_absence_and_says_so(league: TemplateContext) -> None:
+def test_streak_narrows_by_a_teammates_absence_and_says_so(league: AnswerContext) -> None:
     """Brown's only last-season box score is a game Tatum is not even in, so
     every one of Tatum's last-season games is "without" him - the Celtics'
     longest winning run in games Tatum played that season, without Brown, is
@@ -1267,14 +1268,14 @@ def test_streak_narrows_by_a_teammates_absence_and_says_so(league: TemplateConte
     assert "without Jaylen Brown" in result.answer
 
 
-def test_streak_narrows_by_a_named_half_of_the_split_and_says_so(league: TemplateContext) -> None:
+def test_streak_narrows_by_a_named_half_of_the_split_and_says_so(league: AnswerContext) -> None:
     """Tatum's only bench game is e4, a win - a run of exactly one."""
     result = streak(league, Reading.from_slots(_slots(player="Jayson Tatum", kind="win", split="bench")))
     assert result.data["streaks"][0]["length"] == 1
     assert "off the bench" in result.answer
 
 
-def test_streak_honors_since_and_says_so(league: TemplateContext) -> None:
+def test_streak_honors_since_and_says_so(league: AnswerContext) -> None:
     """Since this season alone (S), Tatum's recorded-points games are e1, e4,
     e7 - e5 sits between e4 and e7 with no box score, so it is a run of 2
     (e1, e4), not 3."""
@@ -1283,7 +1284,7 @@ def test_streak_honors_since_and_says_so(league: TemplateContext) -> None:
     assert result.answer.startswith(f"Jayson Tatum's longest run of consecutive games with 25+ points, since {S} ({S} regular season):")
 
 
-def test_streak_settles_season_n_and_says_so(league: TemplateContext) -> None:
+def test_streak_settles_season_n_and_says_so(league: AnswerContext) -> None:
     """His 2nd season on record is this one (S) - the same games as the
     `since` case above, addressed by ordinal instead."""
     result = streak(league, Reading.from_slots(_slots(player="Jayson Tatum", stat="points", threshold=25, season_n=2)))
@@ -1291,7 +1292,7 @@ def test_streak_settles_season_n_and_says_so(league: TemplateContext) -> None:
     assert "in his 2nd season (" in result.answer
 
 
-def test_streak_narrows_by_one_game_of_a_playoff_series_and_says_so(league: TemplateContext) -> None:
+def test_streak_narrows_by_one_game_of_a_playoff_series_and_says_so(league: AnswerContext) -> None:
     """Playoff Guy's game 2 of his one series is p2 alone - a run of exactly
     one game either way, but scoped to that game and said so."""
     result = streak(league, Reading.from_slots(_slots(player="Playoff Guy", stat="points", threshold=25, season_type=3, game_n=2)))
@@ -1299,7 +1300,7 @@ def test_streak_narrows_by_one_game_of_a_playoff_series_and_says_so(league: Temp
     assert "game 2 of each series" in result.answer
 
 
-def test_streak_narrows_by_a_box_score_line_and_says_so(league: TemplateContext) -> None:
+def test_streak_narrows_by_a_box_score_line_and_says_so(league: AnswerContext) -> None:
     """Every played row in this fixture carries exactly 3 assists, so a line
     every game already satisfies changes no run but does say so."""
     with_line = streak(league, Reading.from_slots(_slots(player="Jayson Tatum", stat="points", threshold=25, span="career", above=["at least 3 assists"])))
@@ -1308,16 +1309,16 @@ def test_streak_narrows_by_a_box_score_line_and_says_so(league: TemplateContext)
     assert "with at least 3 assists" in with_line.answer
 
 
-def test_streak_cannot_honor_a_relation_cell_without_a_player(league: TemplateContext) -> None:
+def test_streak_cannot_honor_a_relation_cell_without_a_player(league: AnswerContext) -> None:
     """Team and league streaks settle no player, so neither can narrow by an
     ordinal season - only condition_player reads that, and neither branch
     calls it. ``since`` is NOT in this list any more (step 3, C4b) - see
     test_a_team_streak_honors_since below."""
-    with pytest.raises(TemplateUnsupported, match=r"streak cannot honor \['season_n'\]"):
+    with pytest.raises(Unsupported, match=r"streak cannot honor \['season_n'\]"):
         streak(league, Reading.from_slots(_slots(kind="win", season_n=1)))
 
 
-def test_a_team_streak_honors_since(league: TemplateContext) -> None:
+def test_a_team_streak_honors_since(league: AnswerContext) -> None:
     """``since`` (step 3, C4b): searched across every season from it on
     rather than only the current one - not across the boundary between them,
     since a team's own run is still counted within one season
@@ -1334,7 +1335,7 @@ def test_a_team_streak_honors_since(league: TemplateContext) -> None:
     assert f"since {S - 1}" in (result.answer or "")
 
 
-def test_a_team_streak_honors_until(league: TemplateContext) -> None:
+def test_a_team_streak_honors_until(league: AnswerContext) -> None:
     """``until`` (ISSUES.md): before this, `_streak_team` never passed it to
     `_span_of`, so a run bounded to just `last` (the fixture's
     ``since=until={S - 1}``) silently searched every season since instead,
@@ -1349,11 +1350,11 @@ def test_a_team_streak_honors_until(league: TemplateContext) -> None:
     assert "Matched by" in (unbounded.answer or "")
 
 
-def test_a_team_streak_refuses_a_condition(league: TemplateContext) -> None:
+def test_a_team_streak_refuses_a_condition(league: AnswerContext) -> None:
     """Team and league streaks settle no player, so a ``conditions`` entry
     has no subject to check it against - refused by name rather than
     silently narrowing nothing (ISSUES.md)."""
-    with pytest.raises(TemplateUnsupported, match=r"streak cannot honor \['conditions'\]"):
+    with pytest.raises(Unsupported, match=r"streak cannot honor \['conditions'\]"):
         streak(league, Reading.from_slots(_slots(team="Boston Celtics", kind="win", conditions=[{"player": "Jayson Tatum", "predicate": "started"}])))
 
 
@@ -1402,7 +1403,7 @@ def test_a_span_of_seasons_starts_where_seasons_are_named_for_their_end() -> Non
 
 
 @pytest.fixture
-def old_postseason_and_cup_final(league: TemplateContext) -> TemplateContext:
+def old_postseason_and_cup_final(league: AnswerContext) -> AnswerContext:
     """``league``, plus a postseason game labeled 1990 but played in 1991 -
     the wrong-year ESPN label ``team_games.py``'s calendar-year read corrects
     (step 3, C4) - and a neutral-site Las Vegas game, the NBA Cup final: a
@@ -1417,7 +1418,7 @@ def old_postseason_and_cup_final(league: TemplateContext) -> TemplateContext:
 
 
 @pytest.mark.parametrize("season", [1990, 1993])
-def test_a_playoff_season_label_no_longer_refuses_and_finds_nothing_with_no_matching_games(league: TemplateContext, season: int) -> None:
+def test_a_playoff_season_label_no_longer_refuses_and_finds_nothing_with_no_matching_games(league: AnswerContext, season: int) -> None:
     """Before step 3, C4 this refused, naming the wrong year under the ESPN
     label (``_misfiled_postseason``). Now the label is not read at all - the
     postseason is selected by the calendar year the games were actually
@@ -1430,7 +1431,7 @@ def test_a_playoff_season_label_no_longer_refuses_and_finds_nothing_with_no_matc
         assert "no games" in answer.lower() or "no team has a game" in answer.lower()
 
 
-def test_a_postseason_labeled_1990_is_read_as_the_1991_playoffs_by_calendar_year(old_postseason_and_cup_final: TemplateContext) -> None:
+def test_a_postseason_labeled_1990_is_read_as_the_1991_playoffs_by_calendar_year(old_postseason_and_cup_final: AnswerContext) -> None:
     """``old1`` is labeled season 1990 but was played 1991-05-01 - the
     Celtics' only playoff win on record for that stretch. Asking for the 1990
     LABEL finds nothing (nothing was played in calendar year 1990); asking
@@ -1447,7 +1448,7 @@ def test_a_postseason_labeled_1990_is_read_as_the_1991_playoffs_by_calendar_year
         assert found.data.get("games") != 0, f"{template.__name__} found no game under 1991, the calendar year old1 was actually played"
 
 
-def test_a_teams_games_over_a_span_holding_the_cup_final_count_it(old_postseason_and_cup_final: TemplateContext) -> None:
+def test_a_teams_games_over_a_span_holding_the_cup_final_count_it(old_postseason_and_cup_final: AnswerContext) -> None:
     """The Celtics played 7 regular-season games this season with the Cup
     final (``cup``) added to the 6 ``league`` already holds - a plain game
     list or split is not a win-loss RECORD, so it does not exclude the cup
@@ -1457,13 +1458,13 @@ def test_a_teams_games_over_a_span_holding_the_cup_final_count_it(old_postseason
     assert result.data["games"] == 7
 
 
-def test_a_player_listed_once_is_told_so_in_the_singular(league: TemplateContext) -> None:
+def test_a_player_listed_once_is_told_so_in_the_singular(league: AnswerContext) -> None:
     league.con.execute("DELETE FROM player_box_stats WHERE athlete_id = ? AND season = ? AND event_id <> 'e2'", [TATUM, S])
     assert player_splits(league, Reading.from_slots(_slots(player="Jayson Tatum"))).answer.endswith("box score in the 2026 regular season but did not play in it.".replace("2026", str(S)))
 
 
 @pytest.fixture
-def old_franchises(league: TemplateContext) -> TemplateContext:
+def old_franchises(league: AnswerContext) -> AnswerContext:
     """The league, plus six 2001 meetings of two franchises that have since been
     renamed or moved: the New Jersey Nets (id 17, today's Brooklyn) beating the
     Vancouver Grizzlies (id 29, today's Memphis). `teams` holds only today's
@@ -1477,7 +1478,7 @@ def old_franchises(league: TemplateContext) -> TemplateContext:
     return league
 
 
-def test_a_streak_across_seasons_names_each_team_as_it_was_then(old_franchises: TemplateContext) -> None:
+def test_a_streak_across_seasons_names_each_team_as_it_was_then(old_franchises: AnswerContext) -> None:
     """Every all-seasons team streak used to end "franchises are named as they
     are today", because that is what it did: a 2001 Nets run read Brooklyn
     Nets. Each run lies inside one season, so it is named for it."""
@@ -1486,7 +1487,7 @@ def test_a_streak_across_seasons_names_each_team_as_it_was_then(old_franchises: 
     assert "named as they are today" not in answer
 
 
-def test_a_matchup_log_abbreviates_each_team_for_the_season_of_the_meeting(old_franchises: TemplateContext) -> None:
+def test_a_matchup_log_abbreviates_each_team_for_the_season_of_the_meeting(old_franchises: AnswerContext) -> None:
     """The meeting log read "BKN 100-90 MEM" for a 2001 game in New Jersey
     against Vancouver."""
     answer = player_matchup(old_franchises, Reading.from_slots(_slots(players=["Kenyon Martin", "Pau Gasol"], season=2001))).answer or ""
@@ -1496,7 +1497,7 @@ def test_a_matchup_log_abbreviates_each_team_for_the_season_of_the_meeting(old_f
 # ---------------- player_splits: venue and opponent ----------------
 
 
-def test_a_venue_narrows_a_players_games(league: TemplateContext) -> None:
+def test_a_venue_narrows_a_players_games(league: AnswerContext) -> None:
     """Tatum's three games this season are e1 (home), e4 and e7 (away); a
     venue narrows the games the splits are computed over, not just which
     row of the home/away split is shown.
@@ -1511,7 +1512,7 @@ def test_a_venue_narrows_a_players_games(league: TemplateContext) -> None:
     assert (rows["home"]["games"], rows["away"]["games"]) == (1, 0)
 
 
-def test_an_opponent_narrows_a_players_games(league: TemplateContext) -> None:
+def test_an_opponent_narrows_a_players_games(league: AnswerContext) -> None:
     """Tatum played the Lakers twice: e1 at home (30 points) and e7 on the
     road (31)."""
     result = player_splits(league, Reading.from_slots(_slots(player="Jayson Tatum", opponent="Los Angeles Lakers")))
@@ -1519,7 +1520,7 @@ def test_an_opponent_narrows_a_players_games(league: TemplateContext) -> None:
     assert "Jayson Tatum vs the Los Angeles Lakers," in (result.answer or "")
 
 
-def test_venue_and_opponent_narrow_together(league: TemplateContext) -> None:
+def test_venue_and_opponent_narrow_together(league: AnswerContext) -> None:
     """Only e7 - Tatum's road game against the Lakers - matches both.
     ``Narrowed.filters()`` names the opponent before the venue - "vs the
     Lakers on the road", not "on the road vs the Lakers" - the order every
@@ -1530,7 +1531,7 @@ def test_venue_and_opponent_narrow_together(league: TemplateContext) -> None:
     assert "1 game he played" in (result.answer or ""), "not '1 games' - the pluralization a venue/opponent narrowing exposes"
 
 
-def test_condition_player_reads_a_scope_beside_the_opponent_its_caller_resolved(league: TemplateContext) -> None:
+def test_condition_player_reads_a_scope_beside_the_opponent_its_caller_resolved(league: AnswerContext) -> None:
     """The shared step under player_splits, record_when and streak reads the
     typed Scope (ROADMAP plan item 6, step (d)). player_splits resolves the
     opponent before the player; a Scope holds names, so the team it resolved
@@ -1553,14 +1554,14 @@ def test_condition_player_reads_a_scope_beside_the_opponent_its_caller_resolved(
         condition_player(league.con, replace(scope, opponent="Los Angeles Lakers"), "needs a player", within),
     ]
     for read in reads:
-        assert not isinstance(read, TemplateResult)
+        assert not isinstance(read, Reply)
         player, narrowed = read
         assert (player.name, narrowed.opponent) == ("Jayson Tatum", lakers)
         sql, params = games_subquery(narrowed, box_source(league.con))
         assert league.con.execute(f"SELECT COUNT(*) FROM ({sql})", params).fetchone() == (2,)
 
 
-def test_a_blank_opponent_narrows_a_players_splits_to_nothing(league: TemplateContext) -> None:
+def test_a_blank_opponent_narrows_a_players_splits_to_nothing(league: AnswerContext) -> None:
     """player_splits resolves the opponent before the player and hands
     condition_player the team it found beside a Scope with its own opponent
     cleared (plan item 6, step (d)). A blank name is nobody to the first
@@ -1572,7 +1573,7 @@ def test_a_blank_opponent_narrows_a_players_splits_to_nothing(league: TemplateCo
     assert (blank.answer, blank.data) == (plain.answer, plain.data)
 
 
-def test_a_venue_narrows_a_teams_own_games_too(league: TemplateContext) -> None:
+def test_a_venue_narrows_a_teams_own_games_too(league: AnswerContext) -> None:
     """The Celtics' three home games this season (e1, e3, e5) are all wins."""
     result = player_splits(league, Reading.from_slots(_slots(team="Boston Celtics", venue="home")))
     assert result.data["games"] == 3
@@ -1580,7 +1581,7 @@ def test_a_venue_narrows_a_teams_own_games_too(league: TemplateContext) -> None:
     assert (rows["wins"]["games"], rows["losses"]["games"]) == (3, 0)
 
 
-def test_an_opponent_narrows_a_teams_own_games_too(league: TemplateContext) -> None:
+def test_an_opponent_narrows_a_teams_own_games_too(league: AnswerContext) -> None:
     """The Celtics played the Lakers four times: e1, e5 at home (both wins) and e2, e7 on the road (both losses)."""
     result = player_splits(league, Reading.from_slots(_slots(team="Boston Celtics", opponent="Los Angeles Lakers")))
     assert result.data["games"] == 4
@@ -1588,22 +1589,22 @@ def test_an_opponent_narrows_a_teams_own_games_too(league: TemplateContext) -> N
     assert (rows["home"]["wins"], rows["away"]["wins"]) == (2, 0)
 
 
-def test_a_home_away_split_conflicts_with_an_already_narrowed_venue(league: TemplateContext) -> None:
+def test_a_home_away_split_conflicts_with_an_already_narrowed_venue(league: AnswerContext) -> None:
     """Asking to break games out by home/away while also filtering to one of
     the two asks the same axis twice."""
-    with pytest.raises(TemplateUnsupported):
+    with pytest.raises(Unsupported):
         player_splits(league, Reading.from_slots(_slots(player="Jayson Tatum", split="home_away", venue="home")))
 
 
-def test_a_real_limit_is_refused_rather_than_answering_the_whole_span(league: TemplateContext) -> None:
+def test_a_real_limit_is_refused_rather_than_answering_the_whole_span(league: AnswerContext) -> None:
     """player_splits has no notion of "his last N games" - answering under
     that framing with the whole span (all 3 of Tatum's games) would be the
     silent substitution this whole module exists to prevent."""
-    with pytest.raises(TemplateUnsupported):
+    with pytest.raises(Unsupported):
         player_splits(league, Reading.from_slots(_slots(player="Jayson Tatum", venue="home", limit=4)))
 
 
-def test_a_bare_limit_of_one_is_not_refused(league: TemplateContext) -> None:
+def test_a_bare_limit_of_one_is_not_refused(league: AnswerContext) -> None:
     """The router's own filler value elsewhere (router._route_side_and_order
     drops a limit of 1 for the same reason) - and here it changes nothing,
     since the games a venue narrows to are shown in full either way."""
@@ -1611,7 +1612,7 @@ def test_a_bare_limit_of_one_is_not_refused(league: TemplateContext) -> None:
     assert result.data["games"] == 1
 
 
-def test_a_bare_limit_never_windows_a_condition_template(league: TemplateContext) -> None:
+def test_a_bare_limit_never_windows_a_condition_template(league: AnswerContext) -> None:
     """`scoped_games` reads a bare `limit` as "the newest N" for the templates
     that honor a window (step 3, C5); a split, a record and a run exclude
     `order` by declaration and are read over every game in the span, so the
@@ -1630,7 +1631,7 @@ def test_a_bare_limit_never_windows_a_condition_template(league: TemplateContext
 # ---------------- player_splits: step 3, C2 - the relation's own cells ----------------
 
 
-def test_without_narrows_a_players_splits(league: TemplateContext) -> None:
+def test_without_narrows_a_players_splits(league: AnswerContext) -> None:
     """Previously `_player_splits_player` handed `condition_player` a copy of
     `slots` with `"without": None` - so this narrowing reached check_scope's
     declaration and nothing else. Over his career Brown played every one of
@@ -1645,7 +1646,7 @@ def test_without_narrows_a_players_splits(league: TemplateContext) -> None:
     assert (rows["home"]["games"], rows["away"]["games"]) == (3, 1)  # e0c, e0a, e0d home; e0b away
 
 
-def test_since_narrows_to_a_range_of_seasons(league: TemplateContext) -> None:
+def test_since_narrows_to_a_range_of_seasons(league: AnswerContext) -> None:
     """A third, older season Tatum played is outside the `since` window, so
     "since {S-1}" differs from both the plain current-season default (3
     games) and a full career that would also count the older one (8)."""
@@ -1657,15 +1658,15 @@ def test_since_narrows_to_a_range_of_seasons(league: TemplateContext) -> None:
     assert result.data["span"] == f"{S - 1}-{S} regular seasons"
 
 
-def test_since_and_a_named_season_conflict(league: TemplateContext) -> None:
+def test_since_and_a_named_season_conflict(league: AnswerContext) -> None:
     """`_condition_scope` used to take the `since` branch unconditionally,
     silently dropping a `season` slot named alongside it - the same pairing
     `_span_of` already refuses for game_log and player_stat."""
-    with pytest.raises(TemplateUnsupported):
+    with pytest.raises(Unsupported):
         player_splits(league, Reading.from_slots(_slots(player="Jayson Tatum", since=S - 1, season=S)))
 
 
-def test_game_n_narrows_to_one_game_of_each_series(league: TemplateContext) -> None:
+def test_game_n_narrows_to_one_game_of_each_series(league: AnswerContext) -> None:
     """A three-game series vs the Lakers; game_n=2 is q2, which Tatum's
     Celtics won 105-95 on the road (25 points)."""
     c = league.con
@@ -1695,7 +1696,7 @@ def test_game_n_narrows_to_one_game_of_each_series(league: TemplateContext) -> N
     assert (rows["wins"]["games"], rows["losses"]["games"]) == (1, 0)
 
 
-def test_a_named_half_of_starter_bench_narrows_the_games(league: TemplateContext) -> None:
+def test_a_named_half_of_starter_bench_narrows_the_games(league: AnswerContext) -> None:
     """ "as a starter" is a request to FILTER - the value `_split_side` reads
     out of the question for game_log and the other filtering templates - not
     a request for the starter/bench table over every game. Tatum started e1
@@ -1714,7 +1715,7 @@ def test_a_named_half_of_starter_bench_narrows_the_games(league: TemplateContext
     assert rows["starter"]["points"] == pytest.approx(30.5)
 
 
-def test_season_n_settles_to_the_year_once_the_player_is_known(league: TemplateContext) -> None:
+def test_season_n_settles_to_the_year_once_the_player_is_known(league: AnswerContext) -> None:
     """His 1st season (season_n=1) is last season (S-1, 4 games) - a
     different year from the "now" this template defaults to, so the label
     the answer names has to follow the ordinal the relation settled rather
@@ -1728,13 +1729,13 @@ def test_season_n_settles_to_the_year_once_the_player_is_known(league: TemplateC
     assert second.data["games"] == player_splits(league, Reading.from_slots(_slots(player="Jayson Tatum"))).data["games"] == 3
 
 
-def test_a_season_n_past_his_career_is_refused_by_name(league: TemplateContext) -> None:
+def test_a_season_n_past_his_career_is_refused_by_name(league: AnswerContext) -> None:
     # The league fixture already holds Tatum's two seasons on record.
     answer = player_splits(league, Reading.from_slots(_slots(player="Jayson Tatum", season_n=5))).answer or ""
     assert "2 seasons on record" in answer
 
 
-def test_above_and_below_narrow_which_games_the_splits_cover(league: TemplateContext) -> None:
+def test_above_and_below_narrow_which_games_the_splits_cover(league: AnswerContext) -> None:
     """Tatum's three counted games this season score 30, 35 and 31 points
     (e1, e4, e7); "at least 32" keeps e4 alone, "under 32" keeps the other
     two - refused here, before any name is resolved, if the line names no
@@ -1746,11 +1747,11 @@ def test_above_and_below_narrow_which_games_the_splits_cover(league: TemplateCon
     low = player_splits(league, Reading.from_slots(_slots(player="Jayson Tatum", below="32 points")))
     assert low.data["games"] == 2
     assert "under 32 points" in (low.answer or "")
-    with pytest.raises(TemplateUnsupported):
+    with pytest.raises(Unsupported):
         player_splits(league, Reading.from_slots(_slots(player="Jayson Tatum", above="20 vibes")))
 
 
-def test_a_matchup_without_a_teammate_narrows_the_first_players_games(league: TemplateContext) -> None:
+def test_a_matchup_without_a_teammate_narrows_the_first_players_games(league: AnswerContext) -> None:
     """The pair relation on the relation (yardstick-v2 F114 "curry vs lebron
     without kd"): LeBron met Tatum in e1 and e7 this season; Journeyman Guy,
     LeBron's teammate, played e1 and has no line in e7, so "without" him
@@ -1760,7 +1761,7 @@ def test_a_matchup_without_a_teammate_narrows_the_first_players_games(league: Te
     assert "without Journeyman Guy" in result.answer
 
 
-def test_a_matchup_at_home_is_the_first_players_home_meetings(league: TemplateContext) -> None:
+def test_a_matchup_at_home_is_the_first_players_home_meetings(league: AnswerContext) -> None:
     """A venue narrows the first player's side: e7 is at LAL, e1 at BOS."""
     home = player_matchup(league, Reading.from_slots(_slots(players=["LeBron James", "Jayson Tatum"], venue="home")))
     assert home.data["meetings"] == 1
@@ -1769,7 +1770,7 @@ def test_a_matchup_at_home_is_the_first_players_home_meetings(league: TemplateCo
     assert away.data["meetings"] == 1
 
 
-def test_a_matchup_whose_second_player_is_the_absent_teammate_says_so(league: TemplateContext) -> None:
+def test_a_matchup_whose_second_player_is_the_absent_teammate_says_so(league: AnswerContext) -> None:
     """A recorded case: "fox vs wembanyama without wembanyama" - with the
     absence honored, the meetings are empty by construction, and "never
     played against each other" would be a false sentence. Said instead."""
@@ -1786,25 +1787,25 @@ def test_a_matchup_whose_second_player_is_the_absent_teammate_says_so(league: Te
 # on the other side in e1, e2, e5, e7.
 
 
-def _brown_games(league: TemplateContext, *conditions: dict[str, Any]) -> int:
+def _brown_games(league: AnswerContext, *conditions: dict[str, Any]) -> int:
     return player_splits(league, Reading.from_slots(_slots(player="Jaylen Brown", split="home_away", conditions=list(conditions)))).data["games"]
 
 
-def test_a_teammates_start_bench_and_line_are_conditions(league: TemplateContext) -> None:
+def test_a_teammates_start_bench_and_line_are_conditions(league: AnswerContext) -> None:
     assert _brown_games(league, {"player": "Jayson Tatum", "side": "own", "predicate": "started"}) == 2  # e1, e7
     assert _brown_games(league, {"player": "Jayson Tatum", "side": "own", "predicate": "bench"}) == 1  # e4
     assert _brown_games(league, {"player": "Jayson Tatum", "side": "own", "predicate": "played"}) == 3  # e1, e4, e7
     assert _brown_games(league, {"player": "Jayson Tatum", "side": "own", "predicate": "reached", "stat": "points", "threshold": 31}) == 2  # e4 (35), e7 (31)
 
 
-def test_an_opponent_side_condition_reads_the_other_teams_box_score(league: TemplateContext) -> None:
+def test_an_opponent_side_condition_reads_the_other_teams_box_score(league: AnswerContext) -> None:
     assert _brown_games(league, {"player": "LeBron James", "side": "opponent", "predicate": "played"}) == 3  # e1, e2, e7
     assert _brown_games(league, {"player": "LeBron James", "side": "opponent", "predicate": "absent"}) == 2  # e3, e4 vs PHI
     # ANDed: LeBron on the other side and Tatum starting beside him.
     assert _brown_games(league, {"player": "LeBron James", "side": "opponent", "predicate": "played"}, {"player": "Jayson Tatum", "side": "own", "predicate": "started"}) == 2
 
 
-def test_the_absent_condition_is_the_without_slot_word_for_word(league: TemplateContext) -> None:
+def test_the_absent_condition_is_the_without_slot_word_for_word(league: AnswerContext) -> None:
     """The teammate absence every template read before is the own-side
     absent condition: the same games, the same phrase, tenure included."""
     old = player_splits(league, Reading.from_slots(_slots(player="Jaylen Brown", split="home_away", without=["Jayson Tatum"])))
@@ -1812,11 +1813,11 @@ def test_the_absent_condition_is_the_without_slot_word_for_word(league: Template
     assert old.data["games"] == new.data["games"] == 2 and old.answer == new.answer  # e2 (DNP), e3 (no line)
 
 
-def test_a_condition_the_relation_cannot_read_refuses(league: TemplateContext) -> None:
+def test_a_condition_the_relation_cannot_read_refuses(league: AnswerContext) -> None:
     # A predicate the relation does not read is refused at the Reading's door.
     with pytest.raises(ValueError, match="predicate"):
         _brown_games(league, {"player": "Jayson Tatum", "side": "own", "predicate": "dunked"})
-    with pytest.raises(TemplateUnsupported, match="reached condition"):
+    with pytest.raises(Unsupported, match="reached condition"):
         _brown_games(league, {"player": "Jayson Tatum", "side": "own", "predicate": "reached", "stat": "vibes", "threshold": 3})
     # A history's words state no condition (compose.plan.STATED_SCOPING):
     # its presenter steps aside, and the compiler's sentence says what it read.
@@ -1825,7 +1826,7 @@ def test_a_condition_the_relation_cannot_read_refuses(league: TemplateContext) -
     ]
 
 
-def test_a_matchup_emptied_by_an_absence_says_what_it_counted(league: TemplateContext) -> None:
+def test_a_matchup_emptied_by_an_absence_says_what_it_counted(league: AnswerContext) -> None:
     """yardstick-v2 F114: "curry record vs lebron without kd" holds no
     meetings because "without" counts only the games the teammate missed
     while on the subject's team - so the answer says how many meetings there
@@ -1841,7 +1842,7 @@ def test_a_matchup_emptied_by_an_absence_says_what_it_counted(league: TemplateCo
     assert result.data["meetings"] == 2 and "they met" not in result.answer
 
 
-def test_a_record_when_teammates_start_splits_by_the_start(league: TemplateContext) -> None:
+def test_a_record_when_teammates_start_splits_by_the_start(league: AnswerContext) -> None:
     """ "celtics record when tatum starts" (ROADMAP plan item 3): the split's
     sides are the games he started against the rest, not played against
     out. This season Tatum started e1 (W) and e7 (L), came off the bench in

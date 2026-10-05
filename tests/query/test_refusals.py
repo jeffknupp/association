@@ -12,14 +12,15 @@ import duckdb
 import pytest
 
 from association.query import refusals
+from association.query.answer import Reply
 from association.query.calendar import parse_alignment, parse_situation
-from association.query.reading import Reading, Scope
+from association.query.reading import Reading, Scope, Unsupported
 from association.query.refusals import by_question
 from association.query.subject import read_subject
-from association.query.templates.common import TemplateResult, TemplateUnsupported, check_scope
+from association.query.templates.common import check_scope
 
 
-def unanswerable(con: duckdb.DuckDBPyConnection, intent: str, slots: dict[str, Any], question: str) -> TemplateResult | None:
+def unanswerable(con: duckdb.DuckDBPyConnection, intent: str, slots: dict[str, Any], question: str) -> Reply | None:
     """A test's slot dict as the Reading the agent hands
     :func:`association.query.refusals.unanswerable` (5.0.0: it takes the
     Reading alone): the typed scope, and the subject read from the question
@@ -50,7 +51,7 @@ def test_a_playoff_round_is_refused_naming_the_missing_label(con: duckdb.DuckDBP
     template honors (check_scope raises), and the games carry no round
     label (ISSUES #10), so the agent had nothing to read either."""
     slots: dict[str, Any] = {"team": "NBA Finals", "season": 2025, "season_type": 3, "round": "finals"}
-    with pytest.raises(TemplateUnsupported):
+    with pytest.raises(Unsupported):
         check_scope("game_log", slots)
     refusal = unanswerable(con, "game_log", slots, "nba finals game log 2025")
     assert refusal is not None

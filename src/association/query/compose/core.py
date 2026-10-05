@@ -42,6 +42,7 @@ import duckdb
 
 from association.nba.franchises import season_name_sql
 from association.nba.season import current_season, eastern_date_sql
+from association.query.answer import Reply
 from association.query.conditions import _PLAYER_GAME_TABLES, MEETING_STATS, UNGATED_ON_REBUILD, BoxSource, _longest_runs_sql, _meetings_select, _player_streak_rows, box_source
 from association.query.entities import Entity
 from association.query.measures import BOOLEAN_MEASURES as BOOLEAN_MEASURES
@@ -58,8 +59,6 @@ from association.query.templates.common import (
     SCOPING_SLOTS,
     TEAM_RELATION_SCOPING,
     ResolvedSpan,
-    TemplateResult,
-    TemplateUnsupported,
     apply_period,
     box_score_notes,
     career_end,
@@ -260,13 +259,13 @@ def _row_select(*, rebuilt: bool) -> str:
 
 class Refused(Exception):
     """The relation itself refused: no such player, an ambiguous name, a
-    coverage floor. Carries the template-shaped :class:`~association.query.templates.common.TemplateResult`
+    coverage floor. Carries the :class:`~association.query.answer.Reply`
     so the wording is the fast path's, not a second, differently-worded refusal.
 
     .. versionadded:: 4.4.0
     """
 
-    def __init__(self, result: TemplateResult) -> None:
+    def __init__(self, result: Reply) -> None:
         """Wrap ``result``, the refusal the relation already composed."""
         super().__init__(result.answer)
         self.result = result
@@ -510,11 +509,11 @@ def _resolve_everyone(con: duckdb.DuckDBPyConnection, q: Query) -> tuple[Entity 
         season = current_season()
     try:
         span = span_of("career" if season is None else None, season, season_type, "player_game_log", since=scope.since, until=scope.until)
-    except TemplateUnsupported as exc:
+    except Unsupported as exc:
         raise Unsupported(str(exc)) from exc
     # The shared steps read the slot dict until they take the Scope.
     narrowed = league_games(con, span, scope, position=q.position)
-    if isinstance(narrowed, TemplateResult):
+    if isinstance(narrowed, Reply):
         raise Refused(narrowed)
     return None, span, narrowed
 
@@ -542,7 +541,7 @@ def _resolve_named(con: duckdb.DuckDBPyConnection, q: Query) -> tuple[Entity | N
         span="career" if dated else (q.span if q.span is not None else scope.span),
         season=None if dated else (q.season if q.season is not None else scope.season),
     )
-    if isinstance(subject, TemplateResult):
+    if isinstance(subject, Reply):
         raise Refused(subject)
     player, span = subject
     # ``own_team`` ("lebron stats as a starter for Miami" - his games for
@@ -550,7 +549,7 @@ def _resolve_named(con: duckdb.DuckDBPyConnection, q: Query) -> tuple[Entity | N
     # does for player_stat, the one template that reads it; ignored here, the
     # same question averaged his whole career's starts (1,612 games for 294).
     narrowed = scoped_games(con, player, span, scope, opponent=scope.opponent, measures=measure_filters(scope.below, scope.above), date=scope.date, team=scope.own_team)
-    if isinstance(narrowed, TemplateResult):
+    if isinstance(narrowed, Reply):
         raise Refused(narrowed)
     return player, span, narrowed
 
@@ -581,7 +580,7 @@ def _resolve_pair(con: duckdb.DuckDBPyConnection, q: Query) -> tuple[Entity, Ent
     a, span, narrowed = _resolve_named(con, first)
     assert a is not None
     b = resolved_player(con, texts[1], available=BOX_SCORES, season=span.season, through=career_end(span.season))
-    if isinstance(b, TemplateResult):
+    if isinstance(b, Reply):
         raise Refused(b)
     if a.id == b.id:
         raise Unsupported("the named players resolved to the same person")
@@ -612,18 +611,18 @@ def _apply_team_slot(con: duckdb.DuckDBPyConnection, q: Query, player: Entity | 
         return narrowed
     if q.skeleton == "rows":
         resolved_opponent = _team_slot_for_player(con, player, team_text, season=scope.season, opponent=scope.opponent)
-        if isinstance(resolved_opponent, TemplateResult):
+        if isinstance(resolved_opponent, Reply):
             raise Refused(resolved_opponent)
         if resolved_opponent is not None and narrowed.opponent is None:
             rescoped = scoped_games(con, player, span, scope, opponent=resolved_opponent, measures=measure_filters(scope.below, scope.above), date=scope.date, team=scope.own_team)
-            if isinstance(rescoped, TemplateResult):
+            if isinstance(rescoped, Reply):
                 raise Refused(rescoped)
             narrowed = rescoped
         return narrowed
     if not (q.aggregate in ("count", "record") or q.skeleton in ("grouped", "run")):
         return narrowed
     team = resolved_team(con, team_text, season=scope.season)
-    if isinstance(team, TemplateResult):
+    if isinstance(team, Reply):
         raise Refused(team)
     narrowed.narrow("pgl.team_id = ?", team.id)
     return narrowed
@@ -973,7 +972,7 @@ def _compile_pair(narrowed: Narrowed, box: BoxSource, a: Entity, b: Entity, span
     """
     if any(absent.id == b.id for absent in narrowed.without):
         message = f"{b.name} is both the player {a.name} is matched against and the teammate named as absent - no game can be both. Name the opponent team, or drop 'without'."
-        raise Refused(TemplateResult(data={"players": [a.name, b.name], "message": message}, answer=message))
+        raise Refused(Reply(data={"players": [a.name, b.name], "message": message}, answer=message))
     sql, params = paired_rows_sql(narrowed, b.id, _meetings_select(box), rebuilt=box.rebuilt)
     return Compiled(sql, params, a, span, narrowed, box.rebuilt, list(MEETING_STATS), other=b)
 
@@ -1195,7 +1194,7 @@ def run(con: duckdb.DuckDBPyConnection, q: Query) -> dict[str, Any]:
     """
     try:
         c = compile_query(con, q)
-    except TemplateUnsupported as exc:
+    except Unsupported as exc:
         raise Unsupported(f"relation: {exc}") from exc
     rows = rows_of(con, c)
     # Each grouped row's own rebuilt count, read before _box_notes pops the

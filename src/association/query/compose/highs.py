@@ -32,12 +32,13 @@ import duckdb
 
 from association.nba.coverage import COVERAGE
 from association.nba.season import eastern_date
+from association.query.answer import Reply
 from association.query.entities import Entity
 from association.query.notes import Note
 from association.query.player_games import REBUILT_STATS
 from association.query.result import Decided, Part, Result, Rows
 from association.query.season_line import season_redirect
-from association.query.templates.common import SEASON_TYPE_NAMES, STAT_LABELS, THRESHOLD_STAT_COLUMNS, TemplateResult, player_relation_season_type, unhonored_scoping
+from association.query.templates.common import SEASON_TYPE_NAMES, STAT_LABELS, THRESHOLD_STAT_COLUMNS, player_relation_season_type, unhonored_scoping
 from association.query.templates.players import empty_box_scores, rebuilt_in_scope
 
 from .core import Query, compile_query, rows_of
@@ -56,7 +57,7 @@ def _single_game_high_column(q: Query) -> str | None:
     return column
 
 
-def read_single_game_high(con: duckdb.DuckDBPyConnection, q: Query, *, stated: frozenset[str]) -> Result | TemplateResult | None:
+def read_single_game_high(con: duckdb.DuckDBPyConnection, q: Query, *, stated: frozenset[str]) -> Result | Reply | None:
     """``single_game_high``'s own point - the top games by one stat, a named
     player's or the league's - read into a Result over the compiled
     statement. ``None`` where the point is not that, or carries a narrowing

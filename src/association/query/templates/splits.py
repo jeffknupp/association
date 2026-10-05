@@ -10,22 +10,16 @@ from typing import Any
 
 import duckdb
 
+from association.query.answer import Reply
 from association.query.reading import SPLIT_KINDS as SPLIT_KINDS
-from association.query.reading import Scope
+from association.query.reading import Scope, Unsupported
 
 from ..conditions import (
     _Scope,
 )
 from ..entities import Entity
 from ..team_games import TEAM_GAMES_SQL, TeamNarrowed
-from .common import (
-    TemplateResult,
-    TemplateUnsupported,
-    _period,
-    _Span,
-    _team_span_clause,
-    ordinal_word,
-)
+from .common import _period, _Span, _team_span_clause, ordinal_word
 
 
 def condition_span_label(covered: _Scope, scope: Scope, first: Any, last: Any) -> str:
@@ -116,7 +110,7 @@ def condition_needs_player_refusal(intent: str, scope: Scope, *extra: str) -> No
     """
     claimed = sorted(cell for cell in (*_CONDITION_PLAYER_ONLY_CELLS, *extra) if getattr(scope, cell))
     if claimed:
-        raise TemplateUnsupported(f"{intent} cannot honor {claimed} without a named player - only his own games can be narrowed that way")
+        raise Unsupported(f"{intent} cannot honor {claimed} without a named player - only his own games can be narrowed that way")
 
 
 def team_span_label(span: _Span, first: Any = None, last: Any = None) -> str:
@@ -160,7 +154,7 @@ def team_where_in(span: _Span) -> str:
     return f"in the {team_span_label(span)}" if span.season is not None else f"in any {span.kind} on record ({span.first} onward)"
 
 
-def condition_team_no_games(con: duckdb.DuckDBPyConnection, team: Entity, span: _Span, narrowed: TeamNarrowed) -> TemplateResult:
+def condition_team_no_games(con: duckdb.DuckDBPyConnection, team: Entity, span: _Span, narrowed: TeamNarrowed) -> Reply:
     """Nothing to report for a team's own games under a condition template
     (:func:`_player_splits_team`, :func:`_record_when_team_answer`,
     :func:`_streak_team`) - which fact is missing, the team's games in this
@@ -179,9 +173,9 @@ def condition_team_no_games(con: duckdb.DuckDBPyConnection, team: Entity, span: 
     label = team_span_label(span, first, last)
     if not total:
         message = f"The warehouse has no games with a result for the {team.name} {team_where_in(span)}."
-        return TemplateResult(data={"team": team.name, "span": label, "games": 0}, answer=message)
+        return Reply(data={"team": team.name, "span": label, "games": 0}, answer=message)
     message = f"The {team.name} played {total:,} games {span.during(first, last, whose='all seasons on record')}, none of them{narrowed.filters()}."
-    return TemplateResult(data={"team": team.name, "span": label, "games": 0}, answer=message)
+    return Reply(data={"team": team.name, "span": label, "games": 0}, answer=message)
 
 
 def _streak_league_team_narrowed(span: _Span) -> TeamNarrowed:

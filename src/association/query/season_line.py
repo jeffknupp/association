@@ -48,6 +48,7 @@ import duckdb
 from association.nba.coverage import COVERAGE, POSTSEASON, REGULAR_SEASON
 from association.nba.franchises import season_name_sql
 from association.nba.season import current_season
+from association.query.answer import Reply
 from association.query.entities import Ambiguous, Availability, Entity, NotFound, resolve_team
 from association.query.metrics import EXTRA_FIELD_COLUMNS, LEADERBOARD_METRICS, SEASON_TYPE_LABELS, CareerAggregate, LeaderboardMetric
 from association.query.player_games import season_type_clause
@@ -60,7 +61,7 @@ from association.query.player_games import season_type_clause
 # clamped count (``compose.rankings``) is the only one that reaches here.
 from association.query.reading import MAX_LIMIT, Scope
 from association.query.result import Grouped
-from association.query.templates.common import HISTORY_COLUMNS, PLAYER_STAT_COLUMNS, ResolvedSpan, TemplateResult, resolved_player, scoped_player, span_of
+from association.query.templates.common import HISTORY_COLUMNS, PLAYER_STAT_COLUMNS, ResolvedSpan, resolved_player, scoped_player, span_of
 from association.query.templates.players import MADE_STAT_ATTEMPTS, _AdvancedStat, _ShootingStat
 
 SEASON_LINES = Availability("player_season_stats_deduped")
@@ -167,7 +168,7 @@ class Statement:
     params: list[Any]
 
 
-def line_subject(con: duckdb.DuckDBPyConnection, scope: Scope) -> tuple[Entity, ResolvedSpan] | TemplateResult:
+def line_subject(con: duckdb.DuckDBPyConnection, scope: Scope) -> tuple[Entity, ResolvedSpan] | Reply:
     """The player and span an unnarrowed ``player_stat`` reads the season
     line over - the span first, since it is what narrows an ambiguous name
     (:func:`~association.query.templates.common.scoped_player`) - or the
@@ -189,7 +190,7 @@ def history_through(scope: Scope) -> int:
     return scope.season or current_season()
 
 
-def history_subject(con: duckdb.DuckDBPyConnection, scope: Scope) -> Entity | TemplateResult:
+def history_subject(con: duckdb.DuckDBPyConnection, scope: Scope) -> Entity | Reply:
     """The player a history is about, narrowed over every season the
     history could read, not the last N: the read takes each player's last
     seasons up to :func:`history_through` wherever they fall, so a player
@@ -204,7 +205,7 @@ def history_subject(con: duckdb.DuckDBPyConnection, scope: Scope) -> Entity | Te
     return resolved_player(con, scope.player, "player_history needs a player name", available=SEASON_LINES, through=history_through(scope))
 
 
-def compared_player(con: duckdb.DuckDBPyConnection, name: str, season: int) -> Entity | TemplateResult:
+def compared_player(con: duckdb.DuckDBPyConnection, name: str, season: int) -> Entity | Reply:
     """One of a comparison's names, resolved for the season compared.
 
     .. versionadded:: 5.0.0

@@ -7,8 +7,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
-from pathlib import Path
+from dataclasses import dataclass
 from typing import Any, Literal
 
 import duckdb
@@ -16,7 +15,7 @@ import duckdb
 from association.nba.coverage import COVERAGE, REGULAR_SEASON, caveat, unavailable
 from association.nba.season import current_season, eastern_day_utc_range
 
-from ..answer import Artifact
+from ..answer import Reply
 from ..calendar import parse_alignment, parse_situation
 from ..conditions import _PLAYER_GAME_TABLES, _TEAM_GAME_TABLES, _game_scope, _Scope, box_source
 from ..entities import BOX_SCORES as BOX_SCORES
@@ -831,7 +830,7 @@ def check_scope(intent: str, scope: Scope | Mapping[str, Any]) -> None:
     scope = _as_scope(scope)
     ignored = unhonored_scoping(intent, scope, HONORED_SCOPING.get(intent, frozenset()))
     if ignored:
-        raise TemplateUnsupported(f"{intent} cannot honor {ignored} - it would answer for a different span than was asked")
+        raise Unsupported(f"{intent} cannot honor {ignored} - it would answer for a different span than was asked")
 
 
 def unhonored_scoping(intent: str, scope: Scope, honored: frozenset[str]) -> list[str]:
@@ -855,65 +854,7 @@ def unhonored_scoping(intent: str, scope: Scope, honored: frozenset[str]) -> lis
     return ignored
 
 
-TemplateUnsupported = Unsupported
-"""Raised when slots don't validate. The caller offers the compiler the
-same point and then refuses naming the reason, so a slip in the reading
-degrades to a refusal rather than to a wrong answer. The same exception as
-the reader's :class:`~association.query.reading.Unsupported` since Phase
-2's first slice: a template refusing a slot, the reader having no reading of
-a point and the planner unable to say a query are one verdict, "this
-cannot be answered as asked", and the reader-side phrase readers
-(``query/lines.py``) raise it for the templates too.
-
-.. versionchanged:: 5.0.0
-   An alias of ``reading.Unsupported``, not a class of its own.
-"""
-
-
-@dataclass(frozen=True)
-class TemplateContext:
-    """What a template is given: the warehouse, and somewhere to write output.
-
-    Templates took a bare connection until shot_chart needed an output
-    directory too. A small context rather than the whole answering loop keeps
-    templates testable with a plain in-memory DuckDB connection."""
-
-    con: duckdb.DuckDBPyConnection
-    out_dir: Path
-
-
-@dataclass
-class TemplateResult:
-    """`answer` is the final prose, so the fast path makes NO model call after
-    the router. Required, not optional: ollama keeps one KV cache slot per
-    model, so a second call with a different system prompt evicts the router's
-    prefix (measured: three consecutive router calls run 11.6s / 1.3s / 1.7s,
-    but interleaving one narration call puts the next back to 11.2s). Phrasing
-    every answer here also removes the last place on this path where a number
-    could be invented.
-
-    `data` is the same result as structured values - resolved names and numbers,
-    no ids and no schema. Tests assert against it, and from 2.0 it is carried
-    out to the caller in :class:`association.query.answer.Answer` rather than
-    discarded once `answer` had been read.
-
-    `artifacts` is whatever the template wrote to disk - a chart, or nothing.
-
-    .. versionchanged:: 1.2.0
-       ``answer`` is required rather than optional, making "the fast path makes
-       no model call after the router" a type-checked property. The unused
-       ``summary`` field was removed.
-
-    .. versionchanged:: 2.0.0
-       Added ``artifacts``.
-    """
-
-    data: dict[str, Any]
-    answer: str
-    artifacts: list[Artifact] = field(default_factory=list)
-
-
-def clarify(text: str, candidates: list[str], kind: str = "player", active: int = 0) -> TemplateResult:
+def clarify(text: str, candidates: list[str], kind: str = "player", active: int = 0) -> Reply:
     """A handled outcome, not a fall-through: the reader knows exactly what
     is ambiguous, so it says so instead of passing the problem along.
 
@@ -924,7 +865,7 @@ def clarify(text: str, candidates: list[str], kind: str = "player", active: int 
        Public, for the shot relation's reader (``compose.shots``);
        ``_clarify`` is this.
     """
-    return TemplateResult(data={"ambiguous": text, "candidates": candidates}, answer=clarification(text, candidates, kind, active))
+    return Reply(data={"ambiguous": text, "candidates": candidates}, answer=clarification(text, candidates, kind, active))
 
 
 _clarify = clarify
@@ -956,9 +897,9 @@ def resolved_player(
     available: Availability | tuple[Availability, ...],
     season: int | None = None,
     through: int | None = None,
-) -> Entity | TemplateResult:
+) -> Entity | Reply:
     """One player, a clarifying question, or a refusal - the player counterpart
-    to _resolved_team. Returning the TemplateResult rather than raising it keeps
+    to _resolved_team. Returning the Reply rather than raising it keeps
     ambiguity a handled outcome: the caller answers with the question instead of
     guessing. Callers must forward it.
 
@@ -968,7 +909,7 @@ def resolved_player(
     anybody is asked about. See entities.resolve_player - "Curry" this season
     asked about four men who never played in it and left out Stephen."""
     if not isinstance(text, str) or not text.strip():
-        raise TemplateUnsupported(missing)
+        raise Unsupported(missing)
     try:
         resolution = resolve_player(con, text, available, season, through)
     except duckdb.CatalogException:
@@ -988,26 +929,26 @@ def resolved_player(
             # not a shape this template happens not to cover.
             near = [player.name for player in suggest_players(con, text)]
             if near:
-                return TemplateResult(data={"unmatched": text, "suggestions": near}, answer=suggestion(text, near))
-            raise TemplateUnsupported(f"no player matching {text!r}")
+                return Reply(data={"unmatched": text, "suggestions": near}, answer=suggestion(text, near))
+            raise Unsupported(f"no player matching {text!r}")
 
 
 _resolved_player = resolved_player
 
 
-def resolved_team(con: duckdb.DuckDBPyConnection, text: Any, season: int | None = None) -> Entity | TemplateResult:
+def resolved_team(con: duckdb.DuckDBPyConnection, text: Any, season: int | None = None) -> Entity | Reply:
     """One team, a clarifying question, or a refusal - read for ``season``,
     because a franchise's name is a fact about a season. "Hornets" is New
     Orleans in 2008 and Charlotte in 2026; see entities.franchise_by_name."""
     if not isinstance(text, str) or not text.strip():
-        raise TemplateUnsupported("no team named")
+        raise Unsupported("no team named")
     match resolve_team(con, text, season):
         case Entity() as team:
             return team
         case Ambiguous(candidates=candidates):
             return _clarify(text, candidates, kind="team")
         case _:
-            raise TemplateUnsupported(f"no team matching {text!r}")
+            raise Unsupported(f"no team matching {text!r}")
 
 
 _resolved_team = resolved_team
@@ -1282,9 +1223,9 @@ def validated_until(until: int | None, since: int | None) -> int | None:
     if not until:
         return None
     if not since:
-        raise TemplateUnsupported(f"until {until} with no since")
+        raise Unsupported(f"until {until} with no since")
     if until < since:
-        raise TemplateUnsupported(f"until {until} before since {since}")
+        raise Unsupported(f"until {until} before since {since}")
     return until
 
 
@@ -1311,7 +1252,7 @@ def span_of(span: Literal["career"] | None, season: int | None, season_type: int
     until = _validated_until(until, since)
     if since:
         if season:
-            raise TemplateUnsupported(f"since {since} and the {season} season at once")
+            raise Unsupported(f"since {since} and the {season} season at once")
         coverage = COVERAGE[table]
         return _Span(None, season_type, max(since, coverage.floor(season_type).season), coverage.phantom, since=since, until=until)
     if span is None:
@@ -1319,7 +1260,7 @@ def span_of(span: Literal["career"] | None, season: int | None, season_type: int
     if season:
         # "Career" and a named year at once. Either reading answers a different
         # question from the other, so neither is picked.
-        raise TemplateUnsupported(f"a career span and the {season} season at once")
+        raise Unsupported(f"a career span and the {season} season at once")
     coverage = COVERAGE[table]
     return _Span(None, season_type, coverage.floor(season_type).season, coverage.phantom)
 
@@ -1327,7 +1268,7 @@ def span_of(span: Literal["career"] | None, season: int | None, season_type: int
 _span_of = span_of
 
 
-def settle_ordinal_season(con: duckdb.DuckDBPyConnection, player: Entity, season_n: Any, span: _Span) -> _Span | TemplateResult:
+def settle_ordinal_season(con: duckdb.DuckDBPyConnection, player: Entity, season_n: Any, span: _Span) -> _Span | Reply:
     """The span a question naming a season by its place in ``player``'s career
     ("his 18th season") actually covers: that year, with the ordinal kept so
     the answer names both. Unchanged when no ordinal was named.
@@ -1349,7 +1290,7 @@ def settle_ordinal_season(con: duckdb.DuckDBPyConnection, player: Entity, season
     if n < 1 or n > len(seasons):
         have = f"{len(seasons)} seasons on record ({seasons[0]}-{seasons[-1]})" if seasons else "no season on record"
         message = f"{player.name} has {have}, so there is no {ordinal_word(n)} season to answer for."
-        return TemplateResult(data={"player": player.name, "message": message}, answer=message)
+        return Reply(data={"player": player.name, "message": message}, answer=message)
     return _Span(seasons[n - 1], span.season_type, ordinal=n)
 
 
@@ -1365,10 +1306,10 @@ def _narrow_player_games(
     game_n: Any = None,
     team: Any = None,
     conditions: Sequence[ConditionSpec] = (),
-) -> Narrowed | TemplateResult:
+) -> Narrowed | Reply:
     """``player``'s games in ``span``, narrowed to an opponent, a venue, a
     teammate's absence and a starter/bench half where the question named them.
-    A name that needs a clarifying question comes back as the TemplateResult
+    A name that needs a clarifying question comes back as the Reply
     asking it.
 
     Every narrowing here is a filter over the same set of player-games, which
@@ -1398,7 +1339,7 @@ def _narrow_player_games(
         # A series has games 1-7; a regular season has nothing "game 4" names -
         # true of BOTH_SEASON_TYPES too (0 != 3), so "game 4 including the
         # playoffs" still refuses rather than guessing which type "game 4" was.
-        raise TemplateUnsupported(f"game {game_n} names a game of a playoff series, and this is a {span.kind} question")
+        raise Unsupported(f"game {game_n} names a game of a playoff series, and this is a {span.kind} question")
     season_clause, season_params = span.clause("pgl.season")
     type_clause, type_params = season_type_clause("pgl.season_type", span.season_type)
     narrowed = Narrowed(
@@ -1407,7 +1348,7 @@ def _narrow_player_games(
     )
     if team:
         resolved_team = team if isinstance(team, Entity) else _resolved_team(con, team, season=span.season)
-        if isinstance(resolved_team, TemplateResult):
+        if isinstance(resolved_team, Reply):
             return resolved_team
         narrowed.team = resolved_team
         narrowed.extra.append("pgl.team_id = ?")
@@ -1418,7 +1359,7 @@ def _narrow_player_games(
         # resolved here, so a clarification about the team comes back as the
         # answer either way.
         team = opponent if isinstance(opponent, Entity) else _resolved_team(con, opponent, season=span.season)
-        if isinstance(team, TemplateResult):
+        if isinstance(team, Reply):
             return team
         narrowed.opponent = team
         narrowed.extra.append("pgl.opponent_team_id = ?")
@@ -1440,7 +1381,7 @@ def _narrow_player_games(
     # and with nothing in the answer saying the other had been dropped.
     for text in teammate_names(without):
         mate = _resolved_teammate(con, text, player, span)
-        if isinstance(mate, TemplateResult):
+        if isinstance(mate, Reply):
             return mate
         narrowed.add_condition(_absence_condition(con, mate, player, span, narrowed.opponent), box_source(con))
     # The general shape of the same thing (ROADMAP plan item 3): any
@@ -1448,7 +1389,7 @@ def _narrow_player_games(
     # George start", "vs LeBron without Durant", "in games Maxey had 20+".
     for entry in conditions:
         condition = _condition_from_slot(con, entry, player, span, narrowed.opponent)
-        if isinstance(condition, TemplateResult):
+        if isinstance(condition, Reply):
             return condition
         narrowed.add_condition(condition, box_source(con))
     if game_n:
@@ -1492,9 +1433,9 @@ def scoped_player(
     available: Availability | tuple[Availability, ...],
     span: Any,
     season: Any,
-) -> tuple[Entity, _Span] | TemplateResult:
+) -> tuple[Entity, _Span] | Reply:
     """The player a question is about and the seasons it covers, settled in the
-    one order that works - or the TemplateResult asking which player was meant.
+    one order that works - or the Reply asking which player was meant.
 
     The span comes first because it is what narrows an ambiguous name: a career
     keeps Dell Curry and this season does not. An ordinal season ("his 18th
@@ -1519,10 +1460,10 @@ def scoped_player(
     season_n = scope.season_n
     seasons = _span_of("career" if season_n else span, None if season_n else season, _player_relation_season_type(scope), table, since=scope.since, until=scope.until)
     player = _resolved_player(con, scope.player, missing, available=available, season=seasons.season, through=_career_end(seasons.season))
-    if isinstance(player, TemplateResult):
+    if isinstance(player, Reply):
         return player
     settled = settle_ordinal_season(con, player, season_n, seasons)
-    if isinstance(settled, TemplateResult):
+    if isinstance(settled, Reply):
         return settled
     return player, settled
 
@@ -1555,7 +1496,7 @@ def _apply_situation[NarrowedT: (Narrowed, TeamNarrowed)](narrowed: NarrowedT, s
     if alignment is not None:
         narrowed.narrow_alignment(alignment)
         return
-    raise TemplateUnsupported(
+    raise Unsupported(
         f'no narrowing in situation {situation!r} - a weekday, a month, a holiday, "since <day>", a conference ("vs the west") or a division '
         '("vs the southeast division") is read; an age or anything else is not'
     )
@@ -1592,7 +1533,7 @@ def relation_window(scope: Scope) -> tuple[str, int] | None:
     return order, _clamp_limit(scope.limit, default=1)
 
 
-def _apply_period_condition(con: duckdb.DuckDBPyConnection, narrowed: Narrowed, condition: PeriodCondition) -> TemplateResult | None:
+def _apply_period_condition(con: duckdb.DuckDBPyConnection, narrowed: Narrowed, condition: PeriodCondition) -> Reply | None:
     """A quarter or half used as a condition on which games count - the
     ``period_condition`` cell of :data:`RELATION_SCOPING`
     (:class:`~association.query.reading.PeriodCondition`), applied here for
@@ -1605,13 +1546,13 @@ def _apply_period_condition(con: duckdb.DuckDBPyConnection, narrowed: Narrowed, 
     """
     asked = period_narrowing(Scope(period=condition.period, half=condition.half))
     if asked is None or condition.stat not in PERIOD_COLUMNS or condition.threshold < 1:
-        raise TemplateUnsupported(f"no period condition reads {condition!r}")
+        raise Unsupported(f"no period condition reads {condition!r}")
     periods, label = asked
     plays = _has_table(con, "plays")
     if not plays and condition.stat in PERIOD_PLAYS_COLUMNS:
         noun = STAT_LABELS.get(condition.stat, condition.stat)
         message = f"Games with {condition.threshold}+ {noun}s in the {label} cannot be picked out here: a period's {noun}s are rebuilt from play-by-play, and this warehouse holds none."
-        return TemplateResult(data={"message": message}, answer=message)
+        return Reply(data={"message": message}, answer=message)
     noun = STAT_LABELS.get(condition.stat, condition.stat)
     # Said outright either way, so the reading is visible and the other is
     # one word away: "exactly 1 3-pointer" against "1+ 3-pointers".
@@ -1651,7 +1592,7 @@ def scoped_games(
     measures: list[MeasureFilter],
     date: str | None = None,
     team: Any = None,
-) -> Narrowed | TemplateResult:
+) -> Narrowed | Reply:
     """``player``'s games in ``span`` under every row-level narrowing the
     question carries: opponent, venue, an absent teammate, a starter/bench
     half, a game of each playoff series, lines on box-score columns, one date,
@@ -1711,7 +1652,7 @@ def scoped_games(
         team=team,
         conditions=scope.conditions,
     )
-    if isinstance(narrowed, TemplateResult):
+    if isinstance(narrowed, Reply):
         return narrowed
     narrow_measures(narrowed, measures)
     if date:
@@ -1747,7 +1688,7 @@ POSITION_CODES: dict[str, list[str]] = {"G": ["G", "PG", "SG", "GF"], "F": ["F",
 """
 
 
-def league_games(con: duckdb.DuckDBPyConnection, span: _Span, scope: Scope, *, position: str | None) -> Narrowed | TemplateResult:
+def league_games(con: duckdb.DuckDBPyConnection, span: _Span, scope: Scope, *, position: str | None) -> Narrowed | Reply:
     """Every player's games in ``span`` - the league-wide read a question with
     no player subject narrows the same way one player's games are: an
     opponent, a venue, a team's roster, lines on box-score columns and the
@@ -1780,13 +1721,13 @@ def league_games(con: duckdb.DuckDBPyConnection, span: _Span, scope: Scope, *, p
     narrowed.narrow("pgl.player_name IS NOT NULL")
     if scope.opponent and scope.opponent.strip():
         team = _resolved_team(con, scope.opponent, season=span.season)
-        if isinstance(team, TemplateResult):
+        if isinstance(team, Reply):
             return team
         narrowed.opponent = team
         narrowed.narrow("pgl.opponent_team_id = ?", team.id)
     if scope.team and scope.team.strip():
         team = _resolved_team(con, scope.team, season=span.season)
-        if isinstance(team, TemplateResult):
+        if isinstance(team, Reply):
             return team
         narrowed.team = team
         narrowed.narrow("pgl.team_id = ?", team.id)
@@ -1829,7 +1770,7 @@ def condition_player(
     team: Entity | None = None,
     measures: list[MeasureFilter] | None = None,
     opponent: Entity | None = None,
-) -> tuple[Entity, Narrowed] | TemplateResult:
+) -> tuple[Entity, Narrowed] | Reply:
     """The player a condition template is about, and his games in
     ``condition_scope`` under the question's row-level narrowings, read off
     ``scope``: for the templates that group a player's games by a condition
@@ -1858,11 +1799,11 @@ def condition_player(
        beside it. The template's own ``_Scope`` is ``condition_scope``.
     """
     subject = scoped_player(con, scope, missing, table="player_game_log", available=_BOX_SCORES, span=None if condition_scope.season else "career", season=condition_scope.season)
-    if isinstance(subject, TemplateResult):
+    if isinstance(subject, Reply):
         return subject
     player, span = subject
     narrowed = scoped_games(con, player, span, scope, opponent=scope.opponent if opponent is None else opponent, measures=measures or [])
-    if isinstance(narrowed, TemplateResult):
+    if isinstance(narrowed, Reply):
         return narrowed
     if team is not None:
         narrowed.narrow("pgl.team_id = ?", team.id)
@@ -1887,7 +1828,7 @@ def whole_span[NarrowedT: (Narrowed, TeamNarrowed)](narrowed: NarrowedT) -> Narr
     return narrowed
 
 
-def scoped_team(con: duckdb.DuckDBPyConnection, scope: Scope, missing: str, *, span: Any, season: Any) -> tuple[Entity, _Span] | TemplateResult:
+def scoped_team(con: duckdb.DuckDBPyConnection, scope: Scope, missing: str, *, span: Any, season: Any) -> tuple[Entity, _Span] | Reply:
     """The team a question is about and the seasons it covers - the team
     counterpart of :func:`scoped_player`. A franchise's name is a fact about a
     season (see :func:`_resolved_team`: "Hornets" is New Orleans in 2008 and
@@ -1898,12 +1839,12 @@ def scoped_team(con: duckdb.DuckDBPyConnection, scope: Scope, missing: str, *, s
 
     Takes: ``con``; ``scope`` (read here for ``team``, ``season_type``,
     ``since`` and ``until``);
-    ``missing`` (the :class:`TemplateUnsupported` message when no team was
+    ``missing`` (the :class:`Unsupported` message when no team was
     named); ``span`` and ``season`` (the raw ``span``/``season`` slot values -
     passed rather than read, the same as ``scoped_player``'s own, so a caller
     with a reason to override them can).
 
-    Returns ``(team, span)``, or the ``TemplateResult`` asking which team was
+    Returns ``(team, span)``, or the ``Reply`` asking which team was
     meant. Honors ``since`` the same way :func:`scoped_player` does for a
     player - a career that starts partway through, rather than at the table's
     own floor (step 3, C4b) - and ``until`` beside it (step 3, K1): the
@@ -1918,9 +1859,9 @@ def scoped_team(con: duckdb.DuckDBPyConnection, scope: Scope, missing: str, *, s
     """
     seasons = _span_of(span, season, scope.season_type or 2, "games", since=scope.since, until=scope.until)
     if not scope.team or not scope.team.strip():
-        raise TemplateUnsupported(missing)
+        raise Unsupported(missing)
     team = _resolved_team(con, scope.team, season=seasons.season)
-    if isinstance(team, TemplateResult):
+    if isinstance(team, Reply):
         return team
     return team, seasons
 
@@ -1961,7 +1902,7 @@ def team_span_clause(span: _Span) -> tuple[str, list[Any]]:
 _team_span_clause = team_span_clause
 
 
-def team_games(con: duckdb.DuckDBPyConnection, team: Entity, span: _Span, scope: Scope, *, opponent: Any, date: str | None = None) -> TeamNarrowed | TemplateResult:
+def team_games(con: duckdb.DuckDBPyConnection, team: Entity, span: _Span, scope: Scope, *, opponent: Any, date: str | None = None) -> TeamNarrowed | Reply:
     """``team``'s games in ``span``, narrowed to an opponent, a venue, one
     Eastern date, one game of each playoff series (``game_n``) and a window of
     the newest or oldest N (``order``/``limit``) where the question named
@@ -2022,10 +1963,10 @@ def team_games(con: duckdb.DuckDBPyConnection, team: Entity, span: _Span, scope:
     narrowed = TeamNarrowed(base=["tg.team_id = ?", "tg.season_type = ?", clause], base_params=[team.id, span.season_type, *params], team=team)
     if opponent:
         rival = opponent if isinstance(opponent, Entity) else _resolved_team(con, opponent, season=span.season)
-        if isinstance(rival, TemplateResult):
+        if isinstance(rival, Reply):
             return rival
         if rival.id == team.id:
-            raise TemplateUnsupported("a team cannot be its own opponent")
+            raise Unsupported("a team cannot be its own opponent")
         narrowed.opponent = rival
         narrowed.narrow("tg.opponent_id = ?", rival.id)
     if scope.venue:
@@ -2037,7 +1978,7 @@ def team_games(con: duckdb.DuckDBPyConnection, team: Entity, span: _Span, scope:
     if scope.game_n:
         if span.season_type != 3:
             # A series has games 1-7; a regular season has nothing "game 4" names.
-            raise TemplateUnsupported(f"game {scope.game_n} names a game of a playoff series, and this is a {span.kind} question")
+            raise Unsupported(f"game {scope.game_n} names a game of a playoff series, and this is a {span.kind} question")
         narrowed.narrow_series_game(scope.game_n)
     if scope.situation:
         # Same discipline as scoped_games: honored where it names the
@@ -2091,7 +2032,7 @@ def _teammates_among(con: duckdb.DuckDBPyConnection, candidates: list[Entity], p
     return [c for c in candidates if c.id in have]
 
 
-def _condition_from_slot(con: duckdb.DuckDBPyConnection, entry: ConditionSpec, player: Entity, span: _Span, opponent: Entity | None = None) -> Condition | TemplateResult:
+def _condition_from_slot(con: duckdb.DuckDBPyConnection, entry: ConditionSpec, player: Entity, span: _Span, opponent: Entity | None = None) -> Condition | Reply:
     """One ``conditions`` entry - a :class:`~association.query.reading.ConditionSpec`:
     a player, his side (``"own"`` or ``"opponent"``), a predicate, and the
     line a ``reached`` one names - as a
@@ -2115,24 +2056,24 @@ def _condition_from_slot(con: duckdb.DuckDBPyConnection, entry: ConditionSpec, p
        Takes ``opponent``, for an absence read on the other side.
     """
     if not entry.player.strip():
-        raise TemplateUnsupported(f"a condition needs a player, got {entry!r}")
+        raise Unsupported(f"a condition needs a player, got {entry!r}")
     side, predicate = entry.side, entry.predicate
     if side not in ("own", "opponent") or predicate not in CONDITION_PREDICATES:
-        raise TemplateUnsupported(f"no condition reads side {side!r} with predicate {predicate!r}")
+        raise Unsupported(f"no condition reads side {side!r} with predicate {predicate!r}")
     if side == "own":
         found = _resolved_teammate(con, entry.player, player, span)
         if predicate == "absent" and isinstance(found, Entity):
             return _absence_condition(con, found, player, span, opponent)
     else:
         found = _resolved_player(con, entry.player, f"no player named {entry.player!r}", available=_BOX_SCORES, season=span.season, through=_career_end(span.season))
-    if isinstance(found, TemplateResult):
+    if isinstance(found, Reply):
         return found
     line: tuple[str, str, int, str] | None = None
     if predicate == "reached":
         stat, threshold = entry.stat, entry.threshold
         column = THRESHOLD_STAT_COLUMNS.get(stat) if stat is not None else None
         if column is None or stat is None or threshold is None or threshold < 1:
-            raise TemplateUnsupported(f"a reached condition needs a known stat and a positive threshold, got {stat!r}/{threshold!r}")
+            raise Unsupported(f"a reached condition needs a known stat and a positive threshold, got {stat!r}/{threshold!r}")
         line = (column, ">=", threshold, f"{threshold}+ {STAT_LABELS.get(stat, stat)}s")
     tenure = _relation_tenure_clause(con, found, span.season) if side == "own" and predicate == "absent" else None
     return Condition(found, side, predicate, line, tenure)
@@ -2163,7 +2104,7 @@ def _on_team_in_span(con: duckdb.DuckDBPyConnection, mate: Entity, team: Entity,
     return row is not None
 
 
-def _resolved_teammate(con: duckdb.DuckDBPyConnection, text: Any, player: Entity, span: _Span) -> Entity | TemplateResult:
+def _resolved_teammate(con: duckdb.DuckDBPyConnection, text: Any, player: Entity, span: _Span) -> Entity | Reply:
     """The teammate a "without" names. "Without curry" is six players by name
     and at most two by roster, so an ambiguous name is narrowed to the ones who
     shared a team with ``player`` in the span before anything is asked.
@@ -2187,7 +2128,7 @@ def _resolved_teammate(con: duckdb.DuckDBPyConnection, text: Any, player: Entity
        Embiid") asks here as it does everywhere else rather than being taken.
     """
     if not isinstance(text, str) or not text.strip():
-        raise TemplateUnsupported("'without' names nobody")
+        raise Unsupported("'without' names nobody")
     resolved = resolve_player(con, text)
     if isinstance(resolved, Ambiguous):
         # Every match, not find_players' first page of ten: "without williams"
@@ -2200,17 +2141,17 @@ def _resolved_teammate(con: duckdb.DuckDBPyConnection, text: Any, player: Entity
             return _clarify(text, [c.name for c in shared], active=len(shared))
         if not shared:
             message = f"No player matching {text!r} was {player.name}'s teammate {span.during()}."
-            return TemplateResult(data={"unmatched": text, "candidates": [c.name for c in candidates]}, answer=message)
+            return Reply(data={"unmatched": text, "candidates": [c.name for c in candidates]}, answer=message)
         resolved = shared[0]
     if not isinstance(resolved, Entity):
         # Nothing by that name and no single near spelling (resolve_player
         # already reads one): a suggestion, or a refusal.
         found = _resolved_player(con, text, available=_BOX_SCORES)
-        if isinstance(found, TemplateResult):
+        if isinstance(found, Reply):
             return found
         resolved = found
     if resolved.id == player.id:
-        raise TemplateUnsupported(f"{player.name} cannot play without himself")
+        raise Unsupported(f"{player.name} cannot play without himself")
     return resolved
 
 
@@ -2371,7 +2312,7 @@ def condition_scope(season: int | None, span: Literal["career"] | None, season_t
     kind = season_type or 2
     if since:
         if season:
-            raise TemplateUnsupported(f"since {since} and the {season} season at once")
+            raise Unsupported(f"since {since} and the {season} season at once")
         scope = _game_scope(None, kind, tables)
         return _Scope(None, kind, max(since, scope.first), scope.phantoms)
     if season is not None:
@@ -2390,7 +2331,7 @@ def where_in(scope: _Scope) -> str:
 _where_in = where_in
 
 
-def optional_team(con: duckdb.DuckDBPyConnection, text: Any, season: int | None = None) -> Entity | TemplateResult | None:
+def optional_team(con: duckdb.DuckDBPyConnection, text: Any, season: int | None = None) -> Entity | Reply | None:
     """A team slot that may be empty: ``None`` for no text, else
     :func:`resolved_team`'s entity or its refusal.
 
@@ -2405,7 +2346,7 @@ def optional_team(con: duckdb.DuckDBPyConnection, text: Any, season: int | None 
 _optional_team = optional_team
 
 
-def no_games(con: duckdb.DuckDBPyConnection, player: Entity, scope: _Scope, team: Entity | None) -> TemplateResult:
+def no_games(con: duckdb.DuckDBPyConnection, player: Entity, scope: _Scope, team: Entity | None) -> Reply:
     """Nothing to report for a player, saying which fact is missing.
 
     Not the season: check_coverage has already refused any season the tables
@@ -2425,7 +2366,7 @@ def no_games(con: duckdb.DuckDBPyConnection, player: Entity, scope: _Scope, team
         message = f"{player.name} was listed in {count} box score{'' if count == 1 else 's'}{for_team} {_where_in(scope)} but did not play in {which}."
     else:
         message = f"{player.name} has no games{for_team} {_where_in(scope)} in the warehouse."
-    return TemplateResult(data={"player": player.name, "team": team.name if team else None, "span": scope.label(), "games": 0}, answer=message)
+    return Reply(data={"player": player.name, "team": team.name if team else None, "span": scope.label(), "games": 0}, answer=message)
 
 
 _no_games = no_games

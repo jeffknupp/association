@@ -1064,9 +1064,9 @@ SPLIT_WORDS: dict[str, re.Pattern[str]] = {
 #
 # `SPLIT_WORDS["starter_bench"]` matches "starter" or "bench" and records only
 # the CATEGORY, which is right for `player_splits` - a splits question wants
-# both groups side by side - and useless to a template that has to FILTER.
+# both groups side by side - and useless to a reader that has to FILTER.
 # "Jrue holiday last 50 games as a starter" is a log of his starts, not a log
-# of everything with a starter/bench breakdown, and `TemplateContext` carries
+# of everything with a starter/bench breakdown, and `AnswerContext` carries
 # no question text, so the direction can only be recovered here.
 #
 # Read from the question for the same reason `_validate_side` reads the side of

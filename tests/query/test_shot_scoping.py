@@ -34,8 +34,8 @@ from test_templates import shot_chart, shot_distance  # the shot relation's read
 
 from association.fetch.repairs import real_games
 from association.nba.season import current_season
-from association.query.reading import Reading
-from association.query.templates.common import TemplateContext, TemplateUnsupported
+from association.query.answer import AnswerContext
+from association.query.reading import Reading, Unsupported
 
 SEASON = current_season()
 
@@ -57,7 +57,7 @@ def _shot(event: str, season: int, athlete: str, made: bool, *, season_type: int
 
 
 @pytest.fixture
-def shots_ctx(tmp_path: Path) -> TemplateContext:
+def shots_ctx(tmp_path: Path) -> AnswerContext:
     """A Warriors season in miniature, mirroring the real Golden State/Stephen
     Curry shape measured against the warehouse before this was shrunk:
 
@@ -170,33 +170,33 @@ def shots_ctx(tmp_path: Path) -> TemplateContext:
         "LEFT JOIN teams o ON o.team_id = pbs.opponent_team_id"
     )
     real_games.build_table(c, {"games", "teams"})
-    return TemplateContext(con=c, out_dir=tmp_path / "out")
+    return AnswerContext(con=c, out_dir=tmp_path / "out")
 
 
 # ---------------- shot_chart: each newly-honored cell ----------------
 
 
-def test_shot_chart_honors_opponent(shots_ctx: TemplateContext) -> None:
+def test_shot_chart_honors_opponent(shots_ctx: AnswerContext) -> None:
     """Lakers games (e1, e3, e5, e6): 2+1+1+2 = 6 attempts, 4 made - e2's and
     e4's shots (vs the Celtics) are left out."""
     answer = shot_chart(shots_ctx, Reading.from_slots({"player": "Stephen Curry", "season": SEASON, "opponent": "Los Angeles Lakers"})).answer or ""
     assert "4/6 made" in answer
 
 
-def test_shot_chart_honors_venue(shots_ctx: TemplateContext) -> None:
+def test_shot_chart_honors_venue(shots_ctx: AnswerContext) -> None:
     """Every game but e2 is at home: 9 total attempts less e2's 1 = 8, and 7
     made less e2's 1 make = 6."""
     answer = shot_chart(shots_ctx, Reading.from_slots({"player": "Stephen Curry", "season": SEASON, "venue": "home"})).answer or ""
     assert "6/8 made" in answer
 
 
-def test_shot_chart_honors_without(shots_ctx: TemplateContext) -> None:
+def test_shot_chart_honors_without(shots_ctx: AnswerContext) -> None:
     """Klay Thompson sits e4 and e5 - 2 + 1 = 3 attempts, all three made."""
     answer = shot_chart(shots_ctx, Reading.from_slots({"player": "Stephen Curry", "season": SEASON, "without": "Klay Thompson"})).answer or ""
     assert "3/3 made" in answer
 
 
-def test_shot_chart_honors_a_named_half_of_the_starter_bench_split(shots_ctx: TemplateContext) -> None:
+def test_shot_chart_honors_a_named_half_of_the_starter_bench_split(shots_ctx: AnswerContext) -> None:
     """Curry starts every game but e5, where he came off the bench - one shot,
     made."""
     bench = shot_chart(shots_ctx, Reading.from_slots({"player": "Stephen Curry", "season": SEASON, "split": "bench"})).answer or ""
@@ -205,7 +205,7 @@ def test_shot_chart_honors_a_named_half_of_the_starter_bench_split(shots_ctx: Te
     assert "6/8 made" in starts  # every attempt but e5's (9 total, 7 made, less e5's 1/1)
 
 
-def test_shot_chart_honors_one_eastern_date(shots_ctx: TemplateContext) -> None:
+def test_shot_chart_honors_one_eastern_date(shots_ctx: AnswerContext) -> None:
     """e3 alone (the Lakers game the fixture's own docstring tips at
     ``{SEASON}-11-05T23:00Z``, the same Eastern day)."""
     answer = shot_chart(shots_ctx, Reading.from_slots({"player": "Stephen Curry", "season": SEASON, "date": f"{SEASON}-11-05"})).answer or ""
@@ -213,33 +213,33 @@ def test_shot_chart_honors_one_eastern_date(shots_ctx: TemplateContext) -> None:
     assert "e3" in answer  # the game-label fallback names the bare event id with no `games` row for it to describe further
 
 
-def test_shot_chart_honors_a_line_on_a_box_score_column(shots_ctx: TemplateContext) -> None:
+def test_shot_chart_honors_a_line_on_a_box_score_column(shots_ctx: AnswerContext) -> None:
     """e2 alone has under 30 minutes - its one made shot."""
     answer = shot_chart(shots_ctx, Reading.from_slots({"player": "Stephen Curry", "season": SEASON, "below": "under 30 minutes"})).answer or ""
     assert "1/1 made" in answer
 
 
-def test_shot_chart_honors_since(shots_ctx: TemplateContext) -> None:
+def test_shot_chart_honors_since(shots_ctx: AnswerContext) -> None:
     """``since`` SEASON-1 draws e0 (1 made) plus every SEASON attempt (7 made
     of 9) - 10 attempts, 8 made."""
     answer = shot_chart(shots_ctx, Reading.from_slots({"player": "Stephen Curry", "since": SEASON - 1})).answer or ""
     assert "8/10 made" in answer
 
 
-def test_shot_chart_honors_game_n_of_a_series(shots_ctx: TemplateContext) -> None:
+def test_shot_chart_honors_game_n_of_a_series(shots_ctx: AnswerContext) -> None:
     """Game 2 of the Lakers series (p2, the second by date) - 2 attempts, both
     made."""
     answer = shot_chart(shots_ctx, Reading.from_slots({"player": "Stephen Curry", "season": SEASON, "season_type": 3, "game_n": 2})).answer or ""
     assert "2/2 made" in answer
 
 
-def test_shot_chart_honors_season_n(shots_ctx: TemplateContext) -> None:
+def test_shot_chart_honors_season_n(shots_ctx: AnswerContext) -> None:
     """His 1st season on record here is SEASON-1 (e0's one made shot)."""
     answer = shot_chart(shots_ctx, Reading.from_slots({"player": "Stephen Curry", "season_n": 1})).answer or ""
     assert "1/1 made" in answer
 
 
-def test_shot_chart_honors_limit_as_a_window_not_a_single_game(shots_ctx: TemplateContext) -> None:
+def test_shot_chart_honors_limit_as_a_window_not_a_single_game(shots_ctx: AnswerContext) -> None:
     """The step's own finding: "last two games" used to chart the whole
     season. Windowed to the 2 newest (e5, e6): 1 + 2 = 3 attempts, 2 made."""
     whole_season = shot_chart(shots_ctx, Reading.from_slots({"player": "Stephen Curry", "season": SEASON, "order": "recent", "limit": 2}))
@@ -247,7 +247,7 @@ def test_shot_chart_honors_limit_as_a_window_not_a_single_game(shots_ctx: Templa
     assert "over his last 2 games" in (whole_season.answer or "")
 
 
-def test_shot_chart_honors_limit_with_no_order_slot_at_all(shots_ctx: TemplateContext) -> None:
+def test_shot_chart_honors_limit_with_no_order_slot_at_all(shots_ctx: AnswerContext) -> None:
     """The router's own traces for this exact question never emit `order` -
     only `limit` - so the fix has to read a bare `limit` as "recent" or it
     would not reach the real question. See `_shots_order`."""
@@ -255,7 +255,7 @@ def test_shot_chart_honors_limit_with_no_order_slot_at_all(shots_ctx: TemplateCo
     assert "2/3 made" in answer
 
 
-def test_shot_chart_windows_a_narrowed_set_together(shots_ctx: TemplateContext) -> None:
+def test_shot_chart_windows_a_narrowed_set_together(shots_ctx: AnswerContext) -> None:
     """ "His last 2 Lakers games" - narrowed to Lakers (e1, e3, e5, e6), THEN
     windowed to the 2 newest of those (e5, e6): 1 + 2 = 3 attempts, 2 made -
     a different answer from an unqualified "last 2 games" (test above), which
@@ -267,14 +267,14 @@ def test_shot_chart_windows_a_narrowed_set_together(shots_ctx: TemplateContext) 
     assert "Los Angeles Lakers" in answer
 
 
-def test_shot_chart_still_refuses_a_career_span_with_an_order(shots_ctx: TemplateContext) -> None:
+def test_shot_chart_still_refuses_a_career_span_with_an_order(shots_ctx: AnswerContext) -> None:
     """Unchanged by this step: "his last game" picks one game inside one
     season, where a career asks for every one of them."""
-    with pytest.raises(TemplateUnsupported, match="career span"):
+    with pytest.raises(Unsupported, match="career span"):
         shot_chart(shots_ctx, Reading.from_slots({"player": "Stephen Curry", "span": "career", "order": "recent"}))
 
 
-def test_shot_chart_reports_no_games_rather_than_no_shots_when_narrowing_matches_nothing(shots_ctx: TemplateContext) -> None:
+def test_shot_chart_reports_no_games_rather_than_no_shots_when_narrowing_matches_nothing(shots_ctx: AnswerContext) -> None:
     """A combination Curry never met in the fixture's span - he only comes off
     the bench against the Lakers (e5), never the Celtics - so the fact
     missing is which games, not which shots, and the relation's own
@@ -283,7 +283,7 @@ def test_shot_chart_reports_no_games_rather_than_no_shots_when_narrowing_matches
     assert "played" in answer and "none of them" in answer
 
 
-def test_shot_chart_honors_situation(shots_ctx: TemplateContext) -> None:
+def test_shot_chart_honors_situation(shots_ctx: AnswerContext) -> None:
     """The bug itself: "on tuesdays" used to answer the same 7/9 whole-season
     shots as no narrowing at all (measured live against the real warehouse:
     "stephen curry shot chart on tuesdays" answered 374/803, identical to no
@@ -296,7 +296,7 @@ def test_shot_chart_honors_situation(shots_ctx: TemplateContext) -> None:
     assert "1/1 made" in answer
 
 
-def test_shot_chart_honors_conditions(shots_ctx: TemplateContext) -> None:
+def test_shot_chart_honors_conditions(shots_ctx: AnswerContext) -> None:
     """The same bug, for a companion's role: "when draymond green starts"
     used to answer the whole season too. Klay Thompson (athlete 2) starts
     e1, e2, e3 and e6 (he sits e4 and e5) - 2 + 1 + 1 + 2 = 6 attempts, 4
@@ -309,28 +309,28 @@ def test_shot_chart_honors_conditions(shots_ctx: TemplateContext) -> None:
 # ---------------- shot_distance: the same mechanism, a representative subset ----------------
 
 
-def test_shot_distance_honors_opponent(shots_ctx: TemplateContext) -> None:
+def test_shot_distance_honors_opponent(shots_ctx: AnswerContext) -> None:
     answer = shot_distance(shots_ctx, Reading.from_slots({"player": "Stephen Curry", "season": SEASON, "opponent": "Los Angeles Lakers"})).answer or ""
     assert "over 6 attempts" in answer
 
 
-def test_shot_distance_honors_since(shots_ctx: TemplateContext) -> None:
+def test_shot_distance_honors_since(shots_ctx: AnswerContext) -> None:
     answer = shot_distance(shots_ctx, Reading.from_slots({"player": "Stephen Curry", "since": SEASON - 1})).answer or ""
     assert "over 10 attempts" in answer
 
 
-def test_shot_distance_honors_limit_as_a_window(shots_ctx: TemplateContext) -> None:
+def test_shot_distance_honors_limit_as_a_window(shots_ctx: AnswerContext) -> None:
     answer = shot_distance(shots_ctx, Reading.from_slots({"player": "Stephen Curry", "season": SEASON, "order": "recent", "limit": 2})).answer or ""
     assert "over 3 attempts" in answer
     assert "over his last 2 games" in answer
 
 
-def test_shot_distance_still_refuses_a_career_span_with_an_order(shots_ctx: TemplateContext) -> None:
-    with pytest.raises(TemplateUnsupported, match="career span"):
+def test_shot_distance_still_refuses_a_career_span_with_an_order(shots_ctx: AnswerContext) -> None:
+    with pytest.raises(Unsupported, match="career span"):
         shot_distance(shots_ctx, Reading.from_slots({"player": "Stephen Curry", "span": "career", "order": "first"}))
 
 
-def test_shot_distance_single_game_note_is_unchanged_by_the_relation_port(shots_ctx: TemplateContext) -> None:
+def test_shot_distance_single_game_note_is_unchanged_by_the_relation_port(shots_ctx: AnswerContext) -> None:
     """The exact single-game phrasing golden tests pin in `test_templates.py`
     - "most recent game (date)" - still comes from the bare `player_game_log`
     lookup (`_shots_ordered_games`), not the relation, when `order` is the
@@ -339,7 +339,7 @@ def test_shot_distance_single_game_note_is_unchanged_by_the_relation_port(shots_
     assert f"most recent game ({SEASON}-11-11)" in answer
 
 
-def test_shot_distance_honors_situation(shots_ctx: TemplateContext) -> None:
+def test_shot_distance_honors_situation(shots_ctx: AnswerContext) -> None:
     """The same bug as `shot_chart`'s: "on tuesdays" answered the whole
     season's 803-attempt (real warehouse) average regardless. e3's weekday
     (see `test_shot_chart_honors_situation`) is one attempt."""
@@ -348,14 +348,14 @@ def test_shot_distance_honors_situation(shots_ctx: TemplateContext) -> None:
     assert "over 1 attempts" in answer
 
 
-def test_shot_distance_honors_conditions(shots_ctx: TemplateContext) -> None:
+def test_shot_distance_honors_conditions(shots_ctx: AnswerContext) -> None:
     """Klay Thompson starting (e1, e2, e3, e6): 2 + 1 + 1 + 2 = 6 attempts."""
     conditions = [{"player": "Klay Thompson", "side": "own", "predicate": "started"}]
     answer = shot_distance(shots_ctx, Reading.from_slots({"player": "Stephen Curry", "season": SEASON, "conditions": conditions})).answer or ""
     assert "over 6 attempts" in answer
 
 
-def test_shot_distance_situations_one_game_note_names_the_situation(shots_ctx: TemplateContext) -> None:
+def test_shot_distance_situations_one_game_note_names_the_situation(shots_ctx: AnswerContext) -> None:
     """The other half of the fix: `_shot_distance_games`' one-game note used
     `_shots_other_narrowing` to decide whether a single game it found came
     from JUST a window (`order`/`limit` alone - "in his most recent game

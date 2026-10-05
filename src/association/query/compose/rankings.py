@@ -36,13 +36,14 @@ from typing import Any
 
 import duckdb
 
+from association.query.answer import Reply
 from association.query.measures import resolve_metric
 from association.query.metrics import EXTRA_FIELD_COLUMNS, LEADERBOARD_METRICS
 from association.query.notes import Note
-from association.query.reading import Scope, _clamp_limit
+from association.query.reading import Scope, Unsupported, _clamp_limit
 from association.query.result import Decided, Part, Result, Span
 from association.query.season_line import MIN_SAMPLE_LABELS, SEASON_TOTAL_OF, CareerLeaderboardResult, LeaderboardError, rank_season_line
-from association.query.templates.common import TemplateResult, TemplateUnsupported, unhonored_scoping
+from association.query.templates.common import unhonored_scoping
 from association.query.templates.players import leaderboard_shot_distance_refusal
 
 from .core import Query
@@ -96,7 +97,7 @@ def _leaderboard_career(scope: Scope) -> bool:
     if scope.span is None:
         return False
     if scope.season is not None:
-        raise TemplateUnsupported(f"leaderboard cannot tell whether a career span with {scope.season} named means that season, since it, or through it")
+        raise Unsupported(f"leaderboard cannot tell whether a career span with {scope.season} named means that season, since it, or through it")
     return True
 
 
@@ -108,7 +109,7 @@ def _leaderboard_refuse_a_player(scope: Scope) -> None:
     (F056), is the planner's (:func:`leaderboard_reads`), and was checked
     first, as the template had it."""
     if scope.player is not None and scope.player.strip():
-        raise TemplateUnsupported(f"a leaderboard cannot answer about one named player ({scope.player!r})")
+        raise Unsupported(f"a leaderboard cannot answer about one named player ({scope.player!r})")
 
 
 def _leaderboard_fields(scope: Scope, metric: str) -> list[str]:
@@ -122,7 +123,7 @@ def _leaderboard_fields(scope: Scope, metric: str) -> list[str]:
     requested = scope.fields
     unknown = [f for f in requested if f not in EXTRA_FIELD_COLUMNS and f != "team"]
     if unknown:
-        raise TemplateUnsupported(f"unknown leaderboard field(s) {unknown}")
+        raise Unsupported(f"unknown leaderboard field(s) {unknown}")
     return [f for f in dict.fromkeys(requested) if metric != f"avg_{f}"]
 
 
@@ -141,11 +142,11 @@ def _leaderboard_metric(scope: Scope, career: bool) -> str | None:
         # (the ``ranking_unit`` Cause, said by the planner) before the
         # point is planned; read here it is declined, never ranked as
         # another unit.
-        raise TemplateUnsupported(f"leaderboard has no {scope.rate!r} form of {metric}")
+        raise Unsupported(f"leaderboard has no {scope.rate!r} form of {metric}")
     return metric
 
 
-def read_leaderboard(con: duckdb.DuckDBPyConnection, q: Query, *, stated: frozenset[str]) -> Result | TemplateResult | None:
+def read_leaderboard(con: duckdb.DuckDBPyConnection, q: Query, *, stated: frozenset[str]) -> Result | Reply | None:
     """``leaderboard``'s own point - the league's (or a team's players')
     leaders by one season-line metric, over a season or a career - read into
     a Result through the season line's door
@@ -154,9 +155,9 @@ def read_leaderboard(con: duckdb.DuckDBPyConnection, q: Query, *, stated: frozen
     state (``stated``: ``compose.plan.STATED_SCOPING``'s set), names a stat
     no season-line metric reads, or ranks a position group: the game-level
     ranking answers those, as it did behind the retired template's refusal
-    (planned so: :func:`leaderboard_reads`). A ``TemplateResult`` back is the ranking's own
+    (planned so: :func:`leaderboard_reads`). A ``Reply`` back is the ranking's own
     refusal (a shot-distance ranking); a
-    ``TemplateUnsupported`` the relation's decline (an unknown field, an
+    ``Unsupported`` the relation's decline (an unknown field, an
     ambiguous team, a career list with columns or a franchise's).
 
     .. versionadded:: 5.0.0
@@ -187,7 +188,7 @@ def read_leaderboard(con: duckdb.DuckDBPyConnection, q: Query, *, stated: frozen
         # An ambiguous team, an unknown metric, a team column with no season
         # type to look it up by, or a table that needs a warehouse flag - all
         # reasons to decline, never to guess.
-        raise TemplateUnsupported(str(exc)) from exc
+        raise Unsupported(str(exc)) from exc
     found = ranking.result
     minimum = found.min_sample_applied
     decisions: tuple[Decided, ...] = ()
@@ -222,6 +223,6 @@ def _leaderboard_career_refusals(scope: Scope, fields: list[str]) -> None:
     own. Declined until that is decided, rather than answered with the
     league's list under the team's name."""
     if fields:
-        raise TemplateUnsupported("a career leaderboard cannot add per-game columns")
+        raise Unsupported("a career leaderboard cannot add per-game columns")
     if scope.team is not None and scope.team.strip():
-        raise TemplateUnsupported("franchise career leaderboards are not supported")
+        raise Unsupported("franchise career leaderboards are not supported")

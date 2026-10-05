@@ -34,8 +34,8 @@ from test_templates import player_stat  # the compiler's, player_stat's template
 
 from association.fetch.repairs import real_games
 from association.nba.season import current_season
+from association.query.answer import AnswerContext
 from association.query.reading import Reading
-from association.query.templates.common import TemplateContext
 
 SEASON = current_season()
 
@@ -53,7 +53,7 @@ def _box(event: str, athlete: str, opponent: str, points: int, *, starter: bool,
 
 
 @pytest.fixture
-def pstat_conditions_ctx(tmp_path: Path) -> TemplateContext:
+def pstat_conditions_ctx(tmp_path: Path) -> AnswerContext:
     """Tyrese Maxey's (athlete ``1``) 76ers season in miniature, with Joel
     Embiid (athlete ``2``) as his teammate:
 
@@ -118,14 +118,14 @@ def pstat_conditions_ctx(tmp_path: Path) -> TemplateContext:
     )
     c.execute("INSERT INTO player_season_stats_deduped VALUES ('1', ?, 2, 4, 24.0, 96, 3.0, 12, 3.0, 12, 30.0, 0, 0)", [s])
     real_games.build_table(c, {"games", "teams"})
-    return TemplateContext(con=c, out_dir=tmp_path / "out")
+    return AnswerContext(con=c, out_dir=tmp_path / "out")
 
 
 def _condition(predicate: str, **extra: Any) -> dict[str, Any]:
     return {"player": "Joel Embiid", "side": "own", "predicate": predicate, **extra}
 
 
-def test_player_stat_ignores_the_season_line_and_reads_box_scores_when_no_other_slot_narrows(pstat_conditions_ctx: TemplateContext) -> None:
+def test_player_stat_ignores_the_season_line_and_reads_box_scores_when_no_other_slot_narrows(pstat_conditions_ctx: AnswerContext) -> None:
     """The bug itself: a bare ``conditions`` entry, nothing else narrowing,
     used to answer the season line (24.0 in 4 games) with Embiid nowhere in
     it. Also pins the unnarrowed season line, so a future change cannot make
@@ -138,13 +138,13 @@ def test_player_stat_ignores_the_season_line_and_reads_box_scores_when_no_other_
     assert started.answer == f"Tyrese Maxey averaged 23 points per game in 2 games with Joel Embiid starting in the {SEASON} regular season. That is 46 in total."
 
 
-def test_player_stat_honors_a_bench_condition(pstat_conditions_ctx: TemplateContext) -> None:
+def test_player_stat_honors_a_bench_condition(pstat_conditions_ctx: AnswerContext) -> None:
     result = player_stat(pstat_conditions_ctx, Reading.from_slots({"player": "Tyrese Maxey", "stat": "points", "conditions": [_condition("bench")]}))
     assert result.data["stats"] == {"gamesPlayed": 1, "avgPoints": 20.0, "points": 20}
     assert result.answer == f"Tyrese Maxey averaged 20 points per game in 1 game with Joel Embiid off the bench in the {SEASON} regular season. That is 20 in total."
 
 
-def test_player_stat_honors_a_reached_condition(pstat_conditions_ctx: TemplateContext) -> None:
+def test_player_stat_honors_a_reached_condition(pstat_conditions_ctx: AnswerContext) -> None:
     """Embiid reached 20+ points in e1 (30), e2 (28) and e4 (25) - not e3,
     where he has no box row to read a threshold off at all, so the EXISTS
     clause a "reached" condition compiles to correctly excludes a game he

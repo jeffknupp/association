@@ -17,12 +17,13 @@ import pytest
 from test_templates import team_quarter_points  # the compiler's since Phase 2's slice (iv) (compose.COMPILED_INTENTS)
 
 from association.fetch.repairs import real_games
+from association.query.answer import AnswerContext
 from association.query.player_games import PERIOD_AGREEMENT, PERIOD_COLUMNS, Narrowed, aggregate_sql, period_line_sql, rows_sql
 from association.query.reading import Reading, Scope
 from association.query.team_games import TEAM_PERIOD_AGREEMENT, TEAM_PERIOD_COLUMNS, TeamNarrowed, team_period_line_sql
 from association.query.team_games import aggregate_sql as team_aggregate_sql
 from association.query.team_games import rows_sql as team_rows_sql
-from association.query.templates.common import RELATION_SCOPING, RELATION_SCOPING_EXCLUDED, TEAM_RELATION_SCOPING, TEAM_RELATION_SCOPING_EXCLUDED, TemplateContext, period_narrowing
+from association.query.templates.common import RELATION_SCOPING, RELATION_SCOPING_EXCLUDED, TEAM_RELATION_SCOPING, TEAM_RELATION_SCOPING_EXCLUDED, period_narrowing
 
 SEASON = 2026
 
@@ -405,7 +406,7 @@ def test_the_team_agreement_table_names_only_period_columns_and_real_percentages
 def test_team_quarter_points_answers_a_rebuilt_stat_with_its_seasons_caveat(team_con: duckdb.DuckDBPyConnection, tmp_path: Path) -> None:
     """ "home team first half turnovers": the relation's rebuilt column, per
     game and averaged, and the season's measured agreement said beside it."""
-    ctx = TemplateContext(con=team_con, out_dir=tmp_path)
+    ctx = AnswerContext(con=team_con, out_dir=tmp_path)
     result = team_quarter_points(ctx, Reading.from_slots({"team": "Home Team", "half": 1, "season": SEASON, "season_type": 2, "stat": "turnovers"}))
     assert (result.data["total"], result.data["stat"], [g["turnovers"] for g in result.data["games"]]) == (5, "turnovers", [5, 0])
     assert "averaged 2.5 turnovers in the 1st half" in (result.answer or "")
@@ -415,7 +416,7 @@ def test_team_quarter_points_answers_a_rebuilt_stat_with_its_seasons_caveat(team
 
 def test_team_quarter_points_refuses_a_season_the_line_rebuilds_badly(team_con: duckdb.DuckDBPyConnection, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setitem(TEAM_PERIOD_AGREEMENT, "turnovers", {SEASON: 60.6})
-    ctx = TemplateContext(con=team_con, out_dir=tmp_path)
+    ctx = AnswerContext(con=team_con, out_dir=tmp_path)
     result = team_quarter_points(ctx, Reading.from_slots({"team": "Home Team", "half": 1, "season": SEASON, "season_type": 2, "stat": "turnovers"}))
     assert "total" not in result.data and f"cannot be answered for {SEASON} (61%)" in (result.answer or "")
 
@@ -427,7 +428,7 @@ def test_team_quarter_points_answers_a_shooting_percentage_as_makes_over_attempt
     game listed as made-attempted. A "most" question is refused rather than
     naming g1 a record over two attempts, and a season either column
     rebuilds badly refuses the percentage with it."""
-    ctx = TemplateContext(con=team_con, out_dir=tmp_path)
+    ctx = AnswerContext(con=team_con, out_dir=tmp_path)
     slots: dict[str, Any] = {"team": "Home Team", "half": 1, "season": SEASON, "season_type": 2, "stat": "freeThrowPct"}
     result = team_quarter_points(ctx, Reading.from_slots(slots))
     assert (result.data["stat"], result.data["total"], result.data["attempted"], result.data["average"]) == ("ft_pct", 1, 2, 50.0)
@@ -440,7 +441,7 @@ def test_team_quarter_points_answers_a_shooting_percentage_as_makes_over_attempt
 
 def test_team_quarter_points_refuses_a_shooting_percentage_where_a_column_it_divides_rebuilds_badly(team_con: duckdb.DuckDBPyConnection, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setitem(TEAM_PERIOD_AGREEMENT, "freeThrowsAttempted", {SEASON: 70.0})
-    ctx = TemplateContext(con=team_con, out_dir=tmp_path)
+    ctx = AnswerContext(con=team_con, out_dir=tmp_path)
     result = team_quarter_points(ctx, Reading.from_slots({"team": "Home Team", "half": 1, "season": SEASON, "season_type": 2, "stat": "freeThrowPct"}))
     assert "total" not in result.data
     assert f"1st half free throw percentage cannot be answered for {SEASON} (70%)" in (result.answer or "") and "free throws and free throw attempts match" in (result.answer or "")

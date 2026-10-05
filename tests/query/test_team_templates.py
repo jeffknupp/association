@@ -21,24 +21,25 @@ from test_templates import streak  # the compiler's, the template retired (compo
 
 from association.fetch.repairs import real_games
 from association.nba.season import current_season
+from association.query.answer import AnswerContext, Reply
 from association.query.compose.plan import STATED_SCOPING
 from association.query.parse import with_point
-from association.query.reading import Reading, Scope
+from association.query.reading import Reading, Scope, Unsupported
 from association.query.subject import Subject
 from association.query.team_metrics import TEAM_METRICS, descending_for, resolve_team_metric
-from association.query.templates.common import TemplateContext, TemplateResult, TemplateUnsupported, check_coverage, unhonored_scoping
+from association.query.templates.common import check_coverage, unhonored_scoping
 
 
-def _compiled(intent: str) -> Callable[[TemplateContext, Reading], TemplateResult]:
+def _compiled(intent: str) -> Callable[[AnswerContext, Reading], Reply]:
     """``intent`` answered the way its retired template was called - a
-    Reading in, a TemplateResult out, ``TemplateUnsupported`` with the
+    Reading in, a Reply out, ``Unsupported`` with the
     reason where the compiler has no reading of the point - now that the
     compiler alone answers it (``compose.COMPILED_INTENTS``, ROADMAP plan item
     6, step (d), part 4). No question words, which would move the point:
     these are the intent's own. The subject is the one the slots name, as a
     question naming just them reads."""
 
-    def answered(ctx: TemplateContext, reading: Reading) -> TemplateResult:
+    def answered(ctx: AnswerContext, reading: Reading) -> Reply:
         scope = reading.scope
         named = tuple(name for name in (scope.player, *scope.players) if name)
         kind = "pair" if len(named) > 1 else "player" if named else "team" if scope.team else "everyone"
@@ -46,7 +47,7 @@ def _compiled(intent: str) -> Callable[[TemplateContext, Reading], TemplateResul
         why: list[str] = []
         result = compose_answer(ctx, with_point(ctx.con, "", Reading(scope=scope, intent=intent, subject=subject)), declined=why.append)
         if result is None:
-            raise TemplateUnsupported(why[0] if why else f"the compiler has no reading of this {intent} point")
+            raise Unsupported(why[0] if why else f"the compiler has no reading of this {intent} point")
         return result
 
     return answered
@@ -95,7 +96,7 @@ def _tss(c: duckdb.DuckDBPyConnection, season: int, season_type: int, team_id: s
 
 
 @pytest.fixture
-def team_ctx(tmp_path: Path) -> TemplateContext:
+def team_ctx(tmp_path: Path) -> AnswerContext:
     c = duckdb.connect(":memory:")
     c.execute("CREATE TABLE teams (team_id VARCHAR, abbreviation VARCHAR, display_name VARCHAR)")
     c.execute(
@@ -195,13 +196,13 @@ def team_ctx(tmp_path: Path) -> TemplateContext:
     # SEASON labels - is deliberately NOT, so TEAM_GAMES_SQL's own QUALIFY
     # still has the phantom season to collapse.
     real_games.build_table(c, {"games", "teams"})
-    return TemplateContext(con=c, out_dir=tmp_path)
+    return AnswerContext(con=c, out_dir=tmp_path)
 
 
 # ---------------- team_record: a season, from standings ----------------
 
 
-def test_a_season_record_is_the_standings_line(team_ctx: TemplateContext) -> None:
+def test_a_season_record_is_the_standings_line(team_ctx: AnswerContext) -> None:
     result = team_record(team_ctx, Reading.from_slots({"team": "Knicks"}))
     answer = result.answer
     # standings stores these as DOUBLE; "53.0-29.0" makes a correct answer look untrustworthy.
@@ -220,11 +221,11 @@ def test_a_season_record_is_the_standings_line(team_ctx: TemplateContext) -> Non
     assert "116.5 points per game" not in result.data["headline"]  # that line is beneath the headline, not part of it
 
 
-def test_a_missing_season_is_reported_honestly(team_ctx: TemplateContext) -> None:
+def test_a_missing_season_is_reported_honestly(team_ctx: AnswerContext) -> None:
     assert "no 1999 standings" in team_record(team_ctx, Reading.from_slots({"team": "Knicks", "season": 1999})).answer
 
 
-def test_a_home_record_is_the_home_record_not_the_season(team_ctx: TemplateContext) -> None:
+def test_a_home_record_is_the_home_record_not_the_season(team_ctx: AnswerContext) -> None:
     """ "Knicks home record" was answered with their overall 53-29."""
     result = team_record(team_ctx, Reading.from_slots({"team": "Knicks", "venue": "home"}))
     assert result.answer.startswith(f"The New York Knicks were 30-10 (.750) at home in the {S} regular season, 53-29 overall")
@@ -242,22 +243,22 @@ def test_a_home_record_is_the_home_record_not_the_season(team_ctx: TemplateConte
     assert result.data["notes"] == []
 
 
-def test_a_road_record(team_ctx: TemplateContext) -> None:
+def test_a_road_record(team_ctx: AnswerContext) -> None:
     assert "22-19 (.537) on the road" in team_record(team_ctx, Reading.from_slots({"team": "Knicks", "venue": "away"})).answer
 
 
-def test_a_season_with_no_split_says_so_instead_of_giving_the_whole_season(team_ctx: TemplateContext) -> None:
+def test_a_season_with_no_split_says_so_instead_of_giving_the_whole_season(team_ctx: AnswerContext) -> None:
     answer = team_record(team_ctx, Reading.from_slots({"team": "Knicks", "venue": "home", "season": 1990}))
     assert "no home/road split" in answer.answer and "45-37" not in answer.answer
 
 
-def test_a_record_short_of_its_season_says_so(team_ctx: TemplateContext) -> None:
+def test_a_record_short_of_its_season_says_so(team_ctx: AnswerContext) -> None:
     """ESPN's 2000 standings stop two games short, and nothing in the row says so."""
     answer = team_record(team_ctx, Reading.from_slots({"team": "Knicks", "season": 2000})).answer
     assert "49-31" in answer and "2000 (80 of 82 games)" in answer
 
 
-def test_a_home_record_short_of_its_season_carries_the_gap_as_a_note(team_ctx: TemplateContext) -> None:
+def test_a_home_record_short_of_its_season_carries_the_gap_as_a_note(team_ctx: AnswerContext) -> None:
     """The same gap note as the season-total case above, but through the venue
     branch (`_standings_season_venue`), which did not carry `data["notes"]`
     at all before this - the note sat only in `answer`, glued onto the
@@ -270,7 +271,7 @@ def test_a_home_record_short_of_its_season_carries_the_gap_as_a_note(team_ctx: T
 # ---------------- team_record: against one team, from games ----------------
 
 
-def test_a_record_against_a_team_counts_each_real_game_once(team_ctx: TemplateContext) -> None:
+def test_a_record_against_a_team_counts_each_real_game_once(team_ctx: AnswerContext) -> None:
     """The 0-0 phantom and the second event id for the same game are both gone."""
     result = team_record(team_ctx, Reading.from_slots({"team": "Knicks", "opponent": "San Antonio Spurs"}))
     assert f"went 1-1 (.500) against the San Antonio Spurs in the {S} regular season" in result.answer
@@ -278,31 +279,31 @@ def test_a_record_against_a_team_counts_each_real_game_once(team_ctx: TemplateCo
     assert result.data["headline"] == result.answer.split("\n")[0]
 
 
-def test_the_cup_final_is_mentioned_but_not_counted(team_ctx: TemplateContext) -> None:
+def test_the_cup_final_is_mentioned_but_not_counted(team_ctx: AnswerContext) -> None:
     result = team_record(team_ctx, Reading.from_slots({"team": "Knicks", "opponent": "Spurs"}))
     assert f"NBA Cup final on {S - 1}-12-16, which counts in no standings: won 124-113" in result.answer
     assert result.data["wins"] == 1
 
 
-def test_meetings_are_dated_on_the_eastern_calendar(team_ctx: TemplateContext) -> None:
+def test_meetings_are_dated_on_the_eastern_calendar(team_ctx: AnswerContext) -> None:
     """A 7:30pm Eastern tip is stored as 00:30 UTC the next day."""
     answer = team_record(team_ctx, Reading.from_slots({"team": "Knicks", "opponent": "Spurs"})).answer
     assert f"{S - 1}-11-19  W 114-89  vs San Antonio Spurs" in answer
     assert f"{S - 1}-11-20" not in answer
 
 
-def test_the_opponent_can_arrive_in_the_teams_slot(team_ctx: TemplateContext) -> None:
+def test_the_opponent_can_arrive_in_the_teams_slot(team_ctx: AnswerContext) -> None:
     result = team_record(team_ctx, Reading.from_slots({"teams": ["New York Knicks", "San Antonio Spurs"]}))
     assert result.data["opponent"] == "San Antonio Spurs" and result.data["wins"] == 1
 
 
-def test_a_neutral_site_meeting_is_neither_home_nor_away(team_ctx: TemplateContext) -> None:
+def test_a_neutral_site_meeting_is_neither_home_nor_away(team_ctx: AnswerContext) -> None:
     assert "Home 0-0, away 0-0, neutral site 1-0." in team_record(team_ctx, Reading.from_slots({"team": "Knicks", "opponent": "Celtics"})).answer
     away = team_record(team_ctx, Reading.from_slots({"team": "Knicks", "opponent": "Celtics", "venue": "away"}))
     assert away.data["wins"] == 0 and "Neutral-site games count as neither home nor away." in away.answer
 
 
-def test_an_all_time_record_counts_a_season_under_two_labels_once(team_ctx: TemplateContext) -> None:
+def test_an_all_time_record_counts_a_season_under_two_labels_once(team_ctx: AnswerContext) -> None:
     result = team_record(team_ctx, Reading.from_slots({"team": "Knicks", "opponent": "Celtics", "span": "career"}))
     assert result.data["wins"] == 2 and result.data["losses"] == 0
     assert "regular seasons from 1993-94 on" in result.answer
@@ -313,7 +314,7 @@ def test_an_all_time_record_counts_a_season_under_two_labels_once(team_ctx: Temp
 # ---------------- team_record: postseason, from games ----------------
 
 
-def test_a_postseason_record_is_tallied_from_postseason_games(team_ctx: TemplateContext) -> None:
+def test_a_postseason_record_is_tallied_from_postseason_games(team_ctx: AnswerContext) -> None:
     """Refused before, because standings have no postseason; answering it with
     the regular-season number would have been worse."""
     answer = team_record(team_ctx, Reading.from_slots({"team": "Knicks", "season_type": 3})).answer
@@ -321,24 +322,24 @@ def test_a_postseason_record_is_tallied_from_postseason_games(team_ctx: Template
     assert "53-29" not in answer
 
 
-def test_a_postseason_is_found_by_the_year_it_was_played_not_its_label(team_ctx: TemplateContext) -> None:
+def test_a_postseason_is_found_by_the_year_it_was_played_not_its_label(team_ctx: AnswerContext) -> None:
     """`games` labels every postseason before 1994 a year early."""
     assert "went 0-1 (.000) in the 1991 postseason" in team_record(team_ctx, Reading.from_slots({"team": "Knicks", "season": 1991, "season_type": 3})).answer
 
 
-def test_a_postseason_listed_under_two_labels_is_counted_once(team_ctx: TemplateContext) -> None:
+def test_a_postseason_listed_under_two_labels_is_counted_once(team_ctx: AnswerContext) -> None:
     """ESPN answers season=1993 with the 1994 playoffs as well as the 1994
     season, and a postseason found by calendar year sees both copies."""
     result = team_record(team_ctx, Reading.from_slots({"team": "Knicks", "season": 1994, "season_type": 3}))
     assert (result.data["wins"], result.data["losses"]) == (1, 0)
 
 
-def test_a_season_with_no_games_blames_the_season_not_the_team(team_ctx: TemplateContext) -> None:
+def test_a_season_with_no_games_blames_the_season_not_the_team(team_ctx: AnswerContext) -> None:
     assert team_record(team_ctx, Reading.from_slots({"team": "Knicks", "season": 1990, "season_type": 3})).answer == "The warehouse holds no 1990 postseason games for any team."
     assert team_record(team_ctx, Reading.from_slots({"team": "Wizards", "season_type": 3})).answer == f"The Washington Wizards played no games in the {S} postseason."
 
 
-def test_a_postseason_short_of_the_teams_own_totals_says_so(team_ctx: TemplateContext) -> None:
+def test_a_postseason_short_of_the_teams_own_totals_says_so(team_ctx: AnswerContext) -> None:
     answer = team_record(team_ctx, Reading.from_slots({"team": "Celtics", "season_type": 3})).answer
     assert "went 1-3" in answer and f"{S} (4 listed, 5 played)" in answer
 
@@ -346,7 +347,7 @@ def test_a_postseason_short_of_the_teams_own_totals_says_so(team_ctx: TemplateCo
 # ---------------- team_record: every season ----------------
 
 
-def test_an_all_time_record_says_where_the_data_starts(team_ctx: TemplateContext) -> None:
+def test_an_all_time_record_says_where_the_data_starts(team_ctx: AnswerContext) -> None:
     result = team_record(team_ctx, Reading.from_slots({"team": "Knicks", "span": "career"}))
     answer = result.answer
     assert f"147-97 (.602) across the 3 regular seasons from 1989-90 through {LAST}" in answer
@@ -361,7 +362,7 @@ def test_an_all_time_record_says_where_the_data_starts(team_ctx: TemplateContext
     assert "2000 (80 of 82 games)" not in result.data["headline"]
 
 
-def test_an_all_time_home_record_counts_only_seasons_with_a_split(team_ctx: TemplateContext) -> None:
+def test_an_all_time_home_record_counts_only_seasons_with_a_split(team_ctx: AnswerContext) -> None:
     result = team_record(team_ctx, Reading.from_slots({"team": "Knicks", "span": "career", "venue": "home"}))
     answer = result.answer
     assert f"58-23 (.716) at home across the 2 regular seasons from 1999-00 through {LAST}" in answer
@@ -379,19 +380,19 @@ def test_an_all_time_home_record_counts_only_seasons_with_a_split(team_ctx: Temp
 # ---------------- team_record: refusals ----------------
 
 
-def test_a_conference_is_refused_by_name(team_ctx: TemplateContext) -> None:
+def test_a_conference_is_refused_by_name(team_ctx: AnswerContext) -> None:
     """No table maps a team to a conference, so there is nothing to tally."""
     answer = team_record(team_ctx, Reading.from_slots({"team": "Knicks", "opponent": "Western Conference"})).answer
     assert "no conference or division membership" in answer and "53-29" not in answer
 
 
-def test_a_career_span_and_a_single_season_at_once_falls_through(team_ctx: TemplateContext) -> None:
-    with pytest.raises(TemplateUnsupported):
+def test_a_career_span_and_a_single_season_at_once_falls_through(team_ctx: AnswerContext) -> None:
+    with pytest.raises(Unsupported):
         team_record(team_ctx, Reading.from_slots({"team": "Knicks", "span": "career", "season": 2020}))
 
 
-def test_the_team_as_its_own_opponent_falls_through(team_ctx: TemplateContext) -> None:
-    with pytest.raises(TemplateUnsupported):
+def test_the_team_as_its_own_opponent_falls_through(team_ctx: AnswerContext) -> None:
+    with pytest.raises(Unsupported):
         team_record(team_ctx, Reading.from_slots({"team": "Knicks", "opponent": "New York Knicks"}))
 
 
@@ -413,7 +414,7 @@ def test_team_record_honors_situation_and_split_at_the_declaration_level() -> No
 # ---------------- team_stat ----------------
 
 
-def test_a_team_line_is_a_table_with_league_ranks(team_ctx: TemplateContext) -> None:
+def test_a_team_line_is_a_table_with_league_ranks(team_ctx: AnswerContext) -> None:
     result = team_stat(team_ctx, Reading.from_slots({"team": "Knicks"}))
     answer = result.answer
     assert answer.startswith(f"New York Knicks, {S} regular season (3 games):")
@@ -425,7 +426,7 @@ def test_a_team_line_is_a_table_with_league_ranks(team_ctx: TemplateContext) -> 
     assert any("FGA - OREB + TOV + 0.44 x FTA" in note for note in result.data["notes"])
 
 
-def test_a_named_stat_answers_that_stat_with_its_rank(team_ctx: TemplateContext) -> None:
+def test_a_named_stat_answers_that_stat_with_its_rank(team_ctx: AnswerContext) -> None:
     result = team_stat(team_ctx, Reading.from_slots({"team": "Knicks", "stat": "defensiveRating"}))
     answer = result.answer
     assert answer.startswith(f"The New York Knicks' defensive rating (points allowed per 100 possessions) was 111.2 in the {S} regular season (3 games), 3rd-best of 5 teams.")
@@ -438,36 +439,36 @@ def test_a_named_stat_answers_that_stat_with_its_rank(team_ctx: TemplateContext)
     assert result.data["notes"] == []
 
 
-def test_a_singular_team_name_takes_an_apostrophe_s(team_ctx: TemplateContext) -> None:
+def test_a_singular_team_name_takes_an_apostrophe_s(team_ctx: AnswerContext) -> None:
     assert team_stat(team_ctx, Reading.from_slots({"team": "Thunder", "stat": "points"})).answer.startswith("The Oklahoma City Thunder's points per game was 115.0")
 
 
-def test_an_unknown_stat_falls_through_rather_than_matching_something_close(team_ctx: TemplateContext) -> None:
-    with pytest.raises(TemplateUnsupported):
+def test_an_unknown_stat_falls_through_rather_than_matching_something_close(team_ctx: AnswerContext) -> None:
+    with pytest.raises(Unsupported):
         team_stat(team_ctx, Reading.from_slots({"team": "Knicks", "stat": "vibes"}))
 
 
-def test_points_allowed_over_fewer_games_than_the_rest_is_refused(team_ctx: TemplateContext) -> None:
+def test_points_allowed_over_fewer_games_than_the_rest_is_refused(team_ctx: AnswerContext) -> None:
     answer = team_stat(team_ctx, Reading.from_slots({"team": "Celtics", "stat": "defensive rating", "season_type": 3})).answer
     assert "can't be given" in answer and "4 of the Boston Celtics' 5 games" in answer
 
 
-def test_a_team_that_missed_the_postseason_is_told_so(team_ctx: TemplateContext) -> None:
+def test_a_team_that_missed_the_postseason_is_told_so(team_ctx: AnswerContext) -> None:
     """Not "no data": the season is there, and the team did not play in it."""
     assert team_stat(team_ctx, Reading.from_slots({"team": "Wizards", "season_type": 3})).answer == f"The Washington Wizards did not play in the {S} postseason."
 
 
-def test_turnovers_are_not_double_counted_before_2013(team_ctx: TemplateContext) -> None:
+def test_turnovers_are_not_double_counted_before_2013(team_ctx: AnswerContext) -> None:
     """90 - 10 + 15 + 0.44 * 20 = 103.8 possessions, not the 118.8 ESPN's total gives."""
     assert "103.8" in team_stat(team_ctx, Reading.from_slots({"team": "Thunder", "stat": "pace", "season": 2010})).answer
 
 
-def test_a_metric_before_its_first_season_names_why(team_ctx: TemplateContext) -> None:
+def test_a_metric_before_its_first_season_names_why(team_ctx: AnswerContext) -> None:
     answer = team_stat(team_ctx, Reading.from_slots({"team": "Knicks", "stat": "points in the paint", "season": 2008})).answer
     assert "can't be given for 2008" in answer and "before 2008-09" in answer
 
 
-def test_a_record_stat_is_ranked_from_standings(team_ctx: TemplateContext) -> None:
+def test_a_record_stat_is_ranked_from_standings(team_ctx: AnswerContext) -> None:
     assert "53-29 (.646)" in (answer := team_stat(team_ctx, Reading.from_slots({"team": "Knicks", "stat": "record"})).answer)
     assert "the 4th-best record of 5 teams" in answer
 
@@ -479,7 +480,7 @@ def _first_row(answer: str) -> str:
     return answer.splitlines()[1]
 
 
-def test_which_team_scores_the_most(team_ctx: TemplateContext) -> None:
+def test_which_team_scores_the_most(team_ctx: AnswerContext) -> None:
     """Answered with the players' scoring leaders before this existed."""
     result = team_leaderboard(team_ctx, Reading.from_slots({"stat": "points", "rank": "most"}))
     answer = result.answer
@@ -488,53 +489,53 @@ def test_which_team_scores_the_most(team_ctx: TemplateContext) -> None:
     assert result.data["headline"] == f"Points per game, {S} regular season - highest first, of 5 teams"
 
 
-def test_the_lowest_defensive_rating_comes_first(team_ctx: TemplateContext) -> None:
+def test_the_lowest_defensive_rating_comes_first(team_ctx: AnswerContext) -> None:
     answer = team_leaderboard(team_ctx, Reading.from_slots({"stat": "defensive rating", "rank": "fewest"})).answer
     assert "lowest first" in answer and "Oklahoma City Thunder" in _first_row(answer)
 
 
-def test_best_means_fewest_for_a_stat_a_team_wants_little_of(team_ctx: TemplateContext) -> None:
+def test_best_means_fewest_for_a_stat_a_team_wants_little_of(team_ctx: AnswerContext) -> None:
     answer = team_leaderboard(team_ctx, Reading.from_slots({"stat": "turnovers", "rank": "best"})).answer
     assert "best first (lowest)" in answer and "Oklahoma City Thunder" in _first_row(answer)
     # Three teams at 14.0 share second place.
     assert [line.split()[0] for line in answer.splitlines()[1:6]] == ["1", "2", "2", "2", "5"]
 
 
-def test_no_rank_means_best(team_ctx: TemplateContext) -> None:
+def test_no_rank_means_best(team_ctx: AnswerContext) -> None:
     assert team_leaderboard(team_ctx, Reading.from_slots({"stat": "turnovers"})).answer == team_leaderboard(team_ctx, Reading.from_slots({"stat": "turnovers", "rank": "best"})).answer
 
 
-def test_the_worst_record_comes_first_when_asked(team_ctx: TemplateContext) -> None:
+def test_the_worst_record_comes_first_when_asked(team_ctx: AnswerContext) -> None:
     answer = team_leaderboard(team_ctx, Reading.from_slots({"stat": "record", "rank": "worst"})).answer
     assert "worst record first" in answer and _first_row(answer).split() == ["1", "Washington", "Wizards", "17-65", "(.207)"]
 
 
-def test_the_most_losses_is_the_worst_record(team_ctx: TemplateContext) -> None:
+def test_the_most_losses_is_the_worst_record(team_ctx: AnswerContext) -> None:
     assert "Washington Wizards" in _first_row(team_leaderboard(team_ctx, Reading.from_slots({"stat": "losses", "rank": "most"})).answer)
 
 
-def test_the_best_home_record_reads_the_standings_split(team_ctx: TemplateContext) -> None:
+def test_the_best_home_record_reads_the_standings_split(team_ctx: AnswerContext) -> None:
     answer = team_leaderboard(team_ctx, Reading.from_slots({"stat": "record", "venue": "home"})).answer
     assert answer.startswith(f"Record at home, {S} regular season") and "34-7 (.829)" in _first_row(answer)
 
 
-def test_a_venue_for_a_stat_with_no_venue_split_falls_through(team_ctx: TemplateContext) -> None:
-    with pytest.raises(TemplateUnsupported):
+def test_a_venue_for_a_stat_with_no_venue_split_falls_through(team_ctx: AnswerContext) -> None:
+    with pytest.raises(Unsupported):
         team_leaderboard(team_ctx, Reading.from_slots({"stat": "points", "venue": "home"}))
 
 
-def test_a_named_team_outside_the_list_is_shown_with_its_rank(team_ctx: TemplateContext) -> None:
+def test_a_named_team_outside_the_list_is_shown_with_its_rank(team_ctx: AnswerContext) -> None:
     answer = team_leaderboard(team_ctx, Reading.from_slots({"stat": "points", "limit": 1, "team": "Wizards"})).answer
     assert answer.splitlines()[2:] == ["    ...", " 5  Washington Wizards   99.5"]
 
 
-def test_a_ranking_with_a_team_short_of_games_is_refused_not_partial(team_ctx: TemplateContext) -> None:
+def test_a_ranking_with_a_team_short_of_games_is_refused_not_partial(team_ctx: AnswerContext) -> None:
     answer = team_leaderboard(team_ctx, Reading.from_slots({"stat": "defensive rating", "season_type": 3})).answer
     assert "can't be given" in answer and "4 of the Boston Celtics' 5 games" in answer
 
 
-def test_a_leaderboard_needs_a_stat(team_ctx: TemplateContext) -> None:
-    with pytest.raises(TemplateUnsupported):
+def test_a_leaderboard_needs_a_stat(team_ctx: AnswerContext) -> None:
+    with pytest.raises(Unsupported):
         team_leaderboard(team_ctx, Reading.from_slots({}))
 
 
@@ -593,7 +594,7 @@ def test_a_same_dated_preseason_snapshot_never_wins_the_regular_season_question(
             "INSERT INTO team_power_index VALUES (2018,?,'18','2020-10-12T07:48Z',?,0.5,0.5,31,51,31.2,50.8,0.0,0.0,0.0,0.0,0.49,12)",
             [season_type, bpi],
         )
-    answer = team_outlook(TemplateContext(con=c, out_dir=tmp_path), Reading.from_slots({"team": "Knicks", "season": 2018})).answer or ""
+    answer = team_outlook(AnswerContext(con=c, out_dir=tmp_path), Reading.from_slots({"team": "Knicks", "season": 2018})).answer or ""
     assert "regular-season snapshot" in answer
     assert "BPI +1.5" in answer, "the preseason rating (-2.5) was chosen on a date tie"
 
@@ -630,7 +631,7 @@ def test_a_same_dated_preseason_and_play_in_snapshot_favors_play_in_with_no_regu
             "INSERT INTO team_power_index VALUES (2027,?,'18','2027-04-15T00:00Z',?,0.5,0.5,31,51,31.2,50.8,0.0,0.0,0.0,0.0,0.49,12)",
             [season_type, bpi],
         )
-    answer = team_outlook(TemplateContext(con=c, out_dir=tmp_path), Reading.from_slots({"team": "Knicks", "season": 2027})).answer or ""
+    answer = team_outlook(AnswerContext(con=c, out_dir=tmp_path), Reading.from_slots({"team": "Knicks", "season": 2027})).answer or ""
     assert "play-in snapshot" in answer
     assert "BPI +4.5" in answer, "the preseason rating (-2.5) was chosen on a date tie"
 
@@ -667,13 +668,13 @@ def test_a_regular_season_question_reads_the_regular_season_snapshot_even_when_a
     # season_type 5 (play-in), stamped LATER, with a wildly different BPI so a
     # misread is obvious rather than a coincidental match.
     c.execute("INSERT INTO team_power_index VALUES (2026,5,'18','2026-04-18T02:23Z',99.9,50.0,49.9,53,29,53,29,100.0,42.0,21.5,7.2,0.503,14)")
-    answer = team_outlook(TemplateContext(con=c, out_dir=tmp_path), Reading.from_slots({"team": "Knicks", "season": 2026})).answer or ""
+    answer = team_outlook(AnswerContext(con=c, out_dir=tmp_path), Reading.from_slots({"team": "Knicks", "season": 2026})).answer or ""
     assert "regular-season snapshot" in answer
     assert "BPI +6.9" in answer, "the later play-in snapshot (BPI +99.9) was read instead of the regular-season one"
     assert "BPI +99.9" not in answer
 
 
-def test_the_outlook_names_its_snapshot_date_and_size(team_ctx: TemplateContext) -> None:
+def test_the_outlook_names_its_snapshot_date_and_size(team_ctx: AnswerContext) -> None:
     answer = team_outlook(team_ctx, Reading.from_slots({"team": "Knicks"})).answer
     assert f"{S} play-in snapshot (updated {S}-04-18, 3 teams)" in answer
     assert "BPI +7.6 (offense +3.2, defense +4.3), 3rd of the 3 teams in the snapshot" in answer
@@ -683,7 +684,7 @@ def test_the_outlook_names_its_snapshot_date_and_size(team_ctx: TemplateContext)
     assert f"also has a postseason snapshot ({S}-06-15, 3 teams)" in answer
 
 
-def test_the_outlook_carries_its_own_headline_and_notes(team_ctx: TemplateContext) -> None:
+def test_the_outlook_carries_its_own_headline_and_notes(team_ctx: AnswerContext) -> None:
     """The page draws team_outlook's card from typed values (bpi, wins,
     chances, strength_of_schedule), so `data["notes"]` holds only the lines
     the card does not carry - the BPI's offense/defense split, the
@@ -701,7 +702,7 @@ def test_the_outlook_carries_its_own_headline_and_notes(team_ctx: TemplateContex
     assert "regular_season_wins" not in result.data
 
 
-def test_a_postseason_snapshots_second_record_is_the_regular_season_not_a_projection(team_ctx: TemplateContext) -> None:
+def test_a_postseason_snapshots_second_record_is_the_regular_season_not_a_projection(team_ctx: AnswerContext) -> None:
     """ESPN's projection columns hold the finished regular season once the
     playoffs are on - the text says so ("53-29 in the regular season"), and
     the page drew the same figure as "PROJECTED" beside the record."""
@@ -710,35 +711,35 @@ def test_a_postseason_snapshots_second_record_is_the_regular_season_not_a_projec
     assert "projected_wins" not in result.data and (result.data["wins"], result.data["losses"]) == (69, 32)
 
 
-def test_a_postseason_snapshot_adds_the_playoff_games(team_ctx: TemplateContext) -> None:
+def test_a_postseason_snapshot_adds_the_playoff_games(team_ctx: AnswerContext) -> None:
     assert "record 69-32 including the playoffs; 53-29 in the regular season" in team_outlook(team_ctx, Reading.from_slots({"team": "Knicks", "season_type": 3})).answer
 
 
-def test_a_team_out_before_the_playoffs(team_ctx: TemplateContext) -> None:
+def test_a_team_out_before_the_playoffs(team_ctx: AnswerContext) -> None:
     assert "record 44-38, no playoff games" in team_outlook(team_ctx, Reading.from_slots({"team": "Hornets", "season_type": 3})).answer
     # Only the postseason snapshot holds them, and the answer says it used that one.
     assert "No pre-playoff snapshot for that season holds them" in team_outlook(team_ctx, Reading.from_slots({"team": "Hornets"})).answer
 
 
-def test_a_missing_team_is_told_which_snapshots_exist(team_ctx: TemplateContext) -> None:
+def test_a_missing_team_is_told_which_snapshots_exist(team_ctx: AnswerContext) -> None:
     """Not "no data" - the snapshots exist, and this team is in neither."""
     assert team_outlook(team_ctx, Reading.from_slots({"team": "Wizards"})).answer == (
         f"ESPN's power index for {S} has a play-in snapshot ({S}-04-18, 3 teams) and a postseason snapshot ({S}-06-15, 3 teams), and the Washington Wizards are in neither."
     )
 
 
-def test_a_season_with_no_postseason_snapshot_says_which_one_it_has(team_ctx: TemplateContext) -> None:
+def test_a_season_with_no_postseason_snapshot_says_which_one_it_has(team_ctx: AnswerContext) -> None:
     answer = team_outlook(team_ctx, Reading.from_slots({"team": "Knicks", "season": 2024, "season_type": 3})).answer
     assert "and no postseason snapshot" in answer and "only in a regular-season snapshot (2024-04-14, 1 team)" in answer
 
 
-def test_a_snapshot_stamped_after_its_season_says_so_and_drops_a_rank_that_is_not_one(team_ctx: TemplateContext) -> None:
+def test_a_snapshot_stamped_after_its_season_says_so_and_drops_a_rank_that_is_not_one(team_ctx: AnswerContext) -> None:
     answer = team_outlook(team_ctx, Reading.from_slots({"team": "Knicks", "season": 2017})).answer
     assert "after the 2017 season ended" in answer
     assert "strength of schedule .490" in answer and "hardest" not in answer
 
 
-def test_a_season_with_no_snapshot(team_ctx: TemplateContext) -> None:
+def test_a_season_with_no_snapshot(team_ctx: AnswerContext) -> None:
     assert team_outlook(team_ctx, Reading.from_slots({"team": "Knicks", "season": 2019})).answer == "ESPN's power index has no 2019 snapshot in the warehouse."
 
 
@@ -806,7 +807,7 @@ def test_a_snapshot_with_no_rating_says_so_rather_than_dropping_the_line(tmp_pat
     # serves 2026's regular-season snapshot.
     c.execute("INSERT INTO team_power_index VALUES (2026,2,'18','2026-04-13T09:43Z',NULL,NULL,NULL,53,29,53.0,29.0,100.0,38.1,18.5,5.2,0.506,7)")
 
-    answer = team_outlook(TemplateContext(con=c, out_dir=tmp_path), Reading.from_slots({"team": "Knicks", "season": 2026})).answer or ""
+    answer = team_outlook(AnswerContext(con=c, out_dir=tmp_path), Reading.from_slots({"team": "Knicks", "season": 2026})).answer or ""
     assert "no BPI rating in this snapshot" in answer
     # The rest of the row is ESPN's own and still printed.
     assert "record 53-29" in answer
@@ -816,14 +817,14 @@ def test_a_snapshot_with_no_rating_says_so_rather_than_dropping_the_line(tmp_pat
 # ---------------- team_record: a calendar month ----------------
 
 
-def test_a_named_month_filters_the_games_tally(team_ctx: TemplateContext) -> None:
+def test_a_named_month_filters_the_games_tally(team_ctx: AnswerContext) -> None:
     """standings has no per-game date, so a month reaches this through
     `games` instead - the Knicks' one November game (g1) is a win."""
     answer = team_record(team_ctx, Reading.from_slots({"team": "Knicks", "situation": "in november"})).answer or ""
     assert "went 1-0 (1.000) in November in the" in answer
 
 
-def test_a_named_month_with_no_games_says_so(team_ctx: TemplateContext) -> None:
+def test_a_named_month_with_no_games_says_so(team_ctx: AnswerContext) -> None:
     """g2's UTC stamp of January 1st is December 31st Eastern, so the Knicks
     have no January game this season even though one game's UTC date says so -
     the whole reason a month reads the Eastern date rather than the stored one."""
@@ -831,26 +832,26 @@ def test_a_named_month_with_no_games_says_so(team_ctx: TemplateContext) -> None:
     assert answer == f"The New York Knicks played no games in January in the {S} regular season."
 
 
-def test_a_named_month_combines_with_venue(team_ctx: TemplateContext) -> None:
+def test_a_named_month_combines_with_venue(team_ctx: AnswerContext) -> None:
     """g3, a neutral-site game, is excluded from a venue narrowing - only g2
     (away, a loss) is a December game at a real venue."""
     answer = team_record(team_ctx, Reading.from_slots({"team": "Knicks", "situation": "in december", "venue": "away"})).answer or ""
     assert "0-1 (.000) in December on the road" in answer
 
 
-def test_a_situation_naming_no_calendar_narrowing_is_still_refused(team_ctx: TemplateContext) -> None:
+def test_a_situation_naming_no_calendar_narrowing_is_still_refused(team_ctx: AnswerContext) -> None:
     """check_scope lets any `situation` value through (see HONORED_SCOPING);
     team_record itself now reads the full calendar narrowing (step 3, K1: a
     weekday, a month, a fixed holiday, "since <day>" - not only a bare month,
     #84's original scope), and refuses only what names none of those - an
     age, a conference, "since returning"."""
-    with pytest.raises(TemplateUnsupported):
+    with pytest.raises(Unsupported):
         team_record(team_ctx, Reading.from_slots({"team": "Knicks", "situation": "18 year old"}))
-    with pytest.raises(TemplateUnsupported):
+    with pytest.raises(Unsupported):
         team_record(team_ctx, Reading.from_slots({"team": "Knicks", "situation": "since returning from injury"}))
 
 
-def test_since_a_calendar_day_narrows_a_teams_record(team_ctx: TemplateContext) -> None:
+def test_since_a_calendar_day_narrows_a_teams_record(team_ctx: AnswerContext) -> None:
     """Step 3, K1: "since november 20th" is a calendar narrowing the player
     relation already read (`_SINCE_DAY`) and the team relation now does too.
     g1 (the Knicks' Nov 19 Eastern-date win over the Spurs) falls BEFORE the
@@ -866,7 +867,7 @@ def test_since_a_calendar_day_narrows_a_teams_record(team_ctx: TemplateContext) 
     assert "away 0-1, neutral site 1-0" in answer
 
 
-def test_a_weekday_narrows_a_teams_record(team_ctx: TemplateContext) -> None:
+def test_a_weekday_narrows_a_teams_record(team_ctx: AnswerContext) -> None:
     """Step 3, K1: a weekday narrowing ("on Wednesdays") reads
     `TeamNarrowed.narrow_calendar` too - not only a fixed calendar day. g1's
     Eastern date is computed here rather than hardcoded, so the assertion
@@ -882,7 +883,7 @@ def test_a_weekday_narrows_a_teams_record(team_ctx: TemplateContext) -> None:
     assert f"on {weekday}s" in answer
 
 
-def test_split_by_month_breaks_the_record_out(team_ctx: TemplateContext) -> None:
+def test_split_by_month_breaks_the_record_out(team_ctx: AnswerContext) -> None:
     """The Knicks' three regular-season games this year: g1 in November (win),
     g3 in December (a neutral-site win that still counts) and g2, whose UTC
     January 1st stamp is December 31st Eastern - so December is 1-1, and
@@ -899,26 +900,26 @@ def test_split_by_month_breaks_the_record_out(team_ctx: TemplateContext) -> None
     assert result.data["headline"] == f"The New York Knicks, record by month, the {S} regular season"
 
 
-def test_an_unnamed_split_is_refused(team_ctx: TemplateContext) -> None:
-    with pytest.raises(TemplateUnsupported):
+def test_an_unnamed_split_is_refused(team_ctx: AnswerContext) -> None:
+    with pytest.raises(Unsupported):
         team_record(team_ctx, Reading.from_slots({"team": "Knicks", "split": "starter_bench"}))
 
 
-def test_a_default_limit_does_not_block_a_month_narrowing_or_split(team_ctx: TemplateContext) -> None:
+def test_a_default_limit_does_not_block_a_month_narrowing_or_split(team_ctx: AnswerContext) -> None:
     """The router fills `limit` with a default whether or not the question
     asked for one, the same shape team_record already treats as noise for a
     bare "last N games" refusal - but only once a real month narrowing or a
     by-month split is what is actually driving the answer."""
     assert "1-0" in (team_record(team_ctx, Reading.from_slots({"team": "Knicks", "situation": "in november", "limit": 12})).answer or "")
     assert team_record(team_ctx, Reading.from_slots({"team": "Knicks", "split": "month", "limit": 12})).data["months"]
-    with pytest.raises(TemplateUnsupported, match="game_log"):
+    with pytest.raises(Unsupported, match="game_log"):
         team_record(team_ctx, Reading.from_slots({"team": "Knicks", "limit": 12}))
 
 
 # ---------------- team_record: `season_type_unstated` combines both types (F116) ----------------
 
 
-def test_team_record_combines_both_season_types_for_one_season(team_ctx: TemplateContext) -> None:
+def test_team_record_combines_both_season_types_for_one_season(team_ctx: AnswerContext) -> None:
     """F116 ("warriors all-time record including playoff record at away"):
     `season_type_unstated` (c9930ad's flag on the player relation, honored
     here for the first time) combines both season types rather than
@@ -941,7 +942,7 @@ def test_team_record_combines_both_season_types_for_one_season(team_ctx: Templat
     assert f"3-1 (.750) playoffs from {S})" in result.answer
 
 
-def test_team_record_combined_types_honors_opponent(team_ctx: TemplateContext) -> None:
+def test_team_record_combined_types_honors_opponent(team_ctx: AnswerContext) -> None:
     """The combined reading applies the SAME narrowing to both season types -
     here, an opponent. Knicks-vs-Celtics: g3 is their only regular-season
     meeting (Knicks away, win - 1-0); the postseason series is p1 (home W),
@@ -955,7 +956,7 @@ def test_team_record_combined_types_honors_opponent(team_ctx: TemplateContext) -
     assert result.data["postseason"] == {"wins": 3, "losses": 1, "first_season": S}
 
 
-def test_team_record_combined_career_names_each_halfs_own_start(team_ctx: TemplateContext) -> None:
+def test_team_record_combined_career_names_each_halfs_own_start(team_ctx: AnswerContext) -> None:
     """#204 (ISSUES.md): the combined-season-types sentence used to carry only
     "Note:" lines from its halves, so the reader could not see that they
     start in different seasons - true here: the Knicks' standings reach back
@@ -971,22 +972,22 @@ def test_team_record_combined_career_names_each_halfs_own_start(team_ctx: Templa
     assert "playoffs from 1991" in result.answer
 
 
-def test_team_record_combined_types_refuses_game_n(team_ctx: TemplateContext) -> None:
+def test_team_record_combined_types_refuses_game_n(team_ctx: AnswerContext) -> None:
     """A game of a playoff series names one season type outright; combining
     both at once has nothing for it to number."""
-    with pytest.raises(TemplateUnsupported):
+    with pytest.raises(Unsupported):
         team_record(team_ctx, Reading.from_slots({"team": "Knicks", "season_type_unstated": True, "game_n": 1}))
 
 
-def test_team_record_combined_types_refuses_a_month_split(team_ctx: TemplateContext) -> None:
-    with pytest.raises(TemplateUnsupported):
+def test_team_record_combined_types_refuses_a_month_split(team_ctx: AnswerContext) -> None:
+    with pytest.raises(Unsupported):
         team_record(team_ctx, Reading.from_slots({"team": "Knicks", "season_type_unstated": True, "split": "month"}))
 
 
 # ---------------- team_record: `until` beside `since` (step 3, K1) ----------------
 
 
-def test_until_bounds_a_since_span_record(team_ctx: TemplateContext) -> None:
+def test_until_bounds_a_since_span_record(team_ctx: AnswerContext) -> None:
     """F103's shape, on team_record: "meetings from 1991 to {S} postseason"
     should read a BOUNDED range, not open-ended "since 1991". Across the
     span, the Knicks are 3-1 in the {S} postseason against Boston (p1 W, p2
@@ -997,20 +998,20 @@ def test_until_bounds_a_since_span_record(team_ctx: TemplateContext) -> None:
     assert f"from 1991 through {S}" in answer
 
 
-def test_until_with_no_since_is_refused(team_ctx: TemplateContext) -> None:
+def test_until_with_no_since_is_refused(team_ctx: AnswerContext) -> None:
     """The slot contract: `until` only ever arrives beside `since` (a decade,
     or a named range the router files as both at once) - a stray `until` with
     no `since` is refused rather than silently read as nothing."""
-    with pytest.raises(TemplateUnsupported, match="until"):
+    with pytest.raises(Unsupported, match="until"):
         team_record(team_ctx, Reading.from_slots({"team": "Knicks", "until": 2020}))
 
 
-def test_until_before_since_is_refused(team_ctx: TemplateContext) -> None:
-    with pytest.raises(TemplateUnsupported, match="until"):
+def test_until_before_since_is_refused(team_ctx: AnswerContext) -> None:
+    with pytest.raises(Unsupported, match="until"):
         team_record(team_ctx, Reading.from_slots({"team": "Knicks", "since": 2020, "until": 2010}))
 
 
-def test_team_record_by_month_spans_since_until_with_one_table_per_season(team_ctx: TemplateContext) -> None:
+def test_team_record_by_month_spans_since_until_with_one_table_per_season(team_ctx: AnswerContext) -> None:
     """F095 (ISSUES.md): "Knicks record by month" over a since/until-bounded
     span - here 1994 through the current season - reads one table PER SEASON
     rather than merging distinct years' Novembers into one row or silently
@@ -1028,7 +1029,7 @@ def test_team_record_by_month_spans_since_until_with_one_table_per_season(team_c
 # ---------------- team_leaderboard: `since` (step 3, C4b) ----------------
 
 
-def test_a_leaderboard_since_a_season_tallies_the_relation_across_seasons(team_ctx: TemplateContext) -> None:
+def test_a_leaderboard_since_a_season_tallies_the_relation_across_seasons(team_ctx: AnswerContext) -> None:
     """ "nba team with least playoff wins since 2022" (ISSUES.md) used to
     refuse for want of `since`; the relation now tallies wins/losses across
     the span itself, grouped by team. The fixture's Knicks-Celtics postseason
@@ -1053,28 +1054,28 @@ def test_a_leaderboard_since_a_season_tallies_the_relation_across_seasons(team_c
     }
 
 
-def test_a_leaderboard_since_and_a_named_season_at_once_is_refused(team_ctx: TemplateContext) -> None:
-    with pytest.raises(TemplateUnsupported):
+def test_a_leaderboard_since_and_a_named_season_at_once_is_refused(team_ctx: AnswerContext) -> None:
+    with pytest.raises(Unsupported):
         team_leaderboard(team_ctx, Reading.from_slots({"stat": "record", "season_type": 3, "since": 1991, "season": S}))
 
 
-def test_a_leaderboard_since_refuses_a_rate_metric(team_ctx: TemplateContext) -> None:
+def test_a_leaderboard_since_refuses_a_rate_metric(team_ctx: AnswerContext) -> None:
     """A season line (team_season_stats) has no way to sum across a span of
     seasons yet - refused by name, rather than answered for one season under
     a since-shaped question that asked for a range."""
-    with pytest.raises(TemplateUnsupported, match="span of seasons"):
+    with pytest.raises(Unsupported, match="span of seasons"):
         team_leaderboard(team_ctx, Reading.from_slots({"stat": "points", "since": 2020}))
 
 
-def test_a_leaderboard_since_refuses_a_venue_split(team_ctx: TemplateContext) -> None:
-    with pytest.raises(TemplateUnsupported):
+def test_a_leaderboard_since_refuses_a_venue_split(team_ctx: AnswerContext) -> None:
+    with pytest.raises(Unsupported):
         team_leaderboard(team_ctx, Reading.from_slots({"stat": "record", "season_type": 3, "since": 1991, "venue": "home"}))
 
 
 # ---------------- team_leaderboard: `until` beside `since` (step 3, K1) ----------------
 
 
-def test_a_leaderboard_until_bounds_the_since_span(team_ctx: TemplateContext) -> None:
+def test_a_leaderboard_until_bounds_the_since_span(team_ctx: AnswerContext) -> None:
     """F103's shape: "best playoff record from 1991 to {S}" reads a BOUNDED
     range. Narrowed to `until=1991` alone the span holds only the 1991
     Finals game (`old1`), where the open-ended `since=1991` test above also
@@ -1092,8 +1093,8 @@ def test_a_leaderboard_until_bounds_the_since_span(team_ctx: TemplateContext) ->
     assert teams["Charlotte Hornets"] == "0-0"
 
 
-def test_a_leaderboard_until_with_no_since_is_refused(team_ctx: TemplateContext) -> None:
-    with pytest.raises(TemplateUnsupported, match="until"):
+def test_a_leaderboard_until_with_no_since_is_refused(team_ctx: AnswerContext) -> None:
+    with pytest.raises(Unsupported, match="until"):
         team_leaderboard(team_ctx, Reading.from_slots({"stat": "record", "season_type": 3, "until": 1991}))
 
 
@@ -1101,7 +1102,7 @@ def test_a_leaderboard_until_with_no_since_is_refused(team_ctx: TemplateContext)
 
 
 @pytest.fixture
-def tqp_ctx(tmp_path: Path) -> TemplateContext:
+def tqp_ctx(tmp_path: Path) -> AnswerContext:
     """A fixture built for team_quarter_points' new cells: linescores across
     four regular-season games (two home, two away, chronologically ordered
     for an ``order``/``limit`` window), one earlier regular season for
@@ -1131,10 +1132,10 @@ def tqp_ctx(tmp_path: Path) -> TemplateContext:
     ]
     c.executemany("INSERT INTO games VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)", rows)
     real_games.build_table(c, {"games", "teams"})
-    return TemplateContext(con=c, out_dir=tmp_path)
+    return AnswerContext(con=c, out_dir=tmp_path)
 
 
-def test_a_quarter_points_window_reads_the_last_n_games(tqp_ctx: TemplateContext) -> None:
+def test_a_quarter_points_window_reads_the_last_n_games(tqp_ctx: AnswerContext) -> None:
     """ "show sixers first quarter scoring for their last 10 games" and
     "trailblazers stats last 10 games 3 point average 1st quarter"
     (ISSUES.md, live yardstick failures) both refused for want of `order`/
@@ -1147,13 +1148,13 @@ def test_a_quarter_points_window_reads_the_last_n_games(tqp_ctx: TemplateContext
     assert "last 2 games" in (result.answer or "")
 
 
-def test_a_quarter_points_window_oldest_first(tqp_ctx: TemplateContext) -> None:
+def test_a_quarter_points_window_oldest_first(tqp_ctx: AnswerContext) -> None:
     result = team_quarter_points(tqp_ctx, Reading.from_slots({"team": "Knicks", "period": 1, "season": S, "order": "first", "limit": 2}))
     assert [g["points"] for g in result.data["games"]] == [30, 20]
     assert "first 2 games" in (result.answer or "")
 
 
-def test_a_quarter_points_venue_narrows_the_games(tqp_ctx: TemplateContext) -> None:
+def test_a_quarter_points_venue_narrows_the_games(tqp_ctx: AnswerContext) -> None:
     """The Knicks' two home games this season are e1 (Q1 30) and e3 (Q1 25);
     e2 and e4, both on the road, must not be counted."""
     result = team_quarter_points(tqp_ctx, Reading.from_slots({"team": "Knicks", "period": 1, "season": S, "venue": "home"}))
@@ -1161,13 +1162,13 @@ def test_a_quarter_points_venue_narrows_the_games(tqp_ctx: TemplateContext) -> N
     assert result.data["total"] == 55
 
 
-def test_a_quarter_points_date_reads_one_game(tqp_ctx: TemplateContext) -> None:
+def test_a_quarter_points_date_reads_one_game(tqp_ctx: AnswerContext) -> None:
     result = team_quarter_points(tqp_ctx, Reading.from_slots({"team": "Knicks", "period": 1, "date": f"{S}-01-15"}))
     assert result.data["games"] == [{"date": f"{S}-01-15", "opponent": "Los Angeles Lakers", "points": 25}]
     assert f"{S}-01-15" in (result.answer or "")
 
 
-def test_a_quarter_points_game_n_reads_one_game_of_the_series(tqp_ctx: TemplateContext) -> None:
+def test_a_quarter_points_game_n_reads_one_game_of_the_series(tqp_ctx: AnswerContext) -> None:
     """Game 4 of the Knicks-Celtics postseason series is p4 - the Knicks'
     road game, Q1 21 from their own (away) linescore."""
     result = team_quarter_points(tqp_ctx, Reading.from_slots({"team": "Knicks", "period": 1, "season": S, "season_type": 3, "game_n": 4}))
@@ -1175,13 +1176,13 @@ def test_a_quarter_points_game_n_reads_one_game_of_the_series(tqp_ctx: TemplateC
     assert "game 4" in (result.answer or "")
 
 
-def test_a_quarter_points_game_n_regular_season_is_refused(tqp_ctx: TemplateContext) -> None:
+def test_a_quarter_points_game_n_regular_season_is_refused(tqp_ctx: AnswerContext) -> None:
     """A series has games 1-7; a regular season has nothing "game 4" names."""
-    with pytest.raises(TemplateUnsupported):
+    with pytest.raises(Unsupported):
         team_quarter_points(tqp_ctx, Reading.from_slots({"team": "Knicks", "period": 1, "season": S, "season_type": 2, "game_n": 4}))
 
 
-def test_a_quarter_points_since_spans_more_than_one_season(tqp_ctx: TemplateContext) -> None:
+def test_a_quarter_points_since_spans_more_than_one_season(tqp_ctx: AnswerContext) -> None:
     """Every Knicks regular-season game on record since season S-1: d1 (Q1
     40) plus the four season-S games (30, 20, 25, 15) - 130 total across 5
     games, the postseason series left out since this asks for no season type
@@ -1192,7 +1193,7 @@ def test_a_quarter_points_since_spans_more_than_one_season(tqp_ctx: TemplateCont
     assert f"since {S - 1}" in (result.answer or "")
 
 
-def test_a_quarter_points_until_bounds_the_since_span(tqp_ctx: TemplateContext) -> None:
+def test_a_quarter_points_until_bounds_the_since_span(tqp_ctx: AnswerContext) -> None:
     """Step 3, K1: "until" reaches team_quarter_points "for free" through
     `scoped_team` - the same shared step `since` already reaches through.
     Bounded to season {S-1} alone (`since=until={S-1}`), only d1 (Q1 40)
@@ -1204,7 +1205,7 @@ def test_a_quarter_points_until_bounds_the_since_span(tqp_ctx: TemplateContext) 
     assert f"from {S - 1} through {S - 1}" in (result.answer or "")
 
 
-def test_a_quarter_points_situation_narrows_by_calendar_month(tqp_ctx: TemplateContext) -> None:
+def test_a_quarter_points_situation_narrows_by_calendar_month(tqp_ctx: AnswerContext) -> None:
     """Step 3, K1: `situation` reaches team_quarter_points through the same
     shared `team_games` step every other team template narrows by it -
     "november" keeps only e1 (Q1 30), the season's other three games (e2 in
@@ -1214,7 +1215,7 @@ def test_a_quarter_points_situation_narrows_by_calendar_month(tqp_ctx: TemplateC
     assert "in November" in (result.answer or "")
 
 
-def test_a_quarter_points_opponent_and_venue_compose(tqp_ctx: TemplateContext) -> None:
+def test_a_quarter_points_opponent_and_venue_compose(tqp_ctx: AnswerContext) -> None:
     """Both narrowings apply together, as every other reader of the relation's
     narrowing composes them: the Knicks' one home game against the Celtics
     this season is e1 (Q1 30); e3 is a home game but against the Lakers."""
@@ -1225,7 +1226,7 @@ def test_a_quarter_points_opponent_and_venue_compose(tqp_ctx: TemplateContext) -
 # ---------------- record_when's team branch: `since`/`game_n` (step 3, C4b) ----------------
 
 
-def test_record_when_team_since_tallies_across_seasons(team_ctx: TemplateContext) -> None:
+def test_record_when_team_since_tallies_across_seasons(team_ctx: AnswerContext) -> None:
     """The Celtics' postseason scores since 1991 (old1, php, p1-p4): 100, 90,
     100, 101, 95, 110. Four of the six reach a 100-point threshold (old1,
     p1, p2, p4); that pool's own record is 2-2 (old1 W, p1 L, p2 W, p4 L).
@@ -1239,12 +1240,12 @@ def test_record_when_team_since_tallies_across_seasons(team_ctx: TemplateContext
     assert "since 1991" in (result.data["span"] or "")
 
 
-def test_record_when_team_since_and_a_named_season_at_once_is_refused(team_ctx: TemplateContext) -> None:
-    with pytest.raises(TemplateUnsupported):
+def test_record_when_team_since_and_a_named_season_at_once_is_refused(team_ctx: AnswerContext) -> None:
+    with pytest.raises(Unsupported):
         record_when(team_ctx, Reading.from_slots({"team": "Celtics", "stat": "points", "threshold": 100, "season_type": 3, "since": 1991, "season": S}))
 
 
-def test_record_when_team_game_n_narrows_to_one_game_of_the_series(team_ctx: TemplateContext) -> None:
+def test_record_when_team_game_n_narrows_to_one_game_of_the_series(team_ctx: AnswerContext) -> None:
     """Game 4 of the Knicks-Celtics series is p4, where the Celtics scored
     110 and lost - one game, reaching the threshold, in the loss column."""
     result = record_when(team_ctx, Reading.from_slots({"team": "Celtics", "stat": "points", "threshold": 100, "season_type": 3, "season": S, "game_n": 4}))
@@ -1253,15 +1254,15 @@ def test_record_when_team_game_n_narrows_to_one_game_of_the_series(team_ctx: Tem
     assert result.data["fell_short"]["games"] == 0
 
 
-def test_record_when_team_game_n_regular_season_is_refused(team_ctx: TemplateContext) -> None:
-    with pytest.raises(TemplateUnsupported):
+def test_record_when_team_game_n_regular_season_is_refused(team_ctx: AnswerContext) -> None:
+    with pytest.raises(Unsupported):
         record_when(team_ctx, Reading.from_slots({"team": "Celtics", "stat": "points", "threshold": 100, "season_type": 2, "season": S, "game_n": 4}))
 
 
 # ---------------- streak's team/league branches: `since` (step 3, C4b) ----------------
 
 
-def test_streak_team_since_searches_more_than_one_season(team_ctx: TemplateContext) -> None:
+def test_streak_team_since_searches_more_than_one_season(team_ctx: AnswerContext) -> None:
     """A team's own streak still runs within ONE season even under `since`
     (:func:`_longest_runs_sql`'s own ``("team_id", "season")`` partition, the
     record-book rule the docstring already states) - `since` widens which
@@ -1274,7 +1275,7 @@ def test_streak_team_since_searches_more_than_one_season(team_ctx: TemplateConte
     assert "since 1991" in (result.data["span"] or "")
 
 
-def test_streak_league_since_reads_every_teams_seasons_in_the_span(team_ctx: TemplateContext) -> None:
+def test_streak_league_since_reads_every_teams_seasons_in_the_span(team_ctx: AnswerContext) -> None:
     """The league-wide (no team, no player) win-streak branch, `since`-bounded:
     the Knicks' 3-1 postseason series this year holds a 2-game win streak
     (p1, then p3-p4 after the one loss) - the longest of anyone's since 1991."""

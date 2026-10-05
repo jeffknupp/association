@@ -28,18 +28,17 @@ import duckdb
 
 from association.nba.season import current_season
 from association.nba.season import eastern_date as _eastern_date
+from association.query.answer import Reply
 from association.query.measures import log_extras, stat_measure
 from association.query.notes import Note
 from association.query.player_games import aggregate_sql
-from association.query.reading import DEFAULT_GAME_LOG_LIMIT, Scope, _clamp_limit
+from association.query.reading import DEFAULT_GAME_LOG_LIMIT, Scope, Unsupported, _clamp_limit
 from association.query.result import Narrowing, Part, Result, Rows, Span, Window
 from association.query.team_games import TEAM_GAMES_SQL, TeamNarrowed
 from association.query.templates.common import (
     MeasureFilter,
     Narrowed,
     ResolvedSpan,
-    TemplateResult,
-    TemplateUnsupported,
     box_score_notes_read,
     measure_filters,
     no_narrowed_games,
@@ -114,7 +113,7 @@ def _game_log_lines(below: Any, above: Any, threshold: Any) -> list[MeasureFilte
     which the model files twice."""
     measures = measure_filters(below, above)
     if threshold is not None and not any(line.value == threshold for line in measures):
-        raise TemplateUnsupported("game_log does not read a threshold - ask for games with at least N of a stat")
+        raise Unsupported("game_log does not read a threshold - ask for games with at least N of a stat")
     return measures
 
 
@@ -239,7 +238,7 @@ def _player_log(con: duckdb.DuckDBPyConnection, compiled: Compiled, headers: lis
     return Result(subject=player.name, relation="player", span=about, narrowing=narrowing, window=window, parts=(Part(body=body),), notes=tuple(notes))
 
 
-def _player_log_mixed(con: duckdb.DuckDBPyConnection, q: Query, compiled: Compiled, headers: list[str], needed: list[str], *, asked: int | None, limit: int) -> Result | TemplateResult:
+def _player_log_mixed(con: duckdb.DuckDBPyConnection, q: Query, compiled: Compiled, headers: list[str], needed: list[str], *, asked: int | None, limit: int) -> Result | Reply:
     """A player's "last N games" with no season type named: both types, read
     separately and merged by date. Every other narrowing resolves the same
     under either type, so each type is narrowed exactly as
@@ -256,7 +255,7 @@ def _player_log_mixed(con: duckdb.DuckDBPyConnection, q: Query, compiled: Compil
     for season_type in (2, 3):
         type_span = ResolvedSpan(season, season_type)
         narrowed = scoped_games(con, player, type_span, scope, opponent=compiled.narrowed.opponent, measures=measures)
-        if isinstance(narrowed, TemplateResult):
+        if isinstance(narrowed, Reply):
             return narrowed
         per_type[season_type] = compile_over(con, q, player, type_span, narrowed)
     rows_by_type = {season_type: rows_of(con, each) for season_type, each in per_type.items()}
@@ -288,7 +287,7 @@ def _player_log_mixed(con: duckdb.DuckDBPyConnection, q: Query, compiled: Compil
     return Result(subject=player.name, relation="player", span=about, narrowing=narrowing, window=window, parts=(Part(body=body),), notes=tuple(notes), facts={"mixed": True})
 
 
-def read_player_log(con: duckdb.DuckDBPyConnection, q: Query, *, stated: frozenset[str]) -> Result | TemplateResult | None:
+def read_player_log(con: duckdb.DuckDBPyConnection, q: Query, *, stated: frozenset[str]) -> Result | Reply | None:
     """A named player's log: the compiled statement of the planned point,
     its measures the log's columns (the four of the line and the named
     stat's own), executed over the compiler's settled player, span and
@@ -301,7 +300,7 @@ def read_player_log(con: duckdb.DuckDBPyConnection, q: Query, *, stated: frozens
     (``stated``: ``compose.plan.STATED_SCOPING``'s set for the intent -
     the log's own, or the season line's for a ``player_stat`` window the
     retired template handed to the log). A
-    :class:`~association.query.templates.common.TemplateResult` back is the
+    :class:`~association.query.answer.Reply` back is the
     relation's own refusal (an ambiguous name), as before.
 
     .. versionadded:: 5.0.0
@@ -319,7 +318,7 @@ def read_player_log(con: duckdb.DuckDBPyConnection, q: Query, *, stated: frozens
     try:
         extras = log_extras(scope.stat)
         _game_log_lines(scope.below, scope.above, scope.threshold)
-    except TemplateUnsupported:
+    except Unsupported:
         return None
     # The router's own stat, which the log shows as its extra columns; a
     # measure the question's words moved in instead is the compiler's point.
@@ -352,11 +351,11 @@ def _team_log_refusals(without: Any, measures: list[MeasureFilter], game_n: Any)
     games - a team's log has no such column - and a game of a series is
     numbered on the player relation only, so far."""
     if without:
-        raise TemplateUnsupported("a team's games without one of its players is a with_without question")
+        raise Unsupported("a team's games without one of its players is a with_without question")
     if measures:
-        raise TemplateUnsupported("a line on a box-score stat keeps a PLAYER's games; a team's log has no such column")
+        raise Unsupported("a line on a box-score stat keeps a PLAYER's games; a team's log has no such column")
     if game_n:
-        raise TemplateUnsupported("a team's log does not number the games of a series yet")
+        raise Unsupported("a team's log does not number the games of a series yet")
 
 
 def _team_log_games(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -412,7 +411,7 @@ def _team_log(con: duckdb.DuckDBPyConnection, q: TeamQuery, team: Any, span: Res
     return Result(subject=team_name, relation="team", span=about, narrowing=narrowing, window=window, parts=(Part(body=body),), facts={"stat": stat})
 
 
-def _team_mixed_rows(con: duckdb.DuckDBPyConnection, team: Any, season: int, *, opponent: Any, venue: Any, limit: int) -> tuple[list[dict[str, Any]], dict[int, int], str] | TemplateResult:
+def _team_mixed_rows(con: duckdb.DuckDBPyConnection, team: Any, season: int, *, opponent: Any, venue: Any, limit: int) -> tuple[list[dict[str, Any]], dict[int, int], str] | Reply:
     """A team's newest ``limit`` games of ``season`` over BOTH season types -
     each type narrowed on its own through
     :func:`~association.query.templates.common.team_games`, compiled as the
@@ -427,7 +426,7 @@ def _team_mixed_rows(con: duckdb.DuckDBPyConnection, team: Any, season: int, *, 
     for season_type in (2, 3):
         type_span = ResolvedSpan(season, season_type)
         narrowed = team_games(con, team, type_span, Scope(venue=venue), opponent=opponent)
-        if isinstance(narrowed, TemplateResult):
+        if isinstance(narrowed, Reply):
             return narrowed
         narrowed_text = narrowed.filters()
         rows_by_type[season_type] = rows_of(con, compile_team_over(point, team, type_span, narrowed, limit=limit))
@@ -435,14 +434,14 @@ def _team_mixed_rows(con: duckdb.DuckDBPyConnection, team: Any, season: int, *, 
     return rows, counts, narrowed_text
 
 
-def _team_log_mixed(con: duckdb.DuckDBPyConnection, team_name: str, team: Any, season: int, *, opponent: Any, venue: Any, limit: int, stat: Any) -> Result | TemplateResult:
+def _team_log_mixed(con: duckdb.DuckDBPyConnection, team_name: str, team: Any, season: int, *, opponent: Any, venue: Any, limit: int, stat: Any) -> Result | Reply:
     """A team's "last N games" with no season type named: both types, read
     separately and merged by date. Only an opponent and a venue reach here:
     ``without`` refuses outright for a team, a date fixes one game
     regardless of its type, and a series game number is the player
     relation's alone."""
     mixed = _team_mixed_rows(con, team, season, opponent=opponent, venue=venue, limit=limit)
-    if isinstance(mixed, TemplateResult):
+    if isinstance(mixed, Reply):
         return mixed
     rows, counts, narrowed_text = mixed
     narrowing = Narrowing(phrase=narrowed_text, opponent=opponent, venue=venue)
@@ -463,12 +462,12 @@ def _team_log_mixed(con: duckdb.DuckDBPyConnection, team_name: str, team: Any, s
     return Result(subject=team_name, relation="team", span=about, narrowing=narrowing, window=window, parts=(Part(body=body),), facts={"stat": stat, "mixed": True})
 
 
-def read_team_log(con: duckdb.DuckDBPyConnection, q: TeamQuery, *, stated: frozenset[str]) -> Result | TemplateResult | None:
+def read_team_log(con: duckdb.DuckDBPyConnection, q: TeamQuery, *, stated: frozenset[str]) -> Result | Reply | None:
     """A team's games listed, over the team relation the team compiler
     planned. ``None`` where the log's words do not state a narrowing the
     scope carries (``stated``, the log's set in
     ``compose.plan.STATED_SCOPING``), so the team compiler's own
-    sentence answers; a :class:`~association.query.templates.common.TemplateResult`
+    sentence answers; a :class:`~association.query.answer.Reply`
     back is the relation's own refusal (no such team, a coverage floor).
     Both orderings are explicit: "first game" and "last game" differ only
     by ORDER BY direction, and LIMIT 1 without one returns an arbitrary row.
@@ -482,7 +481,7 @@ def read_team_log(con: duckdb.DuckDBPyConnection, q: TeamQuery, *, stated: froze
         return None
     refused = check_coverage("game_log", scope)
     if refused is not None:
-        return TemplateResult(data={"message": refused, "season": scope.season}, answer=refused)
+        return Reply(data={"message": refused, "season": scope.season}, answer=refused)
     season_type = scope.season_type or 2
     limit = _clamp_limit(scope.limit, default=DEFAULT_GAME_LOG_LIMIT)
     ascending = scope.order == "first"
@@ -497,23 +496,23 @@ def read_team_log(con: duckdb.DuckDBPyConnection, q: TeamQuery, *, stated: froze
     mixed = scope.season_type_unstated and not date and not span and not game_n
     team_text = scope.team
     if not team_text or scope.player:
-        raise TemplateUnsupported("game_log needs a team or a player")
+        raise Unsupported("game_log needs a team or a player")
     team = resolved_team(con, team_text, season=slot_season(scope))
-    if isinstance(team, TemplateResult):
+    if isinstance(team, Reply):
         return team
     _team_log_refusals(without, measures, game_n)
     if mixed and (scope.since or scope.until or scope.situation):
         # The both-types read is a plain window (an opponent and a venue at
         # most); a range of seasons or a calendar narrowing is refused, as
         # the team compiler's window sum refuses the same read.
-        raise TemplateUnsupported("a window over both season types is read for a plain 'last N games' only")
+        raise Unsupported("a window over both season types is read for a plain 'last N games' only")
     if mixed:
         resolved_season = span_of(span, season, 2, "games").season
         if resolved_season is None:
-            raise TemplateUnsupported("a career span has no single season to read both season types within")
+            raise Unsupported("a career span has no single season to read both season types within")
         return _team_log_mixed(con, team.name, team, resolved_season, opponent=opponent, venue=venue, limit=limit, stat=scope.stat)
     seasons = span_of(span, season, season_type, "games", since=scope.since, until=scope.until)
     narrowed = team_games(con, team, seasons, Scope(venue=venue), opponent=opponent, date=date)
-    if isinstance(narrowed, TemplateResult):
+    if isinstance(narrowed, Reply):
         return narrowed
     return _team_log(con, q, team, seasons, narrowed, limit=limit, ascending=ascending, stat=scope.stat)

@@ -16,14 +16,15 @@ import duckdb
 import pytest
 from test_templates import player_stat  # the compiler's, player_stat's template retired (compose.COMPILED_INTENTS)
 
-from association.query.reading import Reading, Scope
-from association.query.templates import TemplateContext, TemplateUnsupported, check_coverage
+from association.query.answer import AnswerContext
+from association.query.reading import Reading, Scope, Unsupported
+from association.query.templates import check_coverage
 from association.query.templates.common import _ADVANCED_STAT_NAMES, _sources_for
 from association.query.templates.players import ADVANCED_STATS
 
 
 @pytest.fixture
-def advanced_ctx(tmp_path: Path) -> TemplateContext:
+def advanced_ctx(tmp_path: Path) -> AnswerContext:
     """Two players, built for the two things a career figure can get wrong.
 
     Klay Thompson is lopsided on purpose: 100 true-shooting attempts at .500,
@@ -63,10 +64,10 @@ def advanced_ctx(tmp_path: Path) -> TemplateContext:
         "(2016, 2, '12', 50, 300, 380, 0.590, 0.560, 20.0, 10.0), "
         "(2017, 2, '12', 40, 0, 0, NULL, NULL, NULL, NULL)"
     )
-    return TemplateContext(con=con, out_dir=tmp_path)
+    return AnswerContext(con=con, out_dir=tmp_path)
 
 
-def test_a_career_rate_is_weighted_by_its_own_volume_not_averaged(advanced_ctx: TemplateContext) -> None:
+def test_a_career_rate_is_weighted_by_its_own_volume_not_averaged(advanced_ctx: AnswerContext) -> None:
     """Over the three seasons a career reads (1993 is the phantom, excluded),
     (.5 x 100 + .7 x 900 + .9 x 50) / 1,050 = .690. The mean of .500, .700 and
     .900 is .700 - a number no reader could reproduce from the volumes printed
@@ -77,7 +78,7 @@ def test_a_career_rate_is_weighted_by_its_own_volume_not_averaged(advanced_ctx: 
     assert ".700" not in result.answer
 
 
-def test_a_career_rate_excludes_the_phantom_season(advanced_ctx: TemplateContext) -> None:
+def test_a_career_rate_excludes_the_phantom_season(advanced_ctx: AnswerContext) -> None:
     """1993's rows are identical copies of 1994's. Counted, they would add 50
     attempts at .900 twice and pull the career figure up; excluded, the career
     covers 1994-2025 and the 1994 row is counted once."""
@@ -87,7 +88,7 @@ def test_a_career_rate_excludes_the_phantom_season(advanced_ctx: TemplateContext
     assert "on 1,050 true-shooting attempts" in result.answer
 
 
-def test_efg_is_weighted_by_field_goal_attempts_not_true_shooting_ones(advanced_ctx: TemplateContext) -> None:
+def test_efg_is_weighted_by_field_goal_attempts_not_true_shooting_ones(advanced_ctx: AnswerContext) -> None:
     """Each rate takes its OWN denominator. Weighting eFG% by true-shooting
     attempts would give .6857 here; by field-goal attempts it is .6860."""
     result = player_stat(advanced_ctx, Reading.from_slots({"player": "Klay Thompson", "stat": "efg_pct", "span": "career"}))
@@ -95,7 +96,7 @@ def test_efg_is_weighted_by_field_goal_attempts_not_true_shooting_ones(advanced_
     assert result.data["stats"]["efg_pct"] == pytest.approx((0.4 * 80 + 0.6 * 720 + 0.9 * 40) / 840)
 
 
-def test_a_season_figure_is_read_rather_than_recomputed(advanced_ctx: TemplateContext) -> None:
+def test_a_season_figure_is_read_rather_than_recomputed(advanced_ctx: AnswerContext) -> None:
     for stat, expected in (("ts_pct", ".700 true shooting percentage"), ("usage_pct", "31.0 usage rate"), ("game_score", "19.0 game score")):
         answer = player_stat(advanced_ctx, Reading.from_slots({"player": "Klay Thompson", "stat": stat, "season": 2025})).answer
         assert expected in answer, stat
@@ -103,15 +104,15 @@ def test_a_season_figure_is_read_rather_than_recomputed(advanced_ctx: TemplateCo
 
 
 @pytest.mark.parametrize("stat", ["usage_pct", "game_score"])
-def test_a_stat_with_no_volume_column_refuses_a_career_rather_than_averaging(advanced_ctx: TemplateContext, stat: str) -> None:
+def test_a_stat_with_no_volume_column_refuses_a_career_rather_than_averaging(advanced_ctx: AnswerContext, stat: str) -> None:
     """Usage is a rate per possession while on court and game score is a
     per-game composite; neither has a denominator the seasons can be weighted
     by, so a career figure would be the mean of means the test above rejects."""
-    with pytest.raises(TemplateUnsupported, match="no career figure"):
+    with pytest.raises(Unsupported, match="no career figure"):
         player_stat(advanced_ctx, Reading.from_slots({"player": "Klay Thompson", "stat": stat, "span": "career"}))
 
 
-def test_a_narrowed_set_of_games_is_never_answered_with_the_season(advanced_ctx: TemplateContext) -> None:
+def test_a_narrowed_set_of_games_is_never_answered_with_the_season(advanced_ctx: AnswerContext) -> None:
     """The season line is not an answer to a question about one opponent -
     the substitution the module's own docstring exists to stop. The retired
     template refused the question; the compiler (5.0.0) reads the rate over
@@ -150,7 +151,7 @@ def test_the_two_advanced_stat_vocabularies_agree() -> None:
     assert set(ADVANCED_STATS) == set(_ADVANCED_STAT_NAMES)
 
 
-def test_a_career_says_which_seasons_it_could_not_see(advanced_ctx: TemplateContext) -> None:
+def test_a_career_says_which_seasons_it_could_not_see(advanced_ctx: AnswerContext) -> None:
     """ESPN serves whole team-seasons of empty box scores from 2013 to 2018, so
     a player who spent one on Chicago or New Orleans has a row with real games,
     no attempts and a NULL rate. Counting its games would credit the rate with
@@ -164,13 +165,13 @@ def test_a_career_says_which_seasons_it_could_not_see(advanced_ctx: TemplateCont
     assert "box scores for it are empty" in result.answer
 
 
-def test_a_career_with_nothing_missing_says_nothing_about_it(advanced_ctx: TemplateContext) -> None:
+def test_a_career_with_nothing_missing_says_nothing_about_it(advanced_ctx: AnswerContext) -> None:
     """The note is a caveat, not a disclaimer: a complete career does not carry
     a sentence about seasons that are all present."""
     assert "not counted" not in player_stat(advanced_ctx, Reading.from_slots({"player": "Klay Thompson", "stat": "ts_pct", "span": "career"})).answer
 
 
-def test_the_span_named_is_the_span_the_figure_covers(advanced_ctx: TemplateContext) -> None:
+def test_the_span_named_is_the_span_the_figure_covers(advanced_ctx: AnswerContext) -> None:
     """An empty season at either end of a career would otherwise widen the
     years the answer claims. Gibson has data for 2014 and 2016 only; saying
     "2013-2017" would name two years the rate never saw, which is the same

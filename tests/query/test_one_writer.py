@@ -17,9 +17,9 @@ import duckdb
 import pytest
 
 from association.query.agent import Agent
+from association.query.answer import Reply
 from association.query.normalizer import Normalized
 from association.query.reading import Reading
-from association.query.templates.common import TemplateResult
 
 _PLAYERS = (
     "Joel Embiid",
@@ -50,10 +50,10 @@ def ask(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Any:
     con.close()
     seen: list[tuple[str, str | None, tuple[str, ...]]] = []
 
-    def record(ctx: Any, reading: Reading) -> TemplateResult:
+    def record(ctx: Any, reading: Reading) -> Reply:
         del ctx
         seen.append((reading.intent, reading.scope.player, reading.scope.players))
-        return TemplateResult(data={}, answer="answered")
+        return Reply(data={}, answer="answered")
 
     monkeypatch.setattr("association.query.agent.TEMPLATES", {"fingerprint": record, "player_compare": record})
     # player_stat is the compiler's (compose.COMPILED_INTENTS): the same
@@ -145,10 +145,10 @@ def test_for_me_is_the_asker_not_the_memphis_grizzlies(monkeypatch: pytest.Monke
     con.close()
     seen: list[str | None] = []
 
-    def record(ctx: Any, reading: Reading) -> TemplateResult:
+    def record(ctx: Any, reading: Reading) -> Reply:
         del ctx
         seen.append(reading.scope.own_team)
-        return TemplateResult(data={}, answer="answered")
+        return Reply(data={}, answer="answered")
 
     monkeypatch.setattr("association.query.compose.answer", lambda ctx, reading, trace=None, declined=None, planned=None: record(ctx, reading))
     monkeypatch.setattr("association.query.normalizer.normalize", lambda model, q: Normalized(["kat"], "points"))

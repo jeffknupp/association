@@ -10,16 +10,13 @@ from dataclasses import dataclass
 
 import duckdb
 
+from association.query.answer import Reply
 from association.query.measures import STAT_LINE as STAT_LINE
-from association.query.reading import Scope, scope_reads_box_scores
+from association.query.reading import Scope, Unsupported, scope_reads_box_scores
 
 from ..conditions import box_source
 from ..player_games import scope_without_guard
-from .common import (
-    PLAYER_STAT_COLUMNS,
-    TemplateResult,
-    TemplateUnsupported,
-)
+from .common import PLAYER_STAT_COLUMNS
 
 
 def rebuilt_in_scope(con: duckdb.DuckDBPyConnection, season: int | None, season_type: int, athlete_id: str | None) -> int:
@@ -98,7 +95,7 @@ def empty_box_scores(con: duckdb.DuckDBPyConnection, season: int | None, season_
     return (int(row[0]), row[1], row[2]) if row else (0, None, None)
 
 
-def leaderboard_shot_distance_refusal() -> TemplateResult:
+def leaderboard_shot_distance_refusal() -> Reply:
     """The refusal for a shot-distance ranking, naming the real cause (ISSUES.md
     #114): no leaderboard metric ranks distance, and the nearest real one is
     a percentage.
@@ -106,7 +103,7 @@ def leaderboard_shot_distance_refusal() -> TemplateResult:
     .. versionadded:: 5.0.0
     """
     message = "Shot distance is not ranked league-wide yet - ask about one named player's average shot distance instead."
-    return TemplateResult(data={"message": message, "headline": message}, answer=message)
+    return Reply(data={"message": message, "headline": message}, answer=message)
 
 
 def wanted_stats(scope: Scope, default: tuple[str, ...] = STAT_LINE) -> list[str]:
@@ -121,7 +118,7 @@ def wanted_stats(scope: Scope, default: tuple[str, ...] = STAT_LINE) -> list[str
         return list(default)
     if stat in PLAYER_STAT_COLUMNS:
         return [stat]
-    raise TemplateUnsupported(f"no per-game column for stat {stat!r}")
+    raise Unsupported(f"no per-game column for stat {stat!r}")
 
 
 @dataclass(frozen=True)

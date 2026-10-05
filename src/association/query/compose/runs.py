@@ -24,20 +24,21 @@ import duckdb
 
 from association.nba.franchises import season_name
 from association.nba.season import current_season
+from association.query.answer import Reply
 from association.query.conditions import _box_missing, _names, _totals, _unseen, box_source
 from association.query.entities import Entity
 from association.query.measures import streak_column
 from association.query.notes import Note
 from association.query.player_games import Narrowed, games_subquery, named
 from association.query.result import Narrowing, Part, Result, Runs, Span, run_of
-from association.query.templates.common import TemplateResult, no_games, optional_team, unhonored_scoping
+from association.query.templates.common import no_games, optional_team, unhonored_scoping
 from association.query.templates.splits import condition_span_label, condition_team_no_games, team_span_label
 
 from .core import Compiled, Query, compile_query, rows_of, run_scope
 from .team import TeamCompiled, TeamQuery, compile_team_range, compile_team_run, team_coverage_refusal
 
 
-def read_streak(con: duckdb.DuckDBPyConnection, q: Query, *, stated: frozenset[str]) -> Result | TemplateResult | None:
+def read_streak(con: duckdb.DuckDBPyConnection, q: Query, *, stated: frozenset[str]) -> Result | Reply | None:
     """``streak``'s own point on the player relation - the ``run`` shape -
     read as the longest runs the compiled statement finds: a named
     player's longest and any that tie it, over the games the relation
@@ -48,7 +49,7 @@ def read_streak(con: duckdb.DuckDBPyConnection, q: Query, *, stated: frozenset[s
     the point is not a run, or carries a narrowing the retired template's
     words did not state (``stated``: ``compose.plan.STATED_SCOPING``'s
     set), and the compiler's sentence answers; a
-    :class:`~association.query.templates.common.TemplateResult` back is the
+    :class:`~association.query.answer.Reply` back is the
     relation's refusal (no games in scope, an ambiguous team).
 
     .. versionadded:: 5.0.0
@@ -59,7 +60,7 @@ def read_streak(con: duckdb.DuckDBPyConnection, q: Query, *, stated: frozenset[s
     if unhonored_scoping("streak", scope, stated):
         return None
     team = optional_team(con, scope.team, season=scope.season)
-    if isinstance(team, TemplateResult):
+    if isinstance(team, Reply):
         return team
     covered = run_scope(scope, named=q.subject == "player")
     compiled = compile_query(con, q)
@@ -76,7 +77,7 @@ def _streak_facts(q: Query) -> dict[str, Any]:
     return {"stat": scope.stat, "threshold": scope.threshold, "by_stat": streak_column(scope.stat, scope.threshold) is not None, "want_win": scope.kind != "loss"}
 
 
-def _streak_player_result(con: duckdb.DuckDBPyConnection, q: Query, covered: Any, player: Entity, narrowed: Narrowed, team: Entity | None, rows: list[dict[str, Any]]) -> Result | TemplateResult:
+def _streak_player_result(con: duckdb.DuckDBPyConnection, q: Query, covered: Any, player: Entity, narrowed: Narrowed, team: Entity | None, rows: list[dict[str, Any]]) -> Result | Reply:
     """A named player's runs, the span his narrowed games cover, and the
     remarks: the rule, a game with no box score ending a run, and the
     longest still going (said only of this season or a career, where "the
@@ -133,7 +134,7 @@ def _streak_league_result(con: duckdb.DuckDBPyConnection, q: Query, covered: Any
     )
 
 
-def read_team_streak(con: duckdb.DuckDBPyConnection, q: TeamQuery, *, stated: frozenset[str]) -> Result | TemplateResult | None:
+def read_team_streak(con: duckdb.DuckDBPyConnection, q: TeamQuery, *, stated: frozenset[str]) -> Result | Reply | None:
     """``streak``'s point on the team relation - the ``run`` shape - read
     as the runs the team compiler's statement finds
     (:func:`~association.query.compose.team.compile_team_run`): a named
@@ -145,7 +146,7 @@ def read_team_streak(con: duckdb.DuckDBPyConnection, q: TeamQuery, *, stated: fr
     ``None`` where the point is not a run or carries a narrowing the retired
     template's words did not state (``stated``), and the compiler's
     sentence answers; a
-    :class:`~association.query.templates.common.TemplateResult` back is the
+    :class:`~association.query.answer.Reply` back is the
     relation's refusal (a coverage floor, a named team with no games in the
     span or none matching its narrowing).
 

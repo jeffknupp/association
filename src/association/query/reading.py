@@ -483,7 +483,7 @@ class Cause:
     """Why a point reading refuses: a kind from :data:`CAUSES` and the plain
     facts its sentence needs - never the sentence, which is the answer
     side's to build (``ROADMAP-TYPES.md``: ``Refusal(cause, facts)``). Until
-    5.0.0's last change the reader built the refusal's ``TemplateResult``
+    5.0.0's last change the reader built the refusal's ``Reply``
     itself and the Reading carried it (``ROADMAP.md``, Phase 1, the
     ``read_point`` move, step 4).
 

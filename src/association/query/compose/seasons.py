@@ -26,6 +26,7 @@ from typing import Any
 import duckdb
 
 from association.nba.season import current_season
+from association.query.answer import Reply
 from association.query.entities import Entity
 from association.query.measures import stat_measure
 from association.query.notes import Note
@@ -50,16 +51,7 @@ from association.query.season_line import (
     season_redirect,
     season_statement,
 )
-from association.query.templates.common import (
-    HISTORY_COLUMNS,
-    PLAYER_STAT_COLUMNS,
-    SEASON_TYPE_NAMES,
-    ResolvedSpan,
-    TemplateResult,
-    TemplateUnsupported,
-    season_phrase,
-    unhonored_scoping,
-)
+from association.query.templates.common import HISTORY_COLUMNS, PLAYER_STAT_COLUMNS, SEASON_TYPE_NAMES, ResolvedSpan, season_phrase, unhonored_scoping
 from association.query.templates.players import ADVANCED_STATS, SHOOTING_STATS, wanted_stats
 
 from .core import Query, values_of
@@ -100,17 +92,17 @@ def player_line_reads(q: Query, stated: frozenset[str]) -> bool:
     return own.source == "seasons" and (q.measures == own.measures or (named is not None and q.measures == [named]))
 
 
-def read_player_line(con: duckdb.DuckDBPyConnection, q: Query, *, stated: frozenset[str]) -> Result | TemplateResult | None:
+def read_player_line(con: duckdb.DuckDBPyConnection, q: Query, *, stated: frozenset[str]) -> Result | Reply | None:
     """``player_stat``'s unnarrowed point - one season's line or a career,
     from the season line, or a computed advanced stat from
     ``player_season_advanced_stats`` - as a
     :class:`~association.query.result.Scalar` on a span whose ``source`` is
     ``"seasons"``. ``None`` where the point is not that
     (:func:`player_line_reads`); a
-    :class:`~association.query.templates.common.TemplateResult` back is the
+    :class:`~association.query.answer.Reply` back is the
     relation's refusal (an ambiguous name).
 
-    Raises ``TemplateUnsupported`` for a stat with no per-game column
+    Raises ``Unsupported`` for a stat with no per-game column
     ("avg_shot_distance"), naming the stat rather than "a line the season
     line's reader did not say" (the games relation has no column for it
     either), and for an advanced stat with no career figure.
@@ -124,7 +116,7 @@ def read_player_line(con: duckdb.DuckDBPyConnection, q: Query, *, stated: frozen
     if not (stat is not None and (stat in ADVANCED_STATS or stat in SHOOTING_STATS)):
         wanted_stats(scope)
     subject = line_subject(con, scope)
-    if isinstance(subject, TemplateResult):
+    if isinstance(subject, Reply):
         return subject
     player, span = subject
     # Before the ESPN-served columns, because these carry their own table,
@@ -233,7 +225,7 @@ def _player_line_advanced(con: duckdb.DuckDBPyConnection, player: Entity, span: 
     the line's reader declines an advanced stat (``compose.stats``)."""
     spec = ADVANCED_STATS[stat]
     if span.career and spec.weight is None:
-        raise TemplateUnsupported(f"{spec.label} has no career figure - it has no volume column to weight the seasons by, so a career would be a mean of means")
+        raise Unsupported(f"{spec.label} has no career figure - it has no volume column to weight the seasons by, so a career would be a mean of means")
     span = advanced_span(span)
     row = _first(values_of(con, advanced_statement(player.id, span, spec)))
     facts: dict[str, Any] = {"stat": stat, "wanted": []}
@@ -267,7 +259,7 @@ def player_history_reads(q: Query, stated: frozenset[str]) -> bool:
     return not unhonored_scoping("player_history", q.scope, stated)
 
 
-def read_player_history(con: duckdb.DuckDBPyConnection, q: Query, *, stated: frozenset[str]) -> Result | TemplateResult | None:
+def read_player_history(con: duckdb.DuckDBPyConnection, q: Query, *, stated: frozenset[str]) -> Result | Reply | None:
     """``player_history``'s own point - the stat season by season from the
     season line, newest first, the default four or the count asked for, and
     under a career every season with the career line beneath - as a
@@ -277,7 +269,7 @@ def read_player_history(con: duckdb.DuckDBPyConnection, q: Query, *, stated: fro
     seasons shown for a percentage (never a mean of means, F041), or the
     career total for a count. ``None`` where the point is not that
     (:func:`player_history_reads`); a
-    :class:`~association.query.templates.common.TemplateResult` back is the
+    :class:`~association.query.answer.Reply` back is the
     relation's refusal.
 
     .. versionadded:: 5.0.0
@@ -286,7 +278,7 @@ def read_player_history(con: duckdb.DuckDBPyConnection, q: Query, *, stated: fro
         return None
     scope = q.scope
     player = history_subject(con, scope)
-    if isinstance(player, TemplateResult):
+    if isinstance(player, Reply):
         return player
     stat = scope.stat
     assert stat is not None
@@ -343,7 +335,7 @@ def player_compare_reads(q: Query, stated: frozenset[str]) -> bool:
     return not unhonored_scoping("player_compare", q.scope, stated)
 
 
-def read_player_compare(con: duckdb.DuckDBPyConnection, q: Query, *, stated: frozenset[str]) -> Result | TemplateResult | None:
+def read_player_compare(con: duckdb.DuckDBPyConnection, q: Query, *, stated: frozenset[str]) -> Result | Reply | None:
     """``player_compare``'s own point - two or more named players' season
     lines side by side - as a :class:`~association.query.result.Grouped` by
     ``subject`` (one row per player in the question's order: ``key`` his
@@ -354,9 +346,9 @@ def read_player_compare(con: duckdb.DuckDBPyConnection, q: Query, *, stated: fro
     compared Luka Doncic to Luka Garza; each name is resolved by lookup, for
     the season compared. ``None`` where the point is not that
     (:func:`player_compare_reads`); a
-    :class:`~association.query.templates.common.TemplateResult` back is the
+    :class:`~association.query.answer.Reply` back is the
     relation's refusal (an unknown or ambiguous name). Raises
-    ``TemplateUnsupported`` where the names resolve to one person, and for
+    ``Unsupported`` where the names resolve to one person, and for
     a stat with no per-game column.
 
     .. versionadded:: 5.0.0
@@ -368,12 +360,12 @@ def read_player_compare(con: duckdb.DuckDBPyConnection, q: Query, *, stated: fro
     resolved: list[Entity] = []
     for name in scope.players[:MAX_COMPARED_PLAYERS]:
         player = compared_player(con, name, season)
-        if isinstance(player, TemplateResult):
+        if isinstance(player, Reply):
             return player
         if player.id not in {p.id for p in resolved}:
             resolved.append(player)
     if len(resolved) < 2:
-        raise TemplateUnsupported("the named players resolved to the same person")
+        raise Unsupported("the named players resolved to the same person")
     season_type = scope.season_type or 2
     wanted = wanted_stats(scope, COMPARE_STAT_LINE)
     lines = _player_compare_lines(con, resolved, wanted, season, season_type)

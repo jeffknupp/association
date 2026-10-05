@@ -16,16 +16,8 @@ from typing import Any
 
 import pytest
 
-from association.query.reading import Scope
-from association.query.templates.common import (
-    _BOX_SCORE_SCOPING,
-    SCOPING_SLOTS,
-    TemplateUnsupported,
-    _sources_for,
-    check_coverage,
-    check_scope,
-    coverage_caveat,
-)
+from association.query.reading import Scope, Unsupported
+from association.query.templates.common import _BOX_SCORE_SCOPING, SCOPING_SLOTS, _sources_for, check_coverage, check_scope, coverage_caveat
 
 _FIELDS = {field.name for field in fields(Scope)}
 
@@ -43,7 +35,7 @@ def _outcome(step: Callable[..., Any], *args: Any) -> Any:
     """What a step gives: its value, or the refusal it raised."""
     try:
         return step(*args)
-    except TemplateUnsupported as exc:
+    except Unsupported as exc:
         return ("refused", str(exc))
 
 

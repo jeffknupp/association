@@ -1,7 +1,7 @@
 """What nothing here can answer, refused fast and with its cause.
 
 The pipeline's last step before the plain refusal. A template that cannot
-honor a question raises ``TemplateUnsupported``; the compiler gets one try;
+honor a question raises ``Unsupported``; the compiler gets one try;
 and then this module asks whether the shape is one the warehouse has no
 column for at all. Where it is, a refusal naming the missing thing IS the
 answer - the same reasoning as
@@ -32,6 +32,7 @@ import re
 
 import duckdb
 
+from association.query.answer import Reply
 from association.query.calendar import parse_alignment, parse_situation
 from association.query.entities import find_teams
 from association.query.player_games import PERIOD_COLUMNS
@@ -39,7 +40,7 @@ from association.query.reading import Reading, Scope
 from association.query.router import _PERIOD_AS_CONDITION
 from association.query.subject import Subject
 from association.query.team_games import TEAM_PERIOD_COLUMNS
-from association.query.templates.common import PLAYER_INTENTS, TemplateResult
+from association.query.templates.common import PLAYER_INTENTS
 from association.query.templates.games import PERIOD_RATE_STATS
 
 _CHAMPIONSHIP = re.compile(r"\b(?:championships?|champions?|nba\s+titles?|won\s+the\s+(?:title|finals)|title\s+winners?|finals\s+winners?)\b", re.IGNORECASE)
@@ -67,7 +68,7 @@ def conference_named(scope: Scope) -> str | None:
     return next((c for c in (scope.team, scope.opponent, *scope.teams) if c and _CONFERENCE_WORDS.search(c)), None)
 
 
-def unanswerable(con: duckdb.DuckDBPyConnection, reading: Reading, question: str) -> TemplateResult | None:
+def unanswerable(con: duckdb.DuckDBPyConnection, reading: Reading, question: str) -> Reply | None:
     """The refusal for a question shape nothing here reads, or None where
     this module has nothing to add to the template's or compiler's own
     reason. Called only after the template refused and the compiler
@@ -91,7 +92,7 @@ def unanswerable(con: duckdb.DuckDBPyConnection, reading: Reading, question: str
     for check in (_playoff_round, _non_calendar_situation, _period_stat, _period_as_condition, _team_period_stat, _bench_points, _team_where_a_player_belongs, _team_boolean_count):
         message = check(con, reading.intent, reading.scope, question, subject)
         if message is not None:
-            return TemplateResult(data={"message": message, "refused": check.__name__.lstrip("_"), "intent": reading.intent}, answer=message)
+            return Reply(data={"message": message, "refused": check.__name__.lstrip("_"), "intent": reading.intent}, answer=message)
     return None
 
 
@@ -304,7 +305,7 @@ def too_short(question: str) -> str | None:
     return f"I couldn't understand your question, '{question.strip()}'. Please try re-phrasing it."
 
 
-def by_question(question: str, intent: str | None) -> TemplateResult | None:
+def by_question(question: str, intent: str | None) -> Reply | None:
     """A refusal decided from the question's own words BEFORE any template
     runs - for a shape a template would otherwise answer fluently and wrongly.
     "Show which team won the nba championship for the past 10 years" (Jeff's
@@ -324,4 +325,4 @@ def by_question(question: str, intent: str | None) -> TemplateResult | None:
         "Championships are not on record as such - the warehouse holds every playoff game and no table of titles, and nothing derives a champion from a postseason's last series yet. "
         "Ask for a team's postseason record in a season, or two teams' playoff meetings, to see who won a series."
     )
-    return TemplateResult(data={"message": message, "refused": "championship", "intent": intent}, answer=message)
+    return Reply(data={"message": message, "refused": "championship", "intent": intent}, answer=message)
