@@ -18,17 +18,21 @@ reproduced from the Result word for word.
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
+from association.nba.coverage import unavailable
 from association.query.answer import Artifact, Reply
 from association.query.conditions import _SPLIT_TITLES, _cell, _margin, _split_cells, _split_label, _table, _win_pct
+from association.query.entities import MAX_CLARIFY_CANDIDATES
+from association.query.measures import PERIOD_COLUMNS
+from association.query.metrics import LEADERBOARD_METRICS
 from association.query.notes import Note, decided, note
 from association.query.player_games import PERIOD_LOG_COLUMNS, PERIOD_RATES, STAT_LABELS, _joined, period_columns
 from association.query.reading import DEFAULT_GAME_LOG_LIMIT, _clamp_limit, ordinal_word
-from association.query.result import Decided, Grouped, Result, Rows, Run, Runs, Scalar, Span
-from association.query.season_line import ADVANCED_STATS, HISTORY_COLUMNS, MADE_STAT_ATTEMPTS, NETPOINTS_COMPARE_ROWS, PLAYER_STAT_COLUMNS, SHOOTING_STATS
+from association.query.result import Clarify, Decided, Grouped, Refusal, Result, Rows, Run, Runs, Scalar, Span
+from association.query.season_line import ADVANCED_STATS, HISTORY_COLUMNS, MADE_STAT_ATTEMPTS, NETPOINTS_COMPARE_ROWS, PLAYER_STAT_COLUMNS, SEASON_TOTAL_OF, SHOOTING_STATS
 from association.query.season_text import MONTH_NAMES, SEASON_TYPE_NAMES, season_label, season_phrase
 from association.query.shotchart import DERIVED_SHOT_VALUES, UNSEPARABLE_SHOT_VALUES
 from association.query.team_metrics import RATING_NOTE, TEAM_METRICS, TeamMetric
@@ -430,9 +434,313 @@ def _say_season_note(kind: str, facts: dict[str, Any]) -> str | None:
     return None
 
 
+def _empty_said(result: Result) -> str:
+    """Why a read with no rows found none: its :attr:`Result.empty` refusal, said."""
+    assert result.empty is not None
+    return refusal_phrase(result.empty.kind, result.empty.facts)
+
+
 def _said(result: Result) -> list[str]:
     """Every note on ``result``, phrased and recorded (:func:`~association.query.notes.note`)."""
     return [note(each.kind, note_phrase(each, narrowing=result.narrowing.phrase), **each.facts) for each in result.notes]
+
+
+# --- refusals: one phrase per cause ---------------------------------------------
+
+
+def _no_ranking_for(stat: str) -> str:
+    """The refusal for a ranking by a stat this relation has no measure for."""
+    return f"No ranking reads {stat!r} on the player-games relation - it only ranks the box-score measures it knows, not a NetPoints or other outside figure."
+
+
+def _ranking_floor_unit(unit: str, count: int) -> str:
+    """The refusal for a ranking floor in a unit no ranking applies (F056:
+    "... with at least 100 attempts"). The sentence names the floor that IS
+    applied, so the question can be re-asked with it."""
+    return f"A minimum of {count} {unit} is not a floor this ranking can apply yet - only a minimum number of games is. Ask with 'at least N games', or without the floor."
+
+
+def _ranking_unit(metric: str, rate: Any) -> str:
+    """The refusal for a ranking in a unit the metric has no form of,
+    naming the forms THIS metric has ("who were the top 10 in defensive
+    netpoints / 90": per 90 minutes is a football unit, and nothing in the
+    warehouse is stored in it). Only the three NetPoints metrics have a
+    per-100 sibling, so a generic list of units would be the
+    refusal-with-the-wrong-cause shape. The retired leaderboard template's
+    sentence, word for word (``compose.rankings._leaderboard_no_such_rate``
+    until the point reader carried the cause)."""
+    forms = ["as a season total" if metric.startswith("total_") else "per game"]
+    if metric in SEASON_TOTAL_OF:
+        forms.append("as a season total")
+    # `netpoints_total`'s per-100 sibling is `netpoints_per_100`, not
+    # `netpoints_total_per_100`, so the suffix comes off before looking.
+    if f"{metric.removeprefix('avg_').removesuffix('_total')}_per_100" in LEADERBOARD_METRICS:
+        forms.append("per 100 possessions")
+    asked = "per 90 minutes" if "90" in str(rate) else str(rate).replace("_", " ")
+    return f"No leaderboard ranks {metric.replace('_', ' ')} {asked} - the warehouse stores it only {' or '.join(forms)}."
+
+
+#: How each shape over a line is named in its refusal, by the intent the
+#: cause carries.
+_LINE_SHAPES: dict[str, str] = {
+    "single_game_high": "a single-game high",
+    "record_when": "a record in the games over a line",
+    "threshold_count": "a count of games over a line",
+    "streak": "a streak",
+    "game_log": "keeping only the games past a number",
+}
+
+#: What the stat is for, in each shape's refusal.
+_STAT_FOR: dict[str, str] = {
+    "single_game_high": "to rank games by",
+    "record_when": "the line is on",
+    "threshold_count": "the line is on",
+    "streak": "each game has to reach",
+    "game_log": "the games have to reach it in",
+}
+
+
+#: A shape over a line by the number its games reach, for a number read
+#: with no stat.
+_REACHING: dict[str, str] = {
+    "game_log": "Keeping only the games past {}",
+    "streak": "A streak of games reaching {}",
+    "record_when": "A record in the games reaching {}",
+    "threshold_count": "A count of games reaching {}",
+}
+
+
+def _stat_words(stat: Any) -> str:
+    """A stat column as the answer names it, plural: "points", "3-pointers"."""
+    label = STAT_LABELS.get(stat)
+    return f"{label}s" if label else str(stat)
+
+
+def _cause_sentence(kind: str, facts: Mapping[str, Any]) -> str | None:
+    """The sentence each cause of a shape over a line - and the other
+    declines slices (i) and (ii) gave a user as "Nothing here answers this
+    question" (Phase 2, step 3) - is said with, naming the fact that is
+    missing; ``None`` for a kind said elsewhere. Moved from
+    ``compose.plan``, which said a reading's causes until the run's joined
+    them here."""
+    shape = _LINE_SHAPES.get(facts.get("intent", ""), "this answer")
+    sentences = {
+        "needs_stat": lambda: f"{shape.capitalize()} needs a stat {_STAT_FOR.get(facts.get('intent', ''), 'to read')}, and none was read.",
+        "unknown_stat": lambda: _unknown_stat(facts.get("intent", ""), facts["stat"], shape),
+        "needs_threshold": lambda: f"{shape.capitalize()} needs the number of {_stat_words(facts['stat'])} each game has to reach, and none was read.",
+        "threshold_needs_stat": lambda: f"{_REACHING.get(facts.get('intent', ''), 'Games reaching {}').format(facts['threshold'])} needs the stat they reach it in, and none was read.",
+        "threshold_counts_every_game": lambda: f"A threshold of {facts['threshold']} counts every game - there is no line there to keep games past.",
+        "line_names_no_stat": lambda: f"{facts['phrase']!r} names no box-score stat a game can be kept {facts['side']}.",
+        "needs_line": lambda: "A count of games across the league needs the line it counts - a stat and a number, as in '40-point games' - and none could be read from the question.",
+        "career_place_needs_player": lambda: f"The {ordinal_word(facts['season_n'])} season is a place in one player's career, and no player was named.",
+        "needs_subject": lambda: f"{shape.capitalize()} needs a player or a team to read it for, and neither was named.",
+        "team_streak_of_stat": lambda: f"A team's streak is of wins or losses - a run of games reaching a number of {_stat_words(facts['stat'])} is read for a player, not a team.",
+        "matchup_needs_two": lambda: _matchup_needs_two(list(facts["names"])),
+        "no_coach_table": lambda: COACH_REFUSAL,
+        "no_period_stat": lambda: (
+            f"A quarter or half has no per-period {facts['stat']!r} - the period's line rebuilds {', '.join(PERIOD_COLUMNS)} from the plays, "
+            "and a field goal, 3-point or free throw percentage is a ratio of those; nothing else."
+        ),
+    }
+    phrase = sentences.get(kind)
+    return phrase() if phrase is not None else None
+
+
+#: What a coach question is answered with, and why it is a refusal naming the
+#: source rather than one naming only the intent.
+#:
+#: No table here holds a coach - 20 base tables and 6 views, zero columns named
+#: anything like it - so a reader has nothing to find. Left to fall through,
+#: the retired SQL agent spent a slow round trip and was then free to fill the
+#: silence from its own weights, which is the failure ``check_coverage`` exists
+#: to stop: an agent with nothing to read writes a confident answer. So the
+#: reading refuses (``point._read_point``: the ``no_coach_table`` cause), and
+#: this names which fact is missing.
+#:
+#: The sentence says what it says because the obvious reading - "ESPN does not
+#: publish coaches" - was checked on 2026-09-17 and is false. ESPN serves two
+#: coach collections, and neither is usable: the league-wide one ignores the
+#: season it is asked for (1977 answers with today's staff, Doug Christie and
+#: JJ Redick among them), and the team-scoped one covers 12 of 30 teams in
+#: 1996, never names two coaches for a team-season - so no mid-season change
+#: exists in it - and is wrong about Detroit for every season sampled from
+#: 1994 to 2026. Telling somebody the source has no coaches would be the
+#: wrong-cause refusal this project keeps producing; telling them it has an
+#: unusable one is true. See DATA.md, "ESPN publishes coaches, and the
+#: collection that looks league-wide is not historical".
+COACH_REFUSAL: str = (
+    "No table here holds a coach, so nothing about one can be answered - not a record, not a tenure, not a game. "
+    "ESPN does publish coaches, but not in a form worth storing: the season-by-season list it serves ignores the season asked for and returns the current staff, "
+    "and its per-team list covers 12 of 30 teams in 1996, never shows a mid-season change, and names the wrong coach for some franchises outright. "
+    "Player and team questions are unaffected."
+)
+"""The sentence a coach question is answered with. See above.
+
+.. versionadded:: 4.0.0
+
+.. versionchanged:: 5.0.0
+   Moved from ``templates.teams``, with the ``coach`` template it was the
+   whole answer of: the reading refuses by the ``no_coach_table`` cause,
+   and :func:`refusal_phrase` says it (``compose.plan`` until the run's
+   refusals joined the reading's here).
+"""
+
+
+def _unknown_stat(intent: str, stat: Any, shape: str) -> str:
+    """The refusal for a stat with no per-game column, in the shape's words."""
+    if intent == "single_game_high":
+        return f"A single-game high cannot rank games by {stat!r} - only by a box-score stat each game has a number for."
+    if intent == "game_log":
+        return f"A game log has no per-game column for {stat!r}."
+    return f"{shape.capitalize()} cannot be read over {stat!r} - it has no per-game box-score column."
+
+
+def _matchup_needs_two(names: list[str]) -> str:
+    """A matchup's refusal for the count of players read: none, one, or more than two."""
+    if not names:
+        return "A matchup needs two players, and none was read."
+    if len(names) == 1:
+        return f"A matchup needs two players, and only {names[0]} was read."
+    return f"A matchup is between two players, and {len(names)} were read: {', '.join(names)}."
+
+
+def _say_shot_distance_ranking() -> str:
+    """The refusal for a shot-distance ranking, naming the real cause (ISSUES.md
+    #114): no leaderboard metric ranks distance, and the nearest real one is
+    a percentage."""
+    return "Shot distance is not ranked league-wide yet - ask about one named player's average shot distance instead."
+
+
+def clarification(text: str, candidates: Sequence[str], kind: str = "player", active: int = 0) -> str:
+    """The "did you mean" sentence for an ambiguous name - one phrasing, so
+    the same ambiguity does not read two ways depending on which reader
+    asked it.
+
+    Names the first ``MAX_CLARIFY_CANDIDATES`` in the order given and counts
+    the rest - except the first ``active``, the candidates who played in the
+    season asked about, who are always named. Counting them away is how
+    "Curry" hid Stephen: six Currys sorted by name and cut at five named four
+    men who never played in the season asked about, plus Seth. A caller with a
+    season in hand narrows and orders first (see
+    :func:`~association.query.entities.resolve_player`) and passes
+    ``Ambiguous.active`` on, so the count only ever stands for players who
+    could not be the answer. The most one season holds under one name is
+    15 Williamses, in 1998 and 1999; 2026 holds 14.
+
+    .. versionadded:: 2.1.0
+
+    .. versionchanged:: 5.0.0
+       Moved from :mod:`association.query.entities`: a read returns a
+       :class:`~association.query.result.Clarify`, and the sayer words it.
+    """
+    shown = list(candidates[: max(MAX_CLARIFY_CANDIDATES, active)])
+    extra = len(candidates) - len(shown)
+    rest = "" if extra <= 0 else " (1 other also matches)" if extra == 1 else f" ({extra} others also match)"
+    joined = ", ".join(shown[:-1]) + f" or {shown[-1]}" + rest
+    return f"{text!r} matches more than one {kind} - did you mean {joined}?"
+
+
+def suggestion(text: str, candidates: Sequence[str], kind: str = "player") -> str:
+    """The sentence for a name nothing matched, naming the near spellings
+    :func:`~association.query.entities.suggest_players` found, if any.
+
+    .. versionadded:: 2.1.0
+
+    .. versionchanged:: 5.0.0
+       Moved from :mod:`association.query.entities`, as :func:`clarification` was.
+    """
+    if not candidates:
+        return f"No {kind} found matching {text!r}."
+    joined = (", ".join(candidates[:-1]) + " or " if len(candidates) > 1 else "") + candidates[-1]
+    return f"No {kind} found matching {text!r} - did you mean {joined}?"
+
+
+def _say_no_such_season_n(facts: Mapping[str, Any]) -> str:
+    """An ordinal season past the player's career on record."""
+    on_record = facts["on_record"]
+    have = f"{facts['seasons']} seasons on record ({on_record[0]}-{on_record[1]})" if on_record else "no season on record"
+    return f"{facts['player']} has {have}, so there is no {ordinal_word(facts['season_n'])} season to answer for."
+
+
+def _say_period_condition_needs_plays(facts: Mapping[str, Any]) -> str:
+    """A quarter's line used as a condition, in a warehouse with no plays to rebuild it from."""
+    noun = STAT_LABELS.get(facts["stat"], facts["stat"])
+    return f"Games with {facts['threshold']}+ {noun}s in the {facts['period']} cannot be picked out here: a period's {noun}s are rebuilt from play-by-play, and this warehouse holds none."
+
+
+def _say_no_games_in_span(facts: Mapping[str, Any]) -> str:
+    """No games in the span with a box score - and, where the season was a
+    default, where his games are (a ``season_redirected`` decision)."""
+    redirect = facts["redirect"]
+    return f"No {facts['span']} games found for {facts['player']}." + defaulted_season_note(tuple(redirect) if redirect else None, facts["kind"])
+
+
+def _say_player_listed(facts: Mapping[str, Any]) -> str:
+    """A player the box scores list in the span but never as playing, or not at all."""
+    for_team = f" for the {facts['team']}" if facts["team"] else ""
+    count = facts["games"]
+    if not count:
+        return f"{facts['player']} has no games{for_team} {facts['where']} in the warehouse."
+    which = "it" if count == 1 else "any of them"
+    return f"{facts['player']} was listed in {count} box score{'' if count == 1 else 's'}{for_team} {facts['where']} but did not play in {which}."
+
+
+def _fingerprint_who(facts: Mapping[str, Any]) -> str:
+    """The players a fingerprint was asked for, or "any player"."""
+    return ", ".join(facts["players"]) if facts["players"] else "any player"
+
+
+#: Why no fingerprint can be drawn (``fingerprint.FingerprintUnavailable``'s causes).
+_FINGERPRINT_PHRASES: dict[str, Callable[[Mapping[str, Any]], str]] = {
+    "fingerprint_view": lambda facts: f"view must be one of {facts['views']} - got {facts['view']!r}.",
+    "fingerprint_scale": lambda facts: f"scale must be one of {facts['scales']} - got {facts['scale']!r}.",
+    "fingerprint_pool_empty": lambda facts: f"No player reached {facts['min_minutes']} minutes in season {facts['season']}, so there is nothing to compare against.",
+    "fingerprint_no_season": lambda facts: f"The warehouse has no NetPoints fingerprint data for season {facts['season']}.",
+    "fingerprint_none_for": lambda facts: (
+        f"No NetPoints fingerprint on record for {_fingerprint_who(facts)} in season {facts['season']}, which has {facts['held']} player{'' if facts['held'] == 1 else 's'} on record."
+    ),
+    "game_fingerprints_unpulled": lambda facts: f"Per-game NetPoints fingerprints are not in this warehouse - pull them with `data pull --include-net-points-daily`. ({facts['error']})",
+    "game_fingerprint_no_season": lambda facts: f"The warehouse has no per-game NetPoints fingerprint data for season {facts['season']}.",
+    "game_fingerprint_pool_empty": lambda facts: f"No game in season {facts['season']} reached {facts['min_possessions']} possessions, so there is nothing to compare against.",
+    "game_fingerprint_none_for": lambda facts: (
+        f"No per-game NetPoints fingerprint on record for {_fingerprint_who(facts)}'s {'earliest' if facts['order'] == 'first' else 'most recent'} game of season {facts['season']}."
+    ),
+}
+
+
+def _say_fingerprint_unavailable(kind: str, facts: Mapping[str, Any]) -> str:
+    """Why no fingerprint was drawn - and, where the name was read best-match,
+    the other players it also matched (the ``also_matched`` decision): the
+    plot is titled with the name that won, which is what is missing when
+    nothing is drawn, so the runners-up are named on the failure too."""
+    said = _FINGERPRINT_PHRASES[kind](facts)
+    if facts.get("also"):
+        said += decided("also_matched", f" Note: other players also matched: {', '.join(facts['also'])}.", field="player", chose=facts["chose"], instead_of=facts["also"])
+    return said
+
+
+def _say_never_together(facts: Mapping[str, Any]) -> str:
+    """A with/without split's subject and teammates (and, if named, a team)
+    never on the same roster together, as the box scores show it."""
+    team, all_of, named = facts["team"], facts["all_of"], list(facts["teammates"])
+    on = f" the {team}" if team else ""
+    if facts["player"] is None and len(named) == 1:
+        return f"{all_of} never appeared in a box score for{on}, so there are no {team or ''} games with or without him to count."
+    whom = _joined([facts["player"], *named]) if facts["player"] is not None else all_of
+    played_phrase = "he played" if len(named) == 1 else "they all played"
+    return f"{whom} were never on{on or ' the same team'} together in the box scores on record, so there are no games to divide by whether {played_phrase}."
+
+
+def _say_together_outside_span(facts: Mapping[str, Any]) -> str:
+    """A with/without split's time together falling outside the span asked
+    about - or inside it, with no box score for any of its games."""
+    named, all_of = list(facts["teammates"]), facts["all_of"]
+    whose = f"{all_of}'s time" if facts["player"] is None else f"The time {_joined([facts['player'], *named])} spent together"
+    if facts["unseen"]:
+        return (
+            f"All {facts['unseen']} games inside {whose[0].lower() + whose[1:]} on the team in the {facts['span']} have no box score in the warehouse, so whether {all_of} played them cannot be told."
+        )
+    return f"{whose} on the team, as the box scores show it ({facts['stints']}), falls outside the {facts['span'] if facts['season_named'] else 'seasons on record'}."
 
 
 # --- the player's log -----------------------------------------------------------
@@ -540,8 +848,8 @@ def say_player_log(result: Result) -> Reply:
     about = _player_about(result)
     body = result.rows
     if body is None or not body.rows:
-        assert result.empty is not None
-        return Reply(data={**about, "games": [], "message": result.empty}, answer=result.empty)
+        empty = _empty_said(result)
+        return Reply(data={**about, "games": [], "message": empty}, answer=empty)
     headers = list(body.columns)
     games = [dict(g) for g in body.rows]
     averages = dict(body.summary)
@@ -608,8 +916,7 @@ def say_team_log(result: Result) -> Reply:
     """
     body = result.rows
     if body is None or not body.rows:
-        assert result.empty is not None
-        return Reply(data={"team": result.subject, "games": []}, answer=result.empty)
+        return Reply(data={"team": result.subject, "games": []}, answer=_empty_said(result))
     games = [dict(g) for g in body.rows]
     wins, losses, unknown = body.summary["wins"], body.summary["losses"], body.summary["unknown"]
     record = f"{wins}-{losses}" + (f", {unknown} with no recorded result" if unknown else "")
@@ -666,12 +973,22 @@ def _say_team_shape(result: Result) -> Reply | None:
     return None
 
 
-def say(result: Result) -> Reply:
+def say(result: Result | Refusal | Clarify) -> Reply:
     """``result`` worded by its shape: a team's rows, a player's rows, a
-    record grouped by a line, splits, or a player's line.
+    record grouped by a line, splits, or a player's line - or a refusal
+    by its cause, or a question back.
 
     .. versionadded:: 5.0.0
+
+    .. versionchanged:: 5.0.0
+       Takes a :class:`~association.query.result.Refusal` or a
+       :class:`~association.query.result.Clarify` too: a read's outcome,
+       whichever it was.
     """
+    if isinstance(result, Refusal):
+        return say_refusal(result)
+    if isinstance(result, Clarify):
+        return say_clarify(result)
     if result.span.source == "netpoints":
         return say_fingerprint(result) if result.chart is not None else say_player_netpoints(result)
     team = _say_team_shape(result)
@@ -974,8 +1291,7 @@ def say_player_stat(result: Result) -> Reply:
     assert line is not None
     about, span = dict(result.facts["about"]), result.span
     if not line.games:
-        assert result.empty is not None
-        return Reply(data={"player": result.subject, **about, "games": 0, "stats": {}}, answer=result.empty)
+        return Reply(data={"player": result.subject, **about, "games": 0, "stats": {}}, answer=_empty_said(result))
     notes = _said(result)
     scope = {**about, "seasons": [span.first, span.last]}
     when, games_note = span.phrase or "", result.narrowing.phrase
@@ -1085,14 +1401,11 @@ def period_caveat(notes: list[Note]) -> str:
     return "".join("\n  " + note(each.kind, note_phrase(each), **each.facts) for each in notes)
 
 
-def say_period_refusal(facts: dict[str, Any]) -> Reply:
+def _say_period_untrusted(facts: Mapping[str, Any]) -> str:
     """The refusal for a season whose per-period figures cannot be trusted
     (``player_games.period_distrust``'s facts): a shot's value the season
     does not carry, points that disagree with ESPN's own quarter scores, or
-    a column whose rebuilt figure disagrees with the box score.
-
-    .. versionadded:: 5.0.0
-    """
+    a column whose rebuilt figure disagrees with the box score."""
     season, column, agreement = facts["season"], facts["column"], facts["agreement"]
     if facts["unseparable"]:
         message = f"Per-quarter scoring cannot be answered for {season}: {UNSEPARABLE_SHOT_VALUES[season]}."
@@ -1101,17 +1414,13 @@ def say_period_refusal(facts: dict[str, Any]) -> Reply:
     else:
         noun = period_noun(column, 2)
         message = f"Per-quarter {noun} cannot be answered for {season}: rebuilt from play-by-play, a game's {noun} match its box score only {agreement:.0f}% of the time."
-    return Reply(data={"season": season, "message": message}, answer=message)
+    return message
 
 
-def say_period_unread(measure: str) -> Reply:
+def _say_period_unread(facts: Mapping[str, Any]) -> str:
     """The refusal where a period's ``measure`` could not be rebuilt at all:
-    a warehouse loaded without play-by-play leaves every plays column NULL.
-
-    .. versionadded:: 5.0.0
-    """
-    message = f"Per-quarter {period_columns_noun(measure)} cannot be answered here: they are rebuilt from play-by-play, and this warehouse holds none."
-    return Reply(data={"message": message}, answer=message)
+    a warehouse loaded without play-by-play leaves every plays column NULL."""
+    return f"Per-quarter {period_columns_noun(facts['measure'])} cannot be answered here: they are rebuilt from play-by-play, and this warehouse holds none."
 
 
 def _period_where_said(result: Result) -> str:
@@ -2294,21 +2603,6 @@ def short_of_games_said(metric: TeamMetric, period: str, short: dict[str, Any]) 
     )
 
 
-def _team_stat_missing(result: Result, period: str) -> Reply:
-    """Nothing to give, by which fact is missing: the metric's first season,
-    the team's record, or its line - a team that did not reach the
-    postseason is not a team the warehouse lacks numbers for."""
-    team, season, facts = result.subject, result.span.season, result.facts
-    if facts["missing"] == "metric_season":
-        metric = TEAM_METRICS[facts["metric"]]
-        message = f"{metric.label.capitalize()} can't be given for {season}: {metric.first_season_reason}."
-        return Reply(data={"message": message, "season": season}, answer=message)
-    if facts["missing"] == "record":
-        return Reply(data={"team": team, "season": season}, answer=f"The {team} have no {period} record in the warehouse.")
-    answer = f"The {team} did not play in the {period}." if facts["played_regular_season"] else f"The warehouse has no {period} team stats for the {team}."
-    return Reply(data={"team": team, "season": season, "stats": {}, "headline": answer}, answer=answer)
-
-
 def _team_stat_single(result: Result, period: str, stats: dict[str, dict[str, Any]], row: dict[str, Any]) -> Reply:
     """One named metric: its value and rank, or why points allowed leave it blank."""
     team, season, facts = result.subject, result.span.season, result.facts
@@ -2368,8 +2662,7 @@ def say_team_stat(result: Result) -> Reply:
         answer = f"The {result.subject} were {tally(values['wins'], values['losses'])} in the {period}, the {ordinal_word(values['rank'])}-best record of {values['of']} teams."
         return Reply(data={"team": result.subject, "season": result.span.season, **values}, answer=answer)
     body = result.grouped
-    if body is None:
-        return _team_stat_missing(result, period)
+    assert body is not None
     stats = {TEAM_METRICS[row["key"]].label: {"value": row["value"], "rank": row["rank"], "of": row["of"]} for row in body.rows}
     if result.facts["metric"] is not None:
         return _team_stat_single(result, period, stats, dict(body.rows[0]))
@@ -2407,20 +2700,6 @@ def _team_leaderboard_end(metric: TeamMetric, key: str, rank_word: str | None, d
     return end
 
 
-def _team_leaderboard_missing(result: Result, metric: TeamMetric, period: str) -> Reply:
-    """Nothing to rank, by why: the season's standings carry no home or road
-    split, the metric's first season, or a team short of games for points
-    allowed."""
-    season, missing = result.span.season, result.facts["missing"]
-    if missing == "venue_split":
-        message = f"ESPN's {season} standings carry no home/road split (it reads 0-0 for every team before 1993-94)."
-    elif missing == "metric_season":
-        message = f"{metric.label.capitalize()} can't be given for {season}: {metric.first_season_reason}."
-    else:
-        message = short_of_games_said(metric, period, result.facts["short"])
-    return Reply(data={"message": message, "season": season}, answer=message)
-
-
 def say_team_leaderboard(result: Result) -> Reply:
     """Every team ranked by one metric, worded: the title (the metric, a venue,
     the span), which end comes first, how many teams were ranked, the rows
@@ -2434,8 +2713,6 @@ def say_team_leaderboard(result: Result) -> Reply:
     key = facts["metric"]
     metric = TEAM_METRICS[key]
     period = _team_leaderboard_period(result.span)
-    if "missing" in facts:
-        return _team_leaderboard_missing(result, metric, period)
     venue = facts["venue"]
     title = f"{metric.label.capitalize()}{f' {_VENUE_WORDS[venue]}' if venue else ''}, {period}"
     season = None if result.span.first is not None else result.span.season
@@ -2627,40 +2904,30 @@ def say_head_to_head(result: Result) -> Reply:
 _QUARTER_BREAKDOWN_LIMIT = 12
 
 
-def say_team_period_unknown(stat: Any) -> Reply:
+def _say_team_period_unknown(facts: Mapping[str, Any]) -> str:
     """The refusal for a team's stat nothing splits by period: the linescore
-    holds the score, and the plays rebuild only the period line's columns.
-
-    .. versionadded:: 5.0.0
-    """
+    holds the score, and the plays rebuild only the period line's columns."""
     from association.query.team_games import TEAM_PERIOD_COLUMNS
 
+    stat = facts["stat"]
     held = _joined(["points", *(period_noun(c, 2) for c in TEAM_PERIOD_COLUMNS if c != "points"), "the field goal, 3-point and free throw percentages from them"])
     label = f"{STAT_LABELS[stat]}s" if stat in STAT_LABELS else str(stat)
-    message = f"A team's {label} by quarter is not on record: ESPN's linescore holds only the score, and play-by-play rebuilds only {held} - not {stat}."
-    return Reply(data={"stat": stat, "message": message}, answer=message)
+    return f"A team's {label} by quarter is not on record: ESPN's linescore holds only the score, and play-by-play rebuilds only {held} - not {stat}."
 
 
-def say_team_period_unread(team: str, measure: str) -> Reply:
+def _say_team_period_unread(facts: Mapping[str, Any]) -> str:
     """The refusal where none of a team's games has the play-by-play its
-    period ``measure`` is rebuilt from.
-
-    .. versionadded:: 5.0.0
-    """
-    message = f"No play-by-play is on record for these {team} games, and a team's {period_columns_noun(measure)} by quarter are rebuilt from it (it starts in 2002)."
-    return Reply(data={"team": team, "message": message}, answer=message)
+    period ``measure`` is rebuilt from."""
+    return f"No play-by-play is on record for these {facts['team']} games, and a team's {period_columns_noun(facts['measure'])} by quarter are rebuilt from it (it starts in 2002)."
 
 
-def say_team_period_untrusted(team: str, measure: str, period_label: str, weak: list[tuple[int, float]]) -> Reply:
+def _say_team_period_untrusted(facts: Mapping[str, Any]) -> str:
     """The refusal for seasons whose team-games rebuild a period ``measure``
-    right too seldom to answer, each with its measured agreement.
-
-    .. versionadded:: 5.0.0
-    """
-    said = ", ".join(f"{season} ({pct:.0f}%)" for season, pct in weak)
+    right too seldom to answer, each with its measured agreement."""
+    said = ", ".join(f"{season} ({pct:.0f}%)" for season, pct in facts["weak"])
+    measure = facts["measure"]
     columns = period_columns_noun(measure)
-    message = f"A team's {period_label} {period_noun(measure, 2)} cannot be answered for {said}: rebuilt from play-by-play, a team-game's {columns} match its box score that seldom."
-    return Reply(data={"team": team, "seasons": [season for season, _ in weak], "message": message}, answer=message)
+    return f"A team's {facts['period']} {period_noun(measure, 2)} cannot be answered for {said}: rebuilt from play-by-play, a team-game's {columns} match its box score that seldom."
 
 
 def _team_period_about(result: Result, games: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
@@ -2789,28 +3056,14 @@ def say_team_quarter_points(result: Result) -> Reply:
 # --- the league's ranking by a quarter or half -------------------------------------------
 
 
-def say_period_rank_rate(measure: str) -> Reply:
+def _say_period_rank_rate(facts: Mapping[str, Any]) -> str:
     """The refusal for a ranking by a shooting percentage in a quarter: a
-    games-played qualifier says nothing about attempts.
-
-    .. versionadded:: 5.0.0
-    """
-    word = PERIOD_RATE_WORDS[measure]
-    message = (
+    games-played qualifier says nothing about attempts."""
+    word = PERIOD_RATE_WORDS[facts["measure"]]
+    return (
         f"Players are not ranked by {word} in a quarter or half: the per-game qualifier every period ranking uses says nothing about attempts, "
         f"and a percentage over a few of them ranks noise. Ask for one player's {word} in that period."
     )
-    return Reply(data={"stat": measure, "message": message}, answer=message)
-
-
-def say_period_rank_unread(measure: str) -> Reply:
-    """The refusal for a ranking by a period column rebuilt from plays this
-    warehouse does not hold.
-
-    .. versionadded:: 5.0.0
-    """
-    message = f"Per-quarter {period_noun(measure, 2)} cannot be ranked here: they are rebuilt from play-by-play, and this warehouse holds none."
-    return Reply(data={"message": message}, answer=message)
 
 
 def _period_leaderboard_where(result: Result) -> str:
@@ -2905,17 +3158,13 @@ def say_period_leaderboard(result: Result) -> Reply:
 # --- a team's record --------------------------------------------------------------------
 
 
-def say_conference_refusal(named: str) -> Reply:
+def _say_conference_named(facts: Mapping[str, Any]) -> str:
     """The refusal for a team slot that names a conference or a division:
-    no table maps a team to one.
-
-    .. versionadded:: 5.0.0
-    """
-    message = (
-        f"The warehouse has no conference or division membership for any team, so nothing about {named!r} can be tallied from it. "
+    no table maps a team to one."""
+    return (
+        f"The warehouse has no conference or division membership for any team, so nothing about {facts['named']!r} can be tallied from it. "
         "The only conference figure it holds is each team's record in its own conference's games."
     )
-    return Reply(data={"message": message, "unanswerable": named}, answer=message)
 
 
 def _said_record_notes(result: Result, placed: str = "") -> dict[str, str]:
@@ -3203,7 +3452,6 @@ def _say_combined_record(result: Result, line: Scalar) -> Reply:
             after.append(said)
         else:
             tails.append(said)
-    tails = [*(row["tail"] for row in (regular, playoff) if row["tail"]), *tails]
     wins, losses = line.values["wins"], line.values["losses"]
     against = f" against the {opponent}" if opponent else ""
     where_played = f" {_VENUE_WORDS[venue]}" if venue else ""
@@ -3578,7 +3826,7 @@ def say_shot_chart(result: Result) -> Reply:
         message += "".join(decision_phrase(each) for each in result.decisions if each.kind == "also_matched")
         message += "".join(f". Note: {text}" for text in said)
     else:
-        base = result.empty or f"No shots found for {name} with the given filters."
+        base = _empty_said(result) if result.empty is not None else f"No shots found for {name} with the given filters."
         message = " Note: ".join([base, *said]) + ("." if said else "")
     message += floor
     message += "".join(decision_phrase(each, career_hint=False) for each in result.decisions if each.kind == "season_redirected")
@@ -3636,3 +3884,119 @@ def defaulted_season_note(season_range: tuple[int, int] | None, kind: str, *, ca
     first, last = season_range
     redirect = Decided(kind="season_redirected", field="season", chose=None, why="the season read by default holds nothing for him", facts={"first": first, "last": last, "what": kind})
     return decision_phrase(redirect, career_hint=career_hint)
+
+
+# --- refusals: the phrase table ------------------------------------------------
+
+
+#: The run's own causes (:data:`~association.query.result.RUN_CAUSES`), one
+#: phrase each, from the Refusal's facts.
+_RUN_PHRASES: dict[str, Callable[[Mapping[str, Any]], str | None]] = {
+    "season_out_of_reach": lambda facts: unavailable(tuple(facts["tables"]), facts["season"], facts["season_type"], ranking=facts["ranking"]),
+    "name_unmatched": lambda facts: suggestion(facts["asked"], (), facts.get("kind", "player")),
+    "opponent_is_absent": lambda facts: (
+        f"{facts['opponent']} is both the player {facts['player']} is matched against and the teammate named as absent - no game can be both. Name the opponent team, or drop 'without'."
+    ),
+    "no_such_season_n": _say_no_such_season_n,
+    "period_condition_needs_plays": _say_period_condition_needs_plays,
+    "not_a_teammate": lambda facts: f"No player matching {facts['asked']!r} was {facts['player']}'s teammate {facts['during']}.",
+    "no_game_on_date": lambda facts: f"No {facts['kind']} game on {facts['date']} found for {facts['player']}{facts['narrowing']}.",
+    "box_scores_empty": lambda facts: (
+        f"{facts['player']} played {count_games(facts['games'])} {facts['during']}, but the box score is empty for all of them - ESPN served no minutes or stats for any."
+    ),
+    "no_box_scores": lambda facts: f"{facts['player']} has no {facts['kind']} box scores in the warehouse, which begin with the {season_label(facts['first'])} season.",
+    "no_games_in_span": _say_no_games_in_span,
+    "not_teammates_then": lambda facts: f"{facts['teammate']} was not {facts['player']}'s teammate in any of his {count_games(facts['games'])} {facts['during']}.",
+    "none_matched": lambda facts: f"{facts['player']} played {count_games(facts['games'])} {facts['during']}, none of them{facts['narrowing']}.",
+    "listed_not_played": _say_player_listed,
+    "no_player_games": _say_player_listed,
+    "no_team_games": lambda facts: f"The warehouse has no games with a result for the {facts['team']} {facts['where']}.",
+    "no_games_in_season": lambda facts: f"{facts['player']} has no games recorded in the {facts['season']} season{facts['narrowing']}.",
+    "no_team_games_in": lambda facts: f"No {facts['span']} games found for the {facts['team']}{facts['narrowing']}.",
+    "free_throw_chart": lambda _facts: "Free throws are all taken from the same line and carry no court position worth drawing, so there is no free-throw chart to render.",
+    "shot_chart_unseparable": lambda facts: f"{UNSEPARABLE_SHOT_VALUES[facts['season']]}. A chart of {facts['player']}'s {facts['kind']} in {facts['season']} cannot be drawn.",
+    "shot_distance_unseparable": lambda facts: (
+        f"{UNSEPARABLE_SHOT_VALUES[facts['season']]}. {facts['player']}'s average {facts['kind']}shot distance in the {facts['period']} cannot be given; his average over all shots can."
+    ),
+    "fingerprint_on_a_date": lambda _facts: "A fingerprint can be drawn for a player's first or most recent game of a season, but not yet for a particular date - ask for their last game instead.",
+    "period_untrusted": _say_period_untrusted,
+    "period_unread": _say_period_unread,
+    "team_period_unknown": _say_team_period_unknown,
+    "team_period_unread": _say_team_period_unread,
+    "team_period_untrusted": _say_team_period_untrusted,
+    "period_rank_rate": _say_period_rank_rate,
+    "period_rank_unread": lambda facts: f"Per-quarter {period_noun(facts['measure'], 2)} cannot be ranked here: they are rebuilt from play-by-play, and this warehouse holds none.",
+    "conference_named": _say_conference_named,
+    "teammate_never_seen": lambda facts: f"{facts['teammate']} has no box-score appearance in the warehouse, so there is no time on a team to count games in.",
+    "never_together": _say_never_together,
+    "together_outside_span": _say_together_outside_span,
+    "team_stat_unrecorded": lambda facts: (
+        f"The warehouse has {facts['games']} game{'' if facts['games'] == 1 else 's'} with a result for the {facts['team']}{facts['narrowing']} {facts['where']}, "
+        f"but no {_unit(facts['stat'])} figure on record for {'it' if facts['games'] == 1 else 'any of them'}."
+    ),
+    "no_team_totals": lambda facts: f"The warehouse has no {facts['season']} team totals for the {facts['team']}.",
+    "metric_before_first_season": lambda facts: f"{TEAM_METRICS[facts['metric']].label.capitalize()} can't be given for {facts['season']}: {TEAM_METRICS[facts['metric']].first_season_reason}.",
+    "no_team_record": lambda facts: f"The {facts['team']} have no {season_phrase(facts['season'], facts['season_type'])} record in the warehouse.",
+    "missed_postseason": lambda facts: f"The {facts['team']} did not play in the {season_phrase(facts['season'], facts['season_type'])}.",
+    "no_team_line": lambda facts: f"The warehouse has no {season_phrase(facts['season'], facts['season_type'])} team stats for the {facts['team']}.",
+    "no_venue_split": lambda facts: f"ESPN's {facts['season']} standings carry no home/road split (it reads 0-0 for every team before 1993-94).",
+    "short_of_games": lambda facts: short_of_games_said(TEAM_METRICS[facts["metric"]], season_phrase(facts["season"], facts["season_type"]), facts["short"]),
+    "team_none_matched": lambda facts: f"The {facts['team']} played {facts['games']:,} games {facts['during']}, none of them{facts['narrowing']}.",
+}
+
+
+#: A reading's causes said by a phrase of their own rather than the shape
+#: table in :func:`_cause_sentence`.
+_RANKING_PHRASES: dict[str, Callable[[Mapping[str, Any]], str | None]] = {
+    "shot_distance_ranking": lambda _facts: _say_shot_distance_ranking(),
+    "no_ranking_measure": lambda facts: _no_ranking_for(facts["stat"]),
+    "ranking_floor_unit": lambda facts: _ranking_floor_unit(facts["unit"], facts["count"]),
+    "ranking_unit": lambda facts: _ranking_unit(facts["metric"], facts["rate"]),
+}
+
+
+def refusal_phrase(kind: str, facts: Mapping[str, Any]) -> str:
+    """ONE sentence per refusal cause - a reading's
+    (:data:`~association.query.reading.CAUSES`) or a read's
+    (:data:`~association.query.result.RUN_CAUSES`) - from its facts, naming
+    the fact that is missing (AGENTS.md, "A refusal names the missing
+    thing, never only the slot"). The refusal counterpart of
+    :func:`note_phrase` and :func:`decision_phrase`.
+
+    .. versionadded:: 5.0.0
+    """
+    if kind in _FINGERPRINT_PHRASES:
+        return _say_fingerprint_unavailable(kind, facts)
+    phrase = _RUN_PHRASES.get(kind) or _RANKING_PHRASES.get(kind)
+    said = phrase(facts) if phrase is not None else _cause_sentence(kind, facts)
+    if said is None:
+        raise ValueError(f"no sentence for the cause {kind!r}")
+    return said
+
+
+def say_refusal(refusal: Refusal) -> Reply:
+    """A :class:`~association.query.result.Refusal` worded: its cause's one
+    sentence (:func:`refusal_phrase`), under the keys the page reads it by,
+    beside the page's values.
+
+    .. versionadded:: 5.0.0
+    """
+    message = refusal_phrase(refusal.kind, refusal.facts)
+    return Reply(data={**refusal.shown, **dict.fromkeys(refusal.under, message)}, answer=message)
+
+
+def say_clarify(asked: Clarify) -> Reply:
+    """A :class:`~association.query.result.Clarify` worded: the question back,
+    naming the candidates - those on record by the name, or the near
+    spellings of one nothing matched.
+
+    .. versionadded:: 5.0.0
+    """
+    candidates = list(asked.candidates)
+    if asked.why == "near_spelling":
+        message = suggestion(asked.asked, candidates, asked.kind)
+        shown = {"unmatched": asked.asked, "suggestions": candidates} if asked.shown is None else dict(asked.shown)
+    else:
+        message = clarification(asked.asked, candidates, asked.kind, asked.active)
+        shown = {"ambiguous": asked.asked, "candidates": candidates} if asked.shown is None else dict(asked.shown)
+    return Reply(data={**shown, **dict.fromkeys(asked.under, message)}, answer=message)

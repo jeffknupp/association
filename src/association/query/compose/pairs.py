@@ -28,13 +28,12 @@ from typing import Any
 import duckdb
 
 from association.nba.franchises import season_name
-from association.query.answer import Reply
 from association.query.conditions import _PLAYER_GAME_TABLES, MEETING_STATS, _matchup_line, _names, _player_games, _teammate_games, _totals, _unseen_meetings, box_source
 from association.query.entities import Entity
 from association.query.notes import Note
 from association.query.player_relation import condition_scope, no_games
 from association.query.reading import ConditionSpec, Scope, Unsupported, _clamp_limit, unhonored_scoping
-from association.query.result import Grouped, Narrowing, Part, Result, Rows, Span, Window
+from association.query.result import Grouped, Narrowing, Part, Result, Rows, Span, Unanswered, Window
 
 from .core import Compiled, Query, Refused, compile_query, rows_of
 
@@ -75,7 +74,7 @@ def _pair_meeting(row: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def read_player_matchup(con: duckdb.DuckDBPyConnection, q: Query, *, stated: frozenset[str]) -> Result | Reply | None:
+def read_player_matchup(con: duckdb.DuckDBPyConnection, q: Query, *, stated: frozenset[str]) -> Result | Unanswered | None:
     """``player_matchup``'s own point - the ``pair`` shape - read as the two
     players' lines over the meetings the compiled statement finds, the
     head-to-head record, and the newest meetings, with the games between
@@ -84,8 +83,8 @@ def read_player_matchup(con: duckdb.DuckDBPyConnection, q: Query, *, stated: fro
     Result says how many. ``None`` where the point is not a pair, or carries
     a narrowing the retired template's words did not state (``stated``:
     ``compose.plan.STATED_SCOPING``'s set), and the compiler's sentence
-    answers; a :class:`~association.query.answer.Reply`
-    back is the relation's refusal (a player with no games in the span).
+    answers; a :class:`~association.query.result.Refusal` or
+    :class:`~association.query.result.Clarify` back is the relation's refusal (a player with no games in the span).
 
     .. versionadded:: 5.0.0
     """
@@ -142,7 +141,7 @@ def _pair_result(
     )
 
 
-def _pair_no_meetings(con: duckdb.DuckDBPyConnection, q: Query, covered: Any, compiled: Compiled, a: Entity, b: Entity, together: int, notes: tuple[Note, ...]) -> Result | Reply:
+def _pair_no_meetings(con: duckdb.DuckDBPyConnection, q: Query, covered: Any, compiled: Compiled, a: Entity, b: Entity, together: int, notes: tuple[Note, ...]) -> Result | Unanswered:
     """Two players who never met in scope: whichever of them has no games
     at all is the missing fact, and the relation says so; otherwise the
     Result holds no meetings, how many games they shared as teammates and,

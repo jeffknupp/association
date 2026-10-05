@@ -26,7 +26,6 @@ import duckdb
 
 from association.nba.coverage import COVERAGE, REGULAR_SEASON
 from association.nba.season import current_season, eastern_day_utc_range
-from association.query.answer import Reply
 from association.query.calendar import parse_alignment, parse_situation
 from association.query.conditions import _game_scope, _Scope, box_source
 from association.query.entities import BOX_SCORES, Ambiguous, Availability, Entity, clarify, find_players, resolve_player, resolve_team, resolved_player, resolved_team, teammate_names
@@ -49,7 +48,8 @@ from association.query.player_games import (
     season_type_clause,
 )
 from association.query.reading import ConditionSpec, PeriodCondition, Scope, Unsupported, _clamp_limit, ordinal_word, period_narrowing
-from association.query.season_text import SEASON_TYPE_NAMES, season_label, season_phrase
+from association.query.result import Refusal, Unanswered
+from association.query.season_text import SEASON_TYPE_NAMES, season_phrase
 from association.query.team_games import TeamNarrowed
 
 # What the player-games relation narrows by, declared ONCE. Every template that
@@ -346,7 +346,7 @@ def span_of(span: Literal["career"] | None, season: int | None, season_type: int
     return ResolvedSpan(None, season_type, coverage.floor(season_type).season, coverage.phantom)
 
 
-def settle_ordinal_season(con: duckdb.DuckDBPyConnection, player: Entity, season_n: Any, span: ResolvedSpan) -> ResolvedSpan | Reply:
+def settle_ordinal_season(con: duckdb.DuckDBPyConnection, player: Entity, season_n: Any, span: ResolvedSpan) -> ResolvedSpan | Unanswered:
     """The span a question naming a season by its place in ``player``'s career
     ("his 18th season") actually covers: that year, with the ordinal kept so
     the answer names both. Unchanged when no ordinal was named.
@@ -366,9 +366,8 @@ def settle_ordinal_season(con: duckdb.DuckDBPyConnection, player: Entity, season
     ]
     n = int(season_n)
     if n < 1 or n > len(seasons):
-        have = f"{len(seasons)} seasons on record ({seasons[0]}-{seasons[-1]})" if seasons else "no season on record"
-        message = f"{player.name} has {have}, so there is no {ordinal_word(n)} season to answer for."
-        return Reply(data={"player": player.name, "message": message}, answer=message)
+        on_record = [seasons[0], seasons[-1]] if seasons else None
+        return Refusal(kind="no_such_season_n", facts={"player": player.name, "seasons": len(seasons), "on_record": on_record, "season_n": n}, shown={"player": player.name})
     return ResolvedSpan(seasons[n - 1], span.season_type, ordinal=n)
 
 
@@ -384,10 +383,10 @@ def _narrow_player_games(
     game_n: Any = None,
     team: Any = None,
     conditions: Sequence[ConditionSpec] = (),
-) -> Narrowed | Reply:
+) -> Narrowed | Unanswered:
     """``player``'s games in ``span``, narrowed to an opponent, a venue, a
     teammate's absence and a starter/bench half where the question named them.
-    A name that needs a clarifying question comes back as the Reply
+    A name that needs a clarifying question comes back as the :class:`~association.query.result.Clarify`
     asking it.
 
     Every narrowing here is a filter over the same set of player-games, which
@@ -426,7 +425,7 @@ def _narrow_player_games(
     )
     if team:
         own_team = team if isinstance(team, Entity) else resolved_team(con, team, season=span.season)
-        if isinstance(own_team, Reply):
+        if isinstance(own_team, Unanswered):
             return own_team
         narrowed.team = own_team
         narrowed.extra.append("pgl.team_id = ?")
@@ -437,7 +436,7 @@ def _narrow_player_games(
         # resolved here, so a clarification about the team comes back as the
         # answer either way.
         team = opponent if isinstance(opponent, Entity) else resolved_team(con, opponent, season=span.season)
-        if isinstance(team, Reply):
+        if isinstance(team, Unanswered):
             return team
         narrowed.opponent = team
         narrowed.extra.append("pgl.opponent_team_id = ?")
@@ -459,7 +458,7 @@ def _narrow_player_games(
     # and with nothing in the answer saying the other had been dropped.
     for text in teammate_names(without):
         mate = _resolved_teammate(con, text, player, span)
-        if isinstance(mate, Reply):
+        if isinstance(mate, Unanswered):
             return mate
         narrowed.add_condition(_absence_condition(con, mate, player, span, narrowed.opponent), box_source(con))
     # The general shape of the same thing (ROADMAP plan item 3): any
@@ -467,7 +466,7 @@ def _narrow_player_games(
     # George start", "vs LeBron without Durant", "in games Maxey had 20+".
     for entry in conditions:
         condition = _condition_from_slot(con, entry, player, span, narrowed.opponent)
-        if isinstance(condition, Reply):
+        if isinstance(condition, Unanswered):
             return condition
         narrowed.add_condition(condition, box_source(con))
     if game_n:
@@ -508,9 +507,9 @@ def scoped_player(
     available: Availability | tuple[Availability, ...],
     span: Any,
     season: Any,
-) -> tuple[Entity, ResolvedSpan] | Reply:
+) -> tuple[Entity, ResolvedSpan] | Unanswered:
     """The player a question is about and the seasons it covers, settled in the
-    one order that works - or the Reply asking which player was meant.
+    one order that works - or the :class:`~association.query.result.Clarify` asking which player was meant.
 
     The span comes first because it is what narrows an ambiguous name: a career
     keeps Dell Curry and this season does not. An ordinal season ("his 18th
@@ -535,10 +534,10 @@ def scoped_player(
     season_n = scope.season_n
     seasons = span_of("career" if season_n else span, None if season_n else season, player_relation_season_type(scope), table, since=scope.since, until=scope.until)
     player = resolved_player(con, scope.player, missing, available=available, season=seasons.season, through=career_end(seasons.season))
-    if isinstance(player, Reply):
+    if isinstance(player, Unanswered):
         return player
     settled = settle_ordinal_season(con, player, season_n, seasons)
-    if isinstance(settled, Reply):
+    if isinstance(settled, Unanswered):
         return settled
     return player, settled
 
@@ -612,7 +611,7 @@ def relation_window(scope: Scope) -> tuple[str, int] | None:
     return order, _clamp_limit(scope.limit, default=1)
 
 
-def _apply_period_condition(con: duckdb.DuckDBPyConnection, narrowed: Narrowed, condition: PeriodCondition) -> Reply | None:
+def _apply_period_condition(con: duckdb.DuckDBPyConnection, narrowed: Narrowed, condition: PeriodCondition) -> Unanswered | None:
     """A quarter or half used as a condition on which games count - the
     ``period_condition`` cell of :data:`RELATION_SCOPING`
     (:class:`~association.query.reading.PeriodCondition`), applied here for
@@ -629,9 +628,7 @@ def _apply_period_condition(con: duckdb.DuckDBPyConnection, narrowed: Narrowed, 
     periods, label = asked
     plays = has_table(con, "plays")
     if not plays and condition.stat in PERIOD_PLAYS_COLUMNS:
-        noun = STAT_LABELS.get(condition.stat, condition.stat)
-        message = f"Games with {condition.threshold}+ {noun}s in the {label} cannot be picked out here: a period's {noun}s are rebuilt from play-by-play, and this warehouse holds none."
-        return Reply(data={"message": message}, answer=message)
+        return Refusal(kind="period_condition_needs_plays", facts={"threshold": condition.threshold, "stat": condition.stat, "period": label})
     noun = STAT_LABELS.get(condition.stat, condition.stat)
     # Said outright either way, so the reading is visible and the other is
     # one word away: "exactly 1 3-pointer" against "1+ 3-pointers".
@@ -672,7 +669,7 @@ def scoped_games(
     measures: list[MeasureFilter],
     date: str | None = None,
     team: Any = None,
-) -> Narrowed | Reply:
+) -> Narrowed | Unanswered:
     """``player``'s games in ``span`` under every row-level narrowing the
     question carries: opponent, venue, an absent teammate, a starter/bench
     half, a game of each playoff series, lines on box-score columns, one date,
@@ -732,7 +729,7 @@ def scoped_games(
         team=team,
         conditions=scope.conditions,
     )
-    if isinstance(narrowed, Reply):
+    if isinstance(narrowed, Unanswered):
         return narrowed
     narrow_measures(narrowed, measures)
     if date:
@@ -768,7 +765,7 @@ POSITION_CODES: dict[str, list[str]] = {"G": ["G", "PG", "SG", "GF"], "F": ["F",
 """
 
 
-def league_games(con: duckdb.DuckDBPyConnection, span: ResolvedSpan, scope: Scope, *, position: str | None) -> Narrowed | Reply:
+def league_games(con: duckdb.DuckDBPyConnection, span: ResolvedSpan, scope: Scope, *, position: str | None) -> Narrowed | Unanswered:
     """Every player's games in ``span`` - the league-wide read a question with
     no player subject narrows the same way one player's games are: an
     opponent, a venue, a team's roster, lines on box-score columns and the
@@ -801,13 +798,13 @@ def league_games(con: duckdb.DuckDBPyConnection, span: ResolvedSpan, scope: Scop
     narrowed.narrow("pgl.player_name IS NOT NULL")
     if scope.opponent and scope.opponent.strip():
         team = resolved_team(con, scope.opponent, season=span.season)
-        if isinstance(team, Reply):
+        if isinstance(team, Unanswered):
             return team
         narrowed.opponent = team
         narrowed.narrow("pgl.opponent_team_id = ?", team.id)
     if scope.team and scope.team.strip():
         team = resolved_team(con, scope.team, season=span.season)
-        if isinstance(team, Reply):
+        if isinstance(team, Unanswered):
             return team
         narrowed.team = team
         narrowed.narrow("pgl.team_id = ?", team.id)
@@ -850,7 +847,7 @@ def condition_player(
     team: Entity | None = None,
     measures: list[MeasureFilter] | None = None,
     opponent: Entity | None = None,
-) -> tuple[Entity, Narrowed] | Reply:
+) -> tuple[Entity, Narrowed] | Unanswered:
     """The player a condition template is about, and his games in
     ``condition_scope`` under the question's row-level narrowings, read off
     ``scope``: for the templates that group a player's games by a condition
@@ -879,11 +876,11 @@ def condition_player(
        beside it. The template's own ``_Scope`` is ``condition_scope``.
     """
     subject = scoped_player(con, scope, missing, table="player_game_log", available=BOX_SCORES, span=None if condition_scope.season else "career", season=condition_scope.season)
-    if isinstance(subject, Reply):
+    if isinstance(subject, Unanswered):
         return subject
     player, span = subject
     narrowed = scoped_games(con, player, span, scope, opponent=scope.opponent if opponent is None else opponent, measures=measures or [])
-    if isinstance(narrowed, Reply):
+    if isinstance(narrowed, Unanswered):
         return narrowed
     if team is not None:
         narrowed.narrow("pgl.team_id = ?", team.id)
@@ -927,7 +924,7 @@ def _teammates_among(con: duckdb.DuckDBPyConnection, candidates: list[Entity], p
     return [c for c in candidates if c.id in have]
 
 
-def _condition_from_slot(con: duckdb.DuckDBPyConnection, entry: ConditionSpec, player: Entity, span: ResolvedSpan, opponent: Entity | None = None) -> Condition | Reply:
+def _condition_from_slot(con: duckdb.DuckDBPyConnection, entry: ConditionSpec, player: Entity, span: ResolvedSpan, opponent: Entity | None = None) -> Condition | Unanswered:
     """One ``conditions`` entry - a :class:`~association.query.reading.ConditionSpec`:
     a player, his side (``"own"`` or ``"opponent"``), a predicate, and the
     line a ``reached`` one names - as a
@@ -961,7 +958,7 @@ def _condition_from_slot(con: duckdb.DuckDBPyConnection, entry: ConditionSpec, p
             return _absence_condition(con, found, player, span, opponent)
     else:
         found = resolved_player(con, entry.player, f"no player named {entry.player!r}", available=BOX_SCORES, season=span.season, through=career_end(span.season))
-    if isinstance(found, Reply):
+    if isinstance(found, Unanswered):
         return found
     line: tuple[str, str, int, str] | None = None
     if predicate == "reached":
@@ -999,7 +996,7 @@ def _on_team_in_span(con: duckdb.DuckDBPyConnection, mate: Entity, team: Entity,
     return row is not None
 
 
-def _resolved_teammate(con: duckdb.DuckDBPyConnection, text: Any, player: Entity, span: ResolvedSpan) -> Entity | Reply:
+def _resolved_teammate(con: duckdb.DuckDBPyConnection, text: Any, player: Entity, span: ResolvedSpan) -> Entity | Unanswered:
     """The teammate a "without" names. "Without curry" is six players by name
     and at most two by roster, so an ambiguous name is narrowed to the ones who
     shared a team with ``player`` in the span before anything is asked.
@@ -1035,14 +1032,15 @@ def _resolved_teammate(con: duckdb.DuckDBPyConnection, text: Any, player: Entity
             # Each of them shared his team in the span, so none is counted away.
             return clarify(text, [c.name for c in shared], active=len(shared))
         if not shared:
-            message = f"No player matching {text!r} was {player.name}'s teammate {span.during()}."
-            return Reply(data={"unmatched": text, "candidates": [c.name for c in candidates]}, answer=message)
+            return Refusal(
+                kind="not_a_teammate", facts={"asked": text, "player": player.name, "during": span.during()}, shown={"unmatched": text, "candidates": [c.name for c in candidates]}, under=()
+            )
         resolved = shared[0]
     if not isinstance(resolved, Entity):
         # Nothing by that name and no single near spelling (resolve_player
         # already reads one): a suggestion, or a refusal.
         found = resolved_player(con, text, available=BOX_SCORES)
-        if isinstance(found, Reply):
+        if isinstance(found, Unanswered):
             return found
         resolved = found
     if resolved.id == player.id:
@@ -1050,56 +1048,34 @@ def _resolved_teammate(con: duckdb.DuckDBPyConnection, text: Any, player: Entity
     return resolved
 
 
-def no_narrowed_games(con: duckdb.DuckDBPyConnection, player: Entity, span: ResolvedSpan, narrowed: Narrowed, *, rebuilt: bool = False) -> str:
+def no_narrowed_games(con: duckdb.DuckDBPyConnection, player: Entity, span: ResolvedSpan, narrowed: Narrowed, *, rebuilt: bool = False) -> Refusal:
     """Why a narrowed question found no games, naming the fact that is really
     missing - his games in that span, the teammate, the match, or an empty box
-    score. They are different sentences, and "X has no games" said of a player
+    score. They are different causes, and "X has no games" said of a player
     who simply never met that opponent - or whose games are every one of
     them there, with ESPN's box score served empty - sends the reader to look
-    in the wrong place.
+    in the wrong place. Returned as the typed
+    :class:`~association.query.result.Refusal` with the facts its sentence
+    is made of; the sayer words it (``compose.say.refusal_phrase``), and a
+    caller that answers with it says what the page shows beside it
+    (``shown``).
 
     ``rebuilt`` has to match whatever the caller's own query used to decide a
     played game: with it, a game reconstructed from play-by-play already counts
     as recorded, so what is left over here is genuinely unrecorded, not merely
     unread. Passing the wrong value would either call a rebuilt game "empty" or
     call a truly empty one "recorded".
-    """
-    # At call time: the sayer phrases these words once (compose.say), and
-    # compose imports this module.
-    from association.query.compose.say import count_games, defaulted_season_note
 
+    .. versionchanged:: 5.0.0
+       Returns the cause and its facts, not the sentence.
+    """
     if narrowed.date:
         # One named day: the rest of his career is not the fact that is missing.
-        return f"No {span.kind} game on {narrowed.date} found for {player.name}{narrowed.filters(dated=False)}."
+        return Refusal(kind="no_game_on_date", facts={"player": player.name, "kind": span.kind, "date": narrowed.date, "narrowing": narrowed.filters(dated=False)}, shown={})
     where, params = narrowed.clauses(narrowed=False, rebuilt=rebuilt)
     total, first, last = con.execute(f"SELECT COUNT(*), MIN(pgl.season), MAX(pgl.season) {_PLAYER_GAMES} WHERE {where}", params).fetchone() or (0, None, None)
     if not total:
-        # Before saying his games do not exist, check whether they do and ESPN
-        # simply served no box score for them - the mirror-image bug AGENTS.md
-        # records, in its own shape: a refusal that is confident and names the
-        # wrong missing fact (the season, rather than the box scores). Every
-        # Chicago and New Orleans game from 2013 to 2018 is one of these, and a
-        # player whose games in the span are entirely such games has none that
-        # pass the guard above - which used to read as "he has no games at all".
-        empty_where, empty_params = narrowed.clauses(narrowed=False, recorded=False, rebuilt=rebuilt)
-        empty_total, empty_first, empty_last = con.execute(f"SELECT COUNT(*), MIN(pgl.season), MAX(pgl.season) {_PLAYER_GAMES} WHERE {empty_where}", empty_params).fetchone() or (0, None, None)
-        if empty_total:
-            return f"{player.name} played {count_games(empty_total)} {span.during(empty_first, empty_last)}, but the box score is empty for all of them - ESPN served no minutes or stats for any."
-        if span.career:
-            return f"{player.name} has no {span.kind} box scores in the warehouse, which begin with the {season_label(span.first)} season."
-        message = f"No {span.during()[len('in the ') :]} games found for {player.name}."
-        if span.defaulted:
-            # The season was never named - the question asked about "now", and
-            # a retired player's "now" is empty. Redirecting to his own range
-            # beats a refusal that reads as though his career itself were the
-            # gap (issue #18); a season the question named keeps this plain,
-            # because that refusal is correct as given.
-            # At call time: the relation imports this module.
-            from association.query.season_line import season_redirect
-
-            redirect = season_redirect(con, player.id, span.season_type, "player_game_log")
-            message += defaulted_season_note(redirect, span.kind)
-        return message
+        return _no_narrowed_games_in_span(con, player, span, narrowed, rebuilt=rebuilt)
     during = span.during(first, last)
     # One at a time: with two teammates named, the fact that is missing is
     # which of them never shared a team with him, and saying "one of them did
@@ -1107,8 +1083,41 @@ def no_narrowed_games(con: duckdb.DuckDBPyConnection, player: Entity, span: Reso
     for mate, (tenure, tenure_params) in zip(narrowed.without, narrowed.tenure, strict=True):
         together = con.execute(f"SELECT COUNT(*) {_PLAYER_GAMES} WHERE {where} AND {tenure}", [*params, *tenure_params]).fetchone()
         if not together or not together[0]:
-            return f"{mate.name} was not {player.name}'s teammate in any of his {count_games(total)} {during}."
-    return f"{player.name} played {count_games(total)} {during}, none of them{narrowed.filters()}."
+            return Refusal(kind="not_teammates_then", facts={"teammate": mate.name, "player": player.name, "games": total, "during": during}, shown={})
+    return Refusal(kind="none_matched", facts={"player": player.name, "games": total, "during": during, "narrowing": narrowed.filters()}, shown={})
+
+
+def _no_narrowed_games_in_span(con: duckdb.DuckDBPyConnection, player: Entity, span: ResolvedSpan, narrowed: Narrowed, *, rebuilt: bool) -> Refusal:
+    """:func:`no_narrowed_games` where the span itself holds none of his
+    games with a box score: every one of them served empty, no box score
+    at all in a career, or none in the season - redirected to his own
+    range where the season was never named."""
+    # Before saying his games do not exist, check whether they do and ESPN
+    # simply served no box score for them - the mirror-image bug AGENTS.md
+    # records, in its own shape: a refusal that is confident and names the
+    # wrong missing fact (the season, rather than the box scores). Every
+    # Chicago and New Orleans game from 2013 to 2018 is one of these, and a
+    # player whose games in the span are entirely such games has none that
+    # pass the guard above - which used to read as "he has no games at all".
+    empty_where, empty_params = narrowed.clauses(narrowed=False, recorded=False, rebuilt=rebuilt)
+    empty_total, empty_first, empty_last = con.execute(f"SELECT COUNT(*), MIN(pgl.season), MAX(pgl.season) {_PLAYER_GAMES} WHERE {empty_where}", empty_params).fetchone() or (0, None, None)
+    if empty_total:
+        return Refusal(kind="box_scores_empty", facts={"player": player.name, "games": empty_total, "during": span.during(empty_first, empty_last)}, shown={})
+    if span.career:
+        return Refusal(kind="no_box_scores", facts={"player": player.name, "kind": span.kind, "first": span.first}, shown={})
+    redirect = None
+    if span.defaulted:
+        # The season was never named - the question asked about "now", and
+        # a retired player's "now" is empty. Redirecting to his own range
+        # beats a refusal that reads as though his career itself were the
+        # gap (issue #18); a season the question named keeps this plain,
+        # because that refusal is correct as given.
+        # At call time: the relation imports this module.
+        from association.query.season_line import season_redirect
+
+        found = season_redirect(con, player.id, span.season_type, "player_game_log")
+        redirect = list(found) if found is not None else None
+    return Refusal(kind="no_games_in_span", facts={"player": player.name, "span": span.during()[len("in the ") :], "kind": span.kind, "redirect": redirect}, shown={})
 
 
 def box_score_notes_read(
@@ -1182,13 +1191,17 @@ def where_in(scope: _Scope) -> str:
     return f"in the {scope.label()}" if scope.season is not None else f"in any {scope.kind} on record ({scope.first} onward)"
 
 
-def no_games(con: duckdb.DuckDBPyConnection, player: Entity, scope: _Scope, team: Entity | None) -> Reply:
-    """Nothing to report for a player, saying which fact is missing.
+def no_games(con: duckdb.DuckDBPyConnection, player: Entity, scope: _Scope, team: Entity | None) -> Refusal:
+    """Nothing to report for a player, naming which fact is missing.
 
     Not the season: check_coverage has already refused any season the tables
     do not reach. What is left is the player - either no box score lists him
     at all, or the ones that do are all games he sat out, and those are
-    different sentences."""
+    different causes (``no_player_games``, ``listed_not_played``).
+
+    .. versionchanged:: 5.0.0
+       Returns the cause and its facts, not the sentence.
+    """
     params: dict[str, Any] = {**scope.params(), "player": player.id}
     where = f"pbs.athlete_id = $player AND {scope.where('pbs')}"
     if team is not None:
@@ -1196,13 +1209,9 @@ def no_games(con: duckdb.DuckDBPyConnection, player: Entity, scope: _Scope, team
         params["team"] = team.id
     listed = con.execute(f"SELECT COUNT(*) FROM player_box_stats pbs WHERE {where}", params).fetchone()
     count = int(listed[0]) if listed else 0
-    for_team = f" for the {team.name}" if team else ""
-    if count:
-        which = "it" if count == 1 else "any of them"
-        message = f"{player.name} was listed in {count} box score{'' if count == 1 else 's'}{for_team} {where_in(scope)} but did not play in {which}."
-    else:
-        message = f"{player.name} has no games{for_team} {where_in(scope)} in the warehouse."
-    return Reply(data={"player": player.name, "team": team.name if team else None, "span": scope.label(), "games": 0}, answer=message)
+    facts = {"player": player.name, "team": team.name if team else None, "where": where_in(scope), "games": count}
+    shown = {"player": player.name, "team": team.name if team else None, "span": scope.label(), "games": 0}
+    return Refusal(kind="listed_not_played" if count else "no_player_games", facts=facts, shown=shown, under=())
 
 
 def rebuilt_in_scope(con: duckdb.DuckDBPyConnection, season: int | None, season_type: int, athlete_id: str | None) -> int:

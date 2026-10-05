@@ -16,13 +16,12 @@ from typing import Any, Literal
 import duckdb
 
 from association.nba.season import current_season
-from association.query.answer import Reply
-from association.query.coverage import check_coverage
+from association.query.coverage import coverage_refusal
 from association.query.entities import Entity, resolved_team, slot_season
 from association.query.notes import Note
 from association.query.player_relation import validated_until
 from association.query.reading import Scope, Unsupported, _clamp_limit, unhonored_scoping
-from association.query.result import Grouped, Part, Result, Scalar, Span
+from association.query.result import Grouped, Part, Refusal, Result, Scalar, Span, Unanswered
 from association.query.team_metrics import DEFAULT_TEAM_LINE, TEAM_METRICS, TeamLine, TeamMetric, descending_for, ranked, resolve_team_metric
 from association.query.team_seasons import (
     BPI_CHANCES,
@@ -41,7 +40,6 @@ from association.query.team_seasons import (
 )
 
 from .core import Refused, values_of
-from .say import say_conference_refusal
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -63,10 +61,10 @@ class TeamSeasonQuery:
     shape: Literal["scalar", "grouped"] = "scalar"
 
 
-def conference_refusal(scope: Scope) -> Reply | None:
+def conference_refusal(scope: Scope) -> Unanswered | None:
     """The refusal naming the real cause, where a team slot holds a
     conference or a division rather than a team (``refusals.conference_named``,
-    said by ``compose.say.say_conference_refusal``) - None otherwise.
+    said by the sayer's ``conference_named`` phrase) - None otherwise.
 
     .. versionadded:: 5.0.0
        ``templates.teams.conference_refusal`` was this.
@@ -74,7 +72,7 @@ def conference_refusal(scope: Scope) -> Reply | None:
     from association.query.refusals import conference_named
 
     named = conference_named(scope)
-    return say_conference_refusal(named) if named is not None else None
+    return Refusal(kind="conference_named", facts={"named": named}, shown={"unanswerable": named}) if named is not None else None
 
 
 def team_season_declines(intent: str, scope: Scope, stated: frozenset[str]) -> str | None:
@@ -91,7 +89,7 @@ def team_season_declines(intent: str, scope: Scope, stated: frozenset[str]) -> s
     return f"{intent} cannot honor {ignored} - it would answer for a different span than was asked" if ignored else None
 
 
-def _team_season_subject(con: duckdb.DuckDBPyConnection, intent: str, scope: Scope, stated: frozenset[str]) -> Entity | Reply:
+def _team_season_subject(con: duckdb.DuckDBPyConnection, intent: str, scope: Scope, stated: frozenset[str]) -> Entity | Unanswered:
     """The team a one-team team-season read is about, after the checks the
     answering loop and the retired template made first, in their order: a
     narrowing the words do not state (a decline), the coverage floor, a
@@ -100,9 +98,9 @@ def _team_season_subject(con: duckdb.DuckDBPyConnection, intent: str, scope: Sco
     declined = team_season_declines(intent, scope, stated)
     if declined is not None:
         raise Unsupported(declined)
-    refused = check_coverage(intent, scope)
+    refused = coverage_refusal(intent, scope)
     if refused is not None:
-        raise Refused(Reply(data={"message": refused, "season": scope.season}, answer=refused))
+        raise Refused(refused)
     conference = conference_refusal(scope)
     if conference is not None:
         return conference
@@ -112,7 +110,7 @@ def _team_season_subject(con: duckdb.DuckDBPyConnection, intent: str, scope: Sco
 # --- the power index (team_outlook) --------------------------------------------
 
 
-def read_team_outlook(con: duckdb.DuckDBPyConnection, q: TeamSeasonQuery, *, stated: frozenset[str]) -> Result | Reply:
+def read_team_outlook(con: duckdb.DuckDBPyConnection, q: TeamSeasonQuery, *, stated: frozenset[str]) -> Result | Unanswered:
     """A team's ESPN Basketball Power Index - its rating and where it sits,
     its record and projection, its playoff and title chances, and its
     strength of schedule - from one snapshot of ``team_power_index``, as a
@@ -127,7 +125,7 @@ def read_team_outlook(con: duckdb.DuckDBPyConnection, q: TeamSeasonQuery, *, sta
     The snapshots the season holds are ``facts["snapshots"]``, so a team
     missing from the one asked for is told which exist rather than that
     there is "no data" (a Result with no parts). A
-    :class:`~association.query.answer.Reply` back is the
+    :class:`~association.query.result.Refusal` or :class:`~association.query.result.Clarify` back is the
     relation's refusal (a conference named as a team, an ambiguous team).
 
     ``templates.teams.team_outlook`` was this, with its words; its two
@@ -136,7 +134,7 @@ def read_team_outlook(con: duckdb.DuckDBPyConnection, q: TeamSeasonQuery, *, sta
     .. versionadded:: 5.0.0
     """
     team = _team_season_subject(con, "team_outlook", q.scope, stated)
-    if isinstance(team, Reply):
+    if isinstance(team, Unanswered):
         return team
     season = q.scope.season or current_season()
     postseason = (q.scope.season_type or 2) == 3
@@ -225,7 +223,7 @@ def _team_stat_metric(scope: Scope) -> str | None:
     return key
 
 
-def read_team_stat(con: duckdb.DuckDBPyConnection, q: TeamSeasonQuery, *, stated: frozenset[str]) -> Result | Reply:
+def read_team_stat(con: duckdb.DuckDBPyConnection, q: TeamSeasonQuery, *, stated: frozenset[str]) -> Result | Unanswered:
     """One team's season numbers, each with its rank in the league, from the
     team-season relation (:mod:`association.query.team_seasons`), as a
     :class:`~association.query.result.Result` on a span whose ``source`` is
@@ -235,10 +233,10 @@ def read_team_stat(con: duckdb.DuckDBPyConnection, q: TeamSeasonQuery, *, stated
     compact line (``team_metrics.DEFAULT_TEAM_LINE``) where none was; a
     record as a :class:`~association.query.result.Scalar` of wins, losses
     and the record's rank. Where nothing can be given, a Result with no
-    parts and ``facts["missing"]`` naming which fact is missing: the
-    metric's first season (``"metric_season"``), the team's line
-    (``"line"``, with whether it played the regular season) or its record
-    (``"record"``). A metric needing points allowed that ESPN's game list
+    the :class:`~association.query.result.Refusal` naming which fact is
+    missing: the metric's first season (``metric_before_first_season``),
+    the team's line (``no_team_line``, or ``missed_postseason`` for a team
+    that played the regular season) or its record (``no_team_record``). A metric needing points allowed that ESPN's game list
     cannot give is ``facts["short"]``: the team the answer names, its
     listed and played games, and how many other teams are short.
 
@@ -250,7 +248,7 @@ def read_team_stat(con: duckdb.DuckDBPyConnection, q: TeamSeasonQuery, *, stated
     """
     scope = q.scope
     team = _team_season_subject(con, "team_stat", scope, stated)
-    if isinstance(team, Reply):
+    if isinstance(team, Unanswered):
         return team
     key = _team_stat_metric(scope)
     season = scope.season or current_season()
@@ -259,25 +257,27 @@ def read_team_stat(con: duckdb.DuckDBPyConnection, q: TeamSeasonQuery, *, stated
     if key is not None and TEAM_METRICS[key].expression is None:
         return _team_stat_record(con, team, key, span)
     if key is not None and season < TEAM_METRICS[key].first_season:
-        return Result(subject=team.name, relation="team", span=span, facts={"metric": key, "missing": "metric_season"})
+        return Refusal(kind="metric_before_first_season", facts={"metric": key, "season": season}, shown={"season": season})
     lines = team_lines(values_of(con, team_lines_statement(season, season_type)), season)
     mine = next((line for line in lines if line.team == team.name), None)
     if mine is None:
         # Which fact is missing decides the sentence: a team that did not
         # reach the postseason is not a team the warehouse lacks numbers for.
         played = season_type == 3 and any(line.team == team.name for line in team_lines(values_of(con, team_lines_statement(season, 2)), season))
-        return Result(subject=team.name, relation="team", span=span, facts={"metric": key, "missing": "line", "played_regular_season": played})
+        facts = {"team": team.name, "season": season, "season_type": season_type}
+        return Refusal(kind="missed_postseason" if played else "no_team_line", facts=facts, shown={"team": team.name, "season": season, "stats": {}}, under=("headline",))
     return _team_stat_line(team, key, span, lines, mine)
 
 
-def _team_stat_record(con: duckdb.DuckDBPyConnection, team: Entity, key: str, span: Span) -> Result:
+def _team_stat_record(con: duckdb.DuckDBPyConnection, team: Entity, key: str, span: Span) -> Result | Refusal:
     """A record metric: the team's record and where it ranks among the
     league's, from the standings (a tally of the games for a postseason)."""
     assert span.season is not None and span.season_type is not None
     records = team_records(values_of(con, team_records_statement(span.season, span.season_type)))
     mine = next((r for r in records if r.team == team.name), None)
     if mine is None:
-        return Result(subject=team.name, relation="team", span=span, facts={"metric": key, "missing": "record"})
+        facts = {"team": team.name, "season": span.season, "season_type": span.season_type}
+        return Refusal(kind="no_team_record", facts=facts, shown={"team": team.name, "season": span.season}, under=())
     rank = next(r for r, t, _ in ranked({r.team: r.win_pct for r in records}, True) if t == team.name)
     line = Scalar(games=mine.wins + mine.losses, values={"wins": mine.wins, "losses": mine.losses, "rank": rank, "of": len(records)})
     return Result(subject=team.name, relation="team", span=span, parts=(Part(body=line),), facts={"metric": key})
@@ -337,16 +337,16 @@ DEFAULT_TEAM_LEADERBOARD_LIMIT = 10
 """
 
 
-def _team_leaderboard_checks(scope: Scope, stated: frozenset[str]) -> Reply | None:
+def _team_leaderboard_checks(scope: Scope, stated: frozenset[str]) -> Unanswered | None:
     """What the answering loop and the retired template checked before
     reading, in their order: a narrowing the words do not state (a
     decline), the coverage floor, a conference or division in a team slot."""
     declined = team_season_declines("team_leaderboard", scope, stated)
     if declined is not None:
         raise Unsupported(declined)
-    refused = check_coverage("team_leaderboard", scope)
+    refused = coverage_refusal("team_leaderboard", scope)
     if refused is not None:
-        raise Refused(Reply(data={"message": refused, "season": scope.season}, answer=refused))
+        raise Refused(refused)
     return conference_refusal(scope)
 
 
@@ -361,7 +361,7 @@ def _team_leaderboard_span(scope: Scope, season: int, season_type: int) -> Span:
     return Span(season=season, season_type=season_type, first=since, last=until, source="team_seasons")
 
 
-def read_team_leaderboard(con: duckdb.DuckDBPyConnection, q: TeamSeasonQuery, *, stated: frozenset[str]) -> Result | Reply:
+def read_team_leaderboard(con: duckdb.DuckDBPyConnection, q: TeamSeasonQuery, *, stated: frozenset[str]) -> Result | Unanswered:
     """Every team ranked by one metric - of the season line
     (``team_metrics.TEAM_METRICS``) or of the standings (a record, home or
     road, or across the seasons from ``since`` on) - as a
@@ -373,9 +373,9 @@ def read_team_leaderboard(con: duckdb.DuckDBPyConnection, q: TeamSeasonQuery, *,
     count asked for (ties at the cut kept whole) and, past it, a named
     team's own row (``beyond``); ``facts["of"]`` is how many teams were
     ranked and ``facts["descending"]`` which end comes first. Where nothing
-    can be ranked, no rows and ``facts["missing"]`` naming why (no home or
-    road split in that season's standings, the metric's first season, a
-    team short of games for points allowed - ``facts["short"]``).
+    can be ranked, the :class:`~association.query.result.Refusal` naming
+    why (no home or road split in that season's standings, the metric's
+    first season, a team short of games for points allowed).
 
     ``templates.teams.team_leaderboard`` was this, with its words; its
     statements are the relation's (:mod:`association.query.team_seasons`).
@@ -396,21 +396,21 @@ def read_team_leaderboard(con: duckdb.DuckDBPyConnection, q: TeamSeasonQuery, *,
     season_type = scope.season_type or 2
     span = _team_leaderboard_span(scope, season, season_type)
     named = resolved_team(con, scope.team, season=slot_season(scope)) if scope.team and scope.team.strip() else None
-    if isinstance(named, Reply):
+    if isinstance(named, Unanswered):
         return named
     facts: dict[str, Any] = {"metric": key, "venue": scope.venue, "rank": scope.rank, "descending": descending_for(TEAM_METRICS[key], scope.rank)}
     read = _team_leaderboard_values(con, key, span, scope.venue) if TEAM_METRICS[key].expression is None else _team_leaderboard_metric(con, key, span, scope.venue)
-    if isinstance(read, dict):
-        return Result(subject="the league", relation="team", span=span, parts=(Part(body=Grouped(by="team", ranked_by=key)),), facts={**facts, **read})
+    if isinstance(read, Refusal):
+        return read
     values, rows = read
     return _team_leaderboard_ranked(span, facts, values, rows, _clamp_limit(scope.limit, default=DEFAULT_TEAM_LEADERBOARD_LIMIT), named)
 
 
-def _team_leaderboard_values(con: duckdb.DuckDBPyConnection, key: str, span: Span, venue: str | None) -> tuple[dict[str, float], dict[str, dict[str, Any]]] | dict[str, Any]:
+def _team_leaderboard_values(con: duckdb.DuckDBPyConnection, key: str, span: Span, venue: str | None) -> tuple[dict[str, float], dict[str, dict[str, Any]]] | Refusal:
     """A record metric's value per team - the win percentage, or its
     complement for the most losses - from the standings (venue-split where
     asked), or a tally of the games across a ``since``-bounded span; or why
-    there is none (``{"missing": ...}``)."""
+    there is none (a :class:`~association.query.result.Refusal`)."""
     assert span.season is not None and span.season_type is not None
     if span.first:
         if venue is not None:
@@ -420,14 +420,14 @@ def _team_leaderboard_values(con: duckdb.DuckDBPyConnection, key: str, span: Spa
         rows = values_of(con, team_venue_records_statement(span.season, span.season_type, venue))
         records = venue_records(rows, span.season_type)
         if rows and not records:
-            return {"missing": "venue_split"}
+            return Refusal(kind="no_venue_split", facts={"season": span.season}, shown={"season": span.season})
     else:
         records = team_records(values_of(con, team_records_statement(span.season, span.season_type)))
     values = {r.team: (r.win_pct if key == "record" else 1 - r.win_pct) for r in records}
     return values, {r.team: {"wins": r.wins, "losses": r.losses} for r in records}
 
 
-def _team_leaderboard_metric(con: duckdb.DuckDBPyConnection, key: str, span: Span, venue: str | None) -> tuple[dict[str, float], dict[str, dict[str, Any]]] | dict[str, Any]:
+def _team_leaderboard_metric(con: duckdb.DuckDBPyConnection, key: str, span: Span, venue: str | None) -> tuple[dict[str, float], dict[str, dict[str, Any]]] | Refusal:
     """A season-line metric's value per team, or why there is none: a span of
     seasons and a venue split are declined (team season stats have neither),
     the metric's first season and a team short of games are refused."""
@@ -439,10 +439,11 @@ def _team_leaderboard_metric(con: duckdb.DuckDBPyConnection, key: str, span: Spa
         raise Unsupported(f"team season stats have no {venue} split for {metric.label}")
     assert span.season is not None and span.season_type is not None
     if span.season < metric.first_season:
-        return {"missing": "metric_season"}
+        return Refusal(kind="metric_before_first_season", facts={"metric": key, "season": span.season}, shown={"season": span.season})
     lines = team_lines(values_of(con, team_lines_statement(span.season, span.season_type)), span.season)
     if lines and any(line.values.get(key) is None for line in lines):
-        return {"missing": "line", "short": short_of_games(key, lines)}
+        facts = {"metric": key, "season": span.season, "season_type": span.season_type, "short": short_of_games(key, lines)}
+        return Refusal(kind="short_of_games", facts=facts, shown={"season": span.season})
     values = {line.team: line.values[key] or 0.0 for line in lines}
     return values, {team: {} for team in values}
 

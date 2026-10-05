@@ -57,15 +57,15 @@ from typing import Any
 
 import duckdb
 
-from association.nba.coverage import unavailable
 from association.nba.franchises import season_name_sql
 from association.nba.season import current_season
-from association.query.answer import Reply
 from association.query.conditions import _PLAYER_GAME_TABLES, _TEAM_LINE, _longest_runs_sql, box_source, presence_games_sql
+from association.query.coverage import floor_refusal
 from association.query.entities import Entity, resolved_team
 from association.query.entities import team_named_in as team_named_in
 from association.query.player_relation import ResolvedSpan, span_of, whole_span
 from association.query.reading import DEFAULT_STREAK_LIMIT, Scope, _clamp_limit
+from association.query.result import Refusal, Unanswered
 from association.query.team_games import TeamNarrowed
 from association.query.team_games import aggregate_sql as team_aggregate_sql
 from association.query.team_games import grouped_sql as team_grouped_sql
@@ -319,7 +319,7 @@ def _resolved_team_subject(con: duckdb.DuckDBPyConnection, scope: Scope) -> Enti
         raise Unsupported("no team named")
     season: int = scope.season if scope.season is not None else current_season()
     team = resolved_team(con, team_text, season=season)
-    if isinstance(team, Reply):
+    if isinstance(team, Unanswered):
         raise Refused(team)
     return team
 
@@ -360,8 +360,7 @@ def _compile_team_season(con: duckdb.DuckDBPyConnection, q: TeamQuery, team: Ent
     column = SEASON_MEASURES[q.measure]
     found = _season_total(con, team, season, season_type, column)
     if found is None:
-        message = f"The warehouse has no {season} team totals for the {team.name}."
-        raise Refused(Reply(data={"team": team.name, "season": season}, answer=message))
+        raise Refused(Refusal(kind="no_team_totals", facts={"team": team.name, "season": season}, shown={"team": team.name, "season": season}, under=()))
     value, games = found
     note = _team_season_note(con, team, season, column) if season_type == 2 else ""
     return TeamResult(team=team, span=ResolvedSpan(season, season_type), measure=q.measure, aggregate=q.aggregate, value=value, games=games, from_season_line=True, note=note)
@@ -378,12 +377,12 @@ def _team_games_narrowed(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> tuple[
     scope = q.scope
     # The shared steps read the slot dict until they take the Scope.
     settled = scoped_team(con, scope, "no team named", span=scope.span, season=scope.season)
-    if isinstance(settled, Reply):
+    if isinstance(settled, Unanswered):
         raise Refused(settled)
     team, span = settled
     date = scope.date if scope.date is not None and len(scope.date) == 10 else None
     narrowed = narrow_team_games(con, team, span, scope, opponent=scope.opponent, date=date)
-    if isinstance(narrowed, Reply):
+    if isinstance(narrowed, Unanswered):
         raise Refused(narrowed)
     return narrowed, team, span
 
@@ -414,14 +413,14 @@ def _compile_team_games_mixed(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> T
 
     scope = q.scope
     settled = scoped_team(con, scope, "no team named", span=None, season=scope.season)
-    if isinstance(settled, Reply):
+    if isinstance(settled, Unanswered):
         raise Refused(settled)
     team, span = settled
     if span.season is None:
         raise Unsupported("a career span has no single season to read both season types within")
     limit = _clamp_limit(scope.limit, DEFAULT_GAME_LOG_LIMIT)
     mixed = _team_mixed_rows(con, team, span.season, opponent=scope.opponent, venue=scope.venue, limit=limit)
-    if isinstance(mixed, Reply):
+    if isinstance(mixed, Unanswered):
         raise Refused(mixed)
     rows, counts, narrowed_text = mixed
     scores = [(int(r["team_score"]), int(r["opponent_score"]), r["won"]) for r in rows]
@@ -746,7 +745,7 @@ def _team_coverage_tables(q: TeamQuery) -> tuple[str, ...]:
     return ("games",) if _team_narrowed(q.scope) else ("team_season_stats",)
 
 
-def team_coverage_refusal(q: TeamQuery) -> Reply | None:
+def team_coverage_refusal(q: TeamQuery) -> Refusal | None:
     """Why this team question's season is out of reach, or ``None`` - the
     team subject's counterpart of
     :func:`~association.query.coverage.check_coverage` (#197,
@@ -762,10 +761,7 @@ def team_coverage_refusal(q: TeamQuery) -> Reply | None:
     if season is None:
         return None
     season_type = q.scope.season_type or 2
-    message = unavailable(_team_coverage_tables(q), season, season_type)
-    if message is None:
-        return None
-    return Reply(data={"season": season}, answer=message)
+    return floor_refusal(_team_coverage_tables(q), season, season_type, shown={"season": season}, under=())
 
 
 def run_team(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> TeamResult:

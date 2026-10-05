@@ -18,7 +18,6 @@ from typing import Any
 
 import duckdb
 
-from association.query.answer import Reply
 from association.query.conditions import _PLAYER_GAME_TABLES, _PLAYER_LINE, _SPLIT_GROUPS, _TEAM_LINE, _season_month_order, _totals, _unseen, box_source
 from association.query.entities import Entity, optional_team
 from association.query.lines import measure_filters
@@ -26,7 +25,7 @@ from association.query.notes import Note
 from association.query.player_games import _PLAYER_GAMES, Narrowed, games_subquery
 from association.query.player_relation import condition_scope, no_games, no_narrowed_games, span_of
 from association.query.reading import SPLIT_KINDS, Scope, Unsupported, unhonored_scoping
-from association.query.result import Grouped, Narrowing, Part, Result, Span
+from association.query.result import Grouped, Narrowing, Part, Result, Span, Unanswered
 from association.query.season_text import MONTH_NAMES
 from association.query.team_relation import condition_team_no_games, team_games, team_span_label
 
@@ -162,7 +161,7 @@ def _narrowing_emptied(con: duckdb.DuckDBPyConnection, narrowed: Narrowed) -> bo
     return bool(row and row[0])
 
 
-def read_player_splits(con: duckdb.DuckDBPyConnection, q: Query, *, stated: frozenset[str]) -> Result | Reply | None:
+def read_player_splits(con: duckdb.DuckDBPyConnection, q: Query, *, stated: frozenset[str]) -> Result | Unanswered | None:
     """A player's splits - one or all four, side by side - over the
     compiler's settled player and narrowing (#228). ``None`` where the point
     is not the splits' own (a grouped record by venue or by starter on the
@@ -170,7 +169,7 @@ def read_player_splits(con: duckdb.DuckDBPyConnection, q: Query, *, stated: froz
     state (``stated``), or names a stat the line has no column for (the
     compiler's own point, said by its sentence); the template's own early
     refusals stand (a window, a home/away split beside a venue). A
-    :class:`~association.query.answer.Reply` back is the
+    :class:`~association.query.result.Refusal` or :class:`~association.query.result.Clarify` back is the
     relation's refusal.
 
     .. versionadded:: 5.0.0
@@ -186,10 +185,10 @@ def read_player_splits(con: duckdb.DuckDBPyConnection, q: Query, *, stated: froz
     except Unsupported:
         return None
     team = optional_team(con, scope.team, season=scope.season)
-    if isinstance(team, Reply):
+    if isinstance(team, Unanswered):
         return team
     opponent = optional_team(con, scope.opponent, season=scope.season)
-    if isinstance(opponent, Reply):
+    if isinstance(opponent, Unanswered):
         return opponent
     covered = condition_scope(scope.season, scope.span, scope.season_type, _PLAYER_GAME_TABLES, since=scope.since)
     compiled = compile_query(con, q)
@@ -198,7 +197,9 @@ def read_player_splits(con: duckdb.DuckDBPyConnection, q: Query, *, stated: froz
     return _player_splits(con, q, compiled, covered, team, opponent, line)
 
 
-def _player_splits(con: duckdb.DuckDBPyConnection, q: Query, compiled: Compiled, covered: Any, team: Entity | None, opponent: Entity | None, line: tuple[tuple[str, str, str], ...]) -> Result | Reply:
+def _player_splits(
+    con: duckdb.DuckDBPyConnection, q: Query, compiled: Compiled, covered: Any, team: Entity | None, opponent: Entity | None, line: tuple[tuple[str, str, str], ...]
+) -> Result | Unanswered:
     """The groups from the compiled statements, the totals and the unseen
     games over the relation's own steps (``games_subquery``), the label and
     the remarks - :func:`read_player_splits`'s tail."""
@@ -213,8 +214,8 @@ def _player_splits(con: duckdb.DuckDBPyConnection, q: Query, compiled: Compiled,
             # 43 box scores but did not play in any of them" - a confident
             # refusal naming the wrong missing fact. The relation's own
             # sentence names the narrowing.
-            message = no_narrowed_games(con, player, span, narrowed, rebuilt=box_source(con).rebuilt)
-            return Reply(data={"player": player.name, "team": team.name if team else None, "span": covered.label(), "games": 0, "message": message}, answer=message)
+            refused = no_narrowed_games(con, player, span, narrowed, rebuilt=box_source(con).rebuilt)
+            return replace(refused, shown={"player": player.name, "team": team.name if team else None, "span": covered.label(), "games": 0})
         return no_games(con, player, covered, team)
     if scope.season_n and first is not None and first == last and covered.season != first:
         # An ordinal season ("his 18th season") is not a year until the player
@@ -280,7 +281,7 @@ def _player_facts(
     }
 
 
-def read_team_splits(con: duckdb.DuckDBPyConnection, q: TeamQuery, *, stated: frozenset[str]) -> Result | Reply | None:
+def read_team_splits(con: duckdb.DuckDBPyConnection, q: TeamQuery, *, stated: frozenset[str]) -> Result | Unanswered | None:
     """A team's own splits ("76ers wins vs losses"): the team's per-game line
     by venue, by result or by month, over the team-games relation. A team has
     no starter/bench split of its own, and the narrowings only a settled
@@ -292,21 +293,21 @@ def read_team_splits(con: duckdb.DuckDBPyConnection, q: TeamQuery, *, stated: fr
 
     .. versionadded:: 5.0.0
     """
-    from association.query.coverage import check_coverage
+    from association.query.coverage import coverage_refusal
 
     scope = q.scope
     if unhonored_scoping("player_splits", scope, stated):
         return None
-    refused = check_coverage("player_splits", scope)
+    refused = coverage_refusal("player_splits", scope)
     if refused is not None:
-        return Reply(data={"message": refused, "season": scope.season}, answer=refused)
+        return refused
     _splits_refusals(scope)
     measures = measure_filters(scope.below, scope.above)
     team = optional_team(con, scope.team, season=scope.season)
-    if isinstance(team, Reply):
+    if isinstance(team, Unanswered):
         return team
     opponent = optional_team(con, scope.opponent, season=scope.season)
-    if isinstance(opponent, Reply):
+    if isinstance(opponent, Unanswered):
         return opponent
     if team is None:
         raise Unsupported("player_splits needs a player or a team")
@@ -325,7 +326,7 @@ def read_team_splits(con: duckdb.DuckDBPyConnection, q: TeamQuery, *, stated: fr
     return _team_splits(con, q, team, opponent)
 
 
-def _team_splits(con: duckdb.DuckDBPyConnection, q: TeamQuery, team: Entity, opponent: Entity | None) -> Result | Reply:
+def _team_splits(con: duckdb.DuckDBPyConnection, q: TeamQuery, team: Entity, opponent: Entity | None) -> Result | Unanswered:
     """A named team's own games, narrowed to an opponent and/or a venue the
     same way every other team-facing read narrows them, divided by each
     kind through the team compiler's ``grouped`` shape
@@ -335,7 +336,7 @@ def _team_splits(con: duckdb.DuckDBPyConnection, q: TeamQuery, team: Entity, opp
     line = _splits_line(scope.stat, _TEAM_LINE, alias="t")
     span = span_of(scope.span, scope.season, scope.season_type or 2, "games", since=scope.since, until=scope.until)
     narrowed = team_games(con, team, span, scope, opponent=opponent)
-    if isinstance(narrowed, Reply):
+    if isinstance(narrowed, Unanswered):
         return narrowed
     split, kinds = _kinds(scope.split, "t")
     # One compiled grouped read per kind, over every game in the span (the

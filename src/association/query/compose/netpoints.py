@@ -43,8 +43,7 @@ import duckdb
 
 from association.nba.netpoints import FINGERPRINT_CATEGORIES, FINGERPRINT_PARTITION
 from association.nba.season import current_season, eastern_date
-from association.query.answer import Reply
-from association.query.entities import Ambiguous, Availability, Entity, clarification, no_match, resolved_player
+from association.query.entities import Ambiguous, Availability, Entity, resolved_player, unmatched
 from association.query.fingerprint import (
     FINGERPRINT_AVAILABILITY,
     FINGERPRINT_MIN_GAME_POSSESSIONS,
@@ -63,7 +62,7 @@ from association.query.fingerprint import (
 from association.query.metrics import SEASON_TYPE_LABELS
 from association.query.notes import Note
 from association.query.reading import Scope, Unsupported, unhonored_scoping
-from association.query.result import Chart, Decided, Grouped, Part, Result, Scalar, Span, Window
+from association.query.result import Chart, Clarify, Decided, Grouped, Part, Refusal, Result, Scalar, Span, Unanswered, Window
 from association.query.season_line import Statement, season_redirect
 from association.query.season_text import SEASON_TYPE_NAMES, season_phrase
 from association.query.shotchart import resolve_chart_player
@@ -155,13 +154,13 @@ def _first(rows: list[tuple[Any, ...]]) -> tuple[Any, ...] | None:
     return rows[0] if rows else None
 
 
-def read_player_netpoints(con: duckdb.DuckDBPyConnection, q: NetPointsQuery, *, stated: frozenset[str]) -> Result | Reply | None:
+def read_player_netpoints(con: duckdb.DuckDBPyConnection, q: NetPointsQuery, *, stated: frozenset[str]) -> Result | Unanswered | None:
     """One player's NetPoints (``player_netpoints``' point): a season's line
     and the play-type split behind it, in the units the scope asks for (per
     100 possessions, or season totals where no possession count is on
     record), or one
     game's NetPoints where ``order`` names his first or most recent. A
-    :class:`~association.query.answer.Reply` back is the
+    :class:`~association.query.result.Refusal` or :class:`~association.query.result.Clarify` back is the
     relation's refusal (an ambiguous name); ``None`` where the scope sets a
     narrowing the retired template's words do not state.
 
@@ -187,7 +186,7 @@ def read_player_netpoints(con: duckdb.DuckDBPyConnection, q: NetPointsQuery, *, 
     # A named order ("recent", "first") is one game.
     order = scope.order
     player = resolved_player(con, scope.player, "player_netpoints needs a player name", available=_NETPOINTS_GAMES if order else _NETPOINTS_TABLES, season=season)
-    if isinstance(player, Reply):
+    if isinstance(player, Unanswered):
         return player
     # "NetPoints from his LAST regular season game" was answered with the
     # whole season - 43 games - because nothing scoped it. Per-game NetPoints
@@ -321,13 +320,13 @@ series colors for the same reason.
 """
 
 
-def read_fingerprint(con: duckdb.DuckDBPyConnection, q: NetPointsQuery, *, stated: frozenset[str]) -> Result | Reply | None:
+def read_fingerprint(con: duckdb.DuckDBPyConnection, q: NetPointsQuery, *, stated: frozenset[str]) -> Result | Unanswered | None:
     """One or more players' fingerprints (``fingerprint``'s point), read for
     one radar: a :class:`~association.query.result.Chart` whose marks are
     the polygons. "compare their fingerprints" arrives as ``players``, one
     name as ``player``: both draw one plot, since two polygons on shared
     axes IS the comparison. A
-    :class:`~association.query.answer.Reply` back is the
+    :class:`~association.query.result.Refusal` or :class:`~association.query.result.Clarify` back is the
     relation's own refusal - a name nobody matches, an ambiguous one, a
     date, or nothing on record to draw; ``None`` where the scope sets a
     narrowing the retired template's words do not state.
@@ -355,8 +354,7 @@ def read_fingerprint(con: duckdb.DuckDBPyConnection, q: NetPointsQuery, *, state
     # questions, so a dated request still says it cannot answer.
     order = scope.order
     if scope.date and not order:
-        message = "A fingerprint can be drawn for a player's first or most recent game of a season, but not yet for a particular date - ask for their last game instead."
-        return Reply(data={"message": message}, answer=message)
+        return Refusal(kind="fingerprint_on_a_date")
     # Settled before any name is resolved: the season is what narrows an
     # ambiguous name to the players who have a fingerprint in it.
     season = scope.season or current_season()
@@ -366,7 +364,7 @@ def read_fingerprint(con: duckdb.DuckDBPyConnection, q: NetPointsQuery, *, state
     # the season file has no season_type at all.
     availability = GAME_FINGERPRINT_AVAILABILITY if order else FINGERPRINT_AVAILABILITY
     resolved = _fingerprint_resolve_players(con, names, availability, season)
-    if isinstance(resolved, Reply):
+    if isinstance(resolved, Unanswered):
         return resolved
     players, ambiguous = resolved
     # The reading's word for it is `side`, which is what a question says
@@ -388,7 +386,7 @@ def _fingerprint_names(players_slot: tuple[str, ...], player_slot: str | None) -
     return names[:MAX_FINGERPRINT_PLAYERS]
 
 
-def _fingerprint_resolve_players(con: duckdb.DuckDBPyConnection, names: list[str], availability: Availability, season: int) -> tuple[list[Entity], list[str]] | Reply:
+def _fingerprint_resolve_players(con: duckdb.DuckDBPyConnection, names: list[str], availability: Availability, season: int) -> tuple[list[Entity], list[str]] | Unanswered:
     """Each name resolved against the table the plot will actually be drawn
     from, best-match: the players, and the other names that also matched -
     or the refusal (nobody matches) or the question back (two or more with
@@ -398,11 +396,10 @@ def _fingerprint_resolve_players(con: duckdb.DuckDBPyConnection, names: list[str
     for name in names:
         found = resolve_chart_player(con, name, availability, season)
         if found is None:
-            message = no_match(con, name)
-            return Reply(data={"message": message}, answer=message)
+            return unmatched(con, name)
         if isinstance(found, Ambiguous):
             # The question back, in the sentence every chart and template asks it with.
-            return Reply(data={"ambiguous": name, "candidates": found.candidates}, answer=clarification(name, found.candidates, active=found.active))
+            return Clarify(asked=name, candidates=tuple(found.candidates), active=found.active)
         player, also = found
         # The same name twice would draw one polygon over itself and report a
         # comparison; deduped on the RESOLVED id, since "SGA" and "Gilgeous"
@@ -424,7 +421,7 @@ def fingerprint_result(
     season_type: int = 2,
     order: str | None = None,
     min_minutes: int = FINGERPRINT_MIN_MINUTES,
-) -> Result | Reply:
+) -> Result | Unanswered:
     """Already-resolved players' fingerprints as a chart for one radar, or
     the loader's own sentence where nothing can be drawn (a season with no
     rows, players with none in it, a game nobody qualified in) - returned,
@@ -447,7 +444,7 @@ def fingerprint_result(
     try:
         fingerprints, league, games, _unit = load_for_players(con, players, ambiguous, season, view=view, scale=scale, min_minutes=min_minutes, season_type=season_type, order=order)
     except FingerprintUnavailable as exc:
-        return Reply(data={"message": str(exc)}, answer=str(exc))
+        return Refusal(kind=exc.kind, facts=exc.facts)
     drawn = {f.athlete_id for f in fingerprints}
     missing = [p.name for p in players if p.id not in drawn]
     title, subtitle, axis_note, when = fingerprint_captions(fingerprints, games, season, view=view, scale=scale, order=order, league=league, min_minutes=min_minutes)

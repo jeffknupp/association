@@ -27,11 +27,10 @@ from typing import Any
 import duckdb
 
 from association.nba.season import eastern_date
-from association.query.answer import Reply
 from association.query.notes import Note
 from association.query.player_relation import box_score_notes_read, no_narrowed_games
 from association.query.reading import Unsupported, unhonored_scoping
-from association.query.result import Narrowing, Part, Result, Rows, Scalar, Span
+from association.query.result import Narrowing, Part, Result, Rows, Scalar, Span, Unanswered
 from association.query.season_line import ADVANCED_STATS, MADE_STAT_ATTEMPTS, SHOOTING_STATS, wanted_stats
 
 from .core import _MADE_RATE, Compiled, Query, _compile_rows, compile_query, rows_of
@@ -73,7 +72,7 @@ def _player_stat_measures(q: Query) -> list[str] | None:
     return wanted if sorted(q.measures) == sorted(wanted) else None
 
 
-def read_player_stat(con: duckdb.DuckDBPyConnection, q: Query, *, stated: frozenset[str]) -> Result | Reply | None:
+def read_player_stat(con: duckdb.DuckDBPyConnection, q: Query, *, stated: frozenset[str]) -> Result | Unanswered | None:
     """``player_stat``'s narrowed point - a per-game scalar over a named
     player's box scores, where an opponent, a venue, a date, a starter half
     or a condition sent the read there - read as one line: each stat's
@@ -86,7 +85,7 @@ def read_player_stat(con: duckdb.DuckDBPyConnection, q: Query, *, stated: frozen
     rebuilt-line rule, so the games listed are games the average is over.
     ``None`` where the point is not that, or carries a narrowing the
     template's words did not state (``stated``); a
-    :class:`~association.query.answer.Reply` back is
+    :class:`~association.query.result.Refusal` or :class:`~association.query.result.Clarify` back is
     the relation's refusal.
 
     .. versionadded:: 5.0.0

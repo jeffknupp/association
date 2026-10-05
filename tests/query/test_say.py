@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from association.query.compose.say import mixed_where, note_phrase, say, say_player_log, say_team_log
 from association.query.notes import Note, collect
-from association.query.result import Narrowing, Part, Result, Rows, Span, Window
+from association.query.result import Narrowing, Part, Refusal, Result, Rows, Span, Window
 
 
 def _player_result(**changes: object) -> Result:
@@ -55,7 +55,8 @@ def test_saying_a_result_records_each_note_once_under_its_kind() -> None:
 
 
 def test_a_log_with_no_rows_says_why() -> None:
-    said = say(_player_result(parts=(), notes=(), empty="No regular season game on 2026-04-11 found for Tyrese Maxey."))
+    empty = Refusal(kind="no_game_on_date", facts={"player": "Tyrese Maxey", "kind": "regular season", "date": "2026-04-11", "narrowing": ""})
+    said = say(_player_result(parts=(), notes=(), empty=empty))
     assert said.answer == "No regular season game on 2026-04-11 found for Tyrese Maxey." and said.data["games"] == [] and said.data["message"] == said.answer
 
 
@@ -286,3 +287,43 @@ def test_a_career_ranking_says_its_pool_every_time() -> None:
     empty = say(Result(**{**result.__dict__, "parts": (Part(body=Grouped(by="player", ranked_by="total_points")),)}))
     assert empty.answer == "No player qualified for career points in the regular season. Careers that ended before 1993-94 are not in this warehouse, so this is not an all-time list."
     assert empty.data["leaders"] == [] and empty.data["pool_first_season"] == 1994
+
+
+def test_a_reads_causes_and_a_readings_are_two_closed_sets_said_by_one_table() -> None:
+    """A cause found at RUN (a fact in the warehouse) and a cause found at
+    READ (the words alone) are disjoint closed sets, so a kind says which
+    stage refused; one :class:`Refusal` type carries either, and the sayer
+    has a phrase for every kind a read can refuse by - an unknown kind is
+    refused at construction, never said as nothing."""
+    import importlib
+
+    import pytest
+
+    from association.query.reading import CAUSES
+    from association.query.result import RUN_CAUSES
+
+    # The package's ``say`` is the function; the module holds the tables.
+    sayer = importlib.import_module("association.query.compose.say")
+    assert not RUN_CAUSES & CAUSES
+    assert set(sayer._RUN_PHRASES) | set(sayer._FINGERPRINT_PHRASES) == RUN_CAUSES
+    with pytest.raises(ValueError, match="not a cause"):
+        Refusal(kind="no_such_cause")
+
+
+def test_a_refusal_is_said_from_its_facts_beside_the_pages_values() -> None:
+    """The reader hands the cause and its facts; the sentence is the sayer's,
+    and the page reads it under the keys the Refusal names, beside the
+    values it shows - none, for a relation's "no games" whose page held
+    only the counts."""
+    from association.query.result import Clarify
+
+    shown = {"team": "Boston Celtics", "span": "2026 regular season", "games": 0}
+    said = say(Refusal(kind="no_team_games", facts={"team": "Boston Celtics", "where": "in the 2026 regular season"}, shown=shown, under=()))
+    assert said.answer == "The warehouse has no games with a result for the Boston Celtics in the 2026 regular season." and said.data == shown
+    listed = say(Refusal(kind="listed_not_played", facts={"player": "Joel Embiid", "team": None, "where": "in the 2026 regular season", "games": 1}))
+    assert listed.answer == "Joel Embiid was listed in 1 box score in the 2026 regular season but did not play in it." and listed.data == {"message": listed.answer}
+    asked = say(Clarify(asked="Curry", candidates=("Seth Curry", "Stephen Curry")))
+    assert asked.answer == "'Curry' matches more than one player - did you mean Seth Curry or Stephen Curry?"
+    assert asked.data == {"ambiguous": "Curry", "candidates": ["Seth Curry", "Stephen Curry"]}
+    near = say(Clarify(asked="embid", candidates=("Joel Embiid",), why="near_spelling"))
+    assert near.answer == "No player found matching 'embid' - did you mean Joel Embiid?" and near.data == {"unmatched": "embid", "suggestions": ["Joel Embiid"]}

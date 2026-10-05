@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import math
 import re
+from collections.abc import Callable
 from pathlib import Path
 
 import duckdb
@@ -21,7 +22,7 @@ from association.nba.netpoints import FINGERPRINT_CATEGORIES
 from association.query.answer import RenderResult
 from association.query.compose.netpoints import NetPointsQuery, draw_fingerprint, fingerprint_result, read_fingerprint
 from association.query.compose.plan import STATED_SCOPING
-from association.query.compose.say import say
+from association.query.compose.say import refusal_phrase, say
 from association.query.entities import Entity, collect_name_readings
 from association.query.fingerprint import (
     FINGERPRINT_SKILLS,
@@ -34,16 +35,26 @@ from association.query.fingerprint import (
 )
 from association.query.radar import PLOT_RADIUS, VALUE_ZERO_FRACTION, Axis, Cell, Series, render_fingerprint_html
 from association.query.reading import Scope
-from association.query.result import Result
+from association.query.result import Result, Unanswered
 
 
-def _said(con: duckdb.DuckDBPyConnection, out_dir: Path, read: Result | object) -> RenderResult:
+def _said(con: duckdb.DuckDBPyConnection, out_dir: Path, read: Result | Unanswered | None) -> RenderResult:
     """A fingerprint read, drawn and said, as ``compose.answer`` does it: the
-    message and the file, or the reader's own sentence with nothing drawn."""
-    if not isinstance(read, Result):
-        return RenderResult(getattr(read, "answer", ""), None)
+    message and the file, or the reader's refusal said, with nothing drawn."""
+    if read is None:
+        return RenderResult("", None)
+    if isinstance(read, Unanswered):
+        return RenderResult(say(read).answer or "", None)
     said = say(draw_fingerprint(read, out_dir))
     return RenderResult(said.answer, said.artifacts[0] if said.artifacts else None)
+
+
+def _unavailable(load: Callable[[], object]) -> str:
+    """Why ``load`` drew nothing: the cause its ``FingerprintUnavailable``
+    carries, said as the answer says it (``compose.say.refusal_phrase``)."""
+    with pytest.raises(FingerprintUnavailable) as raised:
+        load()
+    return refusal_phrase(raised.value.kind, raised.value.facts)
 
 
 def _render(
@@ -168,8 +179,7 @@ def test_a_view_selects_skills_rather_than_columns() -> None:
 
 
 def test_an_unknown_view_is_refused_rather_than_defaulted() -> None:
-    with pytest.raises(FingerprintUnavailable, match="view must be"):
-        skills_for("offence")
+    assert _unavailable(lambda: skills_for("offence")).startswith("view must be")
 
 
 # ---------------- percentiles and the pool ----------------
@@ -219,13 +229,11 @@ def test_a_player_with_no_row_is_named_rather_than_drawn_as_zeroes(con: duckdb.D
 
 
 def test_a_season_with_no_fingerprint_rows_says_so(con: duckdb.DuckDBPyConnection) -> None:
-    with pytest.raises(FingerprintUnavailable, match="no NetPoints fingerprint data for season 1999"):
-        load_fingerprints(con, [_entity("1")], 1999)
+    assert "no NetPoints fingerprint data for season 1999" in _unavailable(lambda: load_fingerprints(con, [_entity("1")], 1999))
 
 
 def test_a_season_where_nobody_qualifies_says_so_rather_than_ranking_against_nothing(con: duckdb.DuckDBPyConnection) -> None:
-    with pytest.raises(FingerprintUnavailable, match="nothing to compare against"):
-        load_fingerprints(con, [_entity("1")], 2026, min_minutes=99999)
+    assert "nothing to compare against" in _unavailable(lambda: load_fingerprints(con, [_entity("1")], 2026, min_minutes=99999))
 
 
 def test_a_named_player_missing_from_a_populated_season_is_not_reported_as_a_missing_season(con: duckdb.DuckDBPyConnection) -> None:
@@ -236,9 +244,7 @@ def test_a_named_player_missing_from_a_populated_season_is_not_reported_as_a_mis
     best-match to Marlon Maxey (retired 1994) rather than Tyrese, who is in
     that season along with 565 others.
     """
-    with pytest.raises(FingerprintUnavailable) as raised:
-        load_fingerprints(con, [Entity(id="99", name="Ghost Player")], 2026)
-    message = str(raised.value)
+    message = _unavailable(lambda: load_fingerprints(con, [Entity(id="99", name="Ghost Player")], 2026))
     assert "Ghost Player" in message
     # The season is populated, and the message has to say so rather than
     # reading as a coverage gap.
@@ -580,15 +586,13 @@ def test_a_duplicated_possession_row_is_still_one_game(game_con: duckdb.DuckDBPy
 
 
 def test_a_player_who_did_not_play_that_season_is_named_not_drawn(game_con: duckdb.DuckDBPyConnection) -> None:
-    with pytest.raises(FingerprintUnavailable, match="Nobody"):
-        load_game_fingerprints(game_con, [Entity(id="404", name="Nobody")], 2026, order="recent")
+    assert "Nobody" in _unavailable(lambda: load_game_fingerprints(game_con, [Entity(id="404", name="Nobody")], 2026, order="recent"))
 
 
 def test_a_season_with_no_per_game_rows_says_so_rather_than_naming_the_player(game_con: duckdb.DuckDBPyConnection) -> None:
     """The two are different facts and need different sentences - the same
     distinction the season loader draws."""
-    with pytest.raises(FingerprintUnavailable, match="no per-game NetPoints fingerprint data for season 2019"):
-        load_game_fingerprints(game_con, [Entity(id="1", name="A")], 2019, order="recent")
+    assert "no per-game NetPoints fingerprint data for season 2019" in _unavailable(lambda: load_game_fingerprints(game_con, [Entity(id="1", name="A")], 2019, order="recent"))
 
 
 def test_doing_nothing_in_a_category_does_not_rank_above_everyone_else_who_did_nothing(game_con: duckdb.DuckDBPyConnection) -> None:

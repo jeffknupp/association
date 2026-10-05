@@ -17,7 +17,6 @@ from association.query.entities import (
     find_teams,
     misread_players,
     nicknames_in,
-    no_match,
     player_named_on_a_team_only_question,
     players_named_in,
     read_near_spelling,
@@ -173,7 +172,8 @@ def test_every_player_from_the_season_asked_about_is_named_however_many(johnsons
     Johnsons took shots this season, more than the five a clarification names
     by default, and cutting any of them would hide a real candidate the way
     Stephen Curry was hidden. 2026 has 14 Williamses; this names all of them."""
-    from association.query.entities import Availability, clarification
+    from association.query.compose.say import clarification
+    from association.query.entities import Availability
     from association.query.shotchart import resolve_chart_player
 
     johnsons.execute("INSERT INTO shot_chart SELECT athlete_id, 2026 FROM players WHERE athlete_id IN ('1', '2', '3', '4', '6')")
@@ -211,7 +211,7 @@ def test_a_span_keeps_anybody_with_a_row_up_to_its_last_season(johnsons: duckdb.
 
 def test_a_capped_clarification_counts_what_it_leaves_out_in_english() -> None:
     """ "(1 others also match)" was the exact phrase that hid Stephen Curry."""
-    from association.query.entities import clarification
+    from association.query.compose.say import clarification
 
     six = ["Dell Curry", "Eddy Curry", "JamesOn Curry", "Michael Curry", "Seth Curry", "Stephen Curry"]
     assert clarification("Curry", six).endswith("or Seth Curry (1 other also matches)?")
@@ -707,7 +707,7 @@ def test_a_near_spelling_of_two_players_still_asks() -> None:
     with collect_name_readings() as readings:
         assert resolve_player(con, "jolic") == NotFound(query="jolic")
     assert readings == []
-    assert no_match(con, "jolic") == "No player found matching 'jolic' - did you mean Nikola Jokic or Nikola Jovic?"
+    assert _no_match(con, "jolic") == "No player found matching 'jolic' - did you mean Nikola Jokic or Nikola Jovic?"
 
 
 def test_an_exact_match_is_unchanged_and_says_nothing(con: duckdb.DuckDBPyConnection) -> None:
@@ -726,7 +726,7 @@ def test_the_surname_backoff_still_asks(con: duckdb.DuckDBPyConnection) -> None:
     with collect_name_readings() as readings:
         assert resolve_player(con, "Jemel Embiid") == NotFound(query="Jemel Embiid")
     assert readings == []
-    assert no_match(con, "Jemel Embiid") == "No player found matching 'Jemel Embiid' - did you mean Joel Embiid?"
+    assert _no_match(con, "Jemel Embiid") == "No player found matching 'Jemel Embiid' - did you mean Joel Embiid?"
 
 
 def test_a_team_name_is_not_read_as_a_near_spelling() -> None:
@@ -751,11 +751,11 @@ def test_a_chart_reads_a_single_near_spelling_the_same_way(con: duckdb.DuckDBPyC
 
 
 def test_no_match_names_the_near_miss(con: duckdb.DuckDBPyConnection) -> None:
-    assert no_match(con, "Jemel Embiid") == "No player found matching 'Jemel Embiid' - did you mean Joel Embiid?"
+    assert _no_match(con, "Jemel Embiid") == "No player found matching 'Jemel Embiid' - did you mean Joel Embiid?"
 
 
 def test_no_match_says_only_that_when_nothing_is_near(con: duckdb.DuckDBPyConnection) -> None:
-    assert no_match(con, "asdf qwerty") == "No player found matching 'asdf qwerty'."
+    assert _no_match(con, "asdf qwerty") == "No player found matching 'asdf qwerty'."
 
 
 # ---------------- players the router dropped ----------------
@@ -1281,3 +1281,13 @@ def test_a_team_named_before_the_player_is_not_his_tenure(scope_con: duckdb.Duck
     tenure: dict[str, Any] = {"player": "Alperen Sengun", "stat": "points", "season": 2026}
     _scope(scope_con, "sengun stats as a starter for the celtics", tenure, reads_player=True, restore_team=True)
     assert tenure["own_team"] == "Boston Celtics"
+
+
+def _no_match(con: duckdb.DuckDBPyConnection, text: str) -> str:
+    """A name nothing matched, as the answer says it: the outcome
+    :func:`~association.query.entities.unmatched` returns, worded by the
+    sayer."""
+    from association.query.compose.say import say
+    from association.query.entities import unmatched
+
+    return say(unmatched(con, text)).answer or ""

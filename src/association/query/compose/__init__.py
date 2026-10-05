@@ -40,9 +40,9 @@ from typing import TYPE_CHECKING, Any
 import duckdb
 
 from association.query.answer import AnswerContext, Reply
-from association.query.coverage import check_coverage
+from association.query.coverage import coverage_refusal
 from association.query.point import TEAM_SEASON_POINTS
-from association.query.result import Result
+from association.query.result import Result, Unanswered
 
 from .core import Query, Refused, Unsupported, run
 from .counts import read_threshold_count
@@ -251,18 +251,16 @@ def answer(
     return _answer_point(ctx, reading.intent, reading.point, verdict.query, trace, declined)
 
 
-def _read_log(read: Callable[[], Result | Reply | None]) -> Reply | None:
-    """A log read and said: the relation's own refusal (a ``Reply``)
-    as it stands, a Result through the sayer, ``None`` as ``None``. A cell
-    the relation refuses while reading is the compiler's decline, as
-    ``present`` made it."""
+def _read_log(read: Callable[[], Result | Unanswered | None]) -> Reply | None:
+    """A log read and said: a Result, or the relation's own refusal or
+    question, through the sayer; ``None`` as ``None``. A cell the relation
+    refuses while reading is the compiler's decline, as ``present`` made
+    it."""
     try:
         read_log = read()
     except Unsupported as exc:
         raise Unsupported(f"relation: {exc}") from exc
-    if read_log is None or isinstance(read_log, Reply):
-        return read_log
-    return say(read_log)
+    return None if read_log is None else say(read_log)
 
 
 def _read_ported(con: duckdb.DuckDBPyConnection, intent: str, query: Query) -> Reply | None:
@@ -307,7 +305,7 @@ def _read_ported(con: duckdb.DuckDBPyConnection, intent: str, query: Query) -> R
 
 
 #: The season line's ported readers, by intent (``compose.seasons``).
-_SEASON_LINE_READERS: dict[str, Callable[..., Result | Reply | None]] = {
+_SEASON_LINE_READERS: dict[str, Callable[..., Result | Unanswered | None]] = {
     "leaderboard": read_leaderboard,
     "player_stat": read_player_line,
     "player_history": read_player_history,
@@ -328,7 +326,7 @@ def _read_season_line(con: duckdb.DuckDBPyConnection, intent: str, query: Query)
 
 #: The team shapes slice (iv) ported, by intent: each the only answer its
 #: intent has, so a decline is the planner's and a refusal the relation's.
-_PORTED_SHAPE_READERS: dict[str, Callable[..., Result | Reply | None]] = {
+_PORTED_SHAPE_READERS: dict[str, Callable[..., Result | Unanswered | None]] = {
     "head_to_head": read_head_to_head,
     "team_quarter_points": read_team_quarter_points,
     "period_leaderboard": read_period_leaderboard,
@@ -348,7 +346,7 @@ def _read_ported_shape(con: duckdb.DuckDBPyConnection, intent: str, query: Query
         raise Unsupported(str(exc)) from exc
     if read is None:
         raise Unsupported(f"{intent} has no reading of this point")
-    return read if isinstance(read, Reply) else say(read)
+    return say(read)
 
 
 def _read_ported_team(con: duckdb.DuckDBPyConnection, intent: str, query: TeamQuery) -> Reply | None:
@@ -372,7 +370,7 @@ def _read_ported_team(con: duckdb.DuckDBPyConnection, intent: str, query: TeamQu
 
 
 #: The team-season relations' ported readers, by intent (``compose.team_stats``).
-_TEAM_SEASON_READERS: dict[str, Callable[..., Result | Reply]] = {
+_TEAM_SEASON_READERS: dict[str, Callable[..., Result | Unanswered]] = {
     "team_outlook": read_team_outlook,
     "team_stat": read_team_stat,
     "team_leaderboard": read_team_leaderboard,
@@ -391,11 +389,11 @@ def _read_team_season(con: duckdb.DuckDBPyConnection, intent: str, query: Query 
         relation, shape = TEAM_SEASON_POINTS[intent]
         query = TeamSeasonQuery(scope=query.scope, relation=relation, shape=shape)
     read = _TEAM_SEASON_READERS[intent](con, query, stated=STATED_SCOPING[intent])
-    return read if isinstance(read, Reply) else say(read)
+    return say(read)
 
 
 #: The NetPoints relation's readers, by intent (``compose.netpoints``).
-_NETPOINTS_READERS: dict[str, Callable[..., Result | Reply | None]] = {
+_NETPOINTS_READERS: dict[str, Callable[..., Result | Unanswered | None]] = {
     "player_netpoints": read_player_netpoints,
     "fingerprint": read_fingerprint,
 }
@@ -410,23 +408,23 @@ def _read_netpoints(ctx: AnswerContext, intent: str, query: NetPointsQuery) -> R
     own reason, no prefix, as the template's refusal was. A chart is drawn
     to the answering loop's output directory between the read and the
     sayer (:func:`~association.query.compose.netpoints.draw_fingerprint`)."""
-    refusal = check_coverage(intent, query.scope)
+    refusal = coverage_refusal(intent, query.scope)
     if refusal is not None:
-        raise Refused(Reply(data={"message": refusal, "season": query.scope.season}, answer=refusal))
+        raise Refused(refusal)
     try:
         read = _NETPOINTS_READERS[intent](ctx.con, query, stated=STATED_SCOPING[intent])
     except Unsupported as exc:
         raise Unsupported(str(exc)) from exc
     if read is None:
         raise Unsupported(f"{intent} has no reading of this point")
-    if isinstance(read, Reply):
-        return read
+    if isinstance(read, Unanswered):
+        return say(read)
     return say(draw_fingerprint(read, ctx.out_dir) if read.chart is not None else read)
 
 
 #: The shot relation's readers, by intent (``compose.shots``): each the only
 #: answer its intent has, as its retired template was.
-_SHOT_READERS: dict[str, Callable[..., Result | Reply | None]] = {
+_SHOT_READERS: dict[str, Callable[..., Result | Unanswered | None]] = {
     "shot_chart": read_shot_chart,
     "shot_distance": read_shot_distance,
 }
@@ -444,17 +442,17 @@ def _read_shots(ctx: AnswerContext, intent: str, query: ShotQuery) -> Reply:
     reader = _SHOT_READERS.get(intent)
     if reader is None:
         raise Unsupported(f"the shot relation has no reader for {intent}")
-    refusal = check_coverage(intent, query.scope)
+    refusal = coverage_refusal(intent, query.scope)
     if refusal is not None:
-        raise Refused(Reply(data={"message": refusal, "season": query.scope.season}, answer=refusal))
+        raise Refused(refusal)
     try:
         read = reader(ctx.con, query, stated=STATED_SCOPING[intent])
     except Unsupported as exc:
         raise Unsupported(str(exc)) from exc
     if read is None:
         raise Unsupported(f"{intent} has no reading of this point")
-    if isinstance(read, Reply):
-        return read
+    if isinstance(read, Unanswered):
+        return say(read)
     return say(draw_shot_chart(read, ctx.out_dir) if read.chart is not None else read)
 
 
@@ -496,9 +494,9 @@ def _answer_point(
             result = run_team(ctx.con, query)
             return Reply(data=_team_point_data(query, result), answer=_team_sentence(query, result), artifacts=[])
         # The shared checks read the slot dict until they take the Scope.
-        refusal = check_coverage(intent, query.scope)
+        refusal = coverage_refusal(intent, query.scope)
         if refusal is not None:
-            raise Refused(Reply(data={"message": refusal, "season": query.scope.season}, answer=refusal))
+            raise Refused(refusal)
         ported = _read_ported(ctx.con, intent, query)
         if ported is not None:
             return ported
@@ -508,7 +506,7 @@ def _answer_point(
             declined(season_declined or str(exc))
         return None
     except Refused as exc:
-        return exc.result
+        return say(exc.result)
     answer_text = _sentence(query, out)
     # The page's headline (renderAnswer, web/static/index.html): the sentence
     # alone, before any note is glued on below - the same "head:" line a rows

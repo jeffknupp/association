@@ -19,10 +19,10 @@ from typing import Any
 
 import duckdb
 
-from association.query.answer import Reply
 from association.query.entities import Entity, resolved_team
 from association.query.player_relation import ResolvedSpan, apply_situation, has_table, relation_window, span_of
 from association.query.reading import Scope, Unsupported, period_narrowing
+from association.query.result import Refusal, Unanswered
 from association.query.season_text import season_phrase
 from association.query.team_games import TEAM_GAMES_SQL, TeamNarrowed
 
@@ -149,7 +149,7 @@ def team_relation_scoping(intent: str, *extra: str) -> frozenset[str]:
     return frozenset((TEAM_RELATION_SCOPING | set(extra)) - set(TEAM_RELATION_SCOPING_EXCLUDED.get(intent, {})))
 
 
-def scoped_team(con: duckdb.DuckDBPyConnection, scope: Scope, missing: str, *, span: Any, season: Any) -> tuple[Entity, ResolvedSpan] | Reply:
+def scoped_team(con: duckdb.DuckDBPyConnection, scope: Scope, missing: str, *, span: Any, season: Any) -> tuple[Entity, ResolvedSpan] | Unanswered:
     """The team a question is about and the seasons it covers - the team
     counterpart of :func:`scoped_player`. A franchise's name is a fact about a
     season (see :func:`resolved_team`: "Hornets" is New Orleans in 2008 and
@@ -165,7 +165,7 @@ def scoped_team(con: duckdb.DuckDBPyConnection, scope: Scope, missing: str, *, s
     passed rather than read, the same as ``scoped_player``'s own, so a caller
     with a reason to override them can).
 
-    Returns ``(team, span)``, or the ``Reply`` asking which team was
+    Returns ``(team, span)``, or the :class:`~association.query.result.Clarify` asking which team was
     meant. Honors ``since`` the same way :func:`scoped_player` does for a
     player - a career that starts partway through, rather than at the table's
     own floor (step 3, C4b) - and ``until`` beside it (step 3, K1): the
@@ -182,7 +182,7 @@ def scoped_team(con: duckdb.DuckDBPyConnection, scope: Scope, missing: str, *, s
     if not scope.team or not scope.team.strip():
         raise Unsupported(missing)
     team = resolved_team(con, scope.team, season=seasons.season)
-    if isinstance(team, Reply):
+    if isinstance(team, Unanswered):
         return team
     return team, seasons
 
@@ -220,7 +220,7 @@ def team_span_clause(span: ResolvedSpan) -> tuple[str, list[Any]]:
     return span.clause("tg.season")
 
 
-def team_games(con: duckdb.DuckDBPyConnection, team: Entity, span: ResolvedSpan, scope: Scope, *, opponent: Any, date: str | None = None) -> TeamNarrowed | Reply:
+def team_games(con: duckdb.DuckDBPyConnection, team: Entity, span: ResolvedSpan, scope: Scope, *, opponent: Any, date: str | None = None) -> TeamNarrowed | Unanswered:
     """``team``'s games in ``span``, narrowed to an opponent, a venue, one
     Eastern date, one game of each playoff series (``game_n``) and a window of
     the newest or oldest N (``order``/``limit``) where the question named
@@ -281,7 +281,7 @@ def team_games(con: duckdb.DuckDBPyConnection, team: Entity, span: ResolvedSpan,
     narrowed = TeamNarrowed(base=["tg.team_id = ?", "tg.season_type = ?", clause], base_params=[team.id, span.season_type, *params], team=team)
     if opponent:
         rival = opponent if isinstance(opponent, Entity) else resolved_team(con, opponent, season=span.season)
-        if isinstance(rival, Reply):
+        if isinstance(rival, Unanswered):
             return rival
         if rival.id == team.id:
             raise Unsupported("a team cannot be its own opponent")
@@ -372,7 +372,7 @@ def team_where_in(span: ResolvedSpan) -> str:
     return f"in the {team_span_label(span)}" if span.season is not None else f"in any {span.kind} on record ({span.first} onward)"
 
 
-def condition_team_no_games(con: duckdb.DuckDBPyConnection, team: Entity, span: ResolvedSpan, narrowed: TeamNarrowed) -> Reply:
+def condition_team_no_games(con: duckdb.DuckDBPyConnection, team: Entity, span: ResolvedSpan, narrowed: TeamNarrowed) -> Refusal:
     """Nothing to report for a team's own games under a condition template
     (:func:`_player_splits_team`, :func:`_record_when_team_answer`,
     :func:`_streak_team`) - which fact is missing, the team's games in this
@@ -388,12 +388,11 @@ def condition_team_no_games(con: duckdb.DuckDBPyConnection, team: Entity, span: 
     season_col = "year(tg.eastern_date)" if span.season_type == 3 else "tg.season"
     found = con.execute(f"{TEAM_GAMES_SQL} SELECT COUNT(*), MIN({season_col}), MAX({season_col}) FROM team_games tg WHERE {where}", params).fetchone()
     total, first, last = found if found else (0, None, None)
-    label = team_span_label(span, first, last)
+    shown = {"team": team.name, "span": team_span_label(span, first, last), "games": 0}
     if not total:
-        message = f"The warehouse has no games with a result for the {team.name} {team_where_in(span)}."
-        return Reply(data={"team": team.name, "span": label, "games": 0}, answer=message)
-    message = f"The {team.name} played {total:,} games {span.during(first, last, whose='all seasons on record')}, none of them{narrowed.filters()}."
-    return Reply(data={"team": team.name, "span": label, "games": 0}, answer=message)
+        return Refusal(kind="no_team_games", facts={"team": team.name, "where": team_where_in(span)}, shown=shown, under=())
+    facts = {"team": team.name, "games": total, "during": span.during(first, last, whose="all seasons on record"), "narrowing": narrowed.filters()}
+    return Refusal(kind="team_none_matched", facts=facts, shown=shown, under=())
 
 
 def league_team_narrowed(span: ResolvedSpan) -> TeamNarrowed:

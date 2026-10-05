@@ -30,6 +30,7 @@ from association.query.answer import AnswerContext, Reply
 from association.query.compose.core import Query, Refused, Unsupported, compile_query, run
 from association.query.compose.netpoints import NetPointsQuery
 from association.query.compose.plan import plan, plan_point, refusal_result
+from association.query.compose.say import say
 from association.query.compose.sentence import sentence
 from association.query.compose.shots import ShotQuery
 from association.query.compose.team import TeamQuery, run_team
@@ -473,13 +474,14 @@ def test_refused_carries_the_relations_own_wording(cx_ctx: AnswerContext) -> Non
     """A near miss the index will not settle alone ("Jemel Podziemski": a
     given name that is nobody's, beside one player's surname) is a handled
     refusal - the relation's own suggestion - not a bare "cannot answer": it
-    comes back as :class:`Refused`, carrying the template-shaped result. A
-    plain typo of one player ("Podzemski") is no longer this shape: it is read
-    as him (entities.read_near_spelling)."""
+    comes back as :class:`Refused`, carrying the question back (a
+    :class:`~association.query.result.Clarify` of near spellings), which the
+    sayer words. A plain typo of one player ("Podzemski") is no longer this
+    shape: it is read as him (entities.read_near_spelling)."""
     q = default_query("game_log", {"player": "Jemel Podziemski"})
     with pytest.raises(Refused) as excinfo:
         run(cx_ctx.con, q)
-    assert "podziemski" in excinfo.value.result.answer.lower()
+    assert "podziemski" in (say(excinfo.value.result).answer or "").lower()
 
 
 def test_a_name_nothing_resolves_to_is_unsupported_not_refused(cx_ctx: AnswerContext) -> None:

@@ -23,7 +23,7 @@ from association.query.compose.periods import _period_by_quarter, _period_log, _
 from association.query.compose.plan import STATED_SCOPING, plan, plan_point
 from association.query.compose.records import _record_when_team_result, read_record_when, read_team_record_when
 from association.query.compose.runs import _streak_league_result, _streak_league_teams_result, _streak_player_result, _streak_team_result, read_streak, read_team_streak
-from association.query.compose.say import say_period_refusal
+from association.query.compose.say import refusal_phrase
 from association.query.compose.seasons import _player_line_advanced, _player_line_career, _player_line_season, read_player_line
 from association.query.compose.shots import read_shot_chart, read_shot_distance
 from association.query.compose.splits import _player_splits, _team_splits, read_player_splits, read_team_splits
@@ -36,6 +36,7 @@ from association.query.parse import with_point
 from association.query.player_games import PERIOD_COLUMNS, PERIOD_RATES, period_distrust
 from association.query.player_relation import scoped_games, scoped_player
 from association.query.reading import SCOPING_SLOTS, Reading, Scope, unhonored_scoping
+from association.query.result import Unanswered
 from association.query.season_text import season_phrase
 from association.query.shotchart import SHOT_AVAILABILITY
 from association.query.subject import Subject
@@ -4384,7 +4385,7 @@ def test_the_relation_window_is_cut_after_the_row_filters(pg_ctx: AnswerContext)
     s = current_season()
     span = span_of("career", None, 2, "player_game_log")
     narrowed = _narrow_player_games(pg_ctx.con, Entity("10", "Brandin Podziemski"), span, opponent="Detroit Pistons", venue=None, without=None)
-    assert not isinstance(narrowed, Reply)
+    assert not isinstance(narrowed, Unanswered)
     narrowed.window = ("recent", 2)
     sql, params = aggregate_sql(narrowed, ["COUNT(*)", "AVG(pgl.points)", "MIN(g.date)"])
     row = pg_ctx.con.execute(sql, params).fetchone()
@@ -5305,7 +5306,7 @@ def test_a_rate_is_refused_where_either_of_its_columns_is() -> None:
         assert made in PERIOD_COLUMNS and attempted in PERIOD_COLUMNS
     refused = period_distrust(2002, "three_pct")
     assert refused is not None and refused["column"] == "threePointFieldGoalsMade" and refused["unseparable"]
-    assert "cannot be answered for 2002" in (say_period_refusal(refused).answer or "")
+    assert "cannot be answered for 2002" in refusal_phrase("period_untrusted", refused)
     assert period_distrust(2002, "ft_pct") is None
     assert period_distrust(SEASON, "fg_pct") is None
 
@@ -5522,10 +5523,10 @@ def test_a_career_read_sums_every_season_now_the_shot_join_needs_no_season_param
     # cross-season redirect (compose.periods._period_redirect) exercises it.
     scope = Scope.from_slots({"player": "Stephen Curry", "period": 1, "span": "career"})
     subject = scoped_player(period_ctx.con, scope, "no player named", table="player_game_log", available=SHOT_AVAILABILITY, span="career", season=None)
-    assert not isinstance(subject, Reply)
+    assert not isinstance(subject, Unanswered)
     player, span = subject
     narrowed = scoped_games(period_ctx.con, player, span, scope, opponent=None, measures=[])
-    assert not isinstance(narrowed, Reply)
+    assert not isinstance(narrowed, Unanswered)
     rows = rows_of(period_ctx.con, compile_over(period_ctx.con, Query(scope=scope, skeleton="rows", measures=[*PERIOD_COLUMNS, "opponent_name"], direction="asc"), player, span, narrowed))
     assert rows, "the old bug: a false 'no games' refusal for a player with games on record"
     assert sum(row["points"] for row in rows) == 15, "e1(6) + e2(3) + e4(3) across SEASON, plus e04(3) in 2004"

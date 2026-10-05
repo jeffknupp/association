@@ -11,24 +11,21 @@ field the Reading did not settle is not settled here either.
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
-from typing import Any
 
 from association.query.answer import Reply
-from association.query.compose.rankings import leaderboard_shot_distance_refusal
 from association.query.conditions import condition_needs_player_refusal
-from association.query.coverage import check_coverage
-from association.query.measures import PERIOD_COLUMNS, stat_measure
-from association.query.metrics import LEADERBOARD_METRICS
-from association.query.player_games import STAT_LABELS
+from association.query.coverage import coverage_refusal
+from association.query.measures import stat_measure
 from association.query.player_relation import RELATION_SCOPING_EXCLUDED, relation_scoping
 from association.query.point import TEAM_SEASON_POINTS
-from association.query.reading import CHART_INTENTS, Cause, Reading, Scope, _career_scope, ordinal_word, unhonored_scoping
-from association.query.season_line import SEASON_TOTAL_OF
+from association.query.reading import CHART_INTENTS, Cause, Reading, Scope, _career_scope, unhonored_scoping
+from association.query.result import Refusal
 from association.query.team_relation import team_relation_scoping
 
 from .core import Query, Refused, Unsupported, _check_relation_scoping
 from .netpoints import NetPointsQuery
 from .rankings import leaderboard_reads
+from .say import say, say_refusal
 from .seasons import player_compare_reads, player_history_reads, player_line_reads
 from .shots import ShotQuery
 from .team import TeamQuery
@@ -386,15 +383,15 @@ def _game_level(intent: str | None, q: Query) -> Query:
     before it re-planned it (until Phase 2, step 3, ``games_reading``, in
     ``compose.answer``).
     """
-    refusal = check_coverage(intent or "", q.scope)
+    refusal = coverage_refusal(intent or "", q.scope)
     if refusal is not None:
-        raise Refused(Reply(data={"message": refusal, "season": q.scope.season}, answer=refusal))
+        raise Refused(refusal)
     if q.group == "season":
         return replace(q, scope=_career_scope(q.scope), source="games")
     if q.group == "player" and q.subject == "everyone":
         stat = q.scope.stat
         if stat is not None and stat.strip() and stat_measure(stat) is None:
-            raise Refused(no_ranking_for(stat))
+            raise Refused(Refusal(kind="no_ranking_measure", facts={"stat": stat}, shown={"stat": stat}))
         if q.scope.rate:
             raise Unsupported("the relation cannot honor ['rate'] - it would answer for a different span than was asked")
         if q.scope.fields:
@@ -419,188 +416,33 @@ class Planned:
     refusal: Reply | None = None
 
 
-def no_ranking_for(stat: str) -> Reply:
-    """The refusal for a ranking by a stat this relation has no measure for.
+def refusal_of(cause: Cause) -> Refusal:
+    """A point reading's :class:`~association.query.reading.Cause` as the
+    :class:`~association.query.result.Refusal` it is said by: its kind and
+    facts, and what the page shows beside the sentence - the facts
+    themselves, but for the rankings' refusals, whose page held the
+    sentence as its headline too, or the floor asked for.
 
     .. versionadded:: 5.0.0
     """
-    message = f"No ranking reads {stat!r} on the player-games relation - it only ranks the box-score measures it knows, not a NetPoints or other outside figure."
-    return Reply(data={"message": message, "stat": stat}, answer=message)
-
-
-def _ranking_floor_unit(unit: str, count: int) -> Reply:
-    """The refusal for a ranking floor in a unit no ranking applies (F056:
-    "... with at least 100 attempts"). The sentence names the floor that IS
-    applied, so the question can be re-asked with it."""
-    message = f"A minimum of {count} {unit} is not a floor this ranking can apply yet - only a minimum number of games is. Ask with 'at least N games', or without the floor."
-    return Reply(data={"message": message, "floor": {"unit": unit, "count": count}}, answer=message)
-
-
-def _ranking_unit(metric: str, rate: Any) -> Reply:
-    """The refusal for a ranking in a unit the metric has no form of,
-    naming the forms THIS metric has ("who were the top 10 in defensive
-    netpoints / 90": per 90 minutes is a football unit, and nothing in the
-    warehouse is stored in it). Only the three NetPoints metrics have a
-    per-100 sibling, so a generic list of units would be the
-    refusal-with-the-wrong-cause shape. The retired leaderboard template's
-    sentence, word for word (``compose.rankings._leaderboard_no_such_rate``
-    until the point reader carried the cause)."""
-    forms = ["as a season total" if metric.startswith("total_") else "per game"]
-    if metric in SEASON_TOTAL_OF:
-        forms.append("as a season total")
-    # `netpoints_total`'s per-100 sibling is `netpoints_per_100`, not
-    # `netpoints_total_per_100`, so the suffix comes off before looking.
-    if f"{metric.removeprefix('avg_').removesuffix('_total')}_per_100" in LEADERBOARD_METRICS:
-        forms.append("per 100 possessions")
-    asked = "per 90 minutes" if "90" in str(rate) else str(rate).replace("_", " ")
-    message = f"No leaderboard ranks {metric.replace('_', ' ')} {asked} - the warehouse stores it only {' or '.join(forms)}."
-    return Reply(data={"message": message, "headline": message}, answer=message)
-
-
-#: How each shape over a line is named in its refusal, by the intent the
-#: cause carries.
-_LINE_SHAPES: dict[str, str] = {
-    "single_game_high": "a single-game high",
-    "record_when": "a record in the games over a line",
-    "threshold_count": "a count of games over a line",
-    "streak": "a streak",
-    "game_log": "keeping only the games past a number",
-}
-
-#: What the stat is for, in each shape's refusal.
-_STAT_FOR: dict[str, str] = {
-    "single_game_high": "to rank games by",
-    "record_when": "the line is on",
-    "threshold_count": "the line is on",
-    "streak": "each game has to reach",
-    "game_log": "the games have to reach it in",
-}
-
-
-#: A shape over a line by the number its games reach, for a number read
-#: with no stat.
-_REACHING: dict[str, str] = {
-    "game_log": "Keeping only the games past {}",
-    "streak": "A streak of games reaching {}",
-    "record_when": "A record in the games reaching {}",
-    "threshold_count": "A count of games reaching {}",
-}
-
-
-def _stat_words(stat: Any) -> str:
-    """A stat column as the answer names it, plural: "points", "3-pointers"."""
-    label = STAT_LABELS.get(stat)
-    return f"{label}s" if label else str(stat)
-
-
-def _cause_sentence(kind: str, facts: Any) -> str | None:
-    """The sentence each cause of a shape over a line - and the other
-    declines slices (i) and (ii) gave a user as "Nothing here answers this
-    question" (Phase 2, step 3) - is said with, naming the fact that is
-    missing; ``None`` for a kind said elsewhere."""
-    shape = _LINE_SHAPES.get(facts.get("intent", ""), "this answer")
-    sentences = {
-        "needs_stat": lambda: f"{shape.capitalize()} needs a stat {_STAT_FOR.get(facts.get('intent', ''), 'to read')}, and none was read.",
-        "unknown_stat": lambda: _unknown_stat(facts.get("intent", ""), facts["stat"], shape),
-        "needs_threshold": lambda: f"{shape.capitalize()} needs the number of {_stat_words(facts['stat'])} each game has to reach, and none was read.",
-        "threshold_needs_stat": lambda: f"{_REACHING.get(facts.get('intent', ''), 'Games reaching {}').format(facts['threshold'])} needs the stat they reach it in, and none was read.",
-        "threshold_counts_every_game": lambda: f"A threshold of {facts['threshold']} counts every game - there is no line there to keep games past.",
-        "line_names_no_stat": lambda: f"{facts['phrase']!r} names no box-score stat a game can be kept {facts['side']}.",
-        "needs_line": lambda: "A count of games across the league needs the line it counts - a stat and a number, as in '40-point games' - and none could be read from the question.",
-        "career_place_needs_player": lambda: f"The {ordinal_word(facts['season_n'])} season is a place in one player's career, and no player was named.",
-        "needs_subject": lambda: f"{shape.capitalize()} needs a player or a team to read it for, and neither was named.",
-        "team_streak_of_stat": lambda: f"A team's streak is of wins or losses - a run of games reaching a number of {_stat_words(facts['stat'])} is read for a player, not a team.",
-        "matchup_needs_two": lambda: _matchup_needs_two(list(facts["names"])),
-        "no_coach_table": lambda: COACH_REFUSAL,
-        "no_period_stat": lambda: (
-            f"A quarter or half has no per-period {facts['stat']!r} - the period's line rebuilds {', '.join(PERIOD_COLUMNS)} from the plays, "
-            "and a field goal, 3-point or free throw percentage is a ratio of those; nothing else."
-        ),
-    }
-    say = sentences.get(kind)
-    return say() if say is not None else None
-
-
-#: What a coach question is answered with, and why it is a refusal naming the
-#: source rather than one naming only the intent.
-#:
-#: No table here holds a coach - 20 base tables and 6 views, zero columns named
-#: anything like it - so a reader has nothing to find. Left to fall through,
-#: the retired SQL agent spent a slow round trip and was then free to fill the
-#: silence from its own weights, which is the failure ``check_coverage`` exists
-#: to stop: an agent with nothing to read writes a confident answer. So the
-#: reading refuses (``point._read_point``: the ``no_coach_table`` cause), and
-#: this names which fact is missing.
-#:
-#: The sentence says what it says because the obvious reading - "ESPN does not
-#: publish coaches" - was checked on 2026-09-17 and is false. ESPN serves two
-#: coach collections, and neither is usable: the league-wide one ignores the
-#: season it is asked for (1977 answers with today's staff, Doug Christie and
-#: JJ Redick among them), and the team-scoped one covers 12 of 30 teams in
-#: 1996, never names two coaches for a team-season - so no mid-season change
-#: exists in it - and is wrong about Detroit for every season sampled from
-#: 1994 to 2026. Telling somebody the source has no coaches would be the
-#: wrong-cause refusal this project keeps producing; telling them it has an
-#: unusable one is true. See DATA.md, "ESPN publishes coaches, and the
-#: collection that looks league-wide is not historical".
-COACH_REFUSAL: str = (
-    "No table here holds a coach, so nothing about one can be answered - not a record, not a tenure, not a game. "
-    "ESPN does publish coaches, but not in a form worth storing: the season-by-season list it serves ignores the season asked for and returns the current staff, "
-    "and its per-team list covers 12 of 30 teams in 1996, never shows a mid-season change, and names the wrong coach for some franchises outright. "
-    "Player and team questions are unaffected."
-)
-"""The sentence a coach question is answered with. See above.
-
-.. versionadded:: 4.0.0
-
-.. versionchanged:: 5.0.0
-   Moved from ``templates.teams``, with the ``coach`` template it was the
-   whole answer of: the reading refuses by the ``no_coach_table`` cause,
-   and :func:`refusal_result` says it.
-"""
-
-
-def _unknown_stat(intent: str, stat: Any, shape: str) -> str:
-    """The refusal for a stat with no per-game column, in the shape's words."""
-    if intent == "single_game_high":
-        return f"A single-game high cannot rank games by {stat!r} - only by a box-score stat each game has a number for."
-    if intent == "game_log":
-        return f"A game log has no per-game column for {stat!r}."
-    return f"{shape.capitalize()} cannot be read over {stat!r} - it has no per-game box-score column."
-
-
-def _matchup_needs_two(names: list[str]) -> str:
-    """A matchup's refusal for the count of players read: none, one, or more than two."""
-    if not names:
-        return "A matchup needs two players, and none was read."
-    if len(names) == 1:
-        return f"A matchup needs two players, and only {names[0]} was read."
-    return f"A matchup is between two players, and {len(names)} were read: {', '.join(names)}."
+    if cause.kind in ("shot_distance_ranking", "ranking_unit"):
+        return Refusal(kind=cause.kind, facts=cause.facts, under=("message", "headline"))
+    if cause.kind == "ranking_floor_unit":
+        return Refusal(kind=cause.kind, facts=cause.facts, shown={"floor": {"unit": cause.facts["unit"], "count": cause.facts["count"]}})
+    return Refusal(kind=cause.kind, facts=cause.facts, shown=dict(cause.facts))
 
 
 def refusal_result(cause: Cause) -> Reply:
     """The refusal a point reading's :class:`~association.query.reading.Cause`
-    is said with: the sentence and the template-shaped data the answering
-    loop hands on, one per kind in :data:`~association.query.reading.CAUSES`.
+    is said with: the sentence and the data the answering loop hands on,
+    one per kind in :data:`~association.query.reading.CAUSES`, said by the
+    sayer's one phrase table (:func:`~association.query.compose.say.refusal_phrase`).
     The reader carries the cause and never the sentence (``ROADMAP.md``,
     Phase 1, the ``read_point`` move, step 4).
 
     .. versionadded:: 5.0.0
     """
-    if cause.kind == "shot_distance_ranking":
-        # The retired leaderboard template's own refusal, naming the real
-        # cause (ISSUES.md #114).
-        return leaderboard_shot_distance_refusal()
-    if cause.kind == "no_ranking_measure":
-        return no_ranking_for(cause.facts["stat"])
-    if cause.kind == "ranking_floor_unit":
-        return _ranking_floor_unit(cause.facts["unit"], cause.facts["count"])
-    if cause.kind == "ranking_unit":
-        return _ranking_unit(cause.facts["metric"], cause.facts["rate"])
-    message = _cause_sentence(cause.kind, cause.facts)
-    if message is None:
-        raise ValueError(f"no sentence for the cause {cause.kind!r}")
-    return Reply(data={"message": message, **cause.facts}, answer=message)
+    return say_refusal(refusal_of(cause))
 
 
 def plan_point(reading: Reading) -> Planned:
@@ -624,4 +466,4 @@ def plan_point(reading: Reading) -> Planned:
     except Unsupported as exc:
         return Planned(declined=str(exc))
     except Refused as exc:
-        return Planned(refusal=exc.result)
+        return Planned(refusal=say(exc.result))

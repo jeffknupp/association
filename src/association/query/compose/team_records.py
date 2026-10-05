@@ -39,15 +39,14 @@ import duckdb
 
 from association.nba.coverage import unavailable
 from association.nba.season import current_season
-from association.query.answer import Reply
 from association.query.calendar import CalendarNarrowing, bare_month, parse_situation
 from association.query.conditions import _season_month_order
-from association.query.coverage import check_coverage
+from association.query.coverage import coverage_refusal, floor_refusal
 from association.query.entities import Entity, resolved_team, slot_season
 from association.query.notes import Note
 from association.query.player_relation import ResolvedSpan, span_of, validated_until
 from association.query.reading import Unsupported, unhonored_scoping
-from association.query.result import Grouped, Narrowing, Part, Result, Rows, Scalar, Span
+from association.query.result import Grouped, Narrowing, Part, Refusal, Result, Rows, Scalar, Span, Unanswered
 from association.query.season_line import Statement
 from association.query.season_text import MONTH_NAMES
 from association.query.team_games import TeamNarrowed, game_list_gaps_sql, season_game_counts_sql
@@ -55,7 +54,6 @@ from association.query.team_metrics import FIRST_FULL_REGULAR_SEASON, games_scop
 from association.query.team_relation import team_span_clause
 
 from .core import rows_of, values_of
-from .say import say_conference_refusal
 from .standings import read_standings_career, read_standings_season
 from .team import TeamQuery, compile_team_over
 
@@ -98,7 +96,7 @@ def _team_record_since(since: int | None, career: bool, season: int | None) -> i
     return since
 
 
-def _team_record_teams(con: duckdb.DuckDBPyConnection, scope: Any) -> tuple[Entity, Entity | None] | Reply:
+def _team_record_teams(con: duckdb.DuckDBPyConnection, scope: Any) -> tuple[Entity, Entity | None] | Unanswered:
     """The team a record is for and the opponent it is against, if any - or
     the clarifying question one of the names needs. "celtics vs bulls
     record" can land both teams in ``teams``; the first is the subject."""
@@ -107,32 +105,32 @@ def _team_record_teams(con: duckdb.DuckDBPyConnection, scope: Any) -> tuple[Enti
     if not (team_text and team_text.strip()) and listed:
         team_text, listed = listed[0], listed[1:]
     team = resolved_team(con, team_text, season=slot_season(scope))
-    if isinstance(team, Reply):
+    if isinstance(team, Unanswered):
         return team
     opponent_text = scope.opponent
     if opponent_text and opponent_text.strip():
         found = resolved_team(con, opponent_text, season=slot_season(scope))
-        if isinstance(found, Reply):
+        if isinstance(found, Unanswered):
             return found
         if found.id == team.id:
             raise Unsupported("team_record's opponent must differ from the team")
         return team, found
     for text in listed:
         found = resolved_team(con, text, season=slot_season(scope))
-        if isinstance(found, Reply):
+        if isinstance(found, Unanswered):
             return found
         if found.id != team.id:
             return team, found
     return team, None
 
 
-def read_team_record(con: duckdb.DuckDBPyConnection, q: TeamQuery, *, stated: frozenset[str]) -> Result | Reply | None:
+def read_team_record(con: duckdb.DuckDBPyConnection, q: TeamQuery, *, stated: frozenset[str]) -> Result | Unanswered | None:
     """``team_record``'s point read: which of its shapes the settled slots
     pick out - a standings season or career, a tally of the team's games, a
     table by month, or both season types together - with the refusals that
     are the record's own. ``None`` where the scope carries a narrowing its
     words do not state (the planner declines it first); a
-    :class:`~association.query.answer.Reply` back is a
+    :class:`~association.query.result.Refusal` or :class:`~association.query.result.Clarify` back is a
     refusal (a conference named as a team, a season under the game list's
     floor, the relation's own).
 
@@ -144,15 +142,15 @@ def read_team_record(con: duckdb.DuckDBPyConnection, q: TeamQuery, *, stated: fr
     scope = q.scope
     if unhonored_scoping("team_record", scope, stated):
         return None
-    refused = check_coverage("team_record", scope)
+    refused = coverage_refusal("team_record", scope)
     if refused is not None:
-        return Reply(data={"message": refused, "season": scope.season}, answer=refused)
+        return refused
     named = conference_named(scope)
     if named is not None:
-        return say_conference_refusal(named)
+        return Refusal(kind="conference_named", facts={"named": named}, shown={"unanswerable": named})
     split, month, calendar = _team_record_month_and_split(scope.split, scope.situation, scope.limit)
     teams = _team_record_teams(con, scope)
-    if isinstance(teams, Reply):
+    if isinstance(teams, Unanswered):
         return teams
     team, opponent = teams
     season_type = scope.season_type or 2
@@ -194,7 +192,7 @@ class _Asked:
     split: str | None = None
 
 
-def _route(con: duckdb.DuckDBPyConnection, q: TeamQuery, asked: _Asked, season_type: int) -> Result | Reply:
+def _route(con: duckdb.DuckDBPyConnection, q: TeamQuery, asked: _Asked, season_type: int) -> Result | Unanswered:
     """Which shape the settled slots pick out: a table by month, a tally
     since a season, the standings, or a tally of one season or every one."""
     if asked.split == "month":
@@ -323,7 +321,7 @@ def _cup_finals(con: duckdb.DuckDBPyConnection, q: TeamQuery, asked: _Asked, sea
     return [{"date": str(r["day"]), "won": bool(r["won"]), "team_score": r["team_score"], "opponent_score": r["opponent_score"]} for r in rows]
 
 
-def _games_record(con: duckdb.DuckDBPyConnection, q: TeamQuery, asked: _Asked, season: int | None, season_type: int) -> Result | Reply:
+def _games_record(con: duckdb.DuckDBPyConnection, q: TeamQuery, asked: _Asked, season: int | None, season_type: int) -> Result | Unanswered:
     """A record tallied from the game list: against one team, or in a
     postseason, for one season, since a season, or every season it holds,
     optionally in one month or calendar narrowing or in game N of each
@@ -334,9 +332,9 @@ def _games_record(con: duckdb.DuckDBPyConnection, q: TeamQuery, asked: _Asked, s
         # The game list's floor is checked where the table is read: a record
         # against a team named only in `teams` reaches here under the
         # standings' floor instead.
-        refused = unavailable(("games",), season, season_type)
+        refused = floor_refusal(("games",), season, season_type, shown={"team": asked.team.name, "season": season})
         if refused is not None:
-            return Reply(data={"team": asked.team.name, "season": season, "message": refused}, answer=refused)
+            return refused
     games, narrowed = _record_games(con, q, asked, season, season_type)
     seasons = [g["season"] for g in games]
     # One named season is trivially itself; a span's are the seasons its
@@ -394,14 +392,14 @@ def _month_rows(games: list[dict[str, Any]], season: int | None) -> list[dict[st
     return rows
 
 
-def _by_month(con: duckdb.DuckDBPyConnection, q: TeamQuery, asked: _Asked, season: int | None, season_type: int) -> Result | Reply:
+def _by_month(con: duckdb.DuckDBPyConnection, q: TeamQuery, asked: _Asked, season: int | None, season_type: int) -> Result | Unanswered:
     """The team's record broken out by calendar month, for one season or
     every season it holds: the standings have no game-level date to group a
     month from, so the game list is tallied, as for a single month."""
     if season is not None:
-        refused = unavailable(("games",), season, season_type)
+        refused = floor_refusal(("games",), season, season_type, shown={"team": asked.team.name, "season": season})
         if refused is not None:
-            return Reply(data={"team": asked.team.name, "season": season, "message": refused}, answer=refused)
+            return refused
     games, _narrowed = _record_games(con, q, asked, season, season_type, narrowed_by=False)
     shown = [g for g in games if asked.venue is None or g["venue"] == asked.venue]
     facts: dict[str, Any] = {"since": None}
@@ -442,20 +440,21 @@ def _by_month_span(con: duckdb.DuckDBPyConnection, q: TeamQuery, asked: _Asked, 
     )
 
 
-def _half(read: Result | Reply) -> tuple[int, int, Any, tuple[Note, ...], str, str]:
+def _half(read: Result | Unanswered) -> tuple[int, int, Any, tuple[Note, ...], str]:
     """One season type's half of a combined record: its wins, losses, first
-    season and remarks, and - for a half that was a refusal - any "Note:"
-    tail its answer carried."""
-    if isinstance(read, Reply):
-        answer = read.answer or ""
-        index = answer.find("Note:")
-        return int(read.data.get("wins") or 0), int(read.data.get("losses") or 0), read.data.get("first_season"), (), answer[index:].strip() if index != -1 else "", ""
+    season and remarks, and where its neutral-site games are placed - a
+    half that was a refusal or a question is no record at all. (Until the
+    refusals were typed, a refusal half's worded answer was searched for
+    wins and a "Note:" tail; none of the refusals a half can come back
+    with carries either.)"""
+    if isinstance(read, Unanswered):
+        return 0, 0, None, (), ""
     line = read.scalar
     values = line.values if line is not None else {}
     first = read.span.first if read.span.career else (read.span.season if read.span.source == "games" else None)
     # Where the half's own answer places its neutral-site games.
     placed = "tally" if read.span.source == "games" else ("career" if read.span.career else "season")
-    return int(values.get("wins") or 0), int(values.get("losses") or 0), first, read.notes, "", placed
+    return int(values.get("wins") or 0), int(values.get("losses") or 0), first, read.notes, placed
 
 
 def _combined(con: duckdb.DuckDBPyConnection, q: TeamQuery, asked: _Asked) -> Result:
@@ -465,10 +464,10 @@ def _combined(con: duckdb.DuckDBPyConnection, q: TeamQuery, asked: _Asked) -> Re
     combined total AND each type's own record and first season, never one
     type alone."""
     halves = [_half(_route(con, q, asked, season_type)) for season_type in (2, 3)]
-    (r_wins, r_losses, r_first, r_notes, r_tail, r_placed), (p_wins, p_losses, p_first, p_notes, p_tail, p_placed) = halves
+    (r_wins, r_losses, r_first, r_notes, r_placed), (p_wins, p_losses, p_first, p_notes, p_placed) = halves
     rows = (
-        {"key": 2, "wins": r_wins, "losses": r_losses, "first_season": r_first, "notes": len(r_notes), "tail": r_tail, "placed": r_placed},
-        {"key": 3, "wins": p_wins, "losses": p_losses, "first_season": p_first, "notes": len(p_notes), "tail": p_tail, "placed": p_placed},
+        {"key": 2, "wins": r_wins, "losses": r_losses, "first_season": r_first, "notes": len(r_notes), "placed": r_placed},
+        {"key": 3, "wins": p_wins, "losses": p_losses, "first_season": p_first, "notes": len(p_notes), "placed": p_placed},
     )
     total = Scalar(games=r_wins + r_losses + p_wins + p_losses, values={"wins": r_wins + p_wins, "losses": r_losses + p_losses}, how="record")
     return Result(

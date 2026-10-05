@@ -31,21 +31,20 @@ from typing import Any
 import duckdb
 
 from association.nba.franchises import season_name
-from association.query.answer import Reply
 from association.query.conditions import _PLAYER_GAME_TABLES, _names, _overlaps, _Scope, _stints, _with_without_group, presence_games
 from association.query.entities import BOX_SCORES, Entity, optional_team, resolved_player
 from association.query.notes import Note
 from association.query.player_games import _joined
 from association.query.player_relation import career_end, condition_scope
 from association.query.reading import Scope, Unsupported, unhonored_scoping
-from association.query.result import Grouped, Narrowing, Part, Result, Span
+from association.query.result import Grouped, Narrowing, Part, Refusal, Result, Span, Unanswered
 from association.query.subject import with_without_named
 
 from .core import rows_of
 from .team import TeamQuery, compile_team_presence, team_coverage_refusal
 
 
-def read_with_without(con: duckdb.DuckDBPyConnection, q: TeamQuery, *, stated: frozenset[str]) -> Result | Reply | None:
+def read_with_without(con: duckdb.DuckDBPyConnection, q: TeamQuery, *, stated: frozenset[str]) -> Result | Unanswered | None:
     """``with_without``'s point - the team relation's ``presence`` group -
     read: the teammates (``without``, ``with_player``, a ``conditions``
     role, or the one name beside a team), the subject where a player is
@@ -55,7 +54,7 @@ def read_with_without(con: duckdb.DuckDBPyConnection, q: TeamQuery, *, stated: f
     their condition, narrowed to the opponent the question named, since
     both rows narrow together (#163). ``None`` where the point is not the
     split, or carries a narrowing its words do not state (``stated``); a
-    :class:`~association.query.answer.Reply` back is an
+    :class:`~association.query.result.Refusal` or :class:`~association.query.result.Clarify` back is an
     answer the reading gives up with: the coverage floor, which player was
     meant, a teammate with no box score, a time together outside the span.
 
@@ -71,27 +70,27 @@ def read_with_without(con: duckdb.DuckDBPyConnection, q: TeamQuery, *, stated: f
     return _with_without_read(con, q.scope)
 
 
-def _with_without_read(con: duckdb.DuckDBPyConnection, scope: Scope) -> Result | Reply:
+def _with_without_read(con: duckdb.DuckDBPyConnection, scope: Scope) -> Result | Unanswered:
     """:func:`read_with_without`'s read: who, their time together, and the
     games in it - or the answer the reading gives up with."""
     mate_texts, asked_without, roles = with_without_named(scope)
     texts = list(dict.fromkeys(n.strip() for n in (scope.player, *scope.players) if n is not None and n.strip()))
     team = optional_team(con, scope.team, season=scope.season)
-    if isinstance(team, Reply):
+    if isinstance(team, Unanswered):
         return team
     if not mate_texts:
         mate_texts, texts = _with_without_infer_teammate(team, texts)
 
     covered = condition_scope(scope.season, scope.span, scope.season_type, _PLAYER_GAME_TABLES)
     resolved = _with_without_resolve(con, mate_texts, texts, covered)
-    if isinstance(resolved, Reply):
+    if isinstance(resolved, Unanswered):
         return resolved
     mates, subject = resolved
 
     named = [m.name for m in mates]
     all_of = _joined(named)
     windows = _with_without_windows(con, mates, subject, team, covered)
-    if isinstance(windows, Reply):
+    if isinstance(windows, Unanswered):
         return windows
     if not windows:
         return _with_without_empty_windows(team, subject, mates, named, all_of)
@@ -101,7 +100,7 @@ def _with_without_read(con: duckdb.DuckDBPyConnection, scope: Scope) -> Result |
     # is honest here because both rows narrow together - the split is still
     # played against missed, over the same pool (#163).
     against = optional_team(con, scope.opponent, season=scope.season)
-    if isinstance(against, Reply):
+    if isinstance(against, Unanswered):
         return against
     predicates = _with_without_predicates(con, mates, roles, covered)
     compiled = compile_team_presence(con, covered, windows, [m.id for m in mates], subject.id if subject else None, against.id if against else None, predicates)
@@ -205,7 +204,7 @@ def _with_without_predicates(con: duckdb.DuckDBPyConnection, mates: list[Entity]
     by_id: dict[str, tuple[str, tuple[str, int] | None]] = {}
     for text, role in roles.items():
         found = resolved_player(con, text, available=BOX_SCORES, season=scope.season, through=career_end(scope.season))
-        if not isinstance(found, Reply):
+        if not isinstance(found, Unanswered):
             by_id[found.id] = role
     return [by_id.get(m.id, ("played", None)) for m in mates]
 
@@ -222,21 +221,21 @@ def _with_without_infer_teammate(team: Entity | None, texts: list[str]) -> tuple
     raise Unsupported(f"with_without needs exactly one teammate, got {texts!r}")
 
 
-def _with_without_resolve(con: duckdb.DuckDBPyConnection, mate_texts: list[str], texts: list[str], scope: _Scope) -> tuple[list[Entity], Entity | None] | Reply:
+def _with_without_resolve(con: duckdb.DuckDBPyConnection, mate_texts: list[str], texts: list[str], scope: _Scope) -> tuple[list[Entity], Entity | None] | Unanswered:
     """The teammates, and the subject if one is named, resolved against the box
     scores. More than one leftover name after the teammates are matched is
     refused rather than guessed at."""
     mates: list[Entity] = []
     for text in mate_texts:
         found = resolved_player(con, text, "with_without needs a teammate", available=BOX_SCORES, season=scope.season, through=career_end(scope.season))
-        if isinstance(found, Reply):
+        if isinstance(found, Unanswered):
             return found
         if found.id not in {m.id for m in mates}:
             mates.append(found)
     subjects: list[Entity] = []
     for text in texts:
         found = resolved_player(con, text, available=BOX_SCORES, season=scope.season, through=career_end(scope.season))
-        if isinstance(found, Reply):
+        if isinstance(found, Unanswered):
             return found
         # The router often repeats a teammate in `player`; that is not a subject.
         if found.id not in {m.id for m in mates} and found.id not in {s.id for s in subjects}:
@@ -247,7 +246,7 @@ def _with_without_resolve(con: duckdb.DuckDBPyConnection, mate_texts: list[str],
     return mates, subject
 
 
-def _with_without_windows(con: duckdb.DuckDBPyConnection, mates: list[Entity], subject: Entity | None, team: Entity | None, scope: _Scope) -> list[Any] | Reply:
+def _with_without_windows(con: duckdb.DuckDBPyConnection, mates: list[Entity], subject: Entity | None, team: Entity | None, scope: _Scope) -> list[Any] | Unanswered:
     """The overlap of every teammate's (and, if named, the subject's) stints on
     the team - or the refusal naming whichever teammate has no box-score
     appearance to build a stint from at all."""
@@ -257,8 +256,7 @@ def _with_without_windows(con: duckdb.DuckDBPyConnection, mates: list[Entity], s
     if absent is not None:
         # Named, rather than reported as "one of them": which player the
         # warehouse has never seen is the fact that is missing.
-        message = f"{absent.name} has no box-score appearance in the warehouse, so there is no time on a team to count games in."
-        return Reply(data={"teammate": absent.name, "teammates": named, "groups": [], "headline": message}, answer=message)
+        return Refusal(kind="teammate_never_seen", facts={"teammate": absent.name}, shown={"teammate": absent.name, "teammates": named, "groups": []}, under=("headline",))
     windows = stints[0]
     for spells in stints[1:]:
         windows = _overlaps(windows, spells)
@@ -269,17 +267,12 @@ def _with_without_windows(con: duckdb.DuckDBPyConnection, mates: list[Entity], s
     return windows
 
 
-def _with_without_empty_windows(team: Entity | None, subject: Entity | None, mates: list[Entity], named: list[str], all_of: str) -> Reply:
+def _with_without_empty_windows(team: Entity | None, subject: Entity | None, mates: list[Entity], named: list[str], all_of: str) -> Refusal:
     """The refusal for a subject and teammates (and, if named, a team) who were
     never on the same roster together at all, as the box scores show it."""
-    on = f" the {team.name}" if team else ""
-    if subject is None and len(mates) == 1:
-        message = f"{all_of} never appeared in a box score for{on}, so there are no {team.name if team else ''} games with or without him to count."
-    else:
-        whom = _joined([subject.name, *named]) if subject is not None else all_of
-        played_phrase = "he played" if len(mates) == 1 else "they all played"
-        message = f"{whom} were never on{on or ' the same team'} together in the box scores on record, so there are no games to divide by whether {played_phrase}."
-    return Reply(data={"teammate": all_of, "teammates": named, "player": subject.name if subject else None, "groups": [], "headline": message}, answer=message)
+    facts = {"team": team.name if team else None, "player": subject.name if subject else None, "teammates": named, "all_of": all_of}
+    shown = {"teammate": all_of, "teammates": named, "player": subject.name if subject else None, "groups": []}
+    return Refusal(kind="never_together", facts=facts, shown=shown, under=("headline",))
 
 
 def _with_without_season_of_day(day: Any) -> int:
@@ -294,14 +287,11 @@ def _with_without_stint_team(w: Any, team_names: dict[str, str]) -> str:
     return start if start == end else f"{start} / {end}"
 
 
-def _with_without_empty_games(subject: Entity | None, mates: list[Entity], named: list[str], all_of: str, scope: _Scope, spell_text: str, unknown: int) -> Reply:
+def _with_without_empty_games(subject: Entity | None, mates: list[Entity], named: list[str], all_of: str, scope: _Scope, spell_text: str, unknown: int) -> Refusal:
     """The refusal for a subject and teammates whose time together, as the box
     scores show it, falls outside the scope asked about - or holds games but
-    none of them with a box score."""
-    whose = f"{all_of}'s time" if subject is None else f"The time {_joined([subject.name, *named])} spent together"
-    message = f"{whose} on the team, as the box scores show it ({spell_text}), falls outside the {scope.label() if scope.season else 'seasons on record'}."
-    if unknown:
-        # Inside the time, but every game of it without a box score - a
-        # different fact from the time missing the season altogether.
-        message = f"All {unknown} games inside {whose[0].lower() + whose[1:]} on the team in the {scope.label()} have no box score in the warehouse, so whether {all_of} played them cannot be told."
-    return Reply(data={"teammate": all_of, "teammates": named, "player": subject.name if subject else None, "groups": [], "headline": message}, answer=message)
+    none of them with a box score (a different fact from the time missing
+    the season altogether)."""
+    facts = {"player": subject.name if subject else None, "teammates": named, "all_of": all_of, "span": scope.label(), "season_named": bool(scope.season), "stints": spell_text, "unseen": unknown}
+    shown = {"teammate": all_of, "teammates": named, "player": subject.name if subject else None, "groups": []}
+    return Refusal(kind="together_outside_span", facts=facts, shown=shown, under=("headline",))

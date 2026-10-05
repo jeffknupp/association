@@ -39,6 +39,7 @@ from association.query.coverage import check_coverage
 from association.query.parse import with_point
 from association.query.player_games import REBUILT_STATS
 from association.query.reading import SPLIT_KINDS, Reading, Scope, Unsupported, unhonored_scoping
+from association.query.result import Unanswered
 from association.query.subject import Subject
 
 
@@ -1617,7 +1618,7 @@ def test_condition_player_reads_a_scope_beside_the_opponent_its_caller_resolved(
         condition_player(league.con, replace(scope, opponent="Los Angeles Lakers"), "needs a player", within),
     ]
     for read in reads:
-        assert not isinstance(read, Reply)
+        assert not isinstance(read, Unanswered)
         player, narrowed = read
         assert (player.name, narrowed.opponent) == ("Jayson Tatum", lakers)
         sql, params = games_subquery(narrowed, box_source(league.con))

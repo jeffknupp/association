@@ -22,15 +22,14 @@ from typing import Any
 import duckdb
 
 from association.nba.franchises import season_name
-from association.query.answer import Reply
 from association.query.conditions import _PLAYER_GAME_TABLES, _names, _unseen, box_source, condition_needs_player_refusal, condition_span_label
-from association.query.coverage import check_coverage
+from association.query.coverage import coverage_refusal
 from association.query.entities import optional_team
 from association.query.notes import Note
 from association.query.player_games import STAT_LABELS, THRESHOLD_STAT_COLUMNS, games_subquery
 from association.query.player_relation import condition_scope, no_games, span_of, whole_span
 from association.query.reading import Scope, Unsupported, unhonored_scoping
-from association.query.result import Grouped, Narrowing, Part, Result, Span
+from association.query.result import Grouped, Narrowing, Part, Refusal, Result, Span, Unanswered
 from association.query.team_games import TeamNarrowed
 from association.query.team_relation import condition_team_no_games, team_games, team_span_label, team_where_in
 
@@ -66,7 +65,7 @@ def _own_line(q: Query, stated: frozenset[str]) -> tuple[str, str, int] | None:
     return stat, column, threshold
 
 
-def read_record_when(con: duckdb.DuckDBPyConnection, q: Query, *, stated: frozenset[str]) -> Result | Reply | None:
+def read_record_when(con: duckdb.DuckDBPyConnection, q: Query, *, stated: frozenset[str]) -> Result | Unanswered | None:
     """``record_when``'s own point - a scalar record on the player relation
     with the one predicate ``column >= threshold`` - read as the three-row
     record (reached, fell short, all his games) with the teams' names, the
@@ -79,7 +78,7 @@ def read_record_when(con: duckdb.DuckDBPyConnection, q: Query, *, stated: frozen
     where the point is not that, or carries a narrowing the template's
     words did not state (``stated``: ``compose.plan.STATED_SCOPING``'s
     set), and the compiler's sentence answers; a
-    :class:`~association.query.answer.Reply` back is the
+    :class:`~association.query.result.Refusal` or :class:`~association.query.result.Clarify` back is the
     relation's refusal (no games in scope, an ambiguous team).
 
     .. versionadded:: 5.0.0
@@ -100,7 +99,7 @@ def read_record_when(con: duckdb.DuckDBPyConnection, q: Query, *, stated: frozen
     if compiled.player is None:
         return None
     team = optional_team(con, scope.team, season=scope.season)
-    if isinstance(team, Reply):
+    if isinstance(team, Unanswered):
         return team
     found = rows_of(con, compiled)
     if not found:
@@ -151,7 +150,7 @@ def _record_result(con: duckdb.DuckDBPyConnection, scope: Scope, covered: Any, c
     )
 
 
-def read_team_record_when(con: duckdb.DuckDBPyConnection, q: TeamQuery, *, stated: frozenset[str]) -> Result | Reply | None:
+def read_team_record_when(con: duckdb.DuckDBPyConnection, q: TeamQuery, *, stated: frozenset[str]) -> Result | Unanswered | None:
     """``record_when``'s team half: a team's record when its OWN figure for
     a stat reached a line, fell short of it, and over every game with a
     result, reached when the question names no player at all ("what was the
@@ -161,7 +160,7 @@ def read_team_record_when(con: duckdb.DuckDBPyConnection, q: TeamQuery, *, state
     (:func:`~association.query.compose.team.compile_team_line`). ``None``
     where the point carries no line or a narrowing the words do not state
     (``stated``); a
-    :class:`~association.query.answer.Reply` back is the
+    :class:`~association.query.result.Refusal` or :class:`~association.query.result.Clarify` back is the
     relation's refusal (the coverage floor, no such team, no games in the
     span or none matching its narrowing, none with a figure for the stat).
     A player-only cell, an unknown stat or one a team has no figure for is
@@ -173,19 +172,19 @@ def read_team_record_when(con: duckdb.DuckDBPyConnection, q: TeamQuery, *, state
     scope = q.scope
     if scope.threshold is None or unhonored_scoping("record_when", scope, stated):
         return None
-    refused = check_coverage("record_when", scope)
+    refused = coverage_refusal("record_when", scope)
     if refused is not None:
-        return Reply(data={"message": refused, "season": scope.season}, answer=refused)
+        return refused
     condition_needs_player_refusal("record_when", scope)
     team = optional_team(con, scope.team, season=scope.season)
-    if isinstance(team, Reply):
+    if isinstance(team, Unanswered):
         return team
     if team is None:
         raise Unsupported("record_when needs a player or a team")
     stat, threshold = _record_when_team_stat(scope.stat, scope.threshold)
     span = span_of(scope.span, scope.season, scope.season_type or 2, "games", since=scope.since, until=scope.until)
     narrowed = team_games(con, team, span, scope, opponent=scope.opponent)
-    if isinstance(narrowed, Reply):
+    if isinstance(narrowed, Unanswered):
         return narrowed
     # A split, a record, a run: read over every game in the span (common.whole_span).
     whole_span(narrowed)
@@ -216,16 +215,14 @@ def _record_when_team_stat(stat: str | None, threshold: int | None) -> tuple[str
     return stat, threshold
 
 
-def _record_when_team_no_stat(team: Any, span: Any, narrowed: TeamNarrowed, stat: str, games: int) -> Reply:
+def _record_when_team_no_stat(team: Any, span: Any, narrowed: TeamNarrowed, stat: str, games: int) -> Refusal:
     """The team played ``games`` games under this narrowing, but not one of
     them carries a figure for the stat - the empty 2013-2018 team boxes,
     reached through a line rather than a plain average. Distinct from
     ``condition_team_no_games``, which says there are no narrowed games at
     all."""
-    unit = f"{STAT_LABELS.get(stat, stat)}s"
-    which = "it" if games == 1 else "any of them"
-    message = f"The warehouse has {games} game{'' if games == 1 else 's'} with a result for the {team.name}{narrowed.filters()} {team_where_in(span)}, but no {unit} figure on record for {which}."
-    return Reply(data={"team": team.name, "span": team_span_label(span), "games": 0}, answer=message)
+    facts = {"team": team.name, "games": games, "narrowing": narrowed.filters(), "where": team_where_in(span), "stat": stat}
+    return Refusal(kind="team_stat_unrecorded", facts=facts, shown={"team": team.name, "span": team_span_label(span), "games": 0}, under=())
 
 
 def _record_when_team_result(con: duckdb.DuckDBPyConnection, span: Any, team: Any, narrowed: TeamNarrowed, stat: str, threshold: int, found: list[dict[str, Any]]) -> Result:

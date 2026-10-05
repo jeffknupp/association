@@ -929,15 +929,17 @@ model's. Two things follow, and both matter when you add a shape:
     aligned table and the notes from the Result's values. What the Result
     still carries as words, on purpose and to be cut as the sayers take it
     over: the narrowing's phrase (`Narrowing.phrase`, the relation's
-    `filters()`), the span's `years`, and the "no games" sentence
-    (`Result.empty`, from the shared `player_relation.no_narrowed_games`).
+    `filters()`) and the span's `years`. The "no games" reason is typed
+    since 2026-10-05: `Result.empty` is a `result.Refusal` (a kind from
+    `RUN_CAUSES` and its facts, from the shared
+    `player_relation.no_narrowed_games`), said by `say.refusal_phrase`.
   - **What the relation measures lives on the relation; what a sayer says
     lives in the sayer.** A player's quarter or half (`compose/periods.py`,
     2026-10-04) took its data to `query/player_games.py`
     (`PERIOD_RECONCILIATION`, `PERIOD_RATES`, `period_distrust` - why a
     season is refused, as facts - and `period_agreement_notes` - its
     caveats, as notes) and its words to `compose/say.py` (`period_noun`,
-    `period_caveat`, `say_period_refusal`). The relations' shared steps
+    `period_caveat`, and the `period_untrusted` refusal's phrase). The relations' shared steps
     went home in step 6 (2026-10-05): the player relation's to
     `query/player_relation.py`, the team relation's to
     `query/team_relation.py`, the entity settlers (`resolved_player`,
@@ -948,10 +950,13 @@ model's. Two things follow, and both matter when you add a shape:
     (`PLAYER_STAT_COLUMNS`, `HISTORY_COLUMNS`, `SHOOTING_STATS`,
     `ADVANCED_STATS`) to `season_line.py`, and the floors' declaration
     (`check_coverage`, `coverage_caveat`, `SOURCES`) to `coverage.py` -
-    under public names, with no private alias kept. A step a relation
-    calls that phrases words (`no_narrowed_games`' "no games" sentence,
-    `compose.core._box_notes`) takes the sayer's helper through a call-time import,
-    since `compose` imports the relations.
+    under public names, with no private alias kept. A relation's step
+    writes no sentence: a refusal it finds (`no_narrowed_games`, `no_games`,
+    `condition_team_no_games`, `entities.clarify`) is a typed
+    `result.Refusal` or `result.Clarify` the sayer words; the one step that
+    still phrases a note for the compiler's own sentence
+    (`compose.core._box_notes`) takes the sayer's helper through a
+    call-time import, since `compose` imports the relations.
   - **Proved identical, text and all.** 628 of 628 recorded questions and
     1,391 of 1,391 unit-test calls; the slice rewords nothing. Step 0 grew
     the private-template-import ratchet by the shared steps the moved body

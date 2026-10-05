@@ -30,6 +30,7 @@ from dataclasses import dataclass, field
 from typing import Any, Literal
 
 from association.query.notes import Note
+from association.query.reading import CAUSES
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -293,6 +294,128 @@ class Window:
     ascending: bool = False
 
 
+RUN_CAUSES: frozenset[str] = frozenset(
+    {
+        "season_out_of_reach",
+        "name_unmatched",
+        "opponent_is_absent",
+        "no_such_season_n",
+        "period_condition_needs_plays",
+        "not_a_teammate",
+        "no_game_on_date",
+        "box_scores_empty",
+        "no_box_scores",
+        "no_games_in_span",
+        "not_teammates_then",
+        "none_matched",
+        "listed_not_played",
+        "no_player_games",
+        "no_team_games",
+        "team_none_matched",
+        "no_games_in_season",
+        "no_team_games_in",
+        "free_throw_chart",
+        "shot_chart_unseparable",
+        "shot_distance_unseparable",
+        "fingerprint_on_a_date",
+        "period_untrusted",
+        "period_unread",
+        "team_period_unknown",
+        "team_period_unread",
+        "team_period_untrusted",
+        "period_rank_rate",
+        "period_rank_unread",
+        "conference_named",
+        "teammate_never_seen",
+        "never_together",
+        "together_outside_span",
+        "team_stat_unrecorded",
+        "no_team_totals",
+        "metric_before_first_season",
+        "no_team_record",
+        "missed_postseason",
+        "no_team_line",
+        "no_venue_split",
+        "short_of_games",
+        "fingerprint_view",
+        "fingerprint_scale",
+        "fingerprint_pool_empty",
+        "fingerprint_no_season",
+        "fingerprint_none_for",
+        "game_fingerprints_unpulled",
+        "game_fingerprint_no_season",
+        "game_fingerprint_pool_empty",
+        "game_fingerprint_none_for",
+    }
+)
+"""The closed set of causes a READ refuses by (:attr:`Refusal.kind`) - a
+fact found in the warehouse, which the words alone could not have told:
+a season under a table's floor, a name nothing on record matches. Disjoint
+from :data:`~association.query.reading.CAUSES`, the causes a READING
+refuses by, which are decided from the question's words before any table
+is read and are pinned by the readings population: a kind says which stage
+refused. One :class:`Refusal` type carries either, and the sayer has one
+phrase per kind of the union (``compose.say.refusal_phrase``).
+
+.. versionadded:: 5.0.0
+"""
+
+
+@dataclass(frozen=True, kw_only=True)
+class Refusal:
+    """What a read found instead of an answer (``ROADMAP-TYPES.md``,
+    "Outcome": ``Refusal(cause, facts)``): the ``kind`` it refuses by - one
+    of :data:`RUN_CAUSES`, or a reading's
+    :data:`~association.query.reading.CAUSES` the planner hands on - and
+    the plain ``facts`` its sentence is made of, never the sentence, which
+    the sayer builds (``compose.say.refusal_phrase``). ``shown`` is the
+    page's values beside the sentence (the answer's ``data``), and
+    ``under`` the keys the page reads the sentence itself under: the two
+    are what the readers' own refusals carried before the sentence moved,
+    and they vary by reader, so the Refusal says them rather than the
+    sayer guessing per kind.
+
+    Some facts are still words the relation phrases (a narrowing's
+    ``filters()``, a span's ``during()``), carried as ``Narrowing.phrase``
+    and ``Span.years`` are, until the sayer words them from cells.
+
+    .. versionadded:: 5.0.0
+    """
+
+    kind: str
+    facts: Mapping[str, Any] = field(default_factory=dict)
+    shown: Mapping[str, Any] = field(default_factory=dict)
+    under: tuple[str, ...] = ("message",)
+
+    def __post_init__(self) -> None:
+        """Hold ``kind`` to the union of the two closed sets."""
+        if self.kind not in RUN_CAUSES | CAUSES:
+            raise ValueError(f"{self.kind!r} is not a cause a read or a reading refuses by")
+
+
+@dataclass(frozen=True, kw_only=True)
+class Clarify:
+    """A question back (``ROADMAP-TYPES.md``, "Outcome": ``Clarify``): the
+    name as typed (``asked``), the players or teams it could be
+    (``candidates``, in the order they are named), what kind of name it is,
+    how many of the candidates played in the span asked about (``active``,
+    always named), and why it is asked - several on record by that name
+    (``"ambiguous"``) or none, with near spellings (``"near_spelling"``).
+    ``shown`` and ``under`` as :class:`Refusal`'s, where a reader's page
+    held the sentence rather than the candidates.
+
+    .. versionadded:: 5.0.0
+    """
+
+    asked: str
+    candidates: tuple[str, ...]
+    kind: Literal["player", "team"] = "player"
+    active: int = 0
+    why: Literal["ambiguous", "near_spelling"] = "ambiguous"
+    shown: Mapping[str, Any] | None = None
+    under: tuple[str, ...] = ()
+
+
 @dataclass(frozen=True, kw_only=True)
 class Result:
     """What one read produced. ``subject`` names who it is about (a player,
@@ -316,7 +439,7 @@ class Result:
     notes: tuple[Note, ...] = ()
     decisions: tuple[Decided, ...] = ()
     facts: Mapping[str, Any] = field(default_factory=dict)
-    empty: str | None = None
+    empty: Refusal | None = None
 
     @property
     def rows(self) -> Rows | None:
@@ -347,3 +470,12 @@ class Result:
         """The first part's runs, where the answer is the longest runs of consecutive games."""
         body = self.parts[0].body if self.parts else None
         return body if isinstance(body, Runs) else None
+
+
+Unanswered = Refusal | Clarify
+"""What a read returns in place of a :class:`Result`: a refusal naming its
+cause, or a question back. ``isinstance(read, Unanswered)`` is how a caller
+passes either on unworded.
+
+.. versionadded:: 5.0.0
+"""

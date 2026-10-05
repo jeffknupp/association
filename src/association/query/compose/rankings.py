@@ -36,12 +36,11 @@ from typing import Any
 
 import duckdb
 
-from association.query.answer import Reply
 from association.query.measures import resolve_metric
 from association.query.metrics import EXTRA_FIELD_COLUMNS, LEADERBOARD_METRICS
 from association.query.notes import Note
 from association.query.reading import Scope, Unsupported, _clamp_limit, unhonored_scoping
-from association.query.result import Decided, Part, Result, Span
+from association.query.result import Decided, Part, Refusal, Result, Span, Unanswered
 from association.query.season_line import MIN_SAMPLE_LABELS, SEASON_TOTAL_OF, CareerLeaderboardResult, LeaderboardError, rank_season_line
 
 from .core import Query
@@ -144,7 +143,7 @@ def _leaderboard_metric(scope: Scope, career: bool) -> str | None:
     return metric
 
 
-def read_leaderboard(con: duckdb.DuckDBPyConnection, q: Query, *, stated: frozenset[str]) -> Result | Reply | None:
+def read_leaderboard(con: duckdb.DuckDBPyConnection, q: Query, *, stated: frozenset[str]) -> Result | Unanswered | None:
     """``leaderboard``'s own point - the league's (or a team's players')
     leaders by one season-line metric, over a season or a career - read into
     a Result through the season line's door
@@ -153,7 +152,7 @@ def read_leaderboard(con: duckdb.DuckDBPyConnection, q: Query, *, stated: frozen
     state (``stated``: ``compose.plan.STATED_SCOPING``'s set), names a stat
     no season-line metric reads, or ranks a position group: the game-level
     ranking answers those, as it did behind the retired template's refusal
-    (planned so: :func:`leaderboard_reads`). A ``Reply`` back is the ranking's own
+    (planned so: :func:`leaderboard_reads`). A :class:`~association.query.result.Refusal` back is the ranking's own
     refusal (a shot-distance ranking); a
     ``Unsupported`` the relation's decline (an unknown field, an
     ambiguous team, a career list with columns or a franchise's).
@@ -168,7 +167,7 @@ def read_leaderboard(con: duckdb.DuckDBPyConnection, q: Query, *, stated: frozen
         # the metric and the named-player refusal so neither names the wrong
         # cause (ISSUES.md #114); the planner says it first today
         # (the point reader's ``shot_distance_ranking`` Cause).
-        return leaderboard_shot_distance_refusal()
+        return Refusal(kind="shot_distance_ranking", under=("message", "headline"))
     career = _leaderboard_career(scope)
     metric = _leaderboard_metric(scope, career)
     # leaderboard_reads settled it: a stat no season-line metric reads is the
@@ -224,14 +223,3 @@ def _leaderboard_career_refusals(scope: Scope, fields: list[str]) -> None:
         raise Unsupported("a career leaderboard cannot add per-game columns")
     if scope.team is not None and scope.team.strip():
         raise Unsupported("franchise career leaderboards are not supported")
-
-
-def leaderboard_shot_distance_refusal() -> Reply:
-    """The refusal for a shot-distance ranking, naming the real cause (ISSUES.md
-    #114): no leaderboard metric ranks distance, and the nearest real one is
-    a percentage.
-
-    .. versionadded:: 5.0.0
-    """
-    message = "Shot distance is not ranked league-wide yet - ask about one named player's average shot distance instead."
-    return Reply(data={"message": message, "headline": message}, answer=message)

@@ -49,7 +49,6 @@ from association.nba.season import eastern_date
 
 from .entities import Availability, Entity
 from .game_label import game_label
-from .notes import decided
 from .radar import VALUE_ZERO_FRACTION, Axis, Cell, Series, render_fingerprint_html
 
 
@@ -173,14 +172,27 @@ measured on - so ``"total"`` means the whole fingerprint rather than the
 
 
 class FingerprintUnavailable(Exception):
-    """Raised when no fingerprint can be drawn for what was asked.
+    """Raised when no fingerprint can be drawn for what was asked: a season
+    with no fingerprint rows, an unknown view or scale, or a single game
+    scoped to a player or a season the per-game table has no row for.
 
-    The message is written to be shown to a person: a season with no
-    fingerprint rows, an unknown view or scale, or a single game scoped to a
-    player or a season the per-game table has no row for.
+    Carries the cause (``kind``, one of
+    :data:`~association.query.result.RUN_CAUSES`) and the plain ``facts``
+    its sentence is made of; the sayer words it
+    (``compose.say.refusal_phrase``), the NetPoints reader handing it on as
+    a :class:`~association.query.result.Refusal`.
 
     .. versionadded:: 1.3.0
+
+    .. versionchanged:: 5.0.0
+       Carries a cause and its facts rather than the sentence.
     """
+
+    def __init__(self, kind: str, **facts: Any) -> None:
+        """The cause, and the facts its sentence is made of."""
+        super().__init__(kind)
+        self.kind = kind
+        self.facts = facts
 
 
 @dataclass(frozen=True)
@@ -293,7 +305,7 @@ def skills_for(view: str) -> tuple[Skill, ...]:
     .. versionadded:: 1.3.0
     """
     if view not in FINGERPRINT_VIEWS:
-        raise FingerprintUnavailable(f"view must be one of {list(FINGERPRINT_VIEWS)} - got {view!r}.")
+        raise FingerprintUnavailable("fingerprint_view", view=view, views=list(FINGERPRINT_VIEWS))
     if view == "total":
         return FINGERPRINT_SKILLS
     return tuple(skill for skill in FINGERPRINT_SKILLS if skill.side == view)
@@ -360,7 +372,7 @@ def _load_fingerprints_pool(
     """
     qualified = [(headline, values) for minutes, _, headline, values in scaled.values() if minutes >= min_minutes]
     if not qualified:
-        raise FingerprintUnavailable(f"No player reached {min_minutes} minutes in season {season}, so there is nothing to compare against.")
+        raise FingerprintUnavailable("fingerprint_pool_empty", min_minutes=min_minutes, season=season)
     pool = [values for _, values in qualified]
     by_axis = [[player_values[index] for player_values in pool] for index in range(skill_count)]
     # The headline three are ranked against the same pool as the spokes, so the
@@ -483,7 +495,7 @@ def load_fingerprints(
         [season],
     )
     if not rows:
-        raise FingerprintUnavailable(f"The warehouse has no NetPoints fingerprint data for season {season}.")
+        raise FingerprintUnavailable("fingerprint_no_season", season=season)
 
     scaled = _load_fingerprints_scale_rows(rows, len(summary))
     pool, by_axis, headline_pool = _load_fingerprints_pool(scaled, min_minutes, season, len(skills), len(summary))
@@ -497,9 +509,7 @@ def load_fingerprints(
         # holds 566 players, Tyrese among them - was reported as having no
         # fingerprint data at all. A missing player and a missing season are
         # different facts and now read as different sentences.
-        who = ", ".join(player.name for player in players) if players else "any player"
-        held = f"{len(rows)} player" + ("" if len(rows) == 1 else "s")
-        raise FingerprintUnavailable(f"No NetPoints fingerprint on record for {who} in season {season}, which has {held} on record.")
+        raise FingerprintUnavailable("fingerprint_none_for", players=[player.name for player in players], season=season, held=len(rows))
 
     flat = [value for player_values in pool for value in player_values]
     return fingerprints, LeagueScale(best=max(flat), worst=min(flat), pool_size=len(pool))
@@ -563,9 +573,9 @@ def _load_game_fingerprints_rows(con: duckdb.DuckDBPyConnection, season: int, se
         # binder error in this module's own SQL as "you have not pulled this
         # data", which is the wrong-cause refusal in its purest form: a made-up
         # answer about the warehouse, produced by a bug in the query above it.
-        raise FingerprintUnavailable(f"Per-game NetPoints fingerprints are not in this warehouse - pull them with `data pull --include-net-points-daily`. ({exc})") from exc
+        raise FingerprintUnavailable("game_fingerprints_unpulled", error=str(exc)) from exc
     if not rows:
-        raise FingerprintUnavailable(f"The warehouse has no per-game NetPoints fingerprint data for season {season}.")
+        raise FingerprintUnavailable("game_fingerprint_no_season", season=season)
     return rows
 
 
@@ -591,7 +601,7 @@ def _load_game_fingerprints_pool(
             for index in range(3):
                 headline_pool[index].append(headline[index])
     if not pool_values:
-        raise FingerprintUnavailable(f"No game in season {season} reached {min_possessions} possessions, so there is nothing to compare against.")
+        raise FingerprintUnavailable("game_fingerprint_pool_empty", min_possessions=min_possessions, season=season)
     return pool_values, headline_pool, by_game
 
 
@@ -710,9 +720,7 @@ def load_game_fingerprints(
 
     fingerprints, games = _load_game_fingerprints_players(con, players, season, season_type, order, skills, by_game, by_axis, headline_pool, min_possessions)
     if not fingerprints:
-        who = ", ".join(player.name for player in players) if players else "any player"
-        which = "earliest" if order == "first" else "most recent"
-        raise FingerprintUnavailable(f"No per-game NetPoints fingerprint on record for {who}'s {which} game of season {season}.")
+        raise FingerprintUnavailable("game_fingerprint_none_for", players=[player.name for player in players], order=order, season=season)
 
     flat = [value for game in pool_values for value in game]
     return fingerprints, LeagueScale(best=max(flat), worst=min(flat), pool_size=len(pool_values)), games
@@ -910,7 +918,7 @@ def load_for_players(
        through :func:`fingerprint_page`.
     """
     if scale not in FINGERPRINT_SCALES:
-        raise FingerprintUnavailable(f"scale must be one of {list(FINGERPRINT_SCALES)} - got {scale!r}.")
+        raise FingerprintUnavailable("fingerprint_scale", scale=scale, scales=list(FINGERPRINT_SCALES))
     games: dict[str, GamePlayed] = {}
     unit = PER_GAME if order else PER_100_POSSESSIONS
     try:
@@ -927,8 +935,7 @@ def load_for_players(
         # reading as a data gap rather than as an ambiguous name.
         if not ambiguous:
             raise
-        also = decided("also_matched", f" Note: other players also matched: {', '.join(ambiguous)}.", field="player", chose=[p.name for p in players], instead_of=ambiguous)
-        raise FingerprintUnavailable(f"{exc}{also}") from exc
+        raise FingerprintUnavailable(exc.kind, **exc.facts, also=list(ambiguous), chose=[p.name for p in players]) from exc
     return fingerprints, league, games, unit
 
 

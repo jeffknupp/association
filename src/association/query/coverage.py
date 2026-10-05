@@ -22,6 +22,7 @@ from association.query.measures import resolve_metric
 from association.query.metrics import LEADERBOARD_METRICS
 from association.query.notes import note
 from association.query.reading import Scope
+from association.query.result import Refusal
 from association.query.team_metrics import TEAM_METRICS, resolve_team_metric
 
 # Which warehouse tables each intent's answer is built from, so a question
@@ -281,6 +282,36 @@ def check_coverage(intent: str, scope: Scope | Mapping[str, Any]) -> str | None:
         scope.season_type or 2,
         ranking=intent in RANKING_INTENTS,
     )
+
+
+def floor_refusal(tables: tuple[str, ...], season: int, season_type: int, *, ranking: bool = False, shown: Mapping[str, Any] | None = None, under: tuple[str, ...] = ("message",)) -> Refusal | None:
+    """:func:`~association.nba.coverage.unavailable` as a typed
+    :class:`~association.query.result.Refusal` (``season_out_of_reach``):
+    the tables, the season and its type, and whether the answer ranks -
+    the facts the floor's sentence is made of, said by the sayer through
+    the same floor table. ``shown`` is the page's values beside it, the
+    season asked about unless a reader's page carried more or less, and
+    ``under`` the keys it reads the sentence under (none, for the team
+    compiler's).
+
+    .. versionadded:: 5.0.0
+    """
+    if unavailable(tables, season, season_type, ranking=ranking) is None:
+        return None
+    facts = {"tables": list(tables), "season": season, "season_type": season_type, "ranking": ranking}
+    return Refusal(kind="season_out_of_reach", facts=facts, shown={"season": season} if shown is None else shown, under=under)
+
+
+def coverage_refusal(intent: str, scope: Scope) -> Refusal | None:
+    """:func:`check_coverage`, typed: the floor this question's season is
+    under, as the :class:`~association.query.result.Refusal` a reader
+    returns, or None.
+
+    .. versionadded:: 5.0.0
+    """
+    if scope.season is None:
+        return None
+    return floor_refusal(_sources_for(intent, scope), scope.season, scope.season_type or 2, ranking=intent in RANKING_INTENTS)
 
 
 def coverage_caveat(intent: str, scope: Scope | Mapping[str, Any]) -> str | None:

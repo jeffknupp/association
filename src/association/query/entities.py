@@ -30,16 +30,16 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Literal
 
 import duckdb
 
 from association.nba.franchises import FRANCHISE_ERAS, FranchiseEra, season_name
 from association.nba.season import current_season
 from association.query import names
-from association.query.answer import Reply
 from association.query.notes import decided
 from association.query.reading import Scope, Unsupported
+from association.query.result import Clarify, Refusal
 
 MAX_CANDIDATES = 10
 
@@ -1209,34 +1209,6 @@ counting the rest instead.
 """
 
 
-def clarification(text: str, candidates: list[str], kind: str = "player", active: int = 0) -> str:
-    """The "did you mean" sentence for an ambiguous name.
-
-    Lives here rather than beside a reader because both
-    halves of the query path ask it now: a reader returns it as its answer,
-    and a chart's rendering entry point returns it as a message. One phrasing,
-    so the same ambiguity does not read two ways depending on which path the
-    router happened to take.
-
-    Names the first ``MAX_CLARIFY_CANDIDATES`` in the order given and counts
-    the rest - except the first ``active``, the candidates who played in the
-    season asked about, who are always named. Counting them away is how
-    "Curry" hid Stephen: six Currys sorted by name and cut at five named four
-    men who never played in the season asked about, plus Seth. A caller with a
-    season in hand narrows and orders first (see :func:`resolve_player`) and
-    passes ``Ambiguous.active`` on, so the count only ever stands for players
-    who could not be the answer. The most one season holds under one name is
-    15 Williamses, in 1998 and 1999; 2026 holds 14.
-
-    .. versionadded:: 2.1.0
-    """
-    shown = candidates[: max(MAX_CLARIFY_CANDIDATES, active)]
-    extra = len(candidates) - len(shown)
-    rest = "" if extra <= 0 else " (1 other also matches)" if extra == 1 else f" ({extra} others also match)"
-    joined = ", ".join(shown[:-1]) + f" or {shown[-1]}" + rest
-    return f"{text!r} matches more than one {kind} - did you mean {joined}?"
-
-
 # What "close enough" means, per token, when nothing matched exactly. Scaled to
 # the token's length because one edit is a different claim about "Jr" than
 # about "Antetokounmpo": a token of three letters or fewer must match a word
@@ -1398,32 +1370,23 @@ def read_near_spelling(con: duckdb.DuckDBPyConnection, text: str) -> Entity | No
     return near[0]
 
 
-def no_match(con: duckdb.DuckDBPyConnection, text: str, kind: str = "player") -> str:
-    """The sentence for a name nothing matched, naming near misses when there
-    are any.
-
-    The counterpart to :func:`clarification`, and here for the same reason:
-    four entry points reach a name that matched nothing, and a person asking
-    the same question twice should not get two different sentences depending on
-    which one answered it.
+def unmatched(con: duckdb.DuckDBPyConnection, text: str, kind: str = "player") -> Clarify | Refusal:
+    """A name nothing matched: the question back naming its near misses
+    when there are any (a :class:`~association.query.result.Clarify`), or
+    the refusal saying nothing matched (``name_unmatched``) - the page
+    reading the sentence as its message either way, as the charts' did.
 
     .. versionadded:: 2.1.0
+       As ``no_match``, which returned the sentence.
+
+    .. versionchanged:: 5.0.0
+       Returns the typed outcome; the sayer words it
+       (``compose.say.suggestion``).
     """
-    return suggestion(text, [player.name for player in suggest_players(con, text)], kind)
-
-
-def suggestion(text: str, candidates: list[str], kind: str = "player") -> str:
-    """The sentence itself, given names :func:`suggest_players` already found.
-
-    Split from :func:`no_match` for the one caller that has the candidates in
-    hand and would otherwise search for them twice.
-
-    .. versionadded:: 2.1.0
-    """
-    if not candidates:
-        return f"No {kind} found matching {text!r}."
-    joined = (", ".join(candidates[:-1]) + " or " if len(candidates) > 1 else "") + candidates[-1]
-    return f"No {kind} found matching {text!r} - did you mean {joined}?"
+    near = tuple(player.name for player in suggest_players(con, text))
+    if near:
+        return Clarify(asked=text, candidates=near, why="near_spelling", shown={}, under=("message",))
+    return Refusal(kind="name_unmatched", facts={"asked": text, "kind": kind})
 
 
 @dataclass(frozen=True)
@@ -1937,18 +1900,21 @@ def resolve_team(con: duckdb.DuckDBPyConnection, text: str, season: int | None =
 # question about that player's games rather than about two franchises.
 
 
-def clarify(text: str, candidates: list[str], kind: str = "player", active: int = 0) -> Reply:
+def clarify(text: str, candidates: list[str], kind: Literal["player", "team"] = "player", active: int = 0) -> Clarify:
     """A handled outcome, not a fall-through: the reader knows exactly what
-    is ambiguous, so it says so instead of passing the problem along.
-
-    The sentence itself is entities.clarification, because the chart
-    resolution reaches the same ambiguity and has to phrase it identically.
+    is ambiguous, so it asks instead of passing the problem along. The
+    sentence is the sayer's (``compose.say.clarification``), because the
+    chart resolution reaches the same ambiguity and has to phrase it
+    identically.
 
     .. versionadded:: 5.0.0
-       Public, for the shot relation's reader (``compose.shots``);
-       ``clarify`` is this.
+       Public, for the shot relation's reader (``compose.shots``).
+
+    .. versionchanged:: 5.0.0
+       Returns a :class:`~association.query.result.Clarify` rather than its
+       worded answer.
     """
-    return Reply(data={"ambiguous": text, "candidates": candidates}, answer=clarification(text, candidates, kind, active))
+    return Clarify(asked=text, candidates=tuple(candidates), kind=kind, active=active)
 
 
 def resolved_player(
@@ -1959,9 +1925,9 @@ def resolved_player(
     available: Availability | tuple[Availability, ...],
     season: int | None = None,
     through: int | None = None,
-) -> Entity | Reply:
-    """One player, a clarifying question, or a refusal - the player counterpart
-    to resolved_team. Returning the Reply rather than raising it keeps
+) -> Entity | Clarify:
+    """One player, or a clarifying question - the player counterpart
+    to resolved_team. Returning the question rather than raising it keeps
     ambiguity a handled outcome: the caller answers with the question instead of
     guessing. Callers must forward it.
 
@@ -1989,13 +1955,13 @@ def resolved_player(
             # reason ambiguity is: the agent would resolve the same name
             # against the same table, and a name nothing matches is a fact,
             # not a shape this template happens not to cover.
-            near = [player.name for player in suggest_players(con, text)]
+            near = tuple(player.name for player in suggest_players(con, text))
             if near:
-                return Reply(data={"unmatched": text, "suggestions": near}, answer=suggestion(text, near))
+                return Clarify(asked=text, candidates=near, why="near_spelling")
             raise Unsupported(f"no player matching {text!r}")
 
 
-def resolved_team(con: duckdb.DuckDBPyConnection, text: Any, season: int | None = None) -> Entity | Reply:
+def resolved_team(con: duckdb.DuckDBPyConnection, text: Any, season: int | None = None) -> Entity | Clarify:
     """One team, a clarifying question, or a refusal - read for ``season``,
     because a franchise's name is a fact about a season. "Hornets" is New
     Orleans in 2008 and Charlotte in 2026; see entities.franchise_by_name."""
@@ -2016,7 +1982,7 @@ def slot_season(scope: Scope) -> int | None:
     return scope.season
 
 
-def optional_team(con: duckdb.DuckDBPyConnection, text: Any, season: int | None = None) -> Entity | Reply | None:
+def optional_team(con: duckdb.DuckDBPyConnection, text: Any, season: int | None = None) -> Entity | Clarify | None:
     """A team slot that may be empty: ``None`` for no text, else
     :func:`resolved_team`'s entity or its refusal.
 
