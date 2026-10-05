@@ -331,6 +331,25 @@ reads is the Claude doc "Phase 2 Review"
 Its cleanup list - (a) wrong-fix-now, (b) debt Phase 3 trips over, (c)
 cosmetic - is the order from here, as Phase 1's was.
 
+**After the review, the order (Jeff, 2026-10-05).** The cleanup list is
+worked before Phase 3's Reading work, in this order, each item its own
+commit proven on the populations: (a) the five wrong-fix-now items - the
+rate's games count and qualifier over the games the rate reads, with a
+note for the games it skipped (the one live wrong answer, first); the
+freeze restored over the 12 scoping declarations, each labeled cell
+table, `STATED_SCOPING` or debt; the three "What done means" rows and the
+ledger corrected; the freeze test checking for a source file; the SQL
+ratchet counting `rows_of`/`values_of` sites. Then (b)2 and (b)3, which
+widen the proof before anything else moves - the planner as a recorded
+unit-test boundary, and the 2,082 feed questions ANSWERED as a fourth
+population. Then (b)1, (b)5 and (b)6 together as one step, "the Result is
+typed": a run-time refusal is a `Cause`, `Result.facts` and `Span.source`
+become cells, notes and causes, and the answer side dispatches on the
+planned query's shape and relation, not the intent. (b)4 - the three
+question re-reads in `agent.py` onto the Reading - is Phase 3's own first
+item, since the Reading has to carry those values. (c) is taken in passing
+by whoever is in the file.
+
 **Phase 2, the expected steps (written 2026-10-03, before the phase; each
 step is re-planned in its own row as it lands, as Phase 1's were).** The
 unit of work is one intent: its reader and sayer written, measured both
