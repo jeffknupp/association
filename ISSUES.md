@@ -1860,8 +1860,10 @@ those were found.
   raises `TemplateUnsupported`, which is a plain refusal naming the slot, not
   a refusal the user can act on.
 - **Re-checked 2026-09-16: the relocation rule is no longer open.** The refusal
-  is still at `query/templates/players.py` (`_career_leaderboard`, raising
-  `TemplateUnsupported("franchise career leaderboards are not supported")`),
+  is still at `query/compose/rankings.py` since 2026-10-05
+  (`_leaderboard_career_refusals`, raising
+  `TemplateUnsupported("franchise career leaderboards are not supported")`;
+  `templates/players.py`'s `_career_leaderboard` until Phase 2's slice (iii)),
   but "the rule for relocated franchises is open" is now decided elsewhere:
   `association/nba/franchises.py` established that an ESPN `team_id` belongs to
   the franchise, not the name, so a per-`team_id` sum already follows a
@@ -2248,31 +2250,6 @@ those were found.
 - **Next step:** find why `_scope_from_question_restore_player` does not fire
   when neither `player` nor `team` is set.
 - **GitHub:** #181
-
-### A leaderboard "and the team they play for" request silently drops team
-- **Found:** 2026-09-21, yardstick-v2 key-building (A_netpoints_shots slice,
-  `live_31b2ec6.jsonl`)
-- **Evidence:** "show the top 50 in total adjusted netpoints and the team they
-  play for" and "who are the top 50 in total adjusted netpoints with the team
-  they play for" both route to `leaderboard` with `stat=netpoints_per_100,
-  limit=50`; the first arrives with `fields=['steals','rebounds','assists']`
-  (none of which the question asked for), the second with no `fields` at all.
-  Neither answer names a team anywhere. The cause is structural, not a router
-  miss: `EXTRA_FIELD_COLUMNS` (`query/metrics.py`) is a fixed whitelist of
-  `points/rebounds/assists/steals/blocks/minutes` sourced from
-  `player_season_stats`, and has no team entry at all - there is no slot value
-  that could have produced one. The ranking itself and every value in it (SGA
-  9.91 down to Stephon Castle 2.04) checks out exactly against
-  `net_points_player`.
-- **User sees:** a fluent, numerically correct top-50 list with the explicitly
-  requested "team" column simply absent, no caveat that it could not be added.
-- **Next step:** add a `team` entry to `EXTRA_FIELD_COLUMNS` (join
-  `player_season_stats.team_id` -> `teams.abbreviation` the same way the other
-  five extra fields already join), or have the leaderboard template say
-  explicitly that team is not an available field when asked for one that is
-  not in the whitelist.
-- **Source:** ours, not ESPN's.
-- **GitHub:** #182
 
 ### `_no_games`'s "did not play" is also the wrong cause when a real narrowing empties the pool
 - **Found:** 2026-09-22, step 3 C2 (record_when and streak read the relation's
