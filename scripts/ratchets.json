@@ -44,7 +44,7 @@
   "templates.players": 3,
   "templates.shots": 2,
   "templates.splits": 4,
-  "templates.teams": 14
+  "templates.teams": 12
  },
  "private_template_imports": [
   "compose.core:_team_slot_for_player",

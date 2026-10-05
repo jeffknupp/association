@@ -44,7 +44,9 @@ class Span:
     record (1994 onward)"). ``source`` is the relation the span was read
     over: the player's games (``"games"``), or the season line
     (``"seasons"``, one row per season: an unnarrowed line, a history, a
-    comparison - :mod:`association.query.season_line`).
+    comparison - :mod:`association.query.season_line`), or a team's own
+    season: its line and the standings (``"team_seasons"``) or ESPN's power
+    index (``"team_snapshots"``, :mod:`association.query.team_seasons`).
 
     .. versionadded:: 5.0.0
     """
@@ -58,7 +60,7 @@ class Span:
     years: str | None = None
     phrase: str | None = None
     floor: int | None = None
-    source: Literal["games", "seasons"] = "games"
+    source: Literal["games", "seasons", "team_seasons", "team_snapshots"] = "games"
 
 
 @dataclass(frozen=True, kw_only=True)

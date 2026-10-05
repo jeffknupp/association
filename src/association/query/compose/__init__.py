@@ -39,6 +39,7 @@ from typing import TYPE_CHECKING, Any
 
 import duckdb
 
+from association.query.point import TEAM_SEASON_POINTS
 from association.query.result import Result
 from association.query.templates.common import TemplateContext, TemplateResult, TemplateUnsupported, check_coverage
 
@@ -61,7 +62,7 @@ from .sentence import team_sentence as _team_sentence
 from .splits import read_player_splits, read_team_splits
 from .stats import read_player_stat
 from .team import TeamQuery, TeamResult, run_team
-from .team_stats import TeamSeasonQuery
+from .team_stats import TeamSeasonQuery, read_team_outlook
 
 if TYPE_CHECKING:
     from association.query.reading import Reading
@@ -130,6 +131,7 @@ COMPILED_INTENTS: frozenset[str] = frozenset(
         "player_matchup",
         "with_without",
         "coach",
+        "team_outlook",
     }
 )
 """The intents the compiler alone answers - the four whose templates it
@@ -309,6 +311,27 @@ def _read_ported_team(con: duckdb.DuckDBPyConnection, intent: str, query: TeamQu
     return None
 
 
+#: The team-season relations' ported readers, by intent (``compose.team_stats``).
+_TEAM_SEASON_READERS: dict[str, Callable[..., Result | TemplateResult]] = {
+    "team_outlook": read_team_outlook,
+}
+
+
+def _read_team_season(con: duckdb.DuckDBPyConnection, intent: str, query: Query | TeamQuery | TeamSeasonQuery) -> TemplateResult:
+    """``intent``'s team-season reader over ``query``'s scope, said by the
+    sayer - its own point (a :class:`TeamSeasonQuery`), or, ahead of
+    another relation's point the question's words read (a team's own total
+    under ``team_stat``), the same scope on the team-season relation, as
+    the retired template was tried before the compiler. A decline is the
+    reader's ``Unsupported``, a refusal its ``TemplateResult`` or
+    ``Refused``."""
+    if not isinstance(query, TeamSeasonQuery):
+        relation, shape = TEAM_SEASON_POINTS[intent]
+        query = TeamSeasonQuery(scope=query.scope, relation=relation, shape=shape)
+    read = _TEAM_SEASON_READERS[intent](con, query, stated=STATED_SCOPING[intent])
+    return read if isinstance(read, TemplateResult) else say(read)
+
+
 def _answer_point(
     ctx: TemplateContext,
     intent: str,
@@ -317,12 +340,23 @@ def _answer_point(
     trace: Callable[[Reading], None] | None,
     declined: Callable[[str], None] | None,
 ) -> TemplateResult | None:
-    """``point``'s planned ``query``, run: the team subject's reader, the
-    intent's own presenter, or the compiler's own sentence -
-    :func:`answer`'s tail."""
+    """``point``'s planned ``query``, run: a team-season intent's reader
+    first (and another relation's point only where it declines), the team
+    subject's reader, the intent's own presenter, or the compiler's own
+    sentence - :func:`answer`'s tail."""
+    # The team-season reader's decline is the one said where every reader
+    # declines: the retired template's reason was, since it ran first.
+    season_declined: str | None = None
     try:
         if trace is not None:
             trace(point)
+        if intent in _TEAM_SEASON_READERS:
+            try:
+                return _read_team_season(ctx.con, intent, query)
+            except Unsupported as exc:
+                if isinstance(query, TeamSeasonQuery):
+                    raise
+                season_declined = str(exc)
         if isinstance(query, TeamSeasonQuery):
             raise Unsupported("the team-season relation's readers are not ported yet")
         if isinstance(query, TeamQuery):
@@ -346,7 +380,7 @@ def _answer_point(
         out = run(ctx.con, query)
     except Unsupported as exc:
         if declined is not None:
-            declined(str(exc))
+            declined(season_declined or str(exc))
         return None
     except Refused as exc:
         return exc.result

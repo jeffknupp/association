@@ -26,7 +26,7 @@ from .core import Query, Refused, Unsupported, _check_relation_scoping
 from .rankings import leaderboard_reads
 from .seasons import player_compare_reads, player_history_reads, player_line_reads
 from .team import TeamQuery
-from .team_stats import TeamSeasonQuery
+from .team_stats import TeamSeasonQuery, team_season_declines
 
 WITH_WITHOUT_STATED: frozenset[str] = frozenset({"span", "without", "opponent", "conditions"})
 """The scoping ``with_without``'s words state - a career, the teammates
@@ -123,28 +123,13 @@ def _shape_declines(point: Reading) -> str | None:
     return None
 
 
-def team_season_declines(intent: str, scope: Scope) -> str | None:
-    """Why a team-season intent's reader cannot answer ``scope`` as asked -
-    a narrowing its words do not state (``compose.present.STATED_SCOPING``),
-    in the retired template's sentence - or None. The first thing the
-    reader checks, before the coverage floor, as ``check_scope`` ran before
-    the template.
-
-    .. versionadded:: 5.0.0
-    """
-    # At call time: compose.present imports this module (WITH_WITHOUT_STATED).
-    from .present import STATED_SCOPING
-
-    ignored = unhonored_scoping(intent, scope, STATED_SCOPING[intent])
-    return f"{intent} cannot honor {ignored} - it would answer for a different span than was asked" if ignored else None
-
-
 def plan(reading: Reading) -> Query | TeamQuery | TeamSeasonQuery:
     """The point ``reading`` names, on the relation it names - see
     :func:`_plan`. A team-season intent's point on another relation (a
     team's own total, "how many 3-pointers have the Magic made") that the
     relation declines is that intent's own team-season point instead, or
-    the team-season reader's refusal of the narrowing: the retired
+    the team-season reader's refusal of the narrowing
+    (:func:`~association.query.compose.team_stats.team_season_declines`): the retired
     template was tried before the compiler, so the compiler declining
     never decided such a question (Phase 2, step 4).
 
@@ -159,7 +144,10 @@ def plan(reading: Reading) -> Query | TeamQuery | TeamSeasonQuery:
     except Unsupported as exc:
         if reading.intent not in TEAM_SEASON_POINTS:
             raise
-        declined = team_season_declines(reading.intent, reading.scope)
+        # At call time: compose.present imports this module (WITH_WITHOUT_STATED).
+        from .present import STATED_SCOPING
+
+        declined = team_season_declines(reading.intent, reading.scope, STATED_SCOPING[reading.intent])
         if declined is not None:
             raise Unsupported(declined) from exc
         relation, shape = TEAM_SEASON_POINTS[reading.intent]

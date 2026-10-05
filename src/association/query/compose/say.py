@@ -28,12 +28,46 @@ from association.query.reading import DEFAULT_GAME_LOG_LIMIT, _clamp_limit, ordi
 from association.query.result import Decided, Grouped, Result, Rows, Run, Scalar, Span
 from association.query.season_line import NETPOINTS_COMPARE_ROWS
 from association.query.shotchart import UNSEPARABLE_SHOT_VALUES
+from association.query.team_metrics import RATING_NOTE
 from association.query.templates.common import HISTORY_COLUMNS, PLAYER_STAT_COLUMNS, SEASON_TYPE_NAMES, STAT_LABELS, TemplateResult, count_games, format_value, season_label, season_phrase, table_cell
 from association.query.templates.players import ADVANCED_STATS, MADE_STAT_ATTEMPTS, SHOOTING_STATS
 
 from .logs import LOG_PERCENTAGES, log_key
 
 # --- notes: one phrase per kind -----------------------------------------------
+
+
+def _snapshot_described(each: dict[str, Any]) -> str:
+    """A power-index snapshot as an answer names it: its kind, date and team count."""
+    teams = each["teams"]
+    return f"a {each['kind']} snapshot ({each['date']}, {teams} team{'s' if teams != 1 else ''})"
+
+
+#: What a team-season answer leaves blank, and why (a ``value_withheld`` note, by ``what``).
+_TEAM_SEASON_WITHHELD: dict[str, str] = {
+    "points_allowed": "A '-' needs points allowed, and ESPN's game list does not hold all of this team's games that season.",
+    "rank": "A rank is left out where ESPN's game list is short for other teams that season.",
+}
+
+
+def _say_team_season_note(kind: str, facts: dict[str, Any]) -> str | None:
+    """The phrase for a note a team-season answer makes - about its power-index
+    snapshot, a figure it leaves blank, or another question to ask - or
+    ``None`` for any other note."""
+    what = facts.get("what")
+    if kind == "snapshot" and what == "postseason_substitute":
+        return "  (No pre-playoff snapshot for that season holds them, so this is the postseason one.)"
+    if kind == "snapshot" and what == "stamped_after_season":
+        return f"  (ESPN stamps this snapshot {facts['date']}, after the {facts['season']} season ended, so it may not reflect any one moment of it.)"
+    if kind == "snapshot" and what == "other_snapshots":
+        return f"  ESPN's power index for {facts['season']} also has {_joined([_snapshot_described(each) for each in facts['snapshots']])}."
+    if kind == "value_withheld" and what == "bpi":
+        return f"  no BPI rating in this snapshot - ESPN left it empty for all {facts['teams']} teams, though the record and projections below are its own"
+    if kind == "value_withheld" and what in _TEAM_SEASON_WITHHELD:
+        return _TEAM_SEASON_WITHHELD[what]
+    if kind == "hint" and what == "regular_season":
+        return f" The {facts['team']} are only in {_joined([_snapshot_described(each) for each in facts['snapshots']])} - ask about the regular season to see it."
+    return None
 
 
 def _say_window_short(facts: dict[str, Any], narrowing: str) -> str:
@@ -60,6 +94,10 @@ def _say_definition(facts: dict[str, Any]) -> str:
     if facts.get("term") == "most_recent_team":
         # Its own line beneath a ranking's table, the way a table's other notes follow it.
         return "\nTeam is each player's most recent team that season."
+    if facts.get("term") == "rating_formula":
+        return RATING_NOTE
+    if facts.get("term") == "rank_meaning":
+        return "Rank 1st is the best in the league (for pace, the fastest)."
     if facts.get("term") == "unseen_ends_run":
         return " A game with no box score in the warehouse ends a run rather than being carried across, since it cannot be checked."
     if facts.get("term") != "without":
@@ -230,15 +268,28 @@ def note_phrase(each: Note, *, narrowing: str = "", consequence: str = "", liste
         return _say_stat_blank(facts)
     if each.kind == "floor" and facts.get("table") == "box_scores":
         return _say_floor(facts)
-    if each.kind == "floor" and facts.get("what") == "career_pool":
+    said = _say_season_note(each.kind, facts)
+    if said is None:
+        said = _say_team_season_note(each.kind, facts)
+    if said is None:
+        raise ValueError(f"no phrase for a {each.kind!r} note with {sorted(facts)}")
+    return said
+
+
+def _say_season_note(kind: str, facts: dict[str, Any]) -> str | None:
+    """The phrase for a note about a span of seasons - a career pool, a
+    quarter's agreement with the plays, seasons missing, a player with no
+    quarter's numbers - or ``None``; split out of :func:`note_phrase` for
+    the complexity gate, in its order."""
+    if kind == "floor" and facts.get("what") == "career_pool":
         return f"Careers that ended before {season_label(facts['first'])} are not in this warehouse, so this is not an all-time list."
-    if each.kind == "rebuilt_agreement" and facts.get("what") in ("period_points_from_shots", "period_rebuilt"):
+    if kind == "rebuilt_agreement" and facts.get("what") in ("period_points_from_shots", "period_rebuilt"):
         return _say_period_agreement(facts)
-    if each.kind == "seasons_missing":
+    if kind == "seasons_missing":
         return _say_seasons_missing(facts)
-    if each.kind == "no_data_for" and "period" in facts:
+    if kind == "no_data_for" and "period" in facts:
         return f"({', '.join(facts['names'])} has no {facts['period']} numbers in the warehouse.)"
-    raise ValueError(f"no phrase for a {each.kind!r} note with {sorted(facts)}")
+    return None
 
 
 def _said(result: Result) -> list[str]:
@@ -462,6 +513,8 @@ def say(result: Result) -> TemplateResult:
 
     .. versionadded:: 5.0.0
     """
+    if result.span.source == "team_snapshots":
+        return say_team_outlook(result)
     if result.span.source == "seasons":
         return _say_season_line(result)
     if result.scalar is not None and result.scalar.how == "count":
@@ -1828,3 +1881,157 @@ def say_player_compare(result: Result) -> TemplateResult:
     answer = _compare_table(rows, wanted, season_phrase(result.span.season, result.span.season_type or 2), netpoints, missing_note)
     data = {"season": result.span.season, "players": rows, "netpoints": netpoints, "headline": answer.split("\n")[0].rstrip(":"), "notes": [missing_note] if missing_note else []}
     return TemplateResult(data=data, answer=answer)
+
+
+# --- a team's own season: the power index ------------------------------------------
+
+
+def record_pct(value: float) -> str:
+    """Basketball convention for a winning percentage: .646, not 0.646.
+
+    .. versionadded:: 5.0.0
+       ``templates.teams._record_pct``, for the team-season sayers.
+    """
+    text = f"{value:.3f}"
+    return text[1:] if text.startswith("0") else text
+
+
+def _team_outlook_record_line(kind: int, wins: Any, losses: Any, proj_w: Any, proj_l: Any) -> str:
+    """The record line: for a postseason snapshot, the finished regular
+    season plus any playoff games added on top - a team whose record still
+    equals the projection played none (the 2026 Hornets, out in the
+    play-in) - or the record so far with a projection otherwise."""
+    played = int(wins) + int(losses)
+    regular = (round(proj_w), round(proj_l)) if proj_w is not None and proj_l is not None else None
+    if kind == 3:
+        # In a postseason snapshot the "projection" is the finished regular
+        # season, and the record adds the playoff games to it.
+        if regular and played > sum(regular):
+            return f"  record {int(wins)}-{int(losses)} including the playoffs; {regular[0]}-{regular[1]} in the regular season"
+        return f"  record {int(wins)}-{int(losses)}, no playoff games"
+    projection = f", projected {regular[0]}-{regular[1]}" if regular else ""
+    return f"  record {int(wins)}-{int(losses)}{projection}" if played else f"  no games played yet{projection}"
+
+
+def _team_outlook_noted(result: Result, *kinds_of: str) -> list[str]:
+    """The Result's notes whose ``what`` is one of ``kinds_of``, phrased and
+    recorded, in the order the read made them."""
+    return [note(each.kind, note_phrase(each), **each.facts) for each in result.notes if each.facts.get("what") in kinds_of]
+
+
+def _team_outlook_missing(result: Result) -> TemplateResult:
+    """No snapshot of the kind asked for holds the team: which snapshots the
+    season has, and which the team is missing from - "no data" would send
+    the reader to the wrong place - and, where one holds it, the hint."""
+    season, team = result.span.season, result.subject
+    snapshots = result.facts["snapshots"]
+    listing = [_snapshot_described(each) for each in snapshots]
+    if not snapshots:
+        message = f"ESPN's power index has no {season} snapshot in the warehouse."
+        return TemplateResult(data={"team": team, "season": season, "message": message}, answer=message)
+    if result.facts["postseason"] and not any(each["kind"] == "postseason" for each in snapshots):
+        gap = "and no postseason snapshot"
+    elif result.facts["postseason"]:
+        gap = f"and the {team} are not in its postseason snapshot"
+    else:
+        gap = f"and the {team} are {'not in it' if len(listing) == 1 else 'in neither' if len(listing) == 2 else 'in none of them'}"
+    message = f"ESPN's power index for {season} has {_joined(listing)}, {gap}." + "".join(_team_outlook_noted(result, "regular_season"))
+    return TemplateResult(data={"team": team, "season": season, "snapshots": listing, "message": message}, answer=message)
+
+
+def _team_outlook_bpi_line(result: Result, line: Scalar) -> str:
+    """The BPI line, or the note that the snapshot carries no rating - never
+    dropped, since the power index IS this answer's headline: ESPN's 2026
+    regular-season snapshot is the live case, all 30 of its teams with a
+    NULL ``bpi`` while their records, projections, chances and SOS are
+    populated (measured 2026-09-18)."""
+    withheld = _team_outlook_noted(result, "bpi")
+    if withheld:
+        return withheld[0]
+    values = line.values
+    offense, defense = values["bpi_offense"], values["bpi_defense"]
+    detail = f" (offense {offense:+.1f}, defense {defense:+.1f})" if offense is not None and defense is not None else ""
+    return f"  BPI {values['bpi']:+.1f}{detail}, {ordinal_word(int(values['higher']) + 1)} of the {result.facts['teams_in_snapshot']} teams in the snapshot"
+
+
+def _team_outlook_lines(result: Result, line: Scalar, chances: Grouped) -> tuple[list[str], str, str | None, str | None]:
+    """The answer's lines in order, and the three the page shows beneath its
+    card: the BPI line, the strength of schedule and the other snapshots."""
+    facts, values = result.facts, line.values
+    kind = facts["kind"]
+    lines = [f"ESPN's power index for the {result.subject}, {result.span.season} {facts['snapshot']} snapshot (updated {facts['updated'][:10]}, {facts['teams_in_snapshot']} teams):"]
+    lines += _team_outlook_noted(result, "postseason_substitute", "stamped_after_season")
+    bpi_line = _team_outlook_bpi_line(result, line)
+    lines.append(bpi_line)
+    wins, losses = values["wins"], values["losses"]
+    if wins is not None and losses is not None:
+        lines.append(_team_outlook_record_line(kind, wins, losses, values["projected_wins"], values["projected_losses"]))
+    odds = [f"{row['key']} {row['chance']:.1f}%" for row in chances.rows if row["chance"] is not None]
+    if odds:
+        lines.append("  chances: " + ", ".join(odds))
+    sos, sos_rank = values["strength_of_schedule"], values["strength_of_schedule_rank"]
+    sos_line = None
+    if sos is not None and 0 < sos < 1:
+        # ESPN's schedule-strength rank is a league-wide rank only from 2022;
+        # the values before it (7,909 to 59,238) are not ranks.
+        rank_note = f", {ordinal_word(int(sos_rank))} hardest in the league" if sos_rank is not None and 1 <= sos_rank <= 30 else ""
+        sos_line = f"  strength of schedule {record_pct(sos)}{rank_note}"
+        lines.append(sos_line)
+    others = _team_outlook_noted(result, "other_snapshots")
+    others_line = others[0] if others else None
+    if others_line is not None:
+        lines.append(others_line)
+    return lines, bpi_line, sos_line, others_line
+
+
+def say_team_outlook(result: Result) -> TemplateResult:
+    """A team's ESPN power index, worded: the snapshot it was read from (its
+    kind, date and size) and what is odd about it, the BPI line, the record
+    and its projection, the chances, the strength of schedule and the
+    season's other snapshots - or, where no snapshot of the kind asked for
+    holds the team, which snapshots exist. ``templates.teams.team_outlook``'s
+    words, from the Result.
+
+    .. versionadded:: 5.0.0
+    """
+    line = result.scalar
+    chances = result.parts[1].body if len(result.parts) > 1 else None
+    if line is None or not isinstance(chances, Grouped):
+        return _team_outlook_missing(result)
+    facts, values = result.facts, line.values
+    lines, bpi_line, sos_line, others_line = _team_outlook_lines(result, line, chances)
+    data: dict[str, Any] = {
+        "team": result.subject,
+        "season": result.span.season,
+        "snapshot": facts["snapshot"],
+        "updated": facts["updated"][:10],
+        "teams_in_snapshot": facts["teams_in_snapshot"],
+        "bpi": values["bpi"],
+        "bpi_offense": values["bpi_offense"],
+        "bpi_defense": values["bpi_defense"],
+        "position": int(values["higher"]) + 1,
+        "wins": values["wins"],
+        "losses": values["losses"],
+        # In a postseason snapshot ESPN's "projection" columns hold the
+        # finished regular season (see _team_outlook_record_line), so they
+        # are filed under that name: the page drew "PROJECTED 45-37" beside
+        # "RECORD 49-44" for a team whose season was over (Jeff's session,
+        # 2026-09-24).
+        **(
+            {"regular_season_wins": values["projected_wins"], "regular_season_losses": values["projected_losses"]}
+            if facts["kind"] == 3
+            else {"projected_wins": values["projected_wins"], "projected_losses": values["projected_losses"]}
+        ),
+        "chances": {row["key"]: row["chance"] for row in chances.rows},
+        "strength_of_schedule": values["strength_of_schedule"],
+    }
+    # The page draws its own BPI/record/chances card from the typed values
+    # above (RENDERERS.team_outlook, web/static/index.html), so its notes
+    # are only the lines the card does NOT carry: the BPI's offense/defense
+    # split, the strength-of-schedule RANK, and the other snapshots. The
+    # record and chances lines restate the card's own boxes and were shown
+    # beneath them, twice over (Jeff's session, 2026-09-24); the CLI's text
+    # keeps every line.
+    data["headline"] = lines[0].rstrip(":")
+    data["notes"] = [each.strip() for each in (bpi_line, sos_line, others_line) if each is not None]
+    return TemplateResult(data=data, answer="\n".join(lines))

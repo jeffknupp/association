@@ -211,6 +211,16 @@ def resolve_team_metric(stat: object) -> str | None:
 # excludes it from a regular-season RECORD; a plain game list or count does
 # not, since the final is a real game the two teams played).
 
+RATING_NOTE = "Ratings and pace count possessions as FGA - OREB + TOV + 0.44 x FTA."
+"""The definition beneath a team's ratings and pace - the possessions
+:data:`POSSESSIONS` counts (a ``definition`` note, ``term``
+``rating_formula``, said by ``compose.say``).
+
+.. versionadded:: 5.0.0
+   Moved from ``templates.teams``.
+"""
+
+
 FIRST_FULL_REGULAR_SEASON = 1994
 """The first season ``games`` holds every regular-season game of. Before it,
 the table holds one team's 82 games in 1988, 1991 and 1992 and none in
