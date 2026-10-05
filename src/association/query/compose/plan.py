@@ -13,10 +13,10 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 
 from association.query.measures import stat_measure
-from association.query.reading import Cause, Reading, _career_scope
+from association.query.reading import Cause, Reading, Scope, _career_scope
 from association.query.templates.common import RELATION_SCOPING_EXCLUDED, TemplateResult, TemplateUnsupported, unhonored_scoping
 from association.query.templates.players import leaderboard_shot_distance_refusal
-from association.query.templates.splits import _condition_needs_player_refusal, _streak_league_needs_named_subject
+from association.query.templates.splits import _condition_needs_player_refusal
 
 from .adapt import WITH_WITHOUT_STATED
 from .core import Query, Refused, Unsupported, _check_relation_scoping
@@ -45,6 +45,18 @@ def _team_shape_cells(reading: Reading) -> frozenset[str]:
         # reader) each refuse these by name.
         return _TEAM_READER_REFUSES
     return frozenset({"rate"})
+
+
+def _streak_league_cells(scope: Scope) -> None:
+    """Raise if a league-wide streak (nobody named at all) set ``opponent`` or
+    ``venue`` - cells only a named team's or player's games can be narrowed by.
+    A league-wide streak has no single subject for either to narrow against,
+    unlike a team's run (on the team relation) or a player's (the relation
+    reads both). ``templates.splits._streak_league_needs_named_subject`` was
+    this, the retired template's refusal."""
+    claimed = sorted(cell for cell in ("opponent", "venue") if getattr(scope, cell))
+    if claimed:
+        raise TemplateUnsupported(f"streak cannot honor {claimed} without a named team or player - the league-wide streak has no single subject to narrow")
 
 
 def _shape_declines(point: Reading) -> str | None:
@@ -79,7 +91,7 @@ def _shape_declines(point: Reading) -> str | None:
             if not (scope.team and scope.team.strip()):
                 # The league's run (a win streak reads the team relation
                 # with no team named; a stat's run reads everyone).
-                _streak_league_needs_named_subject(scope)
+                _streak_league_cells(scope)
         except TemplateUnsupported as exc:
             return str(exc)
     if intent in ("period_split", "streak", "player_matchup"):

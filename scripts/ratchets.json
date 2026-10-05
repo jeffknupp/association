@@ -51,7 +51,6 @@
   "compose.adapt:_with_without_named",
   "compose.core:_team_slot_for_player",
   "compose.plan:_condition_needs_player_refusal",
-  "compose.plan:_streak_league_needs_named_subject",
   "compose.present:_condition_team_no_games",
   "compose.present:_leaderboard_ranking",
   "compose.present:_player_compare_lines",

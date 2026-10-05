@@ -119,7 +119,7 @@ def condition_span_label(covered: _Scope, scope: Scope, first: Any, last: Any) -
 # still refuse ..." - rewritten to match). `streak`'s LEAGUE branch (no team
 # named either) still cannot narrow to a single opponent or venue - a
 # league-wide streak has no one team's home/road split or rival to read - so
-# `_streak_league_needs_named_subject` refuses those two there specifically.
+# the planner refuses those two there specifically (`compose.plan._streak_league_cells`).
 #
 # `game_n` is honored for `record_when`'s team branch (a threshold record can
 # meaningfully be narrowed to one game of each series - "Celtics record when
@@ -153,17 +153,6 @@ def _condition_needs_player_refusal(intent: str, scope: Scope, *extra: str) -> N
     claimed = sorted(cell for cell in (*_CONDITION_PLAYER_ONLY_CELLS, *extra) if getattr(scope, cell))
     if claimed:
         raise TemplateUnsupported(f"{intent} cannot honor {claimed} without a named player - only his own games can be narrowed that way")
-
-
-def _streak_league_needs_named_subject(scope: Scope) -> None:
-    """Raise if a league-wide streak (nobody named at all) set ``opponent`` or
-    ``venue`` - cells only a named team's or player's games can be narrowed by.
-    A league-wide streak has no single subject for either to narrow against,
-    unlike ``_streak_team`` (a real team, now on the relation) or
-    ``_streak_player`` (``condition_player`` reads both)."""
-    claimed = sorted(cell for cell in ("opponent", "venue") if getattr(scope, cell))
-    if claimed:
-        raise TemplateUnsupported(f"streak cannot honor {claimed} without a named team or player - the league-wide streak has no single subject to narrow")
 
 
 def _team_span_label(span: _Span, first: Any = None, last: Any = None) -> str:

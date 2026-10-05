@@ -991,7 +991,7 @@ def test_a_streaks_opponent_and_venue_narrow_a_teams_own_run_too(league: Templat
 def test_a_league_wide_streak_still_refuses_venue_and_opponent(league: TemplateContext) -> None:
     """Unlike a named team (just above), the league-wide streak (nobody
     named at all) has no single team's rival or home/road split to read -
-    `_streak_league_needs_named_subject` refuses by name rather than
+    `compose.plan._streak_league_cells` refuses by name rather than
     silently narrowing nothing or picking one team to mean."""
     with pytest.raises(TemplateUnsupported, match=r"streak cannot honor \['venue'\] without a named team or player"):
         streak(league, Reading.from_slots(_slots(kind="win", venue="home")))
