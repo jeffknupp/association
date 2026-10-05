@@ -2478,6 +2478,7 @@ those were found.
   on these 19 and the corpus; for the logs, check how many survive with the
   recorded normalizer's names before deciding whether "a game log needs a
   player or a team" should be a Cause.
+- **GitHub:** #321
 
 ### The planner lets five player cells through to a team's readers on trust, with no test per cell
 - **Found:** 2026-09-30, roadmap reviews (both agents), about the fix in
