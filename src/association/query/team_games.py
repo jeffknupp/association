@@ -857,6 +857,20 @@ def aggregate_sql(narrowed: TeamNarrowed, selects: list[str], *, join: str = "")
     return f"{_TEAM_GAMES} SELECT {', '.join(selects)} {source}", params
 
 
+def grouped_sql(narrowed: TeamNarrowed, columns: list[str], key: str, selects: list[str], *, join: str = "") -> tuple[str, list[Any]]:
+    """One row per group of the narrowed games: ``columns`` read from each
+    game (over ``join``, see :func:`rows_sql`) as the subquery ``t``, then
+    grouped by ``key`` - an expression over ``t`` - into the ``group``
+    column beside ``selects``, aggregates over ``t``. The team counterpart
+    of :func:`association.query.player_games.grouped_sql`, for the team
+    compiler's ``grouped`` shape (a team's splits).
+
+    .. versionadded:: 5.0.0
+    """
+    base, params = aggregate_sql(narrowed, columns, join=join)
+    return f'WITH t AS ({base}) SELECT {key} AS "group", {", ".join(selects)} FROM t GROUP BY 1', params
+
+
 def games_subquery(narrowed: TeamNarrowed, *, join: str = "") -> tuple[str, list[Any]]:
     """The narrowed games as a subquery holding every ``team_games`` column -
     what a reader that groups a team's games by a condition (a split, a

@@ -26,7 +26,6 @@ from typing import Any
 
 import duckdb
 
-from association.nba.franchises import season_name_sql
 from association.nba.season import current_season
 from association.nba.season import eastern_date as _eastern_date
 from association.query.measures import log_extras, stat_measure
@@ -35,7 +34,6 @@ from association.query.player_games import aggregate_sql
 from association.query.reading import DEFAULT_GAME_LOG_LIMIT, Scope, _clamp_limit
 from association.query.result import Narrowing, Part, Result, Rows, Span, Window
 from association.query.team_games import TEAM_GAMES_SQL, TeamNarrowed
-from association.query.team_games import rows_sql as team_rows_sql
 from association.query.templates.common import (
     MeasureFilter,
     Narrowed,
@@ -55,17 +53,7 @@ from association.query.templates.common import (
 )
 
 from .core import LINE, Compiled, Query, compile_over, compile_query, rows_of
-from .team import TeamQuery
-
-_TEAM_GAME_LOG_JOIN = " JOIN teams o ON o.team_id = tg.opponent_id"
-
-_TEAM_GAME_LOG_SELECT = (
-    "tg.eastern_date, tg.side, "
-    f"{season_name_sql('o.team_id', 'tg.season', 'o.display_name')} AS opponent, "
-    "tg.team_score, tg.opponent_score, tg.won, "
-    "CASE WHEN tg.season_type = 3 THEN year(tg.eastern_date) ELSE tg.season END AS season"
-)
-
+from .team import TeamQuery, compile_team_over
 
 # A player's log columns, by header -> player_game_log column. The four in
 # _LOG_BASE are always shown, and a named stat adds its own: "luka ft log" and
@@ -371,11 +359,12 @@ def _team_log_refusals(without: Any, measures: list[MeasureFilter], game_n: Any)
         raise TemplateUnsupported("a team's log does not number the games of a series yet")
 
 
-def _team_log_games(rows: list[tuple[Any, ...]]) -> list[dict[str, Any]]:
-    """Each fetched row (:data:`_TEAM_GAME_LOG_SELECT`'s seven columns) as a
-    display game. Reads ``team_games.won`` (a nullable boolean, computed
-    once in the relation) rather than comparing a raw ``winner_team_id``."""
-    return [{"date": str(r[0]), "home_away": r[1], "opponent": r[2], "team_score": r[3], "opponent_score": r[4], "won": r[5], "season": r[6]} for r in rows]
+def _team_log_games(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Each row of the team compiler's ``rows`` read
+    (:data:`~association.query.compose.team.TEAM_ROW_COLUMNS`) as a display
+    game. Reads ``team_games.won`` (a nullable boolean, computed once in the
+    relation) rather than comparing a raw ``winner_team_id``."""
+    return [{"date": str(r["day"]), "home_away": r["side"], **{key: r[key] for key in ("opponent", "team_score", "opponent_score", "won", "season")}} for r in rows]
 
 
 def _team_log_summary(games: list[dict[str, Any]]) -> dict[str, int]:
@@ -405,10 +394,12 @@ def _team_log_none(con: duckdb.DuckDBPyConnection, team_name: str, span: Resolve
     return f"The {team_name} played {total:,} games {span.during(first, last, whose='all seasons on record')}, none of them{narrowed.filters()}{on_date}."
 
 
-def _team_log(con: duckdb.DuckDBPyConnection, team_name: str, span: ResolvedSpan, narrowed: TeamNarrowed, *, limit: int, ascending: bool, stat: Any) -> Result:
-    """A team's games in ``span``, narrowed as ``narrowed`` already reflects."""
-    sql, params = team_rows_sql(narrowed, _TEAM_GAME_LOG_SELECT, order=f"tg.eastern_date {'ASC' if ascending else 'DESC'}", limit=limit, join=_TEAM_GAME_LOG_JOIN)
-    rows = con.execute(sql, params).fetchall()
+def _team_log(con: duckdb.DuckDBPyConnection, q: TeamQuery, team: Any, span: ResolvedSpan, narrowed: TeamNarrowed, *, limit: int, ascending: bool, stat: Any) -> Result:
+    """A team's games in ``span``, narrowed as ``narrowed`` already reflects:
+    the team compiler's ``rows`` read over the settled team
+    (:func:`~association.query.compose.team.compile_team_over`)."""
+    team_name = team.name
+    rows = rows_of(con, compile_team_over(replace(q, shape="rows"), team, span, narrowed, limit=limit, ascending=ascending))
     narrowing = Narrowing(phrase=narrowed.filters(), opponent=narrowed.opponent.name if narrowed.opponent else None, venue=narrowed.venue)
     window = Window(limit=limit, ascending=ascending)
     if not rows:
@@ -421,23 +412,26 @@ def _team_log(con: duckdb.DuckDBPyConnection, team_name: str, span: ResolvedSpan
     return Result(subject=team_name, relation="team", span=about, narrowing=narrowing, window=window, parts=(Part(body=body),), facts={"stat": stat})
 
 
-def _team_mixed_rows(con: duckdb.DuckDBPyConnection, team: Any, season: int, *, opponent: Any, venue: Any, limit: int) -> tuple[list[tuple[Any, ...]], dict[int, int], str] | TemplateResult:
+def _team_mixed_rows(con: duckdb.DuckDBPyConnection, team: Any, season: int, *, opponent: Any, venue: Any, limit: int) -> tuple[list[dict[str, Any]], dict[int, int], str] | TemplateResult:
     """A team's newest ``limit`` games of ``season`` over BOTH season types -
-    each type read on its own through
-    :func:`~association.query.templates.common.team_games` and merged by
-    date - with how many of the kept games each type gave and the
+    each type narrowed on its own through
+    :func:`~association.query.templates.common.team_games`, compiled as the
+    team compiler's ``rows`` read over the settled team
+    (:func:`~association.query.compose.team.compile_team_over`) and merged
+    by date - with how many of the kept games each type gave and the
     narrowing's own phrase. Shared with the team compiler's window sum
     (``compose.team``), which summed one type alone before it."""
-    rows_by_type: dict[int, list[tuple[Any, ...]]] = {}
+    rows_by_type: dict[int, list[dict[str, Any]]] = {}
     narrowed_text = ""
+    point = TeamQuery(scope=Scope(venue=venue), shape="rows")
     for season_type in (2, 3):
-        narrowed = team_games(con, team, ResolvedSpan(season, season_type), Scope(venue=venue), opponent=opponent)
+        type_span = ResolvedSpan(season, season_type)
+        narrowed = team_games(con, team, type_span, Scope(venue=venue), opponent=opponent)
         if isinstance(narrowed, TemplateResult):
             return narrowed
         narrowed_text = narrowed.filters()
-        sql, params = team_rows_sql(narrowed, _TEAM_GAME_LOG_SELECT, order="tg.eastern_date DESC", limit=limit, join=_TEAM_GAME_LOG_JOIN)
-        rows_by_type[season_type] = con.execute(sql, params).fetchall()
-    rows, counts = _merge_season_types(rows_by_type, date_of=lambda row: row[0], limit=limit, ascending=False)
+        rows_by_type[season_type] = rows_of(con, compile_team_over(point, team, type_span, narrowed, limit=limit))
+    rows, counts = _merge_season_types(rows_by_type, date_of=lambda row: row["day"], limit=limit, ascending=False)
     return rows, counts, narrowed_text
 
 
@@ -522,4 +516,4 @@ def read_team_log(con: duckdb.DuckDBPyConnection, q: TeamQuery, *, stated: froze
     narrowed = team_games(con, team, seasons, Scope(venue=venue), opponent=opponent, date=date)
     if isinstance(narrowed, TemplateResult):
         return narrowed
-    return _team_log(con, team.name, seasons, narrowed, limit=limit, ascending=ascending, stat=scope.stat)
+    return _team_log(con, q, team, seasons, narrowed, limit=limit, ascending=ascending, stat=scope.stat)

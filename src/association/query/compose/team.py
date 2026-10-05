@@ -57,14 +57,17 @@ from typing import Any
 import duckdb
 
 from association.nba.coverage import unavailable
+from association.nba.franchises import season_name_sql
 from association.nba.season import current_season
-from association.query.conditions import _PLAYER_GAME_TABLES, _longest_runs
+from association.query.conditions import _PLAYER_GAME_TABLES, _TEAM_LINE, _longest_runs
 from association.query.entities import Entity
 from association.query.entities import team_named_in as team_named_in
 from association.query.reading import DEFAULT_STREAK_LIMIT, Scope, _clamp_limit
 from association.query.team_games import TeamNarrowed
 from association.query.team_games import aggregate_sql as team_aggregate_sql
+from association.query.team_games import grouped_sql as team_grouped_sql
 from association.query.team_games import named as team_named
+from association.query.team_games import rows_sql as team_rows_sql
 from association.query.templates.common import ResolvedSpan, TemplateResult, TemplateUnsupported, resolved_team, scoped_team, span_of, whole_span
 from association.query.templates.common import team_games as narrow_team_games
 from association.query.templates.splits import _TEAM_STREAK_SELECT, PresenceSplit, _streak_league_team_narrowed, _team_season_range, _with_without_read
@@ -108,6 +111,71 @@ SEASON_MEASURES: dict[str, str] = {
 """
 
 
+#: A team's games listed (the ``rows`` shape): each game's Eastern date, the
+#: side it was played on, the opponent as that season named it, both scores,
+#: the result, and the season - a postseason's by the calendar year it was
+#: played in (``AGENTS.md``, "Select a postseason by the calendar year").
+TEAM_ROW_COLUMNS: tuple[str, ...] = (
+    "tg.eastern_date AS day",
+    "tg.side",
+    f"{season_name_sql('o.team_id', 'tg.season', 'o.display_name')} AS opponent",
+    "tg.team_score",
+    "tg.opponent_score",
+    "tg.won",
+    "CASE WHEN tg.season_type = 3 THEN year(tg.eastern_date) ELSE tg.season END AS season",
+)
+"""The columns a team's ``rows`` read selects, each by name.
+
+.. versionadded:: 5.0.0
+"""
+
+#: The join the ``rows`` shape's opponent name needs.
+_TEAM_ROWS_JOIN = " JOIN teams o ON o.team_id = tg.opponent_id"
+
+#: The ``grouped`` shape's groups: a key over the subquery ``t``
+#: (:func:`association.query.team_games.grouped_sql`), labeled as a team's
+#: splits show them - the player compiler's group names
+#: (:data:`~association.query.compose.core.GROUPS`) where it has one.
+TEAM_GROUPS: dict[str, str] = {
+    "venue": "t.home_away",
+    "won": "CASE WHEN t.won THEN 'wins' ELSE 'losses' END",
+    "month_of_year": "CAST(month(t.day) AS VARCHAR)",
+}
+"""A team ``grouped`` read's group -> the key its games are divided by.
+
+.. versionadded:: 5.0.0
+"""
+
+#: What each game of a ``grouped`` read carries: the relation's own result
+#: and scores, and the box-score columns the line averages, over
+#: ``team_box_stats`` - which the relation does not carry. An inner join, so
+#: a game with no team box row is in no group, as the splits always read it.
+_TEAM_GROUPED_COLUMNS: tuple[str, ...] = (
+    "tg.season",
+    "tg.eastern_date AS day",
+    "tg.side AS home_away",
+    "tg.won",
+    "tg.team_score",
+    "tg.opponent_score",
+    "tbs.offensiveRebounds",
+    "tbs.defensiveRebounds",
+    "tbs.assists",
+    "tbs.threePointFieldGoalsMade",
+    "tbs.fieldGoalsMade",
+    "tbs.fieldGoalsAttempted",
+)
+_TEAM_GROUPED_JOIN = " JOIN team_box_stats tbs ON tbs.event_id = tg.event_id AND tbs.season = tg.season AND tbs.team_id = tg.team_id"
+
+TEAM_LINE_MEASURES: dict[str, str] = {("threePointFieldGoalsMade" if name == "threes" else name): sql for name, _, sql in _TEAM_LINE}
+"""A team's per-game line in a ``grouped`` read, by measure name -> its
+aggregate over ``t`` (``conditions._TEAM_LINE``'s: points, points allowed,
+rebounds, assists, threes - under the box column's name, as the player
+compiler reads it - and FG%).
+
+.. versionadded:: 5.0.0
+"""
+
+
 @dataclass(kw_only=True)
 class TeamQuery:
     """A point over the team-games relation, for a team as the subject - the
@@ -138,13 +206,33 @@ class TeamQuery:
     #: splits - ``player_splits``' team half) or ``"run"`` (its longest run
     #: of wins or losses - ``streak``'s team half, read here by
     #: :func:`_compile_team_run`; the league's with no team named), the
-    #: last three said by :func:`~association.query.compose.present.present_team`.
+    #: first two compiled by :func:`compile_team_over` and read by
+    #: ``compose.logs``/``compose.splits``.
     shape: str = "scalar"
     #: A ``"grouped"`` shape's group: ``"none"`` for the team's own splits
-    #: (``player_splits``' team half), or ``"presence"`` - the team's games
+    #: (``player_splits``' team half, which compiles one read per kind by a
+    #: key of :data:`TEAM_GROUPS`), or ``"presence"`` - the team's games
     #: divided by whether named teammates played (``with_without``'s retired
     #: template, read by :func:`_compile_team_presence`).
     group: str = "none"
+
+
+@dataclass
+class TeamCompiled:
+    """A :class:`TeamQuery` turned into SQL over the team-games relation: the
+    statement, its parameters and what the relation settled - the team, the
+    span and every narrowing. The team counterpart of
+    :class:`~association.query.compose.core.Compiled`, executed through the
+    same one door (:func:`~association.query.compose.core.rows_of`).
+
+    .. versionadded:: 5.0.0
+    """
+
+    sql: str
+    params: list[Any] | dict[str, Any]
+    team: Entity | None
+    span: ResolvedSpan
+    narrowed: TeamNarrowed
 
 
 @dataclass
@@ -328,9 +416,7 @@ def _compile_team_games_mixed(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> T
     if isinstance(mixed, TemplateResult):
         raise Refused(mixed)
     rows, counts, narrowed_text = mixed
-    # _TEAM_GAME_LOG_SELECT's columns: date, side, opponent, team score,
-    # opponent score, won, season.
-    scores = [(int(r[3]), int(r[4]), r[5]) for r in rows]
+    scores = [(int(r["team_score"]), int(r["opponent_score"]), r["won"]) for r in rows]
     value: float | None
     if not scores:
         value = None
@@ -467,6 +553,59 @@ def _compile_team_presence(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> Team
         narrowed_text=f" vs the {split.against.name}" if split.against is not None else "",
         presence=split,
     )
+
+
+def _compile_team_rows(narrowed: TeamNarrowed, team: Entity | None, span: ResolvedSpan, *, limit: int | None, ascending: bool) -> TeamCompiled:
+    """A ``rows`` read: the team's games in Eastern-date order with
+    :data:`TEAM_ROW_COLUMNS`, the newest (or oldest) ``limit`` of them."""
+    # A rows read applies its own limit, so the relation's window is not
+    # what cut these rows - the player compiler's rows rule (core._compile_rows).
+    narrowed.window = None
+    sql, params = team_rows_sql(narrowed, ", ".join(TEAM_ROW_COLUMNS), order=f"tg.eastern_date {'ASC' if ascending else 'DESC'}", limit=limit, join=_TEAM_ROWS_JOIN)
+    return TeamCompiled(sql, params, team, span, narrowed)
+
+
+def _compile_team_grouped(q: TeamQuery, narrowed: TeamNarrowed, team: Entity | None, span: ResolvedSpan) -> TeamCompiled:
+    """A ``grouped`` read: the team's games divided by one of
+    :data:`TEAM_GROUPS`, each group's record and per-game line
+    (:data:`TEAM_LINE_MEASURES`) - and, beside them, the first and last
+    season the group's games came from (a postseason's by the calendar year
+    it was played in) and how many of them have no team box score, which
+    the line is averaged without. Read over every game in the span, as a
+    split is (``whole_span``)."""
+    if q.group not in TEAM_GROUPS:
+        raise Unsupported(f"no team grouping {q.group!r}")
+    whole_span(narrowed)
+    season = "year(t.day)" if span.season_type == 3 else "t.season"
+    selects = [
+        "COUNT(*) AS games",
+        "COUNT(*) FILTER (WHERE t.won) AS wins",
+        *(f'{sql} AS "{name}"' for name, sql in TEAM_LINE_MEASURES.items()),
+        f"MIN({season}) AS first_season",
+        f"MAX({season}) AS last_season",
+        "COUNT(*) FILTER (WHERE t.fieldGoalsAttempted IS NULL) AS blank",
+    ]
+    sql, params = team_grouped_sql(narrowed, list(_TEAM_GROUPED_COLUMNS), TEAM_GROUPS[q.group], selects, join=_TEAM_GROUPED_JOIN)
+    return TeamCompiled(sql, params, team, span, narrowed)
+
+
+def compile_team_over(q: TeamQuery, team: Entity | None, span: ResolvedSpan, narrowed: TeamNarrowed, *, limit: int | None = None, ascending: bool = False) -> TeamCompiled:
+    """``q`` as SQL over a team already settled - the team counterpart of
+    :func:`~association.query.compose.core.compile_over`, for a reader that
+    settles the team, the span and the narrowed games through the shared
+    steps (:func:`~association.query.templates.common.team_games`) and reads
+    them under one shape: ``rows`` (the team's games listed, ``limit`` of
+    them, oldest first where ``ascending``) or ``grouped`` by a key of
+    :data:`TEAM_GROUPS`. Executed through
+    :func:`~association.query.compose.core.rows_of`.
+
+    .. versionadded:: 5.0.0
+    """
+    if q.shape == "rows":
+        return _compile_team_rows(narrowed, team, span, limit=limit, ascending=ascending)
+    if q.shape == "grouped":
+        return _compile_team_grouped(q, narrowed, team, span)
+    raise Unsupported(f"no team compile for the {q.shape!r} shape")
 
 
 def _team_coverage_tables(q: TeamQuery) -> tuple[str, ...]:

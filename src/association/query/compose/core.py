@@ -36,7 +36,7 @@ from __future__ import annotations
 import copy
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import duckdb
 
@@ -75,6 +75,10 @@ from association.query.templates.common import (
 )
 from association.query.templates.games import _team_slot_for_player
 from association.query.templates.players import seasons_on_record
+
+if TYPE_CHECKING:
+    # Annotation only: the team compiler imports this module.
+    from .team import TeamCompiled
 
 EASTERN = eastern_date_sql("g.date")
 
@@ -1132,13 +1136,17 @@ def _player_own_seasons(con: duckdb.DuckDBPyConnection, player: Entity | None, s
     return began, ended
 
 
-def rows_of(con: duckdb.DuckDBPyConnection, compiled: Compiled) -> list[dict[str, Any]]:
+def rows_of(con: duckdb.DuckDBPyConnection, compiled: Compiled | TeamCompiled) -> list[dict[str, Any]]:
     """The compiled statement executed: its rows, each by column name. The
     one place a compiled statement runs - the compiler's own :func:`run` and
     every ported reader (``compose.logs``, ``compose.records``,
-    ``compose.splits``) read through it.
+    ``compose.splits``) read through it, the team compiler's statements
+    (:class:`~association.query.compose.team.TeamCompiled`) as well.
 
     .. versionadded:: 5.0.0
+
+    .. versionchanged:: 5.0.0
+       Runs the team compiler's statements too (Phase 2, step 4).
     """
     cur = _executed(con, compiled)
     names = [d[0] for d in cur.description]
@@ -1156,7 +1164,7 @@ def values_of(con: duckdb.DuckDBPyConnection, statement: Statement) -> list[tupl
     return _executed(con, statement).fetchall()
 
 
-def _executed(con: duckdb.DuckDBPyConnection, statement: Compiled | Statement) -> duckdb.DuckDBPyConnection:
+def _executed(con: duckdb.DuckDBPyConnection, statement: Compiled | TeamCompiled | Statement) -> duckdb.DuckDBPyConnection:
     """The one place a statement runs: a compiled point's, or the season
     line's."""
     return con.execute(statement.sql, statement.params)

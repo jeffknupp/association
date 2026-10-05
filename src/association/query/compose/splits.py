@@ -18,7 +18,7 @@ from typing import Any
 
 import duckdb
 
-from association.query.conditions import _PLAYER_GAME_TABLES, _PLAYER_LINE, _SPLIT_GROUPS, _TEAM_LINE, _season_month_order, _split_rows, _totals, _unseen, box_source
+from association.query.conditions import _PLAYER_GAME_TABLES, _PLAYER_LINE, _SPLIT_GROUPS, _TEAM_LINE, _season_month_order, _totals, _unseen, box_source
 from association.query.entities import Entity
 from association.query.lines import measure_filters
 from association.query.notes import Note
@@ -26,12 +26,11 @@ from association.query.player_games import _PLAYER_GAMES, Narrowed, games_subque
 from association.query.reading import SPLIT_KINDS, Scope, Unsupported
 from association.query.result import Grouped, Narrowing, Part, Result, Span
 from association.query.season_text import MONTH_NAMES
-from association.query.team_games import aggregate_sql as team_aggregate_sql
-from association.query.templates.common import TemplateResult, condition_scope, no_games, no_narrowed_games, optional_team, span_of, team_games, unhonored_scoping, whole_span
-from association.query.templates.splits import _condition_team_no_games, _team_season_range, _team_span_label
+from association.query.templates.common import TemplateResult, condition_scope, no_games, no_narrowed_games, optional_team, span_of, team_games, unhonored_scoping
+from association.query.templates.splits import _condition_team_no_games, _team_span_label
 
 from .core import Compiled, Query, compile_over, compile_query, rows_of
-from .team import TeamQuery
+from .team import TeamQuery, compile_team_over
 
 # Router stat name -> the standard split line's own key: naming one of these
 # changes nothing about which columns are shown, since _PLAYER_LINE/_TEAM_LINE
@@ -60,26 +59,6 @@ SPLIT_EXTRA_STATS: dict[str, tuple[str, str, str]] = {
 #: back to the category, while the log and the other filtering shapes read
 #: the half.
 _STARTER_BENCH_SIDES = frozenset({"starter", "bench"})
-
-#: A team's games under a splits read, over the relation
-#: (:data:`~association.query.team_games.TEAM_GAMES_SQL`) joined to
-#: ``team_box_stats`` for the box-score columns the relation itself does not
-#: carry (``_TEAM_LINE``'s rebounds/assists/threes/shooting).
-_TEAM_SPLIT_JOIN = " JOIN team_box_stats tbs ON tbs.event_id = tg.event_id AND tbs.season = tg.season AND tbs.team_id = tg.team_id"
-_TEAM_SPLIT_SELECT: tuple[str, ...] = (
-    "tg.season",
-    "tg.eastern_date AS day",
-    "tg.side AS home_away",
-    "tg.won",
-    "tg.team_score",
-    "tg.opponent_score",
-    "tbs.offensiveRebounds",
-    "tbs.defensiveRebounds",
-    "tbs.assists",
-    "tbs.threePointFieldGoalsMade",
-    "tbs.fieldGoalsMade",
-    "tbs.fieldGoalsAttempted",
-)
 
 
 def _splits_line(stat: str | None, base_line: tuple[tuple[str, str, str], ...], *, alias: str) -> tuple[tuple[str, str, str], ...]:
@@ -118,16 +97,6 @@ def _kinds(split: Any, alias: str) -> tuple[str, list[str]]:
     return split, kinds
 
 
-def _groups(con: duckdb.DuckDBPyConnection, base: str, params: Any, alias: str, line: tuple[tuple[str, str, str], ...], kinds: list[str]) -> Grouped:
-    """One row per group of each kind, in reading order, each marked with its
-    kind - the team's, over the relation's own grouped statements
-    (:func:`~association.query.conditions._split_rows`) until the team slice."""
-    rows: list[dict[str, Any]] = []
-    for kind in kinds:
-        rows += [{"split": kind, **entry} for entry in _split_rows(con, base, params, alias, line, kind)]
-    return Grouped(by="split", rows=tuple(rows))
-
-
 #: A split kind -> the compiler's group that divides the games the same way.
 _SPLIT_GROUP: dict[str, str] = {"home_away": "venue", "starter_bench": "starter", "wins_losses": "won", "month": "month_of_year"}
 #: The compiler's group labels where the table's differ.
@@ -136,7 +105,7 @@ _GROUP_AS_SHOWN: dict[str, str] = {"win": "wins", "loss": "losses"}
 _LINE_MEASURE: dict[str, str] = {"threes": "threePointFieldGoalsMade"}
 
 
-def _player_group_rows(found: list[dict[str, Any]], line: tuple[tuple[str, str, str], ...], kind: str) -> list[dict[str, Any]]:
+def _group_rows(found: list[dict[str, Any]], line: tuple[tuple[str, str, str], ...], kind: str) -> list[dict[str, Any]]:
     """The compiled statement's groups as the table shows them: both halves
     of a two-way split always (an empty one as zero games - "never came off
     the bench" is an answer, and a missing row reads as a bug), a value
@@ -167,7 +136,7 @@ def _player_groups(con: duckdb.DuckDBPyConnection, q: Query, compiled: Compiled,
     rows: list[dict[str, Any]] = []
     for kind in kinds:
         each = compile_over(con, replace(q, group=_SPLIT_GROUP[kind], measures=measures), compiled.player, compiled.span, compiled.narrowed)
-        rows += _player_group_rows(rows_of(con, each), line, kind)
+        rows += _group_rows(rows_of(con, each), line, kind)
     return Grouped(by="split", rows=tuple(rows))
 
 
@@ -340,29 +309,35 @@ def read_team_splits(con: duckdb.DuckDBPyConnection, q: TeamQuery, *, stated: fr
         # "Bench scoring" is a sum over a team's players - a different
         # question from any this shape answers.
         raise Unsupported("a team has no starter/bench split of its own")
-    return _team_splits(con, scope, team, opponent)
+    return _team_splits(con, q, team, opponent)
 
 
-def _team_splits(con: duckdb.DuckDBPyConnection, scope: Scope, team: Entity, opponent: Entity | None) -> Result | TemplateResult:
+def _team_splits(con: duckdb.DuckDBPyConnection, q: TeamQuery, team: Entity, opponent: Entity | None) -> Result | TemplateResult:
     """A named team's own games, narrowed to an opponent and/or a venue the
-    same way every other team-facing read narrows them - the tail of
-    :func:`read_team_splits`."""
+    same way every other team-facing read narrows them, divided by each
+    kind through the team compiler's ``grouped`` shape
+    (:func:`~association.query.compose.team.compile_team_over`) - the tail
+    of :func:`read_team_splits`."""
+    scope = q.scope
     line = _splits_line(scope.stat, _TEAM_LINE, alias="t")
     span = span_of(scope.span, scope.season, scope.season_type or 2, "games", since=scope.since, until=scope.until)
     narrowed = team_games(con, team, span, scope, opponent=opponent)
     if isinstance(narrowed, TemplateResult):
         return narrowed
-    # A split, a record, a run: read over every game in the span.
-    whole_span(narrowed)
-    base, params = team_aggregate_sql(narrowed, list(_TEAM_SPLIT_SELECT), join=_TEAM_SPLIT_JOIN)
-    games, first, last = _team_season_range(con, base, params, span)
+    split, kinds = _kinds(scope.split, "t")
+    # One compiled grouped read per kind, over every game in the span (the
+    # team compiler's ``grouped`` shape reads a split over the whole span).
+    found = {kind: rows_of(con, compile_team_over(replace(q, group=_SPLIT_GROUP[kind]), team, span, narrowed)) for kind in kinds}
+    # Every kind divides the same games, so the first one's groups give the
+    # count, the seasons they came from and the games with no box score.
+    each = found[kinds[0]]
+    games = sum(int(r["games"]) for r in each)
     if not games:
         return _condition_team_no_games(con, team, span, narrowed)
-    split, kinds = _kinds(scope.split, "t")
+    first, last = min(r["first_season"] for r in each), max(r["last_season"] for r in each)
     # The score of a game with no box score is still on record, but its
     # team box stats are NULL - averaged over the rest, and said so.
-    blank = con.execute(f"SELECT COUNT(*) FILTER (WHERE fieldGoalsAttempted IS NULL) FROM ({base})", params).fetchone()
-    blanks = int(blank[0]) if blank else 0
+    blanks = sum(int(r["blank"]) for r in each)
     notes: list[Note] = []
     if blanks:
         notes.append(Note("stat_blank", {"games": blanks, "columns": ["rebounds", "assists", "threes", "fg_pct"]}))
@@ -387,7 +362,7 @@ def _team_splits(con: duckdb.DuckDBPyConnection, scope: Scope, team: Entity, opp
         relation="team",
         span=Span(season=span.season, season_type=span.season_type, career=span.season is None, first=first, last=last, phrase=_team_span_label(span, first, last)),
         narrowing=Narrowing(phrase=narrowed.filters(), opponent=narrowed.opponent.name if narrowed.opponent else None, venue=narrowed.venue),
-        parts=(Part(body=_groups(con, base, params, "t", line, kinds)),),
+        parts=(Part(body=Grouped(by="split", rows=tuple(row for kind in kinds for row in _group_rows(found[kind], line, kind)))),),
         notes=tuple(notes),
         facts=facts,
     )

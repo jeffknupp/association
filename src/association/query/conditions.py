@@ -432,12 +432,6 @@ _TEAM_LINE: tuple[tuple[str, str, str], ...] = (
     ("fg_pct", "FG%", "100.0 * SUM(t.fieldGoalsMade) / NULLIF(SUM(t.fieldGoalsAttempted), 0)"),
 )
 
-_SPLIT_SQL: dict[str, str] = {
-    "home_away": "{a}.home_away",
-    "starter_bench": "CASE WHEN {a}.starter THEN 'starter' ELSE 'bench' END",
-    "wins_losses": "CASE WHEN {a}.won THEN 'wins' ELSE 'losses' END",
-    "month": "CAST(month({a}.day) AS VARCHAR)",
-}
 # Both halves of a two-way split are always shown, an empty one as zero games:
 # "never came off the bench" is an answer, and a missing row reads as a bug.
 _SPLIT_GROUPS: dict[str, tuple[str, ...]] = {"home_away": ("home", "away"), "starter_bench": ("starter", "bench"), "wins_losses": ("wins", "losses")}
@@ -449,30 +443,6 @@ _MONTH_NAMES = MONTH_NAMES
 def _season_month_order(month: int) -> int:
     """October first: a season runs October to June, and a calendar order would put its end before its start."""
     return (month + 2) % 12
-
-
-def _split_rows(con: duckdb.DuckDBPyConnection, base: str, params: Params, alias: str, line: Sequence[tuple[str, str, str]], split: str) -> list[dict[str, Any]]:
-    """Games, record and averages in each group of one split, in reading order."""
-    group = _SPLIT_SQL[split].format(a=alias)
-    measures = ", ".join(sql for _, _, sql in line)
-    found = con.execute(f"WITH {alias} AS ({base}) SELECT {group} AS grp, COUNT(*), COUNT(*) FILTER (WHERE {alias}.won), {measures} FROM {alias} GROUP BY grp", params).fetchall()
-    by_group = {str(row[0]): row for row in found if row[0] is not None}
-    if split == "month":  # noqa: SIM108 - the else branch's comment has no place in a ternary
-        keys = sorted(by_group, key=lambda m: _season_month_order(int(m)))
-    else:
-        # A value outside the expected pair is shown rather than dropped, so a
-        # new ESPN label cannot quietly take games out of the table.
-        keys = [*_SPLIT_GROUPS[split], *sorted(k for k in by_group if k not in _SPLIT_GROUPS[split])]
-    rows: list[dict[str, Any]] = []
-    for key in keys:
-        row = by_group.get(key)
-        games = int(row[1]) if row else 0
-        wins = int(row[2]) if row else 0
-        entry: dict[str, Any] = {"group": _MONTH_NAMES[int(key) - 1] if split == "month" else key, "games": games, "wins": wins, "losses": games - wins}
-        for index, (name, _, _) in enumerate(line):
-            entry[name] = row[3 + index] if row else None
-        rows.append(entry)
-    return rows
 
 
 def _totals(con: duckdb.DuckDBPyConnection, base: str, params: Params) -> tuple[int, int | None, int | None]:
