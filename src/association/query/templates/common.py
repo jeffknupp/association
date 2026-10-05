@@ -463,7 +463,7 @@ HONORED_SCOPING: dict[str, frozenset[str]] = {
     # narrow it.
     "shot_chart": _relation_scoping("shot_chart"),
     "shot_distance": _relation_scoping("shot_distance"),
-    "player_netpoints": frozenset({"order"}),
+    # player_netpoints is the compiler's (Phase 2, slice (v)): compose.plan.STATED_SCOPING.
     # `order` is honored by DRAWING that game, from the long per-game table.
     # `date` is still honored by refusing: the router gives a calendar date
     # and the loader picks a player's first or last game of a season, which are

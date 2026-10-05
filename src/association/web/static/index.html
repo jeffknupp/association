@@ -1195,7 +1195,7 @@
         const box = el("div");
         // `totals` (net_points_player's season row) and `fingerprint` (the
         // play-type breakdown) come from different tables and can each be
-        // empty on their own - templates/netpoints.py's own comment: "the two
+        // empty on their own - compose/netpoints.py's own comment: "the two
         // disagree about who they hold". Either alone is still worth a card.
         if (d.totals) {
           const items = [
@@ -1207,7 +1207,7 @@
           box.appendChild(statGrid(items));
         }
         // `partition` marks the six categories net_points_player_fingerprint
-        // itself sums to the season total (templates.netpoints.FINGERPRINT_PARTITION,
+        // itself sums to the season total (nba.netpoints.FINGERPRINT_PARTITION,
         // carried onto each row rather than a second copy of that list here -
         // see `_netpoints_breakdown`'s own comment). The rest are overlapping
         // play-type slices, shown separately so nobody sums them together.

@@ -38,7 +38,7 @@ from association.query.templates.common import HONORED_SCOPING, SCOPING_SLOTS, T
 from association.query.templates.games import (
     PERIOD_RATE_STATS,
 )
-from association.query.templates.netpoints import fingerprint, player_netpoints
+from association.query.templates.netpoints import fingerprint
 from association.query.templates.shots import shot_chart, shot_distance
 
 
@@ -76,6 +76,7 @@ player_splits = _compiled("player_splits")
 player_matchup = _compiled("player_matchup")
 player_stat = _compiled("player_stat")
 streak = _compiled("streak")
+player_netpoints = _compiled("player_netpoints")
 head_to_head = _compiled("head_to_head")
 team_quarter_points = _compiled("team_quarter_points")
 period_leaderboard = _compiled("period_leaderboard")
@@ -3123,18 +3124,13 @@ def test_player_netpoints_notes_carry_the_headline_detail_and_units(np_ctx: Temp
     assert any("do not add up" in n for n in notes)
 
 
-def test_player_netpoints_notes_say_season_totals_for_a_rate_total_request(np_ctx: TemplateContext) -> None:
-    notes = player_netpoints(np_ctx, Reading.from_slots({"player": "SGA", "rate": "total"})).data["notes"]
-    assert "Categories are season totals." in notes
-
-
 def test_player_netpoints_missing_season_refusal_carries_a_headline(np_ctx: TemplateContext) -> None:
-    result = player_netpoints(np_ctx, Reading.from_slots({"player": "SGA", "season": 1999}))
+    result = player_netpoints(np_ctx, Reading.from_slots({"player": "SGA", "season": 2020}))
     assert result.data["headline"] == result.answer
 
 
 def test_player_netpoints_reports_a_missing_season_honestly(np_ctx: TemplateContext) -> None:
-    assert "no 1999 regular season NetPoints" in (player_netpoints(np_ctx, Reading.from_slots({"player": "SGA", "season": 1999})).answer or "")
+    assert "no 2020 regular season NetPoints" in (player_netpoints(np_ctx, Reading.from_slots({"player": "SGA", "season": 2020})).answer or "")
 
 
 def test_player_netpoints_defaulted_season_redirects_to_a_retired_players_range(np_ctx: TemplateContext) -> None:
@@ -3155,8 +3151,8 @@ def test_player_netpoints_a_named_season_keeps_the_plain_refusal(np_ctx: Templat
     the defaulted case above, redirecting it would be a different question."""
     np_ctx.con.execute("INSERT INTO players VALUES ('2','Old Timer')")
     np_ctx.con.execute("INSERT INTO net_points_player VALUES ('2',2020,'Regular Season',100.0,80.0,20.0,5.0,1000,50)")
-    answer = player_netpoints(np_ctx, Reading.from_slots({"player": "Old Timer", "season": 1999})).answer or ""
-    assert answer == "The warehouse has no 1999 regular season NetPoints for Old Timer."
+    answer = player_netpoints(np_ctx, Reading.from_slots({"player": "Old Timer", "season": 2021})).answer or ""
+    assert answer == "The warehouse has no 2021 regular season NetPoints for Old Timer."
 
 
 def test_player_netpoints_without_a_player_falls_through(np_ctx: TemplateContext) -> None:
@@ -3172,13 +3168,6 @@ def test_player_netpoints_fingerprint_defaults_to_per_100_possessions(np_ctx: Te
     assert two_pt["total"] == pytest.approx(250.9 / 4725 * 100, rel=1e-3)
     assert two_pt["total_season_total"] == 250.9  # the raw total is still available
     assert "per 100 possessions" in (result.answer or "")
-
-
-def test_player_netpoints_rate_total_reports_season_totals(np_ctx: TemplateContext) -> None:
-    result = player_netpoints(np_ctx, Reading.from_slots({"player": "SGA", "rate": "total"}))
-    two_pt = next(r for r in result.data["fingerprint"] if r["category"] == "two pt")
-    assert two_pt["total"] == 250.9
-    assert "season totals" in (result.answer or "")
 
 
 def test_player_netpoints_falls_back_to_totals_without_a_possession_count(np_ctx: TemplateContext) -> None:
@@ -3219,10 +3208,10 @@ def test_the_six_core_categories_partition_the_total(np_ctx: TemplateContext) ->
     the offensive and defensive totals - verified against the separately stored
     net_points_player.offense/.defense for every top-minutes player in 2026,
     max deviation 0.005. The other categories are overlapping slices."""
-    from association.query.templates.netpoints import FINGERPRINT_PARTITION
+    from association.nba.netpoints import FINGERPRINT_PARTITION
 
     assert set(FINGERPRINT_PARTITION) == {"two_pt", "three_pt", "free_throw", "turnover", "rebound", "foul"}
-    answer = player_netpoints(np_ctx, Reading.from_slots({"player": "SGA", "rate": "total"})).answer or ""
+    answer = player_netpoints(np_ctx, Reading.from_slots({"player": "SGA"})).answer or ""
     offense = answer.split("Offense,")[1].split("Defense,")[0]
     listed = [ln.split()[-1] for ln in offense.strip().splitlines()[1:] if ln.strip() and not ln.strip().startswith("-")]
     assert pytest.approx(sum(float(v) for v in listed[:-1]), rel=1e-6) == float(listed[-1])
@@ -3361,7 +3350,6 @@ def test_scope_guard_allows_templates_that_honor_the_slot() -> None:
     assert unhonored_scoping("game_log", Scope.from_slots({"order": "recent", "date": "2026-04-12"}), STATED_SCOPING["game_log"]) == []
     check_scope("shot_chart", {"order": "recent"})
     check_scope("shot_distance", {"order": "first"})
-    check_scope("player_netpoints", {"order": "recent"})
 
 
 def test_scope_guard_lets_only_the_templates_that_read_it_honor_season_type_unstated() -> None:

@@ -103,6 +103,8 @@ _FIXED_DEFINITIONS: dict[str, str] = {
     "most_recent_team": "\nTeam is each player's most recent team that season.",
     "rank_meaning": "Rank 1st is the best in the league (for pace, the fastest).",
     "unseen_ends_run": " A game with no box score in the warehouse ends a run rather than being carried across, since it cannot be checked.",
+    # Inside the heading of NetPoints' play-type detail, which it splits over two lines.
+    "netpoints_overlap": "overlapping slices - a driving layup at the rim\n  counts in driving, layup and rim, so these do not add up",
 }
 
 
@@ -130,6 +132,10 @@ def _say_definition(facts: dict[str, Any], about: str = "", placed: str = "") ->
         return _say_streak_rule(facts)
     if facts.get("term") == "rating_formula":
         return RATING_NOTE
+    if facts.get("term") == "netpoints_units":
+        # What a NetPoints fingerprint's numbers are, in its section headings.
+        possessions = facts["possessions"]
+        return f"{facts['units']}" + (f" over {possessions:,.0f} possessions" if possessions else "")
     if facts.get("term") != "without":
         raise ValueError(f"no phrase for the definition of {facts.get('term')!r}")
     names = list(facts["names"])
@@ -352,6 +358,8 @@ def note_phrase(each: Note, *, narrowing: str = "", consequence: str = "", liste
     said = _say_season_note(each.kind, facts)
     if said is None:
         said = _say_team_season_note(each.kind, facts)
+    if said is None:
+        said = _say_netpoints_note(each.kind, facts)
     if said is None:
         raise ValueError(f"no phrase for a {each.kind!r} note with {sorted(facts)}")
     return said
@@ -615,6 +623,8 @@ def say(result: Result) -> TemplateResult:
 
     .. versionadded:: 5.0.0
     """
+    if result.span.source == "netpoints":
+        return say_player_netpoints(result)
     team = _say_team_shape(result)
     if team is not None:
         return team
@@ -3218,3 +3228,213 @@ def say_team_record_by_month(result: Result) -> TemplateResult:
     else:
         data = {"team": team, "season": span.season, "opponent": opponent, "venue": venue, "months": months, "headline": answer.split("\n")[0].rstrip(":")}
     return TemplateResult(data=data, answer=answer)
+
+
+# --- a player's NetPoints ------------------------------------------------------------
+
+
+def _say_netpoints_note(kind: str, facts: dict[str, Any]) -> str | None:
+    """The phrase for a note a NetPoints answer makes - a part with nothing on
+    record, or the fingerprint a game's NetPoints come with - or ``None``."""
+    what = facts.get("what")
+    if kind == "part_missing" and what == "season_totals":
+        return "(no season totals on record)"
+    if kind == "part_missing" and what == "fingerprint":
+        return "  No play-type fingerprint on record for this season."
+    if kind == "hint" and what == "fingerprint_of_that_game":
+        return "\n  (Ask for a fingerprint of that game to see the play-type split behind it.)"
+    return None
+
+
+def _netpoints_said(result: Result, kind: str, **match: Any) -> str:
+    """``result``'s note of ``kind`` whose facts hold ``match``, phrased and
+    recorded where the answer says it."""
+    each = next(each for each in result.notes if each.kind == kind and all(each.facts.get(k) == v for k, v in match.items()))
+    return note(each.kind, note_phrase(each), **each.facts)
+
+
+def say_player_netpoints(result: Result) -> TemplateResult:
+    """One player's NetPoints worded: one game's (a windowed Result), a
+    season's line and the table of its play-type split, or the refusal
+    naming the season and the player that has nothing - with the seasons
+    he does have where the season was defaulted.
+
+    .. versionadded:: 5.0.0
+       ``templates.netpoints.player_netpoints``' words.
+    """
+    if result.window is not None:
+        return _say_netpoints_game(result)
+    season, period = result.facts["season"], result.span.phrase
+    line = next((part.body for part in result.parts if isinstance(part.body, Scalar)), None)
+    split = next((part.body for part in result.parts if isinstance(part.body, Grouped)), None)
+    if line is None and split is None:
+        answer = f"The warehouse has no {period} NetPoints for {result.subject}."
+        # No "or ask for his career" here: player_netpoints has no career
+        # span to offer. A season the question named keeps this plain.
+        answer += "".join(decision_phrase(each, career_hint=False) for each in result.decisions)
+        return TemplateResult(data={"player": result.subject, "season": season, "headline": answer}, answer=answer)
+    totals = dict(line.values) if line is not None else None
+    breakdown = [{"category": row["key"], **{k: v for k, v in row.items() if k != "key"}} for row in split.rows] if split is not None else []
+    per_100, possessions = result.facts["per_100"], result.facts["possessions"]
+    units = "per 100 possessions" if per_100 else "season totals"
+    scope = f" over {possessions:,.0f} possessions" if per_100 and possessions else ""
+    answer = _say_netpoints_season(result, totals, breakdown)
+    return TemplateResult(
+        data={
+            "player": result.subject,
+            "season": season,
+            # `totals` is a stable dict, not the raw SQL row `headline` used to
+            # be: the page's own `data["headline"]` is the display sentence
+            # every other renderer reads verbatim (ISSUES.md, "`player_netpoints`
+            # still renders as a `<pre>` block").
+            "totals": _netpoints_totals(totals),
+            "fingerprint": breakdown,
+            "per_100": per_100,
+            "possessions": possessions,
+            "headline": answer.split("\n")[0],
+            "notes": _netpoints_page_notes(totals, breakdown, units, scope),
+        },
+        answer=answer,
+    )
+
+
+def _netpoints_totals(totals: Mapping[str, Any] | None) -> dict[str, Any] | None:
+    """The season line as a stable dict for the page, or ``None`` with no
+    season totals on record."""
+    if totals is None:
+        return None
+    minutes, games = totals["total_minutes"], totals["games"]
+    return {
+        "overall": totals["overall"],
+        "offense": totals["offense"],
+        "defense": totals["defense"],
+        "per_100": totals["overall_per_100_poss"],
+        "minutes": int(minutes) if minutes else None,
+        "games": int(games) if games else None,
+    }
+
+
+def _netpoints_line_detail(totals: Mapping[str, Any] | None) -> list[str]:
+    """The minutes/games/per-100-rate clauses beside the season line - shared
+    by the printed sentence and ``data["notes"]``, so the two read the same
+    numbers off one place."""
+    if totals is None:
+        return []
+    per_100_rate, minutes, games = totals["overall_per_100_poss"], totals["total_minutes"], totals["games"]
+    detail = []
+    if per_100_rate is not None:
+        detail.append(f"{per_100_rate:.2f} per 100 possessions")
+    if minutes:
+        detail.append(f"{int(minutes):,} minutes")
+    if games:
+        detail.append(f"{int(games)} games")
+    return detail
+
+
+def _netpoints_page_notes(totals: Mapping[str, Any] | None, breakdown: list[dict[str, Any]], units: str, scope: str) -> list[str]:
+    """The lines a table- or card-rendered page needs beside the numbers
+    rather than in them: the season line's own detail, what units the
+    category rows are in, and the play-type overlap disclaimer - the same
+    three facts the answer's prose carries."""
+    page_notes = []
+    detail = _netpoints_line_detail(totals)
+    if detail:
+        page_notes.append(", ".join(detail) + ".")
+    if breakdown:
+        page_notes.append(f"Categories are {units}{scope}.")
+    if any(not row["partition"] for row in breakdown):
+        page_notes.append("Play-type detail is overlapping slices - a driving layup at the rim counts in driving, layup and rim, so these do not add up.")
+    return page_notes
+
+
+def _say_netpoints_season(result: Result, totals: Mapping[str, Any] | None, breakdown: list[dict[str, Any]]) -> str:
+    """The season line, then a table of the six partition categories
+    (offense and defense sections) and one of the overlapping play-type
+    detail rows."""
+    lines = _say_netpoints_headline(result, totals)
+    if not breakdown:
+        lines.append(_netpoints_said(result, "part_missing", what="fingerprint"))
+        return "\n".join(lines)
+    width = max(len(row["category"]) for row in breakdown)
+    lines += _say_netpoints_partition(result, [r for r in breakdown if r["partition"]], width)
+    lines += _say_netpoints_detail(result, [r for r in breakdown if not r["partition"]], width)
+    return "\n".join(lines)
+
+
+def _say_netpoints_headline(result: Result, totals: Mapping[str, Any] | None) -> list[str]:
+    """The season-total line, and its minutes and games, or the note that there are none."""
+    name, period = result.subject, result.span.phrase
+    if totals is None:
+        return [f"{name}, NetPoints fingerprint in the {period} {_netpoints_said(result, 'part_missing', what='season_totals')}:"]
+    lines = [f"{name}, NetPoints in the {period}: {table_cell(totals['overall'])} overall ({table_cell(totals['offense'])} offense, {table_cell(totals['defense'])} defense)"]
+    detail = _netpoints_line_detail(totals)
+    if detail:
+        lines.append("  " + ", ".join(detail) + ".")
+    return lines
+
+
+def _say_netpoints_partition(result: Result, partition_rows: list[dict[str, Any]], width: int) -> list[str]:
+    """The six categories that partition the total, as an offense section and a defense section."""
+    lines: list[str] = []
+    # Offense and defense get a section each, sorted by their OWN side. One
+    # table sorted by total renders the defensive profile invisible: for SGA,
+    # `turnover` carries the largest defensive value of any category and lands
+    # 15th of 21 by total, below categories whose defense is ~0.
+    for side, heading in (("offense", "Offense"), ("defense", "Defense")):
+        ranked = sorted((r for r in partition_rows if r[side] is not None), key=lambda r: -abs(r[side]))
+        if not ranked:
+            continue
+        lines.append("")
+        lines.append(f"  {heading}, {_netpoints_said(result, 'definition', term='netpoints_units')}:")
+        # Two decimals: per-100 values are small, and one decimal collapses
+        # most of the categories onto the same number.
+        lines.extend("  " + row["category"].ljust(width) + f"{row[side]:.2f}".rjust(9) for row in ranked)
+        # The sum is printed so the reader can check it against the headline -
+        # these six really do add up, and showing it says so without asserting.
+        lines.append("  " + "-" * (width + 9))
+        lines.append("  " + "total".ljust(width) + f"{sum(r[side] for r in ranked):.2f}".rjust(9))
+    return lines
+
+
+def _say_netpoints_detail(result: Result, detail_rows: list[dict[str, Any]], width: int) -> list[str]:
+    """The overlapping play-type slices, which are shown but do not add up."""
+    if not detail_rows:
+        return []
+    units = "per 100 possessions" if result.facts["per_100"] else "season totals"
+    said = _netpoints_said(result, "definition", term="netpoints_overlap")
+    lines = [
+        "",
+        *f"  Play-type detail, {units} ({said}):".split("\n"),
+        "  " + "category".ljust(width) + "".join(h.rjust(9) for h in ("O", "D")),
+    ]
+    for row in sorted(detail_rows, key=lambda r: -abs(r["total"] or 0)):
+        cells = "".join(("-" if row[k] is None else f"{row[k]:.2f}").rjust(9) for k in ("offense", "defense"))
+        lines.append("  " + row["category"].ljust(width) + cells)
+    return lines
+
+
+def _say_netpoints_game(result: Result) -> TemplateResult:
+    """One game's NetPoints: the line and its possessions and win probability
+    added, and the fingerprint that holds its play-type split - or that he
+    has no game on record at that end of the season."""
+    window, period, line = result.window, result.span.phrase, result.scalar
+    assert window is not None and line is not None
+    if not line.games:
+        which = "earliest" if window.ascending else "most recent"
+        answer = f"No per-game NetPoints on record for {result.subject}'s {which} {period} game."
+        return TemplateResult(data={"player": result.subject, "season": result.facts["season"], "game": None, "headline": answer}, answer=answer)
+    which = "first" if window.ascending else "most recent"
+    o, d, t = line.values["offense"], line.values["defense"], line.values["total"]
+    o_poss, d_poss, wpa = line.sums["o_poss"], line.sums["d_poss"], line.sums["wpa"]
+    game = {"event_id": result.facts["event_id"], "date": result.span.date, "offense": o, "defense": d, "total": t}
+    detail = []
+    if o_poss is not None and d_poss is not None:
+        detail.append(f"{o_poss:.0f} offensive and {d_poss:.0f} defensive possessions")
+    if wpa is not None:
+        detail.append(f"{wpa:+.3f} win probability added")
+    headline = f"{result.subject}, NetPoints in his {which} {period} game ({result.span.date}): {table_cell(t)} total ({table_cell(o)} offense, {table_cell(d)} defense)."
+    answer = headline
+    if detail:
+        answer += "\n  " + ", ".join(detail) + "."
+    answer += _netpoints_said(result, "hint", what="fingerprint_of_that_game")
+    return TemplateResult(data={"player": result.subject, "game": game, "headline": headline, "notes": [", ".join(detail) + "."] if detail else []}, answer=answer)

@@ -1,5 +1,5 @@
 """One compiler over the player-games and team-games relations: the only
-answer seventeen intents have (:data:`COMPILED_INTENTS`), the step after a
+answer the intents in :data:`COMPILED_INTENTS` have, the step after a
 live template's refusal, and the last one before a refusal naming why.
 
 The pipeline is parser -> template or compiler -> refusal. :func:`answer`
@@ -48,7 +48,7 @@ from .counts import read_threshold_count
 from .highs import read_single_game_high
 from .logs import read_player_log, read_team_log
 from .meetings import read_head_to_head
-from .netpoints import NetPointsQuery
+from .netpoints import NetPointsQuery, read_player_netpoints
 from .pairs import read_player_matchup
 from .periods import read_period_leaderboard, read_period_split, read_team_quarter_points
 from .plan import STATED_SCOPING, Planned
@@ -141,6 +141,7 @@ COMPILED_INTENTS: frozenset[str] = frozenset(
         "team_quarter_points",
         "period_leaderboard",
         "team_record",
+        "player_netpoints",
     }
 )
 """The intents the compiler alone answers - the four whose templates it
@@ -156,7 +157,9 @@ the compiler gained for them), and the team shapes of Phase 2's slice
 (iv): ``head_to_head`` (:mod:`~association.query.compose.meetings`),
 ``team_quarter_points`` and ``period_leaderboard``
 (:mod:`~association.query.compose.periods`) and ``team_record``
-(:mod:`~association.query.compose.team_records`). Each is read by its reader and said in its
+(:mod:`~association.query.compose.team_records`), and the NetPoints
+relation's ``player_netpoints`` (:mod:`~association.query.compose.netpoints`,
+slice (v)). Each is read by its reader and said in its
 retired template's own words by the sayer
 (:mod:`~association.query.compose.say`); where the compiler has no
 reading of a point, the question is refused with the reason
@@ -382,6 +385,34 @@ def _read_team_season(con: duckdb.DuckDBPyConnection, intent: str, query: Query 
     return read if isinstance(read, TemplateResult) else say(read)
 
 
+#: The NetPoints relation's readers, by intent (``compose.netpoints``).
+_NETPOINTS_READERS: dict[str, Callable[..., Result | TemplateResult | None]] = {
+    "player_netpoints": read_player_netpoints,
+}
+
+
+def _read_netpoints(ctx: TemplateContext, intent: str, query: NetPointsQuery) -> TemplateResult:
+    """A point on the NetPoints relation (Phase 2, slice (v)), read and
+    said - the intent's only answer, as its retired template was, and after
+    the same coverage floor: a season before NetPoints begins is refused,
+    never read. A cell the reader refuses while reading (no player named, a
+    per-game table not pulled) is the compiler's decline with the reader's
+    own reason, no prefix, as the template's refusal was."""
+    refusal = check_coverage(intent, query.scope)
+    if refusal is not None:
+        raise Refused(TemplateResult(data={"message": refusal, "season": query.scope.season}, answer=refusal))
+    reader = _NETPOINTS_READERS.get(intent)
+    if reader is None:
+        raise Unsupported("the NetPoints relation's readers are not ported yet")
+    try:
+        read = reader(ctx.con, query, stated=STATED_SCOPING[intent])
+    except TemplateUnsupported as exc:
+        raise Unsupported(str(exc)) from exc
+    if read is None:
+        raise Unsupported(f"{intent} has no reading of this point")
+    return read if isinstance(read, TemplateResult) else say(read)
+
+
 def _answer_point(
     ctx: TemplateContext,
     intent: str,
@@ -401,7 +432,7 @@ def _answer_point(
         if trace is not None:
             trace(point)
         if isinstance(query, NetPointsQuery):
-            raise Unsupported("the NetPoints relation's readers are not ported yet")
+            return _read_netpoints(ctx, intent, query)
         if intent in _TEAM_SEASON_READERS:
             try:
                 return _read_team_season(ctx.con, intent, query)

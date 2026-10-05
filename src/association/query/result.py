@@ -46,7 +46,9 @@ class Span:
     (``"seasons"``, one row per season: an unnarrowed line, a history, a
     comparison - :mod:`association.query.season_line`), or a team's own
     season: its line and the standings (``"team_seasons"``) or ESPN's power
-    index (``"team_snapshots"``, :mod:`association.query.team_seasons`).
+    index (``"team_snapshots"``, :mod:`association.query.team_seasons`), or
+    ESPN Analytics' NetPoints (``"netpoints"``, a player's season ratings
+    and fingerprints, :mod:`association.query.compose.netpoints`).
 
     .. versionadded:: 5.0.0
     """
@@ -60,7 +62,7 @@ class Span:
     years: str | None = None
     phrase: str | None = None
     floor: int | None = None
-    source: Literal["games", "seasons", "team_seasons", "team_snapshots"] = "games"
+    source: Literal["games", "seasons", "team_seasons", "team_snapshots", "netpoints"] = "games"
 
 
 @dataclass(frozen=True, kw_only=True)

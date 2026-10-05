@@ -40,3 +40,17 @@ FINGERPRINT_CATEGORIES: dict[str, str] = {
 }
 
 FINGERPRINT_SIDE_LABELS: dict[str, str] = {"o": "offense", "d": "defense", "t": "total"}
+
+FINGERPRINT_PARTITION: tuple[str, ...] = ("two_pt", "three_pt", "free_throw", "turnover", "rebound", "foul")
+"""The six categories that partition a player's NetPoints exactly: they sum
+to the offensive and defensive totals for every player checked, to within
+float rounding (max deviation 0.005 across the league's top minute-earners),
+verified against ``net_points_player.offense`` / ``.defense``, which are
+stored separately. The other categories are overlapping slices - a driving
+layup at the rim counts in driving, layup and rim - and summing them is
+meaningless.
+
+.. versionadded:: 5.0.0
+   Moved from ``association.query.templates.netpoints``, retired with
+   ``player_netpoints``' template (Phase 2, step 5).
+"""
