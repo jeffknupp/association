@@ -1,12 +1,14 @@
-"""Games under a condition: the SQL and tables behind five templates.
+"""Games under a condition: the SQL and tables behind five readers.
 
 ``player_splits``, ``with_without``, ``record_when``, ``player_matchup`` and
-``streak`` in :mod:`association.query.templates` all answer one kind of
-question - take a set of games, divide it by something that happened in each,
-and report the parts side by side. The templates themselves (slot checks, name
-resolution, refusals) live with the others in that module. The SQL they share
-lives here only because it is long, and nothing here imports ``templates``, so
-the dependency runs one way.
+``streak`` all answer one kind of question - take a set of games, divide it
+by something that happened in each, and report the parts side by side. Their
+readers (``compose.splits``, ``compose.presence``, ``compose.records``,
+``compose.pairs``, ``compose.runs``) settle names and narrow the games
+through the relations' shared steps (:mod:`association.query.player_relation`,
+:mod:`association.query.team_relation`). The SQL they share lives here, and
+nothing here imports those steps - the player relation imports this module -
+so the dependency runs one way.
 
 Four rules about the data decide almost everything below. Each was measured
 against the warehouse rather than assumed:
@@ -27,7 +29,7 @@ against the warehouse rather than assumed:
   which every player is listed with NULL minutes. LeBron James played all 82
   games of 2017-18 and has six of these. Read as "did not play", each would be
   a game his team played without him, so :func:`_box_missing` finds them and
-  the templates leave them out of both sides of a comparison, end a streak at
+  the readers leave them out of both sides of a comparison, end a streak at
   them rather than carry it across, and say how many there were.
 - **A game happens on its US Eastern date.** ``games.date`` is a UTC tip
   time, so a 7:30pm Eastern tip lands on the next calendar day, and a split by
@@ -68,6 +70,7 @@ import duckdb
 
 from association.nba.coverage import COVERAGE
 from association.nba.season import eastern_date_sql
+from association.query.reading import Scope, Unsupported, ordinal_word
 
 from .season_text import MONTH_NAMES
 from .team_games import TeamNarrowed, games_subquery, named
@@ -133,7 +136,7 @@ class BoxSource:
 #: Columns `player_box_stats_filled` substitutes that no reader may trust.
 #:
 #: The rebuild fills more columns than it got measured for. `REBUILT_STATS`
-#: (query/templates/common.py) is the list a rebuilt figure may be READ for - points,
+#: (query/player_games.py) is the list a rebuilt figure may be READ for - points,
 #: rebounds, assists, steals, blocks, field goals made, free throws made, each
 #: wrong by hundredths of a game - and everything else the view substitutes is
 #: below that bar or was never measured at all: a rebuilt foul is wrong in
@@ -321,7 +324,7 @@ def _box_missing(scope: _Scope, box: BoxSource = RAW_BOX, *, where: str | None =
 
     This has to widen together with :func:`_played`. A game the rebuild
     answered is no longer unknown, and counting it as unknown produces the
-    contradiction `templates._empty_box_scores` already guards against
+    contradiction `player_relation.empty_box_scores` already guards against
     elsewhere: 68 games reported beside "no box score for 82 of his team's
     games". Over the filled view the unknown count falls from 3,308 team-games
     to 1,260, and what is left is the pre-1993 era the rebuild cannot reach.
@@ -569,16 +572,17 @@ def _with_without_team_span_clause(scope: _Scope) -> tuple[str, list[Any]]:
     """``team_games``' season clause for :func:`presence_games_sql`'s window
     read, over ``tg.season`` / ``tg.eastern_date``
     (:data:`association.query.team_games.TEAM_GAMES_SQL`) - the same rule
-    :func:`association.query.templates.common._team_span_clause` applies for
+    :func:`association.query.team_relation.team_span_clause` applies for
     every other team-relation reader. A postseason is selected by the
     CALENDAR YEAR it was played in, from the relation's own Eastern date,
     never by ESPN's pre-1993-94 label (`AGENTS.md`, "Select a postseason by
     the calendar year"; :mod:`association.query.team_games`'s module
     docstring has the finding this corrects).
 
-    Not a call to ``_team_span_clause`` itself: this module's docstring says
-    nothing here imports ``templates``, so the one clause it needs is kept as
-    a private copy rather than a shared import, the same trade-off
+    Not a call to :func:`~association.query.team_relation.team_span_clause`
+    itself: the team relation's steps import this module (through the player
+    relation's), so the one clause it needs is kept as a private copy over
+    this module's own ``_Scope`` rather than a shared import, the same trade-off
     :class:`association.query.team_games.TeamNarrowed` makes against
     subclassing :class:`association.query.player_games.Narrowed`.
     """
@@ -900,3 +904,94 @@ def _matchup_line(lines: Sequence[dict[str, Any]]) -> dict[str, Any]:
         "assists": average("assists"),
         "fg_pct": 100.0 * sum(line["fieldGoalsMade"] or 0 for line in lines) / fga if fga else None,
     }
+
+
+def condition_span_label(covered: _Scope, scope: Scope, first: Any, last: Any) -> str:
+    """The season(s) a condition answer covers, in words: "since 2022
+    (2022-2026 regular seasons)" or "in his 18th season (2021 regular
+    season)" when the question named it that way - the same phrasing
+    ``ResolvedSpan.during`` gives ``game_log`` and ``player_stat`` (``ResolvedSpan.since``,
+    ``ResolvedSpan.ordinal``).
+
+    record_when and streak build their heading off the relation's own
+    ``_Scope`` (``covered``) rather than the ``ResolvedSpan`` ``condition_player``
+    resolves internally (its docstring: "the one place the two readers of a
+    player's games disagreed, and not this refactor's to settle"), so the
+    phrase is composed here from the question's own ``since`` and
+    ``season_n`` instead. ``first``/``last`` already carry the real
+    narrowing - ``covered`` has its own ``season`` forced to None wherever
+    ``since`` or ``season_n`` apply (the same "career"-shaped outer scope
+    ``scoped_player`` builds internally for ``season_n``), so
+    :meth:`_Scope.label` reads the actual seasons the narrowed games came
+    from rather than defaulting to "now".
+
+    .. versionchanged:: 5.0.0
+       Says "from X through Y" once ``scope.until`` bounds the other end too,
+       matching :meth:`ResolvedSpan.during`'s wording (see :func:`team_span_label`,
+       fixed the same way) - before this, "from 2019-20 to 2021-22" was
+       labeled "since 2019 (...)", with the range's real upper bound nowhere
+       in the sentence (ISSUES.md).
+    """
+    label = covered.label(first, last)
+    if scope.since:
+        return f"from {scope.since} through {scope.until} ({label})" if scope.until else f"since {scope.since} ({label})"
+    if scope.season_n:
+        return f"in his {ordinal_word(scope.season_n)} season ({label})"
+    return label
+
+
+# The relation's cells record_when's team branch and streak's team/league
+# branches cannot honor: each needs a named PLAYER to settle a teammate's
+# absence, a starter/bench half, or a line on a box-score column against -
+# `condition_player` is what reads all of them, and neither branch calls it.
+# `STATED_SCOPING` claims the whole relation for both intents regardless of
+# branch (the same declaration the player branch needs), so a team-only or
+# league-wide question setting one of these would otherwise be silently
+# answered as though it had been applied. Refusing here, by name, is the same
+# discipline `_player_splits_team` already applies to a bare `starter_bench`
+# split.
+#
+# `opponent` and `venue` are NOT here (step 3, C4): both branches now read the
+# team-games relation through `common.team_games`, the same shared narrowing
+# `team_record` reads, so a team's own opponent/venue narrowing is a real,
+# implemented shape rather than a refusal. `since` is NOT here either (step 3,
+# C4b): `span_of`'s own `since` branch already exists and both team branches
+# call it for the ordinary span, so honoring it needed no new mechanism (see
+# ISSUES.md, "record_when's team branch and streak's team/league branches
+# still refuse ..." - rewritten to match). `streak`'s LEAGUE branch (no team
+# named either) still cannot narrow to a single opponent or venue - a
+# league-wide streak has no one team's home/road split or rival to read - so
+# the planner refuses those two there specifically (`compose.plan._streak_league_cells`).
+#
+# `game_n` is honored for `record_when`'s team branch (a threshold record can
+# meaningfully be narrowed to one game of each series - "Celtics record when
+# they scored 120+, game 4 of the series") but stays refused for `streak`'s
+# team and league branches, passed as `extra` at each of those two call sites:
+# a streak is a run of CONSECUTIVE games, and the games "game 4 of each
+# series" picks out are not consecutive to each other - a streak over them
+# would silently answer a run over a scattered, non-adjacent subset rather
+# than the real games in between.
+#
+# `conditions` is here (added 5.0.0, ISSUES.md) for the same reason as
+# `without`/`split`/`below`/`above`: a companion's role - he started, came off
+# the bench, or reached a line - is a fact about a named PLAYER's game, and a
+# team or league branch has no such player settled to check it against.
+# Silently dropping it answered a team's or the league's whole span as though
+# "76ers record when they score 120 when embiid starts" had named no
+# condition at all.
+_CONDITION_PLAYER_ONLY_CELLS: tuple[str, ...] = ("without", "split", "season_n", "below", "above", "conditions")
+
+
+def condition_needs_player_refusal(intent: str, scope: Scope, *extra: str) -> None:
+    """Raise if a team-only or league-wide question set a relation cell that
+    needs a named player to honor - see :data:`_CONDITION_PLAYER_ONLY_CELLS`.
+    ``extra`` adds cells refused for this call site only (see ``streak``'s own
+    call, which passes ``"game_n"``).
+
+    .. versionchanged:: 4.4.0
+       Takes ``*extra`` (step 3, C4b), so the two intents' team branches no
+       longer have to agree on exactly the same refused set.
+    """
+    claimed = sorted(cell for cell in (*_CONDITION_PLAYER_ONLY_CELLS, *extra) if getattr(scope, cell))
+    if claimed:
+        raise Unsupported(f"{intent} cannot honor {claimed} without a named player - only his own games can be narrowed that way")

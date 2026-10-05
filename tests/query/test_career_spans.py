@@ -24,9 +24,8 @@ from association.query.measures import resolve_metric
 from association.query.metrics import LEADERBOARD_METRICS
 from association.query.normalizer import NORMALIZER_STATS
 from association.query.parse import with_point
-from association.query.reading import Reading, Scope, Unsupported
+from association.query.reading import Reading, Scope, Unsupported, unhonored_scoping
 from association.query.subject import Subject
-from association.query.templates.common import unhonored_scoping
 
 
 def _compiled(intent: str) -> Callable[[AnswerContext, Reading], Reply]:

@@ -14,14 +14,17 @@ from dataclasses import dataclass, replace
 from typing import Any
 
 from association.query.answer import Reply
+from association.query.compose.rankings import leaderboard_shot_distance_refusal
+from association.query.conditions import condition_needs_player_refusal
+from association.query.coverage import check_coverage
 from association.query.measures import PERIOD_COLUMNS, stat_measure
 from association.query.metrics import LEADERBOARD_METRICS
+from association.query.player_games import STAT_LABELS
+from association.query.player_relation import RELATION_SCOPING_EXCLUDED, relation_scoping
 from association.query.point import TEAM_SEASON_POINTS
-from association.query.reading import CHART_INTENTS, Cause, Reading, Scope, _career_scope, ordinal_word
+from association.query.reading import CHART_INTENTS, Cause, Reading, Scope, _career_scope, ordinal_word, unhonored_scoping
 from association.query.season_line import SEASON_TOTAL_OF
-from association.query.templates.common import RELATION_SCOPING_EXCLUDED, STAT_LABELS, check_coverage, relation_scoping, team_relation_scoping, unhonored_scoping
-from association.query.templates.players import leaderboard_shot_distance_refusal
-from association.query.templates.splits import condition_needs_player_refusal
+from association.query.team_relation import team_relation_scoping
 
 from .core import Query, Refused, Unsupported, _check_relation_scoping
 from .netpoints import NetPointsQuery

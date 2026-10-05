@@ -29,10 +29,10 @@ import duckdb
 from association.nba.season import eastern_date
 from association.query.answer import Reply
 from association.query.notes import Note
-from association.query.reading import Unsupported
+from association.query.player_relation import box_score_notes_read, no_narrowed_games
+from association.query.reading import Unsupported, unhonored_scoping
 from association.query.result import Narrowing, Part, Result, Rows, Scalar, Span
-from association.query.templates.common import box_score_notes_read, no_narrowed_games, unhonored_scoping
-from association.query.templates.players import ADVANCED_STATS, MADE_STAT_ATTEMPTS, SHOOTING_STATS, wanted_stats
+from association.query.season_line import ADVANCED_STATS, MADE_STAT_ATTEMPTS, SHOOTING_STATS, wanted_stats
 
 from .core import _MADE_RATE, Compiled, Query, _compile_rows, compile_query, rows_of
 

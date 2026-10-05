@@ -20,15 +20,15 @@ import duckdb
 
 from association.query.answer import Reply
 from association.query.conditions import _PLAYER_GAME_TABLES, _PLAYER_LINE, _SPLIT_GROUPS, _TEAM_LINE, _season_month_order, _totals, _unseen, box_source
-from association.query.entities import Entity
+from association.query.entities import Entity, optional_team
 from association.query.lines import measure_filters
 from association.query.notes import Note
 from association.query.player_games import _PLAYER_GAMES, Narrowed, games_subquery
-from association.query.reading import SPLIT_KINDS, Scope, Unsupported
+from association.query.player_relation import condition_scope, no_games, no_narrowed_games, span_of
+from association.query.reading import SPLIT_KINDS, Scope, Unsupported, unhonored_scoping
 from association.query.result import Grouped, Narrowing, Part, Result, Span
 from association.query.season_text import MONTH_NAMES
-from association.query.templates.common import condition_scope, no_games, no_narrowed_games, optional_team, span_of, team_games, unhonored_scoping
-from association.query.templates.splits import condition_team_no_games, team_span_label
+from association.query.team_relation import condition_team_no_games, team_games, team_span_label
 
 from .core import Compiled, Query, compile_over, compile_query, rows_of
 from .team import TeamQuery, compile_team_over
@@ -278,7 +278,7 @@ def read_team_splits(con: duckdb.DuckDBPyConnection, q: TeamQuery, *, stated: fr
 
     .. versionadded:: 5.0.0
     """
-    from association.query.templates.common import check_coverage
+    from association.query.coverage import check_coverage
 
     scope = q.scope
     if unhonored_scoping("player_splits", scope, stated):

@@ -33,13 +33,13 @@ import duckdb
 from association.nba.franchises import season_name
 from association.query.answer import Reply
 from association.query.conditions import _PLAYER_GAME_TABLES, _names, _overlaps, _Scope, _stints, _with_without_group, presence_games
-from association.query.entities import Entity
+from association.query.entities import BOX_SCORES, Entity, optional_team, resolved_player
 from association.query.notes import Note
 from association.query.player_games import _joined
-from association.query.reading import Scope, Unsupported
+from association.query.player_relation import career_end, condition_scope
+from association.query.reading import Scope, Unsupported, unhonored_scoping
 from association.query.result import Grouped, Narrowing, Part, Result, Span
 from association.query.subject import with_without_named
-from association.query.templates.common import BOX_SCORES, career_end, condition_scope, optional_team, resolved_player, unhonored_scoping
 
 from .core import rows_of
 from .team import TeamQuery, compile_team_presence, team_coverage_refusal

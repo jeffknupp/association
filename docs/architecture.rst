@@ -130,15 +130,15 @@ wrong in two of them.
 
 What a relation *narrows by* is a property of the relation, not of each
 template. A template settles its subject through
-:func:`association.query.templates.common.scoped_player` (or ``scoped_team``)
-and its games through :func:`association.query.templates.common.scoped_games`
+:func:`association.query.player_relation.scoped_player` (or ``scoped_team``)
+and its games through :func:`association.query.player_relation.scoped_games`
 (or ``team_games``), and the narrowing - an opponent, a venue, a teammate's
 absence, one game of each series, a line on a box-score column, one Eastern
 date, a span or a first season, and the newest or oldest *N* as a window cut
 after every other filter - is applied there, once. The slots a relation honors
-are declared once too (:data:`association.query.templates.common.RELATION_SCOPING`),
+are declared once too (:data:`association.query.player_relation.RELATION_SCOPING`),
 and a template that cannot honor one of them says why, per cell
-(:data:`association.query.templates.common.RELATION_SCOPING_EXCLUDED`) - a reason
+(:data:`association.query.player_relation.RELATION_SCOPING_EXCLUDED`) - a reason
 about the answer, never about the code. Two tests read the templates' source
 to keep it that way: none of them may declare a scoping set of its own, and
 none of them, nor a private step it reaches, may narrow the relation by hand.
@@ -311,7 +311,7 @@ that:
   answered for a season. Only when the compiler also has nothing to say -
   ``None``, not a refusal - is the question refused, with the template's reason.
 * A question about a season a table cannot reach is refused, with the reason
-  (:func:`association.query.templates.check_coverage`). The refusal is returned
+  (:func:`association.query.coverage.check_coverage`). The refusal is returned
   as the answer rather than raised, because a season under the floor is empty
   for every reader.
 * Slots the model drops or files in the wrong place are read from the

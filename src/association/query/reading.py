@@ -112,7 +112,7 @@ SPLIT_KINDS: tuple[str, ...] = ("home_away", "starter_bench", "wins_losses", "mo
 when none is named; a team's games take all but ``starter_bench``.
 
 .. versionadded:: 5.0.0
-   On the reader's side (``templates.splits.SPLIT_KINDS`` is this).
+   On the reader's side (``templates.splits.SPLIT_KINDS`` was this).
 """
 
 
@@ -131,7 +131,7 @@ class ScopeError(ValueError):
 class ConditionSpec:
     """One player named beside the subject and the role the question gives
     him in the games asked about - one ``conditions`` entry, as the relation
-    reads it (``templates.common._condition_from_slot``): "when Embiid and
+    reads it (``player_relation._condition_from_slot``): "when Embiid and
     Paul George start", "in games Maxey had 20+ points". ``stat`` and
     ``threshold`` belong to a ``reached`` role.
 
@@ -350,7 +350,7 @@ def _text(name: str, raw: Any) -> str:
 
 def _texts(name: str, raw: Any) -> tuple[str, ...]:
     # A bare string is one item: the readers have always taken it so
-    # (``templates.common.teammate_names``: slot values are advisory, and a
+    # (``entities.teammate_names``: slot values are advisory, and a
     # reader of one shape would be one stray route from answering nothing).
     if isinstance(raw, str):
         return (raw,)
@@ -589,8 +589,9 @@ class Reading:
 # What the subject reading needs to know about the intents and the question's
 # words - moved here from templates/common.py on 2026-10-02 so the reader does
 # not import the answer side for them (ROADMAP.md, Phase 1: the reader's
-# imports of the answer side). templates.common re-exports each under its old
-# name. Intent goes from the reader in Phase 3, and these sets with it.
+# imports of the answer side); templates.common re-exported each under its
+# old name until Phase 2, step 6. Intent goes from the reader in Phase 3, and
+# these sets with it.
 
 PLAYER_REQUIRED_INTENTS: frozenset[str] = frozenset({"record_when", "period_split", "shot_distance", "player_history"})
 """Intents whose template cannot answer at all without a player, so a player the
@@ -665,7 +666,7 @@ OWN_TEAM_RESTORABLE_INTENTS: frozenset[str] = frozenset({"player_stat"})
 """Intents where a player's OWN team, named beside him and left out by the
 router, is worth restoring - narrower than :data:`PLAYER_INTENTS` on
 purpose, since honoring the restored ``own_team`` slot needs the relation to
-narrow by it (``templates.common._narrow_player_games``'s ``team`` param,
+narrow by it (``player_relation._narrow_player_games``'s ``team`` param,
 threaded through ``scoped_games`` only where a caller passes it), which only
 ``player_stat`` does.
 
@@ -725,7 +726,7 @@ them as a player, and the compiler clears the slot.
 
 TEAM_ONLY_INTENTS: frozenset[str] = frozenset({"team_record", "team_leaderboard", "team_stat", "team_outlook"})
 """Intents with no player-shaped reading at all - absent from
-``templates.common.PLAYER_INTENTS``, and so never checked by
+``reading.PLAYER_INTENTS``, and so never checked by
 ``subject.apply_subject`` or the answering loop against a stray player name.
 
 A question naming exactly one real player and no team, routed to one of
@@ -748,7 +749,7 @@ the first.
 .. versionadded:: 2.1.0
 
 .. versionchanged:: 5.0.0
-   Lives on the reader's side (``templates.common`` re-exports it).
+   Lives on the reader's side (``templates.common`` re-exported it until Phase 2, step 6).
 """
 
 CHART_INTENTS: frozenset[str] = frozenset({"fingerprint", "player_netpoints", "shot_chart", "shot_distance"})
@@ -770,7 +771,7 @@ DEFAULT_LIMIT = 5
 """How many rows a shape lists where the question named no count.
 
 .. versionchanged:: 5.0.0
-   Lives on the reader's side (``templates.common`` re-exports it).
+   Lives on the reader's side (``templates.common`` re-exported it until Phase 2, step 6).
 """
 
 MAX_LIMIT = 50
@@ -790,14 +791,14 @@ DEFAULT_GAME_LOG_LIMIT = 10
 """How many games a log lists by default.
 
 .. versionchanged:: 5.0.0
-   Lives on the reader's side (``templates.games`` re-exports it).
+   Lives on the reader's side (``templates.games`` re-exported it until Phase 2, step 6).
 """
 
 DEFAULT_SINGLE_GAME_LIMIT = 3
 """How many games a single-game high lists by default.
 
 .. versionchanged:: 5.0.0
-   Lives on the reader's side (``templates.players`` re-exports it).
+   Lives on the reader's side (``templates.players`` re-exported it until Phase 2, step 6).
 """
 
 DEFAULT_STREAK_LIMIT = 5
@@ -888,7 +889,7 @@ def period_label(period: int) -> str:
     """``1`` -> ``"1st quarter"``, ``5`` -> ``"overtime"``, ``6`` -> ``"2nd overtime"``.
 
     .. versionadded:: 5.0.0
-       On the reader's side (``templates.common.period_label`` is this).
+       On the reader's side (``templates.common.period_label`` was this).
     """
     if 1 <= period <= 4:
         return f"{ordinal_word(period)} quarter"
@@ -905,7 +906,7 @@ def period_narrowing(scope: Scope) -> tuple[tuple[int, ...], str] | None:
     .. versionadded:: 5.0.0
 
     .. versionchanged:: 5.0.0
-       On the reader's side (``templates.common.period_narrowing`` is this).
+       On the reader's side (``templates.common.period_narrowing`` was this).
     """
     if scope.half is not None and scope.half in _HALF_PERIODS:
         return _HALF_PERIODS[scope.half], f"{ordinal_word(scope.half)} half"
@@ -935,7 +936,7 @@ def scope_reads_box_scores(scope: Scope, measures: list[Any]) -> bool:
     narrowings themselves are applied by the relation's shared steps.
 
     .. versionadded:: 5.0.0
-       On the reader's side (``templates.players._player_stat_reads_box_scores`` is this).
+       On the reader's side (``templates.players._player_stat_reads_box_scores`` was this).
     """
     split_side = scope.split if scope.split in STARTER_SIDES else None
     return any(
@@ -954,3 +955,147 @@ def scope_reads_box_scores(scope: Scope, measures: list[Any]) -> bool:
             scope.period_condition,
         )
     )
+
+
+# Slots that narrow WHICH games an answer covers. A template that ignores one
+# gives a different answer, not a broader one, and says nothing - confirmed
+# three times ("his last game" charting a whole season, and so on). The router
+# extracts these CORRECTLY in each case, so check_routing cannot catch a
+# template dropping them; only this can.
+#
+# The five after those are read from the question text by the router and by
+# subject.apply_subject, never asked of the model, and exist for the same
+# reason. Measured against real StatMuse queries before they did: "jaylen brown
+# last 8 games vs pistons" answered with the Celtics' last 8 games, "Knicks
+# home record" with their overall record, "career points leaders" with this
+# season's, and "Podziemski game log without curry" with his whole log. Each
+# was fast, fluent and about something else. `round` ("finals", "game 7") is
+# honored by no template at all: nothing in the warehouse records one. `split`
+# and `since` (a range of seasons) are read for every intent for the same reason:
+# a template that is not about splits or ranges answered them with one season.
+# `below` ("under 14 FTA") and `above` ("with 25 minutes") are lines a game's
+# box score is kept under or over - `measure_filters` reads them onto the
+# relation for the templates listed with them. `situation` is a weekday, a
+# month, a fixed holiday, "since <day>" (`calendar.parse_situation`), or - the
+# other half of the same slot, K3-2 - a conference or division the opponent is
+# in (`calendar.parse_alignment`), applied together by `apply_situation`
+# below. Anything else it could name (back-to-backs, overtime, an age, "since
+# returning") is refused by every template: nothing narrows to it yet, and
+# answering without it answered the whole season.
+# `until` closes a `since`-bounded range at the far end ("2019-20 to 2023-24",
+# "the 2010s") - `router._validate_range` - and is declared and read
+# everywhere `since` is (`span_of`, `ResolvedSpan.clause`), never on its own: a
+# template that honors `since` but not `until` would read a CLOSED range as an
+# open one and answer every season after it too, the same silent-widening
+# shape `since` itself exists to stop. `test_until_is_declared_wherever_since_is`
+# (tests/query/test_templates.py) enforces this pairing by reading the source.
+# `game_n` ("game 4") is one game of each playoff series, numbered by date over
+# `real_games`; the relation finds it, and a regular-season question refuses.
+# `season_n` ("his 18th season") is one season named by its place in a career;
+# `settle_ordinal_season` turns it into a year once the player is resolved.
+# `rate` is a per-possession rate asked of a metric that has no such form
+# ("points per 100 possessions", "netpoints / 90"): set by the router only
+# where it could not switch the metric itself, and honored by nothing.
+# `season_type_unstated` is not a narrowing at all but its opposite - a
+# "last N games" question naming no season type at all
+# (`router._route_game_log_recent_span`) - and it is listed here for the same
+# reason `situation` is: the discipline that a new slot is declared by the
+# templates that honor it and refused by the rest applies whether the slot
+# widens or narrows. Only `game_log` can ever see it - the router sets it for
+# no other intent - so it is refused everywhere else only in principle.
+# `until` (step 3, K1) is the inclusive LAST season of a range whose first the
+# router already files as `since` ("2019-20 to 2023-24", a decade) - never
+# alone, so a template honors it only by honoring `since` and reading `until`
+# beside it (`span_of`/`validated_until`); one not wired to `until` at all
+# would otherwise silently read only the range's first half.
+# `ranked_by` is read by nothing: the router files it when a
+# `leaderboard` question ranks the GAMES that satisfy a boolean stat by another
+# measure ("highest scoring triple doubles" - yardstick-v2 F124), the same
+# slots as the count "most triple doubles" otherwise. The leaderboard's
+# reader does not state it, so it steps aside and the compiler's boolean-game
+# ranking answers.
+SCOPING_SLOTS = frozenset(
+    {
+        "order",
+        "date",
+        "opponent",
+        "venue",
+        "span",
+        "without",
+        "round",
+        "split",
+        "since",
+        "until",
+        "below",
+        "above",
+        "game_n",
+        "season_n",
+        "situation",
+        "conditions",
+        "rate",
+        "season_type_unstated",
+        "ranked_by",
+        "period",
+        "half",
+        "period_condition",
+    }
+)
+
+
+#: Templates that honor one NAMED half of the starter/bench split and refuse
+#: the bare category, which asks for a table they do not produce.
+_SPLIT_SIDE_ONLY = frozenset({"game_log", "player_stat", "period_split", "shot_chart", "shot_distance"})
+
+
+def unhonored_scoping(intent: str, scope: Scope, honored: frozenset[str]) -> list[str]:
+    """The scoping slots ``scope`` sets that ``honored`` does not hold, for
+    ``intent``: a reader steps aside for one its retired words do not state
+    (:data:`~association.query.compose.plan.STATED_SCOPING`), leaving the
+    compiler's own sentence to answer, and the planner refuses one the
+    relation cannot honor at all. A slot is set when its field is truthy:
+    a field at its default (None, an empty tuple, False) is the slot absent.
+
+    .. versionadded:: 5.0.0
+    """
+    ignored = sorted(name for name in SCOPING_SLOTS if getattr(scope, name) and name not in honored)
+    # `split` is honored by the filtering templates only for a NAMED half. The
+    # bare category means "show me both groups", which is player_splits' whole
+    # answer and something they cannot do - so it is refused here rather than
+    # quietly filtered to one side or quietly ignored.
+    if scope.split == "starter_bench" and intent in _SPLIT_SIDE_ONLY:
+        ignored = sorted({*ignored, "split"})
+    return ignored
+
+
+# Templates that read a player name at all - resolving it, filtering on it, or
+# refusing because of it. A name the question does not support is only worth
+# refusing over where the answer would actually be about that player; for
+# `team_record` and `head_to_head` the slot is not read, so a stray one changes
+# nothing. Guarded by test_no_template_outside_player_intents_reads_a_player,
+# which reads the source rather than trusting this list.
+PLAYER_INTENTS: frozenset[str] = frozenset(
+    {
+        "fingerprint",
+        "game_log",
+        "leaderboard",
+        "player_compare",
+        "player_history",
+        "player_matchup",
+        "player_netpoints",
+        "player_splits",
+        "period_split",
+        "player_stat",
+        "record_when",
+        "shot_chart",
+        "shot_distance",
+        "single_game_high",
+        "streak",
+        "team_quarter_points",
+        "threshold_count",
+        "with_without",
+    }
+)
+"""Intents whose template reads a ``player`` or ``players`` slot.
+
+.. versionadded:: 2.1.0
+"""

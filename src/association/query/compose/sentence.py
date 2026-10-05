@@ -14,7 +14,7 @@ from typing import Any
 
 from association.query.notes import decided, note
 from association.query.player_games import BOTH_SEASON_TYPES
-from association.query.templates.common import period_label
+from association.query.reading import period_label
 
 from .core import Query
 from .team import TeamQuery, TeamResult

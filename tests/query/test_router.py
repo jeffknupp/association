@@ -1500,7 +1500,7 @@ def test_a_rate_no_metric_holds_is_refused_rather_than_ranked_by_the_wrong_unit(
     than dropping it, because a dropped `rate` is a per-90 question answered
     per game with nothing saying so."""
     from association.query.compose.plan import STATED_SCOPING
-    from association.query.templates.common import unhonored_scoping
+    from association.query.reading import unhonored_scoping
 
     per_90 = _ask("who were the top 10 in defensive netpoints / 90", '{"intent":"leaderboard","stat":"netpoints_defense","limit":10}')
     assert per_90.slots["stat"] == "netpoints_defense" and per_90.slots["rate"] == "/ 90"
@@ -1764,7 +1764,7 @@ def test_game_score_leaderboard_gets_the_leaderboard_spelling() -> None:
 
 
 def test_game_score_player_stat_gets_the_player_stat_spelling() -> None:
-    """player_stat reads this metric through templates.players.ADVANCED_STATS,
+    """player_stat reads this metric through season_line.ADVANCED_STATS,
     keyed "game_score" with no prefix - a different spelling than leaderboard's,
     because the two tables were built by different agents against different
     conventions."""

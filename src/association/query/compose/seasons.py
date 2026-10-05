@@ -30,12 +30,17 @@ from association.query.answer import Reply
 from association.query.entities import Entity
 from association.query.measures import stat_measure
 from association.query.notes import Note
-from association.query.reading import Unsupported
+from association.query.player_relation import ResolvedSpan
+from association.query.reading import Unsupported, unhonored_scoping
 from association.query.result import Decided, Grouped, Part, Result, Scalar, Span
 from association.query.season_line import (
+    ADVANCED_STATS,
     COMPARE_STAT_LINE,
+    HISTORY_COLUMNS,
     MAX_COMPARED_PLAYERS,
     NETPOINTS_COMPARE_ROWS,
+    PLAYER_STAT_COLUMNS,
+    SHOOTING_STATS,
     advanced_span,
     advanced_statement,
     career_statement,
@@ -50,9 +55,9 @@ from association.query.season_line import (
     netpoints_statement,
     season_redirect,
     season_statement,
+    wanted_stats,
 )
-from association.query.templates.common import HISTORY_COLUMNS, PLAYER_STAT_COLUMNS, SEASON_TYPE_NAMES, ResolvedSpan, season_phrase, unhonored_scoping
-from association.query.templates.players import ADVANCED_STATS, SHOOTING_STATS, wanted_stats
+from association.query.season_text import SEASON_TYPE_NAMES, season_phrase
 
 from .core import Query, values_of
 

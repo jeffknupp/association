@@ -1,9 +1,9 @@
 """One compiler over the player-games relation: a :class:`Query` names a point
 (skeleton, measures, aggregate, group, window) and the relation supplies the
 subject, the span and every scoping slot exactly as it does for the
-template bodies on the relation - through :func:`~association.query.templates.common.scoped_player` /
-:func:`~association.query.templates.common.scoped_games` for a named player,
-:func:`~association.query.templates.common.league_games` for the league-wide
+template bodies on the relation - through :func:`~association.query.player_relation.scoped_player` /
+:func:`~association.query.player_relation.scoped_games` for a named player,
+:func:`~association.query.player_relation.league_games` for the league-wide
 read - so binding parity is not a question here.
 
 Skeletons and readers:
@@ -21,8 +21,8 @@ Skeletons and readers:
 
 The compiler never narrows the relation by hand - every clause on
 ``pgl.opponent_team_id``, ``pgl.starter``, ``g.home_team_id`` or ``g.date``
-lives in :func:`~association.query.templates.common.scoped_games` or
-:func:`~association.query.templates.common.league_games`, so a narrowing that
+lives in :func:`~association.query.player_relation.scoped_games` or
+:func:`~association.query.player_relation.league_games`, so a narrowing that
 reaches a template reaches this compiler too, without being taught to it
 separately - see ``test_templates_on_the_relation_do_not_narrow_it_themselves``
 in ``tests/query/test_templates.py``, which walks this module's source for
@@ -44,35 +44,29 @@ from association.nba.franchises import season_name_sql
 from association.nba.season import current_season, eastern_date_sql
 from association.query.answer import Reply
 from association.query.conditions import _PLAYER_GAME_TABLES, MEETING_STATS, UNGATED_ON_REBUILD, BoxSource, _longest_runs_sql, _meetings_select, _player_streak_rows, box_source
-from association.query.entities import Entity
+from association.query.entities import BOX_SCORES, GAME_LOGS, Entity, resolved_player, resolved_team
+from association.query.lines import measure_filters
 from association.query.measures import BOOLEAN_MEASURES as BOOLEAN_MEASURES
 from association.query.measures import GAME_COLUMNS, LABEL_MEASURES
 from association.query.measures import LINE as LINE
 from association.query.player_games import PERIOD_COLUMNS, PERIOD_RATES, REBUILT_STATS, REGULATION_QUARTERS, Narrowed, aggregate_sql, games_subquery, grouped_sql, named, paired_rows_sql, rows_sql
-from association.query.reading import DEFAULT_NAMED_RUNS, Scope
-from association.query.reading import Unsupported as Unsupported
-from association.query.season_line import Statement, seasons_on_record
-from association.query.templates.common import (
-    BOX_SCORES,
-    GAME_LOGS,
+from association.query.player_relation import (
     RELATION_SCOPING,
-    SCOPING_SLOTS,
-    TEAM_RELATION_SCOPING,
     ResolvedSpan,
     apply_period,
     box_score_notes,
     career_end,
     condition_scope,
     league_games,
-    measure_filters,
-    period_narrowing,
-    resolved_player,
-    resolved_team,
     scoped_games,
     scoped_player,
     span_of,
+    team_slot_for_player,
 )
-from association.query.templates.games import _team_slot_for_player
+from association.query.reading import DEFAULT_NAMED_RUNS, SCOPING_SLOTS, Scope, period_narrowing
+from association.query.reading import Unsupported as Unsupported
+from association.query.season_line import Statement, seasons_on_record
+from association.query.team_relation import TEAM_RELATION_SCOPING
 
 if TYPE_CHECKING:
     # Annotation only: the team compiler imports this module.
@@ -275,7 +269,7 @@ class Refused(Exception):
 class Query:
     """A point over the player-games relation. ``scope`` is the question's own
     scoping (subject, span, and every scoping slot), handed whole to the
-    relation - the same discipline :func:`~association.query.templates.common.scoped_games`
+    relation - the same discipline :func:`~association.query.player_relation.scoped_games`
     already keeps: a slot read here and not passed through would be a second,
     quieter way to narrow by hand. Every construction names its fields.
 
@@ -312,7 +306,7 @@ class Query:
     #: Binding parity with the template being mirrored: which availability
     #: narrows an ambiguous name (game logs vs box scores), and the span and
     #: season the subject is settled in - the templates compute these before
-    #: :func:`~association.query.templates.common.scoped_player`, and a raw
+    #: :func:`~association.query.player_relation.scoped_player`, and a raw
     #: slot narrows differently.
     available: Any = None
     span: Any = None
@@ -325,7 +319,7 @@ class Query:
     #: compiles the game-level relation alone.
     source: str = "games"
     #: ``"player"`` (the named one) or ``"everyone"`` - the league-wide read of
-    #: the same relation (:func:`~association.query.templates.common.league_games`).
+    #: the same relation (:func:`~association.query.player_relation.league_games`).
     subject: str = "player"
     #: A position code (``"C"``, ``"G"``, ``"PG"``, ...), honored only when
     #: ``subject`` is ``"everyone"``.
@@ -426,7 +420,7 @@ def _check_relation_scoping(scope: Scope, subject: str = "player", honored_extra
 
     ``season_type_unstated`` (a question that asked for both season types,
     "including the playoffs") is honored for a named player: ``scoped_player``
-    settles his span over both (``templates.common._player_relation_season_type``),
+    settles his span over both (``player_relation.player_relation_season_type``),
     the reading ``game_log``, ``player_stat`` and ``threshold_count`` all
     declare, and for a team's log, which reads both types and merges them by
     date (``templates.games._team_mixed_games``). The league-wide read
@@ -491,10 +485,10 @@ def _check_split_category(q: Query) -> None:
 def _resolve_everyone(con: duckdb.DuckDBPyConnection, q: Query) -> tuple[Entity | None, ResolvedSpan, Narrowed]:
     """The league-wide subject: every player's games in the span settled the
     way ``threshold_count``'s and ``single_game_high``'s no-player modes
-    settle it, narrowed by :func:`~association.query.templates.common.league_games`.
+    settle it, narrowed by :func:`~association.query.player_relation.league_games`.
 
     ``since``/``until`` bound the span exactly as
-    :func:`~association.query.templates.common.scoped_player` bounds a named
+    :func:`~association.query.player_relation.scoped_player` bounds a named
     player's: every season from ``since`` on (to ``until``), never the
     current season alone. Read from ``season``/``span`` only, "players with
     33 point and 13 rebound ... games since 2000-01" listed 2026's three
@@ -521,8 +515,8 @@ def _resolve_everyone(con: duckdb.DuckDBPyConnection, q: Query) -> tuple[Entity 
 def _resolve_named(con: duckdb.DuckDBPyConnection, q: Query) -> tuple[Entity | None, ResolvedSpan, Narrowed]:
     """The named-player subject, settled and narrowed exactly as the six
     relation templates settle and narrow their own - through
-    :func:`~association.query.templates.common.scoped_player` and
-    :func:`~association.query.templates.common.scoped_games`."""
+    :func:`~association.query.player_relation.scoped_player` and
+    :func:`~association.query.player_relation.scoped_games`."""
     scope = q.scope
     # A date names its game outright, so it replaces the season rather than
     # being filtered inside it - the rule game_log and player_stat both
@@ -599,10 +593,10 @@ def _apply_team_slot(con: duckdb.DuckDBPyConnection, q: Query, player: Entity | 
     """A ``team`` beside the player: on a ``rows`` read it is ``game_log``'s
     rule (his own team is dropped, another is his opponent, a name nothing
     resolves to is refused); on the condition skeletons (a count, a record, a
-    grouped split - :func:`~association.query.templates.common.condition_player`'s
+    grouped split - :func:`~association.query.player_relation.condition_player`'s
     own shape) it narrows to his games for that team. A per-game average
     (``player_stat``'s shape) reads no ``team`` slot at all - the real
-    template ignores it outright, since :func:`~association.query.templates.common.scoped_games`
+    template ignores it outright, since :func:`~association.query.player_relation.scoped_games`
     itself carries no such narrowing, and treating it as a filter there would
     answer a narrower question than the template does."""
     scope = q.scope
@@ -610,7 +604,7 @@ def _apply_team_slot(con: duckdb.DuckDBPyConnection, q: Query, player: Entity | 
     if team_text is None or not team_text.strip() or player is None:
         return narrowed
     if q.skeleton == "rows":
-        resolved_opponent = _team_slot_for_player(con, player, team_text, season=scope.season, opponent=scope.opponent)
+        resolved_opponent = team_slot_for_player(con, player, team_text, season=scope.season, opponent=scope.opponent)
         if isinstance(resolved_opponent, Reply):
             raise Refused(resolved_opponent)
         if resolved_opponent is not None and narrowed.opponent is None:
@@ -631,7 +625,7 @@ def _apply_team_slot(con: duckdb.DuckDBPyConnection, q: Query, player: Entity | 
 def _apply_window_rule(q: Query, narrowed: Narrowed) -> None:
     """A count, a record or a split is read over every game in the span
     unless the question ORDERED a window ("in his last 10"): a bare ``limit``
-    is filler on those skeletons (:func:`~association.query.templates.common.whole_span`;
+    is filler on those skeletons (:func:`~association.query.player_relation.whole_span`;
     ``threshold_count`` reads it as the ranking's size), and only ``rows``
     reads it as a row count."""
     scope = q.scope
@@ -776,7 +770,7 @@ def _scalar_selects(q: Query, rebuilt: bool) -> list[str]:
     win-loss record, one aggregate per measure, and - guarded the same way
     :func:`_row_select` guards its own ``reconstructed`` column - how many of
     the counted games are rebuilt rather than fetched, for
-    :func:`~association.query.templates.common._box_score_notes`' own
+    :func:`~association.query.player_relation.box_score_notes`' own
     rebuilt-line note (#197, ISSUES.md)."""
     selects = ["COUNT(*) AS games"]
     if q.aggregate == "record":
@@ -820,7 +814,7 @@ def _compile_by_period(con: duckdb.DuckDBPyConnection, q: Query, narrowed: Narro
     by side ("Jokic points by quarter", #162). One statement, the union of
     four reads of the SAME narrowed games - the opponent, the venue, the
     window, every clause the relation applied once - each seeing one
-    quarter's line (:func:`~association.query.templates.common._apply_period`
+    quarter's line (:func:`~association.query.player_relation.apply_period`
     on a copy, the way a single-quarter read is narrowed), so a quarter he
     played and did nothing in is a zero over a game he played, and a game the
     shot table does not cover is no game in any quarter. Regulation only
@@ -1072,7 +1066,7 @@ def _box_notes(con: duckdb.DuckDBPyConnection, q: Query, c: Compiled, rows: list
     absence explained, the empty lines left out of the count, the games
     rebuilt from play-by-play rather than fetched, and a career predating
     box scores entirely
-    (:func:`~association.query.templates.common._box_score_notes`, the
+    (:func:`~association.query.player_relation.box_score_notes`, the
     templates' own notes, threaded through here for the first time: #197,
     ISSUES.md). Only for a named player - the league-wide subject has no
     ONE player's career to check a floor against, which is what
@@ -1179,7 +1173,7 @@ def run(con: duckdb.DuckDBPyConnection, q: Query) -> dict[str, Any]:
        Carries ``notes`` - the box-score caveats a named player's answer
        rests on (:func:`_box_notes`), which :func:`~association.query.compose.answer`
        appends to the sentence the same way it already appends
-       :func:`~association.query.templates.common.coverage_caveat` (#197,
+       :func:`~association.query.coverage.coverage_caveat` (#197,
        ISSUES.md).
 
     .. versionchanged:: 5.0.0

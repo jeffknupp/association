@@ -26,7 +26,7 @@ What this module does NOT decide is whether the NBA Cup final counts.
 regular-season RECORD must skip it while a plain game listing or a
 head-to-head count should not - the cup final is a real game the two teams
 played. :func:`association.query.team_metrics.games_scope` applies the
-exclusion for a record; :func:`association.query.templates.common.team_games`
+exclusion for a record; :func:`association.query.team_relation.team_games`
 (the shared narrowing step) does not, since a team's plain game list or a
 head-to-head count is not a record.
 
@@ -51,9 +51,9 @@ team counterpart of :attr:`association.query.player_games.Narrowed.window`)
 and :attr:`TeamNarrowed.series_game` (one game of each playoff series, the
 team counterpart of :attr:`association.query.player_games.Narrowed.series_game`).
 A team's ``since`` (a career that starts partway through) needed no new cell
-here at all: :func:`association.query.templates.common._span_of` already
+here at all: :func:`association.query.player_relation.span_of` already
 reads it into the ``_Span`` a caller passes as ``team_games``'s own ``span``,
-so the relation's ``team_games`` CTE and :func:`association.query.templates.common._team_span_clause`
+so the relation's ``team_games`` CTE and :func:`association.query.team_relation.team_span_clause`
 narrow by it the same way they already narrow a career.
 
 Step 3, K1 brings the player relation's remaining two cells over: :meth:`TeamNarrowed.narrow_calendar`
@@ -62,7 +62,7 @@ Step 3, K1 brings the player relation's remaining two cells over: :meth:`TeamNar
 :meth:`association.query.player_games.Narrowed.narrow_calendar` reads, over the relation's
 own already-Eastern ``eastern_date`` column) and ``until`` (the inclusive last season of a
 ``since``-bounded span, read the same way ``since`` already is - see
-:func:`association.query.templates.common._span_of`).
+:func:`association.query.player_relation.span_of`).
 
 .. versionadded:: 4.4.0
 """

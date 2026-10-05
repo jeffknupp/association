@@ -102,7 +102,7 @@ into the team row would turn "ESPN has no box score for this game" into "this
 team recorded no assists", which is the same fabrication in a new place.
 
 So a row is repaired only when it is non-empty (``fieldGoalsAttempted IS NOT
-NULL``, the test :func:`association.query.templates.player_splits` already uses
+NULL``, the test a team's splits already use (``compose.splits``)
 to caveat a team split) **and** its team-game has at least one player row with
 minutes. A row failing either test keeps every column exactly as ESPN served
 it: fully corrected or fully untouched, never half of each.

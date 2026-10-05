@@ -45,7 +45,9 @@ from association.nba.coverage import POSTSEASON
 from association.nba.season import current_season, eastern_date
 from association.query.answer import Reply
 from association.query.conditions import box_source
-from association.query.entities import Entity
+from association.query.coverage import check_coverage
+from association.query.entities import Entity, resolved_team, slot_season
+from association.query.lines import measure_filters
 from association.query.measures import PERIOD_RATE_STATS, period_split_measure, resolve_metric
 from association.query.metrics import PER_GAME_MIN_GAMES, PER_GAME_MIN_POSTSEASON_GAMES
 from association.query.notes import Note
@@ -64,25 +66,13 @@ from association.query.player_games import (
     period_ranking_sql,
     period_rate,
 )
-from association.query.reading import STARTER_SIDES, Scope, Unsupported, _clamp_limit, period_narrowing
+from association.query.player_relation import ResolvedSpan, league_games, relation_window, scoped_games, span_of
+from association.query.reading import STARTER_SIDES, Scope, Unsupported, _clamp_limit, period_narrowing, unhonored_scoping
 from association.query.result import Decided, Grouped, Narrowing, Part, Result, Rows, Scalar, Span
 from association.query.season_line import Statement
+from association.query.season_text import season_phrase
 from association.query.team_games import TEAM_PERIOD_AGREEMENT, TEAM_PERIOD_COLUMNS, TeamNarrowed, period_games_sql
-from association.query.templates.common import (
-    ResolvedSpan,
-    check_coverage,
-    league_games,
-    measure_filters,
-    relation_window,
-    resolved_team,
-    scoped_games,
-    scoped_team,
-    season_phrase,
-    slot_season,
-    span_of,
-    team_games,
-    unhonored_scoping,
-)
+from association.query.team_relation import scoped_team, team_games
 
 from .core import Compiled, Query, compile_over, compile_query, rows_of, values_of
 from .say import say_period_rank_rate, say_period_rank_unread, say_period_refusal, say_period_unread, say_team_period_unknown, say_team_period_unread, say_team_period_untrusted
@@ -263,7 +253,7 @@ def _period_redirect(con: duckdb.DuckDBPyConnection, read: Query, compiled: Comp
     """ "Last N games" with no season named is the newest N over his whole
     CAREER, not "this (defaulted) season alone" - the reading a bare
     ``limit`` gets everywhere else on the player relation
-    (:func:`~association.query.templates.common.relation_window`). A
+    (:func:`~association.query.player_relation.relation_window`). A
     question asking for a career split outright is refused before this
     (``RELATION_SCOPING_EXCLUDED["period_split"]``: the accuracy caveat is
     measured per season); this is a defaulted, empty ONE-season read
@@ -400,7 +390,7 @@ def _team_quarter_points_measure(stat: Any) -> str | Reply:
 
 def _team_quarter_points_team_and_span(con: duckdb.DuckDBPyConnection, scope: Scope) -> tuple[Entity, ResolvedSpan] | Reply:
     """The team and the seasons its games come from - through
-    :func:`~association.query.templates.common.scoped_team`, the order every
+    :func:`~association.query.team_relation.scoped_team`, the order every
     team read settles them in, unless a ``date`` already names one game
     outright: a date from a past season looked for inside the router's
     current-season default finds nothing, so a named date reads every
@@ -619,7 +609,7 @@ def read_period_leaderboard(con: duckdb.DuckDBPyConnection, q: Query, *, stated:
     """``period_leaderboard``'s point - players ranked by a stat in ONE
     quarter or half, per game, or with no period named by their points in
     each of the four quarters at once - read over every player's games in
-    one season (:func:`~association.query.templates.common.league_games`,
+    one season (:func:`~association.query.player_relation.league_games`,
     narrowed to a team's roster when one is named), the period applied by
     the relation itself. The denominator is games PLAYED; a per-game
     average needs a minimum (the season's per-game qualifier, or half of

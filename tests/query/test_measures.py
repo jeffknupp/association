@@ -13,7 +13,7 @@ def test_the_sql_that_computes_each_measure_is_keyed_by_the_names_the_reader_rea
     the SQL."""
     from association.query.compose.core import DERIVED
     from association.query.compose.team import GAME_MEASURES, SEASON_MEASURES
-    from association.query.templates.common import HISTORY_COLUMNS
+    from association.query.season_line import HISTORY_COLUMNS
 
     assert frozenset(DERIVED) == measures.DERIVED_MEASURES
     assert measures.BOOLEAN_MEASURES <= measures.DERIVED_MEASURES
@@ -21,9 +21,9 @@ def test_the_sql_that_computes_each_measure_is_keyed_by_the_names_the_reader_rea
     assert frozenset(HISTORY_COLUMNS) == measures.HISTORY_STATS
     # Phase 2, step 1: the season line's and the threshold's stat names, and
     # the log's extra columns, closed in measures too.
-    from association.query.player_games import STARTER_SIDES
+    from association.query.player_games import STARTER_SIDES, THRESHOLD_STAT_COLUMNS
     from association.query.reading import STARTER_SIDES as READING_STARTER_SIDES
-    from association.query.templates.common import PLAYER_STAT_COLUMNS, THRESHOLD_STAT_COLUMNS
+    from association.query.season_line import PLAYER_STAT_COLUMNS
 
     assert frozenset(PLAYER_STAT_COLUMNS) == measures.PLAYER_STAT_NAMES
     assert frozenset(THRESHOLD_STAT_COLUMNS) == measures.THRESHOLD_STAT_NAMES

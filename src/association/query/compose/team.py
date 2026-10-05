@@ -21,7 +21,7 @@ season line and box scores:
 
 - **Unnarrowed** ("how many 3-pointers have the Magic made this season") -
   the season's own TOTAL, read straight from ``team_season_stats``
-  (:data:`SEASON_MEASURES`) - the same table :func:`association.query.templates.teams.team_stat`
+  (:data:`SEASON_MEASURES`) - the same table ``templates.teams.team_stat``
   reads, but its raw total rather than the per-game average
   ``team_metrics.TEAM_METRICS`` carries. "This season" answered with a
   per-game figure is the wrong-shape bug this module exists to fix (F127,
@@ -31,8 +31,8 @@ season line and box scores:
   a series, a calendar ``situation``, or an ``order``/``limit`` window) -
   summed straight from the team-games relation's own game-level columns
   (:data:`GAME_MEASURES`: points scored, points allowed, differential),
-  through :func:`association.query.templates.common.scoped_team` and
-  :func:`association.query.templates.common.team_games` - the same shared
+  through :func:`association.query.team_relation.scoped_team` and
+  :func:`association.query.team_relation.team_games` - the same shared
   steps every other team template narrows through, never a hand-written
   clause here.
 
@@ -41,7 +41,7 @@ What this module does NOT do, on purpose, because it needs a join
 made, rebounds, ...) narrowed to a window or an opponent - "3-pointers made
 by the Magic over their last 10 games" - refuses (``Unsupported``) rather than
 silently answering the season instead. A "last N games" question naming no
-season type (F128/F129's own shape) is answered by :func:`association.query.templates.games.team_game_log`'s
+season type (F128/F129's own shape) is answered by ``templates.games.team_game_log``'s
 existing team half directly (its ``_team_game_log_mixed`` already reads both
 season types and merges by date) rather than duplicated here; this module's
 narrowed reader is one season type at a time.
@@ -62,17 +62,17 @@ from association.nba.franchises import season_name_sql
 from association.nba.season import current_season
 from association.query.answer import Reply
 from association.query.conditions import _PLAYER_GAME_TABLES, _TEAM_LINE, _longest_runs_sql, box_source, presence_games_sql
-from association.query.entities import Entity
+from association.query.entities import Entity, resolved_team
 from association.query.entities import team_named_in as team_named_in
+from association.query.player_relation import ResolvedSpan, span_of, whole_span
 from association.query.reading import DEFAULT_STREAK_LIMIT, Scope, _clamp_limit
 from association.query.team_games import TeamNarrowed
 from association.query.team_games import aggregate_sql as team_aggregate_sql
 from association.query.team_games import grouped_sql as team_grouped_sql
 from association.query.team_games import named as team_named
 from association.query.team_games import rows_sql as team_rows_sql
-from association.query.templates.common import ResolvedSpan, resolved_team, scoped_team, span_of, whole_span
-from association.query.templates.common import team_games as narrow_team_games
-from association.query.templates.splits import _streak_league_team_narrowed
+from association.query.team_relation import league_team_narrowed, scoped_team
+from association.query.team_relation import team_games as narrow_team_games
 
 from .core import Refused, Unsupported, rows_of
 
@@ -236,7 +236,7 @@ class TeamCompiled:
     sql: str
     params: list[Any] | dict[str, Any]
     team: Entity | None
-    #: The seasons read: a :class:`~association.query.templates.common.ResolvedSpan`,
+    #: The seasons read: a :class:`~association.query.player_relation.ResolvedSpan`,
     #: or the ``presence`` group's :class:`~association.query.conditions._Scope`.
     span: Any
     narrowed: TeamNarrowed
@@ -258,7 +258,7 @@ class TeamResult:
 
     .. versionchanged:: 5.0.0
        No ``coverage_note``: the agent appends
-       :func:`~association.query.templates.common.coverage_caveat` to a
+       :func:`~association.query.coverage.coverage_caveat` to a
        composed answer as it does to a template's, and this carrying one too
        printed ESPN's 2001-playoffs note twice.
     """
@@ -368,9 +368,9 @@ def _compile_team_season(con: duckdb.DuckDBPyConnection, q: TeamQuery, team: Ent
 
 
 def _team_games_narrowed(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> tuple[TeamNarrowed, Entity, ResolvedSpan]:
-    """``team``'s games, narrowed exactly as :func:`association.query.templates.games.team_quarter_points`
-    narrows its own - through :func:`~association.query.templates.common.scoped_team`
-    and :func:`~association.query.templates.common.team_games`, never a
+    """``team``'s games, narrowed exactly as ``templates.games.team_quarter_points``
+    narrows its own - through :func:`~association.query.team_relation.scoped_team`
+    and :func:`~association.query.team_relation.team_games`, never a
     clause written here. Resolves the team itself too (rather than reusing
     :func:`_resolved_team_subject`'s separate lookup), so the name and the
     span it is read against always come from the one call that settles both
@@ -519,7 +519,7 @@ def compile_team_run(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> TeamCompil
     else:
         team = None
         span = span_of(scope.span, scope.season, scope.season_type or 2, "games", since=scope.since, until=scope.until)
-        narrowed = _streak_league_team_narrowed(span)
+        narrowed = league_team_narrowed(span)
         limit, best = _clamp_limit(scope.limit, DEFAULT_STREAK_LIMIT), True
     base, params = team_named(*team_aggregate_sql(narrowed, list(_TEAM_STREAK_SELECT)))
     sql = _longest_runs_sql(base, ("team_id", "season"), "x.won = $want", best_per_partition=best)
@@ -711,7 +711,7 @@ def compile_team_over(q: TeamQuery, team: Entity | None, span: ResolvedSpan, nar
     """``q`` as SQL over a team already settled - the team counterpart of
     :func:`~association.query.compose.core.compile_over`, for a reader that
     settles the team, the span and the narrowed games through the shared
-    steps (:func:`~association.query.templates.common.team_games`) and reads
+    steps (:func:`~association.query.team_relation.team_games`) and reads
     them under one shape: ``rows`` (the team's games listed, ``limit`` of
     them, oldest first where ``ascending``) or ``grouped`` by a key of
     :data:`TEAM_GROUPS`. Executed through
@@ -749,7 +749,7 @@ def _team_coverage_tables(q: TeamQuery) -> tuple[str, ...]:
 def team_coverage_refusal(q: TeamQuery) -> Reply | None:
     """Why this team question's season is out of reach, or ``None`` - the
     team subject's counterpart of
-    :func:`~association.query.templates.common.check_coverage` (#197,
+    :func:`~association.query.coverage.check_coverage` (#197,
     ISSUES.md: compose read no coverage floor at all). Checked before the
     team itself is even resolved, the same order ``check_coverage`` runs in
     ahead of every relation template.
@@ -798,7 +798,7 @@ def run_team(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> TeamResult:
        (``point._default_record_when``, which
        already refuses a team with no player) ever sees the question.
        Declining sends the question back to ``record_when``'s own team
-       branch (:func:`~association.query.templates.splits._record_when_team_answer`),
+       branch (``templates.splits._record_when_team_answer``),
        which answers a threshold record for real.
     """
     if q.shape == "run":

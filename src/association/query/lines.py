@@ -2,7 +2,7 @@
 25 minutes", "20+ points" - read from the ``below``/``above`` phrases the
 parser kept, as filters on the player-games relation. The reader's: it
 reads words, with a regex, and names no SQL; the relation applies what it
-reads (``templates.common.narrow_measures``). Lived in ``templates.common``
+reads (``player_relation.narrow_measures``). Lived in ``templates.common``
 until Phase 2's first slice moved the default points that read it to the
 reader's side (``ROADMAP.md``, "Phase 2, the expected steps", step 1).
 

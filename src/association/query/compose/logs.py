@@ -29,27 +29,16 @@ import duckdb
 from association.nba.season import current_season
 from association.nba.season import eastern_date as _eastern_date
 from association.query.answer import Reply
+from association.query.entities import resolved_team, slot_season
+from association.query.lines import MeasureFilter, measure_filters
 from association.query.measures import log_extras, stat_measure
 from association.query.notes import Note
-from association.query.player_games import aggregate_sql
-from association.query.reading import DEFAULT_GAME_LOG_LIMIT, Scope, Unsupported, _clamp_limit
+from association.query.player_games import Narrowed, aggregate_sql
+from association.query.player_relation import ResolvedSpan, box_score_notes_read, no_narrowed_games, scoped_games, span_of, whole_span
+from association.query.reading import DEFAULT_GAME_LOG_LIMIT, Scope, Unsupported, _clamp_limit, unhonored_scoping
 from association.query.result import Narrowing, Part, Result, Rows, Span, Window
 from association.query.team_games import TEAM_GAMES_SQL, TeamNarrowed
-from association.query.templates.common import (
-    MeasureFilter,
-    Narrowed,
-    ResolvedSpan,
-    box_score_notes_read,
-    measure_filters,
-    no_narrowed_games,
-    resolved_team,
-    scoped_games,
-    slot_season,
-    span_of,
-    team_games,
-    unhonored_scoping,
-    whole_span,
-)
+from association.query.team_relation import team_games
 
 from .core import LINE, Compiled, Query, compile_over, compile_query, rows_of
 from .team import TeamQuery, compile_team_over
@@ -107,7 +96,7 @@ def log_key(header: str) -> str:
 
 def _game_log_lines(below: Any, above: Any, threshold: Any) -> list[MeasureFilter]:
     """The lines a log keeps games under or over - the ``below``/``above``
-    phrases (:func:`~association.query.templates.common.measure_filters`).
+    phrases (:func:`~association.query.lines.measure_filters`).
     A bare ``threshold`` beside them is the retired template's own refusal
     (it never read one), unless it is one of those phrases' own number,
     which the model files twice."""
@@ -195,7 +184,7 @@ def _player_log_total(con: duckdb.DuckDBPyConnection, narrowed: Narrowed, *, reb
     carries, before the window (``order``/``limit``) cuts them to the rows
     listed - what the heading says "of how many" with (F149). Read through
     :func:`~association.query.player_games.aggregate_sql` over
-    :func:`~association.query.templates.common.whole_span`, never a
+    :func:`~association.query.player_relation.whole_span`, never a
     hand-written ``COUNT(*)``."""
     sql, params = aggregate_sql(whole_span(narrowed), ["COUNT(*)"], rebuilt=rebuilt)
     row = con.execute(sql, params).fetchone()
@@ -242,7 +231,7 @@ def _player_log_mixed(con: duckdb.DuckDBPyConnection, q: Query, compiled: Compil
     """A player's "last N games" with no season type named: both types, read
     separately and merged by date. Every other narrowing resolves the same
     under either type, so each type is narrowed exactly as
-    :func:`~association.query.templates.common.scoped_games` already does
+    :func:`~association.query.player_relation.scoped_games` already does
     for a single type, once per type, over the player and the season the
     first compile settled, and compiled over that
     (:func:`~association.query.compose.core.compile_over`). The notes are
@@ -385,7 +374,7 @@ def _team_log_none(con: duckdb.DuckDBPyConnection, team_name: str, span: Resolve
     found = con.execute(f"{TEAM_GAMES_SQL} SELECT COUNT(*), MIN({season_col}), MAX({season_col}) FROM team_games tg WHERE {where}", params).fetchone()
     total, first, last = found if found else (0, None, None)
     if not total:
-        from association.query.templates.common import season_phrase
+        from association.query.season_text import season_phrase
 
         where_period = season_phrase(span.season, span.season_type) if span.season is not None else f"{span.kind}s on record"
         return f"No {where_period} games found for the {team_name}."
@@ -414,7 +403,7 @@ def _team_log(con: duckdb.DuckDBPyConnection, q: TeamQuery, team: Any, span: Res
 def _team_mixed_rows(con: duckdb.DuckDBPyConnection, team: Any, season: int, *, opponent: Any, venue: Any, limit: int) -> tuple[list[dict[str, Any]], dict[int, int], str] | Reply:
     """A team's newest ``limit`` games of ``season`` over BOTH season types -
     each type narrowed on its own through
-    :func:`~association.query.templates.common.team_games`, compiled as the
+    :func:`~association.query.team_relation.team_games`, compiled as the
     team compiler's ``rows`` read over the settled team
     (:func:`~association.query.compose.team.compile_team_over`) and merged
     by date - with how many of the kept games each type gave and the
@@ -474,7 +463,7 @@ def read_team_log(con: duckdb.DuckDBPyConnection, q: TeamQuery, *, stated: froze
 
     .. versionadded:: 5.0.0
     """
-    from association.query.templates.common import check_coverage
+    from association.query.coverage import check_coverage
 
     scope = q.scope
     if unhonored_scoping("game_log", scope, stated):

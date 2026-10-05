@@ -16,7 +16,7 @@ sayers take it over: the narrowing's phrase and the span's words
 the relation's own ``filters()`` and ``years()`` rather than the sayer
 building them from cells; and an ``empty`` sentence, where the reader
 found no rows and the shared "which fact is missing" writer
-(``templates.common._no_narrowed_games``) still composes the reason, as
+(``player_relation.no_narrowed_games``) still composes the reason, as
 it does for the templates that have not retired.
 
 .. versionadded:: 5.0.0

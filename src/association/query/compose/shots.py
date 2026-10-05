@@ -5,11 +5,11 @@ ported onto the player-games relation until after Phase 3.
 
 The reader is the retired templates' read, moved whole
 (``templates/shots.py``, Phase 2, step 5): the player and the span settled
-through the shared steps (:func:`~association.query.templates.common.scoped_player`),
+through the shared steps (:func:`~association.query.player_relation.scoped_player`),
 the games a narrowing or a window sends the read to taken from the
 player-games relation's own reader
 (:func:`~association.query.player_games.games_subquery`, through
-:func:`~association.query.templates.common.scoped_games`), and the shots
+:func:`~association.query.player_relation.scoped_games`), and the shots
 read off ``shot_chart`` - every statement built here and executed through
 the compiler's one door (:func:`~association.query.compose.core.values_of`).
 The chart is a :class:`~association.query.result.Chart` - the marks, the
@@ -34,29 +34,17 @@ from association.nba.coverage import COVERAGE
 from association.query.answer import Reply
 from association.query.conditions import box_source
 from association.query.court import HAS_POSITION_SQL, SHOT_DISTANCE_SQL, render_court_html
-from association.query.entities import SHOT_AVAILABILITY, Ambiguous, Entity, no_match
+from association.query.entities import SHOT_AVAILABILITY, Ambiguous, Entity, clarify, no_match
 from association.query.game_label import game_label
+from association.query.lines import MeasureFilter, measure_filters
 from association.query.notes import Note
 from association.query.player_games import Narrowed, games_subquery
-from association.query.reading import Scope, Unsupported
+from association.query.player_relation import RELATION_SCOPING, ResolvedSpan, no_narrowed_games, scoped_games, scoped_player, settle_ordinal_season, span_of
+from association.query.reading import Scope, Unsupported, unhonored_scoping
 from association.query.result import Chart, Decided, Narrowing, Part, Result, Scalar, Span
 from association.query.season_line import Statement, season_redirect, seasons_played
+from association.query.season_text import SEASON_TYPE_NAMES, season_phrase
 from association.query.shotchart import DERIVED_SHOT_VALUES, SHOT_VALUE_SQL, UNSEPARABLE_SHOT_VALUES, resolve_chart_player
-from association.query.templates.common import (
-    RELATION_SCOPING,
-    SEASON_TYPE_NAMES,
-    MeasureFilter,
-    ResolvedSpan,
-    clarify,
-    measure_filters,
-    no_narrowed_games,
-    scoped_games,
-    scoped_player,
-    season_phrase,
-    settle_ordinal_season,
-    span_of,
-    unhonored_scoping,
-)
 
 from .core import values_of
 
@@ -143,7 +131,7 @@ def _shots_narrowed_rows(con: duckdb.DuckDBPyConnection, player: Entity, span: R
     """The event ids (and their Eastern dates) an already-narrowed-and-windowed
     ``narrowed`` draws from, read through the relation's own
     :func:`~association.query.player_games.games_subquery` - or the
-    refusal :func:`~association.query.templates.common.no_narrowed_games`
+    refusal :func:`~association.query.player_relation.no_narrowed_games`
     names the missing fact with when nothing matches: his games in that
     span, a teammate, a match, or an empty box score."""
     box = box_source(con)

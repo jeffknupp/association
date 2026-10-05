@@ -808,7 +808,7 @@ class Narrowed:
         Detroit Pistons at home"``.
 
         ``windowed`` is opt-in and defaults off: ``.window`` is set by
-        :func:`association.query.templates.common.scoped_games` for every
+        :func:`association.query.player_relation.scoped_games` for every
         caller whose slots carry ``order``/``limit`` - including ``game_log``
         and ``player_stat``, which read it for their OWN row-fetching
         (:func:`rows_sql` never consults ``.window``) and already say "last N
@@ -875,7 +875,7 @@ class Narrowed:
         """Only the games on a weekday, in a month, on a fixed day, or from a
         day of the season on - the ``situation`` cell, read by
         :func:`association.query.calendar.parse_situation` and applied by
-        :func:`association.query.templates.common.scoped_games`. The date is
+        :func:`association.query.player_relation.scoped_games`. The date is
         the game's US Eastern day, so "on Tuesdays" is the night the game was
         played, not ESPN's UTC stamp.
 
@@ -889,8 +889,8 @@ class Narrowed:
         """Only the games against an opponent in this conference or division,
         for that game's own season - the ``situation`` cell's other half,
         read by :func:`association.query.calendar.parse_alignment` and
-        applied by :func:`association.query.templates.common.scoped_games`/
-        :func:`~association.query.templates.common.league_games`.
+        applied by :func:`association.query.player_relation.scoped_games`/
+        :func:`~association.query.player_relation.league_games`.
         ``pgl.opponent_team_id`` is the column :func:`league_games` already
         narrows by name against; this reads it against every team in the
         conference or division instead of one.
@@ -1277,3 +1277,36 @@ def _tenure_clause(con: duckdb.DuckDBPyConnection, mate: Entity, season: int | N
         f"EXISTS (SELECT 1 FROM (VALUES {rows}) AS stint(season, team_id, start_date, end_date) "
         f"WHERE stint.season = pgl.season AND stint.team_id = {team} AND pgl.game_date BETWEEN stint.start_date AND stint.end_date)"
     ), [value for stint in stints for value in stint]
+
+
+# Slot value -> real player_box_stats column. A whitelist, not a passthrough:
+# the router's `stat` slot is model-generated text, and this is the only place
+# it can reach SQL. Same reasoning as metrics.EXTRA_FIELD_COLUMNS.
+THRESHOLD_STAT_COLUMNS = {
+    "points": "points",
+    "rebounds": "rebounds",
+    "assists": "assists",
+    "steals": "steals",
+    "blocks": "blocks",
+    "turnovers": "turnovers",
+    "threePointFieldGoalsMade": "threePointFieldGoalsMade",
+    "fieldGoalsMade": "fieldGoalsMade",
+    "freeThrowsMade": "freeThrowsMade",
+    "minutes": "minutes",
+    "fouls": "fouls",
+}
+
+
+STAT_LABELS = {
+    "points": "point",
+    "rebounds": "rebound",
+    "assists": "assist",
+    "steals": "steal",
+    "blocks": "block",
+    "turnovers": "turnover",
+    "threePointFieldGoalsMade": "3-pointer",
+    "fieldGoalsMade": "field goal",
+    "freeThrowsMade": "free throw",
+    "minutes": "minute",
+    "fouls": "foul",
+}

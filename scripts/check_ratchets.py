@@ -29,13 +29,13 @@ target"):
     ``.sql``), by module. Contract 3: one place builds and runs SQL; a
     sayer cannot read the warehouse. Counted, not listed, since 2026-10-02:
     a listed module could grow statements freely, and nothing said so.
-``private_template_imports``
-    A private name the compiler imports from ``templates/`` - the template
-    bodies the compiled intents still answer through. They reach zero when
-    ``templates/`` is gone.
 ``regex_outside_the_reader``
     A module that imports ``re`` outside the reader. Contract 6: regexes
     live in the lexicon.
+A fifth, ``private_template_imports`` (a private name the compiler took from
+``templates/``), went to zero and was deleted with ``templates/`` itself
+(Phase 2, step 6, 2026-10-05): with no template module left there is no
+shape for it to hold.
 Decision D4 (new shapes are frozen) is held beside these by a test,
 ``tests/query/test_frozen_shapes.py``, since the intents are values the
 package computes and this script reads source only - it imports nothing, so
@@ -147,36 +147,6 @@ def con_in_the_reader(modules: dict[str, ast.Module]) -> set[str]:
     return found
 
 
-def _template_modules_bound(tree: ast.Module) -> set[str]:
-    """The local names a module binds to a template module, imported whole
-    (``from ..templates import splits as _m``, ``import ...templates.splits as x``)."""
-    bound: set[str] = set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.ImportFrom) and (node.module or "").endswith("templates"):
-            bound.update(alias.asname or alias.name for alias in node.names)
-        elif isinstance(node, ast.Import):
-            bound.update(alias.asname or alias.name.split(".")[-1] for alias in node.names if "templates." in alias.name)
-    return bound
-
-
-def private_template_imports(modules: dict[str, ast.Module]) -> set[str]:
-    """``module:name`` for each private name a compiler module takes from a
-    template module: imported by name, or read off a template module it
-    imported whole (``from ..templates import splits as _m; _m._x`` passed
-    until 2026-10-03)."""
-    found: set[str] = set()
-    for name, tree in modules.items():
-        if name != "compose" and not name.startswith("compose."):
-            continue
-        bound = _template_modules_bound(tree)
-        for node in ast.walk(tree):
-            if isinstance(node, ast.ImportFrom) and "templates" in (node.module or ""):
-                found.update(f"{name}:{alias.name}" for alias in node.names if alias.name.startswith("_"))
-            elif isinstance(node, ast.Attribute) and node.attr.startswith("_") and isinstance(node.value, ast.Name) and node.value.id in bound:
-                found.add(f"{name}:{node.attr}")
-    return found
-
-
 def _imports_re(node: ast.AST) -> bool:
     """Whether ``node`` imports the ``re`` module: a plain import, or
     ``importlib.import_module("re")``/``__import__("re")`` (which passed
@@ -209,7 +179,6 @@ def regex_outside_the_reader(modules: dict[str, ast.Module]) -> set[str]:
 CHECKS: dict[str, Callable[[dict[str, ast.Module]], set[str] | dict[str, int]]] = {
     "question_outside_the_reader": question_outside_the_reader,
     "sql_outside_the_relations": sql_outside_the_relations,
-    "private_template_imports": private_template_imports,
     "regex_outside_the_reader": regex_outside_the_reader,
     "con_in_the_reader": con_in_the_reader,
 }

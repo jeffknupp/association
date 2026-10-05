@@ -23,11 +23,11 @@ from association.fetch.repairs import real_games
 from association.nba.season import current_season
 from association.query.answer import AnswerContext, Reply
 from association.query.compose.plan import STATED_SCOPING
+from association.query.coverage import check_coverage
 from association.query.parse import with_point
-from association.query.reading import Reading, Scope, Unsupported
+from association.query.reading import Reading, Scope, Unsupported, unhonored_scoping
 from association.query.subject import Subject
 from association.query.team_metrics import TEAM_METRICS, descending_for, resolve_team_metric
-from association.query.templates.common import check_coverage, unhonored_scoping
 
 
 def _compiled(intent: str) -> Callable[[AnswerContext, Reading], Reply]:

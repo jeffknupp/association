@@ -17,10 +17,9 @@ import pytest
 from test_templates import player_stat  # the compiler's, player_stat's template retired (compose.COMPILED_INTENTS)
 
 from association.query.answer import AnswerContext
+from association.query.coverage import _ADVANCED_STAT_NAMES, _sources_for, check_coverage
 from association.query.reading import Reading, Scope, Unsupported
-from association.query.templates import check_coverage
-from association.query.templates.common import _ADVANCED_STAT_NAMES, _sources_for
-from association.query.templates.players import ADVANCED_STATS
+from association.query.season_line import ADVANCED_STATS
 
 
 @pytest.fixture

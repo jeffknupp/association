@@ -30,16 +30,15 @@ from association.query.compose.splits import _player_splits, _team_splits, read_
 from association.query.compose.stats import _player_stat_meetings, _player_stat_result, read_player_stat
 from association.query.compose.team import TeamQuery, _compile_team_run, compile_team_count, compile_team_line, compile_team_range, compile_team_run, run_team
 from association.query.entities import MAX_CANDIDATES, Availability, Entity, collect_name_readings, resolve_player
+from association.query.measures import PERIOD_RATE_STATS
 from association.query.metrics import LEADERBOARD_METRICS, PER_GAME_MIN_GAMES, PER_GAME_MIN_POSTSEASON_GAMES
 from association.query.parse import with_point
 from association.query.player_games import PERIOD_COLUMNS, PERIOD_RATES, period_distrust
-from association.query.reading import Reading, Scope
+from association.query.player_relation import scoped_games, scoped_player
+from association.query.reading import SCOPING_SLOTS, Reading, Scope, unhonored_scoping
+from association.query.season_text import season_phrase
 from association.query.shotchart import SHOT_AVAILABILITY
 from association.query.subject import Subject
-from association.query.templates.common import SCOPING_SLOTS, scoped_games, scoped_player, season_phrase, unhonored_scoping
-from association.query.templates.games import (
-    PERIOD_RATE_STATS,
-)
 
 
 def _compiled(intent: str) -> Callable[[AnswerContext, Reading], Reply]:
@@ -1017,7 +1016,7 @@ def test_a_without_teammate_is_found_past_the_first_page_of_matches() -> None:
     only find_players' first page of ten, so a teammate who sorted eleventh was
     reported as nobody's teammate at all."""
     from association.query.entities import Entity
-    from association.query.templates.common import _resolved_teammate, _Span
+    from association.query.player_relation import ResolvedSpan, _resolved_teammate
 
     c = duckdb.connect(":memory:")
     c.execute("CREATE TABLE players (athlete_id VARCHAR, display_name VARCHAR)")
@@ -1026,7 +1025,7 @@ def test_a_without_teammate_is_found_past_the_first_page_of_matches() -> None:
     c.execute("INSERT INTO players VALUES ('k', 'Klay Thompson')")
     c.execute("CREATE TABLE player_box_stats (athlete_id VARCHAR, season INTEGER, season_type INTEGER, team_id VARCHAR)")
     c.execute("INSERT INTO player_box_stats VALUES ('k', 2026, 2, '9'), ('10', 2026, 2, '9'), ('0', 2026, 2, '5')")
-    got = _resolved_teammate(c, "Williams", Entity(id="k", name="Klay Thompson"), _Span(2026, 2))
+    got = _resolved_teammate(c, "Williams", Entity(id="k", name="Klay Thompson"), ResolvedSpan(2026, 2))
     assert got == Entity(id="10", name="Kenrich Williams")
 
 
@@ -1625,7 +1624,7 @@ def test_shot_chart_career_span_names_the_seasons_the_floor_leaves_out(sc_ctx: A
 
 def test_shot_chart_refuses_a_career_span_with_a_named_season(sc_ctx: AnswerContext) -> None:
     """ "Career" and a named year at once answer different questions - the same
-    conflict `_span_of` raises on elsewhere."""
+    conflict `span_of` raises on elsewhere."""
     _add_career_table(sc_ctx.con, [("1", current_season(), 2, 60)])
     with pytest.raises(Unsupported, match="career span and the 2020 season"):
         shot_chart(sc_ctx, Reading.from_slots({"player": "Stephen Curry", "season": 2020, "span": "career"}))
@@ -1727,7 +1726,7 @@ def test_a_comparison_is_not_refused_before_netpoints_begins(ps_con: AnswerConte
     """The NetPoints table is deliberately absent from player_compare's
     TEMPLATE_SOURCES: listing it would put a 2019 coverage floor on every
     comparison and refuse the 1994-2018 ones outright."""
-    from association.query.templates.common import check_coverage
+    from association.query.coverage import check_coverage
 
     assert check_coverage("player_compare", {"season": 2005, "season_type": 2}) is None
 
@@ -4380,10 +4379,10 @@ def test_the_relation_window_is_cut_after_the_row_filters(pg_ctx: AnswerContext)
     before the aggregate. Read straight off the relation, since no template
     sets a window yet (player_stat hands "last N" to game_log by decision)."""
     from association.query.player_games import aggregate_sql
-    from association.query.templates.common import _narrow_player_games, _span_of
+    from association.query.player_relation import _narrow_player_games, span_of
 
     s = current_season()
-    span = _span_of("career", None, 2, "player_game_log")
+    span = span_of("career", None, 2, "player_game_log")
     narrowed = _narrow_player_games(pg_ctx.con, Entity("10", "Brandin Podziemski"), span, opponent="Detroit Pistons", venue=None, without=None)
     assert not isinstance(narrowed, Reply)
     narrowed.window = ("recent", 2)
@@ -4540,7 +4539,7 @@ def test_player_stat_names_the_real_cause_when_nothing_matches(pg_ctx: AnswerCon
 def test_a_narrowed_question_carries_the_box_score_floor() -> None:
     """Jordan's 1990 season line is real and answerable; his 1990 line against
     one opponent needs box scores, which start in 1993-94."""
-    from association.query.templates.common import check_coverage
+    from association.query.coverage import check_coverage
 
     assert check_coverage("player_stat", {"player": "Michael Jordan", "season": 1990, "season_type": 2}) is None
     assert check_coverage("player_stat", {"player": "Michael Jordan", "season": 1990, "season_type": 2, "opponent": "New York Knicks"}) is not None
@@ -5892,7 +5891,7 @@ def test_templates_on_the_relation_declare_no_scoping_of_their_own() -> None:
        has no "both at once" row, so the slot sends it to box scores the same
        way a ``since`` range already does.
     """
-    from association.query.templates.common import RELATION_SCOPING, RELATION_SCOPING_EXCLUDED
+    from association.query.player_relation import RELATION_SCOPING, RELATION_SCOPING_EXCLUDED
 
     on_the_relation = {
         "game_log": {"season_type_unstated"},
@@ -5911,7 +5910,7 @@ def test_templates_on_the_relation_declare_no_scoping_of_their_own() -> None:
 
 
 def test_until_is_declared_wherever_since_is() -> None:
-    """A new scoping dimension is one clause on ``_Span`` plus a template
+    """A new scoping dimension is one clause on ``ResolvedSpan`` plus a template
     turning it on - never a slot honored for ``since`` and silently dropped
     for ``until``, the same shape ``RELATION_SCOPING`` exists to stop for
     every other cell. ``until`` closes a ``since``-bounded range at the far
@@ -5930,7 +5929,7 @@ def test_until_is_declared_wherever_since_is() -> None:
 
     .. versionadded:: 4.4.0
     """
-    from association.query.templates.common import RELATION_SCOPING, RELATION_SCOPING_EXCLUDED
+    from association.query.player_relation import RELATION_SCOPING, RELATION_SCOPING_EXCLUDED
 
     assert {"since", "until"} <= RELATION_SCOPING
     for intent, excluded in RELATION_SCOPING_EXCLUDED.items():
@@ -5983,9 +5982,7 @@ def test_templates_on_the_relation_do_not_narrow_it_themselves() -> None:
         "tg.side = ?",
         "tg.eastern_date = ?",
     )
-    from association.query.templates.splits import (
-        _streak_league_team_narrowed,
-    )
+    from association.query.team_relation import league_team_narrowed
 
     readers: dict[str, list[Callable[..., Any]]] = {}
     # record_when's, game_log's, player_stat's, player_splits' and
@@ -6010,7 +6007,7 @@ def test_templates_on_the_relation_do_not_narrow_it_themselves() -> None:
         read_team_streak,
         _streak_team_result,
         _streak_league_teams_result,
-        _streak_league_team_narrowed,
+        league_team_narrowed,
     ]
     # player_matchup's too (the `pair` shape).
     readers["player_matchup"] = [_resolve_pair, _compile_pair, read_player_matchup, _pair_result, _pair_no_meetings, _pair_absence]

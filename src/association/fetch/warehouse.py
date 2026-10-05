@@ -298,7 +298,7 @@ def _build_views(con: duckdb.DuckDBPyConnection, loaded: set[str]) -> None:
     # empty, plus a `reconstructed` flag marking exactly those. A rebuilt row
     # still has NULL minutes, so it stays invisible to every reader that
     # filters on minutes - which is all of them except the two that opt in
-    # explicitly (see REBUILT_STATS in query/templates/common.py). Falls back
+    # explicitly (see REBUILT_STATS in query/player_games.py). Falls back
     # to the stored table so a warehouse built before 2.2.0, or one missing
     # `plays`, still gets a log.
     if "player_box_stats_deduped" in loaded:

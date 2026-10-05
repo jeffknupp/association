@@ -5,7 +5,7 @@ honor a question raises ``Unsupported``; the compiler gets one try;
 and then this module asks whether the shape is one the warehouse has no
 column for at all. Where it is, a refusal naming the missing thing IS the
 answer - the same reasoning as
-:func:`association.query.templates.common.check_coverage`, which returns a
+:func:`association.query.coverage.check_coverage`, which returns a
 floor refusal rather than raising it. It was written while a SQL-writing
 agent still followed it (gone in 5.0.0): measured on the yardstick's
 fall-throughs, 2026-09-23, a playoff round, an age, a conference, and a stat
@@ -35,13 +35,12 @@ import duckdb
 from association.query.answer import Reply
 from association.query.calendar import parse_alignment, parse_situation
 from association.query.entities import find_teams
+from association.query.measures import PERIOD_RATE_STATS
 from association.query.player_games import PERIOD_COLUMNS
-from association.query.reading import Reading, Scope
+from association.query.reading import PLAYER_INTENTS, Reading, Scope
 from association.query.router import _PERIOD_AS_CONDITION
 from association.query.subject import Subject
 from association.query.team_games import TEAM_PERIOD_COLUMNS
-from association.query.templates.common import PLAYER_INTENTS
-from association.query.templates.games import PERIOD_RATE_STATS
 
 _CHAMPIONSHIP = re.compile(r"\b(?:championships?|champions?|nba\s+titles?|won\s+the\s+(?:title|finals)|title\s+winners?|finals\s+winners?)\b", re.IGNORECASE)
 _BENCH_POINTS = re.compile(r"\bbench\s+(?:points?|scoring|pts)\b", re.IGNORECASE)
@@ -142,7 +141,7 @@ def _period_stat(con: duckdb.DuckDBPyConnection, intent: str, scope: Scope, ques
     (:data:`~association.query.player_games.PERIOD_COLUMNS`), and play-by-play
     carries no minutes, plus-minus or advanced rate per quarter. A field
     goal, 3-point or free throw percentage IS read - a ratio of the rebuilt
-    makes and attempts (``templates.games.PERIOD_RATE_STATS``).
+    makes and attempts (``measures.PERIOD_RATE_STATS``).
 
     .. versionchanged:: 5.0.0
        Names the columns that ARE rebuilt (plan item 4): until the period

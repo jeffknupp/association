@@ -32,6 +32,8 @@ import duckdb
 
 from association.nba.season import calendar_season, season_on_record
 from association.query.answer import AnswerContext, Reply
+from association.query.coverage import check_coverage, coverage_caveat
+from association.query.reading import PLAYER_INTENTS, TEAM_ONLY_INTENTS
 
 from .answer import Answer, AnsweredBy, Artifact, Timing
 from .compose import COMPILED_INTENTS
@@ -52,7 +54,6 @@ from .notes import unsaid
 from .reading import Reading, Scope, ScopeError
 from .refusals import MIN_QUESTION_WORDS, by_question, too_short, unanswerable
 from .router import Route, RouterUnavailable
-from .templates.common import PLAYER_INTENTS, TEAM_ONLY_INTENTS, check_coverage, coverage_caveat
 
 # The subset of Reply.data a compose.answer() carries that describes
 # WHAT was answered - the point on the relation - rather than the rows

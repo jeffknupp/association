@@ -121,4 +121,5 @@ def test_no_presenter_or_renderer_is_added() -> None:
     # each shape is a reader and the sayer, and no presenter comes back. The
     # templates package went with step 6: no template comes back either.
     assert importlib.util.find_spec("association.query.compose.present") is None, "a presenter came back: ROADMAP.md decision D4"
+    assert importlib.util.find_spec("association.query.templates") is None, "a template came back: ROADMAP.md decision D4"
     _frozen("renderer", _renderers_today(), FROZEN_RENDERERS)

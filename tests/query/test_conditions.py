@@ -32,11 +32,11 @@ from association.nba.season import current_season
 from association.query.answer import AnswerContext, Reply
 from association.query.compose.plan import STATED_SCOPING
 from association.query.conditions import RAW_BOX, UNGATED_ON_REBUILD, box_source
+from association.query.coverage import check_coverage
 from association.query.parse import with_point
-from association.query.reading import Reading, Scope, Unsupported
+from association.query.player_games import REBUILT_STATS
+from association.query.reading import SPLIT_KINDS, Reading, Scope, Unsupported, unhonored_scoping
 from association.query.subject import Subject
-from association.query.templates.common import REBUILT_STATS, check_coverage, unhonored_scoping
-from association.query.templates.splits import SPLIT_KINDS
 
 
 def _compiled(intent: str) -> Callable[[AnswerContext, Reading], Reply]:
@@ -1070,7 +1070,7 @@ def test_record_when_still_restores_a_player_the_question_names() -> None:
     answered "Philadelphia 76ers record when THEY had 20+ points" - a fluent
     answer to a different question, which is the failure shape this project
     keeps producing."""
-    from association.query.templates.common import PLAYER_REQUIRED_INTENTS
+    from association.query.reading import PLAYER_REQUIRED_INTENTS
 
     assert "record_when" in PLAYER_REQUIRED_INTENTS
 
@@ -1540,14 +1540,14 @@ def test_condition_player_reads_a_scope_beside_the_opponent_its_caller_resolved(
     from dataclasses import replace
 
     from association.query.conditions import _PLAYER_GAME_TABLES
-    from association.query.entities import Entity
+    from association.query.entities import Entity, resolved_team
     from association.query.player_games import games_subquery
+    from association.query.player_relation import condition_player, condition_scope
     from association.query.reading import Scope
-    from association.query.templates.common import _condition_scope, _resolved_team, condition_player
 
-    lakers = _resolved_team(league.con, "Los Angeles Lakers")
+    lakers = resolved_team(league.con, "Los Angeles Lakers")
     assert isinstance(lakers, Entity)
-    within = _condition_scope(None, None, 2, _PLAYER_GAME_TABLES)
+    within = condition_scope(None, None, 2, _PLAYER_GAME_TABLES)
     scope = Scope.from_slots(_slots(player="Jayson Tatum"))
     reads = [
         condition_player(league.con, scope, "needs a player", within, opponent=lakers),
@@ -1659,7 +1659,7 @@ def test_since_narrows_to_a_range_of_seasons(league: AnswerContext) -> None:
 
 
 def test_since_and_a_named_season_conflict(league: AnswerContext) -> None:
-    """`_condition_scope` used to take the `since` branch unconditionally,
+    """`condition_scope` used to take the `since` branch unconditionally,
     silently dropping a `season` slot named alongside it - the same pairing
     `_span_of` already refuses for game_log and player_stat."""
     with pytest.raises(Unsupported):
@@ -1739,7 +1739,7 @@ def test_above_and_below_narrow_which_games_the_splits_cover(league: AnswerConte
     """Tatum's three counted games this season score 30, 35 and 31 points
     (e1, e4, e7); "at least 32" keeps e4 alone, "under 32" keeps the other
     two - refused here, before any name is resolved, if the line names no
-    column at all (:func:`association.query.templates.common.measure_filters`)."""
+    column at all (:func:`association.query.lines.measure_filters`)."""
     high = player_splits(league, Reading.from_slots(_slots(player="Jayson Tatum", above="32 points")))
     assert high.data["games"] == 1
     assert high.data["measures"] == ["at least 32 points"]

@@ -42,15 +42,17 @@ from association.nba.season import current_season
 from association.query.answer import Reply
 from association.query.calendar import CalendarNarrowing, bare_month, parse_situation
 from association.query.conditions import _season_month_order
-from association.query.entities import Entity
+from association.query.coverage import check_coverage
+from association.query.entities import Entity, resolved_team, slot_season
 from association.query.notes import Note
-from association.query.reading import Unsupported
+from association.query.player_relation import ResolvedSpan, span_of, validated_until
+from association.query.reading import Unsupported, unhonored_scoping
 from association.query.result import Grouped, Narrowing, Part, Result, Rows, Scalar, Span
 from association.query.season_line import Statement
 from association.query.season_text import MONTH_NAMES
 from association.query.team_games import TeamNarrowed, game_list_gaps_sql, season_game_counts_sql
 from association.query.team_metrics import FIRST_FULL_REGULAR_SEASON, games_scope
-from association.query.templates.common import ResolvedSpan, check_coverage, resolved_team, slot_season, span_of, team_span_clause, unhonored_scoping, validated_until
+from association.query.team_relation import team_span_clause
 
 from .core import rows_of, values_of
 from .say import say_conference_refusal

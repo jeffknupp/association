@@ -15,8 +15,8 @@ from typing import Any
 
 import pytest
 
-from association.query.reading import Scope, Unsupported
-from association.query.templates.common import _BOX_SCORE_SCOPING, SCOPING_SLOTS, _sources_for, check_coverage, coverage_caveat
+from association.query.coverage import _BOX_SCORE_SCOPING, _sources_for, check_coverage, coverage_caveat
+from association.query.reading import SCOPING_SLOTS, Scope, Unsupported
 
 _FIELDS = {field.name for field in fields(Scope)}
 

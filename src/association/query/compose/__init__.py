@@ -16,10 +16,10 @@ is not visible in the answer. The presenters that called the retired
 templates' bodies are gone (``compose/present.py``, deleted with Phase 2's
 slice (iv)).
 
-Every correctness rule a template on the relation carries - the scoping the
+Every correctness rule a reader on the relation carries - the scoping the
 relation narrows by, the rebuilt-line guard, binding parity, the
 starter/bench category - is read from the relation exactly once, in
-:mod:`association.query.templates.common` and :mod:`association.query.player_games`,
+:mod:`association.query.player_relation` and :mod:`association.query.player_games`,
 which is what lets this package answer them all through one compiler instead
 of a template per shape. See ``core.py``'s module docstring for the rules
 themselves and where each is enforced.
@@ -40,9 +40,9 @@ from typing import TYPE_CHECKING, Any
 import duckdb
 
 from association.query.answer import AnswerContext, Reply
+from association.query.coverage import check_coverage
 from association.query.point import TEAM_SEASON_POINTS
 from association.query.result import Result
-from association.query.templates.common import check_coverage
 
 from .core import Query, Refused, Unsupported, run
 from .counts import read_threshold_count
@@ -209,7 +209,7 @@ def answer(
     point by its reader and the sayer, and the rest by the
     compiler's own sentence, with the box-score caveats
     :func:`~association.query.compose.core.run` reads appended (#197); the
-    answering loop appends :func:`~association.query.templates.common.coverage_caveat`
+    answering loop appends :func:`~association.query.coverage.coverage_caveat`
     as it does to a template's answer. ``trace`` is handed the point before
     it is planned - the answering loop logs it as the decision record.
 

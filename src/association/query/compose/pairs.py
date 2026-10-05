@@ -32,9 +32,9 @@ from association.query.answer import Reply
 from association.query.conditions import _PLAYER_GAME_TABLES, MEETING_STATS, _matchup_line, _names, _player_games, _teammate_games, _totals, _unseen_meetings, box_source
 from association.query.entities import Entity
 from association.query.notes import Note
-from association.query.reading import ConditionSpec, Scope, Unsupported, _clamp_limit
+from association.query.player_relation import condition_scope, no_games
+from association.query.reading import ConditionSpec, Scope, Unsupported, _clamp_limit, unhonored_scoping
 from association.query.result import Grouped, Narrowing, Part, Result, Rows, Span, Window
-from association.query.templates.common import condition_scope, no_games, unhonored_scoping
 
 from .core import Compiled, Query, Refused, compile_query, rows_of
 

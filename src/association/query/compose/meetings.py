@@ -6,7 +6,7 @@ wins (``ROADMAP-TYPES.md``: ``head_to_head``, "scalar (wins per team)").
 Phase 2's slice (iv): the retired ``templates.games.head_to_head``'s read
 moved here whole - the two teams named across ``teams``, ``team`` and
 ``opponent``, the first team's own rows of the team relation narrowed to
-the other (:func:`association.query.templates.common.team_games`), executed
+the other (:func:`association.query.team_relation.team_games`), executed
 as the team compiler's ``rows`` read (:func:`~association.query.compose.team.compile_team_over`) - and its
 sentences to the sayer (:func:`association.query.compose.say.say_head_to_head`).
 
@@ -22,11 +22,13 @@ import duckdb
 
 from association.nba.season import current_season
 from association.query.answer import Reply
-from association.query.entities import Entity
-from association.query.reading import Scope, Unsupported
+from association.query.coverage import check_coverage
+from association.query.entities import Entity, resolved_team, slot_season
+from association.query.player_relation import ResolvedSpan, span_of, validated_until
+from association.query.reading import Scope, Unsupported, unhonored_scoping
 from association.query.result import Grouped, Narrowing, Part, Result, Span
 from association.query.team_games import TeamNarrowed
-from association.query.templates.common import ResolvedSpan, check_coverage, resolved_team, slot_season, span_of, team_games, unhonored_scoping, validated_until
+from association.query.team_relation import team_games
 
 from .core import rows_of
 from .team import TeamQuery, compile_team_over
@@ -90,7 +92,7 @@ def _head_to_head_narrowed(
     con: duckdb.DuckDBPyConnection, a: Entity, b: Entity, venue: Literal["home", "away"] | None, date: str | None, season_slot: int | None, season_type: int
 ) -> tuple[TeamNarrowed | Reply, int | None]:
     """``a``'s games against ``b``, from ``a``'s own row of the team relation
-    (:func:`association.query.templates.common.team_games`) - which already
+    (:func:`association.query.team_relation.team_games`) - which already
     carries both home and away meetings without a venue named - and the
     season the narrowing settled on (``None`` once ``date`` has replaced it).
 
@@ -169,7 +171,7 @@ def _head_to_head_over_span(
     with the seasons the games actually came from (``tg.season``, or
     ``year(tg.eastern_date)`` for a postseason, whose label is not the year
     it was played in before 1994) - the span's own words beside them
-    (``Span.phrase``, :meth:`~association.query.templates.common.ResolvedSpan.during`)."""
+    (``Span.phrase``, :meth:`~association.query.player_relation.ResolvedSpan.during`)."""
     span = span_of("career" if career else None, None, season_type, "games", since=since, until=until)
     narrowed = team_games(con, a, span, Scope(venue=venue), opponent=b)
     if isinstance(narrowed, Reply):

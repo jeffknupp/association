@@ -23,14 +23,16 @@ import duckdb
 
 from association.nba.franchises import season_name
 from association.query.answer import Reply
-from association.query.conditions import _PLAYER_GAME_TABLES, _names, _unseen, box_source
+from association.query.conditions import _PLAYER_GAME_TABLES, _names, _unseen, box_source, condition_needs_player_refusal, condition_span_label
+from association.query.coverage import check_coverage
+from association.query.entities import optional_team
 from association.query.notes import Note
-from association.query.player_games import games_subquery
-from association.query.reading import Scope, Unsupported
+from association.query.player_games import STAT_LABELS, THRESHOLD_STAT_COLUMNS, games_subquery
+from association.query.player_relation import condition_scope, no_games, span_of, whole_span
+from association.query.reading import Scope, Unsupported, unhonored_scoping
 from association.query.result import Grouped, Narrowing, Part, Result, Span
 from association.query.team_games import TeamNarrowed
-from association.query.templates.common import STAT_LABELS, THRESHOLD_STAT_COLUMNS, check_coverage, condition_scope, no_games, optional_team, span_of, team_games, unhonored_scoping, whole_span
-from association.query.templates.splits import condition_needs_player_refusal, condition_span_label, condition_team_no_games, team_span_label, team_where_in
+from association.query.team_relation import condition_team_no_games, team_games, team_span_label, team_where_in
 
 from .core import Compiled, Query, compile_query, rows_of
 from .team import TEAM_BOX_COLUMNS, TeamQuery, compile_team_count, compile_team_line

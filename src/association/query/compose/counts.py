@@ -36,12 +36,11 @@ from association.query.answer import Reply
 from association.query.entities import Entity
 from association.query.lines import measure_filters, threshold_count_line
 from association.query.notes import Note
-from association.query.player_games import REBUILT_STATS
-from association.query.reading import Unsupported
+from association.query.player_games import REBUILT_STATS, STAT_LABELS
+from association.query.player_relation import empty_box_scores, player_relation_season_type, rebuilt_in_scope
+from association.query.reading import Unsupported, unhonored_scoping
 from association.query.result import Grouped, Part, Result, Scalar, Span
 from association.query.season_line import seasons_on_record
-from association.query.templates.common import STAT_LABELS, player_relation_season_type, unhonored_scoping
-from association.query.templates.players import empty_box_scores, rebuilt_in_scope
 
 from .core import Query, compile_query, rows_of
 

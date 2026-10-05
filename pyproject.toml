@@ -257,9 +257,11 @@ source_modules = [
 ]
 forbidden_modules = [
     "association.query.compose",
-    "association.query.templates",
     "association.query.player_games",
+    "association.query.player_relation",
     "association.query.team_games",
+    "association.query.team_relation",
+    "association.query.coverage",
     "association.query.conditions",
     "association.query.team_metrics",
     "association.query.season_line",
@@ -273,12 +275,12 @@ name = "The compiler's sentence reads no warehouse"
 # ROADMAP contract 3: a sayer takes a result and no connection. The two
 # modules that write words from a result alone, held there: the compiler's
 # own sentence, and the sayer Phase 2 builds slice by slice (compose.say,
-# since 2026-10-03: the game log's words). The presenters and the template
-# bodies are sql_outside_the_relations' (scripts/check_ratchets.py) until
-# their slices land. Direct imports only: say imports templates.common for
-# its phrase helpers and the TemplateResult it hands back, and that module
-# imports duckdb for the readers still in it - checked on chains once the
-# phrase helpers leave templates with the last body.
+# since 2026-10-03: the game log's words). Direct imports only: say still
+# takes constants (column tables, phrase tables, labels) from modules that
+# import duckdb for their readers - compose.logs, conditions, player_games,
+# season_line - so a chain check fails on those four; it can be switched on
+# once those constants live apart from the statements (measured 2026-10-05,
+# Phase 2, step 6, when the templates and their phrase helpers had gone).
 type = "forbidden"
 source_modules = ["association.query.compose.sentence", "association.query.compose.say"]
 forbidden_modules = ["duckdb"]
@@ -291,9 +293,11 @@ name = "The answer side never asks the model"
 type = "forbidden"
 source_modules = [
     "association.query.compose",
-    "association.query.templates",
     "association.query.player_games",
+    "association.query.player_relation",
     "association.query.team_games",
+    "association.query.team_relation",
+    "association.query.coverage",
     "association.query.conditions",
     "association.query.entities",
     "association.query.refusals",

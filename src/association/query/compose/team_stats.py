@@ -17,9 +17,11 @@ import duckdb
 
 from association.nba.season import current_season
 from association.query.answer import Reply
-from association.query.entities import Entity
+from association.query.coverage import check_coverage
+from association.query.entities import Entity, resolved_team, slot_season
 from association.query.notes import Note
-from association.query.reading import Scope, Unsupported, _clamp_limit
+from association.query.player_relation import validated_until
+from association.query.reading import Scope, Unsupported, _clamp_limit, unhonored_scoping
 from association.query.result import Grouped, Part, Result, Scalar, Span
 from association.query.team_metrics import DEFAULT_TEAM_LINE, TEAM_METRICS, TeamLine, TeamMetric, descending_for, ranked, resolve_team_metric
 from association.query.team_seasons import (
@@ -37,7 +39,6 @@ from association.query.team_seasons import (
     team_venue_records_statement,
     venue_records,
 )
-from association.query.templates.common import check_coverage, resolved_team, slot_season, unhonored_scoping, validated_until
 
 from .core import Refused, values_of
 from .say import say_conference_refusal

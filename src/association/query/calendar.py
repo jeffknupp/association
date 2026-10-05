@@ -177,9 +177,9 @@ class AlignmentNarrowing:
     result as :class:`CalendarNarrowing` alone; widening that return type
     would hand it a narrowing standings carries no column for. The shared
     relation steps that DO carry a conference or division
-    (:func:`association.query.templates.common.scoped_games`,
-    :func:`~association.query.templates.common.league_games`,
-    :func:`~association.query.templates.common.team_games`) try both readers.
+    (:func:`association.query.player_relation.scoped_games`,
+    :func:`~association.query.player_relation.league_games`,
+    :func:`~association.query.team_relation.team_games`) try both readers.
 
     .. versionadded:: 4.4.0
     """

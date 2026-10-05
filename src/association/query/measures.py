@@ -1,10 +1,10 @@
 """The words a question uses for a box-score column.
 
 One definition, read by two stages that may not import each other:
-``query/templates/common.py`` turns a phrase into a line on a column
+``query/lines.py`` turns a phrase into a line on a column
 ("under 14 fta"), and ``query/router.py`` reads the stat beside a threshold
-("20+ points"). `router.py` imports nothing from `templates` on purpose - the
-stage before the templates must not be made to depend on them - so before this
+("20+ points"). `router.py` imports nothing from the answer side on purpose -
+the stage before it must not be made to depend on it - so before this
 module existed the router kept its own copy, and nothing checked that the two
 agreed (`ISSUES.md` #164).
 
@@ -194,7 +194,7 @@ relation sees restricted to the period.
 # The measures, by name - what the point reader reads a question's words into
 # and the compiler computes. The names are closed here, and the SQL that
 # computes each lives where it runs (compose.core.DERIVED, compose.team's
-# GAME_MEASURES and SEASON_MEASURES, templates.common.HISTORY_COLUMNS), keyed
+# GAME_MEASURES and SEASON_MEASURES, season_line.HISTORY_COLUMNS), keyed
 # by exactly these names: tests/query/test_measures.py holds the two sides
 # together. Moved here from those modules on 2026-10-02 (ROADMAP.md, Phase 1,
 # the read_point move, step 2), where the reader imported the SQL to learn a
@@ -266,7 +266,7 @@ HISTORY_STATS: frozenset[str] = frozenset(
     {"threePointFieldGoalPct", "fieldGoalPct", "freeThrowPct", "twoPointFieldGoalPct", "points", "rebounds", "assists", "steals", "blocks", "minutes", "threePointFieldGoalsMade"}
 )
 """The stats a season-by-season history exists for, by name
-(:data:`association.query.templates.common.HISTORY_COLUMNS` says the columns and labels).
+(:data:`association.query.season_line.HISTORY_COLUMNS` says the columns and labels).
 
 .. versionadded:: 5.0.0
 """
@@ -433,7 +433,7 @@ SPLIT_LINE: tuple[str, ...] = ("minutes", "points", "rebounds", "assists", "stea
 
 THRESHOLD_STAT_NAMES: frozenset[str] = frozenset({"turnovers", "fouls", "rebounds", "threePointFieldGoalsMade", "fieldGoalsMade", "points", "freeThrowsMade", "minutes", "steals", "blocks", "assists"})
 """The stats a count or a record over a line reads, by name
-(``templates.common.THRESHOLD_STAT_COLUMNS`` says the columns).
+(``player_games.THRESHOLD_STAT_COLUMNS`` says the columns).
 
 .. versionadded:: 5.0.0
 """
@@ -476,7 +476,7 @@ def streak_column(stat: str | None, threshold: int | None) -> str | None:
 
 PLAYER_STAT_NAMES: frozenset[str] = frozenset({"turnovers", "fouls", "rebounds", "threePointFieldGoalsMade", "fieldGoalsMade", "points", "freeThrowsMade", "minutes", "steals", "blocks", "assists"})
 """The stats the season line reads for one player, by name
-(``templates.common.PLAYER_STAT_COLUMNS`` says the columns).
+(``season_line.PLAYER_STAT_COLUMNS`` says the columns).
 
 .. versionadded:: 5.0.0
 """
@@ -511,7 +511,7 @@ def period_split_measure(stat: str | None) -> str:
        Reads a field goal, 3-point or free throw percentage.
 
     .. versionchanged:: 5.0.0
-       Lives in ``measures``, on the reader's side (``templates.games._period_split_measure`` is this).
+       Lives in ``measures``, on the reader's side (``templates.games._period_split_measure`` was this).
     """
     if stat is None or not stat.strip() or stat == "all":
         return "points"

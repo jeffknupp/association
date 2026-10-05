@@ -1333,7 +1333,7 @@ def team_read_point(scope: Scope, question: str, subject: Subject) -> Reading | 
        Ignores the router's ``"any_team"`` placeholder (K2's own corpus:
        "rebounds allowed per team", filed ``team: "any_team"``) rather than
        treating it as a real name to resolve - it already fails the team
-       compiler's resolution (``templates.common._resolved_team`` RAISES
+       compiler's resolution (``entities.resolved_team`` RAISES
        for it, unlike a name with no match, which returns a clarification),
        so returning a team point here only delayed the same decline
        `_everyone_point`'s own

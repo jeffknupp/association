@@ -19,11 +19,12 @@ from test_templates import team_quarter_points  # the compiler's since Phase 2's
 from association.fetch.repairs import real_games
 from association.query.answer import AnswerContext
 from association.query.player_games import PERIOD_AGREEMENT, PERIOD_COLUMNS, Narrowed, aggregate_sql, period_line_sql, rows_sql
-from association.query.reading import Reading, Scope
+from association.query.player_relation import RELATION_SCOPING, RELATION_SCOPING_EXCLUDED
+from association.query.reading import Reading, Scope, period_narrowing
 from association.query.team_games import TEAM_PERIOD_AGREEMENT, TEAM_PERIOD_COLUMNS, TeamNarrowed, team_period_line_sql
 from association.query.team_games import aggregate_sql as team_aggregate_sql
 from association.query.team_games import rows_sql as team_rows_sql
-from association.query.templates.common import RELATION_SCOPING, RELATION_SCOPING_EXCLUDED, TEAM_RELATION_SCOPING, TEAM_RELATION_SCOPING_EXCLUDED, period_narrowing
+from association.query.team_relation import TEAM_RELATION_SCOPING, TEAM_RELATION_SCOPING_EXCLUDED
 
 SEASON = 2026
 
@@ -221,11 +222,10 @@ def test_a_period_condition_sends_a_players_line_to_the_box_scores() -> None:
     """The season line has no quarter in it: a condition on one narrows the
     GAMES, and `player_stat` reads them from box scores as it does for an
     opponent or a teammate's role (#212's shape, guarded)."""
-    from association.query.reading import PeriodCondition
-    from association.query.templates.players import _player_stat_reads_box_scores
+    from association.query.reading import PeriodCondition, scope_reads_box_scores
 
-    assert _player_stat_reads_box_scores(Scope(player="x", period_condition=PeriodCondition(stat="points", threshold=10, period=1)), [])
-    assert not _player_stat_reads_box_scores(Scope(player="x"), [])
+    assert scope_reads_box_scores(Scope(player="x", period_condition=PeriodCondition(stat="points", threshold=10, period=1)), [])
+    assert not scope_reads_box_scores(Scope(player="x"), [])
 
 
 def test_the_scope_names_a_half_before_a_quarter() -> None:

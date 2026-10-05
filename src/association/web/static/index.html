@@ -674,7 +674,7 @@
   const LABELS = {
     display_name: "player", gamesPlayed: "G", games: "G", avgPoints: "PTS", avgRebounds: "REB",
     avgAssists: "AST", points: "PTS", rebounds: "REB", assists: "AST", minutes: "MIN", fouls: "PF",
-    // PLAYER_STAT_COLUMNS (query/templates/common.py) pairs every one of
+    // PLAYER_STAT_COLUMNS (query/season_line.py) pairs every one of
     // these with a season total under the SAME abbreviation above
     // (avgPoints/points both "PTS") - fine on their own (player_compare's
     // table has no totals to collide with), but player_stat's statGrid
@@ -1158,7 +1158,7 @@
         // grid with nothing on it would be a worse rendering of the same
         // refusal the sentence already states.
         if (!entries.length) return null;
-        // PLAYER_STAT_COLUMNS (query/templates/common.py) reports a per-game
+        // PLAYER_STAT_COLUMNS (query/season_line.py) reports a per-game
         // average and its season total side by side under the SAME label
         // ("PTS" for both avgPoints and points) - shown plain that read as
         // two tiles both saying "PTS" (Jeff's finding, 2026-09-24: "26.9 PTS"

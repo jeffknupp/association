@@ -37,7 +37,9 @@ import duckdb
 from association.nba.franchises import FRANCHISE_ERAS, FranchiseEra, season_name
 from association.nba.season import current_season
 from association.query import names
+from association.query.answer import Reply
 from association.query.notes import decided
+from association.query.reading import Scope, Unsupported
 
 MAX_CANDIDATES = 10
 
@@ -665,7 +667,7 @@ def misread_players(names: list[str]) -> str:
     "compare fingerprints for embiid vs jokic in 2026" fell through with an
     invented name, and the agent spent 55 seconds writing a confident
     fingerprint for "Ronaldo Lopes", who does not exist - percentages and all.
-    The same reasoning as ``templates.check_coverage`` returning its refusal
+    The same reasoning as ``coverage.check_coverage`` returning its refusal
     instead of raising it: nothing downstream does better here, and an agent
     with nothing to find is free to fill the silence from its own weights.
 
@@ -687,8 +689,8 @@ def _has_a_real_team(con: duckdb.DuckDBPyConnection, slots: dict[str, Any], ques
     invents names"): "alperen şengün alltime record" arrived one run with no
     `team` at all, and another with `team='Alperen Şengün'` - the player's
     own name, filed as though it were a franchise, which
-    :func:`~association.query.templates.teams.team_record`-shaped
-    templates then refuse as "no team matching", the wrong cause. A team
+    ``team_record``-shaped readers then refuse as "no team matching", the
+    wrong cause. A team
     slot nothing resolves is functionally the same as no team slot at all.
 
     So is one that resolves to a franchise the question never names:
@@ -722,7 +724,7 @@ def player_named_on_a_team_only_question(con: duckdb.DuckDBPyConnection, questio
     franchise - measured live, a second run of this exact question) counts
     as no team at all rather than stopping this check.
 
-    Caller-gated to :data:`~association.query.templates.common.TEAM_ONLY_INTENTS`
+    Caller-gated to :data:`~association.query.reading.TEAM_ONLY_INTENTS`
     (this function does not check the intent itself, the same shape the
     subject reading's intent sets take in
     :func:`association.query.subject.apply_subject`): a REAL team already named there is the
@@ -1105,7 +1107,7 @@ def _team_grounded(con: duckdb.DuckDBPyConnection, question: str, team: Entity) 
 #: surname - measured against the full routing corpus
 #: (the routing check's cases, retired in 5.0.0, plus
 #: ``/home/jeff/association-research/statmuse-2026-09/feed_queries.txt``, 380
-#: questions) before :data:`~association.query.templates.common.SUBJECT_RESTORABLE_INTENTS`
+#: questions) before :data:`~association.query.reading.SUBJECT_RESTORABLE_INTENTS`
 #: shipped: "Best true shooting percentage last season?" and "Best record
 #: from 2010-11 to 2018-19 nba" both named Travis Best, and "Celtics vs Bulls
 #: head to head record" named Luther Head - three genuine team/league
@@ -1210,8 +1212,8 @@ counting the rest instead.
 def clarification(text: str, candidates: list[str], kind: str = "player", active: int = 0) -> str:
     """The "did you mean" sentence for an ambiguous name.
 
-    Lives here rather than in :mod:`association.query.templates` because both
-    halves of the query path ask it now: a template returns it as its answer,
+    Lives here rather than beside a reader because both
+    halves of the query path ask it now: a reader returns it as its answer,
     and a chart's rendering entry point returns it as a message. One phrasing,
     so the same ambiguity does not read two ways depending on which path the
     router happened to take.
@@ -1443,14 +1445,14 @@ GAME_LOGS = Availability("player_game_log")
 """The game logs as an availability: the table a log rests on.
 
 .. versionadded:: 5.0.0
-   Declared beside :class:`Availability` (``templates.common.GAME_LOGS`` is this).
+   Declared beside :class:`Availability` (``templates.common.GAME_LOGS`` was this).
 """
 
 BOX_SCORES = Availability("player_box_stats")
 """The box scores as an availability: the table a box-score answer rests on.
 
 .. versionadded:: 5.0.0
-   Declared beside :class:`Availability` (``templates.common.BOX_SCORES`` is this).
+   Declared beside :class:`Availability` (``templates.common.BOX_SCORES`` was this).
 """
 
 SHOT_AVAILABILITY = Availability("shot_chart")
@@ -1737,7 +1739,7 @@ def note_typo_reading(text: str, chosen: Entity) -> None:
     found" instead of this reading.
 
     Public, unlike :func:`_note_name_reading`: written from
-    :mod:`association.query.templates.common`, which has no other way to
+    :mod:`association.query.player_relation`, which has no other way to
     reach the :data:`_NAME_READINGS` context.
 
     .. versionadded:: 4.4.0
@@ -1933,3 +1935,94 @@ def resolve_team(con: duckdb.DuckDBPyConnection, text: str, season: int | None =
 
 # "record" is the whole signal that a head_to_head naming a player is a
 # question about that player's games rather than about two franchises.
+
+
+def clarify(text: str, candidates: list[str], kind: str = "player", active: int = 0) -> Reply:
+    """A handled outcome, not a fall-through: the reader knows exactly what
+    is ambiguous, so it says so instead of passing the problem along.
+
+    The sentence itself is entities.clarification, because the chart
+    resolution reaches the same ambiguity and has to phrase it identically.
+
+    .. versionadded:: 5.0.0
+       Public, for the shot relation's reader (``compose.shots``);
+       ``clarify`` is this.
+    """
+    return Reply(data={"ambiguous": text, "candidates": candidates}, answer=clarification(text, candidates, kind, active))
+
+
+def resolved_player(
+    con: duckdb.DuckDBPyConnection,
+    text: Any,
+    missing: str = "no player named",
+    *,
+    available: Availability | tuple[Availability, ...],
+    season: int | None = None,
+    through: int | None = None,
+) -> Entity | Reply:
+    """One player, a clarifying question, or a refusal - the player counterpart
+    to resolved_team. Returning the Reply rather than raising it keeps
+    ambiguity a handled outcome: the caller answers with the question instead of
+    guessing. Callers must forward it.
+
+    `available` is required, so no template can resolve a name without saying
+    where its answer comes from: an ambiguous name is narrowed to the players
+    with a row there, for `season` or any season up to `through`, before
+    anybody is asked about. See entities.resolve_player - "Curry" this season
+    asked about four men who never played in it and left out Stephen."""
+    if not isinstance(text, str) or not text.strip():
+        raise Unsupported(missing)
+    try:
+        resolution = resolve_player(con, text, available, season, through)
+    except duckdb.CatalogException:
+        # The NetPoints tables exist only if that opt-in fetch was run. With
+        # nothing to narrow against the name is asked about as it always was,
+        # and the template's own query reports the missing table.
+        resolution = resolve_player(con, text)
+    match resolution:
+        case Entity() as player:
+            return player
+        case Ambiguous(candidates=candidates, active=active):
+            return clarify(text, candidates, active=active)
+        case _:
+            # A near miss is answered rather than passed along, for the same
+            # reason ambiguity is: the agent would resolve the same name
+            # against the same table, and a name nothing matches is a fact,
+            # not a shape this template happens not to cover.
+            near = [player.name for player in suggest_players(con, text)]
+            if near:
+                return Reply(data={"unmatched": text, "suggestions": near}, answer=suggestion(text, near))
+            raise Unsupported(f"no player matching {text!r}")
+
+
+def resolved_team(con: duckdb.DuckDBPyConnection, text: Any, season: int | None = None) -> Entity | Reply:
+    """One team, a clarifying question, or a refusal - read for ``season``,
+    because a franchise's name is a fact about a season. "Hornets" is New
+    Orleans in 2008 and Charlotte in 2026; see entities.franchise_by_name."""
+    if not isinstance(text, str) or not text.strip():
+        raise Unsupported("no team named")
+    match resolve_team(con, text, season):
+        case Entity() as team:
+            return team
+        case Ambiguous(candidates=candidates):
+            return clarify(text, candidates, kind="team")
+        case _:
+            raise Unsupported(f"no team matching {text!r}")
+
+
+def slot_season(scope: Scope) -> int | None:
+    """The season a question's team names are read for: the one it named, or
+    None for "now" - the same default every template applies."""
+    return scope.season
+
+
+def optional_team(con: duckdb.DuckDBPyConnection, text: Any, season: int | None = None) -> Entity | Reply | None:
+    """A team slot that may be empty: ``None`` for no text, else
+    :func:`resolved_team`'s entity or its refusal.
+
+    .. versionadded:: 5.0.0
+       Public, as the relation's shared step.
+    """
+    if not isinstance(text, str) or not text.strip():
+        return None
+    return resolved_team(con, text, season=season)

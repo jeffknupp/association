@@ -6,7 +6,7 @@ import contract "The compiler's sentence reads no warehouse" holds this
 module as it holds :mod:`association.query.compose.sentence`). Each note
 kind has ONE phrase, here (:func:`note_phrase`), so rewording a note is
 editing that phrase; the templates that still write their own sentences
-phrase their notes through it too (``templates.common._box_score_notes``).
+phrase their notes through it too (``player_relation.box_score_notes``).
 
 Phase 2's first slice (``ROADMAP.md``, "Phase 2, the expected steps",
 step 0): the game log's words, taken from the retired template's body
@@ -25,15 +25,13 @@ from typing import Any
 from association.query.answer import Artifact, Reply
 from association.query.conditions import _SPLIT_TITLES, _cell, _margin, _split_cells, _split_label, _table, _win_pct
 from association.query.notes import Note, decided, note
-from association.query.player_games import PERIOD_LOG_COLUMNS, PERIOD_RATES, _joined, period_columns
+from association.query.player_games import PERIOD_LOG_COLUMNS, PERIOD_RATES, STAT_LABELS, _joined, period_columns
 from association.query.reading import DEFAULT_GAME_LOG_LIMIT, _clamp_limit, ordinal_word
 from association.query.result import Decided, Grouped, Result, Rows, Run, Runs, Scalar, Span
-from association.query.season_line import NETPOINTS_COMPARE_ROWS
-from association.query.season_text import MONTH_NAMES
+from association.query.season_line import ADVANCED_STATS, HISTORY_COLUMNS, MADE_STAT_ATTEMPTS, NETPOINTS_COMPARE_ROWS, PLAYER_STAT_COLUMNS, SHOOTING_STATS
+from association.query.season_text import MONTH_NAMES, SEASON_TYPE_NAMES, season_label, season_phrase
 from association.query.shotchart import DERIVED_SHOT_VALUES, UNSEPARABLE_SHOT_VALUES
 from association.query.team_metrics import RATING_NOTE, TEAM_METRICS, TeamMetric
-from association.query.templates.common import HISTORY_COLUMNS, PLAYER_STAT_COLUMNS, SEASON_TYPE_NAMES, STAT_LABELS, count_games, format_value, season_label, season_phrase, table_cell
-from association.query.templates.players import ADVANCED_STATS, MADE_STAT_ATTEMPTS, SHOOTING_STATS
 
 from .logs import LOG_PERCENTAGES, log_key
 
@@ -822,7 +820,7 @@ def shooting_result(name: str, scope: dict[str, Any], values: dict[str, Any], sh
     """A percentage with the makes and attempts behind it - "out of how many?"
     is the first thing anybody asks of a percentage without them.
 
-    ``shooting`` is the stat's entry in ``templates.players.SHOOTING_STATS``.
+    ``shooting`` is the stat's entry in ``season_line.SHOOTING_STATS``.
     ``values`` carries the makes and attempts keyed by ``shooting.made``/
     ``shooting.attempted`` - the SQL each was read through, which for every
     stat but ``twoPointFieldGoalPct`` is already a real column name. The
@@ -3564,3 +3562,55 @@ def say_shot_chart(result: Result) -> Reply:
     message += "".join(decision_phrase(each, career_hint=False) for each in result.decisions if each.kind == "season_redirected")
     artifacts = [Artifact(chart.kind, Path(chart.path))] if chart.path is not None else []
     return Reply(data={"message": message, "player": name, "path": chart.path}, answer=message, artifacts=artifacts)
+
+
+def table_cell(value: Any) -> str:
+    """A value in an aligned column: a fixed decimal, never trailing-zero
+    stripped - "25" next to "27.7" reads as a different unit.
+
+    .. versionadded:: 5.0.0
+       Public, as the sayer's phrase helper.
+    """
+    if value is None:
+        return "-"
+    return f"{value:.1f}" if isinstance(value, float) else str(value)
+
+
+def format_value(value: Any) -> str:
+    """A figure as an answer prints it: a float to two places (three below
+    one), trailing zeros dropped; anything else as itself.
+
+    .. versionadded:: 5.0.0
+       Public, as the sayer's phrase helper.
+    """
+    if isinstance(value, float):
+        return f"{value:.3f}".rstrip("0").rstrip(".") if abs(value) < 1 else f"{value:.2f}".rstrip("0").rstrip(".")
+    return str(value)
+
+
+def count_games(count: int) -> str:
+    """``"1 game"``, ``"1,200 games"``.
+
+    .. versionadded:: 5.0.0
+       Public, as the sayer's phrase helper.
+    """
+    return f"{count:,} game{'' if count == 1 else 's'}"
+
+
+def defaulted_season_note(season_range: tuple[int, int] | None, kind: str, *, career_hint: bool = True) -> str:
+    """The sentence a defaulted-season refusal appends when
+    :func:`~association.query.season_line.season_redirect` found something to point at - empty with nothing on record at all, which
+    leaves the plain refusal standing: that is a genuine gap, not a wrong
+    default, and there is nothing here to redirect toward.
+
+    Never substitutes an answer, only names where to ask again - the same
+    discipline `entities.suggest_players` follows for a near-miss name.
+
+    .. versionadded:: 5.0.0
+       Public, the sayer's (``templates.common._defaulted_season_note`` until then).
+    """
+    if season_range is None:
+        return ""
+    first, last = season_range
+    redirect = Decided(kind="season_redirected", field="season", chose=None, why="the season read by default holds nothing for him", facts={"first": first, "last": last, "what": kind})
+    return decision_phrase(redirect, career_hint=career_hint)

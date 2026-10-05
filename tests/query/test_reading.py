@@ -156,8 +156,8 @@ def test_every_scope_field_is_checked_and_every_group_is_the_compilers() -> None
     from typing import get_args
 
     from association.query.compose.core import GROUPS
-    from association.query.reading import _CHECKS, Group
-    from association.query.templates.common import RELATION_SCOPING, SCOPING_SLOTS
+    from association.query.player_relation import RELATION_SCOPING
+    from association.query.reading import _CHECKS, SCOPING_SLOTS, Group
 
     names = {f.name for f in fields(Scope)}
     assert set(_CHECKS) == names

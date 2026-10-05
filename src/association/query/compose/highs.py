@@ -35,11 +35,12 @@ from association.nba.season import eastern_date
 from association.query.answer import Reply
 from association.query.entities import Entity
 from association.query.notes import Note
-from association.query.player_games import REBUILT_STATS
+from association.query.player_games import REBUILT_STATS, STAT_LABELS, THRESHOLD_STAT_COLUMNS
+from association.query.player_relation import empty_box_scores, player_relation_season_type, rebuilt_in_scope
+from association.query.reading import unhonored_scoping
 from association.query.result import Decided, Part, Result, Rows
 from association.query.season_line import season_redirect
-from association.query.templates.common import SEASON_TYPE_NAMES, STAT_LABELS, THRESHOLD_STAT_COLUMNS, player_relation_season_type, unhonored_scoping
-from association.query.templates.players import empty_box_scores, rebuilt_in_scope
+from association.query.season_text import SEASON_TYPE_NAMES
 
 from .core import Query, compile_query, rows_of
 from .counts import box_score_span

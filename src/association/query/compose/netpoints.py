@@ -44,7 +44,7 @@ import duckdb
 from association.nba.netpoints import FINGERPRINT_CATEGORIES, FINGERPRINT_PARTITION
 from association.nba.season import current_season, eastern_date
 from association.query.answer import Reply
-from association.query.entities import Ambiguous, Availability, Entity, clarification, no_match
+from association.query.entities import Ambiguous, Availability, Entity, clarification, no_match, resolved_player
 from association.query.fingerprint import (
     FINGERPRINT_AVAILABILITY,
     FINGERPRINT_MIN_GAME_POSSESSIONS,
@@ -62,11 +62,11 @@ from association.query.fingerprint import (
 )
 from association.query.metrics import SEASON_TYPE_LABELS
 from association.query.notes import Note
-from association.query.reading import Scope, Unsupported
+from association.query.reading import Scope, Unsupported, unhonored_scoping
 from association.query.result import Chart, Decided, Grouped, Part, Result, Scalar, Span, Window
 from association.query.season_line import Statement, season_redirect
+from association.query.season_text import SEASON_TYPE_NAMES, season_phrase
 from association.query.shotchart import resolve_chart_player
-from association.query.templates.common import SEASON_TYPE_NAMES, resolved_player, season_phrase, unhonored_scoping
 
 from .core import values_of
 

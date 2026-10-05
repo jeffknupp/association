@@ -24,7 +24,7 @@ remark (4) - a ``definition`` note; the "also" columns and the team column
 season, named (12) or defaulted (54) - the span, unsaid when defaulted as it
 was. The coverage floors (the missing season and the unrepresentative one,
 ``nba.coverage.Floor.unrepresentative``) are refusals the answering loop
-gives before any reader runs (``templates.common.check_coverage``, over
+gives before any reader runs (``coverage.check_coverage``, over
 ``RANKING_INTENTS``), unchanged.
 
 .. versionadded:: 5.0.0
@@ -40,11 +40,9 @@ from association.query.answer import Reply
 from association.query.measures import resolve_metric
 from association.query.metrics import EXTRA_FIELD_COLUMNS, LEADERBOARD_METRICS
 from association.query.notes import Note
-from association.query.reading import Scope, Unsupported, _clamp_limit
+from association.query.reading import Scope, Unsupported, _clamp_limit, unhonored_scoping
 from association.query.result import Decided, Part, Result, Span
 from association.query.season_line import MIN_SAMPLE_LABELS, SEASON_TOTAL_OF, CareerLeaderboardResult, LeaderboardError, rank_season_line
-from association.query.templates.common import unhonored_scoping
-from association.query.templates.players import leaderboard_shot_distance_refusal
 
 from .core import Query
 
@@ -226,3 +224,14 @@ def _leaderboard_career_refusals(scope: Scope, fields: list[str]) -> None:
         raise Unsupported("a career leaderboard cannot add per-game columns")
     if scope.team is not None and scope.team.strip():
         raise Unsupported("franchise career leaderboards are not supported")
+
+
+def leaderboard_shot_distance_refusal() -> Reply:
+    """The refusal for a shot-distance ranking, naming the real cause (ISSUES.md
+    #114): no leaderboard metric ranks distance, and the nearest real one is
+    a percentage.
+
+    .. versionadded:: 5.0.0
+    """
+    message = "Shot distance is not ranked league-wide yet - ask about one named player's average shot distance instead."
+    return Reply(data={"message": message, "headline": message}, answer=message)

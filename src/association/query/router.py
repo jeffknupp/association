@@ -449,7 +449,7 @@ _GAME_N = re.compile(r"\bgame\s+([1-7])s?\b", re.IGNORECASE)
 # with LeBron dropped entirely, and the answer was the 2018 league leaderboard
 # - so a year the question itself does not name goes with it. Which year the
 # ordinal IS needs the player, so the templates settle it after resolving him
-# (templates.common.settle_ordinal_season).
+# (player_relation.settle_ordinal_season).
 _SEASON_N = re.compile(r"\b(\d{1,2})(?:st|nd|rd|th)\s+season\b", re.IGNORECASE)  # codespell:ignore nd - an ordinal suffix
 
 
@@ -1112,7 +1112,7 @@ RANK_WORDS: tuple[tuple[str, re.Pattern[str]], ...] = (
 # MORE - the inverse question. The words after the number are kept: they name
 # the stat, and the model's own `stat` beside them is the nearest one it knows
 # ("fta" arrived as freeThrowsMade), so the phrase is the only honest carrier.
-# `templates.common.measure_filters` reads it and refuses a word it cannot map.
+# `lines.measure_filters` reads it and refuses a word it cannot map.
 # The words kept after the number stop at a connective or the next comparison,
 # so "under 14 fta in his whole career" carries "under 14 fta" and "less than
 # 15 fga and with less than 35 minutes" is two phrases, not one.
@@ -1251,10 +1251,10 @@ _THRESHOLD_INTENTS = frozenset({"threshold_count", "record_when", "streak", "sin
 # alternation built from them (longest first, so "rebounds" is not matched as
 # "reb" with a stray "ounds" left over). What each one MEANS is not decided
 # here: it is read from `MEASURE_WORDS`, the one definition of what a question
-# calls a box-score column, which `templates/common.py` reads too.
+# calls a box-score column, which `lines.py` reads too.
 #
-# `router.py` imports nothing from `templates` on purpose - the stage before
-# the templates must not be made to depend on them - which is why this used to
+# `router.py` imports nothing from the answer side on purpose - the stage
+# before it must not be made to depend on it - which is why this used to
 # be a second hand-kept copy that nothing checked for agreement (ISSUES.md
 # #164). `association.query.measures` is a leaf module with no imports of its
 # own, so reading it costs the router nothing and cannot cycle.
@@ -1333,7 +1333,7 @@ _GAME_SCORE = re.compile(r"\bgame\s*scores?\b", re.IGNORECASE)
 # one is unknown to the other. `leaderboard` reads it through
 # `metrics.LEADERBOARD_METRICS`, keyed "avg_game_score" like every other
 # per-game average there (avg_points, avg_rebounds); `player_stat` reads it
-# through `templates.players.ADVANCED_STATS`, keyed "game_score" with no
+# through `season_line.ADVANCED_STATS`, keyed "game_score" with no
 # prefix, alongside ts_pct/efg_pct/usage_pct. Left out of every other intent
 # in _ADVANCED_STAT_INTENTS on purpose: player_compare, player_history and
 # game_log read a player's stat line through PLAYER_STAT_COLUMNS /
@@ -1396,9 +1396,9 @@ def _route_two_point_pct(intent: str, slots: dict[str, Any], question: str) -> N
     :func:`_route_game_score` uses and for the same reason: "2pt" and
     "percentage" are both words ``_named_a_stat`` already reads as naming a
     stat, so a wrong guess (typically ``fieldGoalPct``) would otherwise
-    survive untouched. Scoped to the two templates that can look the stat up
+    survive untouched. Scoped to the two readers that can look the stat up
     (``player_history``'s ``HISTORY_COLUMNS`` and ``player_stat``'s
-    ``SHOOTING_STATS``, both in ``templates/players.py``) - the same
+    ``SHOOTING_STATS``, both in ``season_line.py``) - the same
     discipline ``_GAME_SCORE_STAT_BY_INTENT`` follows for game score, so a
     value lands only where something reads it.
 

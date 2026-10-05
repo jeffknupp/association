@@ -25,11 +25,12 @@ from __future__ import annotations
 from typing import Any
 
 from association.nba.franchises import season_name_sql
+from association.query.player_relation import span_of
 from association.query.season_line import Statement
 from association.query.team_games import TEAM_GAMES_SQL, TeamNarrowed
 from association.query.team_games import games_subquery as team_games_subquery
 from association.query.team_metrics import POSSESSIONS, TEAM_METRICS, TURNOVERS, TeamLine, TeamRecord, games_scope
-from association.query.templates.common import _team_span_clause, span_of
+from association.query.team_relation import team_span_clause
 
 # --- the season line and the standings (team_seasons) ----------------------------
 
@@ -383,7 +384,7 @@ def team_since_records_statement(season_type: int, since: int, until: int | None
        ``templates.teams._team_leaderboard_since_records``' statement, moved whole.
     """
     span = span_of(None, None, season_type, "games", since=since, until=until)
-    clause, params = _team_span_clause(span)
+    clause, params = team_span_clause(span)
     narrowed = TeamNarrowed(base=["tg.team_id IN (SELECT team_id FROM teams)", "tg.season_type = ?", clause], base_params=[season_type, *params])
     base, sub_params = team_games_subquery(narrowed)
     return Statement(

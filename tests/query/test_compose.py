@@ -576,7 +576,7 @@ def test_a_plain_career_names_the_players_own_seasons_not_the_floor(cx_ctx: Answ
     said "(2018-19 through 2025-26)" for the same 479 games and the compiler
     said "(1994 on)"). A named player's own first and last season on record
     (:func:`~association.query.compose.core._player_own_seasons`, reusing
-    :func:`~association.query.templates.players.seasons_on_record` - the
+    :func:`~association.query.season_line.seasons_on_record` - the
     same read ``threshold_count``/``single_game_high`` already make through
     ``_game_span``) now names the career instead; the fixture's players are
     on record for seasons s-1 and s (``cx_ctx``'s ``player_season_stats``

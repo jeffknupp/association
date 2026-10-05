@@ -15,7 +15,7 @@ import pytest
 
 from association.nba.coverage import COVERAGE, KNOWN_TABLES, POSTSEASON, REGULAR_SEASON, caveat, unavailable
 from association.query.compose import COMPILED_INTENTS
-from association.query.templates.common import RANKING_INTENTS, TABLELESS_INTENTS, TEMPLATE_SOURCES, check_coverage, coverage_caveat
+from association.query.coverage import RANKING_INTENTS, SOURCES, TABLELESS_INTENTS, check_coverage, coverage_caveat
 
 
 def test_every_covered_table_is_a_real_table() -> None:
@@ -25,12 +25,12 @@ def test_every_covered_table_is_a_real_table() -> None:
 
 
 def test_every_template_declares_the_tables_it_reads() -> None:
-    """TEMPLATE_SOURCES and the intents answered - the compiler's
+    """SOURCES and the intents answered - the compiler's
     (``compose.COMPILED_INTENTS``, whose answers check these floors) - are
     two hand-maintained lists of the same intents, the
     shape that already produced the player_compare bug. An intent missing
     here is one no floor can ever refuse."""
-    declared = set(TEMPLATE_SOURCES) | {"leaderboard"} | TABLELESS_INTENTS  # leaderboard resolves its table per metric; the tableless ones read none
+    declared = set(SOURCES) | {"leaderboard"} | TABLELESS_INTENTS  # leaderboard resolves its table per metric; the tableless ones read none
     assert declared == COMPILED_INTENTS
 
 
@@ -44,7 +44,7 @@ def test_a_tableless_intent_is_neither_refused_nor_caveated() -> None:
 
 
 def test_every_declared_source_has_a_floor() -> None:
-    for intent, tables in TEMPLATE_SOURCES.items():
+    for intent, tables in SOURCES.items():
         for table in tables:
             assert table in COVERAGE, f"{intent} reads {table}, which declares no coverage floor"
 
@@ -185,7 +185,7 @@ def test_the_recovered_2000_postseason_carries_no_caveat() -> None:
 def test_a_postseason_caveat_covers_the_team_box_as_well_as_the_game_list() -> None:
     """The missing games are absent from team_box_stats too, so a question
     built from it must say so rather than rely on `games` happening to be
-    listed first in TEMPLATE_SOURCES."""
+    listed first in SOURCES."""
     assert caveat(("team_box_stats",), 2001, POSTSEASON) is not None
     assert caveat(("team_box_stats",), 2001, REGULAR_SEASON) is None
 
@@ -210,7 +210,7 @@ def test_the_2001_player_caveat_says_what_a_player_is_missing() -> None:
     assert team is not None and "Philadelphia's run" in team
     # Every table the player templates read says it in the player's words, and
     # says it alone - the log is declared separately from the box because
-    # TEMPLATE_SOURCES is free to list either without the other.
+    # SOURCES is free to list either without the other.
     for table in ("player_box_stats", "player_game_log", "player_season_advanced_stats"):
         player = caveat((table,), 2001, POSTSEASON)
         assert player is not None, table

@@ -201,3 +201,25 @@ def season_from_text(text: str) -> int | None:
     if _CURRENT.search(low):
         return current_season()
     return None
+
+
+# Named in every answer, so answering the wrong one is visible rather than silent.
+# `0` is `player_games.BOTH_SEASON_TYPES` - never a real value a row carries,
+# only a question that asked for both at once ("including the playoffs"). One
+# entry here means every existing `SEASON_TYPE_NAMES.get(season_type, ...)`
+# call site names it correctly with no further change.
+SEASON_TYPE_NAMES = {0: "regular season and postseason", 1: "preseason", 2: "regular season", 3: "postseason"}
+
+
+def season_phrase(season: int, season_type: int) -> str:
+    """``"2026 regular season"``: a season and its type as an answer names them.
+
+    .. versionadded:: 5.0.0
+       Public, as the relation's shared step.
+    """
+    return f"{season} {SEASON_TYPE_NAMES.get(season_type, 'regular season')}"
+
+
+def season_label(season: int) -> str:
+    """1994 -> "1993-94": seasons are named for the year they end in."""
+    return f"{season - 1}-{season % 100:02d}"
