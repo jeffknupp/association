@@ -16,13 +16,14 @@ from typing import Any
 from association.query.measures import PERIOD_COLUMNS, stat_measure
 from association.query.metrics import LEADERBOARD_METRICS
 from association.query.point import TEAM_SEASON_POINTS
-from association.query.reading import Cause, Reading, Scope, _career_scope, ordinal_word
+from association.query.reading import CHART_INTENTS, Cause, Reading, Scope, _career_scope, ordinal_word
 from association.query.season_line import SEASON_TOTAL_OF
 from association.query.templates.common import RELATION_SCOPING_EXCLUDED, STAT_LABELS, TemplateResult, TemplateUnsupported, check_coverage, relation_scoping, team_relation_scoping, unhonored_scoping
 from association.query.templates.players import leaderboard_shot_distance_refusal
 from association.query.templates.splits import condition_needs_player_refusal
 
 from .core import Query, Refused, Unsupported, _check_relation_scoping
+from .netpoints import NetPointsQuery
 from .rankings import leaderboard_reads
 from .seasons import player_compare_reads, player_history_reads, player_line_reads
 from .team import TeamQuery
@@ -119,6 +120,14 @@ STATED_SCOPING: dict[str, frozenset[str]] = {
     # (TEAM_RELATION_SCOPING_EXCLUDED says why), a split by month, and both
     # season types together ("including the playoffs").
     "team_record": team_relation_scoping("team_record", "split", "season_type_unstated"),
+    # The NetPoints relation's two (Phase 2, slice (v)), as the retired
+    # templates honored them: a first or last game, one game's NetPoints or
+    # its fingerprint drawn from the per-game tables; and a calendar date on
+    # a fingerprint, honored by refusing it in the reader's own words - the
+    # loader picks a player's first or last game, which is a different
+    # question from a date (``compose.netpoints``).
+    "player_netpoints": frozenset({"order"}),
+    "fingerprint": frozenset({"order", "date"}),
 }
 """Intent -> the scoping its reader's WORDS state. A compiled intent's
 sayer answers in its retired template's sentence, which names the
@@ -210,7 +219,7 @@ def _shape_declines(point: Reading) -> str | None:
     if intent == "with_without":
         ignored = unhonored_scoping(intent, scope, WITH_WITHOUT_STATED)
         return f"with_without cannot honor {ignored} - it would answer for a different span than was asked" if ignored else None
-    if intent in PORTED_SHAPES:
+    if intent in PORTED_SHAPES or intent in CHART_INTENTS:
         ignored = unhonored_scoping(intent, scope, STATED_SCOPING[intent])
         return f"{intent} cannot honor {ignored} - it would answer for a different span than was asked" if ignored else None
     if intent == "streak" and point.relation != "player":
@@ -238,7 +247,7 @@ def _shape_declines(point: Reading) -> str | None:
     return None
 
 
-def plan(reading: Reading) -> Query | TeamQuery | TeamSeasonQuery:
+def plan(reading: Reading) -> Query | TeamQuery | TeamSeasonQuery | NetPointsQuery:
     """The point ``reading`` names, on the relation it names - see
     :func:`_plan`. A team-season intent's point on another relation (a
     team's own total, "how many 3-pointers have the Magic made") that the
@@ -266,7 +275,7 @@ def plan(reading: Reading) -> Query | TeamQuery | TeamSeasonQuery:
         return TeamSeasonQuery(scope=reading.scope, relation=relation, shape=shape)
 
 
-def _plan(reading: Reading) -> Query | TeamQuery | TeamSeasonQuery:
+def _plan(reading: Reading) -> Query | TeamQuery | TeamSeasonQuery | NetPointsQuery:
     """The point ``reading`` names, on the relation it names - or
     :class:`~association.query.compose.core.Unsupported` where that relation
     cannot honor a narrowing the scope carries (``round``, ``rate``, a
@@ -285,6 +294,10 @@ def _plan(reading: Reading) -> Query | TeamQuery | TeamSeasonQuery:
     declined = _shape_declines(reading)
     if declined is not None:
         raise Unsupported(declined)
+    if reading.relation == "netpoints":
+        # A declared relation's point (Phase 2, slice (v)): its reader reads
+        # the scope as the retired template read its slots.
+        return NetPointsQuery(scope=reading.scope, shape="chart" if reading.shape == "chart" else "scalar")
     if reading.relation in ("team_seasons", "team_snapshots"):
         # A team's own season: its reader holds the question to the
         # narrowings its words state (team_season_declines), in the retired
@@ -386,7 +399,7 @@ class Planned:
     .. versionadded:: 5.0.0
     """
 
-    query: Query | TeamQuery | TeamSeasonQuery | None = None
+    query: Query | TeamQuery | TeamSeasonQuery | NetPointsQuery | None = None
     declined: str | None = None
     refusal: TemplateResult | None = None
 

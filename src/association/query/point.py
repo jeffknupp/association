@@ -49,6 +49,7 @@ from association.query.measures import (
 )
 from association.query.metrics import PER_GAME_MIN_GAMES, TEAM_FIELD_WORDS
 from association.query.reading import (
+    CHART_INTENTS,
     DEFAULT_GAME_LOG_LIMIT,
     DEFAULT_LIMIT,
     DEFAULT_NAMED_RUNS,
@@ -1091,6 +1092,27 @@ def _default_team_record(scope: Scope) -> Reading:
     return Reading(scope=scope, shape="scalar", measures=["record"], aggregate="record", group="none", predicates=[], relation="team")
 
 
+def _default_player_netpoints(scope: Scope) -> Reading:
+    """``player_netpoints``' default point: one player's NetPoints - a season's
+    ratings and the play-type split behind them, or one game's - on the
+    NetPoints relation (``compose.netpoints``, which reads the player, the
+    season, its type, the unit and a first or last game from the scope).
+
+    .. versionadded:: 5.0.0
+    """
+    return Reading(scope=scope, shape="scalar", relation="netpoints")
+
+
+def _default_fingerprint(scope: Scope) -> Reading:
+    """``fingerprint``'s default point: one or more players' play-type
+    fingerprints, drawn as one radar - a season's, or a first or last game's -
+    on the NetPoints relation (``compose.netpoints``).
+
+    .. versionadded:: 5.0.0
+    """
+    return Reading(scope=scope, shape="chart", relation="netpoints")
+
+
 DEFAULT_POINTS: dict[str, Callable[[Scope], Reading]] = {
     "game_log": _default_game_log,
     "player_stat": _default_player_stat,
@@ -1106,11 +1128,14 @@ DEFAULT_POINTS: dict[str, Callable[[Scope], Reading]] = {
     "team_quarter_points": _default_team_quarter_points,
     "period_leaderboard": _default_period_leaderboard,
     "team_record": _default_team_record,
+    "player_netpoints": _default_player_netpoints,
+    "fingerprint": _default_fingerprint,
 }
 """Intent -> its default point, read by the reader itself (Phase 2, step 1:
 slice (i)'s five; step 2: ``threshold_count``, ``single_game_high``, the
 streak and the matchup; step 3: the with/without split, the last of the
-adapters, which went with ``compose.adapt``). An intent with no entry here
+adapters, which went with ``compose.adapt``; step 5: the NetPoints relation's
+two, :data:`~association.query.reading.CHART_INTENTS`). An intent with no entry here
 has its point read elsewhere in this module (:func:`read_point`) or none.
 
 .. versionadded:: 5.0.0
@@ -1437,6 +1462,11 @@ def _read_point(intent: str, scope: Scope, question: str, subject: Subject) -> R
         # No table here holds a coach: the reading's verdict, said by the
         # planner in the retired template's words (compose.plan).
         raise PointRefused(Cause(kind="no_coach_table", facts={"unanswerable": "coach"}))
+    if intent in CHART_INTENTS:
+        # A declared relation's own point, whatever the words: the retired
+        # templates read their slots alone, and a player's games are not
+        # where a NetPoints rating or a fingerprint is read (Phase 2, step 5).
+        return default_point(intent, scope)
     if intent == "leaderboard":
         _leaderboard_declines(scope, subject)
     if intent == "record_when" and not _named_player_in(scope) and scope.team is not None and scope.team.strip():

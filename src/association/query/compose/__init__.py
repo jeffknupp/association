@@ -48,6 +48,7 @@ from .counts import read_threshold_count
 from .highs import read_single_game_high
 from .logs import read_player_log, read_team_log
 from .meetings import read_head_to_head
+from .netpoints import NetPointsQuery
 from .pairs import read_player_matchup
 from .periods import read_period_leaderboard, read_period_split, read_team_quarter_points
 from .plan import STATED_SCOPING, Planned
@@ -385,7 +386,7 @@ def _answer_point(
     ctx: TemplateContext,
     intent: str,
     point: Reading,
-    query: Query | TeamQuery | TeamSeasonQuery,
+    query: Query | TeamQuery | TeamSeasonQuery | NetPointsQuery,
     trace: Callable[[Reading], None] | None,
     declined: Callable[[str], None] | None,
 ) -> TemplateResult | None:
@@ -399,6 +400,8 @@ def _answer_point(
     try:
         if trace is not None:
             trace(point)
+        if isinstance(query, NetPointsQuery):
+            raise Unsupported("the NetPoints relation's readers are not ported yet")
         if intent in _TEAM_SEASON_READERS:
             try:
                 return _read_team_season(ctx.con, intent, query)

@@ -33,18 +33,20 @@ if TYPE_CHECKING:
     from association.query.entities import Availability
     from association.query.subject import Subject
 
-Shape = Literal["rows", "scalar", "grouped", "run", "pair"]
+Shape = Literal["rows", "scalar", "grouped", "run", "pair", "chart"]
 """Which reader answers the point: rows, one number, one row per group, the
 longest runs of consecutive games the point's one predicate holds along
-(``run``: a streak, read as a window over the games in date order), or two
+(``run``: a streak, read as a window over the games in date order), two
 named players' lines over the games they met in, on opposite teams
-(``pair``: a matchup, the pair relation).
+(``pair``: a matchup, the pair relation), or a drawing (``chart``: the
+artifact, and what it drew - ``ROADMAP-TYPES.md``, "The shapes").
 
 .. versionadded:: 5.0.0
 
 .. versionchanged:: 5.0.0
    ``run`` and ``pair`` (ROADMAP plan item 6, step (g): ``streak``'s and
-   ``player_matchup``'s retired templates).
+   ``player_matchup``'s retired templates); ``chart`` (Phase 2, step 5:
+   ``fingerprint``).
 """
 
 Aggregate = Literal["none", "per_game", "total", "count", "record"]
@@ -71,18 +73,21 @@ four quarters, one group per quarter over the same games
    period relation's leftovers, #162).
 """
 
-Relation = Literal["player", "everyone", "team", "team_seasons", "team_snapshots"]
+Relation = Literal["player", "everyone", "team", "team_seasons", "team_snapshots", "netpoints"]
 """Which relation answers: one named player's games, the league's, or a
 team's - or, for a team's own season, its line and its place in the league
 (``team_seasons``: ``team_season_stats`` and the standings), or ESPN's power
 index for it (``team_snapshots``: ``team_power_index``), the two team-season
-relations of ``ROADMAP-TYPES.md`` ("Query").
+relations of ``ROADMAP-TYPES.md`` ("Query") - or ESPN Analytics' NetPoints
+(``netpoints``: a player's season ratings, his play-type fingerprint and a
+game's, the declared relation of the same draft).
 
 .. versionadded:: 5.0.0
 
 .. versionchanged:: 5.0.0
    ``team_seasons`` and ``team_snapshots`` (Phase 2, step 4: ``team_stat``,
-   ``team_leaderboard`` and ``team_outlook``, whose templates read them).
+   ``team_leaderboard`` and ``team_outlook``, whose templates read them);
+   ``netpoints`` (Phase 2, step 5: ``player_netpoints`` and ``fingerprint``).
 """
 
 SeasonType = Literal[2, 3]
@@ -740,6 +745,20 @@ the first.
 
 .. versionchanged:: 5.0.0
    Lives on the reader's side (``templates.common`` re-exports it).
+"""
+
+CHART_INTENTS: frozenset[str] = frozenset({"fingerprint", "player_netpoints"})
+"""The intents whose point is a declared relation's own, read from the
+reader's own set rather than declined "no adapter for" (``ROADMAP.md``,
+Phase 2, step 5, and the decision "Charts are declared shapes"): a
+player's NetPoints (``player_netpoints``, a scalar and a split by category)
+and his fingerprint (``fingerprint``, a chart), each on the ``netpoints``
+relation. No word of the question moves their point - the retired
+templates read their slots alone - so it is the intent's default
+(:data:`~association.query.point.DEFAULT_POINTS`), before any move that
+reads a player's games.
+
+.. versionadded:: 5.0.0
 """
 
 DEFAULT_LIMIT = 5
