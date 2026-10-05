@@ -146,7 +146,7 @@ before that commit needs re-checking against the current warehouse.
   through a required slot rather than through a template.
 - **Next step:** the metric half is done - `avg_game_score` is in
   `LEADERBOARD_METRICS` with its games qualifiers, and `game_score` is in
-  `templates.players.ADVANCED_STATS` so `player_stat` can look it up too. The
+  `season_line.ADVANCED_STATS` so `player_stat` can look it up too. The
   routing half is now also in code: `router._route_game_score` reads the
   two-word phrase off the question text (anchored `\bgame\s*scores?\b`, so
   "score" alone - which means points everywhere else - is not swept in) and
@@ -364,7 +364,7 @@ those were found.
 ### A comparison over a season no named player has a line in prints a table of dashes, not a refusal
 - **Found:** 2026-09-30, roadmap review (agent A), under a faked October
   date (see the rollover entry in P1).
-- **Evidence:** `templates.players._player_compare_lines`: "compare sga and
+- **Evidence:** `compose.seasons._player_compare_lines`: "compare sga and
   embiid" with the season defaulted to 2027 prints the table with no
   figures and the note "(Shai Gilgeous-Alexander, Joel Embiid has no 2027
   ...)" - the wrong number of the verb as well.
@@ -458,7 +458,7 @@ those were found.
     and the month/venue/career branches that had no `data["headline"]` at
     all now do (`_standings_season_venue`, `_standings_career`,
     `_standings_career_venue`, `_team_record_by_month`,
-    `_team_record_by_month_span` - `query/templates/teams.py`). See the
+    `_team_record_by_month_span` - `query/templates/teams.py` then; `compose/standings.py` and `compose/team_records.py`'s `_by_month`/`_by_month_span` since Phase 2). See the
     (now-deleted) "`team_record`'s standings/games-record card renderer
     always duplicates its own caption" entry for the caption half of this,
     which turned out to already be fixed before this session started
@@ -478,7 +478,7 @@ those were found.
   - ~~`player_netpoints` (2 of 2, though this intent has no renderer at all -
     see the next bullet): the per-100-possession summary line and the
     play-type disclaimer.~~ **Fixed 2026-09-25**: both now reach
-    `data["notes"]` (`_netpoints_notes`, `query/templates/netpoints.py`),
+    `data["notes"]` (`_netpoints_notes`, `query/templates/netpoints.py` then; since Phase 2 notes on `compose/netpoints.py`'s Result, said by `compose.say._say_netpoints_note`),
     alongside `data["notes"]`'s own new units line ("Categories are per 100
     possessions over 1,329 possessions."). See the (now-narrowed) "No future
     template gets a renderer for free" entry above for the renderer itself.
@@ -502,7 +502,7 @@ those were found.
   instead of only appending to `answer`.
 - **`player_history`'s `twoPointFieldGoalPct` reads land under a raw SQL
   expression as their dict key, not a header.**
-  `templates/players.py:916` (`_player_history`) builds `history` as
+  `compose/seasons.py` (`read_player_history`, over `season_line.history_statement`; `templates/players.py`'s `_player_history` when this was found) builds `history` as
   `dict(zip(["season", "games"] + [c for c, _ in columns], r, ...))` - `c` is
   `HISTORY_COLUMNS["twoPointFieldGoalPct"][1][i][0]`, the SELECT expression
   itself (`"100.0 * (fieldGoalsMade - threePointFieldGoalsMade) /
@@ -537,7 +537,7 @@ those were found.
 ### `player_stat`'s coverage floor is computed from the wrong slot list, and misses `situation`, `since`, `game_n`
 - **Found:** 2026-09-24, in passing while verifying the K3-2 conference/division
   narrowing did not need a new coverage-floor entry of its own.
-- **Evidence:** `templates.common._sources_for_player_stat` decides whether a
+- **Evidence:** `coverage._sources_for_player_stat` decides whether a
   question reads the season line (`player_season_stats_deduped`, floor 1977)
   or box scores (`player_game_log`, floor 1994) by checking
   `_BOX_SCORE_SCOPING = ("opponent", "venue", "without")` against the slots -
@@ -568,7 +568,7 @@ those were found.
 - **Next step:** make `_sources_for_player_stat` call
   `_player_stat_reads_box_scores` (or the same slot list) instead of its own
   narrower `_BOX_SCORE_SCOPING`, so the two decisions read the same slots. Not
-  fixed here: `templates/players.py` is outside this task's file ownership.
+  fixed here: `templates/players.py` was outside that task's file ownership (the box-score decision is `reading.scope_reads_box_scores` now).
 - **Source:** ours, not ESPN's.
 - **GitHub:** #212
 
@@ -759,10 +759,10 @@ those were found.
   all), so a "Knicks home first-quarter scoring" question can now silently
   include a neutral-site game's own linescore the same way.
 - **Evidence:** `game_log` narrows a team's venue with `tg.side = ?` alone
-  (`templates/common.py: team_games`, carried over unchanged from the old
+  (`team_relation.team_games`, carried over unchanged from the old
   `_team_game_log_filters`'s `tbs.home_away = ?`); `team_record`'s own venue
   split treats a neutral-site game as neither home nor away
-  (`templates/teams.py: _games_record_games`'s `"neutral" if r[2] else r[1]`,
+  (`compose.team_records`'s `"neutral" if row["neutral"] else row["side"]`, `_games_record_games` in `templates/teams.py` when found,
   and `team_leaderboard`'s `_venue_records`, `tg.side = ? AND NOT tg.neutral`).
   Measured against the 2026-09-22 warehouse: `game_log(team="New York
   Knicks", venue="home", season=2026)` lists the 2025-12-16 NBA Cup final (a
@@ -791,7 +791,7 @@ those were found.
   neutral-site game a season, same silent label.
 - **Next step:** decide the one rule (exclude a neutral-site game from
   `team_games`'s venue narrowing the way the record functions already do, or
-  narrow it and say so in the answer) and apply it in `templates/common.py:
+  narrow it and say so in the answer) and apply it in `team_relation.py:
   team_games`, which `game_log`'s team half, `head_to_head`,
   `player_splits`/`record_when`/`streak`'s team branches and now
   `team_quarter_points` all read through - one change reaches all six. Not
@@ -839,7 +839,7 @@ those were found.
   day of 2020-21 - with `numwins` and `numlosses` both 0. `team_outlook`
   answers "2021 regular-season snapshot (updated 2020-12-22, 30 teams) ... BPI
   -5.9 ... no games played yet, projected 16-56" for the Knicks, who finished
-  41-31. The caveat at `query/templates/teams.py` cannot fire, because it tests
+  41-31. The caveat in `compose/team_stats.py` (`read_team_outlook`) cannot fire, because it tests
   `str(updated)[:4] > str(season)` and `"2020" > "2021"` is False - it was
   written for the 2017-2020 snapshots, which are stamped *after* their season.
   Pre-existing; the backfill now shows it for 30 teams rather than 9.
@@ -1166,7 +1166,7 @@ those were found.
   capability classifier flags 3 of the 124, because "needs a round" is not in
   its checklist - so this entry's share of real traffic is well above what its
   worked example suggested.
-- **Evidence:** `check_scope` raises on `round`, and `agent.py` then hands the
+- **Evidence:** `check_scope` (the planner since 2026-10-05) raises on `round`, and `agent.py` then hands the
   question to the SQL agent, although `games` has no series or round column.
   This is the "nothing does better here" case where `check_coverage` returns a
   refusal instead.
@@ -1264,7 +1264,7 @@ those were found.
 - **Next step:** measure `three_pt_pct` and `ft_pct`'s qualifying counts for
   2020/2021/2012 against full seasons the way #13 was measured, then set
   `scales_with_schedule=True` on both in `_percentage()`'s callers
-  (`query/metrics.py`) - the scaling mechanism (`leaderboard.py`,
+  (`query/metrics.py`) - the scaling mechanism (`season_line.py`,
   `_team_games_for_season`/`_scale_min_sample`) already handles any metric
   that flag is set on.
 - **GitHub:** #104
@@ -1343,20 +1343,20 @@ those were found.
   next step below cannot work.** `with_without` for Klay Thompson 2021 answers
   that his tenure "falls outside the 2021 regular season" - the refusal built
   in the `if not games:` branch of `_with_without_read`
-  (`query/templates/splits.py`; the template retired into the compiler's
+  (`compose/presence.py`; the template retired into the compiler's
   `presence` group on 2026-09-30, and the reader kept the branch).
   Durant/Nets 2020 is the same. `player_season_stats` has **no row** for a
   season a player missed entirely, so it cannot supply tenure. Worse,
   `game_log` and `player_stat` say "Klay Thompson was not Stephen Curry's
   teammate in any of his 63 games" - the wrong-cause sentence built in
-  `_no_narrowed_games` (`query/templates/common.py`) - about a rostered, injured
+  `no_narrowed_games` (`query/player_relation.py`) - about a rostered, injured
   player.
 - **GitHub:** #16
 
 ### `player_history` answers "last N seasons on record", not a calendar window
 - **Found:** 2026-09-11, while fixing name clarification
 - **Evidence:** the query reads `season <= ? ORDER BY season DESC LIMIT ?` per
-  player (`player_history` in `query/templates/players.py`), so a player with gaps, or
+  player (`season_line.history_statement`, read by `compose.seasons.read_player_history`), so a player with gaps, or
   one who retired, gets their last N seasons played. "Curry's scoring over the
   last 4 seasons" would give Dell Curry 1999-2002. The header now names the
   range the rows reach ("by regular season, 2023-2026"), so the seasons are
@@ -1523,7 +1523,7 @@ those were found.
   capped by the separate "ats" gap, and the first needs a decision about
   whether dropping `opponent` outright is safe versus trying to fold it back
   into `without` (already correct) - a judgment call better made alongside
-  whichever template's `HONORED_SCOPING` actually reads these two rows.
+  whichever reader's `STATED_SCOPING` row (`compose/plan.py`; `HONORED_SCOPING` until 2026-10-05) actually reads these two rows.
 - **Source:** ours, not ESPN's.
 - **GitHub:** #118
 
@@ -1560,7 +1560,7 @@ those were found.
 - **User sees:** for the shapes above, a refusal naming the cause - no longer
   a whole-game line where one quarter was asked for.
 - **Next step:** none open here. Built 2026-09-30: the shooting percentage
-  (`templates.games.PERIOD_RATES`, a ratio of the period's sums for a
+  (`player_games.PERIOD_RATES`, a ratio of the period's sums for a
   player and a team; a period RANKING by one is refused by name, since a
   games-played minimum is not an attempts minimum), a named player's four
   quarters side by side (`compose.core._compile_by_period`, the `period`
@@ -1605,7 +1605,7 @@ those were found.
 - **Found:** 2026-09-15 replaying 261 real StatMuse feed queries through the
   fast path; **fixed for every measured case and re-ranked P1 -> P3 on
   2026-09-16**, after the second pass measured zero left.
-- **What it was.** `check_scope()` refuses a narrowing a template cannot
+- **What it was.** `check_scope()` (the planner's check against `STATED_SCOPING` and the relation's cells since 2026-10-05, `compose/plan.py`) refuses a narrowing a template cannot
   honor, but it can only see slots the reader emits, and the router's schema
   had no slot for a weekday, a holiday, an age, a minutes condition, "since
   returning from injury", a calendar date, a game of a playoff series or a
@@ -1663,7 +1663,7 @@ those were found.
 
 ### Three question filters are recognized but no template answers them
 - **Found:** 2026-09-11, template work and final corpus run
-- **Evidence:** `SCOPING_SLOTS` against `HONORED_SCOPING` (`query/templates/common.py`):
+- **Evidence:** `SCOPING_SLOTS` (`reading.py`) against `HONORED_SCOPING` (`compose.plan.STATED_SCOPING` since 2026-10-05):
   - `since`/`until`: "most 3 pointers made since 2020" - `since` is honored
     by `game_log`, `player_stat` and `player_matchup` since 2026-09-19 (the
     relation's span builders read it); `leaderboard`, `team_leaderboard` and
@@ -1699,7 +1699,7 @@ those were found.
   within P3 on 2026-09-16** - the latest replay shows this touches more
   questions than its original position reflected
 - **Evidence:** `player_compare` and `player_matchup` read season lines and
-  honor no `opponent` (`HONORED_SCOPING`, `query/templates/common.py`), so "compare
+  honor no `opponent` (`HONORED_SCOPING`, `compose.plan.STATED_SCOPING` since 2026-10-05), so "compare
   curry and lebron vs the celtics" refuses on the template path and falls
   through. Before the fix that moved the Celtics out of `team`, it compared
   the two players' whole 2026 seasons. `_narrow_player_games` already builds
@@ -1715,7 +1715,7 @@ those were found.
   place anywhere else - not a genuine comparison, so `player_matchup` now
   recognizes exactly one player name plus a team `opponent` and answers it the
   way `game_log` answers "player vs team" (`HONORED_SCOPING["player_matchup"]`
-  and the new branch at the top of `player_matchup`, `query/templates/games.py`).
+  and the new branch at the top of `player_matchup`, `query/templates/games.py` then; `compose/pairs.py` since Phase 2).
   Confirmed against the recorded routing corpus (`replay_recorded_routes.py`):
   "sam hauser v mil", "julius randle stats vs blazers with minnestota" and
   "Curry vs dallas last q0 games" now answer (the last as a clarifying
@@ -1734,7 +1734,7 @@ those were found.
   none of the named teammates played") is the right one; no new semantic was
   needed. `player_matchup` now honors `without` for exactly this shape
   (`HONORED_SCOPING["player_matchup"]`), and
-  `_player_matchup_drop_fabricated_second` (`query/templates/games.py`)
+  `_player_matchup_drop_fabricated_second` (`query/templates/games.py`, deleted with it; the pair is read by `compose/pairs.py` now)
   eliminates the noise before falling into the one-player-and-a-team branch:
   a second name matching no player at all is dropped outright, and a second
   name is dropped for duplicating `without` only when
@@ -1769,7 +1769,7 @@ those were found.
   allowed per team" routes to `team_stat` with `team='any_team'` - the
   question wants every team ranked, which is `team_leaderboard`'s shape, not
   `team_stat`'s single-team one. Moving the text into a `team` slot changes
-  nothing: `entities.py` can name the entity correctly, but `check_scope`/the
+  nothing: `entities.py` can name the entity correctly, but the scope check (the planner since 2026-10-05)/the
   handler still has no column or shape to answer from. ("oklahoma city thunder
   all-time triple doubles vs west" looked like a third instance but is not -
   "vs west" is Western Conference scoping, which is #25's gap, not this one.)
@@ -1819,7 +1819,7 @@ those were found.
   teams", "vs southeast division", "in the west"), and both relations'
   shared narrowing steps (`Narrowed.narrow_alignment`/
   `TeamNarrowed.narrow_alignment`, applied by `_apply_situation` in
-  `templates/common.py`) narrow to games against an opponent aligned that way
+  `team_relation.py`) narrow to games against an opponent aligned that way
   IN THAT GAME'S OWN SEASON - so every template that already honored
   `situation` (`game_log`, `player_stat`, `threshold_count`, `player_splits`,
   `record_when`, `streak`, `team_record`, `team_leaderboard`,
@@ -1840,7 +1840,7 @@ those were found.
   over.
 - **What remains (the SUBJECT-is-a-conference half - "who leads the East",
   "Western Conference standings").** Unchanged by this fix: `_conference_refusal`
-  (`templates/teams.py`) still refuses a `team`/`opponent` slot that names a
+  (`templates/teams.py` then; `refusals.conference_named` and `compose.say.say_conference_refusal`, from `compose/team_records.py`, now) still refuses a `team`/`opponent` slot that names a
   conference or division, and "Western Conference standings" was still handed
   to an agent with no conference data grounded for it either, because
   neither shape reads `situation` - the router files a conference/division
@@ -1870,8 +1870,8 @@ those were found.
 
 ### Fingerprint for a specific date
 - **Found:** before 2026-09-11 (docstring)
-- **Evidence:** the fingerprint template in `query/templates/netpoints.py` says "... but not
-  yet for a particular date". `game_log` already honors `date`.
+- **Evidence:** the fingerprint template in `query/templates/netpoints.py` said "... but not
+  yet for a particular date" (its reader is `compose/netpoints.py` since Phase 2, which draws a first or most recent game only). `game_log` already honors `date`.
 - **User sees:** a helpful refusal.
 - **Next step:** resolve the date to the player's game with `_eastern_day`, then
   draw the single-game fingerprint.
@@ -1879,8 +1879,8 @@ those were found.
 
 ### Franchise career leaderboards
 - **Found:** before 2026-09-11 (docstring)
-- **Evidence:** the leaderboard in `query/templates/players.py` says "Refused until that
-  is decided". The rule for relocated franchises is open.
+- **Evidence:** the leaderboard in `query/templates/players.py` said "Refused until that
+  is decided" (`compose.rankings._leaderboard_career_refusals` since Phase 2). The rule for relocated franchises is open.
 - **User sees:** a refusal for "timberwolves career leaders in total points".
 - **Next step:** decide the relocation rule, then map it.
 - **Re-checked 2026-09-15:** the "User sees" is wrong. `_career_leaderboard`
@@ -2088,7 +2088,7 @@ those were found.
   stored under that key, and `data.notes` carries the season line's own
   minutes/games/per-100-rate detail, what units the category rows are in,
   and the play-type overlap disclaimer -
-  `query/templates/netpoints.py`'s `_netpoints_totals`/`_netpoints_notes`.
+  `query/templates/netpoints.py`'s `_netpoints_totals`/`_netpoints_notes` then; `compose/netpoints.py` and `compose.say._netpoints_totals` since Phase 2.
   Not the radar-chart route the entry originally proposed as "stage 2": its
   own stated risk (reusing `radar.py`'s per-game-vs-per-100 `Unit` labeling
   for a season aggregate without checking the scale first) is exactly the
@@ -2358,7 +2358,7 @@ those were found.
 
 ### A single-game high tied between two games of one player names him twice: "Stephen Curry and Stephen Curry tied for the most 3-pointers in a single game"
 - **Found:** 2026-09-27, checking the answers the #168 fix moved.
-- **Evidence:** stubbed offline through the whole agent (main warehouse): "most 3 pointers made in a single game 24-25" answers "Stephen Curry and Stephen Curry tied for the most 3-pointers in a single game in the 2025 regular season, with 12 each. Next: Damian Lillard (10)." Curry made 12 on 2025-02-27 against Orlando and on 2025-04-01 against Memphis (Eastern dates, `player_game_log`). The tie sentence (`templates/players.py:1837`, `_single_game_high_answer`, which the compiler answers `single_game_high` with) joins the tied rows' player names and gives no date, so one player's two games read as a typo; and "Next" names one of the seven players who made 10 that season, the cut at a tie #99 already records.
+- **Evidence:** stubbed offline through the whole agent (main warehouse): "most 3 pointers made in a single game 24-25" answers "Stephen Curry and Stephen Curry tied for the most 3-pointers in a single game in the 2025 regular season, with 12 each. Next: Damian Lillard (10)." Curry made 12 on 2025-02-27 against Orlando and on 2025-04-01 against Memphis (Eastern dates, `player_game_log`). The tie sentence (`compose.say._single_game_high_phrase`; `templates/players.py`'s `_single_game_high_answer` when found, which the compiler answers `single_game_high` with) joins the tied rows' player names and gives no date, so one player's two games read as a typo; and "Next" names one of the seven players who made 10 that season, the cut at a tie #99 already records.
 - **User sees:** a right number in a sentence that reads as a mistake, with neither game's date.
 - **Next step:** in the tie branch, name a player once with each of his games' dates ("Stephen Curry, twice - 12 on 2025-02-27 vs ORL and 2025-04-01 vs MEM"), and the dates beside several players' names; a case with one player's two tied games.
 - **Source:** ours.
@@ -2374,14 +2374,14 @@ those were found.
 
 ### A player's advanced stat in one 2013-2018 season is refused naming the wrong cause, with a ranking's caveat appended
 - **Found:** 2026-09-30, the notes inventory for `ROADMAP-TYPES.md` (an Opus agent reading `011091f`; reported, not re-verified).
-- **Evidence:** `templates/players.py:1419-1423` says the stat "is computed from box scores, which start in 1994" where the value is NULL because that season's box scores are empty; `coverage_caveat` then appends `nba/coverage.py:250-257` ("missing from this ranking entirely") to a one-player lookup.
+- **Evidence:** `compose.say` (the season line's advanced-stat sentence; `templates/players.py:1419-1423` when found) says the stat "is computed from box scores, which start in 1994" where the value is NULL because that season's box scores are empty; `coverage_caveat` then appends `nba/coverage.py:250-257` ("missing from this ranking entirely") to a one-player lookup.
 - **User sees:** a refusal that sends him to the wrong fact, and a note about a ranking he did not ask for.
 - **Next step:** reproduce with a Chicago or New Orleans player's usage in 2015; name the empty box scores as the cause.
 - **GitHub:** #293
 
 ### A coverage caveat is the first declared table's, whoever the answer is about: a player's 2001 playoff quarter gets the team-worded games note
 - **Found:** 2026-09-30, the notes inventory for `ROADMAP-TYPES.md` (an Opus agent reading `011091f`; reported, not re-verified).
-- **Evidence:** `nba/coverage.py:517` returns the first source's note; `period_split` and `period_leaderboard` list `shot_chart`, `games`, ... (`templates/common.py:553,555`), so a 2001 postseason player answer says "Philadelphia's run reads 16 games ... a series can look shorter" - wording the module's own comment (`coverage.py:192-193`) calls wrong for a player. Same family as "A composed team season total carries a caveat about a different table".
+- **Evidence:** `nba/coverage.py:517` returns the first source's note; `period_split` and `period_leaderboard` list `shot_chart`, `games`, ... (`coverage.SOURCES`), so a 2001 postseason player answer says "Philadelphia's run reads 16 games ... a series can look shorter" - wording the module's own comment (`coverage.py:192-193`) calls wrong for a player. Same family as "A composed team season total carries a caveat about a different table".
 - **User sees:** a caveat about a different table than the one his number came from.
 - **Next step:** the caveat goes with the relation the answer read (`ROADMAP.md`, a `partial_season(table, season)` note from RUN), not with the intent.
 - **GitHub:** #294
@@ -2395,35 +2395,35 @@ those were found.
 
 ### A streak in a finished season is marked "still going at the last game on record"
 - **Found:** 2026-09-30, the notes inventory for `ROADMAP-TYPES.md` (an Opus agent reading `011091f`; reported, not re-verified).
-- **Evidence:** `open` means the run reached the partition's last game (`conditions.py:811,835`). `_single_streak` guards on the current season (`templates/splits.py:1560`); `templates/splits.py:1526` and `compose/sentence.py:285,301` do not.
+- **Evidence:** `open` means the run reached the partition's last game (`conditions.py:811,835`). `_single_streak` guarded on the current season (`templates/splits.py:1560` when found; the streak is `compose/runs.py` and `compose.say` now, with `Run.still_open`); `templates/splits.py:1526` and `compose/sentence.py:285,301` do not.
 - **User sees:** "still going" beside a streak that ended with its season.
 - **Next step:** reproduce with a league-wide streak ranking for 2024; guard the two unguarded writers.
 - **GitHub:** #297
 
 ### The game-list caveat says a narrowed record "is off by those games"
 - **Found:** 2026-09-30, the notes inventory for `ROADMAP-TYPES.md` (an Opus agent reading `011091f`; reported, not re-verified).
-- **Evidence:** `templates/teams.py:967,803`: `_game_list_gaps` ignores opponent, venue, month, calendar and game_n, so a record against one opponent or in one month in a season whose list is short says "this tally is off by those games" though the missing games may be none of the ones counted.
+- **Evidence:** `compose.team_records._game_list_gaps` (`templates/teams.py:967,803` when found) ignores opponent, venue, month, calendar and game_n, so a record against one opponent or in one month in a season whose list is short says "this tally is off by those games" though the missing games may be none of the ones counted.
 - **User sees:** a caveat claiming an error the answer may not have.
 - **Next step:** say the season's list is short by N games and that they may fall outside the narrowing, or check whether they do.
 - **GitHub:** #298
 
 ### A postseason NetPoints answer prints the whole season's play-type split under a postseason label
 - **Found:** 2026-09-30, the notes inventory for `ROADMAP-TYPES.md` (an Opus agent reading `011091f`; reported, not re-verified).
-- **Evidence:** the season fingerprint table has no season type (`templates/netpoints.py:98-102`; `fingerprint.py:457,979-980`); `templates/netpoints.py:113,331` label the answer "{season} postseason" and `fingerprint.py:853` captions the plot "{season} season". Nothing says the split is the whole season's.
+- **Evidence:** the season fingerprint table has no season type (`compose/netpoints.py`, `templates/netpoints.py:98-102` when found; `fingerprint.py:457,979-980`); its sayer (`compose.say`'s NetPoints phrases; `templates/netpoints.py:113,331` when found) labels the answer "{season} postseason" and `fingerprint.py:853` captions the plot "{season} season". Nothing says the split is the whole season's.
 - **User sees:** a play-type split labeled as the playoffs' that is not.
 - **Next step:** confirm against a playoff NetPoints question; say the split covers the whole season, or refuse the split for a postseason.
 - **GitHub:** #299
 
 ### A team's record by month silently drops seasons under the games floor, and never carries the gap note
 - **Found:** 2026-09-30, the notes inventory for `ROADMAP-TYPES.md` (an Opus agent reading `011091f`; reported, not re-verified).
-- **Evidence:** `templates/teams.py:1179-1180` skips seasons below the floor with no remark; the by-month tables (`teams.py:1134-1193`) never call `_game_list_gaps`.
+- **Evidence:** `compose.team_records._by_month_span` (`templates/teams.py:1179-1180` when found) skips seasons below the floor with no remark; the by-month tables (`_by_month`, `_by_month_span`) never call `_game_list_gaps`.
 - **User sees:** a span of months that leaves seasons out without saying so.
 - **Next step:** reproduce with an all-time by-month record; say which seasons the table starts from.
 - **GitHub:** #300
 
 ### A league-wide compiled answer carries no box-score caveat
 - **Found:** 2026-09-30, the notes inventory for `ROADMAP-TYPES.md` (an Opus agent reading `011091f`; reported, not re-verified).
-- **Evidence:** `compose/core.py:899-900` reads the notes only for a named player; the `threshold_count` presenter does say them league-wide (`templates/players.py:259`).
+- **Evidence:** `compose/core.py:899-900` reads the notes only for a named player; the `threshold_count` presenter did say them league-wide (`templates/players.py:259` when found; `compose/counts.py` and `compose.say.say_threshold_count` now).
 - **User sees:** a league-wide count or list over 2013-2018 with nothing saying games are empty or rebuilt.
 - **Next step:** measure on "most 40 point games 2013-2018" both ways; the note belongs to the relation's read, not to one presenter.
 - **GitHub:** #303
@@ -2552,10 +2552,10 @@ those were found.
 - **Evidence:** "Best NBA record since January 31st 201" now routes
   `team_leaderboard {'stat': 'record', 'rank': 'best', 'limit': 1,
   'situation': 'since january 31st'}` (it was `team_record` with no team).
-  Called directly on that tree, `check_scope` refuses: `team_leaderboard
+  Called directly on that tree, `check_scope` (the planner since 2026-10-05) refuses: `team_leaderboard
   cannot honor ['situation']`, and `compose.answer` returns None, so it is
   refused. The exclusion's reason in
-  `templates/common.py:TEAM_RELATION_SCOPING_EXCLUDED["team_leaderboard"]`
+  `team_relation.py:TEAM_RELATION_SCOPING_EXCLUDED["team_leaderboard"]`
   ("a leaderboard ranks a season, not the games in one weekday, month or
   holiday within it") is about narrowing the pool, and a "since <day>"
   window is not that: "best record since January 31" ranks every team over
@@ -2592,7 +2592,7 @@ those were found.
   "across the 33 regular seasons from 1993-94 through 2025-26 - ESPN's
   standings carry no home/road split before 1993-94", and the playoff half
   "in every postseason from 1989 through the latest". Combined
-  (`templates/teams.py`, `_combined_record_result`), only "Note:" lines are
+  (`compose.say._say_combined_record`; `templates/teams.py`'s `_combined_record_result` when found), only "Note:" lines are
   carried over (`_extract_note`), so the two halves' different starting
   seasons are not stated - the reader cannot see that the regular half starts
   five seasons later than the playoff half. Measured: the 523-791 is right
@@ -2619,7 +2619,7 @@ those were found.
   distance over the 2025-26 regular season, with a 100-attempt floor and
   end-of-period heaves (game clock under 3 seconds) excluded; leaving heaves
   in changes the leader (Alperen Sengun, 29.62 ft, 9% heaves). Nothing in
-  `LEADERBOARD_METRICS`/`query/leaderboard.py` computes this - `shot_distance`
+  `LEADERBOARD_METRICS`/`query/season_line.py` computes this - `shot_distance`
   is a per-player metric (`compose.shots.read_shot_distance`) with no
   league-wide ranking built over it.
 - **User sees:** a refusal naming the true cause now ("Shot distance is not
@@ -2657,11 +2657,11 @@ those were found.
   commit that added `since` to `record_when`/`streak`'s team branches
   (`_team_span_label` now reads `span.since`), as a shared-helper fix
   rather than a `player_splits`-specific one.
-- **Evidence:** `templates/common.py`'s `HONORED_SCOPING["player_splits"]`
+- **Evidence:** `templates/common.py`'s `HONORED_SCOPING["player_splits"]` (`compose.plan.STATED_SCOPING["player_splits"]` since 2026-10-05)
   declares `without`, `below`/`above`, `game_n` and `season_n` for the intent
   as a whole, with no distinction between a named-player question and a
   named-team-only one - so `check_scope` lets them through regardless of
-  which subject the question turns out to have, and `_player_splits_team`
+  which subject the question turns out to have, and `_player_splits_team` (`compose.splits._team_splits` now)
   reads none of them. Measured read-only against
   `/home/jeff/code/association/nba.duckdb` before this was caught:
   `player_splits(ctx, {"team": "Philadelphia 76ers", "split": "wins_losses",
@@ -2704,7 +2704,7 @@ those were found.
 ### "Career ... in 2015" is 2015 on the condition templates and a refusal on the others
 - **Found:** 2026-09-21, step 3 C1 (folding the two readers of a player's
   games into one).
-- **Evidence:** `templates.common._condition_scope` (player_splits,
+- **Evidence:** `player_relation.condition_scope` (player_splits,
   record_when, streak, with_without) lets a named season beat `span=career`
   - "the router keeps a named year alongside it, and 'career ... in 2015' is
   asking about 2015" - while `_span_of` (game_log, player_stat,
@@ -2930,12 +2930,12 @@ those were found.
   both team branches and the league win/loss branch; `game_n` wired for
   `record_when`'s team branch only) - each cell closed here no longer
   appears below.
-- **Evidence:** `compose.present.STATED_SCOPING["record_when"]` and
+- **Evidence:** `compose.plan.STATED_SCOPING["record_when"]` and
   `["streak"]` (until 2026-09-30 `HONORED_SCOPING`, `templates/common.py`)
   still claim the whole relation set for the WHOLE intent, not just the
   player branch - the declaration cannot tell the branches apart from the
   slots alone; since `streak` retired into the compiler's `run` shape, its
-  point (`compose.adapt._adapt_streak`) refuses the team-only cells by
+  point (`point._default_streak`; `compose.adapt._adapt_streak` until slice (ii)) refuses the team-only cells by
   name before the point is planned, with the same sentence. `splits._condition_needs_player_refusal` is what actually narrows
   the team-only/league-wide shape's refused set now
   (`_CONDITION_PLAYER_ONLY_CELLS = ("without", "split", "season_n", "below",
@@ -3046,9 +3046,9 @@ those were found.
 
 ### `player_stat` has no per-game line for attempts: "embiid 3pt attempts per game" is refused
 - **Found:** 2026-09-27, the step (c) hold-out comparison (the 75 recorded routing-corpus questions outside day10, `~/association-research/yardstick-v2/holdout_compare.py`).
-- **Evidence:** `player_stat: no per-game column for stat 'threePointFieldGoalsAttempted'` - `templates.common.PLAYER_STAT_COLUMNS` holds the made columns, whose line reports the attempts beside them ("585 of 1,727 (33.9%)"), and no attempted column; `router._route_attempted_stat` rewrites a made stat to the attempted one whenever the question says "attempts" and not "made", on both readers.
+- **Evidence:** `player_stat: no per-game column for stat 'threePointFieldGoalsAttempted'` - `season_line.PLAYER_STAT_COLUMNS` holds the made columns, whose line reports the attempts beside them ("585 of 1,727 (33.9%)"), and no attempted column; `router._route_attempted_stat` rewrites a made stat to the attempted one whenever the question says "attempts" and not "made", on both readers.
 - **User sees:** a refusal naming the stat for a per-game attempts question, where the made line would have answered it in passing. Asking for both ("3pt attempts and made") answers, from the made line.
-- **Next step:** `player_stat` is the compiler's now (2026-09-28, plan item 6 step (g)) and the reason is the same, from its season-line presenter (`compose.present._present_player_stat_season_line`, through `templates.players._wanted_stats`): give the season-line reader the attempted columns (per game and total), or answer an attempted stat from the made line with the attempts per game computed; a warehouse-verified test on Embiid's career line.
+- **Next step:** `player_stat` is the compiler's now (2026-09-28, plan item 6 step (g)) and the reason is the same, from its season-line presenter (`compose.present._present_player_stat_season_line`, through `templates.players._wanted_stats` - `compose.seasons._player_line_season` and `season_line.wanted_stats` since Phase 2): give the season-line reader the attempted columns (per game and total), or answer an attempted stat from the made line with the attempts per game computed; a warehouse-verified test on Embiid's career line.
 - **Source:** ours.
 - **GitHub:** #243
 
@@ -3062,15 +3062,15 @@ those were found.
 
 ### A name several players share is asked about over a range of seasons, where the range's own seasons would settle it: "curry playoff stats 2015-18" asks among six Currys
 - **Found:** 2026-09-28, fixing #261 (the short range now reads as the range it writes, and meets the gap every range already had).
-- **Evidence:** stubbed offline through the whole agent (main warehouse): "curry playoff stats 2015-18", "curry playoff stats 2015-2018" and "curry stats from 2015-18" each route `since`/`until` and answer "'curry' matches more than one player - did you mean Seth Curry, Stephen Curry, Dell Curry, Eddy Curry or JamesOn Curry (1 other also matches)?"; "Love stats 2012-14" asks among Caleb Love, Kevin Love and Lawson Lovering; "jordan stats 95-98" lists 28 players. `templates.common._career_end` narrows a name by the current season whenever no single season is asked (`through=current_season()`), so a range's own seasons never narrow it - where one season does: "curry playoff stats 2018" is Stephen Curry, the only Curry in that postseason. Stephen Curry holds all 63 of the Currys' 2015-2018 postseason games (`player_game_log`, minutes > 0): Seth has none, and Dell, Eddy, JamesOn and Michael Curry had retired.
+- **Evidence:** stubbed offline through the whole agent (main warehouse): "curry playoff stats 2015-18", "curry playoff stats 2015-2018" and "curry stats from 2015-18" each route `since`/`until` and answer "'curry' matches more than one player - did you mean Seth Curry, Stephen Curry, Dell Curry, Eddy Curry or JamesOn Curry (1 other also matches)?"; "Love stats 2012-14" asks among Caleb Love, Kevin Love and Lawson Lovering; "jordan stats 95-98" lists 28 players. `player_relation.career_end` narrows a name by the current season whenever no single season is asked (`through=current_season()`), so a range's own seasons never narrow it - where one season does: "curry playoff stats 2018" is Stephen Curry, the only Curry in that postseason. Stephen Curry holds all 63 of the Currys' 2015-2018 postseason games (`player_game_log`, minutes > 0): Seth has none, and Dell, Eddy, JamesOn and Michael Curry had retired.
 - **User sees:** a question where the answer was settled - the range names whose seasons to look in.
-- **Next step:** narrow by the range - `until` as the season a name left open is settled by, `since`..`until` as the seasons a candidate needs a row in (`entities.narrow_to_available` takes `season`/`through` today) - in `templates.common`'s resolution; a case per template reading `since`/`until`.
+- **Next step:** narrow by the range - `until` as the season a name left open is settled by, `since`..`until` as the seasons a candidate needs a row in (`entities.narrow_to_available` takes `season`/`through` today) - in `player_relation`'s resolution; a case per template reading `since`/`until`.
 - **Source:** ours.
 - **GitHub:** #272
 
 ### A "last N games" question naming no season type refuses a calendar or a range of seasons instead of reading it
-- **Found:** 2026-09-28, plan item 6 step (g), giving the team compiler's window sum the both-types read the team log had (`templates.games._team_mixed_games`).
-- **Evidence:** the both-types read ("his/their last 5 games", `season_type_unstated`, both season types merged by date) narrows by an opponent and a venue only: `_team_game_log_mixed` and `_player_game_log_mixed` take neither `since`/`until` nor a calendar `situation`, and dropped them silently before this commit ("knicks last 5 games on tuesdays" listed their last 5 games on any day). `templates.games.team_game_log` and `compose.team._compile_team_games_mixed` refuse the three now ("a window over both season types is read for a plain 'last N games' only"); the player log's mixed read (`compose.present._present_game_log`) is not guarded the same way yet - the parser never sets `season_type_unstated` beside `since` (`router._route_game_log_recent_span`), but a calendar can reach it.
+- **Found:** 2026-09-28, plan item 6 step (g), giving the team compiler's window sum the both-types read the team log had (`compose.logs._team_mixed_rows` now).
+- **Evidence:** the both-types read ("his/their last 5 games", `season_type_unstated`, both season types merged by date) narrows by an opponent and a venue only: `_team_game_log_mixed` and `_player_game_log_mixed` take neither `since`/`until` nor a calendar `situation`, and dropped them silently before this commit ("knicks last 5 games on tuesdays" listed their last 5 games on any day). `compose.logs.read_team_log` and `compose.team._compile_team_games_mixed` refuse the three now ("a window over both season types is read for a plain 'last N games' only"); the player log's mixed read (`compose.logs._player_log_mixed`) is not guarded the same way yet - the parser never sets `season_type_unstated` beside `since` (`router._route_game_log_recent_span`), but a calendar can reach it.
 - **User sees:** a refusal where the single-type read ("knicks last 5 regular season games on tuesdays") answers.
 - **Next step:** read the calendar and the range in the merged read - `_team_mixed_games` and `_player_game_log_mixed` taking the scope's `situation`/`since`/`until` through the same shared steps (`team_games`, `scoped_games`) the single-type read uses - and guard the player log's mixed read until then; a test per relation.
 - **Source:** ours.
@@ -3106,7 +3106,7 @@ those were found.
 - **Evidence:** "celtics 2nd half turnovers vs boston" reads as
   `team_quarter_points` with team "celtics" and opponent "Boston Celtics"
   (`parse.read_route`, measured on the read-only warehouse); the shared step
-  `templates.common.team_games` raises `TemplateUnsupported("a team cannot be
+  `team_relation.team_games` raises `TemplateUnsupported("a team cannot be
   its own opponent")`, `compose.team.run_team` turns the same raise into
   `Unsupported`, and the question leaves the fast path with nothing said about
   why. Every team template reaches the same raise.
@@ -3138,13 +3138,13 @@ those were found.
 
 ### A record over both season types drops each half's floor and neutral-site remarks: "warriors all-time record including playoff record at away"
 - **Found:** 2026-10-01, closing ROADMAP Phase 0 (a kind on every remark); measured by `scripts/stage_snapshots.py remarks` over the 628 recorded questions at the merged tree: 2 answers have a remark written and not said, both this one.
-- **Evidence:** `_team_record_combined_types` answers each season type through `_team_record_route`, and `_combined_record_result` (`templates/teams.py:416-448`) writes its own heading and keeps only each half's "Note:" tail, found by searching the text (`_extract_note`). So the halves' heading floors ("ESPN's standings carry no home/road split before 1993-94", "the warehouse's game list starts with the 1989 playoffs") and any neutral-site remark are written and never said. The combined answer shows the years each span starts from, with no cause.
+- **Evidence:** `_team_record_combined_types` answers each season type through `_team_record_route`, and `_combined_record_result` (`templates/teams.py` then; `compose.say._say_combined_record` now) writes its own heading and keeps only each half's "Note:" tail, found by searching the text (`_extract_note`). So the halves' heading floors ("ESPN's standings carry no home/road split before 1993-94", "the warehouse's game list starts with the 1989 playoffs") and any neutral-site remark are written and never said. The combined answer shows the years each span starts from, with no cause.
 - **User sees:** "from 1993-94" and "from 1989" with nothing saying why the record starts there; where neutral-site games are in the span, home and road halves that do not add up, unexplained.
 - **Next step:** the combined result takes its halves' remarks from the notes each recorded (`query/notes.py`), not from their text; goes with the team shapes' slice (`ROADMAP.md`, Phase 2 (iv)). Until then `stage_snapshots.py remarks` exits 1 on the corpus for these two, which is the check working.
 - **GitHub:** #311
 
 ### A team's splits count blank box-score columns from field-goal attempts alone
-- **Found:** 2026-10-01, closing ROADMAP Phase 0 (a kind on every remark); the splits agent, reading `templates/splits.py:609-613`; reported, not measured.
+- **Found:** 2026-10-01, closing ROADMAP Phase 0 (a kind on every remark); the splits agent, reading `templates/splits.py:609-613` (the count is `compose/team.py`'s `blank` column now, said by `compose.say`); reported, not measured.
 - **Evidence:** the count behind "Rebounds, assists, 3-pointers and FG% are missing from N of those games' box scores" tests only `fieldGoalsAttempted IS NULL`. That holds for the wholly empty 2013-18 team rows; but `record_when`'s team branch shows a column can be blank alone (2018 `totalTurnovers` is NULL on rows with a real box score), and a row with attempts and no assists would be averaged with nothing said.
 - **User sees:** possibly an average over fewer games than the table's G column, uncaveated.
 - **Next step:** one query over `team_box_stats`: rows where `fieldGoalsAttempted` is set and `assists`, a rebound column or `threePointFieldGoalsMade` is NULL, by season. If any, count per column.
@@ -3165,13 +3165,6 @@ those were found.
 - **User sees:** nothing visible; a statement per read.
 - **Next step:** cache per connection (the warehouse does not change under a question).
 - **GitHub:** #337
-
-### `ISSUES.md` holds 96 references to modules Phase 2 deleted
-- **Found:** 2026-10-05, the Phase 2 review (`~/association-research/reviews/phase2-2026-10-05/REVIEW.md`)
-- **Evidence:** `templates/...`, `compose/present.py`, `check_scope`, ... across its 189 entries (review, section 3).
-- **User sees:** an entry sends the next agent to a file that is gone.
-- **Next step:** repoint each to the reader or relation that holds the code now; one pass.
-- **GitHub:** #338
 
 ### The sayer's import contract is checked on direct imports only: `compose.say` reaches duckdb through four modules' constants
 - **Found:** 2026-10-05, Phase 2 step 6, when the last phrase helpers left `templates/` (the condition `pyproject.toml` named for checking the contract on chains).
@@ -3202,19 +3195,6 @@ those were found.
 - **Next step:** one closed measure type (new roadmap, Phase 0).
 - **GitHub:** #286
 
-### The reader imports the answer side and runs the planner; it also issues about 100 SQL statements per question to recognize names
-- **Found:** 2026-09-30, roadmap review (agent A), instrumented over the
-  277 yardstick questions.
-- **Evidence:** `subject.py:45,70,1233-1238` reads `COMPILED_INTENTS` and
-  `HONORED_SCOPING` to decide whether to write a companion's role;
-  `parse.py:33-36,948-970` calls `plan`. 28,218 statements over the 277
-  questions, 97% of them name recognition (`players_named_in` 11,575,
-  `team_named_in` 4,441 - one query per word).
-- **User sees:** nothing; what is read depends on what will answer.
-- **Next step:** import-linter layers inside `query/`; an in-memory name
-  index (new roadmap, Phase 1).
-- **GitHub:** #287
-
 ### 2018's `teamTurnovers` is kept though it is not the game's
 - **Found:** 2026-09-29, period relation's team half
 - **Evidence:** `fetch/repairs/team_box_repair.py` keeps 2018's
@@ -3242,7 +3222,7 @@ those were found.
 - **Found:** 2026-09-27, the package review of plan item 6's steps (a)-(d) (read-only agent; not each re-verified by the lead).
 - **Evidence:**
   - `entities._fold` (entities.py:255) drops letters with no decomposition: "Aşık" -> "Ask", "Đorđević" -> "orevic", "Søren" -> "Sren"; `fetch/parse.py:975` folds differently, keeping them. A 10-entry `str.maketrans` (or anyascii, ISC) fixes it.
-  - The ordinal suffix is written four times: `templates/common.py:1430` `ordinal_word` and `:2299` `_ordinal` (identical, same module), `player_games.py:407`, `fingerprint.py:727`. All agree today.
+  - The ordinal suffix is written four times: `reading.ordinal_word` and `templates/common.py`'s `_ordinal` (since deleted) (identical, same module), `player_games.py:407`, `fingerprint.py:727`. All agree today.
   - Month names are defined six times (router.py:501, :511, :1084; calendar.py:44; conditions.py:451; subject.py:301), and `parse._PLAYER_LOG` omits May and June; number words were five copies until fe53c72 gave the parser one table (router.py:469, :477, :1706 and subject.py:111 still hold their own).
   - 13 of `PARENT_GRAMMAR`'s 30 rows have no direct `parent_intent` case in tests/query/test_parser.py (period_leaderboard, period_split, coach, team_players, the team top-N leaderboard, team streak, the team_stat fallback, player_netpoints, player+companions, both position rows, the everyone streak, everyone finals/game_log); the measurement that exercises them lives outside the repo.
   - `pyproject.toml`'s import-linter comment says pydantic comes from `association[web]`; it is in every core install through ollama (uv.lock), which imports it at load.
@@ -3265,9 +3245,9 @@ those were found.
 - **Found:** 2026-09-24, landing the K3-2 conference/division narrowing.
 - **Evidence:** `situation` reaching `Narrowed.narrow_alignment`/
   `TeamNarrowed.narrow_alignment` means `team_alignment` is read by every
-  template whose `HONORED_SCOPING` includes `situation` (by
+  template whose `HONORED_SCOPING` (`compose.plan.STATED_SCOPING` since 2026-10-05) includes `situation` (by
   `_relation_scoping(intent)`'s default, essentially every template on
-  either relation) - but `templates.common.TEMPLATE_SOURCES` was not updated
+  either relation) - but `templates.common.TEMPLATE_SOURCES` (`coverage.SOURCES` now) was not updated
   to list `team_alignment` alongside `player_game_log`/`games`/`team_games`
   for any of them. Deliberately: `team_alignment`'s coverage floor (1988,
   the same request `standings` already floors at) is provably never the
@@ -3280,7 +3260,7 @@ those were found.
   handful of the affected entries (`player_stat`, `game_log`, `team_record`,
   `team_leaderboard`, `team_stat`, `team_quarter_points`, `threshold_count`,
   `single_game_high`, `period_split`, `period_leaderboard`, `shot_chart`,
-  `shot_distance`) are literal tuples in `templates/common.py`, in this
+  `shot_distance`) are literal tuples in `coverage.py` (`SOURCES`), in this
   task's ownership; the rest (`player_splits`, `with_without`, `record_when`,
   `player_matchup`, `streak`) share `_PLAYER_GAME_TABLES`/`_TEAM_GAME_TABLES`
   from `conditions.py`, outside it.
@@ -3335,7 +3315,7 @@ those were found.
 ### `head_to_head`'s venue-narrowed sentence says "won the series" for a since-bounded or career span too
 - **Found:** 2026-09-22, step 3, team cells (`team_record`/`head_to_head`
   honoring `since`/`game_n`/`span`).
-- **Evidence:** `templates/games.py: _head_to_head_span_result` calls
+- **Evidence:** `templates/games.py: _head_to_head_span_result` (`compose.meetings._head_to_head_over_span` now) calls
   `_head_to_head_narrowed_phrase` (unchanged wording) when `venue` narrows a
   since-bounded or career meeting count, and that function always says "the
   X won the series N-M" - accurate for one season, which is what it was
@@ -3356,13 +3336,13 @@ those were found.
 ### The team-games postseason span clause is duplicated by a module boundary, not by drift
 - **Found:** 2026-09-22, porting `with_without` onto `query/team_games.py`'s
   relation (step 3, C4).
-- **Evidence:** `templates/common._team_span_clause` (the postseason-by-
+- **Evidence:** `team_relation.team_span_clause` (the postseason-by-
   calendar-year clause over `tg.eastern_date`/`tg.season`) now has a second
   copy, `conditions._with_without_team_span_clause`
   (`query/conditions.py`), four lines of identical logic under a different
   name. Not drift - `conditions.py`'s own module docstring says "nothing here
-  imports `templates`, so the dependency runs one way", and `templates/common.py`
-  already imports FROM `conditions.py` (`_Scope`, `_game_scope`, `box_source`),
+  imports `templates`, so the dependency runs one way", and `templates/common.py` (`team_relation.py` now)
+  already imported FROM `conditions.py` (`_Scope`, `_game_scope`, `box_source`),
   so the reverse import would cycle. `query/team_games.py` itself has no such
   restriction (it imports only `.entities` and `nba.season`), so it is where a
   shared clause builder could live without either module reaching into the
@@ -3379,7 +3359,7 @@ those were found.
   boundary. Once all three are ported, move the clause itself into
   `query/team_games.py` as a small public function taking `(season, season_type,
   first, phantoms)` rather than either module's own scope/span dataclass, and
-  have `templates.common._team_span_clause` and every `conditions.py` copy
+  have `team_relation.team_span_clause` and every `conditions.py` copy
   delegate to it. Not done here: three call sites is still one branch's
   decision to make, not a refactor to force mid-port on work another agent may
   be doing in parallel on the same file.
@@ -3394,12 +3374,12 @@ those were found.
 - **Evidence:** `since` is composed once now: `_span_of` and `_condition_scope`
   build a span from that season on, and `game_log`, `player_stat` and
   `player_matchup` honor it by declaring it (`HONORED_SCOPING`,
-  `templates/common.py`) - "jokic vs cade since 2022" answers their 7 meetings.
+  `compose.plan.STATED_SCOPING` since 2026-10-05) - "jokic vs cade since 2022" answers their 7 meetings.
   What is left is the templates that do not sit on the player-games relation
   and read `slots.get("season")` into their own metric SQL: `leaderboard`
   ("most steals by bucks players 2010s", `run_leaderboard`) and
   `team_leaderboard` ("nba team with least playoff wins since 2022",
-  `templates/teams.py`). Both still refuse `since`, and `until` is set beside
+  `templates/teams.py` then; `compose/team_stats.py` over `team_seasons.py` now, which reads it since slice (iv)). Both still refuse `since`, and `until` is set beside
   `since` by the stages (`router._route_season_range`) but is in neither `HONORED_SCOPING` nor `SCOPING_SLOTS`
   (see #23). So the "three separate season-handling paths" this entry first
   counted are two: the relation's span, and the metric templates' own.
@@ -3448,9 +3428,9 @@ those were found.
 
 ### `limit` is not a scoping slot, so a template that ignores it does so silently
 - **Found:** 2026-09-18, merging the StatMuse scoping branches and re-measuring
-- **Evidence:** `SCOPING_SLOTS` (`templates/common.py:87`) holds `order`,
+- **Evidence:** `SCOPING_SLOTS` (`reading.py`) holds `order`,
   `date`, `opponent`, `venue`, `span`, `without`, `round`, `split`, `since`,
-  `below` and `situation` - **not `limit`** - so `check_scope` cannot refuse a
+  `below` and `situation` - **not `limit`** - so `check_scope` (the planner since 2026-10-05) cannot refuse a
   template that is handed one and does nothing with it. `head_to_head` reads no
   `limit` anywhere in its body. Measured on the merged tree: "lakers vs mavs
   record last 10 home games played" arrives with
@@ -3479,7 +3459,7 @@ those were found.
   of the other templates finds more.
 - **A second instance, found 2026-09-18 while fixing #34's `without` rows:**
   `player_matchup`'s genuine two-player branch (`_player_matchup_answer`,
-  `query/templates/games.py`) reads neither `stat` nor `fields` - the summary
+  `query/templates/games.py` then; `compose/pairs.py` and `compose.say.say_player_matchup` now) reads neither `stat` nor `fields` - the summary
   table always shows minutes/points/rebounds/assists/FG% regardless of what
   either slot asks for. Not new behavior and not touched by this session's
   fix (the one-player-and-a-team branch it now shares delegates to
@@ -3502,7 +3482,7 @@ those were found.
   value not in `ROUTER_SCHEMA`'s enum at all** - `'vs Portland Trail Blazers'`,
   `'made_rebounds'`, `'games_played_against'`, `'per_game'`, `'playoffs'`,
   `'none'`, `'all'`. `stat` is not in `SCOPING_SLOTS`
-  (`templates/common.py:87`) any more than `limit` was, so `check_scope`
+  (`reading.py`) any more than `limit` was, so `check_scope`
   cannot refuse a template that is handed one of these and ignores it.
 - **User sees:** nothing today - harmless only because every template that
   currently reads `stat` for these intents either validates it against a
@@ -3551,7 +3531,7 @@ those were found.
 
 ### No metric on `player_season_advanced_stats` can have a career ranking
 - **Found:** 2026-09-18, while adding `avg_game_score` as a leaderboard metric
-- **Evidence:** `leaderboard.py:490` builds a weighted career value as
+- **Evidence:** `season_line.py` (`leaderboard.py:490` when found) builds a weighted career value as
   `SUM(t.{numerator} * t.gamesPlayed) / NULLIF(SUM(t.gamesPlayed) ...)`, and
   `t.gamesPlayed` is `player_season_stats`' spelling of that column. The
   advanced table calls it `games_played`, so a `CareerAggregate` on any metric
@@ -3658,7 +3638,7 @@ those were found.
   `AVG(t.offensiveRebounds + t.defensiveRebounds)` - which the rebuild fills -
   so the caveat does not understate anything. Two concurrent changes, each
   sound alone, and the risk was in the pair.
-- **Evidence:** `_player_splits_team` (`query/templates/splits.py`) says
+- **Evidence:** `_player_splits_team` (`query/templates/splits.py`; `compose.splits._team_splits` and its sayer now) says
   "Rebounds, assists, 3-pointers and FG% are missing from N of those games'
   box scores" from a single count of `fieldGoalsAttempted IS NULL` - one bit
   standing in for "this row has nothing", covering four columns that could in
@@ -3761,7 +3741,7 @@ those were found.
   regular season exists twice, in different words:
   `fetch/warehouse.py:239` (the `player_season_stats_deduped` view: more than 28
   games, or games+points equal to that season's regular-season line on any team)
-  and `query/leaderboard.py:186` `not_a_postseason_copy` (games plus the value
+  and `query/season_line.py` `not_a_postseason_copy` (games plus the value
   columns, on the same team). They agree today - each drops 436 of 7,941 rows -
   but nothing keeps them in step. (Both comments now give the re-measured
   figure, 436 of 7,941 rows / 340 player-seasons, fixed 2026-09-16 with #43;
@@ -3776,7 +3756,7 @@ those were found.
 - **Found:** 2026-09-15, while fixing #9
 - **Evidence:** "prefer the combined row over the per-team stints" is written
   as SQL in `fetch/warehouse.py:259` (the `player_season_stats_deduped` view)
-  and twice in `query/leaderboard.py` (lines 300 and 324, the `dedup_traded`
+  and twice in `query/season_line.py` (the traded-player dedup, `dedup_traded`
   QUALIFY). Fixing #9 had to touch both, and a fix that touched only one would
   have left the leaderboard reading the broken row while the deduped view was
   correct - green tests either way.
@@ -3785,7 +3765,7 @@ those were found.
   written a fourth time.
 - **Next step:** export the QUALIFY fragment from one module the way
   `not_a_postseason_copy()` already exports its own rule from
-  `query/leaderboard.py`, and have both call it.
+  `query/season_line.py`, and have both call it.
 - **GitHub:** #83
 
 ### `pointsInPaint` is -1 for every team-game before 2009
@@ -3811,7 +3791,7 @@ those were found.
 
 ### A player's single qualifying game reads "1 games"
 - **Found:** 2026-09-11, while narrowing `threshold_count` by season
-- **Evidence:** `templates._phrase_threshold_count` builds the named-player
+- **Evidence:** `templates._phrase_threshold_count` (`compose.say.say_threshold_count` now) builds the named-player
   sentence as `f"{player} had {games} {label} {when}."` with `label` always
   "games with ...", so one game prints "Aay Jones had 1 games with 30+ points in
   the 2026 regular season." (seen in a test fixture). The league-wide sentences
@@ -3874,13 +3854,13 @@ those were found.
 
 ### Broad `except duckdb.Error` in `_single_game_netpoints`
 - **Found:** 2026-09-11, repo audit
-- **Evidence:** `_single_game_netpoints` (`query/templates/netpoints.py`) catches
+- **Evidence:** `_single_game_netpoints` (`query/templates/netpoints.py`; `compose.netpoints._netpoints_game` now) catches
   every DuckDB error. `fingerprint.py` already narrowed the same pattern to the
   missing-table error.
 - **User sees:** a SQL bug reported as "unavailable", then a refusal.
 - **Next step:** catch `duckdb.CatalogException` only.
 - **Re-checked 2026-09-15:** the pattern occurs twice. The second is
-  `query/templates/players.py`, in `_compare_netpoints`, which catches `duckdb.Error`
+  `compose/seasons.py`, in `_player_compare_netpoints`, which catches `duckdb.Error`
   and returns `{}` - so a SQL bug there makes the NetPoints rows silently
   disappear from a comparison.
 - **GitHub:** #44
@@ -3942,7 +3922,7 @@ those were found.
 ### `_no_games` can still say "did not play" of a game with no box score
 - **Found:** 2026-09-17/18, fixing #72 (`_no_narrowed_games` naming the wrong
   missing fact for `game_log`/`player_stat`)
-- **Evidence:** `_no_games` (`query/templates/common.py:1081`, used by
+- **Evidence:** `no_games` (`query/player_relation.py`, used by
   `player_splits`, `with_without`, `record_when`, `player_matchup` and
   `streak` in `splits.py`/`games.py` when their `box_source()`-aware main
   query finds zero played games) reads raw `player_box_stats` directly rather
@@ -4053,7 +4033,7 @@ those were found.
 - **Source:** DATA.md, "`dnp_reason` is set on players who played"
 - **Re-checked 2026-09-15:** figures reproduce, two details changed. Player
   `plusMinus` **is** read now (the game log's "+/-" column - three sites,
-  `query/templates/games.py`), and `team_season_stats.plusMinus` is -1 in
+  `query/templates/games.py` then; `compose/logs.py` now), and `team_season_stats.plusMinus` is -1 in
   828 rows (2009 on) and NULL in 675 before that, not "-1 in every season" as
   `team_metrics.py:25` says.
 - **GitHub:** #53
@@ -4288,7 +4268,7 @@ those were found.
 
 ### `player_netpoints`' season-totals reading (`rate: "total"`) cannot be reached
 - **Found:** 2026-09-27, plan item 6 step (d) round 2 (moving `templates/netpoints.py` onto the typed Scope).
-- **Evidence:** `HONORED_SCOPING["player_netpoints"]` is `{"order"}` and `rate` is in `SCOPING_SLOTS`, so `check_scope("player_netpoints", {"rate": "total"})` raises "player_netpoints cannot honor ['rate']" before the template runs (measured on 0a7140a). The parser writes no `rate` for "shai gilgeous-alexander netpoints season totals" or "... total netpoints this season" either (route `{'stat': 'netpoints', 'player': 'Shai Gilgeous-Alexander', 'season_type': 2}`), so both answer the play-type categories per 100 possessions. The template's `rate != "total"` branch ("Totals stay in `data`, and the `rate` slot asks for them") is reached only by a direct call - the shape `leaderboard`'s `rate` had before it was listed.
+- **Evidence:** `HONORED_SCOPING["player_netpoints"]` (`compose.plan.STATED_SCOPING` since 2026-10-05) is `{"order"}` and `rate` is in `SCOPING_SLOTS`, so `check_scope("player_netpoints", {"rate": "total"})` raises "player_netpoints cannot honor ['rate']" before the template runs (measured on 0a7140a). The parser writes no `rate` for "shai gilgeous-alexander netpoints season totals" or "... total netpoints this season" either (route `{'stat': 'netpoints', 'player': 'Shai Gilgeous-Alexander', 'season_type': 2}`), so both answer the play-type categories per 100 possessions. The template's `rate != "total"` branch ("Totals stay in `data`, and the `rate` slot asks for them") is reached only by a direct call - the shape `leaderboard`'s `rate` had before it was listed.
 - **User sees:** per-100 category tables for a totals question. The headline carries the season totals ("468.3 overall (403.9 offense, 64.4 defense)"), so the number asked for is there; only the breakdown is in the other unit.
 - **Next step:** decide whether per 100 possessions is the right breakdown for "total netpoints". If totals should be reachable, list `rate` for `player_netpoints` and have the parser read "total(s)" beside NetPoints as `rate: "total"`, with a test through the agent path; if not, delete the branch.
 - **Source:** ours.
@@ -4365,14 +4345,14 @@ those were found.
 
 ### Caveats in the answer's text that never reach `data["notes"]`, and remarks glued onto refusals
 - **Found:** 2026-09-30, the notes inventory for `ROADMAP-TYPES.md` (an Opus agent reading `011091f`; reported, not re-verified).
-- **Evidence:** thirteen groups (the inventory, section 5.1; `~/association-research/stages/notes-inventory-011091f.md`): every caveat of `single_game_high` and narrowed `player_stat`, both charts, the season-line redirect, the combined team record, the BPI headline remarks, the compiler's team path (`compose/__init__.py:85-99` has no `notes`); `record_when` bundles three or four remarks into one string (`templates/splits.py:1112,1279`). The coverage caveat and name readings are appended to whatever came back, refusals and clarifications included (`agent.py:431-434,529-532`).
+- **Evidence:** thirteen groups (the inventory, section 5.1; `~/association-research/stages/notes-inventory-011091f.md`): every caveat of `single_game_high` and narrowed `player_stat`, both charts, the season-line redirect, the combined team record, the BPI headline remarks, the compiler's team path (`compose/__init__.py:85-99` has no `notes`); `record_when` bundles three or four remarks into one string (`templates/splits.py:1112,1279` when found; `compose/records.py` and `compose.say.say_record_when` now). The coverage caveat and name readings are appended to whatever came back, refusals and clarifications included (`agent.py:431-434,529-532`).
 - **User sees:** on the web page, which renders from `data`, fewer caveats than the CLI's text holds.
 - **Next step:** the typed notes of `ROADMAP.md` Phase 0 (every writer records a kind and facts) replace `data["notes"]`; do not patch the thirteen one by one.
 - **GitHub:** #307
 
 ### A list of matched names is printed as a Python list, and four small wording faults
 - **Found:** 2026-09-30, the notes inventory for `ROADMAP-TYPES.md` (an Opus agent reading `011091f`; reported, not re-verified).
-- **Evidence:** `compose.say.decision_phrase`'s `also_matched` (`shotchart.py:418` until Phase 2, step 5) and `fingerprint.py:951` interpolate the list itself ("['Seth Curry', ...]"); `fingerprint.py:890` joins it. "({A}, {B} has no ...)" at `templates/players.py:1924`. The box-score floor is "the 1993-94 season" in `templates/common.py:2534` and "the 1994 regular season" in `conditions.py:269`. A history `limit` over 20 silently becomes 4 (`templates/players.py:813`). `render_shot_chart` and `render_fingerprint` (`shotchart.py:186`, `fingerprint.py:1035`) have no caller in `src`, only tests.
+- **Evidence:** `compose.say.decision_phrase`'s `also_matched` (`shotchart.py:418` until Phase 2, step 5) and `fingerprint.py:951` interpolate the list itself ("['Seth Curry', ...]"); `fingerprint.py:890` joins it. "({A}, {B} has no ...)" at `templates/players.py:1924` when found (`compose.say` now). The box-score floor is "the 1993-94 season" in `templates/common.py:2534` (gone with `templates/`) and "the 1994 regular season" in `conditions.py:269`. A history `limit` over 20 silently becomes 4 (`season_line.history_seasons`, over `MAX_HISTORY_SEASONS`). `render_shot_chart` and `render_fingerprint` (`shotchart.py:186`, `fingerprint.py:1035`) have no caller in `src`, only tests.
 - **User sees:** brackets and quotes in a chart's note; otherwise nothing wrong, only uneven.
 - **Next step:** join the names; the rest goes with each kind's one phrase (Phase 2).
 - **GitHub:** #308
@@ -4386,7 +4366,7 @@ those were found.
 
 ### Typed remarks: what the wrapping left uneven
 - **Found:** 2026-10-01, closing ROADMAP Phase 0 (a kind on every remark); the five agents' reports.
-- **Evidence:** (1) one withheld-stat remark has two wordings ("is not counted from a rebuilt line", `templates/players.py:258`; "is not read from a rebuilt line", `players.py:1779`) and the second carries `label` with no `stat` key, since only the label reaches it from `compose/present.py:531`. (2) "so whether he played is unknown" is said with two or more teammates (`templates/splits.py:1007`). (3) `_team_outlook_missing`'s hint always says "ask about the regular season", whichever snapshot holds the team (`templates/teams.py:1829`). (4) `templates/games.py:1286` and `:1414` bind a local named `note`, which shadows the import: a later wrap inside either function raises `UnboundLocalError` on that path alone. (5) `floor` is used for "Covers his whole career on record" (`templates/shots.py:452`), which says nothing was clipped. (6) a period ranking's minimum records why it was halved and not of what (`games.py:1952-1975`: `most` is only in the sentence). (7) NetPoints' `data["notes"]` restate three facts in other words than the text (`templates/netpoints.py:211-217` against 337, 355, 372); only the text side is recorded. (8) the corpus reaches about half of the 98 writers; the rest are checked by the suite running them and by the source-reading test, not by a recorded answer.
+- **Evidence:** (1) one withheld-stat remark has two wordings ("is not counted from a rebuilt line", `templates/players.py:258` when found; "is not read from a rebuilt line", `players.py:1779`) and the second carries `label` with no `stat` key, since only the label reaches it from `compose/present.py:531` (deleted 2026-10-05). (2) "so whether he played is unknown" is said with two or more teammates (`compose.say`'s with/without sentence; `templates/splits.py:1007` when found). (3) `_team_outlook_missing`'s hint always says "ask about the regular season", whichever snapshot holds the team (`compose.team_stats._team_outlook_missing_notes` and `compose.say`; `templates/teams.py:1829` when found). (4) `templates/games.py:1286` and `:1414` (gone with `templates/`) bound a local named `note`, which shadows the import: a later wrap inside either function raises `UnboundLocalError` on that path alone. (5) `floor` is used for "Covers his whole career on record" (`compose.say`, "Covers his whole ... career on record"; `templates/shots.py:452` when found), which says nothing was clipped. (6) a period ranking's minimum records why it was halved and not of what (`games.py:1952-1975`: `most` is only in the sentence). (7) NetPoints' `data["notes"]` restate three facts in other words than the text (`templates/netpoints.py:211-217` against 337, 355, 372 when found; `compose/netpoints.py` and `compose.say`'s NetPoints sayer now); only the text side is recorded. (8) the corpus reaches about half of the 98 writers; the rest are checked by the suite running them and by the source-reading test, not by a recorded answer.
 - **User sees:** a wrong pronoun in (2), a possibly wrong hint in (3); otherwise nothing.
 - **Next step:** each goes when its kind gets its one phrase (`ROADMAP.md`, Phase 2); rename the two locals in (4) with the next change to that file.
 - **GitHub:** #313
