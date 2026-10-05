@@ -527,15 +527,6 @@ HONORED_SCOPING: dict[str, frozenset[str]] = {
     # TEAM_RELATION_SCOPING_EXCLUDED["team_record"] for why `date` and `order`
     # still are not here.
     "team_record": _team_relation_scoping("team_record", "split", "season_type_unstated"),
-    # Honored for the record metrics, from the standings' own home/road
-    # strings, or - for `since`, optionally `until`-bounded (step 3, K1) - a
-    # tally of the relation's own wins and losses grouped by team (step 3,
-    # C4b); any other metric refuses `venue`, since team season stats carry no
-    # venue split at all, and every metric but a record one refuses
-    # `since`/`until`, since a season line has no way to sum across a span of
-    # seasons yet. See TEAM_RELATION_SCOPING_EXCLUDED["team_leaderboard"] for
-    # the rest, including `situation` (step 3, K1).
-    "team_leaderboard": _team_relation_scoping("team_leaderboard"),
 }
 
 
@@ -1301,7 +1292,7 @@ class ResolvedSpan:
 _Span = ResolvedSpan
 
 
-def _validated_until(until: int | None, since: int | None) -> int | None:
+def validated_until(until: int | None, since: int | None) -> int | None:
     """The validated ``until`` slot: an inclusive last season, named beside
     ``since`` only - the router never emits one without the other (a decade,
     or a named range like "2019-20 to 2023-24"), so a caller checks this
@@ -1312,6 +1303,9 @@ def _validated_until(until: int | None, since: int | None) -> int | None:
     warns against).
 
     .. versionadded:: 4.4.0
+
+    .. versionchanged:: 5.0.0
+       Public, for the team-season ranking's reader; ``_validated_until`` until then.
     """
     if not until:
         return None
@@ -1320,6 +1314,9 @@ def _validated_until(until: int | None, since: int | None) -> int | None:
     if until < since:
         raise TemplateUnsupported(f"until {until} before since {since}")
     return until
+
+
+_validated_until = validated_until
 
 
 def span_of(span: Literal["career"] | None, season: int | None, season_type: int, table: str, since: int | None = None, until: int | None = None) -> _Span:

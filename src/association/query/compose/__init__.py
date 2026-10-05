@@ -62,7 +62,7 @@ from .sentence import team_sentence as _team_sentence
 from .splits import read_player_splits, read_team_splits
 from .stats import read_player_stat
 from .team import TeamQuery, TeamResult, run_team
-from .team_stats import TeamSeasonQuery, read_team_outlook, read_team_stat
+from .team_stats import TeamSeasonQuery, read_team_leaderboard, read_team_outlook, read_team_stat
 
 if TYPE_CHECKING:
     from association.query.reading import Reading
@@ -133,6 +133,7 @@ COMPILED_INTENTS: frozenset[str] = frozenset(
         "coach",
         "team_outlook",
         "team_stat",
+        "team_leaderboard",
     }
 )
 """The intents the compiler alone answers - the four whose templates it
@@ -316,6 +317,7 @@ def _read_ported_team(con: duckdb.DuckDBPyConnection, intent: str, query: TeamQu
 _TEAM_SEASON_READERS: dict[str, Callable[..., Result | TemplateResult]] = {
     "team_outlook": read_team_outlook,
     "team_stat": read_team_stat,
+    "team_leaderboard": read_team_leaderboard,
 }
 
 

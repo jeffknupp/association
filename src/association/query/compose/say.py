@@ -516,7 +516,8 @@ def say(result: Result) -> TemplateResult:
     if result.span.source == "team_snapshots":
         return say_team_outlook(result)
     if result.span.source == "team_seasons":
-        return say_team_stat(result)
+        ranking = result.grouped
+        return say_team_leaderboard(result) if ranking is not None and ranking.by == "team" else say_team_stat(result)
     if result.span.source == "seasons":
         return _say_season_line(result)
     if result.scalar is not None and result.scalar.how == "count":
@@ -2167,3 +2168,88 @@ def say_team_stat(result: Result) -> TemplateResult:
     if result.facts["metric"] is not None:
         return _team_stat_single(result, period, stats, dict(body.rows[0]))
     return _team_stat_table(result, period, stats, [dict(row) for row in body.rows])
+
+
+# --- a team's own season: every team ranked -------------------------------------------
+
+#: How a ranking's venue is said in its title.
+_VENUE_WORDS = {"home": "at home", "away": "on the road"}
+
+
+def _team_leaderboard_period(span: Span) -> str:
+    """The span a ranking covers: "seasons 2011-2019", "seasons since 2022",
+    or one season's own name."""
+    if span.last is not None:
+        return f"seasons {span.first}-{span.last}"
+    if span.first is not None:
+        return f"seasons since {span.first}"
+    assert span.season is not None and span.season_type is not None
+    return season_phrase(span.season, span.season_type)
+
+
+def _team_leaderboard_end(metric: TeamMetric, key: str, rank_word: str | None, descending: bool) -> str:
+    """Which end the ranking lists first - said, because a list of the
+    fastest teams under a question about the slowest would otherwise look
+    perfectly right."""
+    if metric.lower_is_better is None or rank_word in ("most", "fewest"):
+        end = "highest first" if descending else "lowest first"
+    else:
+        best_first = descending == (metric.lower_is_better is False)
+        end = ("best first" if best_first else "worst first") + (" (highest)" if descending else " (lowest)")
+    if key in ("record", "losses"):
+        end = "best record first" if (key == "record") == descending else "worst record first"
+    return end
+
+
+def _team_leaderboard_missing(result: Result, metric: TeamMetric, period: str) -> TemplateResult:
+    """Nothing to rank, by why: the season's standings carry no home or road
+    split, the metric's first season, or a team short of games for points
+    allowed."""
+    season, missing = result.span.season, result.facts["missing"]
+    if missing == "venue_split":
+        message = f"ESPN's {season} standings carry no home/road split (it reads 0-0 for every team before 1993-94)."
+    elif missing == "metric_season":
+        message = f"{metric.label.capitalize()} can't be given for {season}: {metric.first_season_reason}."
+    else:
+        message = short_of_games_said(metric, period, result.facts["short"])
+    return TemplateResult(data={"message": message, "season": season}, answer=message)
+
+
+def say_team_leaderboard(result: Result) -> TemplateResult:
+    """Every team ranked by one metric, worded: the title (the metric, a venue,
+    the span), which end comes first, how many teams were ranked, the rows
+    shown (a named team's own past a "..."), and the rating formula beneath a
+    rating or the pace - or why nothing could be ranked.
+    ``templates.teams.team_leaderboard``'s words, from the Result.
+
+    .. versionadded:: 5.0.0
+    """
+    facts = result.facts
+    key = facts["metric"]
+    metric = TEAM_METRICS[key]
+    period = _team_leaderboard_period(result.span)
+    if "missing" in facts:
+        return _team_leaderboard_missing(result, metric, period)
+    venue = facts["venue"]
+    title = f"{metric.label.capitalize()}{f' {_VENUE_WORDS[venue]}' if venue else ''}, {period}"
+    season = None if result.span.first is not None else result.span.season
+    body = result.grouped
+    assert body is not None
+    if not body.rows:
+        answer = f"The warehouse has no {period} numbers to rank teams by {metric.label}."
+        return TemplateResult(data={"question_shape": title, "season": season, "teams": [], "headline": answer}, answer=answer)
+    end = _team_leaderboard_end(metric, key, facts["rank"], facts["descending"])
+    display = {row["key"]: tally(row["wins"], row["losses"]) if metric.expression is None else metric_cell(metric, row["value"]) for row in body.rows}
+    name_width = max(len(row["key"]) for row in body.rows)
+    value_width = max(len(cell) for cell in display.values())
+    lines: list[str] = []
+    for row in body.rows:
+        if row["beyond"] and not any(each.startswith("    ...") for each in lines):
+            lines.append("    ...")
+        lines.append(f"{row['rank']:>2}  {row['key'].ljust(name_width)}  {display[row['key']].rjust(value_width)}")
+    headline = f"{title} - {end}, of {facts['of']} teams:"
+    notes = _said(result)
+    teams = [{"rank": row["rank"], "team": row["key"], "value": row["value"], "display": display[row["key"]]} for row in body.rows]
+    return TemplateResult(
+        data={"question_shape": title, "season": season, "order": end, "teams": teams, "headline": headline.rstrip(":"), "notes": notes}, answer="\n".join([headline, *lines, *notes])
+    )

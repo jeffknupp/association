@@ -18,7 +18,7 @@ import duckdb
 from association.nba.season import current_season
 from association.query.entities import Entity
 from association.query.notes import Note
-from association.query.reading import Scope, Unsupported
+from association.query.reading import Scope, Unsupported, _clamp_limit
 from association.query.result import Grouped, Part, Result, Scalar, Span
 from association.query.team_metrics import DEFAULT_TEAM_LINE, TEAM_METRICS, TeamLine, TeamMetric, descending_for, ranked, resolve_team_metric
 from association.query.team_seasons import (
@@ -32,8 +32,11 @@ from association.query.team_seasons import (
     team_outlook_snapshots_statement,
     team_records,
     team_records_statement,
+    team_since_records_statement,
+    team_venue_records_statement,
+    venue_records,
 )
-from association.query.templates.common import TemplateResult, check_coverage, resolved_team, slot_season, unhonored_scoping
+from association.query.templates.common import TemplateResult, check_coverage, resolved_team, slot_season, unhonored_scoping, validated_until
 from association.query.templates.teams import conference_refusal
 
 from .core import Refused, values_of
@@ -305,3 +308,139 @@ def _team_stat_line(team: Entity, key: str | None, span: Span, lines: list[TeamL
         elif any(row["rank"] is None for row in rows):
             notes.append(Note("value_withheld", {"what": "rank", "why": "game list short for other teams", "team": team.name, "season": span.season}))
     return Result(subject=team.name, relation="team", span=span, parts=(Part(body=Grouped(by="metric", rows=rows)),), notes=tuple(notes), facts=facts)
+
+
+# --- every team ranked (team_leaderboard) -----------------------------------------
+
+DEFAULT_TEAM_LEADERBOARD_LIMIT = 10
+"""How many teams a ranking lists where the question named no count.
+
+.. versionadded:: 5.0.0
+   Moved from ``templates.teams``.
+"""
+
+
+def _team_leaderboard_checks(scope: Scope, stated: frozenset[str]) -> TemplateResult | None:
+    """What the answering loop and the retired template checked before
+    reading, in their order: a narrowing the words do not state (a
+    decline), the coverage floor, a conference or division in a team slot."""
+    declined = team_season_declines("team_leaderboard", scope, stated)
+    if declined is not None:
+        raise Unsupported(declined)
+    refused = check_coverage("team_leaderboard", scope)
+    if refused is not None:
+        raise Refused(TemplateResult(data={"message": refused, "season": scope.season}, answer=refused))
+    return conference_refusal(scope)
+
+
+def _team_leaderboard_span(scope: Scope, season: int, season_type: int) -> Span:
+    """The ranking's span: one season, or the seasons from ``since`` on
+    (through ``until`` where it bounds the other end) - a ``since`` beside a
+    named season, and an ``until`` with no ``since`` or before it, declined."""
+    since = scope.since or None
+    if since is not None and scope.season:
+        raise Unsupported(f"since {since} and the {scope.season} season at once")
+    until = validated_until(scope.until, since)
+    return Span(season=season, season_type=season_type, first=since, last=until, source="team_seasons")
+
+
+def read_team_leaderboard(con: duckdb.DuckDBPyConnection, q: TeamSeasonQuery, *, stated: frozenset[str]) -> Result | TemplateResult:
+    """Every team ranked by one metric - of the season line
+    (``team_metrics.TEAM_METRICS``) or of the standings (a record, home or
+    road, or across the seasons from ``since`` on) - as a
+    :class:`~association.query.result.Result` on a ``"team_seasons"`` span:
+    a :class:`~association.query.result.Grouped` by ``team``,
+    ``ranked_by`` the metric, each row the team (``key``), its competition
+    ``rank`` (ties share one), the ``value`` it is ranked by, and for a
+    record its ``wins`` and ``losses``. The rows are the ones shown: the
+    count asked for (ties at the cut kept whole) and, past it, a named
+    team's own row (``beyond``); ``facts["of"]`` is how many teams were
+    ranked and ``facts["descending"]`` which end comes first. Where nothing
+    can be ranked, no rows and ``facts["missing"]`` naming why (no home or
+    road split in that season's standings, the metric's first season, a
+    team short of games for points allowed - ``facts["short"]``).
+
+    ``templates.teams.team_leaderboard`` was this, with its words; its
+    statements are the relation's (:mod:`association.query.team_seasons`).
+
+    .. versionadded:: 5.0.0
+    """
+    scope = q.scope
+    conference = _team_leaderboard_checks(scope, stated)
+    if conference is not None:
+        return conference
+    key = resolve_team_metric(scope.stat)
+    if key is None:
+        raise Unsupported(f"no team metric for stat {scope.stat!r}")
+    # `season` still settles to a real year under `since` - unread by the
+    # since-bounded read, and here only for the named team's own-season name
+    # lookup, which stays "now" either way.
+    season = scope.season or current_season()
+    season_type = scope.season_type or 2
+    span = _team_leaderboard_span(scope, season, season_type)
+    named = resolved_team(con, scope.team, season=slot_season(scope)) if scope.team and scope.team.strip() else None
+    if isinstance(named, TemplateResult):
+        return named
+    facts: dict[str, Any] = {"metric": key, "venue": scope.venue, "rank": scope.rank, "descending": descending_for(TEAM_METRICS[key], scope.rank)}
+    read = _team_leaderboard_values(con, key, span, scope.venue) if TEAM_METRICS[key].expression is None else _team_leaderboard_metric(con, key, span, scope.venue)
+    if isinstance(read, dict):
+        return Result(subject="the league", relation="team", span=span, parts=(Part(body=Grouped(by="team", ranked_by=key)),), facts={**facts, **read})
+    values, rows = read
+    return _team_leaderboard_ranked(span, facts, values, rows, _clamp_limit(scope.limit, default=DEFAULT_TEAM_LEADERBOARD_LIMIT), named)
+
+
+def _team_leaderboard_values(con: duckdb.DuckDBPyConnection, key: str, span: Span, venue: str | None) -> tuple[dict[str, float], dict[str, dict[str, Any]]] | dict[str, Any]:
+    """A record metric's value per team - the win percentage, or its
+    complement for the most losses - from the standings (venue-split where
+    asked), or a tally of the games across a ``since``-bounded span; or why
+    there is none (``{"missing": ...}``)."""
+    assert span.season is not None and span.season_type is not None
+    if span.first:
+        if venue is not None:
+            raise Unsupported("a since-bounded record has no home/road split yet")
+        records = team_records(values_of(con, team_since_records_statement(span.season_type, span.first, span.last)))
+    elif venue:
+        rows = values_of(con, team_venue_records_statement(span.season, span.season_type, venue))
+        records = venue_records(rows, span.season_type)
+        if rows and not records:
+            return {"missing": "venue_split"}
+    else:
+        records = team_records(values_of(con, team_records_statement(span.season, span.season_type)))
+    values = {r.team: (r.win_pct if key == "record" else 1 - r.win_pct) for r in records}
+    return values, {r.team: {"wins": r.wins, "losses": r.losses} for r in records}
+
+
+def _team_leaderboard_metric(con: duckdb.DuckDBPyConnection, key: str, span: Span, venue: str | None) -> tuple[dict[str, float], dict[str, dict[str, Any]]] | dict[str, Any]:
+    """A season-line metric's value per team, or why there is none: a span of
+    seasons and a venue split are declined (team season stats have neither),
+    the metric's first season and a team short of games are refused."""
+    metric = TEAM_METRICS[key]
+    if span.first or span.last:
+        raise Unsupported(f"team season stats have no way to sum {metric.label} across a span of seasons yet")
+    if venue is not None:
+        # Team season stats have no home/road split; team_box_stats does.
+        raise Unsupported(f"team season stats have no {venue} split for {metric.label}")
+    assert span.season is not None and span.season_type is not None
+    if span.season < metric.first_season:
+        return {"missing": "metric_season"}
+    lines = team_lines(values_of(con, team_lines_statement(span.season, span.season_type)), span.season)
+    if lines and any(line.values.get(key) is None for line in lines):
+        return {"missing": "line", "short": short_of_games(key, lines)}
+    values = {line.team: line.values[key] or 0.0 for line in lines}
+    return values, {team: {} for team in values}
+
+
+def _team_leaderboard_ranked(span: Span, facts: dict[str, Any], values: dict[str, float], extra: dict[str, dict[str, Any]], limit: int, named: Entity | None) -> Result:
+    """The ranked rows shown: up to ``limit``, a tie at the cut shown whole -
+    "nba team with least playoff wins since 2022" with a limit of 1 listed
+    the Nets alone where the Hornets and Wizards share the zero (day5, F100)
+    - and a named team's own row past the cut where it would otherwise be
+    left out."""
+    order = ranked(values, facts["descending"])
+    shown = order[:limit]
+    shown += [row for row in order[limit:] if shown and row[0] == shown[-1][0]]
+    beyond = [row for row in order[len(shown) :] if named is not None and row[1] == named.name]
+    rows = tuple({"key": team, "rank": rank, "value": value, "beyond": index >= len(shown), **extra[team]} for index, (rank, team, value) in enumerate([*shown, *beyond]))
+    notes = (Note("definition", {"term": "rating_formula"}),) if rows and facts["metric"] in _POSSESSION_METRICS else ()
+    body = Grouped(by="team", rows=rows, ranked_by=facts["metric"])
+    return Result(subject="the league", relation="team", span=span, parts=(Part(body=body),), notes=notes, facts={**facts, "of": len(order)})

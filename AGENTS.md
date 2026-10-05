@@ -73,7 +73,10 @@ this tree:
 - **New shapes are frozen** (decision D4). No new intent, template,
   presenter, scoping table or per-intent renderer.
   `tests/query/test_frozen_shapes.py` holds the 25 intents the reader can
-  name, and since 2026-10-02 the 12 templates, the presenters (12 until
+  name, and since 2026-10-02 the templates (12; 8 since 2026-10-05, when
+  `coach` became the reading's cause and `team_outlook`, `team_stat` and
+  `team_leaderboard` readers and sayers over the team-season relations,
+  `query/team_seasons.py` and `compose/team_stats.py`), the presenters (12 until
   2026-10-03; the intents holding one are 8 since 2026-10-04, as the game
   log, `record_when`, `player_splits` and `period_split` went to readers and
   sayers, 6 once `threshold_count` and `single_game_high` did, 4 once

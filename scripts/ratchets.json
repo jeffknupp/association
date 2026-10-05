@@ -37,14 +37,13 @@
   "game_label": 1,
   "player_games": 1,
   "shotchart": 1,
-  "team_metrics": 2,
   "templates.common": 13,
   "templates.games": 7,
   "templates.netpoints": 3,
   "templates.players": 3,
   "templates.shots": 2,
   "templates.splits": 4,
-  "templates.teams": 12
+  "templates.teams": 9
  },
  "private_template_imports": [
   "compose.core:_team_slot_for_player",

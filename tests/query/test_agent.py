@@ -139,12 +139,13 @@ def test_a_team_only_intent_naming_one_player_refuses_rather_than_answering_the_
 
     reached = False
 
-    def record(ctx: Any, reading: Reading) -> Any:
+    def record(ctx: Any, reading: Reading, **_: Any) -> Any:
         nonlocal reached
         reached = True
         raise AssertionError("team_leaderboard should not run at all")
 
-    monkeypatch.setattr("association.query.agent.TEMPLATES", {"team_leaderboard": record})
+    # The compiler answers team_leaderboard (Phase 2, step 4): it is what must not be reached.
+    monkeypatch.setattr("association.query.compose.answer", record)
     answer = ask_routed(_agent_with_players(tmp_path, "Alperen Sengun"), "alperen şengün alltime record", slots_route("team_leaderboard", {"stat": "record", "limit": 1}))
     assert not reached
     assert "Alperen Sengun" in answer.text
@@ -153,7 +154,7 @@ def test_a_team_only_intent_naming_one_player_refuses_rather_than_answering_the_
 
 def test_a_team_only_intent_with_a_team_named_is_unaffected(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """A genuine team question - a `team` slot resolving to a REAL
-    franchise - runs the template normally, whatever player-shaped words
+    franchise - is answered normally (by the compiler, since Phase 2, step 4), whatever player-shaped words
     happen to also appear. A `teams` table is needed here (unlike
     `_agent_with_players`'s plain one): `_has_a_real_team` looks the team
     slot up against it, and a warehouse missing the table entirely reads as
@@ -171,7 +172,7 @@ def test_a_team_only_intent_with_a_team_named_is_unaffected(monkeypatch: pytest.
     con.close()
     agent = Agent(str(db_path), tmp_path / "out", history_dir=tmp_path / ".history")
 
-    monkeypatch.setattr("association.query.agent.TEMPLATES", {"team_leaderboard": lambda ctx, slots: TemplateResult(data={}, answer="templated")})
+    monkeypatch.setattr("association.query.compose.answer", lambda ctx, reading, **_: TemplateResult(data={}, answer="templated"))
     answer = ask_routed(agent, "alperen şengün rockets record", slots_route("team_leaderboard", {"stat": "record", "team": "Houston Rockets"}))
     assert answer.text == "templated"
 

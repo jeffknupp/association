@@ -56,8 +56,6 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
-import duckdb
-
 from .measures import STAT_ALIASES as STAT_ALIASES
 from .team_games import TEAM_GAMES_SQL as TEAM_GAMES_SQL
 
@@ -285,36 +283,6 @@ class TeamRecord:
         """Wins over games, 0 for a team with none."""
         games = self.wins + self.losses
         return self.wins / games if games else 0.0
-
-
-def season_table(con: duckdb.DuckDBPyConnection, season: int, season_type: int) -> list[TeamLine]:
-    """Every team's line for one season (:func:`association.query.team_seasons.team_lines_statement`).
-
-    .. versionadded:: 2.1.0
-
-    .. versionchanged:: 5.0.0
-       Its statement is the team-season relation's; this runs it for the
-       ``team_leaderboard`` template until that retires.
-    """
-    from association.query.team_seasons import team_lines, team_lines_statement
-
-    statement = team_lines_statement(season, season_type)
-    return team_lines(con.execute(statement.sql, statement.params).fetchall(), season)
-
-
-def record_table(con: duckdb.DuckDBPyConnection, season: int, season_type: int) -> list[TeamRecord]:
-    """Every team's record for one season (:func:`association.query.team_seasons.team_records_statement`).
-
-    .. versionadded:: 2.1.0
-
-    .. versionchanged:: 5.0.0
-       Its statements are the team-season relation's; this runs them for the
-       ``team_leaderboard`` template until that retires.
-    """
-    from association.query.team_seasons import team_records, team_records_statement
-
-    statement = team_records_statement(season, season_type)
-    return team_records(con.execute(statement.sql, statement.params).fetchall())
 
 
 def ranked(values: dict[str, float], descending: bool) -> list[tuple[int, str, float]]:

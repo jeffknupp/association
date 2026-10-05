@@ -25,8 +25,10 @@ from typing import Any
 
 from association.nba.franchises import season_name_sql
 from association.query.season_line import Statement
-from association.query.team_games import TEAM_GAMES_SQL
+from association.query.team_games import TEAM_GAMES_SQL, TeamNarrowed
+from association.query.team_games import games_subquery as team_games_subquery
 from association.query.team_metrics import POSSESSIONS, TEAM_METRICS, TURNOVERS, TeamLine, TeamRecord, games_scope
+from association.query.templates.common import _team_span_clause, span_of
 
 # --- the season line and the standings (team_seasons) ----------------------------
 
@@ -263,3 +265,76 @@ def snapshot_facts(snapshots: list[tuple[Any, ...]]) -> list[dict[str, Any]]:
        ``templates.teams._team_outlook_snapshot_facts`` (without ``holds``).
     """
     return [{"kind": BPI_SNAPSHOT_NAMES.get(k, f"type-{k}"), "date": str(u)[:10], "teams": int(n), "holds": bool(has)} for k, u, n, has in snapshots]
+
+
+def team_venue_records_statement(season: int, season_type: int, venue: str) -> Statement:
+    """Every team's home or road record for one season: the standings' own
+    ``"Home"``/``"Road"`` strings for a regular season (``(team, text)``,
+    read by :func:`venue_records`), a tally of the games for a postseason
+    (``(team, wins, losses)``).
+
+    .. versionadded:: 5.0.0
+       ``templates.teams._venue_records``' two statements, moved whole.
+    """
+    if season_type == 2:
+        column = '"Home"' if venue == "home" else '"Road"'
+        return Statement(
+            f"SELECT {season_name_sql('t.team_id', 's.season', 't.display_name')}, s.{column} FROM standings s JOIN teams t ON t.team_id = s.team_id WHERE s.season = ? ORDER BY 1", [season]
+        )
+    scope, params = games_scope(season_type, season)
+    return Statement(
+        f"{TEAM_GAMES_SQL} SELECT {season_name_sql('t.team_id', 'tg.season', 't.display_name')}, sum(won::INT), sum((NOT won)::INT) FROM team_games tg JOIN teams t ON t.team_id = tg.team_id "
+        f"WHERE {scope} AND tg.side = ? AND NOT tg.neutral GROUP BY 1 ORDER BY 1",
+        [*params, venue],
+    )
+
+
+def _record_text(text: Any) -> tuple[int, int] | None:
+    """The standings' "Home"/"Road" strings: '30-10' -> (30, 10), anything
+    else None - ``templates.teams._parse_record``'s reading, by its digits."""
+    if not isinstance(text, str):
+        return None
+    wins, dash, losses = text.strip().partition("-")
+    return (int(wins), int(losses)) if dash and wins.isdecimal() and losses.isdecimal() else None
+
+
+def venue_records(rows: list[tuple[Any, ...]], season_type: int) -> list[TeamRecord]:
+    """:func:`team_venue_records_statement`'s rows as records: a regular
+    season's standings strings read, a team whose split reads 0-0 left out
+    (every team before 1993-94, when ESPN's standings carry no split); a
+    postseason's tally as it is.
+
+    .. versionadded:: 5.0.0
+    """
+    if season_type != 2:
+        return team_records(rows)
+    parsed = [(name, _record_text(text)) for name, text in rows]
+    return [TeamRecord(team=name, wins=r[0], losses=r[1]) for name, r in parsed if r and sum(r) > 0]
+
+
+def team_since_records_statement(season_type: int, since: int, until: int | None = None) -> Statement:
+    """Every team's win-loss record across the postseasons or regular seasons
+    from ``since`` on (through ``until`` when it bounds the other end),
+    tallied straight off the team-games relation and grouped by team -
+    ``(team, wins, losses)``.
+
+    Named by the team's CURRENT display name rather than a per-season one
+    (:func:`association.nba.franchises.season_name_sql`): a total across many
+    seasons has no single season left to key a franchise name off, and every
+    "since" question measured asks about a span recent enough that the
+    current name is also the right one for all of it. LEFT JOINs from
+    ``teams``, so a team with NO games in the span (the Hornets and Wizards,
+    neither of whom made the 2022-2026 playoffs) reads 0-0 rather than
+    dropping out of a ranking of the worst records (F100, ISSUES.md).
+
+    .. versionadded:: 5.0.0
+       ``templates.teams._team_leaderboard_since_records``' statement, moved whole.
+    """
+    span = span_of(None, None, season_type, "games", since=since, until=until)
+    clause, params = _team_span_clause(span)
+    narrowed = TeamNarrowed(base=["tg.team_id IN (SELECT team_id FROM teams)", "tg.season_type = ?", clause], base_params=[season_type, *params])
+    base, sub_params = team_games_subquery(narrowed)
+    return Statement(
+        f"SELECT t.display_name, count(*) FILTER (WHERE x.won) AS wins, count(*) FILTER (WHERE NOT x.won) AS losses FROM teams t LEFT JOIN ({base}) x ON x.team_id = t.team_id GROUP BY 1",
+        sub_params,
+    )

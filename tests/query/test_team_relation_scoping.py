@@ -14,6 +14,7 @@ import inspect
 import re
 from typing import Any
 
+from association.query.compose.present import STATED_SCOPING
 from association.query.templates import TEMPLATES
 from association.query.templates.common import HONORED_SCOPING, TEAM_RELATION_SCOPING, TEAM_RELATION_SCOPING_EXCLUDED, _team_relation_scoping
 
@@ -36,7 +37,6 @@ def test_team_templates_declare_scoping_through_the_shared_helper() -> None:
     # set, `team_record` included, so it is no longer listed as its own here.
     on_the_relation = {
         "team_record": {"split", "season_type_unstated"},
-        "team_leaderboard": set(),
         "head_to_head": set(),
         # A quarter or half is the template's own cell on the team side: the
         # linescore reads one period, and the team relation has no period
@@ -57,7 +57,8 @@ def test_team_relation_scoping_helper_matches_the_declared_dict() -> None:
     reconstructing each one from the helper directly, the way the test above
     checks the dict but this checks the FUNCTION agrees with itself."""
     assert _team_relation_scoping("team_record", "split", "season_type_unstated") == HONORED_SCOPING["team_record"]
-    assert _team_relation_scoping("team_leaderboard") == HONORED_SCOPING["team_leaderboard"]
+    # team_leaderboard's reader (compose.team_stats, Phase 2, step 4) declares through the same helper.
+    assert _team_relation_scoping("team_leaderboard") == STATED_SCOPING["team_leaderboard"]
     assert _team_relation_scoping("head_to_head") == HONORED_SCOPING["head_to_head"]
     assert _team_relation_scoping("team_quarter_points", "period", "half") == HONORED_SCOPING["team_quarter_points"]
 
@@ -146,36 +147,39 @@ def test_team_record_is_exempted_from_the_shared_step_for_a_written_reason() -> 
     assert "tg.opponent_id = ?" in source, "team_record no longer narrows opponent by hand - delete this exemption and add it to _FULLY_ON_THE_SHARED_STEP"
 
 
-def test_team_leaderboard_never_narrows_opponent_or_date() -> None:
-    """``team_leaderboard`` is also not in ``_FULLY_ON_THE_SHARED_STEP`` -
-    not because it is exempted the way ``team_record`` is, but because it
-    never reaches ``common.team_games`` at all: its ordinary path reads
-    ``team_metrics.season_table``/``record_table``, and its ``since`` path
-    (``_team_leaderboard_since_records``) builds a LEAGUE-WIDE ``TeamNarrowed``
-    with no team named (the same shape ``_streak_league_by_result`` already
-    uses for streak's league branch). ``opponent`` and ``date`` are excluded
-    from its own honored set (``TEAM_RELATION_SCOPING_EXCLUDED``) precisely
-    because nothing here narrows to either. ``venue`` is checked separately
-    below: unlike the other two, team_leaderboard DOES honor it, and does so
-    by hand, predating this port."""
-    from association.query.templates.teams import team_leaderboard
+def _team_leaderboard_source() -> str:
+    """The team ranking's reader and the relation's statements it runs
+    (``compose.team_stats``, ``team_seasons``; Phase 2, step 4)."""
+    import association.query.compose.team_stats as reader
+    import association.query.team_seasons as relation
 
-    source = _source_with_private_steps(team_leaderboard)
+    return inspect.getsource(reader) + inspect.getsource(relation)
+
+
+def test_team_leaderboard_never_narrows_opponent_or_date() -> None:
+    """``team_leaderboard`` never reaches ``common.team_games`` at all: its
+    ordinary path reads the season line's and the standings' statements
+    (``team_seasons.team_lines_statement``/``team_records_statement``), and
+    its ``since`` path (``team_since_records_statement``) builds a
+    LEAGUE-WIDE ``TeamNarrowed`` with no team named. ``opponent`` and
+    ``date`` are excluded from what its words state
+    (``TEAM_RELATION_SCOPING_EXCLUDED``) precisely because nothing here
+    narrows to either. ``venue`` is checked separately below: unlike the
+    other two, team_leaderboard DOES honor it, and does so by hand,
+    predating this port."""
+    source = _team_leaderboard_source()
     for token in ("tg.opponent_id = ?", "tg.eastern_date = ?"):
         assert token not in source, f"team_leaderboard narrows the relation itself ({token!r})"
 
 
 def test_team_leaderboard_venue_narrowing_is_a_pre_existing_exemption() -> None:
-    """``team_leaderboard``'s postseason venue split (``_venue_records``, for
-    the record metrics) writes ``tg.side = ?`` directly rather than through
-    ``common.team_games`` - a real, hand-narrowed exemption like
-    ``team_record``'s opponent, and one this port did not create (it reads
-    the same way before and after step 3, C4b; only ``since`` is new here).
-    Watched the same way ``team_record``'s own exemption is: if a future
-    change moves this onto the shared step, this assertion starts failing and
-    says to delete the exemption rather than silently keep exempting nothing.
+    """``team_leaderboard``'s postseason venue split (the record metrics,
+    ``team_seasons.team_venue_records_statement``) writes ``tg.side = ?``
+    directly rather than through ``common.team_games`` - a real,
+    hand-narrowed exemption like ``team_record``'s opponent, and one this
+    port did not create. Watched the same way ``team_record``'s own
+    exemption is: if a future change moves this onto the shared step, this
+    assertion starts failing and says to delete the exemption rather than
+    silently keep exempting nothing.
     """
-    from association.query.templates.teams import team_leaderboard
-
-    source = _source_with_private_steps(team_leaderboard)
-    assert "tg.side = ?" in source, "team_leaderboard no longer narrows venue by hand - delete this exemption"
+    assert "tg.side = ?" in _team_leaderboard_source(), "team_leaderboard no longer narrows venue by hand - delete this exemption"

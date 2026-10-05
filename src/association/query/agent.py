@@ -314,22 +314,24 @@ class Agent:
         settled = self._settled_before_template(question, reading, handler, history)
         if settled is not None:
             return settled
-        if reading.intent in COMPILED_INTENTS:
-            return self._run_compiled(question, reading, history)
-        if handler is None:
-            return None
         # AGENTS.md, "Refuse by name where the intent cannot be about the
         # subject": a question naming exactly one real player and no team,
         # routed to an intent with no player reading at all, is about a
         # different subject than the one it would answer - "alperen şengün
         # alltime record" routed to team_leaderboard and answered the league
-        # standings, Sengun never read (yardstick-v2 F111).
+        # standings, Sengun never read (yardstick-v2 F111). Before the
+        # compiled intents too: the team-season intents are the compiler's
+        # since Phase 2, step 4.
         if reading.intent in TEAM_ONLY_INTENTS:
             named_player = player_named_on_a_team_only_question(self.con, question, reading.scope.to_slots())
             if named_player is not None:
                 message = team_only_question_names_a_player(named_player, reading.intent)
                 history.log(f"  -> (player) {message}")
                 return reading.intent, TemplateResult(data={"message": message, "named_player": named_player}, answer=message)
+        if reading.intent in COMPILED_INTENTS:
+            return self._run_compiled(question, reading, history)
+        if handler is None:
+            return None
         return self._run_scoped_template(question, reading, handler, history)
 
     def _reading(self, question: str, routed: Route, history: RunHistory) -> Reading:

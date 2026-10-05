@@ -27,7 +27,7 @@ from association.query.subject import Subject
 from association.query.team_metrics import TEAM_METRICS, descending_for, resolve_team_metric
 from association.query.templates.common import TemplateContext, TemplateResult, TemplateUnsupported, check_coverage, check_scope
 from association.query.templates.games import team_quarter_points
-from association.query.templates.teams import team_leaderboard, team_record
+from association.query.templates.teams import team_record
 
 
 def _compiled(intent: str) -> Callable[[TemplateContext, Reading], TemplateResult]:
@@ -57,6 +57,7 @@ record_when = _compiled("record_when")
 # The power index's reader and sayer (compose.team_stats, compose.say; Phase 2, step 4).
 team_outlook = _compiled("team_outlook")
 team_stat = _compiled("team_stat")
+team_leaderboard = _compiled("team_leaderboard")
 
 S = current_season()
 LAST = f"{S - 1}-{S % 100:02d}"
