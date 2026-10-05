@@ -321,7 +321,8 @@ the compiler's SQL" (264 of 614 execute a compiled statement; 35 hand
 statements moved whole behind `rows_of`/`values_of`, which the ratchet
 does not count, so the 105 sites are 105 still), "`STATED_SCOPING` is the
 one declaration left" (12 of 14 survive, unfrozen), the ledger (695, not
-690) - and 4 feed answers moved that no commit named (3 from the rate fix,
+690: "team"/"teams" in five questions, three `team_leaderboard` and two
+`team_outlook` - the review said three) - and 4 feed answers moved that no commit named (3 from the rate fix,
 one of them now misleading: a 20-game qualifier met by games the rate does
 not read). Its report, data and harnesses are in
 `~/association-research/reviews/phase2-2026-10-05/`, its 14 findings are
