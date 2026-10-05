@@ -24,7 +24,7 @@ from .team import TeamQuery
 
 #: The player-relation cells a team's log, splits and run refuse by name
 #: with a sentence of their own (``templates.games._team_game_log_refusals``,
-#: ``templates.splits.team_splits``, ``compose.adapt._adapt_streak``): let
+#: ``templates.splits.team_splits``, ``point._default_streak``): let
 #: through here so that sentence, which says where the question belongs, is
 #: the refusal. Anything else a team's games do not carry is refused here.
 _TEAM_READER_REFUSES: frozenset[str] = frozenset({"without", "below", "above", "season_n", "conditions"})

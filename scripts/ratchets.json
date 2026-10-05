@@ -49,8 +49,6 @@
   "templates.teams": 14
  },
  "private_template_imports": [
-  "compose.adapt:_DEFAULT_STREAK_LIMIT",
-  "compose.adapt:_streak_words",
   "compose.adapt:_with_without_named",
   "compose.core:_team_slot_for_player",
   "compose.plan:_condition_needs_player_refusal",
@@ -79,7 +77,6 @@
   "compose.splits:_condition_team_no_games",
   "compose.splits:_team_season_range",
   "compose.splits:_team_span_label",
-  "compose.team:_DEFAULT_STREAK_LIMIT",
   "compose.team:_TEAM_STREAK_SELECT",
   "compose.team:_streak_league_team_narrowed",
   "compose.team:_team_season_range",

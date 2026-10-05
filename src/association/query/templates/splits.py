@@ -13,6 +13,7 @@ import duckdb
 
 from association.nba.franchises import season_name
 from association.nba.season import current_season
+from association.query.measures import streak_column
 from association.query.reading import SPLIT_KINDS as SPLIT_KINDS
 from association.query.reading import ConditionSpec, Scope
 
@@ -68,17 +69,7 @@ def _season_of_day(day: Any) -> int:
     return day.year + 1 if day.month >= 10 else day.year
 
 
-_DEFAULT_STREAK_LIMIT = 5
-
-
 _UNSEEN_ENDS_RUN = " A game with no box score in the warehouse ends a run rather than being carried across, since it cannot be checked."
-
-
-# What the model tends to put in the required `stat` slot for "longest winning
-# streak". Anything else is a stat, and a stat with no threshold is refused
-# rather than read as a win streak - "most consecutive double-doubles" must not
-# come back as the Lakers' best run of wins.
-_RESULT_STATS = frozenset({"win", "wins", "winning", "loss", "losses", "losing", "streak", "streaks", "record", "games", "winning streak", "losing streak"})
 
 
 def _misfiled_postseason(scope: _Scope) -> TemplateResult | None:
@@ -940,36 +931,18 @@ def _record_when_team_answer(con: duckdb.DuckDBPyConnection, scope: Scope) -> Te
     return _record_when_team_answer_table(con, span, team, narrowed, stat, column, threshold, found)
 
 
-def _streak_kind(stat: str | None, threshold: int | None) -> tuple[str | None, bool, str]:
-    """Validate a streak's stat/threshold pair and derive its per-game column,
-    whether it is a stat streak at all (as against one of wins or losses), and
-    the unit its threshold is counted in.
-
-    Raises :class:`TemplateUnsupported` for a named stat with no per-game
-    column, or a stat/threshold pair that only half-names a condition -
-    "most consecutive double-doubles" must not come back as a win streak."""
-    column = THRESHOLD_STAT_COLUMNS.get(stat) if stat is not None else None
-    named_stat = stat is not None and bool(stat.strip()) and stat.strip().casefold() not in _RESULT_STATS
-    has_threshold = threshold is not None
-    if named_stat and column is None:
-        raise TemplateUnsupported(f"no per-game column for stat {stat!r}")
-    if has_threshold != (column is not None) or (threshold is not None and threshold < 1):
-        raise TemplateUnsupported(f"a streak of a stat needs both a known stat and a positive threshold, got {stat!r}/{threshold!r}")
-    by_stat = column is not None
-    unit = f"{STAT_LABELS.get(stat or '', stat or '')}s"
-    return column, by_stat, unit
-
-
 def _streak_words(scope: Scope) -> tuple[str | None, bool, str, bool, str]:
     """A streak question's settled reading, for the compiler's presenter and
     its point alike: the per-game column (``None`` for a run of results),
     whether it is a stat streak at all, the unit its threshold is counted
     in, whether wins are wanted, and the result word ("winning streak") -
-    :func:`_streak_kind`'s refusals included.
+    :func:`~association.query.measures.streak_column`'s refusals included.
 
     .. versionadded:: 5.0.0
     """
-    column, by_stat, unit = _streak_kind(scope.stat, scope.threshold)
+    column = streak_column(scope.stat, scope.threshold)
+    by_stat = column is not None
+    unit = f"{STAT_LABELS.get(scope.stat or '', scope.stat or '')}s"
     want_win = scope.kind != "loss"
     return column, by_stat, unit, want_win, "winning streak" if want_win else "losing streak"
 

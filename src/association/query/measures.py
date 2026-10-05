@@ -438,6 +438,37 @@ THRESHOLD_STAT_NAMES: frozenset[str] = frozenset({"turnovers", "fouls", "rebound
 .. versionadded:: 5.0.0
 """
 
+STREAK_RESULT_STATS: frozenset[str] = frozenset({"win", "wins", "winning", "loss", "losses", "losing", "streak", "streaks", "record", "games", "winning streak", "losing streak"})
+"""What the model tends to put in the required ``stat`` slot for "longest
+winning streak". Anything else is a stat, and a stat with no threshold is
+refused rather than read as a win streak - "most consecutive double-doubles"
+must not come back as the Lakers' best run of wins.
+
+.. versionadded:: 5.0.0
+   On the reader's side (``templates.splits._RESULT_STATS`` was this).
+"""
+
+
+def streak_column(stat: str | None, threshold: int | None) -> str | None:
+    """The per-game column a streak holds a line on (``None`` for a run of
+    wins or losses), read from the question's stat and threshold. Raises
+    :class:`~association.query.reading.Unsupported` for a named stat with no
+    per-game column, or a stat/threshold pair that only half-names a
+    condition - "most consecutive double-doubles" must not come back as a
+    win streak.
+
+    .. versionadded:: 5.0.0
+       On the reader's side (``templates.splits._streak_kind`` was this).
+    """
+    column = stat if stat in THRESHOLD_STAT_NAMES else None
+    named_stat = stat is not None and bool(stat.strip()) and stat.strip().casefold() not in STREAK_RESULT_STATS
+    if named_stat and column is None:
+        raise Unsupported(f"no per-game column for stat {stat!r}")
+    if (threshold is not None) != (column is not None) or (threshold is not None and threshold < 1):
+        raise Unsupported(f"a streak of a stat needs both a known stat and a positive threshold, got {stat!r}/{threshold!r}")
+    return column
+
+
 PLAYER_STAT_NAMES: frozenset[str] = frozenset({"turnovers", "fouls", "rebounds", "threePointFieldGoalsMade", "fieldGoalsMade", "points", "freeThrowsMade", "minutes", "steals", "blocks", "assists"})
 """The stats the season line reads for one player, by name
 (``templates.common.PLAYER_STAT_COLUMNS`` says the columns).

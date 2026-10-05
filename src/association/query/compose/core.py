@@ -48,7 +48,7 @@ from association.query.measures import BOOLEAN_MEASURES as BOOLEAN_MEASURES
 from association.query.measures import GAME_COLUMNS, LABEL_MEASURES
 from association.query.measures import LINE as LINE
 from association.query.player_games import PERIOD_COLUMNS, PERIOD_RATES, REBUILT_STATS, REGULATION_QUARTERS, Narrowed, aggregate_sql, games_subquery, grouped_sql, named, paired_rows_sql, rows_sql
-from association.query.reading import Scope
+from association.query.reading import DEFAULT_NAMED_RUNS, Scope
 from association.query.reading import Unsupported as Unsupported
 from association.query.templates.common import (
     BOX_SCORES,
@@ -892,15 +892,6 @@ def _compile_grouped(q: Query, narrowed: Narrowed, rebuilt: bool, player: Entity
     return Compiled(sql, params, player, span, narrowed, rebuilt, list(q.measures))
 
 
-#: How many runs a named player's or team's answer lists - the longest and
-#: any that tie it (``templates.splits._single_streak`` shows the ties).
-DEFAULT_NAMED_RUNS = 3
-"""The runs read for one named subject: the longest, plus two to tie it.
-
-.. versionadded:: 5.0.0
-"""
-
-
 def run_scope(scope: Scope, *, named: bool) -> Any:
     """The games a run is read over, as the streak template's own
     :class:`~association.query.conditions._Scope`: a named player's honors
@@ -931,7 +922,7 @@ def _compile_run(q: Query, narrowed: Narrowed, box: BoxSource, player: Entity | 
 
     The predicate is ``(column, ">=", threshold)`` for a line, or
     ``("won", "=", True|False)`` for a run of wins or losses in the games he
-    played. ``limit`` is how many runs come back (:data:`DEFAULT_NAMED_RUNS`
+    played. ``limit`` is how many runs come back (:data:`~association.query.reading.DEFAULT_NAMED_RUNS`
     for a named player).
 
     .. versionadded:: 5.0.0

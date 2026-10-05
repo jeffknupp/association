@@ -61,13 +61,13 @@ from association.nba.season import current_season
 from association.query.conditions import _PLAYER_GAME_TABLES, _longest_runs
 from association.query.entities import Entity
 from association.query.entities import team_named_in as team_named_in
-from association.query.reading import Scope, _clamp_limit
+from association.query.reading import DEFAULT_STREAK_LIMIT, Scope, _clamp_limit
 from association.query.team_games import TeamNarrowed
 from association.query.team_games import aggregate_sql as team_aggregate_sql
 from association.query.team_games import named as team_named
 from association.query.templates.common import ResolvedSpan, TemplateResult, TemplateUnsupported, resolved_team, scoped_team, span_of, whole_span
 from association.query.templates.common import team_games as narrow_team_games
-from association.query.templates.splits import _DEFAULT_STREAK_LIMIT, _TEAM_STREAK_SELECT, PresenceSplit, _streak_league_team_narrowed, _team_season_range, _with_without_read
+from association.query.templates.splits import _TEAM_STREAK_SELECT, PresenceSplit, _streak_league_team_narrowed, _team_season_range, _with_without_read
 
 from .core import Refused, Unsupported
 
@@ -417,7 +417,7 @@ def _compile_team_run(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> TeamResul
         team = None
         span = span_of(scope.span, scope.season, scope.season_type or 2, "games", since=scope.since, until=scope.until)
         narrowed = _streak_league_team_narrowed(span)
-        limit, best = _clamp_limit(scope.limit, _DEFAULT_STREAK_LIMIT), True
+        limit, best = _clamp_limit(scope.limit, DEFAULT_STREAK_LIMIT), True
     base, params = team_named(*team_aggregate_sql(narrowed, list(_TEAM_STREAK_SELECT)))
     games, first, last = _team_season_range(con, base, params, span)
     runs = _longest_runs(con, base, {**params, **condition}, ("team_id", "season"), hit, limit, best_per_partition=best) if games else []

@@ -311,12 +311,12 @@ STATED_SCOPING: dict[str, frozenset[str]] = {
     # streak's words: the relation's set less one date, a window and a
     # quarter (RELATION_SCOPING_EXCLUDED: a run is a run of whole games over
     # every game in the span), which its point refuses outright
-    # (compose.adapt._adapt_streak); its team and league branches refuse
+    # (point._default_streak); its team and league branches refuse
     # the cells only a named player's games settle, by name, there too.
     "streak": relation_scoping("streak"),
     # player_matchup's words: the relation's set less a third team, a window,
     # an ordinal season and a quarter (RELATION_SCOPING_EXCLUDED), which its
-    # point refuses outright (compose.adapt._adapt_player_matchup).
+    # point refuses outright (point._default_player_matchup).
     "player_matchup": relation_scoping("player_matchup"),
     # with_without's words: a career, the teammates, one opponent and a
     # companion's role, the template's own declaration when it retired.

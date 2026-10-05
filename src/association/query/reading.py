@@ -731,6 +731,22 @@ DEFAULT_SINGLE_GAME_LIMIT = 3
    Lives on the reader's side (``templates.players`` re-exports it).
 """
 
+DEFAULT_STREAK_LIMIT = 5
+"""How many runs the league's longest streaks list by default - one per
+player, or one per team-season.
+
+.. versionadded:: 5.0.0
+   On the reader's side (``templates.splits._DEFAULT_STREAK_LIMIT`` was this).
+"""
+
+DEFAULT_NAMED_RUNS = 3
+"""How many runs a named player's or team's streak reads: the longest, plus
+two to tie it (the sayer shows the ties).
+
+.. versionadded:: 5.0.0
+   On the reader's side (``compose.core.DEFAULT_NAMED_RUNS`` was this).
+"""
+
 
 def _clamp_limit(limit: int | None, default: int = DEFAULT_LIMIT) -> int:
     if limit is None:

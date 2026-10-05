@@ -26,6 +26,7 @@ from collections.abc import Callable
 from dataclasses import replace
 from typing import TYPE_CHECKING, Any, Literal
 
+from association.nba.season import current_season
 from association.query.compose.adapt import _to_reading_scope
 from association.query.entities import BOX_SCORES, SHOT_AVAILABILITY
 from association.query.lines import measure_filters, threshold_count_line
@@ -45,12 +46,15 @@ from association.query.measures import (
     resolve_metric,
     stat_column,
     stat_measure,
+    streak_column,
 )
 from association.query.metrics import PER_GAME_MIN_GAMES, TEAM_FIELD_WORDS
 from association.query.reading import (
     DEFAULT_GAME_LOG_LIMIT,
     DEFAULT_LIMIT,
+    DEFAULT_NAMED_RUNS,
     DEFAULT_SINGLE_GAME_LIMIT,
+    DEFAULT_STREAK_LIMIT,
     TEAM_ONLY_INTENTS,
     Aggregate,
     Cause,
@@ -911,6 +915,94 @@ def _default_single_game_high(scope: Scope) -> Reading:
     )
 
 
+def _streak_season(scope: Scope) -> int | None:
+    """The season a named player's run is settled in, ``None`` for every
+    season - the season the relation's own span for a run reads
+    (``compose.core.run_scope``): ``since`` is every season from that one
+    on, and refused beside a named season rather than silently preferring
+    one; an ordinal season ("his 5th season") is read over his career; no
+    season is this one, except for a career."""
+    if scope.since:
+        if scope.season:
+            raise Unsupported(f"since {scope.since} and the {scope.season} season at once")
+        return None
+    if scope.season is not None:
+        return scope.season
+    return None if ("career" if scope.season_n else scope.span) == "career" else current_season()
+
+
+def _default_streak(scope: Scope) -> Reading:
+    """``streak``'s default point: the longest run of consecutive games
+    meeting one condition (the ``run`` shape), on the relation the question
+    names. A named player's is over his games (a stat at or above its
+    threshold, or his team's wins in games he played); a named team's is
+    its own run of wins or losses within a season, on the team relation;
+    nobody named is the league's - each player's or each team-season's own
+    longest, the count asked for or :data:`~association.query.reading.DEFAULT_STREAK_LIMIT`.
+    A stat with no threshold or a threshold with no stat is declined
+    (:func:`~association.query.measures.streak_column`), and so is a team's
+    run of a stat; the narrowings a run cannot take are the planner's
+    (:func:`~association.query.compose.plan._shape_declines`).
+
+    .. versionadded:: 5.0.0
+       On the reader's side (``compose.adapt._adapt_streak`` was this).
+    """
+    column = streak_column(scope.stat, scope.threshold)
+    want_win = scope.kind != "loss"
+    predicates: list[tuple[str, str, Any]] = [(column, ">=", scope.threshold)] if column is not None else [("won", "=", want_win)]
+    if _named_player_in(scope):
+        season = _streak_season(scope)
+        return Reading(
+            scope=scope,
+            shape="run",
+            measures=[],
+            aggregate="none",
+            group="none",
+            predicates=predicates,
+            limit=DEFAULT_NAMED_RUNS,
+            available=BOX_SCORES,
+            span="career" if season is None else None,
+            season=season,
+        )
+    if scope.team and scope.team.strip():
+        if column is not None:
+            raise Unsupported("a team's streak is of wins or losses, not of a stat")
+        return Reading(scope=scope, shape="run", measures=["won"], aggregate="count", group="none", predicates=predicates, relation="team")
+    limit = _clamp_limit(scope.limit, DEFAULT_STREAK_LIMIT)
+    if column is not None:
+        return Reading(scope=scope, shape="run", measures=[], aggregate="none", group="none", predicates=predicates, limit=limit, relation="everyone")
+    return Reading(scope=scope, shape="run", measures=["won"], aggregate="count", group="none", predicates=predicates, limit=limit, relation="team")
+
+
+def _default_player_matchup(scope: Scope) -> Reading:
+    """``player_matchup``'s default point: two named players' lines over the
+    games they met in, on opposite teams (the ``pair`` shape), the names
+    settled over the box scores, and over the career when a date names the
+    game (a date replaces the season, the way ``game_log``'s own does).
+    Fewer or more than two names is declined; the narrowings a matchup
+    cannot take are the planner's, and two names that resolve to one
+    person are declined as the pair is settled (``compose.core._resolve_pair``).
+
+    .. versionadded:: 5.0.0
+       On the reader's side (``compose.adapt._adapt_player_matchup`` was this).
+    """
+    texts = list(dict.fromkeys(n.strip() for n in [*scope.players, scope.player] if n is not None and n.strip()))
+    if len(texts) != 2:
+        raise Unsupported(f"player_matchup needs exactly two players, got {texts!r}")
+    dated = bool(scope.date)
+    return Reading(
+        scope=scope,
+        shape="pair",
+        measures=[],
+        aggregate="none",
+        group="none",
+        predicates=[],
+        available=BOX_SCORES,
+        span="career" if dated else scope.span,
+        season=None if dated else scope.season,
+    )
+
+
 DEFAULT_POINTS: dict[str, Callable[[Scope], Reading]] = {
     "game_log": _default_game_log,
     "player_stat": _default_player_stat,
@@ -919,11 +1011,13 @@ DEFAULT_POINTS: dict[str, Callable[[Scope], Reading]] = {
     "period_split": _default_period_split,
     "threshold_count": _default_threshold_count,
     "single_game_high": _default_single_game_high,
+    "streak": _default_streak,
+    "player_matchup": _default_player_matchup,
 }
 """Intent -> its default point, for the shapes whose default the reader
-reads itself (Phase 2, step 1: slice (i)'s five; step 2: ``threshold_count``
-and ``single_game_high``). The rest are ``compose.adapt``'s until their
-slice lands.
+reads itself (Phase 2, step 1: slice (i)'s five; step 2: ``threshold_count``,
+``single_game_high``, the streak and the matchup). The rest are
+``compose.adapt``'s until their slice lands.
 
 .. versionadded:: 5.0.0
 """
@@ -1227,8 +1321,8 @@ def _read_point(intent: str, scope: Scope, question: str, subject: Subject) -> R
     if intent in ("streak", "player_matchup", "with_without"):
         # The retired templates read their slots alone, so no word moves the
         # point: a player's, a team's or the league's longest run
-        # (compose.adapt._adapt_streak), two players' meetings
-        # (_adapt_player_matchup), or a team's record with and without a
+        # (_default_streak), two players' meetings
+        # (_default_player_matchup), or a team's record with and without a
         # teammate (_adapt_with_without).
         return default_point(intent, scope)
     if not _named_player_in(scope):
