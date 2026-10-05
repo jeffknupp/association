@@ -75,18 +75,25 @@ this tree:
 - **New shapes are frozen** (decision D4). No new intent, template,
   presenter, scoping table or per-intent renderer.
   `tests/query/test_frozen_shapes.py` holds the 25 intents the reader can
-  name and the page's 22 renderers, each of which retires with its slice
-  and none of which is added; and that `templates/` and
-  `compose/present.py` do not come back. Phase 2 (2026-10-03 to
-  2026-10-05) removed what the rest of the freeze held: the twelve
-  templates (the registry stood empty after the shot chart, and step 6
-  deleted it with `check_scope`, `HONORED_SCOPING` and the `templates`
-  package), the presenters and `compose/present.py`, the ten adapters and
-  `compose/adapt.py`, and the freeze of fourteen scoping declarations -
-  what remains of those is the per-relation cell tables the roadmap keeps
+  name, the page's 22 renderers and the 12 scoping declarations left in
+  `src` (by module and name, read from the source), each of which retires
+  with its slice and none of which is added; and that `templates/`,
+  `compose/present.py` and `compose/adapt.py` do not come back as source
+  files. Phase 2 (2026-10-03 to 2026-10-05) removed the twelve templates
+  (the registry stood empty after the shot chart, and step 6 deleted it
+  with `check_scope`, `HONORED_SCOPING` and the `templates` package), the
+  presenters and `compose/present.py`, and the ten adapters and
+  `compose/adapt.py`. Step 6 deleted the scoping freeze too while 12 of its
+  14 declarations were still there; restored 2026-10-05, it labels each
+  one: 4 are the per-relation cell tables the roadmap keeps
   (`RELATION_SCOPING*` on `query/player_relation.py`,
-  `TEAM_RELATION_SCOPING*` on `query/team_relation.py`) and the planner's
-  `STATED_SCOPING`, which Phase 3's cells replace. A P1 wrong answer is
+  `TEAM_RELATION_SCOPING*` on `query/team_relation.py`), 2 are the
+  planner's `STATED_SCOPING` and its `with_without` row
+  (`WITH_WITHOUT_STATED`), which Phase 3's cells replace, and 6 are debt,
+  each naming the step that owes its deletion (`compose.plan`'s
+  `_TEAM_READER_REFUSES`, `compose.core.COMPILER_SLOTS`,
+  `reading.SCOPING_SLOTS`, `coverage._BOX_SCORE_SCOPING`,
+  `conditions._CONDITION_PLAYER_ONLY_CELLS`, `router._MODEL_SLOTS`). A P1 wrong answer is
   still fixed, in the code that exists. The sections below describe the
   readers and the sayer, because they are what runs; they are not an
   invitation to add a shape.

@@ -207,7 +207,6 @@ to this section, re-read the P2s against the P1 definition: that is how both of
 those were found.
 - **GitHub:** #114
 
-
 ### A team's single-game high is answered for this season only, and does not name the team: "most points in a game in cavs history"
 - **Found:** 2026-09-21, live fast-path sample `~/association-research/statmuse-2026-09-large/live_sample200_2026-09-21/` (200 seeded-random reasonable StatMuse questions through the live router and templates on master `31b2ec6`); re-measured 2026-09-27 on the compiler, which answers `single_game_high` alone (plan item 6, step (d), part 4).
 - **Evidence:** the router-era template ignored `team` and answered the league's high ("Bam Adebayo ... 83") for "most points in a game in cavs history", "most points in a game by a knicks playter" and "most points in a game in pistons history power forward". The compiler narrows to the team's players now - `compose.answer(ctx, "single_game_high", {"stat": "points", "team": "Cleveland Cavaliers", "season_type": 2}, "most points in a game in cavs history")` answers "Donovan Mitchell had the most points in a single game in the 2026 regular season: 48, on 2025-12-12 vs WSH. Next: Donovan Mitchell (46), Donovan Mitchell (45)." (the main warehouse) - but "history" is not read as a career, and the sentence never says the games are the Cavaliers'. 65 of 1,972 reasonable large-set questions (3.3%) say history/all-time/franchise.
@@ -2474,14 +2473,6 @@ those were found.
 - **Next step:** count a `rows_of`/`values_of` call over a `Statement` as a statement of the module that builds it, listed per module; regenerate the list once with Jeff's say-so.
 - **GitHub:** #329
 
-### The scoping-declaration freeze was deleted with 12 of its 14 declarations still in `src`
-- **Found:** 2026-10-05, the Phase 2 review (`~/association-research/reviews/phase2-2026-10-05/REVIEW.md`)
-- **Evidence:** `test_frozen_shapes.py` froze 14 scoping declarations by module and name; step 6 (`1fae3b9`) deleted the freeze, while AGENTS.md and the test's docstring say only the per-relation cell tables and `STATED_SCOPING` remain. 12 exist, 8 of them not cell tables; a 13th can be added with nothing failing.
-- **User sees:** nothing; a tooling gap.
-- **Next step:** restore the freeze over the declarations that exist, naming each as a cell table, `STATED_SCOPING`, or debt to delete; correct AGENTS.md.
-- **GitHub:** #330
-
-
 ### A team's log drops a calendar, quarter or half narrowing silently
 - **Found:** 2026-10-05, porting the team log onto the team compiler (Phase 2, step 4)
 - **Evidence:** `compose/logs.py` `read_team_log` narrows the team's games with `Scope(venue=...)` and the opponent/date alone (`team_games`), while `compose.plan.STATED_SCOPING["game_log"]` declares `situation`, `period` and `half` as stated - so a team log asked "in January" or "in the 4th quarter" lists the whole span under a heading that does not say so. It was the retired template's behavior too; not measured on any population yet.
@@ -3476,7 +3467,6 @@ those were found.
   `team_words()` and the `teams` argument to `candidates()`; runs offline.
 - **GitHub:** #136
 
-
 ### `limit` is not a scoping slot, so a template that ignores it does so silently
 - **Found:** 2026-09-18, merging the StatMuse scoping branches and re-measuring
 - **Evidence:** `SCOPING_SLOTS` (`templates/common.py:87`) holds `order`,
@@ -3524,7 +3514,6 @@ those were found.
   notion of `limit` > 1. See also the `single_game_high`/`team` entry under P1.
 - **GitHub:** #125
 
-
 ### `stat` is the same unguarded shape as `limit`, and the enum-required slot makes it worse
 - **Found:** 2026-09-18, while routing "game score" (#114) and checking
   whether the required-slot mechanism that fixed it could hide the same
@@ -3557,7 +3546,6 @@ those were found.
   wrong answer - re-rank to P1/P2 if the audit finds a template that trusts
   `stat` unchecked.
 - **GitHub:** #126
-
 
 ### Plus/minus can be neither ranked nor looked up, though the data is complete
 - **Found:** 2026-09-18, while making the computed advanced stats lookup-able
