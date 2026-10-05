@@ -123,7 +123,7 @@ this tree:
   `measures.STAT_ALIASES`, `PERIOD_COLUMNS`, the metric and measure
   aliases and `resolve_metric`/`stat_measure`). A new one fails; an
   ignore is not the way past it.
-- **A change to the pipeline is proven stage by stage, on two
+- **A change to the pipeline is proven stage by stage, on four
   populations.** `scripts/stage_snapshots.py run OUT.jsonl` answers the 628
   recorded questions through the whole agent with no model (the
   normalizer's recorded replies, the date pinned, DuckDB single-threaded,
@@ -136,14 +136,35 @@ this tree:
   the re-planned query as `Agent.ran` until step 4), the result's values,
   the answer. `compare` reports
   the first stage each question differs in and exits 1. The second
-  population is every call the unit tests make across a stage boundary:
-  run the suite on each tree with `ASSOCIATION_STAGE_CALLS=<dir>` and
-  `compare-calls` the two directories. Three things to hold to:
+  population is every call the unit tests make across a stage boundary
+  (`tests/stage_calls.py`: the parser's two steps, the planner's
+  `plan_point` and `refusal_result`, `compose.answer` with the reason it
+  declined by, `Agent.ask`): run the suite on each tree with
+  `ASSOCIATION_STAGE_CALLS=<dir>` and `compare-calls` the two
+  directories. The planner joined on 2026-10-05 (#331): the refusals the
+  templates said are the planner's since Phase 2, and 93 tests recorded
+  no refusal, decline or answer text until then (1,408
+  calls became 2,554: 1,085 `plan_point`, 61 `refusal_result`, the 1,408
+  identical). The third is the 2,710 readings,
+  `~/association-research/stages/reader_pop.py` (the 628 and the 2,082
+  questions outside them, read and planned, no answer; `reader_cmp.py`
+  compares two, in seconds). The fourth is those 2,082 ANSWERED:
+  `run --feed OUT.jsonl` answers them as `run` answers the 628, from
+  `~/association-research/stages/feed_recorded.jsonl` (`feed_replies.py`
+  writes it: the StatMuse feed with no names and no stat, which no model
+  was asked, and 15 franchise and companion wordings with theirs - tree
+  against tree on equal input, not production's answer), about four and
+  a half minutes a tree, and `compare` reads it unchanged. It is the one
+  that sees an answer move on a question the corpus does not hold: the
+  Phase 2 review found 4 moved answers no commit named there (#332).
+  Three things to hold to:
   - **Run the "before" tree, not a stored file.** The baseline is
     `PYTHONPATH=<before>/src ... run before.jsonl`, and the first line of
     each file says which copy of the code it read; check it. Measured
     2026-09-30: two runs of one tree are identical on both populations
-    (628 of 628 questions, text included; 1,363 of 1,363 calls), so ANY
+    (628 of 628 questions, text included; 1,363 of 1,363 calls), and on
+    2026-10-05 two copies of one tree on the other two (2,082 of 2,082
+    feed answers; 2,554 of 2,554 calls with the planner), so ANY
     difference is the change.
   - **Identical means identical.** `--values-only` leaves the sentences
     out, and is only for a change the roadmap allows to reword an answer

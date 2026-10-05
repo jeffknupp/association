@@ -26,6 +26,15 @@ ollama build on one machine (53 of 628 moved between two, 2026-10-02), and
 a lowering or a sort can move with the interpreter or the engine.
 ``compare`` warns when two runs differ in any of them.
 
+``run --feed`` answers the fourth population instead (ISSUES.md #332): the
+2,082 questions the readings population (``reader_pop.py``) reads beyond
+the corpus - the StatMuse feed's 2,067 distinct questions of three or more
+words and 15 franchise and companion wordings - from the replies
+``~/association-research/stages/feed_replies.py`` writes (no names and no
+stat for the feed, which no model was asked: tree against tree on equal
+input, not production's answer), about four minutes a tree. The record is
+the same snapshot, so ``compare`` reads it unchanged.
+
 ``compare-calls`` is the same comparison over the second population a
 change is proven on: every call the unit tests make across a stage boundary,
 recorded by running the suite with ``ASSOCIATION_STAGE_CALLS=<dir>``
@@ -63,6 +72,7 @@ from typing import Any
 RECORDED_DIR = Path.home() / "association-research" / "parser-greenfield"
 DEFAULT_RECORDED = tuple(RECORDED_DIR / name for name in ("normalizer_qwen2.5_3b.jsonl", "normalizer_corpus_qwen2.5_3b.jsonl", "normalizer_paraphrases_qwen2.5_3b.jsonl"))
 DEFAULT_TODAY = "2026-09-30"
+FEED_RECORDED = Path.home() / "association-research" / "stages" / "feed_recorded.jsonl"
 
 
 def _recorded_replies(paths: list[Path]) -> dict[str, dict[str, Any]]:
@@ -314,6 +324,7 @@ def main() -> int:
     run_parser.add_argument("--today", default=DEFAULT_TODAY, help="the date the run answers as (ASSOCIATION_TODAY)")
     run_parser.add_argument("--threads", type=int, default=1)
     run_parser.add_argument("--match", action="append", help="only questions containing this text (repeatable)")
+    run_parser.add_argument("--feed", action="store_const", dest="recorded", const=[FEED_RECORDED], help=f"answer the 2,082 feed questions instead ({FEED_RECORDED})")
     run_parser.set_defaults(func=run)
     compare_parser = commands.add_parser("compare", help="report the first stage each question differs in between two runs")
     compare_parser.add_argument("before", type=Path)

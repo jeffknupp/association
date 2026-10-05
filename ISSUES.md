@@ -2488,20 +2488,6 @@ those were found.
 - **Next step:** restore the freeze over the declarations that exist, naming each as a cell table, `STATED_SCOPING`, or debt to delete; correct AGENTS.md.
 - **GitHub:** #330
 
-### The unit-test call population does not record the planner
-- **Found:** 2026-10-05, the Phase 2 review (`~/association-research/reviews/phase2-2026-10-05/REVIEW.md`)
-- **Evidence:** 40 tests whose refusal was once a recorded template call now raise in `compose.plan` and record nothing (review, 1d): `tests/stage_calls.py` records `compose:answer` and the parser boundaries only.
-- **User sees:** nothing; a proof blind spot.
-- **Next step:** add `compose.plan:plan_point` to `tests/stage_calls.py` (recorded on both sides first).
-- **GitHub:** #331
-
-### The proof compares the 2,082 feed questions as readings, never as answers
-- **Found:** 2026-10-05, the Phase 2 review (`~/association-research/reviews/phase2-2026-10-05/REVIEW.md`)
-- **Evidence:** 4 feed answers moved over Phase 2 with no commit naming them (3 rate figures from `c6e9253`, 1 note from `4db543a`); `reader_pop.py` records the reading and the planned query only. An answered run is about 4 minutes a tree (review, 1c, `data/feed-*.jsonl.gz`).
-- **User sees:** nothing directly; a change can move a feed answer unseen.
-- **Next step:** add an answered feed run (names from the reading, no model) to the populations a change is proved on, with its own compare.
-- **GitHub:** #332
-
 ### `test_no_presenter_or_renderer_is_added` fails in a checkout holding a stale `query/templates/__pycache__`
 - **Found:** 2026-10-05, the Phase 2 review (`~/association-research/reviews/phase2-2026-10-05/REVIEW.md`)
 - **Evidence:** the main checkout today: `importlib.util.find_spec` finds a namespace package for the ignored directory. The test passes on a clean export.

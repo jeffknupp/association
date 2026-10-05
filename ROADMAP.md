@@ -350,6 +350,16 @@ question re-reads in `agent.py` onto the Reading - is Phase 3's own first
 item, since the Reading has to carry those values. (c) is taken in passing
 by whoever is in the file.
 
+**From (b)2 and (b)3 on (2026-10-05), every step is proven on four
+populations, base against tip, identical text and remarks included:** the
+628 recorded questions answered (`scripts/stage_snapshots.py run`,
+`compare`); every unit-test call across a stage boundary, the planner's
+`plan_point` and `refusal_result` among them (`ASSOCIATION_STAGE_CALLS`,
+`compare-calls`); the 2,710 readings (`reader_pop.py`, `reader_cmp.py`);
+and the 2,082 feed questions answered (`stage_snapshots.py run --feed`,
+`compare`; about four and a half minutes a tree). The brief the lead
+gives an agent names all four.
+
 **Phase 2, the expected steps (written 2026-10-03, before the phase; each
 step is re-planned in its own row as it lands, as Phase 1's were).** The
 unit of work is one intent: its reader and sayer written, measured both
