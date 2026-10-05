@@ -885,6 +885,26 @@ agents' reports named here are in `~/association-research/stages/`.
     6's. One P1 found by a measurement harness, not by a user: a date
     written as numbers is never read (#323).
 
+19. **Phase 2, step 6 - the exit (2026-10-05).** One Opus agent on
+    `893557d`. With `TEMPLATES` empty the shell was all that was left, and
+    it went in an order chosen to move each name once: the result and
+    context types to `query/answer.py` first (`Reply`, `AnswerContext`),
+    then `check_scope`, `HONORED_SCOPING`, `TEMPLATES` and the agent's
+    template branch deleted (they declared and ran nothing), then the
+    relations' shared steps moved home - 96 names, public, no alias kept -
+    and `templates/` deleted with them. Measured before each commit and
+    after, on the three populations: identical but for one refusal
+    reworded ("has no template yet" named a missing template; "has no
+    reader" now, 5 unit-test calls) and one renamed test. Costs: two new
+    modules, `player_relation.py` and `team_relation.py`, beside the
+    relations rather than in them (size, and a cycle through `conditions`);
+    `unhonored_scoping` on the reader's side because `plan.py` imports
+    every reader; the SQL ratchet's two new entries hand-edited, the
+    statements moved and not grown. What the agent found: the import
+    contract that keeps the sayer off the warehouse cannot be checked on
+    chains yet - `compose.say` takes constants from four modules that hold
+    statements too; about 150 docstrings still say "template" as history.
+
 ## The plan items, as written
 
 In order of lift per unit of structural change, each measured on the
