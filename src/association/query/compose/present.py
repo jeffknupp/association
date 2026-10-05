@@ -17,12 +17,12 @@ removes. The
 subject, the span and every narrowing are the compiler's
 (:func:`~association.query.compose.core.compile_query`, through the shared
 steps in :mod:`association.query.templates.common`); the numbers are either
-the compiler's own rows (``single_game_high``, ``threshold_count``, whose
-templates have no reader separate from their orchestration) or the template's
-own reader over the compiler's narrowing (the ported shapes - the game log,
-a record over a line, splits, a player's narrowed line - went to readers
-and the sayer, ``compose.logs``/``records``/``splits``/``stats`` and
-``compose.say``); and every
+the compiler's own rows (``single_game_high``, whose template has no
+reader separate from its orchestration) or the template's own reader over
+the compiler's narrowing (the ported shapes - the game log, a record over
+a line, splits, a player's narrowed line, a quarter, a count over a line -
+went to readers and the sayer, ``compose.logs``/``records``/``splits``/
+``stats``/``periods``/``counts`` and ``compose.say``); and every
 sentence, caveat and ``data`` key
 comes from the template's own phrasing helpers - one definition each, never a
 second copy here.
@@ -37,13 +37,11 @@ refused), and the compiler's generic sentence answers instead, as before.
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any
 
 import duckdb
 
 from association.nba.season import eastern_date
 from association.query.conditions import _meeting_rows, _teammate_games, _totals
-from association.query.lines import threshold_count_line
 from association.query.measures import stat_measure
 from association.query.player_games import REBUILT_STATS
 from association.query.reading import Scope
@@ -66,21 +64,18 @@ from association.query.templates.players import (
     ADVANCED_STATS,
     SHOOTING_STATS,
     LeaderboardStepsAside,
-    _empty_box_scores,
     _game_span,
     _leaderboard_ranking,
-    _phrase_threshold_count,
     _player_compare_lines,
     _player_history_read,
     _player_history_subject,
     _player_stat_season_line,
     _player_stat_season_line_subject,
-    _rebuilt_in_scope,
     _single_game_high_answer,
     _single_game_high_redirect,
     _single_game_high_result_data,
-    _threshold_count_lines,
-    _threshold_count_notes,
+    empty_box_scores,
+    rebuilt_in_scope,
     wanted_stats,
 )
 from association.query.templates.splits import (
@@ -312,90 +307,18 @@ def _present_single_game_high(con: duckdb.DuckDBPyConnection, q: Query) -> Templ
     game_span = _game_span(con, season, season_type, player)
     shape = f"most {label}s in a single game" + (f", {name}" if name else "") + f", {game_span.caption}"
     player_id = player.id if player is not None else None
-    empty = _empty_box_scores(con, season, season_type, player_id, covered_by_rebuild=from_rebuilt)
-    withheld = 0 if games or column in REBUILT_STATS else _rebuilt_in_scope(con, season, season_type, player_id)
+    empty = empty_box_scores(con, season, season_type, player_id, covered_by_rebuild=from_rebuilt)
+    withheld = 0 if games or column in REBUILT_STATS else rebuilt_in_scope(con, season, season_type, player_id)
     headline = _single_game_high_answer(games, label, game_span, name, empty=empty, withheld=withheld)
     redirect = _single_game_high_redirect(con, defaulted, player, games, empty, withheld, season_type)
     data = {"question_shape": shape, "season": season, "span": "career" if career else None, "stat": stat, "games": games, "empty_box_scores": empty[0]}
     return TemplateResult(data=_single_game_high_result_data(data, headline, redirect), answer=headline + redirect)
 
 
-def _threshold_count_is_own_point(q: Query, column: str) -> bool:
-    """Whether ``q`` counts exactly the games ``threshold_count`` counts: the
-    router's own stat at its own threshold (or a below/above line carrying
-    that threshold instead, which the template reads as the count), for one
-    player or grouped by player over the league - nothing the question's
-    words added."""
-    threshold = q.scope.threshold
-    counted = [(column, ">=", threshold)] if threshold is not None else []
-    if q.predicates not in (counted, []) or q.position:
-        return False
-    if q.subject == "player":
-        return q.skeleton == "scalar" and q.aggregate == "count"
-    return q.skeleton == "grouped" and q.aggregate == "count" and q.group == "player"
-
-
-def _present_threshold_count(con: duckdb.DuckDBPyConnection, q: Query) -> TemplateResult | None:
-    """``threshold_count``'s own sentence and ``data`` over the compiler's
-    count - one player's, or the league's by player - with the template's
-    span, empty-box-score, withheld-stat and rebuilt-line notes, each from
-    its own helper."""
-    scope = q.scope
-    stat = scope.stat
-    try:
-        # The count's column and threshold, read the one way the template
-        # reads them: a below/above phrase may be the whole line, with no
-        # threshold at all ("Sga games with under 14 fta").
-        column, threshold = threshold_count_line(scope)
-    except TemplateUnsupported:
-        return None
-    if not _threshold_count_is_own_point(q, column):
-        return None
-    try:
-        _, _, scope_text = _threshold_count_lines(stat, threshold, scope.below, scope.above)
-    except TemplateUnsupported:
-        return None
-    out = run(con, q)
-    span: ResolvedSpan = out["span"]
-    player = out["entity"]
-    season, season_type, ordinal = _count_season(scope, span)
-    rows = _present_threshold_count_rows(q, out)
-    player_name = player.name if player is not None else None
-    game_span = _game_span(con, season, season_type, player, ordinal=ordinal)
-    empty = _empty_box_scores(con, season, season_type, player.id if player is not None else None, covered_by_rebuild=bool(out["rebuilt"]))
-    phrase = game_span.preface + _phrase_threshold_count(rows, scope_text, game_span.when, player_name)
-    notes = _threshold_count_notes(con, (season, season_type), player, rows, column, STAT_LABELS.get(stat or "", stat or ""), game_span, empty)
-    data = {
-        "question_shape": f"games with {scope_text}, {game_span.caption}",
-        "season": season,
-        "span": "career" if season is None else None,
-        "leaders": [{"player": name, "games": games} for name, games, _ in rows],
-        "empty_box_scores": empty[0],
-        "rebuilt_games": rows[0][2] if rows else 0,
-        # The trailing "Next: ..." restates the table in prose - not the headline.
-        "headline": phrase.split(" Next: ")[0],
-        "notes": notes,
-    }
-    return TemplateResult(data=data, answer=" ".join([phrase, *notes]))
-
-
-def _present_threshold_count_rows(q: Query, out: dict[str, Any]) -> list[tuple[Any, int, int]]:
-    """The compiler's count as ``threshold_count``'s own rows - ``(name,
-    qualifying games, rebuilt games among them)``, most first: one row for a
-    named player with any, none for one with none, one per player for the
-    league."""
-    player = out["entity"]
-    if q.subject == "player":
-        games = int(out["rows"][0].get("games") or 0) if out["rows"] else 0
-        return [(player.name, games, out["rebuilt_by_row"][0] if out["rebuilt_by_row"] else 0)] if games and player is not None else []
-    return [(r["group"], int(r["games"]), rebuilt) for r, rebuilt in zip(out["rows"], out["rebuilt_by_row"], strict=True)]
-
-
 #: Intent -> the presenter for its own default point.
 PRESENTERS: dict[str, Presenter] = {
     "player_stat": _present_player_stat_season_line,
     "single_game_high": _present_single_game_high,
-    "threshold_count": _present_threshold_count,
     "player_history": _present_player_history,
     "leaderboard": _present_leaderboard,
     "player_compare": _present_player_compare,
@@ -464,7 +387,7 @@ STATED_SCOPING: dict[str, frozenset[str]] = {
     "single_game_high": frozenset({"span"}),
     # A count is already a line on a column; `below` is the same line the
     # other way ("games with under 14 fta"), and a phrase carrying the count's
-    # own number IS the count, misread - see _threshold_count_lines.
+    # own number IS the count, misread - compose.counts reads it so.
     # `season_type_unstated` is stated the way `scoped_player` reads it -
     # one combined `season_type IN (2, 3)` read (player_relation_season_type).
     "threshold_count": frozenset({"span", "below", "above", "season_n", "season_type_unstated"}),

@@ -134,3 +134,54 @@ def test_a_record_over_a_line_is_said_in_the_retired_templates_words() -> None:
     )
     assert [each.kind for each in collected.notes] == ["games_unseen", "stat_blank", "definition", "floor"]
     assert said.data["reached"] == {"games": 4, "wins": 3, "losses": 1, "avg_margin": 6.25} and said.data["notes"] == [lines[5]]
+
+
+def test_a_count_over_a_line_is_said_in_the_retired_templates_words() -> None:
+    """A named player's count: his career's floor said first, the count,
+    then the leader's rebuilt games - every counted game rebuilt is said
+    outright, not "2 of those 2"."""
+    from association.query.compose.say import say_threshold_count
+    from association.query.result import Scalar
+
+    result = Result(
+        subject="Michael Jordan",
+        relation="player",
+        span=Span(season=None, season_type=2, career=True, first=1985, last=2003),
+        parts=(Part(body=Scalar(games=2, sums={"rebuilt": 2}, how="count")),),
+        notes=(
+            Note("floor", {"table": "box_scores", "first": 1994, "earliest": 1985, "whose": "Michael Jordan", "season_type": 2, "what": "career_began_earlier"}),
+            Note("lines_rebuilt", {"games": 2, "total": 2, "whose": None, "what": "counted"}),
+        ),
+        facts={"stat": "points", "counted": 50, "lines": [], "ordinal": None, "box_scores_from": 1994, "empty_box_scores": 0},
+    )
+    with collect() as collected:
+        said = say(result)
+    assert said.answer == (
+        "Box scores here begin in 1993-94, and Michael Jordan's regular season career began in 1984-85, so his whole career is not in them. "
+        "Michael Jordan had 2 games with 50+ points in the regular season since 1993-94. "
+        "None of those 2 games has a box score from ESPN - those figures are rebuilt from play-by-play, so treat the count as close rather than exact."
+    )
+    assert said.data["question_shape"] == "games with 50+ points, regular season since 1993-94"
+    assert said.data["rebuilt_games"] == 2
+    assert [each.kind for each in collected.notes] == ["floor", "lines_rebuilt"]
+    assert say_threshold_count(result).answer == said.answer
+
+
+def test_a_league_count_names_the_leaders_and_the_rest() -> None:
+    """The league's count by player: the leader, "Next: ...", and a leader's
+    rebuilt games said by his name."""
+    from association.query.result import Grouped
+
+    rows = ({"key": "Luka Doncic", "games": 4, "rebuilt": 1}, {"key": "Shai Gilgeous-Alexander", "games": 2, "rebuilt": 0})
+    result = Result(
+        subject="every player",
+        relation="everyone",
+        span=Span(season=2026, season_type=2),
+        parts=(Part(body=Grouped(by="player", rows=rows)),),
+        notes=(Note("lines_rebuilt", {"games": 1, "total": 4, "whose": "Luka Doncic", "what": "counted"}),),
+        facts={"stat": "points", "counted": 30, "lines": ["under 5 turnovers"], "ordinal": None, "box_scores_from": 1994, "empty_box_scores": 0},
+    )
+    assert say(result).answer == (
+        "Luka Doncic had the most games with 30+ points and under 5 turnovers in the 2026 regular season, with 4. Next: Shai Gilgeous-Alexander (2). "
+        "1 of Luka Doncic's 4 games has no box score from ESPN - that figure is rebuilt from play-by-play, so treat the count as close rather than exact."
+    )

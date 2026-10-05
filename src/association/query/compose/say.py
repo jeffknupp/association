@@ -23,7 +23,7 @@ from typing import Any
 from association.query.conditions import _SPLIT_TITLES, _margin, _split_cells, _split_label, _table, _win_pct
 from association.query.notes import Note, decided, note
 from association.query.player_games import PERIOD_LOG_COLUMNS, _joined, period_columns
-from association.query.reading import DEFAULT_GAME_LOG_LIMIT, _clamp_limit
+from association.query.reading import DEFAULT_GAME_LOG_LIMIT, _clamp_limit, ordinal_word
 from association.query.result import Decided, Result, Rows, Scalar
 from association.query.shotchart import UNSEPARABLE_SHOT_VALUES
 from association.query.templates.common import PLAYER_STAT_COLUMNS, SEASON_TYPE_NAMES, STAT_LABELS, TemplateResult, count_games, format_value, season_label, season_phrase
@@ -61,9 +61,48 @@ def _say_definition(facts: dict[str, Any]) -> str:
 
 
 def _say_lines_rebuilt(facts: dict[str, Any]) -> str:
+    if facts.get("what") == "counted":
+        return _say_lines_rebuilt_counted(facts)
     shown = facts["games"]
     whose = "their" if shown != 1 else "its"
     return f"{shown} of these game{'s have' if shown != 1 else ' has'} no box score from ESPN: {whose} figures are rebuilt from play-by-play, and minutes cannot be recovered at all."
+
+
+def _say_lines_rebuilt_counted(facts: dict[str, Any]) -> str:
+    """The count's leader's rebuilt games: "52 of those 52 games" is true
+    and reads as a bug, so where EVERY counted game was rebuilt - Anthony
+    Davis's whole 2015, every Chicago and New Orleans season from 2013 to
+    2018 - it says so outright; two sentences rather than one with a
+    swapped subject, which agreed "HAVE" with the count instead of with its
+    own subject."""
+    rebuilt_shown, counted, whose_name = facts["games"], facts["total"], facts["whose"]
+    named = whose_name is None
+    whose = "those" if named else f"{whose_name}'s"
+    plural = rebuilt_shown != 1
+    if rebuilt_shown == counted:
+        lead = f"None of {whose} {counted} games has a box score from ESPN" if plural else f"{'That' if named else whose + ' only'} game has no box score from ESPN"
+    else:
+        lead = f"{rebuilt_shown} of {whose} {counted} games {'have' if plural else 'has'} no box score from ESPN"
+    return f" {lead} - {'those figures are' if plural else 'that figure is'} rebuilt from play-by-play, so treat the count as close rather than exact."
+
+
+def _say_stat_withheld(facts: dict[str, Any]) -> str:
+    """A stat outside the rebuilt set, with rebuilt lines in scope: a
+    DECISION, not a gap - a count says it was not counted, a single-game
+    high (no ``stat`` fact) that it was not read."""
+    errors = "rebuilt fouls are wrong in about one game in six, and turnovers in one in thirteen, against one in sixty for points."
+    if "stat" in facts:
+        return f"{facts['games']:,} of the games in that span were rebuilt from play-by-play, but a {facts['label']} is not counted from a rebuilt line: {errors}"
+    return f"{facts['games']:,} of them were rebuilt from play-by-play, but a {facts['label']} is not read from a rebuilt line: {errors}"
+
+
+def _say_empty_box_scores(facts: dict[str, Any], consequence: str) -> str:
+    """Games in scope whose box score is empty, by count and years, and what
+    that does to the answer (``consequence``, the answer's own words)."""
+    count, first, last, name = facts["games"], facts["first"], facts["last"], facts["whose"]
+    whose = f"{count:,} of {name}'s games" if name else f"{count:,} {'game' if count == 1 else 'games'}"
+    between = f"in {season_label(first)}" if first == last else f"between {season_label(first)} and {season_label(last)}"
+    return f" {whose} {between} {'has' if count == 1 else 'have'} an empty box score in this warehouse, so {consequence}."
 
 
 def _say_games_unseen(facts: dict[str, Any]) -> str:
@@ -89,6 +128,15 @@ def _unit(stat: Any) -> str:
 
 def _say_floor(facts: dict[str, Any]) -> str:
     first = facts["first"]
+    what = facts.get("what")
+    if what == "career_began_earlier":
+        # Said FIRST, before the number (a count's or a high's preface).
+        kind = SEASON_TYPE_NAMES.get(facts["season_type"], "regular season")
+        return f"Box scores here begin in {season_label(first)}, and {facts['whose']}'s {kind} career began in {season_label(facts['earliest'])}, so his whole career is not in them. "
+    if what == "league_counts":
+        return f"Box scores begin in {season_label(first)}, so these are not all-time counts: a career that began earlier is counted only from {season_label(first)}."
+    if what == "league_record":
+        return f" Box scores begin in {season_label(first)}, so this is not an all-time record: earlier games are not in this warehouse."
     if "earliest" in facts:
         return f"Box scores begin with the {season_label(first)} season, so his {facts['earliest']}-{first - 1} seasons are not counted."
     return f" Box scores start with the {first} {facts['what']}; anything earlier is not counted."
@@ -110,11 +158,12 @@ def decision_phrase(each: Decided, **said_with: Any) -> str:
     return decided(each.kind, text, field=each.field, chose=each.chose, before=each.before, instead_of=each.instead_of, why=each.why, **each.facts)
 
 
-def note_phrase(each: Note, *, narrowing: str = "") -> str:
+def note_phrase(each: Note, *, narrowing: str = "", consequence: str = "") -> str:
     """The one sentence a note of ``each.kind`` is said with, from its facts.
     ``narrowing`` is the read's own phrase for what it was narrowed to
     (``Result.narrowing.phrase``), which a window note follows a count
-    with.
+    with; ``consequence`` is what empty box scores do to the answer around
+    the note ("the count may be low"), which only that answer can say.
 
     .. versionadded:: 5.0.0
     """
@@ -125,6 +174,10 @@ def note_phrase(each: Note, *, narrowing: str = "") -> str:
         return _say_definition(facts)
     if each.kind == "lines_rebuilt":
         return _say_lines_rebuilt(facts)
+    if each.kind == "stat_withheld":
+        return _say_stat_withheld(facts)
+    if each.kind == "games_unseen" and "first" in facts:
+        return _say_empty_box_scores(facts, consequence)
     if each.kind == "games_unseen":
         return _say_games_unseen(facts)
     if each.kind == "stat_blank":
@@ -341,8 +394,12 @@ def say(result: Result) -> TemplateResult:
 
     .. versionadded:: 5.0.0
     """
+    if result.scalar is not None and result.scalar.how == "count":
+        return say_threshold_count(result)
     if result.scalar is not None:
         return say_player_stat(result)
+    if result.grouped is not None and result.grouped.by == "player":
+        return say_threshold_count(result)
     if result.grouped is not None and result.grouped.by == "threshold":
         return say_record_when(result)
     if result.grouped is not None and result.grouped.by == "split":
@@ -942,3 +999,104 @@ def say_period_by_quarter(result: Result) -> TemplateResult:
     caveat = period_caveat(agreement)
     data |= {"headline": header.rstrip(":"), "notes": [said, *([caveat.strip()] if caveat else [])]}
     return TemplateResult(data=data, answer="\n".join([header, *table, f"  {said}"]) + caveat)
+
+
+# --- a count of games over a line, and a single game's high ---------------------------
+
+
+def _counted_span_words(result: Result) -> tuple[str, str, str]:
+    """How an answer read from box scores names the games it covers, from
+    the span's values: the clause that follows a verb ("in the 2026 regular
+    season", "in his regular season career (2018-19 through 2025-26)"), the
+    caption the page shows, and the games' own name for "no ... in the
+    warehouse". A career that began before the box scores, and the
+    league's, are named from the box scores' first season; a named career
+    from his own first and last."""
+    span, facts = result.span, result.facts
+    # Not ``or 2``: 0 is both season types at once, a value of its own.
+    season_type = 2 if span.season_type is None else span.season_type
+    kind = SEASON_TYPE_NAMES.get(season_type, "regular season")
+    since = season_label(facts["box_scores_from"])
+    ordinal = facts.get("ordinal")
+    if span.season is not None:
+        period = season_phrase(span.season, season_type)
+        if ordinal is not None:
+            return f"in his {ordinal_word(ordinal)} season ({period})", f"{ordinal_word(ordinal)} season, {period}", f"{period} games"
+        return f"in the {period}", period, f"{period} games"
+    if result.relation == "everyone" or (span.first is not None and span.first < facts["box_scores_from"]):
+        return f"in the {kind} since {since}", f"{kind} since {since}", f"{kind} games since {since}"
+    years = f" ({season_label(span.first)} through {season_label(span.last)})" if span.first is not None and span.last is not None else ""
+    return f"in his {kind} career{years}", f"{kind} career{years}", f"{kind} games"
+
+
+def _threshold_count_phrase(rows: list[tuple[Any, int, int]], scope: str, when: str, player: str | None) -> str:
+    """Always names the season outright rather than echoing "this season" back.
+    The original failure answered for 2024 while the user meant the current
+    season, and said nothing about it - so the season is stated, every time.
+    ``when`` is that statement: one season, or a career and where it starts."""
+    label = f"games with {scope}"
+    if player is not None:
+        games = rows[0][1] if rows else 0
+        one = f"game with {scope}"  # "had 1 game", not "1 games"
+        return f"{player} had {games} {one if games == 1 else label} {when}." if games else f"{player} had no {label} {when}."
+    if not rows:
+        return f"No player had a game with {scope} {when}."
+    top = rows[0][1]
+    tied = [name for name, games, _ in rows if games == top]
+    if len(tied) > 1:
+        leaders = ", ".join(tied[:-1]) + f" and {tied[-1]}"
+        sentence = f"{leaders} tied for the most {label} {when}, with {top} each."
+    else:
+        sentence = f"{rows[0][0]} had the most {label} {when}, with {top}."
+    rest = [f"{name} ({games})" for name, games, _ in rows if games != top]
+    return sentence + (f" Next: {', '.join(rest)}." if rest else "")
+
+
+def _threshold_count_rows(result: Result) -> list[tuple[Any, int, int]]:
+    """The count as ``(name, games, rebuilt games among them)``, most first:
+    the named player's one row where he has any, else the league's."""
+    line, groups = result.scalar, result.grouped
+    if line is not None:
+        return [(result.subject, line.games, int(line.sums.get("rebuilt") or 0))] if line.games else []
+    assert groups is not None
+    return [(row["key"], int(row["games"]), int(row["rebuilt"])) for row in groups.rows]
+
+
+def say_threshold_count(result: Result) -> TemplateResult:
+    """How many games cleared a line, worded - a named player's count, or
+    the league's leaders with "Next: ..." - with the floor said first where
+    his career began before the box scores, and the notes after it in the
+    retired template's order: a league career is not all-time, a withheld
+    stat (else the empty box scores), the leader's rebuilt games.
+
+    .. versionadded:: 5.0.0
+    """
+    facts = result.facts
+    named = result.relation == "player"
+    stat = facts["stat"]
+    label = STAT_LABELS.get(stat or "", stat or "")
+    counted = facts["counted"]
+    scope_text = " and ".join(([f"{counted}+ {label}s"] if counted else []) + list(facts["lines"]))
+    when, caption, _games = _counted_span_words(result)
+    rows = _threshold_count_rows(result)
+    preface, notes = "", []
+    for each in result.notes:
+        said = note(each.kind, note_phrase(each, consequence="the count may be low" if named else "these counts may be low"), **each.facts)
+        if each.kind == "floor" and each.facts.get("what") == "career_began_earlier":
+            preface = said
+        else:
+            notes.append(said.strip() if each.kind in ("games_unseen", "lines_rebuilt") else said)
+    phrase = preface + _threshold_count_phrase(rows, scope_text, when, result.subject if named else None)
+    season = result.span.season
+    data = {
+        "question_shape": f"games with {scope_text}, {caption}",
+        "season": season,
+        "span": "career" if season is None else None,
+        "leaders": [{"player": name, "games": games} for name, games, _ in rows],
+        "empty_box_scores": facts["empty_box_scores"],
+        "rebuilt_games": rows[0][2] if rows else 0,
+        # The trailing "Next: ..." restates the table in prose - not the headline.
+        "headline": phrase.split(" Next: ")[0],
+        "notes": notes,
+    }
+    return TemplateResult(data=data, answer=" ".join([phrase, *notes]))

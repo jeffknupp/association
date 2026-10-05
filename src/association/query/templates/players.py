@@ -27,10 +27,7 @@ from ..player_games import scope_without_guard, season_type_clause
 from .common import (
     HISTORY_COLUMNS,
     PLAYER_STAT_COLUMNS,
-    REBUILT_STATS,
     SEASON_TYPE_NAMES,
-    STAT_LABELS,
-    MeasureFilter,
     TemplateResult,
     TemplateUnsupported,
     _clamp_limit,
@@ -42,7 +39,6 @@ from .common import (
     _Span,
     _span_of,
     _table_cell,
-    measure_filters,
     ordinal_word,
     scoped_player,
 )
@@ -118,7 +114,7 @@ def _game_span(con: duckdb.DuckDBPyConnection, season: int | None, season_type: 
         return _GameSpan(when=f"in the {period}", caption=period, games=f"{period} games", since=since)
     if player is None:
         return _GameSpan(when=f"in the {kind} since {since}", caption=f"{kind} since {since}", games=f"{kind} games since {since}", since=since, league_note=True)
-    began, ended = _seasons_on_record(con, player.id, season_type)
+    began, ended = seasons_on_record(con, player.id, season_type)
     if isinstance(began, int) and began < floor:
         said = f"Box scores here begin in {since}, and {player.name}'s {kind} career began in {_season_label(began)}, so his whole career is not in them. "
         preface = note("floor", said, table="box_scores", first=floor, earliest=began, whose=player.name, season_type=season_type, what="career_began_earlier")
@@ -127,7 +123,7 @@ def _game_span(con: duckdb.DuckDBPyConnection, season: int | None, season_type: 
     return _GameSpan(when=f"in his {kind} career{years}", caption=f"{kind} career{years}", games=f"{kind} games", since=since)
 
 
-def _seasons_on_record(con: duckdb.DuckDBPyConnection, athlete_id: str, season_type: int) -> tuple[Any, Any]:
+def seasons_on_record(con: duckdb.DuckDBPyConnection, athlete_id: str, season_type: int) -> tuple[Any, Any]:
     """A player's first and last season in the per-player season table, which
     reaches back to 1976-77 - before any box score here. A postseason copied
     from the regular season is not a postseason on record.
@@ -137,6 +133,10 @@ def _seasons_on_record(con: duckdb.DuckDBPyConnection, athlete_id: str, season_t
        through :func:`~association.query.player_games.season_type_clause`,
        rather than an equality that a sentinel outside (2, 3) could never
        match.
+
+    .. versionchanged:: 5.0.0
+       Public (``_seasons_on_record`` until then): the compiler and the
+       count's and the high's readers take it.
     """
     copy = f" AND {not_a_postseason_copy(('points',))}" if season_type == POSTSEASON else ""
     type_clause, type_params = season_type_clause("t.season_type", season_type)
@@ -144,7 +144,7 @@ def _seasons_on_record(con: duckdb.DuckDBPyConnection, athlete_id: str, season_t
     return (row[0], row[1]) if row else (None, None)
 
 
-def _rebuilt_in_scope(con: duckdb.DuckDBPyConnection, season: int | None, season_type: int, athlete_id: str | None) -> int:
+def rebuilt_in_scope(con: duckdb.DuckDBPyConnection, season: int | None, season_type: int, athlete_id: str | None) -> int:
     """How many games in scope carry a line rebuilt from play-by-play.
 
     Used to explain a refusal rather than to answer: when the stat asked for is
@@ -153,6 +153,10 @@ def _rebuilt_in_scope(con: duckdb.DuckDBPyConnection, season: int | None, season
     purpose. Saying which is the difference between a gap and a decision.
 
     .. versionadded:: 2.2.0
+
+    .. versionchanged:: 5.0.0
+       Public (``_rebuilt_in_scope`` until then): the count's and the
+       high's readers take it.
     """
     if not box_source(con).rebuilt:
         return 0
@@ -165,7 +169,7 @@ def _rebuilt_in_scope(con: duckdb.DuckDBPyConnection, season: int | None, season
     return int(row[0]) if row else 0
 
 
-def _empty_box_scores(con: duckdb.DuckDBPyConnection, season: int | None, season_type: int, athlete_id: str | None, *, covered_by_rebuild: bool = False) -> tuple[int, int | None, int | None]:
+def empty_box_scores(con: duckdb.DuckDBPyConnection, season: int | None, season_type: int, athlete_id: str | None, *, covered_by_rebuild: bool = False) -> tuple[int, int | None, int | None]:
     """Games in scope whose box score is empty: (count, first season, last season).
 
     Every game from 2012-13 through 2017-18 has a box score, but 161-166 a
@@ -180,6 +184,10 @@ def _empty_box_scores(con: duckdb.DuckDBPyConnection, season: int | None, season
     and reports it as unseen - "his highest was 43, rebuilt from play-by-play"
     beside "68 of his games have an empty box score, so a bigger game may be
     missing", where those 68 are the very games the 43 came from.
+
+    .. versionchanged:: 5.0.0
+       Public (``_empty_box_scores`` until then): the count's and the
+       high's readers take it.
     """
     if covered_by_rebuild and box_source(con).rebuilt:
         # What is still unseen: no minutes AND no rebuild to stand in for them.
@@ -220,117 +228,6 @@ def _empty_note(found: tuple[int, int | None, int | None], name: str | None, con
     between = f"in {_season_label(first)}" if first == last else f"between {_season_label(first)} and {_season_label(last)}"
     said = f" {whose} {between} {'has' if count == 1 else 'have'} an empty box score in this warehouse, so {consequence}."
     return note("games_unseen", said, why="empty_box_score", games=count, first=first, last=last, whose=name)
-
-
-def _threshold_count_notes(
-    con: duckdb.DuckDBPyConnection,
-    seasons: tuple[int | None, int],
-    player: Entity | None,
-    rows: list[tuple[Any, ...]],
-    column: str,
-    label: str,
-    span: _GameSpan,
-    empty: tuple[int, int | None, int | None],
-) -> list[str]:
-    """``threshold_count``'s notes past its sentence, in its order: a
-    league-wide career is not all-time, a stat withheld from rebuilt lines
-    (else the empty box scores), and the leader's rebuilt games.
-
-    One definition for the template and for the compiler's presentation of
-    the same count (``compose.present._present_threshold_count``), which
-    restated the first two sentences word for word until this existed.
-    """
-    season, season_type = seasons
-    player_id = player.id if player is not None else None
-    notes: list[str] = []
-    if span.league_note:
-        said = f"Box scores begin in {span.since}, so these are not all-time counts: a career that began earlier is counted only from {span.since}."
-        notes.append(note("floor", said, table="box_scores", first=COVERAGE["player_box_stats"].first_season, what="league_counts"))
-    # Only when nothing was counted AND the stat was deliberately withheld: a
-    # count of none that names a decision beats one that implies missing data.
-    withheld = 0 if (rows and rows[0][1]) or column in REBUILT_STATS else _rebuilt_in_scope(con, season, season_type, player_id)
-    if withheld:
-        said = (
-            f"{withheld:,} of the games in that span were rebuilt from play-by-play, but a {label} is not counted from a rebuilt line: "
-            f"rebuilt fouls are wrong in about one game in six, and turnovers in one in thirteen, against one in sixty for points."
-        )
-        notes.append(note("stat_withheld", said, games=withheld, stat=column, label=label))
-    else:
-        empty_note = _empty_note(empty, player.name if player is not None else None, "the count may be low" if player is not None else "these counts may be low")
-        if empty_note:
-            notes.append(empty_note.strip())
-    rebuilt_note = _threshold_count_rebuilt_note(rows, player is not None)
-    if rebuilt_note:
-        notes.append(rebuilt_note.strip())
-    return notes
-
-
-def _threshold_count_lines(stat: Any, threshold: int | None, below: Any, above: Any) -> tuple[list[MeasureFilter], int | None, str]:
-    """The lines a count keeps games under or over, the model's own threshold
-    if it is still one of them (None when a phrase carries it), and the
-    wording of all of them: "30+ points and under 5 turnovers".
-
-    "Sga games with under 14 fta" arrived as ``stat: freeThrowsMade,
-    threshold: 14, below: ["under 14 fta"]`` - the model read the phrase as a
-    count of 14 or more, on the nearest stat it knows. A phrase carrying the
-    count's own number IS that count, misread: the phrase wins, since it holds
-    the direction and the column the model lost. A phrase with another number
-    is a second line beside the count ("30+ points and under 5 turnovers").
-    """
-    lines = measure_filters(below, above)
-    counted = None if any(line.value == threshold for line in lines) else threshold
-    label = STAT_LABELS.get(stat or "", stat or "")
-    scope_text = " and ".join(([f"{threshold}+ {label}s"] if counted else []) + [line.label for line in lines])
-    return lines, counted, scope_text
-
-
-def _threshold_count_rebuilt_note(rows: list[tuple[Any, ...]], named: bool) -> str:
-    """The sentence saying how many of the leader's counted games were rebuilt, or nothing."""
-    # Said whenever the COUNT rests on rebuilt games, not whenever one was read:
-    # a rebuilt game that cleared no threshold changes nothing about the number
-    # the reader was given.
-    if not (rows and rows[0][2]):
-        return ""
-    rebuilt_shown, counted = rows[0][2], rows[0][1]
-    whose = "those" if named else f"{rows[0][0]}'s"
-    plural = rebuilt_shown != 1
-    # "52 of those 52 games" is true and reads as a bug, which costs the
-    # sentence the trust it exists to calibrate. Where EVERY counted game
-    # was rebuilt - Anthony Davis's whole 2015, and every Chicago and New
-    # Orleans season from 2013 to 2018 - say so outright. Two sentences
-    # rather than one template with a swapped subject: the shared form gave
-    # "every one of those 52 games HAVE", agreeing with the count instead
-    # of with its own subject.
-    if rebuilt_shown == counted:
-        lead = f"None of {whose} {counted} games has a box score from ESPN" if plural else f"{'That' if named else whose + ' only'} game has no box score from ESPN"
-    else:
-        lead = f"{rebuilt_shown} of {whose} {counted} games {'have' if plural else 'has'} no box score from ESPN"
-    said = f" {lead} - {'those figures are' if plural else 'that figure is'} rebuilt from play-by-play, so treat the count as close rather than exact."
-    return note("lines_rebuilt", said, games=rebuilt_shown, total=counted, whose=None if named else rows[0][0], what="counted")
-
-
-def _phrase_threshold_count(rows: list[tuple[Any, ...]], scope: str, when: str, player: str | None) -> str:
-    """Always names the season outright rather than echoing "this season" back.
-    The original failure answered for 2024 while the user meant the current
-    season, and said nothing about it - so the season is stated, every time.
-    ``when`` is that statement: one season, or a career and where it starts."""
-    label = f"games with {scope}"
-    if player is not None:
-        games = rows[0][1] if rows else 0
-        one = f"game with {scope}"  # "had 1 game", not "1 games"
-        return f"{player} had {games} {one if games == 1 else label} {when}." if games else f"{player} had no {label} {when}."
-    if not rows:
-        return f"No player had a game with {scope} {when}."
-
-    top = rows[0][1]
-    tied = [name for name, games, _ in rows if games == top]
-    if len(tied) > 1:
-        leaders = ", ".join(tied[:-1]) + f" and {tied[-1]}"
-        sentence = f"{leaders} tied for the most {label} {when}, with {top} each."
-    else:
-        sentence = f"{rows[0][0]} had the most {label} {when}, with {top}."
-    rest = [f"{name} ({games})" for name, games, _ in rows if games != top]
-    return sentence + (f" Next: {', '.join(rest)}." if rest else "")
 
 
 def _signed_cell(value: Any) -> str:

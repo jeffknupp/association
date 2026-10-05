@@ -76,7 +76,7 @@ this tree:
   name, and since 2026-10-02 the 12 templates, the presenters (12 until
   2026-10-03; the intents holding one are 8 since 2026-10-04, as the game
   log, `record_when`, `player_splits` and `period_split` went to readers and
-  sayers) and the team-only one, the adapters (10; 5 since 2026-10-04 and 3
+  sayers, and 7 once `threshold_count` did) and the team-only one, the adapters (10; 5 since 2026-10-04 and 3
   once `threshold_count`'s and `single_game_high`'s default points went to
   the reader), the 14 scoping declarations (by module
   and name, read from the source; 12 until 2026-10-03, when the two tables
@@ -783,7 +783,13 @@ model's. Two things follow, and both matter when you add a shape:
   `splits.py`, `stats.py`, `periods.py`; `stats.py`'s a `Scalar` body read
   by the compiler's `line` aggregate - each measure per game beside the
   sums the line is said from - and `periods.py`'s a `rows` read of the
-  period's line or a `grouped` read by `period`); only the unnarrowed
+  period's line or a `grouped` read by `period`), and a count of games
+  over a line, a named player's or the league's by player
+  (`compose/counts.py`: a `Scalar` with `how="count"`, or a `Grouped`
+  ranking by `player`, over the planned point compiled and executed - what
+  the retired words added beyond those rows, the span's own seasons, the
+  floor, the empty box scores, the withheld stat and the leader's rebuilt
+  games, are values and notes on the Result); only the unnarrowed
   season line is still `player_stat`'s presenter. Three rules the slice set, which every later slice follows:
   - **A note is written as data and said once.** The reader builds
     `Note("window_short", {found, asked, ...})`; the sayer phrases it

@@ -73,7 +73,7 @@ from association.query.templates.common import (
     span_of,
 )
 from association.query.templates.games import _team_slot_for_player
-from association.query.templates.players import _seasons_on_record
+from association.query.templates.players import seasons_on_record
 
 EASTERN = eastern_date_sql("g.date")
 
@@ -1121,7 +1121,7 @@ def _player_own_seasons(con: duckdb.DuckDBPyConnection, player: Entity | None, s
     career by instead of the relation's floor.
 
     ``threshold_count`` and ``single_game_high`` already read this from the
-    player's own seasons (`templates.players._seasons_on_record`, via
+    player's own seasons (`templates.players.seasons_on_record`, via
     `_game_span`) rather than the box-score floor every career otherwise
     starts from, and this reuses that same read rather than a second one -
     "one concept, one definition" (`AGENTS.md`). Only for a *plain* career:
@@ -1134,7 +1134,7 @@ def _player_own_seasons(con: duckdb.DuckDBPyConnection, player: Entity | None, s
     """
     if player is None or span.season is not None or span.since is not None:
         return None
-    began, ended = _seasons_on_record(con, player.id, span.season_type)
+    began, ended = seasons_on_record(con, player.id, span.season_type)
     if not isinstance(began, int) or not isinstance(ended, int):
         return None
     return began, ended

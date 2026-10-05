@@ -43,6 +43,7 @@ from association.query.result import Result
 from association.query.templates.common import TemplateContext, TemplateResult, TemplateUnsupported, check_coverage
 
 from .core import Query, Refused, Unsupported, run
+from .counts import read_threshold_count
 from .logs import read_player_log, read_team_log
 from .periods import read_period_split
 from .plan import Planned, games_reading
@@ -234,11 +235,12 @@ def _read_log(read: Callable[[], Result | TemplateResult | None]) -> TemplateRes
 def _read_ported(con: duckdb.DuckDBPyConnection, intent: str, query: Query) -> TemplateResult | None:
     """The shapes Phase 2 has ported, read into a Result and said by the
     sayer (``compose.logs``, ``compose.records``, ``compose.splits``,
-    ``compose.stats``, ``compose.periods``; ``compose.say``): a player's log - ``game_log``'s own
+    ``compose.stats``, ``compose.periods``, ``compose.counts``; ``compose.say``): a player's log - ``game_log``'s own
     point, or the window of games ``player_stat``'s retired template handed
     to the log ("stats over his last N games") - a player's record over a
     line, his splits, and his line over the games a narrowing sent the read
-    to (``player_stat``'s narrowed point), and his quarter or half. ``None``
+    to (``player_stat``'s narrowed point), his quarter or half, and a count
+    of games over a line, his or the league's. ``None``
     where the
     point is not one of them, or its words do not say it, and a presenter or
     the compiler's own sentence answers."""
@@ -252,6 +254,8 @@ def _read_ported(con: duckdb.DuckDBPyConnection, intent: str, query: Query) -> T
         return _read_log(lambda: read_player_stat(con, query, stated=STATED_SCOPING["player_stat"]))
     if intent == "period_split":
         return _read_log(lambda: read_period_split(con, query, stated=STATED_SCOPING["period_split"]))
+    if intent == "threshold_count":
+        return _read_log(lambda: read_threshold_count(con, query, stated=STATED_SCOPING["threshold_count"]))
     return None
 
 

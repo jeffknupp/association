@@ -112,12 +112,19 @@ class Scalar:
     first scalar shape to retire its template (``player_stat``'s narrowed
     line), as the draft says a type is.
 
+    ``how`` is how the set was reduced, the draft's ``Measure.how``: each
+    measure per game beside its sums (``"per_game"``, a line), or the games
+    counted (``"count"``, ``threshold_count``'s one player: ``games`` is the
+    figure, ``values`` is empty, and ``sums`` holds how many of the counted
+    games are rebuilt from play-by-play, ``rebuilt``).
+
     .. versionadded:: 5.0.0
     """
 
     games: int
     values: Mapping[str, Any] = field(default_factory=dict)
     sums: Mapping[str, Any] = field(default_factory=dict)
+    how: Literal["per_game", "count"] = "per_game"
 
 
 @dataclass(frozen=True, kw_only=True)

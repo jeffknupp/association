@@ -2387,7 +2387,7 @@ def _route_threshold(raw: dict[str, Any], slots: dict[str, Any], question: str, 
         # A count of games needs a threshold. Without one, "who has the most
         # threes" is a season ranking - measured, it arrived here with none and
         # fell through. A ceiling IS the count's line ("Sga games with under
-        # 14 fta": _threshold_count_lines reads the phrase as the count), so
+        # 14 fta": compose.counts reads the phrase as the count), so
         # a count stated as one keeps its intent with no threshold at all.
         raw["intent"] = "leaderboard"
 
@@ -2426,7 +2426,7 @@ def _route_filter_slots(slots: dict[str, Any], question: str, beside: Beside) ->
     # carries it, so nothing changes for the questions that work today. With
     # two, BOTH become lines - threshold_count reads a line carrying its own
     # threshold's number as that threshold, misread, and filters on all of
-    # them (see _threshold_count_lines).
+    # them (see compose.counts.read_threshold_count).
     pairs = [m.group(0).casefold() for m in _THRESHOLD_PAIR.finditer(question)]
     if len(pairs) > 1:
         above += pairs

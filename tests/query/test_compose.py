@@ -211,7 +211,7 @@ def cx_ctx(tmp_path: Path) -> TemplateContext:
         "INSERT INTO player_season_stats_deduped VALUES (?, ?, 2, 1)",
         [(pid, season) for pid in (PODZ, CURRY, BROWN, SABONIS, "90", "91") for season in (s - 1, s)],
     )
-    # `_player_own_seasons` (`compose.core`) reuses `templates.players._seasons_on_record`,
+    # `_player_own_seasons` (`compose.core`) reuses `templates.players.seasons_on_record`,
     # which reads the RAW table `player_season_stats_deduped` is a view over
     # in the real warehouse - so a plain career sentence can name a player's
     # own first and last season instead of the relation's floor (ISSUES.md,
@@ -573,7 +573,7 @@ def test_a_plain_career_names_the_players_own_seasons_not_the_floor(cx_ctx: Temp
     said "(2018-19 through 2025-26)" for the same 479 games and the compiler
     said "(1994 on)"). A named player's own first and last season on record
     (:func:`~association.query.compose.core._player_own_seasons`, reusing
-    :func:`~association.query.templates.players._seasons_on_record` - the
+    :func:`~association.query.templates.players.seasons_on_record` - the
     same read ``threshold_count``/``single_game_high`` already make through
     ``_game_span``) now names the career instead; the fixture's players are
     on record for seasons s-1 and s (``cx_ctx``'s ``player_season_stats``
@@ -1769,7 +1769,8 @@ def test_a_presenter_steps_aside_for_a_narrowing_its_words_do_not_state(cx_ctx: 
     state, so the presenter answers nothing and every presenter declares."""
     from association.query.compose.present import PRESENTERS, STATED_SCOPING, TEAM_ONLY_PRESENTERS, present
 
-    # game_log's, record_when's, player_splits' and period_split's words are the sayer's (compose.say); their stated sets stay listed in STATED_SCOPING so one table declares for every compiled intent.
-    assert set(STATED_SCOPING) == set(PRESENTERS) | TEAM_ONLY_PRESENTERS | {"game_log", "record_when", "player_splits", "period_split"}
+    # game_log's, record_when's, player_splits', period_split's and threshold_count's words are the sayer's (compose.say);
+    # their stated sets stay listed in STATED_SCOPING so one table declares for every compiled intent.
+    assert set(STATED_SCOPING) == set(PRESENTERS) | TEAM_ONLY_PRESENTERS | {"game_log", "record_when", "player_splits", "period_split", "threshold_count"}
     narrowed = default_query("single_game_high", {"player": "Brandin Podziemski", "stat": "points", "opponent": "Boston Celtics"})
     assert present(cx_ctx.con, "single_game_high", narrowed) is None
