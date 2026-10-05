@@ -462,7 +462,8 @@ HONORED_SCOPING: dict[str, frozenset[str]] = {
     # opponent, a date or a box-score line on the games it draws from cannot
     # narrow it.
     "shot_chart": _relation_scoping("shot_chart"),
-    "shot_distance": _relation_scoping("shot_distance"),
+    # shot_distance is the compiler's (Phase 2, slice (v): the shot relation's
+    # reader, compose.shots): compose.plan.STATED_SCOPING.
     # player_netpoints and fingerprint are the compiler's (Phase 2, slice (v)):
     # compose.plan.STATED_SCOPING, which keeps why `date` is listed for the
     # fingerprint (honored by refusing it in the reader's own words).

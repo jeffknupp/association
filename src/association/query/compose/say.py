@@ -30,7 +30,7 @@ from association.query.reading import DEFAULT_GAME_LOG_LIMIT, _clamp_limit, ordi
 from association.query.result import Decided, Grouped, Result, Rows, Run, Runs, Scalar, Span
 from association.query.season_line import NETPOINTS_COMPARE_ROWS
 from association.query.season_text import MONTH_NAMES
-from association.query.shotchart import UNSEPARABLE_SHOT_VALUES
+from association.query.shotchart import DERIVED_SHOT_VALUES, UNSEPARABLE_SHOT_VALUES
 from association.query.team_metrics import RATING_NOTE, TEAM_METRICS, TeamMetric
 from association.query.templates.common import HISTORY_COLUMNS, PLAYER_STAT_COLUMNS, SEASON_TYPE_NAMES, STAT_LABELS, TemplateResult, count_games, format_value, season_label, season_phrase, table_cell
 from association.query.templates.players import ADVANCED_STATS, MADE_STAT_ATTEMPTS, SHOOTING_STATS
@@ -360,7 +360,9 @@ def note_phrase(each: Note, *, narrowing: str = "", consequence: str = "", liste
         return _say_stat_blank(facts)
     if each.kind == "floor" and facts.get("table") == "box_scores":
         return _say_floor(facts)
-    said = _say_season_note(each.kind, facts)
+    said = _say_shot_note(each.kind, facts, about)
+    if said is None:
+        said = _say_season_note(each.kind, facts)
     if said is None:
         said = _say_team_season_note(each.kind, facts)
     if said is None:
@@ -368,6 +370,28 @@ def note_phrase(each: Note, *, narrowing: str = "", consequence: str = "", liste
     if said is None:
         raise ValueError(f"no phrase for a {each.kind!r} note with {sorted(facts)}")
     return said
+
+
+def _say_shot_note(kind: str, facts: dict[str, Any], about: str) -> str | None:
+    """The phrase for a note about the shot table - a season whose twos and
+    threes are derived rather than labeled, shots no value can be read for,
+    and where a career sits against the shot floor (``about`` is whose
+    career) - or ``None``; split out of :func:`note_phrase` for the
+    complexity gate."""
+    if kind == "shot_values_derived":
+        return DERIVED_SHOT_VALUES[facts["season"]]
+    if kind == "shots_unlabeled":
+        why = "; ".join(UNSEPARABLE_SHOT_VALUES.get(s, f"nothing records their value in {s}") for s in facts["seasons"])
+        return f"left out {facts['shots']:,} {'shot' if facts['shots'] == 1 else 'shots'} that cannot be told apart as twos or threes: {why}"
+    if kind != "floor" or facts.get("table") != "shots":
+        return None
+    kind_words = SEASON_TYPE_NAMES.get(facts["season_type"], "regular season")
+    first, earliest, last = facts["first"], facts["earliest"], facts["last"]
+    if facts["what"] == "career_before_floor":
+        return f" {about}'s {kind_words} career ({earliest}-{last}) ends before shot data begins, in {first}, so none of it can be shown."
+    if facts["what"] == "career_clipped":
+        return f" Shot data begins with the {first} season, so his {earliest}-{first - 1} {kind_words}s are not shown."
+    return f" Covers his whole {kind_words} career on record ({earliest}-{last})."
 
 
 def _say_season_note(kind: str, facts: dict[str, Any]) -> str | None:
@@ -633,6 +657,8 @@ def say(result: Result) -> TemplateResult:
     team = _say_team_shape(result)
     if team is not None:
         return team
+    if result.span.source == "shots" and result.scalar is not None:
+        return say_shot_distance(result)
     if result.span.source == "seasons":
         return _say_season_line(result)
     if result.scalar is not None and result.scalar.how == "count":
@@ -3471,3 +3497,35 @@ def say_fingerprint(result: Result) -> TemplateResult:
     message += "".join(decision_phrase(each) for each in result.decisions)
     data = {"players": list(facts["players"]), "season": facts["season"], "side": view, "scope": "game" if order else "season", "path": chart.path, "message": message}
     return TemplateResult(data=data, answer=message, artifacts=[Artifact("fingerprint", Path(chart.path))])
+# --- one player's shots ------------------------------------------------------------
+
+
+def say_shot_distance(result: Result) -> TemplateResult:
+    """One player's average shot distance worded, as ``shot_distance``'s
+    retired template said it: the average and the attempts it is over, or
+    that there were none, over the period or the games a narrowing or a
+    window pinned it to - then a derived season's caveat and the career's
+    floor, in that order.
+
+    .. versionadded:: 5.0.0
+    """
+    line = result.scalar
+    assert line is not None
+    name, facts, period = result.subject, result.facts, result.span.phrase
+    shot_value = facts["shot_value"]
+    kind = {2: "2-point ", 3: "3-point "}.get(shot_value or 0, "")
+    # One game a window alone reached keeps its own words; any other set of
+    # games is said as the span and the narrowing (Narrowing.phrase).
+    game_note = result.narrowing.phrase or (f" in his {'first' if facts['first_game'] else 'most recent'} game ({facts['game_date']})" if "game_date" in facts else "")
+    average, attempts = line.values["avg_feet"], line.sums["attempts"]
+    if not attempts or average is None:
+        answer = f"No {kind}shots with recorded coordinates for {name}{game_note} in the {period}."
+    else:
+        answer = f"{name}'s average {kind}shot distance{game_note or f' in the {period}'} was {average:.1f} feet, over {attempts:,} attempts with recorded coordinates."
+    for each in result.notes:
+        said = note(each.kind, note_phrase(each, about=name), **each.facts)
+        answer += f" Note: {said}." if each.kind == "shot_values_derived" else said
+    return TemplateResult(
+        data={"player": name, "season": result.span.season, "shot_value": shot_value, "avg_feet": average, "attempts": attempts, "headline": answer},
+        answer=answer,
+    )

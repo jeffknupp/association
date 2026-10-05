@@ -24,6 +24,7 @@ from association.query.compose.records import _record_when_team_result, read_rec
 from association.query.compose.runs import _streak_league_result, _streak_league_teams_result, _streak_player_result, _streak_team_result, read_streak, read_team_streak
 from association.query.compose.say import say_period_refusal
 from association.query.compose.seasons import _player_line_advanced, _player_line_career, _player_line_season, read_player_line
+from association.query.compose.shots import read_shot_distance
 from association.query.compose.splits import _player_splits, _team_splits, read_player_splits, read_team_splits
 from association.query.compose.stats import _player_stat_meetings, _player_stat_result, read_player_stat
 from association.query.compose.team import TeamQuery, _compile_team_run, compile_team_count, compile_team_line, compile_team_range, compile_team_run, run_team
@@ -38,7 +39,7 @@ from association.query.templates.common import HONORED_SCOPING, SCOPING_SLOTS, T
 from association.query.templates.games import (
     PERIOD_RATE_STATS,
 )
-from association.query.templates.shots import shot_chart, shot_distance
+from association.query.templates.shots import shot_chart
 
 
 def _compiled(intent: str) -> Callable[[TemplateContext, Reading], TemplateResult]:
@@ -79,6 +80,7 @@ player_netpoints = _compiled("player_netpoints")
 fingerprint = _compiled("fingerprint")
 head_to_head = _compiled("head_to_head")
 team_quarter_points = _compiled("team_quarter_points")
+shot_distance = _compiled("shot_distance")  # the shot relation's reader (compose.shots), its template retired
 period_leaderboard = _compiled("period_leaderboard")
 team_record = _compiled("team_record")
 with_without = _compiled("with_without")
@@ -2926,7 +2928,10 @@ def test_shot_distance_declines_free_throws(sc_ctx: TemplateContext) -> None:
 
 
 def test_shot_distance_reports_no_coordinates_honestly(sc_ctx: TemplateContext) -> None:
-    assert "No " in (shot_distance(sc_ctx, Reading.from_slots({"player": "Stephen Curry", "season": 1999})).answer or "")
+    # A season the shot table covers (1999 is under its floor, and the floor's refusal answers it now that the
+    # compiler checks coverage before the reader runs, as the answering loop did before the template ran).
+    answer = shot_distance(sc_ctx, Reading.from_slots({"player": "Stephen Curry", "season": 2010})).answer or ""
+    assert answer == "No shots with recorded coordinates for Stephen Curry in the 2010 regular season."
 
 
 def test_shot_distance_without_a_player_falls_through(sc_ctx: TemplateContext) -> None:
@@ -3349,7 +3354,8 @@ def test_scope_guard_allows_templates_that_honor_the_slot() -> None:
     # game_log is the compiler's (compose.COMPILED_INTENTS): its retired words state the slots.
     assert unhonored_scoping("game_log", Scope.from_slots({"order": "recent", "date": "2026-04-12"}), STATED_SCOPING["game_log"]) == []
     check_scope("shot_chart", {"order": "recent"})
-    check_scope("shot_distance", {"order": "first"})
+    # shot_distance is the compiler's (the shot relation's reader): its retired words state the slot.
+    assert unhonored_scoping("shot_distance", Scope.from_slots({"order": "first"}), STATED_SCOPING["shot_distance"]) == []
 
 
 def test_scope_guard_lets_only_the_templates_that_read_it_honor_season_type_unstated() -> None:
@@ -3612,7 +3618,7 @@ def test_scope_guard_lets_through_what_the_player_templates_now_honor() -> None:
         == []
     )
     assert unhonored_scoping("player_history", Scope.from_slots({"player": "Nikola Jokic", "span": "career"}), STATED_SCOPING["player_history"]) == []
-    check_scope("shot_distance", {"player": "Jaylen Brown", "opponent": "Detroit Pistons"})
+    assert unhonored_scoping("shot_distance", Scope.from_slots({"player": "Jaylen Brown", "opponent": "Detroit Pistons"}), STATED_SCOPING["shot_distance"]) == []
 
 
 def test_shot_distance_narrows_by_opponent_and_names_it_in_the_answer(sc_ctx: TemplateContext) -> None:
@@ -6082,8 +6088,9 @@ def test_templates_on_the_relation_do_not_narrow_it_themselves() -> None:
 
     if _c5_shots_ported():
         shot_forbidden = ("event_id = ?", "athlete_id = ? AND season = ?")
-        for intent in ("shot_chart", "shot_distance"):
-            source = _source_with_private_steps(TEMPLATES[intent])
+        # shot_distance's template is retired: the shot relation's reader (compose.shots) is walked.
+        for intent, handler in (("shot_chart", TEMPLATES["shot_chart"]), ("shot_distance", read_shot_distance)):
+            source = _source_with_private_steps(handler)
             for token in shot_forbidden:
                 assert token not in source, f"{intent} narrows the relation itself ({token!r}); use scoped_games / team_games"
 

@@ -695,7 +695,8 @@ def test_the_intent_the_parsers_words_assign_reaches_the_answers_decisions(monke
     from association.query.templates.common import TemplateResult
 
     monkeypatch.setattr("association.query.normalizer.normalize", lambda model, question: Normalized(["embiid"], ""))
-    monkeypatch.setattr("association.query.agent.TEMPLATES", {"shot_distance": lambda ctx, reading: TemplateResult(data={}, answer="templated")})
+    # shot_distance is the compiler's (the shot relation's reader, compose.shots): its answer stands in.
+    monkeypatch.setattr("association.query.compose.answer", lambda ctx, reading, **_: TemplateResult(data={}, answer="templated"))
     db_path = tmp_path / "test.duckdb"
     con = duckdb.connect(str(db_path))
     con.execute("CREATE TABLE players (athlete_id VARCHAR, display_name VARCHAR)")

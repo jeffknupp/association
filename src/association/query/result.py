@@ -48,7 +48,9 @@ class Span:
     season: its line and the standings (``"team_seasons"``) or ESPN's power
     index (``"team_snapshots"``, :mod:`association.query.team_seasons`), or
     ESPN Analytics' NetPoints (``"netpoints"``, a player's season ratings
-    and fingerprints, :mod:`association.query.compose.netpoints`).
+    and fingerprints, :mod:`association.query.compose.netpoints`), or one
+    player's located shots (``"shots"``, the declared shot relation,
+    :mod:`association.query.compose.shots`).
 
     .. versionadded:: 5.0.0
     """
@@ -62,7 +64,7 @@ class Span:
     years: str | None = None
     phrase: str | None = None
     floor: int | None = None
-    source: Literal["games", "seasons", "team_seasons", "team_snapshots", "netpoints"] = "games"
+    source: Literal["games", "seasons", "team_seasons", "team_snapshots", "netpoints", "shots"] = "games"
 
 
 @dataclass(frozen=True, kw_only=True)

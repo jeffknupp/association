@@ -68,10 +68,10 @@ def test_no_intent_is_added_and_a_retired_one_leaves_the_list() -> None:
 # team_outlook's, team_stat's and team_leaderboard's the same day: compose.team_stats reads them, compose.say words them.
 # player_netpoints' and fingerprint's retired 2026-10-05 (slice (v)): compose.netpoints reads them,
 # compose.netpoints.draw_fingerprint draws the chart and compose.say words them.
+# shot_distance's retired 2026-10-05 (slice (v)): compose.shots reads it on the declared shot relation, compose.say words it.
 FROZEN_TEMPLATES = frozenset(
     {
         "shot_chart",
-        "shot_distance",
     }
 )
 # Every module-level declaration of what a reader honors, states or

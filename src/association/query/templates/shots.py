@@ -32,11 +32,10 @@ from association.nba.coverage import COVERAGE
 from association.query.reading import Reading, Scope
 
 from ..conditions import box_source
-from ..court import HAS_POSITION_SQL, SHOT_DISTANCE_SQL
 from ..entities import Ambiguous, Entity, no_match
 from ..notes import note
 from ..player_games import games_subquery, named
-from ..shotchart import DERIVED_SHOT_VALUES, SHOT_AVAILABILITY, SHOT_VALUE_SQL, UNSEPARABLE_SHOT_VALUES, render_for_player, resolve_chart_player
+from ..shotchart import SHOT_AVAILABILITY, render_for_player, resolve_chart_player
 from .common import (
     RELATION_SCOPING,
     SEASON_TYPE_NAMES,
@@ -52,7 +51,6 @@ from .common import (
     _span_of,
     measure_filters,
     scoped_games,
-    scoped_player,
     settle_ordinal_season,
 )
 
@@ -391,9 +389,6 @@ def shot_chart(ctx: TemplateContext, reading: Reading) -> TemplateResult:
     )
 
 
-SHOT_VALUE_FROM_STAT = {"threePointFieldGoalsMade": 3, "freeThrowsMade": 1}
-
-
 def _shot_value(scope: Scope) -> int | None:
     """Which shots a question meant. "Curry's threes" arrives either as
     shot_value 3 or as the equivalent box-score stat depending on wording; both
@@ -402,7 +397,7 @@ def _shot_value(scope: Scope) -> int | None:
     (:meth:`~association.query.reading.Scope.from_slots`) refuses any other."""
     if scope.shot_value is not None:
         return scope.shot_value
-    return SHOT_VALUE_FROM_STAT.get(scope.stat) if scope.stat is not None else None
+    return {"threePointFieldGoalsMade": 3, "freeThrowsMade": 1}.get(scope.stat) if scope.stat is not None else None
 
 
 def _career_shot_note(con: duckdb.DuckDBPyConnection, player: Entity, season_type: int, *, found: bool) -> str:
@@ -436,184 +431,3 @@ def _career_shot_note(con: duckdb.DuckDBPyConnection, player: Entity, season_typ
     if earliest < floor_season:
         return note("floor", f" Shot data begins with the {floor_season} season, so his {earliest}-{floor_season - 1} {kind}s are not shown.", what="career_clipped", **facts)
     return note("floor", f" Covers his whole {kind} career on record ({earliest}-{latest}).", what="career_whole", **facts) if found else ""
-
-
-def _shot_distance_period(player: Entity, season: int | None, season_type: int, *, career: bool) -> str:
-    """The label an answer's "in the ..." names: a year and a season type for
-    one season, or - for a career - the season type alone, since a career has
-    no single year to name."""
-    if career:
-        return f"career {SEASON_TYPE_NAMES.get(season_type, 'regular season')}"
-    # season is never None here: only a career span leaves it so, and _shot_value
-    # of 1 is refused before this is ever called.
-    assert season is not None
-    return _period(season, season_type)
-
-
-def _shot_distance_unseparable_refusal(player: Entity, season: int | None, shot_value: int | None, period: str, kind: str) -> TemplateResult | None:
-    """A refusal in place of an answer, where UNSEPARABLE_SHOT_VALUES makes the
-    named season's twos and threes unreadable - or None to proceed. Only
-    reachable for one named season: `season` is None on a career span, and no
-    int key in this dict is None, so a career sum silently leaves these shots
-    out instead (ISSUES.md tracks that gap rather than repeating this refusal
-    across a multi-season sum, which would refuse seasons that ARE readable)."""
-    if shot_value is None or season not in UNSEPARABLE_SHOT_VALUES:
-        return None
-    # Returned, not raised: the agent reads the same unlabeled rows.
-    message = f"{UNSEPARABLE_SHOT_VALUES[season]}. {player.name}'s average {kind}shot distance in the {period} cannot be given; his average over all shots can."
-    return TemplateResult(data={"player": player.name, "season": season, "shot_value": shot_value, "message": message}, answer=message)
-
-
-def _shot_distance_where(athlete_id: str, season: int | None, season_type: int, shot_value: int | None) -> tuple[list[str], list[Any]]:
-    """The WHERE clause and its params for a distance query. No `season = ?`
-    line at all on a career span - shot_chart itself holds no rows before 2002
-    (COVERAGE["shot_chart"]), so leaving the column unfiltered already sums
-    exactly the seasons on record, no separate floor clause needed."""
-    # Free throws are excluded by value, not by a missing position: from 2002
-    # to 2018 they carry a fixed one under the rim, and averaged in as shots.
-    where = ["athlete_id = ?"]
-    params: list[Any] = [athlete_id]
-    if season is not None:
-        where.append("season = ?")
-        params.append(season)
-    where += ["season_type = ?", HAS_POSITION_SQL, f"{SHOT_VALUE_SQL} IS DISTINCT FROM 1"]
-    params.append(season_type)
-    if shot_value is not None:
-        where.append(f"{SHOT_VALUE_SQL} = ?")
-        params.append(shot_value)
-    return where, params
-
-
-def _shot_distance_games(
-    con: duckdb.DuckDBPyConnection, player: Entity, span: _Span, scope: Scope, season_type: int, date: str | None, measures: list[MeasureFilter], has_narrowing: bool
-) -> tuple[str | None, list[Any], str] | TemplateResult:
-    """The extra WHERE clause pinning a distance read to particular games, its
-    parameters, and the ``game_note`` an answer appends after "distance" -
-    ``shot_distance``'s counterpart of :func:`_shot_chart_games`, over the
-    same relation read (:func:`common.scoped_games`, :func:`_shot_narrowed_rows`).
-    An empty clause (``None``, ``[]``, ``""``) means the whole span, unpinned.
-    ``measures``/``has_narrowing`` are read by :func:`shot_distance` itself,
-    for the reason :func:`_shot_chart_games` gives.
-
-    A single game reached through a WINDOW alone (no other narrowing) keeps
-    its own precise phrasing - "in his most recent game (2026-04-12)" - the
-    exact date read off the relation's own row, since that is a sentence a
-    chart's ``game_label`` gives for free but a plain number has no other way
-    to say. Anything else - several games, or a window mixed with real
-    narrowing ("his last game vs Boston") - uses the general phrase every
-    other template on the relation says a window with
-    (:meth:`association.query.player_games.Narrowed.filters`).
-    """
-    if not has_narrowing:
-        return None, [], ""
-    narrowed = scoped_games(con, player, span, scope, opponent=scope.opponent, measures=measures, date=date)
-    if isinstance(narrowed, TemplateResult):
-        return narrowed
-    found = _shot_narrowed_rows(con, player, span, narrowed)
-    if isinstance(found, TemplateResult):
-        return found
-    ids, dates = found
-    # An IN clause even for one id - never the bare equality a hand-written
-    # single-game narrowing would write, which is exactly the token
-    # `test_templates_on_the_relation_do_not_narrow_it_themselves` forbids on
-    # this table. These ids came FROM the relation, not a clause written
-    # here, but the gate is a literal string search and cannot tell the two
-    # apart, so the shape is avoided rather than argued with.
-    marks = ", ".join("?" for _ in ids)
-    clause = f"event_id IN ({marks})"
-    if len(ids) == 1 and not _shots_other_narrowing(scope, date, measures):
-        game_note = f" in his {'first' if scope.order == 'first' else 'most recent'} game ({dates[0]})"
-    else:
-        prefix = _shots_span_prefix(span, season_type)
-        game_note = f" {prefix}{narrowed.filters(windowed=True)}"
-    return clause, list(ids), game_note
-
-
-def _shot_distance_answer(player: Entity, kind: str, period: str, game_note: str, average: float | None, attempts: int, shot_value: int | None, season: int | None) -> str:
-    """The average and its made/attempted-style count, or an honest "none
-    found" - and, for one named DERIVED_SHOT_VALUES season, the caveat that
-    its twos and threes are read rather than labeled."""
-    if not attempts or average is None:
-        return f"No {kind}shots with recorded coordinates for {player.name}{game_note} in the {period}."
-    answer = f"{player.name}'s average {kind}shot distance{game_note or f' in the {period}'} was {average:.1f} feet, over {attempts:,} attempts with recorded coordinates."
-    if shot_value is not None and season in DERIVED_SHOT_VALUES:
-        answer += f" Note: {note('shot_values_derived', DERIVED_SHOT_VALUES[season], season=season)}."
-    return answer
-
-
-def shot_distance(ctx: TemplateContext, reading: Reading) -> TemplateResult:
-    """Average shot distance for one player, optionally by shot value.
-
-    The agent wrote a distance formula, then dropped both the 3-point filter
-    and the season filter, reporting an all-shots all-seasons 16.94 as a
-    current-season three-point figure. A fixed formula over known columns is
-    template work - but "fixed" is only as good as the frame: this template
-    then measured from a hoop 5.25 feet from where the data puts it, and
-    answered Stephen Curry's 2026 threes with 23.6 feet, inside the line. From
-    the rim (see court.HOOP_Y) they average 27.6.
-
-    Shot values come from shotchart.SHOT_VALUE_SQL rather than
-    ``points_attempted``, which is 0 for an unlabeled shot: "Curry's threes in
-    2022" averaged 38 of his 751 attempts, every one of them a miss.
-
-    .. versionchanged:: 4.4.0
-       Honors ``span`` "career": averages across every season of the season
-       type on record instead of only the latest one, the same shape as
-       :func:`shot_chart` (#141). Note: a career average still silently drops
-       an UNSEPARABLE_SHOT_VALUES season's shots from a ``shot_value`` filter
-       rather than refusing or noting it the way one named season does, and
-       does not repeat DERIVED_SHOT_VALUES' per-season caveat across a
-       multi-season sum - see ISSUES.md.
-
-    .. versionchanged:: 4.4.0
-       Reads its games through the player-games relation (step 3, C5), the
-       same as :func:`shot_chart`: ``order`` now honors ``limit`` as a window
-       rather than always exactly one game, and an opponent, a venue, a
-       teammate's absence, a starter/bench half, one game of a series, a line
-       on a box-score column, one Eastern date and ``since`` all narrow which
-       games the average is taken over.
-    """
-    scope = reading.scope
-    con = ctx.con
-    date = scope.date
-    # Read here, not inside a step it calls, so this function's own source
-    # names every scoping slot it honors (`test_every_template_honoring_a_scope_slot_actually_reads_it`).
-    measures = measure_filters(scope.below, scope.above)
-    has_narrowing = _shots_has_narrowing(scope, date, measures)
-
-    subject = scoped_player(con, scope, "shot_distance needs a player name", table="player_game_log", available=SHOT_AVAILABILITY, span=scope.span, season=scope.season)
-    if isinstance(subject, TemplateResult):
-        return subject
-    player, span = subject
-
-    if span.career and _shots_windowed(scope):
-        raise TemplateUnsupported("shot_distance cannot combine a career span with a single game's order")
-
-    season_type = span.season_type
-    shot_value = _shot_value(scope)
-    if shot_value == 1:
-        raise TemplateUnsupported("free throws have no meaningful shot distance")
-    period = _shot_distance_period(player, span.season, season_type, career=span.career)
-    kind = {2: "2-point ", 3: "3-point "}.get(shot_value or 0, "")
-    refusal = _shot_distance_unseparable_refusal(player, span.season, shot_value, period, kind)
-    if refusal is not None:
-        return refusal
-
-    where, params = _shot_distance_where(player.id, span.season, season_type, shot_value)
-    extra = _shot_distance_games(con, player, span, scope, season_type, date, measures, has_narrowing)
-    if isinstance(extra, TemplateResult):
-        return extra
-    clause, extra_params, game_note = extra
-    if clause:
-        where.append(clause)
-        params.extend(extra_params)
-
-    row = con.execute(f"SELECT AVG({SHOT_DISTANCE_SQL}), COUNT(*) FROM shot_chart WHERE {' AND '.join(where)}", params).fetchone()
-    average, attempts = row or (None, 0)
-    answer = _shot_distance_answer(player, kind, period, game_note, average, attempts, shot_value, span.season)
-    if span.career and span.since is None:  # see the matching note in shot_chart's own call
-        answer += _career_shot_note(con, player, season_type, found=attempts > 0)
-    return TemplateResult(
-        data={"player": player.name, "season": span.season, "shot_value": shot_value, "avg_feet": average, "attempts": attempts, "headline": answer},
-        answer=answer,
-    )

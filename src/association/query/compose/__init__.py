@@ -61,7 +61,7 @@ from .seasons import read_player_compare, read_player_history, read_player_line
 from .sentence import _span_phrase
 from .sentence import sentence as _sentence
 from .sentence import team_sentence as _team_sentence
-from .shots import ShotQuery
+from .shots import ShotQuery, read_shot_distance
 from .splits import read_player_splits, read_team_splits
 from .stats import read_player_stat
 from .team import TeamQuery, TeamResult, run_team
@@ -144,6 +144,7 @@ COMPILED_INTENTS: frozenset[str] = frozenset(
         "team_record",
         "player_netpoints",
         "fingerprint",
+        "shot_distance",
     }
 )
 """The intents the compiler alone answers - the four whose templates it
@@ -159,10 +160,12 @@ the compiler gained for them), and the team shapes of Phase 2's slice
 (iv): ``head_to_head`` (:mod:`~association.query.compose.meetings`),
 ``team_quarter_points`` and ``period_leaderboard``
 (:mod:`~association.query.compose.periods`) and ``team_record``
-(:mod:`~association.query.compose.team_records`), and the NetPoints
+(:mod:`~association.query.compose.team_records`), the NetPoints
 relation's ``player_netpoints`` and ``fingerprint``
 (:mod:`~association.query.compose.netpoints`, slice (v): the fingerprint's
-chart drawn between its reader and the sayer). Each is read by its reader and said in its
+chart drawn between its reader and the sayer), and ``shot_distance``
+(:mod:`~association.query.compose.shots`, slice (v): the shot relation, a
+declared relation with its own reader). Each is read by its reader and said in its
 retired template's own words by the sayer
 (:mod:`~association.query.compose.say`); where the compiler has no
 reading of a point, the question is refused with the reason
@@ -416,6 +419,32 @@ def _read_netpoints(ctx: TemplateContext, intent: str, query: NetPointsQuery) ->
     if isinstance(read, TemplateResult):
         return read
     return say(draw_fingerprint(read, ctx.out_dir) if read.chart is not None else read)
+#: The shot relation's readers, by intent (``compose.shots``): each the only
+#: answer its intent has, as its retired template was.
+_SHOT_READERS: dict[str, Callable[..., Result | TemplateResult | None]] = {
+    "shot_distance": read_shot_distance,
+}
+
+
+def _read_shots(intent: str, query: ShotQuery, con: duckdb.DuckDBPyConnection) -> TemplateResult:
+    """A point on the shot relation, read and said: the season's coverage
+    floor first, as it was checked before the retired template ran; a cell
+    the reader refuses while reading is the compiler's decline, with the
+    template's own reason (no prefix); a refusal of its own (a name, no
+    games, a season that cannot separate twos from threes) is the answer."""
+    reader = _SHOT_READERS.get(intent)
+    if reader is None:
+        raise Unsupported("the shot relation's readers are not ported yet")
+    refusal = check_coverage(intent, query.scope)
+    if refusal is not None:
+        raise Refused(TemplateResult(data={"message": refusal, "season": query.scope.season}, answer=refusal))
+    try:
+        read = reader(con, query, stated=STATED_SCOPING[intent])
+    except TemplateUnsupported as exc:
+        raise Unsupported(str(exc)) from exc
+    if read is None:
+        raise Unsupported(f"{intent} has no reading of this point")
+    return read if isinstance(read, TemplateResult) else say(read)
 
 
 def _answer_point(
@@ -439,7 +468,7 @@ def _answer_point(
         if isinstance(query, NetPointsQuery):
             return _read_netpoints(ctx, intent, query)
         if isinstance(query, ShotQuery):
-            raise Unsupported("the shot relation's readers are not ported yet")
+            return _read_shots(intent, query, ctx.con)
         if intent in _TEAM_SEASON_READERS:
             try:
                 return _read_team_season(ctx.con, intent, query)
