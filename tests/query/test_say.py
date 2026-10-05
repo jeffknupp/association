@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from association.query.compose.say import mixed_where, note_phrase, say, say_player_log, say_team_log
 from association.query.notes import Note, collect
-from association.query.result import Narrowing, Part, Refusal, Result, Rows, Span, Window
+from association.query.result import CountFacts, Line, LogFacts, Narrowing, Part, RankingFacts, RecordFacts, Refusal, Result, Rows, Span, Window
 
 
 def _player_result(**changes: object) -> Result:
@@ -81,7 +81,7 @@ def test_a_teams_log_is_said_with_its_record_and_the_total_asked_for() -> None:
         span=Span(season=2026, season_type=2, first=2026, last=2026),
         window=Window(limit=3, ascending=False),
         parts=(Part(body=Rows(rows=games, summary={"wins": 1, "losses": 1, "unknown": 1})),),
-        facts={"stat": "pointsDifference"},
+        facts=LogFacts(stat="pointsDifference"),
     )
     said = say_team_log(result)
     lines = said.answer.split("\n")
@@ -106,6 +106,7 @@ def test_a_record_over_a_line_is_said_in_the_retired_templates_words() -> None:
             Part(
                 body=Grouped(
                     by="threshold",
+                    of=Line(column="points", value=20),
                     rows=(
                         {"key": "reached", "games": 4, "wins": 3, "losses": 1, "avg_margin": 6.25},
                         {"key": "short", "games": 6, "wins": 2, "losses": 4, "avg_margin": -3.5},
@@ -120,7 +121,7 @@ def test_a_record_over_a_line_is_said_in_the_retired_templates_words() -> None:
             Note("definition", {"term": "pool", "games": 11, "what": "games_he_played"}),
             Note("floor", {"table": "box_scores", "first": 2022, "what": "regular season"}),
         ),
-        facts={"stat": "points", "threshold": 20, "teams": ["Philadelphia 76ers"]},
+        facts=RecordFacts(teams=("Philadelphia 76ers",)),
     )
     with collect() as collected:
         said = say(result)
@@ -153,7 +154,8 @@ def test_a_count_over_a_line_is_said_in_the_retired_templates_words() -> None:
             Note("floor", {"table": "box_scores", "first": 1994, "earliest": 1985, "whose": "Michael Jordan", "season_type": 2, "what": "career_began_earlier"}),
             Note("lines_rebuilt", {"games": 2, "total": 2, "whose": None, "what": "counted"}),
         ),
-        facts={"stat": "points", "counted": 50, "lines": [], "ordinal": None, "box_scores_from": 1994, "empty_box_scores": 0},
+        narrowing=Narrowing(cells=(Line(column="points", value=50),)),
+        facts=CountFacts(stat="points", box_scores_from=1994, empty_box_scores=0),
     )
     with collect() as collected:
         said = say(result)
@@ -180,7 +182,8 @@ def test_a_league_count_names_the_leaders_and_the_rest() -> None:
         span=Span(season=2026, season_type=2),
         parts=(Part(body=Grouped(by="player", ranked_by="games", rows=rows)),),
         notes=(Note("lines_rebuilt", {"games": 1, "total": 4, "whose": "Luka Doncic", "what": "counted"}),),
-        facts={"stat": "points", "counted": 30, "lines": ["under 5 turnovers"], "ordinal": None, "box_scores_from": 1994, "empty_box_scores": 0},
+        narrowing=Narrowing(cells=(Line(column="points", value=30), Line(column="turnovers", op="<", value=5, label="under 5 turnovers"))),
+        facts=CountFacts(stat="points", box_scores_from=1994, empty_box_scores=0),
     )
     assert say(result).answer == (
         "Luka Doncic had the most games with 30+ points and under 5 turnovers in the 2026 regular season, with 4. Next: Shai Gilgeous-Alexander (2). "
@@ -205,7 +208,7 @@ def test_a_single_game_high_is_said_with_its_floor_its_tie_and_its_redirect() ->
         span=Span(season=None, season_type=2, career=True),
         parts=(Part(body=Rows(columns=("assists",), rows=tied, by="assists")),),
         notes=(Note("floor", {"table": "box_scores", "first": 1994, "what": "league_record"}),),
-        facts={"stat": "assists", "ordinal": None, "box_scores_from": 1994, "empty_box_scores": 0},
+        facts=CountFacts(stat="assists", box_scores_from=1994, empty_box_scores=0),
     )
     assert say(league).answer == (
         "A Guard and B Guard tied for the most assists in a single game in the regular season since 1993-94, with 23 each."
@@ -218,7 +221,7 @@ def test_a_single_game_high_is_said_with_its_floor_its_tie_and_its_redirect() ->
         span=Span(season=2026, season_type=2),
         parts=(Part(body=Rows(columns=("points",), rows=(), by="points")),),
         decisions=(redirect,),
-        facts={"stat": "points", "ordinal": None, "box_scores_from": 1994, "empty_box_scores": 0},
+        facts=CountFacts(stat="points", box_scores_from=1994, empty_box_scores=0),
     )
     with collect() as collected:
         said = say(retired)
@@ -247,7 +250,7 @@ def test_a_stat_ranking_and_a_count_ranking_are_told_apart_by_the_body() -> None
         parts=(Part(body=Grouped(by="player", ranked_by="ts_pct", rows=rows)),),
         notes=(Note("definition", {"term": "most_recent_team"}),),
         decisions=(Decided(kind="minimum", field="minimum", chose=550, facts={"of": "true-shooting attempts", "column": "true_shooting_attempts"}),),
-        facts={"label": "true shooting %", "ratio": ["points", "true_shooting_attempts"], "fields": ["team"], "team": None},
+        facts=RankingFacts(label="true shooting %", ratio=("points", "true_shooting_attempts"), fields=("team",)),
     )
     with collect() as remarks:
         said = say(result)
@@ -259,7 +262,7 @@ def test_a_stat_ranking_and_a_count_ranking_are_told_apart_by_the_body() -> None
     assert said.data["min_sample"] == 550 and said.data["notes"] == ["Team is each player's most recent team that season."]
     assert [n.kind for n in remarks.notes] == ["definition"] and [d.kind for d in remarks.decisions] == ["minimum"]
     # Without the team column, a sentence naming the leader, and its makes over attempts.
-    sentence = say(Result(**{**result.__dict__, "notes": (), "facts": {**result.facts, "fields": []}})).answer
+    sentence = say(Result(**{**result.__dict__, "notes": (), "facts": RankingFacts(label="true shooting %", ratio=("points", "true_shooting_attempts"))})).answer
     assert sentence == (
         "Nikola Jokic led the league in true shooting % in the 2026 regular season (minimum 550 true-shooting attempts), at 66.1% (2,071 of 1,566). Next: Shai Gilgeous-Alexander (64.2%)."
     )
@@ -278,7 +281,7 @@ def test_a_career_ranking_says_its_pool_every_time() -> None:
         span=Span(season_type=2, career=True, first=1994, source="seasons"),
         parts=(Part(body=Grouped(by="player", ranked_by="total_points", rows=rows)),),
         notes=(Note("floor", {"table": "season_line", "first": 1994, "what": "career_pool"}),),
-        facts={"label": "total points", "ratio": None, "fields": []},
+        facts=RankingFacts(label="total points"),
     )
     assert say(result).answer == (
         "Among players active in 1993-94 or later, LeBron James leads in career points in the regular season: 43,440, over 1,622 games (2003-04 through 2025-26). "
@@ -327,3 +330,25 @@ def test_a_refusal_is_said_from_its_facts_beside_the_pages_values() -> None:
     assert asked.data == {"ambiguous": "Curry", "candidates": ["Seth Curry", "Stephen Curry"]}
     near = say(Clarify(asked="embid", candidates=("Joel Embiid",), why="near_spelling"))
     assert near.answer == "No player found matching 'embid' - did you mean Joel Embiid?" and near.data == {"unmatched": "embid", "suggestions": ["Joel Embiid"]}
+
+
+def test_the_cells_a_read_applied_are_typed_and_read_by_type() -> None:
+    """What ``Result.facts`` carried as untyped keys - a period, a date, the
+    lines, a role, a series game - is a typed cell on the narrowing, read
+    by its type; and a shape's record is its own, so a sayer handed
+    another shape's is a bug that raises, never an answer said from
+    missing keys."""
+    import importlib
+
+    import pytest
+
+    from association.query.result import GameOfSeries, LineFacts, OnDate, Period, Role
+
+    narrowing = Narrowing(cells=(Period(label="1st quarter", periods=(1,)), Role(started=True), Line(column="points", value=30, label="30+ points"), GameOfSeries(n=4), OnDate(day="2026-04-11")))
+    assert narrowing.period == Period(label="1st quarter", periods=(1,))
+    assert narrowing.cell(Role) == Role(started=True) and narrowing.cell(GameOfSeries) == GameOfSeries(n=4)
+    assert [line.label for line in narrowing.lines()] == ["30+ points"]
+    assert Narrowing().period is None and Narrowing().cell(OnDate) is None
+    sayer = importlib.import_module("association.query.compose.say")
+    with pytest.raises(TypeError, match="LogFacts sayer was handed LineFacts"):
+        sayer._facts(Result(subject="New York Knicks", relation="team", parts=(Part(body=Rows()),), facts=LineFacts()), LogFacts)

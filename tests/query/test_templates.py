@@ -5840,7 +5840,7 @@ def test_a_tied_extreme_names_every_game_that_reached_it() -> None:
     whichever row sorted first would report one game as though it stood
     alone."""
     from association.query.compose.say import say_team_quarter_points
-    from association.query.result import Narrowing, Part, Result, Rows, Scalar, Span
+    from association.query.result import Narrowing, Part, Period, Result, Rows, Scalar, Span, TeamPeriodFacts
 
     games = (
         {"date": "2026-01-02", "opponent": "Boston Celtics", "points": 60},
@@ -5852,9 +5852,9 @@ def test_a_tied_extreme_names_every_game_that_reached_it() -> None:
         subject="New York Knicks",
         relation="team",
         span=Span(season=2026, season_type=2, phrase="2026 regular season"),
-        narrowing=Narrowing(period="1st half"),
+        narrowing=Narrowing(cells=(Period(label="1st half", periods=(1, 2)),)),
         parts=(Part(body=line), Part(role="detail", body=Rows(rows=games))),
-        facts={"measure": "points", "periods": [1, 2], "rank": "most", "dateless": ""},
+        facts=TeamPeriodFacts(measure="points", rank="most", dateless=""),
     )
     result = say_team_quarter_points(read)
     assert result.data["extreme"] == 60 and len(result.data["extreme_games"]) == 2

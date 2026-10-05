@@ -10,7 +10,7 @@ team compiler reads (:mod:`~association.query.compose.team`).
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Literal
 
 import duckdb
@@ -21,7 +21,7 @@ from association.query.entities import Entity, resolved_team, slot_season
 from association.query.notes import Note
 from association.query.player_relation import validated_until
 from association.query.reading import Scope, Unsupported, _clamp_limit, unhonored_scoping
-from association.query.result import Grouped, Part, Refusal, Result, Scalar, Span, Unanswered
+from association.query.result import Grouped, Narrowing, OutlookFacts, Part, Refusal, Result, Scalar, Span, TeamRankingFacts, TeamStatFacts, Unanswered
 from association.query.team_metrics import DEFAULT_TEAM_LINE, TEAM_METRICS, TeamLine, TeamMetric, descending_for, ranked, resolve_team_metric
 from association.query.team_seasons import (
     BPI_CHANCES,
@@ -122,9 +122,10 @@ def read_team_outlook(con: duckdb.DuckDBPyConnection, q: TeamSeasonQuery, *, sta
     series; a regular-season question reads the regular-season snapshot
     outright when it holds the team, a postseason one the postseason
     snapshot (:func:`~association.query.team_seasons.team_outlook_chosen`).
-    The snapshots the season holds are ``facts["snapshots"]``, so a team
-    missing from the one asked for is told which exist rather than that
-    there is "no data" (a Result with no parts). A
+    The snapshots the season holds are its facts'
+    (:class:`~association.query.result.OutlookFacts`), so a team missing
+    from the one asked for is told which exist rather than that there is
+    "no data" (a Result whose projection holds no values). A
     :class:`~association.query.result.Refusal` or :class:`~association.query.result.Clarify` back is the
     relation's refusal (a conference named as a team, an ambiguous team).
 
@@ -141,9 +142,12 @@ def read_team_outlook(con: duckdb.DuckDBPyConnection, q: TeamSeasonQuery, *, sta
     snapshots = values_of(con, team_outlook_snapshots_statement(team.id, season))
     chosen = team_outlook_chosen(snapshots, postseason)
     span = Span(season=season, season_type=3 if postseason else 2, source="team_snapshots")
-    facts: dict[str, Any] = {"postseason": postseason, "snapshots": snapshot_facts(snapshots)}
+    facts = OutlookFacts(postseason=postseason, snapshots=tuple(snapshot_facts(snapshots)))
     if chosen is None:
-        return Result(subject=team.name, relation="team", span=span, notes=_team_outlook_missing_notes(team, season, snapshots), facts=facts)
+        # No snapshot of the kind asked for holds the team: the projection's
+        # shape with nothing in it, said by which snapshots there are.
+        empty = (Part(body=Scalar(games=0, how="projection")),)
+        return Result(subject=team.name, relation="team", span=span, parts=empty, notes=_team_outlook_missing_notes(team, season, snapshots), facts=facts)
     kind = chosen[0]
     rows = values_of(con, team_outlook_row_statement(season, kind, team.id))
     # The snapshot was chosen because it holds this team.
@@ -167,7 +171,7 @@ def _team_outlook_described(snapshots: list[tuple[Any, ...]]) -> list[dict[str, 
     return [{key: value for key, value in each.items() if key != "holds"} for each in snapshot_facts(snapshots)]
 
 
-def _team_outlook_result(team: Entity, season: int, postseason: bool, chosen: tuple[Any, ...], row: tuple[Any, ...], snapshots: list[tuple[Any, ...]], span: Span, facts: dict[str, Any]) -> Result:
+def _team_outlook_result(team: Entity, season: int, postseason: bool, chosen: tuple[Any, ...], row: tuple[Any, ...], snapshots: list[tuple[Any, ...]], span: Span, facts: OutlookFacts) -> Result:
     """The chosen snapshot's row for the team, as the Result's parts and
     notes: what is odd about the snapshot (a postseason one standing in for
     a missing regular-season one; a stamp after the season ended), a rating
@@ -202,8 +206,8 @@ def _team_outlook_result(team: Entity, season: int, postseason: bool, chosen: tu
     }
     played = int(wins) + int(losses) if wins is not None and losses is not None else 0
     rounds = tuple({"key": label, "chance": chances[column]} for label, column in BPI_CHANCES)
-    parts = (Part(body=Scalar(games=played, values=values)), Part(role="detail", body=Grouped(by="round", rows=rounds)))
-    facts = {**facts, "snapshot": name, "kind": kind, "updated": str(updated), "teams_in_snapshot": teams}
+    parts = (Part(body=Scalar(games=played, values=values, how="projection")), Part(role="detail", body=Grouped(by="round", rows=rounds)))
+    facts = replace(facts, snapshot=name, kind=kind, updated=str(updated), teams_in_snapshot=teams)
     return Result(subject=team.name, relation="team", span=span, parts=parts, notes=tuple(notes), facts=facts)
 
 
@@ -229,7 +233,7 @@ def read_team_stat(con: duckdb.DuckDBPyConnection, q: TeamSeasonQuery, *, stated
     :class:`~association.query.result.Result` on a span whose ``source`` is
     ``"team_seasons"``: a :class:`~association.query.result.Grouped` by
     ``metric`` - each row a metric's key, value, rank and how many teams it
-    ranks among - for the one named (``facts["metric"]``) or for the
+    ranks among - for the one named (its :class:`~association.query.result.TeamStatFacts`' ``metric``) or for the
     compact line (``team_metrics.DEFAULT_TEAM_LINE``) where none was; a
     record as a :class:`~association.query.result.Scalar` of wins, losses
     and the record's rank. Where nothing can be given, a Result with no
@@ -237,7 +241,7 @@ def read_team_stat(con: duckdb.DuckDBPyConnection, q: TeamSeasonQuery, *, stated
     missing: the metric's first season (``metric_before_first_season``),
     the team's line (``no_team_line``, or ``missed_postseason`` for a team
     that played the regular season) or its record (``no_team_record``). A metric needing points allowed that ESPN's game list
-    cannot give is ``facts["short"]``: the team the answer names, its
+    cannot give is the facts' ``short``: the team the answer names, its
     listed and played games, and how many other teams are short.
 
     ``templates.teams.team_stat`` was this, with its words; its statements
@@ -279,8 +283,8 @@ def _team_stat_record(con: duckdb.DuckDBPyConnection, team: Entity, key: str, sp
         facts = {"team": team.name, "season": span.season, "season_type": span.season_type}
         return Refusal(kind="no_team_record", facts=facts, shown={"team": team.name, "season": span.season}, under=())
     rank = next(r for r, t, _ in ranked({r.team: r.win_pct for r in records}, True) if t == team.name)
-    line = Scalar(games=mine.wins + mine.losses, values={"wins": mine.wins, "losses": mine.losses, "rank": rank, "of": len(records)})
-    return Result(subject=team.name, relation="team", span=span, parts=(Part(body=line),), facts={"metric": key})
+    line = Scalar(games=mine.wins + mine.losses, values={"wins": mine.wins, "losses": mine.losses, "rank": rank, "of": len(records)}, how="ranked")
+    return Result(subject=team.name, relation="team", span=span, parts=(Part(body=line),), facts=TeamStatFacts(metric=key))
 
 
 def short_of_games(metric_key: str, lines: list[TeamLine], subject: str | None = None) -> dict[str, Any]:
@@ -311,11 +315,11 @@ def _team_stat_line(team: Entity, key: str | None, span: Span, lines: list[TeamL
     means and a value or rank left out)."""
     wanted = [key] if key else list(DEFAULT_TEAM_LINE)
     rows = tuple({"key": name, "value": mine.values.get(name), "rank": _team_stat_rank(lines, name, TEAM_METRICS[name], team.name, mine.values.get(name)), "of": len(lines)} for name in wanted)
-    facts: dict[str, Any] = {"metric": key, "games": mine.games}
+    facts = TeamStatFacts(metric=key, games=mine.games)
     notes: list[Note] = []
     if key is not None:
         if rows[0]["value"] is None:
-            facts["short"] = short_of_games(key, lines, team.name)
+            facts = replace(facts, short=short_of_games(key, lines, team.name))
         elif key in _POSSESSION_METRICS:
             notes.append(Note("definition", {"term": "rating_formula"}))
     else:
@@ -371,8 +375,10 @@ def read_team_leaderboard(con: duckdb.DuckDBPyConnection, q: TeamSeasonQuery, *,
     ``rank`` (ties share one), the ``value`` it is ranked by, and for a
     record its ``wins`` and ``losses``. The rows are the ones shown: the
     count asked for (ties at the cut kept whole) and, past it, a named
-    team's own row (``beyond``); ``facts["of"]`` is how many teams were
-    ranked and ``facts["descending"]`` which end comes first. Where nothing
+    team's own row (``beyond``); its
+    :class:`~association.query.result.TeamRankingFacts` say how many teams
+    were ranked and which end comes first, and the venue is the
+    narrowing's. Where nothing
     can be ranked, the :class:`~association.query.result.Refusal` naming
     why (no home or road split in that season's standings, the metric's
     first season, a team short of games for points allowed).
@@ -398,12 +404,12 @@ def read_team_leaderboard(con: duckdb.DuckDBPyConnection, q: TeamSeasonQuery, *,
     named = resolved_team(con, scope.team, season=slot_season(scope)) if scope.team and scope.team.strip() else None
     if isinstance(named, Unanswered):
         return named
-    facts: dict[str, Any] = {"metric": key, "venue": scope.venue, "rank": scope.rank, "descending": descending_for(TEAM_METRICS[key], scope.rank)}
+    facts = TeamRankingFacts(metric=key, rank=scope.rank, descending=descending_for(TEAM_METRICS[key], scope.rank))
     read = _team_leaderboard_values(con, key, span, scope.venue) if TEAM_METRICS[key].expression is None else _team_leaderboard_metric(con, key, span, scope.venue)
     if isinstance(read, Refusal):
         return read
     values, rows = read
-    return _team_leaderboard_ranked(span, facts, values, rows, _clamp_limit(scope.limit, default=DEFAULT_TEAM_LEADERBOARD_LIMIT), named)
+    return _team_leaderboard_ranked(span, facts, values, rows, _clamp_limit(scope.limit, default=DEFAULT_TEAM_LEADERBOARD_LIMIT), named, scope.venue)
 
 
 def _team_leaderboard_values(con: duckdb.DuckDBPyConnection, key: str, span: Span, venue: str | None) -> tuple[dict[str, float], dict[str, dict[str, Any]]] | Refusal:
@@ -448,17 +454,17 @@ def _team_leaderboard_metric(con: duckdb.DuckDBPyConnection, key: str, span: Spa
     return values, {team: {} for team in values}
 
 
-def _team_leaderboard_ranked(span: Span, facts: dict[str, Any], values: dict[str, float], extra: dict[str, dict[str, Any]], limit: int, named: Entity | None) -> Result:
+def _team_leaderboard_ranked(span: Span, facts: TeamRankingFacts, values: dict[str, float], extra: dict[str, dict[str, Any]], limit: int, named: Entity | None, venue: str | None) -> Result:
     """The ranked rows shown: up to ``limit``, a tie at the cut shown whole -
     "nba team with least playoff wins since 2022" with a limit of 1 listed
     the Nets alone where the Hornets and Wizards share the zero (day5, F100)
     - and a named team's own row past the cut where it would otherwise be
     left out."""
-    order = ranked(values, facts["descending"])
+    order = ranked(values, facts.descending)
     shown = order[:limit]
     shown += [row for row in order[limit:] if shown and row[0] == shown[-1][0]]
     beyond = [row for row in order[len(shown) :] if named is not None and row[1] == named.name]
     rows = tuple({"key": team, "rank": rank, "value": value, "beyond": index >= len(shown), **extra[team]} for index, (rank, team, value) in enumerate([*shown, *beyond]))
-    notes = (Note("definition", {"term": "rating_formula"}),) if rows and facts["metric"] in _POSSESSION_METRICS else ()
-    body = Grouped(by="team", rows=rows, ranked_by=facts["metric"])
-    return Result(subject="the league", relation="team", span=span, parts=(Part(body=body),), notes=notes, facts={**facts, "of": len(order)})
+    notes = (Note("definition", {"term": "rating_formula"}),) if rows and facts.metric in _POSSESSION_METRICS else ()
+    body = Grouped(by="team", rows=rows, ranked_by=facts.metric)
+    return Result(subject="the league", relation="team", span=span, narrowing=Narrowing(venue=venue), parts=(Part(body=body),), notes=notes, facts=replace(facts, of=len(order)))

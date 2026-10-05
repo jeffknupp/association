@@ -46,7 +46,7 @@ from association.query.entities import Entity, resolved_team, slot_season
 from association.query.notes import Note
 from association.query.player_relation import ResolvedSpan, span_of, validated_until
 from association.query.reading import Unsupported, unhonored_scoping
-from association.query.result import Grouped, Narrowing, Part, Refusal, Result, Rows, Scalar, Span, Unanswered
+from association.query.result import Calendar, Cell, GameOfSeries, Grouped, Narrowing, Part, Refusal, Result, Rows, Scalar, Span, TeamRecordFacts, Unanswered
 from association.query.season_line import Statement
 from association.query.season_text import MONTH_NAMES
 from association.query.team_games import TeamNarrowed, game_list_gaps_sql, season_game_counts_sql
@@ -344,20 +344,31 @@ def _games_record(con: duckdb.DuckDBPyConnection, q: TeamQuery, asked: _Asked, s
     wins = sum(1 for g in shown if g["won"])
     parts = [Part(body=Scalar(games=len(shown), values={"wins": wins, "losses": len(shown) - wins}, how="record")), Part(role="detail", body=Rows(rows=tuple(_unseasoned(games))))]
     notes: list[Note] = []
-    facts: dict[str, Any] = {"month": asked.month, "calendar": asked.calendar.label if asked.calendar else None, "since": asked.since, "until": asked.until, "game_n": asked.game_n}
+    facts = TeamRecordFacts()
     if games:
         notes += _games_record_remarks(con, q, asked, season, season_type, games, shown, parts)
     else:
-        facts["none"] = _no_games_cause(con, asked.team, asked.opponent, season, season_type)
+        facts = TeamRecordFacts(none=_no_games_cause(con, asked.team, asked.opponent, season, season_type))
     return Result(
         subject=asked.team.name,
         relation="team",
-        span=Span(season=season, season_type=season_type, career=season is None, first=first, last=last),
-        narrowing=Narrowing(phrase=narrowed.filters(opponent=False), opponent=asked.opponent.name if asked.opponent else None, venue=asked.venue),
+        span=Span(season=season, season_type=season_type, career=season is None, first=first, last=last, since=asked.since, until=asked.until),
+        narrowing=Narrowing(phrase=narrowed.filters(opponent=False), opponent=asked.opponent.name if asked.opponent else None, venue=asked.venue, cells=_record_cells(asked)),
         parts=tuple(parts),
         notes=tuple(notes),
         facts=facts,
     )
+
+
+def _record_cells(asked: _Asked) -> tuple[Cell, ...]:
+    """A tally's calendar cut (a month, or a situation as the reading named
+    it) and the game of a series, as the Result's cells."""
+    cells: list[Cell] = []
+    if asked.month is not None or asked.calendar is not None:
+        cells.append(Calendar(month=asked.month, situation=asked.calendar.label if asked.calendar else None))
+    if asked.game_n:
+        cells.append(GameOfSeries(n=asked.game_n))
+    return tuple(cells)
 
 
 def _games_record_remarks(
@@ -402,9 +413,7 @@ def _by_month(con: duckdb.DuckDBPyConnection, q: TeamQuery, asked: _Asked, seaso
             return refused
     games, _narrowed = _record_games(con, q, asked, season, season_type, narrowed_by=False)
     shown = [g for g in games if asked.venue is None or g["venue"] == asked.venue]
-    facts: dict[str, Any] = {"since": None}
-    if not shown:
-        facts["none"] = _no_games_cause(con, asked.team, asked.opponent, season, season_type)
+    facts = TeamRecordFacts(none=None if shown else _no_games_cause(con, asked.team, asked.opponent, season, season_type))
     return Result(
         subject=asked.team.name,
         relation="team",
@@ -433,10 +442,10 @@ def _by_month_span(con: duckdb.DuckDBPyConnection, q: TeamQuery, asked: _Asked, 
     return Result(
         subject=asked.team.name,
         relation="team",
-        span=Span(season_type=season_type, career=True),
+        span=Span(season_type=season_type, career=True, since=since, until=asked.until),
         narrowing=Narrowing(opponent=asked.opponent.name if asked.opponent else None, venue=asked.venue),
         parts=(Part(body=Grouped(by="month", rows=tuple(rows))),),
-        facts={"since": since, "until": asked.until, "none": None},
+        facts=TeamRecordFacts(),
     )
 
 

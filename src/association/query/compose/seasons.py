@@ -21,6 +21,7 @@ the planned point, as it does for every reader.
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import Any
 
 import duckdb
@@ -31,7 +32,7 @@ from association.query.measures import stat_measure
 from association.query.notes import Note
 from association.query.player_relation import ResolvedSpan
 from association.query.reading import Unsupported, unhonored_scoping
-from association.query.result import Decided, Grouped, Part, Result, Scalar, Span, Unanswered
+from association.query.result import Decided, Grouped, LineFacts, Part, Result, Scalar, Span, Unanswered
 from association.query.season_line import (
     ADVANCED_STATS,
     COMPARE_STAT_LINE,
@@ -132,13 +133,13 @@ def read_player_line(con: duckdb.DuckDBPyConnection, q: Query, *, stated: frozen
         return _player_line_advanced(con, player, span, stat)
     shooting = SHOOTING_STATS.get(stat) if stat is not None else None
     wanted = [] if shooting else wanted_stats(scope)
-    facts = {"stat": stat if shooting else None, "wanted": wanted}
+    facts = LineFacts(stat=stat if shooting else None, wanted=tuple(wanted))
     if span.career:
         return _player_line_career(con, player, span, wanted, shooting, facts)
     return _player_line_season(con, player, span, scope.season_type or 2, wanted, shooting, facts)
 
 
-def _player_line_season(con: duckdb.DuckDBPyConnection, player: Entity, span: ResolvedSpan, season_type: int, wanted: list[str], shooting: Any, facts: dict[str, Any]) -> Result:
+def _player_line_season(con: duckdb.DuckDBPyConnection, player: Entity, span: ResolvedSpan, season_type: int, wanted: list[str], shooting: Any, facts: LineFacts) -> Result:
     """One season's line, read from the deduplicated season table. The
     scalar holds each wanted stat's per-game figure (``values``), its total
     where the stat has a total column, a made count's attempts and a
@@ -150,7 +151,7 @@ def _player_line_season(con: duckdb.DuckDBPyConnection, player: Entity, span: Re
     columns, attempted_col = line_columns(wanted, shooting)
     row = _first(values_of(con, season_statement(player.id, columns, season, season_type)))
     line_span = Span(season=season, season_type=season_type, phrase=span.during(), source="seasons")
-    facts = {**facts, "season_n": span.ordinal}
+    facts = replace(facts, season_n=span.ordinal)
     if row is None:
         return Result(subject=player.name, relation="player", span=line_span, parts=(Part(body=Scalar(games=0)),), decisions=_player_line_redirect(con, player, span, season_type), facts=facts)
     found = dict(zip(columns, row, strict=True))
@@ -187,7 +188,7 @@ def _player_line_redirect(con: duckdb.DuckDBPyConnection, player: Entity, span: 
     return (Decided(kind="season_redirected", field="season", chose=None, why="the season read by default holds nothing for him", facts={"first": first, "last": last, "what": kind}),)
 
 
-def _player_line_career(con: duckdb.DuckDBPyConnection, player: Entity, span: ResolvedSpan, wanted: list[str], shooting: Any, facts: dict[str, Any]) -> Result:
+def _player_line_career(con: duckdb.DuckDBPyConnection, player: Entity, span: ResolvedSpan, wanted: list[str], shooting: Any, facts: LineFacts) -> Result:
     """A career line summed from the season table
     (:func:`~association.query.season_line.career_statement`): the games,
     each wanted stat's career per-game figure (``values``) and its total
@@ -214,7 +215,7 @@ def _player_line_career(con: duckdb.DuckDBPyConnection, player: Entity, span: Re
             sums[attempted_col] = attempted
     scalar = Scalar(games=int(games), values=values, sums=sums)
     line_span = Span(season_type=span.season_type, career=True, first=first, last=last, source="seasons")
-    return Result(subject=player.name, relation="player", span=line_span, parts=(Part(body=scalar),), facts={**facts, "season_count": seasons})
+    return Result(subject=player.name, relation="player", span=line_span, parts=(Part(body=scalar),), facts=replace(facts, season_count=seasons))
 
 
 def _player_line_advanced(con: duckdb.DuckDBPyConnection, player: Entity, span: ResolvedSpan, stat: str) -> Result:
@@ -232,7 +233,7 @@ def _player_line_advanced(con: duckdb.DuckDBPyConnection, player: Entity, span: 
         raise Unsupported(f"{spec.label} has no career figure - it has no volume column to weight the seasons by, so a career would be a mean of means")
     span = advanced_span(span)
     row = _first(values_of(con, advanced_statement(player.id, span, spec)))
-    facts: dict[str, Any] = {"stat": stat, "wanted": []}
+    facts = LineFacts(stat=stat)
     if row is None or row[0] is None:
         empty = Span(season=span.season, season_type=span.season_type, career=span.career, phrase=span.during(), source="seasons")
         return Result(subject=player.name, relation="player", span=empty, parts=(Part(body=Scalar(games=0)),), facts=facts)
@@ -240,7 +241,7 @@ def _player_line_advanced(con: duckdb.DuckDBPyConnection, player: Entity, span: 
     notes = (Note("seasons_missing", {"seasons": int(missing), "why": "empty_box_score", "stat": spec.column, "label": spec.label}),) if missing else ()
     scalar = Scalar(games=games, values={stat: value}, sums={"volume": volume, "seasons_missing": int(missing)})
     line_span = Span(season=span.season, season_type=span.season_type, career=span.career, first=first, last=last, phrase=span.during(first, last), source="seasons")
-    return Result(subject=player.name, relation="player", span=line_span, parts=(Part(body=scalar),), notes=notes, facts={**facts, "season_count": seasons})
+    return Result(subject=player.name, relation="player", span=line_span, parts=(Part(body=scalar),), notes=notes, facts=replace(facts, season_count=seasons))
 
 
 # --- a stat season by season ----------------------------------------------------------
@@ -301,7 +302,7 @@ def read_player_history(con: duckdb.DuckDBPyConnection, q: Query, *, stated: fro
         if summary is not None:
             parts.append(Part(role="summary", body=summary))
     span = Span(season_type=season_type, career=career, source="seasons")
-    return Result(subject=player.name, relation="player", span=span, parts=tuple(parts), facts={"stat": stat})
+    return Result(subject=player.name, relation="player", span=span, parts=tuple(parts), facts=LineFacts(stat=stat))
 
 
 def _player_history_career(con: duckdb.DuckDBPyConnection, player: Entity, stat: str, season_type: int, latest: int, rows: tuple[dict[str, Any], ...]) -> Scalar | None:
@@ -379,7 +380,9 @@ def read_player_compare(con: duckdb.DuckDBPyConnection, q: Query, *, stated: fro
         parts.append(Part(role="detail", body=Grouped(by="subject", rows=tuple(netpoints.values()))))
     missing = [name for name, line in lines.items() if "games" not in line]
     notes = (Note("no_data_for", {"names": missing, "period": season_phrase(season, season_type)}),) if missing else ()
-    return Result(subject=" vs ".join(lines), relation="player", span=Span(season=season, season_type=season_type, source="seasons"), parts=tuple(parts), notes=notes, facts={"wanted": wanted})
+    return Result(
+        subject=" vs ".join(lines), relation="player", span=Span(season=season, season_type=season_type, source="seasons"), parts=tuple(parts), notes=notes, facts=LineFacts(wanted=tuple(wanted))
+    )
 
 
 def _player_compare_lines(con: duckdb.DuckDBPyConnection, players: list[Entity], wanted: list[str], season: int, season_type: int) -> dict[str, dict[str, Any]]:

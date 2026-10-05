@@ -23,9 +23,9 @@ from association.query.entities import Entity, optional_team
 from association.query.lines import measure_filters
 from association.query.notes import Note
 from association.query.player_games import _PLAYER_GAMES, Narrowed, games_subquery
-from association.query.player_relation import condition_scope, no_games, no_narrowed_games, span_of
+from association.query.player_relation import condition_scope, narrowed_cells, no_games, no_narrowed_games, span_of
 from association.query.reading import SPLIT_KINDS, Scope, Unsupported, unhonored_scoping
-from association.query.result import Grouped, Narrowing, Part, Result, Span, Unanswered
+from association.query.result import Grouped, Narrowing, Part, Result, Span, SplitsFacts, Unanswered
 from association.query.season_text import MONTH_NAMES
 from association.query.team_relation import condition_team_no_games, team_games, team_span_label
 
@@ -225,12 +225,18 @@ def _player_splits(
     split, kinds = _kinds(scope.split, "p")
     groups, unread = _player_groups(con, q, compiled, line, kinds)
     notes = _player_notes(con, covered, base, params, first, kinds, unread)
-    facts = _player_facts(scope, player, narrowed, team, opponent, line, split, kinds, games)
+    facts = _player_facts(team, line, split, kinds, games)
     return Result(
         subject=player.name,
         relation="player",
         span=Span(season=covered.season, season_type=covered.season_type, career=covered.season is None, first=first, last=last, phrase=covered.label(first, last)),
-        narrowing=Narrowing(phrase=narrowed.filters(), opponent=opponent.name if opponent else None, venue=scope.venue, without=tuple(mate.name for mate in narrowed.without)),
+        narrowing=Narrowing(
+            phrase=narrowed.filters(),
+            opponent=opponent.name if opponent else None,
+            venue=scope.venue,
+            without=tuple(mate.name for mate in narrowed.without),
+            cells=narrowed_cells(narrowed),
+        ),
         parts=(Part(body=groups),),
         notes=notes,
         facts=facts,
@@ -255,30 +261,18 @@ def _player_notes(con: duckdb.DuckDBPyConnection, covered: Any, base: str, param
     return tuple(notes)
 
 
-def _player_facts(
-    scope: Scope, player: Entity, narrowed: Narrowed, team: Entity | None, opponent: Entity | None, line: tuple[tuple[str, str, str], ...], split: Any, kinds: list[str], games: int
-) -> dict[str, Any]:
+def _player_facts(team: Entity | None, line: tuple[tuple[str, str, str], ...], split: Any, kinds: list[str], games: int) -> SplitsFacts:
     """What the splits' sayer needs beside the rows: the split asked and the
     kinds shown, the line's names and headers, the count the heading says,
-    and the plain values the page renders from."""
-    return {
-        "split": split,
-        "kinds": kinds,
-        "line": [(name, header) for name, header, _ in line],
-        "counted": f"{games} game{'s' if games != 1 else ''} he played",
-        "games": games,
-        "for_team": team.name if team else None,
-        "about": {
-            "player": player.name,
-            "team": team.name if team else None,
-            "venue": scope.venue,
-            "opponent": opponent.name if opponent else None,
-            "without": [mate.name for mate in narrowed.without],
-            "started": narrowed.started,
-            "measures": list(narrowed.measures),
-            "series_game": narrowed.series_game,
-        },
-    }
+    and the team his games were played for."""
+    return SplitsFacts(
+        split=split,
+        kinds=tuple(kinds),
+        line=tuple((name, header) for name, header, _ in line),
+        counted=f"{games} game{'s' if games != 1 else ''} he played",
+        games=games,
+        team=team.name if team else None,
+    )
 
 
 def read_team_splits(con: duckdb.DuckDBPyConnection, q: TeamQuery, *, stated: frozenset[str]) -> Result | Unanswered | None:
@@ -362,15 +356,7 @@ def _team_splits(con: duckdb.DuckDBPyConnection, q: TeamQuery, team: Entity, opp
         notes.append(Note("floor", {"table": "box_scores", "first": span.first, "what": span.kind}))
     if "month" in kinds:
         notes.append(Note("definition", {"term": "months_eastern"}))
-    facts: dict[str, Any] = {
-        "split": split,
-        "kinds": kinds,
-        "line": [(name, header) for name, header, _ in line],
-        "counted": f"{games} game{'s' if games != 1 else ''}",
-        "games": games,
-        "for_team": None,
-        "about": {"player": None, "team": team.name, "venue": narrowed.venue, "opponent": narrowed.opponent.name if narrowed.opponent else None},
-    }
+    facts = SplitsFacts(split=split, kinds=tuple(kinds), line=tuple((name, header) for name, header, _ in line), counted=f"{games} game{'s' if games != 1 else ''}", games=games, team=team.name)
     return Result(
         subject=f"The {team.name}",
         relation="team",

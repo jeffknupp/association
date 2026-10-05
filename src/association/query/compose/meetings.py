@@ -25,7 +25,7 @@ from association.query.coverage import coverage_refusal
 from association.query.entities import Entity, resolved_team, slot_season
 from association.query.player_relation import ResolvedSpan, span_of, validated_until
 from association.query.reading import Scope, Unsupported, unhonored_scoping
-from association.query.result import Grouped, Narrowing, Part, Result, Span, Unanswered
+from association.query.result import Grouped, MeetingsFacts, Narrowing, Part, Result, Span, Unanswered
 from association.query.team_games import TeamNarrowed
 from association.query.team_relation import team_games
 
@@ -159,7 +159,7 @@ def read_head_to_head(con: duckdb.DuckDBPyConnection, q: TeamQuery, *, stated: f
         span=Span(season=season, season_type=season_type, date=date),
         narrowing=Narrowing(opponent=b.name, venue=venue),
         parts=(Part(body=_head_to_head_wins(a, b, won)),),
-        facts={"games": len(won)},
+        facts=MeetingsFacts(games=len(won)),
     )
 
 
@@ -183,8 +183,8 @@ def _head_to_head_over_span(
     return Result(
         subject=a.name,
         relation="team",
-        span=Span(season_type=season_type, career=True, first=first, last=last, phrase=span.during(first, last, whose="the seasons on record")),
+        span=Span(season_type=season_type, career=True, first=first, last=last, phrase=span.during(first, last, whose="the seasons on record"), since=since, until=until),
         narrowing=Narrowing(opponent=b.name, venue=venue),
         parts=(Part(body=_head_to_head_wins(a, b, [won for won, _ in rows])),),
-        facts={"games": len(rows), "since": since, "until": until, "span": "career" if career else None},
+        facts=MeetingsFacts(games=len(rows), span="career" if career else None),
     )

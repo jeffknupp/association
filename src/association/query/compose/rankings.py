@@ -20,7 +20,7 @@ minimums identical to the result objects called directly), and where each is
 now: the qualifier (58) - the ``minimum`` decision it already was; the
 career pool (1) - a ``floor`` note on the season line; the most-recent-team
 remark (4) - a ``definition`` note; the "also" columns and the team column
-(2 and 4) - values on each row; the team filter (6) - ``facts["team"]``; the
+(2 and 4) - values on each row; the team filter (6) - :class:`~association.query.result.RankingFacts`' ``team``; the
 season, named (12) or defaulted (54) - the span, unsaid when defaulted as it
 was. The coverage floors (the missing season and the unrepresentative one,
 ``nba.coverage.Floor.unrepresentative``) are refusals the answering loop
@@ -32,7 +32,7 @@ gives before any reader runs (``coverage.check_coverage``, over
 
 from __future__ import annotations
 
-from typing import Any
+from dataclasses import replace
 
 import duckdb
 
@@ -40,7 +40,7 @@ from association.query.measures import resolve_metric
 from association.query.metrics import EXTRA_FIELD_COLUMNS, LEADERBOARD_METRICS
 from association.query.notes import Note
 from association.query.reading import Scope, Unsupported, _clamp_limit, unhonored_scoping
-from association.query.result import Decided, Part, Refusal, Result, Span, Unanswered
+from association.query.result import Decided, Part, RankingFacts, Refusal, Result, Span, Unanswered
 from association.query.season_line import MIN_SAMPLE_LABELS, SEASON_TOTAL_OF, CareerLeaderboardResult, LeaderboardError, rank_season_line
 
 from .core import Query
@@ -193,7 +193,7 @@ def read_leaderboard(con: duckdb.DuckDBPyConnection, q: Query, *, stated: frozen
         unit = MIN_SAMPLE_LABELS.get(found.min_sample_column or "", found.min_sample_column or "")
         decisions = (Decided(kind="minimum", field="minimum", chose=minimum, facts={"of": unit, "column": found.min_sample_column}),)
     ratio = LEADERBOARD_METRICS[metric].ratio
-    facts: dict[str, Any] = {"label": found.label, "ratio": list(ratio) if ratio else None, "fields": fields}
+    facts = RankingFacts(label=found.label, ratio=tuple(ratio) if ratio else None, fields=tuple(fields))
     if isinstance(found, CareerLeaderboardResult):
         pool = found.pool_first_season
         span = Span(season=None, season_type=found.season_type, career=True, first=pool, source="seasons")
@@ -203,7 +203,7 @@ def read_leaderboard(con: duckdb.DuckDBPyConnection, q: Query, *, stated: frozen
         # fingerprint-shaped one); the sayer names it the regular season.
         span = Span(season=found.season, season_type=found.season_type, source="seasons")
         notes = (Note("definition", {"term": "most_recent_team"}),) if ranking.traded else ()
-        facts["team"] = found.team_name
+        facts = replace(facts, team=found.team_name)
         if scope.season is None:
             # The season was the reader's choice (the latest on record), not
             # the question's: recorded as the decision it is, said by the

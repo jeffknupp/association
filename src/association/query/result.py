@@ -14,10 +14,15 @@ first version carries beyond the draft, on purpose and to be cut as the
 sayers take it over: the narrowing's phrase and the span's words
 (``Narrowing.phrase``, ``Span.years``), which the reader still takes from
 the relation's own ``filters()`` and ``years()`` rather than the sayer
-building them from cells; and an ``empty`` sentence, where the reader
-found no rows and the shared "which fact is missing" writer
-(``player_relation.no_narrowed_games``) still composes the reason, as
-it does for the templates that have not retired.
+building them from cells.
+
+Typed since the Phase 2 review's cleanup ("the Result is typed",
+2026-10-05): what a read finds instead of an answer is a :class:`Refusal`
+(a cause from :data:`RUN_CAUSES` and its facts) or a :class:`Clarify`,
+never a sentence - ``empty`` too, the reason a read with no rows gives;
+the cells the read applied are :data:`Cell` values on :class:`Narrowing`
+and :class:`Span`; what a shape's sayer needs beside its body is one typed
+record per shape (:data:`Facts`), where an untyped mapping was.
 
 .. versionadded:: 5.0.0
 """
@@ -51,9 +56,15 @@ class Span:
     ESPN Analytics' NetPoints (``"netpoints"``, a player's season ratings
     and fingerprints, :mod:`association.query.compose.netpoints`), or one
     player's located shots (``"shots"``, the declared shot relation,
-    :mod:`association.query.compose.shots`).
+    :mod:`association.query.compose.shots`). ``since`` and ``until`` are a
+    span cut by seasons the question named ("since 2015", "from 2011 to
+    2019"; the draft's ``Span.seasons``), and ``ordinal`` a season named by
+    its place in his career ("his 18th season").
 
     .. versionadded:: 5.0.0
+
+    .. versionchanged:: 5.0.0
+       ``since``, ``until`` and ``ordinal``, which ``Result.facts`` carried.
     """
 
     season: int | None = None
@@ -65,7 +76,130 @@ class Span:
     years: str | None = None
     phrase: str | None = None
     floor: int | None = None
+    since: int | None = None
+    until: int | None = None
+    ordinal: int | None = None
     source: Literal["games", "seasons", "team_seasons", "team_snapshots", "netpoints", "shots"] = "games"
+
+
+@dataclass(frozen=True)
+class Period:
+    """The quarter or half a read sees of each game (``ROADMAP-TYPES.md``,
+    ``Reading.period``): as the answer names it (``label``: "1st quarter",
+    "2nd half") and by number (``periods``, where the read kept them).
+
+    .. versionadded:: 5.0.0
+    """
+
+    label: str
+    periods: tuple[int, ...] = ()
+
+
+@dataclass(frozen=True)
+class OnDate:
+    """One named day the read was narrowed to (the draft's ``OnDate``).
+
+    .. versionadded:: 5.0.0
+    """
+
+    day: str
+
+
+@dataclass(frozen=True)
+class Line:
+    """A stat a game reached, missed or equaled (the draft's ``Line``): the
+    box-score column, the comparison, the number, and how the answer says
+    it (``label``, the relation's own words: "30+ points").
+
+    .. versionadded:: 5.0.0
+    """
+
+    column: str | None
+    op: str = ">="
+    value: Any = None
+    label: str = ""
+
+
+@dataclass(frozen=True)
+class Role:
+    """How he entered the game (the draft's ``Role``): started, or came off
+    the bench.
+
+    .. versionadded:: 5.0.0
+    """
+
+    started: bool
+
+
+@dataclass(frozen=True)
+class GameOfSeries:
+    """Game ``n`` of a series (the draft's ``GameOfSeries``).
+
+    .. versionadded:: 5.0.0
+    """
+
+    n: int
+
+
+@dataclass(frozen=True)
+class Calendar:
+    """A calendar narrowing (the draft's ``Calendar``): a month by number,
+    or a situation as the reading named it ("on Christmas").
+
+    .. versionadded:: 5.0.0
+    """
+
+    month: int | None = None
+    situation: str | None = None
+
+
+@dataclass(frozen=True)
+class Companions:
+    """Teammates a team's games are divided by (the draft's ``Companion``
+    filters, as a with/without split's ``presence`` dimension reads them):
+    their names, whether the question asked about their absence
+    (``absent``: "without"), and each one's predicate as the split held it
+    (``predicates``: who played, sat, started).
+
+    .. versionadded:: 5.0.0
+    """
+
+    names: tuple[str, ...]
+    absent: bool = False
+    predicates: tuple[Any, ...] = ()
+
+
+@dataclass(frozen=True)
+class Met:
+    """The games every named subject played in, on opposite sides (the
+    draft's ``Met``): a matchup is a comparison with this cell - ``other``
+    is the second player.
+
+    .. versionadded:: 5.0.0
+    """
+
+    other: str
+
+
+@dataclass(frozen=True)
+class ShotValue:
+    """Shots of one value only (the draft's ``ShotValue``): 1, 2 or 3.
+
+    .. versionadded:: 5.0.0
+    """
+
+    value: int
+
+
+Cell = Period | OnDate | Line | Role | GameOfSeries | Calendar | Companions | Met | ShotValue
+"""The closed set of cells a read applies beyond the span, typed
+(``ROADMAP-TYPES.md``, "Filter - one closed union in place of 39 slots" -
+the minimal set the Result needed, declared by the step that moved them
+off ``Result.facts``, 2026-10-05). An opponent, a venue and the teammates
+absent are :class:`Narrowing`'s own fields, as they were.
+
+.. versionadded:: 5.0.0
+"""
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -73,20 +207,38 @@ class Narrowing:
     """The cells the read applied beyond the span, as values and as the
     phrase the relation says them with (``Narrowed.filters()``) - the
     phrase is carried, not built, until each cell has one phrase in the
-    sayer (``ROADMAP.md``, contract 4).
+    sayer (``ROADMAP.md``, contract 4). ``opponent``, ``venue`` and
+    ``without`` are the cells every relation narrows by; the rest are
+    ``cells``, each a :data:`Cell`, read by type
+    (:meth:`cell`, :meth:`lines`).
 
     .. versionadded:: 5.0.0
+
+    .. versionchanged:: 5.0.0
+       ``cells`` holds what ``Result.facts`` carried as untyped keys (the
+       period, a date, the lines, a role, a series game, a calendar cut,
+       the companions, the pair's other player, a shot value), and
+       ``period`` is the :class:`Period` cell among them.
     """
 
     phrase: str = ""
     opponent: str | None = None
     venue: str | None = None
     without: tuple[str, ...] = ()
-    #: The quarter or half the read sees of each game, as the answer names
-    #: it ("1st quarter", "2nd half") - the period relation's cell on a
-    #: team's games (``TeamNarrowed.narrow_periods``); None for whole games.
-    #: Declared by the first team shape to carry one (``team_quarter_points``).
-    period: str | None = None
+    cells: tuple[Cell, ...] = ()
+
+    def cell[C](self, kind: type[C]) -> C | None:
+        """The one cell of type ``kind`` the read applied, or None."""
+        return next((each for each in self.cells if isinstance(each, kind)), None)
+
+    def lines(self) -> tuple[Line, ...]:
+        """Every :class:`Line` the read kept games past, in its order."""
+        return tuple(each for each in self.cells if isinstance(each, Line))
+
+    @property
+    def period(self) -> Period | None:
+        """The quarter or half the read sees of each game, or None for whole games."""
+        return self.cell(Period)
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -133,6 +285,10 @@ class Grouped:
     by: str
     rows: tuple[Mapping[str, Any], ...] = ()
     ranked_by: str | None = None
+    #: The parameter of ``by`` (the draft's ``Dimension``: ``line(Line)``,
+    #: ``presence(of: names)``): the line a split by ``threshold`` divides
+    #: the games by, the teammates a split by ``presence`` divides them by.
+    of: Line | Companions | None = None
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -152,7 +308,14 @@ class Scalar:
     figure, ``values`` is empty, and ``sums`` holds how many of the counted
     games are rebuilt from play-by-play, ``rebuilt``), or a team's games
     won and lost (``"record"``, ``team_record``'s: ``values`` holds
-    ``wins`` and ``losses`` and what the record's source says beside them).
+    ``wins`` and ``losses`` and what the record's source says beside them),
+    or - since the sayer is chosen by the body's type and this field
+    (2026-10-05) - a season line read as the season stores it
+    (``"season"``), an average over shots (``"per_shot"``), NetPoints
+    ratings per 100 possessions (``"per_100"``) or one game's own
+    (``"total"``), ESPN's projection of a team's season
+    (``"projection"``), a team's record ranked among the league's
+    (``"ranked"``).
 
     .. versionadded:: 5.0.0
     """
@@ -160,7 +323,7 @@ class Scalar:
     games: int
     values: Mapping[str, Any] = field(default_factory=dict)
     sums: Mapping[str, Any] = field(default_factory=dict)
-    how: Literal["per_game", "count", "record"] = "per_game"
+    how: Literal["per_game", "count", "record", "season", "per_shot", "per_100", "total", "projection", "ranked"] = "per_game"
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -213,6 +376,10 @@ class Runs:
     """
 
     runs: tuple[Run, ...] = ()
+    #: What the runs held along (the draft: "a ``Line`` or ``Won``"): a line
+    #: each game reached, or wins (``won=True``) or losses.
+    line: Line | None = None
+    won: bool = True
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -292,6 +459,285 @@ class Window:
     limit: int
     asked: int | None = None
     ascending: bool = False
+
+
+# --- what a shape's sayer needs beside its body: one typed record per shape ---------
+
+
+@dataclass(frozen=True, kw_only=True)
+class CountFacts:
+    """A count of games over a line or a single game's high, besides its
+    body: the stat asked about (as the question named it), the first season
+    box scores cover, and how many games in the span had an empty box score.
+
+    .. versionadded:: 5.0.0
+    """
+
+    stat: str | None
+    box_scores_from: int
+    empty_box_scores: int
+
+
+@dataclass(frozen=True, kw_only=True)
+class LogFacts:
+    """A log of games, besides its rows: the stat whose total a team's log
+    states beneath them (``stat``), and whether both season types were
+    merged (``mixed``: no season type was named for "last N games").
+
+    .. versionadded:: 5.0.0
+    """
+
+    stat: Any = None
+    mixed: bool = False
+
+
+@dataclass(frozen=True, kw_only=True)
+class LineFacts:
+    """A player's line (over his games, or the season line's), history or
+    comparison, besides its body: the stat asked about, the columns shown
+    (``wanted``), how many seasons a career line sums (``season_count``)
+    and the ordinal season it was read for (``season_n``).
+
+    .. versionadded:: 5.0.0
+    """
+
+    stat: Any = None
+    wanted: tuple[str, ...] = ()
+    season_count: int | None = None
+    season_n: int | None = None
+
+
+@dataclass(frozen=True, kw_only=True)
+class SplitsFacts:
+    """A player's or a team's splits, besides the groups: the split asked
+    for (``split``), the kinds shown, the line's names and headers, how the
+    heading counts the games (``counted``) and how many, and the team - the
+    one whose games they are, or the one a player's were played for.
+
+    .. versionadded:: 5.0.0
+    """
+
+    split: str | None
+    kinds: tuple[str, ...]
+    line: tuple[tuple[str, str], ...]
+    counted: str
+    games: int
+    team: str | None = None
+
+
+@dataclass(frozen=True, kw_only=True)
+class PeriodFacts:
+    """A player's quarter or half, besides its rows or quarters: the
+    measure, whether a per-game log was asked (``per_game``) and of his
+    whole line (``full_line``), the relation's own words for a teammate's
+    role or a calendar cut it applied (``also``), and the games read.
+
+    .. versionadded:: 5.0.0
+    """
+
+    stat: str
+    per_game: bool = False
+    full_line: bool = False
+    also: tuple[str, ...] = ()
+    games: int = 0
+
+
+@dataclass(frozen=True, kw_only=True)
+class PeriodRankingFacts:
+    """A ranking by a quarter or half, besides its rows: the measure, the
+    games minimum applied, the most anyone played where the minimum is half
+    of it, and how many players qualified.
+
+    .. versionadded:: 5.0.0
+    """
+
+    measure: str
+    minimum: int
+    most: int | None = None
+    qualified: int | None = None
+
+
+@dataclass(frozen=True, kw_only=True)
+class TeamPeriodFacts:
+    """A team's quarter or half, besides its line and games: the measure,
+    which extreme was asked for (``rank``) and the narrowing's own words
+    without its date (``dateless``).
+
+    .. versionadded:: 5.0.0
+    """
+
+    measure: str
+    rank: str | None
+    dateless: str
+
+
+@dataclass(frozen=True, kw_only=True)
+class RankingFacts:
+    """A ranking of players by a season-line metric, besides its rows: the
+    metric's label, its ratio's columns, the columns shown beside it and the
+    team whose players it ranks.
+
+    .. versionadded:: 5.0.0
+    """
+
+    label: str
+    ratio: tuple[str, ...] | None = None
+    fields: tuple[str, ...] = ()
+    team: str | None = None
+
+
+@dataclass(frozen=True, kw_only=True)
+class RecordFacts:
+    """A record over a line, a streak or a with/without split, besides its
+    body: the teams it was counted on (``teams``), who the split is about
+    (``player``), and for a streak whether it is of wins (``want_win``).
+
+    .. versionadded:: 5.0.0
+    """
+
+    teams: tuple[str, ...] = ()
+    player: str | None = None
+    want_win: bool = True
+
+
+@dataclass(frozen=True, kw_only=True)
+class MatchupFacts:
+    """Two players' meetings, besides the comparison: how many games they
+    shared as teammates, and the teammate whose absence emptied them.
+
+    .. versionadded:: 5.0.0
+    """
+
+    teammate_games: int
+    absence: Mapping[str, Any] | None = None
+
+
+@dataclass(frozen=True, kw_only=True)
+class MeetingsFacts:
+    """Two teams' meetings, besides the wins: how many games, and a span
+    named as a career (``span``).
+
+    .. versionadded:: 5.0.0
+    """
+
+    games: int
+    span: str | None = None
+
+
+@dataclass(frozen=True, kw_only=True)
+class TeamRecordFacts:
+    """A team's record from the game list, besides the tally: why there
+    were no games (``none``: the season held none, or the teams never met).
+
+    .. versionadded:: 5.0.0
+    """
+
+    none: str | None = None
+
+
+@dataclass(frozen=True, kw_only=True)
+class TeamStatFacts:
+    """A team's season numbers, besides the metrics: the one named, the
+    games behind them, and why a metric needing points allowed is blank
+    (``short``).
+
+    .. versionadded:: 5.0.0
+    """
+
+    metric: str | None
+    games: int | None = None
+    short: Mapping[str, Any] | None = None
+
+
+@dataclass(frozen=True, kw_only=True)
+class TeamRankingFacts:
+    """Every team ranked by one metric, besides the rows: the metric, the
+    rank word asked, which end comes first, and how many teams were ranked.
+
+    .. versionadded:: 5.0.0
+    """
+
+    metric: str
+    rank: str | None
+    descending: bool
+    of: int = 0
+
+
+@dataclass(frozen=True, kw_only=True)
+class OutlookFacts:
+    """ESPN's power index for a team, besides its line and chances: the
+    snapshot read (its kind, name, update stamp and team count), and every
+    snapshot of the season with whether a postseason one was asked.
+
+    .. versionadded:: 5.0.0
+    """
+
+    kind: int | None = None
+    snapshot: str | None = None
+    updated: str | None = None
+    teams_in_snapshot: int | None = None
+    snapshots: tuple[Mapping[str, Any], ...] = ()
+    postseason: bool = False
+
+
+@dataclass(frozen=True, kw_only=True)
+class NetPointsFacts:
+    """A player's NetPoints, besides the ratings: whether they are per 100
+    possessions, the possessions behind them, and the game read.
+
+    .. versionadded:: 5.0.0
+    """
+
+    per_100: bool = False
+    possessions: float | None = None
+    event_id: str | None = None
+
+
+@dataclass(frozen=True, kw_only=True)
+class ChartFacts:
+    """A drawing's settings, besides its marks: a fingerprint's view and
+    scale, the span it covers in words (``when``), its players and order,
+    the axis note and the league's scale the draw step needs.
+
+    .. versionadded:: 5.0.0
+    """
+
+    view: str | None = None
+    scale: str | None = None
+    when: str | None = None
+    players: tuple[str, ...] = ()
+    order: str | None = None
+    axis_note: str | None = None
+    league: Mapping[str, Any] | None = None
+
+
+Facts = (
+    CountFacts
+    | LogFacts
+    | LineFacts
+    | SplitsFacts
+    | PeriodFacts
+    | PeriodRankingFacts
+    | TeamPeriodFacts
+    | RankingFacts
+    | RecordFacts
+    | MatchupFacts
+    | MeetingsFacts
+    | TeamRecordFacts
+    | TeamStatFacts
+    | TeamRankingFacts
+    | OutlookFacts
+    | NetPointsFacts
+    | ChartFacts
+)
+"""What a shape's sayer needs beside the body, the cells, the notes and the
+decisions - one typed record per shape, where ``Result.facts`` was an
+untyped mapping (51 constructions, about 80 keys; the inventory is in the
+step's report). A key that was a cell the read applied went to
+:attr:`Narrowing.cells` or :class:`Span`; one that chose the sayer is gone.
+
+.. versionadded:: 5.0.0
+"""
 
 
 RUN_CAUSES: frozenset[str] = frozenset(
@@ -422,10 +868,14 @@ class Result:
     a team), ``relation`` which relation it read; ``parts`` hold the rows
     or figures, ``notes`` what the sayer must say about the data (kinds and
     facts, never sentences), ``decisions`` what it chose where the question
-    left a field open (:class:`Decided`), ``facts`` the plain values a shape's sayer
-    needs beside them (a team log's ``stat`` for its total line). ``empty``
-    is the sentence a read with no rows gives its reason with - see the
-    module docstring for why it is a sentence still.
+    left a field open (:class:`Decided`), ``facts`` the typed record a
+    shape's sayer needs beside them (:data:`Facts`: a team log's ``stat``
+    for its total line). ``empty`` is the :class:`Refusal` a read with no
+    rows gives its reason with; the body is there still, with nothing in
+    it, so the shape says itself.
+
+    .. versionchanged:: 5.0.0
+       ``facts`` is typed per shape and ``empty`` a :class:`Refusal`.
 
     .. versionadded:: 5.0.0
     """
@@ -438,7 +888,7 @@ class Result:
     parts: tuple[Part, ...] = ()
     notes: tuple[Note, ...] = ()
     decisions: tuple[Decided, ...] = ()
-    facts: Mapping[str, Any] = field(default_factory=dict)
+    facts: Facts | None = None
     empty: Refusal | None = None
 
     @property

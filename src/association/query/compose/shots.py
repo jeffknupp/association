@@ -40,7 +40,7 @@ from association.query.notes import Note
 from association.query.player_games import Narrowed, games_subquery
 from association.query.player_relation import RELATION_SCOPING, ResolvedSpan, no_narrowed_games, scoped_games, scoped_player, settle_ordinal_season, span_of
 from association.query.reading import Scope, Unsupported, unhonored_scoping
-from association.query.result import Chart, Decided, Narrowing, Part, Refusal, Result, Scalar, Span, Unanswered
+from association.query.result import Chart, Decided, Narrowing, OnDate, Part, Refusal, Result, Scalar, ShotValue, Span, Unanswered, Window
 from association.query.season_line import Statement, season_redirect, seasons_played
 from association.query.season_text import SEASON_TYPE_NAMES, season_phrase
 from association.query.shotchart import DERIVED_SHOT_VALUES, SHOT_VALUE_SQL, UNSEPARABLE_SHOT_VALUES, resolve_chart_player
@@ -209,10 +209,11 @@ def _shot_distance_unseparable(player: Entity, span: ResolvedSpan, shot_value: i
     return Refusal(kind="shot_distance_unseparable", facts=facts, shown={"player": player.name, "season": season, "shot_value": shot_value})
 
 
-def _shot_distance_games(con: duckdb.DuckDBPyConnection, player: Entity, span: ResolvedSpan, scope: Scope, measures: list[MeasureFilter]) -> tuple[list[str], Narrowing, dict[str, Any]] | Unanswered:
+def _shot_distance_games(con: duckdb.DuckDBPyConnection, player: Entity, span: ResolvedSpan, scope: Scope, measures: list[MeasureFilter]) -> tuple[list[str], Narrowing, Window | None] | Unanswered:
     """The games a narrowed distance read is pinned to, with the narrowing
     as the answer names it: one game a window alone reached keeps its own
-    words ("in his most recent game (2026-04-12)"), as facts; any other set
+    words ("in his most recent game (2026-04-12)") - its day a cell and the
+    window it was the end of; any other set
     is said as the span and the relation's own phrase for the narrowing
     (:meth:`~association.query.player_games.Narrowed.filters`)."""
     narrowed = scoped_games(con, player, span, scope, opponent=scope.opponent, measures=measures, date=scope.date)
@@ -224,8 +225,8 @@ def _shot_distance_games(con: duckdb.DuckDBPyConnection, player: Entity, span: R
     ids, dates = found
     opponent = narrowed.opponent.name if narrowed.opponent else None
     if len(ids) == 1 and not _shots_other_narrowing(scope, scope.date, measures):
-        return ids, Narrowing(opponent=opponent, venue=narrowed.venue), {"game_date": dates[0], "first_game": scope.order == "first"}
-    return ids, Narrowing(phrase=f" {_shots_span_prefix(span)}{narrowed.filters(windowed=True)}", opponent=opponent, venue=narrowed.venue), {}
+        return ids, Narrowing(opponent=opponent, venue=narrowed.venue, cells=(OnDate(day=dates[0]),)), Window(limit=1, ascending=scope.order == "first")
+    return ids, Narrowing(phrase=f" {_shots_span_prefix(span)}{narrowed.filters(windowed=True)}", opponent=opponent, venue=narrowed.venue), None
 
 
 def read_shot_distance(con: duckdb.DuckDBPyConnection, q: ShotQuery, *, stated: frozenset[str]) -> Result | Unanswered | None:
@@ -265,7 +266,7 @@ def read_shot_distance(con: duckdb.DuckDBPyConnection, q: ShotQuery, *, stated: 
     if refusal is not None:
         return refusal
     ids: list[str] | None = None
-    narrowing, game = Narrowing(), dict[str, Any]()
+    narrowing, game = Narrowing(), None
     if _shots_has_narrowing(scope, scope.date, measures):
         pinned = _shot_distance_games(con, player, span, scope, measures)
         if isinstance(pinned, Unanswered):
@@ -286,7 +287,7 @@ def read_shot_distance(con: duckdb.DuckDBPyConnection, q: ShotQuery, *, stated: 
 
 
 def _shot_distance_result(
-    con: duckdb.DuckDBPyConnection, player: Entity, span: ResolvedSpan, shot_value: int | None, period: str, narrowing: Narrowing, game: dict[str, Any], average: Any, attempts: int, games: int
+    con: duckdb.DuckDBPyConnection, player: Entity, span: ResolvedSpan, shot_value: int | None, period: str, narrowing: Narrowing, game: Window | None, average: Any, attempts: int, games: int
 ) -> Result:
     """The distance read's Result: the line, and its notes in the order the
     answer says them - a derived season's caveat, then the career's floor."""
@@ -302,10 +303,10 @@ def _shot_distance_result(
         subject=player.name,
         relation="player",
         span=Span(season=span.season, season_type=span.season_type, career=span.career, phrase=period, source="shots"),
-        narrowing=narrowing,
-        parts=(Part(body=Scalar(games=games, values={"avg_feet": average}, sums={"attempts": attempts})),),
+        narrowing=replace(narrowing, cells=(*narrowing.cells, *((ShotValue(value=shot_value),) if shot_value is not None else ()))),
+        window=game,
+        parts=(Part(body=Scalar(games=games, values={"avg_feet": average}, sums={"attempts": attempts}, how="per_shot")),),
         notes=tuple(notes),
-        facts={"shot_value": shot_value, **game},
     )
 
 

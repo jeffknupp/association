@@ -37,7 +37,7 @@ from association.query.notes import Note
 from association.query.player_games import _joined
 from association.query.player_relation import career_end, condition_scope
 from association.query.reading import Scope, Unsupported, unhonored_scoping
-from association.query.result import Grouped, Narrowing, Part, Refusal, Result, Span, Unanswered
+from association.query.result import Companions, Grouped, Narrowing, Part, RecordFacts, Refusal, Result, Span, Unanswered
 from association.query.subject import with_without_named
 
 from .core import rows_of
@@ -141,16 +141,17 @@ def _with_without_result(
         relation="team",
         span=Span(season=covered.season, season_type=covered.season_type, career=covered.season is None, first=first, last=last, phrase=covered.label(first, last)),
         narrowing=Narrowing(phrase=f" vs the {against.name}" if against is not None else "", opponent=against.name if against is not None else None),
-        parts=(Part(body=Grouped(by="presence", rows=tuple(groups))),),
+        parts=(Part(body=Grouped(by="presence", rows=tuple(groups), of=_with_without_companions(named, asked_without, predicates))),),
         notes=tuple(notes),
-        facts={
-            "teammates": named,
-            "player": subject.name if subject is not None else None,
-            "teams": teams,
-            "asked_without": asked_without,
-            "predicates": [(kind, None if line is None else (line[0], line[1])) for kind, line in predicates],
-        },
+        facts=RecordFacts(teams=tuple(teams), player=subject.name if subject is not None else None),
     )
+
+
+def _with_without_companions(named: list[str], asked_without: bool, predicates: list[tuple[str, tuple[str, int] | None]]) -> Companions:
+    """The teammates the games are divided by, as the split's ``presence``
+    dimension holds them: their names, whether the question asked about
+    their absence, and each one's predicate (a role, or a line he reached)."""
+    return Companions(names=tuple(named), absent=asked_without, predicates=tuple((kind, None if line is None else (line[0], line[1])) for kind, line in predicates))
 
 
 def _with_without_groups(games: list[dict[str, Any]], team_names: dict[str, str], asked_without: bool, n_mates: int) -> tuple[list[str], list[dict[str, Any]]]:

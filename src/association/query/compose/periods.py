@@ -66,8 +66,28 @@ from association.query.player_games import (
     period_rate,
 )
 from association.query.player_relation import ResolvedSpan, league_games, relation_window, scoped_games, span_of
-from association.query.reading import STARTER_SIDES, Scope, Unsupported, _clamp_limit, period_narrowing, unhonored_scoping
-from association.query.result import Decided, Grouped, Narrowing, Part, Refusal, Result, Rows, Scalar, Span, Unanswered
+from association.query.reading import DEFAULT_GAME_LOG_LIMIT, STARTER_SIDES, Scope, Unsupported, _clamp_limit, period_narrowing, unhonored_scoping
+from association.query.result import (
+    Cell,
+    Decided,
+    GameOfSeries,
+    Grouped,
+    Line,
+    Narrowing,
+    Part,
+    Period,
+    PeriodFacts,
+    PeriodRankingFacts,
+    Refusal,
+    Result,
+    Role,
+    Rows,
+    Scalar,
+    Span,
+    TeamPeriodFacts,
+    Unanswered,
+    Window,
+)
 from association.query.season_line import Statement
 from association.query.season_text import season_phrase
 from association.query.team_games import TEAM_PERIOD_AGREEMENT, TEAM_PERIOD_COLUMNS, TeamNarrowed, period_games_sql
@@ -111,29 +131,29 @@ def _period_untrusted(season: int, measure: str) -> Unanswered | None:
     return Refusal(kind="period_untrusted", facts=distrust, shown={"season": distrust["season"]}) if distrust is not None else None
 
 
-def _period_where(scope: Scope, narrowed: Narrowed) -> dict[str, Any]:
+def _period_where(scope: Scope, narrowed: Narrowed) -> tuple[tuple[Cell, ...], tuple[str, ...]]:
     """What the answer says it narrowed to, after the player and the period,
-    as values: the venue and the starter/bench half (only a NAMED half
-    filters), the lines on a box-score column, the game of a series, and
-    the relation's phrases for a teammate's role and a calendar or
-    conference narrowing (the teammates absent are the Narrowing's)."""
+    as cells - the starter/bench half (only a NAMED half filters), the lines
+    on a box-score column, the game of a series - and the relation's
+    phrases for a teammate's role and a calendar or conference narrowing
+    (the venue and the teammates absent are the Narrowing's)."""
     situation = narrowed._situation_phrase()
-    return {
-        "venue": scope.venue,
-        "started": STARTER_SIDES.get(scope.split) if scope.split is not None else None,
-        "measures": list(narrowed.measures),
-        "series_game": narrowed.series_game,
-        # A teammate's role and a calendar or a conference, in the relation's
-        # own words (``Narrowed.filters``): both narrow which games count,
-        # and the period sentence did not say them (ISSUES.md #301) - "jokic
-        # first quarter points in january" answered one January game as
-        # though it were his season.
-        "also": [c.phrase() for c in narrowed.conditions if not (c.side == "own" and c.predicate == "absent")] + ([situation] if situation else []),
-    }
+    started = STARTER_SIDES.get(scope.split) if scope.split is not None else None
+    cells: list[Cell] = [Role(started=started)] if started is not None else []
+    cells += [Line(column=column, op=op, value=value, label=label) for column, op, value, label in narrowed.lines]
+    if narrowed.series_game is not None:
+        cells.append(GameOfSeries(n=narrowed.series_game))
+    # A teammate's role and a calendar or a conference, in the relation's
+    # own words (``Narrowed.filters``): both narrow which games count,
+    # and the period sentence did not say them (ISSUES.md #301) - "jokic
+    # first quarter points in january" answered one January game as
+    # though it were his season.
+    also = [c.phrase() for c in narrowed.conditions if not (c.side == "own" and c.predicate == "absent")] + ([situation] if situation else [])
+    return tuple(cells), tuple(also)
 
 
-def _period_narrowing(narrowed: Narrowed, venue: str | None) -> Narrowing:
-    return Narrowing(opponent=narrowed.opponent.name if narrowed.opponent else None, venue=venue, without=tuple(mate.name for mate in narrowed.without))
+def _period_narrowing(narrowed: Narrowed, venue: str | None, cells: tuple[Cell, ...]) -> Narrowing:
+    return Narrowing(opponent=narrowed.opponent.name if narrowed.opponent else None, venue=venue, without=tuple(mate.name for mate in narrowed.without), cells=cells)
 
 
 # --- one quarter or half, game by game ----------------------------------------------------
@@ -211,7 +231,15 @@ def _period_unread(games: list[dict[str, Any]], measure: str) -> bool:
 
 
 def _period_log_result(
-    compiled: Compiled, scope: Scope, rows: list[dict[str, Any]], season: int, period_label: str, measure: str, where: dict[str, Any], *, fallback: Decided | None = None
+    compiled: Compiled,
+    scope: Scope,
+    rows: list[dict[str, Any]],
+    season: int,
+    period_label: str,
+    measure: str,
+    where: tuple[tuple[Cell, ...], tuple[str, ...]],
+    *,
+    fallback: Decided | None = None,
 ) -> Result | Unanswered:
     """The games read, the figures over them and the caveats - or, with no
     games, the Result the sayer says "no games found" from. ``fallback`` is
@@ -225,21 +253,17 @@ def _period_log_result(
     notes: list[Note] = []
     if games:
         notes = period_agreement_notes(season, measure, full_line=scope.per_game and scope.stat is None and len(games) > 1)
-    facts: dict[str, Any] = {
-        "period": period_label,
-        "stat": measure,
-        **where,
-        "per_game": scope.per_game,
-        "full_line": scope.stat is None,
-        "order": scope.order,
-        "limit": scope.limit,
-    }
+    cells, also = where
+    facts = PeriodFacts(stat=measure, per_game=scope.per_game, full_line=scope.stat is None, also=also)
+    # The log beneath a per-game figure: the newest N, or the first N.
+    window = Window(limit=_clamp_limit(scope.limit, default=DEFAULT_GAME_LOG_LIMIT), asked=scope.limit, ascending=scope.order == "first")
     body = Rows(columns=PERIOD_COLUMNS, rows=tuple(games), summary=_period_figures(games, measure) if games else {})
     return Result(
         subject=compiled.player.name,
         relation="player",
         span=Span(season=season, season_type=season_type, date=None if fallback else scope.date),
-        narrowing=_period_narrowing(compiled.narrowed, where["venue"]),
+        narrowing=_period_narrowing(compiled.narrowed, scope.venue, (Period(label=period_label), *cells)),
+        window=window,
         parts=(Part(body=body),),
         notes=tuple(notes),
         decisions=(fallback,) if fallback is not None else (),
@@ -328,14 +352,18 @@ def _period_quarters_result(compiled: Compiled, scope: Scope, rows: list[dict[st
     if isinstance(season, Unanswered):
         return season
     narrowed = compiled.narrowed
-    facts: dict[str, Any] = {"stat": measure, **_period_where(scope, narrowed), "date": scope.date, "window": list(narrowed.window) if narrowed.window is not None else None, "games": games}
+    cells, also = _period_where(scope, narrowed)
+    facts = PeriodFacts(stat=measure, also=also, games=games)
+    # The compiler's window cut these games (the same N in every quarter).
+    window = Window(limit=narrowed.window[1], ascending=narrowed.window[0] == "first") if narrowed.window is not None else None
     quarters = tuple(_period_quarter(by_quarter.get(quarter, {}), quarter, measure) for quarter in REGULATION_QUARTERS) if games else ()
     notes = [Note("definition", {"term": "overtime_excluded"}), *period_agreement_notes(season, measure)] if games else []
     return Result(
         subject=compiled.player.name,
         relation="player",
-        span=Span(season=season, season_type=scope.season_type or 2),
-        narrowing=_period_narrowing(narrowed, scope.venue),
+        span=Span(season=season, season_type=scope.season_type or 2, date=scope.date),
+        narrowing=_period_narrowing(narrowed, scope.venue, cells),
+        window=window,
         parts=(Part(body=Grouped(by="period", rows=quarters)),),
         notes=tuple(notes),
         facts=facts,
@@ -565,10 +593,15 @@ def read_team_quarter_points(con: duckdb.DuckDBPyConnection, q: TeamQuery, *, st
         subject=team.name,
         relation="team",
         span=Span(season=span.season, season_type=span.season_type, career=span.season is None, first=first, last=last, phrase=_team_quarter_points_span_words(span, bool(narrowed.date), first, last)),
-        narrowing=Narrowing(phrase=narrowed.filters(opponent=False, period=False), opponent=narrowed.opponent.name if narrowed.opponent else None, venue=scope.venue, period=period_label),
+        narrowing=Narrowing(
+            phrase=narrowed.filters(opponent=False, period=False),
+            opponent=narrowed.opponent.name if narrowed.opponent else None,
+            venue=scope.venue,
+            cells=(Period(label=period_label, periods=tuple(periods)),),
+        ),
         parts=(Part(body=_team_quarter_points_line(shown, measure)), Part(role="detail", body=Rows(rows=tuple(shown)))),
         notes=tuple(notes),
-        facts={"measure": measure, "periods": list(periods), "rank": scope.rank, "dateless": narrowed.filters(opponent=False, date=False, period=False)},
+        facts=TeamPeriodFacts(measure=measure, rank=scope.rank, dateless=narrowed.filters(opponent=False, date=False, period=False)),
     )
 
 
@@ -604,7 +637,7 @@ def _period_leaderboard_decided(minimum: int, most: int | None) -> Decided:
 def _period_leaderboard_narrowing(narrowed: Narrowed, period: str | None) -> Narrowing:
     """The opponent and the venue the pool was narrowed to (the team a
     ranking is OF is said its own way), and the period."""
-    return Narrowing(opponent=narrowed.opponent.name if narrowed.opponent is not None else None, venue=narrowed.venue, period=period)
+    return Narrowing(opponent=narrowed.opponent.name if narrowed.opponent is not None else None, venue=narrowed.venue, cells=(Period(label=period),) if period is not None else ())
 
 
 def read_period_leaderboard(con: duckdb.DuckDBPyConnection, q: Query, *, stated: frozenset[str]) -> Result | Unanswered | None:
@@ -662,7 +695,7 @@ def read_period_leaderboard(con: duckdb.DuckDBPyConnection, q: Query, *, stated:
         parts=(Part(body=Grouped(by="player", rows=leaders, ranked_by=measure)),),
         notes=tuple(period_agreement_notes(season, measure)),
         decisions=(_period_leaderboard_decided(minimum, most),),
-        facts={"measure": measure, "minimum": minimum, "most": most},
+        facts=PeriodRankingFacts(measure=measure, minimum=minimum, most=most),
     )
 
 
@@ -710,5 +743,5 @@ def _period_leaderboard_by_quarter(con: duckdb.DuckDBPyConnection, span: Resolve
             _period_leaderboard_decided(minimum, most),
             Decided(kind="cut", field="limit", chose=len(leaders), before=scope.limit, facts={"total": len(ranked)}),
         ),
-        facts={"measure": "points", "minimum": minimum, "most": most, "qualified": len(ranked), "season": season},
+        facts=PeriodRankingFacts(measure="points", minimum=minimum, most=most, qualified=len(ranked)),
     )

@@ -35,7 +35,7 @@ from association.query.notes import Note
 from association.query.player_games import Narrowed, aggregate_sql
 from association.query.player_relation import ResolvedSpan, box_score_notes_read, no_narrowed_games, scoped_games, span_of, whole_span
 from association.query.reading import DEFAULT_GAME_LOG_LIMIT, Scope, Unsupported, _clamp_limit, unhonored_scoping
-from association.query.result import Narrowing, Part, Refusal, Result, Rows, Span, Unanswered, Window
+from association.query.result import LogFacts, Narrowing, Part, Refusal, Result, Rows, Span, Unanswered, Window
 from association.query.team_games import TEAM_GAMES_SQL, TeamNarrowed
 from association.query.team_relation import team_games
 
@@ -210,7 +210,7 @@ def _player_log(con: duckdb.DuckDBPyConnection, compiled: Compiled, headers: lis
     window = Window(limit=limit, asked=asked, ascending=ascending)
     if not rows:
         empty = no_narrowed_games(con, player, span, narrowed, rebuilt=compiled.rebuilt)
-        return Result(subject=player.name, relation="player", span=about, narrowing=narrowing, window=window, empty=empty)
+        return Result(subject=player.name, relation="player", span=about, narrowing=narrowing, window=window, parts=(Part(body=Rows()),), facts=LogFacts(), empty=empty)
     games, raws = _player_log_rows(rows, needed, headers)
     averages = _player_log_averages(headers, raws)
     total = _player_log_total(con, narrowed, rebuilt=compiled.rebuilt)
@@ -223,7 +223,7 @@ def _player_log(con: duckdb.DuckDBPyConnection, compiled: Compiled, headers: lis
     rebuilt_shown = sum(1 for g in games if g["reconstructed"])
     notes += box_score_notes_read(con, player, span, narrowed, career_note=not narrowed.date, rebuilt=compiled.rebuilt, rebuilt_shown=rebuilt_shown)
     body = Rows(columns=tuple(headers), rows=tuple(games), total_before_window=total, summary=averages)
-    return Result(subject=player.name, relation="player", span=about, narrowing=narrowing, window=window, parts=(Part(body=body),), notes=tuple(notes))
+    return Result(subject=player.name, relation="player", span=about, narrowing=narrowing, window=window, parts=(Part(body=body),), notes=tuple(notes), facts=LogFacts())
 
 
 def _player_log_mixed(con: duckdb.DuckDBPyConnection, q: Query, compiled: Compiled, headers: list[str], needed: list[str], *, asked: int | None, limit: int) -> Result | Unanswered:
@@ -256,7 +256,7 @@ def _player_log_mixed(con: duckdb.DuckDBPyConnection, q: Query, compiled: Compil
         # this season" - the same sentence a single-type refusal gives, with
         # no season type to (wrongly) blame it on.
         empty = Refusal(kind="no_games_in_season", facts={"player": player.name, "season": season, "narrowing": narrowing.phrase})
-        return Result(subject=player.name, relation="player", span=about, narrowing=narrowing, window=window, facts={"mixed": True}, empty=empty)
+        return Result(subject=player.name, relation="player", span=about, narrowing=narrowing, window=window, parts=(Part(body=Rows()),), facts=LogFacts(mixed=True), empty=empty)
     games, raws = _player_log_rows(rows, needed, headers)
     averages = _player_log_averages(headers, raws)
     notes: list[Note] = []
@@ -272,7 +272,7 @@ def _player_log_mixed(con: duckdb.DuckDBPyConnection, q: Query, compiled: Compil
                 seen.append(note)
     notes += seen
     body = Rows(columns=tuple(headers), rows=tuple(games), summary=averages, by_season_type=counts)
-    return Result(subject=player.name, relation="player", span=about, narrowing=narrowing, window=window, parts=(Part(body=body),), notes=tuple(notes), facts={"mixed": True})
+    return Result(subject=player.name, relation="player", span=about, narrowing=narrowing, window=window, parts=(Part(body=body),), notes=tuple(notes), facts=LogFacts(mixed=True))
 
 
 def read_player_log(con: duckdb.DuckDBPyConnection, q: Query, *, stated: frozenset[str]) -> Result | Unanswered | None:
@@ -394,12 +394,13 @@ def _team_log(con: duckdb.DuckDBPyConnection, q: TeamQuery, team: Any, span: Res
     window = Window(limit=limit, ascending=ascending)
     if not rows:
         about = Span(season=span.season, season_type=span.season_type, career=span.season is None, date=narrowed.date)
-        return Result(subject=team_name, relation="team", span=about, narrowing=narrowing, window=window, facts={"stat": stat}, empty=_team_log_none(con, team_name, span, narrowed))
+        empty = _team_log_none(con, team_name, span, narrowed)
+        return Result(subject=team_name, relation="team", span=about, narrowing=narrowing, window=window, parts=(Part(body=Rows()),), facts=LogFacts(stat=stat), empty=empty)
     games = _team_log_games(rows)
     seasons = [g["season"] for g in games]
     about = Span(season=span.season, season_type=span.season_type, career=span.season is None, date=narrowed.date, first=min(seasons), last=max(seasons), years=span.years(min(seasons), max(seasons)))
     body = Rows(rows=tuple(games), summary=_team_log_summary(games))
-    return Result(subject=team_name, relation="team", span=about, narrowing=narrowing, window=window, parts=(Part(body=body),), facts={"stat": stat})
+    return Result(subject=team_name, relation="team", span=about, narrowing=narrowing, window=window, parts=(Part(body=body),), facts=LogFacts(stat=stat))
 
 
 def _team_mixed_rows(con: duckdb.DuckDBPyConnection, team: Any, season: int, *, opponent: Any, venue: Any, limit: int) -> tuple[list[dict[str, Any]], dict[int, int], str] | Unanswered:
@@ -445,12 +446,13 @@ def _team_log_mixed(con: duckdb.DuckDBPyConnection, team_name: str, team: Any, s
             span=about,
             narrowing=narrowing,
             window=window,
-            facts={"stat": stat, "mixed": True},
+            parts=(Part(body=Rows()),),
+            facts=LogFacts(stat=stat, mixed=True),
             empty=Refusal(kind="no_team_games_in", facts={"team": team_name, "span": str(season), "narrowing": narrowed_text}),
         )
     games = _team_log_games(rows)
     body = Rows(rows=tuple(games), summary=_team_log_summary(games), by_season_type=counts)
-    return Result(subject=team_name, relation="team", span=about, narrowing=narrowing, window=window, parts=(Part(body=body),), facts={"stat": stat, "mixed": True})
+    return Result(subject=team_name, relation="team", span=about, narrowing=narrowing, window=window, parts=(Part(body=body),), facts=LogFacts(stat=stat, mixed=True))
 
 
 def read_team_log(con: duckdb.DuckDBPyConnection, q: TeamQuery, *, stated: frozenset[str]) -> Result | Unanswered | None:

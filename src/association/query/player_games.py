@@ -678,6 +678,9 @@ class Narrowed:
     #: Each box-score line the games were kept under or over, as the answer
     #: says it: ``"under 14 free throw attempts"``.
     measures: list[str] = field(default_factory=list)
+    #: The same lines as values - ``(column, op, value, label)`` each - for
+    #: the Result's typed cells (``result.Line``), in the same order.
+    lines: list[tuple[str, str, Any, str]] = field(default_factory=list)
     #: The game of a playoff series the question named ("game 4"), or None.
     series_game: int | None = None
     #: The window: the newest (``"recent"``) or oldest (``"first"``) N of the
@@ -870,6 +873,7 @@ class Narrowed:
         self.narrow(f"pgl.{column} {MEASURE_OPS[op]} ?", value)
         if label:
             self.measures.append(label)
+            self.lines.append((column, op, value, label))
 
     def narrow_calendar(self, narrowing: CalendarNarrowing) -> None:
         """Only the games on a weekday, in a month, on a fixed day, or from a

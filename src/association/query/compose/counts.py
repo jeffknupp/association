@@ -27,6 +27,7 @@ are the presenter's on 31 of the 31 recorded answers it gave.
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import Any
 
 import duckdb
@@ -38,7 +39,7 @@ from association.query.notes import Note
 from association.query.player_games import REBUILT_STATS, STAT_LABELS
 from association.query.player_relation import empty_box_scores, player_relation_season_type, rebuilt_in_scope
 from association.query.reading import Unsupported, unhonored_scoping
-from association.query.result import Grouped, Part, Result, Scalar, Span, Unanswered
+from association.query.result import CountFacts, Grouped, Line, Narrowing, Part, Result, Scalar, Span, Unanswered
 from association.query.season_line import seasons_on_record
 
 from .core import Query, compile_query, rows_of
@@ -128,17 +129,14 @@ def read_threshold_count(con: duckdb.DuckDBPyConnection, q: Query, *, stated: fr
     stat = scope.stat
     label = STAT_LABELS.get(stat or "", stat or "")
     notes += _threshold_count_notes(con, (season, season_type), player, rows, column, label, empty)
-    facts: dict[str, Any] = {
-        "stat": stat,
-        # A phrase carrying the count's own number IS the count, misread: the
-        # phrase wins, since it holds the direction and the column the model
-        # lost; a phrase with another number is a second line beside it.
-        "counted": None if any(line.value == threshold for line in lines) else threshold,
-        "lines": [line.label for line in lines],
-        "ordinal": compiled.span.ordinal if season is not None else None,
-        "box_scores_from": COVERAGE["player_box_stats"].first_season,
-        "empty_box_scores": empty[0],
-    }
+    facts = CountFacts(stat=stat, box_scores_from=COVERAGE["player_box_stats"].first_season, empty_box_scores=empty[0])
+    # A phrase carrying the count's own number IS the count, misread: the
+    # phrase wins, since it holds the direction and the column the model
+    # lost; a phrase with another number is a second line beside it. The
+    # count's own line has no label: the sayer says it from the stat.
+    counted = () if not threshold or any(line.value == threshold for line in lines) else (Line(column=column, value=threshold),)
+    cells = (*counted, *(Line(column=line.column, op=line.op, value=line.value, label=line.label) for line in lines))
+    span = replace(span, ordinal=compiled.span.ordinal if season is not None else None)
     if player is not None:
         body: Scalar | Grouped = Scalar(games=rows[0][1] if rows else 0, sums={"rebuilt": rows[0][2] if rows else 0}, how="count")
     else:
@@ -147,6 +145,7 @@ def read_threshold_count(con: duckdb.DuckDBPyConnection, q: Query, *, stated: fr
         subject=player.name if player is not None else "every player",
         relation="player" if player is not None else "everyone",
         span=span,
+        narrowing=Narrowing(cells=cells),
         parts=(Part(body=body),),
         notes=tuple(notes),
         facts=facts,

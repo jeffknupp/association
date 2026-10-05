@@ -31,7 +31,7 @@ from association.query.notes import Note
 from association.query.player_games import Narrowed, games_subquery, named
 from association.query.player_relation import no_games
 from association.query.reading import unhonored_scoping
-from association.query.result import Narrowing, Part, Result, Runs, Span, Unanswered, run_of
+from association.query.result import Line, Narrowing, Part, Result, Run, Runs, Span, Unanswered, run_of
 from association.query.team_relation import condition_team_no_games, team_span_label
 
 from .core import Compiled, Query, compile_query, rows_of, run_scope
@@ -70,11 +70,12 @@ def read_streak(con: duckdb.DuckDBPyConnection, q: Query, *, stated: frozenset[s
     return _streak_league_result(con, q, covered, compiled, runs)
 
 
-def _streak_facts(q: Query) -> dict[str, Any]:
-    """What the sayer words a run with: the stat and its line, or a run of
+def _streak_runs(q: Query, runs: tuple[Run, ...]) -> Runs:
+    """The runs, with what they held along: the stat's line, or a run of
     wins or losses."""
     scope = q.scope
-    return {"stat": scope.stat, "threshold": scope.threshold, "by_stat": streak_column(scope.stat, scope.threshold) is not None, "want_win": scope.kind != "loss"}
+    line = Line(column=scope.stat, value=scope.threshold) if streak_column(scope.stat, scope.threshold) is not None else None
+    return Runs(runs=runs, line=line, won=scope.kind != "loss")
 
 
 def _streak_player_result(con: duckdb.DuckDBPyConnection, q: Query, covered: Any, player: Entity, narrowed: Narrowed, team: Entity | None, rows: list[dict[str, Any]]) -> Result | Unanswered:
@@ -103,9 +104,8 @@ def _streak_player_result(con: duckdb.DuckDBPyConnection, q: Query, covered: Any
         relation="player",
         span=Span(season=covered.season, season_type=covered.season_type, career=covered.season is None, first=first, last=last, phrase=condition_span_label(covered, q.scope, first, last)),
         narrowing=Narrowing(phrase=narrowed.filters()),
-        parts=(Part(body=Runs(runs=runs)),),
+        parts=(Part(body=_streak_runs(q, runs)),),
         notes=tuple(notes),
-        facts=_streak_facts(q),
     )
 
 
@@ -128,9 +128,8 @@ def _streak_league_result(con: duckdb.DuckDBPyConnection, q: Query, covered: Any
         subject="the league",
         relation="everyone",
         span=Span(season=covered.season, season_type=covered.season_type, career=covered.season is None, first=first, last=last, phrase=covered.label(first, last), floor=covered.first),
-        parts=(Part(body=Runs(runs=runs)),),
+        parts=(Part(body=_streak_runs(q, runs)),),
         notes=tuple(notes),
-        facts=_streak_facts(q),
     )
 
 
@@ -172,9 +171,9 @@ def read_team_streak(con: duckdb.DuckDBPyConnection, q: TeamQuery, *, stated: fr
     return _streak_league_teams_result(con, q, compiled, found, rows)
 
 
-def _streak_team_facts(q: TeamQuery) -> dict[str, Any]:
-    """A run of wins or losses: no stat and no line."""
-    return {"stat": None, "threshold": None, "by_stat": False, "want_win": q.scope.kind != "loss"}
+def _streak_team_runs(q: TeamQuery, runs: tuple[Run, ...]) -> Runs:
+    """A team's runs of wins or losses: no stat and no line."""
+    return Runs(runs=runs, won=q.scope.kind != "loss")
 
 
 def _streak_team_result(q: TeamQuery, compiled: TeamCompiled, found: dict[str, Any], rows: list[dict[str, Any]]) -> Result:
@@ -195,9 +194,8 @@ def _streak_team_result(q: TeamQuery, compiled: TeamCompiled, found: dict[str, A
         relation="team",
         span=Span(season=span.season, season_type=span.season_type, career=span.season is None, first=first, last=last, phrase=team_span_label(span, first, last)),
         narrowing=Narrowing(phrase=compiled.narrowed.filters()),
-        parts=(Part(body=Runs(runs=runs)),),
+        parts=(Part(body=_streak_team_runs(q, runs)),),
         notes=tuple(notes),
-        facts=_streak_team_facts(q),
     )
 
 
@@ -222,7 +220,6 @@ def _streak_league_teams_result(con: duckdb.DuckDBPyConnection, q: TeamQuery, co
         subject="the league",
         relation="everyone",
         span=Span(season=span.season, season_type=span.season_type, career=span.season is None, first=first, last=last, phrase=team_span_label(span, first, last), floor=span.first),
-        parts=(Part(body=Runs(runs=runs)),),
+        parts=(Part(body=_streak_team_runs(q, runs)),),
         notes=tuple(notes),
-        facts=_streak_team_facts(q),
     )

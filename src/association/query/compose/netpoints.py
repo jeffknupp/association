@@ -62,7 +62,7 @@ from association.query.fingerprint import (
 from association.query.metrics import SEASON_TYPE_LABELS
 from association.query.notes import Note
 from association.query.reading import Scope, Unsupported, unhonored_scoping
-from association.query.result import Chart, Clarify, Decided, Grouped, Part, Refusal, Result, Scalar, Span, Unanswered, Window
+from association.query.result import Chart, ChartFacts, Clarify, Decided, Grouped, NetPointsFacts, Part, Refusal, Result, Scalar, Span, Unanswered, Window
 from association.query.season_line import Statement, season_redirect
 from association.query.season_text import SEASON_TYPE_NAMES, season_phrase
 from association.query.shotchart import resolve_chart_player
@@ -213,13 +213,15 @@ def _netpoints_season(con: duckdb.DuckDBPyConnection, player: Entity, season: in
     scale = 100.0 / possessions if per_100 and possessions else 1.0
     breakdown = _netpoints_breakdown(fingerprint, scale) if fingerprint is not None else []
     span = Span(season=season, season_type=season_type, phrase=season_phrase(season, season_type), source="netpoints")
-    facts = {"season": season, "per_100": per_100, "possessions": possessions}
+    facts = NetPointsFacts(per_100=per_100, possessions=possessions)
     if totals_row is None and not breakdown:
-        return Result(subject=player.name, relation="player", span=span, decisions=_netpoints_redirect(con, player, season_type) if defaulted else (), facts=facts)
+        # The season's line with nothing in it: the shape, said by what is missing.
+        empty = (Part(body=Scalar(games=0, how="per_100")),)
+        return Result(subject=player.name, relation="player", span=span, parts=empty, decisions=_netpoints_redirect(con, player, season_type) if defaulted else (), facts=facts)
     parts: list[Part] = []
     notes: list[Note] = []
     if totals_row is not None:
-        parts.append(Part(body=Scalar(games=int(totals_row[5]) if totals_row[5] else 0, values=dict(zip(_NETPOINTS_TOTALS, totals_row, strict=True)))))
+        parts.append(Part(body=Scalar(games=int(totals_row[5]) if totals_row[5] else 0, values=dict(zip(_NETPOINTS_TOTALS, totals_row, strict=True)), how="per_100")))
     else:
         notes.append(Note("part_missing", {"what": "season_totals"}))
     if breakdown:
@@ -294,9 +296,9 @@ def _netpoints_game(con: duckdb.DuckDBPyConnection, player: Entity, season: int,
     span = Span(season=season, season_type=season_type, phrase=season_phrase(season, season_type), source="netpoints")
     window = Window(limit=1, ascending=order == "first")
     if row is None:
-        return Result(subject=player.name, relation="player", span=span, window=window, parts=(Part(body=Scalar(games=0)),), facts={"season": season})
+        return Result(subject=player.name, relation="player", span=span, window=window, parts=(Part(body=Scalar(games=0, how="total")),), facts=NetPointsFacts())
     event_id, date, o, d, t, o_poss, d_poss, wpa = row
-    scalar = Scalar(games=1, values={"offense": o, "defense": d, "total": t}, sums={"o_poss": o_poss, "d_poss": d_poss, "wpa": wpa})
+    scalar = Scalar(games=1, values={"offense": o, "defense": d, "total": t}, sums={"o_poss": o_poss, "d_poss": d_poss, "wpa": wpa}, how="total")
     return Result(
         subject=player.name,
         relation="player",
@@ -304,7 +306,7 @@ def _netpoints_game(con: duckdb.DuckDBPyConnection, player: Entity, season: int,
         window=window,
         parts=(Part(body=scalar),),
         notes=(Note("hint", {"what": "fingerprint_of_that_game"}),),
-        facts={"season": season, "event_id": event_id},
+        facts=NetPointsFacts(event_id=event_id),
     )
 
 
@@ -434,8 +436,9 @@ def fingerprint_result(
     never drawn as a zero polygon, which would read as "played and
     contributed nothing" (a ``no_data_for`` note); one under the pool's
     floor is drawn and said to be (``below_pool``); the other names that
-    matched are the ``also_matched`` decision. ``facts`` carry the view,
-    the scale, the span the plot covers (``when``), the axis note and the
+    matched are the ``also_matched`` decision. Its
+    :class:`~association.query.result.ChartFacts` carry the view, the
+    scale, the span the plot covers (``when``), the axis note and the
     league scale the draw step needs.
 
     .. versionadded:: 5.0.0
@@ -470,16 +473,15 @@ def fingerprint_result(
         parts=(Part(body=chart),),
         notes=tuple(notes),
         decisions=decisions,
-        facts={
-            "players": [p.name for p in players],
-            "season": season,
-            "view": view,
-            "scale": scale,
-            "order": order,
-            "when": when,
-            "axis_note": axis_note,
-            "league": {"best": league.best, "worst": league.worst, "pool_size": league.pool_size},
-        },
+        facts=ChartFacts(
+            players=tuple(p.name for p in players),
+            view=view,
+            scale=scale,
+            order=order,
+            when=when,
+            axis_note=axis_note,
+            league={"best": league.best, "worst": league.worst, "pool_size": league.pool_size},
+        ),
     )
 
 
@@ -496,9 +498,10 @@ def draw_fingerprint(result: Result, out_dir: Path) -> Result:
     chart = result.chart
     assert chart is not None
     facts = result.facts
+    assert isinstance(facts, ChartFacts) and facts.league is not None and facts.scale is not None
     fingerprints = [mark[0] for mark in chart.marks]
-    unit = PER_GAME if facts["order"] else PER_100_POSSESSIONS
-    html = fingerprint_page(chart.title, chart.caption, facts["axis_note"], fingerprints, LeagueScale(**facts["league"]), scale=facts["scale"], unit=unit)
+    unit = PER_GAME if facts.order else PER_100_POSSESSIONS
+    html = fingerprint_page(chart.title, chart.caption, facts.axis_note or "", fingerprints, LeagueScale(**facts.league), scale=facts.scale, unit=unit)
     out_dir.mkdir(parents=True, exist_ok=True)
     out_path = out_dir / chart.file
     out_path.write_text(html)

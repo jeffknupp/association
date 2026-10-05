@@ -33,7 +33,7 @@ from association.query.entities import Entity
 from association.query.notes import Note
 from association.query.player_relation import condition_scope, no_games
 from association.query.reading import ConditionSpec, Scope, Unsupported, _clamp_limit, unhonored_scoping
-from association.query.result import Grouped, Narrowing, Part, Result, Rows, Span, Unanswered, Window
+from association.query.result import Grouped, MatchupFacts, Met, Narrowing, Part, Result, Rows, Span, Unanswered, Window
 
 from .core import Compiled, Query, Refused, compile_query, rows_of
 
@@ -133,11 +133,11 @@ def _pair_result(
         subject=a.name,
         relation="player",
         span=Span(season=covered.season, season_type=covered.season_type, career=covered.season is None, first=first, last=last, phrase=covered.label(first, last), floor=covered.first),
-        narrowing=Narrowing(phrase=compiled.narrowed.filters()),
+        narrowing=Narrowing(phrase=compiled.narrowed.filters(), cells=(Met(other=b.name),)),
         window=Window(limit=len(shown), asked=scope.limit),
         parts=(Part(body=Grouped(by="subject", rows=lines)), Part(role="detail", body=Rows(rows=rows, total_before_window=count))),
         notes=notes,
-        facts={"other": b.name, "teammate_games": together},
+        facts=MatchupFacts(teammate_games=together),
     )
 
 
@@ -154,10 +154,10 @@ def _pair_no_meetings(con: duckdb.DuckDBPyConnection, q: Query, covered: Any, co
         subject=a.name,
         relation="player",
         span=Span(season=covered.season, season_type=covered.season_type, career=covered.season is None, phrase=covered.label(), floor=covered.first),
-        narrowing=Narrowing(phrase=compiled.narrowed.filters()),
+        narrowing=Narrowing(phrase=compiled.narrowed.filters(), cells=(Met(other=b.name),)),
         parts=(Part(body=Grouped(by="subject")),),
         notes=notes,
-        facts={"other": b.name, "teammate_games": together, "absence": _pair_absence(con, q, compiled, a)},
+        facts=MatchupFacts(teammate_games=together, absence=_pair_absence(con, q, compiled, a)),
     )
 
 

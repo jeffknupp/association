@@ -29,7 +29,7 @@ from association.query.notes import Note
 from association.query.player_games import STAT_LABELS, THRESHOLD_STAT_COLUMNS, games_subquery
 from association.query.player_relation import condition_scope, no_games, span_of, whole_span
 from association.query.reading import Scope, Unsupported, unhonored_scoping
-from association.query.result import Grouped, Narrowing, Part, Refusal, Result, Span, Unanswered
+from association.query.result import Grouped, Line, Narrowing, Part, RecordFacts, Refusal, Result, Span, Unanswered
 from association.query.team_games import TeamNarrowed
 from association.query.team_relation import condition_team_no_games, team_games, team_span_label, team_where_in
 
@@ -119,6 +119,7 @@ def _record_result(con: duckdb.DuckDBPyConnection, scope: Scope, covered: Any, c
     first, last = min(r["first_season"] for r in found), max(r["last_season"] for r in found)
     groups = Grouped(
         by="threshold",
+        of=Line(column=stat, value=threshold),
         rows=(
             {"key": "reached", **_group(by_hit, "reached")},
             {"key": "short", **_group(by_hit, "short")},
@@ -146,7 +147,7 @@ def _record_result(con: duckdb.DuckDBPyConnection, scope: Scope, covered: Any, c
         narrowing=Narrowing(phrase=compiled.narrowed.filters()),
         parts=(Part(body=groups),),
         notes=tuple(notes),
-        facts={"stat": stat, "threshold": threshold, "teams": sorted(names.values())},
+        facts=RecordFacts(teams=tuple(sorted(names.values()))),
     )
 
 
@@ -234,6 +235,7 @@ def _record_when_team_result(con: duckdb.DuckDBPyConnection, span: Any, team: An
     first, last = min(r["first_season"] for r in found), max(r["last_season"] for r in found)
     groups = Grouped(
         by="threshold",
+        of=Line(column=stat, value=threshold),
         rows=({"key": "reached", **_group(by_hit, "reached")}, {"key": "short", **_group(by_hit, "short")}, {"key": "all", **_group(by_hit, "reached", "short")}),
     )
     notes: list[Note] = []
@@ -251,5 +253,4 @@ def _record_when_team_result(con: duckdb.DuckDBPyConnection, span: Any, team: An
         narrowing=Narrowing(phrase=narrowed.filters()),
         parts=(Part(body=groups),),
         notes=tuple(notes),
-        facts={"stat": stat, "threshold": threshold},
     )

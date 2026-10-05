@@ -28,9 +28,9 @@ import duckdb
 
 from association.nba.season import eastern_date
 from association.query.notes import Note
-from association.query.player_relation import box_score_notes_read, no_narrowed_games
+from association.query.player_relation import box_score_notes_read, narrowed_cells, no_narrowed_games
 from association.query.reading import Unsupported, unhonored_scoping
-from association.query.result import Narrowing, Part, Result, Rows, Scalar, Span, Unanswered
+from association.query.result import LineFacts, Narrowing, Part, Result, Rows, Scalar, Span, Unanswered
 from association.query.season_line import ADVANCED_STATS, MADE_STAT_ATTEMPTS, SHOOTING_STATS, wanted_stats
 
 from .core import _MADE_RATE, Compiled, Query, _compile_rows, compile_query, rows_of
@@ -104,22 +104,6 @@ def read_player_stat(con: duckdb.DuckDBPyConnection, q: Query, *, stated: frozen
     return _player_stat_result(con, q, compiled, line)
 
 
-def _player_stat_about(compiled: Compiled) -> dict[str, Any]:
-    """The narrowing as the page's plain values, in the template's order."""
-    span, narrowed = compiled.span, compiled.narrowed
-    return {
-        "season": span.season,
-        "date": narrowed.date,
-        "span": "career" if span.career else None,
-        "opponent": narrowed.opponent.name if narrowed.opponent else None,
-        "venue": narrowed.venue,
-        "without": [mate.name for mate in narrowed.without],
-        "started": narrowed.started,
-        "measures": list(narrowed.measures),
-        "series_game": narrowed.series_game,
-    }
-
-
 def _player_stat_sums(compiled: Compiled, line: dict[str, Any]) -> dict[str, Any]:
     """The sums the line is said from: each stat's total, a percentage's
     makes and attempts, and a made count's attempts where it is read alone
@@ -170,9 +154,13 @@ def _player_stat_result(con: duckdb.DuckDBPyConnection, q: Query, compiled: Comp
     assert player is not None
     games = int(line["games"] or 0)
     stat = q.scope.stat
-    facts = {"stat": stat if stat in SHOOTING_STATS else None, "wanted": [] if stat in SHOOTING_STATS else list(compiled.measures), "about": _player_stat_about(compiled)}
+    facts = LineFacts(stat=stat if stat in SHOOTING_STATS else None, wanted=() if stat in SHOOTING_STATS else tuple(compiled.measures))
     narrowing = Narrowing(
-        phrase=narrowed.filters(dated=False), opponent=narrowed.opponent.name if narrowed.opponent else None, venue=narrowed.venue, without=tuple(mate.name for mate in narrowed.without)
+        phrase=narrowed.filters(dated=False),
+        opponent=narrowed.opponent.name if narrowed.opponent else None,
+        venue=narrowed.venue,
+        without=tuple(mate.name for mate in narrowed.without),
+        cells=narrowed_cells(narrowed),
     )
     if not games:
         empty = no_narrowed_games(con, player, span, narrowed, rebuilt=compiled.rebuilt)

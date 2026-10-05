@@ -48,7 +48,7 @@ from association.query.player_games import (
     season_type_clause,
 )
 from association.query.reading import ConditionSpec, PeriodCondition, Scope, Unsupported, _clamp_limit, ordinal_word, period_narrowing
-from association.query.result import Refusal, Unanswered
+from association.query.result import Cell, GameOfSeries, Line, Refusal, Role, Unanswered
 from association.query.season_text import SEASON_TYPE_NAMES, season_phrase
 from association.query.team_games import TeamNarrowed
 
@@ -1118,6 +1118,24 @@ def _no_narrowed_games_in_span(con: duckdb.DuckDBPyConnection, player: Entity, s
         found = season_redirect(con, player.id, span.season_type, "player_game_log")
         redirect = list(found) if found is not None else None
     return Refusal(kind="no_games_in_span", facts={"player": player.name, "span": span.during()[len("in the ") :], "kind": span.kind, "redirect": redirect}, shown={})
+
+
+def narrowed_cells(narrowed: Narrowed) -> tuple[Cell, ...]:
+    """The cells a player's narrowed games carry beyond the opponent, the
+    venue and the teammates absent, as the Result's typed values
+    (:data:`~association.query.result.Cell`): his role, each line the games
+    were kept past, and the game of a series - in the order the answer
+    names them.
+
+    .. versionadded:: 5.0.0
+    """
+    cells: list[Cell] = []
+    if narrowed.started is not None:
+        cells.append(Role(started=narrowed.started))
+    cells += [Line(column=column, op=op, value=value, label=label) for column, op, value, label in narrowed.lines]
+    if narrowed.series_game is not None:
+        cells.append(GameOfSeries(n=narrowed.series_game))
+    return tuple(cells)
 
 
 def box_score_notes_read(

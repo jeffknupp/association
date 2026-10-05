@@ -37,7 +37,7 @@ from association.query.notes import Note
 from association.query.player_games import REBUILT_STATS, STAT_LABELS, THRESHOLD_STAT_COLUMNS
 from association.query.player_relation import empty_box_scores, player_relation_season_type, rebuilt_in_scope
 from association.query.reading import unhonored_scoping
-from association.query.result import Decided, Part, Result, Rows, Unanswered
+from association.query.result import CountFacts, Decided, Part, Result, Rows, Unanswered
 from association.query.season_line import season_redirect
 from association.query.season_text import SEASON_TYPE_NAMES
 
@@ -99,7 +99,7 @@ def read_single_game_high(con: duckdb.DuckDBPyConnection, q: Query, *, stated: f
         parts=(Part(body=Rows(columns=(column,), rows=tuple(games), by=column)),),
         notes=tuple(notes),
         decisions=(redirect,) if redirect is not None else (),
-        facts={"stat": scope.stat, "ordinal": None, "box_scores_from": COVERAGE["player_box_stats"].first_season, "empty_box_scores": empty[0]},
+        facts=CountFacts(stat=scope.stat, box_scores_from=COVERAGE["player_box_stats"].first_season, empty_box_scores=empty[0]),
     )
 
 
