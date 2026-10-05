@@ -18,11 +18,11 @@ from association.query import shotchart
 from association.query.compose.adapt import to_reading
 from association.query.compose.core import Query, Unsupported, _compile_pair, _compile_run, _resolve_pair, compile_over, compile_query, rows_of
 from association.query.compose.logs import _player_log, _player_log_mixed, _team_log, _team_log_mixed, read_player_log, read_team_log
+from association.query.compose.pairs import _pair_absence, _pair_no_meetings, _pair_result, read_player_matchup
 from association.query.compose.periods import _period_by_quarter, _period_log, _period_redirect, read_period_split
 from association.query.compose.plan import plan, plan_point
 from association.query.compose.present import (
     STATED_SCOPING,
-    _present_player_matchup,
     _present_player_stat_season_line,
     _present_team_streak,
 )
@@ -42,7 +42,6 @@ from association.query.subject import Subject
 from association.query.templates.common import HONORED_SCOPING, SCOPING_SLOTS, TemplateContext, TemplateResult, TemplateUnsupported, check_scope, scoped_games, scoped_player, unhonored_scoping
 from association.query.templates.games import (
     PERIOD_RATE_STATS,
-    _player_matchup_from,
     head_to_head,
     period_leaderboard,
     team_quarter_points,
@@ -6026,7 +6025,7 @@ def test_templates_on_the_relation_do_not_narrow_it_themselves() -> None:
     # skeleton and the team compiler's, and the readers that say them.
     readers["streak"] = [_compile_run, _compile_team_run, read_streak, _streak_player_result, _streak_league_result, _present_team_streak, _streak_team_answer, _streak_league_team_narrowed]
     # player_matchup's too (the `pair` shape).
-    readers["player_matchup"] = [_resolve_pair, _compile_pair, _present_player_matchup, _player_matchup_from]
+    readers["player_matchup"] = [_resolve_pair, _compile_pair, read_player_matchup, _pair_result, _pair_no_meetings, _pair_absence]
     # with_without (the team relation's `presence` group) is not walked, as
     # its template never was: its games are read by the relation module's
     # own cell (`conditions._with_without_games`, which narrows the team

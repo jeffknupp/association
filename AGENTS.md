@@ -835,6 +835,25 @@ model's. Two things follow, and both matter when you add a shape:
     `_season_name`), listed with Jeff's say-so: they are the relation's
     steps mis-homed in `templates.common`, and moving them to the relation
     modules shrinks the list for every slice at once (step 1's first item).
+- **Two shapes have skeletons of their own, and are readers and sayers since
+  Phase 2's step 2.** A streak is the `run` shape - the longest runs of
+  consecutive games one predicate holds along, `compose.core._compile_run`
+  over the relation's games in Eastern-date order (a game with no box
+  score inside a spell he played ends a run rather than being carried
+  across) - read by `compose.runs.read_streak` into the `Runs` body
+  (`result.Run`: owner, length, first and last day and season, still
+  open) and said by `compose.say.say_streak`. A matchup is the `pair`
+  shape - two named players' lines over the games they met in, the pair
+  relation `player_games.paired_rows_sql` over the first player's
+  narrowed games, `compose.core._resolve_pair` and `_compile_pair` - read
+  by `compose.pairs.read_player_matchup` into a `Grouped` body by
+  `subject` (the comparison: one row per player, the question's order,
+  with the head-to-head wins) and a `Rows` detail part (the newest
+  meetings), said by `compose.say.say_player_matchup`; where a teammate's
+  absence emptied the meetings, the reader compiles the same pair without
+  it, and with the teammate playing, to say how often they met. The games
+  the two shared as teammates are the pair relation's own read
+  (`conditions._teammate_games`), which no compiled shape expresses.
 - **A template's `TemplateUnsupported` gets one more deterministic try before
   the refusal.** `query/compose` sits between the two: when `check_scope`
   or the template itself raises, `agent.py`'s `_try_compose` offers
@@ -874,20 +893,13 @@ model's. Two things follow, and both matter when you add a shape:
   find the presenter (`compose/present.py`) and follow it into
   `templates/`. `ROADMAP.md`, Phase 2, removes that detour slice by slice.
   The presenters' routes, as they stand
-  (a team's log and splits through
-  `templates.games.team_game_log` and `templates.splits.team_splits`; a
-  ranking over the season line through
+  (a ranking over the season line through
   `templates.players._leaderboard_ranking`; two players' season lines
   through `templates.players._player_compare_lines`; a team's streak
   through the `run` shape on the team relation
   (`compose.team._compile_team_run`), said by `compose.say.say_one_run` and
-  `say_run_listing` - a player's and the league's stat run are a reader and
-  a sayer since Phase 2's step 2 (`compose.runs.read_streak`, executing
-  `compose.core._compile_run`'s statement, the `Runs` body, `say_streak`); a matchup
-  through the `pair` shape - two named players' lines over the games they
-  met in, the pair relation `player_games.paired_rows_sql` over the first
-  player's narrowed games, `compose.core._resolve_pair` and
-  `_compile_pair`, said by `templates.games._player_matchup_from`; a
+  `say_run_listing`, the words a player's and the league's streak are said
+  with too; a
   with/without split through the team relation's `presence` group - a
   team's games inside named teammates' time on the team, each marked with
   who held the condition, `compose.team._compile_team_presence` over

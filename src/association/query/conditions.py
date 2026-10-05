@@ -866,33 +866,12 @@ def _meetings_select(box: BoxSource) -> str:
             "pgl.team_id",
             "other.team_id AS opponent_team_id",
             *(column("pgl", s, box) for s in MEETING_STATS),
-            *(column("other", s, box).replace(f" AS {s}", f" AS other_{s}") for s in MEETING_STATS),
+            # Aliased whether or not a rebuilt guard wraps it: unwrapped, the
+            # other's column would read back under the first player's name.
+            *(f"{column('other', s, box).split(' AS ')[0]} AS other_{s}" for s in MEETING_STATS),
             "pgl.season",
         ]
     )
-
-
-def _meeting_rows(rows: Sequence[Sequence[Any]]) -> list[dict[str, Any]]:
-    """:func:`_meetings_select`'s rows as the matchup readers take them: one
-    dict per meeting with each player's line under ``a`` and ``b``.
-
-    .. versionadded:: 5.0.0
-    """
-    n = len(MEETING_STATS)
-    return [
-        {
-            "day": row[0],
-            "season": row[6 + 2 * n],
-            "won": bool(row[1]),
-            "team_score": row[2],
-            "opponent_score": row[3],
-            "team_id": str(row[4]),
-            "opponent_team_id": str(row[5]),
-            "a": dict(zip(MEETING_STATS, row[6 : 6 + n], strict=True)),
-            "b": dict(zip(MEETING_STATS, row[6 + n : 6 + 2 * n], strict=True)),
-        }
-        for row in rows
-    ]
 
 
 def _teammate_games(con: duckdb.DuckDBPyConnection, narrowed: Narrowed, b: str) -> int:
@@ -909,34 +888,6 @@ def _teammate_games(con: duckdb.DuckDBPyConnection, narrowed: Narrowed, b: str) 
     count_sql, count_params = paired_rows_sql(narrowed, b, "COUNT(*)", teammates=True, order=None, rebuilt=box.rebuilt)
     together = con.execute(count_sql, count_params).fetchone()
     return int(together[0]) if together else 0
-
-
-def _meetings(con: duckdb.DuckDBPyConnection, narrowed: Narrowed, b: str) -> tuple[list[dict[str, Any]], int]:
-    """Games both players played on opposite teams, most recent first, and how
-    many games they both played as teammates - the reason "never met" can be
-    true of two players who shared a floor for years.
-
-    Read through the pair relation (:func:`association.query.player_games.paired_rows_sql`)
-    over the FIRST player's narrowed games (``scoped_games``' result: his span,
-    the played guard, and whatever the question narrowed by), so the season
-    floor, the phantom, the guard, the rebuilt-line blanking and every
-    narrowing are the relation's, not restated here.
-
-    .. versionchanged:: 4.4.0
-       Takes the first player's :class:`~association.query.player_games.Narrowed`
-       instead of building one - the pair relation honors the relation's
-       scoping (a teammate's absence, a venue) through the shared step.
-
-    .. versionchanged:: 5.0.0
-       Composed of :func:`_meetings_select`, :func:`_meeting_rows` and
-       :func:`_teammate_games`, which the compiler's ``pair`` shape and its
-       presenter read separately (ROADMAP plan item 6, step (g)).
-    """
-    from .player_games import paired_rows_sql
-
-    box = box_source(con)
-    sql, sql_params = paired_rows_sql(narrowed, b, _meetings_select(box), rebuilt=box.rebuilt)
-    return _meeting_rows(con.execute(sql, sql_params).fetchall()), _teammate_games(con, narrowed, b)
 
 
 def _unseen_meetings(con: duckdb.DuckDBPyConnection, scope: _Scope, a: str, b: str) -> int:

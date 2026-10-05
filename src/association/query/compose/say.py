@@ -21,7 +21,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Any
 
-from association.query.conditions import _SPLIT_TITLES, _margin, _split_cells, _split_label, _table, _win_pct
+from association.query.conditions import _SPLIT_TITLES, _cell, _margin, _split_cells, _split_label, _table, _win_pct
 from association.query.notes import Note, decided, note
 from association.query.player_games import PERIOD_LOG_COLUMNS, _joined, period_columns
 from association.query.reading import DEFAULT_GAME_LOG_LIMIT, _clamp_limit, ordinal_word
@@ -130,6 +130,8 @@ def _say_empty_box_scores(facts: dict[str, Any], consequence: str) -> str:
 
 def _say_games_unseen(facts: dict[str, Any]) -> str:
     count = facts["games"]
+    if facts.get("what") == "meetings":
+        return f" {count} game{'' if count == 1 else 's'} between their teams while both were playing for them {'has' if count == 1 else 'have'} no box score, so a meeting there is not counted."
     if facts.get("why") == "no_box_score":
         whose = facts.get("whose", "his team's")
         return f" The warehouse has no box score for {count} of {whose} games in that span - ESPN lacks about one game in eight from 2013 to 2018 - so any of them he played are not counted."
@@ -434,6 +436,8 @@ def say(result: Result) -> TemplateResult:
         return say_threshold_count(result)
     if result.runs is not None:
         return say_streak(result)
+    if result.grouped is not None and result.grouped.by == "subject":
+        return say_player_matchup(result)
     if result.scalar is not None:
         return say_player_stat(result)
     if result.grouped is not None and result.grouped.by == "player":
@@ -1292,7 +1296,7 @@ def say_run_listing(runs: Sequence[Run], what: str, rule: str, label: str, where
     return TemplateResult(data=data, answer=answer)
 
 
-def _streak_where(span: Span) -> str:
+def _where_in_span(span: Span) -> str:
     """A span with no run in it, in words: the season, or every season of
     its type from the relation's floor on."""
     return f"in the {span.phrase}" if span.season is not None else f"in any {SEASON_TYPE_NAMES.get(span.season_type or 2, 'regular season')} on record ({span.floor} onward)"
@@ -1316,7 +1320,7 @@ def say_streak(result: Result) -> TemplateResult:
     rule = "".join(note(each.kind, note_phrase(each), **each.facts) for each in result.notes if each.kind == "definition")
     if result.relation == "everyone":
         what = f"run of consecutive games with {threshold}+ {unit}"
-        return say_run_listing(body.runs, what, rule, label, _streak_where(result.span), by_stat=True, stat=stat, threshold=threshold, unit=unit, want_win=want_win)
+        return say_run_listing(body.runs, what, rule, label, _where_in_span(result.span), by_stat=True, stat=stat, threshold=threshold, unit=unit, want_win=want_win)
     filters = result.narrowing.phrase
     if not body.runs:
         never = f"never had a game with {threshold}+ {unit}" if by_stat else f"never {'won' if want_win else 'lost'} a game he played"
@@ -1326,3 +1330,81 @@ def say_streak(result: Result) -> TemplateResult:
     subject = (f"{result.subject}'s longest run of {what}" if by_stat else f"{result.subject}'s longest {what}") + filters
     still_open = any(each.kind == "still_open" for each in result.notes)
     return say_one_run(subject, label, body.runs, rule, season=result.span.season, still_open=still_open, who={"player": result.subject})
+
+
+# --- two players' meetings -------------------------------------------------------------
+
+#: The comparison's rows beneath the record: each player's per-game figure over the meetings, by key and header.
+_MATCHUP_LINE: tuple[tuple[str, str], ...] = (("minutes", "minutes"), ("points", "points"), ("rebounds", "rebounds"), ("assists", "assists"), ("fg_pct", "FG%"))
+
+
+def _matchup_absence_said(absence: dict[str, Any] | None) -> str:
+    """How often the two met with a teammate's absence dropped, where it
+    emptied the meetings - the reading the question probably meant."""
+    if absence is None:
+        return ""
+    names, met, player = _joined(list(absence["names"])), absence["met"], absence["player"]
+    return (
+        f" Over {absence['first']}-{absence['last']} they met {met} time{'s' if met != 1 else ''} in all, {absence['beside']} of them with {names} playing beside {player}; "
+        f"'without {names}' counts only the games he missed while on {player}'s team, and there were none among their meetings."
+    )
+
+
+def _matchup_none(result: Result, caveat: str) -> TemplateResult:
+    """Two players who never met in scope, said by what the read narrowed:
+    "never played against each other", or no meetings in the first
+    player's games narrowed that way, and the games they shared as
+    teammates where every shared game was one."""
+    a, b, together = result.subject, result.facts["other"], result.facts["teammate_games"]
+    where = _where_in_span(result.span)
+    teammates = f" - they were teammates in all {together} games they both played" if together else ""
+    said = caveat + _matchup_absence_said(result.facts.get("absence"))
+    narrowing = result.narrowing.phrase
+    # With a narrowing, "never played against each other" would be false of
+    # two players who met whenever the narrowing was not in force.
+    head = f"No meetings between {a} and {b} in {a}'s games{narrowing}" if narrowing else f"{a} and {b} never played against each other"
+    message = f"{head} {where}{teammates}.{said}"
+    return TemplateResult(data={"players": [a, b], "meetings": 0, "teammate_games": together, "headline": message}, answer=message)
+
+
+def say_player_matchup(result: Result) -> TemplateResult:
+    """Two players' meetings, worded: the head-to-head record and each
+    one's averages side by side under a heading naming how many times they
+    met and how often the first one's team won, then the newest meetings
+    (each team as it was abbreviated that season, both players'
+    points/rebounds/assists), then the games no box score shows.
+
+    .. versionadded:: 5.0.0
+    """
+    groups = result.grouped
+    assert groups is not None and result.span.phrase is not None
+    caveat = "".join(_said(result))
+    if not groups.rows:
+        return _matchup_none(result, caveat)
+    a, b = groups.rows
+    detail = result.parts[1].body
+    assert isinstance(detail, Rows) and detail.total_before_window is not None
+    count, wins = detail.total_before_window, a["wins"]
+    names = [a["key"], b["key"]]
+    title = f"{names[0]} vs {names[1]}{result.narrowing.phrase}, {result.span.phrase}: {count} meeting{'' if count == 1 else 's'}, {names[0]}'s team won {wins}."
+    summary = [("wins", [str(wins), str(count - wins)])] + [(header, [_cell(line[key]) for line in (a, b)]) for key, header in _MATCHUP_LINE]
+    answer = _table(title, names, summary)
+    log = [
+        (str(m["day"]), [f"{m['team']} {m['team_score']}-{m['opponent_score']} {m['opponent']}", *(f"{m[side]['points']}/{m[side]['rebounds']}/{m[side]['assists']}" for side in ("a", "b"))])
+        for m in detail.rows
+    ]
+    answer += "\n\n" + _table(f"Most recent {len(detail.rows)} of {count} (points/rebounds/assists):", ["score", *names], log)
+    answer += f"\n{caveat.strip()}" if caveat else ""
+    games = [{"date": str(m["day"]), "won": m["won"], "team_score": m["team_score"], "opponent_score": m["opponent_score"], names[0]: m["a"], names[1]: m["b"]} for m in detail.rows]
+    averages = {line["key"]: {k: v for k, v in line.items() if k not in ("key", "wins")} for line in (a, b)}
+    data = {
+        "players": names,
+        "span": result.span.phrase,
+        "meetings": count,
+        "wins": {names[0]: wins, names[1]: count - wins},
+        "averages": averages,
+        "games": games,
+        "headline": title,
+        "notes": [caveat.strip()] if caveat else [],
+    }
+    return TemplateResult(data=data, answer=answer)

@@ -40,7 +40,6 @@ from collections.abc import Callable
 
 import duckdb
 
-from association.query.conditions import _meeting_rows, _teammate_games
 from association.query.measures import stat_measure
 from association.query.templates.common import (
     HISTORY_COLUMNS,
@@ -50,7 +49,6 @@ from association.query.templates.common import (
     relation_scoping,
     unhonored_scoping,
 )
-from association.query.templates.games import _player_matchup_covered, _player_matchup_from
 from association.query.templates.players import (
     ADVANCED_STATS,
     SHOOTING_STATS,
@@ -74,7 +72,7 @@ from association.query.templates.splits import (
 )
 
 from .adapt import WITH_WITHOUT_STATED
-from .core import Query, Refused, Unsupported, compile_query
+from .core import Query, Refused, Unsupported
 from .say import say_run_listing, streak_result
 from .team import TeamQuery, _team_games_narrowed, run_team
 
@@ -164,28 +162,6 @@ def _present_player_compare(con: duckdb.DuckDBPyConnection, q: Query) -> Templat
     return _player_compare_lines(con, q.scope)
 
 
-def _present_player_matchup(con: duckdb.DuckDBPyConnection, q: Query) -> TemplateResult | None:
-    """``player_matchup``'s own tables over the compiler's ``pair`` shape:
-    the head-to-head record, each player's averages in the meetings and the
-    newest of them (``templates.games._player_matchup_from``), over the
-    meetings the compiled statement read (``compose.core._compile_pair``)
-    and the games the two played as teammates
-    (``conditions._teammate_games``, the pair relation's other read).
-
-    .. versionadded:: 5.0.0
-    """
-    if q.skeleton != "pair" or q.source != "games":
-        return None
-    scope = q.scope
-    covered = _player_matchup_covered(scope)
-    compiled = compile_query(con, q)
-    if compiled.player is None or compiled.other is None:
-        return None
-    meetings = _meeting_rows(con.execute(compiled.sql, compiled.params).fetchall())
-    together = _teammate_games(con, compiled.narrowed, compiled.other.id)
-    return _player_matchup_from(con, scope, covered, compiled.player, compiled.other, compiled.narrowed, meetings, together)
-
-
 def _present_player_history(con: duckdb.DuckDBPyConnection, q: Query) -> TemplateResult | None:
     """``player_history``'s own table - the stat season by season from the
     season line, newest first, the default four or the count asked for, and
@@ -215,7 +191,6 @@ PRESENTERS: dict[str, Presenter] = {
     "player_history": _present_player_history,
     "leaderboard": _present_leaderboard,
     "player_compare": _present_player_compare,
-    "player_matchup": _present_player_matchup,
 }
 """The intents whose own default point the compiler answers in that intent's
 template's words - see the module docstring.
@@ -265,13 +240,13 @@ STATED_SCOPING: dict[str, frozenset[str]] = {
     "player_compare": frozenset(),
     # streak's words: the relation's set less one date, a window and a
     # quarter (RELATION_SCOPING_EXCLUDED: a run is a run of whole games over
-    # every game in the span), which its point refuses outright
-    # (point._default_streak); its team and league branches refuse
-    # the cells only a named player's games settle, by name, there too.
+    # every game in the span), which the planner refuses outright
+    # (compose.plan._shape_declines), and the cells only a named player's
+    # games settle on a team's or the league's run, by name, there too.
     "streak": relation_scoping("streak"),
     # player_matchup's words: the relation's set less a third team, a window,
-    # an ordinal season and a quarter (RELATION_SCOPING_EXCLUDED), which its
-    # point refuses outright (point._default_player_matchup).
+    # an ordinal season and a quarter (RELATION_SCOPING_EXCLUDED), which the
+    # planner refuses outright (compose.plan._shape_declines).
     "player_matchup": relation_scoping("player_matchup"),
     # with_without's words: a career, the teammates, one opponent and a
     # companion's role, the template's own declaration when it retired.

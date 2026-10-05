@@ -12,14 +12,14 @@ from typing import Any, Literal, cast
 import duckdb
 
 from association.nba.coverage import POSTSEASON
-from association.nba.franchises import season_name, season_name_sql
+from association.nba.franchises import season_name_sql
 from association.nba.season import current_season
 from association.query.measures import PERIOD_RATE_STATS as PERIOD_RATE_STATS
 from association.query.measures import period_split_measure
 from association.query.reading import DEFAULT_GAME_LOG_LIMIT as DEFAULT_GAME_LOG_LIMIT
-from association.query.reading import ConditionSpec, Reading, Scope
+from association.query.reading import Reading, Scope
 
-from ..conditions import _PLAYER_GAME_TABLES, _cell, _matchup_line, _meetings, _names, _player_games, _Scope, _table, _totals, _unseen_meetings, box_source
+from ..conditions import box_source
 from ..entities import Entity, resolve_team
 from ..leaderboard import resolve_metric
 from ..metrics import PER_GAME_MIN_GAMES, PER_GAME_MIN_POSTSEASON_GAMES
@@ -45,24 +45,17 @@ from .common import (
     TemplateResult,
     TemplateUnsupported,
     _clamp_limit,
-    _condition_scope,
     _Narrowed,
-    _no_games,
     _period,
-    _player_relation_season_type,
     _resolved_team,
     _slot_season,
     _Span,
     _span_of,
     _validated_until,
-    _where_in,
     league_games,
-    measure_filters,
     period_narrowing,
-    scoped_games,
     scoped_team,
     team_games,
-    whole_span,
 )
 
 
@@ -1197,210 +1190,3 @@ def _period_leaderboard_by_quarter(con: duckdb.DuckDBPyConnection, span: _Span, 
         },
         answer=answer,
     )
-
-
-_DEFAULT_MEETINGS_LOGGED = 5
-
-
-def _player_matchup_from(con: duckdb.DuckDBPyConnection, scope: Scope, covered: _Scope, a: Entity, b: Entity, narrowed: _Narrowed, meetings: list[dict[str, Any]], together: int) -> TemplateResult:
-    """The games two named players both played, on opposite teams: the
-    head-to-head record, each one's averages in those games, and the most
-    recent meetings - over the meetings the compiler's ``pair`` shape read
-    (``compose.core._compile_pair``, ROADMAP plan item 6, step (g)) and the
-    games they played as teammates. A game in which they were teammates is
-    not a meeting, and when every shared game was one, the answer says that
-    rather than that they never played. The retired template's docstring
-    (``player_matchup``, 2.1.0-5.0.0) carries the shape's history: a genuine
-    two-player matchup narrows the first player's games through the shared
-    ``scoped_games`` step, so a teammate's absence, a venue, a date, a
-    starter half and a calendar are honored and stated; ``opponent`` is
-    refused (two players' meetings have no third team to narrow by), and a
-    player against a team is that player's own question, never a matchup.
-
-    .. versionadded:: 5.0.0
-    """
-    unseen = _unseen_meetings(con, covered, a.id, b.id)
-    said = (
-        f" {unseen} game{'' if unseen == 1 else 's'} between their teams while both were playing for them {'has' if unseen == 1 else 'have'} no box score, so a meeting there is not counted."
-        if unseen
-        else ""
-    )
-    caveat = note("games_unseen", said, games=unseen, why="no_box_score", what="meetings")
-    if not meetings:
-        return _player_matchup_no_meetings(con, covered, a, b, together, caveat + _player_matchup_absence_context(con, a, b, scope, narrowed), narrowed.filters())
-
-    wins, lines, count, summary = _player_matchup_summary(a, b, meetings)
-    shown, log = _player_matchup_log(con, meetings, scope.limit, a, b)
-    return _player_matchup_answer(a, b, covered, meetings, wins, lines, count, summary, shown, log, caveat, narrowed.filters())
-
-
-def _player_matchup_covered(scope: Scope) -> _Scope:
-    """The span both names resolve over: the question's own - or, where a
-    date names the game, the career, since a date replaces the season the
-    way ``game_log``'s own date does (the season is usually the "current"
-    default, and a date from an earlier season looked for in that one finds
-    nothing)."""
-    if scope.date:
-        return _condition_scope(None, "career", scope.season_type, _PLAYER_GAME_TABLES, since=scope.since)
-    return _condition_scope(scope.season, scope.span, scope.season_type, _PLAYER_GAME_TABLES, since=scope.since)
-
-
-def _player_matchup_narrowed(con: duckdb.DuckDBPyConnection, a: Entity, b: Entity, scope: Scope) -> _Narrowed | TemplateResult:
-    """The first player's games under every row-level narrowing the question
-    carries - a teammate's absence ("curry vs lebron without kd", yardstick-v2
-    F114), a venue, a date, a starter half, a calendar - read through the
-    shared step so the pair relation honors what every other template on the
-    relation honors, and says it. The window (``limit``) is the matchup's
-    own: the newest N meetings are shown BENEATH averages over all of them,
-    never a cut on the averages. A second player who is also the absent
-    teammate ("fox vs wembanyama without wembanyama") is a question with no
-    games in it, said so rather than answered "never met" (found by the
-    golden the day ``without`` landed on the pair relation).
-
-    .. versionadded:: 4.4.0
-
-    .. versionchanged:: 5.0.0
-       Hands ``scoped_games`` the date: "curry vs lebron on 2025-04-03" used
-       to answer every meeting of the season, the date reaching every other
-       relation cell here but never the one-day filter. A date names its
-       game, so it replaces the season here too, the way ``game_log``'s does.
-    """
-    span = _span_of("career" if scope.date else scope.span, None if scope.date else scope.season, _player_relation_season_type(scope), "player_game_log", since=scope.since, until=scope.until)
-    narrowed = scoped_games(con, a, span, replace(scope, limit=None, order=None, opponent=None), opponent=None, measures=measure_filters(scope.below, scope.above), date=scope.date)
-    if isinstance(narrowed, TemplateResult):
-        return narrowed
-    narrowed = whole_span(narrowed)
-    if any(absent.id == b.id for absent in narrowed.without):
-        message = f"{b.name} is both the player {a.name} is matched against and the teammate named as absent - no game can be both. Name the opponent team, or drop 'without'."
-        return TemplateResult(data={"players": [a.name, b.name], "message": message}, answer=message)
-    return narrowed
-
-
-def _player_matchup_absence_context(con: duckdb.DuckDBPyConnection, a: Entity, b: Entity, scope: Scope, narrowed: _Narrowed) -> str:
-    """Why a matchup narrowed by a teammate's absence holds no meetings, in
-    the numbers that answer the question a reader probably meant: "steph
-    curry record vs lebron regular season without kd" (yardstick-v2 F114)
-    is "no meetings" because "without Durant" counts only the games inside
-    Durant's time as Curry's teammate (2017-2019), and Durant played every
-    Curry-LeBron meeting in it - while over their careers the two met many
-    more times, most of them with Durant on neither team. Both figures are
-    said, so the reader has the other reading without re-asking. Empty
-    where no absence was named.
-
-    .. versionadded:: 5.0.0
-    """
-    if not narrowed.without:
-        return ""
-    unconditioned = replace(scope, without=(), conditions=())
-    everywhere = _player_matchup_narrowed(con, a, b, unconditioned)
-    if isinstance(everywhere, TemplateResult):
-        return ""
-    all_meetings, _ = _meetings(con, everywhere, b.id)
-    if not all_meetings:
-        return ""
-    names = _joined([mate.name for mate in narrowed.without])
-    playing = tuple(ConditionSpec(player=mate.name, side="own", predicate="played") for mate in narrowed.without)
-    beside = _player_matchup_narrowed(con, a, b, replace(unconditioned, conditions=playing))
-    with_them = len(_meetings(con, beside, b.id)[0]) if not isinstance(beside, TemplateResult) else 0
-    first, last = min(m["season"] for m in all_meetings), max(m["season"] for m in all_meetings)
-    return (
-        f" Over {first}-{last} they met {len(all_meetings)} time{'s' if len(all_meetings) != 1 else ''} in all, {with_them} of them with {names} playing beside {a.name}; "
-        f"'without {names}' counts only the games he missed while on {a.name}'s team, and there were none among their meetings."
-    )
-
-
-def _player_matchup_no_meetings(con: duckdb.DuckDBPyConnection, scope: _Scope, a: Entity, b: Entity, together: int, caveat: str, narrowing: str = "") -> TemplateResult:
-    """The refusal for two players who never played against each other in
-    scope - naming whichever of them has no games at all, since that is the
-    missing fact rather than the matchup itself. ``narrowing`` is what the
-    first player's games were narrowed to (" without Jamal Murray"): with one,
-    the sentence says the meetings are missing from THOSE games, since
-    "never played against each other" would be false of two players who
-    met whenever the teammate was there (found by the golden the day the
-    narrowing landed: Jokic and Embiid "never met" without Murray)."""
-    for player in (a, b):
-        if _totals(con, _player_games(scope, box=box_source(con)), {**scope.params(), "player": player.id})[0] == 0:
-            return _no_games(con, player, scope, None)
-    teammates = f" - they were teammates in all {together} games they both played" if together else ""
-    if narrowing:
-        message = f"No meetings between {a.name} and {b.name} in {a.name}'s games{narrowing} {_where_in(scope)}{teammates}.{caveat}"
-    else:
-        message = f"{a.name} and {b.name} never played against each other {_where_in(scope)}{teammates}.{caveat}"
-    return TemplateResult(data={"players": [a.name, b.name], "meetings": 0, "teammate_games": together, "headline": message}, answer=message)
-
-
-def _player_matchup_summary(a: Entity, b: Entity, meetings: list[dict[str, Any]]) -> tuple[int, dict[str, dict[str, Any]], int, list[tuple[str, list[str]]]]:
-    """The head-to-head record and each player's averages in the meetings, as
-    the summary table's rows."""
-    wins = sum(1 for m in meetings if m["won"])
-    lines = {a.name: _matchup_line([m["a"] for m in meetings]), b.name: _matchup_line([m["b"] for m in meetings])}
-    count = len(meetings)
-    summary = [("wins", [str(wins), str(count - wins)])] + [
-        (header, [_cell(lines[p.name][key]) for p in (a, b)]) for key, header in (("minutes", "minutes"), ("points", "points"), ("rebounds", "rebounds"), ("assists", "assists"), ("fg_pct", "FG%"))
-    ]
-    return wins, lines, count, summary
-
-
-def _player_matchup_stat_line(stats: dict[str, Any]) -> str:
-    """One player's points/rebounds/assists in one meeting, for the log."""
-    return f"{stats['points']}/{stats['rebounds']}/{stats['assists']}"
-
-
-def _player_matchup_abbr(team_id: str, season: int, abbr: dict[str, str]) -> str:
-    """A meeting's team as it was abbreviated THAT season - a 2005 Nets game reads NJ, not BKN."""
-    return season_name(team_id, season, abbr[team_id], column="abbreviation")
-
-
-def _player_matchup_log(con: duckdb.DuckDBPyConnection, meetings: list[dict[str, Any]], limit: Any, a: Entity, b: Entity) -> tuple[list[dict[str, Any]], list[tuple[str, list[str]]]]:
-    """The most recent meetings logged: each one's score and both players'
-    points/rebounds/assists, with teams abbreviated the way they were that season."""
-    shown = meetings[: _clamp_limit(limit, _DEFAULT_MEETINGS_LOGGED)]
-    abbr = _names(con, "teams", "team_id", {m["team_id"] for m in shown} | {m["opponent_team_id"] for m in shown}, column="abbreviation")
-    log = [
-        (
-            str(m["day"]),
-            [
-                f"{_player_matchup_abbr(m['team_id'], m['season'], abbr)} {m['team_score']}-{m['opponent_score']} {_player_matchup_abbr(m['opponent_team_id'], m['season'], abbr)}",
-                _player_matchup_stat_line(m["a"]),
-                _player_matchup_stat_line(m["b"]),
-            ],
-        )
-        for m in shown
-    ]
-    return shown, log
-
-
-def _player_matchup_answer(
-    a: Entity,
-    b: Entity,
-    scope: _Scope,
-    meetings: list[dict[str, Any]],
-    wins: int,
-    lines: dict[str, dict[str, Any]],
-    count: int,
-    summary: list[tuple[str, list[str]]],
-    shown: list[dict[str, Any]],
-    log: list[tuple[str, list[str]]],
-    caveat: str,
-    narrowing: str = "",
-) -> TemplateResult:
-    """The head-to-head summary table and the most recent meetings beside it.
-    ``narrowing`` is what the first player's games were narrowed to, as the
-    relation says it (" without Kevin Durant", " at home")."""
-    label = scope.label(min(m["season"] for m in meetings), max(m["season"] for m in meetings))
-    title = f"{a.name} vs {b.name}{narrowing}, {label}: {count} meeting{'' if count == 1 else 's'}, {a.name}'s team won {wins}."
-    answer = _table(title, [a.name, b.name], summary)
-    answer += "\n\n" + _table(f"Most recent {len(shown)} of {count} (points/rebounds/assists):", ["score", a.name, b.name], log)
-    answer += f"\n{caveat.strip()}" if caveat else ""
-    games = [{"date": str(m["day"]), "won": m["won"], "team_score": m["team_score"], "opponent_score": m["opponent_score"], a.name: m["a"], b.name: m["b"]} for m in shown]
-    data = {
-        "players": [a.name, b.name],
-        "span": label,
-        "meetings": count,
-        "wins": {a.name: wins, b.name: count - wins},
-        "averages": lines,
-        "games": games,
-        "headline": title,
-        "notes": [caveat.strip()] if caveat else [],
-    }
-    return TemplateResult(data=data, answer=answer)
