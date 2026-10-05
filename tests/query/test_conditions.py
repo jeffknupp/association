@@ -1211,6 +1211,20 @@ def test_a_player_with_no_run_records_no_remark_he_is_not_told(league: TemplateC
     assert remarks.notes == []
 
 
+def test_a_league_with_no_run_records_no_remark_it_is_not_told(league: TemplateContext) -> None:
+    """The league's longest winning streak in a postseason nothing was played
+    in answers "No team has a game with a result" and records no remark: the
+    team-season rule was written before anyone knew there was no run, and
+    reached no answer."""
+    from association.query.notes import collect
+
+    with collect() as remarks:
+        result = streak(league, Reading.from_slots({"kind": "win", "season": 1990, "season_type": 3}))
+    assert result.data["streaks"] == []
+    assert "no team has a game" in result.answer.lower()
+    assert remarks.notes == []
+
+
 def test_a_league_run_in_a_postseason_before_1994_is_the_floors_refusal() -> None:
     """The league's stat run over one postseason before 1993-94 - the seasons
     ESPN files under the year they began - never reaches a reader: the

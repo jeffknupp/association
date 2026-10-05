@@ -960,4 +960,5 @@ def _streak_league_result_words(con: duckdb.DuckDBPyConnection, span: _Span, run
     # today" to every all-seasons answer, which is what it was.
     owned = [run_of(r, season_name(r["team_id"], int(r["season"]), names[r["team_id"]]) + (f" ({r['season']})" if span.season is None else "")) for r in runs]
     rule = Note("definition", {"term": "streak_rule", "what": "league_team_within_season"})
-    return owned, note(rule.kind, note_phrase(rule), **rule.facts)
+    # The rule qualifies a run: with none, the answer says so and nothing beneath it.
+    return owned, note(rule.kind, note_phrase(rule), **rule.facts) if runs else ""
