@@ -805,6 +805,30 @@ agents' reports named here are in `~/association-research/stages/`.
     take note kinds only; the Result's `empty` sentence and `Narrowing.
     phrase` are still words.
 
+15. **Phase 2, step 2 - slice (ii) in parallel (2026-10-04).** After
+    step 1 closed, two conventions settled before dispatch: a decision
+    rides on `Result.decisions` as a `Decided` value phrased once by
+    `say.decision_phrase` (the period redirect's `season_fallback` moved
+    onto it the same day; `b2926b0`), and the agents' pattern notes went
+    onto `ROADMAP.md` as "Open from step 1". Then two Opus agents in
+    worktrees off pushed master, split along the template seam: half A
+    `threshold_count` + `single_game_high` (49 of 49 presenter answers
+    matched the compiled rows before a line was written; adapters to the
+    reader first; `Scalar.how` and `Rows.by` so the sayer branches on the
+    body; a decline that named the wrong missing fact fixed, 11 readings
+    rewording), half B `streak` + `player_matchup` (the `Runs` body
+    declared; 25 of 25 matched, 19 of them synthetic because the corpus
+    holds no player streak; the team streak's presenter now words through
+    the same two helpers; two unsaid remarks and a mis-aliased column
+    fixed). The second agent rebased onto the first's merged work and
+    re-proved on the merged tree before reporting; the lead re-ran gates,
+    suite, ratchets and the 628 before each merge. Presenters 8 -> 4,
+    adapters 5 -> 1, private-template-import ratchet 47 -> 23. Left open
+    on purpose: the row's "each refusal becomes a `Cause`" - both agents
+    hit the same wall, that a user-visible decline becomes a Cause only by
+    moving the reading's verdict, which the readings population holds
+    identical; about 15 readings; put to Jeff.
+
 ## The plan items, as written
 
 In order of lift per unit of structural change, each measured on the
