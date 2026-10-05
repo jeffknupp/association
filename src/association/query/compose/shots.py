@@ -290,10 +290,11 @@ def read_shot_distance(con: duckdb.DuckDBPyConnection, q: ShotQuery, *, stated: 
         ids, narrowing, game = pinned
     ((average, attempts, games),) = values_of(con, _shot_distance_statement(player.id, span, shot_value, ids))
     result = _shot_distance_result(con, player, span, shot_value, period, narrowing, game, average, attempts or 0, games or 0)
-    if not attempts and ids is None and span.defaulted and not span.career:
+    if not attempts and ids is None and shot_value is None and span.defaulted and not span.career:
         # A defaulted season with no shots names the seasons he IS on record
         # for (#18), as the chart does: "no shots ... in the 2026 regular
         # season" of a player retired since 2003 is true of the wrong year.
+        # Not under a shot value, which may be why there are none (#296).
         redirect = season_redirect(con, player.id, span.season_type, "shot_chart")
         if redirect is not None:
             facts = {"first": redirect[0], "last": redirect[1], "what": span.kind}
@@ -543,7 +544,8 @@ def read_shot_chart(con: duckdb.DuckDBPyConnection, q: ShotQuery, *, stated: fro
     games = _shot_chart_games(con, player, span, scope, measures)
     if isinstance(games, TemplateResult):
         return games
-    chart, notes, drawn_from, refused = _shot_chart_drawn(con, player, span, games, shot_value_of(scope))
+    shot_value = shot_value_of(scope)
+    chart, notes, drawn_from, refused = _shot_chart_drawn(con, player, span, games, shot_value)
     decisions: list[Decided] = []
     if chart.marks and ambiguous:
         decisions.append(Decided(kind="also_matched", field="player", chose=player.name, instead_of=tuple(ambiguous)))
@@ -552,11 +554,14 @@ def read_shot_chart(con: duckdb.DuckDBPyConnection, q: ShotQuery, *, stated: fro
         floor = _shots_career_floor(con, player, span.season_type, found=bool(chart.marks))
         if floor is not None:
             notes.append(floor)
-    elif not chart.marks and refused is None and not games.scoped and defaulted:
+    elif not chart.marks and shot_value is None and not games.scoped and defaulted:
         # A defaulted season with nothing to draw names the seasons he IS on
-        # record for (#18), rather than blaming filters nobody gave. Not after
-        # a refusal: nothing was drawn because a free-throw chart is never
-        # drawn, and "he last appears in 2026" beneath it was a non sequitur.
+        # record for (#18), rather than blaming filters nobody gave - only
+        # where the read was every located shot of the season, so nothing
+        # drawn means the season holds none of his. Under a shot value the
+        # filter may be why (a center's threes, #296), or a refusal is (a
+        # free-throw chart is never drawn), and "he last appears in 2026"
+        # beneath either was a non sequitur.
         redirect = season_redirect(con, player.id, span.season_type, "shot_chart")
         if redirect is not None:
             facts = {"first": redirect[0], "last": redirect[1], "what": SEASON_TYPE_NAMES.get(span.season_type, "regular season")}

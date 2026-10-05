@@ -1304,8 +1304,8 @@ those were found.
 - **User sees:** shot charts and shot-distance answers count 2026 heaves that
   are not attempts in the box score (Curry: 488 charted threes against 484
   3PA).
-- **Next step:** the same exclusion in the shot readers (`query/shotchart.py`,
-  `templates/shots.py`) - a chart may still want to draw a heave, but a count
+- **Next step:** the same exclusion in the shot reader (`query/compose/shots.py`;
+  `shotchart.SHOT_VALUE_SQL`) - a chart may still want to draw a heave, but a count
   or an average should not include it; say which in the answer.
 - **Source:** DATA.md, "The 2026 shot chart holds more shots than the box score"
 - **GitHub:** #15
@@ -1448,9 +1448,9 @@ those were found.
 
 ### `shot_chart`'s empty refusal never names the season, even when one was asked for
 - **Found:** 2026-09-18, fixing #18 (the retired-player default-season bug)
-- **Evidence:** `shotchart.render_for_player`'s empty branch
-  (`query/shotchart.py`, `if not shots: message = f"No shots found for
-  {resolved_name} with the given filters."`) never mentions ``season`` at all -
+- **Evidence:** the chart's empty sentence (`compose.say.say_shot_chart`, `"No
+  shots found for {name} with the given filters."`; `shotchart.render_for_player`'s
+  empty branch until Phase 2, step 5) never mentions ``season`` at all -
   unlike `player_stat` ("no 1999 regular season numbers") and `game_log` ("No
   1999 regular season games found"), which both name the season in the plain
   refusal. `shot_chart(ctx, {"player": "Stephen Curry", "season": 1999})`
@@ -1466,12 +1466,11 @@ those were found.
   something to redirect to; an *explicit* season with nothing on record - or a
   defaulted one where the player has no shots on record at all - still gets
   this unscoped sentence.
-- **Next step:** have `render_for_player`'s empty branch say the season and
+- **Next step:** have `say_shot_chart`'s empty sentence say the season and
   season_type it queried (mirroring `_period`), and separately list which
   filters (if any) were actually applied, rather than a blanket "with the
   given filters" that fires even with none. Threading that through touches
-  `shotchart.py`'s shared renderer - check every caller before changing the
-  message shape.
+  the sayer only (the Result carries the span).
 - **Source:** ours, not ESPN's.
 - **GitHub:** #105
 
@@ -2173,8 +2172,8 @@ those were found.
   career `span`)
 - **Evidence:** one named season already refuses a `shot_value`-filtered
   distance in `UNSEPARABLE_SHOT_VALUES` (2002) and notes a
-  `DERIVED_SHOT_VALUES` one (2003, 2022) - `templates/shots.py`'s
-  `shot_distance`, both checks keyed on `season`. A career span (`span:
+  `DERIVED_SHOT_VALUES` one (2003, 2022) - `compose.shots.read_shot_distance`
+  (`templates/shots.py`'s `shot_distance` until Phase 2, step 5), both checks keyed on `season`. A career span (`span:
   "career"`) leaves `season` `None`, so neither check ever fires: 2002's rows
   are silently excluded from the `{SHOT_VALUE_SQL} = ?` filter (their value is
   NULL there, by design - see `shotchart.SHOT_VALUE_SQL`) with nothing saying
@@ -2190,7 +2189,7 @@ those were found.
   derived-value note a lone `season=2003` query gives
   ("ESPN did not label 2003's shots as twos or threes, so they are read from
   the description..."). `shot_chart` (the plot, not the average) does not have
-  this gap - `shotchart._render_for_player_notes` already aggregates both
+  this gap - `compose.shots._shot_chart_notes` already aggregates both
   notes as a set over every season a multi-season draw actually kept.
 - **User sees:** a career average with no shot_value filter reads fine; one
   WITH a filter (threes, twos) whose career overlaps 2002 or 2003 gets a
@@ -2199,7 +2198,7 @@ those were found.
 - **Next step:** in `shot_distance`'s career branch, collect the distinct
   seasons actually kept by the query (a `season` column is already selectable
   alongside the aggregate) and build the same two notes
-  `shotchart._render_for_player_notes` does, or factor that helper out for
+  `compose.shots._shot_chart_notes` does, or factor that helper out for
   both callers to share.
 - **Priority note:** P2 - the number given is correct over what it actually
   summed; the gap is what it does not say.
@@ -2373,13 +2372,6 @@ those were found.
 - **User sees:** a cause that may be false for his span.
 - **Next step:** measure over the corpus's splits; say the seasons the unseen games are in.
 - **GitHub:** #295
-
-### A shot chart emptied by a shot-value filter says the player "last appears in" the season asked about
-- **Found:** 2026-09-30, the notes inventory for `ROADMAP-TYPES.md` (an Opus agent reading `011091f`; reported, not re-verified).
-- **Evidence:** `templates/shots.py:268-277` appends the defaulted-season redirect whenever nothing was drawn; `_season_redirect` ignores the shot-value filter (`templates/common.py:2425`), so a player with 2026 shots and no 2026 threes can be told "He last appears in 2026 ... name one".
-- **User sees:** a redirect that contradicts itself.
-- **Next step:** reproduce with a center's threes this season; redirect only when the season holds no shots at all.
-- **GitHub:** #296
 
 ### A streak in a finished season is marked "still going at the last game on record"
 - **Found:** 2026-09-30, the notes inventory for `ROADMAP-TYPES.md` (an Opus agent reading `011091f`; reported, not re-verified).
@@ -2608,7 +2600,7 @@ those were found.
   end-of-period heaves (game clock under 3 seconds) excluded; leaving heaves
   in changes the leader (Alperen Sengun, 29.62 ft, 9% heaves). Nothing in
   `LEADERBOARD_METRICS`/`query/leaderboard.py` computes this - `shot_distance`
-  is a per-player metric (`templates.shots.shot_distance`) with no
+  is a per-player metric (`compose.shots.read_shot_distance`) with no
   league-wide ranking built over it.
 - **User sees:** a refusal naming the true cause now ("Shot distance is not
   ranked league-wide yet - ask about one named player's average shot
@@ -2962,12 +2954,12 @@ those were found.
 
 ### A `since` span before the 2002 shot floor gets no caveat that shots are clipped
 - **Found:** 2026-09-22, step 3, C5.
-- **Evidence:** `templates/shots.py`'s `_shot_chart_message`/`shot_distance`
-  gate `_career_shot_note` on `span.career and span.since is None` - added in
+- **Evidence:** `compose/shots.py`'s `read_shot_chart`/`read_shot_distance`
+  (the templates' bodies until Phase 2, step 5) gate the career floor note (`_shots_career_floor`) on `span.career and span.since is None` - added in
   this step to fix a real bug (a `since`-bounded read was claiming to "cover
   his whole career on record" against his UNBOUNDED range, which is false of
   a bounded one). The fix is correct for what it removes, but nothing replaced
-  it: `_career_shot_note`'s other job - saying when the 2002 shot floor clips
+  it: the floor note's other job - saying when the 2002 shot floor clips
   part of what was asked for - is exactly as relevant to "since 1998" (which
   the floor DOES clip) as to a plain career, and now says nothing for either
   case reached through `since`. `_shots_has_narrowing` still routes `since`
@@ -2979,7 +2971,7 @@ those were found.
   2002-on with no note that 1998-2001 are missing, the same silent-narrowing
   shape `AGENTS.md` names as this project's worst failure mode, though here
   the NUMBER is still right - only the caveat is gone.
-- **Next step:** extend `_career_shot_note` (or a sibling) to take the actual
+- **Next step:** extend `_shots_career_floor` (or a sibling) to take the actual
   requested floor (`span.since` when set, else the real career start) instead
   of always comparing against the player's own first season, so a `since`
   read gets the same "seasons left out" sentence a plain career already does.
@@ -4335,7 +4327,7 @@ those were found.
 
 ### A list of matched names is printed as a Python list, and four small wording faults
 - **Found:** 2026-09-30, the notes inventory for `ROADMAP-TYPES.md` (an Opus agent reading `011091f`; reported, not re-verified).
-- **Evidence:** `shotchart.py:418` and `fingerprint.py:951` interpolate the list itself ("['Seth Curry', ...]"); `fingerprint.py:890` joins it. "({A}, {B} has no ...)" at `templates/players.py:1924`. The box-score floor is "the 1993-94 season" in `templates/common.py:2534` and "the 1994 regular season" in `conditions.py:269`. A history `limit` over 20 silently becomes 4 (`templates/players.py:813`). `render_shot_chart` and `render_fingerprint` (`shotchart.py:186`, `fingerprint.py:1035`) have no caller in `src`, only tests.
+- **Evidence:** `compose.say.decision_phrase`'s `also_matched` (`shotchart.py:418` until Phase 2, step 5) and `fingerprint.py:951` interpolate the list itself ("['Seth Curry', ...]"); `fingerprint.py:890` joins it. "({A}, {B} has no ...)" at `templates/players.py:1924`. The box-score floor is "the 1993-94 season" in `templates/common.py:2534` and "the 1994 regular season" in `conditions.py:269`. A history `limit` over 20 silently becomes 4 (`templates/players.py:813`). `render_shot_chart` and `render_fingerprint` (`shotchart.py:186`, `fingerprint.py:1035`) have no caller in `src`, only tests.
 - **User sees:** brackets and quotes in a chart's note; otherwise nothing wrong, only uneven.
 - **Next step:** join the names; the rest goes with each kind's one phrase (Phase 2).
 - **GitHub:** #308

@@ -2950,6 +2950,22 @@ def test_a_free_throw_chart_in_a_defaulted_season_is_refused_without_a_redirect(
     assert result.artifacts == []
 
 
+def test_a_chart_a_shot_value_emptied_in_a_defaulted_season_keeps_the_plain_refusal(sc_ctx: TemplateContext) -> None:
+    """ISSUES.md #296: a player with shots this season and none of the value
+    asked for ("Deandre Ayton's threes": 601 shots in 2026, no three) was told
+    he "last appears in 2026" and to name a season - the filter emptied the
+    chart, not the season. The redirect is for a season holding none of his
+    shots at all; under a shot value the plain refusal names the filters."""
+    sc_ctx.con.execute("CREATE TABLE player_season_stats_deduped (athlete_id VARCHAR, season INTEGER, season_type INTEGER, gamesPlayed INTEGER)")
+    sc_ctx.con.execute("INSERT INTO players VALUES ('3','Big Man')")
+    sc_ctx.con.execute("INSERT INTO shot_chart VALUES ('3',?,2,'e1',1,'9:00',TRUE,'Dunk',25,1,2,'2-foot two point dunk')", [current_season()])
+    result = shot_chart(sc_ctx, Reading.from_slots({"player": "Big Man", "shot_value": 3}))
+    assert result.answer == "No shots found for Big Man with the given filters."
+    assert result.artifacts == []
+    distance = shot_distance(sc_ctx, Reading.from_slots({"player": "Big Man", "shot_value": 3}))
+    assert distance.answer == f"No 3-point shots with recorded coordinates for Big Man in the {season_phrase(current_season(), 2)}."
+
+
 def test_a_career_chart_says_which_shots_it_left_out(sc_ctx: TemplateContext) -> None:
     """One unseparable season is refused outright. Across seasons the chart
     draws what can be told apart and says what it could not, rather than
