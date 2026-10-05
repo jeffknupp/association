@@ -130,36 +130,40 @@ def run(args: argparse.Namespace) -> int:
         return normalizer.Normalized(names, out.get("stat") if out.get("stat") in normalizer.NORMALIZER_STATS else "")
 
     normalizer.normalize = recorded  # type: ignore[assignment]
-    scratch = Path(tempfile.mkdtemp(prefix="stages-"))
-    agent = Agent(str(args.db_path), scratch / "out", history_dir=scratch / "history", trace=lambda _line: None)
-    agent.con.execute(f"SET threads = {int(args.threads)}")
-    mask = {str(scratch / "out"): "<out>"}
-    code = Path(association.__file__).resolve()
-    meta = {
-        "code": str(code),
-        "build": _build(code.parents[2]),
-        "db": str(args.db_path.resolve()),
-        "today": args.today,
-        "threads": args.threads,
-        "questions": len(questions),
-        "python": sys.version.split()[0],
-        "duckdb": duckdb.__version__,
-        "ollama": _ollama(DEFAULT_ROUTER_MODEL),
-    }
-    print(json.dumps(meta), flush=True)
-    started = time.monotonic()
-    with args.out.open("w") as out:
-        out.write(json.dumps({"meta": meta}) + "\n")
-        for index, question in enumerate(questions, 1):
-            try:
-                answer = agent.ask(question)
-                record = snapshot(agent.reading, answer, planned=agent.planned, unanswered=agent.unanswered if answer.answered_by == "refused" else None, unsaid=agent.unsaid, mask=mask)
-            except Exception as exc:  # noqa: BLE001 - one bad question must not end the run, and a crash is itself a result to compare
-                record = {"question": question, "error": f"{type(exc).__name__}: {exc}"}
-            out.write(json.dumps(record, sort_keys=True) + "\n")
-            if index % 100 == 0:
-                print(f"{index}/{len(questions)} {time.monotonic() - started:.0f}s", flush=True)
-    print(f"wrote {len(questions)} questions to {args.out} in {time.monotonic() - started:.0f}s", flush=True)
+    # The agent's chart output and history go to a scratch directory removed
+    # when the run ends, however it ends: a bare mkdtemp left one behind per
+    # run - 663 of them, 748 MB on the shared /tmp by 2026-10-05 (#335).
+    with tempfile.TemporaryDirectory(prefix="stages-") as scratch_name:
+        scratch = Path(scratch_name)
+        agent = Agent(str(args.db_path), scratch / "out", history_dir=scratch / "history", trace=lambda _line: None)
+        agent.con.execute(f"SET threads = {int(args.threads)}")
+        mask = {str(scratch / "out"): "<out>"}
+        code = Path(association.__file__).resolve()
+        meta = {
+            "code": str(code),
+            "build": _build(code.parents[2]),
+            "db": str(args.db_path.resolve()),
+            "today": args.today,
+            "threads": args.threads,
+            "questions": len(questions),
+            "python": sys.version.split()[0],
+            "duckdb": duckdb.__version__,
+            "ollama": _ollama(DEFAULT_ROUTER_MODEL),
+        }
+        print(json.dumps(meta), flush=True)
+        started = time.monotonic()
+        with args.out.open("w") as out:
+            out.write(json.dumps({"meta": meta}) + "\n")
+            for index, question in enumerate(questions, 1):
+                try:
+                    answer = agent.ask(question)
+                    record = snapshot(agent.reading, answer, planned=agent.planned, unanswered=agent.unanswered if answer.answered_by == "refused" else None, unsaid=agent.unsaid, mask=mask)
+                except Exception as exc:  # noqa: BLE001 - one bad question must not end the run, and a crash is itself a result to compare
+                    record = {"question": question, "error": f"{type(exc).__name__}: {exc}"}
+                out.write(json.dumps(record, sort_keys=True) + "\n")
+                if index % 100 == 0:
+                    print(f"{index}/{len(questions)} {time.monotonic() - started:.0f}s", flush=True)
+        print(f"wrote {len(questions)} questions to {args.out} in {time.monotonic() - started:.0f}s", flush=True)
     return 0
 
 

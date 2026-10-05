@@ -3152,13 +3152,6 @@ those were found.
 
 ## P4: tooling, docs, low impact
 
-### `stage_snapshots.py run` leaks a temp directory per run
-- **Found:** 2026-10-05, the Phase 2 review (`~/association-research/reviews/phase2-2026-10-05/REVIEW.md`)
-- **Evidence:** `tempfile.mkdtemp` with no cleanup: 663 `/tmp/stages-*` directories, 748 MB on the shared tmpfs (AGENTS.md: `/tmp` is shared and has filled before).
-- **User sees:** nothing; disk.
-- **Next step:** `TemporaryDirectory` with cleanup; delete the leftovers.
-- **GitHub:** #335
-
 ### A combined record says "(1 neutral-site game counts as neither home nor away)" with no home or road figure in the answer
 - **Found:** 2026-10-05, the Phase 2 review (`~/association-research/reviews/phase2-2026-10-05/REVIEW.md`)
 - **Evidence:** "How many wins did the Knicks have this season including playoffs" since `4db543a`; also `test_team_record_combines_both_season_types_for_one_season`. One of the four feed answers that moved unenumerated.
