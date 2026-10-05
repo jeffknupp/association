@@ -63,7 +63,7 @@ def test_no_intent_is_added_and_a_retired_one_leaves_the_list() -> None:
 
 FROZEN_PRESENTERS = frozenset({"leaderboard", "player_compare", "player_history", "player_matchup", "player_stat", "single_game_high", "streak", "threshold_count"})
 FROZEN_TEAM_ONLY_PRESENTERS = frozenset({"with_without"})
-FROZEN_ADAPTERS = frozenset({"player_matchup", "single_game_high", "streak", "threshold_count", "with_without"})
+FROZEN_ADAPTERS = frozenset({"player_matchup", "streak", "with_without"})
 FROZEN_TEMPLATES = frozenset(
     {
         "coach",

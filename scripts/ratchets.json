@@ -51,7 +51,6 @@
  "private_template_imports": [
   "compose.adapt:_DEFAULT_STREAK_LIMIT",
   "compose.adapt:_streak_words",
-  "compose.adapt:_threshold_count_ask",
   "compose.adapt:_with_without_named",
   "compose.core:_seasons_on_record",
   "compose.core:_team_slot_for_player",
@@ -83,7 +82,6 @@
   "compose.present:_streak_words",
   "compose.present:_team_span_label",
   "compose.present:_team_where_in",
-  "compose.present:_threshold_count_ask",
   "compose.present:_threshold_count_lines",
   "compose.present:_threshold_count_notes",
   "compose.present:_with_without_said",

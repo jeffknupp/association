@@ -11,69 +11,17 @@ from collections.abc import Callable
 from dataclasses import replace
 from typing import Any
 
-from association.query.measures import stat_column
 from association.query.reading import Reading, Scope, _clamp_limit
 from association.query.reading import named_player_in as _named_player_in
 from association.query.templates.common import BOX_SCORES, TemplateUnsupported
 
 # One concept, one definition (scripts/check_duplicate_names.py): the default
-# row counts and the default stat line are the same constants the real
-# templates already carry (association.query.templates.games/players),
-# reused rather than redeclared under the same name.
-from association.query.templates.players import DEFAULT_SINGLE_GAME_LIMIT, _threshold_count_ask
+# row counts are the same constants the real templates already carry
+# (association.query.templates.splits), reused rather than redeclared under
+# the same name.
 from association.query.templates.splits import _DEFAULT_STREAK_LIMIT, _streak_words, _with_without_named
 
 from .core import DEFAULT_NAMED_RUNS, Unsupported, run_scope
-
-
-#: The line a splits read carries, beyond the four :data:`~association.query.compose.core.LINE` measures.
-def _adapt_threshold_count(scope: Scope) -> Reading:
-    """``threshold_count``'s default point: a count of games clearing one
-    line - the threshold, or a below/above phrase that is the whole line
-    ("Sga games with under 14 fta": the relation narrows by it, and the
-    count is of the games left), read the one way the count's presenter reads
-    it (``templates.players._threshold_count_ask``)."""
-    col = stat_column(scope.stat)
-    threshold = scope.threshold
-    if not _named_player_in(scope):
-        raise Unsupported("a league-wide count is not on the one-player relation")
-    if threshold is None and (scope.below or scope.above):
-        try:
-            _threshold_count_ask(scope)
-        except TemplateUnsupported as exc:
-            raise Unsupported(f"threshold_count: {exc}") from exc
-        return Reading(scope=scope, shape="scalar", measures=[], aggregate="count", group="none", predicates=[], available=BOX_SCORES)
-    if col is None or threshold is None or threshold < 1:
-        # The reason threshold_count's retired template gave, where it has one
-        # (a threshold of 0 counts every game; no stat it keeps a line on).
-        try:
-            _threshold_count_ask(scope)
-        except TemplateUnsupported as exc:
-            raise Unsupported(f"threshold_count: {exc}") from exc
-        raise Unsupported("threshold_count refuses; nothing to compare")
-    # A below/above phrase carrying the threshold's own number IS the count,
-    # misread as a threshold (threshold_count's own _threshold_count_lines).
-    lines = [str(x) for x in (*scope.below, *scope.above)]
-    predicates = [] if any(str(threshold) in line for line in lines) else [(col, ">=", threshold)]
-    return Reading(scope=scope, shape="scalar", measures=[], aggregate="count", group="none", predicates=predicates, available=BOX_SCORES)
-
-
-def _adapt_single_game_high(scope: Scope) -> Reading:
-    """``single_game_high``'s default point: the top games by one stat."""
-    col = stat_column(scope.stat)
-    if not _named_player_in(scope) or col is None:
-        raise Unsupported("single_game_high needs a player and a known stat here")
-    return Reading(
-        scope=scope,
-        shape="rows",
-        measures=[col],
-        aggregate="none",
-        group="none",
-        predicates=[],
-        order="measure",
-        direction="desc",
-        limit=_clamp_limit(scope.limit, DEFAULT_SINGLE_GAME_LIMIT),
-    )
 
 
 def _adapt_streak(scope: Scope) -> Reading:
@@ -203,8 +151,6 @@ def _adapt_with_without(scope: Scope) -> Reading:
 #: mapping rather than an if/elif chain so a new intent is one entry, not a
 #: longer function.
 _ADAPTERS: dict[str, Callable[[Scope], Reading]] = {
-    "threshold_count": _adapt_threshold_count,
-    "single_game_high": _adapt_single_game_high,
     "streak": _adapt_streak,
     "player_matchup": _adapt_player_matchup,
     "with_without": _adapt_with_without,

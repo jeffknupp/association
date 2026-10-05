@@ -28,7 +28,7 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from association.query.compose.adapt import _to_reading_scope
 from association.query.entities import BOX_SCORES, SHOT_AVAILABILITY
-from association.query.lines import measure_filters
+from association.query.lines import measure_filters, threshold_count_line
 from association.query.measures import (
     BOOLEAN_MEASURES,
     DERIVED_LINES,
@@ -854,16 +854,72 @@ def _default_period_split(scope: Scope) -> Reading:
     )
 
 
+def _default_threshold_count(scope: Scope) -> Reading:
+    """``threshold_count``'s default point: a count of a named player's games
+    clearing one line - the threshold, or a below/above phrase that is the
+    whole line ("Sga games with under 14 fta": the relation narrows by it,
+    and the count is of the games left), read the one way the count's
+    reader reads it (:func:`~association.query.lines.threshold_count_line`).
+    A league-wide count is declined here; the point reader's own move reads
+    it as a count by player."""
+    col = stat_column(scope.stat)
+    threshold = scope.threshold
+    if not _named_player_in(scope):
+        raise Unsupported("a league-wide count is not on the one-player relation")
+    if threshold is None and (scope.below or scope.above):
+        try:
+            threshold_count_line(scope)
+        except Unsupported as exc:
+            raise Unsupported(f"threshold_count: {exc}") from exc
+        return Reading(scope=scope, shape="scalar", measures=[], aggregate="count", group="none", predicates=[], available=BOX_SCORES)
+    if col is None or threshold is None or threshold < 1:
+        # The reason the count gives, where it has one (a threshold of 0
+        # counts every game; no stat it keeps a line on).
+        try:
+            threshold_count_line(scope)
+        except Unsupported as exc:
+            raise Unsupported(f"threshold_count: {exc}") from exc
+        raise Unsupported("threshold_count refuses; nothing to compare")
+    # A below/above phrase carrying the threshold's own number IS the count,
+    # misread as a threshold (the count's sayer words it as the phrase).
+    lines = [str(x) for x in (*scope.below, *scope.above)]
+    predicates = [] if any(str(threshold) in line for line in lines) else [(col, ">=", threshold)]
+    return Reading(scope=scope, shape="scalar", measures=[], aggregate="count", group="none", predicates=predicates, available=BOX_SCORES)
+
+
+def _default_single_game_high(scope: Scope) -> Reading:
+    """``single_game_high``'s default point: a named player's top games by
+    one stat, the measure first. A league-wide high is the point reader's
+    own move (a ranking of games), declined here."""
+    col = stat_column(scope.stat)
+    if not _named_player_in(scope) or col is None:
+        raise Unsupported("single_game_high needs a player and a known stat here")
+    return Reading(
+        scope=scope,
+        shape="rows",
+        measures=[col],
+        aggregate="none",
+        group="none",
+        predicates=[],
+        order="measure",
+        direction="desc",
+        limit=_clamp_limit(scope.limit, DEFAULT_SINGLE_GAME_LIMIT),
+    )
+
+
 DEFAULT_POINTS: dict[str, Callable[[Scope], Reading]] = {
     "game_log": _default_game_log,
     "player_stat": _default_player_stat,
     "player_splits": _default_player_splits,
     "record_when": _default_record_when,
     "period_split": _default_period_split,
+    "threshold_count": _default_threshold_count,
+    "single_game_high": _default_single_game_high,
 }
 """Intent -> its default point, for the shapes whose default the reader
-reads itself (Phase 2, step 1: slice (i)'s five). The rest are
-``compose.adapt``'s until their slice lands.
+reads itself (Phase 2, step 1: slice (i)'s five; step 2: ``threshold_count``
+and ``single_game_high``). The rest are ``compose.adapt``'s until their
+slice lands.
 
 .. versionadded:: 5.0.0
 """

@@ -43,6 +43,7 @@ import duckdb
 
 from association.nba.season import eastern_date
 from association.query.conditions import _meeting_rows, _teammate_games, _totals
+from association.query.lines import threshold_count_line
 from association.query.measures import stat_measure
 from association.query.player_games import REBUILT_STATS
 from association.query.reading import Scope
@@ -78,7 +79,6 @@ from association.query.templates.players import (
     _single_game_high_answer,
     _single_game_high_redirect,
     _single_game_high_result_data,
-    _threshold_count_ask,
     _threshold_count_lines,
     _threshold_count_notes,
     wanted_stats,
@@ -346,7 +346,7 @@ def _present_threshold_count(con: duckdb.DuckDBPyConnection, q: Query) -> Templa
         # The count's column and threshold, read the one way the template
         # reads them: a below/above phrase may be the whole line, with no
         # threshold at all ("Sga games with under 14 fta").
-        column, threshold = _threshold_count_ask(scope)
+        column, threshold = threshold_count_line(scope)
     except TemplateUnsupported:
         return None
     if not _threshold_count_is_own_point(q, column):

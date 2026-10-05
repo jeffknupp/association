@@ -76,7 +76,9 @@ this tree:
   name, and since 2026-10-02 the 12 templates, the presenters (12 until
   2026-10-03; the intents holding one are 8 since 2026-10-04, as the game
   log, `record_when`, `player_splits` and `period_split` went to readers and
-  sayers) and the team-only one, the 10 adapters, the 14 scoping declarations (by module
+  sayers) and the team-only one, the adapters (10; 5 since 2026-10-04 and 3
+  once `threshold_count`'s and `single_game_high`'s default points went to
+  the reader), the 14 scoping declarations (by module
   and name, read from the source; 12 until 2026-10-03, when the two tables
   of cells a reader refuses that its name pattern missed joined) and the
   page's 22 renderers: each
@@ -110,7 +112,8 @@ this tree:
   Phase 1 (nine when the contract was written; one since 2026-10-03,
   `point -> compose.adapt`: the point reader, `query/point.py` since the
   `read_point` move's step 5, takes the intent's default point from the
-  ten adapters, which Phase 2 deletes slice by slice - the rest were
+  adapters left (ten then, three now), which Phase 2 deletes slice by
+  slice - the rest were
   vocabulary and intent sets that now live on the reader's side:
   `entities.team_named_in`, `reading`'s intent sets, limits, `ordinal_word`
   and `Unsupported`, `measures.STAT_ALIASES`, `PERIOD_COLUMNS`, the
