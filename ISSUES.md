@@ -271,6 +271,7 @@ those were found.
 - **User sees:** a wrong answer - a window, a season line or a season's chart where one dated game was asked, the heading naming the span it did read.
 - **Next step:** read `YYYY-MM-DD` (and `M/D/YYYY` outside a range word, which a shooting line like "7/14" never has a year for) as a day in `router._validate_date`; a case per form in `tests/query/test_parser.py`; the readings population will move for every question holding one (none of the 628 recorded questions does).
 - **Source:** ours.
+- **GitHub:** #323
 
 ## P2: misleading or incomplete
 
