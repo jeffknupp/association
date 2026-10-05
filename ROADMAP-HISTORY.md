@@ -876,6 +876,15 @@ agents' reports named here are in `~/association-research/stages/`.
     `STATED_SCOPING` in `plan.py`, `facts["missing"]` on an empty
     team-season Result, two note phrases branching on a call argument.
 
+18. **Phase 2, step 5 - the charts (2026-10-05).** Two Opus agents, each
+    chart a declared shape with its own reader, a draw step and a sayer,
+    the renderers untouched, every statement through the season line's
+    `Statement` door - the ratchet gained no entry. 63 chart pages
+    byte-identical across the port. `TEMPLATES` is empty; `check_scope`,
+    `HONORED_SCOPING` and `templates/common.py`'s shared steps are step
+    6's. One P1 found by a measurement harness, not by a user: a date
+    written as numbers is never read (#323).
+
 ## The plan items, as written
 
 In order of lift per unit of structural change, each measured on the
