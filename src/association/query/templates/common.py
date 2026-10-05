@@ -461,9 +461,8 @@ HONORED_SCOPING: dict[str, frozenset[str]] = {
     # is excluded - unlike period_split, a shot read has no reason a venue, an
     # opponent, a date or a box-score line on the games it draws from cannot
     # narrow it.
-    "shot_chart": _relation_scoping("shot_chart"),
-    # shot_distance is the compiler's (Phase 2, slice (v): the shot relation's
-    # reader, compose.shots): compose.plan.STATED_SCOPING.
+    # shot_chart and shot_distance are the compiler's (Phase 2, slice (v): the
+    # shot relation's reader, compose.shots): compose.plan.STATED_SCOPING.
     # player_netpoints and fingerprint are the compiler's (Phase 2, slice (v)):
     # compose.plan.STATED_SCOPING, which keeps why `date` is listed for the
     # fingerprint (honored by refusing it in the reader's own words).
@@ -914,14 +913,21 @@ class TemplateResult:
     artifacts: list[Artifact] = field(default_factory=list)
 
 
-def _clarify(text: str, candidates: list[str], kind: str = "player", active: int = 0) -> TemplateResult:
-    """A handled outcome, not a fall-through: the template knows exactly what
+def clarify(text: str, candidates: list[str], kind: str = "player", active: int = 0) -> TemplateResult:
+    """A handled outcome, not a fall-through: the reader knows exactly what
     is ambiguous, so it says so instead of passing the problem along.
 
-    The sentence itself is entities.clarification, because the chart entry
-    points reach the same ambiguity without going through a template and have
-    to phrase it identically."""
+    The sentence itself is entities.clarification, because the chart
+    resolution reaches the same ambiguity and has to phrase it identically.
+
+    .. versionadded:: 5.0.0
+       Public, for the shot relation's reader (``compose.shots``);
+       ``_clarify`` is this.
+    """
     return TemplateResult(data={"ambiguous": text, "candidates": candidates}, answer=clarification(text, candidates, kind, active))
+
+
+_clarify = clarify
 
 
 _GAME_LOGS = GAME_LOGS

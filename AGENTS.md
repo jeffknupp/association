@@ -82,7 +82,9 @@ this tree:
   to a reader and a sayer over the NetPoints relation,
   `compose/netpoints.py`, and 2 once `fingerprint` did, its chart drawn
   between the two; 1 once `shot_distance` went to the declared shot
-  relation's reader, `compose/shots.py`), the presenters (12 until
+  relation's reader, `compose/shots.py`, and none once `shot_chart` did,
+  its chart drawn between the two - the registry stands empty until step 6
+  deletes it), the presenters (12 until
   2026-10-03; the intents holding one are 8 since 2026-10-04, as the game
   log, `record_when`, `player_splits` and `period_split` went to readers and
   sayers, 6 once `threshold_count` and `single_game_high` did, 4 once
@@ -961,14 +963,14 @@ model's. Two things follow, and both matter when you add a shape:
   only through the shared steps in
   `templates/common.py`, the same discipline the relation templates keep
   (see "A template on a relation does not declare, or apply, scoping of its
-  own" above). Twenty-four intents have no entry in `TEMPLATES`
+  own" above). Twenty-five intents have no entry in `TEMPLATES`
   (`compose.COMPILED_INTENTS`: `threshold_count`, `single_game_high`,
   `record_when`, `player_history`, `game_log`, `player_stat`,
   `player_splits`, `leaderboard`, `period_split`, `player_compare`,
   `streak`, `player_matchup`, `with_without`, `head_to_head`,
   `team_quarter_points`, `period_leaderboard`, `team_record`, `team_stat`,
   `team_leaderboard`, `team_outlook`, `coach`, `player_netpoints`,
-  `fingerprint`, `shot_distance`); `TEMPLATES` holds `shot_chart`. The NetPoints
+  `fingerprint`, `shot_distance`, `shot_chart`); `TEMPLATES` is empty. The NetPoints
   relation's two (`reading.CHART_INTENTS`, read as their default points on
   the declared `netpoints` relation and planned as
   `compose.netpoints.NetPointsQuery`) keep their own readers and renderer,
@@ -985,8 +987,12 @@ model's. Two things follow, and both matter when you add a shape:
   (`compose.shots.ShotQuery` on the declared `shots` relation, declined
   beyond its retired template's `HONORED_SCOPING` row - now in
   `compose.plan.STATED_SCOPING` - in `check_scope`'s sentence) is read the
-  same way: `read_shot_distance` is the template's statements moved whole,
-  executed through `core.values_of`, and said by the sayer. A shape Phase 2's slice (iv) ported from a template the reader
+  same way: `read_shot_chart` and `read_shot_distance` are the templates'
+  statements moved whole (`shotchart.render_for_player`'s with them),
+  executed through `core.values_of`, and said by the sayer - a shot chart's
+  `Chart` (the marks, the counts drawn, the caption, the file name) drawn
+  first by `compose.shots.draw_shot_chart` over `court.render_court_html`,
+  between the read and the sayer, as the fingerprint is. A shape Phase 2's slice (iv) ported from a template the reader
   gave no point has a default point of its own (`point.DEFAULT_POINTS`:
   its readings gained one when it moved), is declined beyond the scoping
   its retired words state (`compose.plan.STATED_SCOPING`, where its

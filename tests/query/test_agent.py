@@ -488,7 +488,8 @@ def test_a_fast_path_answer_carries_the_chart_the_template_wrote(monkeypatch: py
     from association.query.templates.common import TemplateResult
 
     drawn = Artifact("shot_chart", tmp_path / "shotchart_x.html")
-    monkeypatch.setattr("association.query.agent.TEMPLATES", {"shot_chart": lambda con, slots: TemplateResult(data={}, answer="Rendered.", artifacts=[drawn])})
+    # shot_chart is the compiler's (the shot relation's reader, compose.shots): its answer stands in.
+    monkeypatch.setattr("association.query.compose.answer", lambda ctx, reading, **_: TemplateResult(data={}, answer="Rendered.", artifacts=[drawn]))
     assert ask_routed(_agent(tmp_path), "a chart of x", slots_route("shot_chart", {"player": "x"})).artifacts == [drawn]
 
 

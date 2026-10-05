@@ -39,8 +39,5 @@ from .common import TemplateUnsupported as TemplateUnsupported
 from .common import check_coverage as check_coverage
 from .common import check_scope as check_scope
 from .common import coverage_caveat as coverage_caveat
-from .shots import shot_chart
 
-TEMPLATES: dict[str, Callable[[TemplateContext, Reading], TemplateResult]] = {
-    "shot_chart": shot_chart,
-}
+TEMPLATES: dict[str, Callable[[TemplateContext, Reading], TemplateResult]] = {}

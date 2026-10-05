@@ -68,12 +68,9 @@ def test_no_intent_is_added_and_a_retired_one_leaves_the_list() -> None:
 # team_outlook's, team_stat's and team_leaderboard's the same day: compose.team_stats reads them, compose.say words them.
 # player_netpoints' and fingerprint's retired 2026-10-05 (slice (v)): compose.netpoints reads them,
 # compose.netpoints.draw_fingerprint draws the chart and compose.say words them.
-# shot_distance's retired 2026-10-05 (slice (v)): compose.shots reads it on the declared shot relation, compose.say words it.
-FROZEN_TEMPLATES = frozenset(
-    {
-        "shot_chart",
-    }
-)
+# shot_distance's and shot_chart's retired 2026-10-05 (slice (v)): compose.shots reads them on the declared shot relation
+# (and draws the chart), compose.say words them.
+FROZEN_TEMPLATES: frozenset[str] = frozenset()
 # Every module-level declaration of what a reader honors, states or
 # excludes, by module and name: the six the roadmap counted and their
 # relatives. A seventh fails here.
@@ -89,7 +86,6 @@ FROZEN_SCOPING_TABLES = frozenset(
         ("templates.common", "TEAM_RELATION_SCOPING_EXCLUDED"),
         ("templates.common", "HONORED_SCOPING"),
         ("templates.common", "_BOX_SCORE_SCOPING"),
-        ("templates.shots", "_SHOTS_GAME_NARROWING_SLOTS"),
         ("router", "_MODEL_SLOTS"),
         ("compose.plan", "_TEAM_READER_REFUSES"),
         ("templates.splits", "_CONDITION_PLAYER_ONLY_CELLS"),

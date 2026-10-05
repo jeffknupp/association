@@ -30,13 +30,12 @@ from typing import Any
 
 import duckdb
 import pytest
-from test_templates import shot_distance  # the shot relation's reader (compose.shots), its template retired
+from test_templates import shot_chart, shot_distance  # the shot relation's reader (compose.shots), its templates retired
 
 from association.fetch.repairs import real_games
 from association.nba.season import current_season
 from association.query.reading import Reading
 from association.query.templates.common import TemplateContext, TemplateUnsupported
-from association.query.templates.shots import shot_chart
 
 SEASON = current_season()
 

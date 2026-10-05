@@ -657,6 +657,8 @@ def say(result: Result) -> TemplateResult:
     team = _say_team_shape(result)
     if team is not None:
         return team
+    if result.chart is not None:
+        return say_shot_chart(result)
     if result.span.source == "shots" and result.scalar is not None:
         return say_shot_distance(result)
     if result.span.source == "seasons":
@@ -3497,6 +3499,8 @@ def say_fingerprint(result: Result) -> TemplateResult:
     message += "".join(decision_phrase(each) for each in result.decisions)
     data = {"players": list(facts["players"]), "season": facts["season"], "side": view, "scope": "game" if order else "season", "path": chart.path, "message": message}
     return TemplateResult(data=data, answer=message, artifacts=[Artifact("fingerprint", Path(chart.path))])
+
+
 # --- one player's shots ------------------------------------------------------------
 
 
@@ -3529,3 +3533,34 @@ def say_shot_distance(result: Result) -> TemplateResult:
         data={"player": name, "season": result.span.season, "shot_value": shot_value, "avg_feet": average, "attempts": attempts, "headline": answer},
         answer=answer,
     )
+
+
+def say_shot_chart(result: Result) -> TemplateResult:
+    """One player's shot chart worded, as ``shot_chart``'s retired template
+    and its renderer said it: the file drawn, whom for (and which game or
+    window, by the narrowing's phrase), made of attempted - or that nothing
+    was drawn, and why (the refusal's sentence, or no shots found) - then
+    the other names that matched, the shots a value filter left out or
+    derived, and the career's floor or the seasons a defaulted one redirects
+    to. The artifact is the file the draw step wrote (``compose.shots.draw_shot_chart``).
+
+    .. versionadded:: 5.0.0
+    """
+    chart = result.chart
+    assert chart is not None
+    name = result.subject
+    said = [note(each.kind, note_phrase(each, about=name), **each.facts) for each in result.notes if each.kind != "floor"]
+    floor = "".join(note(each.kind, note_phrase(each, about=name), **each.facts) for each in result.notes if each.kind == "floor")
+    if chart.path is not None:
+        context = result.narrowing.phrase
+        who = f"{name} ({context})" if context else name
+        message = f"Rendered shot chart for {who} ({chart.made}/{chart.attempted} made, {chart.made / chart.attempted:.1%}) to {chart.path}"
+        message += "".join(decision_phrase(each) for each in result.decisions if each.kind == "also_matched")
+        message += "".join(f". Note: {text}" for text in said)
+    else:
+        base = result.empty or f"No shots found for {name} with the given filters."
+        message = " Note: ".join([base, *said]) + ("." if said else "")
+    message += floor
+    message += "".join(decision_phrase(each, career_hint=False) for each in result.decisions if each.kind == "season_redirected")
+    artifacts = [Artifact(chart.kind, Path(chart.path))] if chart.path is not None else []
+    return TemplateResult(data={"message": message, "player": name, "path": chart.path}, answer=message, artifacts=artifacts)

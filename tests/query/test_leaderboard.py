@@ -15,7 +15,6 @@ import pytest
 
 from association.query.connection import connect_read_only
 from association.query.season_line import LeaderboardError, run_leaderboard
-from association.query.shotchart import render_shot_chart
 
 
 @pytest.fixture
@@ -70,9 +69,6 @@ def db_path(tmp_path: Path) -> str:
         "('1', 2026, '9', 55, 1900.0, 50.0, -5.0, 3.0), "  # Curry
         "('2', 2026, '9', 30, 800.0, 10.0, -2.0, 1.0)"  # Klay
     )
-    # Event 100 (the one render_shot_chart tests scope to with event_id="100")
-    # named as a real game, so a single-game chart can name it by date,
-    # opponent and result rather than by its bare id - ISSUES.md #155.
     con.execute("CREATE TABLE games (event_id VARCHAR, season INTEGER, home_team_id VARCHAR, away_team_id VARCHAR, home_score INTEGER, away_score INTEGER, winner_team_id VARCHAR)")
     con.execute("INSERT INTO games VALUES ('100', 2026, '9', '20', 120, 110, '9')")
     con.execute("CREATE TABLE player_game_log (athlete_id VARCHAR, event_id VARCHAR, season INTEGER, team_id VARCHAR, opponent_abbr VARCHAR, game_date VARCHAR)")
@@ -110,10 +106,6 @@ def lb(con: duckdb.DuckDBPyConnection, **kwargs: Any) -> Any:
             default=str,
         )
     )
-
-
-def render(con: duckdb.DuckDBPyConnection, out_dir: Path, **kwargs: Any) -> str:
-    return render_shot_chart(con, out_dir, **kwargs).message
 
 
 # ---------------- get_leaderboard ----------------
@@ -263,77 +255,6 @@ def test_get_leaderboard_missing_table_reports_requires_hint(con: duckdb.DuckDBP
     act on."""
     result = lb(con, metric="ts_pct", season=2026)
     assert "requires: warehouse rebuilt with `association data load`" in result
-
-
-# ---------------- render_shot_chart ----------------
-
-
-def test_render_shot_chart_nickname_matching(con: duckdb.DuckDBPyConnection, tmp_path: Path) -> None:
-    """Regression: "Steph" is not a substring of "Stephen" (whole-phrase ILIKE
-    matching failed for this exact query). Per-token AND matching fixes it."""
-    result = render(con, tmp_path / "out", player_name="Steph Curry")
-    assert "Rendered shot chart for Stephen Curry" in result
-
-
-def test_render_shot_chart_says_how_it_read_a_near_spelling(con: duckdb.DuckDBPyConnection, tmp_path: Path) -> None:
-    """The agent calls this as a tool, with nobody above it collecting name
-    readings - so the entry point says it itself, or the default is silent."""
-    result = render(con, tmp_path / "out", player_name="Stephen Cury")
-    assert "Rendered shot chart for Stephen Curry" in result
-    assert result.endswith("('Stephen Cury' matches no player exactly and was read as Stephen Curry, the only near spelling on record - spell the name exactly to ask about someone else.)")
-
-
-def test_render_shot_chart_no_match(con: duckdb.DuckDBPyConnection, tmp_path: Path) -> None:
-    result = render(con, tmp_path / "out", player_name="Nobody Real")
-    assert "No player found" in result
-
-
-def test_render_shot_chart_event_id_overrides_season(con: duckdb.DuckDBPyConnection, tmp_path: Path) -> None:
-    """Regression: season/season_type must be ignored once event_id is given -
-    a wrong guessed season used to silently zero out otherwise-correct results."""
-    result = render(con, tmp_path / "out", player_name="Curry", event_id="100", season=1999)
-    assert "Rendered shot chart" in result
-    assert "2/3" in result
-
-
-def test_render_shot_chart_made_only_filters(con: duckdb.DuckDBPyConnection, tmp_path: Path) -> None:
-    result = render(con, tmp_path / "out", player_name="Curry", made_only=True)
-    assert "2/2" in result
-
-
-def test_render_shot_chart_shot_value_filters(con: duckdb.DuckDBPyConnection, tmp_path: Path) -> None:
-    result = render(con, tmp_path / "out", player_name="Curry", shot_value=2)
-    assert "1/1" in result
-
-
-def test_render_shot_chart_period_filters(con: duckdb.DuckDBPyConnection, tmp_path: Path) -> None:
-    result = render(con, tmp_path / "out", player_name="Curry", period=2)
-    assert "1/1" in result
-
-
-def test_render_shot_chart_writes_html_file(con: duckdb.DuckDBPyConnection, tmp_path: Path) -> None:
-    render(con, tmp_path / "out", player_name="Curry")
-    files = list((tmp_path / "out").glob("*.html"))
-    assert len(files) == 1
-    assert "<svg" in files[0].read_text()
-
-
-def test_render_shot_chart_names_the_game_not_just_its_id(con: duckdb.DuckDBPyConnection, tmp_path: Path) -> None:
-    """ISSUES.md #155: a single-game chart used to name the game only by its
-    event id, on the page and in the answer - "game 100" said nothing about
-    which game that was. It now reads the date, opponent and result off
-    `games`/`player_game_log`, both in the message and in the page itself."""
-    result = render(con, tmp_path / "out", player_name="Curry", event_id="100")
-    assert "2026-01-01 vs ATL, W 120-110" in result
-    assert "game 100" not in result
-
-    files = list((tmp_path / "out").glob("shotchart_stephen_curry_100.html"))
-    assert len(files) == 1
-    html = files[0].read_text()
-    assert "2026-01-01 vs ATL, W 120-110" in html
-    # The filename keeps the bare event id - only the reader-facing text names
-    # the game in full.
-    assert "shotchart_stephen_curry_100.html" in str(files[0])
 
 
 def test_double_and_triple_doubles_are_registered_metrics() -> None:

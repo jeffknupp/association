@@ -24,7 +24,7 @@ from association.query.compose.records import _record_when_team_result, read_rec
 from association.query.compose.runs import _streak_league_result, _streak_league_teams_result, _streak_player_result, _streak_team_result, read_streak, read_team_streak
 from association.query.compose.say import say_period_refusal
 from association.query.compose.seasons import _player_line_advanced, _player_line_career, _player_line_season, read_player_line
-from association.query.compose.shots import read_shot_distance
+from association.query.compose.shots import read_shot_chart, read_shot_distance
 from association.query.compose.splits import _player_splits, _team_splits, read_player_splits, read_team_splits
 from association.query.compose.stats import _player_stat_meetings, _player_stat_result, read_player_stat
 from association.query.compose.team import TeamQuery, _compile_team_run, compile_team_count, compile_team_line, compile_team_range, compile_team_run, run_team
@@ -39,7 +39,6 @@ from association.query.templates.common import HONORED_SCOPING, SCOPING_SLOTS, T
 from association.query.templates.games import (
     PERIOD_RATE_STATS,
 )
-from association.query.templates.shots import shot_chart
 
 
 def _compiled(intent: str) -> Callable[[TemplateContext, Reading], TemplateResult]:
@@ -81,6 +80,7 @@ fingerprint = _compiled("fingerprint")
 head_to_head = _compiled("head_to_head")
 team_quarter_points = _compiled("team_quarter_points")
 shot_distance = _compiled("shot_distance")  # the shot relation's reader (compose.shots), its template retired
+shot_chart = _compiled("shot_chart")  # the shot relation's reader and draw step (compose.shots), its template retired
 period_leaderboard = _compiled("period_leaderboard")
 team_record = _compiled("team_record")
 with_without = _compiled("with_without")
@@ -1414,6 +1414,29 @@ def test_shot_chart_writes_a_file_and_reports_its_path(sc_ctx: TemplateContext) 
     assert list((sc_ctx.out_dir).glob("*.html"))
 
 
+def test_shot_chart_reads_a_nickname_token_by_token(sc_ctx: TemplateContext) -> None:
+    """Regression: "Steph" is not a substring of "Stephen" (whole-phrase ILIKE
+    matching failed for this exact query). Per-token AND matching fixes it.
+    Re-seated from ``shotchart.render_shot_chart``'s tests, which went with it."""
+    result = shot_chart(sc_ctx, Reading.from_slots({"player": "Steph Curry", "season": current_season()}))
+    assert "Rendered shot chart for Stephen Curry" in (result.answer or "")
+
+
+def test_shot_chart_says_how_it_read_a_near_spelling(sc_ctx: TemplateContext) -> None:
+    """A near spelling of one player is drawn for him, and the reading is
+    collected for the answer (the answering loop appends it)."""
+    with collect_name_readings() as readings:
+        result = shot_chart(sc_ctx, Reading.from_slots({"player": "Stephen Cury", "season": current_season()}))
+    assert "Rendered shot chart for Stephen Curry" in (result.answer or "")
+    assert readings == ["('Stephen Cury' matches no player exactly and was read as Stephen Curry, the only near spelling on record - spell the name exactly to ask about someone else.)"]
+
+
+def test_shot_chart_names_a_player_nothing_matched(sc_ctx: TemplateContext) -> None:
+    result = shot_chart(sc_ctx, Reading.from_slots({"player": "Nobody Real", "season": current_season()}))
+    assert "No player found" in (result.answer or "")
+    assert result.artifacts == []
+
+
 def test_shot_chart_narrows_a_surname_to_whoever_took_shots_that_season(sc_ctx: TemplateContext) -> None:
     """Seth exists and Stephen has the shots, so "Curry" is not a question this
     season - only one of them can have produced the chart being asked for."""
@@ -1435,8 +1458,9 @@ def test_shot_chart_asks_which_player_when_both_took_shots(sc_ctx: TemplateConte
 def test_shot_chart_reports_no_matching_shots_rather_than_falling_through(sc_ctx: TemplateContext) -> None:
     # The agent has no better source for a chart than the table just queried,
     # so an empty result is the answer, not a reason to spend minutes.
-    result = shot_chart(sc_ctx, Reading.from_slots({"player": "Stephen Curry", "season": 1999}))
-    assert "No shots found" in (result.answer or "")
+    # 2010: a season the shot table covers (1999 is under its floor, refused by the floor first).
+    result = shot_chart(sc_ctx, Reading.from_slots({"player": "Stephen Curry", "season": 2010}))
+    assert result.answer == "No shots found for Stephen Curry with the given filters."
 
 
 def test_shot_chart_defaulted_season_redirects_to_a_retired_players_range(sc_ctx: TemplateContext) -> None:
@@ -1458,7 +1482,7 @@ def test_shot_chart_a_named_season_keeps_the_plain_refusal(sc_ctx: TemplateConte
     above."""
     sc_ctx.con.execute("INSERT INTO players VALUES ('2','Old Timer')")
     sc_ctx.con.execute("INSERT INTO shot_chart VALUES ('2',2010,2,'e9',1,'8:00',TRUE,'Jump Shot',25,26,2,'20-foot two point jumper')")
-    result = shot_chart(sc_ctx, Reading.from_slots({"player": "Old Timer", "season": 1999}))
+    result = shot_chart(sc_ctx, Reading.from_slots({"player": "Old Timer", "season": 2009}))
     assert result.answer == "No shots found for Old Timer with the given filters."
 
 
@@ -2907,9 +2931,12 @@ def test_a_career_chart_says_which_shots_it_left_out(sc_ctx: TemplateContext) ->
     draws what can be told apart and says what it could not, rather than
     dropping it where nobody would know."""
     sc_ctx.con.execute("INSERT INTO shot_chart VALUES ('1',2002,2,'e8',1,'5:00',FALSE,'Jump Shot',47,0,0,'missed Jumper.')")
-    rendered = shotchart.render_shot_chart(sc_ctx.con, sc_ctx.out_dir, "Stephen Curry", shot_value=3)
-    assert "(1/2 made" in rendered.message
-    assert "left out 1 shot that cannot be told apart as twos or threes" in rendered.message
+    # A career chart says what the shot floor leaves of it, read from his seasons on record.
+    sc_ctx.con.execute("CREATE TABLE player_season_stats_deduped (athlete_id VARCHAR, season INTEGER, season_type INTEGER, gamesPlayed INTEGER)")
+    sc_ctx.con.execute("INSERT INTO player_season_stats_deduped VALUES ('1', 2002, 2, 10), ('1', ?, 2, 70)", [current_season()])
+    rendered = shot_chart(sc_ctx, Reading.from_slots({"player": "Stephen Curry", "shot_value": 3, "span": "career"}))
+    assert "(1/2 made" in (rendered.answer or "")
+    assert "left out 1 shot that cannot be told apart as twos or threes" in (rendered.answer or "")
 
 
 def test_shot_distance_scopes_to_the_current_season_by_default(sc_ctx: TemplateContext) -> None:
@@ -3353,7 +3380,8 @@ def test_scope_guard_blocks_a_template_that_would_ignore_a_game_scope() -> None:
 def test_scope_guard_allows_templates_that_honor_the_slot() -> None:
     # game_log is the compiler's (compose.COMPILED_INTENTS): its retired words state the slots.
     assert unhonored_scoping("game_log", Scope.from_slots({"order": "recent", "date": "2026-04-12"}), STATED_SCOPING["game_log"]) == []
-    check_scope("shot_chart", {"order": "recent"})
+    # shot_chart is the compiler's (the shot relation's reader): its retired words state the slot.
+    assert unhonored_scoping("shot_chart", Scope.from_slots({"order": "recent"}), STATED_SCOPING["shot_chart"]) == []
     # shot_distance is the compiler's (the shot relation's reader): its retired words state the slot.
     assert unhonored_scoping("shot_distance", Scope.from_slots({"order": "first"}), STATED_SCOPING["shot_distance"]) == []
 
@@ -3571,7 +3599,7 @@ def test_a_chart_template_reports_the_file_it_wrote_as_an_artifact(sc_ctx: Templ
 def test_a_chart_template_that_drew_nothing_reports_no_artifact(sc_ctx: TemplateContext) -> None:
     """ "No shots found" is a real answer, not a failure - but there is no file,
     and claiming one would give a caller a path that does not exist."""
-    result = shot_chart(sc_ctx, Reading.from_slots({"player": "Stephen Curry", "season": 1999}))
+    result = shot_chart(sc_ctx, Reading.from_slots({"player": "Stephen Curry", "season": 2010}))
     assert result.artifacts == []
     assert result.data["path"] is None
 
@@ -5893,21 +5921,6 @@ def test_a_tied_extreme_names_every_game_that_reached_it() -> None:
 # ---------------- step 3, C3: the scoping matrix cannot grow back ----------------
 
 
-def _c5_shots_ported() -> bool:
-    """Whether the parallel "shots" half of step 3, C5 (README_c5.md) has
-    landed on this tree - checked at run time rather than assumed, since the
-    two halves are built on separate branches and merge independently.
-    ``_scoping_game`` is the unported implementation's own marker: it is one
-    of the four helpers that README names as going away once ``shot_chart``
-    and ``shot_distance`` read the relation
-    (``_scoping_game``, ``_shot_chart_event_id``, ``_shot_distance_order_scope``,
-    ``_shot_distance_where``), so its absence is a reliable single-point
-    signal for "the port has landed" without hand-parsing source."""
-    from association.query.templates import shots as shots_module
-
-    return not hasattr(shots_module, "_scoping_game")
-
-
 def _declared_scoping(intent: str) -> frozenset[str]:
     """What ``intent`` declares it honors: its template's list, or - for an
     intent the compiler alone answers (``record_when``) - what its
@@ -5947,8 +5960,7 @@ def test_templates_on_the_relation_declare_no_scoping_of_their_own() -> None:
         "record_when": set(),
         "streak": set(),
     }
-    if _c5_shots_ported():
-        on_the_relation |= {"shot_chart": set(), "shot_distance": set()}
+    on_the_relation |= {"shot_chart": set(), "shot_distance": set()}
     for intent, extra in on_the_relation.items():
         excluded = RELATION_SCOPING_EXCLUDED.get(intent, {})
         for slot, reason in excluded.items():
@@ -5982,8 +5994,7 @@ def test_until_is_declared_wherever_since_is() -> None:
     for intent, excluded in RELATION_SCOPING_EXCLUDED.items():
         assert ("since" in excluded) == ("until" in excluded), f"{intent} excludes since XOR until"
     on_the_relation = ["game_log", "player_stat", "period_split", "player_splits", "record_when", "streak"]
-    if _c5_shots_ported():
-        on_the_relation += ["shot_chart", "shot_distance"]
+    on_the_relation += ["shot_chart", "shot_distance"]
     for intent in on_the_relation:
         honored = _declared_scoping(intent)
         assert ("since" in honored) == ("until" in honored), f"{intent} honors since XOR until"
@@ -6019,8 +6030,6 @@ def test_templates_on_the_relation_do_not_narrow_it_themselves() -> None:
        ``players._season_row``, an unrelated read of the SEASON-LINE table
        that happens to share the same three-column WHERE shape by coincidence.
     """
-
-    from association.query.templates import TEMPLATES
 
     forbidden = (
         "_narrow_player_games(",
@@ -6086,13 +6095,12 @@ def test_templates_on_the_relation_do_not_narrow_it_themselves() -> None:
         # team half is where its `{"venue": venue}` callers are rewritten.
         assert not re.search(r'(scoped_games|condition_player)\([^\n]*\{"', source), f"{intent} hands the shared step a hand-built dict; pass the question's slots"
 
-    if _c5_shots_ported():
-        shot_forbidden = ("event_id = ?", "athlete_id = ? AND season = ?")
-        # shot_distance's template is retired: the shot relation's reader (compose.shots) is walked.
-        for intent, handler in (("shot_chart", TEMPLATES["shot_chart"]), ("shot_distance", read_shot_distance)):
-            source = _source_with_private_steps(handler)
-            for token in shot_forbidden:
-                assert token not in source, f"{intent} narrows the relation itself ({token!r}); use scoped_games / team_games"
+    # The shot relation's readers (compose.shots; the templates retired in Phase 2, step 5) are walked.
+    shot_forbidden = ("event_id = ?", "athlete_id = ? AND season = ?")
+    for intent, handler in (("shot_chart", read_shot_chart), ("shot_distance", read_shot_distance)):
+        source = _source_with_private_steps(handler)
+        for token in shot_forbidden:
+            assert token not in source, f"{intent} narrows the relation itself ({token!r}); use scoped_games / team_games"
 
     # The compose package (association.query.compose - the compiler landed
     # from the skeleton spike) sits above the templates but reads the same

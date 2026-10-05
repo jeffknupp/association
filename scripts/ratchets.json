@@ -35,11 +35,9 @@
   "entities": 4,
   "game_label": 1,
   "player_games": 1,
-  "shotchart": 1,
   "templates.common": 13,
   "templates.games": 1,
   "templates.players": 3,
-  "templates.shots": 1,
   "templates.splits": 1
  },
  "private_template_imports": [
