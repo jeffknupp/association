@@ -46,6 +46,20 @@ before that commit needs re-checking against the current warehouse.
 
 ## P1: wrong answer
 
+### "warriors' record last season when committing 10 or fewer turnovers" answers the whole season
+- **Found:** 2026-10-05, the Phase 2 review (`~/association-research/reviews/phase2-2026-10-05/REVIEW.md`)
+- **Evidence:** the "or fewer" line on a team's own stat is not read; the answer is the Warriors' 48-34 2025 standings line with no mention of turnovers, while "... when they had 18+ turnovers" reads the line and answers a record table. Same on `4bb026a` (before Phase 2) and `93db30c`; also 11 and 12 or fewer. Review data: `data/feed-93db30c.jsonl.gz`, names `["warriors"]`, stat `turnovers`.
+- **User sees:** a fluent answer to a broader question - the season's record where the record under a turnover line was asked.
+- **Next step:** read "N or fewer"/"N or less" as a below line in the team condition reader (`lines.measure_filters` reads it for a player); until then refuse by name.
+- **GitHub:** #325
+
+### "knicks vs celtics total points" answers the season series record, not the points
+- **Found:** 2026-10-05, the Phase 2 review (`~/association-research/reviews/phase2-2026-10-05/REVIEW.md`)
+- **Evidence:** the answer is "met 4 times ... won the series 3-1". Before Phase 2 the reading held a team `total` of points that the template ignored; since `4db543a` the reading itself is a `record`. Same answer on both trees, names `["knicks","celtics"]`, stat `points`.
+- **User sees:** a different question answered fluently.
+- **Next step:** a `head_to_head` with a box-score stat is the meetings' totals (the team compiler's rows read sums them), or a refusal naming the stat.
+- **GitHub:** #326
+
 ### Two seasons named before the team are dropped: "2024 and 2025 Knicks record by month" answers 2026
 - **Found:** 2026-09-30, the review of `ROADMAP-TYPES.md` (an Opus agent over the stage snapshot of the 628 recorded questions at `7f6425b`); the answers quoted were re-read from the snapshot.
 - **Evidence:** the reading's scope holds no `season`, `since` or `until` (`{'season_type': 2, 'split': 'month', 'team': 'New York Knicks'}`) and the answer is "The New York Knicks, record by month, the 2026 regular season". The same words in another order ("knicks record by month 2024 2025") read `since: 2024, until: 2025` and answer both seasons.
@@ -274,6 +288,20 @@ those were found.
 - **GitHub:** #323
 
 ## P2: misleading or incomplete
+
+### A shooting rate over seasons with rebuilt lines is read over the fetched games while its games column and qualifier count the rebuilt ones, unsaid
+- **Found:** 2026-10-05, the Phase 2 review; the fix it qualifies is `c6e9253` (2026-10-04)
+- **Evidence:** since `c6e9253` (`core._rate_sql` skips rebuilt rows in both sums where a rate reads a column the rebuild never measured - right in itself). A 2015-18 postseason TS% ranking lists Taj Gibson "22 G, TS% 64.7%" in 4th: 10 fetched games (12 rebuilt), his all-rows figure 57.5. "zach lavine career record": FG% over 656 of 693 games, W-L over 693. Four feed answers moved over the phase with no commit naming them (review, 1c).
+- **User sees:** a percentage over fewer games than the games column beside it says, with no note.
+- **Next step:** qualify a rate on the games it reads (the 20-game minimum over fetched games where the rate skips rebuilt ones) and write a `lines_rebuilt`-kind note with the rate's games.
+- **GitHub:** #327
+
+### "Stephen Curry free throw chart" (no "shot") answers his season averages
+- **Found:** 2026-10-05, the Phase 2 review
+- **Evidence:** read as `player_stat` on both trees; "free throw shot chart" reads as `shot_chart` and refuses correctly (no free-throw chart).
+- **User sees:** a season line where a chart was asked for.
+- **Next step:** "chart" with a player and no other shape word is a chart, or a refusal naming it - never the line (`subject`'s grammar).
+- **GitHub:** #328
 
 ### A team that is the SUBJECT, named by a franchise's old name, is read without the question's season: "what was the bobcats record against the hornets in 2012" asks "did you mean New Orleans Hornets or Charlotte Bobcats?"
 - **Found:** 2026-10-02, reviewing Phase 1 on wordings outside the corpus;
@@ -2446,6 +2474,41 @@ those were found.
 
 ## P3: refusal or gap
 
+### The SQL ratchet does not count statements run through `core.rows_of`/`core.values_of`
+- **Found:** 2026-10-05, the Phase 2 review (`~/association-research/reviews/phase2-2026-10-05/REVIEW.md`)
+- **Evidence:** 67 call sites, 35 of them hand-written statements moved whole into `season_line.py`, `team_seasons.py`, `compose/shots.py`, `compose/netpoints.py`; the ratchet reads 38 where every executing site counted is 105 - the same 105 as before Phase 2 (review, section 3 and `harness/stmt_sites.py`).
+- **User sees:** nothing; a tooling gap - the ratchet can be grown past by moving a statement behind the door.
+- **Next step:** count a `rows_of`/`values_of` call over a `Statement` as a statement of the module that builds it, listed per module; regenerate the list once with Jeff's say-so.
+- **GitHub:** #329
+
+### The scoping-declaration freeze was deleted with 12 of its 14 declarations still in `src`
+- **Found:** 2026-10-05, the Phase 2 review (`~/association-research/reviews/phase2-2026-10-05/REVIEW.md`)
+- **Evidence:** `test_frozen_shapes.py` froze 14 scoping declarations by module and name; step 6 (`1fae3b9`) deleted the freeze, while AGENTS.md and the test's docstring say only the per-relation cell tables and `STATED_SCOPING` remain. 12 exist, 8 of them not cell tables; a 13th can be added with nothing failing.
+- **User sees:** nothing; a tooling gap.
+- **Next step:** restore the freeze over the declarations that exist, naming each as a cell table, `STATED_SCOPING`, or debt to delete; correct AGENTS.md.
+- **GitHub:** #330
+
+### The unit-test call population does not record the planner
+- **Found:** 2026-10-05, the Phase 2 review (`~/association-research/reviews/phase2-2026-10-05/REVIEW.md`)
+- **Evidence:** 40 tests whose refusal was once a recorded template call now raise in `compose.plan` and record nothing (review, 1d): `tests/stage_calls.py` records `compose:answer` and the parser boundaries only.
+- **User sees:** nothing; a proof blind spot.
+- **Next step:** add `compose.plan:plan_point` to `tests/stage_calls.py` (recorded on both sides first).
+- **GitHub:** #331
+
+### The proof compares the 2,082 feed questions as readings, never as answers
+- **Found:** 2026-10-05, the Phase 2 review (`~/association-research/reviews/phase2-2026-10-05/REVIEW.md`)
+- **Evidence:** 4 feed answers moved over Phase 2 with no commit naming them (3 rate figures from `c6e9253`, 1 note from `4db543a`); `reader_pop.py` records the reading and the planned query only. An answered run is about 4 minutes a tree (review, 1c, `data/feed-*.jsonl.gz`).
+- **User sees:** nothing directly; a change can move a feed answer unseen.
+- **Next step:** add an answered feed run (names from the reading, no model) to the populations a change is proved on, with its own compare.
+- **GitHub:** #332
+
+### `test_no_presenter_or_renderer_is_added` fails in a checkout holding a stale `query/templates/__pycache__`
+- **Found:** 2026-10-05, the Phase 2 review (`~/association-research/reviews/phase2-2026-10-05/REVIEW.md`)
+- **Evidence:** the main checkout today: `importlib.util.find_spec` finds a namespace package for the ignored directory. The test passes on a clean export.
+- **User sees:** a red suite with nothing wrong in the tree.
+- **Next step:** check for a source file rather than a spec; delete the stale directory.
+- **GitHub:** #333
+
 ### A team's log drops a calendar, quarter or half narrowing silently
 - **Found:** 2026-10-05, porting the team log onto the team compiler (Phase 2, step 4)
 - **Evidence:** `compose/logs.py` `read_team_log` narrows the team's games with `Scope(venue=...)` and the opponent/date alone (`team_games`), while `compose.plan.STATED_SCOPING["game_log"]` declares `situation`, `period` and `half` as stated - so a team log asked "in January" or "in the 4th quarter" lists the whole span under a heading that does not say so. It was the retired template's behavior too; not measured on any population yet.
@@ -3131,6 +3194,41 @@ those were found.
 - **GitHub:** #312
 
 ## P4: tooling, docs, low impact
+
+### "What done means" overstates three Phase 2 rows, and the ledger grew by 5 without a say-so
+- **Found:** 2026-10-05, the Phase 2 review (`~/association-research/reviews/phase2-2026-10-05/REVIEW.md`)
+- **Evidence:** compiled reads 264 of 614 answered recorded questions, not every answer; 12 scoping declarations, not 1; the unread-words ledger 695, not 690 ("team"/"teams" in three `team_leaderboard` questions).
+- **User sees:** nothing; the roadmap misstates.
+- **Next step:** correct the three rows; read the five words or accept them with a note.
+- **GitHub:** #334
+
+### `stage_snapshots.py run` leaks a temp directory per run
+- **Found:** 2026-10-05, the Phase 2 review (`~/association-research/reviews/phase2-2026-10-05/REVIEW.md`)
+- **Evidence:** `tempfile.mkdtemp` with no cleanup: 663 `/tmp/stages-*` directories, 748 MB on the shared tmpfs (AGENTS.md: `/tmp` is shared and has filled before).
+- **User sees:** nothing; disk.
+- **Next step:** `TemporaryDirectory` with cleanup; delete the leftovers.
+- **GitHub:** #335
+
+### A combined record says "(1 neutral-site game counts as neither home nor away)" with no home or road figure in the answer
+- **Found:** 2026-10-05, the Phase 2 review (`~/association-research/reviews/phase2-2026-10-05/REVIEW.md`)
+- **Evidence:** "How many wins did the Knicks have this season including playoffs" since `4db543a`; also `test_team_record_combines_both_season_types_for_one_season`. One of the four feed answers that moved unenumerated.
+- **User sees:** a note about a split the answer does not show.
+- **Next step:** say the neutral-site count only beside a home or road figure.
+- **GitHub:** #336
+
+### `conditions.box_source` runs `DESCRIBE` 474 times over the 614 answered recorded questions
+- **Found:** 2026-10-05, the Phase 2 review (`~/association-research/reviews/phase2-2026-10-05/REVIEW.md`)
+- **Evidence:** one statement per call, called from every reader of rebuilt lines (review, section 7).
+- **User sees:** nothing visible; a statement per read.
+- **Next step:** cache per connection (the warehouse does not change under a question).
+- **GitHub:** #337
+
+### `ISSUES.md` holds 96 references to modules Phase 2 deleted
+- **Found:** 2026-10-05, the Phase 2 review (`~/association-research/reviews/phase2-2026-10-05/REVIEW.md`)
+- **Evidence:** `templates/...`, `compose/present.py`, `check_scope`, ... across its 189 entries (review, section 3).
+- **User sees:** an entry sends the next agent to a file that is gone.
+- **Next step:** repoint each to the reader or relation that holds the code now; one pass.
+- **GitHub:** #338
 
 ### The sayer's import contract is checked on direct imports only: `compose.say` reaches duckdb through four modules' constants
 - **Found:** 2026-10-05, Phase 2 step 6, when the last phrase helpers left `templates/` (the condition `pyproject.toml` named for checking the contract on chains).

@@ -905,6 +905,19 @@ agents' reports named here are in `~/association-research/stages/`.
     chains yet - `compose.say` takes constants from four modules that hold
     statements too; about 150 docstrings still say "template" as history.
 
+20. **Phase 2 reviewed and closed (2026-10-05).** The closing live run
+    (`live_parser28` on `93db30c`: 277 of 277 identical to parser27, 167 of
+    175, 156 of 166) and an Opus review that re-ran every population and
+    added one nobody had run - the 2,082 feed questions answered, not read.
+    Held: every enumerated move, every deletion, the score. Did not hold:
+    three "done" rows (compiled reads 264 of 614; 12 scoping declarations
+    unfrozen; the ledger 695), and 4 feed answers moved unnamed, one of
+    them now misleading (a rate's qualifier counting games the rate skips).
+    What the phase built, in the reviewer's words: a reader and a sayer per
+    retired template, moved - a fair Phase 2, not yet the target's shapes.
+    Fourteen findings filed (#325-#338; two P1s older than the phase). The
+    cleanup list is the order from here.
+
 ## The plan items, as written
 
 In order of lift per unit of structural change, each measured on the

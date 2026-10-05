@@ -311,6 +311,26 @@ construction - then merge readers where measured equal.
 Exit: `templates/`, `present.py`, `adapt.py`, `check_scope` and every
 scoping table but the per-relation cell tables are gone.
 
+**Phase 2, reviewed (2026-10-05).** An Opus agent reviewed the phase
+adversarially at `93db30c`, re-running every population itself and
+answering the 2,082 feed questions on both trees, which no step had done:
+every one of the 212 differences on the 628 and the 478 on the readings is
+enumerated in a commit; the live runs moved 1 answer of 277; the deletions
+are real. Three exit claims are not true as written - "every answer reads
+the compiler's SQL" (264 of 614 execute a compiled statement; 35 hand
+statements moved whole behind `rows_of`/`values_of`, which the ratchet
+does not count, so the 105 sites are 105 still), "`STATED_SCOPING` is the
+one declaration left" (12 of 14 survive, unfrozen), the ledger (695, not
+690) - and 4 feed answers moved that no commit named (3 from the rate fix,
+one of them now misleading: a 20-game qualifier met by games the rate does
+not read). Its report, data and harnesses are in
+`~/association-research/reviews/phase2-2026-10-05/`, its 14 findings are
+in `ISSUES.md` (two P1s that predate the phase), and the write-up Jeff
+reads is the Claude doc "Phase 2 Review"
+(https://claude.ai/code/artifact/4877b1fa-0169-4cda-a606-d35bae737fd8).
+Its cleanup list - (a) wrong-fix-now, (b) debt Phase 3 trips over, (c)
+cosmetic - is the order from here, as Phase 1's was.
+
 **Phase 2, the expected steps (written 2026-10-03, before the phase; each
 step is re-planned in its own row as it lands, as Phase 1's were).** The
 unit of work is one intent: its reader and sayer written, measured both
