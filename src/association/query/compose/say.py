@@ -3529,6 +3529,8 @@ def say_shot_distance(result: Result) -> TemplateResult:
     for each in result.notes:
         said = note(each.kind, note_phrase(each, about=name), **each.facts)
         answer += f" Note: {said}." if each.kind == "shot_values_derived" else said
+    # A defaulted season with no shots: the seasons he is on record for.
+    answer += "".join(decision_phrase(each) for each in result.decisions)
     return TemplateResult(
         data={"player": name, "season": result.span.season, "shot_value": shot_value, "avg_feet": average, "attempts": attempts, "headline": answer},
         answer=answer,

@@ -289,7 +289,16 @@ def read_shot_distance(con: duckdb.DuckDBPyConnection, q: ShotQuery, *, stated: 
             return pinned
         ids, narrowing, game = pinned
     ((average, attempts, games),) = values_of(con, _shot_distance_statement(player.id, span, shot_value, ids))
-    return _shot_distance_result(con, player, span, shot_value, period, narrowing, game, average, attempts or 0, games or 0)
+    result = _shot_distance_result(con, player, span, shot_value, period, narrowing, game, average, attempts or 0, games or 0)
+    if not attempts and ids is None and span.defaulted and not span.career:
+        # A defaulted season with no shots names the seasons he IS on record
+        # for (#18), as the chart does: "no shots ... in the 2026 regular
+        # season" of a player retired since 2003 is true of the wrong year.
+        redirect = season_redirect(con, player.id, span.season_type, "shot_chart")
+        if redirect is not None:
+            facts = {"first": redirect[0], "last": redirect[1], "what": span.kind}
+            result = replace(result, decisions=(Decided(kind="season_redirected", field="season", chose=None, why="the season read by default holds nothing for him", facts=facts),))
+    return result
 
 
 def _shot_distance_result(

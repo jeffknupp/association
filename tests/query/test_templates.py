@@ -35,7 +35,18 @@ from association.query.player_games import PERIOD_COLUMNS, PERIOD_RATES, period_
 from association.query.reading import Reading, Scope
 from association.query.shotchart import SHOT_AVAILABILITY
 from association.query.subject import Subject
-from association.query.templates.common import HONORED_SCOPING, SCOPING_SLOTS, TemplateContext, TemplateResult, TemplateUnsupported, check_scope, scoped_games, scoped_player, unhonored_scoping
+from association.query.templates.common import (
+    HONORED_SCOPING,
+    SCOPING_SLOTS,
+    TemplateContext,
+    TemplateResult,
+    TemplateUnsupported,
+    check_scope,
+    scoped_games,
+    scoped_player,
+    season_phrase,
+    unhonored_scoping,
+)
 from association.query.templates.games import (
     PERIOD_RATE_STATS,
 )
@@ -2972,6 +2983,22 @@ def test_shot_distance_reports_no_coordinates_honestly(sc_ctx: TemplateContext) 
     # compiler checks coverage before the reader runs, as the answering loop did before the template ran).
     answer = shot_distance(sc_ctx, Reading.from_slots({"player": "Stephen Curry", "season": 2010})).answer or ""
     assert answer == "No shots with recorded coordinates for Stephen Curry in the 2010 regular season."
+
+
+def test_shot_distance_in_a_defaulted_season_redirects_to_a_retired_players_range(sc_ctx: TemplateContext) -> None:
+    """The chart's #18 rule, for the distance: no season was named, "now" has
+    no shots of his, and the answer names the seasons he IS on record for
+    rather than only "none in the 2026 regular season". A distance answers a
+    career, so the sentence offers one; a named season keeps the plain line."""
+    sc_ctx.con.execute("INSERT INTO players VALUES ('2','Old Timer')")
+    sc_ctx.con.execute("INSERT INTO shot_chart VALUES ('2',2010,2,'e9',1,'8:00',TRUE,'Jump Shot',25,26,2,'20-foot two point jumper')")
+    result = shot_distance(sc_ctx, Reading.from_slots({"player": "Old Timer"}))
+    assert result.answer == (
+        f"No shots with recorded coordinates for Old Timer in the {season_phrase(current_season(), 2)}. "
+        "He last appears in 2010. The warehouse holds his 2010 regular season; name one, or ask for his career."
+    )
+    named = shot_distance(sc_ctx, Reading.from_slots({"player": "Old Timer", "season": 2009}))
+    assert named.answer == "No shots with recorded coordinates for Old Timer in the 2009 regular season."
 
 
 def test_shot_distance_without_a_player_falls_through(sc_ctx: TemplateContext) -> None:
