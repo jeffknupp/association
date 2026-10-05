@@ -10,11 +10,11 @@ statements are the relation's, built there and executed through the
 compiler's one door (:func:`~association.query.compose.core.values_of`).
 The sayer (:mod:`association.query.compose.say`) words each.
 
-Not reported to the answering loop's ``ran``: each answer is two or more
-statements (a line and the season redirect, a history and its career
-total, one line and one NetPoints row per player), and none of them is a
-compiled :class:`~association.query.compose.core.Query`; the snapshot keeps
-the planned point, as it does for every ported reader.
+Each answer is two or more statements (a line and the season redirect, a
+history and its career total, one line and one NetPoints row per player),
+and none of them is a compiled
+:class:`~association.query.compose.core.Query`; the stage snapshot records
+the planned point, as it does for every reader.
 
 .. versionadded:: 5.0.0
 """

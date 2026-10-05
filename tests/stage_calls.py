@@ -34,7 +34,10 @@ from pathlib import Path
 from typing import Any
 
 #: ``module:function`` for each boundary recorded, beside every handler in
-#: ``templates.TEMPLATES`` and ``Agent.ask``.
+#: ``templates.TEMPLATES`` and ``Agent.ask``. ``compose:answer`` lost its
+#: ``ran`` callback in Phase 2, step 4 (2026-10-05): nothing moved across the
+#: boundary - an argument was dropped, and a callback is never written into
+#: a record (:func:`_is_value`), so the two trees' calls compared identical.
 BOUNDARIES: tuple[str, ...] = (
     "association.query.parse:read_route",
     "association.query.parse:reading_from_route",

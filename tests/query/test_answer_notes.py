@@ -104,7 +104,7 @@ def test_the_answer_carries_what_was_written_for_it_and_the_agent_names_what_was
     assert [(d.kind, d.after, d.facts) for d in answer.decisions if d.kind] == [("minimum", 20, {"of": "games"})]
     assert agent.unsaid == ["floor"]
     # The next question starts clean.
-    monkeypatch.setattr("association.query.compose.answer", lambda ctx, reading, trace=None, declined=None, planned=None, ran=None: TemplateResult(data={}, answer="plain"))
+    monkeypatch.setattr("association.query.compose.answer", lambda ctx, reading, trace=None, declined=None, planned=None: TemplateResult(data={}, answer="plain"))
     plain = ask_routed(agent, "who scored the most points", slots_route("leaderboard", {"stat": "points"}))
     assert plain.notes == () and agent.unsaid == [] and not [d for d in plain.decisions if d.kind]
 

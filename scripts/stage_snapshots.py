@@ -143,7 +143,7 @@ def run(args: argparse.Namespace) -> int:
         for index, question in enumerate(questions, 1):
             try:
                 answer = agent.ask(question)
-                record = snapshot(agent.reading, answer, planned=agent.planned, ran=agent.ran, unanswered=agent.unanswered if answer.answered_by == "refused" else None, unsaid=agent.unsaid, mask=mask)
+                record = snapshot(agent.reading, answer, planned=agent.planned, unanswered=agent.unanswered if answer.answered_by == "refused" else None, unsaid=agent.unsaid, mask=mask)
             except Exception as exc:  # noqa: BLE001 - one bad question must not end the run, and a crash is itself a result to compare
                 record = {"question": question, "error": f"{type(exc).__name__}: {exc}"}
             out.write(json.dumps(record, sort_keys=True) + "\n")

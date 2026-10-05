@@ -64,8 +64,6 @@ def test_the_query_stage_is_what_the_planner_built_not_the_point_again() -> None
     # than the point it was handed is seen in the query stage, which recorded
     # the point itself until then.
 
-    from association.query.compose.core import Query
-
     reading = _reading()
     planned = plan_point(reading)
     assert isinstance(planned.query, Query) and planned.query.limit is None
@@ -110,22 +108,6 @@ def test_a_point_the_compiler_has_none_of_says_why() -> None:
     assert snapshot(refused, _answer(), planned=plan_point(refused))["reading"]["point_refusal"] == {"kind": "no_ranking_measure", "facts": {"stat": "bench points"}}
     whole = snapshot(_reading(), _answer(), planned=plan_point(_reading()))["reading"]
     assert whole["point_declined"] is None and whole["point_refusal"] is None and whole["point"]["intent"] == "player_stat"
-
-
-def test_the_query_stage_is_the_query_the_compiler_ran_where_that_differs() -> None:
-    """The record is the query the compiler ran where a caller hands one
-    (``Agent.ran``); until Phase 2, step 3 ``compose.answer`` re-planned a
-    season-line point its reader declined as the game-level query
-    (``plan.games_reading``), and the record took the planned one for it
-    until 2026-10-03."""
-    reading = _reading()
-    planned = plan_point(reading)
-    assert isinstance(planned.query, Query)
-    ran = replace(planned.query, limit=7)
-    by_plan = snapshot(reading, _answer(), planned=planned)["query"]
-    by_run = snapshot(reading, _answer(), planned=planned, ran=ran)["query"]
-    assert by_plan["limit"] != 7 and by_run["limit"] == 7
-    assert {k: v for k, v in by_run.items() if k != "limit"} == {k: v for k, v in by_plan.items() if k != "limit"}
 
 
 def test_plain_values_are_the_same_on_every_run() -> None:
@@ -257,7 +239,7 @@ def _agent(tmp_path: Path) -> Agent:
 
 
 def test_the_agent_keeps_the_reading_it_answered_from_and_forgets_it_on_the_next_question(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    monkeypatch.setattr("association.query.compose.answer", lambda ctx, reading, trace=None, declined=None, planned=None, ran=None: TemplateResult(data={"value": 1}, answer="templated"))
+    monkeypatch.setattr("association.query.compose.answer", lambda ctx, reading, trace=None, declined=None, planned=None: TemplateResult(data={"value": 1}, answer="templated"))
     agent = _agent(tmp_path)
     answer = ask_routed(agent, "who scored the most points", slots_route("leaderboard", {"stat": "points"}))
     assert agent.reading is not None and agent.reading.intent == "leaderboard"

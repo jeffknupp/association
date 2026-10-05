@@ -43,9 +43,7 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from association.query.answer import Answer
-    from association.query.compose.core import Query
     from association.query.compose.plan import Planned
-    from association.query.compose.team import TeamQuery
     from association.query.reading import Reading
 
 STAGES: tuple[str, ...] = ("reading", "query", "result", "answer")
@@ -163,24 +161,23 @@ def _reading_record(reading: Reading, mask: Mapping[str, str] | None) -> dict[st
     }
 
 
-def _query_record(reading: Reading, planned: Planned, mask: Mapping[str, str] | None, ran: Query | TeamQuery | None = None) -> dict[str, Any]:
+def _query_record(reading: Reading, planned: Planned, mask: Mapping[str, str] | None) -> dict[str, Any]:
     """What the planner built, or why there is none: a refusal the reading
     or the planner came to, or the reason one of them declined. ``planned``
     is the caller's planning of the question
     (:func:`~association.query.compose.plan.plan_point`); nothing here
     plans. Until 5.0.0's last change this was the Reading's point again,
     so a planner that built something else from it went unseen; the point
-    is the reading's record now. ``ran`` is the query the compiler itself
-    executed (:attr:`Agent.ran <association.query.agent.Agent.ran>`), where
-    the caller has one: the planned query, since the planner plans a
-    season-line point its reader does not read as the game-level one
-    (Phase 2, step 3); until then ``games_reading`` re-planned it in
-    ``compose.answer``, which the record took for the planned one until
-    2026-10-03."""
+    is the reading's record now. The planned query is the one the compiler
+    runs: since Phase 2, step 3 the planner plans a season-line point its
+    reader does not read as the game-level one, where ``games_reading``
+    re-planned it in ``compose.answer`` (3 of the 628 recorded questions),
+    and the record took the re-planned query from the answering loop
+    (``Agent.ran``) from 2026-10-03 until step 4 retired it."""
     verdict = planned
     if verdict.refusal is not None:
         return {"refused": plain(verdict.refusal.data, mask=mask), "said": _masked(verdict.refusal.answer, mask)}
-    query = ran if ran is not None else verdict.query
+    query = verdict.query
     if query is None or reading.point is None:
         return {"declined": verdict.declined}
     # A TeamQuery has no ``subject``: the team IS the relation. Read by
@@ -190,7 +187,7 @@ def _query_record(reading: Reading, planned: Planned, mask: Mapping[str, str] | 
     return record
 
 
-def read_stages(reading: Reading, *, planned: Planned, mask: Mapping[str, str] | None = None, ran: Query | TeamQuery | None = None) -> dict[str, Any]:
+def read_stages(reading: Reading, *, planned: Planned, mask: Mapping[str, str] | None = None) -> dict[str, Any]:
     """The two records a Reading holds - ``reading`` and ``query`` - as
     :func:`snapshot` writes them, for a caller that stops before the answer
     (``scripts/claims_ledger.py``, which asks which of a question's words
@@ -198,7 +195,7 @@ def read_stages(reading: Reading, *, planned: Planned, mask: Mapping[str, str] |
 
     .. versionadded:: 5.0.0
     """
-    return {"reading": _reading_record(reading, mask), "query": _query_record(reading, planned, mask, ran)}
+    return {"reading": _reading_record(reading, mask), "query": _query_record(reading, planned, mask)}
 
 
 def snapshot(
@@ -206,7 +203,6 @@ def snapshot(
     answer: Answer,
     *,
     planned: Planned | None = None,
-    ran: Query | TeamQuery | None = None,
     unanswered: str | None = None,
     unsaid: list[str] | None = None,
     mask: Mapping[str, str] | None = None,
@@ -217,10 +213,8 @@ def snapshot(
     question nothing reads was given up with
     (:attr:`Agent.unanswered <association.query.agent.Agent.unanswered>`);
     ``planned`` the answering loop's planning of the question
-    (:attr:`Agent.planned <association.query.agent.Agent.planned>`),
-    ``ran`` the query the compiler executed where that differs
-    (:attr:`Agent.ran <association.query.agent.Agent.ran>`);
-    ``unsaid`` the kinds of the remarks written and not said
+    (:attr:`Agent.planned <association.query.agent.Agent.planned>`), whose
+    query is the one the compiler runs; ``unsaid`` the kinds of the remarks written and not said
     (:attr:`Agent.unsaid <association.query.agent.Agent.unsaid>`); ``mask``
     is :func:`plain`'s. The record also holds ``remarks``: the answer's
     notes and the decisions it states.
@@ -238,7 +232,7 @@ def snapshot(
             "decisions": [plain(decision.as_dict(), mask=mask) for decision in stated],
             "unsaid": list(unsaid or ()),
         },
-        **(read_stages(reading, planned=_planned_for(reading, planned), mask=mask, ran=ran) if reading is not None else {"reading": None, "query": None}),
+        **(read_stages(reading, planned=_planned_for(reading, planned), mask=mask) if reading is not None else {"reading": None, "query": None}),
         "result": plain(answer.data, mask=mask),
         "answer": {
             "text": _masked(answer.text, mask),

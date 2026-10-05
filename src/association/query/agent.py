@@ -32,9 +32,7 @@ from association.nba.season import calendar_season, season_on_record
 
 from .answer import Answer, AnsweredBy, Artifact, Timing
 from .compose import COMPILED_INTENTS
-from .compose.core import Query
 from .compose.plan import Planned, plan_point
-from .compose.team import TeamQuery
 from .connection import connect_read_only, latest_season_on_record
 from .entities import (
     collect_name_readings,
@@ -154,13 +152,6 @@ class Agent:
         #:
         #: .. versionadded:: 5.0.0
         self.planned: Planned | None = None
-        #: The query the compiler itself executed for the last question, or
-        #: None: a template's answer, a presenter's (which runs the retired
-        #: template's own read), a refusal: the planned query
-        #: (``compose.answer``'s ``ran``); the stage snapshot records it.
-        #:
-        #: .. versionadded:: 5.0.0
-        self.ran: Query | TeamQuery | None = None
         #: The kinds of the remarks written for the last question whose
         #: sentence did not reach its answer (:func:`association.query.notes.unsaid`):
         #: a caveat computed and then dropped. Empty when every one was said.
@@ -211,7 +202,6 @@ class Agent:
         history = RunHistory(self.verbose, self.history_dir, sink=self.trace)
         self.reading = None
         self.planned = None
-        self.ran = None
         self.unsaid = []
         recorded = ""
         answer: Answer | None = None
@@ -528,10 +518,6 @@ class Agent:
         self.unanswered = f"{intent}: {why}"
         return None
 
-    def _ran(self, query: Query | TeamQuery) -> None:
-        """Keep the query the compiler executed (:attr:`ran`)."""
-        self.ran = query
-
     def _try_compose(self, question: str, reading: Reading, history: RunHistory, declined: Callable[[str], None] | None = None) -> TemplateResult | None:
         """The compiler's answer to the point the parser read
         (``association.query.compose.answer``): the compiled intents' only
@@ -556,7 +542,6 @@ class Agent:
                 trace=lambda point: history.log(f"  -> (reading) {point.describe()}"),
                 declined=declined,
                 planned=self.planned,
-                ran=self._ran,
             )
         if composed is None:
             return None

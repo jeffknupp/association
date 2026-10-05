@@ -279,7 +279,9 @@ What an agent starting Phase 2 should take from it: the reader contract is
 checked on chains and `point -> compose.adapt` is the one route, going with
 the last adapter; `compose.answer` still re-plans 3 of 628 through
 `games_reading` after the season-line presenter declines (the snapshot
-records what ran; the re-plan goes with slice (iii)); the ~170 refusal
+recorded what ran, through `Agent.ran`; the re-plan went with slice
+(iii), and `Agent.ran` with step 4, since the query run is the planned
+one); the ~170 refusal
 sentences outside the point reader become causes as each sayer is written;
 the five ratchets catch the bypasses the review found and are name-based
 still - a new way past one is a gate to add, not a trick to use; the
@@ -371,6 +373,14 @@ target types, named so a slice takes it over rather than copies it:
 - **`STATED_SCOPING` stays until Phase 3** (one table declares, for every
   compiled intent, which narrowings the retired words state); the
   planner's cell checks take it over with the Reading's typed filters.
+- **The snapshot's `query` stage is the planned query, and nothing
+  reports another** (step 4, 2026-10-05). `compose.answer`'s `ran`
+  callback and `Agent.ran` recorded the query the compiler executed where
+  it differed from the planned one - `games_reading`'s re-plan, gone with
+  step 3, after which every ported reader compiles the planned point and
+  the two were the same object on every call. A slice that finds a reader
+  running something other than its planned point plans it in the
+  planner (`plan._game_level` is the precedent), never reports it beside.
 - **The team log and the team splits read the team relation themselves:**
   the team compiler has no `rows` or `grouped` compile. Slice (iv) gives it
   them and the two readers execute the compiled statement like the
