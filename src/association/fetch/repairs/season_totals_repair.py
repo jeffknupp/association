@@ -31,7 +31,7 @@ The same reasoning as :mod:`association.fetch.repairs.team_box_repair`: a season
 total IS the sum of its stints - a player's games and points do not exist
 anywhere but in the games he played - so this is a re-derivation, not an
 estimate, and every reader should see it. A view would fix
-``player_season_stats_deduped`` and leave ``leaderboard.py``'s own
+``player_season_stats_deduped`` and leave the season-line ranking's own (``query/season_line.py``)
 ``QUALIFY`` reading the broken row out of the stored table, which is the
 two-hand-maintained-copies shape this project keeps getting bitten by.
 

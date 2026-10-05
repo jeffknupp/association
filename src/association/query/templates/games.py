@@ -21,7 +21,7 @@ from association.query.reading import Reading, Scope
 
 from ..conditions import box_source
 from ..entities import Entity, resolve_team
-from ..leaderboard import resolve_metric
+from ..measures import resolve_metric
 from ..metrics import PER_GAME_MIN_GAMES, PER_GAME_MIN_POSTSEASON_GAMES
 from ..notes import Note, decided, note
 from ..player_games import (

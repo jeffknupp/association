@@ -13,10 +13,10 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from typing import Any
 
-from association.query.leaderboard import SEASON_TOTAL_OF
 from association.query.measures import PERIOD_COLUMNS, stat_measure
 from association.query.metrics import LEADERBOARD_METRICS
 from association.query.reading import Cause, Reading, Scope, _career_scope, ordinal_word
+from association.query.season_line import SEASON_TOTAL_OF
 from association.query.templates.common import RELATION_SCOPING_EXCLUDED, STAT_LABELS, TemplateResult, TemplateUnsupported, check_coverage, unhonored_scoping
 from association.query.templates.players import leaderboard_shot_distance_refusal
 from association.query.templates.splits import _condition_needs_player_refusal

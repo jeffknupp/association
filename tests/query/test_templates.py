@@ -1563,7 +1563,7 @@ def test_shot_chart_defaults_an_unspecified_season_to_the_current_one(sc_ctx: Te
 
 
 def _add_career_table(con: duckdb.DuckDBPyConnection, rows: list[tuple[str, int, int, int]]) -> None:
-    """The slice of `player_season_stats_deduped` `_career_shot_span` reads -
+    """The slice of `player_season_stats_deduped` `season_line.seasons_played` reads -
     just enough columns to say where a player's own career sits against the
     2002 shot floor, independent of `shot_chart` itself."""
     con.execute("CREATE TABLE player_season_stats_deduped (athlete_id VARCHAR, season INTEGER, season_type INTEGER, gamesPlayed INTEGER)")

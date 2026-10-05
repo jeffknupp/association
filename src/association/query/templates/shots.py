@@ -53,7 +53,6 @@ from .common import (
     measure_filters,
     scoped_games,
     scoped_player,
-    season_redirect,
     settle_ordinal_season,
 )
 
@@ -274,6 +273,8 @@ def _shot_chart_message(ctx: TemplateContext, *, career: bool, defaulted: bool, 
         # with a season on record (issue #18); redirect to it instead. No
         # "or ask for his career" - a single defaulted season keeps this
         # refusal plain otherwise, because it is the correct answer.
+        from association.query.season_line import season_redirect  # the relation's read; at call time, since it imports templates
+
         redirect = season_redirect(ctx.con, player.id, season_type, "shot_chart")
         return rendered_message + _defaulted_season_note(redirect, SEASON_TYPE_NAMES.get(season_type, "regular season"), career_hint=False)
     return rendered_message
@@ -404,23 +405,6 @@ def _shot_value(scope: Scope) -> int | None:
     return SHOT_VALUE_FROM_STAT.get(scope.stat) if scope.stat is not None else None
 
 
-def _career_shot_span(con: duckdb.DuckDBPyConnection, athlete_id: str, season_type: int) -> tuple[int, int] | None:
-    """The first and last season ``athlete_id`` actually played ``season_type``,
-    read from his own season line rather than ``shot_chart`` - so a career
-    shot question can say whether the 2002 floor (COVERAGE["shot_chart"],
-    "shots are derived from play-by-play, which ESPN does not have before
-    2002") clips a real part of it, rather than reading a career that started
-    before shots exist as though it had none at all. None with nothing on
-    record for that season type."""
-    row = con.execute(
-        "SELECT MIN(season), MAX(season) FROM player_season_stats_deduped WHERE athlete_id = ? AND season_type = ? AND gamesPlayed > 0",
-        [athlete_id, season_type],
-    ).fetchone()
-    if row is None or row[0] is None:
-        return None
-    return int(row[0]), int(row[1])
-
-
 def _career_shot_note(con: duckdb.DuckDBPyConnection, player: Entity, season_type: int, *, found: bool) -> str:
     """What a ``span`` "career" shot_chart/shot_distance answer says about what
     it covers (#141) - AGENTS.md's rule against narrowing a question silently
@@ -439,7 +423,9 @@ def _career_shot_note(con: duckdb.DuckDBPyConnection, player: Entity, season_typ
     """
     kind = SEASON_TYPE_NAMES.get(season_type, "regular season")
     floor_season = COVERAGE["shot_chart"].floor(season_type).season
-    span = _career_shot_span(con, player.id, season_type)
+    from association.query.season_line import seasons_played  # the relation's read; at call time, since it imports templates
+
+    span = seasons_played(con, player.id, season_type)
     if span is None:
         return ""
     earliest, latest = span

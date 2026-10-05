@@ -47,6 +47,7 @@ from association.query.season_line import (
     line_columns,
     line_subject,
     netpoints_statement,
+    season_redirect,
     season_statement,
 )
 from association.query.templates.common import (
@@ -57,7 +58,6 @@ from association.query.templates.common import (
     TemplateResult,
     TemplateUnsupported,
     season_phrase,
-    season_redirect,
     unhonored_scoping,
 )
 from association.query.templates.players import ADVANCED_STATS, SHOOTING_STATS, wanted_stats

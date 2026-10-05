@@ -19,7 +19,7 @@ from test_templates import leaderboard  # the compiler's, leaderboard's template
 
 from association.nba.season import current_season
 from association.query.compose.present import STATED_SCOPING
-from association.query.leaderboard import resolve_metric
+from association.query.measures import resolve_metric
 from association.query.metrics import LEADERBOARD_METRICS
 from association.query.normalizer import NORMALIZER_STATS
 from association.query.parse import with_point

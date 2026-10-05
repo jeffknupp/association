@@ -36,7 +36,8 @@ from association.query.entities import Entity
 from association.query.notes import Note
 from association.query.player_games import REBUILT_STATS
 from association.query.result import Decided, Part, Result, Rows
-from association.query.templates.common import SEASON_TYPE_NAMES, STAT_LABELS, THRESHOLD_STAT_COLUMNS, TemplateResult, player_relation_season_type, season_redirect, unhonored_scoping
+from association.query.season_line import season_redirect
+from association.query.templates.common import SEASON_TYPE_NAMES, STAT_LABELS, THRESHOLD_STAT_COLUMNS, TemplateResult, player_relation_season_type, unhonored_scoping
 from association.query.templates.players import empty_box_scores, rebuilt_in_scope
 
 from .core import Query, compile_query, rows_of

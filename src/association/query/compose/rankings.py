@@ -8,7 +8,7 @@ metric (``Grouped.ranked_by``). Phase 2's slice (iii) (``ROADMAP.md``,
 ``compose.present._present_leaderboard`` handed the point to the retired
 template's body (``templates.players._leaderboard_ranking``), which read
 and worded it; the read is the season line's own door now
-(:func:`~association.query.leaderboard.rank_season_line` - the floors that
+(:func:`~association.query.season_line.rank_season_line` - the floors that
 need no refusal, the traded-player dedup, the qualifier, the career pool),
 moved and not re-derived, and the words are the sayer's
 (:func:`~association.query.compose.say.say_leaderboard`).
@@ -36,11 +36,12 @@ from typing import Any
 
 import duckdb
 
-from association.query.leaderboard import MIN_SAMPLE_LABELS, SEASON_TOTAL_OF, CareerLeaderboardResult, LeaderboardError, rank_season_line, resolve_metric
+from association.query.measures import resolve_metric
 from association.query.metrics import EXTRA_FIELD_COLUMNS, LEADERBOARD_METRICS
 from association.query.notes import Note
 from association.query.reading import Scope, _clamp_limit
 from association.query.result import Decided, Part, Result, Span
+from association.query.season_line import MIN_SAMPLE_LABELS, SEASON_TOTAL_OF, CareerLeaderboardResult, LeaderboardError, rank_season_line
 from association.query.templates.common import TemplateResult, TemplateUnsupported, unhonored_scoping
 from association.query.templates.players import leaderboard_shot_distance_refusal
 
@@ -148,7 +149,7 @@ def read_leaderboard(con: duckdb.DuckDBPyConnection, q: Query, *, stated: frozen
     """``leaderboard``'s own point - the league's (or a team's players')
     leaders by one season-line metric, over a season or a career - read into
     a Result through the season line's door
-    (:func:`~association.query.leaderboard.rank_season_line`). ``None`` where
+    (:func:`~association.query.season_line.rank_season_line`). ``None`` where
     the point is not that, carries a narrowing the ranking's words do not
     state (``stated``: ``compose.present.STATED_SCOPING``'s set), names a stat
     no season-line metric reads, or ranks a position group: the game-level

@@ -14,7 +14,7 @@ import duckdb
 import pytest
 
 from association.query.connection import connect_read_only
-from association.query.leaderboard import LeaderboardError, run_leaderboard
+from association.query.season_line import LeaderboardError, run_leaderboard
 from association.query.shotchart import render_shot_chart
 
 
@@ -159,8 +159,8 @@ def test_get_leaderboard_min_sample_override_widens_the_pool(con: duckdb.DuckDBP
 
 
 def test_get_leaderboard_defaults_to_current_season(monkeypatch: pytest.MonkeyPatch, con: duckdb.DuckDBPyConnection) -> None:
-    # the season default lives in leaderboard.run_leaderboard
-    monkeypatch.setattr("association.query.leaderboard.current_season", lambda: 2026)
+    # the season default lives in season_line.run_leaderboard
+    monkeypatch.setattr("association.query.season_line.current_season", lambda: 2026)
     result = lb(con, metric="usage_pct")
     assert result["season"] == 2026
     assert [r["display_name"] for r in result["rows"]] == ["Stephen Curry"]
@@ -337,7 +337,7 @@ def test_render_shot_chart_names_the_game_not_just_its_id(con: duckdb.DuckDBPyCo
 
 
 def test_double_and_triple_doubles_are_registered_metrics() -> None:
-    from association.query.leaderboard import resolve_metric
+    from association.query.measures import resolve_metric
     from association.query.metrics import LEADERBOARD_METRICS
 
     assert resolve_metric("triple_double") == "triple_doubles"
@@ -374,7 +374,7 @@ def test_the_season_lines_door_ranks_with_ties_sharing_a_place(db_path: str) -> 
     player, the ranked figure under the metric's name, and a competition
     rank - two players on one figure share it, and the next takes the place
     after both. The traded player still counts once, through his combined row."""
-    from association.query.leaderboard import rank_season_line
+    from association.query.season_line import rank_season_line
 
     writer = duckdb.connect(db_path)
     writer.execute("INSERT INTO players VALUES ('3', 'Draymond Green')")

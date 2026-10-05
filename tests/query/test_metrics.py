@@ -5,7 +5,7 @@ shooting-percentage floors (ISSUES.md #13).
 an 82-game season - flat before this fix, so a shortened season's qualifier
 was quietly stricter than the published rule it claimed to apply. Each test
 here pins one piece of that: which metrics carry the new
-``scales_with_schedule`` flag, that ``leaderboard.default_min_sample`` scales
+``scales_with_schedule`` flag, that ``season_line.default_min_sample`` scales
 their floor from the warehouse's own ``real_games`` rather than a hardcoded
 per-season table, that a fixture with no ``real_games`` (most of this test
 suite, predating this fix) degrades to the old flat floor instead of raising,
@@ -18,14 +18,14 @@ import duckdb
 import pytest
 
 from association.nba.coverage import POSTSEASON, REGULAR_SEASON
-from association.query.leaderboard import (
+from association.query.metrics import LEADERBOARD_METRICS
+from association.query.season_line import (
     SCHEDULE_BASE_GAMES,
     _scale_min_sample,
     _team_games_for_season,
     default_min_sample,
     run_leaderboard,
 )
-from association.query.metrics import LEADERBOARD_METRICS
 
 
 def test_scales_with_schedule_is_set_for_exactly_ts_efg_fg() -> None:

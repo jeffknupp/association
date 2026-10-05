@@ -7,43 +7,19 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
 
 import duckdb
 
-from association.nba.coverage import POSTSEASON
 from association.query.measures import STAT_LINE as STAT_LINE
 from association.query.reading import Scope, scope_reads_box_scores
 
 from ..conditions import box_source
-from ..leaderboard import not_a_postseason_copy
-from ..player_games import scope_without_guard, season_type_clause
+from ..player_games import scope_without_guard
 from .common import (
     PLAYER_STAT_COLUMNS,
     TemplateResult,
     TemplateUnsupported,
 )
-
-
-def seasons_on_record(con: duckdb.DuckDBPyConnection, athlete_id: str, season_type: int) -> tuple[Any, Any]:
-    """A player's first and last season in the per-player season table, which
-    reaches back to 1976-77 - before any box score here. A postseason copied
-    from the regular season is not a postseason on record.
-
-    .. versionchanged:: 4.4.0
-       Honors :data:`~association.query.player_games.BOTH_SEASON_TYPES`
-       through :func:`~association.query.player_games.season_type_clause`,
-       rather than an equality that a sentinel outside (2, 3) could never
-       match.
-
-    .. versionchanged:: 5.0.0
-       Public (``_seasons_on_record`` until then): the compiler and the
-       count's and the high's readers take it.
-    """
-    copy = f" AND {not_a_postseason_copy(('points',))}" if season_type == POSTSEASON else ""
-    type_clause, type_params = season_type_clause("t.season_type", season_type)
-    row = con.execute(f"SELECT MIN(t.season), MAX(t.season) FROM player_season_stats t WHERE t.athlete_id = ? AND {type_clause}{copy}", [athlete_id, *type_params]).fetchone()
-    return (row[0], row[1]) if row else (None, None)
 
 
 def rebuilt_in_scope(con: duckdb.DuckDBPyConnection, season: int | None, season_type: int, athlete_id: str | None) -> int:

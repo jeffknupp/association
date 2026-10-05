@@ -742,7 +742,7 @@ MAX_LIMIT = 50
 """The most rows a question's ``limit`` reaches (:func:`_clamp_limit`): the
 games a log lists, the players or teams a ranking lists, the runs a streak
 listing shows. One cap for every shape; the season-line ranking
-(``leaderboard.run_leaderboard``) applies it to its SQL as well.
+(``season_line.ranking_statement``) applies it to its SQL as well.
 
 .. versionchanged:: 5.0.0
    Lives on the reader's side, and is the only one: ``leaderboard`` had a

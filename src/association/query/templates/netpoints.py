@@ -121,11 +121,9 @@ def player_netpoints(ctx: TemplateContext, reading: Reading) -> TemplateResult:
             # player, sounds like the warehouse holds nothing of his at all.
             # No "or ask for his career" here: player_netpoints has no career
             # span to offer. A season the question named keeps this plain.
-            row = con.execute(
-                "SELECT MIN(season), MAX(season) FROM net_points_player WHERE athlete_id = ? AND net_points_season_type = ?",
-                [player.id, label],
-            ).fetchone()
-            redirect = (int(row[0]), int(row[1])) if row and row[0] is not None else None
+            from association.query.season_line import season_redirect  # the relation's read; at call time, since it imports templates
+
+            redirect = season_redirect(con, player.id, label, "net_points_player", season_type_column="net_points_season_type")
             answer += _defaulted_season_note(redirect, SEASON_TYPE_NAMES.get(season_type, "regular season"), career_hint=False)
         return TemplateResult(
             data={"player": player.name, "season": season, "headline": answer},

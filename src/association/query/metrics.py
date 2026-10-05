@@ -3,7 +3,7 @@
 here in code instead of re-derived by the model from prose on every query.
 
 Standalone (it imports nothing from the rest of query/) so every consumer can
-read it without a cycle: leaderboard.py builds SQL from it, prompt.py lists the
+read it without a cycle: season_line.py builds the ranking's SQL from it, prompt.py lists the
 known metrics in the get_leaderboard tool description, the templates package validates
 router slots against it."""
 
@@ -120,7 +120,7 @@ class LeaderboardMetric:
 
     ``scales_with_schedule`` says ``default_min_sample`` was calibrated
     against an 82-game season and should be scaled down for a shorter one
-    (``leaderboard.default_min_sample`` does the scaling, from the warehouse's
+    (``season_line.default_min_sample`` does the scaling, from the warehouse's
     own team-game count for that season - see its docstring). Unset for every
     metric whose floor is not calibrated this way: a games-played floor
     already reads the actual games column, and a postseason floor is already
@@ -229,7 +229,7 @@ LEADERBOARD_METRICS: dict[str, LeaderboardMetric] = {
     #
     # No `career`, for the same reason usage and true shooting have none: the
     # career SQL multiplies a per-game column back out by `t.gamesPlayed`
-    # (`leaderboard._career_value`), which is player_season_stats' spelling of
+    # (`season_line._career_value_sql`), which is player_season_stats' spelling of
     # that column and does not exist on this table.
     "avg_game_score": LeaderboardMetric(
         table="player_season_advanced_stats",
@@ -273,7 +273,7 @@ LEADERBOARD_METRICS: dict[str, LeaderboardMetric] = {
     # players against 174-184 in every other measured season, and the 2012
     # lockout season (66 games) qualified 127 - a published rule scales per
     # team game, so this was a stricter qualifier than the one it claimed to
-    # be, not a missing one. See `leaderboard.default_min_sample` for how.
+    # be, not a missing one. See `season_line.default_min_sample` for how.
     "ts_pct": LeaderboardMetric(
         table="player_season_advanced_stats",
         column="ts_pct",

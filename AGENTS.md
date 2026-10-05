@@ -814,7 +814,7 @@ model's. Two things follow, and both matter when you add a shape:
   season-line metric (`compose/rankings.py`, since 2026-10-05: a `Grouped`
   ranking by `player` whose `ranked_by` is the metric - a count of games
   over a line ranks by `"games"`, which is how the sayer tells the two
-  apart - read through `leaderboard.rank_season_line`, which keeps the
+  apart - read through `season_line.rank_season_line`, which keeps the
   dedup, the qualifier and the career pool exactly; the qualifier is the
   `minimum` decision it was, the career pool a `floor` note), and a
   player's unnarrowed line, his stat season by season and two or more
@@ -822,8 +822,14 @@ model's. Two things follow, and both matter when you add a shape:
   over the SEASON LINE - `query/season_line.py`: one row per player per
   season in `player_season_stats_deduped`, and the advanced stats beside
   it. That module settles the subject and builds each statement the
-  retired templates ran, moved whole; `compose.core.values_of` executes
-  them through the compiler's one `execute`. The line is a `Scalar` and
+  retired templates ran, moved whole - since step 4 the ranking's too
+  (`query/leaderboard.py`, folded in whole with its floors, dedup and
+  qualifiers) and every read of a player's seasons on record (the
+  defaulted-season redirect, `season_redirect`, which the charts and the
+  game relation's "no games" sentence call; `seasons_on_record`;
+  `seasons_played`); `compose.core.values_of` (or `rows_of`, for a
+  ranking's rows by name) executes every one through the compiler's one
+  `execute`, and nothing else runs a season-line statement. The line is a `Scalar` and
   the history a `Grouped` by `season` with a career's `summary` part, the
   comparison a `Grouped` by `subject`, each on a `Span` whose `source` is
   `"seasons"`, which is how `say()` tells them from the games relation's

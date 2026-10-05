@@ -38,8 +38,9 @@ from association.query.notes import Note
 from association.query.player_games import REBUILT_STATS
 from association.query.reading import Unsupported
 from association.query.result import Grouped, Part, Result, Scalar, Span
+from association.query.season_line import seasons_on_record
 from association.query.templates.common import STAT_LABELS, TemplateResult, player_relation_season_type, unhonored_scoping
-from association.query.templates.players import empty_box_scores, rebuilt_in_scope, seasons_on_record
+from association.query.templates.players import empty_box_scores, rebuilt_in_scope
 
 from .core import Query, compile_query, rows_of
 
@@ -62,7 +63,7 @@ def _threshold_count_is_own_point(q: Query, column: str) -> bool:
 def box_score_span(con: duckdb.DuckDBPyConnection, season: int | None, season_type: int, player: Entity | None) -> tuple[Span, list[Note]]:
     """The span a count or a single-game high read from box scores covers,
     as values: one season, or a career - a named player's own first and
-    last season on record (:func:`~association.query.templates.players.seasons_on_record`,
+    last season on record (:func:`~association.query.season_line.seasons_on_record`,
     which reaches back before any box score), or the league's from the box
     scores' floor - and the floor note where the answer has to say it
     FIRST: Michael Jordan's career began in 1984-85, and his "career high"

@@ -50,7 +50,7 @@ from association.query.measures import LINE as LINE
 from association.query.player_games import PERIOD_COLUMNS, PERIOD_RATES, REBUILT_STATS, REGULATION_QUARTERS, Narrowed, aggregate_sql, games_subquery, grouped_sql, named, paired_rows_sql, rows_sql
 from association.query.reading import DEFAULT_NAMED_RUNS, Scope
 from association.query.reading import Unsupported as Unsupported
-from association.query.season_line import Statement
+from association.query.season_line import Statement, seasons_on_record
 from association.query.templates.common import (
     BOX_SCORES,
     GAME_LOGS,
@@ -74,7 +74,6 @@ from association.query.templates.common import (
     span_of,
 )
 from association.query.templates.games import _team_slot_for_player
-from association.query.templates.players import seasons_on_record
 
 if TYPE_CHECKING:
     # Annotation only: the team compiler imports this module.
@@ -1117,7 +1116,7 @@ def _player_own_seasons(con: duckdb.DuckDBPyConnection, player: Entity | None, s
     career by instead of the relation's floor.
 
     ``threshold_count`` and ``single_game_high`` already read this from the
-    player's own seasons (`templates.players.seasons_on_record`, via
+    player's own seasons (`season_line.seasons_on_record`, via
     `_game_span`) rather than the box-score floor every career otherwise
     starts from, and this reuses that same read rather than a second one -
     "one concept, one definition" (`AGENTS.md`). Only for a *plain* career:
@@ -1136,17 +1135,21 @@ def _player_own_seasons(con: duckdb.DuckDBPyConnection, player: Entity | None, s
     return began, ended
 
 
-def rows_of(con: duckdb.DuckDBPyConnection, compiled: Compiled | TeamCompiled) -> list[dict[str, Any]]:
+def rows_of(con: duckdb.DuckDBPyConnection, compiled: Compiled | TeamCompiled | Statement) -> list[dict[str, Any]]:
     """The compiled statement executed: its rows, each by column name. The
     one place a compiled statement runs - the compiler's own :func:`run` and
     every ported reader (``compose.logs``, ``compose.records``,
     ``compose.splits``) read through it, the team compiler's statements
-    (:class:`~association.query.compose.team.TeamCompiled`) as well.
+    (:class:`~association.query.compose.team.TeamCompiled`) as well, and
+    the season line's ranking (:mod:`association.query.season_line`), whose
+    rows are read by name.
 
     .. versionadded:: 5.0.0
 
     .. versionchanged:: 5.0.0
-       Runs the team compiler's statements too (Phase 2, step 4).
+       Runs the team compiler's statements too (Phase 2, step 4), and a
+       season-line :class:`~association.query.season_line.Statement`
+       (``query/leaderboard.py`` executed the ranking's itself).
     """
     cur = _executed(con, compiled)
     names = [d[0] for d in cur.description]

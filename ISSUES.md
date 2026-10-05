@@ -1227,7 +1227,7 @@ those were found.
   Not measured here: #13's evidence and next step named only those three
   floors (`query/metrics.py:220,230,398` at the time), so only those three
   were fixed (`LeaderboardMetric.scales_with_schedule`,
-  `leaderboard.default_min_sample`) - extending it to two more floors nobody
+  `season_line.default_min_sample`) - extending it to two more floors nobody
   had measured would have been a guess, not a fix.
 - **User sees:** a 3-point or free-throw percentage leaderboard for a
   shortened season (2020, 2021, the 2012 lockout season, and any earlier
