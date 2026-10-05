@@ -890,10 +890,14 @@ def _default_threshold_count(scope: Scope) -> Reading:
 def _default_single_game_high(scope: Scope) -> Reading:
     """``single_game_high``'s default point: a named player's top games by
     one stat, the measure first. A league-wide high is the point reader's
-    own move (a ranking of games), declined here."""
+    own move (a ranking of games), declined here. The decline names the
+    fact that is missing - the stat, or the player - never both where one
+    was given: "brice sensabaugh career high asistss" named its player."""
     col = stat_column(scope.stat)
-    if not _named_player_in(scope) or col is None:
-        raise Unsupported("single_game_high needs a player and a known stat here")
+    if col is None:
+        raise Unsupported(f"single_game_high cannot rank games by {scope.stat!r}" if scope.stat else "single_game_high needs a stat to rank games by, and none was read")
+    if not _named_player_in(scope):
+        raise Unsupported("single_game_high needs a named player here")
     return Reading(
         scope=scope,
         shape="rows",

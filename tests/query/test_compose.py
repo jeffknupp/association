@@ -1613,6 +1613,23 @@ def test_a_record_over_a_line_of_zero_is_declined_as_the_template_refused_it(cx_
     assert why and "positive threshold" in why[0]
 
 
+def test_a_single_game_high_with_no_stat_is_declined_for_the_stat_not_the_player() -> None:
+    """A named player's high with no stat read ("brice sensabaugh career
+    high asistss") is declined for the stat - the fact that is missing -
+    where it said "needs a player and a known stat" of a question that
+    named its player, sending the reader to look for the wrong thing."""
+    from association.query.point import default_point
+
+    with pytest.raises(Unsupported) as no_stat:
+        default_point("single_game_high", Scope.from_slots({"player": "Brice Sensabaugh", "span": "career"}))
+    assert str(no_stat.value) == "single_game_high needs a stat to rank games by, and none was read"
+    with pytest.raises(Unsupported) as unknown:
+        default_point("single_game_high", Scope.from_slots({"player": "Brice Sensabaugh", "stat": "asistss"}))
+    assert str(unknown.value) == "single_game_high cannot rank games by 'asistss'"
+    with pytest.raises(Unsupported, match="needs a named player"):
+        default_point("single_game_high", Scope.from_slots({"stat": "points"}))
+
+
 def test_a_league_count_in_an_ordinal_season_is_declined_not_narrowed_silently(cx_ctx: TemplateContext) -> None:
     """ "Most 20+ point games in a 15th season": a league has no career to
     count seasons in. Read over everyone, the compiler narrowed to players in
