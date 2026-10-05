@@ -17,12 +17,12 @@ removes. The
 subject, the span and every narrowing are the compiler's
 (:func:`~association.query.compose.core.compile_query`, through the shared
 steps in :mod:`association.query.templates.common`); the numbers are either
-the compiler's own rows (``single_game_high``, whose template has no
-reader separate from its orchestration) or the template's own reader over
-the compiler's narrowing (the ported shapes - the game log, a record over
-a line, splits, a player's narrowed line, a quarter, a count over a line -
-went to readers and the sayer, ``compose.logs``/``records``/``splits``/
-``stats``/``periods``/``counts`` and ``compose.say``); and every
+the compiler's own rows (a streak, a matchup) or the template's own
+reader over the compiler's narrowing (the ported shapes - the game log, a
+record over a line, splits, a player's narrowed line, a quarter, a count
+over a line, a single game's high - went to readers and the sayer,
+``compose.logs``/``records``/``splits``/``stats``/``periods``/``counts``/
+``highs`` and ``compose.say``); and every
 sentence, caveat and ``data`` key
 comes from the template's own phrasing helpers - one definition each, never a
 second copy here.
@@ -40,21 +40,14 @@ from collections.abc import Callable
 
 import duckdb
 
-from association.nba.season import eastern_date
 from association.query.conditions import _meeting_rows, _teammate_games, _totals
 from association.query.measures import stat_measure
-from association.query.player_games import REBUILT_STATS
-from association.query.reading import Scope
 from association.query.templates.common import (
     HISTORY_COLUMNS,
-    STAT_LABELS,
-    THRESHOLD_STAT_COLUMNS,
-    ResolvedSpan,
     TemplateResult,
     TemplateUnsupported,
     check_coverage,
     optional_team,
-    player_relation_season_type,
     relation_scoping,
     unhonored_scoping,
     where_in,
@@ -64,18 +57,12 @@ from association.query.templates.players import (
     ADVANCED_STATS,
     SHOOTING_STATS,
     LeaderboardStepsAside,
-    _game_span,
     _leaderboard_ranking,
     _player_compare_lines,
     _player_history_read,
     _player_history_subject,
     _player_stat_season_line,
     _player_stat_season_line_subject,
-    _single_game_high_answer,
-    _single_game_high_redirect,
-    _single_game_high_result_data,
-    empty_box_scores,
-    rebuilt_in_scope,
     wanted_stats,
 )
 from association.query.templates.splits import (
@@ -94,19 +81,13 @@ from association.query.templates.splits import (
 )
 
 from .adapt import WITH_WITHOUT_STATED
-from .core import Query, Refused, Unsupported, compile_query, run, run_scope
+from .core import Query, Refused, Unsupported, compile_query, run_scope
 from .team import TeamQuery, _team_games_narrowed, run_team
 
 #: A presenter: the connection and the compiled point (its scope the intent's
 #: slots, typed), to the template's own answer - or ``None`` where the point
 #: is not the intent's own. The templates' own helpers below take the Scope.
 Presenter = Callable[[duckdb.DuckDBPyConnection, Query], TemplateResult | None]
-
-
-def _stat_column(scope: Scope) -> str | None:
-    """The router's ``stat`` as the box-score column the count and single-game
-    templates whitelist (:data:`~association.query.templates.common.THRESHOLD_STAT_COLUMNS`)."""
-    return THRESHOLD_STAT_COLUMNS.get(scope.stat) if scope.stat is not None else None
 
 
 def _present_player_stat_season_line(con: duckdb.DuckDBPyConnection, q: Query) -> TemplateResult | None:
@@ -272,53 +253,9 @@ def _present_player_history(con: duckdb.DuckDBPyConnection, q: Query) -> Templat
     return _player_history_read(con, player, scope)
 
 
-def _count_season(scope: Scope, span: ResolvedSpan) -> tuple[int | None, int, int | None]:
-    """The season a count or a single-game high covers (``None`` for a
-    career), the season type named in its sentence, and the ordinal that
-    named the season, if one did - read off the compiler's settled span,
-    since that is the span the rows were counted over."""
-    return span.season, player_relation_season_type(scope), span.ordinal
-
-
-def _present_single_game_high(con: duckdb.DuckDBPyConnection, q: Query) -> TemplateResult | None:
-    """``single_game_high``'s own sentence and ``data`` over the compiler's
-    top games by the stat: the leader, the date and opponent, "Next: ..."
-    for the league, and the template's span, empty-box-score, withheld-stat,
-    rebuilt-line and defaulted-season notes, each from its own helper."""
-    scope = q.scope
-    stat = scope.stat
-    column = _stat_column(scope)
-    if stat is None or column is None or q.skeleton != "rows" or q.order != "measure" or q.direction != "desc" or q.predicates or q.position or not q.measures or q.measures[0] != column:
-        return None
-    out = run(con, q)
-    span: ResolvedSpan = out["span"]
-    player = out["entity"]
-    season, season_type, _ = _count_season(scope, span)
-    career = season is None
-    defaulted = not career and not scope.season
-    from_rebuilt = bool(out["rebuilt"])
-    label = STAT_LABELS.get(stat, stat)
-    name = player.name if player is not None else None
-    games = [
-        {"player": r.get("player") or name, "value": r[column], "date": eastern_date(r["day"]), "opponent": r["opponent"], "reconstructed": bool(r["reconstructed"])}
-        for r in out["rows"]
-        if r[column] is not None
-    ]
-    game_span = _game_span(con, season, season_type, player)
-    shape = f"most {label}s in a single game" + (f", {name}" if name else "") + f", {game_span.caption}"
-    player_id = player.id if player is not None else None
-    empty = empty_box_scores(con, season, season_type, player_id, covered_by_rebuild=from_rebuilt)
-    withheld = 0 if games or column in REBUILT_STATS else rebuilt_in_scope(con, season, season_type, player_id)
-    headline = _single_game_high_answer(games, label, game_span, name, empty=empty, withheld=withheld)
-    redirect = _single_game_high_redirect(con, defaulted, player, games, empty, withheld, season_type)
-    data = {"question_shape": shape, "season": season, "span": "career" if career else None, "stat": stat, "games": games, "empty_box_scores": empty[0]}
-    return TemplateResult(data=_single_game_high_result_data(data, headline, redirect), answer=headline + redirect)
-
-
 #: Intent -> the presenter for its own default point.
 PRESENTERS: dict[str, Presenter] = {
     "player_stat": _present_player_stat_season_line,
-    "single_game_high": _present_single_game_high,
     "player_history": _present_player_history,
     "leaderboard": _present_leaderboard,
     "player_compare": _present_player_compare,

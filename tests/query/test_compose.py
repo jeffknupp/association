@@ -1767,10 +1767,15 @@ def test_a_presenter_steps_aside_for_a_narrowing_its_words_do_not_state(cx_ctx: 
     other (``compose.present.STATED_SCOPING``): an opponent on a single-game
     high is the relation's to narrow by and the compiler's sentence's to
     state, so the presenter answers nothing and every presenter declares."""
-    from association.query.compose.present import PRESENTERS, STATED_SCOPING, TEAM_ONLY_PRESENTERS, present
+    from dataclasses import replace
 
-    # game_log's, record_when's, player_splits', period_split's and threshold_count's words are the sayer's (compose.say);
-    # their stated sets stay listed in STATED_SCOPING so one table declares for every compiled intent.
-    assert set(STATED_SCOPING) == set(PRESENTERS) | TEAM_ONLY_PRESENTERS | {"game_log", "record_when", "player_splits", "period_split", "threshold_count"}
+    from association.query.compose.highs import read_single_game_high
+    from association.query.compose.present import PRESENTERS, STATED_SCOPING, TEAM_ONLY_PRESENTERS
+
+    # game_log's, record_when's, player_splits', period_split's, threshold_count's and single_game_high's words are the
+    # sayer's (compose.say); their stated sets stay listed in STATED_SCOPING so one table declares for every compiled intent.
+    ported = {"game_log", "record_when", "player_splits", "period_split", "threshold_count", "single_game_high"}
+    assert set(STATED_SCOPING) == set(PRESENTERS) | TEAM_ONLY_PRESENTERS | ported
     narrowed = default_query("single_game_high", {"player": "Brandin Podziemski", "stat": "points", "opponent": "Boston Celtics"})
-    assert present(cx_ctx.con, "single_game_high", narrowed) is None
+    assert read_single_game_high(cx_ctx.con, narrowed, stated=STATED_SCOPING["single_game_high"]) is None
+    assert read_single_game_high(cx_ctx.con, replace(narrowed, scope=replace(narrowed.scope, opponent=None)), stated=STATED_SCOPING["single_game_high"]) is not None

@@ -11,11 +11,10 @@ from typing import Any, Literal
 
 import duckdb
 
-from association.nba.coverage import COVERAGE, POSTSEASON
+from association.nba.coverage import POSTSEASON
 from association.nba.franchises import season_name_sql
 from association.nba.season import current_season
 from association.query.measures import STAT_LINE as STAT_LINE
-from association.query.reading import DEFAULT_SINGLE_GAME_LIMIT as DEFAULT_SINGLE_GAME_LIMIT
 from association.query.reading import Scope, scope_reads_box_scores
 
 from ..conditions import box_source
@@ -35,12 +34,11 @@ from .common import (
     _format_value,
     _period,
     _resolved_player,
-    _season_redirect,
     _Span,
     _span_of,
     _table_cell,
-    ordinal_word,
     scoped_player,
+    season_redirect,
 )
 
 DEFAULT_LEADERBOARD_LIMIT = 10
@@ -80,47 +78,6 @@ def _career_span(intent: str, span: Literal["career"] | None, season: int | None
 def _season_label(season: int) -> str:
     """1994 -> "1993-94", the way a person names a season."""
     return f"{season - 1}-{season % 100:02d}"
-
-
-@dataclass(frozen=True)
-class _GameSpan:
-    """How an answer built from box scores names the games it covers."""
-
-    when: str  # "in the 2026 regular season" - follows a verb
-    caption: str  # a noun phrase, for question_shape
-    games: str  # "2026 regular season games" - for "no ... in the warehouse"
-    since: str  # the box scores' first season, "1993-94"
-    preface: str = ""  # said FIRST, when the span is narrower than the question
-    league_note: bool = False  # a league-wide career, which is not all-time
-
-
-def _game_span(con: duckdb.DuckDBPyConnection, season: int | None, season_type: int, player: Entity | None, *, ordinal: int | None = None) -> _GameSpan:
-    """Name what a box-score answer covers - and, for a named player's career,
-    whether the box scores hold it at all.
-
-    Michael Jordan's career began in 1984-85, and the box scores here begin in
-    1993-94. His "career high" from them is 55, not 69: fluent, real, and an
-    answer to a different question. So a career that began before the box
-    scores is answered for the part they hold, and says so before the number
-    rather than after it - the reader who stops at the number has been told."""
-    kind = SEASON_TYPE_NAMES.get(season_type, "regular season")
-    floor = COVERAGE["player_box_stats"].first_season
-    since = _season_label(floor)
-    if season is not None and ordinal is not None:
-        period = _period(season, season_type)
-        return _GameSpan(when=f"in his {ordinal_word(ordinal)} season ({period})", caption=f"{ordinal_word(ordinal)} season, {period}", games=f"{period} games", since=since)
-    if season is not None:
-        period = _period(season, season_type)
-        return _GameSpan(when=f"in the {period}", caption=period, games=f"{period} games", since=since)
-    if player is None:
-        return _GameSpan(when=f"in the {kind} since {since}", caption=f"{kind} since {since}", games=f"{kind} games since {since}", since=since, league_note=True)
-    began, ended = seasons_on_record(con, player.id, season_type)
-    if isinstance(began, int) and began < floor:
-        said = f"Box scores here begin in {since}, and {player.name}'s {kind} career began in {_season_label(began)}, so his whole career is not in them. "
-        preface = note("floor", said, table="box_scores", first=floor, earliest=began, whose=player.name, season_type=season_type, what="career_began_earlier")
-        return _GameSpan(when=f"in the {kind} since {since}", caption=f"{kind} since {since}", games=f"{kind} games since {since}", since=since, preface=preface)
-    years = f" ({_season_label(began)} through {_season_label(ended)})" if isinstance(began, int) and isinstance(ended, int) else ""
-    return _GameSpan(when=f"in his {kind} career{years}", caption=f"{kind} career{years}", games=f"{kind} games", since=since)
 
 
 def seasons_on_record(con: duckdb.DuckDBPyConnection, athlete_id: str, season_type: int) -> tuple[Any, Any]:
@@ -218,16 +175,6 @@ def empty_box_scores(con: duckdb.DuckDBPyConnection, season: int | None, season_
         params.append(athlete_id)
     row = con.execute(sql, params).fetchone()
     return (int(row[0]), row[1], row[2]) if row else (0, None, None)
-
-
-def _empty_note(found: tuple[int, int | None, int | None], name: str | None, consequence: str) -> str:
-    count, first, last = found
-    if not count or first is None or last is None:
-        return ""
-    whose = f"{count:,} of {name}'s games" if name else f"{count:,} {'game' if count == 1 else 'games'}"
-    between = f"in {_season_label(first)}" if first == last else f"between {_season_label(first)} and {_season_label(last)}"
-    said = f" {whose} {between} {'has' if count == 1 else 'have'} an empty box score in this warehouse, so {consequence}."
-    return note("games_unseen", said, why="empty_box_score", games=count, first=first, last=last, whose=name)
 
 
 def _signed_cell(value: Any) -> str:
@@ -1055,7 +1002,7 @@ def _season_player_stat(con: duckdb.DuckDBPyConnection, player: Entity, span: _S
             # misrepresent him (Iverson's last season is 13.8 ppg against a
             # 26.7 career average). A season the question named outright keeps
             # this refusal plain, because it is the correct answer.
-            redirect = _season_redirect(con, player.id, season_type, "player_season_stats_deduped")
+            redirect = season_redirect(con, player.id, season_type, "player_season_stats_deduped")
             answer += _defaulted_season_note(redirect, SEASON_TYPE_NAMES.get(season_type, "regular season"))
         return TemplateResult(
             data={"player": player.name, "season": season, "stats": {}},
@@ -1210,99 +1157,6 @@ def _player_stat_advanced(con: duckdb.DuckDBPyConnection, player: Entity, span: 
         data={"player": player.name, "stat": stat, **scope, "stats": {spec.column: value, "games_played": int(games) if games is not None else None}, "seasons_missing": int(missing)},
         answer=sentence + _player_stat_advanced_gap(int(missing), spec),
     )
-
-
-def _single_game_high_result_data(data: dict[str, Any], headline: str, redirect: str) -> dict[str, Any]:
-    """``single_game_high``'s own ``headline``/``notes`` - split out to keep
-    the caller under the complexity gate. ``redirect`` is glued onto the
-    same line as ``headline``, not a separate one, so it is carried in
-    ``notes`` too rather than lost entirely for having been excluded from
-    ``headline`` - this template's own ``caption`` is ``question_shape``,
-    never the raw text, so a page reading ``notes`` has no other way to
-    reach it.
-
-    .. versionadded:: 4.4.0
-    """
-    return {**data, "headline": headline, "notes": [redirect.strip()] if redirect else []}
-
-
-def _single_game_high_redirect(
-    con: duckdb.DuckDBPyConnection, defaulted: bool, named_player: Entity | None, games: list[dict[str, Any]], empty: tuple[int, int | None, int | None], withheld: int, season_type: int
-) -> str:
-    """What ``single_game_high`` appends when its season was defaulted rather
-    than named and the answer came back with nothing to show (issue #18) -
-    see :func:`association.query.templates.common._season_redirect`.
-
-    Empty whenever the empty answer is about something else: a season the
-    question named outright, no named player to redirect (a league-wide
-    question has no "his" to point at), an empty-box-scores gap, or a
-    withheld stat - each of those already has its own sentence, and this one
-    would either duplicate it or, worse, answer over it.
-    """
-    if not defaulted or named_player is None or games or empty[0] or withheld:
-        return ""
-    redirect = _season_redirect(con, named_player.id, season_type, "player_game_log")
-    return _defaulted_season_note(redirect, SEASON_TYPE_NAMES.get(season_type, "regular season"))
-
-
-def _single_game_high_answer(games: list[dict[str, Any]], label: str, span: _GameSpan, who: str | None, *, empty: tuple[int, int | None, int | None], withheld: int) -> str:
-    """The full sentence: the phrase, any league-coverage caveat, the
-    empty-box-scores note (suppressed when ``withheld`` already explains the
-    gap), and the rebuilt-line caveat when the answer itself rests on one."""
-    answer = span.preface + _phrase_single_game_high(games, label, span, who, empty=empty, withheld=withheld)
-    if span.league_note:
-        said = f" Box scores begin in {span.since}, so this is not an all-time record: earlier games are not in this warehouse."
-        answer += note("floor", said, table="box_scores", first=COVERAGE["player_box_stats"].first_season, what="league_record")
-    # Suppressed when `withheld` fired: that sentence already gave the count and
-    # the reason, and repeating it as "empty box scores, so there is no per-game
-    # high" contradicts it - the lines are there, they were held back.
-    if not withheld:
-        answer += _empty_note(empty, who, "a bigger game may be missing" if games else "there is no per-game high to read from them")
-    # Said whenever the ANSWER rests on a rebuilt line, not whenever one was
-    # read: a rebuilt game that lost to a fetched one changes nothing a reader
-    # needs to know about the number they were given.
-    if games and games[0]["reconstructed"]:
-        answer += note("lines_rebuilt", " That game has no box score from ESPN - the figure is rebuilt from its play-by-play, so treat it as close rather than exact.", games=1, what="single_game")
-    return answer
-
-
-def _phrase_single_game_high(
-    games: list[dict[str, Any]], label: str, span: _GameSpan, named_player: str | None, *, empty: tuple[int, int | None, int | None] = (0, None, None), withheld: int = 0
-) -> str:
-    if not games:
-        who = f"{named_player} has" if named_player else "There are"
-        # A stat outside REBUILT_STATS with rebuilt lines in scope is a DECISION,
-        # not a gap, and the refusal has to say which. "No games with a box
-        # score" is true of the fetched lines and hides that the data exists and
-        # was withheld because it is not accurate enough to quote.
-        if withheld:
-            said = (
-                f"{withheld:,} of them were rebuilt from play-by-play, "
-                f"but a {label} is not read from a rebuilt line: rebuilt fouls are wrong in about one game in six, and turnovers "
-                f"in one in thirteen, against one in sixty for points."
-            )
-            return f"{who} no {span.games} with a box score in the warehouse. " + note("stat_withheld", said, games=withheld, label=label)
-        # "No games" and "no games WITH A BOX SCORE" are different claims, and
-        # the first said of a player who played 68 of them is the wrong-cause
-        # refusal this project keeps producing: true-sounding, and it sends the
-        # reader to look for a missing season rather than a missing box score.
-        # _empty_note then names the count and the years.
-        if empty[0]:
-            return f"{who} no {span.games} with a box score in the warehouse."
-        return f"{who} no {span.games} in the warehouse."
-    top = games[0]
-    where = f" vs {top['opponent']}" if top["opponent"] else ""
-    if named_player:
-        return f"{named_player}'s highest {label} total in a single game {span.when} was {top['value']}, on {top['date']}{where}."
-
-    tied = [g for g in games if g["value"] == top["value"]]
-    if len(tied) > 1:
-        names = ", ".join(g["player"] for g in tied[:-1]) + f" and {tied[-1]['player']}"
-        sentence = f"{names} tied for the most {label}s in a single game {span.when}, with {top['value']} each."
-    else:
-        sentence = f"{top['player']} had the most {label}s in a single game {span.when}: {top['value']}, on {top['date']}{where}."
-    rest = [f"{g['player']} ({g['value']})" for g in games if g["value"] != top["value"]]
-    return sentence + (f" Next: {', '.join(rest)}." if rest else "")
 
 
 MAX_COMPARED_PLAYERS = 4

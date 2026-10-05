@@ -26,7 +26,7 @@ from ..lines import MeasureFilter as MeasureFilter
 from ..lines import measure_filters as measure_filters
 from ..measures import resolve_metric
 from ..metrics import LEADERBOARD_METRICS
-from ..notes import Note, decided, note
+from ..notes import Note, note
 from ..player_games import (  # noqa: F401 - the relation's names, re-exported for the templates and tests that read them here
     _OPEN_END,
     _OPEN_START,
@@ -2222,7 +2222,7 @@ def _resolved_teammate(con: duckdb.DuckDBPyConnection, text: Any, player: Entity
     return resolved
 
 
-def _season_redirect(con: duckdb.DuckDBPyConnection, athlete_id: str, season_type: int, table: str, *, athlete_column: str = "athlete_id") -> tuple[int, int] | None:
+def season_redirect(con: duckdb.DuckDBPyConnection, athlete_id: str, season_type: int, table: str, *, athlete_column: str = "athlete_id") -> tuple[int, int] | None:
     """The first and last season ``athlete_id`` has a row in ``table`` for
     ``season_type`` - or None with nothing on record there at all.
 
@@ -2231,7 +2231,12 @@ def _season_redirect(con: duckdb.DuckDBPyConnection, athlete_id: str, season_typ
     though the current one had been asked outright - a true statement about
     the wrong year, the mirror-image refusal AGENTS.md warns against. Reading
     the player's own range lets the answer redirect instead of guessing which
-    season, career, or nothing was meant."""
+    season, career, or nothing was meant.
+
+    .. versionchanged:: 5.0.0
+       Public (``_season_redirect`` until then): the single-game high's
+       reader takes it (``compose.highs``).
+    """
     row = con.execute(f"SELECT MIN(season), MAX(season) FROM {table} WHERE {athlete_column} = ? AND season_type = ?", [athlete_id, season_type]).fetchone()
     if row is None or row[0] is None:
         return None
@@ -2239,7 +2244,7 @@ def _season_redirect(con: duckdb.DuckDBPyConnection, athlete_id: str, season_typ
 
 
 def _defaulted_season_note(season_range: tuple[int, int] | None, kind: str, *, career_hint: bool = True) -> str:
-    """The sentence a defaulted-season refusal appends when :func:`_season_redirect`
+    """The sentence a defaulted-season refusal appends when :func:`season_redirect`
     found something to point at - empty with nothing on record at all, which
     leaves the plain refusal standing: that is a genuine gap, not a wrong
     default, and there is nothing here to redirect toward.
@@ -2248,14 +2253,14 @@ def _defaulted_season_note(season_range: tuple[int, int] | None, kind: str, *, c
     discipline `entities.suggest_players` follows for a near-miss name."""
     if season_range is None:
         return ""
+    # At call time: compose imports this module (the sayer phrases each
+    # decision kind once, compose.say.decision_phrase).
+    from association.query.compose.say import decision_phrase
+    from association.query.result import Decided
+
     first, last = season_range
-    # Singular for one season, plural for a range - the same rule _Span.years
-    # uses, so "he last appears in 2010" is never followed by "his 2010
-    # seasons" for a player on record in exactly one.
-    span = f"{first} {kind}" if first == last else f"{first}-{last} {kind}s"
-    tail = ", or ask for his career." if career_hint else "."
-    said = f" He last appears in {last}. The warehouse holds his {span}; name one{tail}"
-    return decided("season_redirected", said, field="season", chose=None, why="the season read by default holds nothing for him", first=first, last=last, what=kind)
+    redirect = Decided(kind="season_redirected", field="season", chose=None, why="the season read by default holds nothing for him", facts={"first": first, "last": last, "what": kind})
+    return decision_phrase(redirect, career_hint=career_hint)
 
 
 def no_narrowed_games(con: duckdb.DuckDBPyConnection, player: Entity, span: _Span, narrowed: Narrowed, *, rebuilt: bool = False) -> str:
@@ -2298,7 +2303,7 @@ def no_narrowed_games(con: duckdb.DuckDBPyConnection, player: Entity, span: _Spa
             # beats a refusal that reads as though his career itself were the
             # gap (issue #18); a season the question named keeps this plain,
             # because that refusal is correct as given.
-            redirect = _season_redirect(con, player.id, span.season_type, "player_game_log")
+            redirect = season_redirect(con, player.id, span.season_type, "player_game_log")
             message += _defaulted_season_note(redirect, span.kind)
         return message
     during = span.during(first, last)

@@ -48,12 +48,12 @@ from .common import (
     _defaulted_season_note,
     _no_narrowed_games,
     _period,
-    _season_redirect,
     _Span,
     _span_of,
     measure_filters,
     scoped_games,
     scoped_player,
+    season_redirect,
     settle_ordinal_season,
 )
 
@@ -274,7 +274,7 @@ def _shot_chart_message(ctx: TemplateContext, *, career: bool, defaulted: bool, 
         # with a season on record (issue #18); redirect to it instead. No
         # "or ask for his career" - a single defaulted season keeps this
         # refusal plain otherwise, because it is the correct answer.
-        redirect = _season_redirect(ctx.con, player.id, season_type, "shot_chart")
+        redirect = season_redirect(ctx.con, player.id, season_type, "shot_chart")
         return rendered_message + _defaulted_season_note(redirect, SEASON_TYPE_NAMES.get(season_type, "regular season"), career_hint=False)
     return rendered_message
 

@@ -185,3 +185,43 @@ def test_a_league_count_names_the_leaders_and_the_rest() -> None:
         "Luka Doncic had the most games with 30+ points and under 5 turnovers in the 2026 regular season, with 4. Next: Shai Gilgeous-Alexander (2). "
         "1 of Luka Doncic's 4 games has no box score from ESPN - that figure is rebuilt from play-by-play, so treat the count as close rather than exact."
     )
+
+
+def test_a_single_game_high_is_said_with_its_floor_its_tie_and_its_redirect() -> None:
+    """The league's high over a career: a tie said as a tie, then the floor
+    a league career is under. A named player's defaulted season that held
+    nothing: the plain "no games", then where he IS on record, as a
+    decision on the same line and in ``data["notes"]``."""
+    from association.query.result import Decided
+
+    tied = (
+        {"player": "A Guard", "value": 23, "date": "2026-04-12", "opponent": "CHI", "reconstructed": False},
+        {"player": "B Guard", "value": 23, "date": "2026-03-01", "opponent": "", "reconstructed": False},
+    )
+    league = Result(
+        subject="every player",
+        relation="everyone",
+        span=Span(season=None, season_type=2, career=True),
+        parts=(Part(body=Rows(columns=("assists",), rows=tied, by="assists")),),
+        notes=(Note("floor", {"table": "box_scores", "first": 1994, "what": "league_record"}),),
+        facts={"stat": "assists", "ordinal": None, "box_scores_from": 1994, "empty_box_scores": 0},
+    )
+    assert say(league).answer == (
+        "A Guard and B Guard tied for the most assists in a single game in the regular season since 1993-94, with 23 each."
+        " Box scores begin in 1993-94, so this is not an all-time record: earlier games are not in this warehouse."
+    )
+    redirect = Decided(kind="season_redirected", field="season", chose=None, why="the season read by default holds nothing for him", facts={"first": 1990, "last": 1999, "what": "regular season"})
+    retired = Result(
+        subject="Old Timer",
+        relation="player",
+        span=Span(season=2026, season_type=2),
+        parts=(Part(body=Rows(columns=("points",), rows=(), by="points")),),
+        decisions=(redirect,),
+        facts={"stat": "points", "ordinal": None, "box_scores_from": 1994, "empty_box_scores": 0},
+    )
+    with collect() as collected:
+        said = say(retired)
+    assert said.answer == "Old Timer has no 2026 regular season games in the warehouse. He last appears in 1999. The warehouse holds his 1990-1999 regular seasons; name one, or ask for his career."
+    assert said.data["notes"] == ["He last appears in 1999. The warehouse holds his 1990-1999 regular seasons; name one, or ask for his career."]
+    assert said.data["question_shape"] == "most points in a single game, Old Timer, 2026 regular season"
+    assert [each.kind for each in collected.decisions] == ["season_redirected"]

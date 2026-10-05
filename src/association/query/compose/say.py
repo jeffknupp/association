@@ -63,6 +63,8 @@ def _say_definition(facts: dict[str, Any]) -> str:
 def _say_lines_rebuilt(facts: dict[str, Any]) -> str:
     if facts.get("what") == "counted":
         return _say_lines_rebuilt_counted(facts)
+    if facts.get("what") == "single_game":
+        return " That game has no box score from ESPN - the figure is rebuilt from its play-by-play, so treat it as close rather than exact."
     shown = facts["games"]
     whose = "their" if shown != 1 else "its"
     return f"{shown} of these game{'s have' if shown != 1 else ' has'} no box score from ESPN: {whose} figures are rebuilt from play-by-play, and minutes cannot be recovered at all."
@@ -153,6 +155,15 @@ def decision_phrase(each: Decided, **said_with: Any) -> str:
     """
     if each.kind == "season_fallback":
         text = f"No games this season, so these are his most recent {said_with['games']}{said_with['at']}, from the {said_with['season_label']}."
+    elif each.kind == "season_redirected":
+        first, last, kind = each.facts["first"], each.facts["last"], each.facts["what"]
+        # Singular for one season, plural for a range - the same rule _Span.years
+        # uses, so "he last appears in 2010" is never followed by "his 2010
+        # seasons" for a player on record in exactly one. ``career_hint`` is
+        # the answer's: a chart has no career to ask for.
+        seasons = f"{first} {kind}" if first == last else f"{first}-{last} {kind}s"
+        tail = ", or ask for his career." if said_with.get("career_hint", True) else "."
+        text = f" He last appears in {last}. The warehouse holds his {seasons}; name one{tail}"
     else:
         raise ValueError(f"no phrase for decision kind {each.kind!r}")
     return decided(each.kind, text, field=each.field, chose=each.chose, before=each.before, instead_of=each.instead_of, why=each.why, **each.facts)
@@ -406,6 +417,8 @@ def say(result: Result) -> TemplateResult:
         return say_splits(result)
     if result.grouped is not None and result.grouped.by == "period":
         return say_period_by_quarter(result)
+    if result.rows is not None and result.rows.by != "date":
+        return say_single_game_high(result)
     if result.rows is not None and "period" in result.facts:
         return say_period_split(result)
     return say_team_log(result) if result.relation == "team" else say_player_log(result)
@@ -1100,3 +1113,79 @@ def say_threshold_count(result: Result) -> TemplateResult:
         "notes": notes,
     }
     return TemplateResult(data=data, answer=" ".join([phrase, *notes]))
+
+
+def _single_game_high_phrase(result: Result, games: list[dict[str, Any]], label: str, when: str, games_said: str, withheld: str) -> str:
+    """The high in one sentence - a named player's top game, or the league's
+    leader with any tie said as a tie and "Next: ..." - or, with no games,
+    which games are missing: none at all, none with a box score (the empty
+    box scores' note then gives the count and the years), or a stat
+    withheld from the rebuilt lines that hold them (``withheld``, its note,
+    already phrased)."""
+    named = result.subject if result.relation == "player" else None
+    if not games:
+        who = f"{named} has" if named else "There are"
+        # A stat outside the rebuilt set with rebuilt lines in scope is a
+        # DECISION, not a gap; "no games" said of a player who played 68 of
+        # them with empty box scores is the wrong-cause refusal.
+        if withheld:
+            return f"{who} no {games_said} with a box score in the warehouse. " + withheld
+        if result.facts["empty_box_scores"]:
+            return f"{who} no {games_said} with a box score in the warehouse."
+        return f"{who} no {games_said} in the warehouse."
+    top = games[0]
+    where = f" vs {top['opponent']}" if top["opponent"] else ""
+    if named:
+        return f"{named}'s highest {label} total in a single game {when} was {top['value']}, on {top['date']}{where}."
+    tied = [g for g in games if g["value"] == top["value"]]
+    if len(tied) > 1:
+        names = ", ".join(g["player"] for g in tied[:-1]) + f" and {tied[-1]['player']}"
+        sentence = f"{names} tied for the most {label}s in a single game {when}, with {top['value']} each."
+    else:
+        sentence = f"{top['player']} had the most {label}s in a single game {when}: {top['value']}, on {top['date']}{where}."
+    rest = [f"{g['player']} ({g['value']})" for g in games if g["value"] != top["value"]]
+    return sentence + (f" Next: {', '.join(rest)}." if rest else "")
+
+
+def say_single_game_high(result: Result) -> TemplateResult:
+    """A single game's high, worded - the retired ``single_game_high``
+    template's sentence: the floor first where a career began before the
+    box scores, the high, then a league career's floor, the empty box
+    scores and a rebuilt top game, and the defaulted season's redirect on
+    the same line (and in ``data["notes"]``, since the page's caption is
+    ``question_shape`` and has no other way to reach it).
+
+    .. versionadded:: 5.0.0
+    """
+    body = result.rows
+    assert body is not None
+    games = [dict(g) for g in body.rows]
+    stat = result.facts["stat"]
+    label = STAT_LABELS.get(stat or "", stat or "")
+    when, caption, games_said = _counted_span_words(result)
+    said: dict[str, str] = {}
+    for each in result.notes:
+        consequence = "a bigger game may be missing" if games else "there is no per-game high to read from them"
+        text = note(each.kind, note_phrase(each, consequence=consequence), **each.facts)
+        said["preface" if each.kind == "floor" and each.facts.get("what") == "career_began_earlier" else each.kind] = text
+    headline = (
+        said.get("preface", "")
+        + _single_game_high_phrase(result, games, label, when, games_said, said.get("stat_withheld", ""))
+        + said.get("floor", "")
+        + said.get("games_unseen", "")
+        + said.get("lines_rebuilt", "")
+    )
+    redirect = "".join(decision_phrase(each) for each in result.decisions)
+    named = result.subject if result.relation == "player" else None
+    season = result.span.season
+    data = {
+        "question_shape": f"most {label}s in a single game" + (f", {named}" if named else "") + f", {caption}",
+        "season": season,
+        "span": "career" if season is None else None,
+        "stat": stat,
+        "games": games,
+        "empty_box_scores": result.facts["empty_box_scores"],
+        "headline": headline,
+        "notes": [redirect.strip()] if redirect else [],
+    }
+    return TemplateResult(data=data, answer=headline + redirect)

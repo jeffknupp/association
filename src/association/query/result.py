@@ -77,6 +77,9 @@ class Rows:
     averaged over exactly these rows (``summary``: a log's per-game
     averages, a team log's wins and losses and its total), and how many
     came from each season type where two were merged (``by_season_type``).
+    ``by`` is what the rows are in order of, the draft's "rows by date"
+    and "rows by the measure": ``"date"`` for a log, or the measure a
+    single-game high ranks its games by.
 
     .. versionadded:: 5.0.0
     """
@@ -86,6 +89,7 @@ class Rows:
     total_before_window: int | None = None
     summary: Mapping[str, Any] = field(default_factory=dict)
     by_season_type: Mapping[int, int] = field(default_factory=dict)
+    by: str = "date"
 
 
 @dataclass(frozen=True, kw_only=True)
