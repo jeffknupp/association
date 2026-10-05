@@ -63,7 +63,7 @@ def read_period_split(con: duckdb.DuckDBPyConnection, q: Query, *, stated: froze
     a Result over the compiled statement. ``None`` where the point is not
     that (a predicate, another skeleton, a measure the point did not plan)
     or carries a narrowing the template's words did not state (``stated``:
-    ``compose.present.STATED_SCOPING``'s set), and the compiler's own
+    ``compose.plan.STATED_SCOPING``'s set), and the compiler's own
     sentence answers; a
     :class:`~association.query.templates.common.TemplateResult` back is a
     refusal - a season whose figures cannot be trusted, a column this

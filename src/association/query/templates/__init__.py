@@ -13,12 +13,10 @@ The templates live in one module per subject; this package holds the registry,
 :data:`TEMPLATES` (eight intents), and re-exports what callers outside it
 use. Thirteen more intents have no entry here
 (:data:`association.query.compose.COMPILED_INTENTS`): the compiler plans
-them, and most are still read and worded by their retired templates' bodies,
-which stay in these modules and are called by the compiler's presenters
-(:mod:`association.query.compose.present`). Measured over the 277 yardstick
-questions on 2026-09-30, the compiler's own SQL read 45 of the 205 answers
-those intents gave and its own sentence worded 16; ``ROADMAP.md``, Phase 2,
-is the work of moving the rest.
+them, and each is read by its reader and worded by the sayer
+(``association.query.compose.say``) since Phase 2 moved them out of these
+modules; the presenters that called the retired bodies (``compose/present.py``)
+went with slice (iv).
 
 .. versionchanged:: 3.0.0
    A package rather than a single module.

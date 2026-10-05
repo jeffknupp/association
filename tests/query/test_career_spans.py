@@ -18,7 +18,7 @@ from routed import planned_answer as compose_answer
 from test_templates import leaderboard  # the compiler's, leaderboard's template retired (compose.COMPILED_INTENTS)
 
 from association.nba.season import current_season
-from association.query.compose.present import STATED_SCOPING
+from association.query.compose.plan import STATED_SCOPING
 from association.query.measures import resolve_metric
 from association.query.metrics import LEADERBOARD_METRICS
 from association.query.normalizer import NORMALIZER_STATS
@@ -240,7 +240,7 @@ def test_a_career_leaderboard_refuses_what_it_cannot_answer(career_ctx: Template
 def test_a_career_span_is_honored_by_the_ranking_templates(intent: str) -> None:
     """A career is declared: by the template's list, or - for a count and a
     high the compiler alone answers - by what its presenter's words state
-    (``compose.present.STATED_SCOPING``), beside the relation, which honors
+    (``compose.plan.STATED_SCOPING``), beside the relation, which honors
     a career for any named player."""
     if intent in STATED_SCOPING:
         assert unhonored_scoping(intent, Scope.from_slots({"span": "career"}), STATED_SCOPING[intent]) == []

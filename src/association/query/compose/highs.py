@@ -61,7 +61,7 @@ def read_single_game_high(con: duckdb.DuckDBPyConnection, q: Query, *, stated: f
     player's or the league's - read into a Result over the compiled
     statement. ``None`` where the point is not that, or carries a narrowing
     the high's words do not state (``stated``:
-    ``compose.present.STATED_SCOPING``'s set), and the compiler's own
+    ``compose.plan.STATED_SCOPING``'s set), and the compiler's own
     sentence answers.
 
     .. versionadded:: 5.0.0

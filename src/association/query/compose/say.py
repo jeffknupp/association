@@ -95,6 +95,8 @@ def _say_definition(facts: dict[str, Any], about: str = "") -> str:
         return f"G, W-L and margin are the team's; Played counts {facts['whose']}'s games, and his averages are over those."
     if facts.get("term") == "months_eastern":
         return "Months go by the US Eastern date of the game."
+    if facts.get("term") == "pool" and facts.get("what") == "games_with_a_result":
+        return f"Over the {facts['games']} games with a result."
     if facts.get("term") == "pool":
         return f"Over the {facts['games']} games he played; a game he missed is in neither row."
     if facts.get("term") == "streak_rule":
@@ -214,7 +216,8 @@ def _say_stat_blank(facts: dict[str, Any]) -> str:
     if "columns" in facts:
         return f" Rebounds, assists, 3-pointers and FG% are missing from {facts['games']} of those games' box scores and are averaged over the rest."
     unit = _unit(facts["stat"])
-    return f" {facts['games']} of his games in that span have no {unit} figure on record, so they are in neither row."
+    whose = "their" if facts.get("whose") == "team" else "his"
+    return f" {facts['games']} of {whose} games in that span have no {unit} figure on record, so they are in neither row."
 
 
 def _unit(stat: Any) -> str:
@@ -579,6 +582,8 @@ def say_record_when(result: Result) -> TemplateResult:
     """
     groups = result.grouped
     assert groups is not None and result.span.phrase is not None
+    if result.relation == "team":
+        return _say_team_record_when(result, groups)
     stat, threshold, teams = result.facts["stat"], result.facts["threshold"], list(result.facts["teams"])
     unit = _unit(stat)
     by_key = {row["key"]: row for row in groups.rows}
@@ -602,6 +607,25 @@ def say_record_when(result: Result) -> TemplateResult:
         "headline": title.rstrip(":"),
         "notes": [trailer],
     }
+    return TemplateResult(data=data, answer=f"{table}\n{trailer}")
+
+
+def _say_team_record_when(result: Result, groups: Grouped) -> TemplateResult:
+    """A team's record when its own figure reached a line, worded as the
+    retired template's team branch said it: the three rows under the team's
+    heading, then the pool, the floor and the games with no figure."""
+    stat, threshold = result.facts["stat"], result.facts["threshold"]
+    unit = _unit(stat)
+    by_key = {row["key"]: {k: v for k, v in row.items() if k != "key"} for row in groups.rows}
+    reached, short, every = by_key["reached"], by_key["short"], by_key["all"]
+    title = f"{result.subject} record when they had {threshold}+ {unit}{result.narrowing.phrase}, {result.span.phrase}:"
+    rows = [(f"{threshold}+ {unit}", reached), (f"under {threshold} {unit}", short), ("all their games", every)]
+    table = _table(title, ["G", "W-L", "Win%", "Margin"], [(name, [str(g["games"]), f"{g['wins']}-{g['losses']}", _win_pct(g["wins"], g["games"]), _margin(g["avg_margin"])]) for name, g in rows])
+    # Recorded in the Result's order (the template wrote the caveat first),
+    # said in the heading's: the pool, the floor, the caveat.
+    said = {each.kind: text for each, text in zip(result.notes, _said(result), strict=True)}
+    trailer = said.get("definition", "") + said.get("floor", "") + said.get("stat_blank", "")
+    data = {"team": result.subject, "stat": stat, "threshold": threshold, "span": result.span.phrase, "reached": reached, "fell_short": short, "headline": title.rstrip(":"), "notes": [trailer]}
     return TemplateResult(data=data, answer=f"{table}\n{trailer}")
 
 
@@ -2300,6 +2324,7 @@ def say_team_leaderboard(result: Result) -> TemplateResult:
     return TemplateResult(
         data={"question_shape": title, "season": season, "order": end, "teams": teams, "headline": headline.rstrip(":"), "notes": notes}, answer="\n".join([headline, *lines, *notes])
     )
+
 
 # --- a team with and without named teammates ---------------------------------
 

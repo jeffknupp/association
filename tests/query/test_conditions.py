@@ -29,13 +29,13 @@ from test_templates import player_matchup, player_splits, streak, with_without  
 from association.fetch.repairs import real_games
 from association.fetch.repairs.reconstructed_box import _FILLED_COLUMNS as FILLED_COLUMNS
 from association.nba.season import current_season
-from association.query.compose.present import STATED_SCOPING
+from association.query.compose.plan import STATED_SCOPING
 from association.query.conditions import RAW_BOX, UNGATED_ON_REBUILD, box_source
 from association.query.parse import with_point
 from association.query.reading import Reading, Scope
 from association.query.subject import Subject
 from association.query.templates.common import REBUILT_STATS, TemplateContext, TemplateResult, TemplateUnsupported, check_coverage, unhonored_scoping
-from association.query.templates.splits import SPLIT_KINDS, _record_when_group
+from association.query.templates.splits import SPLIT_KINDS
 
 
 def _compiled(intent: str) -> Callable[[TemplateContext, Reading], TemplateResult]:
@@ -340,21 +340,24 @@ def test_a_warehouse_without_the_filled_view_reads_as_it_always_did(league: Temp
 
 
 def test_record_when_group_sums_every_game_regardless_of_order(league: TemplateContext) -> None:
-    """`_record_when_group`'s own half of the fix: "every game" (``hit=None``)
-    now sums all three groups - reached, fell short, and a blank-stat game,
+    """The record-over-a-line reader's grouping (`compose.records._group`,
+    which `templates.splits._record_when_group` was until slice (iv)): "every
+    game" sums all three groups - reached, fell short, and a blank-stat game,
     which still has a real result even though it counts in neither threshold
     row. Built by hand, in two insertion orders, since the bug this guards
     was exactly a `by_hit` dict whose key depended on which order DuckDB's
     parallel GROUP BY happened to return the groups in (ISSUES.md)."""
+    from association.query.compose.records import _group
+
     del league  # unused; a pure-Python check of the grouping helper alone
-    reached_row = (True, 5, 3, 2.5, S, S, ["2"])
-    short_row = (False, 10, 4, -1.0, S, S, ["2"])
-    blank_row = (None, 2, 1, 0.5, S, S, ["2"])
+    reached_row: dict[str, Any] = {"group": "reached", "games": 5, "wins": 3, "margin": 2.5}
+    short_row: dict[str, Any] = {"group": "short", "games": 10, "wins": 4, "margin": -1.0}
+    blank_row: dict[str, Any] = {"group": "blank", "games": 2, "wins": 1, "margin": 0.5}
     for found in ([reached_row, short_row, blank_row], [blank_row, reached_row, short_row], [short_row, blank_row, reached_row]):
-        by_hit = {row[0]: row for row in found}
-        assert _record_when_group(by_hit, True) == {"games": 5, "wins": 3, "losses": 2, "avg_margin": 2.5}
-        assert _record_when_group(by_hit, False) == {"games": 10, "wins": 4, "losses": 6, "avg_margin": -1.0}
-        every = _record_when_group(by_hit, None)
+        by_hit: dict[str, dict[str, Any]] = {str(row["group"]): row for row in found}
+        assert _group(by_hit, "reached") == {"games": 5, "wins": 3, "losses": 2, "avg_margin": 2.5}
+        assert _group(by_hit, "short") == {"games": 10, "wins": 4, "losses": 6, "avg_margin": -1.0}
+        every = _group(by_hit, "reached", "short", "blank")
         assert (every["games"], every["wins"], every["losses"]) == (17, 8, 9)
         assert every["avg_margin"] == pytest.approx((5 * 2.5 + 10 * -1.0 + 2 * 0.5) / 17)
 
@@ -1026,11 +1029,13 @@ def test_a_team_turnovers_threshold_reads_totalturnovers() -> None:
     establishes `totalTurnovers` as ESPN's right team-turnover figure in
     every era, and the bare `turnovers` column as a different number (the
     player-box sum, repaired in at load time) - not a stricter reading of
-    the same fact. record_when's team branch reads the former."""
-    from association.query.templates.splits import _RECORD_WHEN_TEAM_STAT_COLUMNS, _record_when_team_stat
+    the same fact. record_when's team branch reads the former, through the
+    team compiler's own figure (`compose.team.TEAM_BOX_COLUMNS`)."""
+    from association.query.compose.records import _record_when_team_stat
+    from association.query.compose.team import TEAM_BOX_COLUMNS
 
-    assert _RECORD_WHEN_TEAM_STAT_COLUMNS["turnovers"] == "tbs.totalTurnovers"
-    assert _record_when_team_stat("turnovers", 15) == ("tbs.totalTurnovers", 15)
+    assert TEAM_BOX_COLUMNS["turnovers"] == "tbs.totalTurnovers"
+    assert _record_when_team_stat("turnovers", 15) == ("turnovers", 15)
 
 
 def test_a_named_player_beats_the_team_branch_end_to_end(league: TemplateContext) -> None:
@@ -1813,7 +1818,7 @@ def test_a_condition_the_relation_cannot_read_refuses(league: TemplateContext) -
         _brown_games(league, {"player": "Jayson Tatum", "side": "own", "predicate": "dunked"})
     with pytest.raises(TemplateUnsupported, match="reached condition"):
         _brown_games(league, {"player": "Jayson Tatum", "side": "own", "predicate": "reached", "stat": "vibes", "threshold": 3})
-    # A history's words state no condition (compose.present.STATED_SCOPING):
+    # A history's words state no condition (compose.plan.STATED_SCOPING):
     # its presenter steps aside, and the compiler's sentence says what it read.
     assert unhonored_scoping("player_history", Scope.from_slots({"player": "Jaylen Brown", "stat": "points", "conditions": [{"player": "Jayson Tatum"}]}), STATED_SCOPING["player_history"]) == [
         "conditions"

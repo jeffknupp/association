@@ -19,15 +19,14 @@ from association.query.compose.core import Query, Unsupported, _compile_pair, _c
 from association.query.compose.logs import _player_log, _player_log_mixed, _team_log, _team_log_mixed, read_player_log, read_team_log
 from association.query.compose.pairs import _pair_absence, _pair_no_meetings, _pair_result, read_player_matchup
 from association.query.compose.periods import _period_by_quarter, _period_log, _period_redirect, read_period_split
-from association.query.compose.plan import plan, plan_point
-from association.query.compose.present import STATED_SCOPING
-from association.query.compose.records import read_record_when
+from association.query.compose.plan import STATED_SCOPING, plan, plan_point
+from association.query.compose.records import _record_when_team_result, read_record_when, read_team_record_when
 from association.query.compose.runs import _streak_league_result, _streak_league_teams_result, _streak_player_result, _streak_team_result, read_streak, read_team_streak
 from association.query.compose.say import say_period_refusal
 from association.query.compose.seasons import _player_line_advanced, _player_line_career, _player_line_season, read_player_line
 from association.query.compose.splits import _player_splits, _team_splits, read_player_splits, read_team_splits
 from association.query.compose.stats import _player_stat_meetings, _player_stat_result, read_player_stat
-from association.query.compose.team import TeamQuery, _compile_team_run, compile_team_range, compile_team_run, run_team
+from association.query.compose.team import TeamQuery, _compile_team_run, compile_team_count, compile_team_line, compile_team_range, compile_team_run, run_team
 from association.query.entities import MAX_CANDIDATES, Availability, Entity, collect_name_readings, resolve_player
 from association.query.metrics import LEADERBOARD_METRICS, PER_GAME_MIN_GAMES, PER_GAME_MIN_POSTSEASON_GAMES
 from association.query.parse import with_point
@@ -3377,7 +3376,7 @@ def test_scope_guard_lets_only_the_templates_that_read_it_honor_season_type_unst
     assert unhonored_scoping("player_stat", Scope.from_slots({"season_type_unstated": True}), STATED_SCOPING["player_stat"]) == []
     # threshold_count is the compiler's (compose.COMPILED_INTENTS): the
     # relation honors the slot for a named player, and the count's own words
-    # state it (compose.present.STATED_SCOPING).
+    # state it (compose.plan.STATED_SCOPING).
     assert unhonored_scoping("threshold_count", Scope.from_slots({"season_type_unstated": True}), STATED_SCOPING["threshold_count"]) == []
     with pytest.raises(TemplateUnsupported, match="different span"):
         check_scope("leaderboard", {"season_type_unstated": True})
@@ -3398,7 +3397,7 @@ def test_every_template_honoring_a_scope_slot_actually_reads_it() -> None:
 
     for intent, honored in HONORED_SCOPING.items():
         # An intent the compiler alone answers has no entry here: what its
-        # presenter's words state is compose.present.STATED_SCOPING's.
+        # presenter's words state is compose.plan.STATED_SCOPING's.
         assert intent in module.TEMPLATES, f"{intent} declares scoping but has no template"
         source = _source_a_template_reads_slots_in(module.TEMPLATES[intent])
         for slot in honored:
@@ -5905,7 +5904,7 @@ def _c5_shots_ported() -> bool:
 def _declared_scoping(intent: str) -> frozenset[str]:
     """What ``intent`` declares it honors: its template's list, or - for an
     intent the compiler alone answers (``record_when``) - what its
-    presenter's words state (``compose.present.STATED_SCOPING``), which the
+    presenter's words state (``compose.plan.STATED_SCOPING``), which the
     same relation discipline binds."""
     return HONORED_SCOPING[intent] if intent in HONORED_SCOPING else STATED_SCOPING[intent]
 
@@ -6027,7 +6026,6 @@ def test_templates_on_the_relation_do_not_narrow_it_themselves() -> None:
         "tg.eastern_date = ?",
     )
     from association.query.templates.splits import (
-        _record_when_team_answer,
         _streak_league_team_narrowed,
     )
 
@@ -6036,7 +6034,7 @@ def test_templates_on_the_relation_do_not_narrow_it_themselves() -> None:
     # period_split's templates are retired (compose.COMPILED_INTENTS); the
     # readers the compiler answers them with still read the relation, walked
     # the same way.
-    readers["record_when"] = [read_record_when, _record_when_team_answer]
+    readers["record_when"] = [read_record_when, read_team_record_when, _record_when_team_result, compile_team_line, compile_team_count]
     readers["period_split"] = [read_period_split, _period_log, _period_redirect, _period_by_quarter]
     readers["player_splits"] = [read_player_splits, read_team_splits, _player_splits, _team_splits]
     readers["game_log"] = [read_team_log, read_player_log, _player_log, _player_log_mixed, _team_log, _team_log_mixed]

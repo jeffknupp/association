@@ -13,7 +13,7 @@ its ``rows`` read over the same narrowed games. The sayer
 (:mod:`association.query.compose.say`) words it.
 
 The unnarrowed line - a season or a career, from the season line - is
-``compose.present``'s still, until the season-line slice.
+``compose.seasons``' (``read_player_line``).
 
 .. versionadded:: 5.0.0
 """

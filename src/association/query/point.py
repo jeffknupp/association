@@ -501,7 +501,7 @@ def _leaderboard_season_line(intent: str, scope: Scope, question: str, measure: 
     """``leaderboard``'s own point (its template retired, ROADMAP plan item
     6, step (g)): a ranking of the league or a team over the SEASON LINE -
     ``run_leaderboard``'s pool, floors, traded-player dedup and NetPoints
-    tables - said by its presenter (``compose.present._present_leaderboard``),
+    tables - read by ``compose.rankings.read_leaderboard`` and said by the sayer,
     for a stat that resolves to a leaderboard metric with no line on a
     column, no "at least N" floor of the question's own and no position
     group, each of which the game-level ranking reads and the season line
@@ -704,8 +704,8 @@ def _move_player_history(intent: str, scope: Scope, career: Scope, measure: str 
 def _compare_point(scope: Scope) -> Reading:
     """``player_compare``'s own point (its template retired, ROADMAP plan
     item 6, step (g)): two or more named players' season lines side by side
-    (``source="seasons"``, grouped by player), said by its presenter
-    (``compose.present._present_player_compare``). The template's own
+    (``source="seasons"``, grouped by player), read by
+    ``compose.seasons.read_player_compare`` and said by the sayer. The template's own
     refusal is the point's: fewer than two distinct names. A narrowing -
     it honors none - is the planner's to decline
     (:func:`~association.query.compose.plan._shape_declines`).
@@ -1170,8 +1170,8 @@ def team_log_point(scope: Scope, subject: Subject) -> Reading | None:
     """A ``game_log`` question about a team and no player - "show me the
     Knicks last 5 games" - as the team's own games listed: a ``rows`` point
     on the team relation, in date order, the window the question asked
-    (:func:`~association.query.compose.present.present_team` says it in the
-    retired template's words). The team is the route's own slot, or the one
+    (``compose.logs.read_team_log`` reads it and ``compose.say`` says it in
+    the retired template's words). The team is the route's own slot, or the one
     the subject reading found where the router dropped it. ``None`` where
     the question is not that: a named player (his own log, the player
     relation's), or a position group ("centers game log vs kings" - the
@@ -1204,8 +1204,8 @@ def team_log_point(scope: Scope, subject: Subject) -> Reading | None:
 def team_splits_point(scope: Scope, subject: Subject) -> Reading | None:
     """A ``player_splits`` question about a team and no player - "76ers wins
     vs losses" - as the team's own splits: a ``grouped`` point on the team
-    relation (:func:`~association.query.compose.present.present_team` says
-    it in the retired template's words, ``templates.splits.team_splits``).
+    relation (``compose.splits.read_team_splits`` reads it and ``compose.say``
+    says it in the retired template's words).
     The team is read as :func:`team_log_point` reads it.
 
     .. versionadded:: 5.0.0
@@ -1391,7 +1391,7 @@ def _read_point(intent: str, scope: Scope, question: str, subject: Subject) -> R
         # A team's record above and below its OWN line - "what was the celtics
         # record when they scored 120 points" (ISSUES.md #144) - is neither the
         # season sum nor the window sum the team subject otherwise reads: it is
-        # record_when's team reader's (compose.present.present_team).
+        # record_when's team reader's (compose.records.read_team_record_when).
         return Reading(scope=scope, shape="scalar", measures=[scope.stat or "points"], aggregate="record", relation="team")
     if intent == "game_log":
         # A team's log, before the team's sums: "knicks last 5 games" lists

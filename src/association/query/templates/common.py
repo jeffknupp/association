@@ -226,7 +226,7 @@ RELATION_SCOPING = frozenset(
 # has to be about the template's answer, not its code: a slot that merely was
 # not wired is not excluded, it is wired.
 RELATION_SCOPING_EXCLUDED: dict[str, dict[str, str]] = {
-    # The two retired templates' WORDS (compose.present.STATED_SCOPING) never
+    # The two retired templates' WORDS (compose.plan.STATED_SCOPING) never
     # said a quarter: their presenters step aside for one, and the compiler's
     # own sentence, which names the period through Narrowed.filters, answers.
     "game_log": {
@@ -441,7 +441,7 @@ _team_relation_scoping = team_relation_scoping
 HONORED_SCOPING: dict[str, frozenset[str]] = {
     # The templates on the player-games relation: see RELATION_SCOPING.
     # game_log is the compiler's (compose.COMPILED_INTENTS): what its retired
-    # words state is compose.present.STATED_SCOPING's.
+    # words state is compose.plan.STATED_SCOPING's.
     # player_stat is the compiler's too (step (g)): its retired words state
     # the relation's set and `season_type_unstated`, read from box scores
     # (`_player_stat_reads_box_scores`, `_player_relation_season_type`).
@@ -493,7 +493,7 @@ HONORED_SCOPING: dict[str, frozenset[str]] = {
     # are filters on the same box-score rows `team` already narrows - a home
     # or road split for a player is answerable the same way a team's already
     # is (see team_record below).
-    # player_splits is the compiler's too (step (g)): compose.present.STATED_SCOPING.
+    # player_splits is the compiler's too (step (g)): compose.plan.STATED_SCOPING.
     # `opponent` narrows BOTH rows of the split to one opponent's games, and
     # the title says so - "Embiid career record vs boston" is his record in the
     # games his team played Boston, not overall (#163).
@@ -503,7 +503,7 @@ HONORED_SCOPING: dict[str, frozenset[str]] = {
     # (RELATION_SCOPING_EXCLUDED); a teammate's absence, a venue and a date
     # narrow the first player's games as they do on every relation template.
     # player_matchup and streak are the compiler's too (step (g), the `pair`
-    # and `run` shapes): compose.present.STATED_SCOPING.
+    # and `run` shapes): compose.plan.STATED_SCOPING.
     # The home/road split, the record against one team, and every season at
     # once - "Knicks home record" was answered with their overall 53-29.
     # `situation` is now the full calendar narrowing TEAM_RELATION_SCOPING
@@ -874,7 +874,7 @@ def unhonored_scoping(intent: str, scope: Scope, honored: frozenset[str]) -> lis
     ``intent`` - :func:`check_scope`'s rule, on its own so the compiler's
     presenters apply it too: a template refuses such a slot, and a presenter
     steps aside for one its words do not state
-    (:data:`~association.query.compose.present.STATED_SCOPING`), leaving the
+    (:data:`~association.query.compose.plan.STATED_SCOPING`), leaving the
     compiler's own sentence to answer. A slot is set when its field is truthy:
     a field at its default (None, an empty tuple, False) is the slot absent.
 

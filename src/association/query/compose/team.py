@@ -71,7 +71,7 @@ from association.query.team_games import named as team_named
 from association.query.team_games import rows_sql as team_rows_sql
 from association.query.templates.common import ResolvedSpan, TemplateResult, TemplateUnsupported, resolved_team, scoped_team, span_of, whole_span
 from association.query.templates.common import team_games as narrow_team_games
-from association.query.templates.splits import _TEAM_STREAK_SELECT, _streak_league_team_narrowed
+from association.query.templates.splits import _streak_league_team_narrowed
 
 from .core import Refused, Unsupported, rows_of
 
@@ -483,6 +483,14 @@ def _compile_team_games_total(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> T
     )
 
 
+#: A team's games for a streak, over the relation - `team_id`, `season`,
+#: `won` and an event ordering (`day`, a stand-in `stamp`, `event_id`) are all
+#: `_longest_runs_sql` reads. The relation guarantees at most one row per team per
+#: Eastern date (`team_games.py`'s own docstring), so `day` doubling as
+#: `stamp` never actually breaks a tie - there is none to break.
+_TEAM_STREAK_SELECT: tuple[str, ...] = ("tg.team_id", "tg.season", "tg.event_id", "tg.eastern_date AS day", "tg.eastern_date AS stamp", "tg.won")
+
+
 def compile_team_run(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> TeamCompiled:
     """The ``run`` shape as SQL: a named team's longest run of wins or
     losses (``scope.kind``) within a season, over the team-games relation
@@ -612,6 +620,87 @@ def _compile_team_grouped(q: TeamQuery, narrowed: TeamNarrowed, team: Entity | N
     ]
     sql, params = team_grouped_sql(narrowed, list(_TEAM_GROUPED_COLUMNS), TEAM_GROUPS[q.group], selects, join=_TEAM_GROUPED_JOIN)
     return TeamCompiled(sql, params, team, span, narrowed)
+
+
+#: A team's figure for a stat, over ``team_box_stats`` aliased ``tbs`` -
+#: a team's record over its OWN line reads it (``compose.records``). Not
+#: every player stat has a team counterpart:
+#: - ``points`` reads the game's own score off the relation rather than a
+#:   box row, so it needs none at all and is immune to the empty 2013-2018
+#:   Chicago/New Orleans team boxes (AGENTS.md, "Whole team-seasons of box
+#:   scores are empty").
+#: - ``rebounds`` reads offensiveRebounds + defensiveRebounds, not
+#:   totalRebounds - the same substitution the splits' line makes and for the
+#:   same reason (DATA.md, "The team `totalRebounds` column stops including
+#:   team rebounds in 2022").
+#: - ``turnovers`` reads ``totalTurnovers``, not the bare ``turnovers``
+#:   column: DATA.md ("The team box `turnovers` column is zero before 2013")
+#:   establishes that ``totalTurnovers`` is ESPN's right figure in every era,
+#:   and the warehouse's ``turnovers`` is a DIFFERENT number, the player-box
+#:   sum repaired in at load time. 2018 is short here: 2,134 of that regular
+#:   season's rows and 146 of its postseason carry a real box score with
+#:   ``totalTurnovers`` NULL (the 2026-09-20 warehouse), counted back by the
+#:   blank-figure count (:func:`compile_team_count`).
+#: - ``minutes`` has none: a team has no minutes total.
+TEAM_BOX_COLUMNS: dict[str, str] = {
+    "points": "points",
+    "rebounds": "tbs.offensiveRebounds + tbs.defensiveRebounds",
+    "assists": "tbs.assists",
+    "steals": "tbs.steals",
+    "blocks": "tbs.blocks",
+    "turnovers": "tbs.totalTurnovers",
+    "threePointFieldGoalsMade": "tbs.threePointFieldGoalsMade",
+    "fieldGoalsMade": "tbs.fieldGoalsMade",
+    "freeThrowsMade": "tbs.freeThrowsMade",
+    "fouls": "tbs.fouls",
+}
+"""A team stat -> its per-game figure, over ``team_box_stats`` (``tbs``) or,
+for ``points``, the relation's own score.
+
+.. versionadded:: 5.0.0
+"""
+
+#: The join a team's box-score figure needs - none of
+#: :data:`TEAM_BOX_COLUMNS` but ``points`` is on the relation itself.
+_TEAM_BOX_JOIN = " JOIN team_box_stats tbs ON tbs.event_id = tg.event_id AND tbs.season = tg.season AND tbs.team_id = tg.team_id"
+
+
+def compile_team_count(narrowed: TeamNarrowed, team: Entity | None, span: Any, *, blank: str | None = None) -> TeamCompiled:
+    """How many of the narrowed games there are (``games``) - or, with
+    ``blank`` (a key of :data:`TEAM_BOX_COLUMNS` but ``points``), how many
+    have a team box row with no figure for that stat: the games a line on
+    it cannot see.
+
+    .. versionadded:: 5.0.0
+    """
+    join = "" if blank is None else f"{_TEAM_BOX_JOIN} AND ({TEAM_BOX_COLUMNS[blank]}) IS NULL"
+    sql, params = team_aggregate_sql(narrowed, ["COUNT(*) AS games"], join=join)
+    return TeamCompiled(sql, params, team, span, narrowed)
+
+
+def compile_team_line(narrowed: TeamNarrowed, team: Entity | None, span: Any, stat: str, threshold: int) -> TeamCompiled:
+    """The team's own games divided by whether its figure for ``stat``
+    reached ``threshold`` (``reached``, true or false) - a game with no
+    figure is in neither group, excluded in the join - each group's record,
+    average margin and first and last season (a postseason's by the
+    calendar year it was played in). ``record_when``'s team half, a team's
+    record over its OWN line (ISSUES.md #144).
+
+    .. versionadded:: 5.0.0
+    """
+    column = TEAM_BOX_COLUMNS[stat]
+    if stat == "points":
+        select, join = ["tg.event_id", "tg.season", "tg.eastern_date AS day", "tg.team_score AS stat_value", "tg.team_score", "tg.opponent_score", "tg.won"], ""
+    else:
+        select = ["tg.event_id", "tg.season", "tg.eastern_date AS day", f"{column} AS stat_value", "tg.team_score", "tg.opponent_score", "tg.won"]
+        join = f"{_TEAM_BOX_JOIN} AND ({column}) IS NOT NULL"
+    base, params = team_named(*team_aggregate_sql(narrowed, select, join=join))
+    season = "year(t.day)" if span.season_type == 3 else "t.season"
+    sql = (
+        f"WITH t AS ({base}) SELECT t.stat_value >= $threshold AS reached, COUNT(*) AS games, COUNT(*) FILTER (WHERE t.won) AS wins, "
+        f"AVG(t.team_score - t.opponent_score) AS margin, MIN({season}) AS first_season, MAX({season}) AS last_season FROM t GROUP BY 1"
+    )
+    return TeamCompiled(sql, {**params, "threshold": threshold}, team, span, narrowed)
 
 
 def compile_team_over(q: TeamQuery, team: Entity | None, span: ResolvedSpan, narrowed: TeamNarrowed, *, limit: int | None = None, ascending: bool = False) -> TeamCompiled:

@@ -321,8 +321,8 @@ class Query:
     #: ``"games"`` - the player-games relation, one row per player per game -
     #: or ``"seasons"``, the season line (``player_season_stats_deduped``, one
     #: row per player per season) an unnarrowed player line or a per-season
-    #: history reads. Only :mod:`~association.query.compose.present` says a
-    #: season-line point, through the templates' own readers; :func:`compile_query`
+    #: history reads, which :mod:`association.query.season_line` builds and the
+    #: season line's readers (``compose.seasons``) execute; :func:`compile_query`
     #: compiles the game-level relation alone.
     source: str = "games"
     #: ``"player"`` (the named one) or ``"everyone"`` - the league-wide read of
@@ -1191,8 +1191,7 @@ def run(con: duckdb.DuckDBPyConnection, q: Query) -> dict[str, Any]:
     .. versionchanged:: 5.0.0
        Carries ``entity`` (the resolved player, or ``None`` for the league)
        and ``rebuilt_by_row`` (each row's own rebuilt-game count), which
-       :mod:`association.query.compose.present` phrases a template's own
-       answer from.
+       a reader (``compose.counts``) carries into its notes.
     """
     try:
         c = compile_query(con, q)
@@ -1201,7 +1200,7 @@ def run(con: duckdb.DuckDBPyConnection, q: Query) -> dict[str, Any]:
     rows = rows_of(con, c)
     # Each grouped row's own rebuilt count, read before _box_notes pops the
     # scratch column - a by-player count says how many of the LEADER's games
-    # were rebuilt (compose.present, threshold_count's own note).
+    # were rebuilt (threshold_count's own note, compose.counts).
     rebuilt_by_row = [int(r.get("rebuilt_shown") or 0) for r in rows]
     notes = _box_notes(con, q, c, rows)
     return {

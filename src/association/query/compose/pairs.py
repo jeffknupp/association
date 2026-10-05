@@ -82,7 +82,7 @@ def read_player_matchup(con: duckdb.DuckDBPyConnection, q: Query, *, stated: fro
     teammates is not a meeting, and when every shared game was one, the
     Result says how many. ``None`` where the point is not a pair, or carries
     a narrowing the retired template's words did not state (``stated``:
-    ``compose.present.STATED_SCOPING``'s set), and the compiler's sentence
+    ``compose.plan.STATED_SCOPING``'s set), and the compiler's sentence
     answers; a :class:`~association.query.templates.common.TemplateResult`
     back is the relation's refusal (a player with no games in the span).
 

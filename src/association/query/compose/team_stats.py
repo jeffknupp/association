@@ -64,7 +64,7 @@ class TeamSeasonQuery:
 def team_season_declines(intent: str, scope: Scope, stated: frozenset[str]) -> str | None:
     """Why a team-season intent's reader cannot answer ``scope`` as asked - a
     narrowing its words do not state (``stated``,
-    ``compose.present.STATED_SCOPING``), in the retired template's sentence
+    ``compose.plan.STATED_SCOPING``), in the retired template's sentence
     (``check_scope``'s) - or None. The first thing each reader checks,
     before the coverage floor, as ``check_scope`` ran before the template.
 

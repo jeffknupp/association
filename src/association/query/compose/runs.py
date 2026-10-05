@@ -46,7 +46,7 @@ def read_streak(con: duckdb.DuckDBPyConnection, q: Query, *, stated: frozenset[s
     span, the rule ("only games he played count") and the games with no
     box score are read off the same relation the runs were. ``None`` where
     the point is not a run, or carries a narrowing the retired template's
-    words did not state (``stated``: ``compose.present.STATED_SCOPING``'s
+    words did not state (``stated``: ``compose.plan.STATED_SCOPING``'s
     set), and the compiler's sentence answers; a
     :class:`~association.query.templates.common.TemplateResult` back is the
     relation's refusal (no games in scope, an ambiguous team).

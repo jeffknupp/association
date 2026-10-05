@@ -14,7 +14,7 @@ import inspect
 import re
 from typing import Any
 
-from association.query.compose.present import STATED_SCOPING
+from association.query.compose.plan import STATED_SCOPING
 from association.query.templates import TEMPLATES
 from association.query.templates.common import HONORED_SCOPING, TEAM_RELATION_SCOPING, TEAM_RELATION_SCOPING_EXCLUDED, _team_relation_scoping
 

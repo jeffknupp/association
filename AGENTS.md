@@ -82,9 +82,10 @@ this tree:
   sayers, 6 once `threshold_count` and `single_game_high` did, 4 once
   `streak` and `player_matchup` did, 3 once `leaderboard` did, and none
   once the season line's `player_stat`, `player_history` and
-  `player_compare` did, 2026-10-05: `PRESENTERS` and `present()` are gone)
-  and the team-only one (`with_without`'s, retired in step 4: the freeze
-  holds that none comes back), the adapters
+  `player_compare` did, 2026-10-05: `PRESENTERS` and `present()` went)
+  and the team's (with/without, a team's streak and a team's record over
+  its own line, retired in step 4 with `compose/present.py` itself: the
+  freeze now holds only that the module does not come back), the adapters
   (10; 5 since 2026-10-04, 3 once `threshold_count`'s and
   `single_game_high`'s default points went to the reader, 1 -
   `with_without`'s - once the streak's and the matchup's did, and none
@@ -96,7 +97,8 @@ this tree:
   page's 22 renderers: each
   retires with its slice, none is added. A P1 wrong answer is
   still fixed, in the code that exists. The sections below still describe
-  how templates, intents and presenters work, because they are what runs;
+  how templates and intents work (and what the presenters were), because
+  the templates are what runs;
   they are not an invitation to add one.
 - **What the roadmap is deleting may not grow.** `scripts/check_ratchets.py`
   lists today's violations of each direction by name
@@ -800,7 +802,7 @@ model's. Two things follow, and both matter when you add a shape:
   nothing else (the import contract "The compiler's sentence reads no
   warehouse" holds it, with `compose.sentence`). `compose.answer` reads a
   rows-shaped `game_log` (and the `player_stat` window the retired template
-  handed to the log) through them before any presenter runs, and so, since,
+  handed to the log) through them, and so, since,
   a player's record over a line, his splits, his line over the games a
   narrowing sent the read to and his quarter or half (`compose/records.py`,
   `splits.py`, `stats.py`, `periods.py`; `stats.py`'s a `Scalar` body read
@@ -827,7 +829,10 @@ model's. Two things follow, and both matter when you add a shape:
   (`compose/presence.py`, since step 4: the team compiler's `presence`
   statement, `compose.team.compile_team_presence` over the relation cell
   `conditions.presence_games_sql`, into a `Grouped` by `presence`, said by
-  `say.say_with_without`), the league's leaders by a
+  `say.say_with_without`), and a team's record over its own line
+  (`compose/records.py`'s `read_team_record_when`, since step 4: the team
+  compiler's `line` and `count` statements, `compose.team.compile_team_line`
+  and `compile_team_count`, said by `say_record_when`), the league's leaders by a
   season-line metric (`compose/rankings.py`, since 2026-10-05: a `Grouped`
   ranking by `player` whose `ranked_by` is the metric - a count of games
   over a line ranks by `"games"`, which is how the sayer tells the two
@@ -850,7 +855,7 @@ model's. Two things follow, and both matter when you add a shape:
   the history a `Grouped` by `season` with a career's `summary` part, the
   comparison a `Grouped` by `subject`, each on a `Span` whose `source` is
   `"seasons"`, which is how `say()` tells them from the games relation's
-  shapes). No player shape has a presenter now. Three rules the slice set, which every later slice follows:
+  shapes). No shape has a presenter now (the team's went with step 4). Three rules the slice set, which every later slice follows:
   - **A note is written as data and said once.** The reader builds
     `Note("window_short", {found, asked, ...})`; the sayer phrases it
     (`say.note_phrase`, ONE phrase per kind) and records it through
@@ -951,22 +956,17 @@ model's. Two things follow, and both matter when you add a shape:
   `record_when`, `player_history`, `game_log`, `player_stat`,
   `player_splits`, `leaderboard`, `period_split`, `player_compare`,
   `streak`, `player_matchup`, `with_without`). **"The compiler answers
-  them" means the compiler plans them; most are still read and worded by
-  the retired template's body.** Measured over the 277 yardstick questions
-  (2026-09-30, both roadmap reviews): of 205 answers by these intents the
-  compiler's own SQL read 45 and its own sentence worded 16; 55 compiled a
-  query and discarded it for the template body's read; 94 never compiled
-  one (the season line, which the compiler has no model of). So when you
-  trace one of these, do not assume `compose.core` produced the numbers:
-  find the presenter (`compose/present.py`) and follow it into
-  `templates/`. `ROADMAP.md`, Phase 2, removes that detour slice by slice.
-  The last presenter's route, as it stands: a team's record above and
-  below its own line (`compose.present.present_team`, over
-  `templates.splits._record_when_team_answer`); and
-  where it has no reading
-  the question is refused with the compiler's reason
-  (`agent._run_compiled`). A presenter says what its retired template's
-  words state (`compose.present.STATED_SCOPING`) and steps aside for a
+  them" means each is a reader and the sayer over a compiled statement**
+  (the paragraphs above). Until Phase 2 most were still read and worded by
+  the retired template's body through a presenter (`compose/present.py`):
+  measured over the 277 yardstick questions (2026-09-30), of 205 answers
+  by these intents the compiler's own SQL read 45 and its own sentence
+  worded 16. The presenters went slice by slice, the last of them (a
+  team's streak, with/without, a team's record over its own line) with
+  step 4, and `compose/present.py` with them. Where the compiler has no
+  reading the question is refused with the compiler's reason
+  (`agent._run_compiled`). A reader says what its retired template's
+  words state (`compose.plan.STATED_SCOPING`) and steps aside for a
   narrowing beyond them, so the compiler's own sentence, which states every
   narrowing the relation applied, answers; a narrowing the relation cannot
   honor at all is refused by the planner, which the answering loop runs

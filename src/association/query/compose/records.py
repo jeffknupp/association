@@ -6,8 +6,10 @@ template's read (``templates.splits._record_when_query``) moved here, then
 replaced by the compiled statement - the point as a grouped read by the
 line, the compiler's ``line`` group - its remarks as kinds and facts; the
 sayer (:mod:`association.query.compose.say`) words it. The team
-branch - a team's record above and below its OWN line - is still
-``compose.present.present_team``'s until the team slice.
+branch - a team's record above and below its OWN line - is
+:func:`read_team_record_when`, over the team compiler's ``line`` statement
+(:func:`~association.query.compose.team.compile_team_line`), since the
+team slice (the presenter ``compose.present.present_team`` until then).
 
 .. versionadded:: 5.0.0
 """
@@ -23,12 +25,26 @@ from association.nba.franchises import season_name
 from association.query.conditions import _PLAYER_GAME_TABLES, _names, _unseen, box_source
 from association.query.notes import Note
 from association.query.player_games import games_subquery
-from association.query.reading import Scope
+from association.query.reading import Scope, Unsupported
 from association.query.result import Grouped, Narrowing, Part, Result, Span
-from association.query.templates.common import THRESHOLD_STAT_COLUMNS, TemplateResult, condition_scope, no_games, optional_team, unhonored_scoping
-from association.query.templates.splits import condition_span_label
+from association.query.team_games import TeamNarrowed
+from association.query.templates.common import (
+    STAT_LABELS,
+    THRESHOLD_STAT_COLUMNS,
+    TemplateResult,
+    check_coverage,
+    condition_scope,
+    no_games,
+    optional_team,
+    span_of,
+    team_games,
+    unhonored_scoping,
+    whole_span,
+)
+from association.query.templates.splits import condition_needs_player_refusal, condition_span_label, condition_team_no_games, team_span_label, team_where_in
 
 from .core import Compiled, Query, compile_query, rows_of
+from .team import TEAM_BOX_COLUMNS, TeamQuery, compile_team_count, compile_team_line
 
 
 def _group(by_hit: dict[str, dict[str, Any]], *keys: str) -> dict[str, Any]:
@@ -70,7 +86,7 @@ def read_record_when(con: duckdb.DuckDBPyConnection, q: Query, *, stated: frozen
     - the predicate as the key the games are divided by, the margin as the
     measure), one statement over the relation's narrowed games. ``None``
     where the point is not that, or carries a narrowing the template's
-    words did not state (``stated``: ``compose.present.STATED_SCOPING``'s
+    words did not state (``stated``: ``compose.plan.STATED_SCOPING``'s
     set), and the compiler's sentence answers; a
     :class:`~association.query.templates.common.TemplateResult` back is the
     relation's refusal (no games in scope, an ambiguous team).
@@ -141,4 +157,111 @@ def _record_result(con: duckdb.DuckDBPyConnection, scope: Scope, covered: Any, c
         parts=(Part(body=groups),),
         notes=tuple(notes),
         facts={"stat": stat, "threshold": threshold, "teams": sorted(names.values())},
+    )
+
+
+def read_team_record_when(con: duckdb.DuckDBPyConnection, q: TeamQuery, *, stated: frozenset[str]) -> Result | TemplateResult | None:
+    """``record_when``'s team half: a team's record when its OWN figure for
+    a stat reached a line, fell short of it, and over every game with a
+    result, reached when the question names no player at all ("what was the
+    celtics record when they scored 120 points" - ISSUES.md #144). The
+    games narrowed through the shared steps, over every game in the span;
+    the record the team compiler's ``line`` statement
+    (:func:`~association.query.compose.team.compile_team_line`). ``None``
+    where the point carries no line or a narrowing the words do not state
+    (``stated``); a
+    :class:`~association.query.templates.common.TemplateResult` back is the
+    relation's refusal (the coverage floor, no such team, no games in the
+    span or none matching its narrowing, none with a figure for the stat).
+    A player-only cell, an unknown stat or one a team has no figure for is
+    declined by name (``Unsupported``), never answered as another
+    question.
+
+    .. versionadded:: 5.0.0
+    """
+    scope = q.scope
+    if scope.threshold is None or unhonored_scoping("record_when", scope, stated):
+        return None
+    refused = check_coverage("record_when", scope)
+    if refused is not None:
+        return TemplateResult(data={"message": refused, "season": scope.season}, answer=refused)
+    condition_needs_player_refusal("record_when", scope)
+    team = optional_team(con, scope.team, season=scope.season)
+    if isinstance(team, TemplateResult):
+        return team
+    if team is None:
+        raise Unsupported("record_when needs a player or a team")
+    stat, threshold = _record_when_team_stat(scope.stat, scope.threshold)
+    span = span_of(scope.span, scope.season, scope.season_type or 2, "games", since=scope.since, until=scope.until)
+    narrowed = team_games(con, team, span, scope, opponent=scope.opponent)
+    if isinstance(narrowed, TemplateResult):
+        return narrowed
+    # A split, a record, a run: read over every game in the span (common.whole_span).
+    whole_span(narrowed)
+    # The narrowed pool BEFORE any stat availability is checked, so a team
+    # with real games in this span/narrowing but none carrying the stat is
+    # told apart from a team with no games matching the narrowing at all.
+    (matched,) = rows_of(con, compile_team_count(narrowed, team, span))
+    if not matched["games"]:
+        return condition_team_no_games(con, team, span, narrowed)
+    found = rows_of(con, compile_team_line(narrowed, team, span, stat, threshold))
+    if not found:
+        return _record_when_team_no_stat(team, span, narrowed, stat, int(matched["games"]))
+    return _record_when_team_result(con, span, team, narrowed, stat, threshold, found)
+
+
+def _record_when_team_stat(stat: str | None, threshold: int | None) -> tuple[str, int]:
+    """The stat a team's line is read on, and the threshold narrowed to
+    ``int`` - or the decline, which names the real cause rather than the
+    player branch's "needs a player" (AGENTS.md, "the same bug has a mirror
+    image"): an unknown stat or a bad threshold reads as the player branch's
+    own, and a stat that is only ever a PLAYER's (a team has no minutes
+    total) says so by name."""
+    if threshold is None or threshold < 1 or stat is None or stat not in THRESHOLD_STAT_COLUMNS:
+        raise Unsupported(f"record_when needs a known stat and a positive threshold, got {stat!r}/{threshold!r}")
+    if stat not in TEAM_BOX_COLUMNS:
+        # The only whitelisted player stat with no team figure.
+        raise Unsupported(f"record_when has no team figure for {STAT_LABELS.get(stat, stat)}s - a team has no minutes total")
+    return stat, threshold
+
+
+def _record_when_team_no_stat(team: Any, span: Any, narrowed: TeamNarrowed, stat: str, games: int) -> TemplateResult:
+    """The team played ``games`` games under this narrowing, but not one of
+    them carries a figure for the stat - the empty 2013-2018 team boxes,
+    reached through a line rather than a plain average. Distinct from
+    ``condition_team_no_games``, which says there are no narrowed games at
+    all."""
+    unit = f"{STAT_LABELS.get(stat, stat)}s"
+    which = "it" if games == 1 else "any of them"
+    message = f"The warehouse has {games} game{'' if games == 1 else 's'} with a result for the {team.name}{narrowed.filters()} {team_where_in(span)}, but no {unit} figure on record for {which}."
+    return TemplateResult(data={"team": team.name, "span": team_span_label(span), "games": 0}, answer=message)
+
+
+def _record_when_team_result(con: duckdb.DuckDBPyConnection, span: Any, team: Any, narrowed: TeamNarrowed, stat: str, threshold: int, found: list[dict[str, Any]]) -> Result:
+    """The three rows - reached, fell short, every game with a figure - and
+    the remarks in the order the template wrote them: the games with no
+    figure for the stat (never for ``points``, which reads the score), the
+    pool, the box-score floor."""
+    by_hit = {("reached" if row["reached"] else "short"): row for row in found}
+    first, last = min(r["first_season"] for r in found), max(r["last_season"] for r in found)
+    groups = Grouped(
+        by="threshold",
+        rows=({"key": "reached", **_group(by_hit, "reached")}, {"key": "short", **_group(by_hit, "short")}, {"key": "all", **_group(by_hit, "reached", "short")}),
+    )
+    notes: list[Note] = []
+    if stat != "points":
+        (blank,) = rows_of(con, compile_team_count(narrowed, team, span, blank=stat))
+        if blank["games"]:
+            notes.append(Note("stat_blank", {"games": int(blank["games"]), "stat": stat, "whose": "team"}))
+    notes.append(Note("definition", {"term": "pool", "games": groups.rows[2]["games"], "what": "games_with_a_result"}))
+    if span.season is None and span.since is None and first == span.first:
+        notes.append(Note("floor", {"table": "box_scores", "first": span.first, "what": span.kind}))
+    return Result(
+        subject=team.name,
+        relation="team",
+        span=Span(season=span.season, season_type=span.season_type, career=span.season is None, first=first, last=last, phrase=team_span_label(span, first, last)),
+        narrowing=Narrowing(phrase=narrowed.filters()),
+        parts=(Part(body=groups),),
+        notes=tuple(notes),
+        facts={"stat": stat, "threshold": threshold},
     )

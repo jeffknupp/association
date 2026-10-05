@@ -151,7 +151,7 @@ def read_leaderboard(con: duckdb.DuckDBPyConnection, q: Query, *, stated: frozen
     a Result through the season line's door
     (:func:`~association.query.season_line.rank_season_line`). ``None`` where
     the point is not that, carries a narrowing the ranking's words do not
-    state (``stated``: ``compose.present.STATED_SCOPING``'s set), names a stat
+    state (``stated``: ``compose.plan.STATED_SCOPING``'s set), names a stat
     no season-line metric reads, or ranks a position group: the game-level
     ranking answers those, as it did behind the retired template's refusal
     (planned so: :func:`leaderboard_reads`). A ``TemplateResult`` back is the ranking's own

@@ -102,7 +102,7 @@ def read_threshold_count(con: duckdb.DuckDBPyConnection, q: Query, *, stated: fr
     line the question's words added, another skeleton, a stat no line is
     kept on, a below/above phrase naming no column) or carries a narrowing
     the count's words do not state (``stated``:
-    ``compose.present.STATED_SCOPING``'s set), and the compiler's own
+    ``compose.plan.STATED_SCOPING``'s set), and the compiler's own
     sentence answers.
 
     .. versionadded:: 5.0.0

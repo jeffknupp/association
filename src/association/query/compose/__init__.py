@@ -6,15 +6,15 @@ The pipeline is parser -> template or compiler -> refusal. :func:`answer`
 is handed the point the parser read from the question's words
 (:attr:`Reading.point <association.query.reading.Reading.point>`), plans it
 (:mod:`~association.query.compose.plan`) and answers it one of three ways:
-an intent's own default point through its presenter
-(:mod:`~association.query.compose.present`, which mostly calls the retired
-template's body - its SQL and its words), a team's point through
+an intent's own point through its reader and the sayer (``compose.logs``,
+``compose.runs``, ``compose.presence``, ... and
+:mod:`~association.query.compose.say`), a team's sum through
 :mod:`~association.query.compose.team`, and any other point through the
 compiler's own SQL (:mod:`~association.query.compose.core`) and sentence
 (:mod:`~association.query.compose.sentence`). Which of the three answered
-is not visible in the answer; ``ROADMAP.md`` ("Where it stands") has the
-measured split, and its Phase 2 is the work of making the last one the
-only one.
+is not visible in the answer. The presenters that called the retired
+templates' bodies are gone (``compose/present.py``, deleted with Phase 2's
+slice (iv)).
 
 Every correctness rule a template on the relation carries - the scoping the
 relation narrows by, the rebuilt-line guard, binding parity, the
@@ -49,11 +49,10 @@ from .highs import read_single_game_high
 from .logs import read_player_log, read_team_log
 from .pairs import read_player_matchup
 from .periods import read_period_split
-from .plan import Planned
+from .plan import STATED_SCOPING, Planned
 from .presence import read_with_without
-from .present import STATED_SCOPING, present_team
 from .rankings import read_leaderboard
-from .records import read_record_when
+from .records import read_record_when, read_team_record_when
 from .runs import read_streak, read_team_streak
 from .say import say
 from .seasons import read_player_compare, read_player_history, read_player_line
@@ -146,9 +145,9 @@ reproduced exactly (``~/association-research/intent-shrink/parity.py``:
 ``intent-shrink/g/``, every unit-test call and recorded question answered
 both ways; ``streak`` is the ``run`` shape, ``player_matchup`` the ``pair``
 shape and ``with_without`` the team relation's ``presence`` group, skeletons
-the compiler gained for them). Each is said in its retired template's own words,
-through that template's phrasing helpers
-(:mod:`~association.query.compose.present`); where the compiler has no
+the compiler gained for them). Each is read by its reader and said in its
+retired template's own words by the sayer
+(:mod:`~association.query.compose.say`); where the compiler has no
 reading of a point, the question is refused with the reason
 (``agent._run_compiled``).
 
@@ -181,11 +180,10 @@ def answer(
     carrying the template-shaped refusal, not a reason to decline.
     ``Unsupported`` (the compiler cannot say this question) becomes ``None``
     instead, since declining is exactly what it means. The team
-    subject is answered through :func:`~association.query.compose.team.run_team`
-    (a team's record above and below its own line by
-    :func:`~association.query.compose.present.present_team`), an intent's own
-    default point in its template's words
-    (:func:`~association.query.compose.present.present`), and the rest by the
+    subject is answered by its readers (a team's log, splits, streak,
+    with/without split and record over its own line) or
+    :func:`~association.query.compose.team.run_team`, an intent's own
+    point by its reader and the sayer, and the rest by the
     compiler's own sentence, with the box-score caveats
     :func:`~association.query.compose.core.run` reads appended (#197); the
     answering loop appends :func:`~association.query.templates.common.coverage_caveat`
@@ -258,7 +256,7 @@ def _read_ported(con: duckdb.DuckDBPyConnection, intent: str, query: Query) -> T
     players' meetings (``player_matchup``), and the league's leaders by a
     season-line metric (``leaderboard``). ``None``
     where the
-    point is not one of them, or its words do not say it, and a presenter or
+    point is not one of them, or its words do not say it, and another reader or
     the compiler's own sentence answers."""
     if query.skeleton == "rows" and intent in ("game_log", "player_stat"):
         return _read_log(lambda: read_player_log(con, query, stated=STATED_SCOPING[intent]))
@@ -315,6 +313,9 @@ def _read_ported_team(con: duckdb.DuckDBPyConnection, intent: str, query: TeamQu
         return _read_log(lambda: read_team_streak(con, query, stated=STATED_SCOPING["streak"]))
     if intent == "with_without" and query.shape == "grouped" and query.group == "presence":
         return _read_log(lambda: read_with_without(con, query, stated=STATED_SCOPING["with_without"]))
+    if intent == "record_when":
+        # A team's record above and below its OWN line (ISSUES.md #144).
+        return _read_log(lambda: read_team_record_when(con, query, stated=STATED_SCOPING["record_when"]))
     return None
 
 
@@ -351,7 +352,7 @@ def _answer_point(
 ) -> TemplateResult | None:
     """``point``'s planned ``query``, run: a team-season intent's reader
     first (and another relation's point only where it declines), the team
-    subject's reader, the intent's own presenter, or the compiler's own
+    subject's reader, the intent's own reader, or the compiler's own
     sentence - :func:`answer`'s tail."""
     # The team-season reader's decline is the one said where every reader
     # declines: the retired template's reason was, since it ran first.
@@ -372,11 +373,6 @@ def _answer_point(
             ported_team = _read_ported_team(ctx.con, intent, query)
             if ported_team is not None:
                 return ported_team
-            # A team's record above and below its own line is said by
-            # record_when's own team reader (compose.present.present_team).
-            own_team = present_team(ctx.con, intent, query)
-            if own_team is not None:
-                return own_team
             result = run_team(ctx.con, query)
             return TemplateResult(data=_team_point_data(query, result), answer=_team_sentence(query, result), artifacts=[])
         # The shared checks read the slot dict until they take the Scope.

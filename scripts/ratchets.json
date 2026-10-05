@@ -42,14 +42,11 @@
   "templates.netpoints": 3,
   "templates.players": 3,
   "templates.shots": 2,
-  "templates.splits": 3,
+  "templates.splits": 1,
   "templates.teams": 9
  },
  "private_template_imports": [
   "compose.core:_team_slot_for_player",
-  "compose.plan:_condition_needs_player_refusal",
-  "compose.present:_record_when_team_answer",
-  "compose.team:_TEAM_STREAK_SELECT",
   "compose.team:_streak_league_team_narrowed"
  ],
  "regex_outside_the_reader": [

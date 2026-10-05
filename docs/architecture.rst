@@ -181,9 +181,9 @@ have no template at all (``compose.COMPILED_INTENTS``: ``threshold_count``,
 ``player_stat``, ``player_splits``, ``leaderboard``, ``period_split``,
 ``player_compare``, ``streak``, ``player_matchup``, ``with_without``): the
 compiler reproduced their templates exactly, answered them first, and then
-replaced them. Each is still said in its retired template's words, through
-that template's phrasing helpers (:mod:`association.query.compose.present`;
-a team's log through :func:`association.query.templates.games.team_game_log`),
+replaced them. Each is still said in its retired template's words, by a
+reader and the sayer (:mod:`association.query.compose.say`; Phase 2 of
+``ROADMAP.md`` moved them there, and the presenters went with it),
 and a point the compiler has no reading of is refused with the compiler's
 reason. That is ROADMAP plan item 6's step (d), part 4, and
 step (g) for the rest - ``streak``, ``player_matchup`` and ``with_without``

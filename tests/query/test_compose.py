@@ -1599,7 +1599,7 @@ def test_a_teams_own_threshold_record_is_said_by_record_whens_team_reader(cx_ctx
     #144's shape): a team's record above and below its OWN line, which the
     team subject's readers (a season sum, a window sum) cannot represent -
     so run_team declines it, and record_when's own team reader answers
-    (compose.present.present_team). Golden State this season: 110 (W), 99
+    (compose.records.read_team_record_when). Golden State this season: 110 (W), 99
     (L), 120 (W), 90 (L), 100 (W)."""
     # The team-games relation reads the venue columns the player fixture skips.
     cx_ctx.con.execute("ALTER TABLE games ADD COLUMN neutral_site BOOLEAN")
@@ -1789,13 +1789,13 @@ def test_the_planner_refuses_after_the_parser_has_read_and_only_once(cx_ctx: Tem
 
 def test_a_presenter_steps_aside_for_a_narrowing_its_words_do_not_state(cx_ctx: TemplateContext) -> None:
     """A retired template's words name the narrowings it honored and no
-    other (``compose.present.STATED_SCOPING``): an opponent on a single-game
+    other (``compose.plan.STATED_SCOPING``): an opponent on a single-game
     high is the relation's to narrow by and the compiler's sentence's to
     state, so the presenter answers nothing and every presenter declares."""
     from dataclasses import replace
 
     from association.query.compose.highs import read_single_game_high
-    from association.query.compose.present import STATED_SCOPING
+    from association.query.compose.plan import STATED_SCOPING
 
     # Every shape's words are the sayer's (compose.say) since slice (iv); their stated sets stay listed in
     # STATED_SCOPING so one table declares for every compiled intent.

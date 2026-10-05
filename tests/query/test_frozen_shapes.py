@@ -83,7 +83,7 @@ FROZEN_SCOPING_TABLES = frozenset(
     {
         ("compose.plan", "WITH_WITHOUT_STATED"),
         ("compose.core", "COMPILER_SLOTS"),
-        ("compose.present", "STATED_SCOPING"),
+        ("compose.plan", "STATED_SCOPING"),
         ("templates.common", "SCOPING_SLOTS"),
         ("templates.common", "RELATION_SCOPING"),
         ("templates.common", "RELATION_SCOPING_EXCLUDED"),
@@ -171,13 +171,13 @@ def _frozen(name: str, today: set[Any], frozen: frozenset[Any]) -> None:
 
 
 def test_no_template_presenter_scoping_table_or_renderer_is_added() -> None:
-    from association.query.compose import present
+    import importlib.util
 
     _frozen("template", set(TEMPLATES), FROZEN_TEMPLATES)
-    # The player relation's presenters are all retired (slice iii, 2026-10-05):
-    # the table and its dispatcher went with the last of them, and none comes back.
-    assert not hasattr(present, "PRESENTERS") and not hasattr(present, "present"), "a player presenter came back: ROADMAP.md decision D4"
-    # The team-only presenter (with_without's) retired in slice (iv), 2026-10-05: compose.presence reads it.
-    assert not hasattr(present, "TEAM_ONLY_PRESENTERS"), "a team presenter came back: ROADMAP.md decision D4"
+    # Every presenter is retired (the player relation's in slice (iii), the
+    # team's - with_without's, a team's streak, a team's record over its own
+    # line - in slice (iv), 2026-10-05), and compose/present.py with them:
+    # each shape is a reader and the sayer, and no presenter comes back.
+    assert importlib.util.find_spec("association.query.compose.present") is None, "a presenter came back: ROADMAP.md decision D4"
     _frozen("scoping table", _scoping_tables_today(), FROZEN_SCOPING_TABLES)
     _frozen("renderer", _renderers_today(), FROZEN_RENDERERS)

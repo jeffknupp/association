@@ -298,7 +298,7 @@ def read_player_log(con: duckdb.DuckDBPyConnection, q: Query, *, stated: frozens
     (:func:`~association.query.measures.log_extras`), a bare
     threshold, or a measure the question's words moved in beyond the log's
     own columns, or a narrowing beyond what the log's words state
-    (``stated``: ``compose.present.STATED_SCOPING``'s set for the intent -
+    (``stated``: ``compose.plan.STATED_SCOPING``'s set for the intent -
     the log's own, or the season line's for a ``player_stat`` window the
     retired template handed to the log). A
     :class:`~association.query.templates.common.TemplateResult` back is the
@@ -467,7 +467,7 @@ def read_team_log(con: duckdb.DuckDBPyConnection, q: TeamQuery, *, stated: froze
     """A team's games listed, over the team relation the team compiler
     planned. ``None`` where the log's words do not state a narrowing the
     scope carries (``stated``, the log's set in
-    ``compose.present.STATED_SCOPING``), so the team compiler's own
+    ``compose.plan.STATED_SCOPING``), so the team compiler's own
     sentence answers; a :class:`~association.query.templates.common.TemplateResult`
     back is the relation's own refusal (no such team, a coverage floor).
     Both orderings are explicit: "first game" and "last game" differ only

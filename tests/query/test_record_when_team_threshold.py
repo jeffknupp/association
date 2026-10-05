@@ -10,7 +10,7 @@ Kept apart from ``tests/query/test_conditions.py`` and
 exercised end to end, the way #144's own question is actually asked - the
 team subject's own readers declining a threshold, and the compiler answering
 it through ``record_when``'s own team reader
-(``compose.present.present_team``; ROADMAP plan item 6, step (d), part 4).
+(``compose.records.read_team_record_when``, the presenter ``compose.present.present_team`` until slice (iv); ROADMAP plan item 6, step (d), part 4).
 """
 
 from __future__ import annotations
@@ -32,7 +32,7 @@ def _agent_with_a_team_threshold_split(tmp_path: Path) -> Agent:
     """A small warehouse: the Celtics have two 120+ point games (one win, one
     loss) and two games under 120 (one win, one loss), all against the same
     opponent - real enough for `record_when`'s team branch
-    (`splits._record_when_team_answer`) to answer a threshold record for
+    (`compose.records.read_team_record_when`) to answer a threshold record for
     real, rather than merely proving the compiler declines.
 
     ``team_season_stats`` also carries a season total - a decoy, deliberately

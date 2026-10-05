@@ -18,9 +18,9 @@ from association.query.metrics import LEADERBOARD_METRICS
 from association.query.point import TEAM_SEASON_POINTS
 from association.query.reading import Cause, Reading, Scope, _career_scope, ordinal_word
 from association.query.season_line import SEASON_TOTAL_OF
-from association.query.templates.common import RELATION_SCOPING_EXCLUDED, STAT_LABELS, TemplateResult, TemplateUnsupported, check_coverage, unhonored_scoping
+from association.query.templates.common import RELATION_SCOPING_EXCLUDED, STAT_LABELS, TemplateResult, TemplateUnsupported, check_coverage, relation_scoping, team_relation_scoping, unhonored_scoping
 from association.query.templates.players import leaderboard_shot_distance_refusal
-from association.query.templates.splits import _condition_needs_player_refusal
+from association.query.templates.splits import condition_needs_player_refusal
 
 from .core import Query, Refused, Unsupported, _check_relation_scoping
 from .rankings import leaderboard_reads
@@ -33,12 +33,91 @@ WITH_WITHOUT_STATED: frozenset[str] = frozenset({"span", "without", "opponent", 
 divided by, one opponent (both rows narrow together, #163) and a
 companion's role - the retired template's own declaration; any other
 narrowing is declined by name (:func:`_shape_declines`), and the
-presenter's words state the same (``compose.present.STATED_SCOPING``).
+reader's words state the same (:data:`STATED_SCOPING`).
 
 In the planner, which declines by it, since the last adapter
 (``compose.adapt``, where it lived) was deleted.
 
 .. versionadded:: 5.0.0
+"""
+
+STATED_SCOPING: dict[str, frozenset[str]] = {
+    # game_log and player_stat retired stating the relation's whole set, and
+    # `season_type_unstated`: read over both season types merged by date for
+    # a log (compose.logs, which takes this set since Phase 2's first
+    # slice), and from box scores as one combined read for an average
+    # (`_player_stat_reads_box_scores`, `player_relation_season_type`).
+    "game_log": relation_scoping("game_log", "season_type_unstated"),
+    "player_stat": relation_scoping("player_stat", "season_type_unstated"),
+    # player_splits' words: the relation's set less a date and a window
+    # (RELATION_SCOPING_EXCLUDED: one game has nothing to split).
+    "player_splits": relation_scoping("player_splits"),
+    # The retired templates' words, as they stated their narrowings when they
+    # retired (ROADMAP plan item 6, step (d), part 4).
+    "record_when": relation_scoping("record_when"),
+    "player_history": frozenset({"span"}),
+    # leaderboard's words: a career pool, and a season total or a unit it
+    # refuses by name (the template's own HONORED_SCOPING when it retired).
+    "leaderboard": frozenset({"span", "rate"}),
+    # period_split's words: the relation's set less a career and a since/until
+    # range (RELATION_SCOPING_EXCLUDED: the accuracy caveat is per season),
+    # which its point refuses outright (compose.adapt._adapt_period_split).
+    # A period CONDITION (a quarter conditioning which games count, beside
+    # the quarter measured - "first quarter points in games he made a
+    # fourth-quarter three") is not among those words either
+    # (RELATION_SCOPING_EXCLUDED): the presenter steps aside and the
+    # compiler's sentence, which names both, answers.
+    "period_split": relation_scoping("period_split"),
+    # player_compare's words state no narrowing at all; its point refuses
+    # one outright (query/point.py._compare_point), as check_scope did.
+    "player_compare": frozenset(),
+    # streak's words: the relation's set less one date, a window and a
+    # quarter (RELATION_SCOPING_EXCLUDED: a run is a run of whole games over
+    # every game in the span), which the planner refuses outright
+    # (compose.plan._shape_declines), and the cells only a named player's
+    # games settle on a team's or the league's run, by name, there too.
+    "streak": relation_scoping("streak"),
+    # player_matchup's words: the relation's set less a third team, a window,
+    # an ordinal season and a quarter (RELATION_SCOPING_EXCLUDED), which the
+    # planner refuses outright (compose.plan._shape_declines).
+    "player_matchup": relation_scoping("player_matchup"),
+    # with_without's words: a career, the teammates, one opponent and a
+    # companion's role, the template's own declaration when it retired.
+    "with_without": WITH_WITHOUT_STATED,
+    "single_game_high": frozenset({"span"}),
+    # A count is already a line on a column; `below` is the same line the
+    # other way ("games with under 14 fta"), and a phrase carrying the count's
+    # own number IS the count, misread - compose.counts reads it so.
+    # `season_type_unstated` is stated the way `scoped_player` reads it -
+    # one combined `season_type IN (2, 3)` read (player_relation_season_type).
+    "threshold_count": frozenset({"span", "below", "above", "season_n", "season_type_unstated"}),
+    # The team-season readers' words (compose.team_stats), as the retired
+    # templates honored them: one team's line and its power index state no
+    # narrowing at all; a ranking states the team relation's cells less the
+    # ones TEAM_RELATION_SCOPING_EXCLUDED["team_leaderboard"] gives a reason
+    # for - and refuses, by name, a venue or a span its metric has no
+    # reading over (compose.team_stats).
+    "team_stat": frozenset(),
+    "team_outlook": frozenset(),
+    "team_leaderboard": team_relation_scoping("team_leaderboard"),
+}
+"""Intent -> the scoping its reader's WORDS state. A compiled intent's
+sayer answers in its retired template's sentence, which names the
+narrowings that template honored and no other: asked a point narrowed
+beyond them (an opponent on a single-game high, a condition on a history),
+its reader steps aside (``None``) and the compiler's own sentence, which
+states every narrowing the relation applied, answers. A narrowing the
+relation cannot honor at all is the planner's refusal (:func:`plan`),
+before any reader runs; until 5.0.0 these lists lived in
+``HONORED_SCOPING`` under the retired templates' names, where
+``agent._run_compiled`` also read them as the refusal's reason - which
+could name a slot where the compiler had declined for another cause.
+
+.. versionadded:: 5.0.0
+
+.. versionchanged:: 5.0.0
+   In the planner, its one reader beside :data:`WITH_WITHOUT_STATED`, since
+   ``compose/present.py`` was deleted (Phase 2, slice (iv)).
 """
 
 #: The player-relation cells a team's log, splits and run refuse by name
@@ -106,7 +185,7 @@ def _shape_declines(point: Reading) -> str | None:
         # The retired template's two refusals, in the planner since
         # 2026-10-03 (the Phase 1 review found them still in the adapter).
         try:
-            _condition_needs_player_refusal(intent, scope, "game_n")
+            condition_needs_player_refusal(intent, scope, "game_n")
             if not (scope.team and scope.team.strip()):
                 # The league's run (a win streak reads the team relation
                 # with no team named; a stat's run reads everyone).
@@ -144,9 +223,6 @@ def plan(reading: Reading) -> Query | TeamQuery | TeamSeasonQuery:
     except Unsupported as exc:
         if reading.intent not in TEAM_SEASON_POINTS:
             raise
-        # At call time: compose.present imports this module (WITH_WITHOUT_STATED).
-        from .present import STATED_SCOPING
-
         declined = team_season_declines(reading.intent, reading.scope, STATED_SCOPING[reading.intent])
         if declined is not None:
             raise Unsupported(declined) from exc
@@ -226,10 +302,7 @@ _SEASON_LINE_READS = {
 def _season_line_reads(intent: str | None, q: Query) -> bool:
     """Whether the season line's reader for ``intent`` reads ``q`` - the
     relation saying for itself whether it reads a point, with the scoping
-    its words state (``compose.present.STATED_SCOPING``)."""
-    # At call time: compose.present imports this module (WITH_WITHOUT_STATED).
-    from .present import STATED_SCOPING
-
+    its words state (:data:`STATED_SCOPING`)."""
     reads = _SEASON_LINE_READS.get(intent or "")
     return reads is not None and reads(q, STATED_SCOPING[intent or ""])
 
