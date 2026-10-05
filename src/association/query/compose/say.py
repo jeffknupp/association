@@ -1101,7 +1101,7 @@ def _period_where_said(result: Result) -> str:
     the words :meth:`~association.query.player_games.Narrowed.filters` uses
     for the same narrowings. Said in the answer, like every other narrowing
     here: a total over his starts, headed as though it covered every game,
-    is the silent narrowing ``check_scope`` exists to stop."""
+    is the silent narrowing the scoping cells exist to stop."""
     facts, narrowing = result.facts, result.narrowing
     venue, started, mates, measures = narrowing.venue, facts["started"], list(narrowing.without), list(facts["measures"])
     said = f" at {'home' if venue == 'home' else 'away'}" if venue else ""

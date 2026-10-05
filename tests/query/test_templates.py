@@ -36,7 +36,7 @@ from association.query.player_games import PERIOD_COLUMNS, PERIOD_RATES, period_
 from association.query.reading import Reading, Scope
 from association.query.shotchart import SHOT_AVAILABILITY
 from association.query.subject import Subject
-from association.query.templates.common import HONORED_SCOPING, SCOPING_SLOTS, check_scope, scoped_games, scoped_player, season_phrase, unhonored_scoping
+from association.query.templates.common import SCOPING_SLOTS, scoped_games, scoped_player, season_phrase, unhonored_scoping
 from association.query.templates.games import (
     PERIOD_RATE_STATS,
 )
@@ -1756,89 +1756,6 @@ def test_player_compare_asks_rather_than_guessing_an_ambiguous_name(ps_con: Answ
     assert "did you mean Seth Curry or Stephen Curry?" in answer
 
 
-def _source_a_template_reads_slots_in(handler: Any) -> str:
-    """A template's source, plus the shared scoping steps it hands its slots
-    to. Since step 3 a template on the player-games relation no longer reads
-    ``venue`` or ``without`` itself: common.scoped_player and scoped_games read
-    them, once, for every template that calls them - so "does this template
-    read the slot" has to follow that call. It follows ONLY a call the template
-    actually makes: one that neither reads a slot nor calls the step that does
-    still fails, which is the drift these guards exist for.
-
-    A slot is read either off the slot dict (``slots.get("venue")``) or, once
-    a step reads the typed Scope (plan item 6, step (d)), as its field
-    (``scope.venue``) - :func:`_reads_slot` accepts both."""
-    import inspect
-
-    from association.query.templates import common
-
-    source = inspect.getsource(handler)
-    # One level of the template's own named steps: game_log is split into
-    # _game_log_team and _game_log_player to stay inside the complexity gate,
-    # and it is the player half that hands the slots on.
-    module = inspect.getmodule(handler)
-    for step in sorted(set(re.findall(r"\b(_[a-z][a-z0-9_]*)\(", source))):
-        if inspect.isfunction(getattr(module, step, None)):
-            source += inspect.getsource(getattr(module, step))
-    # The shared steps, and the shared steps THEY call: condition_player hands
-    # its slots to scoped_games, which is where a condition template's
-    # `situation` (and every other relation cell) is read. Two passes, since
-    # the chain is two deep and a step already added is not added twice.
-    added: set[str] = set()
-    for _ in range(2):
-        for shared in ("scoped_player", "scoped_games", "condition_player"):
-            if f"{shared}(" in source and shared not in added:
-                source += inspect.getsource(getattr(common, shared))
-                added.add(shared)
-    return source
-
-
-def _reads_slot(source: str, slot: str) -> bool:
-    """Whether ``source`` reads ``slot``: the typed Scope's field
-    (``scope.venue``, and ``reading.scope.venue``, with a word boundary so
-    ``scope.players`` is not a read of ``player``), a slot-dict GET
-    (``slots.get("venue")``, ``slots["venue"]``), or the slot handed to a
-    shared step as its own keyword argument (``venue=venue``) at a call site.
-
-    Not a bare ``f'"{slot}"' in source`` any more (5.0.0): that matched ANY
-    quoted occurrence of the word, including one built into a piece of OUTPUT
-    data that has nothing to do with reading the slot -
-    ``player_matchup``'s own ``_player_matchup_answer`` builds
-    ``{"date": str(m["day"]), ...}`` for its answer's rows, which satisfied
-    the old check for ``date`` although ``_player_matchup_narrowed`` never
-    read the slot at all and so never applied its filter ("curry vs lebron on
-    2025-04-03" answered every meeting of the season). Checked against every
-    (intent, slot) pair in HONORED_SCOPING before this landed: identical to
-    the old check on all of them except that one, which flips from a false
-    True to the correct False."""
-    scope_field = re.search(rf"\bscope\.{slot}\b", source) is not None
-    slot_get = re.search(rf'slots(?:\.get\(|\[)\s*["\']{slot}["\']', source) is not None
-    # No space before `=`: a plain assignment (`date = raw_date`) is written
-    # WITH one (ruff format), so this matches a call site's keyword argument
-    # (`date=date`) and not a local variable merely named the same as the
-    # slot. An annotated parameter default (`date: str | None = None`) is
-    # written with spaces too, for the same reason, so a function's own
-    # signature does not fool this either.
-    kwarg = re.search(rf"\b{slot}=(?!=)", source) is not None
-    return scope_field or slot_get or kwarg
-
-
-def test_no_template_outside_player_intents_reads_a_player_slot() -> None:
-    """PLAYER_INTENTS decides whether a name the question does not support is
-    refused or ignored, so a template drifting into reading a player slot
-    without being listed would answer about somebody the question never named.
-    Read out of the source rather than trusted, the way TEMPLATE_SOURCES is
-    checked against TEMPLATES."""
-
-    from association.query.templates import TEMPLATES
-    from association.query.templates.common import PLAYER_INTENTS
-
-    for intent, handler in TEMPLATES.items():
-        source = _source_a_template_reads_slots_in(handler)
-        reads = 'slots.get("player' in source or 'slots["player' in source or re.search(r"\bscope\.players?\b", source) is not None
-        assert reads == (intent in PLAYER_INTENTS), f"{intent} reads a player slot: {reads}, listed: {intent in PLAYER_INTENTS}"
-
-
 def test_player_compare_suggests_the_player_a_fabricated_name_meant(ps_con: AnswerContext) -> None:
     """The router answered "compare sga and embid" with 'Jemel Embiid' - the
     surname corrected, the given name invented - and every token has to match,
@@ -3419,8 +3336,9 @@ def test_scope_guard_blocks_a_template_that_would_ignore_a_game_scope() -> None:
         # relation behind it still refuses one.
         ("player_history", {"date": "2026-04-12"}),
     ]:
-        with pytest.raises(Unsupported, match="different span"):
-            check_scope(intent, slots)
+        # Each reader's retired words state none of these: it steps aside,
+        # and the planner refuses what the relation cannot honor.
+        assert unhonored_scoping(intent, Scope.from_slots(slots), STATED_SCOPING[intent]), intent
 
 
 def test_scope_guard_allows_templates_that_honor_the_slot() -> None:
@@ -3449,30 +3367,15 @@ def test_scope_guard_lets_only_the_templates_that_read_it_honor_season_type_unst
     # relation honors the slot for a named player, and the count's own words
     # state it (compose.plan.STATED_SCOPING).
     assert unhonored_scoping("threshold_count", Scope.from_slots({"season_type_unstated": True}), STATED_SCOPING["threshold_count"]) == []
-    with pytest.raises(Unsupported, match="different span"):
-        check_scope("leaderboard", {"season_type_unstated": True})
+    assert unhonored_scoping("leaderboard", Scope.from_slots({"season_type_unstated": True}), STATED_SCOPING["leaderboard"]) == ["season_type_unstated"]
     # single_game_high's words do not state it: its presenter steps aside and
     # the compiler's sentence, which does, answers.
     assert unhonored_scoping("single_game_high", Scope.from_slots({"season_type_unstated": True}), STATED_SCOPING["single_game_high"]) == ["season_type_unstated"]
 
 
 def test_scope_guard_ignores_absent_or_empty_slots() -> None:
-    check_scope("leaderboard", {})
-    check_scope("leaderboard", {"order": None, "date": ""})
-
-
-def test_every_template_honoring_a_scope_slot_actually_reads_it() -> None:
-    # Guards against the list drifting from the code it describes.
-
-    from association.query import templates as module
-
-    for intent, honored in HONORED_SCOPING.items():
-        # An intent the compiler alone answers has no entry here: what its
-        # presenter's words state is compose.plan.STATED_SCOPING's.
-        assert intent in module.TEMPLATES, f"{intent} declares scoping but has no template"
-        source = _source_a_template_reads_slots_in(module.TEMPLATES[intent])
-        for slot in honored:
-            assert _reads_slot(source, slot), f"{intent} claims to honor {slot} but never reads it"
+    assert unhonored_scoping("leaderboard", Scope.from_slots({}), STATED_SCOPING["leaderboard"]) == []
+    assert unhonored_scoping("leaderboard", Scope.from_slots({"order": None, "date": ""}), STATED_SCOPING["leaderboard"]) == []
 
 
 def test_shot_distance_scopes_to_one_game(sc_ctx: AnswerContext) -> None:
@@ -3676,8 +3579,7 @@ def test_templates_that_write_nothing_report_no_artifacts(lb_con: AnswerContext)
 def test_scope_guard_refuses_what_the_question_text_narrowed_to(intent: str, slots: dict[str, Any]) -> None:
     """The real StatMuse queries behind these slots were each answered for
     every opponent, every venue, one season, or every game respectively."""
-    with pytest.raises(Unsupported, match="different span"):
-        check_scope(intent, slots)
+    assert unhonored_scoping(intent, Scope.from_slots(slots), STATED_SCOPING[intent])
 
 
 def test_scope_guard_lets_through_what_the_player_templates_now_honor() -> None:
@@ -3721,10 +3623,8 @@ def test_team_quarter_points_still_honors_the_opponent_it_always_read() -> None:
 
 def test_no_template_narrows_to_a_playoff_round() -> None:
     """Nothing in the warehouse records a round or a series game number."""
-    assert not any("round" in honored for honored in HONORED_SCOPING.values())
     assert not any("round" in stated for stated in STATED_SCOPING.values())
-    with pytest.raises(Unsupported, match="different span"):
-        check_scope("player_compare", {"players": ["Jayson Tatum", "Jaylen Brown"], "round": "finals"})
+    assert unhonored_scoping("player_compare", Scope.from_slots({"players": ["Jayson Tatum", "Jaylen Brown"], "round": "finals"}), STATED_SCOPING["player_compare"]) == ["round"]
     assert unhonored_scoping("player_stat", Scope.from_slots({"player": "Jayson Tatum", "round": "finals"}), STATED_SCOPING["player_stat"]) == ["round"]
 
 
@@ -3778,8 +3678,7 @@ def test_a_zero_threshold_is_refused_rather_than_counting_every_game(con: Answer
 
 @pytest.mark.parametrize(("intent", "slots"), [("player_stat", {"player": "Joe Ingles", "split": "starter_bench"}), ("leaderboard", {"stat": "points", "since": 2020})])
 def test_a_split_or_a_range_is_refused_where_nothing_honors_it(intent: str, slots: dict[str, Any]) -> None:
-    with pytest.raises(Unsupported, match="different span"):
-        check_scope(intent, slots)
+    assert unhonored_scoping(intent, Scope.from_slots(slots), STATED_SCOPING[intent])
 
 
 # ---------------- one player's games: game_log and player_stat, narrowed ----------------
@@ -4586,7 +4485,7 @@ def test_player_stat_over_the_last_n_games_is_the_log_with_its_averages(pg_ctx: 
     assert "last 2 of 3 games" in result.answer
 
 
-def test_check_scope_lets_player_stat_honor_since_and_order(pg_ctx: AnswerContext) -> None:
+def test_player_stat_honors_since_and_order(pg_ctx: AnswerContext) -> None:
 
     assert unhonored_scoping("player_stat", Scope.from_slots({"player": "Brandin Podziemski", "since": 2024}), STATED_SCOPING["player_stat"]) == []
     assert unhonored_scoping("player_stat", Scope.from_slots({"player": "Brandin Podziemski", "order": "recent", "limit": 3}), STATED_SCOPING["player_stat"]) == []
@@ -5600,17 +5499,15 @@ def test_a_career_span_is_refused_for_the_reconciliation_caveat_it_cannot_apply(
     the SQL fix below) to explicitly excluded: `PERIOD_RECONCILIATION` is
     measured per season, and summing points across a career would need to
     apply it once per season summed in, which this does not do. The refusal
-    is at the routing layer (`check_scope`, via `RELATION_SCOPING_EXCLUDED`),
-    the same as every other excluded cell here - see
-    `test_the_scoping_slots_this_template_filters_on_are_declared_honored`.
+    is in the reader's words (`STATED_SCOPING`, via `RELATION_SCOPING_EXCLUDED`),
+    the same as every other excluded cell here.
     """
-    with pytest.raises(Unsupported, match="different span"):
-        check_scope("period_split", {"player": "Stephen Curry", "period": 1, "span": "career"})
+    assert unhonored_scoping("period_split", Scope.from_slots({"player": "Stephen Curry", "period": 1, "span": "career"}), STATED_SCOPING["period_split"]) == ["span"]
 
 
 def test_a_career_read_sums_every_season_now_the_shot_join_needs_no_season_param(period_ctx: AnswerContext) -> None:
-    """The bug the join-based rewrite fixes, called directly (check_scope is
-    what actually refuses `span` "career" in the pipeline - see the test
+    """The bug the join-based rewrite fixes, called directly (the reader's
+    words are what refuse `span` "career" in the pipeline - see the test
     above): before, `span.season` was `None` for a career, and the shot
     query bound it as a literal SQL parameter - `season = NULL` matches
     nothing, so this answered "No {current season} games found for Stephen
@@ -5968,11 +5865,10 @@ def test_a_tied_extreme_names_every_game_that_reached_it() -> None:
 
 
 def _declared_scoping(intent: str) -> frozenset[str]:
-    """What ``intent`` declares it honors: its template's list, or - for an
-    intent the compiler alone answers (``record_when``) - what its
-    presenter's words state (``compose.plan.STATED_SCOPING``), which the
-    same relation discipline binds."""
-    return HONORED_SCOPING[intent] if intent in HONORED_SCOPING else STATED_SCOPING[intent]
+    """What ``intent`` declares it honors: what its reader's retired words
+    state (``compose.plan.STATED_SCOPING``), which the relation discipline
+    binds."""
+    return STATED_SCOPING[intent]
 
 
 def test_templates_on_the_relation_declare_no_scoping_of_their_own() -> None:
@@ -6207,9 +6103,8 @@ def _source_with_private_steps(handler: Any) -> str:
 
 def test_a_leaderboard_ranked_by_another_measure_refuses_to_the_compiler() -> None:
     """yardstick-v2 F124: `ranked_by` is the slot route() files for "highest
-    scoring triple doubles"; no template honors it, so check_scope refuses
-    and the compiler's boolean-game ranking answers. The bare count - the
-    same slots without it - is untouched."""
-    with pytest.raises(Unsupported, match="ranked_by"):
-        check_scope("leaderboard", {"stat": "triple_double", "limit": 10, "ranked_by": "points"})
-    check_scope("leaderboard", {"stat": "triple_double", "limit": 10})
+    scoring triple doubles"; the leaderboard's words do not state it, so its
+    reader steps aside and the compiler's boolean-game ranking answers. The
+    bare count - the same slots without it - is untouched."""
+    assert unhonored_scoping("leaderboard", Scope.from_slots({"stat": "triple_double", "limit": 10, "ranked_by": "points"}), STATED_SCOPING["leaderboard"]) == ["ranked_by"]
+    assert unhonored_scoping("leaderboard", Scope.from_slots({"stat": "triple_double", "limit": 10}), STATED_SCOPING["leaderboard"]) == []

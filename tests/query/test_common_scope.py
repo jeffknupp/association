@@ -1,11 +1,10 @@
 """The shared scoping steps read the typed Scope (ROADMAP plan item 6, step (d)).
 
-Every step in ``templates.common`` takes the
-:class:`~association.query.reading.Scope` alone, except the four checks
-(``check_scope``, ``check_coverage``, ``coverage_caveat`` and
-``_sources_for``), which ``agent.py`` still asks about a route's slot dict
-before it builds the Reading: these check that a check gives the same answer,
-or the same refusal, for a Scope and for its slot dict.
+Every shared step takes the :class:`~association.query.reading.Scope`
+alone, except the three coverage checks (``check_coverage``,
+``coverage_caveat`` and ``_sources_for``), which still take a route's slot
+dict from the tests: these check that a check gives the same answer, or the
+same refusal, for a Scope and for its slot dict.
 """
 
 from __future__ import annotations
@@ -17,13 +16,13 @@ from typing import Any
 import pytest
 
 from association.query.reading import Scope, Unsupported
-from association.query.templates.common import _BOX_SCORE_SCOPING, SCOPING_SLOTS, _sources_for, check_coverage, check_scope, coverage_caveat
+from association.query.templates.common import _BOX_SCORE_SCOPING, SCOPING_SLOTS, _sources_for, check_coverage, coverage_caveat
 
 _FIELDS = {field.name for field in fields(Scope)}
 
 
 def test_every_scoping_slot_is_a_field_of_the_typed_scope() -> None:
-    """``check_scope`` reads each name in ``SCOPING_SLOTS`` as a Scope field,
+    """``unhonored_scoping`` reads each name in ``SCOPING_SLOTS`` as a Scope field,
     and the box-score sources each in ``_BOX_SCORE_SCOPING``: a name that is
     no field would raise AttributeError on every question rather than refuse
     the one that set it."""
@@ -93,5 +92,5 @@ def test_a_check_reads_a_scope_and_its_slot_dict_alike(slots: dict[str, Any]) ->
     """The scoping and coverage checks over both doors."""
     scope = Scope.from_slots(slots)
     for intent in _INTENTS:
-        for step in (check_scope, check_coverage, coverage_caveat, _sources_for):
+        for step in (check_coverage, coverage_caveat, _sources_for):
             assert _outcome(step, intent, scope) == _outcome(step, intent, slots), (step.__name__, intent)

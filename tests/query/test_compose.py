@@ -1291,24 +1291,13 @@ def _retired_template_answer(intent: str, slots: dict[str, Any], question: str) 
 
 
 def _parity(ctx: AnswerContext, intent: str, slots: dict[str, Any], question: str) -> tuple[Any, Any]:
-    """The template's answer and the compiler's for the same slots, the
-    compiler's with no template in front of it. For an intent the compiler
-    alone answers now (``compose.COMPILED_INTENTS``), the template's answer is
-    the one it gave when it retired, frozen, and the compiler's ``data`` is
-    compared in the same JSON form."""
-    from association.query.compose import COMPILED_INTENTS
-    from association.query.templates import TEMPLATES
-
+    """The retired template's answer and the compiler's for the same slots:
+    the template's is the one it gave when it retired, frozen, and the
+    compiler's ``data`` is compared in the same JSON form."""
     _add_condition_tables(ctx.con)
-
-    if intent in COMPILED_INTENTS:
-        composed = compose_answer(ctx, intent, dict(slots), question)
-        assert composed is not None
-        return _retired_template_answer(intent, slots, question), Reply(data=json.loads(json.dumps(composed.data, default=str)), answer=composed.answer)
-    template = TEMPLATES[intent](ctx, Reading.from_slots(dict(slots)))
     composed = compose_answer(ctx, intent, dict(slots), question)
     assert composed is not None
-    return template, composed
+    return _retired_template_answer(intent, slots, question), Reply(data=json.loads(json.dumps(composed.data, default=str)), answer=composed.answer)
 
 
 @pytest.mark.parametrize(

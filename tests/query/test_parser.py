@@ -11,11 +11,11 @@ import duckdb
 import pytest
 from routed import slots_route, with_subject
 
+from association.query.compose.plan import plan_point
 from association.query.decisions import Decision
 from association.query.parse import classify_span, measure, parent_intent, read_route, reading_from_route, window
-from association.query.reading import Reading, Unsupported
+from association.query.reading import Reading
 from association.query.router import Beside, _threshold_from_text, settle
-from association.query.templates.common import check_scope
 
 
 @pytest.fixture
@@ -395,8 +395,8 @@ def test_the_subjects_own_split_still_reads_beside_a_teammates_role(con: duckdb.
     assert route.intent == "team_quarter_points" and "split" not in route.slots
     reading = reading_from_route(con, question, route)
     assert [c.predicate for c in reading.scope.conditions] == ["started"]
-    with pytest.raises(Unsupported, match="conditions"):
-        check_scope(reading.intent, reading.scope)
+    planned = plan_point(reading)
+    assert planned.query is None and planned.declined is not None and "conditions" in planned.declined, planned
 
 
 def test_a_companion_who_sat_out_is_without_and_out_is_no_part_of_his_name(con: duckdb.DuckDBPyConnection) -> None:

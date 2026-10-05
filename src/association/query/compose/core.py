@@ -419,7 +419,7 @@ COMPILER_SLOTS: frozenset[str] = frozenset({"ranked_by"})
 
 
 def _check_relation_scoping(scope: Scope, subject: str = "player", honored_extra: frozenset[str] = frozenset()) -> None:
-    """``check_scope``'s rule, for the relation: a scoping slot the relation
+    """The retired scope check's rule, for the relation: a scoping slot the relation
     does not narrow by (``situation`` when it names no calendar, ``round``,
     ``rate`` ...) is refused, never dropped - answering "on Tuesdays" for
     every day is the silent widening the templates exist to stop.

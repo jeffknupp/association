@@ -1,5 +1,5 @@
-"""The answering loop: the parser's Reading through a template or the
-compiler, and a refusal naming why where neither has a reading of the
+"""The answering loop: the parser's Reading through the compiler's readers
+and the sayer, and a refusal naming why where nothing has a reading of the
 question. One model call, the normalizer's, is the whole cost; nothing after
 it reaches a model.
 
@@ -13,8 +13,10 @@ along. So it is gone, with its prompt, its tools and its budget. Where it
 would have been asked, :meth:`Agent.ask` answers a refusal that names what the
 fast path could not read (``answered_by="refused"``), in seconds. That is the
 same answer ``--disable-fallthrough`` gave as an error, now the only answer,
-and every recorded reason stands: an intent with no template, a narrowing the
-relation cannot honor, a reply the normalizer could not use.
+and every recorded reason stands: an intent nothing reads, a narrowing the
+relation cannot honor, a reply the normalizer could not use. The templates
+went in Phase 2 (``ROADMAP.md``): every intent is the compiler's, read by a
+reader into a Result and worded by the sayer (``compose``).
 """
 
 from __future__ import annotations
@@ -30,7 +32,6 @@ import duckdb
 
 from association.nba.season import calendar_season, season_on_record
 from association.query.answer import AnswerContext, Reply
-from association.query.reading import Unsupported
 
 from .answer import Answer, AnsweredBy, Artifact, Timing
 from .compose import COMPILED_INTENTS
@@ -51,8 +52,7 @@ from .notes import unsaid
 from .reading import Reading, Scope, ScopeError
 from .refusals import MIN_QUESTION_WORDS, by_question, too_short, unanswerable
 from .router import Route, RouterUnavailable
-from .templates import TEMPLATES
-from .templates.common import PLAYER_INTENTS, TEAM_ONLY_INTENTS, check_coverage, check_scope, coverage_caveat
+from .templates.common import PLAYER_INTENTS, TEAM_ONLY_INTENTS, check_coverage, coverage_caveat
 
 # The subset of Reply.data a compose.answer() carries that describes
 # WHAT was answered - the point on the relation - rather than the rows
@@ -63,7 +63,7 @@ _COMPOSE_POINT_KEYS = ("skeleton", "measures", "aggregate", "group", "predicates
 
 
 def _note(result: Reply, note: str) -> None:
-    """Record a sentence appended to a template's answer on its ``data`` too,
+    """Record a sentence appended to an answer on its ``data`` too,
     so a caller rendering from ``data`` (the web page) does not lose what the
     text-only reader is told: which name a default chose, how much of a
     season the source holds."""
@@ -74,8 +74,8 @@ def _note(result: Reply, note: str) -> None:
 
 def refusal_text(why: str) -> str:
     """The sentence a question nothing here reads is answered with: the
-    reason the fast path gave it up, as the parser, a template or the compiler
-    stated it - an intent with no template, a narrowing the relation cannot
+    reason the fast path gave it up, as the parser or the compiler stated
+    it - an intent nothing reads, a narrowing the relation cannot
     honor, a reply the normalizer could not use. Naming the cause is the
     whole point: the reader learns which part of the question has no answer
     here, where the agent this replaced spent minutes and then guessed.
@@ -86,8 +86,8 @@ def refusal_text(why: str) -> str:
 
 
 class Agent:
-    """Answers one question at a time: the parser's Reading through a template
-    or the compiler, or a refusal naming why neither had a reading.
+    """Answers one question at a time: the parser's Reading through the
+    compiler, or a refusal naming why nothing had a reading.
 
     .. versionchanged:: 2.0.0
        Takes a ``trace`` callback for its live output, defaulting to stderr, so
@@ -127,7 +127,7 @@ class Agent:
         self.verbose = verbose
         self.history_dir = history_dir
         #: Why the last question was refused with no reading, or None where a
-        #: template, the compiler or a named refusal answered it. A template's
+        #: the compiler or a named refusal answered it. A reader's
         #: own refusal (a clarification, a "no match", a shape nothing reads)
         #: is an answer: it looked at the question and had something to say.
         self.unanswered: str | None = None
@@ -266,14 +266,15 @@ class Agent:
         return [name for name in raw if isinstance(name, str) and name.strip()]
 
     def _try_fast_path(self, question: str, history: RunHistory) -> tuple[str, Reply] | None:
-        """Route -> Reading -> deterministic template -> answer, returning the
-        intent alongside the template's whole result. Returns None, with
-        :attr:`unanswered` naming why, where nothing here reads the question:
-        an unported intent, slots that fail validation, or any reader or
-        template failure the compiler and the named refusals could not take.
+        """Route -> Reading -> plan -> reader and sayer -> answer, returning
+        the intent alongside the whole :class:`~association.query.answer.Reply`.
+        Returns None, with :attr:`unanswered` naming why, where nothing here
+        reads the question: an intent nothing reads, slots that fail
+        validation, or a point the compiler and the named refusals could not
+        take.
 
         The intent and the Reply are returned, rather than just its
-        `answer` text, because that text is only one of the things the template
+        `answer` text, because that text is only one of the things the reader
         produced - see Reply.data, which nothing could reach before
         2.0."""
         self.unanswered = None
@@ -289,22 +290,21 @@ class Agent:
         # perfectly. Passing it on was tried and is worse: the agent this
         # replaced answered one of these with a 55-second fingerprint for
         # "Ronaldo Lopes", a player who does not exist, percentages included.
-        # Only where the template would actually be about that player - a
+        # Only where the answer would actually be about that player - a
         # stray name on a team question changes no answer.
         if reading.misread and reading.intent in PLAYER_INTENTS:
             misread = misread_players(list(reading.misread))
             history.log(f"  -> (player) {misread}")
             return reading.intent, Reply(data={"message": misread, "misread": list(reading.misread)}, answer=misread)
-        # The handler goes with the intent the Reading settled - where the
+        # What answers goes with the intent the Reading settled - where the
         # route's cannot be about the subject, or where the question's own
         # words name a child of it (subject.KIND_ASSIGNED_INTENTS: a count of
         # 30+ point games under a game log). Resolving them apart is how a
         # reroute shipped broken once: the intent said with_without, the trace
         # said with_without, and head_to_head ran.
-        handler = TEMPLATES.get(reading.intent)
         if reading.intent != routed.intent:
             history.log(f"  -> (subject) intent={reading.intent!r} slots={reading.scope.to_slots()}")
-        settled = self._settled_before_template(question, reading, handler, history)
+        settled = self._settled_before_reading(question, reading, history)
         if settled is not None:
             return settled
         # AGENTS.md, "Refuse by name where the intent cannot be about the
@@ -323,9 +323,7 @@ class Agent:
                 return reading.intent, Reply(data={"message": message, "named_player": named_player}, answer=message)
         if reading.intent in COMPILED_INTENTS:
             return self._run_compiled(question, reading, history)
-        if handler is None:
-            return None
-        return self._run_scoped_template(question, reading, handler, history)
+        return None
 
     def _reading(self, question: str, routed: Route, history: RunHistory) -> Reading:
         """The Reading ``routed`` settles into (:func:`~association.query.parse.reading_from_route`),
@@ -338,7 +336,7 @@ class Agent:
         # What will answer, said beside the route: until 5.0.0 every intent
         # outside TEMPLATES printed "not ported yet" here - on 206 of 277
         # yardstick answers, all of them the compiler's (ISSUES.md #284).
-        path = "a template" if routed.intent in TEMPLATES else "the compiler" if routed.intent in COMPILED_INTENTS else "no reader: refused unless a named refusal has its cause"
+        path = "the compiler" if routed.intent in COMPILED_INTENTS else "no reader: refused unless a named refusal has its cause"
         history.log(f"  -> (router) intent={routed.intent!r} slots={routed.slots} - {path}")
         # One reading of WHO the question is about, from its own words, written
         # into the Scope - the parser's last step, and the only writer: nothing
@@ -369,7 +367,7 @@ class Agent:
         except ScopeError as exc:
             # A slot nothing can hold - "stephen curry last 0 games" reads as a
             # window of 0 - stops the parser at the Scope's door (the stages'
-            # own, router.settle): refused here, the way a template's refusal
+            # own, router.settle): refused here, the way a reader's refusal
             # is, rather than crashing.
             history.record_model_call(time.monotonic() - t0)
             history.log(f"  -> (scope) {exc}: refused")
@@ -389,7 +387,7 @@ class Agent:
         intent and every other slot from the words. None when the model's
         reply is unusable. What follows is the path every route takes: the
         parser's last step (:func:`~association.query.parse.reading_from_route`)
-        and the templates."""
+        and the compiler."""
         from association.query.normalizer import normalize
         from association.query.parse import read_route
 
@@ -401,19 +399,19 @@ class Agent:
         history.log(f"  -> (parser) parent={parent!r} kind={subject.kind!r} intent={routed.intent!r}")
         return routed
 
-    def _settled_before_template(self, question: str, reading: Reading, handler: Callable[..., Reply] | None, history: RunHistory) -> tuple[str, Reply] | None:
-        """What is decided before any template runs: a shape the question's
+    def _settled_before_reading(self, question: str, reading: Reading, history: RunHistory) -> tuple[str, Reply] | None:
+        """What is decided before any reader runs: a shape the question's
         own words settle (a championship question a team ranking would
         answer fluently and wrongly - refusals.by_question), and, where no
-        template exists for the intent, a shape nothing reads at all ("most
+        reader exists for the intent, a shape nothing reads at all ("most
         opponent bench points allowed ..." routes to `other`, and the
         refusals module knows bench points are read by nothing). With no
-        template and no named refusal, records why and returns None."""
+        reader and no named refusal, records why and returns None."""
         early = by_question(question, reading.intent)
         if early is not None:
             history.log(f"  -> (refusal) {early.data['refused']}: nothing here reads that shape")
             return reading.intent, early
-        if handler is not None or reading.intent in COMPILED_INTENTS:
+        if reading.intent in COMPILED_INTENTS:
             return None
         refusal = unanswerable(self.con, reading, question)
         if refusal is not None:
@@ -422,64 +420,10 @@ class Agent:
         self.unanswered = f"intent {reading.intent!r} has no template yet"
         return None
 
-    def _run_scoped_template(self, question: str, reading: Reading, handler: Callable[[AnswerContext, Reading], Reply], history: RunHistory) -> tuple[str, Reply] | None:
-        """Check scope and coverage, run the template, and attach the notes
-        every fast-path answer carries. On a scoping refusal
-        (``Unsupported``, from ``check_scope`` or the template itself),
-        try the compiled answer, then a named refusal, before giving the
-        question up - split out of ``_try_fast_path`` to keep it under the
-        complexity gate, and because it is one coherent step: "run what the
-        reader found, and cope with it refusing"."""
-        t0 = time.monotonic()
-        intent, scope = reading.intent, reading.scope
-        try:
-            check_scope(intent, scope)
-            # Returned as the answer rather than raised past this point. A
-            # season under a table's floor has no better source anywhere.
-            refused = check_coverage(intent, scope)
-            if refused is not None:
-                history.log(f"  -> (coverage) {refused}")
-                result = Reply(data={"message": refused, "season": scope.season}, answer=refused)
-            else:
-                result = self._run_template(handler, reading, history)
-                # A season that IS covered but only partly says so, rather than
-                # reporting half a year as a whole one.
-                note = coverage_caveat(intent, scope)
-                if note:
-                    result.answer = f"{result.answer} {note}"
-                    _note(result, note)
-        except Unsupported as exc:
-            # The template could not honor the scoping asked for - see whether
-            # the compiler can answer the same point on the relation. A
-            # refusal it hands back (a clarification, a "no match") is still
-            # an answer: it looked at the question.
-            t1 = time.monotonic()
-            composed = self._try_compose(question, reading, history)
-            if composed is not None:
-                history.record_tool_call(f"compose {intent}", time.monotonic() - t1)
-                history.log(f"  -> (template) {exc} - composed instead")
-                return intent, composed
-            # Then: is this a shape nothing here can read - a playoff round,
-            # an age, a stat by quarter other than points? A refusal naming
-            # the missing thing is the answer (query/refusals).
-            refusal = unanswerable(self.con, reading, question)
-            if refusal is not None:
-                history.log(f"  -> (template) {exc} - refused ({refusal.data['refused']}): nothing here reads that shape")
-                return intent, refusal
-            history.log(f"  -> (template) {exc}: refused")
-            self.unanswered = f"{intent}: {exc}"
-            return None
-        history.record_tool_call(f"template {intent}", time.monotonic() - t0)
-        # No second model call, ever: templates phrase their own answers. See
-        # Reply for why that is both faster and safer than narrating.
-        return intent, result
-
     def _run_compiled(self, question: str, reading: Reading, history: RunHistory) -> tuple[str, Reply] | None:
         """An intent the compiler alone answers (``compose.COMPILED_INTENTS``:
-        the four whose templates it reproduced exactly, retired in ROADMAP
-        plan item 6, step (d), part 4, and ``game_log``, ``player_stat`` and
-        ``player_splits``, step (g)). Where the compiler has no reading of
-        the point, the steps a template's refusal took, in its order: the
+        every intent since Phase 2 retired the templates). Where the
+        compiler has no reading of the point, in this order: the
         compiler's own reason - the planner refusing a narrowing the relation
         cannot honor (``Planned.declined``) - names
         why the question is refused; a season under a table's floor is
@@ -508,11 +452,10 @@ class Agent:
     def _try_compose(self, question: str, reading: Reading, history: RunHistory, declined: Callable[[str], None] | None = None) -> Reply | None:
         """The compiler's answer to the point the parser read
         (``association.query.compose.answer``): the compiled intents' only
-        answer, and the step after a template's refusal. Answered exactly
-        like a template's own result - same name-reading and coverage-caveat
-        attachment as :meth:`_run_template` - except its trace line names the
-        point on the relation it composed rather than a template's intent and
-        slots, since that IS the interesting fact about a compiled answer.
+        answer. The name readings the reader noted and the coverage caveat
+        are attached here, and the trace line names the point on the
+        relation it composed, since that IS the interesting fact about a
+        compiled answer.
 
         The module is looked up at call time, not bound at import: that is
         what tests monkeypatch (``association.query.compose.answer``).
@@ -563,22 +506,6 @@ class Agent:
             composed.answer = f"{composed.answer} {unmatched_note}"
             _note(composed, unmatched_note)
 
-    def _run_template(self, handler: Callable[[AnswerContext, Reading], Reply], reading: Reading, history: RunHistory) -> Reply:
-        """The template's answer, with how it read any name the question left
-        open. "maxey" is Tyrese because he is the only Maxey who still plays -
-        a default, and a default is allowed only where it is visible and can be
-        corrected, so the sentence naming who else matched and what to type for
-        him is part of the answer (entities.collect_name_readings)."""
-        with collect_name_readings() as name_readings:
-            result = handler(AnswerContext(con=self.con, out_dir=self.out_dir), reading)
-        for name_reading in name_readings:
-            history.log(f"  -> (player) {name_reading}")
-            result.answer = f"{result.answer} {name_reading}"
-            _note(result, name_reading)
-        if name_readings:
-            result.data["name_readings"] = list(name_readings)
-        return result
-
     def _ask_inner(self, question: str, history: RunHistory) -> Answer:
         # A question too short to be one is refused before anything reads
         # it (refusals.too_short): no model call, no guess at "Tatum rec".
@@ -592,7 +519,7 @@ class Agent:
             intent, templated = fast
             return self._answer(question, history, templated.answer, "fast", intent=intent, data=templated.data, artifacts=templated.artifacts)
         # Nothing read the question: the refusal names why, in the words the
-        # parser, the template or the compiler gave it up with (#129 - the
+        # parser or the compiler gave it up with (#129 - the
         # agent this replaced answered one such question in 23).
         why = self.unanswered or "no reading of the question"
         history.log(f"  -> (refused) {why}")

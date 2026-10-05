@@ -72,7 +72,7 @@ STATED_SCOPING: dict[str, frozenset[str]] = {
     # compiler's sentence, which names both, answers.
     "period_split": relation_scoping("period_split"),
     # player_compare's words state no narrowing at all; its point refuses
-    # one outright (query/point.py._compare_point), as check_scope did.
+    # one outright (query/point.py._compare_point), as the retired scope check did.
     "player_compare": frozenset(),
     # streak's words: the relation's set less one date, a window and a
     # quarter (RELATION_SCOPING_EXCLUDED: a run is a run of whole games over
@@ -160,7 +160,7 @@ PORTED_SHAPES: frozenset[str] = frozenset({"head_to_head", "team_quarter_points"
 """The shapes Phase 2's slice (iv) ported from templates the reader gave
 no point: each is declined beyond the scoping its retired template's words
 state (:data:`STATED_SCOPING`, where that template's ``HONORED_SCOPING``
-row moved) by name, in the sentence ``check_scope`` refused it with
+row moved) by name, in the sentence the retired scope check refused it with
 (:func:`_shape_declines`), before the relation's own cells are checked.
 
 .. versionadded:: 5.0.0
@@ -212,7 +212,7 @@ def _shape_declines(point: Reading) -> str | None:
     cells - why the planner declines the point, or None. The comparison
     over the season line honors no narrowing at all ("compare curry and
     lebron vs the celtics" answered for the whole season would be the
-    substitution ``check_scope`` exists to stop); the with/without split
+    substitution the scoping cells exist to stop); the with/without split
     only what its words state; a quarter's split, a run and two players'
     meetings each refuse the cells their retired template excluded, with
     that template's reason. Until 5.0.0's last change the point reader
@@ -288,7 +288,7 @@ def _plan(reading: Reading) -> Query | TeamQuery | TeamSeasonQuery | NetPointsQu
     :class:`~association.query.compose.core.Unsupported` where that relation
     cannot honor a narrowing the scope carries (``round``, ``rate``, a
     ``situation`` naming no calendar): the planner's own refusal, the rule
-    ``check_scope`` applies for a template, applied for the relation
+    the retired templates' scope check applied, applied for the relation
     (:func:`~association.query.compose.core._check_relation_scoping`).
     The answering loop plans a question's point once, through
     :func:`plan_point`.

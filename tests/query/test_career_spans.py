@@ -26,7 +26,7 @@ from association.query.normalizer import NORMALIZER_STATS
 from association.query.parse import with_point
 from association.query.reading import Reading, Scope, Unsupported
 from association.query.subject import Subject
-from association.query.templates.common import check_scope, unhonored_scoping
+from association.query.templates.common import unhonored_scoping
 
 
 def _compiled(intent: str) -> Callable[[AnswerContext, Reading], Reply]:
@@ -239,14 +239,10 @@ def test_a_career_leaderboard_refuses_what_it_cannot_answer(career_ctx: AnswerCo
 
 @pytest.mark.parametrize("intent", ["leaderboard", "threshold_count", "single_game_high"])
 def test_a_career_span_is_honored_by_the_ranking_templates(intent: str) -> None:
-    """A career is declared: by the template's list, or - for a count and a
-    high the compiler alone answers - by what its presenter's words state
+    """A career is declared by what each reader's retired words state
     (``compose.plan.STATED_SCOPING``), beside the relation, which honors
     a career for any named player."""
-    if intent in STATED_SCOPING:
-        assert unhonored_scoping(intent, Scope.from_slots({"span": "career"}), STATED_SCOPING[intent]) == []
-    else:
-        check_scope(intent, {"span": "career"})
+    assert unhonored_scoping(intent, Scope.from_slots({"span": "career"}), STATED_SCOPING[intent]) == []
 
 
 # ---------------- career counts and highs, from box scores ----------------

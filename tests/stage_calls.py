@@ -15,7 +15,11 @@ boundary's name, the arguments that are values (a question, a Reading - not
 a connection or a callback) and what came back, or what was raised.
 
 The boundaries are the ones the stages meet at today: the parser's two
-steps, the compiler's entry point, every template handler and ``Agent.ask``.
+steps, the compiler's entry point and ``Agent.ask``. Every template handler
+was one until the last template went (Phase 2, step 5): what replaced them is
+the readers and the sayer behind ``compose:answer``, recorded since Phase 2's
+first slice, so dropping the template boundary in step 6 took no call out of
+the population - ``templates.TEMPLATES`` was already empty.
 A phase that moves a boundary adds the new one to :data:`BOUNDARIES` before
 it deletes the old, so both trees record the same calls.
 """
@@ -33,8 +37,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-#: ``module:function`` for each boundary recorded, beside every handler in
-#: ``templates.TEMPLATES`` and ``Agent.ask``. ``compose:answer`` lost its
+#: ``module:function`` for each boundary recorded, beside ``Agent.ask``. ``compose:answer`` lost its
 #: ``ran`` callback in Phase 2, step 4 (2026-10-05): nothing moved across the
 #: boundary - an argument was dropped, and a callback is never written into
 #: a record (:func:`_is_value`), so the two trees' calls compared identical.
@@ -45,7 +48,7 @@ BOUNDARIES: tuple[str, ...] = (
 )
 
 # pytest's per-test directories, wherever the machine keeps them: two runs
-# never share one, and a chart's path is part of what a template returns.
+# never share one, and a chart's path is part of what a reader returns.
 # The test's own directory goes too: pytest cuts its name to 30 characters
 # and numbers the collisions in the order the workers reach them, so two
 # tests with one long prefix swap "..._na0" and "..._na1" between runs
@@ -64,7 +67,7 @@ def _plain(value: Any) -> Any:
 
 def _is_value(arg: Any) -> bool:
     """Whether an argument is part of what was asked - not the connection,
-    the template context, a callback or the Agent a method was called on,
+    the answer context, a callback or the Agent a method was called on,
     which no comparison can read (an object ``stages.plain`` does not know
     prints its address, which no two runs share)."""
     import duckdb
@@ -130,7 +133,6 @@ def install(directory: Path) -> None:
     import association
     from association.query import agent as agent_module
     from association.query.stages import snapshot
-    from association.query.templates import TEMPLATES
 
     directory.mkdir(parents=True, exist_ok=True)
     out = directory / f"calls-{os.getpid()}.jsonl"
@@ -146,10 +148,6 @@ def install(directory: Path) -> None:
         module_name, function_name = boundary.split(":")
         original = getattr(importlib.import_module(module_name), function_name)
         _rebind(original, _recording(out, boundary, original, as_returned))
-    for intent, handler in list(TEMPLATES.items()):
-        wrapped = _recording(out, f"template:{intent}", handler, as_returned)
-        _rebind(handler, wrapped)
-        TEMPLATES[intent] = wrapped
 
     def as_snapshot(answer: Any, args: tuple[Any, ...]) -> Any:
         return snapshot(args[0].reading, answer, planned=args[0].planned, unanswered=args[0].unanswered, unsaid=args[0].unsaid)

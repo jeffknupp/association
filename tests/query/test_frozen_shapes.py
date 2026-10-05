@@ -1,7 +1,15 @@
 """Decision D4 of ``ROADMAP.md``: new shapes are frozen while the pipeline
-is rebuilt. An intent, a template, a presenter, a scoping table or a
-per-intent renderer retires with its slice; none is added. The other
-directions the roadmap set are held by ``scripts/check_ratchets.py``."""
+is rebuilt. An intent or a per-intent renderer retires with its slice; none
+is added. The other directions the roadmap set are held by
+``scripts/check_ratchets.py``.
+
+Phase 2 (2026-10-03 to 2026-10-05) removed what the rest of this file froze:
+the twelve templates, the presenters and ``compose/present.py``, the ten
+adapters and ``compose/adapt.py``, and - with step 6 - ``HONORED_SCOPING``,
+``check_scope`` and the ``templates`` package itself. Their freezes went with
+them. The scoping declarations that remain are the per-relation cell tables
+the roadmap keeps and the planner's ``STATED_SCOPING``, which Phase 3's cells
+replace."""
 
 from __future__ import annotations
 
@@ -11,7 +19,6 @@ from association.query.compose import COMPILED_INTENTS
 from association.query.parse import PARENT_GRAMMAR
 from association.query.router import CODE_ASSIGNED_INTENTS
 from association.query.subject import KIND_ASSIGNED_INTENTS
-from association.query.templates import TEMPLATES
 
 # Every intent the reader could name on 2026-09-30. Remove a name when its
 # slice deletes it; adding one is a decision the roadmap has to change for.
@@ -47,7 +54,7 @@ FROZEN = frozenset(
 
 
 def _named_today() -> set[str]:
-    return set(TEMPLATES) | set(COMPILED_INTENTS) | set(CODE_ASSIGNED_INTENTS) | set(KIND_ASSIGNED_INTENTS) | {row[-1] for row in PARENT_GRAMMAR}
+    return set(COMPILED_INTENTS) | set(CODE_ASSIGNED_INTENTS) | set(KIND_ASSIGNED_INTENTS) | {row[-1] for row in PARENT_GRAMMAR}
 
 
 def test_no_intent_is_added_and_a_retired_one_leaves_the_list() -> None:
@@ -56,41 +63,10 @@ def test_no_intent_is_added_and_a_retired_one_leaves_the_list() -> None:
     assert FROZEN - named == set(), "an intent retired: remove it from FROZEN so it cannot come back"
 
 
-# D4 names more than the intents: no new template, presenter, scoping table
-# or per-intent renderer either (Phase 1's order from here, step 4). Each is
-# held the same way - the set as it stood, which may lose a member with its
-# slice and gain none.
-
-# The leaderboard's retired 2026-10-05 (slice (iii)): compose.rankings reads it, compose.say words it.
-# head_to_head's, team_quarter_points', period_leaderboard's and team_record's templates retired 2026-10-05 (slice (iv)):
-# compose.meetings, compose.periods and compose.team_records read them, compose.say words them.
-# coach's retired 2026-10-05 (slice (iv)): the reading refuses by its cause, the planner says it;
-# team_outlook's, team_stat's and team_leaderboard's the same day: compose.team_stats reads them, compose.say words them.
-# player_netpoints' and fingerprint's retired 2026-10-05 (slice (v)): compose.netpoints reads them,
-# compose.netpoints.draw_fingerprint draws the chart and compose.say words them.
-# shot_distance's and shot_chart's retired 2026-10-05 (slice (v)): compose.shots reads them on the declared shot relation
-# (and draws the chart), compose.say words them.
-FROZEN_TEMPLATES: frozenset[str] = frozenset()
-# Every module-level declaration of what a reader honors, states or
-# excludes, by module and name: the six the roadmap counted and their
-# relatives. A seventh fails here.
-FROZEN_SCOPING_TABLES = frozenset(
-    {
-        ("compose.plan", "WITH_WITHOUT_STATED"),
-        ("compose.core", "COMPILER_SLOTS"),
-        ("compose.plan", "STATED_SCOPING"),
-        ("templates.common", "SCOPING_SLOTS"),
-        ("templates.common", "RELATION_SCOPING"),
-        ("templates.common", "RELATION_SCOPING_EXCLUDED"),
-        ("templates.common", "TEAM_RELATION_SCOPING"),
-        ("templates.common", "TEAM_RELATION_SCOPING_EXCLUDED"),
-        ("templates.common", "HONORED_SCOPING"),
-        ("templates.common", "_BOX_SCORE_SCOPING"),
-        ("router", "_MODEL_SLOTS"),
-        ("compose.plan", "_TEAM_READER_REFUSES"),
-        ("templates.splits", "_CONDITION_PLAYER_ONLY_CELLS"),
-    }
-)
+# D4 names more than the intents: no new per-intent renderer either (Phase
+# 1's order from here, step 4), held the same way - the set as it stood,
+# which may lose a member with its slice and gain none. The page's renderers
+# become one per shape in Phase 4.
 FROZEN_RENDERERS = frozenset(
     {
         "game_log",
@@ -119,34 +95,6 @@ FROZEN_RENDERERS = frozenset(
 )
 
 
-def _scoping_tables_today() -> set[tuple[str, str]]:
-    """Every module-level name under ``query/`` that looks like a scoping
-    declaration, read from the source: a table nobody imports yet is still a
-    table."""
-    import ast
-    import re
-    from pathlib import Path
-
-    import association.query
-
-    root = Path(association.query.__file__).parent
-    found: set[tuple[str, str]] = set()
-    for path in sorted(root.rglob("*.py")):
-        module = ".".join(part for part in path.relative_to(root).with_suffix("").parts if part != "__init__")
-        for node in ast.parse(path.read_text()).body:
-            names = (
-                [t.id for t in node.targets if isinstance(t, ast.Name)]
-                if isinstance(node, ast.Assign)
-                else [node.target.id]
-                if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name)
-                else []
-            )
-            # Widened 2026-10-03 (the Phase 1 review): two tables of cells a
-            # reader refuses matched none of the first three words.
-            found.update((module, name) for name in names if re.search(r"SCOPING|STATED|_SLOTS$|CELLS|REFUSES|HONOR|EXCLUDED", name))
-    return found
-
-
 def _renderers_today() -> set[str]:
     import re
     from pathlib import Path
@@ -164,14 +112,13 @@ def _frozen(name: str, today: set[Any], frozen: frozenset[Any]) -> None:
     assert frozen - today == set(), f"a {name} retired: remove it from the frozen set so it cannot come back"
 
 
-def test_no_template_presenter_scoping_table_or_renderer_is_added() -> None:
+def test_no_presenter_or_renderer_is_added() -> None:
     import importlib.util
 
-    _frozen("template", set(TEMPLATES), FROZEN_TEMPLATES)
     # Every presenter is retired (the player relation's in slice (iii), the
     # team's - with_without's, a team's streak, a team's record over its own
     # line - in slice (iv), 2026-10-05), and compose/present.py with them:
-    # each shape is a reader and the sayer, and no presenter comes back.
+    # each shape is a reader and the sayer, and no presenter comes back. The
+    # templates package went with step 6: no template comes back either.
     assert importlib.util.find_spec("association.query.compose.present") is None, "a presenter came back: ROADMAP.md decision D4"
-    _frozen("scoping table", _scoping_tables_today(), FROZEN_SCOPING_TABLES)
     _frozen("renderer", _renderers_today(), FROZEN_RENDERERS)

@@ -158,8 +158,9 @@ SEASON_TYPE_NAMES = {0: "regular season and postseason", 1: "preseason", 2: "reg
 # `ranked_by` is read by nothing: the router files it when a
 # `leaderboard` question ranks the GAMES that satisfy a boolean stat by another
 # measure ("highest scoring triple doubles" - yardstick-v2 F124), the same
-# slots as the count "most triple doubles" otherwise. No template honors it,
-# so check_scope refuses and the compiler's boolean-game ranking answers.
+# slots as the count "most triple doubles" otherwise. The leaderboard's
+# reader does not state it, so it steps aside and the compiler's boolean-game
+# ranking answers.
 SCOPING_SLOTS = frozenset(
     {
         "order",
@@ -436,64 +437,6 @@ def team_relation_scoping(intent: str, *extra: str) -> frozenset[str]:
 _team_relation_scoping = team_relation_scoping
 
 
-# What each template actually honors. Anything not listed here honors none.
-HONORED_SCOPING: dict[str, frozenset[str]] = {
-    # The templates on the player-games relation: see RELATION_SCOPING.
-    # game_log is the compiler's (compose.COMPILED_INTENTS): what its retired
-    # words state is compose.plan.STATED_SCOPING's.
-    # player_stat is the compiler's too (step (g)): its retired words state
-    # the relation's set and `season_type_unstated`, read from box scores
-    # (`_player_stat_reads_box_scores`, `_player_relation_season_type`).
-    # team_quarter_points is the compiler's (Phase 2, slice (iv)):
-    # compose.present.STATED_SCOPING.
-    # period_leaderboard is the compiler's (Phase 2, slice (iv)):
-    # compose.present.STATED_SCOPING.
-    # head_to_head is the compiler's (Phase 2, slice (iv)): what its retired
-    # words state is compose.present.STATED_SCOPING's.
-    # A shot read that takes its games from the relation by event id (step 3,
-    # C5), the same shape as period_split: every relation slot is answerable -
-    # `span` "career" by drawing (or averaging) every season on record rather
-    # than the latest with data (shots._career_shot_note); `order` now honors
-    # `limit` as a window of games rather than always exactly one
-    # (common.relation_window / the relation's own windowed read), which is
-    # what fixes "his last two games" having drawn the whole season. No cell
-    # is excluded - unlike period_split, a shot read has no reason a venue, an
-    # opponent, a date or a box-score line on the games it draws from cannot
-    # narrow it.
-    # shot_chart and shot_distance are the compiler's (Phase 2, slice (v): the
-    # shot relation's reader, compose.shots): compose.plan.STATED_SCOPING.
-    # player_netpoints and fingerprint are the compiler's (Phase 2, slice (v)):
-    # compose.plan.STATED_SCOPING, which keeps why `date` is listed for the
-    # fingerprint (honored by refusing it in the reader's own words).
-    # `span` "career" is honored by summing every season: a career leaderboard
-    # from the per-team season rows, and a career count or high from every box
-    # score since 1993-94. Each answer names the pool, since neither is all-time.
-    # `rate` is honored by ANSWERING it where the metric has that form (a
-    # season total) and by refusing, in the metric's own name, where it does
-    # not ("/ 90"). It was unlisted, so check_scope raised before the template
-    # ran: the per-90 question was refused naming only the slot, and the
-    # `rate == "total"` branch below was unreachable in the pipeline.
-    # A career is every season on record rather than the current one; see
-    # _condition_scope. `without` is the teammate with_without divides by, and
-    # `split` is the one player_splits was asked for. `venue` and `opponent`
-    # are filters on the same box-score rows `team` already narrows - a home
-    # or road split for a player is answerable the same way a team's already
-    # is (see team_record below).
-    # player_splits is the compiler's too (step (g)): compose.plan.STATED_SCOPING.
-    # `opponent` narrows BOTH rows of the split to one opponent's games, and
-    # the title says so - "Embiid career record vs boston" is his record in the
-    # games his team played Boston, not overall (#163).
-    # with_without is the compiler's too (step (g), the team relation's
-    # `presence` group): compose.plan.WITH_WITHOUT_STATED.
-    # `opponent` and `order` are excluded, each with its reason
-    # (RELATION_SCOPING_EXCLUDED); a teammate's absence, a venue and a date
-    # narrow the first player's games as they do on every relation template.
-    # player_matchup and streak are the compiler's too (step (g), the `pair`
-    # and `run` shapes): compose.plan.STATED_SCOPING.
-    # team_record is the compiler's (Phase 2, slice (iv)): compose.plan.STATED_SCOPING.
-}
-
-
 # Which warehouse tables each template's answer is built from, so a question
 # about a season none of them reach is refused rather than answered with the
 # empty result that season produces. Hand-maintained, like HONORED_SCOPING
@@ -658,8 +601,8 @@ def _as_scope(value: Scope | Mapping[str, Any]) -> Scope:
     comes in by, so a key or a value nothing types is refused here exactly as
     it is where the parser builds the Reading.
 
-    Only the four checks take a slot dict still (:func:`check_scope`,
-    :func:`check_coverage`, :func:`coverage_caveat` and ``_sources_for``),
+    Only the three coverage checks take a slot dict still
+    (:func:`check_coverage`, :func:`coverage_caveat` and ``_sources_for``),
     and only from the tests: the agent hands them the Reading's own Scope,
     which the parser writes (:func:`~association.query.parse.reading_from_route`).
     Every other step here takes the Scope alone."""
@@ -754,10 +697,10 @@ def _sources_for_leaderboard(scope: Scope) -> tuple[str, ...]:
 def check_coverage(intent: str, scope: Scope | Mapping[str, Any]) -> str | None:
     """Why this question's season is out of reach, or None.
 
-    Returned rather than raised, which is the opposite of :func:`check_scope`
-    and deliberate. check_scope raises so the compiler gets its turn at the
-    same point, and may do better. Nothing does better here: a season under
-    the floor is empty for every reader. The refusal IS the answer.
+    Returned rather than raised, and deliberately: a narrowing a reader
+    cannot honor is declined so the compiler's own sentence gets its turn,
+    and may do better. Nothing does better here: a season under the floor
+    is empty for every reader. The refusal IS the answer.
 
     .. versionadded:: 2.1.0
 
@@ -813,33 +756,12 @@ def narrow_measures(narrowed: Narrowed, filters: list[MeasureFilter]) -> None:
         narrowed.narrow_measure(line.column, line.op, line.value, line.label)
 
 
-def check_scope(intent: str, scope: Scope | Mapping[str, Any]) -> None:
-    """Raise if the question scoped to particular games and this template
-    cannot honor that. Falling through is slow; answering a different question
-    quickly is worse.
-
-    A scoping slot is set when its :class:`~association.query.reading.Scope`
-    field is truthy: a field at its default (None, an empty tuple, False) is
-    the slot absent, the reading this has always taken of a falsy slot.
-
-    .. versionchanged:: 5.0.0
-       Reads the typed :class:`~association.query.reading.Scope`. A slot dict
-       is still taken, through :meth:`~association.query.reading.Scope.from_slots`,
-       until every caller passes ``reading.scope``.
-    """
-    scope = _as_scope(scope)
-    ignored = unhonored_scoping(intent, scope, HONORED_SCOPING.get(intent, frozenset()))
-    if ignored:
-        raise Unsupported(f"{intent} cannot honor {ignored} - it would answer for a different span than was asked")
-
-
 def unhonored_scoping(intent: str, scope: Scope, honored: frozenset[str]) -> list[str]:
     """The scoping slots ``scope`` sets that ``honored`` does not hold, for
-    ``intent`` - :func:`check_scope`'s rule, on its own so the compiler's
-    presenters apply it too: a template refuses such a slot, and a presenter
-    steps aside for one its words do not state
+    ``intent``: a reader steps aside for one its retired words do not state
     (:data:`~association.query.compose.plan.STATED_SCOPING`), leaving the
-    compiler's own sentence to answer. A slot is set when its field is truthy:
+    compiler's own sentence to answer, and the planner refuses one the
+    relation cannot honor at all. A slot is set when its field is truthy:
     a field at its default (None, an empty tuple, False) is the slot absent.
 
     .. versionadded:: 5.0.0
@@ -1370,8 +1292,8 @@ def _narrow_player_games(
         narrowed.extra_params.append(narrowed.venue == "home")
     if split in STARTER_SIDES:
         # Only a NAMED half filters. `starter_bench` reaches here unchanged
-        # when the question named both, and is refused by check_scope for the
-        # templates that cannot show a split table.
+        # when the question named both, and is refused by the planner for the
+        # readers that cannot show a split table (``unhonored_scoping``).
         narrowed.started = STARTER_SIDES[split]
         narrowed.extra.append("pgl.starter = ?")
         narrowed.extra_params.append(narrowed.started)
@@ -1602,9 +1524,9 @@ def scoped_games(
     the template then does with the rows - list them, average them, count them.
     That is why they are read from ``scope`` HERE and not by each template: a
     slot this does not read is one no template on the relation can honor, and a
-    slot it does read reaches all of them at once. ``check_scope`` has already
-    refused any the calling template does not declare, so nothing arrives here
-    that the template has not claimed.
+    slot it does read reaches all of them at once. The planner has already
+    refused any the relation cannot honor, and a reader steps aside for one
+    its words do not state, so nothing arrives here that is not claimed.
 
     ``opponent`` is passed because ``game_log`` may have rewritten it (a
     ``team`` beside a named player is his opponent) and a template that needs

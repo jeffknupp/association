@@ -1424,7 +1424,7 @@ def _apply_conditions(subject: Subject, scope: Scope, intent: str) -> tuple[Scop
     intent - the relation templates read them as a filter, ``with_without``
     as the split's own side ("record when Embiid and Paul George start":
     started against not), and an answer that cannot honor them refuses by
-    name (``check_scope``, the planner). Until 5.0.0's last change they
+    name (the planner). Until 5.0.0's last change they
     were written only where the answering template honored them, a reader
     that asked what would answer before it wrote (``ROADMAP.md``, Phase 1):
     "how many times did the 76ers beat boston when embiid started"

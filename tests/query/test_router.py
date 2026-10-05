@@ -16,7 +16,6 @@ from association.nba.season import current_season
 from association.query.compose.plan import refusal_result
 from association.query.reading import Cause, Scope
 from association.query.router import CODE_ASSIGNED_INTENTS, ORDER_INTENTS, ORDER_WORDS, SIDE_VALUES, Beside, Route, _settle
-from association.query.templates import TEMPLATES
 
 
 def _route(payload: str) -> Route:
@@ -187,21 +186,24 @@ def test_season_ref_wins_when_the_question_names_no_year_at_all() -> None:
     assert got is not None and got.slots["season"] == current_season()
 
 
-def test_every_template_is_reachable_from_the_reader() -> None:
-    """Every template must be REACHABLE, by one of exactly three routes: the
+def test_every_intent_is_reachable_from_the_reader() -> None:
+    """Every intent the compiler answers must be REACHABLE, by one of exactly three routes: the
     parser's grammar names it as a parent (``parse.PARENT_GRAMMAR``), the
     stages assign it from the question text (``CODE_ASSIGNED_INTENTS``), or
     the subject reading assigns it from the text gated on the subject's kind
-    (``subject.KIND_ASSIGNED_INTENTS``). A template in none of the lists is
-    dead code that no question can ever reach.
+    (``subject.KIND_ASSIGNED_INTENTS``). An intent in none of the lists is
+    dead code that no question can ever reach. Until Phase 2, step 6 this
+    read ``test_every_template_is_reachable_from_the_reader``, over the
+    templates.
 
     Until 5.0.0 the first route was the router's schema enum, and this read
     ``test_every_ported_template_has_an_intent_in_the_schema``."""
+    from association.query.compose import COMPILED_INTENTS
     from association.query.parse import PARENT_GRAMMAR
     from association.query.subject import KIND_ASSIGNED_INTENTS
 
     parents = {parent for _, _, parent in PARENT_GRAMMAR}
-    assert set(TEMPLATES) <= parents | CODE_ASSIGNED_INTENTS | KIND_ASSIGNED_INTENTS
+    assert parents | CODE_ASSIGNED_INTENTS | KIND_ASSIGNED_INTENTS >= COMPILED_INTENTS
 
 
 def test_question_text_beats_a_dropped_season_slot() -> None:
@@ -567,14 +569,12 @@ def test_the_order_intents_are_the_ones_that_honor_order() -> None:
     into a fall-through."""
     from association.query.compose.plan import STATED_SCOPING
     from association.query.router import _ORDER_ON_A_SINGLE_GAME
-    from association.query.templates.common import HONORED_SCOPING
 
     # player_stat honors an order only beside a limit of one (a single game
     # handed to game_log), so the stages set the pair together for it rather
     # than filling order alone - see _ORDER_ON_A_SINGLE_GAME. A retired
-    # template's list is what its presenter's words state (STATED_SCOPING).
-    declared = {**STATED_SCOPING, **HONORED_SCOPING}
-    assert frozenset(intent for intent, honored in declared.items() if "order" in honored) == ORDER_INTENTS | _ORDER_ON_A_SINGLE_GAME
+    # template's list is what its reader's words state (STATED_SCOPING).
+    assert frozenset(intent for intent, honored in STATED_SCOPING.items() if "order" in honored) == ORDER_INTENTS | _ORDER_ON_A_SINGLE_GAME
 
 
 # ---------------- scoping read from the question text ----------------
@@ -2562,14 +2562,14 @@ def test_settle_reads_a_childs_slots_off_the_text_and_drops_the_parents_derived_
     assert settle("record_when", {"stat": "points", "team": "Philadelphia 76ers"}, "PHI record when Embiid and Paul George played", Beside(played=("Embiid", "Paul George"))).intent == "with_without"
 
 
-def test_the_kind_assigned_intents_all_have_templates() -> None:
-    """A child the reading assigns is one a template or the compiler answers
+def test_the_kind_assigned_intents_all_have_readers() -> None:
+    """A child the reading assigns is one the compiler answers
     (``compose.COMPILED_INTENTS``) - the same reachability test the schema's
     enum and CODE_ASSIGNED_INTENTS get."""
     from association.query.compose import COMPILED_INTENTS
     from association.query.subject import KIND_ASSIGNED_INTENTS
 
-    assert set(TEMPLATES) | COMPILED_INTENTS >= KIND_ASSIGNED_INTENTS
+    assert COMPILED_INTENTS >= KIND_ASSIGNED_INTENTS
     assert KIND_ASSIGNED_INTENTS.isdisjoint(CODE_ASSIGNED_INTENTS)
 
 

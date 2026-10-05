@@ -233,8 +233,8 @@ class PeriodCondition:
 class Scope:
     """What narrows the answer, one typed field per scoping slot. A field at
     its default (None, empty, False) is the slot absent - the reading every
-    reader already takes of a falsy slot (``check_scope`` asks
-    ``slots.get(name)``). The names are here too, as the question gave them;
+    reader already takes of a falsy slot (``compose.plan.unhonored_scoping``
+    asks whether the field is truthy). The names are here too, as the question gave them;
     resolving them against the warehouse happens where each is read.
 
     .. versionadded:: 5.0.0
@@ -726,7 +726,7 @@ them as a player, and the compiler clears the slot.
 TEAM_ONLY_INTENTS: frozenset[str] = frozenset({"team_record", "team_leaderboard", "team_stat", "team_outlook"})
 """Intents with no player-shaped reading at all - absent from
 ``templates.common.PLAYER_INTENTS``, and so never checked by
-``subject.apply_subject`` or ``check_scope`` against a stray player name.
+``subject.apply_subject`` or the answering loop against a stray player name.
 
 A question naming exactly one real player and no team, routed to one of
 these, is answering a different subject than the one named -

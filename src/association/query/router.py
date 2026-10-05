@@ -419,9 +419,9 @@ _REGULAR_SEASON_WORDS = re.compile(r"\bregular[- ]season\b", re.IGNORECASE)
 # already is for a "last N games" question naming no type
 # (`_route_game_log_recent_span`): the honored meaning is identical - read
 # both, merged or combined - so this reuses the slot rather than adding a
-# second one, and `check_scope` already refuses it wherever nothing honors it
-# yet (`templates.common.HONORED_SCOPING`), which is the right answer for a
-# template that has not been taught to read both.
+# second one, and the planner already refuses it wherever nothing honors it
+# yet (`compose.plan.STATED_SCOPING`), which is the right answer for a
+# reader that has not been taught to read both.
 _BOTH_SEASON_TYPES_WORDS = re.compile(
     r"\bincluding\s+(?:the\s+)?(?:playoffs?|post-?season)\b"
     r"|\b(?:playoffs?|post-?season)\s+included\b"
@@ -1137,7 +1137,7 @@ _ABOVE = re.compile(r"\b(?:with\s+(?:at\s+least\s+)?)?(?<!than\s)(?<!under\s)(?<
 # The second group below was added 2026-09-15 from the 261-query StatMuse feed
 # replay, where a narrowing ROUTER_SCHEMA has no slot for was the single largest
 # cause of a wrong answer - 14 of 261, more than any other. The words never
-# reached `check_scope`, because it can only refuse a slot the router emits, so
+# reached the scope check, because it can only refuse a slot the router emits, so
 # the template answered the un-narrowed question: "lebron james 2 3 pointers
 # all-time vs jazz on tuesdays" returned his career average against Utah over 48
 # games, with the Tuesday, the threes and the "2" all silently gone.
@@ -1145,10 +1145,10 @@ _ABOVE = re.compile(r"\b(?:with\s+(?:at\s+least\s+)?)?(?<!than\s)(?<!under\s)(?<
 # Read from the question text rather than added to ROUTER_SCHEMA, which is the
 # cheap half of this fix and the safe one: a new slot in the schema moves slots
 # on unrelated questions (see _validate_side), while a regex here costs no
-# prompt tokens and cannot. Setting `situation` is enough on its own - no
-# template lists it in HONORED_SCOPING, so `check_scope` refuses and the
-# question is refused, which is the ranking AGENTS.md sets: a refusal beats a
-# fluent wrong answer.
+# prompt tokens and cannot. Setting `situation` is enough on its own - a
+# reader whose words do not state it steps aside and the planner refuses
+# what the relation cannot honor, which is the ranking AGENTS.md sets: a
+# refusal beats a fluent wrong answer.
 #
 # Measured against 343 real questions (the 261-query feed plus the 83 routing
 # corpus cases): 14 feed queries match and **no corpus case does**, so no
@@ -1521,8 +1521,8 @@ def _route_ranked_boolean_games(intent: str, slots: dict[str, Any], question: st
     "most triple doubles", which the count answers rightly - and answered
     the count. The template never sees the question, so the word that
     tells the two apart ("scoring", "biggest") has to become a slot here:
-    `ranked_by`, the measure the qualifying games are ranked by, which no
-    template honors, so `check_scope` refuses and the compiler's
+    `ranked_by`, the measure the qualifying games are ranked by, which the
+    leaderboard's reader does not state, so it steps aside and the compiler's
     boolean-game ranking (query/point.py) answers instead. A bare "most
     triple doubles" files nothing and keeps its count.
 
@@ -1683,7 +1683,7 @@ _NETPOINTS_PER_100: dict[str, str] = {
 def _route_rate(intent: str, slots: dict[str, Any], question: str) -> None:
     """A per-possession rate the question asks a ranking for - see _RATE_WORDS.
     Switches a NetPoints metric to its per-100 variant; any other metric, or a
-    per-90 rate, gets a ``rate`` slot no template honors, so check_scope
+    per-90 rate, gets a ``rate`` slot no reader honors, so the planner
     refuses rather than ranking the wrong unit."""
     if intent != "leaderboard":
         return
@@ -1718,7 +1718,7 @@ _PER_GAME_WORDS = re.compile(r"\bper\s+game\b|\bppg\b|\brpg\b|\bapg\b|\baverages
 def _route_team_total(intent: str, slots: dict[str, Any], question: str) -> None:
     """A season total asked of a team's own stat is filed as ``rate: "total"``
     (the schema's own word for it, which NetPoints already uses), which
-    ``team_stat`` does not honor - ``check_scope`` refuses it - so the
+    ``team_stat``'s words do not state - its reader steps aside - so the
     compiler reads the season's raw total.
     "how many 3 pointers have the magic made so far this season" arrived as
     ``team_stat`` after the 5.0.0 prompt shrink (it was ``leaderboard`` with
@@ -1843,15 +1843,15 @@ def _names_one_game(question: str) -> bool:
 
 
 ORDER_INTENTS: frozenset[str] = frozenset({"fingerprint", "game_log", "period_split", "player_netpoints", "shot_chart", "shot_distance", "team_quarter_points"})
-"""Intents whose template honors ``order``, so filling it from the question can
+"""Intents whose reader honors ``order``, so filling it from the question can
 only make the answer match what was asked.
 
 The same list as the ``order`` entries in
-:data:`association.query.templates.HONORED_SCOPING`, kept separately because a
-router that imported the templates would invert the dependency, and guarded by
+:data:`association.query.compose.plan.STATED_SCOPING`, kept separately because a
+router that imported the answer side would invert the dependency, and guarded by
 ``test_the_order_intents_are_the_ones_that_honor_order``. Adding ``order``
-anywhere else would be worse than leaving it off: ``check_scope`` refuses a
-scoping slot the template cannot honor, so a question that answers today would
+anywhere else would be worse than leaving it off: the planner refuses a
+scoping slot the relation cannot honor, so a question that answers today would
 be refused instead.
 
 .. versionadded:: 2.1.0
@@ -2322,8 +2322,8 @@ def _route_season_slots(raw: dict[str, Any], question: str) -> dict[str, Any]:
         # Both, named outright - not merely unnamed the way
         # `_route_game_log_recent_span` reads a bare "last N games" later in
         # `route()`. Same slot, same honored meaning: a template that reads it
-        # (`templates.common.player_relation_season_type`) reads both types;
-        # one that does not is refused by `check_scope` rather than guessing
+        # (`player_relation.player_relation_season_type`) reads both types;
+        # one that does not is refused by the planner rather than guessing
         # which half the question meant. `season_type` itself is left at the
         # regular-season default (never 3) so nothing that reads it directly,
         # ignoring the flag, narrows to the postseason ALONE - the specific
@@ -2396,8 +2396,8 @@ def _route_filter_slots(slots: dict[str, Any], question: str, beside: Beside) ->
     """Span, venue, teammates missing, a ceiling and a situation. Returns the span and the absent teammates."""
     # The scoping slots below are read from the question and never asked of the
     # model: none is in ROUTER_SCHEMA, so adding them changed no grammar and can
-    # have moved no other question's routing. A template that cannot honor one
-    # refuses it (templates.check_scope) rather than answering a broader question.
+    # have moved no other question's routing. A reader that cannot honor one
+    # refuses it (the planner) rather than answering a broader question.
     span = _validate_span(question)
     if span is not None:
         slots["span"] = span
@@ -2409,8 +2409,8 @@ def _route_filter_slots(slots: dict[str, Any], question: str, beside: Beside) ->
     if venue is not None:
         slots["venue"] = venue
     # "with Embiid out" is "without Embiid" written the other way round, for
-    # every intent the way "without" is: a template that cannot narrow by it
-    # refuses (check_scope), never answers the games he played too.
+    # every intent the way "without" is: a reader that cannot narrow by it
+    # refuses (the planner), never answers the games he played too.
     without = list(beside.absent)
     if without:
         slots["without"] = without
@@ -2804,7 +2804,7 @@ def _route_side_and_order(intent: str, slots: dict[str, Any], question: str) -> 
         # An `order` the model added to an intent that cannot honor one, on a
         # question naming no game at either end. Measured: "evan mobley avg
         # against bucks" and "Celtics record without Tatum" both arrived with
-        # order='recent' and limit=1, and check_scope refused them. A limit of
+        # order='recent' and limit=1, and the scope check refused them. A limit of
         # one rode in with it and goes too; a real one ("top 5") stays.
         slots.pop("order", None)
         if slots.get("limit") == 1:

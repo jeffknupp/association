@@ -3,7 +3,7 @@ refusal naming why where nothing here reads a question (the tool-calling
 fall-through it replaced in 5.0.0 is gone)."""
 
 from pathlib import Path
-from typing import Any, NoReturn
+from typing import Any
 
 import ollama
 import pytest
@@ -210,17 +210,12 @@ def test_a_rerouted_intent_runs_the_path_it_was_rerouted_to(monkeypatch: pytest.
     ran head_to_head, which refused for wanting two team names. Every
     offline replay passed, because the replay script looked the handler up
     afterwards and the real pipeline before - so only a test on this path
-    can catch it. record_when is the compiler's alone now
+    can catch it. Every intent is the compiler's now
     (compose.COMPILED_INTENTS): the compiler is asked, under record_when,
-    and team_record's template never runs."""
+    and never under team_record."""
     from association.query.answer import Reply
-    from association.query.reading import Unsupported
 
     paths: list[str] = []
-
-    def team_record(ctx: Any, reading: Reading) -> Reply:
-        paths.append("team_record")
-        raise Unsupported("team_record cannot read a player's line")
 
     def composed(ctx: Any, reading: Reading, trace: Any = None, declined: Any = None, planned: Any = None, ran: Any = None) -> Reply:
         del ran  # the agent's own callback, not this test's record of the paths taken
@@ -238,7 +233,6 @@ def test_a_rerouted_intent_runs_the_path_it_was_rerouted_to(monkeypatch: pytest.
     con.close()
     agent = Agent(str(db_path), tmp_path / "out", history_dir=tmp_path / ".history")
 
-    monkeypatch.setattr("association.query.agent.TEMPLATES", {"team_record": team_record})
     monkeypatch.setattr("association.query.compose.answer", composed)
     answer = ask_routed(agent, "sixers record when maxey scored 20+ points", slots_route("team_record", {"team": "Philadelphia 76ers", "stat": "points", "season_type": 2}))
     assert paths == ["compose record_when"]
@@ -363,19 +357,8 @@ def test_a_question_nothing_reads_is_refused_naming_why(monkeypatch: pytest.Monk
 # ---------------- the compiled step between a refusal and the refusal naming why ----------------
 
 
-def _refusing_template(ctx: Any, reading: Reading) -> NoReturn:
-    """A template stand-in that always raises Unsupported, the way
-    check_scope or a template's own validation does - the trigger that
-    reaches association.query.compose.answer (agent._try_compose)."""
-    from association.query.reading import Unsupported
-
-    raise Unsupported("a test double's refusal, standing in for whatever check_scope or a real template would have raised")
-
-
-def test_a_templates_refusal_that_compose_answers_is_returned_as_fast_with_the_trace_line(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """The whole point of wiring the compiler in: a scoping refusal that used
-    to cost a fall-through is answered here instead, exactly
-    like a template's own result - answered_by="fast", the intent kept - with
+def test_a_composed_answer_is_returned_as_fast_with_the_trace_line(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """The compiler's answer is answered_by="fast", the intent kept, with
     a trace line naming the point on the relation it composed, the way
     "-> (router) intent=..." names what was routed."""
     from association.query.answer import Reply
@@ -383,7 +366,6 @@ def test_a_templates_refusal_that_compose_answers_is_returned_as_fast_with_the_t
     def composed_answer(ctx: Any, reading: Reading, trace: Any = None, declined: Any = None, planned: Any = None, ran: Any = None) -> Reply:
         return Reply(data={"skeleton": "aggregate", "measures": ["points"], "rows": [{"points": 30.0}]}, answer="Joel Embiid has averaged 30.0 points since 2024.")
 
-    monkeypatch.setattr("association.query.agent.TEMPLATES", {"player_stat": _refusing_template})
     monkeypatch.setattr("association.query.compose.answer", composed_answer)
 
     seen: list[str] = []
@@ -413,7 +395,6 @@ def test_a_compose_refusal_is_returned_as_the_answer_not_a_fall_through(monkeypa
     def composed_refusal(ctx: Any, reading: Reading, trace: Any = None, declined: Any = None, planned: Any = None, ran: Any = None) -> Reply:
         return Reply(data={"ambiguous": "since"}, answer="I can't tell which span 'the last few' means - a number of games, or a number of seasons?")
 
-    monkeypatch.setattr("association.query.agent.TEMPLATES", {"player_stat": _refusing_template})
     monkeypatch.setattr("association.query.compose.answer", composed_refusal)
 
     answer = ask_routed(_agent_with_players(tmp_path, "Joel Embiid"), "embiid's line over the last few?", slots_route("player_stat", {"player": "Joel Embiid", "since": 2024}))
@@ -433,7 +414,6 @@ def test_a_composed_answer_carries_the_name_reading_it_noted(monkeypatch: pytest
         _note_name_reading("maxey", Entity("1", "Tyrese Maxey"), [Entity("0", "Marlon Maxey")], 2026, named_in_full=False)
         return Reply(data={}, answer="Tyrese Maxey has averaged 28.0 points since 2024.")
 
-    monkeypatch.setattr("association.query.agent.TEMPLATES", {"player_stat": _refusing_template})
     monkeypatch.setattr("association.query.compose.answer", composed_with_reading)
 
     answer = ask_routed(_agent_with_players(tmp_path, "Marlon Maxey", "Tyrese Maxey"), "how many points has maxey averaged since 2024?", slots_route("player_stat", {"player": "maxey", "since": 2024}))
@@ -542,13 +522,11 @@ def test_the_refusal_names_what_the_fast_path_could_not_answer(tmp_path: Path) -
 
 
 def test_a_shape_nothing_reads_is_refused_with_its_cause(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """After the template refuses and the compiler declines, a shape the
-    warehouse has no column for (association.query.refusals) is refused
-    with its cause as a fast answer - not with the template's slot. A
-    playoff round is the worked case: no template honors the slot, and the
-    games carry no round label."""
+    """After the compiler declines, a shape the warehouse has no column for
+    (association.query.refusals) is refused with its cause as a fast
+    answer - not with the slot. A playoff round is the worked case: no
+    reader honors the slot, and the games carry no round label."""
 
-    monkeypatch.setattr("association.query.agent.TEMPLATES", {"game_log": _refusing_template})
     monkeypatch.setattr("association.query.compose.answer", lambda *a, **k: None)
 
     agent = _agent_with_players(tmp_path, "Joel Embiid")
@@ -594,8 +572,7 @@ def test_an_answer_names_the_history_file_it_was_recorded_to(monkeypatch: pytest
 def test_a_compiled_intent_is_read_planned_and_answered_by_the_compiler_alone(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """ROADMAP plan item 6, step (d), part 4: the four intents the compiler
     reproduced exactly (compose.COMPILED_INTENTS) are answered from the
-    Reading; the trace carries the record ("-> (reading) ...") and no
-    template is called, even one registered under the intent. Where the
+    Reading; the trace carries the record ("-> (reading) ..."). Where the
     compiler declines, the question is refused naming the compiler's
     reason - there is no template behind it any more."""
     from association.query.answer import Reply
@@ -619,12 +596,7 @@ def test_a_compiled_intent_is_read_planned_and_answered_by_the_compiler_alone(mo
             )
         return Reply(data={"count": 9}, answer="Joel Embiid had 9 games with 30+ points.")
 
-    def never_template(ctx: Any, reading: Reading) -> Reply:
-        calls.append("template")
-        return Reply(data={}, answer="the template answered")
-
     recorded = slots_route("threshold_count", {"player": "Joel Embiid", "stat": "points", "threshold": 30})
-    monkeypatch.setattr("association.query.agent.TEMPLATES", {"threshold_count": never_template})
     monkeypatch.setattr("association.query.compose.answer", composed_first)
 
     seen: list[str] = []

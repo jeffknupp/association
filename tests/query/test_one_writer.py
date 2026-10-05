@@ -55,8 +55,7 @@ def ask(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Any:
         seen.append((reading.intent, reading.scope.player, reading.scope.players))
         return Reply(data={}, answer="answered")
 
-    monkeypatch.setattr("association.query.agent.TEMPLATES", {"fingerprint": record, "player_compare": record})
-    # player_stat is the compiler's (compose.COMPILED_INTENTS): the same
+    # Every intent is the compiler's (compose.COMPILED_INTENTS): the
     # Reading reaches compose.answer, through agent._run_compiled.
     monkeypatch.setattr("association.query.compose.answer", lambda ctx, reading, trace=None, declined=None, planned=None: record(ctx, reading))
 

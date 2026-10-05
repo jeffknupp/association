@@ -75,7 +75,7 @@ def measure_filters(below: Any, above: Any) -> list[MeasureFilter]:
     honest carrier of which column was meant. A phrase whose words name no
     column refuses (:class:`~association.query.reading.PointRefused`, a
     decline to the answer side, a cause to the point reader) rather
-    than filtering on a guess - the same rule ``check_scope`` applies to a
+    than filtering on a guess - the same rule the planner applies to a
     slot nothing honors.
 
     .. versionadded:: 4.3.0

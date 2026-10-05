@@ -80,7 +80,7 @@ def _splits_refusals(scope: Scope) -> None:
     """What no splits answer honors, refused before any name is resolved: a
     window of recent games (this divides a whole span into groups and has no
     notion of "his last N games"; answering the whole span under that
-    framing would be the silent substitution ``check_scope`` exists to
+    framing would be the silent substitution the scoping cells exist to
     stop), and a home/away split beside a venue already narrowed to one
     (the same axis asked twice; the narrowing wins)."""
     if scope.limit is not None and scope.limit > 1:

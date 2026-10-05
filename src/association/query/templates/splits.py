@@ -60,7 +60,7 @@ def condition_span_label(covered: _Scope, scope: Scope, first: Any, last: Any) -
 # branches cannot honor: each needs a named PLAYER to settle a teammate's
 # absence, a starter/bench half, or a line on a box-score column against -
 # `condition_player` is what reads all of them, and neither branch calls it.
-# `HONORED_SCOPING` claims the whole relation for both intents regardless of
+# `STATED_SCOPING` claims the whole relation for both intents regardless of
 # branch (the same declaration the player branch needs), so a team-only or
 # league-wide question setting one of these would otherwise be silently
 # answered as though it had been applied. Refusing here, by name, is the same
