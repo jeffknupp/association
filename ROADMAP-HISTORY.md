@@ -829,6 +829,29 @@ agents' reports named here are in `~/association-research/stages/`.
     moving the reading's verdict, which the readings population holds
     identical; about 15 readings; put to Jeff.
 
+16. **Phase 2, step 3 - the season line, and the reader seam (2026-10-05).**
+    Jeff's rule first: a user-visible decline becoming a `Cause` is a
+    permitted reading move, one commit, every moved reading enumerated
+    (`122f288`; AGENTS.md "Identical means identical"). Then three Opus
+    agents off that commit: the leaderboard (`605a96f`), the season line's
+    three player shapes with `query/season_line.py` as the relation
+    (`7e7a45b`), and the reader seam - the last adapter and `adapt.py`
+    gone with contract 1's last ignore, `MAX_LIMIT` one value, `CAUSES`
+    3 -> 16 with the enumerated move (3 recorded questions, 20 readings,
+    31 calls), and `games_reading`'s re-plan into the planner (50 feed
+    readings' planned query). Each later agent rebased onto the earlier
+    merges and re-proved on the merged tree; the lead re-ran gates, suite,
+    ratchets and the 628 before each merge, and bracketed the slice with
+    live runs: parser25 before, parser26 after, 277 of 277 identical.
+    Presenters 4 -> 0 and the freeze on them retired; what is left of the
+    middle is `present.py`'s `STATED_SCOPING` and the two team presenters
+    (slice (iv)), and the words in `templates/` the team shapes and the
+    charts still carry. What the agents said about the pattern: the
+    season line has three entry points (`rank_season_line`, `values_of`,
+    `season_redirect`) worth folding into one; a comparison and a matchup
+    share a `Grouped` by subject and are told apart by `Span.source`; the
+    `ran` boundary now always equals the planned query and could go.
+
 ## The plan items, as written
 
 In order of lift per unit of structural change, each measured on the
