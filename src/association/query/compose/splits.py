@@ -30,7 +30,7 @@ from association.query.result import Grouped, Narrowing, Part, Result, Span
 from association.query.season_text import MONTH_NAMES
 from association.query.team_relation import condition_team_no_games, team_games, team_span_label
 
-from .core import Compiled, Query, compile_over, compile_query, rows_of
+from .core import Compiled, Query, compile_over, compile_query, rows_of, unread_note
 from .team import TeamQuery, compile_team_over
 
 # Router stat name -> the standard split line's own key: naming one of these
@@ -127,18 +127,28 @@ def _group_rows(found: list[dict[str, Any]], line: tuple[tuple[str, str, str], .
     return rows
 
 
-def _player_groups(con: duckdb.DuckDBPyConnection, q: Query, compiled: Compiled, line: tuple[tuple[str, str, str], ...], kinds: list[str]) -> Grouped:
+def _player_groups(con: duckdb.DuckDBPyConnection, q: Query, compiled: Compiled, line: tuple[tuple[str, str, str], ...], kinds: list[str]) -> tuple[Grouped, Note | None]:
     """One row per group of each kind, in reading order - each kind one
     compiled statement: the point as a grouped read by that kind's group
     with the line's measures (:func:`~association.query.compose.core.compile_over`
-    over the subject the first compile settled)."""
+    over the subject the first compile settled) - and the games the line's
+    columns that read no rebuilt line could not read
+    (:func:`~association.query.compose.core.unread_note`, over the first
+    kind's groups: every kind divides the same games). The table's ``G``
+    and ``W-L`` stay every game he played - the heading counts them, and a
+    record has no rebuilt figure to skip - and the note says which columns
+    are over fewer."""
     assert compiled.player is not None
     measures = [_LINE_MEASURE.get(name, name) for name, _, _ in line]
     rows: list[dict[str, Any]] = []
-    for kind in kinds:
-        each = compile_over(con, replace(q, group=_SPLIT_GROUP[kind], measures=measures), compiled.player, compiled.span, compiled.narrowed)
-        rows += _group_rows(rows_of(con, each), line, kind)
-    return Grouped(by="split", rows=tuple(rows))
+    unread: Note | None = None
+    for index, kind in enumerate(kinds):
+        point = replace(q, group=_SPLIT_GROUP[kind], measures=measures)
+        found = rows_of(con, compile_over(con, point, compiled.player, compiled.span, compiled.narrowed))
+        if index == 0:
+            unread = unread_note(point, found)
+        rows += _group_rows(found, line, kind)
+    return Grouped(by="split", rows=tuple(rows)), unread
 
 
 def _narrowing_emptied(con: duckdb.DuckDBPyConnection, narrowed: Narrowed) -> bool:
@@ -212,26 +222,30 @@ def _player_splits(con: duckdb.DuckDBPyConnection, q: Query, compiled: Compiled,
         # could not carry it; the narrowed rows just settled it.
         covered = replace(covered, season=int(first))
     split, kinds = _kinds(scope.split, "p")
-    notes = _player_notes(con, covered, base, params, first, kinds)
+    groups, unread = _player_groups(con, q, compiled, line, kinds)
+    notes = _player_notes(con, covered, base, params, first, kinds, unread)
     facts = _player_facts(scope, player, narrowed, team, opponent, line, split, kinds, games)
     return Result(
         subject=player.name,
         relation="player",
         span=Span(season=covered.season, season_type=covered.season_type, career=covered.season is None, first=first, last=last, phrase=covered.label(first, last)),
         narrowing=Narrowing(phrase=narrowed.filters(), opponent=opponent.name if opponent else None, venue=scope.venue, without=tuple(mate.name for mate in narrowed.without)),
-        parts=(Part(body=_player_groups(con, q, compiled, line, kinds)),),
+        parts=(Part(body=groups),),
         notes=notes,
         facts=facts,
     )
 
 
-def _player_notes(con: duckdb.DuckDBPyConnection, covered: Any, base: str, params: Any, first: int | None, kinds: list[str]) -> tuple[Note, ...]:
+def _player_notes(con: duckdb.DuckDBPyConnection, covered: Any, base: str, params: Any, first: int | None, kinds: list[str], unread: Note | None) -> tuple[Note, ...]:
     """The remarks, in the order the template wrote them: the unseen games,
-    the floor, then what the table's words mean."""
+    the columns rebuilt lines could not fill (``unread``), the floor, then
+    what the table's words mean."""
     notes: list[Note] = []
     unseen = _unseen(con, covered, base, params, box_source(con))
     if unseen:
         notes.append(Note("games_unseen", {"games": unseen, "why": "no_box_score", "whose": "his team's"}))
+    if unread is not None:
+        notes.append(unread)
     if covered.season is None and first == covered.first:
         notes.append(Note("floor", {"table": "box_scores", "first": covered.first, "what": covered.kind}))
     notes.append(Note("definition", {"term": "played"}))

@@ -928,7 +928,7 @@ model's. Two things follow, and both matter when you add a shape:
     (`check_coverage`, `coverage_caveat`, `SOURCES`) to `coverage.py` -
     under public names, with no private alias kept. A step a relation
     calls that phrases words (`no_narrowed_games`' "no games" sentence,
-    `box_score_notes`) takes the sayer's helper through a call-time import,
+    `compose.core._box_notes`) takes the sayer's helper through a call-time import,
     since `compose` imports the relations.
   - **Proved identical, text and all.** 628 of 628 recorded questions and
     1,391 of 1,391 unit-test calls; the slice rewords nothing. Step 0 grew
@@ -1549,6 +1549,12 @@ everything about it is constrained by things measured elsewhere in this file.
   and a streak or a with/without split cannot tell whether a player sat those
   games out. **Say how many games a per-game answer could not see** — that is
   what `_empty_box_scores` is for. `DATA.md` has the counts and the seasons.
+  Where those games are rebuilt from play-by-play, a measure the rebuild
+  never measured (a rate over attempts, turnovers, minutes:
+  `core.unread_on_rebuilt`) is read over the fetched games alone, so it
+  carries its own count (`"<measure>_games"`), a ranking by it qualifies on
+  that count, and the answer says the games it could not read (a
+  `lines_rebuilt` note, `what` "unread"; ISSUES.md #327, closed).
 
   **Do not confuse that with the team-box-only fault**, which looks similar and
   is not. Vancouver 1996 has an all-NULL `team_box_stats` row for every game

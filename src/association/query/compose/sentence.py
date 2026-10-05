@@ -187,7 +187,10 @@ def _grouped_line(q: Query, r: dict[str, Any]) -> str:
     cells = [f"{r.get('games')} G"]
     if "wins" in r:
         cells.append(f"{r.get('wins')}-{r.get('losses')}")
-    cells += [f"{LABELS.get(m, m)} {_fmt(r.get(m), m)}" for m in q.measures]
+    # A measure that read fewer of the group's games than it played (a rate
+    # over attempts, which a rebuilt line never has) carries its own count
+    # (core.unread_note keeps it only where it is fewer), said beside it.
+    cells += [f"{LABELS.get(m, m)} {_fmt(r.get(m), m)}" + (f" ({r[f'{m}_games']} G)" if f"{m}_games" in r else "") for m in q.measures]
     label = period_label(int(r["group"])) if q.group == "period" else str(r["group"])
     return f"  {label:24s} " + "  ".join(cells)
 

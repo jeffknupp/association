@@ -31,7 +31,7 @@ from association.query.calendar import parse_alignment, parse_situation
 from association.query.conditions import _game_scope, _Scope, box_source
 from association.query.entities import BOX_SCORES, Ambiguous, Availability, Entity, clarify, find_players, resolve_player, resolve_team, resolved_player, resolved_team, teammate_names
 from association.query.lines import MeasureFilter, measure_filters
-from association.query.notes import Note, note
+from association.query.notes import Note
 from association.query.player_games import (
     _PLAYER_GAMES,
     BOTH_SEASON_TYPES,
@@ -1119,8 +1119,8 @@ def box_score_notes_read(
     taken to mean, the figures that were rebuilt rather than fetched, the
     empty lines left out, and - unless ``career_note`` is off, as it is for
     one dated game - a career older than the box scores. The sayer phrases
-    each (``compose.say.note_phrase``); :func:`box_score_notes` is that,
-    for the templates that still write sentences.
+    each (``compose.say.note_phrase``); the compiler's own sentence phrases
+    them through it too (``compose.core._box_notes``).
 
     .. versionadded:: 5.0.0
     """
@@ -1146,19 +1146,6 @@ def box_score_notes_read(
         if earliest is not None and earliest < span.first:
             notes.append(Note("floor", {"table": "box_scores", "first": span.first, "earliest": earliest}))
     return notes
-
-
-def box_score_notes(con: duckdb.DuckDBPyConnection, player: Entity, span: ResolvedSpan, narrowed: Narrowed, *, career_note: bool = True, rebuilt: bool = False, rebuilt_shown: int = 0) -> list[str]:
-    """:func:`box_score_notes_read`, each note phrased and recorded - the
-    sentences the templates append.
-
-    .. versionchanged:: 5.0.0
-       Reads through :func:`box_score_notes_read` and phrases each kind
-       once, in the sayer (``compose.say.note_phrase``).
-    """
-    from association.query.compose.say import note_phrase
-
-    return [note(each.kind, note_phrase(each), **each.facts) for each in box_score_notes_read(con, player, span, narrowed, career_note=career_note, rebuilt=rebuilt, rebuilt_shown=rebuilt_shown)]
 
 
 def condition_scope(season: int | None, span: Literal["career"] | None, season_type: int | None, tables: tuple[str, ...], since: int | None = None) -> _Scope:

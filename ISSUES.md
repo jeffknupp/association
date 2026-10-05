@@ -289,13 +289,6 @@ those were found.
 
 ## P2: misleading or incomplete
 
-### A shooting rate over seasons with rebuilt lines is read over the fetched games while its games column and qualifier count the rebuilt ones, unsaid
-- **Found:** 2026-10-05, the Phase 2 review; the fix it qualifies is `c6e9253` (2026-10-04)
-- **Evidence:** since `c6e9253` (`core._rate_sql` skips rebuilt rows in both sums where a rate reads a column the rebuild never measured - right in itself). A 2015-18 postseason TS% ranking lists Taj Gibson "22 G, TS% 64.7%" in 4th: 10 fetched games (12 rebuilt), his all-rows figure 57.5. "zach lavine career record": FG% over 656 of 693 games, W-L over 693. Four feed answers moved over the phase with no commit naming them (review, 1c).
-- **User sees:** a percentage over fewer games than the games column beside it says, with no note.
-- **Next step:** qualify a rate on the games it reads (the 20-game minimum over fetched games where the rate skips rebuilt ones) and write a `lines_rebuilt`-kind note with the rate's games.
-- **GitHub:** #327
-
 ### "Stephen Curry free throw chart" (no "shot") answers his season averages
 - **Found:** 2026-10-05, the Phase 2 review
 - **Evidence:** read as `player_stat` on both trees; "free throw shot chart" reads as `shot_chart` and refuses correctly (no free-throw chart).

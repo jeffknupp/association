@@ -6,7 +6,7 @@ import contract "The compiler's sentence reads no warehouse" holds this
 module as it holds :mod:`association.query.compose.sentence`). Each note
 kind has ONE phrase, here (:func:`note_phrase`), so rewording a note is
 editing that phrase; the templates that still write their own sentences
-phrase their notes through it too (``player_relation.box_score_notes``).
+phrase their notes through it too (``compose.core._box_notes``).
 
 Phase 2's first slice (``ROADMAP.md``, "Phase 2, the expected steps",
 step 0): the game log's words, taken from the retired template's body
@@ -34,6 +34,7 @@ from association.query.shotchart import DERIVED_SHOT_VALUES, UNSEPARABLE_SHOT_VA
 from association.query.team_metrics import RATING_NOTE, TEAM_METRICS, TeamMetric
 
 from .logs import LOG_PERCENTAGES, log_key
+from .sentence import LABELS
 
 # --- notes: one phrase per kind -----------------------------------------------
 
@@ -180,6 +181,8 @@ def _say_streak_rule(facts: dict[str, Any]) -> str:
 def _say_lines_rebuilt(facts: dict[str, Any]) -> str:
     if facts.get("what") == "counted":
         return _say_lines_rebuilt_counted(facts)
+    if facts.get("what") in ("unread", "unread_ranked"):
+        return _say_lines_unread(facts)
     if facts.get("what") == "single_game":
         return " That game has no box score from ESPN - the figure is rebuilt from its play-by-play, so treat it as close rather than exact."
     shown = facts["games"]
@@ -203,6 +206,25 @@ def _say_lines_rebuilt_counted(facts: dict[str, Any]) -> str:
     else:
         lead = f"{rebuilt_shown} of {whose} {counted} games {'have' if plural else 'has'} no box score from ESPN"
     return f" {lead} - {'those figures are' if plural else 'that figure is'} rebuilt from play-by-play, so treat the count as close rather than exact."
+
+
+def _say_lines_unread(facts: dict[str, Any]) -> str:
+    """The games the answer's measures could not read: rebuilt lines carry
+    no figure for a column the rebuild never measured (a rate over attempts,
+    turnovers, minutes), so the figure is over the fetched games while the
+    games beside it count every one (ISSUES.md #327). A ranking's
+    (``unread_ranked``) says each player's count is beside his figure
+    (``compose.sentence``) and that the minimum counts only those."""
+    skipped, total = facts["games"], facts["total"]
+    labels = [LABELS.get(column, column) for column in facts["columns"]]
+    plural = skipped != 1
+    whose = "the listed players'" if facts["what"] == "unread_ranked" else "these"
+    have, their = ("have", "their") if plural else ("has", "its")
+    lead = f"{skipped:,} of {whose} {total:,} games {have} no box score from ESPN: {their} figures are rebuilt from play-by-play, which leaves no {_joined(labels, 'or')}"
+    if facts["what"] == "unread_ranked":
+        verb = "are" if len(labels) != 1 else "is"
+        return f"{lead}, so a player's {_joined(labels)} {verb} read over his other games, counted beside the figure, and the minimum counts only those."
+    return f"{lead}, so {'those are' if len(labels) != 1 else 'that is'} read over the other {total - skipped:,}."
 
 
 def _say_stat_withheld(facts: dict[str, Any]) -> str:
@@ -769,7 +791,7 @@ def say_splits(result: Result) -> Reply:
     notes = (
         [text for each, text in said if each.kind == "definition"]
         + [text.strip() for each, text in said if each.kind == "floor"]
-        + [text.strip() for each, text in said if each.kind in ("games_unseen", "stat_blank")]
+        + [text.strip() for each, text in said if each.kind in ("games_unseen", "lines_rebuilt", "stat_blank")]
     )
     answer += "\n" + " ".join(notes)
     data = {**facts["about"], "span": result.span.phrase, "games": facts["games"], "splits": by_kind, "headline": headline.rstrip(":"), "notes": notes}

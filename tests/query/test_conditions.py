@@ -18,6 +18,7 @@ templates have to get right, measured in the real warehouse first:
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -30,7 +31,9 @@ from association.fetch.repairs import real_games
 from association.fetch.repairs.reconstructed_box import _FILLED_COLUMNS as FILLED_COLUMNS
 from association.nba.season import current_season
 from association.query.answer import AnswerContext, Reply
+from association.query.compose.core import Query, run
 from association.query.compose.plan import STATED_SCOPING
+from association.query.compose.sentence import sentence
 from association.query.conditions import RAW_BOX, UNGATED_ON_REBUILD, box_source
 from association.query.coverage import check_coverage
 from association.query.parse import with_point
@@ -278,7 +281,9 @@ def test_a_rebuilt_game_is_no_longer_an_unknown_game(rebuilt_league: AnswerConte
     counts a game and reports it as one with no box score - the contradiction
     `_empty_box_scores(covered_by_rebuild=...)` exists to stop elsewhere."""
     answer = player_splits(rebuilt_league, Reading.from_slots(_slots(player="Jayson Tatum", split="home_away"))).answer or ""
-    assert "no box score" not in answer
+    # The unseen-games note's own words; the rebuilt game is said by the
+    # rebuilt-line note instead, as a game whose box score ESPN lacks.
+    assert "The warehouse has no box score" not in answer
 
 
 def test_a_figure_the_rebuild_gets_wrong_is_left_out_rather_than_averaged_in(rebuilt_league: AnswerContext) -> None:
@@ -302,6 +307,64 @@ def test_a_figure_the_rebuild_gets_wrong_is_left_out_rather_than_averaged_in(reb
     # sums (core._rate_sql). Until 2026-10-04 the makes ran over both games and
     # the attempts over e1, and this split printed 93.3%.
     assert home["fg_pct"] == pytest.approx(50.0), "e1 alone, numerator and denominator alike"
+
+
+def test_a_split_says_the_columns_a_rebuilt_line_cannot_fill(rebuilt_league: AnswerContext) -> None:
+    """ISSUES.md #327: the split's minutes, turnovers, threes and FG% are over
+    e1, e4 and e7 - e5's rebuilt line has none of them - while G and W-L count
+    all four games. The table keeps G as the games he played (the heading
+    counts them) and the note says which columns are over fewer, and how many
+    fewer. Before, the answer said nothing."""
+    answer = player_splits(rebuilt_league, Reading.from_slots(_slots(player="Jayson Tatum", split="home_away"))).answer or ""
+    assert "1 of these 4 games has no box score from ESPN: its figures are rebuilt from play-by-play, which leaves no minutes, turnovers, 3PM or FG%, so those are read over the other 3." in answer
+
+
+def _rate_ranking(minimum: int) -> Query:
+    """The league's FG% leaders this season with a minimum, as the planner
+    hands a position or postseason ranking to the player-games relation."""
+    return Query(
+        scope=Scope(season_type=2, stat="fg_pct"), skeleton="grouped", subject="everyone", group="player", aggregate="per_game", measures=["fg_pct"], order="measure", minimum_games=minimum, limit=10
+    )
+
+
+def test_a_rate_ranking_qualifies_on_the_games_the_rate_reads(rebuilt_league: AnswerContext) -> None:
+    """ISSUES.md #327, the review's Taj Gibson: a rate that skips rebuilt
+    lines must not qualify on them. Tatum played four games, e5 rebuilt, so
+    his FG% is over three - under a 4-game minimum he is out; Brown played
+    six, five of them read, and stays, his read count beside his figure.
+    Before, Tatum ranked on "4 G" with a FG% over 3."""
+    out = run(rebuilt_league.con, _rate_ranking(4))
+    listed = {row["group"]: row for row in out["rows"]}
+    assert "Jayson Tatum" not in listed
+    assert listed["Jaylen Brown"]["games"] == 6
+    assert listed["Jaylen Brown"]["fg_pct_games"] == 5
+    assert "Jaylen Brown             6 G  FG% 49.4% (5 G)" in sentence(_rate_ranking(4), out)
+    assert out["notes"] == [
+        "1 of the listed players' 10 games has no box score from ESPN: its figures are rebuilt from play-by-play, which leaves no FG%,"
+        " so a player's FG% is read over his other games, counted beside the figure, and the minimum counts only those."
+    ]
+
+
+def test_a_measure_read_over_every_game_carries_no_count_of_its_own(rebuilt_league: AnswerContext) -> None:
+    """The count is said only where it is fewer: a group with no rebuilt
+    line (LeBron's) keeps the row it always had, and a measure a rebuild
+    fills (points) never carries one."""
+    query = replace(_rate_ranking(1), measures=["fg_pct", "points"])
+    listed = {row["group"]: row for row in run(rebuilt_league.con, query)["rows"]}
+    assert "fg_pct_games" not in listed["LeBron James"]
+    assert not any("points_games" in row for row in listed.values())
+
+
+def test_a_named_players_grouped_read_says_the_rebuilt_games_once(rebuilt_league: AnswerContext) -> None:
+    """A named player's compiled split already says his rebuilt games
+    (``lines_rebuilt``, "shown"); where a measure could not read them, the
+    one sentence says both rather than two saying the same games."""
+    query = Query(scope=Scope(player="Jayson Tatum", season_type=2), skeleton="grouped", group="venue", aggregate="per_game", measures=["points", "fg_pct"])
+    out = run(rebuilt_league.con, query)
+    home = next(row for row in out["rows"] if row["group"] == "home")
+    assert (home["games"], home["fg_pct_games"]) == (2, 1)
+    rebuilt = [each for each in out["notes"] if "box score from ESPN" in each]
+    assert rebuilt == ["1 of these 4 games has no box score from ESPN: its figures are rebuilt from play-by-play, which leaves no FG%, so that is read over the other 3."]
 
 
 def test_a_teammate_in_a_rebuilt_game_is_not_counted_as_absent(rebuilt_league: AnswerContext) -> None:

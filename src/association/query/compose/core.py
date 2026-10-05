@@ -49,12 +49,13 @@ from association.query.lines import measure_filters
 from association.query.measures import BOOLEAN_MEASURES as BOOLEAN_MEASURES
 from association.query.measures import GAME_COLUMNS, LABEL_MEASURES
 from association.query.measures import LINE as LINE
+from association.query.notes import Note, note
 from association.query.player_games import PERIOD_COLUMNS, PERIOD_RATES, REBUILT_STATS, REGULATION_QUARTERS, Narrowed, aggregate_sql, games_subquery, grouped_sql, named, paired_rows_sql, rows_sql
 from association.query.player_relation import (
     RELATION_SCOPING,
     ResolvedSpan,
     apply_period,
-    box_score_notes,
+    box_score_notes_read,
     career_end,
     condition_scope,
     league_games,
@@ -203,6 +204,30 @@ def _rate_render(columns: tuple[str, ...], *, rebuilt: bool) -> Callable[[str], 
     if rebuilt and any(column not in REBUILT_STATS and column in UNGATED_ON_REBUILD for column in columns):
         return lambda column: f"CASE WHEN pgl.reconstructed THEN NULL ELSE pgl.{column} END"
     return lambda column: f"pgl.{column}"
+
+
+def unread_on_rebuilt(name: str) -> bool:
+    """Whether a measure, read under the blanking guard (:func:`_blanks`),
+    reads no rebuilt row at all: a rate over a column the rebuild never
+    measured (:func:`_rate_sql`), such a column on its own
+    (:func:`measure_sql`), and ``minutes``, which play-by-play cannot recover
+    and a rebuilt line leaves NULL. Such a measure's figure is over fewer
+    games than the ``games`` beside it wherever rebuilt lines are in scope -
+    so the statement carries its own count (``"<measure>_games"``,
+    :func:`_scalar_selects`), a ranking by it qualifies on that count
+    (:func:`_compile_grouped`), and the answer says the games it could not
+    read (ISSUES.md #327, the Phase 2 review).
+
+    .. versionadded:: 5.0.0
+    """
+    if name in RATES:
+        return any(column not in REBUILT_STATS and column in UNGATED_ON_REBUILD for column in RATES[name][2])
+    return name == "minutes" or (name in COLUMNS and name not in REBUILT_STATS and name in UNGATED_ON_REBUILD)
+
+
+#: The rows a measure that reads no rebuilt line (:func:`unread_on_rebuilt`)
+#: is read over: the fetched ones.
+_READ_ROWS = "COUNT(*) FILTER (WHERE NOT pgl.reconstructed)"
 
 
 #: The comparisons a ``Query.predicates`` entry may use - an allowlist, so no
@@ -770,8 +795,10 @@ def _scalar_selects(q: Query, rebuilt: bool) -> list[str]:
     win-loss record, one aggregate per measure, and - guarded the same way
     :func:`_row_select` guards its own ``reconstructed`` column - how many of
     the counted games are rebuilt rather than fetched, for
-    :func:`~association.query.player_relation.box_score_notes`' own
-    rebuilt-line note (#197, ISSUES.md)."""
+    :func:`~association.query.player_relation.box_score_notes_read`' own
+    rebuilt-line note (#197, ISSUES.md) - and, beside each measure that
+    reads no rebuilt line (:func:`unread_on_rebuilt`), the games it reads
+    (``"<measure>_games"``)."""
     selects = ["COUNT(*) AS games"]
     if q.aggregate == "record":
         selects += [
@@ -784,6 +811,10 @@ def _scalar_selects(q: Query, rebuilt: bool) -> list[str]:
         selects += _line_selects(q, rebuilt)
     elif q.aggregate != "count":
         selects += [_agg(m, q.aggregate, rebuilt=_blanks(q, rebuilt)) for m in q.measures]
+    if q.aggregate != "count" and _blanks(q, rebuilt):
+        # Beside a measure that reads no rebuilt line, the games it does
+        # read: "games" counts every game, the figure only the fetched ones.
+        selects += [f'{_READ_ROWS} AS "{m}_games"' for m in q.measures if unread_on_rebuilt(m)]
     selects.append("SUM(CASE WHEN pgl.reconstructed THEN 1 ELSE 0 END) AS rebuilt_shown" if rebuilt else "0 AS rebuilt_shown")
     return selects
 
@@ -884,9 +915,20 @@ def _compile_grouped(q: Query, narrowed: Narrowed, rebuilt: bool, player: Entity
         order = f"1 {'ASC' if q.direction == 'asc' else 'DESC'}"
     else:
         order = "1"
-    having = f"COUNT(*) >= {int(q.minimum_games)}" if q.minimum_games else None
+    having = f"{_ranked_games(q, rebuilt)} >= {int(q.minimum_games)}" if q.minimum_games else None
     sql, params = grouped_sql(narrowed, key, [sel, *selects], having=having, order=order, limit=q.limit, rebuilt=rebuilt)
     return Compiled(sql, params, player, span, narrowed, rebuilt, list(q.measures))
+
+
+def _ranked_games(q: Query, rebuilt: bool) -> str:
+    """The games a group's minimum counts: the games its ranked measure
+    reads. A rate that reads no rebuilt line qualifies on the fetched games
+    alone - counted on every game, Taj Gibson ranked 4th in a 2015-18
+    postseason TS% list on "22 G", 12 of them rebuilt lines the rate never
+    read, his TS% over the other 10 (ISSUES.md #327)."""
+    if q.measures and _blanks(q, rebuilt) and unread_on_rebuilt(q.measures[0]):
+        return _READ_ROWS
+    return "COUNT(*)"
 
 
 def run_scope(scope: Scope, *, named: bool) -> Any:
@@ -1066,11 +1108,11 @@ def _box_notes(con: duckdb.DuckDBPyConnection, q: Query, c: Compiled, rows: list
     absence explained, the empty lines left out of the count, the games
     rebuilt from play-by-play rather than fetched, and a career predating
     box scores entirely
-    (:func:`~association.query.player_relation.box_score_notes`, the
+    (:func:`~association.query.player_relation.box_score_notes_read`, the
     templates' own notes, threaded through here for the first time: #197,
     ISSUES.md). Only for a named player - the league-wide subject has no
     ONE player's career to check a floor against, which is what
-    ``box_score_notes`` assumes.
+    ``box_score_notes_read`` assumes.
 
     .. versionchanged:: 4.4.0
        Pops the scratch ``rebuilt_shown`` column unconditionally, even for
@@ -1080,14 +1122,82 @@ def _box_notes(con: duckdb.DuckDBPyConnection, q: Query, c: Compiled, rows: list
        ``data["rows"]`` for exactly the subject this function returns early
        for.
     """
+    from association.query.compose.say import note_phrase
+
     rebuilt_shown = _rebuilt_shown_count(q, rows)
+    unread = unread_note(q, rows)
     if c.player is None:
-        return []
+        return [note(unread.kind, note_phrase(unread), **unread.facts)] if unread is not None else []
     # A dated read's "career" span is only how the game was FOUND (binding
     # parity, K1 rule 6), not what the answer is about - the same reason
     # `game_log`'s own notes turn this note off for one.
     career_note = c.narrowed.date is None
-    return box_score_notes(con, c.player, c.span, c.narrowed, career_note=career_note, rebuilt=c.rebuilt, rebuilt_shown=rebuilt_shown)
+    notes = box_score_notes_read(con, c.player, c.span, c.narrowed, career_note=career_note, rebuilt=c.rebuilt, rebuilt_shown=rebuilt_shown)
+    if unread is not None:
+        # The rebuilt games the answer shows are the games the unread
+        # measures skip: one sentence says both, in the shown note's place.
+        shown = [i for i, each in enumerate(notes) if each.kind == "lines_rebuilt"]
+        notes = [*notes[: shown[0]], unread, *notes[shown[0] + 1 :]] if shown else [*notes, unread]
+    return [note(each.kind, note_phrase(each), **each.facts) for each in notes]
+
+
+def _unread_read(q: Query, r: dict[str, Any], columns: list[str]) -> int | None:
+    """One group's games its unread measures read, or ``None`` where none
+    read fewer than ``games``; a count equal to ``games`` is dropped from
+    the row, and each measure short of it is added to ``columns``."""
+    read = None
+    for m in q.measures:
+        key = f"{m}_games"
+        if key not in r:
+            continue
+        if int(r[key] or 0) >= int(r.get("games") or 0):
+            r.pop(key)
+            continue
+        read = int(r[key] or 0)
+        if m not in columns:
+            columns.append(m)
+    return read
+
+
+def _unread_counts(q: Query, rows: list[dict[str, Any]]) -> tuple[int, list[str]]:
+    """The games the grouped rows' unread measures skipped, and which
+    measures skipped them (:func:`unread_note`)."""
+    skipped = 0
+    columns: list[str] = []
+    for r in rows:
+        read = _unread_read(q, r, columns)
+        if read is not None:
+            skipped += int(r.get("games") or 0) - read
+    return skipped, columns
+
+
+def unread_note(q: Query, rows: list[dict[str, Any]]) -> Note | None:
+    """The games a grouped read's measures could not read, as a note: where
+    a measure reads no rebuilt line (:func:`unread_on_rebuilt`) and a group
+    holds rebuilt games, its ``"<measure>_games"`` column (from
+    :func:`_scalar_selects`) is fewer than ``games``. Each such column is
+    kept on its row - the count the figure is over, said beside it - and
+    dropped where it equals ``games``, so a row is as it was wherever no
+    rebuilt line was in scope. ``None`` where no group lost a game: a
+    ``lines_rebuilt`` note otherwise, with how many games the measures
+    could not read (``games``), of how many (``total``), and which measures
+    (``columns``) - ``what`` "unread_ranked" for a ranking by player with
+    a minimum, which counts only the games read (:func:`_ranked_games`).
+
+    .. versionadded:: 5.0.0
+    """
+    if q.skeleton != "grouped":
+        # A record's sentence shows no measure: nothing to count beside one.
+        for r in rows:
+            for m in q.measures:
+                r.pop(f"{m}_games", None)
+        return None
+    skipped, columns = _unread_counts(q, rows)
+    if not skipped:
+        return None
+    total = sum(int(r.get("games") or 0) for r in rows)
+    what = "unread_ranked" if q.group == "player" and q.minimum_games else "unread"
+    return Note("lines_rebuilt", {"games": skipped, "total": total, "what": what, "columns": [m for m in q.measures if m in columns]})
 
 
 def _grouped_total(con: duckdb.DuckDBPyConnection, q: Query, c: Compiled, rows: list[dict[str, Any]]) -> int | None:
