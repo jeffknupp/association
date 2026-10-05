@@ -63,9 +63,9 @@ def test_no_intent_is_added_and_a_retired_one_leaves_the_list() -> None:
 
 # The leaderboard's retired 2026-10-05 (slice (iii)): compose.rankings reads it, compose.say words it.
 FROZEN_TEAM_ONLY_PRESENTERS = frozenset({"with_without"})
+# coach's retired 2026-10-05 (slice (iv)): the reading refuses by its cause, the planner says it.
 FROZEN_TEMPLATES = frozenset(
     {
-        "coach",
         "fingerprint",
         "head_to_head",
         "period_leaderboard",

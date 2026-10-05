@@ -1269,6 +1269,39 @@ def team_read_point(scope: Scope, question: str, subject: Subject) -> Reading | 
     return Reading(scope=scope, shape="scalar", measures=[measure], aggregate="total", relation="team")
 
 
+TEAM_SEASON_POINTS: dict[str, tuple[Literal["team_seasons", "team_snapshots"], Literal["scalar", "grouped"]]] = {
+    "team_stat": ("team_seasons", "scalar"),
+    "team_leaderboard": ("team_seasons", "grouped"),
+    "team_outlook": ("team_snapshots", "scalar"),
+}
+"""The intents a team's own season answers, and the relation and shape of
+that point: one team's line on ``team_season_stats`` (``team_stat``), every
+team ranked by one metric of it or of the standings (``team_leaderboard``),
+and one team's place in ESPN's power index (``team_outlook``). Read where
+the question's words read no other point for the intent - a team's own
+total ("how many 3-pointers have the Magic made", :func:`team_read_point`)
+is still that point, and the team-season reader is tried before it
+(``compose.answer``), as the retired template was tried before the
+compiler.
+
+.. versionadded:: 5.0.0
+"""
+
+
+def team_season_point(intent: str, scope: Scope) -> Reading:
+    """``intent``'s point on its team-season relation
+    (:data:`TEAM_SEASON_POINTS`), over ``scope`` as the question settled it:
+    the reader names the relation and the shape, and reads no metric - which
+    of ``team_metrics.TEAM_METRICS`` the ``stat`` slot names, and what a
+    word it does not know is refused with, is the relation's reader's
+    (``compose.team_stats``), as it was the retired templates'.
+
+    .. versionadded:: 5.0.0
+    """
+    relation, shape = TEAM_SEASON_POINTS[intent]
+    return Reading(scope=scope, shape=shape, relation=relation)
+
+
 def read_point(reading: Reading, question: str) -> Reading:
     """``reading``'s intent's default point, moved by ``question``'s own words: a
     measure beyond a template's list, a skeleton move ("most ... in a game" =
@@ -1310,7 +1343,16 @@ def read_point(reading: Reading, question: str) -> Reading:
         # with none is a caller's mistake, said here rather than as an
         # AttributeError three moves down.
         raise ValueError("read_point needs the reading's subject - who the question is about, as the parser read it")
-    point = _read_point(reading.intent, reading.scope, question, subject)
+    try:
+        point = _read_point(reading.intent, reading.scope, question, subject)
+    except Unsupported:
+        if reading.intent not in TEAM_SEASON_POINTS:
+            raise
+        # No other reading of the point: the team's own season is the
+        # question (Phase 2, step 4). Until then this was a decline - "a
+        # team's own question is not the player relation's" - which the
+        # retired template answered past.
+        point = team_season_point(reading.intent, reading.scope)
     return replace(point, intent=reading.intent, subject=subject, evidence=(*point.evidence, *subject.evidence))
 
 
@@ -1339,6 +1381,10 @@ def _leaderboard_declines(scope: Scope, subject: Subject) -> None:
 def _read_point(intent: str, scope: Scope, question: str, subject: Subject) -> Reading:
     """:func:`read_point`'s moves, in order; split out so the record carries
     the intent and the subject whichever move settled it."""
+    if intent == "coach":
+        # No table here holds a coach: the reading's verdict, said by the
+        # planner in the retired template's words (compose.plan).
+        raise PointRefused(Cause(kind="no_coach_table", facts={"unanswerable": "coach"}))
     if intent == "leaderboard":
         _leaderboard_declines(scope, subject)
     if intent == "record_when" and not _named_player_in(scope) and scope.team is not None and scope.team.strip():

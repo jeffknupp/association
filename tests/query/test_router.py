@@ -7,15 +7,16 @@ model call that decoded it is gone (5.0.0), so they run the stages directly
 over the same reply (:func:`_ask`)."""
 
 import json
-from typing import Any, cast, get_args, get_type_hints
+from typing import Any, get_args, get_type_hints
 
 import pytest
 from routed import slots_route
 
 from association.nba.season import current_season
-from association.query.reading import Reading, Scope
+from association.query.compose.plan import refusal_result
+from association.query.reading import Cause, Scope
 from association.query.router import CODE_ASSIGNED_INTENTS, ORDER_INTENTS, ORDER_WORDS, SIDE_VALUES, Beside, Route, _settle
-from association.query.templates import TEMPLATES, TemplateContext
+from association.query.templates import TEMPLATES
 
 
 def _route(payload: str) -> Route:
@@ -2284,7 +2285,7 @@ def test_the_coach_refusal_names_the_source_rather_than_blaming_it() -> None:
     2026-09-17 and is false: it serves two coach collections, both unusable.
     Saying the source has none would be the wrong-cause refusal this project
     keeps producing, so the sentence says what is actually wrong with them."""
-    answer = TEMPLATES["coach"](cast("TemplateContext", None), Reading()).answer
+    answer = refusal_result(Cause(kind="no_coach_table", facts={"unanswerable": "coach"})).answer
     assert "No table here holds a coach" in answer
     assert "ESPN does publish coaches" in answer
     assert "Player and team questions are unaffected" in answer

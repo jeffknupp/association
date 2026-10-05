@@ -1075,9 +1075,13 @@ model's. Two things follow, and both matter when you add a shape:
   nothing can answer needs the model's help least. `coach` is the worked
   example - the word is unmistakable, nothing else in the warehouse is named
   it, and a bare surname is deliberately not matched ("nurse" and "rivers"
-  are ordinary words, the substring trap `players_named_in` exists for). Such
-  a template declares no tables, so it goes in `TABLELESS_INTENTS` or the
-  coverage gate fails.
+  are ordinary words, the substring trap `players_named_in` exists for).
+  Since 2026-10-05 it has no template: the point reader refuses it by a
+  cause (`reading.Cause("no_coach_table")`, `point._read_point`) and the
+  planner says it (`compose.plan.refusal_result`, `COACH_REFUSAL`) - a
+  refusal the reading comes to is a cause, not a body to run. An intent
+  that reads no table still goes in `TABLELESS_INTENTS`, or the coverage
+  gate fails.
 
   The children come one step later, where the subject's KIND is known:
   `subject.KIND_ASSIGNED_INTENTS` (`_CHILD_GRAMMARS`). A child of a parent

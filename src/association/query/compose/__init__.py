@@ -61,6 +61,7 @@ from .sentence import team_sentence as _team_sentence
 from .splits import read_player_splits, read_team_splits
 from .stats import read_player_stat
 from .team import TeamQuery, TeamResult, run_team
+from .team_stats import TeamSeasonQuery
 
 if TYPE_CHECKING:
     from association.query.reading import Reading
@@ -128,6 +129,7 @@ COMPILED_INTENTS: frozenset[str] = frozenset(
         "streak",
         "player_matchup",
         "with_without",
+        "coach",
     }
 )
 """The intents the compiler alone answers - the four whose templates it
@@ -311,7 +313,7 @@ def _answer_point(
     ctx: TemplateContext,
     intent: str,
     point: Reading,
-    query: Query | TeamQuery,
+    query: Query | TeamQuery | TeamSeasonQuery,
     trace: Callable[[Reading], None] | None,
     declined: Callable[[str], None] | None,
 ) -> TemplateResult | None:
@@ -321,6 +323,8 @@ def _answer_point(
     try:
         if trace is not None:
             trace(point)
+        if isinstance(query, TeamSeasonQuery):
+            raise Unsupported("the team-season relation's readers are not ported yet")
         if isinstance(query, TeamQuery):
             ported_team = _read_ported_team(ctx.con, intent, query)
             if ported_team is not None:

@@ -162,7 +162,7 @@ def _names_a_period_subject(question: str) -> bool:
 
 
 # A coach question, which has no answer here and is refused rather than left to
-# fall through (templates/teams.py's COACH_REFUSAL says why, and what ESPN
+# fall through (compose/plan.py's COACH_REFUSAL says why, and what ESPN
 # actually serves). Read from the question's own words for the same reason
 # `period_split` is: the word is unmistakable, and a new ROUTER_SCHEMA enum
 # value or ROUTER_PROMPT line would move slots on unrelated questions.

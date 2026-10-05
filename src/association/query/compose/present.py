@@ -43,6 +43,7 @@ from association.query.templates.common import (
     TemplateUnsupported,
     check_coverage,
     relation_scoping,
+    team_relation_scoping,
     unhonored_scoping,
 )
 from association.query.templates.splits import (
@@ -120,6 +121,15 @@ STATED_SCOPING: dict[str, frozenset[str]] = {
     # `season_type_unstated` is stated the way `scoped_player` reads it -
     # one combined `season_type IN (2, 3)` read (player_relation_season_type).
     "threshold_count": frozenset({"span", "below", "above", "season_n", "season_type_unstated"}),
+    # The team-season readers' words (compose.team_stats), as the retired
+    # templates honored them: one team's line and its power index state no
+    # narrowing at all; a ranking states the team relation's cells less the
+    # ones TEAM_RELATION_SCOPING_EXCLUDED["team_leaderboard"] gives a reason
+    # for - and refuses, by name, a venue or a span its metric has no
+    # reading over (compose.team_stats).
+    "team_stat": frozenset(),
+    "team_outlook": frozenset(),
+    "team_leaderboard": team_relation_scoping("team_leaderboard"),
 }
 """Intent -> the scoping its presenter's WORDS state. A presenter answers in
 its template's sentence, which names the narrowings that template honored

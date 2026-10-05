@@ -15,6 +15,7 @@ from typing import Any
 
 from association.query.measures import PERIOD_COLUMNS, stat_measure
 from association.query.metrics import LEADERBOARD_METRICS
+from association.query.point import TEAM_SEASON_POINTS
 from association.query.reading import Cause, Reading, Scope, _career_scope, ordinal_word
 from association.query.season_line import SEASON_TOTAL_OF
 from association.query.templates.common import RELATION_SCOPING_EXCLUDED, STAT_LABELS, TemplateResult, TemplateUnsupported, check_coverage, unhonored_scoping
@@ -25,6 +26,7 @@ from .core import Query, Refused, Unsupported, _check_relation_scoping
 from .rankings import leaderboard_reads
 from .seasons import player_compare_reads, player_history_reads, player_line_reads
 from .team import TeamQuery
+from .team_stats import TeamSeasonQuery
 
 WITH_WITHOUT_STATED: frozenset[str] = frozenset({"span", "without", "opponent", "conditions"})
 """The scoping ``with_without``'s words state - a career, the teammates
@@ -121,7 +123,50 @@ def _shape_declines(point: Reading) -> str | None:
     return None
 
 
-def plan(reading: Reading) -> Query | TeamQuery:
+def team_season_declines(intent: str, scope: Scope) -> str | None:
+    """Why a team-season intent's reader cannot answer ``scope`` as asked -
+    a narrowing its words do not state (``compose.present.STATED_SCOPING``),
+    in the retired template's sentence - or None. The first thing the
+    reader checks, before the coverage floor, as ``check_scope`` ran before
+    the template.
+
+    .. versionadded:: 5.0.0
+    """
+    # At call time: compose.present imports this module (WITH_WITHOUT_STATED).
+    from .present import STATED_SCOPING
+
+    ignored = unhonored_scoping(intent, scope, STATED_SCOPING[intent])
+    return f"{intent} cannot honor {ignored} - it would answer for a different span than was asked" if ignored else None
+
+
+def plan(reading: Reading) -> Query | TeamQuery | TeamSeasonQuery:
+    """The point ``reading`` names, on the relation it names - see
+    :func:`_plan`. A team-season intent's point on another relation (a
+    team's own total, "how many 3-pointers have the Magic made") that the
+    relation declines is that intent's own team-season point instead, or
+    the team-season reader's refusal of the narrowing: the retired
+    template was tried before the compiler, so the compiler declining
+    never decided such a question (Phase 2, step 4).
+
+    .. versionadded:: 5.0.0
+
+    .. versionchanged:: 5.0.0
+       Plans a team-season point (:data:`~association.query.point.TEAM_SEASON_POINTS`)
+       as a :class:`~association.query.compose.team_stats.TeamSeasonQuery`.
+    """
+    try:
+        return _plan(reading)
+    except Unsupported as exc:
+        if reading.intent not in TEAM_SEASON_POINTS:
+            raise
+        declined = team_season_declines(reading.intent, reading.scope)
+        if declined is not None:
+            raise Unsupported(declined) from exc
+        relation, shape = TEAM_SEASON_POINTS[reading.intent]
+        return TeamSeasonQuery(scope=reading.scope, relation=relation, shape=shape)
+
+
+def _plan(reading: Reading) -> Query | TeamQuery | TeamSeasonQuery:
     """The point ``reading`` names, on the relation it names - or
     :class:`~association.query.compose.core.Unsupported` where that relation
     cannot honor a narrowing the scope carries (``round``, ``rate``, a
@@ -140,6 +185,11 @@ def plan(reading: Reading) -> Query | TeamQuery:
     declined = _shape_declines(reading)
     if declined is not None:
         raise Unsupported(declined)
+    if reading.relation in ("team_seasons", "team_snapshots"):
+        # A team's own season: its reader holds the question to the
+        # narrowings its words state (team_season_declines), in the retired
+        # template's order - before the coverage floor.
+        return TeamSeasonQuery(scope=reading.scope, relation=reading.relation, shape="grouped" if reading.shape == "grouped" else "scalar")
     if reading.relation == "team":
         # Every team shape, the sums included, against the TEAM relation's
         # own cells and what this shape's reader takes beside them.
@@ -239,7 +289,7 @@ class Planned:
     .. versionadded:: 5.0.0
     """
 
-    query: Query | TeamQuery | None = None
+    query: Query | TeamQuery | TeamSeasonQuery | None = None
     declined: str | None = None
     refusal: TemplateResult | None = None
 
@@ -336,6 +386,7 @@ def _cause_sentence(kind: str, facts: Any) -> str | None:
         "needs_subject": lambda: f"{shape.capitalize()} needs a player or a team to read it for, and neither was named.",
         "team_streak_of_stat": lambda: f"A team's streak is of wins or losses - a run of games reaching a number of {_stat_words(facts['stat'])} is read for a player, not a team.",
         "matchup_needs_two": lambda: _matchup_needs_two(list(facts["names"])),
+        "no_coach_table": lambda: COACH_REFUSAL,
         "no_period_stat": lambda: (
             f"A quarter or half has no per-period {facts['stat']!r} - the period's line rebuilds {', '.join(PERIOD_COLUMNS)} from the plays, "
             "and a field goal, 3-point or free throw percentage is a ratio of those; nothing else."
@@ -343,6 +394,45 @@ def _cause_sentence(kind: str, facts: Any) -> str | None:
     }
     say = sentences.get(kind)
     return say() if say is not None else None
+
+
+#: What a coach question is answered with, and why it is a refusal naming the
+#: source rather than one naming only the intent.
+#:
+#: No table here holds a coach - 20 base tables and 6 views, zero columns named
+#: anything like it - so a reader has nothing to find. Left to fall through,
+#: the retired SQL agent spent a slow round trip and was then free to fill the
+#: silence from its own weights, which is the failure ``check_coverage`` exists
+#: to stop: an agent with nothing to read writes a confident answer. So the
+#: reading refuses (``point._read_point``: the ``no_coach_table`` cause), and
+#: this names which fact is missing.
+#:
+#: The sentence says what it says because the obvious reading - "ESPN does not
+#: publish coaches" - was checked on 2026-09-17 and is false. ESPN serves two
+#: coach collections, and neither is usable: the league-wide one ignores the
+#: season it is asked for (1977 answers with today's staff, Doug Christie and
+#: JJ Redick among them), and the team-scoped one covers 12 of 30 teams in
+#: 1996, never names two coaches for a team-season - so no mid-season change
+#: exists in it - and is wrong about Detroit for every season sampled from
+#: 1994 to 2026. Telling somebody the source has no coaches would be the
+#: wrong-cause refusal this project keeps producing; telling them it has an
+#: unusable one is true. See DATA.md, "ESPN publishes coaches, and the
+#: collection that looks league-wide is not historical".
+COACH_REFUSAL: str = (
+    "No table here holds a coach, so nothing about one can be answered - not a record, not a tenure, not a game. "
+    "ESPN does publish coaches, but not in a form worth storing: the season-by-season list it serves ignores the season asked for and returns the current staff, "
+    "and its per-team list covers 12 of 30 teams in 1996, never shows a mid-season change, and names the wrong coach for some franchises outright. "
+    "Player and team questions are unaffected."
+)
+"""The sentence a coach question is answered with. See above.
+
+.. versionadded:: 4.0.0
+
+.. versionchanged:: 5.0.0
+   Moved from ``templates.teams``, with the ``coach`` template it was the
+   whole answer of: the reading refuses by the ``no_coach_table`` cause,
+   and :func:`refusal_result` says it.
+"""
 
 
 def _unknown_stat(intent: str, stat: Any, shape: str) -> str:

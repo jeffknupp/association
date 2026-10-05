@@ -71,10 +71,18 @@ four quarters, one group per quarter over the same games
    period relation's leftovers, #162).
 """
 
-Relation = Literal["player", "everyone", "team"]
-"""Which relation answers: one named player's games, the league's, or a team's.
+Relation = Literal["player", "everyone", "team", "team_seasons", "team_snapshots"]
+"""Which relation answers: one named player's games, the league's, or a
+team's - or, for a team's own season, its line and its place in the league
+(``team_seasons``: ``team_season_stats`` and the standings), or ESPN's power
+index for it (``team_snapshots``: ``team_power_index``), the two team-season
+relations of ``ROADMAP-TYPES.md`` ("Query").
 
 .. versionadded:: 5.0.0
+
+.. versionchanged:: 5.0.0
+   ``team_seasons`` and ``team_snapshots`` (Phase 2, step 4: ``team_stat``,
+   ``team_leaderboard`` and ``team_outlook``, whose templates read them).
 """
 
 SeasonType = Literal[2, 3]
@@ -422,6 +430,7 @@ CAUSES: frozenset[str] = frozenset(
         "team_streak_of_stat",
         "matchup_needs_two",
         "no_period_stat",
+        "no_coach_table",
     }
 )
 """The closed set of causes a point reading refuses by (:class:`Cause.kind`),
@@ -449,7 +458,9 @@ missing thing, never only the slot"):
   (``needs_subject``: ``intent``); a team's run of a stat line
   (``team_streak_of_stat``: ``stat``); a matchup without exactly two
   players (``matchup_needs_two``: ``names``); a quarter's or half's figure
-  the period's line does not rebuild (``no_period_stat``: ``stat``).
+  the period's line does not rebuild (``no_period_stat``: ``stat``);
+- a question about a coach, which no table here holds (``no_coach_table``:
+  ``unanswerable``, the shape nothing reads).
 
 The planner says each (``compose.plan.refusal_result``); a new cause is an
 entry here and a sentence there.

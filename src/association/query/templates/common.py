@@ -423,8 +423,18 @@ TEAM_RELATION_SCOPING_EXCLUDED: dict[str, dict[str, str]] = {
 """
 
 
-def _team_relation_scoping(intent: str, *extra: str) -> frozenset[str]:
+def team_relation_scoping(intent: str, *extra: str) -> frozenset[str]:
+    """The team relation's cells ``intent`` honors: the whole set and
+    ``extra``, less the cells it excludes (:data:`TEAM_RELATION_SCOPING_EXCLUDED`).
+
+    .. versionadded:: 5.0.0
+       Public, for the team-season readers' declaration
+       (``compose.present.STATED_SCOPING``); ``_team_relation_scoping`` until then.
+    """
     return frozenset((TEAM_RELATION_SCOPING | set(extra)) - set(TEAM_RELATION_SCOPING_EXCLUDED.get(intent, {})))
+
+
+_team_relation_scoping = team_relation_scoping
 
 
 # What each template actually honors. Anything not listed here honors none.
@@ -606,9 +616,10 @@ TEMPLATE_SOURCES: dict[str, tuple[str, ...]] = {
 
 
 TABLELESS_INTENTS: frozenset[str] = frozenset({"coach"})
-"""Intents whose template reads no warehouse table at all.
+"""Intents whose answer reads no warehouse table at all.
 
-Only ``coach`` today: it is a refusal, and there is nothing for it to read -
+Only ``coach`` today: it is a refusal (the reading's ``no_coach_table``
+cause, said by ``compose.plan.refusal_result``), and there is nothing for it to read -
 no table here holds a coach, which is the whole reason it refuses. So it
 declares no sources, and :func:`check_coverage` and :func:`coverage_caveat`
 both come back None for it, which is right: appending "there is no data for

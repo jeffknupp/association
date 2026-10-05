@@ -30,6 +30,7 @@ from association.query.compose.core import Query, Refused, Unsupported, compile_
 from association.query.compose.plan import plan, plan_point, refusal_result
 from association.query.compose.sentence import sentence
 from association.query.compose.team import TeamQuery, run_team
+from association.query.compose.team_stats import TeamSeasonQuery
 from association.query.parse import with_point
 from association.query.point import _asc_or_desc, _everyone_career_scope, _ranking_minimum, read_point, team_read_point
 from association.query.reading import Cause, PointRefused, Reading, Scope, _career_scope
@@ -51,7 +52,7 @@ def compose_answer(ctx: TemplateContext, intent: str, slots: dict[str, Any], que
     return compose.answer(ctx, reading, planned=plan_point(reading), declined=declined)
 
 
-def move_point(con: duckdb.DuckDBPyConnection, intent: str, slots: dict[str, Any], question: str, subject: Subject | None = None) -> Query | TeamQuery:
+def move_point(con: duckdb.DuckDBPyConnection, intent: str, slots: dict[str, Any], question: str, subject: Subject | None = None) -> Query | TeamQuery | TeamSeasonQuery:
     """The point ``question`` moves for ``slots``, planned - raising the
     compiler's own ``Unsupported``/``Refused`` as the reader does."""
     return plan(read_point(_reading(con, intent, slots, question, subject), question))
@@ -761,7 +762,13 @@ def test_team_move_point_ignores_the_routers_any_team_placeholder(team_cx_ctx: T
     q = team_move_point(team_cx_ctx.con, {"stat": "rebounds", "team": "any_team", "season_type": 2}, "rebounds allowed per team")
     assert q is None
     with pytest.raises(Unsupported, match="team relation"):
-        move_point(team_cx_ctx.con, "team_stat", {"stat": "rebounds", "team": "any_team", "season_type": 2}, "rebounds allowed per team")
+        move_point(team_cx_ctx.con, "leaderboard", {"stat": "rebounds", "team": "any_team", "season_type": 2}, "rebounds allowed per team")
+    # Under team_stat the question is the team's own season (Phase 2, step 4):
+    # its reader resolves the team and refuses the placeholder, as the
+    # retired template did.
+    assert move_point(team_cx_ctx.con, "team_stat", {"stat": "rebounds", "team": "any_team", "season_type": 2}, "rebounds allowed per team") == TeamSeasonQuery(
+        scope=Scope.from_slots({"stat": "rebounds", "team": "any_team", "season_type": 2}), relation="team_seasons", shape="scalar"
+    )
 
 
 def test_a_box_stat_measure_narrowed_to_a_window_is_unsupported(team_cx_ctx: TemplateContext) -> None:
@@ -1806,7 +1813,9 @@ def test_a_presenter_steps_aside_for_a_narrowing_its_words_do_not_state(cx_ctx: 
         "player_history",
         "player_compare",
     }
-    assert set(STATED_SCOPING) == TEAM_ONLY_PRESENTERS | ported
+    # And the team-season readers' (compose.team_stats, Phase 2, step 4).
+    team_seasons = {"team_stat", "team_leaderboard", "team_outlook"}
+    assert set(STATED_SCOPING) == TEAM_ONLY_PRESENTERS | ported | team_seasons
     narrowed = default_query("single_game_high", {"player": "Brandin Podziemski", "stat": "points", "opponent": "Boston Celtics"})
     assert read_single_game_high(cx_ctx.con, narrowed, stated=STATED_SCOPING["single_game_high"]) is None
     assert read_single_game_high(cx_ctx.con, replace(narrowed, scope=replace(narrowed.scope, opponent=None)), stated=STATED_SCOPING["single_game_high"]) is not None
@@ -1830,6 +1839,7 @@ _CAUSE_EXAMPLES: dict[str, dict[str, Any]] = {
     "team_streak_of_stat": {"stat": "points"},
     "matchup_needs_two": {"names": ["Jayson Tatum"]},
     "no_period_stat": {"stat": "minutes"},
+    "no_coach_table": {"unanswerable": "coach"},
 }
 
 
