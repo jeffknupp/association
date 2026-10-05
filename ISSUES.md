@@ -3152,13 +3152,6 @@ those were found.
 
 ## P4: tooling, docs, low impact
 
-### "What done means" overstates three Phase 2 rows, and the ledger grew by 5 without a say-so
-- **Found:** 2026-10-05, the Phase 2 review (`~/association-research/reviews/phase2-2026-10-05/REVIEW.md`)
-- **Evidence:** compiled reads 264 of 614 answered recorded questions, not every answer; 12 scoping declarations, not 1; the unread-words ledger 695, not 690 ("team"/"teams" in three `team_leaderboard` questions).
-- **User sees:** nothing; the roadmap misstates.
-- **Next step:** correct the three rows; read the five words or accept them with a note.
-- **GitHub:** #334
-
 ### `stage_snapshots.py run` leaks a temp directory per run
 - **Found:** 2026-10-05, the Phase 2 review (`~/association-research/reviews/phase2-2026-10-05/REVIEW.md`)
 - **Evidence:** `tempfile.mkdtemp` with no cleanup: 663 `/tmp/stages-*` directories, 748 MB on the shared tmpfs (AGENTS.md: `/tmp` is shared and has filled before).

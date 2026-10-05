@@ -204,10 +204,19 @@ this tree:
   twelve seconds since names come from the index), and reports the words whose deletion leaves the reading
   and the planned query unchanged. It measures from outside the reader, so
   the count means the same before and after the reader is replaced.
-  Baseline: 690 of 2,409 content words in 391 of 628 questions, most of
+  Baseline: 695 of 2,409 content words in 393 of 628 questions, most of
   them words that restate the shape ("average", "record", "stats"),
-  measured on the replies re-recorded on the OVH devbox (2026-10-02;
-  below). It read 683 at `42e95d3`: seven words ("points" in "when maxey
+  measured on the replies re-recorded on the OVH devbox (2026-10-05, the
+  Phase 2 review). It read 690 in 391 before Phase 2: five words, "team"
+  in "nba team with least playoff wins since 2022" (and its "fewest"
+  twin) and in "which team had the best record?", "teams" in the two
+  "knicks playoff statistics vs other historic teams" wordings, counted
+  as read only because the point the reader declined for them carried a
+  reason sentence that named a team when the word was there; slice (iv)
+  gave them a point, the same without the word, and none is needed -
+  "playoff wins" and "best record" over the league are teams' already,
+  and the whole comparison clause of the Knicks questions is unread
+  (`ISSUES.md`, "A question with zero valid readings..."). It read 683 at `42e95d3`: seven words ("points" in "when maxey
   scored 20+ points", "shot" in "shot distance") counted as read only
   because the parser's decision records named the slots a second stage
   run had moved; with the stages run once there is no second run to
