@@ -143,7 +143,16 @@ this tree:
     difference is the change.
   - **Identical means identical.** `--values-only` leaves the sentences
     out, and is only for a change the roadmap allows to reword an answer
-    (a Phase 2 sayer). Everything else compares text and all.
+    (a Phase 2 sayer). Everything else compares text and all. One
+    permitted move, Jeff's rule (2026-10-05): a decline the user sees
+    ("Nothing here answers this question: ...", `answered_by="refused"`)
+    becoming a `reading.Cause` the planner says - which changes the
+    reading's verdict (`point_declined` -> `point_refusal`) and the
+    answer's `answered_by` - is done as ONE commit of its own, with every
+    moved reading and answer enumerated in the commit message and
+    `CHANGES.md` (the population, the count, before and after), the
+    sentence identical or the change named. A Cause is what Phase 3
+    reads; a decline is a dead end the user gets no help from.
   - **A boundary that moves is recorded on both sides first.** A phase
     that replaces `compose.answer` adds the new boundary to
     `tests/stage_calls.py` before it deletes the old one.
