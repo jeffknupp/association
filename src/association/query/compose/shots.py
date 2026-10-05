@@ -543,9 +543,11 @@ def read_shot_chart(con: duckdb.DuckDBPyConnection, q: ShotQuery, *, stated: fro
         floor = _shots_career_floor(con, player, span.season_type, found=bool(chart.marks))
         if floor is not None:
             notes.append(floor)
-    elif not chart.marks and not games.scoped and defaulted:
+    elif not chart.marks and refused is None and not games.scoped and defaulted:
         # A defaulted season with nothing to draw names the seasons he IS on
-        # record for (#18), rather than blaming filters nobody gave.
+        # record for (#18), rather than blaming filters nobody gave. Not after
+        # a refusal: nothing was drawn because a free-throw chart is never
+        # drawn, and "he last appears in 2026" beneath it was a non sequitur.
         redirect = season_redirect(con, player.id, span.season_type, "shot_chart")
         if redirect is not None:
             facts = {"first": redirect[0], "last": redirect[1], "what": SEASON_TYPE_NAMES.get(span.season_type, "regular season")}

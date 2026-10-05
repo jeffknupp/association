@@ -2926,6 +2926,19 @@ def test_a_free_throw_chart_is_refused_rather_than_drawn(sc_ctx: TemplateContext
     assert not list(sc_ctx.out_dir.glob("*.html"))
 
 
+def test_a_free_throw_chart_in_a_defaulted_season_is_refused_without_a_redirect(sc_ctx: TemplateContext) -> None:
+    """The season was defaulted and nothing was drawn - because a free-throw
+    chart never is, not because the season is empty. The redirect a
+    defaulted empty season gets (#18) named the season he was drawn for as
+    the one he "last appears in" beneath the refusal; the refusal stands
+    alone now."""
+    sc_ctx.con.execute("CREATE TABLE player_season_stats_deduped (athlete_id VARCHAR, season INTEGER, season_type INTEGER, gamesPlayed INTEGER)")
+    sc_ctx.con.execute("INSERT INTO player_season_stats_deduped VALUES ('1', ?, 2, 70)", [current_season()])
+    result = shot_chart(sc_ctx, Reading.from_slots({"player": "Stephen Curry", "shot_value": 1}))
+    assert result.answer == "Free throws are all taken from the same line and carry no court position worth drawing, so there is no free-throw chart to render."
+    assert result.artifacts == []
+
+
 def test_a_career_chart_says_which_shots_it_left_out(sc_ctx: TemplateContext) -> None:
     """One unseparable season is refused outright. Across seasons the chart
     draws what can be told apart and says what it could not, rather than
