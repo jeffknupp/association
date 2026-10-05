@@ -38,7 +38,6 @@ from association.query.templates.common import HONORED_SCOPING, SCOPING_SLOTS, T
 from association.query.templates.games import (
     PERIOD_RATE_STATS,
 )
-from association.query.templates.netpoints import fingerprint
 from association.query.templates.shots import shot_chart, shot_distance
 
 
@@ -77,6 +76,7 @@ player_matchup = _compiled("player_matchup")
 player_stat = _compiled("player_stat")
 streak = _compiled("streak")
 player_netpoints = _compiled("player_netpoints")
+fingerprint = _compiled("fingerprint")
 head_to_head = _compiled("head_to_head")
 team_quarter_points = _compiled("team_quarter_points")
 period_leaderboard = _compiled("period_leaderboard")
@@ -3515,12 +3515,12 @@ def test_a_fingerprint_for_a_particular_date_still_says_it_cannot(fp_ctx: Templa
 
 
 def test_fingerprint_declares_the_game_scoping_it_handles(fp_ctx: TemplateContext) -> None:
-    # It handles them by refusing; check_scope must therefore NOT strip the
-    # request out from under it and fall through to an agent with no better source.
-    check_scope("fingerprint", {"player": "Shai", "order": "recent", "date": "2026-01-02"})
+    # It handles them by refusing; the planner must therefore NOT decline the
+    # request out from under it, for a refusal naming only the slot.
+    assert unhonored_scoping("fingerprint", Scope.from_slots({"player": "Shai", "order": "recent", "date": "2026-01-02"}), STATED_SCOPING["fingerprint"]) == []
     # The game-scoping pair specifically - SCOPING_SLOTS also holds opponent,
     # venue, span and without, none of which a fingerprint can narrow to.
-    assert {"order", "date"} <= HONORED_SCOPING["fingerprint"] <= SCOPING_SLOTS
+    assert {"order", "date"} <= STATED_SCOPING["fingerprint"] <= SCOPING_SLOTS
 
 
 def test_fingerprint_without_a_player_falls_through(fp_ctx: TemplateContext) -> None:
@@ -3533,8 +3533,9 @@ def test_fingerprint_reports_an_unknown_player_rather_than_falling_through(fp_ct
 
 
 def test_fingerprint_reports_a_season_with_no_data_rather_than_falling_through(fp_ctx: TemplateContext) -> None:
-    # The agent has no better source than the table this just read.
-    assert "no NetPoints fingerprint data for season 1999" in fingerprint(fp_ctx, Reading.from_slots({"player": "Shai", "season": 1999})).answer
+    # Nothing has a better source than the table this just read. (A season
+    # under NetPoints' floor, 2019, is the coverage check's refusal first.)
+    assert "no NetPoints fingerprint data for season 2020" in fingerprint(fp_ctx, Reading.from_slots({"player": "Shai", "season": 2020})).answer
 
 
 def test_fingerprint_plots_two_players_on_one_radar(fp_ctx: TemplateContext) -> None:

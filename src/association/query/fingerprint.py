@@ -2,8 +2,10 @@
 
 The querying half of the fingerprint feature - :mod:`association.query.radar`
 does the drawing. Split the same way :mod:`association.query.shotchart` and
-:mod:`association.query.court` are, and for the same reason: one implementation
-behind both the fast-path template and anything else that wants a plot.
+:mod:`association.query.court` are. The NetPoints relation's reader
+(:mod:`association.query.compose.netpoints`) reads through
+:func:`load_for_players` and draws through :func:`fingerprint_page`; its
+sayer words the answer.
 
 Modeled on espnanalytics.com's Net Pts Fingerprint, which is where the
 underlying numbers come from: one axis per skill, either as a percentile of the
@@ -22,25 +24,32 @@ on the plot.
 
 .. versionchanged:: 2.1.0
    Added the single-game fingerprint, via :func:`load_game_fingerprints` and
-   the ``order`` parameter of :func:`render_for_players`. Before this, every
+   the ``order`` parameter of ``render_for_players``. Before this, every
    request was answered with the season's shape, whether or not one game was
    asked for.
+
+.. versionchanged:: 5.0.0
+   ``render_for_players`` and ``render_fingerprint``, the single-call entry
+   points the retired agent called as a tool, are gone: since the agent went
+   only their own tests called them. Their read, captions, file name and
+   drawing are :func:`load_for_players`, :func:`fingerprint_captions`,
+   :func:`fingerprint_file` and :func:`fingerprint_page`; their message is
+   the sayer's (``compose.say.say_fingerprint``). Statements run through
+   the compiler's one door.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any
 
 import duckdb
 
-from association.nba.season import current_season, eastern_date
+from association.nba.season import eastern_date
 
-from .answer import Artifact, RenderResult
-from .entities import Ambiguous, Availability, Entity, clarification, collect_name_readings, no_match
+from .entities import Availability, Entity
 from .game_label import game_label
-from .notes import decided, note
+from .notes import decided
 from .radar import VALUE_ZERO_FRACTION, Axis, Cell, Series, render_fingerprint_html
 
 
@@ -415,6 +424,18 @@ def _load_fingerprints_players(
     return fingerprints
 
 
+def _values(con: duckdb.DuckDBPyConnection, sql: str, params: list[Any]) -> list[tuple[Any, ...]]:
+    """``sql`` run through the compiler's one door
+    (:func:`~association.query.compose.core.values_of`), as the season
+    line's statements are - the NetPoints relation's reads are this
+    module's, and nothing else runs them. At call time: the compiler
+    imports this module."""
+    from association.query.compose.core import values_of
+    from association.query.season_line import Statement
+
+    return values_of(con, Statement(sql, params))
+
+
 def load_fingerprints(
     con: duckdb.DuckDBPyConnection,
     players: list[Entity],
@@ -454,12 +475,13 @@ def load_fingerprints(
     skills = skills_for(view)
     summary = [f"{FINGERPRINT_SUMMARY_CATEGORY}_{letter}_net_pts" for letter in ("t", "o", "d")]
     columns = summary + [skill.column for skill in skills]
-    rows = con.execute(
+    rows = _values(
+        con,
         # No season_type filter: net_points_player_fingerprint has no such
         # column. Whatever the season's rows cover is what a fingerprint means.
         f"SELECT athlete_id, minutes, total_poss, {', '.join(columns)} FROM net_points_player_fingerprint WHERE season = ?",
         [season],
-    ).fetchall()
+    )
     if not rows:
         raise FingerprintUnavailable(f"The warehouse has no NetPoints fingerprint data for season {season}.")
 
@@ -521,7 +543,8 @@ def _load_game_fingerprints_rows(con: duckdb.DuckDBPyConnection, season: int, se
     per-game-specific refusal rather than a raw binder error.
     """
     try:
-        rows = con.execute(
+        rows = _values(
+            con,
             f"SELECT f.event_id, f.athlete_id, max(g.t_poss), {', '.join(columns)} "
             "FROM net_points_player_game_fingerprint f "
             # A plain join: net_points_player_game holds one row per
@@ -534,7 +557,7 @@ def _load_game_fingerprints_rows(con: duckdb.DuckDBPyConnection, season: int, se
             "WHERE f.season = ? AND f.season_type = ? AND f.athlete_id IS NOT NULL "
             "GROUP BY f.event_id, f.athlete_id",
             [season, season_type],
-        ).fetchall()
+        )
     except duckdb.CatalogException as exc:
         # ONLY the missing-table case. A bare `except duckdb.Error` here read a
         # binder error in this module's own SQL as "you have not pulled this
@@ -702,15 +725,17 @@ def _game_for(con: duckdb.DuckDBPyConnection, athlete_id: str, season: int, seas
     schedule, and a postponed game keeps the id it was given for the date it
     was meant to be played on.
     """
-    row = con.execute(
+    rows = _values(
+        con,
         "SELECT f.event_id, gm.date FROM net_points_player_game_fingerprint f "
         "JOIN games gm ON gm.event_id = f.event_id "
         "WHERE f.athlete_id = ? AND f.season = ? AND f.season_type = ? "
         f"GROUP BY f.event_id, gm.date ORDER BY gm.date {'ASC' if order == 'first' else 'DESC'} LIMIT 1",
         [athlete_id, season, season_type],
-    ).fetchone()
-    if row is None:
+    )
+    if not rows:
         return None
+    row = rows[0]
     event_id = str(row[0])
     return GamePlayed(event_id=event_id, date=eastern_date(row[1]), label=game_label(con, athlete_id, event_id))
 
@@ -856,19 +881,33 @@ def _when_drawn(fingerprints: list[PlayerFingerprint], games: dict[str, GamePlay
     return described[0] if len(described) == 1 else " and ".join(described)
 
 
-def _render_for_players_load(
+def load_for_players(
     con: duckdb.DuckDBPyConnection,
     players: list[Entity],
-    season: int,
-    view: str,
-    scale: str,
-    min_minutes: int,
-    season_type: int,
-    order: str | None,
     ambiguous: list[str],
+    season: int,
+    *,
+    view: str = "total",
+    scale: str = "percentile",
+    min_minutes: int = FINGERPRINT_MIN_MINUTES,
+    season_type: int = 2,
+    order: str | None = None,
 ) -> tuple[list[PlayerFingerprint], LeagueScale, dict[str, GamePlayed], Unit]:
-    """Validate ``scale``, load the season or per-game fingerprints depending on
-    ``order``, and carry ``ambiguous`` onto a failure.
+    """Already-resolved players' fingerprints, read for one plot: the season's
+    (:func:`load_fingerprints`) or, where ``order`` names a first or last
+    game, that game's (:func:`load_game_fingerprints`), with the league scale
+    they are drawn against, the game each was drawn from and the unit.
+
+    Raises:
+        FingerprintUnavailable: an unknown ``scale``, or nothing to draw -
+            see :func:`load_fingerprints`. The other names that matched
+            (``ambiguous``) are named on the failure too, recorded as the
+            ``also_matched`` decision.
+
+    .. versionadded:: 5.0.0
+       ``render_for_players``' read, public for the NetPoints relation's
+       reader (:mod:`association.query.compose.netpoints`), which draws
+       through :func:`fingerprint_page`.
     """
     if scale not in FINGERPRINT_SCALES:
         raise FingerprintUnavailable(f"scale must be one of {list(FINGERPRINT_SCALES)} - got {scale!r}.")
@@ -893,19 +932,26 @@ def _render_for_players_load(
     return fingerprints, league, games, unit
 
 
-def _render_for_players_subtitle(
+def fingerprint_captions(
     fingerprints: list[PlayerFingerprint],
     games: dict[str, GamePlayed],
     season: int,
+    *,
     view: str,
     scale: str,
     order: str | None,
-    unit: Unit,
     league: LeagueScale,
-    min_minutes: int,
+    min_minutes: int = FINGERPRINT_MIN_MINUTES,
 ) -> tuple[str, str, str, str]:
-    """The plot's title, subtitle and axis note, plus ``when`` (also used in
-    the final message) - what the numbers mean and which games/season they cover."""
+    """The plot's title, subtitle and axis note, plus ``when`` (which the
+    answer names too) - what the numbers mean and which games or season
+    they cover.
+
+    .. versionadded:: 5.0.0
+       ``render_for_players``' captions, public for the NetPoints
+       relation's reader.
+    """
+    unit = PER_GAME if order else PER_100_POSSESSIONS
     title = " vs ".join(f.name for f in fingerprints)
     ranked_against = "games" if order else "the league"
     units = f"percentile of {ranked_against}" if scale == "percentile" else unit.prose
@@ -921,103 +967,29 @@ def _render_for_players_subtitle(
     return title, subtitle, axis_note, when
 
 
-def _render_for_players_filename(fingerprints: list[PlayerFingerprint], season: int, order: str | None, view: str, scale: str) -> str:
-    """The HTML file's name: the players drawn, the season/game stamp, the view and the scale."""
+def fingerprint_file(fingerprints: list[PlayerFingerprint], season: int, order: str | None, view: str, scale: str) -> str:
+    """The HTML file's name: the players drawn, the season/game stamp, the view and the scale.
+
+    .. versionadded:: 5.0.0
+       ``render_for_players``' file name, public for the NetPoints
+       relation's reader.
+    """
     safe = "_vs_".join("".join(c if c.isalnum() else "_" for c in f.name.lower()) for f in fingerprints)
     stamp = f"{season}_{order}_game" if order else str(season)
     return f"fingerprint_{safe}_{stamp}_{view}_{scale}.html"
 
 
-def _render_for_players_message(
-    view: str,
-    title: str,
-    when: str,
-    scale: str,
-    out_path: Path,
-    fingerprints: list[PlayerFingerprint],
-    order: str | None,
-    min_minutes: int,
-    missing: list[str],
-    ambiguous: list[str],
-) -> str:
-    """The success message: what was drawn, then every note - unqualified
-    players, players with no fingerprint at all, and runners-up that also matched."""
-    message = f"Rendered NetPoints fingerprint ({view}) for {title} ({when}, {scale} scale) to {out_path}"
-    unqualified = [f.name for f in fingerprints if not f.qualified]
-    if unqualified:
-        short = f"under {FINGERPRINT_MIN_GAME_POSSESSIONS} possessions in that game" if order else f"under {min_minutes} minutes"
-        said = f". Note: {', '.join(unqualified)} played {short}, so they are plotted against a pool they are not in"
-        threshold, of = (FINGERPRINT_MIN_GAME_POSSESSIONS, "possessions") if order else (min_minutes, "minutes")
-        message += note("below_pool", said, names=unqualified, threshold=threshold, of=of)
-    if missing:
-        message += note("no_data_for", f". No fingerprint on record for: {', '.join(missing)}", names=missing, what="fingerprint")
-    if ambiguous:
-        message += decided("also_matched", f". Note: other players also matched: {ambiguous}", field="player", chose=[f.name for f in fingerprints], instead_of=ambiguous)
-    return message
+def fingerprint_page(title: str, subtitle: str, axis_note: str, fingerprints: list[PlayerFingerprint], league: LeagueScale, *, scale: str, unit: Unit) -> str:
+    """The radar page for ``fingerprints``: one polygon per player on shared
+    axes - two or three polygons IS the comparison - and the table of the
+    same numbers under it.
 
-
-def render_for_players(
-    con: duckdb.DuckDBPyConnection,
-    out_dir: Path,
-    players: list[Entity],
-    ambiguous: list[str],
-    season: int,
-    view: str = "total",
-    scale: str = "percentile",
-    min_minutes: int = FINGERPRINT_MIN_MINUTES,
-    season_type: int = 2,
-    order: str | None = None,
-) -> RenderResult:
-    """Render already-resolved players' fingerprints to one radar plot.
-
-    Args:
-        con: A read-only warehouse connection.
-        out_dir: Directory the HTML is written to; created if missing.
-        players: The players to draw, already resolved to warehouse entities.
-        ambiguous: Other names that also matched, mentioned in the message -
-            whether or not anything was drawn.
-        season: Season-ending year.
-        view: ``"total"``, ``"offense"`` or ``"defense"``.
-        scale: ``"percentile"`` or ``"value"`` - see :data:`FINGERPRINT_SCALES`.
-        min_minutes: The pool floor passed to :func:`load_fingerprints`.
-        season_type: 2 regular season, 3 postseason. Only read when ``order``
-            asks for a single game; the season file has no season_type column.
-        order: ``None`` for the whole season, or ``"recent"``/``"first"`` to
-            draw one game - each player's latest or earliest of the season.
-
-    Returns:
-        A :class:`association.query.answer.RenderResult`: the message, and the
-        file written. ``artifact`` is never None here - a fingerprint that
-        cannot be drawn raises instead.
-
-    Raises:
-        FingerprintUnavailable: nothing could be drawn - see
-            :func:`load_fingerprints`.
-
-    .. versionadded:: 1.3.0
-
-    .. versionchanged:: 2.0.0
-       Returns a :class:`association.query.answer.RenderResult` rather than a
-       ``(message, path)`` tuple, the same shape
-       :func:`association.query.shotchart.render_for_player` now returns.
-
-    .. versionchanged:: 4.4.0
-       A single-game plot (``order`` given) names the game by its opponent and
-       result as well as its date - "2025-04-13 vs POR, W 118-104" - in the
-       subtitle and the message, where
-       :func:`association.query.game_label.game_label` can describe it. See
-       `ISSUES.md` #155.
+    .. versionadded:: 5.0.0
+       ``render_for_players``' drawing, public for the NetPoints relation's
+       draw step (:func:`association.query.compose.netpoints.draw_fingerprint`).
     """
-    fingerprints, league, games, unit = _render_for_players_load(con, players, season, view, scale, min_minutes, season_type, order, ambiguous)
-    # A player with no row in this season's fingerprint file is dropped by
-    # load_fingerprints rather than drawn as a zero polygon, which would read as
-    # "played and contributed nothing". Named in the message instead.
-    drawn = {f.athlete_id for f in fingerprints}
-    missing = [p.name for p in players if p.id not in drawn]
-
-    title, subtitle, axis_note, when = _render_for_players_subtitle(fingerprints, games, season, view, scale, order, unit, league, min_minutes)
     headers, table_rows = _table(fingerprints, scale, unit)
-    html = render_fingerprint_html(
+    return render_fingerprint_html(
         title=title,
         subtitle=subtitle,
         series=[build_series(fingerprint, scale, league, unit) for fingerprint in fingerprints],
@@ -1026,91 +998,3 @@ def render_for_players(
         table_headers=headers,
         table_rows=table_rows,
     )
-
-    fname = _render_for_players_filename(fingerprints, season, order, view, scale)
-    out_dir.mkdir(parents=True, exist_ok=True)
-    out_path = out_dir / fname
-    out_path.write_text(html)
-
-    message = _render_for_players_message(view, title, when, scale, out_path, fingerprints, order, min_minutes, missing, ambiguous)
-    return RenderResult(message, Artifact("fingerprint", out_path))
-
-
-def render_fingerprint(
-    con: duckdb.DuckDBPyConnection,
-    out_dir: Path,
-    player_name: str,
-    season: int | None = None,
-    view: str = "total",
-    scale: str = "percentile",
-) -> RenderResult:
-    """Resolve one or more player names and render their fingerprint.
-
-    The single-call entry point, and the counterpart to
-    :func:`association.query.shotchart.render_shot_chart`. Names are resolved
-    best-match, as a chart's are: a plot titled with the resolved name shows a
-    wrong match on sight, which is what makes best-match safe here and not in a
-    template reporting numbers.
-
-    Args:
-        con: A read-only warehouse connection.
-        out_dir: Directory the HTML is written to.
-        player_name: Full or partial display name. Several, separated by
-            ``" vs "``, draw one plot comparing them.
-        season: Season-ending year; the current season when omitted. NOT "every
-            season" - a fingerprint is a season's shape, and there is no career
-            row to plot.
-        view: ``"total"``, ``"offense"`` or ``"defense"``.
-        scale: ``"percentile"`` or ``"value"``.
-
-    Returns:
-        A :class:`association.query.answer.RenderResult` naming the player and
-        the file written, or saying why nothing could be drawn - in which case
-        ``artifact`` is None.
-
-    .. versionadded:: 1.3.0
-
-    .. versionchanged:: 2.0.0
-       Returns a :class:`association.query.answer.RenderResult` rather than a
-       message string, so a caller can reach the file that was drawn.
-
-    .. versionchanged:: 2.1.0
-       Names are narrowed to the players who have a fingerprint in ``season``
-       before the best match is taken, and an ambiguity that survives that is
-       answered with a clarifying question rather than a plot. See
-       :func:`association.query.shotchart.resolve_chart_player`.
-
-    .. versionchanged:: 5.0.0
-       A near spelling of exactly one player is drawn for him, and the message
-       ends with the sentence saying so.
-    """
-    # Imported here, not at module scope: shotchart imports nothing from this
-    # module, and a top-level import in the other direction would still be a
-    # cycle waiting for the first edit that reverses it.
-    from .shotchart import resolve_chart_player
-
-    # Settled before any name is resolved, so a name narrows against the season
-    # that will actually be drawn: "Maxey" is Tyrese in 2026 and nobody at all
-    # in 2005.
-    season = season if season is not None else current_season()
-    resolved, ambiguous = [], []
-    # Collected here because nothing above this entry point listens: the agent
-    # calls it as a tool, and a near spelling drawn without saying so is a
-    # silent default (see render_shot_chart).
-    readings: list[str] = []
-    for name in player_name.split(" vs "):
-        with collect_name_readings() as read:
-            found = resolve_chart_player(con, name.strip(), FINGERPRINT_AVAILABILITY, season)
-        readings.extend(read)
-        if found is None:
-            return RenderResult(no_match(con, name.strip()), None)
-        if isinstance(found, Ambiguous):
-            return RenderResult(clarification(name.strip(), found.candidates, active=found.active), None)
-        player, also = found
-        resolved.append(player)
-        ambiguous.extend(also)
-    try:
-        rendered = render_for_players(con, out_dir, resolved, ambiguous, season, view=view, scale=scale)
-    except FingerprintUnavailable as exc:
-        return RenderResult(" ".join([str(exc), *readings]), None)
-    return RenderResult(" ".join([rendered.message, *readings]), rendered.artifact)

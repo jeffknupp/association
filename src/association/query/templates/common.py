@@ -463,14 +463,9 @@ HONORED_SCOPING: dict[str, frozenset[str]] = {
     # narrow it.
     "shot_chart": _relation_scoping("shot_chart"),
     "shot_distance": _relation_scoping("shot_distance"),
-    # player_netpoints is the compiler's (Phase 2, slice (v)): compose.plan.STATED_SCOPING.
-    # `order` is honored by DRAWING that game, from the long per-game table.
-    # `date` is still honored by refusing: the router gives a calendar date
-    # and the loader picks a player's first or last game of a season, which are
-    # different questions - answering one with the other is the substitution
-    # this whole module exists to prevent. Both stay listed either way, since
-    # leaving one unlisted would refuse a question this answers.
-    "fingerprint": frozenset({"order", "date"}),
+    # player_netpoints and fingerprint are the compiler's (Phase 2, slice (v)):
+    # compose.plan.STATED_SCOPING, which keeps why `date` is listed for the
+    # fingerprint (honored by refusing it in the reader's own words).
     # `span` "career" is honored by summing every season: a career leaderboard
     # from the per-team season rows, and a career count or high from every box
     # score since 1993-94. Each answer names the pool, since neither is all-time.

@@ -19,8 +19,10 @@ reproduced from the Result word for word.
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from pathlib import Path
 from typing import Any
 
+from association.query.answer import Artifact
 from association.query.conditions import _SPLIT_TITLES, _cell, _margin, _split_cells, _split_label, _table, _win_pct
 from association.query.notes import Note, decided, note
 from association.query.player_games import PERIOD_LOG_COLUMNS, PERIOD_RATES, _joined, period_columns
@@ -308,6 +310,9 @@ def decision_phrase(each: Decided, **said_with: Any) -> str:
         text = season_phrase(int(each.chose), int(each.facts["season_type"]))
     elif each.kind == "season_fallback":
         text = f"No games this season, so these are his most recent {said_with['games']}{said_with['at']}, from the {said_with['season_label']}."
+    elif each.kind == "also_matched":
+        # The best match was drawn: the others are named, as a list.
+        text = f". Note: other players also matched: {list(each.instead_of)}"
     elif each.kind == "season_redirected":
         first, last, kind = each.facts["first"], each.facts["last"], each.facts["what"]
         # Singular for one season, plural for a range - the same rule _Span.years
@@ -624,7 +629,7 @@ def say(result: Result) -> TemplateResult:
     .. versionadded:: 5.0.0
     """
     if result.span.source == "netpoints":
-        return say_player_netpoints(result)
+        return say_fingerprint(result) if result.chart is not None else say_player_netpoints(result)
     team = _say_team_shape(result)
     if team is not None:
         return team
@@ -3235,12 +3240,19 @@ def say_team_record_by_month(result: Result) -> TemplateResult:
 
 def _say_netpoints_note(kind: str, facts: dict[str, Any]) -> str | None:
     """The phrase for a note a NetPoints answer makes - a part with nothing on
-    record, or the fingerprint a game's NetPoints come with - or ``None``."""
+    record, the fingerprint a game's NetPoints come with, a player drawn
+    against a pool he is not in, or one with no fingerprint at all - or
+    ``None``."""
     what = facts.get("what")
     if kind == "part_missing" and what == "season_totals":
         return "(no season totals on record)"
     if kind == "part_missing" and what == "fingerprint":
         return "  No play-type fingerprint on record for this season."
+    if kind == "below_pool":
+        short = f"under {facts['threshold']} possessions in that game" if facts["of"] == "possessions" else f"under {facts['threshold']} minutes"
+        return f". Note: {', '.join(facts['names'])} played {short}, so they are plotted against a pool they are not in"
+    if kind == "no_data_for" and what == "fingerprint":
+        return f". No fingerprint on record for: {', '.join(facts['names'])}"
     if kind == "hint" and what == "fingerprint_of_that_game":
         return "\n  (Ask for a fingerprint of that game to see the play-type split behind it.)"
     return None
@@ -3438,3 +3450,24 @@ def _say_netpoints_game(result: Result) -> TemplateResult:
         answer += "\n  " + ", ".join(detail) + "."
     answer += _netpoints_said(result, "hint", what="fingerprint_of_that_game")
     return TemplateResult(data={"player": result.subject, "game": game, "headline": headline, "notes": [", ".join(detail) + "."] if detail else []}, answer=answer)
+
+
+def say_fingerprint(result: Result) -> TemplateResult:
+    """One or more players' fingerprints worded: the page drawn
+    (``compose.netpoints.draw_fingerprint`` wrote it; ``path`` is where),
+    whom for, the season or the games it covers and its scale - then the
+    players plotted against a pool they are not in, those with no
+    fingerprint, and the other names that matched.
+
+    .. versionadded:: 5.0.0
+       ``fingerprint.render_for_players``' message.
+    """
+    chart = result.chart
+    assert chart is not None and chart.path is not None
+    facts = result.facts
+    view, order = facts["view"], facts["order"]
+    message = f"Rendered NetPoints fingerprint ({view}) for {chart.title} ({facts['when']}, {facts['scale']} scale) to {chart.path}"
+    message += "".join(note(each.kind, note_phrase(each), **each.facts) for each in result.notes)
+    message += "".join(decision_phrase(each) for each in result.decisions)
+    data = {"players": list(facts["players"]), "season": facts["season"], "side": view, "scope": "game" if order else "season", "path": chart.path, "message": message}
+    return TemplateResult(data=data, answer=message, artifacts=[Artifact("fingerprint", Path(chart.path))])

@@ -19,7 +19,10 @@ import pytest
 
 from association.nba.netpoints import FINGERPRINT_CATEGORIES
 from association.query.answer import RenderResult
-from association.query.entities import Entity
+from association.query.compose.netpoints import NetPointsQuery, draw_fingerprint, fingerprint_result, read_fingerprint
+from association.query.compose.plan import STATED_SCOPING
+from association.query.compose.say import say
+from association.query.entities import Entity, collect_name_readings
 from association.query.fingerprint import (
     FINGERPRINT_SKILLS,
     FINGERPRINT_VIEWS,
@@ -27,11 +30,39 @@ from association.query.fingerprint import (
     build_series,
     load_fingerprints,
     load_game_fingerprints,
-    render_fingerprint,
-    render_for_players,
     skills_for,
 )
 from association.query.radar import PLOT_RADIUS, VALUE_ZERO_FRACTION, Axis, Cell, Series, render_fingerprint_html
+from association.query.reading import Scope
+from association.query.result import Result
+
+
+def _said(con: duckdb.DuckDBPyConnection, out_dir: Path, read: Result | object) -> RenderResult:
+    """A fingerprint read, drawn and said, as ``compose.answer`` does it: the
+    message and the file, or the reader's own sentence with nothing drawn."""
+    if not isinstance(read, Result):
+        return RenderResult(getattr(read, "answer", ""), None)
+    said = say(draw_fingerprint(read, out_dir))
+    return RenderResult(said.answer, said.artifacts[0] if said.artifacts else None)
+
+
+def _render(
+    con: duckdb.DuckDBPyConnection, out_dir: Path, players: list[Entity], ambiguous: list[str], season: int, *, view: str = "total", scale: str = "percentile", order: str | None = None
+) -> RenderResult:
+    """Already-resolved players' fingerprints read, drawn and said - what the
+    retired ``fingerprint.render_for_players`` did, through the NetPoints
+    relation's reader (``compose.netpoints.fingerprint_result``), its draw
+    step and the sayer."""
+    return _said(con, out_dir, fingerprint_result(con, players, ambiguous, season, view=view, scale=scale, order=order))
+
+
+def _asked(con: duckdb.DuckDBPyConnection, out_dir: Path, names: str, *, season: int) -> RenderResult:
+    """A fingerprint asked for by name - one, or several split on " vs " -
+    through the reader's resolution (``compose.netpoints.read_fingerprint``),
+    as the retired ``fingerprint.render_fingerprint`` took them."""
+    split = [name.strip() for name in names.split(" vs ")]
+    scope = Scope(players=tuple(split), season=season) if len(split) > 1 else Scope(player=split[0], season=season)
+    return _said(con, out_dir, read_fingerprint(con, NetPointsQuery(scope=scope, shape="chart"), stated=STATED_SCOPING["fingerprint"]))
 
 
 def _drawn(result: RenderResult) -> Path:
@@ -177,12 +208,12 @@ def test_a_player_below_the_floor_is_still_drawn_and_said_to_be_below_it(con: du
     that silently is not of them is the failure this project keeps producing."""
     fingerprints, _ = load_fingerprints(con, [_entity("4")], 2026, min_minutes=500)
     assert fingerprints[0].qualified is False
-    message = render_for_players(con, tmp_path, [_entity("4")], [], 2026).message
+    message = _render(con, tmp_path, [_entity("4")], [], 2026).message
     assert "under 500 minutes" in message
 
 
 def test_a_player_with_no_row_is_named_rather_than_drawn_as_zeroes(con: duckdb.DuckDBPyConnection, tmp_path: Path) -> None:
-    message = render_for_players(con, tmp_path, [_entity("1"), Entity(id="99", name="Ghost Player")], [], 2026).message
+    message = _render(con, tmp_path, [_entity("1"), Entity(id="99", name="Ghost Player")], [], 2026).message
     assert "No fingerprint on record for: Ghost Player" in message
     assert "Ghost Player" not in message.split("No fingerprint on record")[0]
 
@@ -219,8 +250,8 @@ def test_other_matches_are_named_when_nothing_could_be_drawn(con: duckdb.DuckDBP
     """Best-match resolution is safe here only because the plot is titled with
     the name that won. Nothing is titled when nothing is drawn, so the
     runners-up have to reach the message on that path too."""
-    with pytest.raises(FingerprintUnavailable, match="other players also matched: Ada Star"):
-        render_for_players(con, tmp_path, [Entity(id="99", name="Ghost Player")], ["Ada Star"], 2026)
+    result = _render(con, tmp_path, [Entity(id="99", name="Ghost Player")], ["Ada Star"], 2026)
+    assert result.artifact is None and "other players also matched: Ada Star" in result.message
 
 
 def test_a_surname_narrows_to_the_player_who_has_a_fingerprint(con: duckdb.DuckDBPyConnection, tmp_path: Path) -> None:
@@ -232,7 +263,7 @@ def test_a_surname_narrows_to_the_player_who_has_a_fingerprint(con: duckdb.DuckD
     Only one of them can have produced the plot being asked for, so the name is
     narrowed to them - elimination, not a preference between people."""
     con.execute("INSERT INTO players VALUES ('5', 'Aaron Star')")
-    result = render_fingerprint(con, tmp_path, "Star", season=2026)
+    result = _asked(con, tmp_path, "Star", season=2026)
     assert result.artifact is not None, result.message
     assert "Ada Star" in result.message and "Aaron Star" not in result.message
 
@@ -243,7 +274,7 @@ def test_a_surname_two_of_whom_have_fingerprints_asks_which(con: duckdb.DuckDBPy
     answered with whichever sorts first."""
     con.execute("INSERT INTO players VALUES ('5', 'Zed Star')")
     con.execute("INSERT INTO net_points_player_fingerprint SELECT * REPLACE ('5' AS athlete_id) FROM net_points_player_fingerprint WHERE athlete_id = '2'")
-    result = render_fingerprint(con, tmp_path, "Star", season=2026)
+    result = _asked(con, tmp_path, "Star", season=2026)
     assert result.artifact is None
     assert result.message == "'Star' matches more than one player - did you mean Ada Star or Zed Star?"
 
@@ -254,7 +285,7 @@ def test_when_nobody_named_has_a_fingerprint_the_answer_names_who_it_tried(con: 
     the best match stands and the message says what it found instead."""
     con.execute("INSERT INTO players VALUES ('5', 'Aaron Star')")
     con.execute("INSERT INTO net_points_player_fingerprint SELECT * REPLACE ('6' AS athlete_id, 2025 AS season) FROM net_points_player_fingerprint WHERE athlete_id = '1'")
-    result = render_fingerprint(con, tmp_path, "Star", season=2025)
+    result = _asked(con, tmp_path, "Star", season=2025)
     assert result.artifact is None
     assert result.message == "No NetPoints fingerprint on record for Aaron Star in season 2025, which has 1 player on record. Note: other players also matched: Ada Star."
 
@@ -288,8 +319,8 @@ def test_the_percentile_scale_puts_the_league_best_on_the_outer_ring(con: duckdb
 
 
 def test_an_unknown_scale_is_refused(con: duckdb.DuckDBPyConnection, tmp_path: Path) -> None:
-    with pytest.raises(FingerprintUnavailable, match="scale must be"):
-        render_for_players(con, tmp_path, [_entity("1")], [], 2026, scale="logarithmic")
+    result = _render(con, tmp_path, [_entity("1")], [], 2026, scale="logarithmic")
+    assert result.artifact is None and result.message.startswith("scale must be")
 
 
 # ---------------- the drawing ----------------
@@ -308,7 +339,7 @@ def test_the_first_axis_points_straight_up_and_they_run_clockwise() -> None:
 
 
 def test_every_polygon_has_one_vertex_per_axis(con: duckdb.DuckDBPyConnection, tmp_path: Path) -> None:
-    path = _drawn(render_for_players(con, tmp_path, [_entity("1"), _entity("2")], [], 2026))
+    path = _drawn(_render(con, tmp_path, [_entity("1"), _entity("2")], [], 2026))
     for points in _polygons(path.read_text()):
         assert len(points) == len(FINGERPRINT_SKILLS)
 
@@ -316,7 +347,7 @@ def test_every_polygon_has_one_vertex_per_axis(con: duckdb.DuckDBPyConnection, t
 def test_no_vertex_escapes_the_outer_ring(con: duckdb.DuckDBPyConnection, tmp_path: Path) -> None:
     """A radius over 1.0 draws outside the ring it is measured against, which
     reads as better than the league best."""
-    path = _drawn(render_for_players(con, tmp_path, [_entity("1")], [], 2026, scale="value"))
+    path = _drawn(_render(con, tmp_path, [_entity("1")], [], 2026, scale="value"))
     for points in _polygons(path.read_text()):
         for x, y in points:
             # A hair over, not 1e-6: coordinates are written to two decimals.
@@ -324,7 +355,7 @@ def test_no_vertex_escapes_the_outer_ring(con: duckdb.DuckDBPyConnection, tmp_pa
 
 
 def test_the_headline_is_rendered_above_the_plot(con: duckdb.DuckDBPyConnection, tmp_path: Path) -> None:
-    path = _drawn(render_for_players(con, tmp_path, [_entity("1")], [], 2026))
+    path = _drawn(_render(con, tmp_path, [_entity("1")], [], 2026))
     html = path.read_text()
     head = html.split("<svg")[0]
     assert "<b>+2.00</b> total net pts / 100" in head
@@ -333,14 +364,14 @@ def test_the_headline_is_rendered_above_the_plot(con: duckdb.DuckDBPyConnection,
 
 
 def test_the_table_carries_the_numbers_the_plot_only_shows_as_a_shape(con: duckdb.DuckDBPyConnection, tmp_path: Path) -> None:
-    path = _drawn(render_for_players(con, tmp_path, [_entity("1")], [], 2026))
+    path = _drawn(_render(con, tmp_path, [_entity("1")], [], 2026))
     html = path.read_text()
     assert html.count('<tr><th scope="row"') == len(FINGERPRINT_SKILLS)
     assert "+2.00" in html  # Ada Star's rim value per 100, spelled out
 
 
 def test_a_view_draws_only_that_side(con: duckdb.DuckDBPyConnection, tmp_path: Path) -> None:
-    path = _drawn(render_for_players(con, tmp_path, [_entity("1")], [], 2026, view="defense"))
+    path = _drawn(_render(con, tmp_path, [_entity("1")], [], 2026, view="defense"))
     html = path.read_text()
     assert html.count('<tr><th scope="row"') == len(skills_for("defense"))
     assert "defensive skills only" in html
@@ -359,7 +390,7 @@ def _shaded(html: str) -> list[tuple[str, str, float]]:
 
 
 def test_the_leader_of_each_category_is_shaded_in_their_own_color(con: duckdb.DuckDBPyConnection, tmp_path: Path) -> None:
-    path = _drawn(render_for_players(con, tmp_path, [_entity("1"), _entity("2")], [], 2026))
+    path = _drawn(_render(con, tmp_path, [_entity("1"), _entity("2")], [], 2026))
     shaded = {label: series for label, series, _ in _shaded(path.read_text())}
     # Ada Star is series a and leads rim scoring; Bo Wall is series b and leads
     # forced turnovers. Shading the wrong side is the whole point of this test.
@@ -368,7 +399,7 @@ def test_the_leader_of_each_category_is_shaded_in_their_own_color(con: duckdb.Du
 
 
 def test_only_one_cell_per_row_is_shaded(con: duckdb.DuckDBPyConnection, tmp_path: Path) -> None:
-    path = _drawn(render_for_players(con, tmp_path, [_entity("1"), _entity("2")], [], 2026))
+    path = _drawn(_render(con, tmp_path, [_entity("1"), _entity("2")], [], 2026))
     labels = [label for label, _, _ in _shaded(path.read_text())]
     assert len(labels) == len(set(labels))
 
@@ -376,7 +407,7 @@ def test_only_one_cell_per_row_is_shaded(con: duckdb.DuckDBPyConnection, tmp_pat
 def test_a_tied_category_is_not_shaded_for_either_player(con: duckdb.DuckDBPyConnection, tmp_path: Path) -> None:
     """Every skill but those two is 0.0 for both. A highlight anywhere else
     would invent a winner out of a tie."""
-    path = _drawn(render_for_players(con, tmp_path, [_entity("1"), _entity("2")], [], 2026))
+    path = _drawn(_render(con, tmp_path, [_entity("1"), _entity("2")], [], 2026))
     labels = {label for label, _, _ in _shaded(path.read_text())}
     assert labels == {"rim scoring", "forcing TOs"}
 
@@ -386,14 +417,14 @@ def test_the_shade_is_proportional_to_the_gap(con: duckdb.DuckDBPyConnection, tm
     100, the widest gap in the table; a skill she leads by a tenth of that must
     be visibly lighter."""
     con.execute("UPDATE net_points_player_fingerprint SET corner_o_net_pts = 10.0 WHERE athlete_id = '1'")
-    path = _drawn(render_for_players(con, tmp_path, [_entity("1"), _entity("2")], [], 2026))
+    path = _drawn(_render(con, tmp_path, [_entity("1"), _entity("2")], [], 2026))
     alphas = {label: alpha for label, _, alpha in _shaded(path.read_text())}
     assert alphas["rim scoring"] > alphas["corner 3s"]
     assert alphas["corner 3s"] > 0  # but still visible: a real lead, narrowly
 
 
 def test_a_single_player_table_is_not_shaded(con: duckdb.DuckDBPyConnection, tmp_path: Path) -> None:
-    path = _drawn(render_for_players(con, tmp_path, [_entity("1")], [], 2026))
+    path = _drawn(_render(con, tmp_path, [_entity("1")], [], 2026))
     assert _shaded(path.read_text()) == []
 
 
@@ -408,33 +439,35 @@ def test_a_name_with_html_in_it_cannot_break_out_of_the_page() -> None:
 
 
 def test_render_fingerprint_resolves_a_partial_name(con: duckdb.DuckDBPyConnection, tmp_path: Path) -> None:
-    assert "Ada Star" in render_fingerprint(con, tmp_path, "Ada", season=2026).message
+    assert "Ada Star" in _asked(con, tmp_path, "Ada", season=2026).message
 
 
 def test_render_fingerprint_compares_two_names(con: duckdb.DuckDBPyConnection, tmp_path: Path) -> None:
-    assert "Ada Star vs Bo Wall" in render_fingerprint(con, tmp_path, "Ada vs Bo", season=2026).message
+    assert "Ada Star vs Bo Wall" in _asked(con, tmp_path, "Ada vs Bo", season=2026).message
 
 
 def test_render_fingerprint_says_how_it_read_a_near_spelling(con: duckdb.DuckDBPyConnection, tmp_path: Path) -> None:
-    """The agent-tool entry point, with nobody above it collecting readings."""
-    message = render_fingerprint(con, tmp_path, "Ada Stat vs Bo", season=2026).message
+    """The reading is collected for the answering loop to attach
+    (``entities.collect_name_readings``, ``agent._try_compose``)."""
+    with collect_name_readings() as readings:
+        message = _asked(con, tmp_path, "Ada Stat vs Bo", season=2026).message
     assert "Ada Star vs Bo Wall" in message
-    assert message.endswith("('Ada Stat' matches no player exactly and was read as Ada Star, the only near spelling on record - spell the name exactly to ask about someone else.)")
+    assert readings == ["('Ada Stat' matches no player exactly and was read as Ada Star, the only near spelling on record - spell the name exactly to ask about someone else.)"]
 
 
 def test_render_fingerprint_reports_an_unknown_name_rather_than_raising(con: duckdb.DuckDBPyConnection, tmp_path: Path) -> None:
-    assert render_fingerprint(con, tmp_path, "Nobody At All", season=2026) == RenderResult("No player found matching 'Nobody At All'.", None)
+    assert _asked(con, tmp_path, "Nobody At All", season=2026) == RenderResult("No player found matching 'Nobody At All'.", None)
 
 
 def test_render_fingerprint_reports_a_missing_season_rather_than_raising(con: duckdb.DuckDBPyConnection, tmp_path: Path) -> None:
-    assert "no NetPoints fingerprint data for season 1999" in render_fingerprint(con, tmp_path, "Ada", season=1999).message
+    assert "no NetPoints fingerprint data for season 1999" in _asked(con, tmp_path, "Ada", season=1999).message
 
 
 def test_the_table_is_grouped_the_way_the_plot_is(con: duckdb.DuckDBPyConnection, tmp_path: Path) -> None:
     """One section per group, in plot order. Sorting across groups instead
     would list the skills in an order the radar never shows, and the table is
     what the radar is checked against."""
-    path = _drawn(render_for_players(con, tmp_path, [_entity("1")], [], 2026))
+    path = _drawn(_render(con, tmp_path, [_entity("1")], [], 2026))
     sections = re.findall(r'<th scope="rowgroup"[^>]*>([^<]+)</th>', path.read_text())
     assert sections == list(dict.fromkeys(skill.group for skill in FINGERPRINT_SKILLS))
 
@@ -484,7 +517,7 @@ def test_a_single_game_fingerprint_names_the_game_not_just_its_date(game_con_wit
     """ISSUES.md #155: the same shape as the shot chart's bare event id, one
     step narrower - a bare date named WHICH game but not what happened in it.
     The subtitle and the message now read the opponent and result too."""
-    result = render_for_players(game_con_with_result, tmp_path, [Entity(id="1", name="A")], [], 2026, order="recent")
+    result = _render(game_con_with_result, tmp_path, [Entity(id="1", name="A")], [], 2026, order="recent")
 
     assert "2026-03-05 vs POR, W 118-104" in result.message
     path = _drawn(result)
@@ -495,7 +528,7 @@ def test_a_single_game_fingerprint_falls_back_to_the_bare_date(game_con: duckdb.
     """`game_con` alone has no `player_game_log`/full `games` row, the shape a
     warehouse built before this existed or a minimal fixture takes - the
     subtitle keeps naming the date rather than crashing or going blank."""
-    result = render_for_players(game_con, tmp_path, [Entity(id="1", name="A")], [], 2026, order="recent")
+    result = _render(game_con, tmp_path, [Entity(id="1", name="A")], [], 2026, order="recent")
 
     assert "2026-03-05" in result.message
     assert " vs " not in result.message

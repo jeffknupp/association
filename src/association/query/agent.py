@@ -455,14 +455,6 @@ class Agent:
                 if note:
                     result.answer = f"{result.answer} {note}"
                     _note(result, note)
-                # A "vs" question that produced one polygon answered half of
-                # itself: entities.compared_but_unmatched says which name the
-                # question compares matched nobody - see its docstring.
-                if intent == "fingerprint":
-                    unmatched_note = compared_but_unmatched(self.con, question, self._named_in(scope))
-                    if unmatched_note:
-                        result.answer = f"{result.answer} {unmatched_note}"
-                        _note(result, unmatched_note)
         except TemplateUnsupported as exc:
             # The template could not honor the scoping asked for - see whether
             # the compiler can answer the same point on the relation. A
@@ -557,9 +549,26 @@ class Agent:
         if note:
             composed.answer = f"{composed.answer} {note}"
             _note(composed, note)
+        self._unmatched_fingerprint(question, reading, composed)
         point = {key: composed.data[key] for key in _COMPOSE_POINT_KEYS if key in composed.data}
         history.log(f"  -> (compose) intent={reading.intent!r} point={point}")
         return composed
+
+    def _unmatched_fingerprint(self, question: str, reading: Reading, composed: TemplateResult) -> None:
+        """A "vs" fingerprint that drew one polygon answered half of itself:
+        :func:`~association.query.entities.compared_but_unmatched` says which
+        name the question compares matched nobody, or was left out - see its
+        docstring. Read here because it reads the question's text, which
+        only the reader and this loop hold; said after the coverage caveat,
+        and only where the reader answered - never beside the coverage
+        floor's refusal, which read no name (the retired template's order:
+        the floor, then the answer and this note)."""
+        if reading.intent != "fingerprint" or check_coverage(reading.intent, reading.scope) is not None:
+            return
+        unmatched_note = compared_but_unmatched(self.con, question, self._named_in(reading.scope))
+        if unmatched_note:
+            composed.answer = f"{composed.answer} {unmatched_note}"
+            _note(composed, unmatched_note)
 
     def _run_template(self, handler: Callable[[TemplateContext, Reading], TemplateResult], reading: Reading, history: RunHistory) -> TemplateResult:
         """The template's answer, with how it read any name the question left

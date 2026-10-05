@@ -5,6 +5,15 @@ Phase 2's slice (v) (``ROADMAP.md``, step 5, and the decision "Charts are
 declared shapes": each keeps its own reader and renderer, declared with its
 relation, and is not ported onto a NetPoints relation before Phase 3).
 
+``fingerprint`` is a chart (:class:`~association.query.result.Chart`):
+one or more players' play-type fingerprints - a season's, from
+``net_points_player_fingerprint``, or a first or last game's, from
+``net_points_player_game_fingerprint`` - read by the chart's own reader,
+:mod:`association.query.fingerprint` (``load_for_players``: the percentile
+pool and the polygons come out of one read), and drawn by its own renderer
+(:mod:`association.query.radar`) in :func:`draw_fingerprint`, the step
+between this reader and the sayer that writes the page.
+
 ``player_netpoints`` is a scalar and a split by play type
 (``ROADMAP-TYPES.md``, "Still open" 6): a season's ratings from
 ``net_points_player`` and the categories behind them from
@@ -26,20 +35,36 @@ matches nothing.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from pathlib import Path
 from typing import Any, Literal
 
 import duckdb
 
 from association.nba.netpoints import FINGERPRINT_CATEGORIES, FINGERPRINT_PARTITION
 from association.nba.season import current_season, eastern_date
-from association.query.entities import Availability, Entity
-from association.query.fingerprint import FINGERPRINT_AVAILABILITY, FINGERPRINT_SUMMARY_CATEGORY
+from association.query.entities import Ambiguous, Availability, Entity, clarification, no_match
+from association.query.fingerprint import (
+    FINGERPRINT_AVAILABILITY,
+    FINGERPRINT_MIN_GAME_POSSESSIONS,
+    FINGERPRINT_MIN_MINUTES,
+    FINGERPRINT_SUMMARY_CATEGORY,
+    GAME_FINGERPRINT_AVAILABILITY,
+    PER_100_POSSESSIONS,
+    PER_GAME,
+    FingerprintUnavailable,
+    LeagueScale,
+    fingerprint_captions,
+    fingerprint_file,
+    fingerprint_page,
+    load_for_players,
+)
 from association.query.metrics import SEASON_TYPE_LABELS
 from association.query.notes import Note
 from association.query.reading import Scope
-from association.query.result import Decided, Grouped, Part, Result, Scalar, Span, Window
+from association.query.result import Chart, Decided, Grouped, Part, Result, Scalar, Span, Window
 from association.query.season_line import Statement, season_redirect
+from association.query.shotchart import resolve_chart_player
 from association.query.templates.common import SEASON_TYPE_NAMES, TemplateResult, TemplateUnsupported, resolved_player, season_phrase, unhonored_scoping
 
 from .core import values_of
@@ -281,3 +306,202 @@ def _netpoints_game(con: duckdb.DuckDBPyConnection, player: Entity, season: int,
         notes=(Note("hint", {"what": "fingerprint_of_that_game"}),),
         facts={"season": season, "event_id": event_id},
     )
+
+
+# --- a player's fingerprint ------------------------------------------------------
+
+MAX_FINGERPRINT_PLAYERS = 3
+"""The most polygons one radar draws: beyond three the shapes stop being
+separable - and the palette in :mod:`association.query.radar` holds three
+series colors for the same reason.
+
+.. versionadded:: 5.0.0
+   Moved from ``association.query.templates.netpoints``.
+"""
+
+
+def read_fingerprint(con: duckdb.DuckDBPyConnection, q: NetPointsQuery, *, stated: frozenset[str]) -> Result | TemplateResult | None:
+    """One or more players' fingerprints (``fingerprint``'s point), read for
+    one radar: a :class:`~association.query.result.Chart` whose marks are
+    the polygons. "compare their fingerprints" arrives as ``players``, one
+    name as ``player``: both draw one plot, since two polygons on shared
+    axes IS the comparison. A
+    :class:`~association.query.templates.common.TemplateResult` back is the
+    relation's own refusal - a name nobody matches, an ambiguous one, a
+    date, or nothing on record to draw; ``None`` where the scope sets a
+    narrowing the retired template's words do not state.
+
+    Names are resolved best-match, as a shot chart's are
+    (:func:`~association.query.shotchart.resolve_chart_player`): a plot
+    titled with the resolved name shows a wrong match on sight, which is
+    what makes best-match safe here and not in an answer reporting numbers.
+
+    Raises ``TemplateUnsupported`` with no player named.
+
+    .. versionadded:: 5.0.0
+       ``templates.netpoints.fingerprint``, moved whole; its drawing is
+       :func:`draw_fingerprint` and its words the sayer's.
+    """
+    scope = q.scope
+    if q.shape != "chart" or unhonored_scoping("fingerprint", scope, stated):
+        return None
+    names = _fingerprint_names(scope.players, scope.player)
+    # A question about one game draws that game, from the long per-game table
+    # rather than the season file - see fingerprint.load_game_fingerprints for
+    # why its numbers are the game's own net points and not a per-100 rate. A
+    # `date` is not honored the same way: the router gives a calendar date and
+    # the loader picks a player's first or last game, which are different
+    # questions, so a dated request still says it cannot answer.
+    order = scope.order
+    if scope.date and not order:
+        message = "A fingerprint can be drawn for a player's first or most recent game of a season, but not yet for a particular date - ask for their last game instead."
+        return TemplateResult(data={"message": message}, answer=message)
+    # Settled before any name is resolved: the season is what narrows an
+    # ambiguous name to the players who have a fingerprint in it.
+    season = scope.season or current_season()
+    season_type = scope.season_type or 2
+    # A one-game plot is narrowed against the table it will actually be drawn
+    # from. Availability in the season file does not imply a row per game, and
+    # the season file has no season_type at all.
+    availability = GAME_FINGERPRINT_AVAILABILITY if order else FINGERPRINT_AVAILABILITY
+    resolved = _fingerprint_resolve_players(con, names, availability, season)
+    if isinstance(resolved, TemplateResult):
+        return resolved
+    players, ambiguous = resolved
+    # The reading's word for it is `side`, which is what a question says
+    # ("his defensive fingerprint"); the renderer's is `view`, because each
+    # skill already carries the side it is measured on and this only picks
+    # which skills are drawn. The Reading's door refuses any side but the
+    # renderer's three, so only an absent one needs the default.
+    return fingerprint_result(con, players, ambiguous, season, view=scope.side or "total", season_type=season_type, order=order)
+
+
+def _fingerprint_names(players_slot: tuple[str, ...], player_slot: str | None) -> list[str]:
+    """The player name(s) asked for, from the ``players`` slot (a comparison)
+    or the ``player`` slot (one name), no more than one radar draws."""
+    names = [n for n in players_slot if n.strip()]
+    if not names:
+        if player_slot is None or not player_slot.strip():
+            raise TemplateUnsupported("fingerprint needs a player name")
+        names = [player_slot]
+    return names[:MAX_FINGERPRINT_PLAYERS]
+
+
+def _fingerprint_resolve_players(con: duckdb.DuckDBPyConnection, names: list[str], availability: Availability, season: int) -> tuple[list[Entity], list[str]] | TemplateResult:
+    """Each name resolved against the table the plot will actually be drawn
+    from, best-match: the players, and the other names that also matched -
+    or the refusal (nobody matches) or the question back (two or more with
+    a fingerprint)."""
+    players: list[Entity] = []
+    ambiguous: list[str] = []
+    for name in names:
+        found = resolve_chart_player(con, name, availability, season)
+        if found is None:
+            message = no_match(con, name)
+            return TemplateResult(data={"message": message}, answer=message)
+        if isinstance(found, Ambiguous):
+            # The question back, in the sentence every chart and template asks it with.
+            return TemplateResult(data={"ambiguous": name, "candidates": found.candidates}, answer=clarification(name, found.candidates, active=found.active))
+        player, also = found
+        # The same name twice would draw one polygon over itself and report a
+        # comparison; deduped on the RESOLVED id, since "SGA" and "Gilgeous"
+        # are two names for one player.
+        if player.id not in {p.id for p in players}:
+            players.append(player)
+        ambiguous.extend(also)
+    return players, ambiguous
+
+
+def fingerprint_result(
+    con: duckdb.DuckDBPyConnection,
+    players: list[Entity],
+    ambiguous: list[str],
+    season: int,
+    *,
+    view: str = "total",
+    scale: str = "percentile",
+    season_type: int = 2,
+    order: str | None = None,
+    min_minutes: int = FINGERPRINT_MIN_MINUTES,
+) -> Result | TemplateResult:
+    """Already-resolved players' fingerprints as a chart for one radar, or
+    the loader's own sentence where nothing can be drawn (a season with no
+    rows, players with none in it, a game nobody qualified in) - returned,
+    not raised: nothing has a better source for this plot than the table
+    just read, and a raise would refuse for the wrong cause.
+
+    The marks are one ``(fingerprint, game)`` per player drawn - his
+    :class:`~association.query.fingerprint.PlayerFingerprint` and the game
+    it came from (``None`` for a season). A player with no row is named,
+    never drawn as a zero polygon, which would read as "played and
+    contributed nothing" (a ``no_data_for`` note); one under the pool's
+    floor is drawn and said to be (``below_pool``); the other names that
+    matched are the ``also_matched`` decision. ``facts`` carry the view,
+    the scale, the span the plot covers (``when``), the axis note and the
+    league scale the draw step needs.
+
+    .. versionadded:: 5.0.0
+       ``fingerprint.render_for_players``' read and the template's around it.
+    """
+    try:
+        fingerprints, league, games, _unit = load_for_players(con, players, ambiguous, season, view=view, scale=scale, min_minutes=min_minutes, season_type=season_type, order=order)
+    except FingerprintUnavailable as exc:
+        return TemplateResult(data={"message": str(exc)}, answer=str(exc))
+    drawn = {f.athlete_id for f in fingerprints}
+    missing = [p.name for p in players if p.id not in drawn]
+    title, subtitle, axis_note, when = fingerprint_captions(fingerprints, games, season, view=view, scale=scale, order=order, league=league, min_minutes=min_minutes)
+    notes: list[Note] = []
+    unqualified = [f.name for f in fingerprints if not f.qualified]
+    if unqualified:
+        threshold, of = (FINGERPRINT_MIN_GAME_POSSESSIONS, "possessions") if order else (min_minutes, "minutes")
+        notes.append(Note("below_pool", {"names": unqualified, "threshold": threshold, "of": of}))
+    if missing:
+        notes.append(Note("no_data_for", {"names": missing, "what": "fingerprint"}))
+    decisions = (Decided(kind="also_matched", field="player", chose=[f.name for f in fingerprints], instead_of=tuple(ambiguous)),) if ambiguous else ()
+    chart = Chart(
+        kind="fingerprint",
+        marks=tuple((f, games.get(f.athlete_id)) for f in fingerprints),
+        title=title,
+        caption=subtitle,
+        file=fingerprint_file(fingerprints, season, order, view, scale),
+    )
+    return Result(
+        subject=title,
+        relation="player",
+        span=Span(season=season, season_type=season_type, source="netpoints"),
+        parts=(Part(body=chart),),
+        notes=tuple(notes),
+        decisions=decisions,
+        facts={
+            "players": [p.name for p in players],
+            "season": season,
+            "view": view,
+            "scale": scale,
+            "order": order,
+            "when": when,
+            "axis_note": axis_note,
+            "league": {"best": league.best, "worst": league.worst, "pool_size": league.pool_size},
+        },
+    )
+
+
+def draw_fingerprint(result: Result, out_dir: Path) -> Result:
+    """``result``'s chart drawn: the radar page written to ``out_dir`` under
+    the chart's file name (:func:`~association.query.fingerprint.fingerprint_page`,
+    over :mod:`association.query.radar`), and the chart's ``path`` set to
+    where it was written. The step between the reader and the sayer: a
+    reader reads and names no file that does not exist yet, and the sayer
+    takes the Result and nothing else, so neither writes the page.
+
+    .. versionadded:: 5.0.0
+    """
+    chart = result.chart
+    assert chart is not None
+    facts = result.facts
+    fingerprints = [mark[0] for mark in chart.marks]
+    unit = PER_GAME if facts["order"] else PER_100_POSSESSIONS
+    html = fingerprint_page(chart.title, chart.caption, facts["axis_note"], fingerprints, LeagueScale(**facts["league"]), scale=facts["scale"], unit=unit)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = out_dir / chart.file
+    out_path.write_text(html)
+    return replace(result, parts=(Part(body=replace(chart, path=str(out_path))), *result.parts[1:]))

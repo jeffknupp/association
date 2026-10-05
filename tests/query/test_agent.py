@@ -278,7 +278,9 @@ def test_a_fingerprint_that_lost_a_player_to_a_typo_says_so(monkeypatch: pytest.
     failure shape this project keeps producing."""
     from association.query.templates.common import TemplateResult
 
-    monkeypatch.setattr("association.query.agent.TEMPLATES", {"fingerprint": lambda ctx, slots: TemplateResult(data={}, answer="Rendered.")})
+    # The fingerprint is the compiler's (Phase 2, slice (v)): the note is
+    # attached to what compose.answer hands back (agent._unmatched_fingerprint).
+    monkeypatch.setattr("association.query.compose.answer", lambda ctx, reading, trace=None, declined=None, planned=None: TemplateResult(data={}, answer="Rendered."))
     answer = ask_routed(_agent_with_players(tmp_path, "Joel Embiid"), "generate fingerprints for embiid vs jolic in 2026", slots_route("fingerprint", {"player": "Joel Embiid"})).text
     assert answer.startswith("Rendered.") and "only one of them matches" in answer
 
@@ -314,7 +316,7 @@ def test_a_question_nothing_reads_is_refused_naming_why(monkeypatch: pytest.Monk
     answer since the SQL-writing agent went (5.0.0). No model is asked past
     the reader."""
     from association.query.agent import refusal_text
-    from association.query.templates import TemplateResult, TemplateUnsupported
+    from association.query.templates import TemplateResult
 
     def chat_must_not_run(**kw: Any) -> None:
         raise AssertionError("no model is asked past the normalizer")
@@ -328,16 +330,12 @@ def test_a_question_nothing_reads_is_refused_naming_why(monkeypatch: pytest.Monk
     assert answer.intent is None and answer.data is None
     assert agent.unanswered == "intent 'other' has no template yet"
 
-    # A template's own refusal (fingerprint still has one; with_without and
-    # head_to_head, which this used, are the compiler's since step (g) and
-    # Phase 2's slice (iv)).
-    def refusing(ctx: Any, reading: Reading) -> TemplateResult:
-        raise TemplateUnsupported("fingerprint needs a player, got []")
-
-    monkeypatch.setattr("association.query.agent.TEMPLATES", {"fingerprint": refusing})
+    # A reader's own refusal while reading, with its reason: a fingerprint of
+    # nobody (the compiler's since Phase 2's slice (v); with_without,
+    # head_to_head and the fingerprint's template, which this used, are gone).
     answer = ask_routed(agent, "a question nothing reads", slots_route("fingerprint", {}))
     assert answer.answered_by == "refused" and "fingerprint: fingerprint needs a player" in answer.text
-    assert agent.unanswered == "fingerprint: fingerprint needs a player, got []"
+    assert agent.unanswered == "fingerprint: fingerprint needs a player name"
 
     # An intent the compiler alone answers (compose.COMPILED_INTENTS) is
     # refused with the compiler's reason where it has no reading: a log of
@@ -355,8 +353,8 @@ def test_a_question_nothing_reads_is_refused_naming_why(monkeypatch: pytest.Monk
     answer = agent.ask("what is this question")
     assert answer.answered_by == "refused" and "no usable reply" in answer.text
 
-    # A question a template answers is unaffected.
-    monkeypatch.setattr("association.query.agent.TEMPLATES", {"fingerprint": lambda ctx, slots: TemplateResult(data={}, answer="answered")})
+    # A question its reader answers is unaffected.
+    monkeypatch.setattr("association.query.compose.answer", lambda ctx, reading, trace=None, declined=None, planned=None: TemplateResult(data={}, answer="answered"))
     answer = ask_routed(agent, "a question nothing reads", slots_route("fingerprint", {}))
     assert (answer.text, answer.answered_by, agent.unanswered) == ("answered", "fast", None)
 
@@ -403,20 +401,6 @@ def test_a_templates_refusal_that_compose_answers_is_returned_as_fast_with_the_t
     assert "'skeleton': 'aggregate'" in compose_lines[0] and "'measures': ['points']" in compose_lines[0]
     # The point is what was composed, not the rows it produced.
     assert "rows" not in compose_lines[0]
-
-
-def test_a_compose_none_is_refused_with_the_templates_reason(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """No monkeypatch on compose.answer here: this exercises the real
-    compiler (association.query.compose) on an intent that is not a point on
-    any relation - a fingerprint is a chart over NetPoints - so it declines
-    with None, and the question is refused with the template's own reason."""
-
-    monkeypatch.setattr("association.query.agent.TEMPLATES", {"fingerprint": _refusing_template})
-
-    answer = ask_routed(_agent_with_players(tmp_path, "Joel Embiid"), "show me embiid's fingerprint for 2026", slots_route("fingerprint", {"player": "Joel Embiid", "season": 2026}))
-
-    assert answer.answered_by == "refused"
-    assert "fingerprint: a test double's refusal" in answer.text
 
 
 def test_a_compose_refusal_is_returned_as_the_answer_not_a_fall_through(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

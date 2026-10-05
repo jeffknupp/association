@@ -80,7 +80,8 @@ this tree:
   `head_to_head`, `team_quarter_points`, `period_leaderboard` and
   `team_record` went to readers and sayers; 3 once `player_netpoints` went
   to a reader and a sayer over the NetPoints relation,
-  `compose/netpoints.py`), the presenters (12 until
+  `compose/netpoints.py`, and 2 once `fingerprint` did, its chart drawn
+  between the two), the presenters (12 until
   2026-10-03; the intents holding one are 8 since 2026-10-04, as the game
   log, `record_when`, `player_splits` and `period_split` went to readers and
   sayers, 6 once `threshold_count` and `single_game_high` did, 4 once
@@ -959,14 +960,27 @@ model's. Two things follow, and both matter when you add a shape:
   only through the shared steps in
   `templates/common.py`, the same discipline the relation templates keep
   (see "A template on a relation does not declare, or apply, scoping of its
-  own" above). Twenty-two intents have no entry in `TEMPLATES`
+  own" above). Twenty-three intents have no entry in `TEMPLATES`
   (`compose.COMPILED_INTENTS`: `threshold_count`, `single_game_high`,
   `record_when`, `player_history`, `game_log`, `player_stat`,
   `player_splits`, `leaderboard`, `period_split`, `player_compare`,
   `streak`, `player_matchup`, `with_without`, `head_to_head`,
   `team_quarter_points`, `period_leaderboard`, `team_record`, `team_stat`,
-  `team_leaderboard`, `team_outlook`, `coach`, `player_netpoints`);
-  `TEMPLATES` holds three charts. A shape Phase 2's slice (iv) ported from a template the reader
+  `team_leaderboard`, `team_outlook`, `coach`, `player_netpoints`,
+  `fingerprint`); `TEMPLATES` holds the two shot charts. The NetPoints
+  relation's two (`reading.CHART_INTENTS`, read as their default points on
+  the declared `netpoints` relation and planned as
+  `compose.netpoints.NetPointsQuery`) keep their own readers and renderer,
+  per the decision "Charts are declared shapes": `read_player_netpoints`
+  builds its statements and runs them through `core.values_of`;
+  `read_fingerprint` reads through `query/fingerprint.py`'s loaders (the
+  percentile pool and the polygons from one read) into a `Chart`, which
+  `compose.netpoints.draw_fingerprint` writes with `query/radar.py` before
+  `compose.say.say_fingerprint` words it - a reader reads and names no file
+  that does not exist yet, and the sayer takes the Result and nothing
+  else. The "vs" note for a fingerprint that drew one polygon
+  (`entities.compared_but_unmatched`) reads the question, so the answering
+  loop attaches it (`agent._unmatched_fingerprint`). A shape Phase 2's slice (iv) ported from a template the reader
   gave no point has a default point of its own (`point.DEFAULT_POINTS`:
   its readings gained one when it moved), is declined beyond the scoping
   its retired words state (`compose.plan.STATED_SCOPING`, where its

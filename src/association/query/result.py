@@ -213,6 +213,35 @@ class Runs:
 
 
 @dataclass(frozen=True, kw_only=True)
+class Chart:
+    """A drawing (``ROADMAP-TYPES.md``, "The shapes": ``chart`` - "the
+    artifact, and the counts it drew"): the artifact's ``kind``, the
+    ``made`` and ``attempted`` counts drawn, the marks themselves
+    (``marks``, one tuple per mark, as the renderer takes them), the page's
+    ``title`` and ``caption`` and the ``file`` name it is written under -
+    and ``path``, where it was written, which the RUN stage's draw step
+    sets after the read (a reader reads; nothing it returns names a file
+    that does not exist yet). No marks is a chart with nothing to draw.
+    Declared by the first chart to retire its template (``shot_chart``,
+    Phase 2, step 5): the draft's body, rather than a ``Rows`` of shots,
+    because what the answer states is the counts and the file, never the
+    rows, and the marks are the renderer's input, not a table anybody
+    reads.
+
+    .. versionadded:: 5.0.0
+    """
+
+    kind: str
+    made: int = 0
+    attempted: int = 0
+    marks: tuple[tuple[Any, ...], ...] = ()
+    title: str = ""
+    caption: str = ""
+    file: str = ""
+    path: str | None = None
+
+
+@dataclass(frozen=True, kw_only=True)
 class Decided:
     """One decision the read made where the question left a field open
     (``ROADMAP-TYPES.md``, "Outcome": ``decisions``): the ``kind`` from
@@ -244,7 +273,7 @@ class Part:
     """
 
     role: Literal["answer", "summary", "detail"] = "answer"
-    body: Rows | Grouped | Scalar | Runs | None = None
+    body: Rows | Grouped | Scalar | Runs | Chart | None = None
     notes: tuple[Note, ...] = ()
 
 
@@ -304,6 +333,12 @@ class Result:
         """The first part's groups, where the answer is one row per group."""
         body = self.parts[0].body if self.parts else None
         return body if isinstance(body, Grouped) else None
+
+    @property
+    def chart(self) -> Chart | None:
+        """The first part's drawing, where the answer is a chart."""
+        body = self.parts[0].body if self.parts else None
+        return body if isinstance(body, Chart) else None
 
     @property
     def runs(self) -> Runs | None:

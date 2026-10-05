@@ -66,10 +66,10 @@ def test_no_intent_is_added_and_a_retired_one_leaves_the_list() -> None:
 # compose.meetings, compose.periods and compose.team_records read them, compose.say words them.
 # coach's retired 2026-10-05 (slice (iv)): the reading refuses by its cause, the planner says it;
 # team_outlook's, team_stat's and team_leaderboard's the same day: compose.team_stats reads them, compose.say words them.
-# player_netpoints' retired 2026-10-05 (slice (v)): compose.netpoints reads it, compose.say words it.
+# player_netpoints' and fingerprint's retired 2026-10-05 (slice (v)): compose.netpoints reads them,
+# compose.netpoints.draw_fingerprint draws the chart and compose.say words them.
 FROZEN_TEMPLATES = frozenset(
     {
-        "fingerprint",
         "shot_chart",
         "shot_distance",
     }
