@@ -25,9 +25,9 @@ from association.query.conditions import _SPLIT_TITLES, _cell, _margin, _split_c
 from association.query.notes import Note, decided, note
 from association.query.player_games import PERIOD_LOG_COLUMNS, _joined, period_columns
 from association.query.reading import DEFAULT_GAME_LOG_LIMIT, _clamp_limit, ordinal_word
-from association.query.result import Decided, Result, Rows, Run, Scalar, Span
+from association.query.result import Decided, Grouped, Result, Rows, Run, Scalar, Span
 from association.query.shotchart import UNSEPARABLE_SHOT_VALUES
-from association.query.templates.common import PLAYER_STAT_COLUMNS, SEASON_TYPE_NAMES, STAT_LABELS, TemplateResult, count_games, format_value, season_label, season_phrase
+from association.query.templates.common import PLAYER_STAT_COLUMNS, SEASON_TYPE_NAMES, STAT_LABELS, TemplateResult, count_games, format_value, season_label, season_phrase, table_cell
 from association.query.templates.players import MADE_STAT_ATTEMPTS, SHOOTING_STATS
 
 from .logs import LOG_PERCENTAGES, log_key
@@ -56,6 +56,9 @@ def _say_definition(facts: dict[str, Any]) -> str:
         return f"Over the {facts['games']} games he played; a game he missed is in neither row."
     if facts.get("term") == "streak_rule":
         return _say_streak_rule(facts)
+    if facts.get("term") == "most_recent_team":
+        # Its own line beneath a ranking's table, the way a table's other notes follow it.
+        return "\nTeam is each player's most recent team that season."
     if facts.get("term") == "unseen_ends_run":
         return " A game with no box score in the warehouse ends a run rather than being carried across, since it cannot be checked."
     if facts.get("term") != "without":
@@ -176,7 +179,9 @@ def decision_phrase(each: Decided, **said_with: Any) -> str:
 
     .. versionadded:: 5.0.0
     """
-    if each.kind == "season_fallback":
+    if each.kind == "minimum":
+        text = f" (minimum {each.chose:,} {each.facts['of']})"
+    elif each.kind == "season_fallback":
         text = f"No games this season, so these are his most recent {said_with['games']}{said_with['at']}, from the {said_with['season_label']}."
     elif each.kind == "season_redirected":
         first, last, kind = each.facts["first"], each.facts["last"], each.facts["what"]
@@ -222,6 +227,8 @@ def note_phrase(each: Note, *, narrowing: str = "", consequence: str = "", liste
         return _say_stat_blank(facts)
     if each.kind == "floor" and facts.get("table") == "box_scores":
         return _say_floor(facts)
+    if each.kind == "floor" and facts.get("what") == "career_pool":
+        return f"Careers that ended before {season_label(facts['first'])} are not in this warehouse, so this is not an all-time list."
     if each.kind == "rebuilt_agreement" and facts.get("what") in ("period_points_from_shots", "period_rebuilt"):
         return _say_period_agreement(facts)
     raise ValueError(f"no phrase for a {each.kind!r} note with {sorted(facts)}")
@@ -426,6 +433,22 @@ def say_team_log(result: Result) -> TemplateResult:
     return TemplateResult(data=data, answer="\n".join([header, *lines]) + _team_total_line(games, stat))
 
 
+def _say_grouped(result: Result) -> TemplateResult | None:
+    """A grouped body worded by what it is grouped by - two named subjects, a
+    ranking by player (a count of games over a line, ``ranked_by="games"``,
+    or a stat over the season line), a record over a line, splits, a
+    quarter - or ``None`` for any other body. Split out of :func:`say` for
+    the complexity gate, in its order."""
+    body = result.grouped
+    if body is None:
+        return None
+    if body.by == "player":
+        return say_threshold_count(result) if body.ranked_by == "games" else say_leaderboard(result)
+    sayers = {"subject": say_player_matchup, "threshold": say_record_when, "split": say_splits, "period": say_period_by_quarter}
+    sayer = sayers.get(body.by)
+    return sayer(result) if sayer is not None else None
+
+
 def say(result: Result) -> TemplateResult:
     """``result`` worded by its shape: a team's rows, a player's rows, a
     record grouped by a line, splits, or a player's line.
@@ -436,18 +459,11 @@ def say(result: Result) -> TemplateResult:
         return say_threshold_count(result)
     if result.runs is not None:
         return say_streak(result)
-    if result.grouped is not None and result.grouped.by == "subject":
-        return say_player_matchup(result)
     if result.scalar is not None:
         return say_player_stat(result)
-    if result.grouped is not None and result.grouped.by == "player":
-        return say_threshold_count(result)
-    if result.grouped is not None and result.grouped.by == "threshold":
-        return say_record_when(result)
-    if result.grouped is not None and result.grouped.by == "split":
-        return say_splits(result)
-    if result.grouped is not None and result.grouped.by == "period":
-        return say_period_by_quarter(result)
+    grouped = _say_grouped(result)
+    if grouped is not None:
+        return grouped
     if result.rows is not None and result.rows.by != "date":
         return say_single_game_high(result)
     if result.rows is not None and "period" in result.facts:
@@ -1408,3 +1424,161 @@ def say_player_matchup(result: Result) -> TemplateResult:
         "notes": [caveat.strip()] if caveat else [],
     }
     return TemplateResult(data=data, answer=answer)
+
+
+# --- a ranking over the season line ------------------------------------------------
+
+
+def _leaderboard_rows(body: Grouped) -> list[dict[str, Any]]:
+    """A ranking's rows as the answer's ``leaders`` carry them: the name, the
+    ranked figure as ``value``, then the row's other columns in order."""
+    measure = body.ranked_by or ""
+    return [{"display_name": row["key"], "value": row["values"][measure], **{k: v for k, v in row["values"].items() if k != measure}} for row in body.rows]
+
+
+def _leader_value(row: dict[str, Any], ratio: Sequence[str] | None, *, short: bool = False) -> str:
+    """A ranked value as a reader expects it: a percentage as one, with the
+    makes and attempts behind it - the "out of how many?" a bare percentage
+    always draws - and a count with its thousands separated."""
+    value = row.get("value")
+    if value is None:
+        return "-"
+    if ratio:
+        made, attempted = row.get(ratio[0]), row.get(ratio[1])
+        text = f"{value * 100:.1f}%"
+        return text if short or made is None or attempted is None else f"{text} ({int(made):,} of {int(attempted):,})"
+    if isinstance(value, int):
+        return f"{value:,}"
+    # ESPN's averages carry one decimal, and "4" beside "3.8" reads as a count.
+    return f"{value:.1f}" if isinstance(value, float) and value == round(value, 1) and abs(value) >= 1 else format_value(value)
+
+
+def _leaderboard_minimum(result: Result) -> tuple[Decided | None, Any]:
+    """The ranking's qualifier decision and the minimum it applied (``None``
+    where the metric applies none)."""
+    minimum = next((each for each in result.decisions if each.kind == "minimum"), None)
+    return minimum, (minimum.chose if minimum is not None else None)
+
+
+def _leaderboard_qualifier(minimum: Decided | None) -> str:
+    """ " (minimum 200 3-point attempts)", or nothing. Shown because it answers
+    "why isn't X here?" before it is asked - and makes an empty early-season
+    board say why it is empty."""
+    if minimum is None or not minimum.chose:
+        return ""
+    return decision_phrase(minimum)
+
+
+def _phrase_leaderboard(rows: list[dict[str, Any]], label: str, where: str, period: str, qualifier: str, ratio: Sequence[str] | None) -> str:
+    if not rows:
+        return f"No players qualified for {label} in {where} in the {period}{qualifier}."
+    top = rows[0]
+    sentence = f"{top['display_name']} led {where} in {label} in the {period}{qualifier}, at {_leader_value(top, ratio)}."
+    rest = [f"{r['display_name']} ({_leader_value(r, ratio, short=True)})" for r in rows[1:]]
+    return sentence + (f" Next: {', '.join(rest)}." if rest else "")
+
+
+def _tabulate_leaderboard(rows: list[dict[str, Any]], label: str, where: str, period: str, fields: list[str], header_note: str, ratio: Sequence[str] | None) -> str:
+    """A table once extra columns are asked for - a sentence carrying three
+    numbers per player across ten players is unreadable, and the qualifying
+    minimum belongs on screen so "why isn't X here?" has a visible answer."""
+    if not rows:
+        return f"No players qualified for {label} in {where} in the {period}{header_note}."
+    columns = [(label, "value")] + [(f, f) for f in fields]
+    name_width = max(len(r["display_name"]) for r in rows)
+    # The ranked metric keeps its own precision (9.91, not 9.9); the extra
+    # box-score columns are per-game averages, where one decimal is the norm.
+    cell = lambda row, key: _leader_value(row, ratio, short=True) if key == "value" else table_cell(row.get(key))  # noqa: E731
+    widths = [max(len(title), *(len(cell(r, key)) for r in rows)) for title, key in columns]
+    lines = [f"{label}, {where}, {period}{header_note}:"]
+    lines.append(" " * name_width + "  " + "  ".join(t.rjust(w) for (t, _), w in zip(columns, widths, strict=True)))
+    for row in rows:
+        cells = "  ".join(cell(row, key).rjust(w) for (_, key), w in zip(columns, widths, strict=True))
+        lines.append(f"{row['display_name'].ljust(name_width)}  {cells}")
+    return "\n".join(lines)
+
+
+def _leaderboard_headline(answer: str) -> str:
+    """The answer's first line, without the trailing "Next: ..." list - the
+    same way the page's own fallback reads it (``firstLine``,
+    ``web/static/index.html``)."""
+    return answer.split("\n")[0].rstrip(":").split(" Next: ")[0]
+
+
+def say_leaderboard(result: Result) -> TemplateResult:
+    """A ranking over the season line, worded as the retired template
+    worded it (``templates.players._leaderboard_ranking``): the leader and
+    the next names in a sentence, or a table once "also" columns were asked
+    for, the qualifier in either, a career's pool said every time, and the
+    most-recent-team remark on its own line beneath a team column.
+
+    .. versionadded:: 5.0.0
+    """
+    body = result.grouped
+    assert body is not None
+    if result.span.career:
+        return _say_career_leaderboard(result, body)
+    facts = result.facts
+    label, fields, ratio = facts["label"], list(facts["fields"]), facts["ratio"]
+    rows = _leaderboard_rows(body)
+    season = result.span.season
+    assert season is not None
+    period = season_phrase(season, result.span.season_type or 2)
+    where = f"the {facts['team']}" if facts["team"] else "the league"
+    # The remark beneath the table is written before the table's qualifier,
+    # in the order the template wrote them.
+    trade_note = "".join(note(each.kind, note_phrase(each), **each.facts) for each in result.notes)
+    minimum, applied = _leaderboard_minimum(result)
+    qualifier = _leaderboard_qualifier(minimum)
+    answer = _tabulate_leaderboard(rows, label, where, period, fields, qualifier, ratio) if fields else _phrase_leaderboard(rows, label, where, period, qualifier, ratio)
+    data = {
+        "question_shape": f"{label}, {period}",
+        "season": season,
+        "fields": fields,
+        "min_sample": applied,
+        "leaders": rows,
+        "headline": _leaderboard_headline(answer),
+        "notes": [trade_note.strip()] if trade_note else [],
+    }
+    return TemplateResult(data=data, answer=answer + trade_note)
+
+
+def _say_career_leaderboard(result: Result, body: Grouped) -> TemplateResult:
+    """A career ranking. Says whose careers, every time: the pool is every
+    player active in 1993-94 or later, counted over his whole career, and
+    nobody whose career ended before it - Kareem Abdul-Jabbar is not in the
+    warehouse at all - so presenting it as "all-time" would be the
+    unrepresentative ranking ``nba/coverage.py``'s second floor exists to
+    refuse."""
+    rows = _leaderboard_rows(body)
+    ratio = result.facts["ratio"]
+    kind = SEASON_TYPE_NAMES.get(result.span.season_type or 2, "regular season")
+    label = f"career {result.facts['label'].removeprefix('total ')}"
+    pool = result.span.first
+    assert pool is not None
+    since = season_label(pool)
+    minimum, applied = _leaderboard_minimum(result)
+    qualifier = _leaderboard_qualifier(minimum)
+    gap = "".join(note(each.kind, note_phrase(each), **each.facts) for each in result.notes)
+    if not rows:
+        answer = f"No player qualified for {label} in the {kind}{qualifier}. {gap}"
+    else:
+        top = rows[0]
+        years = f"{season_label(top['first_season'])} through {season_label(top['last_season'])}"
+        detail = f", over {int(top['games']):,} games ({years})" if top.get("games") else ""
+        sentence = f"Among players active in {since} or later, {top['display_name']} leads in {label} in the {kind}{qualifier}: {_leader_value(top, ratio)}{detail}."
+        rest = [f"{r['display_name']} ({_leader_value(r, ratio, short=True)})" for r in rows[1:]]
+        answer = " ".join([sentence, *([f"Next: {', '.join(rest)}."] if rest else []), gap])
+    return TemplateResult(
+        data={
+            "question_shape": f"{label}, {kind}, players active since {since}",
+            "season": None,
+            "span": "career",
+            "pool_first_season": pool,
+            "fields": [],
+            "min_sample": applied,
+            "leaders": rows,
+            "headline": _leaderboard_headline(answer),
+        },
+        answer=answer,
+    )

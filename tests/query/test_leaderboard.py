@@ -365,3 +365,24 @@ def test_get_leaderboard_limit_is_clamped(seeded: duckdb.DuckDBPyConnection) -> 
 
     result = lb(seeded, metric="avg_points", season=2026, min_sample=1, limit=5000)
     assert result["row_count"] <= MAX_LIMIT
+
+
+def test_the_season_lines_door_ranks_with_ties_sharing_a_place(db_path: str) -> None:
+    """``rank_season_line``, the door the ranking reader calls: a row per
+    player, the ranked figure under the metric's name, and a competition
+    rank - two players on one figure share it, and the next takes the place
+    after both. The traded player still counts once, through his combined row."""
+    from association.query.leaderboard import rank_season_line
+
+    writer = duckdb.connect(db_path)
+    writer.execute("INSERT INTO players VALUES ('3', 'Draymond Green')")
+    writer.execute("INSERT INTO player_season_stats VALUES (2026, 2, '3', '9', 55, 28.5, 7.0, 6.0, 1.0, 0.4, 30.0)")
+    writer.close()
+    ranking = rank_season_line(connect_read_only(db_path), "avg_points", career=False, season=2026, season_type=2, team=None, fields=[], limit=10)
+    assert ranking.body.by == "player" and ranking.body.ranked_by == "avg_points"
+    assert [(row["key"], row["rank"], row["values"]["avg_points"]) for row in ranking.body.rows] == [
+        ("Draymond Green", 1, 28.5),
+        ("Stephen Curry", 1, 28.5),
+        ("Klay Thompson", 3, 13.8),
+    ]
+    assert not ranking.traded

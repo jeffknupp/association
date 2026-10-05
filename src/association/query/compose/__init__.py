@@ -50,6 +50,7 @@ from .pairs import read_player_matchup
 from .periods import read_period_split
 from .plan import Planned, games_reading
 from .present import STATED_SCOPING, present, present_team
+from .rankings import read_leaderboard
 from .records import read_record_when
 from .runs import read_streak
 from .say import say
@@ -239,14 +240,15 @@ def _read_ported(con: duckdb.DuckDBPyConnection, intent: str, query: Query) -> T
     """The shapes Phase 2 has ported, read into a Result and said by the
     sayer (``compose.logs``, ``compose.records``, ``compose.splits``,
     ``compose.stats``, ``compose.periods``, ``compose.counts``, ``compose.highs``, ``compose.runs``,
-    ``compose.pairs``; ``compose.say``): a player's log - ``game_log``'s own
+    ``compose.pairs``, ``compose.rankings``; ``compose.say``): a player's log - ``game_log``'s own
     point, or the window of games ``player_stat``'s retired template handed
     to the log ("stats over his last N games") - a player's record over a
     line, his splits, and his line over the games a narrowing sent the read
     to (``player_stat``'s narrowed point), his quarter or half, a count
     of games over a line and a single game's high, his or the league's,
-    his or the league's longest runs of a line (``streak``), and two
-    players' meetings (``player_matchup``). ``None``
+    his or the league's longest runs of a line (``streak``), two
+    players' meetings (``player_matchup``), and the league's leaders by a
+    season-line metric (``leaderboard``). ``None``
     where the
     point is not one of them, or its words do not say it, and a presenter or
     the compiler's own sentence answers."""
@@ -268,6 +270,8 @@ def _read_ported(con: duckdb.DuckDBPyConnection, intent: str, query: Query) -> T
         return _read_log(lambda: read_streak(con, query, stated=STATED_SCOPING["streak"]))
     if intent == "player_matchup" and query.skeleton == "pair":
         return _read_log(lambda: read_player_matchup(con, query, stated=STATED_SCOPING["player_matchup"]))
+    if intent == "leaderboard" and query.source == "seasons":
+        return _read_log(lambda: read_leaderboard(con, query, stated=STATED_SCOPING["leaderboard"]))
     return None
 
 

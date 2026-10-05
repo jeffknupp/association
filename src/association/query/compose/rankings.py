@@ -1,0 +1,220 @@
+"""The ranking reader: a season's or a career's leaders by one metric over
+the season line (``player_season_stats_deduped`` and the season-shaped
+NetPoints tables) - ``leaderboard``'s own point, read into a
+:class:`~association.query.result.Result` with a
+:class:`~association.query.result.Grouped` body by ``player``, ranked by the
+metric (``Grouped.ranked_by``). Phase 2's slice (iii) (``ROADMAP.md``,
+"Phase 2, the expected steps", step 3): until 2026-10-05 the presenter
+``compose.present._present_leaderboard`` handed the point to the retired
+template's body (``templates.players._leaderboard_ranking``), which read
+and worded it; the read is the season line's own door now
+(:func:`~association.query.leaderboard.rank_season_line` - the floors that
+need no refusal, the traded-player dedup, the qualifier, the career pool),
+moved and not re-derived, and the words are the sayer's
+(:func:`~association.query.compose.say.say_leaderboard`).
+
+What the words added beyond the ranking's result object, measured on the 67
+recorded presenter answers before the move
+(``~/association-research/stages/leaderboard_measure.py``: 67 of 67 rows and
+minimums identical to the result objects called directly), and where each is
+now: the qualifier (58) - the ``minimum`` decision it already was; the
+career pool (1) - a ``floor`` note on the season line; the most-recent-team
+remark (4) - a ``definition`` note; the "also" columns and the team column
+(2 and 4) - values on each row; the team filter (6) - ``facts["team"]``; the
+season, named (12) or defaulted (54) - the span, unsaid when defaulted as it
+was. The coverage floors (the missing season and the unrepresentative one,
+``nba.coverage.Floor.unrepresentative``) are refusals the answering loop
+gives before any reader runs (``templates.common.check_coverage``, over
+``RANKING_INTENTS``), unchanged.
+
+.. versionadded:: 5.0.0
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+import duckdb
+
+from association.query.leaderboard import MIN_SAMPLE_LABELS, SEASON_TOTAL_OF, CareerLeaderboardResult, LeaderboardError, rank_season_line, resolve_metric
+from association.query.metrics import EXTRA_FIELD_COLUMNS, LEADERBOARD_METRICS
+from association.query.notes import Note
+from association.query.reading import Scope, _clamp_limit
+from association.query.result import Decided, Part, Result, Span
+from association.query.templates.common import TemplateResult, TemplateUnsupported, unhonored_scoping
+from association.query.templates.players import leaderboard_shot_distance_refusal
+
+from .core import Query
+
+DEFAULT_LEADERBOARD_LIMIT = 10
+"""How many leaders a ranking shows when the question names no count.
+
+.. versionadded:: 5.0.0
+   Moved from ``templates.players`` with the leaderboard's reader.
+"""
+
+
+def _leaderboard_is_own_point(q: Query) -> bool:
+    """Whether ``q`` is the league's ranking on the season line - the point
+    the retired presenter took, and no other."""
+    return q.subject == "everyone" and q.source == "seasons" and q.skeleton == "grouped" and q.group == "player" and not q.predicates
+
+
+def _leaderboard_career(scope: Scope) -> bool:
+    """True for a career ranking, False for a one-season one; raises for a
+    career with a year named. The router keeps a year the question named
+    alongside "career", so "most points ever in a game in 2024" (that
+    season), "career leaders since 2015" (a range) and "career points
+    through 2010" (a cutoff) all arrive as the same two slots - answering
+    any of them as one of the others is the substitution this refuses
+    (``templates.players._career_span`` until the template's words moved)."""
+    if scope.span is None:
+        return False
+    if scope.season is not None:
+        raise TemplateUnsupported(f"leaderboard cannot tell whether a career span with {scope.season} named means that season, since it, or through it")
+    return True
+
+
+def _leaderboard_no_such_rate(rate: Any, metric: str) -> TemplateResult:
+    """Refuse a ranking in a unit the metric has no form of, naming the forms
+    THIS metric has ("who were the top 10 in defensive netpoints / 90": per
+    90 minutes is a football unit, and nothing in the warehouse is stored in
+    it). Only the three NetPoints metrics have a per-100 sibling, so a
+    generic list of units would be the refusal-with-the-wrong-cause shape.
+
+    # step 3: needs a ``ranking_unit`` Cause from the reader seam - this is
+    # a refusal sentence in the reader, kept word for word until the point
+    # reader carries the verdict (a reading move, enumerated on its own).
+    """
+    forms = ["as a season total" if metric.startswith("total_") else "per game"]
+    if metric in SEASON_TOTAL_OF:
+        forms.append("as a season total")
+    # `netpoints_total`'s per-100 sibling is `netpoints_per_100`, not
+    # `netpoints_total_per_100`, so the suffix comes off before looking.
+    if f"{metric.removeprefix('avg_').removesuffix('_total')}_per_100" in LEADERBOARD_METRICS:
+        forms.append("per 100 possessions")
+    asked = "per 90 minutes" if "90" in str(rate) else str(rate).replace("_", " ")
+    message = f"No leaderboard ranks {metric.replace('_', ' ')} {asked} - the warehouse stores it only {' or '.join(forms)}."
+    return TemplateResult(data={"message": message, "headline": message}, answer=message)
+
+
+def _leaderboard_refuse_a_subject(scope: Scope, position: str | None) -> bool:
+    """Whether the ranking steps aside for a subject it cannot rank for - a
+    position group, which the game-level ranking reads (F056: "highest 3
+    point percentage ... by a shooting guard" ranked the whole league
+    before this) - and a refusal for one named player: a leaderboard ranks
+    the league or a team, never one person ("Klay Thompson's 3pt percentage
+    over the past 4 seasons" came back with the league's true-shooting
+    leaders, Klay silently dropped). In that order, as the template had."""
+    if position is not None:
+        return True
+    if scope.player is not None and scope.player.strip():
+        raise TemplateUnsupported(f"a leaderboard cannot answer about one named player ({scope.player!r})")
+    return False
+
+
+def _leaderboard_fields(scope: Scope, metric: str) -> list[str]:
+    """The extra columns a ranking was asked to show beside its metric - a
+    box-score average (:data:`~association.query.metrics.EXTRA_FIELD_COLUMNS`)
+    or ``"team"`` (F017, ISSUES.md). An unknown field is refused rather than
+    dropped ("top 10 in NetPoints ALONGSIDE their points per game" was once
+    answered without the second half, silently); a repeated one is the
+    router's slip and is said once, and one restating the ranked metric is
+    left out (it rendered the same 33.5 twice under two headings)."""
+    requested = scope.fields
+    unknown = [f for f in requested if f not in EXTRA_FIELD_COLUMNS and f != "team"]
+    if unknown:
+        raise TemplateUnsupported(f"unknown leaderboard field(s) {unknown}")
+    return [f for f in dict.fromkeys(requested) if metric != f"avg_{f}"]
+
+
+def _leaderboard_metric(scope: Scope, career: bool) -> str | TemplateResult | None:
+    """The metric the ranking reads, or the refusal of a unit it has no form
+    of, or ``None`` where no season-line metric reads the stat (the
+    game-level ranking reads it instead). ``rate`` "total" ranks a season
+    total: ``stat`` names a category, never which of its two readings ("most
+    points this season" is a total, "leads in points" a per-game rate)."""
+    metric = resolve_metric(scope.stat, career=career)
+    if metric is None:
+        return None
+    if scope.rate == "total":
+        return SEASON_TOTAL_OF.get(metric, metric)
+    if scope.rate is not None:
+        return _leaderboard_no_such_rate(scope.rate, metric)
+    return metric
+
+
+def read_leaderboard(con: duckdb.DuckDBPyConnection, q: Query, *, stated: frozenset[str]) -> Result | TemplateResult | None:
+    """``leaderboard``'s own point - the league's (or a team's players')
+    leaders by one season-line metric, over a season or a career - read into
+    a Result through the season line's door
+    (:func:`~association.query.leaderboard.rank_season_line`). ``None`` where
+    the point is not that, carries a narrowing the ranking's words do not
+    state (``stated``: ``compose.present.STATED_SCOPING``'s set), names a stat
+    no season-line metric reads, or ranks a position group: the game-level
+    ranking answers those, as it did behind the retired template's refusal
+    (``plan.games_reading``). A ``TemplateResult`` back is the ranking's own
+    refusal (a shot-distance ranking, a unit the metric has no form of); a
+    ``TemplateUnsupported`` the relation's decline (an unknown field, an
+    ambiguous team, a career list with columns or a franchise's).
+
+    .. versionadded:: 5.0.0
+    """
+    if not _leaderboard_is_own_point(q) or unhonored_scoping("leaderboard", q.scope, stated):
+        return None
+    scope = q.scope
+    if scope.stat == "shot_distance":
+        # router._route_leaderboard_shot_distance's sentinel, checked before
+        # the metric and the named-player refusal so neither names the wrong
+        # cause (ISSUES.md #114); the planner says it first today
+        # (the point reader's ``shot_distance_ranking`` Cause).
+        return leaderboard_shot_distance_refusal()
+    career = _leaderboard_career(scope)
+    metric = _leaderboard_metric(scope, career)
+    if metric is None or isinstance(metric, TemplateResult):
+        return metric
+    if _leaderboard_refuse_a_subject(scope, q.position):
+        return None
+    fields = _leaderboard_fields(scope, metric)
+    if career:
+        _leaderboard_career_refusals(scope, fields)
+    try:
+        ranking = rank_season_line(
+            con, metric, career=career, season=scope.season, season_type=scope.season_type or 2, team=scope.team, fields=fields, limit=_clamp_limit(scope.limit, default=DEFAULT_LEADERBOARD_LIMIT)
+        )
+    except LeaderboardError as exc:
+        # An ambiguous team, an unknown metric, a team column with no season
+        # type to look it up by, or a table that needs a warehouse flag - all
+        # reasons to decline, never to guess.
+        raise TemplateUnsupported(str(exc)) from exc
+    found = ranking.result
+    minimum = found.min_sample_applied
+    decisions: tuple[Decided, ...] = ()
+    if minimum is not None:
+        unit = MIN_SAMPLE_LABELS.get(found.min_sample_column or "", found.min_sample_column or "")
+        decisions = (Decided(kind="minimum", field="minimum", chose=minimum, facts={"of": unit, "column": found.min_sample_column}),)
+    ratio = LEADERBOARD_METRICS[metric].ratio
+    facts: dict[str, Any] = {"label": found.label, "ratio": list(ratio) if ratio else None, "fields": fields}
+    if isinstance(found, CareerLeaderboardResult):
+        pool = found.pool_first_season
+        span = Span(season=None, season_type=found.season_type, career=True, first=pool)
+        notes: tuple[Note, ...] = (Note("floor", {"table": "season_line", "first": pool, "what": "career_pool"}),)
+    else:
+        # season_type is None for a metric with no season type (a
+        # fingerprint-shaped one); the sayer names it the regular season.
+        span = Span(season=found.season, season_type=found.season_type)
+        notes = (Note("definition", {"term": "most_recent_team"}),) if ranking.traded else ()
+        facts["team"] = found.team_name
+    return Result(subject="every player", relation="everyone", span=span, parts=(Part(body=ranking.body),), notes=notes, decisions=decisions, facts=facts)
+
+
+def _leaderboard_career_refusals(scope: Scope, fields: list[str]) -> None:
+    """What a career ranking declines: columns beside the metric, and a
+    franchise's list - which sums the per-team rows by team, and where a
+    franchise moved, which years are the franchise's is a question of its
+    own. Declined until that is decided, rather than answered with the
+    league's list under the team's name."""
+    if fields:
+        raise TemplateUnsupported("a career leaderboard cannot add per-game columns")
+    if scope.team is not None and scope.team.strip():
+        raise TemplateUnsupported("franchise career leaderboards are not supported")

@@ -1061,12 +1061,19 @@ def season_phrase(season: int, season_type: int) -> str:
 _period = season_phrase
 
 
-def _table_cell(value: Any) -> str:
+def table_cell(value: Any) -> str:
     """A value in an aligned column: a fixed decimal, never trailing-zero
-    stripped - "25" next to "27.7" reads as a different unit."""
+    stripped - "25" next to "27.7" reads as a different unit.
+
+    .. versionadded:: 5.0.0
+       Public, as the sayer's phrase helper; ``_table_cell`` is this.
+    """
     if value is None:
         return "-"
     return f"{value:.1f}" if isinstance(value, float) else str(value)
+
+
+_table_cell = table_cell
 
 
 def format_value(value: Any) -> str:

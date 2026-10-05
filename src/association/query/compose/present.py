@@ -52,8 +52,6 @@ from association.query.templates.common import (
 from association.query.templates.players import (
     ADVANCED_STATS,
     SHOOTING_STATS,
-    LeaderboardStepsAside,
-    _leaderboard_ranking,
     _player_compare_lines,
     _player_history_read,
     _player_history_subject,
@@ -125,28 +123,6 @@ def _present_player_stat_season_line(con: duckdb.DuckDBPyConnection, q: Query) -
     return _player_stat_season_line(con, *subject, scope)
 
 
-def _present_leaderboard(con: duckdb.DuckDBPyConnection, q: Query) -> TemplateResult | None:
-    """``leaderboard``'s own ranking - the season line's pool, floors,
-    traded-player dedup and NetPoints tables (``run_leaderboard``, the
-    retired template's reader ``templates.players._leaderboard_ranking``) -
-    over the compiler's league-wide point on the season line. Where the
-    template declined a point the game-level ranking reads at least as well
-    (``LeaderboardStepsAside``: a stat with no season metric, a position
-    group) it steps aside and that ranking answers, as it did behind the
-    template's refusal, or refuses by name (``plan.games_reading``); the
-    template's other refusals (an unknown field, an ambiguous team, a career
-    list with columns) stand as the answer's reason.
-
-    .. versionadded:: 5.0.0
-    """
-    if q.subject != "everyone" or q.source != "seasons" or q.skeleton != "grouped" or q.group != "player" or q.predicates:
-        return None
-    try:
-        return _leaderboard_ranking(con, q.scope, position=q.position)
-    except LeaderboardStepsAside:
-        return None
-
-
 def _present_player_compare(con: duckdb.DuckDBPyConnection, q: Query) -> TemplateResult | None:
     """``player_compare``'s own table - each named player's season line side
     by side, with the NetPoints summary beneath
@@ -189,7 +165,6 @@ def _present_player_history(con: duckdb.DuckDBPyConnection, q: Query) -> Templat
 PRESENTERS: dict[str, Presenter] = {
     "player_stat": _present_player_stat_season_line,
     "player_history": _present_player_history,
-    "leaderboard": _present_leaderboard,
     "player_compare": _present_player_compare,
 }
 """The intents whose own default point the compiler answers in that intent's

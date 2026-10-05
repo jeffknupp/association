@@ -28,6 +28,7 @@ from typing import Any
 import duckdb
 
 from association.nba.coverage import COVERAGE, POSTSEASON, REGULAR_SEASON
+from association.nba.franchises import season_name_sql
 from association.nba.season import current_season
 
 from .entities import Ambiguous, Entity, NotFound, resolve_team
@@ -35,6 +36,7 @@ from .measures import CAREER_METRIC_ALIASES as CAREER_METRIC_ALIASES
 from .measures import METRIC_ALIASES as METRIC_ALIASES
 from .measures import resolve_metric as resolve_metric
 from .metrics import EXTRA_FIELD_COLUMNS, LEADERBOARD_METRICS, SEASON_TYPE_LABELS, CareerAggregate, LeaderboardMetric
+from .result import Grouped
 
 # `limit` is model-supplied on the agent path (the template clamps its own):
 # a leaderboard of 5,000 helps nobody and floods the context window. Applied to
@@ -402,16 +404,13 @@ def run_leaderboard(
     sql = f"SELECT {', '.join(select_cols)} {from_clause} WHERE {' AND '.join(where)} {qualify} ORDER BY value DESC NULLS LAST, display_name LIMIT ?"
     params.append(max(1, min(limit, MAX_LIMIT)))
     try:
-        cur = con.execute(sql, params)
-        cols = [d[0] for d in cur.description]
-        rows = cur.fetchall()
+        row_dicts = _rows(con, sql, params)
     except Exception as exc:  # e.g. the table needs a warehouse flag that wasn't used
         raise LeaderboardError(f"SQL error: {exc}" + (f" (requires: {spec.requires})" if spec.requires else "")) from exc
 
     # athlete_id is popped back OUT of each row dict here - it rides the query
     # only to be resolvable, never as a key of `rows` itself (see
     # LeaderboardResult.athlete_ids' own docstring for why).
-    row_dicts = [dict(zip(cols, row, strict=True)) for row in rows]
     athlete_ids = [row_dict.pop("athlete_id", None) for row_dict in row_dicts]
     return LeaderboardResult(
         metric=metric,
@@ -509,9 +508,7 @@ def run_career_leaderboard(
         f"WHERE {' AND '.join(where)} GROUP BY t.{spec.id_column}, p.display_name HAVING {' AND '.join(having)} ORDER BY value DESC, display_name LIMIT ?"
     )
     try:
-        cur = con.execute(sql, params)
-        cols = [d[0] for d in cur.description]
-        rows = cur.fetchall()
+        rows = _rows(con, sql, params)
     except Exception as exc:
         raise LeaderboardError(f"SQL error: {exc}") from exc
 
@@ -523,5 +520,168 @@ def run_career_leaderboard(
         min_sample_applied=qualifier,
         min_sample_column=spec.min_sample_column,
         pool_first_season=coverage.first_ranking_season or coverage.first_season,
-        rows=[dict(zip(cols, row, strict=True)) for row in rows],
+        rows=rows,
     )
+
+
+def _rows(con: duckdb.DuckDBPyConnection, sql: str, params: list[Any]) -> list[dict[str, Any]]:
+    """The one place this relation executes a ranking's statement and hands
+    its rows back as mappings, column names as the SELECT gave them - the
+    season line's counterpart of :func:`~association.query.compose.core.rows_of`.
+    The schedule-length lookup (:func:`_team_games_for_season`) runs on its
+    own, since a missing ``real_games`` is not an error there."""
+    cur = con.execute(sql, params)
+    cols = [d[0] for d in cur.description]
+    return [dict(zip(cols, row, strict=True)) for row in cur.fetchall()]
+
+
+MIN_SAMPLE_LABELS: dict[str, str] = {
+    "total_minutes": "minutes",
+    "gamesPlayed": "games",
+    "games_played": "games",
+    "minutes": "minutes",
+    "fieldGoalsAttempted": "field-goal attempts",
+    "threePointFieldGoalsAttempted": "3-point attempts",
+    "freeThrowsAttempted": "free-throw attempts",
+    "field_goals_attempted": "field-goal attempts",
+    "true_shooting_attempts": "true-shooting attempts",
+}
+"""A qualifying column as a reader names it - its real name ("total_minutes",
+"gamesPlayed") is not something to put in front of one. The ``of`` of a
+ranking's ``minimum`` decision.
+
+.. versionadded:: 5.0.0
+   Moved from ``templates.players`` with the leaderboard's words.
+"""
+
+
+def most_recent_teams(con: duckdb.DuckDBPyConnection, athlete_ids: list[str], season: int, season_type: int) -> tuple[dict[str, str], bool]:
+    """Each athlete's team for a ranking that asked to see it (F017,
+    ISSUES.md): the team he played his most recent game for that season and
+    season type - read off ``player_game_log``, the one table that orders a
+    traded player's stints by date, unlike the ranked table itself (whose own
+    "combined" row for a traded player has no single team at all). Team names
+    are read for the season asked about (:func:`~association.nba.franchises.season_name_sql`),
+    since a franchise's own name can differ by season.
+
+    Returns each athlete's team by id, and whether ANY of them played for more
+    than one team that season - the fact behind the "most recent team" note.
+
+    .. versionadded:: 5.0.0
+       Moved from ``templates.players._leaderboard_team_names``, unchanged.
+    """
+    placeholders = ", ".join("?" for _ in athlete_ids)
+    rows = _rows(
+        con,
+        f"""
+        SELECT athlete_id, team, traded FROM (
+            SELECT pgl.athlete_id AS athlete_id,
+                   {season_name_sql("pgl.team_id", "pgl.season", "t.display_name")} AS team,
+                   COUNT(DISTINCT pgl.team_id) OVER (PARTITION BY pgl.athlete_id) > 1 AS traded,
+                   ROW_NUMBER() OVER (PARTITION BY pgl.athlete_id ORDER BY pgl.game_date DESC) AS rn
+            FROM player_game_log pgl JOIN teams t ON t.team_id = pgl.team_id
+            WHERE pgl.season = ? AND pgl.season_type = ? AND pgl.athlete_id IN ({placeholders})
+        ) WHERE rn = 1
+        """,
+        [season, season_type, *athlete_ids],
+    )
+    names = {row["athlete_id"]: row["team"] for row in rows}
+    return names, any(row["traded"] for row in rows)
+
+
+@dataclass(frozen=True)
+class SeasonLineRanking:
+    """The season line ranked, as the reader takes it: the result object the
+    statement produced (its season, qualifier, team filter, career pool) and
+    its rows as a :class:`~association.query.result.Grouped` body by
+    ``player`` - a row per player, ``key`` his name, ``rank`` (tied values
+    share one), and ``values`` by measure: the ranked figure under the
+    metric's name (``ranked_by``), then every other column the row carries in
+    the statement's order (a percentage's makes and attempts, a career's
+    games and seasons, the "also" columns asked for, the team). ``traded``
+    says whether a shown player played for more than one team that season,
+    where the team column was asked for.
+
+    .. versionadded:: 5.0.0
+    """
+
+    result: LeaderboardResult | CareerLeaderboardResult
+    body: Grouped
+    traded: bool = False
+
+
+def rank_season_line(
+    con: duckdb.DuckDBPyConnection,
+    metric: str,
+    *,
+    career: bool,
+    season: int | None,
+    season_type: int,
+    team: str | None,
+    fields: list[str],
+    limit: int,
+) -> SeasonLineRanking:
+    """The season line's ranking, the one door the reader calls
+    (``compose.rankings.read_leaderboard``): a season's ranking
+    (:func:`run_leaderboard`, with its default season, qualifier, traded-player
+    dedup and postseason-copy exclusion) or a career's
+    (:func:`run_career_leaderboard`, over its own pool), with each shown
+    player's most recent team looked up where ``fields`` asks for ``"team"``
+    (:func:`most_recent_teams`). ``fields`` beside ``"team"`` are the box-score
+    columns :data:`~association.query.metrics.EXTRA_FIELD_COLUMNS` names; a
+    career ranking takes none, which its caller refuses before asking.
+
+    Raises:
+        LeaderboardError: whatever the ranking raises, and a team column asked
+            of a metric with no season type to look a team up by.
+
+    .. versionadded:: 5.0.0
+    """
+    if career:
+        found_career = run_career_leaderboard(con, metric, season_type=season_type, limit=limit)
+        return SeasonLineRanking(result=found_career, body=_ranking_body(metric, found_career.rows))
+    show_team = "team" in fields
+    box_fields = [f for f in fields if f != "team"]
+    found = run_leaderboard(con, metric, season=season, season_type=season_type, team=team, fields=box_fields or None, limit=limit)
+    traded = False
+    if show_team:
+        if found.season_type is None:
+            # A metric with no season_type (a fingerprint-shaped one) has nothing
+            # for player_game_log's own season_type column to join on - refused
+            # rather than silently dropping the team column nobody asked to lose.
+            raise LeaderboardError(f"{found.label} has no season type to look a team up by")
+        traded = _ranking_show_teams(con, found)
+    return SeasonLineRanking(result=found, body=_ranking_body(metric, found.rows), traded=traded)
+
+
+def _ranking_show_teams(con: duckdb.DuckDBPyConnection, result: LeaderboardResult) -> bool:
+    """Each shown row's team, set on it last (F017, ISSUES.md), and whether
+    anyone shown played for more than one team that season."""
+    assert result.season_type is not None  # the caller already refused this case
+    ids = [athlete_id for athlete_id in result.athlete_ids if athlete_id is not None]
+    if not ids:
+        for row in result.rows:
+            row["team"] = "-"
+        return False
+    names, traded = most_recent_teams(con, ids, result.season, result.season_type)
+    for athlete_id, row in zip(result.athlete_ids, result.rows, strict=True):
+        row["team"] = names.get(athlete_id, "-") if athlete_id is not None else "-"
+    return traded
+
+
+def _ranking_body(metric: str, rows: list[dict[str, Any]]) -> Grouped:
+    """A ranking's rows as a :class:`~association.query.result.Grouped` body:
+    the order the statement gave (the figure, highest first, then the name),
+    and a competition rank - two players on the same figure share a rank, and
+    the next takes the place after both."""
+    ranked: list[dict[str, Any]] = []
+    rank = 0
+    previous: Any = object()
+    for place, row in enumerate(rows, start=1):
+        value = row.get("value")
+        if place == 1 or value != previous:
+            rank = place
+        previous = value
+        values = {metric: value, **{key: cell for key, cell in row.items() if key not in ("display_name", "value")}}
+        ranked.append({"key": row["display_name"], "rank": rank, "values": values})
+    return Grouped(by="player", ranked_by=metric, rows=tuple(ranked))

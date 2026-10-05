@@ -142,7 +142,7 @@ def read_threshold_count(con: duckdb.DuckDBPyConnection, q: Query, *, stated: fr
     if player is not None:
         body: Scalar | Grouped = Scalar(games=rows[0][1] if rows else 0, sums={"rebuilt": rows[0][2] if rows else 0}, how="count")
     else:
-        body = Grouped(by="player", rows=tuple({"key": name, "games": games, "rebuilt": rebuilt} for name, games, rebuilt in rows))
+        body = Grouped(by="player", ranked_by="games", rows=tuple({"key": name, "games": games, "rebuilt": rebuilt} for name, games, rebuilt in rows))
     return Result(
         subject=player.name if player is not None else "every player",
         relation="player" if player is not None else "everyone",

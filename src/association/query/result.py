@@ -102,11 +102,21 @@ class Grouped:
     reached, a splits table by venue, a ranking by player. Each row is a
     plain mapping with its ``key`` and its values.
 
+    ``ranked_by`` is the measure a ranking orders its rows by, the draft's
+    "order: by the measure" (``ROADMAP-TYPES.md``, "The shapes") - what tells
+    two rankings by ``player`` apart: ``"games"`` for a count of games over a
+    line (``threshold_count``'s league, whose rows carry ``games``), a
+    season-line metric's name (``"avg_points"``, ``"ts_pct"``) for a stat
+    ranking (``leaderboard``, whose rows carry ``rank`` and ``values`` by
+    measure, the ranked figure under this name). ``None`` for a group that
+    is no ranking (a split, a record over a line, two named subjects).
+
     .. versionadded:: 5.0.0
     """
 
     by: str
     rows: tuple[Mapping[str, Any], ...] = ()
+    ranked_by: str | None = None
 
 
 @dataclass(frozen=True, kw_only=True)

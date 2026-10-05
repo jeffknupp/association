@@ -3663,16 +3663,22 @@ def test_a_leaderboard_refuses_a_position_group_subject_for_the_compiler(lb_con:
     leaderboard metric narrows to. Refused, so the compiler reads the group
     - where the subject reading used to write the phrase into ``player`` for
     the named-player refusal to fire, and the compiler took it back out."""
+    from dataclasses import replace
+
+    from association.query.compose.rankings import read_leaderboard
     from association.query.point import read_point
     from association.query.reading import Scope
-    from association.query.templates.players import LeaderboardStepsAside, _leaderboard_ranking
 
     reading = Reading(scope=Scope.from_slots({"stat": "points"}), intent="leaderboard", subject=Subject("position", position="SG"))
-    with pytest.raises(LeaderboardStepsAside, match="position group"):
-        _leaderboard_ranking(lb_con.con, reading.scope, position="SG")
     # The compiler's point reads the group over the box scores, not the season line.
     point = read_point(reading, "highest points per game by a shooting guard")
     assert (point.relation, point.position, point.source) == ("everyone", "SG", "games")
+    # And the season line's reader, handed the group on its own relation, steps aside for it.
+    planned = plan(point)
+    assert isinstance(planned, Query)
+    on_the_season_line = replace(planned, source="seasons")
+    assert on_the_season_line.position == "SG"
+    assert read_leaderboard(lb_con.con, on_the_season_line, stated=STATED_SCOPING["leaderboard"]) is None
 
 
 def test_a_zero_threshold_is_refused_rather_than_counting_every_game(con: TemplateContext) -> None:

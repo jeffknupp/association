@@ -7,21 +7,20 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Any
 
 import duckdb
 
 from association.nba.coverage import POSTSEASON
-from association.nba.franchises import season_name_sql
 from association.nba.season import current_season
 from association.query.measures import STAT_LINE as STAT_LINE
 from association.query.reading import Scope, scope_reads_box_scores
 
 from ..conditions import box_source
 from ..entities import Availability, Entity
-from ..leaderboard import SEASON_TOTAL_OF, LeaderboardError, LeaderboardResult, not_a_postseason_copy, resolve_metric, run_career_leaderboard, run_leaderboard
-from ..metrics import EXTRA_FIELD_COLUMNS, LEADERBOARD_METRICS, SEASON_TYPE_LABELS
-from ..notes import decided, note
+from ..leaderboard import not_a_postseason_copy
+from ..metrics import SEASON_TYPE_LABELS
+from ..notes import note
 from ..player_games import scope_without_guard, season_type_clause
 from .common import (
     HISTORY_COLUMNS,
@@ -29,9 +28,7 @@ from .common import (
     SEASON_TYPE_NAMES,
     TemplateResult,
     TemplateUnsupported,
-    _clamp_limit,
     _defaulted_season_note,
-    _format_value,
     _period,
     _resolved_player,
     _Span,
@@ -41,43 +38,11 @@ from .common import (
     season_redirect,
 )
 
-DEFAULT_LEADERBOARD_LIMIT = 10
-
-
 # Where each player template's answer is read from, for narrowing an ambiguous
 # name to the candidates with a row there. The tables TEMPLATE_SOURCES
 # declares, or the per-game table a one-game answer reads instead - so a
 # candidate these eliminate is one whose answer would have been empty.
 _SEASON_LINES = Availability("player_season_stats_deduped")
-
-
-def _career_span(intent: str, span: Literal["career"] | None, season: int | None) -> bool:
-    """True for a career question, False for a one-season one; raises for a
-    career with a year named.
-
-    A career with a year named is refused rather than read. The router keeps a
-    year the question named alongside "career", so "most points ever in a game
-    in 2024" (that season), "career leaders since 2015" (a range) and "career
-    points through 2010" (a cutoff) all arrive as the same two slots. Answering
-    any of them as one of the others is the substitution this module exists to
-    prevent.
-
-    Not `_span_of` (`common.py`, step 3/C1) for the refusal's wording ("cannot
-    tell whether a career span ... means" vs. "a career span and the ... season
-    at once") and one edge: this refuses `season == 0`, where `_span_of`'s
-    `and season` check would not. A span other than a career no longer
-    reaches either - the Scope's door refuses it (``ScopeError``), and the
-    question falls through before a template runs."""
-    if span is None:
-        return False
-    if season is not None:
-        raise TemplateUnsupported(f"{intent} cannot tell whether a career span with {season} named means that season, since it, or through it")
-    return True
-
-
-def _season_label(season: int) -> str:
-    """1994 -> "1993-94", the way a person names a season."""
-    return f"{season - 1}-{season % 100:02d}"
 
 
 def seasons_on_record(con: duckdb.DuckDBPyConnection, athlete_id: str, season_type: int) -> tuple[Any, Any]:
@@ -183,48 +148,6 @@ def _signed_cell(value: Any) -> str:
     return "-" if value is None else f"{value:+.2f}"
 
 
-def _leaderboard_no_such_rate(rate: Any, metric: str) -> TemplateResult:
-    """Refuse a ranking in a unit the metric has no form of, saying so.
-
-    `route()` sets `rate` only where it could NOT switch the metric itself: a
-    NetPoints question asking for per-100 becomes the per-100 metric and no
-    `rate` slot survives, so a `rate` arriving here always means the unit does
-    not exist for what was asked. "who were the top 10 in defensive netpoints
-    / 90" is the measured case - per 90 minutes is a football unit, and
-    nothing in the warehouse is stored in it.
-
-    Refusing beats the fall-through this used to get. `check_scope` raised
-    instead, which reads as a refusal in the trace and is not one: the
-    question went to the agent, which has no per-90 anything to read and is
-    then free to fill the silence from its own weights. Naming the unit also
-    names what IS available, so the reader can ask again.
-    """
-    # Name the forms THIS metric actually has, not a generic list: saying
-    # "per 100 possessions" while refusing a per-100 request would be the
-    # refusal-with-the-wrong-cause shape all over again, and only the three
-    # NetPoints metrics have a per-100 sibling.
-    forms = ["as a season total" if metric.startswith("total_") else "per game"]
-    if metric in SEASON_TOTAL_OF:
-        forms.append("as a season total")
-    # `netpoints_total`'s per-100 sibling is `netpoints_per_100`, not
-    # `netpoints_total_per_100`, so the suffix comes off before looking.
-    if f"{metric.removeprefix('avg_').removesuffix('_total')}_per_100" in LEADERBOARD_METRICS:
-        forms.append("per 100 possessions")
-    asked = "per 90 minutes" if "90" in str(rate) else str(rate).replace("_", " ")
-    message = f"No leaderboard ranks {metric.replace('_', ' ')} {asked} - the warehouse stores it only {' or '.join(forms)}."
-    return TemplateResult(data={"message": message, "headline": message}, answer=message)
-
-
-class LeaderboardStepsAside(TemplateUnsupported):
-    """``_leaderboard_ranking`` declining a point the compiler's own ranking
-    over box scores reads at least as well - a stat with no season-line
-    metric, a position group - as distinct from a refusal that stands (an
-    unknown field, an ambiguous team, a career list with columns).
-
-    .. versionadded:: 5.0.0
-    """
-
-
 def leaderboard_shot_distance_refusal() -> TemplateResult:
     """The refusal for a shot-distance ranking, naming the real cause (ISSUES.md
     #114): no leaderboard metric ranks distance, and the nearest real one is
@@ -234,354 +157,6 @@ def leaderboard_shot_distance_refusal() -> TemplateResult:
     """
     message = "Shot distance is not ranked league-wide yet - ask about one named player's average shot distance instead."
     return TemplateResult(data={"message": message, "headline": message}, answer=message)
-
-
-def _leaderboard_ranking(con: duckdb.DuckDBPyConnection, scope: Scope, *, position: str | None = None) -> TemplateResult:
-    """ "Top N players by X" for the metrics in LEADERBOARD_METRICS - the
-    ``leaderboard`` template's reader, called by the compiler's presenter
-    (``compose.present._present_leaderboard``) since the template retired
-    (ROADMAP plan item 6, step (g)). Raises ``TemplateUnsupported`` exactly
-    where the template did, and the presenter steps aside for the compiler's
-    own ranking over box scores, which answered behind those refusals.
-
-    Thin on purpose: run_leaderboard owns the season default, minimum-sample
-    floor and traded-player dedup. This adds slot mapping and phrasing.
-
-    .. versionchanged:: 2.1.0
-       Honors ``span`` "career", ranking whole careers (see
-       :func:`~association.query.leaderboard.run_career_leaderboard`) and
-       saying whose. ``rate`` "total" ranks a season total rather than a
-       per-game average. Every stat name the router is taught now maps to a
-       metric, and a qualifier, when one applies, is named in the answer.
-
-    .. versionchanged:: 4.4.0
-       Refuses a shot-distance ranking naming the real cause - no leaderboard
-       metric ranks distance - rather than resolving `stat` to the nearest
-       real one (`threePointFieldGoalPct`, answered as a percentage) or
-       falling through to a refusal about a filler `player` slot instead
-       (ISSUES.md #114).
-
-    .. versionchanged:: 4.4.0
-       The shot-distance refusal now says the ranking is not BUILT rather
-       than that none is possible - yardstick-v2 F019 marked the first
-       wording false: the key computes a real league leader (Porzingis,
-       27.37 ft with a 100-attempt floor) straight from `shot_chart`. Filed
-       in ISSUES.md as the gap it names - a `shot_distance` metric a leaderboard
-       could rank, with an attempt floor and end-of-period heaves excluded -
-       rather than built here, since the ranking needs its own qualifying
-       floor measured (not simply plugged into `LEADERBOARD_METRICS`).
-
-    .. versionchanged:: 5.0.0
-       A reader over the settled scope (``con``, ``scope``, the subject's
-       ``position``), not a template.
-    """
-    if scope.stat == "shot_distance":
-        # router._route_leaderboard_shot_distance's sentinel - see the
-        # comment there. Checked before resolve_metric and before the named-
-        # player refusal just below, on purpose: "who lead the league in avg
-        # 3 point distance" used to resolve `stat` to the nearest real metric
-        # and answer a PERCENTAGE, and its "shot distance" sibling used to
-        # arrive with a filler player slot ("player": "player") that
-        # the invented-name check (agent.py) refused first, for naming a
-        # player the question does not mention - honest-sounding, and the
-        # wrong cause, since no leaderboard metric exists either way. Neither
-        # check below gets a chance to name the wrong cause now.
-        return leaderboard_shot_distance_refusal()
-    career = _career_span("leaderboard", scope.span, scope.season)
-    metric = resolve_metric(scope.stat, career=career)
-    if metric is None:
-        raise LeaderboardStepsAside(f"no leaderboard metric for stat {scope.stat!r}")
-    rate = scope.rate
-    if rate == "total":
-        # `stat` names a category, never which of its two readings; "most
-        # points this season" is a total and "leads in points" a per-game rate.
-        metric = SEASON_TOTAL_OF.get(metric, metric)
-    elif rate is not None:
-        return _leaderboard_no_such_rate(rate, metric)
-    _leaderboard_refuse_a_subject(scope, position)
-    fields = _leaderboard_fields(scope, metric)
-    if career:
-        return _career_leaderboard(con, metric, scope, fields)
-    show_team = "team" in fields
-    box_fields = [f for f in fields if f != "team"]
-    try:
-        result = run_leaderboard(
-            con,
-            metric,
-            season=scope.season,
-            season_type=scope.season_type or 2,
-            team=scope.team,
-            fields=box_fields or None,
-            limit=_clamp_limit(scope.limit, default=DEFAULT_LEADERBOARD_LIMIT),
-        )
-    except LeaderboardError as exc:
-        # An ambiguous team, an unknown metric, or a table that needs a
-        # warehouse flag - all reasons to fall through, never to guess.
-        raise TemplateUnsupported(str(exc)) from exc
-    if show_team and result.season_type is None:
-        # A metric with no season_type (a fingerprint-shaped one) has nothing
-        # for player_game_log's own season_type column to join on - refused
-        # rather than silently dropping the team column nobody asked to lose.
-        raise TemplateUnsupported(f"{result.label} has no season type to look a team up by")
-
-    period = _period(result.season, result.season_type or 2)
-    where = f"the {result.team_name}" if result.team_name else "the league"
-    summary = f"{result.label}, {period}"
-    ratio = LEADERBOARD_METRICS[metric].ratio
-    trade_note = _leaderboard_show_teams(con, result) if show_team else ""
-    answer = (
-        _tabulate_leaderboard(result.rows, result.label, where, period, fields, result.min_sample_applied, result.min_sample_column, ratio)
-        if fields
-        else _phrase_leaderboard(result.rows, result.label, where, period, _qualifier(result.min_sample_applied, result.min_sample_column), ratio)
-    )
-    data = {"question_shape": summary, "season": result.season, "fields": fields, "min_sample": result.min_sample_applied, "leaders": result.rows}
-    return TemplateResult(data=_leaderboard_result_data(data, answer, trade_note), answer=answer + trade_note)
-
-
-def _leaderboard_refuse_a_subject(scope: Scope, position: str | None) -> None:
-    """``leaderboard``'s refusal of a subject it cannot rank for: a position
-    group, and one named player. Split out of :func:`_leaderboard_ranking`
-    for the complexity gate, in its order."""
-    if position is not None:
-        # A position group is part of the league no leaderboard metric
-        # narrows to - "highest 3 point percentage ... by a shooting guard"
-        # (F056) ranked the whole league before this refused it; the
-        # compiler reads the group off the subject (query/point.py's
-        # league-wide point). Refused here, where a named player is, so what
-        # refuses first is unchanged.
-        raise LeaderboardStepsAside(f"a leaderboard cannot narrow to a position group ({position!r})")
-    if scope.player is not None and scope.player.strip():
-        # A leaderboard ranks the league or a team, never one named person.
-        # Confirmed live: "Klay Thompson's 3pt percentage over the past 4
-        # seasons" landed here and came back with the league's true-shooting
-        # leaders, Klay silently dropped.
-        raise TemplateUnsupported(f"a leaderboard cannot answer about one named player ({scope.player!r})")
-
-
-def _leaderboard_result_data(data: dict[str, Any], answer: str, trade_note: str) -> dict[str, Any]:
-    """``leaderboard``'s own ``headline``/``notes`` - split out to keep the
-    caller under the complexity gate. ``answer`` is the table or sentence
-    BEFORE ``trade_note`` (``_leaderboard_show_teams``) is glued on: the
-    trade note is already its own line (a leading ``"\\n"``), so it becomes
-    the only entry in ``notes``, and ``headline`` is stripped of the trailing
-    "Next: ..." list the same way the page's own fallback already reads it
-    (``firstLine``, ``web/static/index.html``).
-
-    .. versionadded:: 4.4.0
-    """
-    headline = answer.split("\n")[0].rstrip(":").split(" Next: ")[0]
-    return {**data, "headline": headline, "notes": [trade_note.strip()] if trade_note else []}
-
-
-def _leaderboard_fields(scope: Scope, metric: str) -> list[str]:
-    """The extra columns a leaderboard was asked to show beside its metric -
-    a box-score average (:data:`~association.query.metrics.EXTRA_FIELD_COLUMNS`),
-    or ``"team"`` (F017, ISSUES.md), which :func:`leaderboard` looks up
-    separately rather than through the same generic box-score join."""
-    # "top 10 in NetPoints ALONGSIDE their points per game" used to be answered
-    # without the second half and without saying so - a silent partial answer,
-    # the failure this whole architecture exists to prevent. An unknown field
-    # falls through rather than being dropped.
-    requested = scope.fields
-    unknown = [f for f in requested if f not in EXTRA_FIELD_COLUMNS and f != "team"]
-    if unknown:
-        raise TemplateUnsupported(f"unknown leaderboard field(s) {unknown}")
-    # Deduplicated, order preserved: the router repeats itself sometimes
-    # (["points","minutes","minutes"]), which is a slip, not a reason to spend
-    # minutes in the agent. A field restating the ranked metric goes too - it
-    # rendered the same 33.5 twice under two headings.
-    return [f for f in dict.fromkeys(requested) if metric != f"avg_{f}"]
-
-
-def _leaderboard_team_names(con: duckdb.DuckDBPyConnection, athlete_ids: list[str], season: int, season_type: int) -> tuple[dict[str, str], bool]:
-    """Each athlete's team for a leaderboard row that asked to see it (F017,
-    ISSUES.md): the team he played his most recent game for that season and
-    season type - read off ``player_game_log``, the one table that orders a
-    traded player's stints by date, unlike the ranked table itself (whose own
-    "combined" row for a traded player has no single team at all). Team names
-    are read for the season asked about (:func:`~association.nba.franchises.season_name_sql`),
-    since a franchise's own name can differ by season.
-
-    Returns each athlete's team by id, and whether ANY of them played for more
-    than one team that season - the fact behind the caller's own "shown the
-    most recent team" note.
-
-    .. versionadded:: 4.4.0
-    """
-    placeholders = ", ".join("?" for _ in athlete_ids)
-    rows = con.execute(
-        f"""
-        SELECT athlete_id, team, traded FROM (
-            SELECT pgl.athlete_id AS athlete_id,
-                   {season_name_sql("pgl.team_id", "pgl.season", "t.display_name")} AS team,
-                   COUNT(DISTINCT pgl.team_id) OVER (PARTITION BY pgl.athlete_id) > 1 AS traded,
-                   ROW_NUMBER() OVER (PARTITION BY pgl.athlete_id ORDER BY pgl.game_date DESC) AS rn
-            FROM player_game_log pgl JOIN teams t ON t.team_id = pgl.team_id
-            WHERE pgl.season = ? AND pgl.season_type = ? AND pgl.athlete_id IN ({placeholders})
-        ) WHERE rn = 1
-        """,
-        [season, season_type, *athlete_ids],
-    ).fetchall()
-    names = {athlete_id: team for athlete_id, team, _ in rows}
-    return names, any(traded for _, _, traded in rows)
-
-
-def _leaderboard_show_teams(con: duckdb.DuckDBPyConnection, result: LeaderboardResult) -> str:
-    """Injects each shown row's team into it (F017, ISSUES.md), mutating
-    ``result.rows`` in place so :func:`_tabulate_leaderboard`'s existing
-    generic column reader (``row.get("team")``) needs no column of its own to
-    know about - and returns the trade note, or "" when nobody shown played
-    for more than one team that season.
-
-    .. versionadded:: 4.4.0
-    """
-    assert result.season_type is not None  # the caller already refused this case
-    ids = [athlete_id for athlete_id in result.athlete_ids if athlete_id is not None]
-    if not ids:
-        for row in result.rows:
-            row["team"] = "-"
-        return ""
-    names, traded = _leaderboard_team_names(con, ids, result.season, result.season_type)
-    for athlete_id, row in zip(result.athlete_ids, result.rows, strict=True):
-        row["team"] = names.get(athlete_id, "-") if athlete_id is not None else "-"
-    # "team" always makes `fields` non-empty, so `leaderboard` always appends
-    # this after a table (never the plain sentence) - a new line, the same
-    # way a table's own truncation and box-score notes follow it elsewhere.
-    return note("definition", "\nTeam is each player's most recent team that season.", term="most_recent_team") if traded else ""
-
-
-def _career_leaderboard(con: duckdb.DuckDBPyConnection, metric: str, scope: Scope, fields: list[str]) -> TemplateResult:
-    """A career ranking, on its own path because its pool is its own - see
-    :func:`~association.query.leaderboard.run_career_leaderboard`."""
-    if fields:
-        raise TemplateUnsupported("a career leaderboard cannot add per-game columns")
-    if scope.team is not None and scope.team.strip():
-        # A franchise's career list sums the per-team rows by team, and where a
-        # franchise moved, which years are the franchise's is a question of its
-        # own. Refused until that is decided, rather than answered with the
-        # league's list under the team's name.
-        raise TemplateUnsupported("franchise career leaderboards are not supported")
-    season_type = scope.season_type or 2
-    try:
-        result = run_career_leaderboard(con, metric, season_type=season_type, limit=_clamp_limit(scope.limit, default=DEFAULT_LEADERBOARD_LIMIT))
-    except LeaderboardError as exc:
-        raise TemplateUnsupported(str(exc)) from exc
-    kind = SEASON_TYPE_NAMES.get(season_type, "regular season")
-    label = f"career {result.label.removeprefix('total ')}"
-    since = _season_label(result.pool_first_season)
-    qualifier = _qualifier(result.min_sample_applied, result.min_sample_column)
-    answer = _phrase_career_leaderboard(result.rows, label, kind, since, qualifier, LEADERBOARD_METRICS[metric].ratio, pool_first=result.pool_first_season)
-    return TemplateResult(
-        data={
-            "question_shape": f"{label}, {kind}, players active since {since}",
-            "season": None,
-            "span": "career",
-            "pool_first_season": result.pool_first_season,
-            "fields": [],
-            "min_sample": result.min_sample_applied,
-            "leaders": result.rows,
-            "headline": answer.split("\n")[0].rstrip(":").split(" Next: ")[0],
-        },
-        answer=answer,
-    )
-
-
-def _phrase_career_leaderboard(rows: list[dict[str, Any]], label: str, kind: str, since: str, qualifier: str, ratio: tuple[str, str] | None, *, pool_first: int | None = None) -> str:
-    """Says whose careers, every time. The pool is every player active in
-    1993-94 or later, counted over his whole career, and nobody whose career
-    ended before it - Kareem Abdul-Jabbar is not in the warehouse at all - so
-    presenting it as "all-time" would be the unrepresentative ranking
-    nba/coverage.py's second floor exists to refuse."""
-    gap = note("floor", f"Careers that ended before {since} are not in this warehouse, so this is not an all-time list.", table="season_line", first=pool_first, what="career_pool")
-    if not rows:
-        return f"No player qualified for {label} in the {kind}{qualifier}. {gap}"
-    top = rows[0]
-    years = f"{_season_label(top['first_season'])} through {_season_label(top['last_season'])}"
-    detail = f", over {int(top['games']):,} games ({years})" if top.get("games") else ""
-    sentence = f"Among players active in {since} or later, {top['display_name']} leads in {label} in the {kind}{qualifier}: {_leader_value(top, ratio)}{detail}."
-    rest = [f"{r['display_name']} ({_leader_value(r, ratio, short=True)})" for r in rows[1:]]
-    return " ".join([sentence, *([f"Next: {', '.join(rest)}."] if rest else []), gap])
-
-
-def _leader_value(row: dict[str, Any], ratio: tuple[str, str] | None, *, short: bool = False) -> str:
-    """A ranked value as a reader expects it: a percentage as one, with the
-    makes and attempts behind it - the "out of how many?" a bare percentage
-    always draws - and a count with its thousands separated."""
-    value = row.get("value")
-    if value is None:
-        return "-"
-    if ratio:
-        made, attempted = row.get(ratio[0]), row.get(ratio[1])
-        text = f"{value * 100:.1f}%"
-        return text if short or made is None or attempted is None else f"{text} ({int(made):,} of {int(attempted):,})"
-    if isinstance(value, int):
-        return f"{value:,}"
-    # ESPN's averages carry one decimal, and "4" beside "3.8" reads as a count.
-    return f"{value:.1f}" if isinstance(value, float) and value == round(value, 1) and abs(value) >= 1 else _format_value(value)
-
-
-def _qualifier(min_sample: int | None, column: str | None) -> str:
-    """ " (minimum 200 3-point attempts)", or nothing. Shown because it answers
-    "why isn't X here?" before it is asked - and makes an empty early-season
-    board say why it is empty."""
-    if not min_sample:
-        return ""
-    unit = MIN_SAMPLE_LABELS.get(column or "", column or "")
-    return decided("minimum", f" (minimum {min_sample:,} {unit})", field="minimum", chose=min_sample, of=unit, column=column)
-
-
-def _phrase_leaderboard(rows: list[dict[str, Any]], label: str, where: str, period: str, qualifier: str = "", ratio: tuple[str, str] | None = None) -> str:
-    if not rows:
-        return f"No players qualified for {label} in {where} in the {period}{qualifier}."
-    top = rows[0]
-    sentence = f"{top['display_name']} led {where} in {label} in the {period}{qualifier}, at {_leader_value(top, ratio)}."
-    rest = [f"{r['display_name']} ({_leader_value(r, ratio, short=True)})" for r in rows[1:]]
-    return sentence + (f" Next: {', '.join(rest)}." if rest else "")
-
-
-# The qualifying column's real name is not something to put in front of a
-# reader ("total_minutes", "gamesPlayed").
-MIN_SAMPLE_LABELS = {
-    "total_minutes": "minutes",
-    "gamesPlayed": "games",
-    "games_played": "games",
-    "minutes": "minutes",
-    "fieldGoalsAttempted": "field-goal attempts",
-    "threePointFieldGoalsAttempted": "3-point attempts",
-    "freeThrowsAttempted": "free-throw attempts",
-    "field_goals_attempted": "field-goal attempts",
-    "true_shooting_attempts": "true-shooting attempts",
-}
-
-
-def _tabulate_leaderboard(
-    rows: list[dict[str, Any]],
-    label: str,
-    where: str,
-    period: str,
-    fields: list[str],
-    min_sample: int | None,
-    min_sample_column: str | None,
-    ratio: tuple[str, str] | None = None,
-) -> str:
-    """A table once extra columns are asked for - a sentence carrying three
-    numbers per player across ten players is unreadable, and the qualifying
-    minimum belongs on screen so "why isn't X here?" has a visible answer."""
-    header_note = _qualifier(min_sample, min_sample_column)
-    if not rows:
-        return f"No players qualified for {label} in {where} in the {period}{header_note}."
-    columns = [(label, "value")] + [(f, f) for f in fields]
-    name_width = max(len(r["display_name"]) for r in rows)
-    # The ranked metric keeps its own precision (9.91, not 9.9); the extra
-    # box-score columns are per-game averages, where one decimal is the norm.
-    cell = lambda row, key: _leader_value(row, ratio, short=True) if key == "value" else _table_cell(row.get(key))  # noqa: E731
-    widths = [max(len(title), *(len(cell(r, key)) for r in rows)) for title, key in columns]
-    lines = [f"{label}, {where}, {period}{header_note}:"]
-    lines.append(" " * name_width + "  " + "  ".join(t.rjust(w) for (t, _), w in zip(columns, widths, strict=True)))
-    for row in rows:
-        cells = "  ".join(cell(row, key).rjust(w) for (_, key), w in zip(columns, widths, strict=True))
-        lines.append(f"{row['display_name'].ljust(name_width)}  {cells}")
-    return "\n".join(lines)
 
 
 DEFAULT_HISTORY_SEASONS = 4

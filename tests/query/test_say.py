@@ -177,7 +177,7 @@ def test_a_league_count_names_the_leaders_and_the_rest() -> None:
         subject="every player",
         relation="everyone",
         span=Span(season=2026, season_type=2),
-        parts=(Part(body=Grouped(by="player", rows=rows)),),
+        parts=(Part(body=Grouped(by="player", ranked_by="games", rows=rows)),),
         notes=(Note("lines_rebuilt", {"games": 1, "total": 4, "whose": "Luka Doncic", "what": "counted"}),),
         facts={"stat": "points", "counted": 30, "lines": ["under 5 turnovers"], "ordinal": None, "box_scores_from": 1994, "empty_box_scores": 0},
     )
@@ -225,3 +225,64 @@ def test_a_single_game_high_is_said_with_its_floor_its_tie_and_its_redirect() ->
     assert said.data["notes"] == ["He last appears in 1999. The warehouse holds his 1990-1999 regular seasons; name one, or ask for his career."]
     assert said.data["question_shape"] == "most points in a single game, Old Timer, 2026 regular season"
     assert [each.kind for each in collected.decisions] == ["season_redirected"]
+
+
+def test_a_stat_ranking_and_a_count_ranking_are_told_apart_by_the_body() -> None:
+    """Two rankings by ``player``: the league's count over a line ranks by
+    ``games``, a season-line ranking by its metric (``Grouped.ranked_by``).
+    The ranking is said with the qualifier it already was (a ``minimum``
+    decision), its percentage with the makes and attempts behind it, and the
+    most-recent-team remark on its own line, recorded once each."""
+    from association.query.result import Decided, Grouped
+
+    rows = (
+        {"key": "Nikola Jokic", "rank": 1, "values": {"ts_pct": 0.6612, "points": 2071, "true_shooting_attempts": 1566, "team": "Denver Nuggets"}},
+        {"key": "Shai Gilgeous-Alexander", "rank": 2, "values": {"ts_pct": 0.6421, "points": 2484, "true_shooting_attempts": 1934, "team": "Oklahoma City Thunder"}},
+    )
+    result = Result(
+        subject="every player",
+        relation="everyone",
+        span=Span(season=2026, season_type=2),
+        parts=(Part(body=Grouped(by="player", ranked_by="ts_pct", rows=rows)),),
+        notes=(Note("definition", {"term": "most_recent_team"}),),
+        decisions=(Decided(kind="minimum", field="minimum", chose=550, facts={"of": "true-shooting attempts", "column": "true_shooting_attempts"}),),
+        facts={"label": "true shooting %", "ratio": ["points", "true_shooting_attempts"], "fields": ["team"], "team": None},
+    )
+    with collect() as remarks:
+        said = say(result)
+    lines = said.answer.split("\n")
+    assert lines[0] == "true shooting %, the league, 2026 regular season (minimum 550 true-shooting attempts):"
+    assert lines[2].split() == ["Nikola", "Jokic", "66.1%", "Denver", "Nuggets"]
+    assert lines[-1] == "Team is each player's most recent team that season."
+    assert said.data["leaders"][0] == {"display_name": "Nikola Jokic", "value": 0.6612, "points": 2071, "true_shooting_attempts": 1566, "team": "Denver Nuggets"}
+    assert said.data["min_sample"] == 550 and said.data["notes"] == ["Team is each player's most recent team that season."]
+    assert [n.kind for n in remarks.notes] == ["definition"] and [d.kind for d in remarks.decisions] == ["minimum"]
+    # Without the team column, a sentence naming the leader, and its makes over attempts.
+    sentence = say(Result(**{**result.__dict__, "notes": (), "facts": {**result.facts, "fields": []}})).answer
+    assert sentence == (
+        "Nikola Jokic led the league in true shooting % in the 2026 regular season (minimum 550 true-shooting attempts), at 66.1% (2,071 of 1,566). Next: Shai Gilgeous-Alexander (64.2%)."
+    )
+
+
+def test_a_career_ranking_says_its_pool_every_time() -> None:
+    """A career list is never all-time: the pool's floor is a note on the
+    season line, said after the names - and with nobody qualified, after
+    the empty sentence."""
+    from association.query.result import Grouped
+
+    rows = ({"key": "LeBron James", "rank": 1, "values": {"total_points": 43440, "games": 1622, "first_season": 2004, "last_season": 2026}},)
+    result = Result(
+        subject="every player",
+        relation="everyone",
+        span=Span(season_type=2, career=True, first=1994),
+        parts=(Part(body=Grouped(by="player", ranked_by="total_points", rows=rows)),),
+        notes=(Note("floor", {"table": "season_line", "first": 1994, "what": "career_pool"}),),
+        facts={"label": "total points", "ratio": None, "fields": []},
+    )
+    assert say(result).answer == (
+        "Among players active in 1993-94 or later, LeBron James leads in career points in the regular season: 43,440, over 1,622 games (2003-04 through 2025-26). "
+        "Careers that ended before 1993-94 are not in this warehouse, so this is not an all-time list."
+    )
+    empty = say(Result(**{**result.__dict__, "parts": (Part(body=Grouped(by="player", ranked_by="total_points")),)}))
+    assert empty.answer == "No player qualified for career points in the regular season. Careers that ended before 1993-94 are not in this warehouse, so this is not an all-time list."
+    assert empty.data["leaders"] == [] and empty.data["pool_first_season"] == 1994
