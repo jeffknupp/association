@@ -2481,12 +2481,6 @@ those were found.
 - **Next step:** restore the freeze over the declarations that exist, naming each as a cell table, `STATED_SCOPING`, or debt to delete; correct AGENTS.md.
 - **GitHub:** #330
 
-### `test_no_presenter_or_renderer_is_added` fails in a checkout holding a stale `query/templates/__pycache__`
-- **Found:** 2026-10-05, the Phase 2 review (`~/association-research/reviews/phase2-2026-10-05/REVIEW.md`)
-- **Evidence:** the main checkout today: `importlib.util.find_spec` finds a namespace package for the ignored directory. The test passes on a clean export.
-- **User sees:** a red suite with nothing wrong in the tree.
-- **Next step:** check for a source file rather than a spec; delete the stale directory.
-- **GitHub:** #333
 
 ### A team's log drops a calendar, quarter or half narrowing silently
 - **Found:** 2026-10-05, porting the team log onto the team compiler (Phase 2, step 4)

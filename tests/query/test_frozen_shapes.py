@@ -112,14 +112,29 @@ def _frozen(name: str, today: set[Any], frozen: frozenset[Any]) -> None:
     assert frozen - today == set(), f"a {name} retired: remove it from the frozen set so it cannot come back"
 
 
-def test_no_presenter_or_renderer_is_added() -> None:
-    import importlib.util
+def _query_sources(pattern: str) -> list[str]:
+    from pathlib import Path
 
+    import association.query
+
+    root = Path(association.query.__file__).parent
+    return sorted(str(path.relative_to(root)) for path in root.glob(pattern))
+
+
+def test_no_presenter_or_renderer_is_added() -> None:
     # Every presenter is retired (the player relation's in slice (iii), the
     # team's - with_without's, a team's streak, a team's record over its own
     # line - in slice (iv), 2026-10-05), and compose/present.py with them:
     # each shape is a reader and the sayer, and no presenter comes back. The
-    # templates package went with step 6: no template comes back either.
-    assert importlib.util.find_spec("association.query.compose.present") is None, "a presenter came back: ROADMAP.md decision D4"
-    assert importlib.util.find_spec("association.query.templates") is None, "a template came back: ROADMAP.md decision D4"
+    # templates package went with step 6, the adapters with slice (ii): no
+    # template or adapter comes back either.
+    #
+    # Asked of the source files, never of the import system: an ignored
+    # ``templates/__pycache__`` left behind in a checkout is a namespace
+    # package to ``importlib.util.find_spec``, and failed this test in the
+    # main checkout with nothing wrong in the tree (2026-10-05, #333). A
+    # ``.pyc`` is not a ``.py``, so a stale cache cannot fail it now.
+    assert _query_sources("compose/present.py") == [], "a presenter came back: ROADMAP.md decision D4"
+    assert _query_sources("compose/adapt.py") == [], "an adapter came back: ROADMAP.md decision D4"
+    assert _query_sources("templates/**/*.py") == [], "a template came back: ROADMAP.md decision D4"
     _frozen("renderer", _renderers_today(), FROZEN_RENDERERS)
