@@ -76,9 +76,12 @@ this tree:
   name, and since 2026-10-02 the 12 templates, the presenters (12 until
   2026-10-03; the intents holding one are 8 since 2026-10-04, as the game
   log, `record_when`, `player_splits` and `period_split` went to readers and
-  sayers, and 6 once `threshold_count` and `single_game_high` did) and the team-only one, the adapters (10; 5 since 2026-10-04 and 3
-  once `threshold_count`'s and `single_game_high`'s default points went to
-  the reader), the 14 scoping declarations (by module
+  sayers, 6 once `threshold_count` and `single_game_high` did, and 4 once
+  `streak` and `player_matchup` did) and the team-only one, the adapters
+  (10; 5 since 2026-10-04, 3 once `threshold_count`'s and
+  `single_game_high`'s default points went to the reader, and 1 -
+  `with_without`'s - once the streak's and the matchup's did), the 14
+  scoping declarations (by module
   and name, read from the source; 12 until 2026-10-03, when the two tables
   of cells a reader refuses that its name pattern missed joined) and the
   page's 22 renderers: each
@@ -791,8 +794,10 @@ model's. Two things follow, and both matter when you add a shape:
   what the retired words added beyond those rows, the span's own seasons,
   the floor, the empty box scores, the withheld stat, the rebuilt games,
   are values and notes on the Result, and the high's redirect for a
-  defaulted season is a `Decided`); only the unnarrowed season line is
-  still `player_stat`'s presenter. Three rules the slice set, which every later slice follows:
+  defaulted season is a `Decided`), and a player's or the league's
+  longest run and two players' meetings (`compose/runs.py`,
+  `compose/pairs.py`; the next paragraph); only the unnarrowed
+  season line is still `player_stat`'s presenter. Three rules the slice set, which every later slice follows:
   - **A note is written as data and said once.** The reader builds
     `Note("window_short", {found, asked, ...})`; the sayer phrases it
     (`say.note_phrase`, ONE phrase per kind) and records it through
