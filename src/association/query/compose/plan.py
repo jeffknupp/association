@@ -18,9 +18,21 @@ from association.query.templates.common import RELATION_SCOPING_EXCLUDED, Templa
 from association.query.templates.players import leaderboard_shot_distance_refusal
 from association.query.templates.splits import _condition_needs_player_refusal
 
-from .adapt import WITH_WITHOUT_STATED
 from .core import Query, Refused, Unsupported, _check_relation_scoping
 from .team import TeamQuery
+
+WITH_WITHOUT_STATED: frozenset[str] = frozenset({"span", "without", "opponent", "conditions"})
+"""The scoping ``with_without``'s words state - a career, the teammates
+divided by, one opponent (both rows narrow together, #163) and a
+companion's role - the retired template's own declaration; any other
+narrowing is declined by name (:func:`_shape_declines`), and the
+presenter's words state the same (``compose.present.STATED_SCOPING``).
+
+In the planner, which declines by it, since the last adapter
+(``compose.adapt``, where it lived) was deleted.
+
+.. versionadded:: 5.0.0
+"""
 
 #: The player-relation cells a team's log, splits and run refuse by name
 #: with a sentence of their own (``templates.games._team_game_log_refusals``,

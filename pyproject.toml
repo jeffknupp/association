@@ -237,9 +237,15 @@ name = "The reader does not import the answer side"
 # answer. Checked on CHAINS, not direct imports only, since 2026-10-03: until
 # then router, subject and normalizer loaded the team-games relation through
 # calendar -> conditions._MONTH_NAMES (the months are season_text's now), and
-# the contract could not see it. The one ignored edge below is the only
-# route from the reader to the answer side; everything it reaches, it
-# reaches through that edge.
+# the contract could not see it. It holds with no ignored edge since Phase 2,
+# step 3 (2026-10-05): the last, point -> compose.adapt, went with the last
+# adapter, whose default point the reader reads itself (point.DEFAULT_POINTS).
+# The nine the contract was written with went one by one: the planner left
+# the parser, the subject reading stopped asking which cells the answer
+# honors, the team word's reader, five intent sets, the team metrics' words,
+# the period columns, the metric aliases, the limits and Unsupported moved to
+# the reader's side (entities, reading, measures), the point reader itself
+# moved to query/point.py, and the adapters became default points.
 type = "forbidden"
 source_modules = [
     "association.query.normalizer",
@@ -261,19 +267,6 @@ forbidden_modules = [
     "association.query.fingerprint",
 ]
 allow_indirect_imports = false
-ignore_imports = [
-    # The point reader takes the intent's default point from the adapters
-    # (compose.adapt.to_reading, ten per-intent readers that lean on the
-    # templates' own helpers): the last of the nine the contract was
-    # written with. Phase 2 deletes the adapters slice by slice, and this
-    # line with the last of them. The rest went by 2026-10-03: the planner
-    # left the parser, the subject reading stopped asking which cells the
-    # answer honors, the team word's reader, five intent sets, the team
-    # metrics' words, the period columns, the metric aliases, the limits
-    # and Unsupported moved to the reader's side (entities, reading,
-    # measures), and the point reader itself moved to query/point.py.
-    "association.query.point -> association.query.compose.adapt",
-]
 
 [[tool.importlinter.contracts]]
 name = "The compiler's sentence reads no warehouse"

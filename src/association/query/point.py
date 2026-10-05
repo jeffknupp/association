@@ -2,9 +2,9 @@
 ``route()``'s ``CODE_ASSIGNED_INTENTS`` and its ``_validate_*`` helpers read
 them, never through a prompt - move the measure, the skeleton or the
 aggregate off the intent's default point
-(:func:`~association.query.compose.adapt.to_reading`, the one reach into
-the answer side this module keeps until Phase 2 deletes the adapters slice
-by slice). :func:`read_point` is the parser's last step
+(:func:`default_point`; until Phase 2 deleted the adapters it was read on
+the answer side, ``compose.adapt``, this module's one reach there).
+:func:`read_point` is the parser's last step
 (``parse.with_point``): it writes the point into the Reading, or why there
 is none - a decline (:class:`~association.query.reading.Unsupported`) or a
 refusal's cause (:class:`~association.query.reading.PointRefused`) the
@@ -27,7 +27,6 @@ from dataclasses import replace
 from typing import TYPE_CHECKING, Any, Literal
 
 from association.nba.season import current_season
-from association.query.compose.adapt import _to_reading_scope
 from association.query.entities import BOX_SCORES, SHOT_AVAILABILITY
 from association.query.lines import measure_filters, threshold_count_line
 from association.query.measures import (
@@ -70,6 +69,7 @@ from association.query.reading import (
     scope_reads_box_scores,
 )
 from association.query.reading import named_player_in as _named_player_in
+from association.query.subject import with_without_named
 
 if TYPE_CHECKING:
     from association.query.subject import Subject
@@ -716,8 +716,7 @@ def _compare_point(scope: Scope) -> Reading:
 # The point a bare intent means before any of the question's own words move
 # it, for the shapes Phase 2 has ported (``ROADMAP.md``, "Phase 2, the
 # expected steps", step 1): read from the Scope alone, on the reader's side.
-# The intents still answered by their presenters keep their default points
-# in ``compose.adapt`` until their slice lands.
+# Every default point is here since the last adapter went (step 3).
 
 
 def _default_game_log(scope: Scope) -> Reading:
@@ -1003,6 +1002,32 @@ def _default_player_matchup(scope: Scope) -> Reading:
     )
 
 
+def _default_with_without(scope: Scope) -> Reading:
+    """``with_without``'s default point: a team's record in the games named
+    teammates played against the games they missed - the team relation's
+    ``presence`` group (``compose.team._compile_team_presence``) - with the
+    subject's averages in each where a player is named. The retired
+    template's own early refusal is the point's (ROADMAP plan item 6, step
+    (g)): no teammate to divide by - the teammates come from ``without`` or
+    ``with_player``, a ``conditions`` role
+    (:func:`~association.query.subject.with_without_named`), or failing those
+    the one name beside a team or the second of two; more than that is
+    "record when A and B and C play", which nobody has defined. A narrowing
+    its words do not state is the planner's to decline
+    (``compose.plan.WITH_WITHOUT_STATED``).
+
+    .. versionadded:: 5.0.0
+       On the reader's side (``compose.adapt._adapt_with_without`` was this).
+    """
+    mate_texts, _asked_without, _roles = with_without_named(scope)
+    if not mate_texts:
+        texts = list(dict.fromkeys(n.strip() for n in (scope.player, *scope.players) if n is not None and n.strip()))
+        team_named = bool(scope.team and scope.team.strip())
+        if not ((team_named and len(texts) == 1) or (not team_named and len(texts) == 2)):
+            raise Unsupported(f"with_without needs exactly one teammate, got {texts!r}")
+    return Reading(scope=scope, shape="grouped", measures=["record"], aggregate="record", group="presence", predicates=[], relation="team")
+
+
 DEFAULT_POINTS: dict[str, Callable[[Scope], Reading]] = {
     "game_log": _default_game_log,
     "player_stat": _default_player_stat,
@@ -1013,11 +1038,13 @@ DEFAULT_POINTS: dict[str, Callable[[Scope], Reading]] = {
     "single_game_high": _default_single_game_high,
     "streak": _default_streak,
     "player_matchup": _default_player_matchup,
+    "with_without": _default_with_without,
 }
-"""Intent -> its default point, for the shapes whose default the reader
-reads itself (Phase 2, step 1: slice (i)'s five; step 2: ``threshold_count``,
-``single_game_high``, the streak and the matchup). The rest are
-``compose.adapt``'s until their slice lands.
+"""Intent -> its default point, read by the reader itself (Phase 2, step 1:
+slice (i)'s five; step 2: ``threshold_count``, ``single_game_high``, the
+streak and the matchup; step 3: the with/without split, the last of the
+adapters, which went with ``compose.adapt``). An intent with no entry here
+has its point read elsewhere in this module (:func:`read_point`) or none.
 
 .. versionadded:: 5.0.0
 """
@@ -1027,13 +1054,15 @@ def default_point(intent: str, scope: Scope) -> Reading:
     """The point a bare ``intent`` means over ``scope``, stamped with the
     intent it is the default of (the planner declines by it until intent
     leaves the reader in Phase 3): the reader's own
-    (:data:`DEFAULT_POINTS`), or the adapter's for a shape not yet ported.
+    (:data:`DEFAULT_POINTS`). An intent with none is declined.
 
     .. versionadded:: 5.0.0
     """
     reader = DEFAULT_POINTS.get(intent)
     if reader is None:
-        return _to_reading_scope(intent, scope)
+        # The sentence the adapters' table gave until it went, kept so no
+        # reading's verdict moves with the file.
+        raise Unsupported(f"no adapter for {intent}")
     return replace(reader(scope), intent=intent)
 
 
@@ -1323,7 +1352,7 @@ def _read_point(intent: str, scope: Scope, question: str, subject: Subject) -> R
         # point: a player's, a team's or the league's longest run
         # (_default_streak), two players' meetings
         # (_default_player_matchup), or a team's record with and without a
-        # teammate (_adapt_with_without).
+        # teammate (_default_with_without).
         return default_point(intent, scope)
     if not _named_player_in(scope):
         team_reading = team_read_point(scope, question, subject)

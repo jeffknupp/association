@@ -1732,11 +1732,11 @@ def test_the_planner_refuses_a_narrowing_the_relation_cannot_honor() -> None:
     """``plan`` is where a Reading meets its relation, and a scoping slot the
     relation does not narrow by (``rate``: no per-36 read on the games) is
     refused there - not one call later, inside the compile step."""
-    from association.query.compose.adapt import to_reading
+    from routed import default_reading
 
     with pytest.raises(Unsupported, match="the relation cannot honor \\['rate'\\]"):
-        plan(to_reading("threshold_count", {"player": "Brandin Podziemski", "stat": "points", "threshold": 30, "rate": "per_36"}))
-    assert isinstance(plan(to_reading("threshold_count", {"player": "Brandin Podziemski", "stat": "points", "threshold": 30})), Query)
+        plan(default_reading("threshold_count", {"player": "Brandin Podziemski", "stat": "points", "threshold": 30, "rate": "per_36"}))
+    assert isinstance(plan(default_reading("threshold_count", {"player": "Brandin Podziemski", "stat": "points", "threshold": 30})), Query)
 
 
 def test_the_planner_refuses_after_the_parser_has_read_and_only_once(cx_ctx: TemplateContext) -> None:

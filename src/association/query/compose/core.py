@@ -638,7 +638,7 @@ def _apply_window_rule(q: Query, narrowed: Narrowed) -> None:
         # (``whole_span``): a run's ``limit`` is how many runs are listed,
         # a matchup's the newest meetings shown beneath averages over all of
         # them, never a games window; ``order`` is refused before the point
-        # is planned (``RELATION_SCOPING_EXCLUDED``, compose.adapt).
+        # is planned (``RELATION_SCOPING_EXCLUDED``, point.DEFAULT_POINTS).
         narrowed.window = None
         return
     if (q.aggregate in ("count", "record") or q.skeleton == "grouped") and scope.order is None:

@@ -8,14 +8,13 @@ from typing import Any
 
 import duckdb
 import pytest
-from routed import default_query
+from routed import default_query, default_reading
 from routed import planned_answer as compose_answer
 
 from association.fetch.repairs import real_games
 from association.nba.season import current_season
 from association.nba.season import eastern_date as _eastern_date_of
 from association.query import shotchart
-from association.query.compose.adapt import to_reading
 from association.query.compose.core import Query, Unsupported, _compile_pair, _compile_run, _resolve_pair, compile_over, compile_query, rows_of
 from association.query.compose.logs import _player_log, _player_log_mixed, _team_log, _team_log_mixed, read_player_log, read_team_log
 from association.query.compose.pairs import _pair_absence, _pair_no_meetings, _pair_result, read_player_matchup
@@ -4581,9 +4580,9 @@ def test_the_matchup_point_refuses_a_team_opponent(pg_ctx: TemplateContext) -> N
     was named. The template is retired (compose.COMPILED_INTENTS); what its
     presenter's words state is ``STATED_SCOPING``'s."""
     with pytest.raises(Unsupported, match="opponent"):
-        plan(to_reading("player_matchup", {"players": ["Brandin Podziemski", "Stephen Curry"], "opponent": "Detroit Pistons"}))
+        plan(default_reading("player_matchup", {"players": ["Brandin Podziemski", "Stephen Curry"], "opponent": "Detroit Pistons"}))
     with pytest.raises(Unsupported, match="opponent"):
-        plan(to_reading("player_matchup", {"players": ["Brandin Podziemski", "Stephen Curry"], "opponent": "Detroit Pistons", "without": ["Jaylen Brown"]}))
+        plan(default_reading("player_matchup", {"players": ["Brandin Podziemski", "Stephen Curry"], "opponent": "Detroit Pistons", "without": ["Jaylen Brown"]}))
     assert "opponent" not in STATED_SCOPING["player_matchup"]
 
 
@@ -4591,7 +4590,7 @@ def test_the_matchup_point_honors_without_too(pg_ctx: TemplateContext) -> None:
     """A teammate's absence narrows the first player's games on a genuine
     two-player matchup, as it does on every reader of the relation."""
     scope = Scope.from_slots({"players": ["Brandin Podziemski", "Stephen Curry"], "without": ["Jaylen Brown"]})
-    assert to_reading("player_matchup", scope.to_slots()).shape == "pair"
+    assert default_reading("player_matchup", scope.to_slots()).shape == "pair"
     assert unhonored_scoping("player_matchup", scope, STATED_SCOPING["player_matchup"]) == []
 
 
@@ -4601,7 +4600,7 @@ def test_the_matchup_point_still_refuses_an_unhonored_slot(pg_ctx: TemplateConte
     shown beneath averages over all of them), and `round` no relation has -
     the planner's refusal, as the parser plans the point."""
     with pytest.raises(Unsupported, match="newest meetings"):
-        plan(to_reading("player_matchup", {"players": ["Brandin Podziemski", "Stephen Curry"], "order": "recent"}))
+        plan(default_reading("player_matchup", {"players": ["Brandin Podziemski", "Stephen Curry"], "order": "recent"}))
     with pytest.raises(Unsupported, match="different span"):
         default_query("player_matchup", {"players": ["Brandin Podziemski", "Stephen Curry"], "round": "finals"})
 
@@ -5442,10 +5441,10 @@ def test_the_scoping_slots_this_template_filters_on_are_declared_honored() -> No
     # Two slots it still does not filter on, for the same reason: the accuracy
     # caveat (PERIOD_RECONCILIATION) is measured per season, and this reads
     # only one - see RELATION_SCOPING_EXCLUDED["period_split"]. The point
-    # itself refuses them (compose.adapt._adapt_period_split), naming why.
+    # itself refuses them (point._default_period_split), naming why.
     for slot, value in (("span", "career"), ("since", 2023)):
         with pytest.raises(Unsupported, match="accuracy caveat is measured per season"):
-            plan(to_reading("period_split", {"player": "Stephen Curry", "period": 1, slot: value}))
+            plan(default_reading("period_split", {"player": "Stephen Curry", "period": 1, slot: value}))
 
 
 def test_a_log_lists_the_games_and_keeps_the_season_in_the_header(period_ctx: TemplateContext) -> None:
@@ -6071,12 +6070,11 @@ def test_templates_on_the_relation_do_not_narrow_it_themselves() -> None:
     # directly rather than through _source_with_private_steps.
     import inspect
 
-    import association.query.compose.adapt as _compose_adapt
     import association.query.compose.core as _compose_core
     import association.query.compose.team as _compose_team
     import association.query.point as _point
 
-    for module in (_compose_core, _compose_adapt, _point, _compose_team):
+    for module in (_compose_core, _point, _compose_team):
         source = inspect.getsource(module)
         for token in forbidden:
             assert token not in source, f"{module.__name__} narrows the relation itself ({token!r}); use scoped_games / league_games / scoped_team / team_games"

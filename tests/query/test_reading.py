@@ -8,9 +8,8 @@ from dataclasses import fields
 from typing import Any
 
 import pytest
-from routed import default_query
+from routed import default_query, default_reading
 
-from association.query.compose.adapt import to_reading
 from association.query.compose.core import Query
 from association.query.compose.plan import plan
 from association.query.compose.team import TeamQuery
@@ -21,7 +20,7 @@ def test_the_default_point_is_a_reading_and_its_plan_is_the_query_it_always_was(
     """The adapters build a Reading; ``to_query`` is that Reading planned, so
     every caller of the old contract sees the same Query."""
     slots: dict[str, Any] = {"player": "Brandin Podziemski", "stat": "points", "threshold": 30, "season": 2026}
-    reading = to_reading("threshold_count", slots)
+    reading = default_reading("threshold_count", slots)
     assert isinstance(reading, Reading)
     assert (reading.relation, reading.shape, reading.aggregate, reading.predicates) == ("player", "scalar", "count", [("points", ">=", 30)])
     planned = plan(reading)

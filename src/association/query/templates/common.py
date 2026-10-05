@@ -288,7 +288,7 @@ RELATION_SCOPING_EXCLUDED: dict[str, dict[str, str]] = {
         # Excluded from the presenter's WORDS, not from the point: its point
         # keeps the cell and the compiler's own sentence, which names both
         # the quarter measured and the quarter conditioning the games,
-        # answers (compose.adapt._adapt_period_split, the game_log rule).
+        # answers (point._default_period_split, the game_log rule).
         "period_condition": "a period answer says the one period it measures, never a second one conditioning which games count",
     },
 }
@@ -489,7 +489,7 @@ HONORED_SCOPING: dict[str, frozenset[str]] = {
     # the title says so - "Embiid career record vs boston" is his record in the
     # games his team played Boston, not overall (#163).
     # with_without is the compiler's too (step (g), the team relation's
-    # `presence` group): compose.adapt.WITH_WITHOUT_STATED.
+    # `presence` group): compose.plan.WITH_WITHOUT_STATED.
     # `opponent` and `order` are excluded, each with its reason
     # (RELATION_SCOPING_EXCLUDED); a teammate's absence, a venue and a date
     # narrow the first player's games as they do on every relation template.

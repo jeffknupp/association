@@ -82,8 +82,10 @@ this tree:
   `player_compare` did, 2026-10-05: `PRESENTERS` and `present()` are gone)
   and the team-only one, the adapters
   (10; 5 since 2026-10-04, 3 once `threshold_count`'s and
-  `single_game_high`'s default points went to the reader, and 1 -
-  `with_without`'s - once the streak's and the matchup's did), the 14
+  `single_game_high`'s default points went to the reader, 1 -
+  `with_without`'s - once the streak's and the matchup's did, and none
+  since 2026-10-05: `compose/adapt.py` is deleted and every default point
+  is `point.DEFAULT_POINTS`'s, so that freeze retired), the 14
   scoping declarations (by module
   and name, read from the source; 12 until 2026-10-03, when the two tables
   of cells a reader refuses that its name pattern missed joined) and the
@@ -114,17 +116,16 @@ this tree:
   commit the shorter list with the change.
 - **The reader does not import the answer side, and the answer side never
   reaches the model** (`[tool.importlinter]`). The reader's imports of
-  `compose`, `templates` and the relations are listed by name and go in
-  Phase 1 (nine when the contract was written; one since 2026-10-03,
-  `point -> compose.adapt`: the point reader, `query/point.py` since the
-  `read_point` move's step 5, takes the intent's default point from the
-  adapters left (ten then, three now), which Phase 2 deletes slice by
-  slice - the rest were
-  vocabulary and intent sets that now live on the reader's side:
-  `entities.team_named_in`, `reading`'s intent sets, limits, `ordinal_word`
-  and `Unsupported`, `measures.STAT_ALIASES`, `PERIOD_COLUMNS`, the
-  metric and measure aliases and `resolve_metric`/`stat_measure`); a new
-  one fails, and so does a listed one that no longer exists.
+  `compose`, `templates` and the relations were listed by name, and the
+  list is empty since 2026-10-05: the contract holds with no ignored edge
+  (nine when it was written; the last, `point -> compose.adapt`, went
+  with the last adapter, whose default point the reader now reads itself,
+  `point.DEFAULT_POINTS` - the rest were vocabulary and intent sets that
+  now live on the reader's side: `entities.team_named_in`, `reading`'s
+  intent sets, limits, `ordinal_word` and `Unsupported`,
+  `measures.STAT_ALIASES`, `PERIOD_COLUMNS`, the metric and measure
+  aliases and `resolve_metric`/`stat_measure`). A new one fails; an
+  ignore is not the way past it.
 - **A change to the pipeline is proven stage by stage, on two
   populations.** `scripts/stage_snapshots.py run OUT.jsonl` answers the 628
   recorded questions through the whole agent with no model (the

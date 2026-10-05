@@ -55,8 +55,8 @@ from association.query.templates.splits import (
     _with_without_said,
 )
 
-from .adapt import WITH_WITHOUT_STATED
 from .core import Refused, Unsupported
+from .plan import WITH_WITHOUT_STATED
 from .say import say_run_listing, streak_result
 from .team import TeamQuery, _team_games_narrowed, run_team
 

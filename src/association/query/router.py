@@ -2064,7 +2064,7 @@ def _route_period_intents_choose(raw: dict[str, Any], question: str, asked: dict
     elif asked is None and named_player and _BY_QUARTER.search(low):
         # A named player's four quarters side by side (#162): period_split
         # with no period, which its point reads as the breakdown
-        # (compose.adapt._adapt_period_split).
+        # (point._default_period_split).
         raw["intent"] = "period_split"
         raw.pop("period", None)
         raw.pop("half", None)

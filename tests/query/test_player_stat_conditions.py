@@ -154,18 +154,18 @@ def test_player_stat_honors_a_reached_condition(pstat_conditions_ctx: TemplateCo
     assert result.answer == f"Tyrese Maxey averaged 22 points per game in 3 games in games Joel Embiid had 20+ points in the {SEASON} regular season. That is 66 in total."
 
 
-def test_compose_adapter_also_reads_box_scores_for_a_condition() -> None:
-    """``compose.adapt._adapt_player_stat`` takes the same test
+def test_the_default_point_also_reads_box_scores_for_a_condition() -> None:
+    """``point._default_player_stat`` takes the same test
     (``_player_stat_reads_box_scores``) to decide its default point's
     ``source`` - fixed by the same one-line change, not a second copy of the
     bug. Unnarrowed, the point is the season line (``source="seasons"``); a
     bare ``conditions`` entry now switches it to box scores
     (``source="games"``), the same as ``without`` already did."""
-    from association.query.compose.adapt import to_reading
+    from routed import default_reading
 
-    season = to_reading("player_stat", {"player": "Tyrese Maxey", "stat": "points"})
+    season = default_reading("player_stat", {"player": "Tyrese Maxey", "stat": "points"})
     assert season.source == "seasons"
-    narrowed = to_reading("player_stat", {"player": "Tyrese Maxey", "stat": "points", "conditions": [_condition("started")]})
+    narrowed = default_reading("player_stat", {"player": "Tyrese Maxey", "stat": "points", "conditions": [_condition("started")]})
     assert narrowed.source == "games"
 
 

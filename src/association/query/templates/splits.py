@@ -14,7 +14,8 @@ import duckdb
 from association.nba.franchises import season_name
 from association.nba.season import current_season
 from association.query.reading import SPLIT_KINDS as SPLIT_KINDS
-from association.query.reading import ConditionSpec, Scope
+from association.query.reading import Scope
+from association.query.subject import with_without_named
 
 from ..conditions import (
     _PLAYER_GAME_TABLES,
@@ -31,7 +32,7 @@ from ..conditions import (
     _with_without_games,
     _with_without_group,
 )
-from ..entities import Entity, teammate_names
+from ..entities import Entity
 from ..notes import Note, note
 from ..result import Run, run_of
 from ..team_games import TEAM_GAMES_SQL, TeamNarrowed
@@ -303,7 +304,7 @@ def _with_without_read(con: duckdb.DuckDBPyConnection, scope: Scope) -> Presence
 
     .. versionadded:: 5.0.0
     """
-    mate_texts, asked_without, roles = _with_without_named(scope)
+    mate_texts, asked_without, roles = with_without_named(scope)
     texts = list(dict.fromkeys(n.strip() for n in (scope.player, *scope.players) if n is not None and n.strip()))
     team = _optional_team(con, scope.team, season=scope.season)
     if isinstance(team, TemplateResult):
@@ -357,46 +358,6 @@ def _with_without_said(split: PresenceSplit) -> TemplateResult:
     return _with_without_answer(
         split.covered, split.games, split.team_names, team_order, split.windows, split.subject, split.mates, named, all_of, split.asked_without, split.unknown, groups, rows, split.against
     )
-
-
-def _with_without_named(scope: Scope) -> tuple[list[str], bool, dict[str, tuple[str, tuple[str, int] | None]]]:
-    """The teammates the question named - ``without``'s, else
-    ``with_player``'s, else the ones a ``conditions`` entry gives a role -
-    whether it asked "without", and each name's role.
-
-    .. versionadded:: 5.0.0
-    """
-    # Lists, as the slots always were: teammate_names reads a list or one
-    # bare name, and a tuple would be neither - every teammate dropped.
-    mate_texts = teammate_names(list(scope.without))
-    asked_without = bool(mate_texts)
-    if not asked_without:
-        mate_texts = teammate_names(list(scope.with_player))
-    roles = _with_without_roles(scope.conditions)
-    if not mate_texts and roles:
-        mate_texts = list(roles)
-    return mate_texts, asked_without, roles
-
-
-def _with_without_roles(conditions: tuple[ConditionSpec, ...]) -> dict[str, tuple[str, tuple[str, int] | None]]:
-    """The role each ``conditions`` entry (a
-    :class:`~association.query.reading.ConditionSpec`) gives its player -
-    ``started``, ``bench``, ``reached`` (with its column and threshold) - by
-    the name as written, for :func:`_with_without_predicates` to pair with
-    the resolved teammates. A ``played``/``absent`` entry adds nothing the
-    ``with_player`` and ``without`` lists do not already say.
-
-    .. versionadded:: 5.0.0
-    """
-    roles: dict[str, tuple[str, tuple[str, int] | None]] = {}
-    for entry in conditions:
-        if entry.predicate in ("started", "bench"):
-            roles[entry.player] = (entry.predicate, None)
-        elif entry.predicate == "reached" and entry.stat is not None and entry.threshold is not None and entry.threshold >= 1:
-            column = THRESHOLD_STAT_COLUMNS.get(entry.stat)
-            if column is not None:
-                roles[entry.player] = ("reached", (column, entry.threshold))
-    return roles
 
 
 def _with_without_predicates(con: duckdb.DuckDBPyConnection, mates: list[Entity], roles: dict[str, tuple[str, tuple[str, int] | None]], scope: _Scope) -> list[tuple[str, tuple[str, int] | None]]:

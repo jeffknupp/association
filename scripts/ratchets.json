@@ -48,7 +48,6 @@
   "templates.teams": 14
  },
  "private_template_imports": [
-  "compose.adapt:_with_without_named",
   "compose.core:_team_slot_for_player",
   "compose.plan:_condition_needs_player_refusal",
   "compose.present:_condition_team_no_games",

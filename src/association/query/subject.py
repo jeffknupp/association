@@ -64,7 +64,9 @@ from association.query.entities import (
     players_named_in,
     team_abbreviations,
     team_named_in,
+    teammate_names,
 )
+from association.query.measures import THRESHOLD_STAT_NAMES
 from association.query.reading import FILLER_PLAYER_WORDS, OWN_TEAM_RESTORABLE_INTENTS, PLAYER_REQUIRED_INTENTS, POSITIONS, SUBJECT_RESTORABLE_INTENTS, ConditionSpec, Scope
 from association.query.router import _ABSENCE_WORDS, _NAME_STOPWORDS, _THRESHOLD_WORDS, Beside, _threshold_from_text_scored
 from association.query.season_text import season_from_text
@@ -911,6 +913,50 @@ def beside(conditions: tuple[Companion, ...]) -> Beside:
         played=tuple(c.name for c in conditions if c.predicate == "played" and c.side == "own"),
         absent=tuple(c.name for c in conditions if c.predicate == "absent"),
     )
+
+
+def with_without_named(scope: Scope) -> tuple[list[str], bool, dict[str, tuple[str, tuple[str, int] | None]]]:
+    """The teammates a with/without split divides by, read off the scope
+    the reading wrote (:func:`beside`'s names land in ``without`` and
+    ``with_player``, a role in ``conditions``): ``without``'s, else
+    ``with_player``'s, else the ones a ``conditions`` entry gives a role -
+    whether it asked "without", and each name's role (``started``,
+    ``bench``, or ``reached`` with its column and threshold). Read by the
+    split's default point (:func:`association.query.point.default_point`)
+    and by the relation's read of the split.
+
+    .. versionadded:: 5.0.0
+       On the reader's side (``templates.splits._with_without_named`` was this).
+    """
+    # Lists, as the slots always were: teammate_names reads a list or one
+    # bare name, and a tuple would be neither - every teammate dropped.
+    mate_texts = teammate_names(list(scope.without))
+    asked_without = bool(mate_texts)
+    if not asked_without:
+        mate_texts = teammate_names(list(scope.with_player))
+    roles = _with_without_roles(scope.conditions)
+    if not mate_texts and roles:
+        mate_texts = list(roles)
+    return mate_texts, asked_without, roles
+
+
+def _with_without_roles(conditions: tuple[ConditionSpec, ...]) -> dict[str, tuple[str, tuple[str, int] | None]]:
+    """The role each ``conditions`` entry (a
+    :class:`~association.query.reading.ConditionSpec`) gives its player -
+    ``started``, ``bench``, ``reached`` (with its column and threshold) - by
+    the name as written, for the split's read to pair with the resolved
+    teammates. A ``played``/``absent`` entry adds nothing the
+    ``with_player`` and ``without`` lists do not already say. A line's
+    column is its stat's own name (:data:`~association.query.measures.THRESHOLD_STAT_NAMES`;
+    the box score's column is named the same).
+    """
+    roles: dict[str, tuple[str, tuple[str, int] | None]] = {}
+    for entry in conditions:
+        if entry.predicate in ("started", "bench"):
+            roles[entry.player] = (entry.predicate, None)
+        elif entry.predicate == "reached" and entry.stat is not None and entry.threshold is not None and entry.threshold >= 1 and entry.stat in THRESHOLD_STAT_NAMES:
+            roles[entry.player] = ("reached", (entry.stat, entry.threshold))
+    return roles
 
 
 def _condition_role(word: str, text: str) -> tuple[str, str | None, int | None]:

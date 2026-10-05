@@ -34,10 +34,10 @@ import duckdb
 from association.query import compose
 from association.query.agent import Agent
 from association.query.answer import Answer
-from association.query.compose.adapt import to_reading
 from association.query.compose.core import Query
 from association.query.compose.plan import plan, plan_point
 from association.query.normalizer import Normalized
+from association.query.point import default_point
 from association.query.reading import Reading, Scope
 from association.query.router import Route
 from association.query.subject import child_named, read_subject, settle_subject
@@ -86,10 +86,18 @@ def planned_answer(ctx: TemplateContext, reading: Reading, *, declined: Callable
     return compose.answer(ctx, reading, planned=plan_point(reading), declined=declined)
 
 
+def default_reading(intent: str, slots: Mapping[str, Any]) -> Reading:
+    """The intent's default point over ``slots``, read: what the retired
+    ``compose.adapt.to_reading`` gave (deleted with the last adapter in
+    Phase 2, step 3; tests were its only callers) -
+    :func:`~association.query.point.default_point` over the typed scope."""
+    return default_point(intent, Scope.from_slots(dict(slots)))
+
+
 def default_query(intent: str, slots: Mapping[str, Any]) -> Query:
     """The intent's default point over ``slots``, planned: what the retired
     ``compose.adapt.to_query`` gave (deleted 2026-10-03; tests were its only
     callers)."""
-    query = plan(to_reading(intent, dict(slots)))
+    query = plan(default_reading(intent, slots))
     assert isinstance(query, Query)
     return query
