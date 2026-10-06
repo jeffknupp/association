@@ -918,6 +918,20 @@ agents' reports named here are in `~/association-research/stages/`.
     Fourteen findings filed (#325-#338; two P1s older than the phase). The
     cleanup list is the order from here.
 
+21. **The review's cleanup (2026-10-05/06).** The lead's order, Jeff's
+    say-so: (a) first - the one live wrong answer, then the tooling that
+    had let the done table overstate; (b)2/(b)3 - the proof widened to a
+    recorded planner and the feed answered - before anything else moved;
+    then "the Result is typed" as one agent's step. Six commits of Opus
+    agents, each proven on four populations. What changed in kind: a
+    refusal found at run time is a typed value from a closed set, the
+    Result's bag is seventeen records and a cell union, and nothing on
+    the answer side reads the intent to choose. What the review had
+    found - 105 statement sites counted as 38, 12 declarations unfrozen,
+    4 feed answers moved unseen - is measured and held by a gate now.
+    Phase 3 opens with (b)4: the three question re-reads in `agent.py`
+    onto the Reading.
+
 ## The plan items, as written
 
 In order of lift per unit of structural change, each measured on the

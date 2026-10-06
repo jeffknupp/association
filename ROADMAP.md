@@ -351,6 +351,34 @@ question re-reads in `agent.py` onto the Reading - is Phase 3's own first
 item, since the Reading has to carry those values. (c) is taken in passing
 by whoever is in the file.
 
+**The cleanup, done (2026-10-05/06).** Four Opus agents, each proven on
+the four populations: (a)1 `9b0ac75` - a measure a rebuilt line cannot
+supply carries its own games count, a ranking's minimum qualifies on it
+and a `lines_rebuilt` note names the games skipped (four feed answers
+moved, each named; the Gibson row leaves the TS% ten); (a)2-(a)5 with #335
+and #338 (`41faa66`..`4f50a2e`) - the freeze test checks source files, the
+freeze is back over the 12 scoping declarations each labeled (4 cell
+tables, 2 `STATED_SCOPING`, 6 debt with its owing step), the SQL ratchet
+counts `rows_of`/`values_of` statements (38 in 11 -> 80 in 20, the honest
+count, regenerated once with Jeff's say-so), the done table and the
+ledger at the review's figures, the temp-directory leak closed, ISSUES.md
+repointed; (b)2/(b)3 `2cf166e` - the planner is a recorded unit-test
+boundary (1,408 -> 2,554 calls) and the 2,082 feed questions ANSWERED are
+the fourth population (`stage_snapshots.py run --feed`); the typed Result
+`bc04d95`/`c35f334`/`28debcd` - a refusal found at RUN is a `Refusal` or
+`Clarify` with a kind from `result.RUN_CAUSES` (50, disjoint from the
+reading's 17) said by one `refusal_phrase` table, answers worded outside
+the sayer 35 -> 7 (all `refusals.unanswerable`, Phase 3's (b)4);
+`Result.facts` is 17 typed records and the cells a read applied are a
+typed `Cell` union on `Narrowing.cells` (period, line, role, game of a
+series, calendar, met, shot value, a date); the answer side picks readers
+and sayers by `plan.PointShape(relation, shape, by)` and the body's type,
+never by intent (`compose/__init__.py` 72 -> 6 mentions, all prose; a test
+holds it). Three `# Phase 3: needs ...` markers say where the Reading's
+own shape, cells and declared tables take over. Nine of the review's
+fourteen findings closed (#327, #329-#335, #338); #325, #326, #328 (the
+answers), #336, #337 (cosmetic) and #324 stay open.
+
 **From (b)2 and (b)3 on (2026-10-05), every step is proven on four
 populations, base against tip, identical text and remarks included:** the
 628 recorded questions answered (`scripts/stage_snapshots.py run`,
