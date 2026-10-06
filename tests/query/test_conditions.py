@@ -32,7 +32,7 @@ from association.fetch.repairs.reconstructed_box import _FILLED_COLUMNS as FILLE
 from association.nba.season import current_season
 from association.query.answer import AnswerContext, Reply
 from association.query.compose.core import Query, run
-from association.query.compose.plan import STATED_SCOPING
+from association.query.compose.plan import words_stated
 from association.query.compose.sentence import sentence
 from association.query.conditions import RAW_BOX, UNGATED_ON_REBUILD, box_source
 from association.query.coverage import check_coverage
@@ -1883,9 +1883,9 @@ def test_a_condition_the_relation_cannot_read_refuses(league: AnswerContext) -> 
         _brown_games(league, {"player": "Jayson Tatum", "side": "own", "predicate": "dunked"})
     with pytest.raises(Unsupported, match="reached condition"):
         _brown_games(league, {"player": "Jayson Tatum", "side": "own", "predicate": "reached", "stat": "vibes", "threshold": 3})
-    # A history's words state no condition (compose.plan.STATED_SCOPING):
+    # A history's words state no condition (compose.plan.words_stated):
     # its presenter steps aside, and the compiler's sentence says what it read.
-    assert unhonored_scoping("player_history", Scope.from_slots({"player": "Jaylen Brown", "stat": "points", "conditions": [{"player": "Jayson Tatum"}]}), STATED_SCOPING["player_history"]) == [
+    assert unhonored_scoping("player_history", Scope.from_slots({"player": "Jaylen Brown", "stat": "points", "conditions": [{"player": "Jayson Tatum"}]}), words_stated("player_history")) == [
         "conditions"
     ]
 

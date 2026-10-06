@@ -81,12 +81,17 @@ FROZEN_SCOPING_TABLES: dict[tuple[str, str], str] = {
     # cites it; it goes with the table.
     ("compose.plan", "WITH_WITHOUT_STATED"): STATED,
     ("compose.plan", "_TEAM_READER_REFUSES"): (
-        "debt, owed by the step 'the Result is typed' ((b)1 after the Phase 2 review): the cells a team's log, splits and run"
-        " refuse with a sentence of their own at RUN, let through the planner only because that refusal is no Cause yet"
+        "debt, owed by a decline-to-Cause commit after 'the Result is typed' (2026-10-05): the cells a team's log, splits and run"
+        " refuse at RUN with a sentence of their own, let through the planner; RUN's refusals are typed now, but these are"
+        " declines (Unsupported), and making them the planner's Causes moves answered_by on the unit tests' team calls"
+        " (0 of 628 recorded, 0 of 2,082 feed answers reach them) - Jeff's enumerated-move rule, its own commit"
     ),
     ("compose.core", "COMPILER_SLOTS"): "debt, owed by Phase 3: `ranked_by` is a measure the typed Reading carries, not a scoping slot that narrows nothing",
     ("reading", "SCOPING_SLOTS"): "debt, owed by Phase 3: the Reading's typed filters replace the scope's list of slot names",
-    ("coverage", "_BOX_SCORE_SCOPING"): ("debt, owed by the step 'the Result is typed' ((b)6): which floor a `player_stat` reads follows the planned query's relation, not which of its slots are set"),
+    ("coverage", "_BOX_SCORE_SCOPING"): (
+        "debt, owed by Phase 3: which floor a `player_stat` reads could follow the planned point's relation (Planned.shape, since"
+        " 2026-10-05), but the answering loop's declined path checks the floor with no plan (agent: check_coverage(intent, scope))"
+    ),
     ("conditions", "_CONDITION_PLAYER_ONLY_CELLS"): (
         "debt, owed by Phase 3: the complement of TEAM_RELATION_SCOPING restated, which the planner's cell check over the team relation refuses by itself"
     ),

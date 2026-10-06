@@ -22,7 +22,7 @@ from test_templates import streak  # the compiler's, the template retired (compo
 from association.fetch.repairs import real_games
 from association.nba.season import current_season
 from association.query.answer import AnswerContext, Reply
-from association.query.compose.plan import STATED_SCOPING
+from association.query.compose.plan import words_stated
 from association.query.coverage import check_coverage
 from association.query.parse import with_point
 from association.query.reading import Reading, Scope, Unsupported, unhonored_scoping
@@ -398,7 +398,7 @@ def test_the_team_as_its_own_opponent_falls_through(team_ctx: AnswerContext) -> 
 
 def test_team_record_honors_venue_opponent_and_span_but_not_order() -> None:
     # The compiler's since Phase 2's slice (iv): its words state these, and the planner declines `order`.
-    stated = STATED_SCOPING["team_record"]
+    stated = words_stated("team_record")
     assert unhonored_scoping("team_record", Scope.from_slots({"venue": "home", "opponent": "Boston Celtics", "span": "career"}), stated) == []
     assert unhonored_scoping("team_record", Scope.from_slots({"order": "recent"}), stated) == ["order"]
 
@@ -407,7 +407,7 @@ def test_team_record_honors_situation_and_split_at_the_declaration_level() -> No
     """The declaration only says the slot is stated - the reader itself
     still refuses a `situation` that names no month and a `split` that is not
     "month" (see the tests above), the same way it always refused `order`."""
-    stated = STATED_SCOPING["team_record"]
+    stated = words_stated("team_record")
     assert unhonored_scoping("team_record", Scope.from_slots({"situation": "in october", "split": "month"}), stated) == []
 
 

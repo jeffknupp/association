@@ -846,7 +846,55 @@ model's. Two things follow, and both matter when you add a shape:
   - **"with and without X" is the split over X**, read from its "without".
 
 - **A shape Phase 2 has ported is a reader and a sayer, and nothing else
-  answers it.** The game log is the first (2026-10-03, `ROADMAP.md`,
+  answers it.** What travels between them is typed (2026-10-05, "the
+  Result is typed", the Phase 2 review's cleanup (b)1, (b)5, (b)6), and a
+  change keeps it so:
+  - **A reader returns `Result | Refusal | Clarify`** (`query/result.py`),
+    never a sentence. A refusal found at RUN is a `Refusal(kind, facts)`
+    whose kind is in the closed `result.RUN_CAUSES` (a fact found in the
+    warehouse), disjoint from the reading's `reading.CAUSES` (a fact read
+    from the words) - a test holds the two apart; a question back is a
+    `Clarify(asked, candidates, ...)`. The relation modules
+    (`no_narrowed_games`, `no_games`, `condition_team_no_games`,
+    `entities.clarify`, the coverage floor as `coverage.floor_refusal`)
+    return the same types. ONE phrase table words every cause,
+    `say.refusal_phrase(kind, facts)`, beside `note_phrase` and
+    `decision_phrase`; the planner's `refusal_result` says a reading's
+    `Cause` through it. A new refusal is a kind in `RUN_CAUSES` and a
+    phrase there. `Refusal.shown`/`under` say what the page shows beside
+    the sentence and under which keys, since the readers' pages differed
+    and the answers' data is held identical.
+  - **A cell the read applied is a typed value, not a key.**
+    `Narrowing.cells` holds the `result.Cell` union (`Period`, `OnDate`,
+    `Line`, `Role`, `GameOfSeries`, `Calendar`, `Companions`, `Met`,
+    `ShotValue`), read by type (`narrowing.cell(Role)`, `lines()`,
+    `period`); a span cut is `Span.since`/`until`/`ordinal`; a split's or
+    a run's parameter is its body's (`Grouped.of`, `Runs.line`/`won`).
+    What the sentence needs beside the body is ONE frozen record per shape
+    (`result.Facts`: `CountFacts`, `LogFacts`, `LineFacts`, ...), read
+    through `say._facts(result, Kind)`, which raises on another shape's
+    record. There is no untyped `facts` mapping to add a key to; a shape
+    that needs a new fact adds a field to its record. A read that found
+    nothing keeps its body's shape (an empty `Rows`, a `Scalar` with no
+    values) and gives its reason as `Result.empty`, a `Refusal`.
+  - **The answer side chooses by shape, never by intent.** The planner
+    settles what a point is read and said as - `plan.PointShape(relation,
+    shape, by)`, by `plan.shape_of(intent, query)`, on `Planned.shape` -
+    and `compose.answer` picks the reader from `_ROUTES` by that key alone;
+    `STATED_SCOPING` is keyed by it too (`plan.words_stated(name)` is the
+    planner's lookup by a template's name while it still reads intents;
+    `SHAPE_WORDS` names each shape's retired words). `say()` chooses the
+    sayer from the headline body's type and the one field that says what
+    it is (`Scalar.how`, `Grouped.by`, `Rows.by`, `Chart.kind`) - never
+    `Span.source`, the relation or a facts key; a sayer reached so may
+    still tell its subject's kind or a cell it says (a quarter's
+    `Period`, a matchup's `Met`). What still reads the intent: the
+    planner (Phase 3 gives the Reading its own shape and `by`, and
+    `shape_of` goes), `Planned.floor` (the coverage entry, `coverage.SOURCES`
+    keyed by the retired words: `# Phase 3: needs the relation's declared
+    tables`), `Answer.intent` for the page (Phase 4).
+
+  The game log is the first (2026-10-03, `ROADMAP.md`,
   "Phase 2, the expected steps", step 0): `compose/logs.py` reads a
   player's or a team's log into a `Result` (`query/result.py` - the rows,
   the count the window cut them from, the per-row summary, the remarks as
@@ -906,8 +954,9 @@ model's. Two things follow, and both matter when you add a shape:
   `execute`, and nothing else runs a season-line statement. The line is a `Scalar` and
   the history a `Grouped` by `season` with a career's `summary` part, the
   comparison a `Grouped` by `subject`, each on a `Span` whose `source` is
-  `"seasons"`, which is how `say()` tells them from the games relation's
-  shapes). No shape has a presenter now (the team's went with step 4). Three rules the slice set, which every later slice follows:
+  `"seasons"`; the line's `Scalar.how` is `"season"`, which is how `say()`
+  tells it from the games relation's line, and a comparison over the
+  games relation carries a `Met` cell). No shape has a presenter now (the team's went with step 4). Three rules the slice set, which every later slice follows:
   - **A note is written as data and said once.** The reader builds
     `Note("window_short", {found, asked, ...})`; the sayer phrases it
     (`say.note_phrase`, ONE phrase per kind) and records it through
@@ -1051,10 +1100,11 @@ model's. Two things follow, and both matter when you add a shape:
   reader gave no point has a default point of its own
   (`point.DEFAULT_POINTS`: its readings gained one when it moved), is
   declined beyond the scoping its retired words state
-  (`compose.plan.STATED_SCOPING`) by the planner, in the sentence the
+  (`compose.plan.words_stated`) by the planner, in the sentence the
   retired scope check refused it with (`compose.plan.PORTED_SHAPES`), and
   is read and said with nothing after it: a decline is refused, never
-  handed to the compilers' own sentences (`compose._read_ported_shape`).
+  handed to the compilers' own sentences (`compose._read_only`, a route
+  marked `only`).
   **"The compiler answers them" means each is a reader and the sayer over
   a compiled statement** (the paragraphs above). Until Phase 2 most were
   still read and worded by the retired template's body through a

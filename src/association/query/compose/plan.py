@@ -44,117 +44,315 @@ In the planner, which declines by it, since the last adapter
 .. versionadded:: 5.0.0
 """
 
-STATED_SCOPING: dict[str, frozenset[str]] = {
-    # game_log and player_stat retired stating the relation's whole set, and
-    # `season_type_unstated`: read over both season types merged by date for
-    # a log (compose.logs, which takes this set since Phase 2's first
-    # slice), and from box scores as one combined read for an average
-    # (`_player_stat_reads_box_scores`, `player_relation_season_type`).
-    "game_log": relation_scoping("game_log", "season_type_unstated"),
-    "player_stat": relation_scoping("player_stat", "season_type_unstated"),
-    # player_splits' words: the relation's set less a date and a window
-    # (RELATION_SCOPING_EXCLUDED: one game has nothing to split).
-    "player_splits": relation_scoping("player_splits"),
-    # The retired templates' words, as they stated their narrowings when they
-    # retired (ROADMAP plan item 6, step (d), part 4).
-    "record_when": relation_scoping("record_when"),
-    "player_history": frozenset({"span"}),
-    # leaderboard's words: a career pool, and a season total or a unit it
-    # refuses by name (the template's own HONORED_SCOPING when it retired).
-    "leaderboard": frozenset({"span", "rate"}),
-    # period_split's words: the relation's set less a career and a since/until
-    # range (RELATION_SCOPING_EXCLUDED: the accuracy caveat is per season),
-    # which its point refuses outright (compose.adapt._adapt_period_split).
-    # A period CONDITION (a quarter conditioning which games count, beside
-    # the quarter measured - "first quarter points in games he made a
-    # fourth-quarter three") is not among those words either
-    # (RELATION_SCOPING_EXCLUDED): the presenter steps aside and the
-    # compiler's sentence, which names both, answers.
-    "period_split": relation_scoping("period_split"),
-    # player_compare's words state no narrowing at all; its point refuses
-    # one outright (query/point.py._compare_point), as the retired scope check did.
-    "player_compare": frozenset(),
-    # streak's words: the relation's set less one date, a window and a
-    # quarter (RELATION_SCOPING_EXCLUDED: a run is a run of whole games over
-    # every game in the span), which the planner refuses outright
-    # (compose.plan._shape_declines), and the cells only a named player's
-    # games settle on a team's or the league's run, by name, there too.
-    "streak": relation_scoping("streak"),
-    # player_matchup's words: the relation's set less a third team, a window,
-    # an ordinal season and a quarter (RELATION_SCOPING_EXCLUDED), which the
-    # planner refuses outright (compose.plan._shape_declines).
-    "player_matchup": relation_scoping("player_matchup"),
-    # with_without's words: a career, the teammates, one opponent and a
-    # companion's role, the template's own declaration when it retired.
-    "with_without": WITH_WITHOUT_STATED,
-    "single_game_high": frozenset({"span"}),
-    # A count is already a line on a column; `below` is the same line the
-    # other way ("games with under 14 fta"), and a phrase carrying the count's
-    # own number IS the count, misread - compose.counts reads it so.
-    # `season_type_unstated` is stated the way `scoped_player` reads it -
-    # one combined `season_type IN (2, 3)` read (player_relation_season_type).
-    "threshold_count": frozenset({"span", "below", "above", "season_n", "season_type_unstated"}),
-    # The team-season readers' words (compose.team_stats), as the retired
-    # templates honored them: one team's line and its power index state no
-    # narrowing at all; a ranking states the team relation's cells less the
-    # ones TEAM_RELATION_SCOPING_EXCLUDED["team_leaderboard"] gives a reason
-    # for - and refuses, by name, a venue or a span its metric has no
-    # reading over (compose.team_stats).
-    "team_stat": frozenset(),
-    "team_outlook": frozenset(),
-    "team_leaderboard": team_relation_scoping("team_leaderboard"),
-    # The shapes Phase 2's slice (iv) ported from templates (PORTED_SHAPES):
-    # each retired template's HONORED_SCOPING row, moved with it. Every
-    # meeting in a season, on a date, at a venue, or over a since-bounded or
-    # whole-career span; `order` and `game_n` pick out a subset of the tally
-    # (TEAM_RELATION_SCOPING_EXCLUDED says why).
-    "head_to_head": team_relation_scoping("head_to_head"),
-    # A team's quarter or half: the team relation's whole set (its games
-    # from `team_games`, its team and span from `scoped_team`), the quarter
-    # or half the relation's own narrowing.
-    "team_quarter_points": team_relation_scoping("team_quarter_points"),
-    # The league's ranking by a quarter or half reads one season's pool,
-    # narrowed by an opponent or a venue; a range of seasons and one date are
-    # refused (the accuracy is measured per season, and one game ranks
-    # nothing per game).
-    "period_leaderboard": frozenset({"period", "half", "opponent", "venue"}),
-    # A team's record: the team relation's cells less a date and a window
-    # (TEAM_RELATION_SCOPING_EXCLUDED says why), a split by month, and both
-    # season types together ("including the playoffs").
-    "team_record": team_relation_scoping("team_record", "split", "season_type_unstated"),
-    # The NetPoints relation's two (Phase 2, slice (v)), as the retired
-    # templates honored them: a first or last game, one game's NetPoints or
-    # its fingerprint drawn from the per-game tables; and a calendar date on
-    # a fingerprint, honored by refusing it in the reader's own words - the
-    # loader picks a player's first or last game, which is a different
-    # question from a date (``compose.netpoints``).
-    "player_netpoints": frozenset({"order"}),
-    "fingerprint": frozenset({"order", "date"}),
-    # The shot relation's readers (compose.shots, Phase 2, step 5): every
-    # cell of the player relation they take their games from, less a quarter
-    # and a half (RELATION_SCOPING_EXCLUDED: a shot read draws every shot of
-    # each game) - the retired templates' HONORED_SCOPING rows, moved.
-    "shot_chart": relation_scoping("shot_chart"),
-    "shot_distance": relation_scoping("shot_distance"),
+
+def _stated_by_words() -> dict[str, frozenset[str]]:
+    """The retired words -> the scoping they state, by the name of the
+    template whose sentence they are: :data:`STATED_SCOPING` keyed by the
+    words, which :data:`SHAPE_WORDS` maps each shape to. A compiled
+    intent's sayer answers in its retired template's sentence, which names
+    the narrowings that template honored and no other: asked a point
+    narrowed beyond them (an opponent on a single-game high, a condition on
+    a history), its reader steps aside (``None``) and the compiler's own
+    sentence, which states every narrowing the relation applied, answers.
+    A narrowing the relation cannot honor at all is the planner's refusal
+    (:func:`plan`), before any reader runs; until 5.0.0 these lists lived
+    in ``HONORED_SCOPING`` under the retired templates' names."""
+    return {
+        # game_log and player_stat retired stating the relation's whole set, and
+        # `season_type_unstated`: read over both season types merged by date for
+        # a log (compose.logs, which takes this set since Phase 2's first
+        # slice), and from box scores as one combined read for an average
+        # (`_player_stat_reads_box_scores`, `player_relation_season_type`).
+        "game_log": relation_scoping("game_log", "season_type_unstated"),
+        "player_stat": relation_scoping("player_stat", "season_type_unstated"),
+        # player_splits' words: the relation's set less a date and a window
+        # (RELATION_SCOPING_EXCLUDED: one game has nothing to split).
+        "player_splits": relation_scoping("player_splits"),
+        # The retired templates' words, as they stated their narrowings when they
+        # retired (ROADMAP plan item 6, step (d), part 4).
+        "record_when": relation_scoping("record_when"),
+        "player_history": frozenset({"span"}),
+        # leaderboard's words: a career pool, and a season total or a unit it
+        # refuses by name (the template's own HONORED_SCOPING when it retired).
+        "leaderboard": frozenset({"span", "rate"}),
+        # period_split's words: the relation's set less a career and a since/until
+        # range (RELATION_SCOPING_EXCLUDED: the accuracy caveat is per season),
+        # which its point refuses outright (compose.adapt._adapt_period_split).
+        # A period CONDITION (a quarter conditioning which games count, beside
+        # the quarter measured - "first quarter points in games he made a
+        # fourth-quarter three") is not among those words either
+        # (RELATION_SCOPING_EXCLUDED): the presenter steps aside and the
+        # compiler's sentence, which names both, answers.
+        "period_split": relation_scoping("period_split"),
+        # player_compare's words state no narrowing at all; its point refuses
+        # one outright (query/point.py._compare_point), as the retired scope check did.
+        "player_compare": frozenset(),
+        # streak's words: the relation's set less one date, a window and a
+        # quarter (RELATION_SCOPING_EXCLUDED: a run is a run of whole games over
+        # every game in the span), which the planner refuses outright
+        # (compose.plan._shape_declines), and the cells only a named player's
+        # games settle on a team's or the league's run, by name, there too.
+        "streak": relation_scoping("streak"),
+        # player_matchup's words: the relation's set less a third team, a window,
+        # an ordinal season and a quarter (RELATION_SCOPING_EXCLUDED), which the
+        # planner refuses outright (compose.plan._shape_declines).
+        "player_matchup": relation_scoping("player_matchup"),
+        # with_without's words: a career, the teammates, one opponent and a
+        # companion's role, the template's own declaration when it retired.
+        "with_without": WITH_WITHOUT_STATED,
+        "single_game_high": frozenset({"span"}),
+        # A count is already a line on a column; `below` is the same line the
+        # other way ("games with under 14 fta"), and a phrase carrying the count's
+        # own number IS the count, misread - compose.counts reads it so.
+        # `season_type_unstated` is stated the way `scoped_player` reads it -
+        # one combined `season_type IN (2, 3)` read (player_relation_season_type).
+        "threshold_count": frozenset({"span", "below", "above", "season_n", "season_type_unstated"}),
+        # The team-season readers' words (compose.team_stats), as the retired
+        # templates honored them: one team's line and its power index state no
+        # narrowing at all; a ranking states the team relation's cells less the
+        # ones TEAM_RELATION_SCOPING_EXCLUDED["team_leaderboard"] gives a reason
+        # for - and refuses, by name, a venue or a span its metric has no
+        # reading over (compose.team_stats).
+        "team_stat": frozenset(),
+        "team_outlook": frozenset(),
+        "team_leaderboard": team_relation_scoping("team_leaderboard"),
+        # The shapes Phase 2's slice (iv) ported from templates (PORTED_SHAPES):
+        # each retired template's HONORED_SCOPING row, moved with it. Every
+        # meeting in a season, on a date, at a venue, or over a since-bounded or
+        # whole-career span; `order` and `game_n` pick out a subset of the tally
+        # (TEAM_RELATION_SCOPING_EXCLUDED says why).
+        "head_to_head": team_relation_scoping("head_to_head"),
+        # A team's quarter or half: the team relation's whole set (its games
+        # from `team_games`, its team and span from `scoped_team`), the quarter
+        # or half the relation's own narrowing.
+        "team_quarter_points": team_relation_scoping("team_quarter_points"),
+        # The league's ranking by a quarter or half reads one season's pool,
+        # narrowed by an opponent or a venue; a range of seasons and one date are
+        # refused (the accuracy is measured per season, and one game ranks
+        # nothing per game).
+        "period_leaderboard": frozenset({"period", "half", "opponent", "venue"}),
+        # A team's record: the team relation's cells less a date and a window
+        # (TEAM_RELATION_SCOPING_EXCLUDED says why), a split by month, and both
+        # season types together ("including the playoffs").
+        "team_record": team_relation_scoping("team_record", "split", "season_type_unstated"),
+        # The NetPoints relation's two (Phase 2, slice (v)), as the retired
+        # templates honored them: a first or last game, one game's NetPoints or
+        # its fingerprint drawn from the per-game tables; and a calendar date on
+        # a fingerprint, honored by refusing it in the reader's own words - the
+        # loader picks a player's first or last game, which is a different
+        # question from a date (``compose.netpoints``).
+        "player_netpoints": frozenset({"order"}),
+        "fingerprint": frozenset({"order", "date"}),
+        # The shot relation's readers (compose.shots, Phase 2, step 5): every
+        # cell of the player relation they take their games from, less a quarter
+        # and a half (RELATION_SCOPING_EXCLUDED: a shot read draws every shot of
+        # each game) - the retired templates' HONORED_SCOPING rows, moved.
+        "shot_chart": relation_scoping("shot_chart"),
+        "shot_distance": relation_scoping("shot_distance"),
+    }
+
+
+@dataclass(frozen=True)
+class PointShape:
+    """What a planned point is read and said as (``ROADMAP-TYPES.md``,
+    "Where today's 25 intents land": seven relations and six table shapes):
+    the ``relation`` it reads (``player_games``, ``player_periods`` - a
+    quarter or half of his games -, ``player_seasons``, ``team_games``,
+    ``team_periods``, ``team_seasons``, ``team_snapshots``, ``shots``,
+    ``netpoints``), its ``shape`` (``scalar``, ``rows``, ``ranking``,
+    ``comparison``, ``split``, ``runs``, ``chart``) and what one row is
+    ``by`` (or, for a scalar, how it is reduced). ``compiled`` is the
+    shape of a point no reader takes, which the compiler's own sentence
+    answers. The answer side chooses a reader by this and by nothing else
+    (``compose.answer``); the planner settles it once
+    (:func:`shape_of`).
+
+    .. versionadded:: 5.0.0
+    """
+
+    relation: str
+    shape: str
+    by: str = ""
+
+
+#: The team shapes whose reader is the point's only answer (slice (iv)'s
+#: ported shapes, less the league's quarter ranking, a player relation's).
+_TEAM_WHOLE_SHAPES: dict[str, PointShape] = {
+    "head_to_head": PointShape("team_games", "comparison", "opponent"),
+    "team_quarter_points": PointShape("team_periods", "scalar", "total"),
+    "team_record": PointShape("team_games", "scalar", "record"),
 }
-"""Intent -> the scoping its reader's WORDS state. A compiled intent's
-sayer answers in its retired template's sentence, which names the
-narrowings that template honored and no other: asked a point narrowed
-beyond them (an opponent on a single-game high, a condition on a history),
-its reader steps aside (``None``) and the compiler's own sentence, which
-states every narrowing the relation applied, answers. A narrowing the
-relation cannot honor at all is the planner's refusal (:func:`plan`),
-before any reader runs; until 5.0.0 these lists lived in
-``HONORED_SCOPING`` under the retired templates' names, where
-``agent._run_compiled`` also read them as the refusal's reason - which
-could name a slot where the compiler had declined for another cause.
+
+
+def _player_shape(intent: str | None, q: Query) -> PointShape:
+    """A point on a player's games or the season line: the shape its
+    reader reads, or the compiler's own where none does."""
+    if q.source == "seasons":
+        seasons = {
+            "leaderboard": PointShape("player_seasons", "ranking", "player"),
+            "player_stat": PointShape("player_seasons", "scalar", "line"),
+            "player_history": PointShape("player_seasons", "split", "season"),
+            "player_compare": PointShape("player_seasons", "comparison", "subject"),
+        }
+        return seasons.get(intent or "", PointShape("player_seasons", "compiled", f"{q.skeleton} by {q.group}"))
+    if intent == "period_split":
+        return PointShape("player_periods", "rows", "date") if q.skeleton == "rows" else PointShape("player_periods", "split", "period")
+    if intent == "period_leaderboard":
+        return PointShape("player_periods", "ranking", "player")
+    if intent in ("head_to_head", "team_quarter_points", "team_record"):
+        # A team shape's reader takes the point whichever relation planned it.
+        return _TEAM_WHOLE_SHAPES[intent or ""]
+    games = {
+        ("game_log", "rows"): PointShape("player_games", "rows", "date"),
+        ("player_stat", "rows"): PointShape("player_games", "rows", "date"),
+        ("player_stat", "scalar"): PointShape("player_games", "scalar", "line"),
+        ("record_when", "scalar"): PointShape("player_games", "split", "line"),
+        ("player_splits", "grouped"): PointShape("player_games", "split", "splits"),
+        ("streak", "run"): PointShape("player_games", "runs", "line"),
+        ("player_matchup", "pair"): PointShape("player_games", "comparison", "met"),
+    }
+    if intent == "threshold_count":
+        return PointShape("player_games", {"scalar": "scalar", "grouped": "ranking"}.get(q.skeleton, "rows"), "count")
+    if intent == "single_game_high":
+        return PointShape("player_games", "rows", "measure")
+    return games.get((intent or "", q.skeleton), PointShape("player_games", "compiled", f"{q.skeleton} by {q.group}"))
+
+
+def _team_shape(intent: str | None, q: TeamQuery) -> PointShape:
+    """A point on a team's games: the shape its reader reads, or the team
+    compiler's own sum where none does."""
+    if intent == "record_when":
+        return PointShape("team_games", "split", "line")
+    if intent in _TEAM_WHOLE_SHAPES:
+        return _TEAM_WHOLE_SHAPES[intent or ""]
+    shapes = {
+        ("game_log", "rows"): PointShape("team_games", "rows", "date"),
+        ("player_splits", "grouped"): PointShape("team_games", "split", "splits"),
+        ("streak", "run"): PointShape("team_games", "runs", "won"),
+    }
+    if intent == "with_without" and q.shape == "grouped" and q.group == "presence":
+        return PointShape("team_games", "split", "presence")
+    return shapes.get((intent or "", q.shape), PointShape("team_games", "compiled", f"{q.shape} by {q.group}"))
+
+
+#: A team's own season, by its relation and shape (``point.TEAM_SEASON_POINTS``'s pairs).
+_TEAM_SEASON_SHAPES: dict[tuple[str, str], PointShape] = {
+    ("team_seasons", "scalar"): PointShape("team_seasons", "scalar", "line"),
+    ("team_seasons", "grouped"): PointShape("team_seasons", "ranking", "team"),
+    ("team_snapshots", "scalar"): PointShape("team_snapshots", "scalar", "projection"),
+}
+
+
+def shape_of(intent: str | None, query: Query | TeamQuery | TeamSeasonQuery | NetPointsQuery | ShotQuery) -> PointShape:
+    """The shape ``query`` is read and said as: the planner's translation of
+    the reading's intent into the target types' relation, shape and ``by``
+    - settled once, here, so that nothing after the plan reads the intent
+    (the answer side dispatches on this; ``ROADMAP.md``, the Phase 2
+    review's cleanup (b)6). The query alone settles it where its relation,
+    shape and group differ; the intent only where two retired templates'
+    words planned the same query and are still said apart (a log against a
+    quarter's log, the league's ranking against a period's, a count's
+    shapes, a team's own total read from its season line first).
+
+    # Phase 3: needs the Reading's own shape and ``by`` - this table goes
+    # when the reader names them and no longer carries an intent.
+
+    .. versionadded:: 5.0.0
+    """
+    if isinstance(query, NetPointsQuery):
+        return PointShape("netpoints", "chart", "fingerprint") if query.shape == "chart" else PointShape("netpoints", "scalar", "ratings")
+    if isinstance(query, ShotQuery):
+        return PointShape("shots", "chart", "shots") if query.shape == "chart" else PointShape("shots", "scalar", "distance")
+    if isinstance(query, TeamSeasonQuery):
+        return _TEAM_SEASON_SHAPES[(query.relation, query.shape)]
+    if intent in TEAM_SEASON_POINTS:
+        # A team's own total or ranking read from another relation's point:
+        # the team-season reader first, as the retired template was tried
+        # before the compiler, and the team compiler's sum where it declines.
+        return _TEAM_SEASON_SHAPES[TEAM_SEASON_POINTS[intent or ""]]
+    if isinstance(query, TeamQuery):
+        return _team_shape(intent, query)
+    return _player_shape(intent, query)
+
+
+#: Each reader's shape -> the retired words it says the answer in: their
+#: scoping (:func:`words_stated`) and the name a decline gives the shape.
+SHAPE_WORDS: dict[PointShape, str] = {
+    PointShape("player_games", "rows", "date"): "game_log",
+    PointShape("player_games", "scalar", "line"): "player_stat",
+    PointShape("player_games", "split", "line"): "record_when",
+    PointShape("player_games", "split", "splits"): "player_splits",
+    PointShape("player_games", "scalar", "count"): "threshold_count",
+    PointShape("player_games", "ranking", "count"): "threshold_count",
+    PointShape("player_games", "rows", "count"): "threshold_count",
+    PointShape("player_games", "rows", "measure"): "single_game_high",
+    PointShape("player_games", "runs", "line"): "streak",
+    PointShape("player_games", "comparison", "met"): "player_matchup",
+    PointShape("player_periods", "rows", "date"): "period_split",
+    PointShape("player_periods", "split", "period"): "period_split",
+    PointShape("player_periods", "ranking", "player"): "period_leaderboard",
+    PointShape("player_seasons", "ranking", "player"): "leaderboard",
+    PointShape("player_seasons", "scalar", "line"): "player_stat",
+    PointShape("player_seasons", "split", "season"): "player_history",
+    PointShape("player_seasons", "comparison", "subject"): "player_compare",
+    PointShape("team_games", "rows", "date"): "game_log",
+    PointShape("team_games", "split", "splits"): "player_splits",
+    PointShape("team_games", "runs", "won"): "streak",
+    PointShape("team_games", "split", "presence"): "with_without",
+    PointShape("team_games", "split", "line"): "record_when",
+    PointShape("team_games", "comparison", "opponent"): "head_to_head",
+    PointShape("team_periods", "scalar", "total"): "team_quarter_points",
+    PointShape("team_games", "scalar", "record"): "team_record",
+    PointShape("team_seasons", "scalar", "line"): "team_stat",
+    PointShape("team_seasons", "ranking", "team"): "team_leaderboard",
+    PointShape("team_snapshots", "scalar", "projection"): "team_outlook",
+    PointShape("netpoints", "scalar", "ratings"): "player_netpoints",
+    PointShape("netpoints", "chart", "fingerprint"): "fingerprint",
+    PointShape("shots", "chart", "shots"): "shot_chart",
+    PointShape("shots", "scalar", "distance"): "shot_distance",
+}
+"""Which retired template's words each reader's shape is said in, the one
+place a shape is named for a template: its scoping (:data:`STATED_SCOPING`)
+and the name a decline of the shape gives (" has no reading of this
+point").
+
+.. versionadded:: 5.0.0
+"""
+
+STATED_SCOPING: dict[PointShape, frozenset[str]] = {shape: _stated_by_words()[words] for shape, words in SHAPE_WORDS.items()}
+"""A reader's shape -> the scoping its retired WORDS state (keyed by the
+shape it declares for; the sets themselves are :func:`_stated_by_words`'):
+asked a point narrowed beyond them, the reader steps aside and the
+compiler's own sentence answers. It stays until Phase 3's cells; the
+answer side reads it by the planned point's :class:`PointShape`, never by
+an intent.
 
 .. versionadded:: 5.0.0
 
 .. versionchanged:: 5.0.0
    In the planner, its one reader beside :data:`WITH_WITHOUT_STATED`, since
    ``compose/present.py`` was deleted (Phase 2, slice (iv)).
+
+.. versionchanged:: 5.0.0
+   Keyed by :class:`PointShape` (2026-10-05); by intent until then -
+   :func:`words_stated` is that lookup, for the planner, which still reads
+   the reading's intent.
 """
+
+
+def words_stated(words: str) -> frozenset[str]:
+    """The scoping a retired template's words state, by its name - the
+    planner's lookup, while it still reads the reading's intent: the
+    shape :data:`SHAPE_WORDS` names for those words, in
+    :data:`STATED_SCOPING`.
+
+    # Phase 3: needs the Reading's typed cells - the planner checks those,
+    # and nothing looks a set up by a template's name.
+
+    .. versionadded:: 5.0.0
+    """
+    return STATED_SCOPING[next(shape for shape, named in SHAPE_WORDS.items() if named == words)]
+
 
 PORTED_SHAPES: frozenset[str] = frozenset({"head_to_head", "team_quarter_points", "period_leaderboard", "team_record"})
 """The shapes Phase 2's slice (iv) ported from templates the reader gave
@@ -183,7 +381,7 @@ def _team_shape_cells(reading: Reading) -> frozenset[str]:
     handful of player cells with their own sentence."""
     if reading.intent in PORTED_SHAPES:
         # Declined beyond these first, in the shape's own words.
-        return STATED_SCOPING[reading.intent]
+        return words_stated(reading.intent)
     if reading.group == "presence":
         return frozenset({"without", "conditions"})
     if reading.shape == "grouped":
@@ -228,7 +426,7 @@ def _shape_declines(point: Reading) -> str | None:
         ignored = unhonored_scoping(intent, scope, WITH_WITHOUT_STATED)
         return f"with_without cannot honor {ignored} - it would answer for a different span than was asked" if ignored else None
     if intent in PORTED_SHAPES or intent in CHART_INTENTS:
-        ignored = unhonored_scoping(intent, scope, STATED_SCOPING[intent])
+        ignored = unhonored_scoping(intent, scope, words_stated(intent))
         return f"{intent} cannot honor {ignored} - it would answer for a different span than was asked" if ignored else None
     if intent == "streak" and point.relation != "player":
         # A team's or the league's run: the cells only a named player's
@@ -276,7 +474,7 @@ def plan(reading: Reading) -> Query | TeamQuery | TeamSeasonQuery | NetPointsQue
     except Unsupported as exc:
         if reading.intent not in TEAM_SEASON_POINTS:
             raise
-        declined = team_season_declines(reading.intent, reading.scope, STATED_SCOPING[reading.intent])
+        declined = team_season_declines(reading.intent, reading.scope, words_stated(reading.intent))
         if declined is not None:
             raise Unsupported(declined) from exc
         relation, shape = TEAM_SEASON_POINTS[reading.intent]
@@ -365,7 +563,7 @@ def _season_line_reads(intent: str | None, q: Query) -> bool:
     relation saying for itself whether it reads a point, with the scoping
     its words state (:data:`STATED_SCOPING`)."""
     reads = _SEASON_LINE_READS.get(intent or "")
-    return reads is not None and reads(q, STATED_SCOPING[intent or ""])
+    return reads is not None and reads(q, words_stated(intent or ""))
 
 
 def _game_level(intent: str | None, q: Query) -> Query:
@@ -414,6 +612,13 @@ class Planned:
     query: Query | TeamQuery | TeamSeasonQuery | NetPointsQuery | ShotQuery | None = None
     declined: str | None = None
     refusal: Reply | None = None
+    #: What the query is read and said as (:func:`shape_of`): the answer
+    #: side's one key.
+    shape: PointShape | None = None
+    #: The coverage floor the point's season is checked against before a
+    #: reader runs - ``coverage.SOURCES``' entry, still named for the
+    #: retired words. # Phase 3: needs the relation's declared tables.
+    floor: str | None = None
 
 
 def refusal_of(cause: Cause) -> Refusal:
@@ -462,8 +667,9 @@ def plan_point(reading: Reading) -> Planned:
     if reading.point is None:
         return Planned(declined=reading.point_declined or "the compiler has no reading of this point")
     try:
-        return Planned(query=plan(reading.point))
+        query = plan(reading.point)
     except Unsupported as exc:
         return Planned(declined=str(exc))
     except Refused as exc:
         return Planned(refusal=say(exc.result))
+    return Planned(query=query, shape=shape_of(reading.intent, query), floor=reading.intent)

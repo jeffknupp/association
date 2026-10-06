@@ -56,7 +56,7 @@ def test_saying_a_result_records_each_note_once_under_its_kind() -> None:
 
 def test_a_log_with_no_rows_says_why() -> None:
     empty = Refusal(kind="no_game_on_date", facts={"player": "Tyrese Maxey", "kind": "regular season", "date": "2026-04-11", "narrowing": ""})
-    said = say(_player_result(parts=(), notes=(), empty=empty))
+    said = say(_player_result(parts=(Part(body=Rows()),), notes=(), empty=empty))
     assert said.answer == "No regular season game on 2026-04-11 found for Tyrese Maxey." and said.data["games"] == [] and said.data["message"] == said.answer
 
 
@@ -352,3 +352,29 @@ def test_the_cells_a_read_applied_are_typed_and_read_by_type() -> None:
     sayer = importlib.import_module("association.query.compose.say")
     with pytest.raises(TypeError, match="LogFacts sayer was handed LineFacts"):
         sayer._facts(Result(subject="New York Knicks", relation="team", parts=(Part(body=Rows()),), facts=LineFacts()), LogFacts)
+
+
+def test_the_answer_side_chooses_by_shape_and_never_by_intent() -> None:
+    """``compose.answer`` picks a reader by the planned point's shape
+    (``plan.PointShape``) and ``say`` a sayer by the body - neither reads an
+    intent (the Phase 2 review's cleanup (b)6). Every reader's shape has its
+    words' scoping, every scalar's reduction a sayer, and neither module's
+    code names ``intent``: a branch on it would be the dispatch this
+    replaced, back."""
+    import ast
+    import importlib
+    import typing
+    from pathlib import Path
+
+    from association.query.compose.plan import SHAPE_WORDS, STATED_SCOPING
+    from association.query.result import Scalar
+
+    compose = importlib.import_module("association.query.compose")
+    sayer = importlib.import_module("association.query.compose.say")
+    assert set(compose._ROUTES) == set(SHAPE_WORDS) == set(STATED_SCOPING)
+    assert set(sayer._SCALAR_SAYERS) == set(typing.get_args(typing.get_type_hints(Scalar)["how"]))
+    for module in (compose, sayer):
+        tree = ast.parse(Path(module.__file__ or "").read_text())
+        named = {node.attr for node in ast.walk(tree) if isinstance(node, ast.Attribute)} | {node.id for node in ast.walk(tree) if isinstance(node, ast.Name)}
+        arguments = {arg.arg for node in ast.walk(tree) if isinstance(node, ast.FunctionDef) for arg in node.args.args}
+        assert "intent" not in named and "intent" not in arguments, module.__name__

@@ -567,14 +567,14 @@ def test_the_order_intents_are_the_ones_that_honor_order() -> None:
     does not import the templates. An intent honoring `order` and missing here
     keeps the bug this fixed; one listed here that does not honor it turns
     into a fall-through."""
-    from association.query.compose.plan import STATED_SCOPING
+    from association.query.compose.plan import SHAPE_WORDS, words_stated
     from association.query.router import _ORDER_ON_A_SINGLE_GAME
 
     # player_stat honors an order only beside a limit of one (a single game
     # handed to game_log), so the stages set the pair together for it rather
     # than filling order alone - see _ORDER_ON_A_SINGLE_GAME. A retired
-    # template's list is what its reader's words state (STATED_SCOPING).
-    assert frozenset(intent for intent, honored in STATED_SCOPING.items() if "order" in honored) == ORDER_INTENTS | _ORDER_ON_A_SINGLE_GAME
+    # template's list is what its reader's words state (words_stated).
+    assert frozenset(intent for intent in set(SHAPE_WORDS.values()) if "order" in words_stated(intent)) == ORDER_INTENTS | _ORDER_ON_A_SINGLE_GAME
 
 
 # ---------------- scoping read from the question text ----------------
@@ -1499,13 +1499,13 @@ def test_a_rate_no_metric_holds_is_refused_rather_than_ranked_by_the_wrong_unit(
     half. What belongs here is that the router still states the unit rather
     than dropping it, because a dropped `rate` is a per-90 question answered
     per game with nothing saying so."""
-    from association.query.compose.plan import STATED_SCOPING
+    from association.query.compose.plan import words_stated
     from association.query.reading import unhonored_scoping
 
     per_90 = _ask("who were the top 10 in defensive netpoints / 90", '{"intent":"leaderboard","stat":"netpoints_defense","limit":10}')
     assert per_90.slots["stat"] == "netpoints_defense" and per_90.slots["rate"] == "/ 90"
     # Reaches the ranking's reader now (the compiler's presenter), which refuses by name.
-    assert unhonored_scoping("leaderboard", per_90.scope, STATED_SCOPING["leaderboard"]) == []
+    assert unhonored_scoping("leaderboard", per_90.scope, words_stated("leaderboard")) == []
     points = _ask("points per 100 possessions leaders", '{"intent":"leaderboard","stat":"points"}')
     assert points.slots["stat"] == "points" and points.slots["rate"] == "per 100 possessions"
     plain = _ask("who led the league in defensive netpoints", '{"intent":"leaderboard","stat":"netpoints_defense"}')

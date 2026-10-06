@@ -153,7 +153,9 @@ def _player_line_season(con: duckdb.DuckDBPyConnection, player: Entity, span: Re
     line_span = Span(season=season, season_type=season_type, phrase=span.during(), source="seasons")
     facts = replace(facts, season_n=span.ordinal)
     if row is None:
-        return Result(subject=player.name, relation="player", span=line_span, parts=(Part(body=Scalar(games=0)),), decisions=_player_line_redirect(con, player, span, season_type), facts=facts)
+        return Result(
+            subject=player.name, relation="player", span=line_span, parts=(Part(body=Scalar(games=0, how="season")),), decisions=_player_line_redirect(con, player, span, season_type), facts=facts
+        )
     found = dict(zip(columns, row, strict=True))
     sums: dict[str, Any] = {}
     for name in wanted:
@@ -164,7 +166,7 @@ def _player_line_season(con: duckdb.DuckDBPyConnection, player: Entity, span: Re
         sums[attempted_col] = found[attempted_col]
     if shooting:
         sums["made"], sums["attempted"] = found[shooting.made], found[shooting.attempted]
-    scalar = Scalar(games=found["gamesPlayed"], values={name: found[PLAYER_STAT_COLUMNS[name][0]] for name in wanted}, sums=sums)
+    scalar = Scalar(games=found["gamesPlayed"], values={name: found[PLAYER_STAT_COLUMNS[name][0]] for name in wanted}, sums=sums, how="season")
     return Result(subject=player.name, relation="player", span=line_span, parts=(Part(body=scalar),), facts=facts)
 
 
@@ -198,7 +200,7 @@ def _player_line_career(con: duckdb.DuckDBPyConnection, player: Entity, span: Re
     statement, attempted_col = career_statement(player.id, span.season_type, wanted, shooting)
     row = _first(values_of(con, statement))
     if row is None or not row[0]:
-        return Result(subject=player.name, relation="player", span=Span(season_type=span.season_type, career=True, source="seasons"), parts=(Part(body=Scalar(games=0)),), facts=facts)
+        return Result(subject=player.name, relation="player", span=Span(season_type=span.season_type, career=True, source="seasons"), parts=(Part(body=Scalar(games=0, how="season")),), facts=facts)
     games, first, last, seasons = row[:4]
     values: dict[str, Any] = {}
     sums: dict[str, Any] = {}
@@ -213,7 +215,7 @@ def _player_line_career(con: duckdb.DuckDBPyConnection, player: Entity, span: Re
         attempted = row[4 + 2 * len(wanted)] if attempted_col else None
         if attempted_col and attempted is not None:
             sums[attempted_col] = attempted
-    scalar = Scalar(games=int(games), values=values, sums=sums)
+    scalar = Scalar(games=int(games), values=values, sums=sums, how="season")
     line_span = Span(season_type=span.season_type, career=True, first=first, last=last, source="seasons")
     return Result(subject=player.name, relation="player", span=line_span, parts=(Part(body=scalar),), facts=replace(facts, season_count=seasons))
 
@@ -236,10 +238,10 @@ def _player_line_advanced(con: duckdb.DuckDBPyConnection, player: Entity, span: 
     facts = LineFacts(stat=stat)
     if row is None or row[0] is None:
         empty = Span(season=span.season, season_type=span.season_type, career=span.career, phrase=span.during(), source="seasons")
-        return Result(subject=player.name, relation="player", span=empty, parts=(Part(body=Scalar(games=0)),), facts=facts)
+        return Result(subject=player.name, relation="player", span=empty, parts=(Part(body=Scalar(games=0, how="season")),), facts=facts)
     value, volume, games, first, last, seasons, missing = row
     notes = (Note("seasons_missing", {"seasons": int(missing), "why": "empty_box_score", "stat": spec.column, "label": spec.label}),) if missing else ()
-    scalar = Scalar(games=games, values={stat: value}, sums={"volume": volume, "seasons_missing": int(missing)})
+    scalar = Scalar(games=games, values={stat: value}, sums={"volume": volume, "seasons_missing": int(missing)}, how="season")
     line_span = Span(season=span.season, season_type=span.season_type, career=span.career, first=first, last=last, phrase=span.during(first, last), source="seasons")
     return Result(subject=player.name, relation="player", span=line_span, parts=(Part(body=scalar),), notes=notes, facts=replace(facts, season_count=seasons))
 

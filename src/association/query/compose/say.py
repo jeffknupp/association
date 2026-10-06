@@ -33,6 +33,7 @@ from association.query.player_games import PERIOD_LOG_COLUMNS, PERIOD_RATES, STA
 from association.query.reading import ordinal_word
 from association.query.result import (
     Calendar,
+    Chart,
     ChartFacts,
     Clarify,
     Companions,
@@ -631,11 +632,12 @@ COACH_REFUSAL: str = (
 """
 
 
-def _unknown_stat(intent: str, stat: Any, shape: str) -> str:
-    """The refusal for a stat with no per-game column, in the shape's words."""
-    if intent == "single_game_high":
+def _unknown_stat(words: str, stat: Any, shape: str) -> str:
+    """The refusal for a stat with no per-game column, in the shape's words
+    (``words``: the cause's ``intent`` fact, the reading's name for them)."""
+    if words == "single_game_high":
         return f"A single-game high cannot rank games by {stat!r} - only by a box-score stat each game has a number for."
-    if intent == "game_log":
+    if words == "game_log":
         return f"A game log has no per-game column for {stat!r}."
     return f"{shape.capitalize()} cannot be read over {stat!r} - it has no per-game box-score column."
 
@@ -981,47 +983,50 @@ def say_team_log(result: Result) -> Reply:
     return Reply(data=data, answer="\n".join([header, *lines]) + _team_total_line(games, stat))
 
 
-def _say_grouped(result: Result) -> Reply | None:
-    """A grouped body worded by what it is grouped by - two named subjects, a
-    ranking by player (a count of games over a line, ``ranked_by="games"``,
-    or a stat over the season line), a record over a line, splits, a
-    quarter - or ``None`` for any other body. Split out of :func:`say` for
-    the complexity gate, in its order."""
+def _say_rows(result: Result) -> Reply:
+    """Rows by date: a team's log, a player's quarter or half game by game
+    (the read's :class:`~association.query.result.Period` cell), or his
+    log."""
+    if result.relation == "team":
+        return say_team_log(result)
+    return say_period_split(result) if result.narrowing.period is not None else say_player_log(result)
+
+
+def _say_line(result: Result) -> Reply:
+    """A line over games, per game: a team's quarter or half, or a player's line."""
+    return say_team_quarter_points(result) if result.relation == "team" else say_player_stat(result)
+
+
+def _say_ranking(result: Result) -> Reply:
+    """A ranking by player: of games over a line (``ranked_by="games"``), by
+    a quarter or half (the read's :class:`~association.query.result.Period`
+    cell, or a column per quarter), or by a season-line metric."""
     body = result.grouped
-    if body is None:
-        return None
-    if body.by == "player" and (result.narrowing.period is not None or body.ranked_by == "quarters"):
+    assert body is not None
+    if body.ranked_by == "games":
+        return say_threshold_count(result)
+    if result.narrowing.period is not None or body.ranked_by == "quarters":
         return say_period_leaderboard(result)
-    if body.by == "player":
-        return say_threshold_count(result) if body.ranked_by == "games" else say_leaderboard(result)
-    sayers = {"subject": say_player_matchup, "threshold": say_record_when, "split": say_splits, "period": say_period_by_quarter, "presence": say_with_without, "team": say_head_to_head}
-    sayer = sayers.get(body.by)
-    return sayer(result) if sayer is not None else None
+    return say_leaderboard(result)
 
 
-def _say_team_shape(result: Result) -> Reply | None:
-    """A team's own shape worded by its body - a record, a record by month,
-    a quarter or half, the power index, a season line or a ranking of teams
-    - or ``None``; split out of :func:`say` for the complexity gate, in its
-    order."""
-    if result.relation == "team" and result.scalar is not None and result.scalar.how == "record":
-        return say_team_record(result)
-    if result.relation == "team" and result.grouped is not None and result.grouped.by == "month":
-        return say_team_record_by_month(result)
-    if result.span.source == "team_snapshots":
-        return say_team_outlook(result)
-    if result.span.source == "team_seasons":
-        ranking = result.grouped
-        return say_team_leaderboard(result) if ranking is not None and ranking.by == "team" else say_team_stat(result)
-    if result.relation == "team" and result.narrowing.period is not None:
-        return say_team_quarter_points(result)
-    return None
+def _say_comparison(result: Result) -> Reply:
+    """Named subjects side by side: in the games they met in (the read's
+    :class:`~association.query.result.Met` cell), or their season lines."""
+    return say_player_matchup(result) if result.narrowing.cell(Met) is not None else say_player_compare(result)
+
+
+def _say_teams(result: Result) -> Reply:
+    """Teams side by side: ranked by a metric, or the two that met."""
+    body = result.grouped
+    assert body is not None
+    return say_team_leaderboard(result) if body.ranked_by is not None else say_head_to_head(result)
 
 
 def say(result: Result | Refusal | Clarify) -> Reply:
-    """``result`` worded by its shape: a team's rows, a player's rows, a
-    record grouped by a line, splits, or a player's line - or a refusal
-    by its cause, or a question back.
+    """``result`` worded by its shape (:func:`_sayer`): the headline part's
+    body and what it is by - or a refusal by its cause, or a question
+    back.
 
     .. versionadded:: 5.0.0
 
@@ -1029,36 +1034,16 @@ def say(result: Result | Refusal | Clarify) -> Reply:
        Takes a :class:`~association.query.result.Refusal` or a
        :class:`~association.query.result.Clarify` too: a read's outcome,
        whichever it was.
+
+    .. versionchanged:: 5.0.0
+       Chooses the sayer from the body alone (2026-10-05), where it read
+       the span's source and the relation as well.
     """
     if isinstance(result, Refusal):
         return say_refusal(result)
     if isinstance(result, Clarify):
         return say_clarify(result)
-    if result.span.source == "netpoints":
-        return say_fingerprint(result) if result.chart is not None else say_player_netpoints(result)
-    team = _say_team_shape(result)
-    if team is not None:
-        return team
-    if result.chart is not None:
-        return say_shot_chart(result)
-    if result.span.source == "shots" and result.scalar is not None:
-        return say_shot_distance(result)
-    if result.span.source == "seasons":
-        return _say_season_line(result)
-    if result.scalar is not None and result.scalar.how == "count":
-        return say_threshold_count(result)
-    if result.runs is not None:
-        return say_streak(result)
-    if result.scalar is not None:
-        return say_player_stat(result)
-    grouped = _say_grouped(result)
-    if grouped is not None:
-        return grouped
-    if result.rows is not None and result.rows.by != "date":
-        return say_single_game_high(result)
-    if result.rows is not None and result.narrowing.period is not None:
-        return say_period_split(result)
-    return say_team_log(result) if result.relation == "team" else say_player_log(result)
+    return _sayer(result)(result)
 
 
 # --- a record over a line ----------------------------------------------------------
@@ -2328,19 +2313,6 @@ def _player_line_empty(result: Result) -> Reply:
     return Reply(data={"player": name, "season": span.season, "stats": {}}, answer=answer)
 
 
-def _say_season_line(result: Result) -> Reply:
-    """The season line's own shapes, by body: a player's line, a history by
-    season, a ranking by player, a comparison of players."""
-    if result.scalar is not None:
-        return say_player_line(result)
-    if result.grouped is not None and result.grouped.by == "player":
-        return say_leaderboard(result)
-    if result.grouped is not None and result.grouped.by == "season":
-        return say_player_history(result)
-    assert result.grouped is not None and result.grouped.by == "subject", "a season-line result with no season-line shape"
-    return say_player_compare(result)
-
-
 def say_player_line(result: Result) -> Reply:
     """A player's unnarrowed line from the season line, worded - one
     season's ("averaged 27.7 points per game in 70 games in the 2026
@@ -3578,8 +3550,9 @@ def _say_combined_record(result: Result, line: Scalar) -> Reply:
 
 
 def say_team_record(result: Result) -> Reply:
-    """A team's record, worded by its source: a standings season or career,
-    a tally of its games, or both season types summed - the retired
+    """A team's record, worded by its parts: both season types summed (a
+    detail by season type), a tally of its games (the games beneath), or a
+    standings season or career - the retired
     ``team_record`` template's words.
 
     .. versionadded:: 5.0.0
@@ -3589,9 +3562,10 @@ def say_team_record(result: Result) -> Reply:
     detail = result.parts[1].body if len(result.parts) > 1 else None
     if isinstance(detail, Grouped) and detail.by == "season_type":
         return _say_combined_record(result, line)
-    if result.span.source == "team_seasons":
-        return _say_standings_career(result, line) if result.span.career else _say_standings_season(result, line)
-    return _say_games_record(result, line)
+    if isinstance(detail, Rows):
+        # A tally of its games, with the games beneath.
+        return _say_games_record(result, line)
+    return _say_standings_career(result, line) if result.span.career else _say_standings_season(result, line)
 
 
 def say_team_record_by_month(result: Result) -> Reply:
@@ -4103,3 +4077,63 @@ def say_clarify(asked: Clarify) -> Reply:
         message = clarification(asked.asked, candidates, asked.kind, asked.active)
         shown = {"ambiguous": asked.asked, "candidates": candidates} if asked.shown is None else dict(asked.shown)
     return Reply(data={**shown, **dict.fromkeys(asked.under, message)}, answer=message)
+
+
+# --- the sayer table: the body decides -----------------------------------------
+
+
+#: A Scalar body's sayer, by how it was reduced (:attr:`Scalar.how <association.query.result.Scalar.how>`).
+_SCALAR_SAYERS: dict[str, Callable[[Result], Reply]] = {
+    "per_game": _say_line,
+    "count": say_threshold_count,
+    "record": say_team_record,
+    "season": say_player_line,
+    "per_shot": say_shot_distance,
+    "per_100": say_player_netpoints,
+    "total": say_player_netpoints,
+    "projection": say_team_outlook,
+    "ranked": say_team_stat,
+}
+
+#: A Grouped body's sayer, by what one row is (:attr:`Grouped.by <association.query.result.Grouped.by>`).
+_GROUPED_SAYERS: dict[str, Callable[[Result], Reply]] = {
+    "player": _say_ranking,
+    "subject": _say_comparison,
+    "team": _say_teams,
+    "threshold": say_record_when,
+    "split": say_splits,
+    "period": say_period_by_quarter,
+    "presence": say_with_without,
+    "month": say_team_record_by_month,
+    "metric": say_team_stat,
+    "season": say_player_history,
+    "category": say_player_netpoints,
+}
+
+#: A Chart body's sayer, by what it draws (:attr:`Chart.kind <association.query.result.Chart.kind>`).
+_CHART_SAYERS: dict[str, Callable[[Result], Reply]] = {
+    "fingerprint": say_fingerprint,
+    "shot_chart": say_shot_chart,
+}
+
+
+def _sayer(result: Result) -> Callable[[Result], Reply]:
+    """The sayer of ``result``'s headline part, by the body's type and the
+    one field that says what it is: a scalar by how it was reduced, a group
+    by what one row is, rows by what they are in order of, a chart by what
+    it draws - and nothing else (``ROADMAP-TYPES.md``, "The shapes": "a
+    sayer may branch on the shape and on nothing else"). A sayer reached
+    so may still tell its subject's kind or a cell it says (a team's log
+    from a player's, a quarter's), which the draft's rule reads too."""
+    body = result.parts[0].body if result.parts else None
+    if isinstance(body, Scalar):
+        return _SCALAR_SAYERS[body.how]
+    if isinstance(body, Grouped):
+        return _GROUPED_SAYERS[body.by]
+    if isinstance(body, Chart):
+        return _CHART_SAYERS[body.kind]
+    if isinstance(body, Runs):
+        return say_streak
+    if isinstance(body, Rows):
+        return _say_rows if body.by == "date" else say_single_game_high
+    raise ValueError(f"no sayer for a {type(body).__name__} body")

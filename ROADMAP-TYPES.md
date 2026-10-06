@@ -1,7 +1,8 @@
 # The target types
 
 **Status: DRAFT 2, partly decided (Jeff, 2026-10-01); see "Decided" and
-"Still open". Nothing here is code yet.**
+"Still open". Parts are code since Phase 2 - "Decided" says which, and
+how the code departs from the draft.**
 `ROADMAP.md`, Phase 0: "the target types written down and reviewed: the
 Reading's typed filters, the Result, the measure type, and the closed set
 of shapes. Shapes are named here, before any sayer is written, so 'shape'
@@ -49,6 +50,49 @@ otherwise.
 - **`pair` is not a shape, on one condition: any number of subjects and
   any number of players beside them, each with its own role, stay
   expressible.** They do; "More than one player" shows how.
+
+- **Declared in code by "the Result is typed"** (2026-10-05, the Phase 2
+  review's cleanup (b)1, (b)5, (b)6; the lead's brief, no answer moved):
+  - `Outcome = Result | Clarify | Refusal` as drafted, in `query/result.py`.
+    `Refusal(kind, facts)` takes a kind from the union of two closed
+    sets: the READING's causes (`reading.CAUSES`, decided from the words,
+    pinned by the readings population) and the READ's (`result.RUN_CAUSES`,
+    facts found in the warehouse: no games, a floor, a name nothing
+    matches, ...), kept disjoint so a kind says which stage refused. One
+    phrase table words both (`compose.say.refusal_phrase`). Beyond the
+    draft, on purpose: `shown`/`under` - the page's values beside the
+    sentence and the keys it reads the sentence under, because the
+    readers' pages differed and the answers' data was held identical.
+    `Clarify` has `kind`, `active` and `why` (`ambiguous` or
+    `near_spelling`) beside the draft's two fields.
+  - The draft's `cells`, on `Narrowing.cells` rather than `Result.cells`
+    and `Part.cells` (every Result's cells applied to its first part so
+    far): the minimal `Cell` union the old facts keys needed - `Period`
+    (the draft's `Reading.period`, with its label), `OnDate`, `Line`,
+    `Role`, `GameOfSeries`, `Calendar`, `Companions`, `Met`, `ShotValue`.
+    An opponent, a venue and the teammates absent stay `Narrowing`'s own
+    fields; `Span` gained `since`, `until`, `ordinal`. A dimension's
+    parameter is its body's: `Grouped.of` (the `line(Line)` and
+    `presence(of: names)` dimensions), `Runs.line`/`won` ("a Line or Won").
+  - What a sayer needs beside the body is one frozen record per shape
+    (`result.Facts`, 17 records) - not in the draft, which has no such
+    field; it is what is left of the old `facts` mapping once its cells
+    and its dispatch keys were taken out, and each record is a list of
+    what Phase 4's renderers and the shape sayers still have to fold into
+    bodies and cells.
+  - `Scalar.how` names every scalar's reduction (`season`, `per_shot`,
+    `per_100`, `total`, `projection`, `ranked` beside the drafted ones),
+    and the sayer is chosen by the body's type and that one field
+    (`Grouped.by`, `Rows.by`, `Chart.kind`) - "a sayer may branch on the
+    shape and on nothing else", with the subject's kind and a cell the
+    answer says (a quarter, a pair's `Met`) read inside it.
+  - `PointShape(relation, shape, by)` is the planned point's shape - the
+    draft's `Query.relation`/`shape`/`by` triple, carried beside today's
+    `Query` on the plan (`compose.plan.Planned.shape`) and settled by the
+    planner from the reading's intent where the query alone cannot tell
+    two retired templates' words apart (`plan.shape_of`); the answer side
+    reads only it. Relations named beyond the draft's seven:
+    `player_periods` and `team_periods` (a quarter or half of the games).
 
 ## What must be decided before which phase
 
@@ -463,3 +507,8 @@ moves into `data` before the slice that rewords its answer:
    says "the four chart answers keep their own readers and renderers";
    proposed: that still holds for their READERS (the relations are
    declared, not ported), while their answers use the common shapes.
+7. **`Refusal.shown`/`under` and the per-shape `Facts` records** (declared
+   2026-10-05, "the Result is typed"): both exist to keep today's page
+   data identical. Proposed: Phase 4's renderers take the body, the cells
+   and the cause, and both go - a renderer that needs a value a record
+   holds is the signal that the value belongs on the body.
