@@ -110,7 +110,8 @@ def season_on_record(season: int | None) -> Iterator[None]:
 #
 # The US daylight-saving rules are written out here rather than read from a tz
 # database, which a machine running a pull may not have (Windows ships none).
-# Every day from 1970 to 2040 is checked against zoneinfo by a test.
+# Every day from 1976 through 2039 is checked against zoneinfo by a test
+# (tests/nba/test_season.py, six clock times each).
 _DST_RULES: tuple[tuple[int, tuple[int, int], tuple[int, int]], ...] = (
     # (first year the rule applies, first Sunday on or after (month, day) that
     # starts DST, first Sunday on or after (month, day) that ends it)

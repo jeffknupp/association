@@ -212,7 +212,9 @@ ignore_imports = ["association.web.runner -> ollama"]
 
 [[tool.importlinter.contracts]]
 name = "The core install never needs the web extra"
-# fastapi, uvicorn and pydantic come from `association[web]`; cli reaches web
+# fastapi and uvicorn come from `association[web]`. pydantic is in every core
+# install (ollama imports it at load) and is forbidden here all the same, so
+# the core never comes to lean on the web layer's models. cli reaches web
 # only inside the `web` command, so it is not a source here either.
 type = "forbidden"
 source_modules = [
