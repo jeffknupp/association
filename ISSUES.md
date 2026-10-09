@@ -308,6 +308,24 @@ those were found.
 - **Next step:** read the companion's line from "has N" with the normalizer's stat and from box-score abbreviations ("fta", "3pm") in the condition reader (`subject._condition_role`, `_CONDITION_THRESHOLD`); where a number is named and no line can be read, refuse naming the missing stat rather than fall back to the parent.
 - **GitHub:** #340
 
+### A lone word that is exactly one player's name outranks the two typed words that nearly spell another's: "micheal jordan shot chart" is Micheal Williams's
+- **Found:** 2026-10-09, the lead, reading the feed population's empty shot charts while fixing #105; `~/association-research/stages/feed_recorded.jsonl` holds the normalizer's reply for it as no name and no stat (`{"names": [], "stat": ""}`), so the subject is read from the words alone.
+- **Evidence:** on the main warehouse, `subject.players_named_in(index, "micheal jordan shot chart")` is `['Micheal Williams']`: "micheal" is a whole word of exactly one player's name (his, a Pacer and Timberwolf through 1999), and the rule names him and stops. Every reader of the PAIR says Michael Jordan (id 1035): `subject.question_derived_player(index, question, "micheal jordan")`, `entities.read_near_spelling(con, "micheal jordan")` and `entities.suggest_players(con, "micheal jordan")` each return him, the only near spelling of the two words (one transposition); "jordan" alone names nobody, being many players' word. The feed answer is "No shots found for Micheal Williams in the 2026 regular season." - and Jordan's 2002-2003 Wizards shots are on record, so the right reading would redirect to them.
+- **User sees:** a different player, named in the sentence - visible, but a question about Jordan answered about a journeyman, with no way to tell from the answer that the typo is why. It is the "an invented name resolves" shape of `AGENTS.md` from the other side: the question's own misspelt given name is somebody else's correctly spelt one.
+- **Next step:** in `players_named_in` (the subject reading; Phase 3's seam, so with the step in flight or after it), read the adjacent pair before a lone word - two question words that are an exact match or the single near spelling of one player outrank either word naming somebody on its own, which is the discipline `question_derived_player` already applies to a model's completion. Measure on the 2,710 readings (`reader_pop.py`) and the subject tests; "larry bird" (Jabari Bird) is the surname back-off case that must still ask, and a bare "jordan" must still name nobody.
+- **Source:** ours.
+- **Priority:** P1 - a different player answered.
+- **GitHub:** #346
+
+### A team total asked as "how many ... did they make" is answered per game: "how many 3 pointers did the sixers make in the 2001 playoffs" answers 3.8 per game; "... have the magic made" answers the total
+- **Found:** 2026-10-09, the lead, re-measuring #227 with `~/association-research/stages/ask_unnamed.py` (the stat `threePointFieldGoalsMade`).
+- **Evidence:** "how many 3 pointers did the sixers make in the 2001 playoffs" answers "The Philadelphia 76ers' 3-pointers made per game was 3.8 in the 2001 postseason (23 games), 14th-best of 16 teams" - `team_stat`'s per-game line - where "total 3 pointers made by the sixers in the 2001 playoffs" answers "The Philadelphia 76ers had 88 3-pointers made over the complete 2001 postseason (23 games)", and the corpus's "how many 3 pointers have the magic made so far this season" answers the Magic's 961. Both Sixers wordings plan the same point (`PointShape('team_seasons', 'scalar', 'line')`, `aggregate="total"`, `team_read_point`); the difference is the stages' `rate` slot. `router._route_team_total` files `rate: "total"` from `_TEAM_TOTAL`, whose verbs are the past forms `made|scored|have|has|had|hit|grabbed|dished` - "did ... make" (the bare verb after "did") matches none of them, so `rate` stays unset, `team_stat`'s reader does not step aside, and the per-game line answers a point whose own `aggregate` says total.
+- **User sees:** a per-game figure where a count was asked. The sentence says "per game", so the substitution is visible, but it is a different question answered, fluently.
+- **Next step:** read the bare verb after "did"/"do"/"does" (`make|score|hit|grab|dish`) into the same rule, in the lexicon once step 2 moves these patterns there (the rule is `router.py`'s today and the span slice is rewriting that module); a case per wording in `tests/query/test_router.py`; the readings and the feed answers that move enumerated. The deeper fix is Phase 3's: the point already says `aggregate="total"`, and the reader should answer the point rather than a slot the point was read from.
+- **Source:** ours.
+- **Priority:** P1 - a different question answered.
+- **GitHub:** #347
+
 ## P2: misleading or incomplete
 
 ### "Stephen Curry free throw chart" (no "shot") answers his season averages
@@ -555,43 +573,6 @@ those were found.
   the `_team_game_log_total_line`/career-total lines, which are template
   bugs (a wrong dict key; an answer-only append) independent of the page.
 - **GitHub:** #218
-
-### A short, genuinely ambiguous question is guessed at rather than asked about: "Tatum rec"
-- **Found:** 2026-09-23, working yardstick-v2's wrong-land bucket 4
-  (`~/association-research/yardstick-v2/wrong_land.md`, F112).
-- **Evidence:** routes `player_stat {'player': 'Jaylen Tatum', 'season':
-  2026, 'season_type': 2}` and answers "Jayson Tatum averaged 21.8 points,
-  10 rebounds and 5.3 assists ... in 16 games" - a specific, confident stat
-  line for a question the key marks unanswerable as written ("no record
-  type - team win-loss vs. personal statistical record, no opponent, no
-  time frame"). This is NOT the invented-name shape `override_invented_players`
-  already catches: "Tatum" is a real word IN the question, so the router's
-  "Jaylen Tatum" survives that check on its own strict rule (any one word of
-  the name is enough, and "Tatum" is one). The actual fault is that "rec" is
-  read as nothing in particular and the whole question collapses to a
-  default player-stat line, when a careful reader would ask what "rec"
-  means before guessing.
-- **User sees:** a fluent, specific-looking answer to a question that has no
-  single right reading - the mirror-image failure shape AGENTS.md warns
-  about, dressed as data rather than as the refusal it should be.
-- **Next step:** unclear how to fix narrowly without a general "ask when
-  ambiguous" rule this project has deliberately avoided (a reasonable
-  default beats a question, per Jeff's rule - but there is no reasonable
-  default between "team record" and "personal stat line" here, unlike a
-  namesake pick). Possibly: a bare "rec"/"record" with a name and nothing
-  else (no stat word, no opponent, no season) is genuinely ambiguous between
-  `team_record` and `player_stat` in a way the router can't resolve, and
-  should refuse naming BOTH readings rather than silently picking one -
-  needs measuring how often this shape appears in the routing corpus before
-  building anything, since a broad "ask on short questions" rule risks
-  breaking working ones.
-- **Parser path (5.0.0, the router gone):** the parser reads "rec" beside one
-  player as his own record (`player_splits`, from its recorded reply
-  `names: ['Tatum']`): "Jayson Tatum, splits, 2026 regular season (16 games he
-  played)", W-L by venue and 13-3 as a starter - a different guess from the
-  router's (Jaylen Tatum's stat line), still made without saying the question
-  could mean the team's record.
-- **GitHub:** #200
 
 ### A question with zero valid readings gets a fluent, self-chosen answer: "25-26 knicks playoff statistics vs other historic teams"
 - **Found:** 2026-09-23, same session, yardstick-v2 F097. On `live_day5.jsonl`
