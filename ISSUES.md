@@ -415,11 +415,13 @@ those were found.
   date (see the rollover entry in P1).
 - **Evidence:** `compose.seasons._player_compare_lines`: "compare sga and
   embiid" with the season defaulted to 2027 prints the table with no
-  figures and the note "(Shai Gilgeous-Alexander, Joel Embiid has no 2027
-  ...)" - the wrong number of the verb as well.
+  figures and the note "(Shai Gilgeous-Alexander and Joel Embiid have no
+  2027 ...)" (the verb's number and the join were fixed 2026-10-09; the
+  empty table stands).
 - **User sees:** an empty table that reads as an answer.
 - **Next step:** refuse, naming the season, when no named player has a
-  line; fix the plural.
+  line (`compose/seasons.py`; a reader's `Result.empty` refusal, as the
+  advanced line's and the shot chart's are).
 - **GitHub:** #282
 
 ### The compiler's team total ignores "no season type named": "total points by the raptors in the last 10 games" reads the regular season only

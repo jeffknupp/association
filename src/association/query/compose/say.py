@@ -501,7 +501,10 @@ def _say_season_note(kind: str, facts: dict[str, Any]) -> str | None:
     if kind == "seasons_missing":
         return _say_seasons_missing(facts)
     if kind == "no_data_for" and "period" in facts:
-        return f"({', '.join(facts['names'])} has no {facts['period']} numbers in the warehouse.)"
+        # Two names take the plural, joined as a sentence names them (ISSUES.md #282's verb).
+        names = list(facts["names"])
+        who = names[0] if len(names) == 1 else ", ".join(names[:-1]) + " and " + names[-1]
+        return f"({who} {'has' if len(names) == 1 else 'have'} no {facts['period']} numbers in the warehouse.)"
     return None
 
 

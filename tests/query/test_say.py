@@ -65,6 +65,12 @@ def test_each_note_kind_has_one_phrase() -> None:
     assert note_phrase(Note("window_short", {"found": 1, "asked": 5, "season": None, "season_type": 2})) == "Only 1 game in his box scores."
     assert note_phrase(Note("definition", {"term": "without", "names": ["Joel Embiid", "Paul George"]})).startswith("Without Joel Embiid and Paul George means games neither of them played")
     assert note_phrase(Note("games_unseen", {"games": 2, "why": "empty_box_score"})) == "Not counted: 2 games in this span whose box score lists him with no minutes and no stats."
+    # ISSUES.md #282: the comparison's missing-season note took "has" of two names, run together with a comma.
+    assert note_phrase(Note("no_data_for", {"names": ["Joel Embiid"], "period": "2027 regular season"})) == "(Joel Embiid has no 2027 regular season numbers in the warehouse.)"
+    assert (
+        note_phrase(Note("no_data_for", {"names": ["Shai Gilgeous-Alexander", "Joel Embiid"], "period": "2027 regular season"}))
+        == "(Shai Gilgeous-Alexander and Joel Embiid have no 2027 regular season numbers in the warehouse.)"
+    )
     assert note_phrase(Note("floor", {"table": "box_scores", "first": 1994, "earliest": 1990})) == "Box scores begin with the 1993-94 season, so his 1990-1993 seasons are not counted."
     assert mixed_where(2026, {3: 5}) == " of the 2026 postseason" and mixed_where(2026, {2: 2, 3: 3}) == " (2 regular season and 3 postseason)"
 
