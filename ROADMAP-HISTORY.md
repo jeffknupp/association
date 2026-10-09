@@ -972,6 +972,34 @@ agents' reports named here are in `~/association-research/stages/`.
     base - the parallel stream Jeff asked for, each proven the same way -
     and re-proved it there: identical on all four populations with the
     four added point fields ignored and listed by count.
+24. **Phase 3, step 2, the span (2026-10-09).** The first filter family
+    typed, and the pattern for the rest: one Fable agent at medium effort
+    (the day's exception) measured the six span slots first - which stage
+    set each, by which words, on all 2,710 readings, with the planner's
+    verdict and the relation's resolution of them
+    (`~/association-research/stages/span_family.py`) - and designed the
+    type from the table rather than the draft: fields, not a union, since
+    a career stands beside a named season on 3 readings and beside a
+    range on 8, and the relation picks between them, refusing where it
+    cannot. What moved: `reading.Span` on `Scope.span`, the six slots
+    gone; `query/lexicon.py` with the family's 22 patterns and their
+    reasons; `query/span.py`, ONE tagger run last in the stages over a
+    typed context of what they settled, in the order the six stages read
+    (the words, a dated range, the range's own forms, the implied
+    careers, both types for a bare last-N log), claiming the characters it
+    consumed; the three cells in both relation tables with per-reader
+    exclusions; `router.py` 406 lines shorter. What it taught: a retyped
+    part is proven with no field ignored by keeping the record's old
+    shape through a projection (`Scope.projected()` and its kin) and
+    recording the typed value beside it, which the readings, the 628 and
+    the feed all compared identical through; the unit-test calls showed
+    the one real move, five subject tests handing the stages a model-era
+    season no path produces any more; and the regular season named
+    outright cannot be told from the default (`ROADMAP-TYPES.md`, open
+    item 8). Cost: the lead's rebase over thirteen isolated fixes (two
+    conflicts), the four populations run fresh on both trees, the
+    relation's resolution re-held on 2,710 of 2,710. Filed: a P3, the
+    condition read's covered scope open-ended for a closed range.
 
 ## The plan items, as written
 
