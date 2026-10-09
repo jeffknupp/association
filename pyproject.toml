@@ -300,7 +300,6 @@ source_modules = [
     "association.query.coverage",
     "association.query.conditions",
     "association.query.entities",
-    "association.query.refusals",
     "association.query.season_line",
     "association.query.stages",
 ]

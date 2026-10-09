@@ -621,6 +621,15 @@ class Planned:
     floor: str | None = None
 
 
+#: The reading's causes whose page names the shape refused (``refused``)
+#: beside the intent, as the answering loop's own refusals did until Phase 3,
+#: step 0: the championship and what the words name that nothing reads
+#: (:attr:`Reading.unsupported <association.query.reading.Reading.unsupported>`).
+_REFUSED_BY_NAME: frozenset[str] = frozenset(
+    {"championship", "playoff_round", "non_calendar_situation", "period_stat", "period_as_condition", "team_period_stat", "bench_points", "team_boolean_count"}
+)
+
+
 def refusal_of(cause: Cause) -> Refusal:
     """A point reading's :class:`~association.query.reading.Cause` as the
     :class:`~association.query.result.Refusal` it is said by: its kind and
@@ -634,6 +643,12 @@ def refusal_of(cause: Cause) -> Refusal:
         return Refusal(kind=cause.kind, facts=cause.facts, under=("message", "headline"))
     if cause.kind == "ranking_floor_unit":
         return Refusal(kind=cause.kind, facts=cause.facts, shown={"floor": {"unit": cause.facts["unit"], "count": cause.facts["count"]}})
+    if cause.kind in _REFUSED_BY_NAME:
+        # What the page showed beside these sentences when the answering
+        # loop said them itself: the shape refused, by name, and the intent.
+        return Refusal(kind=cause.kind, facts=cause.facts, shown={"refused": cause.kind, "intent": cause.facts["intent"]})
+    if cause.kind == "no_player_reading":
+        return Refusal(kind=cause.kind, facts=cause.facts, shown={"named_player": cause.facts["player"]})
     return Refusal(kind=cause.kind, facts=cause.facts, shown=dict(cause.facts))
 
 
@@ -661,7 +676,17 @@ def plan_point(reading: Reading) -> Planned:
     its reason.
 
     .. versionadded:: 5.0.0
+
+    .. versionchanged:: 6.0.0
+       A refusal the words come to before any point
+       (:attr:`~association.query.reading.Reading.refused`: a championship,
+       a player named on a question whose shape has no reading for one) is
+       the planning's refusal, ahead of the point's own.
     """
+    if reading.refused is not None:
+        # The words' own refusal, before any point: a championship, a player
+        # named on a question whose shape has no reading for one.
+        return Planned(refusal=refusal_result(reading.refused))
     if reading.point_refusal is not None:
         return Planned(refusal=refusal_result(reading.point_refusal))
     if reading.point is None:

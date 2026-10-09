@@ -1551,10 +1551,10 @@ def test_a_log_reads_a_rebuilt_game_with_its_minutes_blank(cx_ctx: AnswerContext
     assert composed.answer == template.answer
 
 
-def test_a_teams_total_of_triple_doubles_is_declined_for_the_refusals_module(cx_ctx: AnswerContext) -> None:
+def test_a_teams_total_of_triple_doubles_is_declined_for_the_readings_cause(cx_ctx: AnswerContext) -> None:
     """ "oklahoma city thunder all-time triple doubles vs west" (day5): a team
     subject on a leaderboard with a boolean stat is a team aggregate nothing
-    reads - declined here, so refusals._team_boolean_count names that cause
+    reads - declined here, so the reading's ``team_boolean_count`` cause names it
     instead of the ranking's "no ranking reads triple_double"."""
     from association.query.compose.core import Unsupported
 
@@ -1843,7 +1843,22 @@ _CAUSE_EXAMPLES: dict[str, dict[str, Any]] = {
     "no_period_stat": {"stat": "minutes"},
     "no_coach_table": {"unanswerable": "coach"},
     "too_short": {"asked": "Tatum rec"},
+    "championship": {"intent": "team_leaderboard"},
+    "no_player_reading": {"player": "Alperen Sengun", "intent": "team_leaderboard"},
+    "playoff_round": {"intent": "game_log", "round": "finals"},
+    "non_calendar_situation": {"intent": "player_stat", "situation": "18 year old", "reads_as": "age"},
+    "period_stat": {"intent": "period_leaderboard", "stat": "minutes", "period": 4, "half": None},
+    "period_as_condition": {"intent": "other"},
+    "team_period_stat": {"intent": "team_quarter_points", "stat": "plusMinus"},
+    "bench_points": {"intent": "team_leaderboard"},
+    "team_boolean_count": {"intent": "leaderboard", "stat": "triple_double"},
 }
+
+#: The kinds whose ``intent`` fact is the page's, shown beside the sentence
+#: (``refused`` and ``intent``) - not a fact the sentence names.
+_PAGE_INTENT_KINDS = frozenset(
+    {"championship", "no_player_reading", "playoff_round", "non_calendar_situation", "period_stat", "period_as_condition", "team_period_stat", "bench_points", "team_boolean_count"}
+)
 
 
 def test_every_cause_a_reading_refuses_by_is_said_naming_its_fact() -> None:
@@ -1857,11 +1872,12 @@ def test_every_cause_a_reading_refuses_by_is_said_naming_its_fact() -> None:
     for kind, facts in _CAUSE_EXAMPLES.items():
         said = refusal_result(Cause(kind=kind, facts=facts)).answer
         assert said and said.endswith(".") and "{" not in said, kind
-        for value in facts.values():
+        for name, value in facts.items():
             if (
                 isinstance(value, str)
-                and kind not in ("unknown_stat", "needs_threshold", "ranking_unit", "team_streak_of_stat")
+                and kind not in ("unknown_stat", "needs_threshold", "ranking_unit", "team_streak_of_stat", "team_boolean_count")
                 and value not in ("game_log", "single_game_high", "record_when", "threshold_count", "under")
+                and not (name == "intent" and kind in _PAGE_INTENT_KINDS)
             ):
                 assert value in said, (kind, value, said)
     assert refusal_result(Cause(kind="matchup_needs_two", facts={"names": []})).answer == "A matchup needs two players, and none was read."

@@ -191,6 +191,36 @@ relation sees restricted to the period.
 """
 
 
+TEAM_PERIOD_COLUMNS: tuple[str, ...] = (
+    "points",
+    "fieldGoalsMade",
+    "fieldGoalsAttempted",
+    "threePointFieldGoalsMade",
+    "threePointFieldGoalsAttempted",
+    "freeThrowsMade",
+    "freeThrowsAttempted",
+    "rebounds",
+    "offensiveRebounds",
+    "defensiveRebounds",
+    "assists",
+    "steals",
+    "blocks",
+    "turnovers",
+    "fouls",
+)
+"""The columns a period-narrowed team read carries, under the player line's
+names: ``points`` from the linescore, the rest rebuilt by
+:func:`~association.query.team_games.team_period_line_sql` (where the comment above it says how each is measured).
+
+.. versionadded:: 5.0.0
+
+.. versionchanged:: 6.0.0
+   The reader's vocabulary, moved here from ``team_games`` (which re-exports
+   it): the parser reads it to refuse a team's quarter of a stat nothing
+   rebuilds.
+"""
+
+
 # The measures, by name - what the point reader reads a question's words into
 # and the compiler computes. The names are closed here, and the SQL that
 # computes each lives where it runs (compose.core.DERIVED, compose.team's

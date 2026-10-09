@@ -76,6 +76,7 @@ from association.nba.franchises import season_name_sql
 from association.nba.season import eastern_date_sql
 
 from .entities import Entity
+from .measures import TEAM_PERIOD_COLUMNS as TEAM_PERIOD_COLUMNS
 
 # TYPE_CHECKING avoided a real circular import at module load: until
 # 2026-10-03 `calendar.py` imported `_MONTH_NAMES` from `conditions.py`,
@@ -379,29 +380,11 @@ _TEAM_SERIES_GAMES = (
 # - points are the linescore's, never the shots': it is ESPN's own official
 #   per-period score, where the shots' sum agrees with it in 76.5-99% of
 #   team-quarters by season (`player_games.PERIOD_RECONCILIATION`).
-TEAM_PERIOD_COLUMNS: tuple[str, ...] = (
-    "points",
-    "fieldGoalsMade",
-    "fieldGoalsAttempted",
-    "threePointFieldGoalsMade",
-    "threePointFieldGoalsAttempted",
-    "freeThrowsMade",
-    "freeThrowsAttempted",
-    "rebounds",
-    "offensiveRebounds",
-    "defensiveRebounds",
-    "assists",
-    "steals",
-    "blocks",
-    "turnovers",
-    "fouls",
-)
-"""The columns a period-narrowed team read carries, under the player line's
-names: ``points`` from the linescore, the rest rebuilt by
-:func:`team_period_line_sql`.
-
-.. versionadded:: 5.0.0
-"""
+#
+# The list itself is the reader's vocabulary (measures.TEAM_PERIOD_COLUMNS,
+# beside the player's PERIOD_COLUMNS): the parser reads it to know a team's
+# quarter of a stat nothing rebuilds (Phase 3, step 0). Re-exported here, under
+# the relation's own name, by the import at the top.
 
 TEAM_PERIOD_BOX: dict[str, str] = {
     "points": "the final score",

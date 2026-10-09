@@ -4023,6 +4023,94 @@ _RUN_PHRASES: dict[str, Callable[[Mapping[str, Any]], str | None]] = {
 }
 
 
+CHAMPIONSHIP_REFUSAL: str = (
+    "Championships are not on record as such - the warehouse holds every playoff game and no table of titles, and nothing derives a champion from a postseason's last series yet. "
+    "Ask for a team's postseason record in a season, or two teams' playoff meetings, to see who won a series."
+)
+"""The sentence a championship question is refused with, before any reader
+runs (the reading's ``championship`` cause): "Show which team won the nba
+championship for the past 10 years" was read as a team ranking and ranked
+regular-season records since 2017.
+
+.. versionadded:: 6.0.0
+   ``refusals.by_question``'s sentence.
+"""
+
+
+def _say_no_player_reading(facts: Mapping[str, Any]) -> str:
+    """A player named on a question whose shape has no reading for one
+    ("alperen şengün alltime record" read as a team ranking): names the
+    player it read rather than answering the league's or a team's own
+    numbers, the wrong subject. Was ``entities.team_only_question_names_a_player``."""
+    player, shape = facts["player"], str(facts["intent"]).replace("_", " ")
+    return (
+        f"This was read as a question about {player}, a player, but {shape} has no reading for one - "
+        f"it would have answered the league's or a team's own numbers instead. Ask about {player}'s own stats, "
+        "or name a team if a team's record was meant."
+    )
+
+
+def _say_non_calendar_situation(facts: Mapping[str, Any]) -> str:
+    """A situation nothing reads, by what the reader recognized in it: an
+    age (no birth dates on record), a conference or division word in a
+    shape the alignment reader does not take, or anything else."""
+    situation, reads_as = facts["situation"], facts["reads_as"]
+    if reads_as == "age":
+        return f"'{situation}' needs a birth date, and the player records here carry none - so no answer can be narrowed by age. Ask by season instead (the season he turned that age)."
+    if reads_as == "alignment":
+        return f'\'{situation}\' names a conference or division, but not in a shape this reads - try "vs the west", "against eastern conference teams" or "vs the southeast division".'
+    return f"'{situation}' is not something the games are read by - a weekday, a month, a holiday, \"since <day>\", a conference or a division is. Ask without it, or with one of those."
+
+
+def _say_period_stat(facts: Mapping[str, Any]) -> str:
+    """A stat a quarter's or half's rebuilt line does not hold, naming the
+    columns that ARE rebuilt and the period asked about."""
+    stat, half = facts["stat"], facts["half"]
+    period = facts["period"] or half
+    where = f"the {period}{'st' if period == 1 else 'nd' if period == 2 else 'rd' if period == 3 else 'th'} {'half' if half else 'quarter'}" if isinstance(period, int) else "a period"
+    return (
+        f"By quarter or half, a line is rebuilt from the play-by-play - points, field goals, free throws, rebounds, assists, steals, blocks, turnovers and fouls, "
+        f"and the field goal, 3-point and free throw percentages from them - and {stat!r} is not among them. Ask for one of those in {where}, or for {stat} over whole games."
+    )
+
+
+def _say_team_boolean_count(facts: Mapping[str, Any]) -> str:
+    """A team's total of its players' triple-doubles or double-doubles."""
+    label = "triple-doubles" if facts["stat"] == "triple_double" else "double-doubles"
+    return f"A team's total of its players' {label} is not read yet - one player's {label} are (ask '<player> triple doubles this season'), and so is the team's own record. Ask one of those."
+
+
+#: What the question's words name that nothing reads, and the refusals the
+#: words come to before any reader runs - the reading's causes Phase 3's
+#: first step moved off the answering loop (``refusals.by_question``,
+#: ``refusals.unanswerable``'s checks, the team-only player), each said by
+#: the sentence it was said by there, word for word.
+_WORDS_PHRASES: dict[str, Callable[[Mapping[str, Any]], str]] = {
+    "championship": lambda _facts: CHAMPIONSHIP_REFUSAL,
+    "no_player_reading": _say_no_player_reading,
+    "playoff_round": lambda facts: (
+        f"The games are not labeled by playoff round, so '{facts['round']}' cannot pick them out yet. "
+        "Name the two teams and the season instead - a series is their postseason meetings, and those are read."
+    ),
+    "non_calendar_situation": _say_non_calendar_situation,
+    "period_stat": _say_period_stat,
+    "period_as_condition": lambda _facts: (
+        "A quarter or a half here reads as a condition on which games count, and no line could be read from it - "
+        'a number, a stat the period\'s line rebuilds and the period, as in "after making one three in the first quarter" or "in games where he scored 10+ points in the first half". '
+        "Ask with the line worded that way, for the stat in that period, or for it over whole games."
+    ),
+    "team_period_stat": lambda facts: (
+        f"A team's quarter or half holds its points (the linescore), the box-score counts play-by-play rebuilds and the shooting percentages from them, and {facts['stat']!r} is none of those. "
+        f"Ask for the team's points, threes, rebounds, turnovers or free throw percentage in that period, or for {facts['stat']} over whole games."
+    ),
+    "bench_points": lambda _facts: (
+        "Bench points are not read yet - the box score flags starters, so a bench total could be built, but no template or the compiler adds one up today. "
+        "Ask for a named player's points, or a team's points, instead."
+    ),
+    "team_boolean_count": _say_team_boolean_count,
+}
+
+
 #: A reading's causes said by a phrase of their own rather than the shape
 #: table in :func:`_cause_sentence`.
 _RANKING_PHRASES: dict[str, Callable[[Mapping[str, Any]], str | None]] = {
@@ -4045,7 +4133,7 @@ def refusal_phrase(kind: str, facts: Mapping[str, Any]) -> str:
     """
     if kind in _FINGERPRINT_PHRASES:
         return _say_fingerprint_unavailable(kind, facts)
-    phrase = _RUN_PHRASES.get(kind) or _RANKING_PHRASES.get(kind)
+    phrase = _RUN_PHRASES.get(kind) or _RANKING_PHRASES.get(kind) or _WORDS_PHRASES.get(kind)
     said = phrase(facts) if phrase is not None else _cause_sentence(kind, facts)
     if said is None:
         raise ValueError(f"no sentence for the cause {kind!r}")

@@ -1,15 +1,6 @@
 {
  "question_outside_the_reader": [
-  "history:RunHistory.write",
-  "refusals:_bench_points",
-  "refusals:_non_calendar_situation",
-  "refusals:_period_as_condition",
-  "refusals:_period_stat",
-  "refusals:_playoff_round",
-  "refusals:_team_boolean_count",
-  "refusals:_team_period_stat",
-  "refusals:by_question",
-  "refusals:unanswerable"
+  "history:RunHistory.write"
  ],
  "sql_outside_the_relations": {
   "compose.core": 1,
@@ -37,8 +28,6 @@
   "calendar",
   "entities",
   "metrics",
-  "refusals",
-  "refusals:_PERIOD_AS_CONDITION",
   "team_metrics"
  ],
  "con_in_the_reader": [

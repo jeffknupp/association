@@ -523,9 +523,10 @@ def test_the_refusal_names_what_the_fast_path_could_not_answer(tmp_path: Path) -
 
 def test_a_shape_nothing_reads_is_refused_with_its_cause(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """After the compiler declines, a shape the warehouse has no column for
-    (association.query.refusals) is refused with its cause as a fast
-    answer - not with the slot. A playoff round is the worked case: no
-    reader honors the slot, and the games carry no round label."""
+    (``Reading.unsupported``, the parser's) is refused with its cause as a
+    fast answer, in the planner's sentence - not with the slot. A playoff
+    round is the worked case: no reader honors the slot, and the games
+    carry no round label."""
 
     monkeypatch.setattr("association.query.compose.answer", lambda *a, **k: None)
 
@@ -538,8 +539,8 @@ def test_a_shape_nothing_reads_is_refused_with_its_cause(monkeypatch: pytest.Mon
 
 
 def test_a_shape_nothing_reads_is_refused_even_where_no_template_exists(tmp_path: Path) -> None:
-    """An intent with no template is refused by name; the refusals module
-    gets its look first, so "bench points" (routed `other`) is refused with
+    """An intent with no reader is refused by name; what the words name
+    that nothing reads (``Reading.unsupported``) is said first, so "bench points" (routed `other`) is refused with
     its cause rather than with the intent."""
 
     agent = _agent_with_players(tmp_path, "Joel Embiid")

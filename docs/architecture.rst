@@ -220,8 +220,9 @@ second with the reason the parser, the template or the compiler gave it up
 with (:func:`association.query.agent.refusal_text`) - an intent with no
 template, a narrowing the relation cannot honor, a reply the normalizer could
 not use - and where the shape is one the warehouse has no column for at all,
-:mod:`association.query.refusals` names the missing thing instead (a playoff
-round, an age, a stat by quarter the plays cannot rebuild). Until 5.0.0 such a
+the reading names the missing thing instead (a playoff round, an age, a stat
+by quarter the plays cannot rebuild - :attr:`association.query.reading.Reading.unsupported`,
+said by the planner). Until 5.0.0 such a
 question fell through to a tool-calling agent that wrote SQL by hand.
 Measured at production defaults over 24 questions (ISSUES.md #129), it
 answered one in 23, did not finish 61% of the time, and was wrong five times

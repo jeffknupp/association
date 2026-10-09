@@ -21,6 +21,7 @@ reader into a Result and worded by the sayer (``compose``).
 
 from __future__ import annotations
 
+import copy
 import time
 import traceback
 from collections.abc import Callable
@@ -33,13 +34,13 @@ import duckdb
 from association.nba.season import calendar_season, season_on_record
 from association.query.answer import AnswerContext, Reply
 from association.query.coverage import check_coverage, coverage_caveat
-from association.query.reading import PLAYER_INTENTS, TEAM_ONLY_INTENTS
+from association.query.reading import PLAYER_INTENTS
 
 from .answer import Answer, AnsweredBy, Artifact, Timing
 from .compose import COMPILED_INTENTS
 from .compose.plan import Planned, plan_point, refusal_result
 from .connection import connect_read_only, latest_season_on_record
-from .entities import collect_name_readings, misread_players, players_of, team_only_question_names_a_player, teams_of
+from .entities import collect_name_readings, misread_players, players_of
 from .history import DEFAULT_HISTORY_DIR, RunHistory, echo_to_stderr
 from .models import DEFAULT_ROUTER_MODEL
 from .names import loaded as names_loaded
@@ -47,9 +48,8 @@ from .notes import collect as collect_remarks
 from .notes import unsaid
 from .parse import MIN_QUESTION_WORDS, too_short
 from .reading import Reading, Scope, ScopeError
-from .refusals import by_question, unanswerable
 from .router import Route, RouterUnavailable
-from .subject import compared_but_unmatched, player_named_on_a_team_only_question
+from .subject import compared_but_unmatched
 
 # The subset of Reply.data a compose.answer() carries that describes
 # WHAT was answered - the point on the relation - rather than the rows
@@ -301,23 +301,9 @@ class Agent:
         # said with_without, and head_to_head ran.
         if reading.intent != routed.intent:
             history.log(f"  -> (subject) intent={reading.intent!r} slots={reading.scope.to_slots()}")
-        settled = self._settled_before_reading(question, reading, history)
+        settled = self._settled_before_reading(reading, history)
         if settled is not None:
             return settled
-        # AGENTS.md, "Refuse by name where the intent cannot be about the
-        # subject": a question naming exactly one real player and no team,
-        # routed to an intent with no player reading at all, is about a
-        # different subject than the one it would answer - "alperen şengün
-        # alltime record" routed to team_leaderboard and answered the league
-        # standings, Sengun never read (yardstick-v2 F111). Before the
-        # compiled intents too: the team-season intents are the compiler's
-        # since Phase 2, step 4.
-        if reading.intent in TEAM_ONLY_INTENTS:
-            named_player = player_named_on_a_team_only_question(players_of(self.con), teams_of(self.con), question, reading.scope.to_slots())
-            if named_player is not None:
-                message = team_only_question_names_a_player(named_player, reading.intent)
-                history.log(f"  -> (player) {message}")
-                return reading.intent, Reply(data={"message": message, "named_player": named_player}, answer=message)
         if reading.intent in COMPILED_INTENTS:
             return self._run_compiled(question, reading, history)
         return None
@@ -396,23 +382,32 @@ class Agent:
         history.log(f"  -> (parser) parent={parent!r} kind={subject.kind!r} intent={routed.intent!r}")
         return routed
 
-    def _settled_before_reading(self, question: str, reading: Reading, history: RunHistory) -> tuple[str, Reply] | None:
-        """What is decided before any reader runs: a shape the question's
-        own words settle (a championship question a team ranking would
-        answer fluently and wrongly - refusals.by_question), and, where no
-        reader exists for the intent, a shape nothing reads at all ("most
-        opponent bench points allowed ..." routes to `other`, and the
-        refusals module knows bench points are read by nothing). With no
-        reader and no named refusal, records why and returns None."""
-        early = by_question(question, reading.intent)
-        if early is not None:
-            history.log(f"  -> (refusal) {early.data['refused']}: nothing here reads that shape")
-            return reading.intent, early
+    def _settled_before_reading(self, reading: Reading, history: RunHistory) -> tuple[str, Reply] | None:
+        """What is decided before any reader runs, from the Reading alone:
+        the refusal the words come to that no point answers past
+        (:attr:`Reading.refused <association.query.reading.Reading.refused>`
+        - a championship question a team ranking would answer fluently and
+        wrongly; a player named on a question whose shape has no reading for
+        one, "alperen şengün alltime record" read as the league's standings),
+        which the planner said when it planned the Reading; and, where no
+        reader exists for the intent, the first thing the words name that
+        nothing reads (:attr:`Reading.unsupported <association.query.reading.Reading.unsupported>`
+        - "most opponent bench points allowed ..."), said by the planner.
+        With no reader and no named refusal, records why and returns None.
+
+        Until Phase 3, step 0 this re-read the question
+        (``refusals.by_question``, ``refusals.unanswerable``) and the team-only
+        player was the fast path's own check, after this one."""
+        if reading.refused is not None:
+            assert self.planned is not None and self.planned.refusal is not None
+            said = copy.deepcopy(self.planned.refusal)
+            history.log(f"  -> (refusal) {reading.refused.kind}: {said.answer}")
+            return reading.intent, said
         if reading.intent in COMPILED_INTENTS:
             return None
-        refusal = unanswerable(self.con, reading, question)
-        if refusal is not None:
-            history.log(f"  -> (refusal) {refusal.data['refused']}: nothing here reads that shape")
+        if reading.unsupported:
+            refusal = refusal_result(reading.unsupported[0])
+            history.log(f"  -> (refusal) {reading.unsupported[0].kind}: nothing here reads that shape")
             return reading.intent, refusal
         self.unanswered = f"intent {reading.intent!r} has no reader"
         return None
@@ -425,7 +420,9 @@ class Agent:
         cannot honor (``Planned.declined``) - names
         why the question is refused; a season under a table's floor is
         refused, never answered from nothing; and a shape nothing here reads
-        is refused by name (query/refusals)."""
+        is refused by name - the first thing the words name that nothing
+        reads (:attr:`Reading.unsupported <association.query.reading.Reading.unsupported>`),
+        said by the planner."""
         t0 = time.monotonic()
         intent, scope = reading.intent, reading.scope
         declined: list[str] = []
@@ -438,9 +435,12 @@ class Agent:
         if refused is not None:
             history.log(f"  -> (coverage) {refused}")
             return intent, Reply(data={"message": refused, "season": scope.season}, answer=refused)
-        refusal = unanswerable(self.con, reading, question)
-        if refusal is not None:
-            history.log(f"  -> (compose) {why} - refused ({refusal.data['refused']}): nothing here reads that shape")
+        if reading.unsupported:
+            # What the words name that nothing reads, said in place of the
+            # plain decline - only here, where the answer side declined, so
+            # a question the compiler answers is answered.
+            refusal = refusal_result(reading.unsupported[0])
+            history.log(f"  -> (compose) {why} - refused ({reading.unsupported[0].kind}): nothing here reads that shape")
             return intent, refusal
         history.log(f"  -> (compose) {why}: refused")
         self.unanswered = f"{intent}: {why}"

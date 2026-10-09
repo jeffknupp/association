@@ -101,7 +101,9 @@ this tree:
   lists today's violations of each direction by name
   (`scripts/ratchets.json`): a function outside the reader that takes the
   question's text (any parameter holding it, not only one named
-  `question`), how many statements each module executes (105 in 19
+  `question`; 24 when Phase 3 opened, 1 since its first step - the trace
+  file's writer, `history.RunHistory.write`, which records the question
+  asked and answers nothing), how many statements each module executes (105 in 19
   modules when it was first counted, 2026-10-02; 80 in 20 since
   2026-10-05 - counted per module because a listed module could grow
   statements freely; `.execute`, `.executemany`, `.sql`, `.query` and the
@@ -114,7 +116,9 @@ this tree:
   that door, where the count read 38 and the sites were 105 still; the
   argument's tracing is `_origin`'s docstring), a module outside the
   reader that imports `re` by any route or takes a reader's private
-  pattern, and a reader function that takes a DuckDB connection (23). A
+  pattern (6, then 4 since `refusals.py` went), and a reader function that
+  takes a DuckDB connection (23; a reader of the question's words takes
+  the names' in-memory index instead, `entities.players_of`/`teams_of`). A
   fifth ratchet, a private name `compose/` took from `templates/`, reached
   0 and was deleted with `templates/` (step 6). It fails
   on a NEW one or a count that grew, and on a listed one that is GONE or a
@@ -1073,7 +1077,16 @@ model's. Two things follow, and both matter when you add a shape:
   a refusal (a clarification, a "no match"): looking at the question and
   having something to say about it is an answer. `None` is refused with
   the compiler's reason (`Planned.declined`), after the coverage floor
-  and the named refusals (`query/refusals.py`) have had their look.
+  and the reading's own causes have had their look: a refusal the words
+  come to before any point (`Reading.refused` - a championship, a player
+  named on a question whose shape has no reading for one), which the
+  planner says before any reader runs, and what the words name that
+  nothing reads (`Reading.unsupported` - a playoff round, an age, a
+  quarter's stat nothing rebuilds, bench points, ...), said by the planner
+  only where the answer side declined, so a question the compiler answers
+  is answered. Both are read by the parser (`parse.reading_from_route`)
+  and said through `refusal_phrase`; until Phase 3, step 0 the answering
+  loop re-read the question for them (`refusals.py`, deleted).
   Nothing in the package may reach ollama - it is a compiler, not a
   model - and it narrows the relation only through the shared steps
   (`query/player_relation.py`, `query/team_relation.py`; see "A reader on
@@ -1273,8 +1286,13 @@ model's. Two things follow, and both matter when you add a shape:
   `check_coverage`'s reasoning, and it applies past the floors: a coach
   question once reached an agent that queried tables with no coach column and
   was then free to fill the silence from its own weights; now it would be
-  refused for its intent, which tells the reader nothing. `query/refusals.py`
-  is where a shape the warehouse has no column for gets its cause. Before
+  refused for its intent, which tells the reader nothing. A shape the
+  warehouse has no column for is a cause the READER comes to from the
+  words - a kind in `reading.CAUSES` with plain facts, carried on the
+  Reading (`point_refusal`, `refused` or `unsupported`) and said by the
+  planner through `say.refusal_phrase`; `coach` (`no_coach_table`) and
+  `Reading.unsupported`'s seven are the worked cases. Never a sentence
+  built where the question is re-read after the parser. Before
   writing the refusal, check what the source actually serves - "ESPN does not publish
   coaches" was the obvious sentence and it is false, and a refusal naming the
   wrong cause reads as honest while sending the reader somewhere useless.

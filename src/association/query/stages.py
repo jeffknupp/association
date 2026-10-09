@@ -158,6 +158,12 @@ def _reading_record(reading: Reading, mask: Mapping[str, str] | None) -> dict[st
         # same sentence is a difference in this stage, not only in the next.
         "point_declined": reading.point_declined,
         "point_refusal": plain(reading.point_refusal, mask=mask),
+        # What the words come to before any point, and what they name that
+        # nothing reads (Phase 3, step 0): recorded where the Reading holds
+        # one, so the step that moved them off the answering loop moved the
+        # records of exactly those questions.
+        **({"refused": plain(reading.refused, mask=mask)} if reading.refused is not None else {}),
+        **({"unsupported": plain(reading.unsupported, mask=mask)} if reading.unsupported else {}),
     }
 
 

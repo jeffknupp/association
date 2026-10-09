@@ -30,13 +30,15 @@ from typing import Any, Literal, cast, get_args
 
 import duckdb
 
+from association.query import names
+from association.query.calendar import parse_alignment, parse_situation
 from association.query.decisions import Decision
 from association.query.entities import _edit_budget, _words, find_players, find_teams, players_of, suggest_players, team_abbreviations, teams_of
-from association.query.measures import MEASURE_WORDS, PERIOD_COLUMNS
+from association.query.measures import MEASURE_WORDS, PERIOD_COLUMNS, PERIOD_RATE_STATS, TEAM_PERIOD_COLUMNS
 from association.query.metrics import EXTRA_FIELD_COLUMNS, TEAM_FIELD_WORDS
 from association.query.point import read_point
-from association.query.reading import Cause, ConditionSpec, PeriodCondition, PointRefused, Reading, Scope, ScopeError, Split, Unsupported
-from association.query.router import Route, _period_asked, _route_calendar_slots_split, settle
+from association.query.reading import TEAM_ONLY_INTENTS, Cause, ConditionSpec, PeriodCondition, PointRefused, Reading, Scope, ScopeError, Split, Unsupported
+from association.query.router import _PERIOD_AS_CONDITION, Route, _period_asked, _route_calendar_slots_split, settle
 from association.query.subject import (
     TEAM_SINGULARS,
     Subject,
@@ -48,6 +50,7 @@ from association.query.subject import (
     beside,
     child_named,
     nicknames_in,
+    player_named_on_a_team_only_question,
     question_derived_player,
     question_supports,
     read_subject,
@@ -653,8 +656,8 @@ def read_period_condition(question: str) -> tuple[PeriodCondition, tuple[int, in
     count, as a :class:`~association.query.reading.PeriodCondition` with
     the span of the words that said it - or None where the question uses
     none, or words one whose stat the period's line does not rebuild
-    (:data:`~association.query.measures.PERIOD_COLUMNS`; a refusal names
-    that, ``refusals._period_as_condition``). Read from the text alone, the
+    (:data:`~association.query.measures.PERIOD_COLUMNS`; the reading names
+    that by its ``period_as_condition`` cause). Read from the text alone, the
     way every slot but the names and the stat is (ROADMAP plan item 6).
     "At least N", "N+", "N or more" and "a"/"an" are at-least lines; a bare
     number ("one three", "10 points") is exactly that many - the reading
@@ -974,6 +977,7 @@ def reading_from_route(con: duckdb.DuckDBPyConnection, question: str, route: Rou
     .. versionadded:: 5.0.0
     """
     scope = route.scope
+    asked = question
     question = _read_route_folded(question)
     # The subject is read once, by read_route, settled there under the
     # intent the route ends with, and rides on the route. A route with none
@@ -992,7 +996,16 @@ def reading_from_route(con: duckdb.DuckDBPyConnection, question: str, route: Rou
         decisions=(*_subject_decisions(subject), *route.decisions, *applied.decisions),
         misread=tuple(applied.dropped),
     )
-    return with_point(con, question, reading)
+    pointed = with_point(con, question, reading)
+    # What the words name that nothing reads, read once, here: a refusal
+    # said before any reader runs, and the shapes recognized and read by
+    # nothing, said where the answer side declines (the question as it was
+    # asked, unfolded, as the answering loop read it until Phase 3, step 0).
+    return replace(
+        pointed,
+        refused=_reading_from_route_refused(players_of(con), teams_of(con), asked, pointed),
+        unsupported=_reading_from_route_unsupported(asked, pointed),
+    )
 
 
 def with_point(con: duckdb.DuckDBPyConnection, question: str, reading: Reading) -> Reading:
@@ -1023,6 +1036,173 @@ def with_point(con: duckdb.DuckDBPyConnection, question: str, reading: Reading) 
     except Unsupported as exc:
         return replace(reading, point_declined=str(exc))
     return replace(reading, point=point)
+
+
+# --- What the words name that nothing reads ------------------------------------
+#
+# Phase 3, step 0: the answering loop re-read the question after the parser
+# had settled it, in three places - refusals.by_question (a championship),
+# entities.player_named_on_a_team_only_question (a player named on a team's
+# question) and refusals.unanswerable (eight shapes nothing reads). Each was a
+# reading of the words the reader should make; it is made here, once, and
+# carried on the Reading as reading.Cause values the planner says through the
+# one phrase table (compose.plan.refusal_result, say.refusal_phrase).
+
+_CHAMPIONSHIP = re.compile(r"\b(?:championships?|champions?|nba\s+titles?|won\s+the\s+(?:title|finals)|title\s+winners?|finals\s+winners?)\b", re.IGNORECASE)
+"""A championship or a title won: no table holds titles, and a team
+ranking would answer the question fluently and wrongly."""
+_TITLE_ODDS = re.compile(r"\btitle\s+odds\b|\bchampionship\s+odds\b", re.IGNORECASE)
+""""Title odds": a regular-season projection ``team_outlook`` answers, not a
+championship."""
+_BENCH_POINTS = re.compile(r"\bbench\s+(?:points?|scoring|pts)\b", re.IGNORECASE)
+_AGE = re.compile(r"\b(?:\d+\s+years?\s+old|(?:before|after|by|at)\s+(?:turning|age)\s+\d+|age\s+\d+)\b", re.IGNORECASE)
+_CONFERENCE_OR_DIVISION = re.compile(r"\b(?:east(?:ern)?|west(?:ern)?|conference|division|atlantic|central|southeast|northwest|pacific|southwest)\b", re.IGNORECASE)
+_PERIOD_WORD = re.compile(r"\b(?:1st|2nd|3rd|4th|first|second|third|fourth)\s+(?:quarter|half)\b|\bq[1-4]\b|\b[1-4]q\b|\b[12]h\b|\b(?:quarter|half)\b", re.IGNORECASE)
+
+
+def _reading_from_route_refused(players: names.PlayerIndex, teams: names.TeamIndex, question: str, reading: Reading) -> Cause | None:
+    """The refusal the words come to that no point answers past, said
+    before any reader runs - the Reading's
+    :attr:`~association.query.reading.Reading.refused`:
+
+    - a championship (``championship``): "Show which team won the nba
+      championship for the past 10 years" (Jeff's session, 2026-09-24) was
+      read as a team ranking and ranked regular-season records since 2017.
+      The warehouse holds every playoff game and no table of titles; a
+      champion is derivable (the winner of a postseason's last game) and
+      nothing derives it yet. "Title odds" is ``team_outlook``'s projection
+      and is left alone. Was ``refusals.by_question``.
+    - a player named on a question whose intent has no reading for one
+      (``no_player_reading``, :data:`~association.query.reading.TEAM_ONLY_INTENTS`):
+      "alperen şengün alltime record" read as ``team_leaderboard`` and
+      answered the league standings, Sengun never read (yardstick-v2 F111) -
+      the one player the words name and no real team
+      (:func:`~association.query.subject.player_named_on_a_team_only_question`).
+      Was the answering loop's own check.
+
+    The championship first, as the answering loop asked them."""
+    if _CHAMPIONSHIP.search(question) and not _TITLE_ODDS.search(question):
+        return Cause(kind="championship", facts={"intent": reading.intent})
+    if reading.intent not in TEAM_ONLY_INTENTS:
+        return None
+    player = player_named_on_a_team_only_question(players, teams, question, reading.scope.to_slots())
+    return Cause(kind="no_player_reading", facts={"player": player, "intent": reading.intent}) if player is not None else None
+
+
+def _reading_from_route_unsupported(question: str, reading: Reading) -> tuple[Cause, ...]:
+    """What the words name that nothing here reads - ``ROADMAP-TYPES.md``'s
+    ``Unsupported(what, as_typed)`` filter, carried as causes (the kind is
+    the ``what``; the facts hold the words as typed) - in the order the
+    answering loop asked ``refusals.unanswerable``'s checks, which these
+    are: a playoff round, a situation nothing reads (an age, an unread
+    conference phrase, anything else), a stat a quarter's line does not
+    rebuild, a quarter as a condition with no line, a team's quarter of a
+    stat nothing holds, bench points, a team's total of its players'
+    triple-doubles. Recognized whatever answers: the answering loop says
+    the first only where the answer side declined and the coverage floor
+    did not refuse - a question the compiler answers is answered (the
+    Reading's :attr:`~association.query.reading.Reading.unsupported`).
+    Measured before the move (``~/association-research/stages/refusal_sites.py``,
+    on ``87cc782``): every question one of these recognizes was refused by
+    it - 6 of the 628 recorded and 157 of the 2,082 feed questions - and no
+    question was recognized by two."""
+    found = (
+        _unsupported_playoff_round(reading),
+        _unsupported_situation(reading),
+        _unsupported_period_stat(reading),
+        _unsupported_period_as_condition(question, reading),
+        _unsupported_team_period_stat(reading),
+        _unsupported_bench_points(question, reading),
+        _unsupported_team_boolean_count(reading),
+    )
+    return tuple(cause for cause in found if cause is not None)
+
+
+def _unsupported_playoff_round(reading: Reading) -> Cause | None:
+    """A named round: the games carry no round or series label (ISSUES #10)."""
+    playoff_round = reading.scope.round
+    if not isinstance(playoff_round, str) or not playoff_round.strip():
+        return None
+    return Cause(kind="playoff_round", facts={"intent": reading.intent, "round": playoff_round})
+
+
+def _unsupported_situation(reading: Reading) -> Cause | None:
+    """A ``situation`` that names neither a calendar narrowing nor a
+    conference or division (:func:`~association.query.calendar.parse_situation`,
+    :func:`~association.query.calendar.parse_alignment` - the same two
+    readers the relations' own shared steps try): an age (no birth dates on
+    record), a conference or division word in a shape ``parse_alignment``
+    does not read ("the Central Division these days" - the words are right
+    and only the phrasing is not, a different sentence), or anything else
+    the games are not read by (``reads_as``: ``age``, ``alignment``,
+    ``other``)."""
+    situation = reading.scope.situation
+    if not isinstance(situation, str) or not situation.strip():
+        return None
+    if parse_situation(situation) is not None or parse_alignment(situation) is not None:
+        return None
+    reads_as = "age" if _AGE.search(situation) else "alignment" if _CONFERENCE_OR_DIVISION.search(situation) else "other"
+    return Cause(kind="non_calendar_situation", facts={"intent": reading.intent, "situation": situation, "reads_as": reads_as})
+
+
+def _unsupported_period_stat(reading: Reading) -> Cause | None:
+    """A stat a quarter's or half's line does not rebuild, on a period
+    shape: the per-period figures are rebuilt from the shots and plays
+    (:data:`~association.query.measures.PERIOD_COLUMNS`), and play-by-play
+    carries no minutes, plus-minus or advanced rate per quarter; a field
+    goal, 3-point or free throw percentage IS read (``PERIOD_RATE_STATS``).
+    The period and whether it is a half are the sentence's."""
+    scope, intent = reading.scope, reading.intent
+    stat = scope.stat
+    if intent not in ("period_split", "period_leaderboard") or not isinstance(stat, str) or stat in ("pts", "", "all") or stat in PERIOD_COLUMNS or stat in PERIOD_RATE_STATS:
+        return None
+    return Cause(kind="period_stat", facts={"intent": intent, "stat": stat, "period": scope.period, "half": scope.half})
+
+
+def _unsupported_period_as_condition(question: str, reading: Reading) -> Cause | None:
+    """A quarter or half used as a CONDITION on which games count - "three
+    points made per game after making one three in first quarter"
+    (yardstick-v2 F062) - where no line could be read from the words: the
+    parser reads a readable one as ``period_condition``
+    (:func:`read_period_condition`), which the relation applies; a wording
+    it cannot read is kept off the period shapes
+    (``router._PERIOD_AS_CONDITION``), and a period read of it would answer
+    his first-quarter threes, fluently and wrongly."""
+    if reading.scope.period_condition is not None or not (_PERIOD_AS_CONDITION.search(question) and _PERIOD_WORD.search(question)):
+        return None
+    return Cause(kind="period_as_condition", facts={"intent": reading.intent})
+
+
+def _unsupported_team_period_stat(reading: Reading) -> Cause | None:
+    """A team's stat by quarter or half that neither the linescore (its
+    points) nor the period's rebuilt line
+    (:data:`~association.query.measures.TEAM_PERIOD_COLUMNS`) holds:
+    minutes, plus-minus, points in the paint."""
+    stat, intent = reading.scope.stat, reading.intent
+    if intent != "team_quarter_points" or not isinstance(stat, str) or stat in ("points", "pts", "") or stat in TEAM_PERIOD_COLUMNS or stat in PERIOD_RATE_STATS:
+        return None
+    return Cause(kind="team_period_stat", facts={"intent": intent, "stat": stat})
+
+
+def _unsupported_bench_points(question: str, reading: Reading) -> Cause | None:
+    """Bench points: derivable (the non-starters' points in the box score,
+    which flags starters) and read by nothing yet - a gap of ours, named as
+    one, never "no data" (yardstick-v2 F106, "most opponent bench points
+    allowed ...")."""
+    return Cause(kind="bench_points", facts={"intent": reading.intent}) if _BENCH_POINTS.search(question) else None
+
+
+def _unsupported_team_boolean_count(reading: Reading) -> Cause | None:
+    """A team's count of its players' triple-doubles or double-doubles, as a
+    ranking with the team filed: "oklahoma city thunder all-time triple
+    doubles vs west" reads as ``leaderboard`` with ``team`` and ``stat:
+    triple_double``, and the ranking's decline would name the wrong cause
+    ("no ranking reads triple_double") - one player's triple-doubles ARE
+    counted; what is not read is the team's aggregate of them."""
+    scope, subject = reading.scope, reading.subject
+    if reading.intent != "leaderboard" or scope.stat not in ("triple_double", "double_double") or subject is None or subject.kind not in ("team", "team_players") or not scope.team:
+        return None
+    return Cause(kind="team_boolean_count", facts={"intent": reading.intent, "stat": scope.stat})
 
 
 def _subject_decisions(subject: Subject) -> tuple[Decision, ...]:

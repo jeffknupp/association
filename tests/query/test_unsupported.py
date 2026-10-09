@@ -1,8 +1,16 @@
-"""Fixture tests for :mod:`association.query.refusals` - the shapes nothing
-here can answer, refused fast and with their cause. Each test pairs the
-refusal with the fact that makes it safe: the template refuses the same
-shape (so the refusal never shadows an answer), and the sentence names the
-thing that is actually missing."""
+"""What a question's words name that nothing here reads, and the refusals
+the words come to before any reader runs - read by the parser onto the
+Reading as causes (``Reading.unsupported``, ``Reading.refused``) and said by
+the planner (``compose.plan.refusal_result``). Each test pairs the refusal
+with the fact that makes it safe: nothing reads the same shape (so the
+refusal never shadows an answer - the answering loop says it only where the
+answer side declined), and the sentence names the thing that is actually
+missing.
+
+Until Phase 3, step 0 these were ``refusals.unanswerable``'s checks and
+``refusals.by_question``, which the answering loop called with the question
+after the parser had settled it; the cases are the same, re-seated on the
+reader's verdict and the planner's sentence."""
 
 from __future__ import annotations
 
@@ -11,20 +19,29 @@ from typing import Any
 import duckdb
 import pytest
 
-from association.query import refusals
 from association.query.answer import Reply
 from association.query.calendar import parse_alignment, parse_situation
+from association.query.compose.plan import refusal_result
+from association.query.entities import players_of, teams_of
+from association.query.parse import _reading_from_route_refused, _reading_from_route_unsupported
 from association.query.reading import Reading, Scope
-from association.query.refusals import by_question
-from association.query.subject import read_subject
+from association.query.subject import Subject, read_subject
 
 
 def unanswerable(con: duckdb.DuckDBPyConnection, intent: str, slots: dict[str, Any], question: str) -> Reply | None:
-    """A test's slot dict as the Reading the agent hands
-    :func:`association.query.refusals.unanswerable` (5.0.0: it takes the
-    Reading alone): the typed scope, and the subject read from the question
-    the way the module read it for a caller with none."""
-    return refusals.unanswerable(con, Reading(scope=Scope.from_slots(slots), intent=intent, subject=read_subject(con, question, intent, Scope.from_slots(dict(slots)))), question)
+    """A test's slot dict as a Reading - the typed scope, and the subject
+    read from the question - and the first thing its words name that
+    nothing reads, as the planner says it (or None)."""
+    reading = Reading(scope=Scope.from_slots(slots), intent=intent, subject=read_subject(con, question, intent, Scope.from_slots(dict(slots))))
+    causes = _reading_from_route_unsupported(question, reading)
+    return refusal_result(causes[0]) if causes else None
+
+
+def by_question(question: str, intent: str, con: duckdb.DuckDBPyConnection) -> Reply | None:
+    """The refusal the words come to before any reader runs, as the planner
+    says it (or None)."""
+    cause = _reading_from_route_refused(players_of(con), teams_of(con), question, Reading(intent=intent, subject=Subject("everyone")))
+    return refusal_result(cause) if cause is not None else None
 
 
 @pytest.fixture
@@ -186,15 +203,16 @@ def test_bench_points_are_refused_as_a_gap_of_ours_not_missing_data(con: duckdb.
     assert "not read yet" in refusal.answer and "flags starters" in refusal.answer
 
 
-def test_a_championship_question_is_refused_before_a_ranking_answers_it() -> None:
+def test_a_championship_question_is_refused_before_a_ranking_answers_it(con: duckdb.DuckDBPyConnection) -> None:
     """ "show which team won the nba championship for the past 10 years" routed
     team_leaderboard and ranked records since 2017 - a fluent wrong answer;
     titles are not on record as such. "Title odds" is team_outlook's and is
     left alone."""
-    refusal = by_question("show which team won the nba championship for the past 10 years", "team_leaderboard")
+    refusal = by_question("show which team won the nba championship for the past 10 years", "team_leaderboard", con)
     assert refusal is not None and "not on record as such" in refusal.answer
-    assert by_question("what are the sixers title odds?", "team_outlook") is None
-    assert by_question("best record from 2010-11 to 2018-19", "team_leaderboard") is None
+    assert refusal.data == {"refused": "championship", "intent": "team_leaderboard", "message": refusal.answer}
+    assert by_question("what are the sixers title odds?", "team_outlook", con) is None
+    assert by_question("best record from 2010-11 to 2018-19", "team_leaderboard", con) is None
 
 
 def test_a_teams_total_of_triple_doubles_is_refused_for_that_cause(con: duckdb.DuckDBPyConnection) -> None:

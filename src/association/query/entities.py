@@ -376,20 +376,6 @@ def misread_players(names: list[str]) -> str:
     )
 
 
-def team_only_question_names_a_player(named_player: str, intent: str) -> str:
-    """The refusal sentence for :func:`~association.query.subject.player_named_on_a_team_only_question`
-    - names the player it read rather than answering the league or a team's
-    own numbers, the wrong subject.
-
-    .. versionadded:: 4.4.0
-    """
-    return (
-        f"This was read as a question about {named_player}, a player, but {intent.replace('_', ' ')} has no reading for one - "
-        f"it would have answered the league's or a team's own numbers instead. Ask about {named_player}'s own stats, "
-        "or name a team if a team's record was meant."
-    )
-
-
 # What a question calls a team beyond the words of its ESPN name. Only the
 # ones no word of the display name already carries: "Knicks", "Celtics" and
 # "Blazers" need nothing here, "sixers" and "cavs" do.

@@ -94,6 +94,31 @@ otherwise.
     reads only it. Relations named beyond the draft's seven:
     `player_periods` and `team_periods` (a quarter or half of the games).
 
+- **Declared in code by Phase 3, step 0** (2026-10-09, the lead's brief;
+  the question re-reads in the answering loop moved onto the Reading, no
+  answer moved):
+  - The draft's `Unsupported(what, as_typed)` filter, as
+    `Reading.unsupported: tuple[Cause, ...]`: what the words name that
+    nothing reads, a `reading.Cause` per thing recognized, whose kind is
+    the `what` (`playoff_round`, `non_calendar_situation`, `period_stat`,
+    `period_as_condition`, `team_period_stat`, `bench_points`,
+    `team_boolean_count`) and whose facts hold the words as typed (the
+    round, the situation and what it reads as, the stat) beside the
+    intent the page shows. A `Cause` rather than a new type because the
+    planner says it through the one phrase table, and because
+    `reading.Unsupported` already names the decline exception; it becomes
+    a member of the Filter union, keeping its `as_typed`, when step 2
+    declares the union. Recognized whatever answers, said only where the
+    answer side declines.
+  - `Reading.refused: Cause | None` - a refusal the words come to that no
+    point answers past (`championship`; `no_player_reading`, a player
+    named on a question whose shape has no reading for one), planned
+    ahead of the point's own refusal. Not in the draft, which has no
+    verdict on the Reading but the point's; it goes where the Reading
+    stops carrying a point beside itself.
+  - `too_short` is the parser's verdict before any Reading exists
+    (`parse.too_short` returns the cause). `reading.CAUSES` 17 -> 27.
+
 ## What must be decided before which phase
 
 | Phase | Needs from this document |

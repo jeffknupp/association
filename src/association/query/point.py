@@ -1466,9 +1466,9 @@ def _leaderboard_declines(scope: Scope, subject: Subject) -> None:
         # a team aggregate nothing reads. Declined here, where the subject
         # is in hand (the router-era `repair` read "vs west" as the team's
         # opponent here),
-        # so the refusals module names that cause
-        # (refusals._team_boolean_count) rather than the ranking's sentence
-        # naming the wrong one.
+        # so the reading's own cause names it (``team_boolean_count``,
+        # Reading.unsupported, said where the answer side declines) rather
+        # than the ranking's sentence naming the wrong one.
         raise Unsupported(f"a team's total of its players' {scope.stat} is not read")
     if _named_player_in(scope):
         # A leaderboard ranks the league or a team, never one named person -

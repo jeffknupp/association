@@ -441,6 +441,15 @@ CAUSES: frozenset[str] = frozenset(
         "no_period_stat",
         "no_coach_table",
         "too_short",
+        "championship",
+        "no_player_reading",
+        "playoff_round",
+        "non_calendar_situation",
+        "period_stat",
+        "period_as_condition",
+        "team_period_stat",
+        "bench_points",
+        "team_boolean_count",
     }
 )
 """The closed set of causes a point reading refuses by (:class:`Cause.kind`),
@@ -473,7 +482,26 @@ missing thing, never only the slot"):
   ``unanswerable``, the shape nothing reads);
 - a question too short to be one, refused unread before the normalizer is
   asked (``too_short``: ``asked``, the words as typed - the parser's
-  :func:`~association.query.parse.too_short`).
+  :func:`~association.query.parse.too_short`);
+- a refusal the words come to before any reader runs
+  (:attr:`Reading.refused`): a championship, which no table holds
+  (``championship``: ``intent``), or a player named on a question whose
+  shape has no reading for one (``no_player_reading``: ``player``,
+  ``intent``);
+- what the words name and nothing reads (:attr:`Reading.unsupported`,
+  said only where the answer side declines): a playoff round
+  (``playoff_round``: ``intent``, ``round``), a situation nothing reads
+  (``non_calendar_situation``: ``intent``, ``situation``, ``reads_as`` -
+  ``age``, ``alignment`` or ``other``), a stat a quarter's line does not
+  rebuild on a period shape (``period_stat``: ``intent``, ``stat``,
+  ``period``, ``half``), a quarter as a condition with no line
+  (``period_as_condition``: ``intent``), a team's quarter of a stat
+  nothing holds (``team_period_stat``: ``intent``, ``stat``), bench points
+  (``bench_points``: ``intent``), a team's total of its players'
+  triple-doubles (``team_boolean_count``: ``intent``, ``stat``). Each was
+  ``refusals.unanswerable``'s check, asked by the answering loop with the
+  question until Phase 3, step 0; their ``intent`` is what the page shows
+  beside the sentence (``refused`` and ``intent``, as it did).
 
 The planner says each (``compose.plan.refusal_result``); a new cause is an
 entry here and a sentence there.
@@ -568,6 +596,28 @@ class Reading:
     point: Reading | None = None
     point_declined: str | None = None
     point_refusal: Cause | None = None
+    #: A refusal the question's words come to that no point answers past -
+    #: a championship, or a player named on a question whose shape has no
+    #: reading for one (:data:`CAUSES`: ``championship``,
+    #: ``no_player_reading``) - said before any reader runs, by the planner
+    #: (:func:`~association.query.compose.plan.plan_point`). Read by the
+    #: parser (``parse._reading_from_route_refused``); until Phase 3, step 0
+    #: the answering loop re-read the question for each.
+    #:
+    #: .. versionadded:: 6.0.0
+    refused: Cause | None = None
+    #: What the words name that nothing here reads - ``ROADMAP-TYPES.md``'s
+    #: ``Unsupported(what, as_typed)`` filter, carried as causes whose kind
+    #: is the ``what`` and whose facts hold the words as typed (a playoff
+    #: round, an age, a stat a quarter does not rebuild, bench points, ...;
+    #: :data:`CAUSES`), in the order the answering loop asked
+    #: ``refusals.unanswerable``'s checks. Recognized whatever answers: the
+    #: first is said, by the planner's sentence, only where the answer side
+    #: declined and the coverage floor did not refuse, so a question the
+    #: compiler answers is answered.
+    #:
+    #: .. versionadded:: 6.0.0
+    unsupported: tuple[Cause, ...] = ()
 
     @classmethod
     def from_slots(cls, slots: Mapping[str, Any], *, intent: str = "", subject: Subject | None = None) -> Reading:
@@ -739,9 +789,10 @@ yardstick-v2 F111, "alperen şengün alltime record" routed to
 ``team_leaderboard`` with no player and no team slot at all, and answered
 the league standings, entirely off Sengun. AGENTS.md's "Refuse by name
 where the intent cannot be about the subject" is exactly this shape;
-``subject.player_named_on_a_team_only_question`` is the check, called from
-``agent.py`` before the template runs, and its refusal names the player it
-read rather than answering the wrong one.
+``subject.player_named_on_a_team_only_question`` is the check, read by the
+parser into the Reading's ``no_player_reading`` refusal
+(:attr:`Reading.refused`), which the planner says before any reader runs -
+naming the player it read rather than answering the wrong one.
 
 Deliberately not every team-shaped intent: ``head_to_head`` is only ever
 two teams meeting - the parser reads a player's record against a team as
