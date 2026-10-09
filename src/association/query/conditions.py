@@ -94,9 +94,12 @@ _SEASON_TYPE_WORDS = {2: "regular season", 3: "postseason"}
 _FIRST_END_YEAR_SEASON = 1994
 
 # The tables a player's games are read from, and a team's. A player's always
-# include team_box_stats, which carries the home/away side of each game.
-_PLAYER_GAME_TABLES = ("player_box_stats", "team_box_stats", "games")
-_TEAM_GAME_TABLES = ("team_box_stats", "games")
+# include team_box_stats, which carries the home/away side of each game; both
+# include team_alignment, which a conference or division narrowing reads
+# (`narrow_alignment`; its 1988 floor is never the binding one beside these,
+# so declaring it changes no floor - ISSUES.md #216, completeness).
+_PLAYER_GAME_TABLES = ("player_box_stats", "team_box_stats", "games", "team_alignment")
+_TEAM_GAME_TABLES = ("team_box_stats", "games", "team_alignment")
 
 # A team can have two games on one Eastern date only when ESPN's clock is
 # wrong (a handful exist), so the raw timestamp and then the id settle the

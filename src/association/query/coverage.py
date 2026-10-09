@@ -38,14 +38,16 @@ from association.query.team_metrics import TEAM_METRICS, resolve_team_metric
 # The box scores a player's games are read from: the log for the stats a
 # rebuild gets right, the stored table for the rest, and `games` for the
 # game itself; both box floors are 1994 with the same phantom 1993.
-_PLAYER_BOX_SOURCES = ("player_game_log", "player_box_stats", "games")
+# team_alignment last: a conference or division narrowing reads it on every
+# game relation, and its 1988 floor binds nowhere beside these (#216).
+_PLAYER_BOX_SOURCES = ("player_game_log", "player_box_stats", "games", "team_alignment")
 
 # A count of games over a line, or a single game's high: the box scores,
 # and player_season_stats, read to tell whether a named player's career
 # began before the box scores do. Listed after the box-score tables so a
 # season under both floors is refused in the box scores' words, not as a
 # ranking.
-_PLAYER_COUNT_SOURCES = ("player_game_log", "player_box_stats", "player_season_stats")
+_PLAYER_COUNT_SOURCES = ("player_game_log", "player_box_stats", "player_season_stats", "team_alignment")
 
 # The computed advanced stats live in their own table with its own floor,
 # and a player's line answers them from it. Named here rather than imported
@@ -220,10 +222,10 @@ whose coverage floors :func:`check_coverage` refuses a season under.
 
 RELATION_SOURCES: dict[str, tuple[str, ...]] = {
     "player_games": _PLAYER_BOX_SOURCES,
-    "player_periods": ("shot_chart", "games"),
+    "player_periods": ("shot_chart", "games", "team_alignment"),
     "player_seasons": ("player_season_stats_deduped",),
-    "team_games": ("games", "team_box_stats"),
-    "team_periods": ("team_box_stats", "games"),
+    "team_games": ("games", "team_box_stats", "team_alignment"),
+    "team_periods": ("team_box_stats", "games", "team_alignment"),
     "team_seasons": ("team_season_stats", "games"),
     "team_snapshots": ("team_power_index",),
     "netpoints": ("net_points_player", "net_points_player_fingerprint"),

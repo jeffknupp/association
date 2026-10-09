@@ -126,7 +126,7 @@ def test_a_game_level_ranking_is_floored_by_the_box_scores_it_reads() -> None:
     none - it answered "No games for every player in the 1986 regular
     season", the wrong cause."""
     game_level = PointShape("player_games", "ranking", "player")
-    assert sources_for(game_level, {"stat": "points", "threshold": 30, "season": 1986}) == ("player_game_log", "player_box_stats", "games")
+    assert sources_for(game_level, {"stat": "points", "threshold": 30, "season": 1986}) == ("player_game_log", "player_box_stats", "games", "team_alignment")
     refused = check_coverage(game_level, {"stat": "points", "threshold": 30, "season": 1986, "season_type": REGULAR_SEASON})
     assert refused is not None and refused.startswith("Player game logs only go back to 1994")
     assert check_coverage(game_level, {"stat": "points", "threshold": 30, "season": 1994, "season_type": REGULAR_SEASON}) is None
