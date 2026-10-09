@@ -757,6 +757,15 @@ def _say_no_games_in_span(facts: Mapping[str, Any]) -> str:
     return f"No {facts['span']} games found for {facts['player']}." + defaulted_season_note(tuple(redirect) if redirect else None, facts["kind"])
 
 
+def _say_no_shots(facts: Mapping[str, Any]) -> str:
+    """Nothing located to draw (ISSUES.md #105): what was looked for (every
+    shot, or the value asked for), whom for, and where the read looked -
+    the one game, in parentheses as a drawn chart's context is, or the
+    span's or the narrowed window's phrase."""
+    where = f" ({facts['game']})" if facts["game"] else f" {facts['during']}"
+    return f"No {facts['kind']} found for {facts['player']}{where}."
+
+
 def _say_player_listed(facts: Mapping[str, Any]) -> str:
     """A player the box scores list in the span but never as playing, or not at all."""
     for_team = f" for the {facts['team']}" if facts["team"] else ""
@@ -3954,7 +3963,8 @@ def say_shot_chart(result: Result) -> Reply:
     """One player's shot chart worded, as ``shot_chart``'s retired template
     and its renderer said it: the file drawn, whom for (and which game or
     window, by the narrowing's phrase), made of attempted - or that nothing
-    was drawn, and why (the refusal's sentence, or no shots found) - then
+    was drawn, and why (the read's refusal: the shot value's, or no shots
+    found where it looked) - then
     the other names that matched, the shots a value filter left out or
     derived, and the career's floor or the seasons a defaulted one redirects
     to. The artifact is the file the draw step wrote (``compose.shots.draw_shot_chart``).
@@ -3973,8 +3983,8 @@ def say_shot_chart(result: Result) -> Reply:
         message += "".join(decision_phrase(each) for each in result.decisions if each.kind == "also_matched")
         message += "".join(f". Note: {text}" for text in said)
     else:
-        base = _empty_said(result) if result.empty is not None else f"No shots found for {name} with the given filters."
-        message = " Note: ".join([base, *said]) + ("." if said else "")
+        # The read's own reason (no_shots, or the shot value's refusal): the reader always gives one.
+        message = " Note: ".join([_empty_said(result), *said]) + ("." if said else "")
     message += floor
     message += "".join(decision_phrase(each, career_hint=False) for each in result.decisions if each.kind == "season_redirected")
     artifacts = [Artifact(chart.kind, Path(chart.path))] if chart.path is not None else []
@@ -4060,6 +4070,7 @@ _RUN_PHRASES: dict[str, Callable[[Mapping[str, Any]], str | None]] = {
     ),
     "no_box_scores": lambda facts: f"{facts['player']} has no {facts['kind']} box scores in the warehouse, which begin with the {season_label(facts['first'])} season.",
     "no_games_in_span": _say_no_games_in_span,
+    "no_shots": _say_no_shots,
     "not_teammates_then": lambda facts: f"{facts['teammate']} was not {facts['player']}'s teammate in any of his {count_games(facts['games'])} {facts['during']}.",
     "none_matched": lambda facts: f"{facts['player']} played {count_games(facts['games'])} {facts['during']}, none of them{facts['narrowing']}.",
     "listed_not_played": _say_player_listed,

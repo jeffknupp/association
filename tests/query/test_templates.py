@@ -1462,30 +1462,30 @@ def test_shot_chart_reports_no_matching_shots_rather_than_falling_through(sc_ctx
     # so an empty result is the answer, not a reason to spend minutes.
     # 2010: a season the shot table covers (1999 is under its floor, refused by the floor first).
     result = shot_chart(sc_ctx, Reading.from_slots({"player": "Stephen Curry", "season": 2010}))
-    assert result.answer == "No shots found for Stephen Curry with the given filters."
+    assert result.answer == "No shots found for Stephen Curry in the 2010 regular season."
 
 
 def test_shot_chart_defaulted_season_redirects_to_a_retired_players_range(sc_ctx: AnswerContext) -> None:
     """No season was named - "now" defaulted - so a player with shots only in
-    an earlier season is pointed at it instead of "with the given filters",
-    which blames a filter that was never given and reads as though the
-    warehouse held nothing of his at all (issue #18). No "or ask for his
-    career" - shot_chart draws one season, never a career."""
+    an earlier season is pointed at it beside the season the read looked in
+    (issue #18; until ISSUES.md #105 the sentence blamed "the given
+    filters", which were never given, and named no season). No "or ask for
+    his career" - shot_chart draws one season, never a career."""
     sc_ctx.con.execute("INSERT INTO players VALUES ('2','Old Timer')")
     sc_ctx.con.execute("INSERT INTO shot_chart VALUES ('2',2010,2,'e9',1,'8:00',TRUE,'Jump Shot',25,26,2,'20-foot two point jumper')")
     result = shot_chart(sc_ctx, Reading.from_slots({"player": "Old Timer"}))
-    assert result.answer == "No shots found for Old Timer with the given filters. He last appears in 2010. The warehouse holds his 2010 regular season; name one."
+    assert result.answer == f"No shots found for Old Timer in the {current_season()} regular season. He last appears in 2010. The warehouse holds his 2010 regular season; name one."
     assert result.artifacts == []
 
 
-def test_shot_chart_a_named_season_keeps_the_plain_refusal(sc_ctx: AnswerContext) -> None:
-    """The season the question named is the fact the refusal is about, so it
-    is left exactly as it read before this fix - unlike the defaulted case
-    above."""
+def test_shot_chart_a_named_season_is_the_season_the_refusal_names(sc_ctx: AnswerContext) -> None:
+    """The season the question named is the fact the refusal is about, so
+    the sentence names it and nothing redirects - unlike the defaulted case
+    above (ISSUES.md #105: it read "with the given filters", naming neither)."""
     sc_ctx.con.execute("INSERT INTO players VALUES ('2','Old Timer')")
     sc_ctx.con.execute("INSERT INTO shot_chart VALUES ('2',2010,2,'e9',1,'8:00',TRUE,'Jump Shot',25,26,2,'20-foot two point jumper')")
     result = shot_chart(sc_ctx, Reading.from_slots({"player": "Old Timer", "season": 2009}))
-    assert result.answer == "No shots found for Old Timer with the given filters."
+    assert result.answer == "No shots found for Old Timer in the 2009 regular season."
 
 
 def test_a_nonsense_shot_value_never_reaches_the_chart() -> None:
@@ -1613,7 +1613,7 @@ def test_shot_chart_career_span_names_a_career_entirely_before_the_floor(sc_ctx:
     though the warehouse held nothing of his at all."""
     _add_career_table(sc_ctx.con, [("1", 1997, 3, 20), ("1", 1998, 3, 15)])
     answer = shot_chart(sc_ctx, Reading.from_slots({"player": "Stephen Curry", "season_type": 3, "span": "career"})).answer or ""
-    assert answer == "No shots found for Stephen Curry with the given filters. Stephen Curry's postseason career (1997-1998) ends before shot data begins, in 2002, so none of it can be shown."
+    assert answer == "No shots found for Stephen Curry in any postseason on record. Stephen Curry's postseason career (1997-1998) ends before shot data begins, in 2002, so none of it can be shown."
 
 
 def test_shot_chart_career_span_names_the_seasons_the_floor_leaves_out(sc_ctx: AnswerContext) -> None:
@@ -2885,7 +2885,7 @@ def test_a_chart_a_shot_value_emptied_in_a_defaulted_season_keeps_the_plain_refu
     sc_ctx.con.execute("INSERT INTO players VALUES ('3','Big Man')")
     sc_ctx.con.execute("INSERT INTO shot_chart VALUES ('3',?,2,'e1',1,'9:00',TRUE,'Dunk',25,1,2,'2-foot two point dunk')", [current_season()])
     result = shot_chart(sc_ctx, Reading.from_slots({"player": "Big Man", "shot_value": 3}))
-    assert result.answer == "No shots found for Big Man with the given filters."
+    assert result.answer == f"No 3PT attempts found for Big Man in the {current_season()} regular season."
     assert result.artifacts == []
     distance = shot_distance(sc_ctx, Reading.from_slots({"player": "Big Man", "shot_value": 3}))
     assert distance.answer == f"No 3-point shots with recorded coordinates for Big Man in the {season_phrase(current_season(), 2)}."
@@ -3264,6 +3264,18 @@ def test_shot_chart_scopes_to_a_single_game_when_order_is_set(sc_ctx: AnswerCont
 def test_shot_chart_order_first_picks_the_earliest_game(sc_ctx: AnswerContext) -> None:
     _sc_ctx_add_games(sc_ctx, [("e1", "2026-01-01T00:00Z"), ("eLast", "2026-04-13T00:30Z")])
     assert "e1" in (shot_chart(sc_ctx, Reading.from_slots({"player": "Stephen Curry", "order": "first"})).answer or "")
+
+
+def test_shot_chart_an_empty_single_game_names_the_game(sc_ctx: AnswerContext) -> None:
+    """ISSUES.md #105: where the window pinned one game and it holds no
+    located shot, the sentence names that game - its bare id here, since
+    the fixture's games carry nothing to label one by - as a drawn chart's
+    context names it, rather than "the given filters"; and nothing
+    redirects, since the game, not the season, is what emptied the read."""
+    _sc_ctx_add_games(sc_ctx, [("e1", "2026-01-01T00:00Z"), ("eLast", "2026-04-13T00:30Z")])
+    result = shot_chart(sc_ctx, Reading.from_slots({"player": "Stephen Curry", "order": "recent"}))
+    assert result.answer == "No shots found for Stephen Curry (game eLast)."
+    assert result.artifacts == []
 
 
 def test_shot_chart_without_order_still_covers_the_season(sc_ctx: AnswerContext) -> None:

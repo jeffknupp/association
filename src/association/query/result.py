@@ -743,6 +743,7 @@ step's report). A key that was a cell the read applied went to
 RUN_CAUSES: frozenset[str] = frozenset(
     {
         "season_out_of_reach",
+        "no_shots",
         "no_advanced_line",
         "advanced_from_empty_box_scores",
         "name_unmatched",

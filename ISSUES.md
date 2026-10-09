@@ -1450,34 +1450,6 @@ those were found.
   measure in `DATA.md`.
 - **GitHub:** #154
 
-### `shot_chart`'s empty refusal never names the season, even when one was asked for
-- **Found:** 2026-09-18, fixing #18 (the retired-player default-season bug)
-- **Evidence:** the chart's empty sentence (`compose.say.say_shot_chart`, `"No
-  shots found for {name} with the given filters."`; `shotchart.render_for_player`'s
-  empty branch until Phase 2, step 5) never mentions ``season`` at all -
-  unlike `player_stat` ("no 1999 regular season numbers") and `game_log` ("No
-  1999 regular season games found"), which both name the season in the plain
-  refusal. `shot_chart(ctx, {"player": "Stephen Curry", "season": 1999})`
-  against a warehouse with only current-season shots answers exactly "No shots
-  found for Stephen Curry with the given filters." - true when no filters were
-  given (a bare `player` and `season` are not filters this sentence counts),
-  and misleading when they were, since it does not say which one emptied the
-  result.
-- **User sees:** a refusal that does not say which season it is refusing, and
-  reads as though a filter (`shot_value`, `period`, ...) is why nothing was
-  found even when the question named nothing but a player and a season. #18's
-  fix appends a redirect naming the season only for a *defaulted* season with
-  something to redirect to; an *explicit* season with nothing on record - or a
-  defaulted one where the player has no shots on record at all - still gets
-  this unscoped sentence.
-- **Next step:** have `say_shot_chart`'s empty sentence say the season and
-  season_type it queried (mirroring `_period`), and separately list which
-  filters (if any) were actually applied, rather than a blanket "with the
-  given filters" that fires even with none. Threading that through touches
-  the sayer only (the Result carries the span).
-- **Source:** ours, not ESPN's.
-- **GitHub:** #105
-
 ### `opponent` can hold garbage nothing else in the slots explains, and blocks an otherwise-answerable question
 - **Found:** 2026-09-18, entity-resolution pass over the StatMuse replay set
 - **Evidence:** two shapes, neither a name-matching problem:

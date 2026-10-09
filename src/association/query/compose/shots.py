@@ -370,13 +370,21 @@ def _shot_chart_games(con: duckdb.DuckDBPyConnection, player: Entity, span: Reso
     return _ShotChartGames(event_ids=tuple(ids), window=f"{_shots_span_prefix(span)}{narrowed.filters(windowed=True)}")
 
 
+def _shot_value_noun(shot_value: int | None) -> str:
+    """What a chart looked for, as its caption and its refusals name it:
+    every shot, or the value asked for ("3PT attempts")."""
+    if shot_value is None:
+        return "shots"
+    return {1: "free throws", 2: "2PT attempts", 3: "3PT attempts"}.get(shot_value, f"{shot_value}pt attempts")
+
+
 def _shot_chart_refusal(shot_value: int | None, season: int | None, name: str) -> Refusal | None:
     """The refusal to draw, where the shot value says so - a free throw (no
     court position worth drawing) or a season in
     :data:`~association.query.shotchart.UNSEPARABLE_SHOT_VALUES` - or ``None``."""
     if shot_value == 1:
         return Refusal(kind="free_throw_chart")
-    kind = {2: "2PT attempts", 3: "3PT attempts"}.get(shot_value or 0, f"{shot_value}pt attempts")
+    kind = _shot_value_noun(shot_value)
     if shot_value is not None and season in UNSEPARABLE_SHOT_VALUES:
         return Refusal(kind="shot_chart_unseparable", facts={"season": season, "player": name, "kind": kind})
     return None
@@ -445,7 +453,7 @@ def _shot_chart_caption(season: int | None, season_type: int | None, games: _Sho
     elif games.event_ids is not None and games.window:
         parts.append(games.window)
     if shot_value is not None:
-        parts.append({1: "free throws", 2: "2PT attempts", 3: "3PT attempts"}.get(shot_value, f"{shot_value}pt attempts"))
+        parts.append(_shot_value_noun(shot_value))
     return f"{', '.join(parts) or 'all games'} - {made}/{total} ({made / total:.1%}) shown"
 
 
@@ -469,10 +477,33 @@ def _shot_chart_file(name: str, season: int | None, season_type: int | None, gam
     return f"shotchart_{safe_name}" + (f"_{scoped}" if scoped else "") + ".html"
 
 
+def _shot_chart_nothing_found(name: str, span: ResolvedSpan, games: _ShotChartGames, game: str | None, shot_value: int | None) -> Refusal:
+    """The read's refusal where it found nothing located to draw (ISSUES.md
+    #105): whom for, what it looked for (``kind``: every shot, or the value
+    asked for) and where it looked - the one game pinned (its label, or its
+    bare id where the warehouse cannot label it, as the caption names it),
+    the narrowed window's phrase (the span and the relation's narrowing, as
+    a drawn chart's context says it), or the span alone: the season as the
+    question named or defaulted it, a "since", or for a career any season
+    of the type on record. Until this the sentence blamed "the given
+    filters", which a bare season never gave, and named no season."""
+    kind = _shot_value_noun(shot_value)
+    if games.event_id is not None:
+        return Refusal(kind="no_shots", facts={"player": name, "kind": kind, "during": None, "game": game or f"game {games.event_id}"})
+    if games.event_ids is not None and games.window:
+        during = games.window
+    elif span.career and span.since is None:
+        during = f"in any {span.kind} on record"
+    else:
+        during = span.during()
+    return Refusal(kind="no_shots", facts={"player": name, "kind": kind, "during": during, "game": None})
+
+
 def _shot_chart_drawn(con: duckdb.DuckDBPyConnection, player: Entity, span: ResolvedSpan, games: _ShotChartGames, shot_value: int | None) -> tuple[Chart, list[Note], str | None, Refusal | None]:
     """The chart's body, its notes, the narrowing's phrase (the one game's
-    label or the window's) and the refusal sentence, if the shot value
-    refuses the drawing: the shots read, kept and counted. An unspecified
+    label or the window's) and the refusal, if the shot value refuses the
+    drawing or nothing was found to draw (:func:`_shot_chart_nothing_found`):
+    the shots read, kept and counted. An unspecified
     season means the current one (passing None through once charted a
     career, 3,665 Curry attempts); once particular games are pinned, the
     season and its type are redundant and left off."""
@@ -486,14 +517,15 @@ def _shot_chart_drawn(con: duckdb.DuckDBPyConnection, player: Entity, span: Reso
     unknown = [r for r in rows if shot_value is not None and r[8] is None]
     notes = _shot_chart_notes(kept, unknown, shot_value)
     marks = tuple(r[:7] for r in kept)
-    if not marks:
-        return Chart(kind="shot_chart", title=player.name), notes, None, None
-    made, total = sum(1 for s in marks if s[2]), len(marks)
     # Only a single-game chart has one game to name.
     game = game_label(con, player.id, games.event_id) if games.event_id is not None else None
+    where = game or (games.window if games.event_ids else None)
+    if not marks:
+        return Chart(kind="shot_chart", title=player.name), notes, where, _shot_chart_nothing_found(player.name, span, games, game, shot_value)
+    made, total = sum(1 for s in marks if s[2]), len(marks)
     caption = _shot_chart_caption(season, season_type, games, game, shot_value, made, total)
     chart = Chart(kind="shot_chart", made=made, attempted=total, marks=marks, title=player.name, caption=caption, file=_shot_chart_file(player.name, season, season_type, games, shot_value))
-    return chart, notes, game or (games.window if games.event_ids else None), None
+    return chart, notes, where, None
 
 
 def read_shot_chart(con: duckdb.DuckDBPyConnection, q: ShotQuery, *, stated: frozenset[str]) -> Result | Unanswered | None:
