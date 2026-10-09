@@ -1392,39 +1392,14 @@ those were found.
   measure in `DATA.md`.
 - **GitHub:** #154
 
-### `opponent` can hold garbage nothing else in the slots explains, and blocks an otherwise-answerable question
-- **Found:** 2026-09-18, entity-resolution pass over the StatMuse replay set
-- **Evidence:** two shapes, neither a name-matching problem:
-  - "bane game log without anthony black and franz wagner this season" arrives
-    with `opponent='Anthony Black, Franz Wagner'` - a comma-joined restatement
-    of the *same two names* already correctly in `without=['anthony black',
-    'franz wagner']`. `entities.scope_from_question` has no rule for an
-    `opponent` that duplicates `without`; it is left in place, fails to
-    resolve as a team ("no team matching 'Anthony Black, Franz Wagner'"), and
-    the whole question is refused even though every piece of scoping it
-    actually needs is already sitting in `without`.
-  - "Clippers ats record last 15 games at home" arrives with `team='Los
-    Angeles Clippers'` (correct) and `opponent='home'` beside `venue='home'` -
-    the same fact written twice, once as a bogus opponent. No `vs`/`against`
-    phrase exists for `_scope_from_question_opponent` to correct it with, so it
-    is left alone and fails to resolve as a team ("no team matching 'home'").
-    This second one is not a clean fix even if `opponent` is dropped: "ats"
-    means against-the-spread, which nothing in the warehouse stores, so the
-    question is unanswerable on the stat alone regardless.
-- **User sees:** a refusal for the first; the second would still
-  need a separate refusal for the unsupported "ats" stat even if `opponent`
-  were fixed.
-- **Next step:** in `entities.py`, drop an `opponent` that (a) does not
-  resolve as a team via `_team_named`, and (b) either duplicates names already
-  present in `without`, or is literally the venue word already in `venue`
-  ("home"/"away"). Not attempted here: the payoff on the second case is
-  capped by the separate "ats" gap, and the first needs a decision about
-  whether dropping `opponent` outright is safe versus trying to fold it back
-  into `without` (already correct) - a judgment call better made alongside
-  whichever reader's `STATED_SCOPING` row (`compose/plan.py`; `HONORED_SCOPING` until 2026-10-05) actually reads these two rows.
-- **Source:** ours, not ESPN's.
+### "ats" (against the spread) is dropped and the plain record answered: "Clippers ats record last 15 games at home" lists their home record
+- **Found:** 2026-09-18 (as the second half of the retired entry "`opponent` can hold garbage nothing else in the slots explains", whose first half - a model-filled `opponent` restating `without` or `venue` - is gone with the router: on the parser, 2026-10-09, "bane game log without anthony black and franz wagner this season" answers his 15 games without both, and the Clippers question below answers their home record, no `opponent` read).
+- **Evidence:** `~/association-research/stages/ask_unnamed.py "Clippers ats record last 15 games at home"` (no model) answers "LA Clippers at home, last 15 games of the 2026 regular season (9-6): ..." - the plain home record; nothing reads "ats", the warehouse holds no betting line, and the claims ledger counts the word as unread. 26 of the 2,082 feed questions (`~/association-research/stages/feed_recorded.jsonl`) say "ats", "spread", "cover", "over/under" or "odds" ("76ers versus chicago bulls spread last 10 games", "Blazers ats as the underdog the last 9 road games", "bucks vs celtics spread last 10 game", ...), and each is answered as the plain record or log its other words name.
+- **User sees:** a fluent record where a record against the spread was asked, with nothing saying the word was dropped - the failure shape at the top of `AGENTS.md`.
+- **Next step:** read "ats"/"against the spread"/"cover(ed) the spread" as what the words name that nothing reads (`Reading.unsupported`, step 0's family: "a betting line is not in the warehouse"), said where the answer side would otherwise answer the plain record; a case in `tests/query/test_parser.py`; the feed answers that move enumerated (the feed holds betting wordings - count them first).
+- **Source:** ours (the warehouse holds no lines; a refusal is the honest answer).
+- **Priority:** P1 - a different question answered, on 26 feed questions (ranked here from the retired entry's P2).
 - **GitHub:** #118
-
 ### A quarter or half is answered for a player or a team, and for nobody else
 - **Found:** 2026-09-16 auditing the feed; the player half shipped the same
   day as `period_split`; **re-scoped 2026-09-29** when the period became a
