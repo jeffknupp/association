@@ -1022,8 +1022,10 @@ agents' reports named here are in `~/association-research/stages/`.
     the games relations is a default nothing says out loud (open item 9).
     A fix made in passing - one game named as his in a phrasing the
     grammar misses - grows the unread-word ledger by 15 words that were
-    only ever counted as read by accident, so it waits on the branch for
-    Jeff's call under the "may not grow" rule. Cost: the lead's rebase
+    only ever counted as read by accident, so it waited on the branch
+    under the "may not grow" rule; Jeff's call the same evening was to
+    merge and let it grow (`d12f899`), the first growth the ledger has
+    been allowed, and its words are on record. Cost: the lead's rebase
     over sixteen isolated fixes and a fresh four-population run on both
     trees.
 
