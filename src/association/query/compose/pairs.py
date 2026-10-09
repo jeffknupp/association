@@ -118,7 +118,7 @@ def _pair_result(
         {"key": a.name, "wins": wins, **_matchup_line([m["a"] for m in meetings])},
         {"key": b.name, "wins": count - wins, **_matchup_line([m["b"] for m in meetings])},
     )
-    shown = meetings[: _clamp_limit(scope.limit, MATCHUP_MEETINGS_SHOWN)]
+    shown = meetings[: _clamp_limit(scope.window.count, MATCHUP_MEETINGS_SHOWN)]
     abbr = _names(con, "teams", "team_id", {m["team_id"] for m in shown} | {m["opponent_team_id"] for m in shown}, column="abbreviation")
     rows = tuple(
         {
@@ -134,7 +134,7 @@ def _pair_result(
         relation="player",
         span=Span(season=covered.season, season_type=covered.season_type, career=covered.season is None, first=first, last=last, phrase=covered.label(first, last), floor=covered.first),
         narrowing=Narrowing(phrase=compiled.narrowed.filters(), cells=(Met(other=b.name),)),
-        window=Window(limit=len(shown), asked=scope.limit),
+        window=Window(limit=len(shown), asked=scope.window.count),
         parts=(Part(body=Grouped(by="subject", rows=lines)), Part(role="detail", body=Rows(rows=rows, total_before_window=count))),
         notes=notes,
         facts=MatchupFacts(teammate_games=together),

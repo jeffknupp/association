@@ -234,11 +234,63 @@ otherwise.
     gone.
   - Not this slice's, on purpose: `season_n` stays a slot (the games'
     cuts family, `SeasonOfCareer`); the window's half of "the past N
-    seasons" (a history's `limit` as a count of seasons, a filler limit
-    dropped) stays a stage (`router._route_relative_window`) until the
-    window's slice; the guard words of other families the tagger reads
-    ("vs", "how many", "record", "last") reach it as context until their
-    slices move them to the lexicon.
+    seasons" went to the window's slice (below); the guard words of other
+    families the tagger reads ("vs", "how many", "record") reach it as
+    context until their slices move them to the lexicon ("last" is the
+    window's, `lexicon.LAST_WORD`, since its slice).
+
+- **Declared in code by Phase 3, step 2, the window** (2026-10-09, the
+  lead's brief; no answer, result, remark, planned query or reading moved on
+  the four populations - every reading compared through the projection, the
+  typed value recorded beside it):
+  - The draft's `Window`, as `reading.Window` on `Scope.window`, in place
+    of the four slots `order`, `limit`, `rank`, `ranked_by` (and the point's
+    `offset`, 0 on all 2,710 readings, deleted): `order` (which end of the
+    span, `recent` or `first`, where the words said; never a default),
+    `count` (how many rows; never below 1), `of` (`games`, or `seasons` for
+    a history's "past 5 years"), `rank` (which end of a team ranking:
+    `most`, `fewest`, `best`, `worst`), `by` (the measure a ranking of the
+    games over a yes/no stat is ordered by). **Fields, not the draft's
+    `order: recent | first | top | bottom`**: measured on the 2,710 readings
+    (`window_family.py`), a count stands with no end 102 times ("top 5", a
+    history's seasons, "last 10 home games" on a reader with no window of
+    its own) and an end never without a count; "top"/"bottom" name no end
+    of the SPAN - a ranking's own rank word says which end of the ranking -
+    so the grammar reads them as the count alone, as the stages did. `rank`
+    is the draft's missing row ("nowhere for `ranked_by` or a stated
+    qualifier" -> `Window.by`; the qualifier, `Minimum`, is still open).
+  - One tagger: `window.read_window(question, WindowContext) ->
+    WindowRead(window, claims)`, over `lexicon.py`'s `WINDOW_GRAMMAR`,
+    `ORDER_WORDS`, `SINGLE_GAME`, `RANK_WORDS`, `RANKED_BOOLEAN_GAMES`,
+    `RANKED_BY_WORD` (and the family's intent guards: `GAMES_WORDS`,
+    `WHO_RANKS`, `PERIOD_TOP`, `LOG_OR_WINDOW_WORDS`, `LAST_WORD`), run in
+    `router._settle` just before the span tagger, which takes the typed
+    window as its context; the context is the settled intent and whether
+    the stat is a yes/no one. Measured first: the parser read the grammar
+    before the stages and again after them, and every stage that dropped a
+    COUNT (`_names_a_count` and its five callers, the model-era filler
+    rules) was undone by the second read, so those rules were dead and
+    went; what the stages did move on the 2,710 - a history's seasons (38),
+    an end dropped on a reader with no window (21), a team ranking's `rank`
+    (86), `ranked_by` (2) - the tagger reads the same way, the relation's
+    resolution (`relation_window`, `history_seasons`) identical on 2,710 of
+    2,710.
+  - The cells (contract 4): `Window.CELLS` is `window` (an end with its
+    count: the slot `order` until now) and `ranked_by`; both in
+    `RELATION_SCOPING` (the compiler's boolean-game ranking reads `by`),
+    `window` in `TEAM_RELATION_SCOPING`, each reader's refusal of `window`
+    in the `*_EXCLUDED` rows under the cell's name with its reason, and no
+    row of `STATED_SCOPING` naming `order`; `COMPILER_SLOTS` deleted. **A
+    bare count is not a cell**: no reader ever refused or stepped aside for
+    one - each takes it as its own parameter (rows, runs, meetings or
+    seasons to show), and the games relations read it as the newest N
+    (`relation_window`) - so `Window.cells()` reports `window` only where
+    an end was named. Still open below.
+  - The record keeps its old shape through the projection
+    (`Scope.projected()`, `to_slots()`: `ranked_by` after `fields`, `rank`
+    after `kind`, `order` and `limit` last; `Reading.projected()` emits the
+    point's `offset` as 0), and the typed value is recorded beside the
+    reading as `window`.
 
 ## What must be decided before which phase
 
@@ -664,3 +716,16 @@ moves into `data` before the slice that rewords its answer:
    type (the open season-type default in `ROADMAP.md`) needs a bit the
    tagger has and the value does not carry; add it when that note is
    written, not before.
+9. **A bare count on the games relations is a default, not a cell.** "top
+   5" and "last 10 home games" on a reader with no window of its own both
+   reach the relation as a count with no end, which `relation_window` reads
+   as the newest N - a default nothing says out loud, and one a reader
+   that refuses an end never sees refused: "Warriors vs Mavs record last
+   ten games" is answered over this season's three meetings, the end
+   dropped before the planner could refuse it (ISSUES.md, "A window on a
+   reader that refuses one..."), and "bottom 5" is read as a count alone,
+   the grammar's `(top|bottom) N` row naming no end. The typed value holds
+   the fact (`Window.order` is `None`); the planner's note of a defaulted
+   end, the refusal of a dropped one, and a `bottom` end for a ranking are
+   decisions for the step that types the `Measure` and the ranking's
+   direction, with every moved answer named.

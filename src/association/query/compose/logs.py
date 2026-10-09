@@ -331,14 +331,14 @@ def read_player_log(con: duckdb.DuckDBPyConnection, q: Query, *, stated: frozens
     if [m for m in q.measures if m not in LINE] not in ([], [stat_measure(scope.stat)]):
         return None
     headers, needed = _player_log_columns(extras)
-    limit = _clamp_limit(scope.limit, DEFAULT_GAME_LOG_LIMIT)
+    limit = _clamp_limit(scope.window.count, DEFAULT_GAME_LOG_LIMIT)
     # The log's point, with the columns it shows as the measures: the rebuilt
     # rule (core._rebuilt_for) is read over the columns shown, as the log's own was.
     log_point = replace(q, measures=[LOG_COLUMNS[h] for h in needed], limit=limit)
     compiled = compile_query(con, log_point)
     if compiled.player is None:
         return None
-    asked = scope.limit
+    asked = scope.window.count
     if scope.span.both and not compiled.narrowed.date and not scope.span.career and not scope.game_n:
         # "His last N games" naming no season type: each type on its own,
         # merged by date, over the season the compiler settled.
@@ -495,8 +495,8 @@ def read_team_log(con: duckdb.DuckDBPyConnection, q: TeamQuery, *, stated: froze
     if refused is not None:
         return refused
     season_type = scope.span.season_type or 2
-    limit = _clamp_limit(scope.limit, default=DEFAULT_GAME_LOG_LIMIT)
-    ascending = scope.order == "first"
+    limit = _clamp_limit(scope.window.count, default=DEFAULT_GAME_LOG_LIMIT)
+    ascending = scope.window.order == "first"
     date = scope.date
     opponent, venue, without = scope.opponent, scope.venue, scope.without
     game_n = scope.game_n

@@ -337,7 +337,7 @@ def history_seasons(scope: Scope) -> int | None:
     """
     if scope.span.career:
         return None
-    limit = scope.limit
+    limit = scope.window.count
     return limit if limit is not None and limit <= MAX_HISTORY_SEASONS else DEFAULT_HISTORY_SEASONS
 
 

@@ -149,7 +149,7 @@ def read_team_record(con: duckdb.DuckDBPyConnection, q: TeamQuery, *, stated: fr
     named = conference_named(scope)
     if named is not None:
         return Refusal(kind="conference_named", facts={"named": named}, shown={"unanswerable": named})
-    split, month, calendar = _team_record_month_and_split(scope.split, scope.situation, scope.limit)
+    split, month, calendar = _team_record_month_and_split(scope.split, scope.situation, scope.window.count)
     teams = _team_record_teams(con, scope)
     if isinstance(teams, Unanswered):
         return teams

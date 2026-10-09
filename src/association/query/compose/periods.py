@@ -257,7 +257,7 @@ def _period_log_result(
     cells, also = where
     facts = PeriodFacts(stat=measure, per_game=scope.per_game, full_line=scope.stat is None, also=also)
     # The log beneath a per-game figure: the newest N, or the first N.
-    window = Window(limit=_clamp_limit(scope.limit, default=DEFAULT_GAME_LOG_LIMIT), asked=scope.limit, ascending=scope.order == "first")
+    window = Window(limit=_clamp_limit(scope.window.count, default=DEFAULT_GAME_LOG_LIMIT), asked=scope.window.count, ascending=scope.window.order == "first")
     body = Rows(columns=PERIOD_COLUMNS, rows=tuple(games), summary=_period_figures(games, measure) if games else {})
     return Result(
         subject=compiled.player.name,
@@ -580,7 +580,7 @@ def read_team_quarter_points(con: duckdb.DuckDBPyConnection, q: TeamQuery, *, st
     # Every cell the shape reads, named: the quarter or half is the
     # relation's narrowing too, so every read of `narrowed` sees that part
     # of each game.
-    narrowing = Scope(venue=scope.venue, game_n=scope.game_n, situation=scope.situation, order=scope.order, limit=scope.limit, period=scope.period, half=scope.half)
+    narrowing = Scope(venue=scope.venue, game_n=scope.game_n, situation=scope.situation, window=scope.window, period=scope.period, half=scope.half)
     narrowed = team_games(con, team, span, narrowing, opponent=scope.opponent, date=scope.date)
     if isinstance(narrowed, Unanswered):
         return narrowed
@@ -602,7 +602,7 @@ def read_team_quarter_points(con: duckdb.DuckDBPyConnection, q: TeamQuery, *, st
         ),
         parts=(Part(body=_team_quarter_points_line(shown, measure)), Part(role="detail", body=Rows(rows=tuple(shown)))),
         notes=tuple(notes),
-        facts=TeamPeriodFacts(measure=measure, rank=scope.rank, dateless=narrowed.filters(opponent=False, date=False, period=False)),
+        facts=TeamPeriodFacts(measure=measure, rank=scope.window.rank, dateless=narrowed.filters(opponent=False, date=False, period=False)),
     )
 
 
@@ -686,7 +686,7 @@ def read_period_leaderboard(con: duckdb.DuckDBPyConnection, q: Query, *, stated:
     if not narrowed.period_plays and measure in PERIOD_PLAYS_COLUMNS:
         return Refusal(kind="period_rank_unread", facts={"measure": measure})
     minimum, most = _period_leaderboard_minimum(con, narrowed, scope, minimum)
-    rows = values_of(con, Statement(*period_ranking_sql(narrowed, measure, minimum=minimum, limit=_clamp_limit(scope.limit), rebuilt=box_source(con).rebuilt)))
+    rows = values_of(con, Statement(*period_ranking_sql(narrowed, measure, minimum=minimum, limit=_clamp_limit(scope.window.count), rebuilt=box_source(con).rebuilt)))
     leaders = tuple({"player": name, "games": int(games), measure: int(total), "average": round(float(average), 1)} for name, games, total, average in rows)
     return Result(
         subject=narrowed.team.name if narrowed.team is not None else "",
@@ -727,7 +727,7 @@ def _period_leaderboard_by_quarter(con: duckdb.DuckDBPyConnection, span: Resolve
             per_quarter.setdefault(athlete, {})[quarter] = (int(games), float(average))
     whole = {athlete: quarters for athlete, quarters in per_quarter.items() if len(quarters) == len(REGULATION_QUARTERS)}
     ranked = sorted(whole, key=lambda athlete: (-sum(avg for _, avg in whole[athlete].values()), names[athlete]))
-    limit = _clamp_limit(scope.limit, default=_PERIOD_LEADERBOARD_BY_QUARTER_LIMIT)
+    limit = _clamp_limit(scope.window.count, default=_PERIOD_LEADERBOARD_BY_QUARTER_LIMIT)
     leaders = tuple(
         {"player": names[a], "games": whole[a][1][0], **{f"q{q}": round(whole[a][q][1], 2) for q in REGULATION_QUARTERS}, "total": round(sum(avg for _, avg in whole[a].values()), 2)}
         for a in ranked[:limit]
@@ -742,7 +742,7 @@ def _period_leaderboard_by_quarter(con: duckdb.DuckDBPyConnection, span: Resolve
         notes=(Note("definition", {"term": "overtime_excluded"}), *period_agreement_notes(season, "points")),
         decisions=(
             _period_leaderboard_decided(minimum, most),
-            Decided(kind="cut", field="limit", chose=len(leaders), before=scope.limit, facts={"total": len(ranked)}),
+            Decided(kind="cut", field="limit", chose=len(leaders), before=scope.window.count, facts={"total": len(ranked)}),
         ),
         facts=PeriodRankingFacts(measure="points", minimum=minimum, most=most, qualified=len(ranked)),
     )

@@ -663,7 +663,7 @@ def test_a_position_group_is_the_subject_and_never_a_player_slot(con: duckdb.Duc
     refuses a position subject itself, and the compiler reads the group off
     the subject."""
     question = "highest 3 point percentage in a season by a shooting guard with at least 400 attempts"
-    intent, slots = _assigned(con, question, "leaderboard", stat="threePointFieldGoalPct", limit=1, season_type=2)
+    intent, slots = _assigned(con, question, "leaderboard", stat="threePointFieldGoalPct", season_type=2)
     assert intent == "leaderboard" and "player" not in slots
     s = read_subject(con, question, "leaderboard", Scope.from_slots({"stat": "threePointFieldGoalPct"}))
     assert s.kind == "position" and s.position == "SG"

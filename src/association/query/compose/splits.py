@@ -82,7 +82,7 @@ def _splits_refusals(scope: Scope) -> None:
     framing would be the silent substitution the scoping cells exist to
     stop), and a home/away split beside a venue already narrowed to one
     (the same axis asked twice; the narrowing wins)."""
-    if scope.limit is not None and scope.limit > 1:
+    if scope.window.count is not None and scope.window.count > 1:
         raise Unsupported("player_splits has no notion of a limited number of recent games")
     if scope.split == "home_away" and scope.venue is not None:
         raise Unsupported("a home/away split conflicts with a venue already narrowed to one")

@@ -7,10 +7,10 @@ the names it copied out of the question and the stat key it chose
 :func:`~association.query.normalizer.normalize`) - and everything else is
 read from the words here, in grammar
 tables: the kind and the parent intent (:data:`PARENT_GRAMMAR`), then the
-scope, the window and the point through the readers the pipeline already
+scope and the point through the readers the pipeline already
 has (:func:`~association.query.subject.read_subject`,
-:func:`~association.query.router.settle`,
-:func:`~association.query.point.read_point`). Those readers are the
+:func:`~association.query.router.settle` - whose last two steps are the
+window and span taggers - and :func:`~association.query.point.read_point`). Those readers are the
 source material the tables absorb one at a time; each table is measured on
 the day10 wordings and the held-out paraphrases before the next
 (``~/association-research/parser-greenfield/measure.py``).
@@ -34,6 +34,7 @@ from association.query import names
 from association.query.calendar import parse_alignment, parse_situation
 from association.query.decisions import Decision
 from association.query.entities import _edit_budget, _words, find_players, find_teams, players_of, suggest_players, team_abbreviations, teams_of
+from association.query.lexicon import COUNT, LOG_OR_WINDOW_WORDS
 from association.query.measures import MEASURE_WORDS, PERIOD_COLUMNS, PERIOD_RATE_STATS, TEAM_PERIOD_COLUMNS
 from association.query.metrics import EXTRA_FIELD_COLUMNS, TEAM_FIELD_WORDS
 from association.query.point import read_point
@@ -65,24 +66,9 @@ _PAIR_MEETING = (
 )
 """A pair meeting - "vs", "against", a matchup - unless a compare verb owns the pair."""
 
-# Every count a question can spell, one to ninety-nine and a hundred, in one
-# table every count pattern here is built from: the words were written out
-# three times, and "last twelve games" read as a season line while "last 12
-# games" read the log (the package review, 2026-09-27; word2number is
-# unmaintained, and text2num's rewrite of the whole question would move
-# every other reading).
-_ONES = ("one", "two", "three", "four", "five", "six", "seven", "eight", "nine")
-_TEENS = ("ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen")
-_TENS = ("twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety")
-_NUMBERS: dict[str, int] = {
-    **{word: n for n, word in enumerate(_ONES, 1)},
-    **{word: n for n, word in enumerate(_TEENS, 10)},
-    **{word: n * 10 for n, word in enumerate(_TENS, 2)},
-    **{f"{ten} {one}": t * 10 + o for t, ten in enumerate(_TENS, 2) for o, one in enumerate(_ONES, 1)},
-    "hundred": 100,
-    "a hundred": 100,
-}
-_COUNT = r"(\d{1,3}|" + "|".join(re.escape(w).replace(r"\ ", r"[\s-]+") for w in sorted(_NUMBERS, key=len, reverse=True)) + ")"
+# Every count a question can spell is the lexicon's (`COUNT`), one table
+# every count pattern here is built from.
+_COUNT = COUNT
 
 
 _PLAYER_LOG = (
@@ -241,89 +227,16 @@ def measure(question: str) -> str | None:
     return max(hits, key=lambda x: len(x[0]))[1] if hits else None
 
 
-WINDOW_GRAMMAR: tuple[tuple[str, str | None, int | None], ...] = (
-    # (the words, the order, the limit - 0 means "the number in the words") - first match wins.
-    (rf"\b(last|past|previous|most recent|latest|final)\s+{_COUNT}\s+((home|road|away|regular[- ]season|playoff|postseason)\s+){{0,2}}(games?|outings?|contests?|starts?)\b", "recent", 0),
-    # A bare count closing the question is games: "magic vs nets last 10".
-    (rf"\b(last|past|previous)\s+{_COUNT}\s*[?.!]*\s*\Z", "recent", 0),
-    (rf"\bfirst\s+{_COUNT}\s+games?\b", "first", 0),
-    (r"\b(last|most recent|latest|final)\s+(regular[- ]season\s+|postseason\s+|playoff\s+)?game\b", "recent", 1),
-    (r"\b(first|opening)\s+(regular[- ]season\s+|postseason\s+|playoff\s+)?game\b|\b(season\s+)?opener\b", "first", 1),
-    (rf"\b(top|bottom)\s+{_COUNT}\b", None, 0),
-    # Deliberately no "who led the league in ..." -> 1: a ranking with no
-    # limit already leads with the one asked about and adds "Next: ..."
-    # (leaderboard, threshold_count, single_game_high), and a limit of 1
-    # cost those answers their runners-up (the lead's offline run of the
-    # agent, 2026-09-27) - though the router's references hold it.
-)
-"""The window grammar: the count and the end of the rows a question asks
-for, read from its own words ("last 10 games", "top 5", "his last game")
-where the router used to fill them in.
-
-.. versionadded:: 5.0.0
-"""
-
-_LOG_OR_WINDOW_WORDS = re.compile(r"\b(log|gamelog|game log|last \d+|past \d+|first \d+)\b", re.IGNORECASE)
 # A window over two teams meeting is still their meetings when a record is
 # asked for ("lakers vs mavs record last 10 home games"); a log word never is.
 _TWO_TEAMS_LOG_WORDS = re.compile(r"\b(log|gamelog|game log)\b", re.IGNORECASE)
 _TWO_TEAMS_RECORD_WORDS = re.compile(r"\b(record|rec|w-?l|win.loss)\b", re.IGNORECASE)
 
 
-def _count(word: str) -> int:
-    return int(word) if word.isdigit() else _NUMBERS[" ".join(word.lower().replace("-", " ").split())]
-
-
-def _window_read(question: str) -> tuple[str | None, int | None] | None:
-    """The window :data:`WINDOW_GRAMMAR` reads off ``question`` - the order
-    and the limit its first matching row names, either ``None`` where the row
-    names none - or ``None`` where no row matches."""
-    for pattern, order, limit in WINDOW_GRAMMAR:
-        match = re.search(pattern, question, re.IGNORECASE)
-        if match is None:
-            continue
-        if limit == 0:
-            number = next((g for g in match.groups() if g and re.fullmatch(_COUNT, g, re.IGNORECASE)), None)
-            return order or None, _count(number) if number is not None else None
-        return order or None, limit or None
-    return None
-
-
-def window(question: str, slots: dict[str, Any]) -> dict[str, Any]:
-    """``slots`` - the model's names and stat, before the stages - with the
-    window :data:`_window_read` reads, where nothing set it; a limit already
-    set stands. The stages read the window beside the season type they
-    decide, so it is read before them."""
-    if isinstance(slots.get("limit"), int) and not isinstance(slots.get("limit"), bool):
-        return slots
-    read = _window_read(question)
-    if read is None:
-        return slots
-    order, limit = read
-    out = dict(slots)
-    if order and not out.get("order"):
-        out["order"] = order
-    if limit is not None:
-        out["limit"] = limit
-    return out
-
-
-def _as_order(order: str | None) -> Literal["recent", "first"] | None:
-    """A window row's order as the Scope's own literal - the grammar's rows
-    write one of the two, and a row that wrote anything else is a bug said
-    out loud, as the Scope's door says it for a slot dict."""
-    if order == "recent":
-        return "recent"
-    if order == "first":
-        return "first"
-    if order:
-        raise ScopeError(f"window order {order!r} is not 'recent' or 'first'")
-    return None
-
-
 def _as_half(half: int | None) -> Literal[1, 2] | None:
-    """A half of a game as the Scope's own literal (:func:`_as_order`'s
-    reason)."""
+    """A half of a game as the Scope's own literal - the readers write one
+    of the two, and one that wrote anything else is a bug said out loud,
+    as the Scope's door says it for a slot dict."""
     if half == 1:
         return 1
     if half == 2:
@@ -335,27 +248,12 @@ def _as_half(half: int | None) -> Literal[1, 2] | None:
 
 def _as_split(split: str | None) -> Split | None:
     """A split read off the words as the Scope's own literal
-    (:func:`_as_order`'s reason)."""
+    (:func:`_as_half`'s reason)."""
     if split is None:
         return None
     if split not in get_args(Split):
         raise ScopeError(f"split {split!r} is not one the Scope holds")
     return cast("Split", split)
-
-
-def window_scope(question: str, scope: Scope) -> Scope:
-    """:func:`window`, over the typed Scope the stages settled: the window
-    read again where the stages left it unset. A limit they set stands.
-
-    .. versionadded:: 5.0.0
-    """
-    if scope.limit is not None:
-        return scope
-    read = _window_read(question)
-    if read is None:
-        return scope
-    order, limit = read
-    return replace(scope, order=scope.order or _as_order(order), limit=limit if limit is not None else scope.limit)
 
 
 _MEETING = re.compile(r"\b(vs\.?|versus|against|play(?:ed|s)?|meet|met|head.to.head|matchup|face[ds]?|beat(?:en)?)\b", re.IGNORECASE)
@@ -541,7 +439,7 @@ def _two_teams(subject: Subject, question: str, slots: dict[str, Any]) -> Subjec
     if subject.kind != "team" or subject.players or not subject.teams:
         return subject
     other = subject.opponent or (slots.get("opponent") if isinstance(slots.get("opponent"), str) else None)
-    one_teams_games = _TWO_TEAMS_LOG_WORDS.search(question) or (_LOG_OR_WINDOW_WORDS.search(question) and not _TWO_TEAMS_RECORD_WORDS.search(question))
+    one_teams_games = _TWO_TEAMS_LOG_WORDS.search(question) or (LOG_OR_WINDOW_WORDS.search(question) and not _TWO_TEAMS_RECORD_WORDS.search(question))
     if not other or other == subject.teams[0] or not _MEETING.search(question) or one_teams_games:
         return subject
     return replace(subject, kind="teams", teams=(subject.teams[0], other), opponent=None)
@@ -880,12 +778,9 @@ def read_route(con: duckdb.DuckDBPyConnection, question: str, names: list[str] |
         start, end = condition[1]
         question = f"{question[:start]} {question[end:]}"
     parent = parent_intent(question, subject.kind, _read_route_beside(subject, question))
-    # The window before the stages: they read ``order``/``limit`` as the
-    # model's (a bare "last 10 games" reads both season types only beside
-    # them, ``_route_game_log_recent_span``).
     staged, decisions, words = _read_route_staged(question, slots, parent, read)
     final = staged.intent
-    scope = _read_route_fields(final, _read_route_period(final, window_scope(question, staged.scope), question), question)
+    scope = _read_route_fields(final, _read_route_period(final, staged.scope, question), question)
     # A teammate's start is his, never the subject's own split: the stages
     # read the split from the whole question.
     scope = _read_route_split(subject, question, final, scope)
@@ -929,7 +824,7 @@ def _read_route_staged(question: str, slots: dict[str, Any], parent: str, read: 
     decisions: list[Decision] = []
     if named is not None:
         child, words = named
-        staged = settle(child, window(question, slots), question, companions)
+        staged = settle(child, slots, question, companions)
         # A team's record under a companion's line names no words, and the
         # stages' own settling of it stands, as the route's did.
         if staged.intent == child or words is None:
@@ -938,7 +833,7 @@ def _read_route_staged(question: str, slots: dict[str, Any], parent: str, read: 
                 decisions.append(Decision("parser", "intent", child, staged.intent, "the stages settle it from the question's words"))
             return staged, tuple(decisions), words
         decisions.append(Decision("parser", "intent", child, parent, f"the words {words!r} name {child}, and the stages declined it"))
-    staged = settle(parent, window(question, slots), question, companions)
+    staged = settle(parent, slots, question, companions)
     if staged.intent != parent:
         decisions.append(Decision("parser", "intent", parent, staged.intent, "the stages settle it from the question's words"))
     return staged, tuple(decisions), None

@@ -186,7 +186,7 @@ def read_leaderboard(con: duckdb.DuckDBPyConnection, q: Query, *, stated: frozen
             season_type=scope.span.season_type or 2,
             team=scope.team,
             fields=fields,
-            limit=_clamp_limit(scope.limit, default=DEFAULT_LEADERBOARD_LIMIT),
+            limit=_clamp_limit(scope.window.count, default=DEFAULT_LEADERBOARD_LIMIT),
         )
     except LeaderboardError as exc:
         # An ambiguous team, an unknown metric, a team column with no season

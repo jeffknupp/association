@@ -75,7 +75,7 @@ this tree:
 - **New shapes are frozen** (decision D4). No new intent, template,
   presenter, scoping table or per-intent renderer.
   `tests/query/test_frozen_shapes.py` holds the 25 intents the reader can
-  name, the page's 22 renderers and the 11 scoping declarations left in
+  name, the page's 22 renderers and the 10 scoping declarations left in
   `src` (by module and name, read from the source), each of which retires
   with its slice and none of which is added; and that `templates/`,
   `compose/present.py` and `compose/adapt.py` do not come back as source
@@ -89,15 +89,17 @@ this tree:
   (`RELATION_SCOPING*` on `query/player_relation.py`,
   `TEAM_RELATION_SCOPING*` on `query/team_relation.py`), 2 are the
   planner's `STATED_SCOPING` and its `with_without` row
-  (`WITH_WITHOUT_STATED`), which Phase 3's cells replace, and 5 are debt,
+  (`WITH_WITHOUT_STATED`), which Phase 3's cells replace, and 4 are debt,
   each naming the step that owes its deletion (`compose.plan`'s
-  `_TEAM_READER_REFUSES`, `compose.core.COMPILER_SLOTS`,
-  `reading.SCOPING_SLOTS`, `conditions._CONDITION_PLAYER_ONLY_CELLS`,
-  `router._MODEL_SLOTS`; the sixth, `coverage._BOX_SCORE_SCOPING`, went
-  with Phase 3, step 1 - the floor follows the planned point's relation;
-  step 2 took the span's names out of `SCOPING_SLOTS`, `_MODEL_SLOTS` and
-  every `STATED_SCOPING` row, and the relation tables carry the span's
-  three cells by name). A P1 wrong answer is
+  `_TEAM_READER_REFUSES`, `reading.SCOPING_SLOTS`,
+  `conditions._CONDITION_PLAYER_ONLY_CELLS`, `router._MODEL_SLOTS`; the
+  sixth, `coverage._BOX_SCORE_SCOPING`, went with Phase 3, step 1 - the
+  floor follows the planned point's relation - and the fifth,
+  `compose.core.COMPILER_SLOTS`, with step 2's window: `ranked_by` is the
+  typed window's `by`, a cell the player relation declares; step 2 took
+  the span's and the window's names out of `SCOPING_SLOTS`, `_MODEL_SLOTS`
+  and every `STATED_SCOPING` row, and the relation tables carry the span's
+  three cells and the window's by name). A P1 wrong answer is
   still fixed, in the code that exists. The sections below describe the
   readers and the sayer, because they are what runs; they are not an
   invitation to add a shape.
@@ -458,8 +460,9 @@ gets turned off.
   - `check/` - the coverage report. `query/` - the reader (`parse.py`, with
     what the model sees in `normalizer.py`, the stages it runs in
     `router.py`, the words every tagger reads by in `lexicon.py` - the span
-    family's since Phase 3, step 2, the rest as each family's slice lands -
-    and the span tagger in `span.py`), entities, the relations (`player_games.py` and its
+    and window families' since Phase 3, step 2, the rest as each family's
+    slice lands - and the two taggers, `span.py` and `window.py`),
+    entities, the relations (`player_games.py` and its
     shared steps `player_relation.py`, `team_games.py` and
     `team_relation.py`, `season_line.py`, `team_seasons.py`), the
     compiler's readers and the sayer (`compose/`), the coverage
@@ -544,8 +547,13 @@ The player-games relation (`query/player_games.py`, its shared steps in
 its steps in `query/team_relation.py`) each carry the narrowing once -
 opponent, venue, date, without, split, game_n, season_n, below/above, a
 quarter or half (`period`/`half`, which changes what a read SEES of each
-game rather than which games), order+limit as a window cut after every
-other filter, and the span's three typed cells (`reading.Span.CELLS`,
+game rather than which games), the window's typed cell
+(`reading.Window.CELLS`, Phase 3, step 2: `window`, an end of the span
+with its count - the slots `order` and `limit` until then - cut after
+every other filter by `relation_window`; a bare count is no cell, each
+reader's own parameter, which the games relations read as the newest N;
+`ranked_by`, the measure a boolean-game ranking is ordered by, the
+player relation's alone), and the span's three typed cells (`reading.Span.CELLS`,
 Phase 3, step 2: `career`, every season on record; `range`, a career cut
 at one or both ends, `since`/`until`; `both`, both season types in one
 read - the slots `span`, `since`, `until` and `season_type_unstated` until
@@ -825,18 +833,41 @@ model's. Two things follow, and both matter when you add a shape:
 
 - **A slot the router's model used to fill has to be read from the words,**
   or it is silently absent: `fields` ("with their rebounds and
-  assists"), a team's quarter, the window ("last 10 games" - read before the
-  stages, which decide the season type beside it). The hold-out comparison
+  assists"), a team's quarter, the window ("last 10 games" - the window
+  tagger's, run in the stages just before the span's, which reads the
+  season type beside it). The hold-out comparison
   that found those (`~/association-research/yardstick-v2/holdout_compare.py`:
   the recorded corpus's questions outside day10, both readers, no model) is
   the check to rerun after a table change, beside the yardstick.
 - **A filter family is read by ONE tagger, from the lexicon, and claims
-  the characters it read** (Phase 3, step 2; the span is the first, and
-  the pattern the other families copy). `query/lexicon.py` holds every
-  pattern the family is read by, named, with its reason beside it, and
-  nothing that reads the warehouse or the answer side (contract 6:
-  regexes only in the lexicon; it is the lowest layer of the reader).
-  `query/span.py` is the tagger: `read_span(question, SpanContext)` reads
+  the characters it read** (Phase 3, step 2; the span is the first, the
+  window the second, and the pattern the other families copy).
+  `query/lexicon.py` holds every pattern the family is read by, named,
+  with its reason beside it, and nothing that reads the warehouse or the
+  answer side (contract 6: regexes only in the lexicon; it is the lowest
+  layer of the reader). `query/window.py` is the window's tagger:
+  `read_window(question, WindowContext)` reads which rows a question keeps
+  and from which end - the grammar's count and end ("last 10 games", "his
+  first game", "top 5"), a history's "past 5 years" as its count of
+  SEASONS (`Window.of`), one game of a player's line ("his last home
+  game"), an end filled from the looser `ORDER_WORDS` on a reader that
+  honors one and dropped on a reader that refuses one beside a count it
+  can still take, a team ranking's end (`rank`), the measure a ranking of
+  boolean games is ordered by (`by`) - over the intent the stages settled
+  and whether the stat is a yes/no one, writes `reading.Window` on
+  `Scope.window`, and claims what it read. Measured first
+  (`~/association-research/stages/window_family.py`, the four slots as
+  each stage set them on all 2,710 readings): the parser read the grammar
+  twice, before the stages and again after, and every stage that DROPPED a
+  count (the model-era filler rules: `_names_a_count` and its five callers)
+  was undone by the second read, since the grammar was the count's one
+  source - so those rules were dead, and went rather than being ported; the
+  model-era `order`/`limit`/`rank`/`ranked_by` a route still carries are
+  dropped at the stages' door with the span's keys. The four slots are gone
+  from `Scope`; `Scope.from_slots` still takes them (it builds the
+  `Window`), `to_slots` and `projected()` give the old shape back, and the
+  typed value is recorded beside the reading (`stages._reading_record`,
+  `window`). `query/span.py` is the span's tagger: `read_span(question, SpanContext)` reads
   the seasons and the season type - a season named, a career, a range, the
   postseason, both types - in the order the retired stages read them
   (measured first, `~/association-research/stages/span_family.py`: the six
@@ -848,13 +879,15 @@ model's. Two things follow, and both matter when you add a shape:
   A claim inside another's characters folds into it (the "playoffs" in
   "including the playoffs"); two claims that overlap without one holding
   the other fail the reader (`span.claimed`) - a rule that read a word
-  another rule read. The tagger runs LAST in `router._settle`, after the
-  window and the subject are settled, because three of its rules read
-  them (a bare "last N games" log reads both types; a count's "how many"
-  with a player named is his career; a log's "last N vs the Pistons" is
-  every meeting), and a model-era span key a route still carries
-  (`season`, `season_ref`, `season_type`, ...) is dropped at the stages'
-  door (`router._MODEL_SPAN_KEYS`): the words are the one source. The
+  another rule read. The span tagger runs LAST in `router._settle`, after
+  the subject is settled and the window tagger has run, because three of
+  its rules read the typed window (a bare "last N games" log reads both
+  types; a count's "how many" with a player named is his career; a log's
+  "last N vs the Pistons" is every meeting - `SpanContext.window_named`,
+  `order`, `limit` come from the `Window`), and a model-era span or window
+  key a route still carries (`season`, `season_ref`, `season_type`,
+  `order`, `limit`, ...) is dropped at the stages' door
+  (`router._MODEL_SPAN_KEYS`): the words are the one source. The
   six slots are gone from `Scope`; `Scope.from_slots` still takes them
   (it builds the `Span`), `Scope.to_slots` projects the value back to
   them, and `Scope.projected()` / `Reading.projected()` /

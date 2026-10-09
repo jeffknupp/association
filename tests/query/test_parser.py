@@ -13,7 +13,7 @@ from routed import slots_route, with_subject
 
 from association.query.compose.plan import plan_point
 from association.query.decisions import Decision
-from association.query.parse import classify_span, measure, parent_intent, read_route, reading_from_route, window
+from association.query.parse import classify_span, measure, parent_intent, read_route, reading_from_route
 from association.query.reading import Reading
 from association.query.router import Beside, _threshold_from_text, settle
 
@@ -68,23 +68,6 @@ def test_the_measure_grammar_reads_the_words_before_the_models_key() -> None:
     assert measure("who averages the most TO per game") == "turnovers"
 
 
-def test_the_window_grammar_reads_the_count_and_the_end() -> None:
-    assert window("How did the Celtics do in their last 10 games?", {"order": "recent"}) == {"order": "recent", "limit": 10}
-    assert window("what did Nikola Jokic do in his last game?", {}) == {"order": "recent", "limit": 1}
-    assert window("What was Curry's first game of the season?", {}) == {"order": "first", "limit": 1}
-    assert window("top 5 rebounders on the Lakers in the playoffs", {}) == {"limit": 5}
-    # "who led the league" sets no limit: the ranking leads with the one and names the next.
-    assert window("who led the league in assists this season?", {}) == {}
-    assert window("magic vs nets last 10", {}) == {"order": "recent", "limit": 10}
-    assert window("lakers vs mavs record last 10 home games played", {}) == {"order": "recent", "limit": 10}
-    assert window("Steph Curry's final two regular season games", {}) == {"order": "recent", "limit": 2}
-    assert window("Luka's ppg over the last 10 seasons", {}) == {}
-    assert window("Jrue holiday last fifty games as a starter", {}) == {"order": "recent", "limit": 50}
-    # A limit the stages already set stands.
-    assert window("show the top 50 in total adjusted netpoints", {"limit": 3}) == {"limit": 3}
-    assert window("how many points does embiid average", {}) == {}
-
-
 def test_the_parent_grammar_by_kind_and_words() -> None:
     assert parent_intent("show sga fingerprint for this season", "player") == "fingerprint"
     # A player's own record is his games' W-L (F088, "Embiid's record against Boston this year"): player_splits, never
@@ -135,7 +118,7 @@ def test_the_parser_reads_a_question_into_a_reading(con: duckdb.DuckDBPyConnecti
     r = _read(con, "lakers game log vs celtics last 10", names=["lakers", "celtics"], stat="")
     assert r.subject is not None and r.subject.kind == "team"
     r = _read(con, "who were the top 10 in defensive netpoints / 100 possessions", names=[], stat="")
-    assert r.subject is not None and r.subject.kind == "everyone" and r.scope.stat == "netpoints_defense_per_100" and r.scope.limit == 10
+    assert r.subject is not None and r.subject.kind == "everyone" and r.scope.stat == "netpoints_defense_per_100" and r.scope.window.count == 10
     # A span no player or team has never becomes a subject.
     r = _read(con, "alperen sengun double-doubles vs southeast division career away", names=["alperen sengun", "southeast division"], stat="")
     assert r.subject is not None and r.subject.kind != "pair"
@@ -260,7 +243,6 @@ def test_the_hold_out_rows_the_router_answered_and_the_parser_did_not(con: duckd
     assert measure("embiid 3pt attempts per game") == "threePointFieldGoalsAttempted"
     # A team's opener is one game of its log, not its season line.
     assert parent_intent("Lakers opening game of the season", "team") == "game_log"
-    assert window("Lakers opening game of the season", {}) == {"order": "first", "limit": 1}
     # A team's odds are its outlook, not its postseason stats.
     assert parent_intent("what are the sixers playoff odds?", "team") == "team_outlook"
     # A record with nobody named is the teams', not the league's scorers.
@@ -309,7 +291,6 @@ def test_a_count_spelled_out_is_the_count(con: duckdb.DuckDBPyConnection) -> Non
     for spelled, n in (("twelve", 12), ("eleven", 11), ("twenty five", 25), ("twenty-five", 25), ("fifty", 50)):
         route, _, _ = read_route(con, f"tyrese maxey last {spelled} games", ["tyrese maxey"], "")
         assert (route.intent, route.slots.get("order"), route.slots.get("limit")) == ("game_log", "recent", n), spelled
-    assert window("top twelve scorers", {}) == {"limit": 12}
 
 
 # ---------------------------------------------------------------------------

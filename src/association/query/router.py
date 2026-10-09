@@ -33,10 +33,11 @@ from association.nba.season import current_season
 
 from . import lexicon
 from .decisions import Decision
-from .lexicon import CALENDAR_DATE, NUMERIC_DATE_RANGE, PAST_N_SEASONS, season_from_text
+from .lexicon import CALENDAR_DATE, GAMES_WORDS, NUMERIC_DATE_RANGE, ORDER_WORDS, PAST_N_SEASONS, PERIOD_TOP, RANK_WORDS, WHO_RANKS, season_from_text
 from .measures import MEASURE_WORDS, STAT_ALIASES
-from .reading import Claim, Scope
-from .span import LIMIT_COUNTS_SEASONS, SpanContext, career_named, range_named, read_span, relative_seasons
+from .reading import Claim, Scope, Window
+from .span import SpanContext, career_named, claimed, range_named, read_span
+from .window import WindowContext, read_window
 
 from .calendar import HOLIDAY_WORDS  # isort: skip - after .span, which calendar's own imports do not reach
 
@@ -124,8 +125,8 @@ _PERIOD_AS_CONDITION = re.compile(
 
 # "most first quarter rebounds per game" ranks the league's players too - but
 # only with no team in the question: "Detroit Pistons most points in a first
-# half" is the TEAM's single best half (team_quarter_points' own `rank`).
-_PERIOD_TOP = re.compile(r"\b(?:most|highest|top|best)\b", re.IGNORECASE)
+# half" is the TEAM's single best half (team_quarter_points' own `rank`) -
+# the lexicon's PERIOD_TOP.
 
 # Every quarter at once, side by side (yardstick-v2 F048, "nba playerspoints
 # by quarter average", which fell through for want of one period).
@@ -788,18 +789,6 @@ def _split_side(split: str, question: str) -> str:
     return split
 
 
-# Which end of a team ranking was asked for. The four are not two pairs: for a
-# stat where lower is better, "fewest turnovers" and "worst in turnovers" sit
-# at opposite ends, so the template - which knows the stat - resolves them.
-RANK_WORDS: tuple[tuple[str, re.Pattern[str]], ...] = (
-    ("worst", re.compile(r"\bworst\b", re.IGNORECASE)),
-    ("best", re.compile(r"\bbest\b", re.IGNORECASE)),
-    # "slowest pace" is the fewest possessions, "fastest" the most - without
-    # these, "slowest pace" listed the fastest teams first.
-    ("fewest", re.compile(r"\b(?:fewest|least|lowest|slowest)\b", re.IGNORECASE)),
-    ("most", re.compile(r"\b(?:most|highest|top|leads?|leaders?|fastest)\b", re.IGNORECASE)),
-)
-
 # A comparison BELOW a number. No slot says "under", so without this "games
 # with under 14 FTA" reached threshold_count as 14 and was answered as 14 or
 # MORE - the inverse question. The words after the number are kept: they name
@@ -1198,40 +1187,14 @@ def _route_leaderboard_shot_distance(intent: str, slots: dict[str, Any], questio
 
 #: The stats that are a yes/no about a game, which `leaderboard` counts per
 #: player ("most triple-doubles"). Ranking THOSE GAMES by another measure
-#: ("highest scoring triple doubles") is a different question the compiler
-#: answers once the template refuses it - see `_route_ranked_boolean_games`.
+#: ("highest scoring triple doubles") is the window's `by`, which the window
+#: tagger reads where the stat is one of these (`window.WindowContext.boolean_stat`).
 _BOOLEAN_STATS = frozenset({"triple_double", "double_double", "fouled_out"})
-_RANKED_BOOLEAN_GAMES = re.compile(
-    r"\b(?:highest[- ]scoring|biggest|largest|best[- ]scoring)\b|\b(?:most|highest|fewest|lowest)\s+(?:points?|rebounds?|assists?|steals?|blocks?|minutes?)\s+in\s+(?:a|an|any|one)\b",
-    re.IGNORECASE,
-)
-_RANKED_BY_WORD = re.compile(r"\b(scoring|points?|rebounds?|assists?|steals?|blocks?|minutes?)\b", re.IGNORECASE)
-
-
-def _route_ranked_boolean_games(intent: str, slots: dict[str, Any], question: str) -> None:
-    """ "Players with the highest scoring triple doubles" (yardstick-v2 F124)
-    routes to `leaderboard` with `stat='triple_double'` - the SAME slots as
-    "most triple doubles", which the count answers rightly - and answered
-    the count. The template never sees the question, so the word that
-    tells the two apart ("scoring", "biggest") has to become a slot here:
-    `ranked_by`, the measure the qualifying games are ranked by, which the
-    leaderboard's reader does not state, so it steps aside and the compiler's
-    boolean-game ranking (query/point.py) answers instead. A bare "most
-    triple doubles" files nothing and keeps its count.
-
-    .. versionadded:: 4.4.0
-    """
-    if intent != "leaderboard" or slots.get("stat") not in _BOOLEAN_STATS or not _RANKED_BOOLEAN_GAMES.search(question):
-        return
-    word = _RANKED_BY_WORD.search(question)
-    measure = (word.group(1).lower() if word else "points").rstrip("s")
-    slots["ranked_by"] = "points" if measure in ("scoring", "point") else measure + ("s" if not measure.endswith("s") else "")
 
 
 # A game log asked for by name. Measured: "luka ft log" routed to player_stat
 # and was answered with a season average.
 _LOG_WORDS = re.compile(r"\b(?:game\s*logs?|gamelogs?|logs?)\b|\b(?:each|every|by)\s+game\b", re.IGNORECASE)
-_GAMES_WORDS = re.compile(r"\bgames?\b|\blast\b", re.IGNORECASE)
 
 # The thirty team nicknames, and the shorthand a question uses for some. Only to
 # tell a team from a player in a slot the model filled: "zach lavine vs nuggets"
@@ -1473,124 +1436,6 @@ def _threshold_from_text_scored(question: str) -> int | None:
     return int(match.group(1)) if match is not None and int(match.group(1)) >= 1 else None
 
 
-# How a question names one end of a season's games. Deliberately tight - the
-# ordinal word has to sit directly on "game(s)", optionally across a count
-# ("last 5 games") - because a miss costs nothing and a false positive would
-# narrow a question that asked for a whole season. "Last season's best game"
-# is the shape that rules out allowing filler words in between.
-ORDER_WORDS: dict[str, re.Pattern[str]] = {
-    "recent": re.compile(r"\b(?:last|latest|previous|most\s+recent)\s+(?:\d+\s+)?games?\b", re.IGNORECASE),
-    "first": re.compile(r"\b(?:first|opening|earliest)\s+(?:\d+\s+)?games?\b", re.IGNORECASE),
-}
-
-#: Intents whose template REFUSES a limit outright, so a filler one costs the
-#: answer entirely rather than just widening a list. Deliberately not "every
-#: intent that does not honor `order`": a `limit` of 1 is legitimate on a
-#: leaderboard ("who leads"), and dropping it there turned a one-row answer
-#: into ten for no reason anybody asked for.
-_LIMIT_REFUSING_INTENTS: frozenset[str] = frozenset({"player_stat"})
-
-
-# A number of games named in the question, which makes a `limit` real rather
-# than filler: "last 5 games", "his one game", "top 10". Read with the lines on
-# a box-score stat taken out first (_names_a_count): the 25 in "gamelog with
-# 25 minutes" counts minutes, not games.
-# A year is not a count: "Portis vs bulls 2019-20 to 2023-24" names no number
-# of games, so a four-digit number and either half of a "2019-20" are left out.
-_COUNT_WORDS = re.compile(r"\b(?:(?<![\d-])\d{1,3}(?![\d-])|one|two|three|four|five|ten|last|first|top|only)\b", re.IGNORECASE)
-
-
-def _names_a_count(question: str) -> bool:
-    """Whether the question names a number of games, once the numbers that
-    belong to a line on a box-score stat ("under 14 fta", "with 25 minutes"),
-    to a game of a series ("game 4"), or to a count of SEASONS rather than
-    games ("past two seasons" - :data:`~association.query.lexicon.PAST_N_SEASONS`) are set aside."""
-    stripped = _GAME_N.sub(" ", _ABOVE.sub(" ", _BELOW.sub(" ", PAST_N_SEASONS.sub(" ", _THRESHOLD_PAIR.sub(" ", question)))))
-    return _COUNT_WORDS.search(stripped) is not None
-
-
-#: Intents that honor ``order`` only beside a real ``limit`` - a single game at
-#: one end of the span - because filling ``order`` alone would hand "his last
-#: game" to a log of his last ten. Read by :func:`_route_side_and_order` with
-#: :data:`_SINGLE_GAME`; the pair is what makes "last game" one game.
-_ORDER_ON_A_SINGLE_GAME: frozenset[str] = frozenset({"player_stat"})
-# A possessive names the subject as often as a pronoun does - "steph curry's
-# last regular season game" - and without it that question kept a season the
-# model misread (#153).
-_SINGLE_GAME = re.compile(r"\b(?:his|her|their|the|\w+'s)\s+(last|first|latest|previous|most\s+recent|final|opening|earliest)\s+(?:\w+\s+){0,2}?game\b(?!s)", re.IGNORECASE)
-
-#: Intents where ``order`` narrows to ONE game rather than ordering a list:
-#: shot_chart, shot_distance, player_netpoints and fingerprint each resolve it
-#: to a single event id, where game_log only sorts. So a filler ``order``
-#: costs a whole season here - "a shot chart of steph curry's 2025 season for
-#: 3 point shots" drew one game, 7 of 12, where 2025 held hundreds (#153) -
-#: and the question has to name a game at one end of the span for it to stand.
-_ORDER_IS_ONE_GAME: frozenset[str] = frozenset({"shot_chart", "shot_distance", "player_netpoints", "fingerprint"})
-
-
-def _names_one_game(question: str) -> bool:
-    """Whether the question itself asks for a game at one end of the span -
-    "his last game", "first 5 games" - rather than leaving ``order`` to the
-    model's own reading."""
-    return _SINGLE_GAME.search(question) is not None or any(pattern.search(question) for pattern in ORDER_WORDS.values())
-
-
-ORDER_INTENTS: frozenset[str] = frozenset({"fingerprint", "game_log", "period_split", "player_netpoints", "shot_chart", "shot_distance", "team_quarter_points"})
-"""Intents whose reader honors ``order``, so filling it from the question can
-only make the answer match what was asked.
-
-The same list as the ``order`` entries in
-:data:`association.query.compose.plan.STATED_SCOPING`, kept separately because a
-router that imported the answer side would invert the dependency, and guarded by
-``test_the_order_intents_are_the_ones_that_honor_order``. Adding ``order``
-anywhere else would be worse than leaving it off: the planner refuses a
-scoping slot the relation cannot honor, so a question that answers today would
-be refused instead.
-
-.. versionadded:: 2.1.0
-
-.. versionchanged:: 4.4.0
-   Added ``team_quarter_points`` (step 3, C4b): it now reads its games
-   through the team-games relation, which honors ``order``/``limit`` as a
-   window - "show sixers first quarter scoring for their last 10 games"
-   (ISSUES.md) needs this slot kept, not dropped, to reach the template with
-   the window it asked for. No change to :data:`ROUTER_PROMPT` or
-   :data:`ROUTER_SCHEMA`: this is code-side post-processing only
-   (:func:`_route_side_and_order`), the same as the span tagger and
-   :func:`_validate_side` - so no other question's routing can have moved.
-"""
-
-
-def _validate_order(slots: dict[str, Any], question: str) -> str | None:
-    """Which end of the season was asked for, the question first.
-
-    The third slot to need this, after ``season`` and ``side``, and dropped for
-    the same structural reason rather than a wording one: ROUTER_PROMPT
-    instructs ``order`` for ``game_log`` and ``shot_chart`` only, so a
-    fingerprint question carries no instruction to fill it. Measured at
-    temperature 0, "show me a fingerprint for steph curry's last game in 2026"
-    came back with no ``order`` 3/3, and so did "his first game of 2026" and
-    "for his last game" - while "his MOST RECENT game", the prompt's own
-    wording, came back with it 3/3. The prompt is where the model learned the
-    phrase, not the concept.
-
-    That mattered because ``fingerprint`` honors ``order`` by refusing: with
-    the slot missing there was nothing to refuse, so a question about one game
-    was answered with the whole season's radar, titled with the season and
-    saying nothing about the difference.
-
-    Only ever fills a slot the model left empty - never overwrites one, and
-    never removes one. The patterns here are tighter than the model's reading
-    of the question ("his last home game" is a phrasing they miss), so
-    outranking it would trade one silent narrowing for another.
-    """
-    order = slots.get("order")
-    if isinstance(order, str) and order in ORDER_WORDS:
-        return order
-    named = [name for name, pattern in ORDER_WORDS.items() if pattern.search(question)]
-    return named[0] if len(named) == 1 else None
-
-
 # The words a question uses when it is actually asking about one stat, as
 # opposed to asking who is better. Loose on purpose, and safe because of where
 # it is used: see :func:`_named_a_stat`.
@@ -1710,7 +1555,7 @@ def _route_period_intents(raw: dict[str, Any], question: str) -> None:
         raw["intent"] = "threshold_count"
         raw["stat"] = "fouls"
         raw["threshold"] = FOUL_OUT_THRESHOLD
-    ranks_players = _PERIOD_LEADERS.search(low) is not None or (_PERIOD_TOP.search(low) is not None and not _team_slot_or_word(raw, low))
+    ranks_players = _PERIOD_LEADERS.search(low) is not None or (PERIOD_TOP.search(low) is not None and not _team_slot_or_word(raw, low))
     if (_QUARTER_WORDS.search(low) and (ranks_players or not _is_team_quarter_points(raw) or _names_a_period_subject(question))) or _HALF_WORDS.search(low):
         # A named player's quarter or half now HAS a template, so the override
         # sends it there instead of to the agent - but only when the question
@@ -1909,7 +1754,7 @@ def _route_one_player_intents(raw: dict[str, Any], question: str, listed: list[s
         # "alperen sengun double-doubles vs southeast division career away"
         # arrived so after the 5.0.0 prompt shrink, and player_compare needs
         # two. The name moves to the slot the line reads.
-        raw["intent"] = "game_log" if _LOG_WORDS.search(question) or _GAMES_WORDS.search(question) else "player_stat"
+        raw["intent"] = "game_log" if _LOG_WORDS.search(question) or GAMES_WORDS.search(question) else "player_stat"
         raw["player"] = listed[0]
         raw.pop("players", None)
     if raw["intent"] == "player_stat" and _LOG_WORDS.search(question):
@@ -1921,9 +1766,9 @@ def _route_one_player_intents(raw: dict[str, Any], question: str, listed: list[s
         # the count is the line's ("... in 38 games"), which player_stat
         # states, and a log of one game states nothing of the kind.
         raw["intent"] = "player_stat"
-        for key in ("stat", "order", "limit", "fields"):
+        for key in ("stat", "fields"):
             raw.pop(key, None)
-    if raw["intent"] == "player_stat" and not _named_player(raw) and _WHO_RANKS.search(question):
+    if raw["intent"] == "player_stat" and not _named_player(raw) and WHO_RANKS.search(question):
         # No player named and "who ... the most": the league's ranking, not
         # one player's line - "who attempted the most three pointers this
         # season?" arrived as player_stat after the 5.0.0 prompt shrink.
@@ -1939,17 +1784,12 @@ def _named_player(raw: dict[str, Any]) -> bool:
     return bool((isinstance(raw.get("player"), str) and raw["player"].strip()) or raw.get("players"))
 
 
-#: A ranking asked of the league - "who attempted the most", "who leads",
-#: "top 10" - on an intent that answers for one player.
-_WHO_RANKS = re.compile(r"\bwho\b.{0,30}\b(?:most|fewest|highest|lowest|best|worst|leads?|led)\b|\btop\s+\d+\b|\bleaders?\b", re.IGNORECASE)
-
-
 def _route_matchup_against_team(raw: dict[str, Any], question: str, listed: list[str]) -> None:
     """A ``player_matchup`` whose second "player" is a team."""
     if raw["intent"] == "player_matchup" and any(map(_is_team_name, listed)):
         # One of the "two players" is a team: this is a player's games against
         # it. subject.apply_subject moves the team to `opponent`.
-        raw["intent"] = "game_log" if _LOG_WORDS.search(question) or _GAMES_WORDS.search(question) else "player_stat"
+        raw["intent"] = "game_log" if _LOG_WORDS.search(question) or GAMES_WORDS.search(question) else "player_stat"
     if raw["intent"] == "player_matchup" and len(listed) < 2 and isinstance(raw.get("player"), str):
         # The same question, arriving in the other shape. The rule above reads
         # `players`, and the model routinely fills the SINGULAR `player` and an
@@ -1964,7 +1804,7 @@ def _route_matchup_against_team(raw: dict[str, Any], question: str, listed: list
         # the second one in `opponent`.
         against = raw.get("opponent") or next(iter(raw.get("teams") or []), None)
         if isinstance(against, str) and _is_team_name(against):
-            raw["intent"] = "game_log" if _LOG_WORDS.search(question) or _GAMES_WORDS.search(question) else "player_stat"
+            raw["intent"] = "game_log" if _LOG_WORDS.search(question) or GAMES_WORDS.search(question) else "player_stat"
 
 
 _PLAYED_TOGETHER_REROUTABLE = frozenset({"head_to_head", "team_record", "team_stat", "game_log", "other"})
@@ -2007,19 +1847,21 @@ def _route_line_and_record_intents(raw: dict[str, Any], question: str, beside: B
     return rerouted_to_line
 
 
-#: The model-era keys of the span family a raw route may still carry (a
-#: test's payload; a settled route run again): every one is read from the
-#: words by the span tagger, so none passes the stages.
-_MODEL_SPAN_KEYS: frozenset[str] = frozenset({"season", "season_ref", "season_type", "season_type_unstated", "span", "since", "until"})
+#: The model-era keys of the span and window families a raw route may still
+#: carry (a test's payload; a settled route run again): every one is read
+#: from the words by its tagger, so none passes the stages.
+_MODEL_SPAN_KEYS: frozenset[str] = frozenset({"season", "season_ref", "season_type", "season_type_unstated", "span", "since", "until", "order", "limit", "rank", "ranked_by"})
 
 
 def _route_blank_slots(raw: dict[str, Any]) -> dict[str, Any]:
-    """The slots, with blanks and the span family's model-era keys dropped:
-    the season and the season type are the span tagger's
-    (:func:`~association.query.span.read_span`), read last, over the intent
-    and the window the stages settle - a bare ``season`` the words do not
-    name was never trusted (#95: the model invented one), and the reader
-    the model's ``season_ref`` named "last season" for reads the words."""
+    """The slots, with blanks and the span and window families' model-era
+    keys dropped: the season and the season type are the span tagger's
+    (:func:`~association.query.span.read_span`) and the window the window
+    tagger's (:func:`~association.query.window.read_window`), each read
+    last, over the intent the stages settle - a bare ``season`` the words
+    do not name was never trusted (#95: the model invented one), the
+    reader the model's ``season_ref`` named "last season" for reads the
+    words, and a model ``limit`` of 1 was filler on four readers."""
     # A blank string is how the model says "no value" for a required slot;
     # dropping it here keeps every template's `slots.get(...) or default`
     # working and keeps the logged Route readable.
@@ -2124,34 +1966,9 @@ def _route_filter_slots(slots: dict[str, Any], question: str, beside: Beside) ->
     return without
 
 
-def _route_relative_window(intent: str, slots: dict[str, Any], question: str) -> None:
-    """The window's half of "the past two seasons" / "last 3 years" (the
-    span tagger reads the seasons it names): a history's ``limit`` counts
-    SEASONS, not games, so "the past 5 years" IS that limit and needs no
-    range - set as a range instead, "show me sga's 2pt percentage for the
-    past 5 years" would refuse (found on the merged tree: #140, this rule,
-    and #114, the stat, were each sound alone); and on any other intent the
-    model's own count word, landed on ``limit`` instead of the season count
-    it modifies (#140: "...in the past two seasons" arrived with limit=2
-    and, from that alone, answered his last 2 games of his career), goes -
-    only where nothing ELSE in the question names a real count of games
-    ("last 5 games in the past two seasons" keeps its limit;
-    ``_names_a_count`` looks past the seasons' own number). The window
-    family's slice folds this into its tagger."""
-    if range_named(question) is not None:
-        return
-    seasons = relative_seasons(question)
-    if seasons is None:
-        return
-    if intent in LIMIT_COUNTS_SEASONS:
-        slots["limit"] = seasons
-    elif isinstance(slots.get("limit"), int) and not _names_a_count(question):
-        slots.pop("limit", None)
-
-
 def _route_calendar_slots(intent: str, slots: dict[str, Any], question: str) -> int | None:
     """A calendar day, a playoff round, a game of a series, an ordinal
-    season, the window's half of a relative span, and a split. Returns the
+    season, and a split. Returns the
     year a range opened on a dated day names ("since 1/26/20"), for the
     span tagger to start the seasons at."""
     # The season that fixes a date's year is the one a reader would use -
@@ -2187,7 +2004,6 @@ def _route_calendar_slots(intent: str, slots: dict[str, Any], question: str) -> 
     ordinal_season = _SEASON_N.search(question)
     if ordinal_season is not None:
         slots["season_n"] = int(ordinal_season.group(1))
-    _route_relative_window(intent, slots, question)
     # A split is read for every intent, not only player_splits: it is a scoping
     # slot, so the template that answers one honors it and every other refuses.
     # Measured: "Joe Ingles stats when starting vs coming off the bench" was
@@ -2238,38 +2054,20 @@ def _route_intent_slots(intent: str, slots: dict[str, Any], question: str, witho
     if intent == "player_splits" and slots.get("split") == "home_away":
         slots.pop("venue", None)  # a split over venues is not a filter to one
     if intent in ("team_leaderboard", "team_quarter_points"):
-        # For team_quarter_points this is what makes "most points in a first
-        # half" one game rather than the season's average - see its answer.
-        rank = next((name for name, pattern in RANK_WORDS if pattern.search(question)), None)
-        if rank is not None:
-            slots["rank"] = rank
         # ISSUES.md #172: "nba team with least playoff wins since 2022" filed
-        # the same word twice - correctly into `rank` above, and again into
-        # `team`, where no franchise is named "least" and the template refused
-        # the whole question ("no team matching 'least'") over a cause the
-        # question never gave. The same shape as
-        # `subject.apply_subject`: a slot the question does not
-        # support. Read against `RANK_WORDS` again rather than a new word
-        # list, so the two checks cannot drift apart (AGENTS.md, "one concept,
-        # one definition").
+        # the same word twice - correctly into the ranking's end (the window
+        # tagger's `rank`), and again into `team`, where no franchise is
+        # named "least" and the template refused the whole question ("no
+        # team matching 'least'") over a cause the question never gave. The
+        # same shape as `subject.apply_subject`: a slot the question does
+        # not support. Read against the lexicon's `RANK_WORDS` - the tagger's
+        # own table - rather than a new word list, so the two checks cannot
+        # drift apart (AGENTS.md, "one concept, one definition").
         team_slot = slots.get("team")
         if isinstance(team_slot, str) and any(pattern.fullmatch(team_slot.strip()) for _, pattern in RANK_WORDS):
             slots.pop("team", None)
-    _route_relation_intent_slots(intent, slots, question)
-
-
-def _route_relation_intent_slots(intent: str, slots: dict[str, Any], question: str) -> None:
-    """A streak's kind, a count's filler limit and a pair's career - the
-    relation templates' own slots, split out of :func:`_route_intent_slots`
-    for the complexity gate."""
     if intent == "streak":
         slots["kind"] = "loss" if _LOSING_STREAK.search(question) else "win"
-    if intent in ("threshold_count", "single_game_high") and isinstance(slots.get("limit"), int) and not _names_a_count(question):
-        # The model's `limit: 1` for "who had the most" under a leaderboard
-        # (its parent since 5.0.0) is filler here: the count's and the
-        # high's answers name the runner-ups, which the model's prompt for
-        # the child never asked it to cut.
-        slots.pop("limit", None)
 
 
 def _route_line_stat(intent: str, slots: dict[str, Any], question: str, rerouted_to_line: bool) -> None:
@@ -2282,9 +2080,9 @@ def _route_line_stat(intent: str, slots: dict[str, Any], question: str, rerouted
     if intent in ("player_compare", "player_stat") and not _named_a_stat(question):
         slots.pop("stat", None)
     if rerouted_to_line:
-        # A history's `limit` counted seasons; the line it became has none.
-        for key in ("limit", "fields"):
-            slots.pop(key, None)
+        # A history's `fields` were its own; the line it became has none
+        # (its count of seasons the window tagger never reads for a line).
+        slots.pop("fields", None)
     if intent in _ADVANCED_STAT_INTENTS:
         advanced = next((metric for metric, pattern in _ADVANCED_STAT_WORDS if pattern.search(question)), None)
         if advanced is not None:
@@ -2398,132 +2196,16 @@ def _route_subject_slots(intent: str, slots: dict[str, Any], question: str) -> N
             slots["player"] = subject
 
 
-def _route_side_and_order(intent: str, slots: dict[str, Any], question: str) -> None:
-    """The side of the ball for a fingerprint, and which end of the season was asked for."""
+def _route_side(intent: str, slots: dict[str, Any], question: str) -> None:
+    """The side of the ball for a fingerprint. Until Phase 3, step 2 this
+    stage (``_route_side_and_order``) wrote the window beside it; the
+    window tagger reads it now (:func:`~association.query.window.read_window`)."""
     if intent == "fingerprint":
         side = _validate_side(slots, question)
         if side is None:
             slots.pop("side", None)
         else:
             slots["side"] = side
-    # Only for the templates that honor it - see ORDER_INTENTS for why adding
-    # it anywhere else would cost an answer rather than sharpen one.
-    if intent in _ORDER_ON_A_SINGLE_GAME and (single := _SINGLE_GAME.search(question)):
-        # "his last game", "her first game of the season": one game at one end
-        # of the span, which player_stat answers by handing the question to
-        # game_log. Both slots are set together - an order without the limit
-        # would list ten games where one was asked for, and the model emits
-        # neither reliably here (it was 0 for 3 on "his last game"). A filler
-        # order on a question naming no such game still falls to the branch
-        # below and is dropped.
-        slots["order"] = "first" if single.group(1).lower() in ("first", "opening", "earliest") else "recent"
-        slots["limit"] = 1
-    elif intent in ORDER_INTENTS:
-        order = _validate_order(slots, question)
-        if order is not None and intent in _ORDER_IS_ONE_GAME and not _names_one_game(question):
-            # A model `order` on an intent where it means ONE game, on a
-            # question naming no such game: filler that costs the season.
-            order = None
-        if order is None:
-            # Only a value the schema cannot emit ever gets dropped here; a
-            # valid one the patterns did not recognize is kept - see
-            # _validate_order.
-            slots.pop("order", None)
-        else:
-            slots["order"] = order
-    elif slots.get("order") and not any(pattern.search(question) for pattern in ORDER_WORDS.values()):
-        # An `order` the model added to an intent that cannot honor one, on a
-        # question naming no game at either end. Measured: "evan mobley avg
-        # against bucks" and "Celtics record without Tatum" both arrived with
-        # order='recent' and limit=1, and the scope check refused them. A limit of
-        # one rode in with it and goes too; a real one ("top 5") stays.
-        slots.pop("order", None)
-        if slots.get("limit") == 1:
-            slots.pop("limit", None)
-    _drop_filler_limit(intent, slots, question)
-
-
-def _line_numbers(question: str) -> set[int]:
-    """The numbers that belong to a below/above line ("under 14 fta", "with
-    25 minutes") - a limit equal to one of them is the line's number, not a
-    count of games."""
-    return {int(number) for match in (*_BELOW.finditer(question), *_ABOVE.finditer(question)) for number in re.findall(r"\d+", match.group(0))}
-
-
-def _drop_filler_order_on_a_series_game(intent: str, slots: dict[str, Any], question: str) -> None:
-    """ "Ayton stats in game 4 playoff games" arrived with order recent, limit 1
-    (day5): the game of each series already picks the games, and a filler
-    pair on top showed one of the two."""
-    if intent == "game_log" and slots.get("game_n") and slots.get("limit") == 1 and slots.get("order") and not _names_one_game(question):
-        slots.pop("limit", None)
-        slots.pop("order", None)
-
-
-def _drop_filler_limit(intent: str, slots: dict[str, Any], question: str) -> None:
-    """A ``limit`` the model filled on a question that names no number of games."""
-    limit = slots.get("limit")
-    if (
-        intent == "game_log"
-        and isinstance(limit, int)
-        and (limit == 1 or limit in _line_numbers(question))
-        and _LOG_WORDS.search(question)
-        and not _names_a_count(question)
-        and not _SINGLE_GAME.search(question)
-    ):
-        # A log asked for by name (_LOG_WORDS: "gamelog", "by game"), with a
-        # limit the question never set: "paul reed gamelog with 25
-        # minutes" arrived with order='recent', limit=1 and answered his most
-        # recent game where his log was asked; "mikal bridges game log with
-        # less than 15 fga ..." arrived with limit=15 (day5, after the 5.0.0
-        # prompt shrink) and listed fifteen games across two season types
-        # where the line's own number was read as a count. A model `order`
-        # on game_log is kept whatever the patterns miss (_validate_order),
-        # so the limit is the only thing to drop; a real single game ("his
-        # last game") or a count ("last 5 games") keeps it.
-        slots.pop("limit", None)
-    _drop_filler_order_on_a_series_game(intent, slots, question)
-    if intent in _LIMIT_REFUSING_INTENTS and isinstance(slots.get("limit"), int) and not slots.get("order") and not _names_a_count(question):
-        # The same filler, arriving WITHOUT an `order` to carry it in.
-        # "westbrook stats as a starter for kings" came back with limit=1 and
-        # side='total' on a question that narrows to no number of games at all.
-        # A limit on `player_stat` hands the question to game_log (a player's
-        # numbers over his last N games IS a log), so a filler one no longer
-        # costs the answer - it answers a different question: "Portis vs bulls
-        # 2019-20 to 2023-24" arrived with limit=5 and became a three-game log
-        # where his averages were asked for. Any count the question does not
-        # name goes, not only a 1; a real one ("last 5 games", "top 10") stays.
-        slots.pop("limit", None)
-
-
-#: The period templates that honor a window, where a filler ``limit`` costs
-#: the season: "least points scored by the wizards in the first half this
-#: season" (yardstick-v2 F064) arrived with ``limit: 1`` and answered "their
-#: fewest ... over their last 1 game".
-_PERIOD_WINDOW_INTENTS = frozenset({"period_split", "team_quarter_points"})
-_PERIOD_PHRASE = re.compile(r"\b(?:first|second|third|fourth|1st|2nd|3rd|4th)\s+(?:quarter|half|period)s?\b|\b[1-4]q\b|\bq[1-4]\b|\b[12]h\b", re.IGNORECASE)
-
-
-def _route_period_window(intent: str, slots: dict[str, Any], question: str) -> None:
-    """A period template's window only where the question names one.
-
-    Measured (yardstick-v2 F058/F060): "harrison barnes 1st quarter stats
-    each game vs magic" and "rudy gobert first half games this season" both
-    arrived with ``limit: 1`` and ``order: 'recent'``, and period_split -
-    which honors a window - printed ONE game's row under a two-game (or
-    76-game) total, where every game was asked for. Neither question names
-    a count; the model's 1 is filler, like the ``order`` beside it. The
-    period phrase is taken out before asking, because "first half games"
-    reads as "first N games" to :func:`_names_a_count` and "first" to
-    :func:`_names_one_game` - the ordinal names the period, not a window.
-    "last 5 games" (Zach Collins, F050) keeps both slots.
-    """
-    if intent not in _PERIOD_WINDOW_INTENTS:
-        return
-    without_period = _PERIOD_PHRASE.sub(" ", question)
-    if isinstance(slots.get("limit"), int) and not _names_a_count(without_period):
-        slots.pop("limit", None)
-        if slots.get("order") and not _names_one_game(without_period):
-            slots.pop("order", None)
 
 
 def _route_opponent_named_as_teammates(slots: dict[str, Any], without: list[str]) -> None:
@@ -2551,11 +2233,11 @@ def _route_opponent_named_as_teammates(slots: dict[str, Any], without: list[str]
 #: (5.0.0). What :func:`settle` keeps of a settled route before running the
 #: stages again, since every other key is one the stages themselves read off
 #: the question for the intent they were run under (``since`` for a
-#: ``game_log``, ``limit``-as-seasons for a ``player_history``), and would
+#: ``game_log``), and would
 #: otherwise survive into an intent whose template refuses it. The span's
-#: six slots are not among them: the span tagger reads every one from the
-#: words again (Phase 3, step 2).
-_MODEL_SLOTS: frozenset[str] = frozenset({"stat", "threshold", "player", "players", "team", "teams", "period", "opponent", "order", "rate", "side", "date", "limit", "shot_value", "fields"})
+#: six slots and the window's four are not among them: the two taggers read
+#: every one from the words again (Phase 3, step 2).
+_MODEL_SLOTS: frozenset[str] = frozenset({"stat", "threshold", "player", "players", "team", "teams", "period", "opponent", "rate", "side", "date", "shot_value", "fields"})
 
 
 def settle(intent: str, slots: Mapping[str, Any] | Scope, question: str, beside: Beside | None = None) -> Route:
@@ -2570,7 +2252,8 @@ def settle(intent: str, slots: Mapping[str, Any] | Scope, question: str, beside:
     name the intent, and the child's own slots (``threshold`` from "30+",
     ``limit`` as a count of seasons from "the past 4 seasons", ``kind`` of a
     streak, a ``split``) are the ones these stages already read off the
-    text - so re-running them under the child is the whole recovery, and
+    text, and the window tagger reads a history's count of seasons under
+    it - so re-running them under the child is the whole recovery, and
     one definition of each slot rather than a second reader per child.
     ``slots`` may be a settled route's, so the keys the stages derive are
     dropped first (:data:`_MODEL_SLOTS`). The stages may settle on a DIFFERENT intent than
@@ -2578,8 +2261,7 @@ def settle(intent: str, slots: Mapping[str, Any] | Scope, question: str, beside:
     record is ``with_without`` - and the caller reads the returned intent
     rather than assuming its own.
 
-    ``slots`` is the model's slot dict - the names and the stat, with the
-    window the parser reads beside them - or a settled route's typed
+    ``slots`` is the model's slot dict - the names and the stat - or a settled route's typed
     :class:`~association.query.reading.Scope`, run again under a child; the
     stages' own working dict never leaves this module, and the Route they
     return carries the Scope.
@@ -2631,43 +2313,39 @@ def _settle(raw: dict[str, Any], question: str, beside: Beside = Beside()) -> Ro
     _route_leaderboard_shot_distance(raw["intent"], slots, question)
     _route_shot_value(raw["intent"], slots, question)
     _route_attempted_stat(slots, question)
-    _route_ranked_boolean_games(raw["intent"], slots, question)
     _route_team_slots(raw["intent"], slots, question)
     _route_rate(raw["intent"], slots, question)
     _route_team_total(raw["intent"], slots, question)
     _route_subject_slots(raw["intent"], slots, question)
-    # Whether a window was named before the filler is dropped: a log's last
-    # meetings with an opponent read the count the words gave, not the one
-    # left after the filler went.
-    window_named = isinstance(slots.get("limit"), int)
     _route_record_when_threshold(raw["intent"], slots, question)
-    _route_side_and_order(raw["intent"], slots, question)
-    _route_period_window(raw["intent"], slots, question)
+    _route_side(raw["intent"], slots, question)
     _route_opponent_named_as_teammates(slots, without)
-    # The span, last: the one reader of the seasons and the season type,
-    # over the intent and the window the stages settled (Phase 3, step 2).
-    read = read_span(question, _span_context(raw["intent"], slots, question, window_named=window_named, dated_since=dated_since))
+    # The window, then the span, last: each the one reader of its family,
+    # over the intent the stages settled - and the span over the window,
+    # since three of its rules read it (Phase 3, step 2).
+    window = read_window(question, WindowContext(intent=raw["intent"], boolean_stat=slots.get("stat") in _BOOLEAN_STATS))
+    slots["window"] = window.window
+    read = read_span(question, _span_context(raw["intent"], slots, question, window=window.window, dated_since=dated_since))
     slots["span"] = read.span
     # The stages' working dict crosses into the typed Scope here, once: a
-    # value no field holds (a window of 0) raises ScopeError to the parser.
-    return Route(intent=raw["intent"], scope=Scope.from_slots(slots), claims=read.claims)
+    # value no field holds raises ScopeError to the parser.
+    return Route(intent=raw["intent"], scope=Scope.from_slots(slots), claims=claimed([*window.claims, *read.claims]))
 
 
-def _span_context(intent: str, slots: dict[str, Any], question: str, *, window_named: bool, dated_since: int | None) -> SpanContext:
+def _span_context(intent: str, slots: dict[str, Any], question: str, *, window: Window, dated_since: int | None) -> SpanContext:
     """What the span tagger reads beside the words
     (:class:`~association.query.span.SpanContext`): the stages' settled
-    intent and window, and the guard words of other families it keeps
-    until their slices move them to the lexicon."""
-    limit = slots.get("limit")
+    intent, the typed window, and the guard words of other families it
+    keeps until their slices move them to the lexicon."""
     return SpanContext(
         intent=intent,
         player_named=bool(slots.get("player")),
-        window_named=window_named,
+        window_named=window.count is not None,
         versus=_VERSUS_WORDS.search(question) is not None,
         how_many=_HOW_MANY.search(question) is not None,
         record=_RECORD.search(question) is not None,
-        order=slots.get("order") if isinstance(slots.get("order"), str) else None,
-        limit=limit if isinstance(limit, int) and not isinstance(limit, bool) else None,
+        order=window.order,
+        limit=window.count,
         date=slots.get("date") if isinstance(slots.get("date"), str) else None,
         game_n=slots.get("game_n") if isinstance(slots.get("game_n"), int) else None,
         season_n=slots.get("season_n") if isinstance(slots.get("season_n"), int) else None,

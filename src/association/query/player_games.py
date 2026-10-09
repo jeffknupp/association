@@ -812,7 +812,7 @@ class Narrowed:
 
         ``windowed`` is opt-in and defaults off: ``.window`` is set by
         :func:`association.query.player_relation.scoped_games` for every
-        caller whose slots carry ``order``/``limit`` - including ``game_log``
+        caller whose window names an end or a count - including ``game_log``
         and ``player_stat``, which read it for their OWN row-fetching
         (:func:`rows_sql` never consults ``.window``) and already say "last N
         games" their own way. Including the phrase here unconditionally would

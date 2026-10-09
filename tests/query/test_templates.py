@@ -36,7 +36,7 @@ from association.query.metrics import LEADERBOARD_METRICS, PER_GAME_MIN_GAMES, P
 from association.query.parse import with_point
 from association.query.player_games import PERIOD_COLUMNS, PERIOD_RATES, period_distrust
 from association.query.player_relation import scoped_games, scoped_player
-from association.query.reading import SCOPING_SLOTS, PointShape, Reading, Scope, Span, unhonored_scoping
+from association.query.reading import SCOPING_SLOTS, PointShape, Reading, Scope, Span, Window, unhonored_scoping
 from association.query.result import Unanswered
 from association.query.season_text import season_phrase
 from association.query.shotchart import SHOT_AVAILABILITY
@@ -3544,7 +3544,7 @@ def test_fingerprint_declares_the_game_scoping_it_handles(fp_ctx: AnswerContext)
     assert unhonored_scoping("fingerprint", Scope.from_slots({"player": "Shai", "order": "recent", "date": "2026-01-02"}), stated("fingerprint")) == []
     # The game-scoping pair specifically - SCOPING_SLOTS also holds opponent,
     # venue, span and without, none of which a fingerprint can narrow to.
-    assert {"order", "date"} <= stated("fingerprint") <= SCOPING_SLOTS
+    assert {"window", "date"} <= stated("fingerprint") <= SCOPING_SLOTS | Window.CELLS
 
 
 def test_fingerprint_without_a_player_falls_through(fp_ctx: AnswerContext) -> None:

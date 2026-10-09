@@ -47,7 +47,7 @@ from association.query.player_games import (
     scope_without_guard,
     season_type_clause,
 )
-from association.query.reading import ConditionSpec, PeriodCondition, Scope, Span, Unsupported, _clamp_limit, ordinal_word, period_narrowing
+from association.query.reading import ConditionSpec, PeriodCondition, Scope, Span, Unsupported, Window, _clamp_limit, ordinal_word, period_narrowing
 from association.query.result import Cell, GameOfSeries, Line, Refusal, Role, Unanswered
 from association.query.season_text import SEASON_TYPE_NAMES, season_phrase
 from association.query.team_games import TeamNarrowed
@@ -58,15 +58,16 @@ from association.query.team_games import TeamNarrowed
 # not in the template: an opponent, a venue, a teammate's absence, a named half
 # of the starter/bench split, one game of each playoff series, a line on a
 # box-score column, one Eastern date, a span of seasons, a first season, an
-# ordinal season. `order` (with `limit`) is the window - the newest or oldest
-# N of the narrowed games - which the relation cuts after every row filter and
-# before whatever the template does with the rows, so "30-point games in his
-# last 10" counts inside the ten (step 3, C0's one skeleton-specific rule).
-# `scoped_games` sets it (`relation_window`, below): a NAMED `order` wins
-# outright, and a bare `limit` with no `order` still means the newest N - the
-# router's own traces for "Create a shot chart for Steph Curry's last two
-# games of the regular season" never emit `order` at all, only `limit`, so a
-# rule gated on `order` alone would never reach that question (step 3, C5).
+# ordinal season. The window (`reading.Window`, typed since Phase 3, step 2:
+# an end of the span with its count) is the newest or oldest N of the
+# narrowed games, which the relation cuts after every row filter and before
+# whatever the reader does with the rows, so "30-point games in his last 10"
+# counts inside the ten (step 3, C0's one skeleton-specific rule).
+# `scoped_games` sets it (`relation_window`, below): a NAMED end wins
+# outright, and a bare count with no end still means the newest N - the
+# grammar reads "Create a shot chart for Steph Curry's last two games of the
+# regular season" as a count alone once the chart's one-game end is dropped,
+# so a rule gated on the end alone would never reach that question (step 3, C5).
 #
 # This replaced six per-template lists that had drifted: game_log honored
 # twelve of these, single_game_high one, on the same relation - a slot taught
@@ -74,7 +75,7 @@ from association.query.team_games import TeamNarrowed
 # algebra port exists to remove. A template on the relation that cannot honor
 # one of these says so in RELATION_SCOPING_EXCLUDED, with the reason.
 RELATION_SCOPING = frozenset(
-    {"order", "date", "opponent", "venue", "without", "split", "below", "above", "game_n", "season_n", "situation", "conditions", "period", "half", "period_condition", *Span.CELLS}
+    {"date", "opponent", "venue", "without", "split", "below", "above", "game_n", "season_n", "situation", "conditions", "period", "half", "period_condition", *Span.CELLS, *Window.CELLS}
 )
 """The cells every reader on the player-games relation honors: the
 scoping slots, and the span's three cells (:attr:`~association.query.reading.Span.CELLS`,
@@ -118,7 +119,7 @@ RELATION_SCOPING_EXCLUDED: dict[str, dict[str, str]] = {
     # A single date is one game, and one game is not a streak.
     "streak": {
         "date": "one game is not a run",
-        "order": "a run is read over every game in the span, not the last N",
+        "window": "a run is read over every game in the span, not the last N",
         "period": "a run is a run of whole games; a quarter of each is a different streak nobody has defined",
         "half": "a run is a run of whole games; a half of each is a different streak nobody has defined",
     },
@@ -126,13 +127,13 @@ RELATION_SCOPING_EXCLUDED: dict[str, dict[str, str]] = {
     # that game_log answers.
     "player_splits": {
         "date": "one game has nothing to split",
-        "order": "a limited number of recent games is game_log's question",
+        "window": "a limited number of recent games is game_log's question",
         "period": "the splits table is headed as whole games; a quarter's split would print under the same heading",
         "half": "the splits table is headed as whole games; a half's split would print under the same heading",
     },
     "record_when": {
         "date": "one game has no record",
-        "order": "a record over the last N games is game_log's question",
+        "window": "a record over the last N games is game_log's question",
         "period": "a record is won and lost over whole games; its sentence would not say the condition was read in one quarter",
         "half": "a record is won and lost over whole games; its sentence would not say the condition was read in one half",
     },
@@ -148,7 +149,7 @@ RELATION_SCOPING_EXCLUDED: dict[str, dict[str, str]] = {
     # on the relation.
     "player_matchup": {
         "opponent": "two players' meetings are the games they played against each other - there is no third team to narrow them to",
-        "order": "the newest meetings are shown beneath averages over all of them - a window would cut the averages the matchup exists to give",
+        "window": "the newest meetings are shown beneath averages over all of them - a window would cut the averages the matchup exists to give",
         "season_n": "an ordinal season is one player's - a matchup names two, and the question does not say whose fifth season is meant",
         "period": "a meeting's line is both players' whole game; only one side of the pair would be read for the quarter",
         "half": "a meeting's line is both players' whole game; only one side of the pair would be read for the half",
@@ -674,31 +675,36 @@ def relation_window(scope: Scope) -> tuple[str, int] | None:
     """The WINDOW :func:`scoped_games` cuts the narrowed games to - the
     newest or oldest N, after every other filter
     (:attr:`association.query.player_games.Narrowed.window`) - or ``None``
-    where neither slot narrows anything.
+    where the typed window (:class:`~association.query.reading.Window`,
+    on ``scope.window``) names neither an end nor a count.
 
-    A named ``order`` wins outright. Absent one, a ``limit`` alone still
-    means "his last N games": measured against the router's own traces for
-    "Create a shot chart for Steph Curry's last two games of the regular
-    season" (step 3, C5's finding) - four separate runs, three different
-    builds, all emit ``{'limit': 2, ...}`` with no ``order`` at all, so a rule
-    gated on ``order`` alone would never reach the real question. No template
-    on the relation has any other use for a bare ``limit`` - it ranks nothing
-    here, only `leaderboard` does that, over a different table - so there is
-    no other reading for one to collide with.
+    A named end (``Window.order``) wins outright. Absent one, a count alone
+    still means "his last N games": measured against the router's own
+    traces for "Create a shot chart for Steph Curry's last two games of the
+    regular season" (step 3, C5's finding) - four separate runs, three
+    different builds, all emit ``{'limit': 2, ...}`` with no ``order`` at
+    all, and the grammar reads it the same way now that the chart's one-game
+    end is dropped - so a rule gated on the end alone would never reach the
+    real question. No reader on the relation has any other use for a bare
+    count - it ranks nothing here, only `leaderboard` does that, over a
+    different table - so there is no other reading for one to collide with.
 
     .. versionadded:: 4.4.0
 
     .. versionchanged:: 5.0.0
        Public (was ``_relation_window``): the period reader cuts its
        cross-season window by it (``compose.periods``).
+
+    .. versionchanged:: 6.0.0
+       Reads the typed ``scope.window`` (Phase 3, step 2).
     """
-    order: str | None = scope.order
+    order: str | None = scope.window.order
     if order is None:
         # A limit, when set, is 1 or more: the Scope's own range rule.
-        if scope.limit is None:
+        if scope.window.count is None:
             return None
         order = "recent"
-    return order, _clamp_limit(scope.limit, default=1)
+    return order, _clamp_limit(scope.window.count, default=1)
 
 
 def _apply_period_condition(con: duckdb.DuckDBPyConnection, narrowed: Narrowed, condition: PeriodCondition) -> Unanswered | None:
@@ -983,11 +989,11 @@ def condition_player(
 def whole_span[NarrowedT: (Narrowed, TeamNarrowed)](narrowed: NarrowedT) -> NarrowedT:
     """``narrowed`` with no window: the condition skeletons - a split, a
     record, a run - are read over every game in the span, which is why each
-    of them excludes ``order`` in :data:`RELATION_SCOPING_EXCLUDED` ("a
-    limited number of recent games is game_log's question"). A bare ``limit``
-    is the router's filler on those questions (``limit: 1`` beside "76ers
+    of them excludes the ``window`` cell in :data:`RELATION_SCOPING_EXCLUDED`
+    ("a limited number of recent games is game_log's question"). A bare count
+    was the router's filler on those questions (``limit: 1`` beside "76ers
     record when Maxey scores 20+"), and :func:`relation_window` reads a bare
-    limit as the newest N for the templates that DO honor a window - so the
+    count as the newest N for the readers that DO honor a window - so the
     skeleton that does not says so here, once, instead of the filler cutting a
     63-game record to one game. Measured on the step 3 golden set: three
     recorded questions did exactly that before this existed.

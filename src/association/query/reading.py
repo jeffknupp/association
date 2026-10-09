@@ -397,6 +397,116 @@ class Span:
         return out
 
 
+#: The slot name each window cell was declared and refused under until
+#: Phase 3, step 2 - the name a decline still says ("cannot honor
+#: ['order']"), until the decline-to-Cause commit rewords it.
+_WINDOW_CELL_SLOT_NAMES: dict[str, tuple[str, ...]] = {"window": ("order",), "ranked_by": ("ranked_by",)}
+
+
+@dataclass(frozen=True, kw_only=True)
+class Window:
+    """Which rows a read keeps and from which end, as the words gave them -
+    ``ROADMAP-TYPES.md``'s ``Window``, the second filter family typed
+    (Phase 3, step 2). One value in place of four slots (``order``,
+    ``limit``, ``rank``, ``ranked_by``), read by one tagger
+    (:func:`~association.query.window.read_window`) and cut by one step per
+    relation (:func:`~association.query.player_relation.relation_window`,
+    which both relations read). Each field at its default is the part
+    unstated, which each reader defaults - no count is its own default
+    (ten games for a log, five for a ranking), no end is the newest.
+
+    The parts are fields rather than the draft's ``order: recent | first |
+    top | bottom``, because the readings hold them apart: measured on the
+    2,710 readings of 2026-10-09 (``~/association-research/stages/window_family.py``),
+    a count stands with no end 102 times ("top 5", a history's seasons,
+    "last 10 home games" on a reader with no window of its own) and an end
+    never stands without a count (0); "top" and "bottom" name no end of the
+    SPAN (a ranking's own rank word says which end of the ranking), so the
+    grammar reads them as the count alone. ``rank`` is a team ranking's
+    own parameter (86 readings, four values), ``by`` the one measure a
+    ranking of games over a yes/no stat is ordered by (2, both "points").
+    The point's ``offset`` was 0 on every reading and is gone.
+
+    .. versionadded:: 6.0.0
+    """
+
+    #: Which end of the span the rows are taken from, where the words said:
+    #: the newest ("last 10 games", "his last game") or the oldest ("first
+    #: 5 games", "the season opener"). None for a bare count ("top 5") and
+    #: for a count of seasons - never a default.
+    order: Literal["recent", "first"] | None = None
+    #: How many rows the words asked for: games, or seasons for a history
+    #: (``of``). None where none was named; never below 1.
+    count: int | None = None
+    #: What ``count`` counts: ``"games"``, or ``"seasons"`` where a history
+    #: reads "the past 5 years" as its count of seasons
+    #: (:data:`~association.query.span.LIMIT_COUNTS_SEASONS`).
+    of: Literal["games", "seasons"] = "games"
+    #: Which end of a team ranking was asked for ("most", "fewest", "best",
+    #: "worst"; :data:`~association.query.lexicon.RANK_WORDS`), which the
+    #: team-season readers resolve against the metric.
+    rank: Literal["most", "fewest", "best", "worst"] | None = None
+    #: The measure a ranking of the games over a yes/no stat is ordered by
+    #: ("the highest scoring triple doubles": ``"points"``), which the
+    #: compiler's boolean-game ranking reads and the season-line ranking's
+    #: reader steps aside for.
+    by: str | None = None
+
+    #: The window's two cells, the ones a relation's cell table declares
+    #: (``player_relation.RELATION_SCOPING``, ``team_relation.TEAM_RELATION_SCOPING``)
+    #: and :meth:`cells` reports a value as setting: a window of N at one
+    #: end of the span (``window``: an ``order``, with its count), and the
+    #: measure a boolean-game ranking is ordered by (``ranked_by``). A bare
+    #: count is not a cell: each reader takes it as its own parameter (how
+    #: many rows, runs, meetings or seasons to show; the games relations
+    #: read it as the newest N), and nothing steps aside for or refuses one.
+    CELLS: ClassVar[frozenset[str]] = frozenset({"window", "ranked_by"})
+
+    def __post_init__(self) -> None:
+        # The one range rule every reader already keeps: a count below 1 is
+        # no window at all (the readers clamp it to their default), so a
+        # producer writing one has a bug to say out loud.
+        if self.count is not None and self.count < 1:
+            raise ScopeError(f"scope limit {self.count} is below 1")
+
+    @property
+    def named(self) -> bool:
+        """Whether the words asked for a window at all: an end or a count."""
+        return self.order is not None or self.count is not None
+
+    def cells(self) -> frozenset[str]:
+        """The window cells this value sets (:attr:`CELLS`): what a relation's
+        table must honor, or step aside or refuse for."""
+        return frozenset(cell for cell, held in (("window", self.order is not None), ("ranked_by", self.by is not None)) if held)
+
+    def unhonored(self, honored: frozenset[str]) -> list[str]:
+        """The slot names (``order``, ``ranked_by``) of the cells this value
+        sets beyond ``honored`` - the names a decline says."""
+        return [slot for cell in self.cells() - honored for slot in _WINDOW_CELL_SLOT_NAMES[cell]]
+
+    @classmethod
+    def from_slots(cls, slots: Mapping[str, Any]) -> Window:
+        """The Window four slot values name (:meth:`Scope.from_slots` reads
+        them off a slot dict): ``order``, ``limit``, ``rank``, ``ranked_by``.
+        A slot dict says nothing about what a count counts, so ``of`` is
+        games; the tagger is the one writer of a count of seasons."""
+        return cls(order=slots.get("order"), count=slots.get("limit"), rank=slots.get("rank"), by=slots.get("ranked_by"))
+
+    def to_slots(self) -> dict[str, Any]:
+        """The four slots, exactly as the stages wrote them until Phase 3,
+        step 2 - the projection every recorded reading is compared through."""
+        out: dict[str, Any] = {}
+        if self.by is not None:
+            out["ranked_by"] = self.by
+        if self.rank is not None:
+            out["rank"] = self.rank
+        if self.order is not None:
+            out["order"] = self.order
+        if self.count is not None:
+            out["limit"] = self.count
+        return out
+
+
 @dataclass(frozen=True)
 class Claim:
     """The characters of the question one reader rule consumed - ``start``
@@ -444,14 +554,12 @@ class Scope:
     below: tuple[str, ...] = ()
     #: The columns a ranking asks to see beside its measure.
     fields: tuple[str, ...] = ()
-    ranked_by: str | None = None
     per_game: bool = False
     rate: str | None = None
     side: Literal["offense", "defense", "total"] | None = None
     shot_value: Literal[1, 2, 3] | None = None
     #: A streak's kind (``"win"``, ``"loss"``).
     kind: str | None = None
-    rank: Literal["most", "fewest", "best", "worst"] | None = None
     #: When: the seasons and the season type, one typed value
     #: (:class:`Span`; six slots until Phase 3, step 2).
     span: Span = field(default_factory=Span)
@@ -468,16 +576,10 @@ class Scope:
     #: A period as a condition on which games count (:class:`PeriodCondition`).
     period_condition: PeriodCondition | None = None
     venue: Literal["home", "away"] | None = None
-    #: The window.
-    order: Literal["recent", "first"] | None = None
-    limit: int | None = None
-
-    def __post_init__(self) -> None:
-        # The one range rule every reader already keeps: a limit below 1 is
-        # no window at all (the templates clamp it to their default), so a
-        # producer writing one has a bug to say out loud.
-        if self.limit is not None and self.limit < 1:
-            raise ScopeError(f"scope limit {self.limit} is below 1")
+    #: Which rows are kept, and from which end: one typed value
+    #: (:class:`Window`; the four slots ``order``, ``limit``, ``rank`` and
+    #: ``ranked_by`` until Phase 3, step 2).
+    window: Window = field(default_factory=Window)
 
     @classmethod
     def from_slots(cls, slots: Mapping[str, Any]) -> Scope:
@@ -488,11 +590,12 @@ class Scope:
 
         .. versionadded:: 5.0.0
         """
-        unknown = sorted(set(slots) - _SCOPE_FIELDS - _SPAN_SLOT_NAMES)
+        unknown = sorted(set(slots) - _SCOPE_FIELDS - _SPAN_SLOT_NAMES - _WINDOW_SLOT_NAMES)
         if unknown:
             raise ScopeError(f"no scope field for slot(s) {unknown}")
         values: dict[str, Any] = {}
         span_slots: dict[str, Any] = {}
+        window_slots: dict[str, Any] = {}
         for name, raw in slots.items():
             # A blank string is the slot absent too: the model files " " for
             # an opponent it has none of, and every template read it as
@@ -500,16 +603,22 @@ class Scope:
             # it as a team named nothing and refused.
             if raw is None or raw is False or (isinstance(raw, (str, list, tuple)) and not raw) or (isinstance(raw, str) and not raw.strip()):
                 continue
-            if name == "span" and isinstance(raw, Span):
+            if (name == "span" and isinstance(raw, Span)) or (name == "window" and isinstance(raw, Window)):
                 values[name] = raw
             elif name in _SPAN_SLOT_NAMES:
                 span_slots[name] = _CHECKS[name](name, raw)
+            elif name in _WINDOW_SLOT_NAMES:
+                window_slots[name] = _CHECKS[name](name, raw)
             else:
                 values[name] = _CHECKS[name](name, raw)
         if span_slots:
             if "span" in values:
                 raise ScopeError(f"a typed span and the slot(s) {sorted(span_slots)} at once")
             values["span"] = Span.from_slots(span_slots)
+        if window_slots:
+            if "window" in values:
+                raise ScopeError(f"a typed window and the slot(s) {sorted(window_slots)} at once")
+            values["window"] = Window.from_slots(window_slots)
         return cls(**values)
 
     def to_slots(self) -> dict[str, Any]:
@@ -528,7 +637,7 @@ class Scope:
                 out[f.name] = [condition.to_slot() for condition in value]
             elif f.name == "period_condition":
                 out[f.name] = value.to_slot()
-            elif f.name == "span":
+            elif f.name in ("span", "window"):
                 out.update(value.to_slots())
             else:
                 out[f.name] = list(value) if isinstance(value, tuple) else value
@@ -536,11 +645,12 @@ class Scope:
 
     def projected(self) -> dict[str, Any]:
         """Every field, at its default or not, with the span as the six
-        slots it was until Phase 3, step 2 - the shape a recorded Scope
-        kept (:func:`~association.query.stages.plain`), so a reading
-        recorded before the span was typed compares identical to one
-        recorded after. The typed value is recorded beside the reading
-        (``stages._reading_record``, ``span``), never here.
+        slots and the window as the four it was until Phase 3, step 2 - the
+        shape a recorded Scope kept (:func:`~association.query.stages.plain`),
+        so a reading recorded before a part was typed compares identical to
+        one recorded after. The typed values are recorded beside the
+        reading (``stages._reading_record``, ``span`` and ``window``), never
+        here.
 
         .. versionadded:: 6.0.0
         """
@@ -555,8 +665,15 @@ class Scope:
                 out["span"] = slots.get("span")
                 out["since"] = slots.get("since")
                 out["until"] = slots.get("until")
+            elif f.name == "window":
+                out["order"] = value.order
+                out["limit"] = value.count
             else:
                 out[f.name] = value
+                if f.name == "fields":
+                    out["ranked_by"] = self.window.by
+                elif f.name == "kind":
+                    out["rank"] = self.window.rank
         return out
 
 
@@ -639,6 +756,8 @@ _CHECKS: dict[str, Callable[[str, Any], Any]] = {
 _SCOPE_FIELDS = frozenset(f.name for f in fields(Scope))
 #: The six slot names the span's door still takes (:meth:`Span.from_slots`).
 _SPAN_SLOT_NAMES = frozenset({"season", "season_type", "season_type_unstated", "span", "since", "until"})
+#: The four slot names the window's door still takes (:meth:`Window.from_slots`).
+_WINDOW_SLOT_NAMES = frozenset({"order", "limit", "rank", "ranked_by"})
 
 
 CAUSES: frozenset[str] = frozenset(
@@ -834,7 +953,6 @@ class Reading:
     direction: Literal["asc", "desc"] = "desc"
     #: Row count for a ``rows`` read, or the number of groups for a ``grouped`` one.
     limit: int | None = None
-    offset: int = 0
     #: The minimum games a group needs to be kept, for a ranking.
     minimum_games: int | None = None
     #: Binding parity with the template being mirrored (see
@@ -934,8 +1052,9 @@ class Reading:
     def projected(self) -> dict[str, Any]:
         """Every field as a Reading was recorded until Phase 3, step 2
         (:func:`~association.query.stages.plain`): ``subject_span`` as the
-        ``span`` and ``season`` pair it replaced, every other field as it
-        is - ``claims`` included, the one field the record gained.
+        ``span`` and ``season`` pair it replaced, the point's ``offset`` as
+        the 0 it always was, every other field as it is - ``claims``
+        included, the one field the record gained.
 
         .. versionadded:: 6.0.0
         """
@@ -943,6 +1062,9 @@ class Reading:
         settled = self.subject_span
         out["span"] = "career" if settled is not None and settled.career else None
         out["season"] = settled.season if settled is not None else None
+        # The point's `offset`, 0 on every reading until the window was
+        # typed (Phase 3, step 2), when it went.
+        out["offset"] = 0
         return out
 
     def describe(self) -> str:
@@ -1377,15 +1499,15 @@ def scope_reads_box_scores(scope: Scope, measures: list[Any]) -> bool:
 # alone, so a template honors it only by honoring `since` and reading `until`
 # beside it (`span_of`/`validated_until`); one not wired to `until` at all
 # would otherwise silently read only the range's first half.
-# `ranked_by` is read by nothing: the router files it when a
-# `leaderboard` question ranks the GAMES that satisfy a boolean stat by another
-# measure ("highest scoring triple doubles" - yardstick-v2 F124), the same
-# slots as the count "most triple doubles" otherwise. The leaderboard's
-# reader does not state it, so it steps aside and the compiler's boolean-game
-# ranking answers.
+# `order` and `ranked_by` are the typed window's cells since Phase 3, step 2
+# (`Window.CELLS`: `window`, `ranked_by`), read beside this list by
+# `unhonored_cells`: a `leaderboard` question ranking the GAMES that satisfy
+# a boolean stat by another measure ("highest scoring triple doubles" -
+# yardstick-v2 F124) carries the same slots as the count "most triple
+# doubles" but for the window's `by`, which the leaderboard's reader does
+# not state, so it steps aside and the compiler's boolean-game ranking answers.
 SCOPING_SLOTS = frozenset(
     {
-        "order",
         "date",
         "opponent",
         "venue",
@@ -1399,7 +1521,6 @@ SCOPING_SLOTS = frozenset(
         "situation",
         "conditions",
         "rate",
-        "ranked_by",
         "period",
         "half",
         "period_condition",
@@ -1409,15 +1530,16 @@ SCOPING_SLOTS = frozenset(
 
 def unhonored_cells(scope: Scope, honored: frozenset[str]) -> list[str]:
     """The slot names ``scope`` sets that ``honored`` does not hold, sorted:
-    every slot of :data:`SCOPING_SLOTS` that is truthy, and the span's cells
-    (:attr:`Span.CELLS`, by the slot names they were refused under -
-    :meth:`Span.unhonored`). One reading of "what is set beyond what is
+    every slot of :data:`SCOPING_SLOTS` that is truthy, and the span's and
+    the window's cells (:attr:`Span.CELLS`, :attr:`Window.CELLS`, by the
+    slot names they were refused under - :meth:`Span.unhonored`,
+    :meth:`Window.unhonored`). One reading of "what is set beyond what is
     honored", for the planner's relation check and for a reader's own
     words (:func:`unhonored_scoping`).
 
     .. versionadded:: 6.0.0
     """
-    return sorted([name for name in SCOPING_SLOTS if getattr(scope, name) and name not in honored] + scope.span.unhonored(honored))
+    return sorted([name for name in SCOPING_SLOTS if getattr(scope, name) and name not in honored] + scope.span.unhonored(honored) + scope.window.unhonored(honored))
 
 
 #: Templates that honor one NAMED half of the starter/bench split and refuse

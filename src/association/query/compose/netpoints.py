@@ -184,7 +184,7 @@ def read_player_netpoints(con: duckdb.DuckDBPyConnection, q: NetPointsQuery, *, 
     season = scope.span.season or current_season()
     season_type = scope.span.season_type or 2
     # A named order ("recent", "first") is one game.
-    order = scope.order
+    order = scope.window.order
     player = resolved_player(con, scope.player, "player_netpoints needs a player name", available=_NETPOINTS_GAMES if order else _NETPOINTS_TABLES, season=season)
     if isinstance(player, Unanswered):
         return player
@@ -359,7 +359,7 @@ def read_fingerprint(con: duckdb.DuckDBPyConnection, q: NetPointsQuery, *, state
     # `date` is not honored the same way: the router gives a calendar date and
     # the loader picks a player's first or last game, which are different
     # questions, so a dated request still says it cannot answer.
-    order = scope.order
+    order = scope.window.order
     if scope.date and not order:
         return Refusal(kind="fingerprint_on_a_date")
     # Settled before any name is resolved: the season is what narrows an

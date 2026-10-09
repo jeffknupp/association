@@ -18,7 +18,7 @@ from association.query.coverage import coverage_refusal
 from association.query.measures import stat_measure
 from association.query.player_relation import RELATION_SCOPING_EXCLUDED, relation_scoping, relation_span
 from association.query.point import TEAM_SEASON_POINTS, team_season_point
-from association.query.reading import CHART_INTENTS, Cause, PointShape, Reading, Scope, Span, _career_scope, unhonored_scoping
+from association.query.reading import CHART_INTENTS, Cause, PointShape, Reading, Scope, Span, Window, _career_scope, unhonored_scoping
 from association.query.result import Refusal
 from association.query.team_relation import team_relation_scoping, team_relation_span
 
@@ -117,7 +117,7 @@ STATED_SCOPING: dict[PointShape, frozenset[str]] = {
     # The shapes Phase 2's slice (iv) ported from templates (PORTED_SHAPES):
     # each retired template's HONORED_SCOPING row, moved with it. Every
     # meeting in a season, on a date, at a venue, or over a since-bounded or
-    # whole-career span; `order` and `game_n` pick out a subset of the tally
+    # whole-career span; a window and `game_n` pick out a subset of the tally
     # (TEAM_RELATION_SCOPING_EXCLUDED says why).
     PointShape("team_games", "comparison", "opponent"): team_relation_scoping("head_to_head"),
     # A team's quarter or half: the team relation's whole set (its games
@@ -139,8 +139,8 @@ STATED_SCOPING: dict[PointShape, frozenset[str]] = {
     # a fingerprint, honored by refusing it in the reader's own words - the
     # loader picks a player's first or last game, which is a different
     # question from a date (``compose.netpoints``).
-    PointShape("netpoints", "scalar", "ratings"): frozenset({"order"}) | relation_span("player_netpoints"),
-    PointShape("netpoints", "chart", "fingerprint"): frozenset({"order", "date"}) | relation_span("fingerprint"),
+    PointShape("netpoints", "scalar", "ratings"): frozenset({"window"}) | relation_span("player_netpoints"),
+    PointShape("netpoints", "chart", "fingerprint"): frozenset({"window", "date"}) | relation_span("fingerprint"),
     # The shot relation's readers (compose.shots, Phase 2, step 5): every
     # cell of the player relation they take their games from, less a quarter
     # and a half (RELATION_SCOPING_EXCLUDED: a shot read draws every shot of
@@ -373,14 +373,16 @@ def _excluded_cells_set(intent: str, scope: Scope, excluded: dict[str, str]) -> 
     it, and the compiler's own sentence names both quarters - as both
     season types are excluded from each of the three readers' words only,
     the reader stepping aside for the compiler's sentence, which reads
-    both. A span cell is refused by the slot names it was declared under
-    (``reading._CELL_SLOT_NAMES``)."""
+    both. A span cell and a window cell are refused by the slot names they
+    were declared under (``reading._CELL_SLOT_NAMES``, ``_WINDOW_CELL_SLOT_NAMES``)."""
     refused: list[tuple[str, str]] = []
     for cell in excluded:
         if cell == "both" or (intent == "period_split" and cell == "period_condition"):
             continue
         if cell in Span.CELLS:
             refused += [(slot, cell) for slot in scope.span.unhonored(Span.CELLS - {cell})]
+        elif cell in Window.CELLS:
+            refused += [(slot, cell) for slot in scope.window.unhonored(Window.CELLS - {cell})]
         elif getattr(scope, cell) not in (None, "", (), False):
             refused.append((cell, cell))
     return refused
@@ -473,7 +475,6 @@ def _plan(reading: Reading) -> Query | TeamQuery | TeamSeasonQuery | NetPointsQu
         order=reading.order,
         direction=reading.direction,
         limit=reading.limit,
-        offset=reading.offset,
         minimum_games=reading.minimum_games,
         available=reading.available,
         subject_span=reading.subject_span,

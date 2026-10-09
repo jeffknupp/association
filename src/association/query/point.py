@@ -228,7 +228,7 @@ def _everyone_single_game(intent: str, scope: Scope, question: str, measure: str
         predicates=predicates,
         order="measure",
         direction=_asc_or_desc(question),
-        limit=_clamp_limit(scope.limit, DEFAULT_SINGLE_GAME_LIMIT),
+        limit=_clamp_limit(scope.window.count, DEFAULT_SINGLE_GAME_LIMIT),
         relation="everyone",
         position=position,
     )
@@ -282,7 +282,7 @@ def _everyone_boolean_game_ranking(intent: str, question: str, scope: Scope, pre
     # the question sizes them - "highest scoring", "biggest", or a stat word
     # of its own ("most rebounds in a double double"), or the parser's
     # `ranked_by`.
-    sized = _BOOLEAN_GAME_RANKING.search(question) or scope.ranked_by or any(re.search(pattern, question, re.I) for pattern, _ in _BOOLEAN_RANK_WORDS)
+    sized = _BOOLEAN_GAME_RANKING.search(question) or scope.window.by or any(re.search(pattern, question, re.I) for pattern, _ in _BOOLEAN_RANK_WORDS)
     if not sized:
         return None
     measure = _boolean_game_measure(question)
@@ -296,7 +296,7 @@ def _everyone_boolean_game_ranking(intent: str, question: str, scope: Scope, pre
         predicates=predicates,
         order="measure",
         direction=_asc_or_desc(question),
-        limit=_clamp_limit(scope.limit, DEFAULT_SINGLE_GAME_LIMIT),
+        limit=_clamp_limit(scope.window.count, DEFAULT_SINGLE_GAME_LIMIT),
         relation="everyone",
         position=position,
     )
@@ -371,7 +371,7 @@ def _everyone_multi_line_games(intent: str, scope: Scope, question: str, predica
         predicates=lines,
         order="date",
         direction="desc",
-        limit=_clamp_limit(scope.limit, 25),
+        limit=_clamp_limit(scope.window.count, 25),
         relation="everyone",
         position=position,
     )
@@ -432,7 +432,7 @@ def _everyone_threshold_count(intent: str, scope: Scope, predicates: list[tuple[
         predicates=predicates,
         order="measure",
         direction="desc",
-        limit=_clamp_limit(scope.limit, listed),
+        limit=_clamp_limit(scope.window.count, listed),
         relation="everyone",
         position=position,
     )
@@ -500,7 +500,7 @@ def _everyone_ranking(intent: str, scope: Scope, question: str, measure: str | N
         predicates=predicates,
         order="measure",
         direction=_asc_or_desc(question),
-        limit=_clamp_limit(scope.limit, 10),
+        limit=_clamp_limit(scope.window.count, 10),
         minimum_games=minimum_games,
         relation="everyone",
         position=position,
@@ -549,7 +549,7 @@ def _leaderboard_season_line(intent: str, scope: Scope, question: str, measure: 
         predicates=[],
         order="measure",
         direction=_asc_or_desc(question),
-        limit=_clamp_limit(scope.limit, 10),
+        limit=_clamp_limit(scope.window.count, 10),
         minimum_games=PER_GAME_MIN_GAMES,
         relation="everyone",
     )
@@ -569,7 +569,7 @@ def _everyone_position_log(intent: str, scope: Scope, question: str, position: s
         predicates=[],
         order="date",
         direction="desc",
-        limit=_clamp_limit(scope.limit, 10),
+        limit=_clamp_limit(scope.window.count, 10),
         relation="everyone",
         position=position,
     )
@@ -642,7 +642,7 @@ def _move_single_game(intent: str, scope: Scope, question: str, measure: str | N
         predicates=[],
         order="measure",
         direction=_asc_or_desc(question),
-        limit=_clamp_limit(scope.limit, DEFAULT_SINGLE_GAME_LIMIT),
+        limit=_clamp_limit(scope.window.count, DEFAULT_SINGLE_GAME_LIMIT),
     )
 
 
@@ -710,7 +710,7 @@ def _move_player_history(intent: str, scope: Scope, career: Scope, measure: str 
         predicates=[],
         order="date",
         direction="desc",
-        limit=_clamp_limit(scope.limit, 10),
+        limit=_clamp_limit(scope.window.count, 10),
     )
 
 
@@ -763,8 +763,8 @@ def _default_game_log(scope: Scope) -> Reading:
         group="none",
         predicates=_threshold_line(scope),
         order="date",
-        direction="asc" if scope.order == "first" else "desc",
-        limit=_clamp_limit(scope.limit, DEFAULT_GAME_LOG_LIMIT),
+        direction="asc" if scope.window.order == "first" else "desc",
+        limit=_clamp_limit(scope.window.count, DEFAULT_GAME_LOG_LIMIT),
         subject_span=scope.span.over_career() if date else scope.span,
     )
 
@@ -794,7 +794,7 @@ def _default_player_stat(scope: Scope) -> Reading:
         raise Unsupported("player_stat needs a player")
     col = stat_column(scope.stat)
     measures = [col] if col else list(STAT_LINE)
-    if scope.limit or scope.order:
+    if scope.window.count or scope.window.order:
         return _default_game_log(scope)
     if not (scope_reads_box_scores(scope, measure_filters(scope.below, scope.above)) or scope.date):
         return Reading(scope=scope, shape="scalar", by="line", on="player_seasons", measures=measures, aggregate="per_game", group="none", predicates=[])
@@ -886,8 +886,8 @@ def _default_period_split(scope: Scope) -> Reading:
         group="none",
         predicates=[],
         order="date",
-        direction="asc" if scope.order == "first" else "desc",
-        limit=_clamp_limit(scope.limit, DEFAULT_GAME_LOG_LIMIT),
+        direction="asc" if scope.window.order == "first" else "desc",
+        limit=_clamp_limit(scope.window.count, DEFAULT_GAME_LOG_LIMIT),
         available=SHOT_AVAILABILITY,
         subject_span=scope.span.over_career() if date else scope.span,
     )
@@ -943,7 +943,7 @@ def _default_single_game_high(scope: Scope) -> Reading:
         predicates=[],
         order="measure",
         direction="desc",
-        limit=_clamp_limit(scope.limit, DEFAULT_SINGLE_GAME_LIMIT),
+        limit=_clamp_limit(scope.window.count, DEFAULT_SINGLE_GAME_LIMIT),
     )
 
 
@@ -1004,7 +1004,7 @@ def _default_streak(scope: Scope) -> Reading:
         if column is not None:
             raise PointRefused(Cause(kind="team_streak_of_stat", facts={"stat": column}))
         return Reading(scope=scope, shape="runs", by="won", on="team_games", measures=["won"], aggregate="count", group="none", predicates=predicates, relation="team")
-    limit = _clamp_limit(scope.limit, DEFAULT_STREAK_LIMIT)
+    limit = _clamp_limit(scope.window.count, DEFAULT_STREAK_LIMIT)
     if column is not None:
         return Reading(scope=scope, shape="runs", by="line", measures=[], aggregate="none", group="none", predicates=predicates, limit=limit, relation="everyone")
     return Reading(scope=scope, shape="runs", by="won", on="team_games", measures=["won"], aggregate="count", group="none", predicates=predicates, limit=limit, relation="team")
@@ -1318,8 +1318,8 @@ def team_log_point(scope: Scope, subject: Subject) -> Reading | None:
         group="none",
         predicates=[],
         order="date",
-        direction="asc" if scope.order == "first" else "desc",
-        limit=_clamp_limit(scope.limit, DEFAULT_GAME_LOG_LIMIT),
+        direction="asc" if scope.window.order == "first" else "desc",
+        limit=_clamp_limit(scope.window.count, DEFAULT_GAME_LOG_LIMIT),
         relation="team",
     )
 

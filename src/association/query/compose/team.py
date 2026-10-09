@@ -308,7 +308,7 @@ def _team_narrowed(scope: Scope) -> bool:
         return True
     if scope.period is not None or scope.half is not None:
         return True
-    return scope.order is not None or scope.limit is not None
+    return scope.window.order is not None or scope.window.count is not None
 
 
 def _resolved_team_subject(con: duckdb.DuckDBPyConnection, scope: Scope) -> Entity:
@@ -419,7 +419,7 @@ def _compile_team_games_mixed(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> T
     team, span = settled
     if span.season is None:
         raise Unsupported("a career span has no single season to read both season types within")
-    limit = _clamp_limit(scope.limit, DEFAULT_GAME_LOG_LIMIT)
+    limit = _clamp_limit(scope.window.count, DEFAULT_GAME_LOG_LIMIT)
     mixed = _team_mixed_rows(con, team, span.season, opponent=scope.opponent, venue=scope.venue, limit=limit)
     if isinstance(mixed, Unanswered):
         raise Refused(mixed)
@@ -520,7 +520,7 @@ def compile_team_run(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> TeamCompil
         team = None
         span = span_of(scope.span, "games")
         narrowed = league_team_narrowed(span)
-        limit, best = _clamp_limit(scope.limit, DEFAULT_STREAK_LIMIT), True
+        limit, best = _clamp_limit(scope.window.count, DEFAULT_STREAK_LIMIT), True
     base, params = team_named(*team_aggregate_sql(narrowed, list(_TEAM_STREAK_SELECT)))
     sql = _longest_runs_sql(base, ("team_id", "season"), "x.won = $want", best_per_partition=best)
     return TeamCompiled(sql, {**params, "want": scope.kind != "loss", "limit": limit}, team, span, narrowed, run_rows=base, run_params=params)

@@ -14,8 +14,10 @@ from routed import slots_route
 
 from association.nba.season import current_season
 from association.query.compose.plan import refusal_result
-from association.query.reading import Cause, Scope
-from association.query.router import CODE_ASSIGNED_INTENTS, ORDER_INTENTS, ORDER_WORDS, SIDE_VALUES, Beside, Route, _settle
+from association.query.lexicon import ORDER_WORDS
+from association.query.reading import Cause, Scope, Window
+from association.query.router import CODE_ASSIGNED_INTENTS, SIDE_VALUES, Beside, Route, _settle
+from association.query.window import ORDER_INTENTS
 
 
 def _route(payload: str) -> Route:
@@ -278,9 +280,9 @@ def test_the_side_is_only_added_to_a_fingerprint() -> None:
     assert "side" not in got.slots
 
 
-def _scope_values(field: str) -> set[object]:
-    """The closed set of values the typed Scope's ``field`` holds."""
-    (literal,) = (arg for arg in get_args(get_type_hints(Scope)[field]) if arg is not type(None))
+def _scope_values(field: str, of: type = Scope) -> set[object]:
+    """The closed set of values the typed Scope's ``field`` holds (or the ``Window``'s)."""
+    (literal,) = (arg for arg in get_args(get_type_hints(of)[field]) if arg is not type(None))
     return set(get_args(literal))
 
 
@@ -493,17 +495,16 @@ def test_an_ordinal_attached_to_the_season_is_not_a_request_for_one_game(questio
     assert "order" not in got.slots
 
 
-def test_the_model_order_slot_still_applies_when_the_text_uses_another_phrasing() -> None:
-    """The patterns are tighter than the model's reading - "his last home game"
-    is one they miss - so a slot the model filled is never overwritten or
-    dropped."""
+def test_a_model_era_order_is_dropped_at_the_stages_door() -> None:
+    """The words are the window's one source (Phase 3, step 2): a model-era
+    ``order``, valid or not, is dropped before the stages run, and the
+    window tagger reads the words - "his last home game" is a phrasing the
+    grammar misses, so no end is read, where the model's slot used to stand
+    in for it."""
     got = _asking('{"intent":"shot_chart","player":"Stephen Curry","order":"recent"}', "curry's shot chart for his last home game")
-    assert got.slots["order"] == "recent"
-
-
-def test_a_bogus_model_order_is_not_trusted_as_a_phrasing_this_missed() -> None:
+    assert "order" not in got.slots
     got = _asking('{"intent":"game_log","player":"Stephen Curry","order":"sideways"}', "how did curry do this season")
-    assert got.slots.get("order") != "sideways"
+    assert "order" not in got.slots
 
 
 def test_a_single_game_asked_of_player_stat_carries_its_order_and_a_limit_of_one() -> None:
@@ -520,26 +521,11 @@ def test_a_single_game_asked_of_player_stat_carries_its_order_and_a_limit_of_one
     assert many.slots.get("limit") == 5
 
 
-def test_a_filler_limit_on_player_stat_goes_whatever_its_size_when_the_question_names_no_count() -> None:
-    """A limit on player_stat now hands the question to game_log, so a filler
-    one no longer costs the answer - it answers a different question. "Portis
-    vs bulls 2019-20 to 2023-24" arrived with limit=5 and became a three-game
-    log where his averages were asked for. A year is not a count of games, and
-    neither half of "2019-20" is."""
-    got = _asking('{"intent":"player_stat","stat":"points","player":"Bobby Portis","limit":5}', "Portis vs bulls 2019-20 to 2023-24")
-    assert "limit" not in got.slots
-    real = _asking('{"intent":"player_stat","stat":"points","player":"Bobby Portis","limit":5}', "Portis vs bulls last 5 games")
-    assert real.slots.get("limit") == 5
-    # A count in another intent is that intent's business, not this rule's.
-    top = _asking('{"intent":"leaderboard","stat":"points","limit":5}', "who led the league in scoring in 2024")
-    assert top.slots.get("limit") == 5
-
-
 def test_the_order_values_match_the_scope() -> None:
     """Same shape as the side check above: a value here the Scope refuses
     falls the question through, and one it holds that is missing here gets
     dropped."""
-    assert set(ORDER_WORDS) == _scope_values("order")
+    assert set(ORDER_WORDS) == _scope_values("order", Window)
 
 
 def test_the_order_intents_are_the_ones_that_honor_order() -> None:
@@ -550,13 +536,14 @@ def test_the_order_intents_are_the_ones_that_honor_order() -> None:
     from shapes import stated
 
     from association.query.compose.plan import SHAPE_NAMES
-    from association.query.router import _ORDER_ON_A_SINGLE_GAME
+    from association.query.window import _ORDER_ON_A_SINGLE_GAME
 
     # player_stat honors an order only beside a limit of one (a single game
-    # handed to game_log), so the stages set the pair together for it rather
+    # handed to game_log), so the tagger sets the pair together for it rather
     # than filling order alone - see _ORDER_ON_A_SINGLE_GAME. A retired
-    # template's list is what its reader's words state (STATED_SCOPING).
-    assert frozenset(intent for intent in set(SHAPE_NAMES.values()) if "order" in stated(intent)) == ORDER_INTENTS | _ORDER_ON_A_SINGLE_GAME
+    # template's list is what its reader's words state (STATED_SCOPING); the
+    # cell is the window's (Window.CELLS, "window") since Phase 3, step 2.
+    assert frozenset(intent for intent in set(SHAPE_NAMES.values()) if "window" in stated(intent)) == ORDER_INTENTS | _ORDER_ON_A_SINGLE_GAME
 
 
 # ---------------- scoping read from the question text ----------------
@@ -1141,32 +1128,6 @@ def test_a_relative_season_count_becomes_a_since_span(phrase: str, count: int) -
     assert "until" not in got.slots
 
 
-def test_a_past_n_seasons_count_word_does_not_become_a_limit() -> None:
-    """The measured failure, verbatim (#140): "show tyrese maxey's games
-    against boston in the past two seasons" routed with the model's own
-    limit=2 - the "two" belongs to "seasons", not to a count of games - and
-    answered his last 2 games of his CAREER where seven were asked for.
-    Measured on player_game_log (games played, regular season): Maxey has 3
-    games against Boston in 2025 and 4 in 2026, seven total - exactly what
-    `since=2025` (current season 2026) reaches with no games left out."""
-    got = _ask(
-        "show tyrese maxey's games against boston in the past two seasons",
-        '{"intent":"game_log","player":"Tyrese Maxey","teams":["Boston"],"limit":2,"season_type":"regular"}',
-    )
-    assert "limit" not in got.slots
-    assert got.slots.get("since") == current_season() - 1
-    assert "span" not in got.slots
-
-
-def test_a_real_games_count_survives_beside_a_past_n_seasons_phrase() -> None:
-    """Only the count word that modifies "seasons"/"years" is filler - a
-    separate, real count of games ("last 5 games") is not this rule's
-    business and keeps its limit."""
-    got = _ask("tatum's last 5 games in the past two seasons", '{"intent":"game_log","player":"Jayson Tatum","limit":5}')
-    assert got.slots.get("limit") == 5
-    assert got.slots.get("since") == current_season() - 1
-
-
 def test_a_record_asked_as_a_count_goes_to_record_when() -> None:
     """Measured: answered with the league's 30-point-game counts, Embiid dropped."""
     got = _ask("Sixers record when Embiid scores 30 points this season", '{"intent":"threshold_count","stat":"points","threshold":30}')
@@ -1411,12 +1372,14 @@ def test_a_filler_order_does_not_narrow_a_chart_to_one_game() -> None:
     shots" drew a single game, 7 of 12."""
     got = _asking('{"intent":"shot_chart","player":"Stephen Curry","order":"recent","shot_value":3,"season":2025}', "show a shot chart of steph curry's 2025 season for 3 point shots")
     assert "order" not in got.slots and got.slots.get("season") == 2025
-    # A game the question does name keeps it, however it is phrased.
-    named = _asking('{"intent":"shot_chart","player":"Stephen Curry","order":"recent"}', "curry's shot chart for his last home game")
-    assert named.slots.get("order") == "recent"
-    # game_log is unaffected: there an order sorts a list rather than picking a game.
-    log = _asking('{"intent":"game_log","player":"Stephen Curry","order":"recent"}', "curry game log for 2025")
+    # A game the question does name keeps it.
+    named = _asking('{"intent":"shot_chart","player":"Stephen Curry"}', "curry's shot chart for his last game")
+    assert (named.slots.get("order"), named.slots.get("limit")) == ("recent", 1)
+    # game_log is unaffected: there an order sorts a list rather than picking a game - and, since Phase 3,
+    # step 2, is read from the words alone (a model-era `order` is dropped at the stages' door).
+    log = _asking('{"intent":"game_log","player":"Stephen Curry","order":"recent"}', "curry's last 10 games in 2025")
     assert log.slots.get("order") == "recent"
+    assert "order" not in _asking('{"intent":"game_log","player":"Stephen Curry","order":"recent"}', "curry game log for 2025").slots
 
 
 def test_one_game_at_the_end_of_a_span_is_this_season_unless_the_question_says_otherwise() -> None:
@@ -1782,13 +1745,6 @@ def test_game_score_is_left_alone_outside_leaderboard_and_player_stat() -> None:
     pre-existing gap this task is scoped not to touch."""
     got = _ask("compare durant and lebron in game score", '{"intent":"player_compare","players":["Kevin Durant","LeBron James"],"stat":"points"}')
     assert got.slots.get("stat") == "points"
-
-
-def test_an_order_the_question_never_asked_for_is_dropped() -> None:
-    got = _ask("evan mobley avg against bucks", '{"intent":"player_stat","player":"Evan Mobley","stat":"points","order":"recent","limit":1}')
-    assert "order" not in got.slots and "limit" not in got.slots
-    kept = _ask("Top 5 scorers on the Lakers?", '{"intent":"leaderboard","stat":"points","team":"Lakers","limit":5}')
-    assert kept.slots["limit"] == 5
 
 
 def test_a_log_asked_of_player_stat_is_a_game_log() -> None:
@@ -2431,21 +2387,6 @@ def test_a_teams_record_when_a_player_reaches_a_number_is_record_when() -> None:
     assert stays.intent == "player_stat"
 
 
-def test_a_period_split_window_the_question_never_named_is_dropped() -> None:
-    """yardstick-v2 F058/F060: "each game" and "games" questions arrived
-    with a filler limit of 1 (and an order), and period_split printed one
-    row under a whole-season total. The period's own ordinal is not a
-    window: "first half games" keeps no limit, "last 5 games" keeps its 5."""
-    each = _asking('{"intent":"period_split","player":"Harrison Barnes","opponent":"Orlando Magic","order":"recent","limit":1,"period":1}', "harrison barnes 1st quarter stats each game vs magic")
-    assert "limit" not in each.slots and "order" not in each.slots
-    games = _asking('{"intent":"period_split","player":"Rudy Gobert","order":"recent","limit":1,"half":1}', "Rudy gobert first half games this season")
-    assert "limit" not in games.slots and "order" not in games.slots
-    team = _asking('{"intent":"team_quarter_points","team":"Washington Wizards","order":"recent","limit":1,"half":1,"season":2026}', "least points scored by the wizards in the first half this season")
-    assert "limit" not in team.slots and "order" not in team.slots
-    last5 = _asking('{"intent":"period_split","player":"Zach Collins","order":"recent","limit":5,"period":1,"split":"starter"}', "zach collins first quarter stats last 5 games as a starter")
-    assert last5.slots["limit"] == 5 and last5.slots["order"] == "recent"
-
-
 def test_an_opponent_that_is_the_without_list_is_dropped() -> None:
     """yardstick-v2 F158: the teammates named after "without" came back as
     the `opponent` too, and a log against no team fell through. A real team
@@ -2588,16 +2529,6 @@ def test_a_players_games_won_is_record_when_on_wins() -> None:
     settled = settle("record_when", {"stat": "playoff_wins", "player": "Joel Embiid", "season_type": 3}, "how many playoff games has embiid won?")
     assert settled.intent == "record_when" and settled.slots["stat"] == "wins" and "threshold" not in settled.slots
     assert settle("record_when", {"stat": "points", "player": "Joel Embiid"}, "how many games has embiid lost this season").slots["stat"] == "losses"
-
-
-def test_a_limit_that_is_a_lines_own_number_is_dropped_from_a_named_log() -> None:
-    from association.query.router import settle
-
-    q = "mikal bridges game log with less than 15 fga and with less than 35 minutes"
-    assert "limit" not in settle("game_log", {"stat": "fieldGoalsAttempted", "player": "Mikal Bridges", "order": "recent", "limit": 15}, q).slots
-    # A count the question names stays, and so does a model default that is no line's number.
-    assert settle("game_log", {"player": "Mikal Bridges", "order": "recent", "limit": 5}, "mikal bridges last 5 games log").slots["limit"] == 5
-    assert settle("game_log", {"player": "Mikal Bridges", "order": "recent", "limit": 10}, "mikal bridges game log with less than 15 fga").slots["limit"] == 10
 
 
 def test_a_last_n_games_with_no_teammate_named_is_a_log_not_a_split() -> None:

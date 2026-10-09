@@ -105,7 +105,7 @@ def _shots_windowed(scope: Scope) -> bool:
     relation. A ``limit`` alone still means "his last N games": the reader
     emits ``{'limit': 2}`` with no ``order`` for "Create a shot chart for
     Steph Curry's last two games of the regular season"."""
-    return scope.order is not None or scope.limit is not None
+    return scope.window.order is not None or scope.window.count is not None
 
 
 def _shots_other_narrowing(scope: Scope, date: str | None, measures: list[MeasureFilter]) -> bool:
@@ -117,7 +117,7 @@ def _shots_other_narrowing(scope: Scope, date: str | None, measures: list[Measur
     relation's set rather than listed, so a cell the relation gains reaches
     a shot read at once - ``situation`` and ``conditions`` once silently
     drew the whole span because a hand list predated them."""
-    cells = RELATION_SCOPING - reading.Span.CELLS - {"order", "season_n", "date", "below", "above"}
+    cells = RELATION_SCOPING - reading.Span.CELLS - reading.Window.CELLS - {"season_n", "date", "below", "above"}
     return bool(any(getattr(scope, cell) for cell in cells) or scope.span.since is not None or scope.span.until is not None or date or measures)
 
 
@@ -226,7 +226,7 @@ def _shot_distance_games(con: duckdb.DuckDBPyConnection, player: Entity, span: R
     ids, dates = found
     opponent = narrowed.opponent.name if narrowed.opponent else None
     if len(ids) == 1 and not _shots_other_narrowing(scope, scope.date, measures):
-        return ids, Narrowing(opponent=opponent, venue=narrowed.venue, cells=(OnDate(day=dates[0]),)), Window(limit=1, ascending=scope.order == "first")
+        return ids, Narrowing(opponent=opponent, venue=narrowed.venue, cells=(OnDate(day=dates[0]),)), Window(limit=1, ascending=scope.window.order == "first")
     return ids, Narrowing(phrase=f" {_shots_span_prefix(span)}{narrowed.filters(windowed=True)}", opponent=opponent, venue=narrowed.venue), None
 
 

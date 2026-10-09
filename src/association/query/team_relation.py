@@ -31,7 +31,8 @@ from association.query.team_games import TEAM_GAMES_SQL, TeamNarrowed
 # span through `scoped_team` and its games through `team_games` honors these:
 # an opponent, a venue, one Eastern date, a career that starts partway through
 # (`since`), one game of each playoff series (`game_n`), and a window of the
-# newest or oldest N of the narrowed games (`order`, with `limit`). `span`
+# newest or oldest N of the narrowed games (the typed `reading.Window`'s
+# `window` cell, an end with its count, since Phase 3, step 2). `span`
 # ("career") is here too, even though it is settled by `scoped_team`/`span_of`
 # rather than narrowed by `team_games` itself - the same shape RELATION_SCOPING
 # already keeps `season_n` in for the player relation, which `scoped_player`
@@ -65,7 +66,7 @@ from association.query.team_games import TEAM_GAMES_SQL, TeamNarrowed
 # linescore's points, and every other column rebuilt from the plays
 # (`team_games.team_period_line_sql`) - applied by `team_games` through
 # `TeamNarrowed.narrow_periods`, the counterpart of the player relation's.
-TEAM_RELATION_SCOPING = frozenset({"opponent", "venue", "date", "order", "game_n", "situation", "period", "half", *Span.CELLS})
+TEAM_RELATION_SCOPING = frozenset({"opponent", "venue", "date", "window", "game_n", "situation", "period", "half", *Span.CELLS})
 """The cells every reader on the team-games relation honors: the scoping
 slots, and the span's three cells (:attr:`~association.query.reading.Span.CELLS`,
 Phase 3, step 2) - ``career``, ``range`` (``since``, ``until``) and
@@ -104,7 +105,7 @@ TEAM_RELATION_SCOPING_EXCLUDED: dict[str, dict[str, str]] = {
         "date": "a leaderboard ranks a season, not one day's games",
         "career": "a leaderboard ranks one season's teams; a career total across every season is not built",
         "both": "a leaderboard ranks one season type's lines; the standings hold no row for both at once",
-        "order": "a leaderboard ranks a season, not a window of games",
+        "window": "a leaderboard ranks a season, not a window of games",
         "game_n": "a leaderboard ranks a season, not one game of a series",
         # step 3, K1: a leaderboard ranks a season or a since/until-bounded
         # span of them; narrowing that pool to one weekday, month or holiday
@@ -123,7 +124,7 @@ TEAM_RELATION_SCOPING_EXCLUDED: dict[str, dict[str, str]] = {
     # `narrow_series_game` check (`_games_record_games`).
     "team_record": {
         "date": "a record for one calendar date is a single game, which game_log already answers directly",
-        "order": "a record over a limited set of games is a game_log question",
+        "window": "a record over a limited set of games is a game_log question",
         "period": "a record is won and lost over whole games; a quarter has no winner the record could count",
         "half": "a record is won and lost over whole games; a half has no winner the record could count",
     },
@@ -134,7 +135,7 @@ TEAM_RELATION_SCOPING_EXCLUDED: dict[str, dict[str, str]] = {
     # own `since`/`span` now read, over every meeting in it rather than one
     # season.
     "head_to_head": {
-        "order": "head_to_head counts every meeting in the span; picking the last N of them is not built",
+        "window": "head_to_head counts every meeting in the span; picking the last N of them is not built",
         "game_n": "head_to_head counts every meeting; one numbered game of a series is not read here",
         # step 3, K1 wires the calendar narrowing into team_quarter_points and
         # team_record; head_to_head's own since/career span result
@@ -272,7 +273,7 @@ def team_span_clause(span: ResolvedSpan) -> tuple[str, list[Any]]:
 def team_games(con: duckdb.DuckDBPyConnection, team: Entity, span: ResolvedSpan, scope: Scope, *, opponent: Any, date: str | None = None) -> TeamNarrowed | Unanswered:
     """``team``'s games in ``span``, narrowed to an opponent, a venue, one
     Eastern date, one game of each playoff series (``game_n``) and a window of
-    the newest or oldest N (``order``/``limit``) where the question named
+    the newest or oldest N (``scope.window``) where the question named
     them - the team counterpart of :func:`scoped_games`, over
     :class:`association.query.team_games.TeamNarrowed`.
 
@@ -287,7 +288,7 @@ def team_games(con: duckdb.DuckDBPyConnection, team: Entity, span: ResolvedSpan,
     before the games are read) passes the Entity, exactly as
     :func:`_narrow_player_games` does for a player's opponent; text is
     resolved here, so a clarification about the team comes back as the answer
-    either way. ``venue``, ``game_n`` and ``order``/``limit`` are read from
+    either way. ``venue``, ``game_n`` and the window are read from
     ``scope`` because no caller has a reason to resolve any of them first - a
     caller that must NOT honor one (``game_log``'s team half already lists its
     own games with its own LIMIT; ``head_to_head`` counts every meeting rather
@@ -297,7 +298,7 @@ def team_games(con: duckdb.DuckDBPyConnection, team: Entity, span: ResolvedSpan,
     .. versionchanged:: 4.4.0
        Honors ``game_n`` (step 3, C4b): one game of each playoff series,
        numbered the way :func:`_narrow_player_games` numbers a player's own.
-       Honors ``order``/``limit`` (step 3, C4b) as a window - the newest or
+       Honors the window (step 3, C4b; typed in Phase 3, step 2) - the newest or
        oldest N of the narrowed games, cut after every other filter - via
        :attr:`~association.query.team_games.TeamNarrowed.window`.
 

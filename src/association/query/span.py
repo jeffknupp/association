@@ -23,7 +23,6 @@ intent's implied careers, then both types for a bare "last N games".
 from __future__ import annotations
 
 import itertools
-import re
 from dataclasses import dataclass
 
 from association.nba.season import current_season
@@ -37,11 +36,6 @@ and not a range of seasons.
 
 .. versionadded:: 6.0.0
 """
-
-
-# One guard word of the window family ("last 8 games vs pistons" is every
-# meeting), until its slice moves it to the lexicon.
-_LAST = re.compile(r"\blast\b", re.IGNORECASE)
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -299,7 +293,7 @@ def _implied_career(question: str, context: SpanContext, career: bool) -> bool:
         return False
     if context.intent == "player_matchup" and context.record:
         return True
-    if context.intent == "game_log" and context.versus and (context.window_named or _LAST.search(question) or lexicon.BOTH_SEASON_TYPES_WORDS.search(question)):
+    if context.intent == "game_log" and context.versus and (context.window_named or lexicon.LAST_WORD.search(question) or lexicon.BOTH_SEASON_TYPES_WORDS.search(question)):
         return True
     return context.intent == "threshold_count" and context.player_named and context.how_many and not career and not context.season_n
 

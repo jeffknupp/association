@@ -843,7 +843,14 @@ def test_a_team_point_refuses_a_cell_only_a_players_games_carry() -> None:
 
     def team_point(shape: str, **cells: Any) -> Reading:
         aggregate = "none" if shape in ("rows", "run") else ("record" if shape == "grouped" else "total")
-        return Reading(relation="team", shape=shape, measures=["points"], aggregate=aggregate, group="venue" if shape == "grouped" else "none", scope=Scope(team="Orlando Magic", **cells))  # type: ignore[arg-type]
+        return Reading(
+            relation="team",
+            shape=shape,  # type: ignore[arg-type]
+            measures=["points"],
+            aggregate=aggregate,  # type: ignore[arg-type]
+            group="venue" if shape == "grouped" else "none",
+            scope=Scope.from_slots({"team": "Orlando Magic", **cells}),
+        )
 
     line = PeriodCondition(stat="threePointFieldGoalsMade", threshold=5, period=1)
     refused: list[tuple[str, dict[str, Any], str]] = [

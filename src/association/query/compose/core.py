@@ -445,17 +445,6 @@ def _agg(name: str, aggregate: str, *, rebuilt: bool = False) -> str:
     raise Unsupported(f"aggregate {aggregate!r}")
 
 
-#: Scoping slots the router files FOR the compiler - markers a template refuses
-#: on so the question reaches here, which the compiler then reads itself:
-#: ``ranked_by`` (the games that satisfy a boolean stat, ranked by another
-#: measure - move.py reads the measure off the question). It narrows nothing,
-#: so it is not "unhonored" here; measured live on yardstick-v2 F124 ("highest
-#: scoring triple doubles"), the marker alone sent the question to the agent.
-#:
-#: .. versionadded:: 4.4.0
-COMPILER_SLOTS: frozenset[str] = frozenset({"ranked_by"})
-
-
 def _check_relation_scoping(scope: Scope, subject: str = "player", honored_extra: frozenset[str] = frozenset()) -> None:
     """The retired scope check's rule, for the relation: a scoping slot the relation
     does not narrow by (``situation`` when it names no calendar, ``round``,
@@ -490,7 +479,7 @@ def _check_relation_scoping(scope: Scope, subject: str = "player", honored_extra
     # player's or a team's: the league-wide read settles one type
     # (`_resolve_everyone`) and refuses it rather than answer the regular
     # season alone.
-    honored = relation | COMPILER_SLOTS | honored_extra
+    honored = relation | honored_extra
     if subject == "everyone":
         honored -= {"both"}
     unhonored = unhonored_cells(scope, honored)
@@ -621,7 +610,7 @@ def _resolve_pair(con: duckdb.DuckDBPyConnection, q: Query) -> tuple[Entity, Ent
     texts = list(dict.fromkeys(n.strip() for n in [*scope.players, scope.player] if n is not None and n.strip()))
     if len(texts) != 2:
         raise Unsupported(f"player_matchup needs exactly two players, got {texts!r}")
-    first = replace(q, scope=replace(scope, player=texts[0], limit=None, order=None, opponent=None))
+    first = replace(q, scope=replace(scope, player=texts[0], window=replace(scope.window, order=None, count=None), opponent=None))
     a, span, narrowed = _resolve_named(con, first)
     assert a is not None
     b = resolved_player(con, texts[1], available=BOX_SCORES, season=span.season, through=career_end(span.season))
@@ -688,8 +677,8 @@ def _apply_window_rule(q: Query, narrowed: Narrowed) -> None:
         # is planned (``RELATION_SCOPING_EXCLUDED``, point.DEFAULT_POINTS).
         narrowed.window = None
         return
-    if (q.aggregate in ("count", "record") or q.skeleton == "grouped") and scope.order is None:
-        limit = scope.limit
+    if (q.aggregate in ("count", "record") or q.skeleton == "grouped") and scope.window.order is None:
+        limit = scope.window.count
         # A limit on a grouped read by a SCOPE (season, month) is the number
         # of groups (grouped_sql applies it after grouping); on a split by
         # venue/starter or a record it can only mean a games window.

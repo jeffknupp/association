@@ -7,12 +7,14 @@ Phase 2 (2026-10-03 to 2026-10-05) removed what the rest of this file froze:
 the twelve templates, the presenters and ``compose/present.py``, the ten
 adapters and ``compose/adapt.py``, and - with step 6 - ``HONORED_SCOPING``,
 ``check_scope`` and the ``templates`` package itself. Their freezes went with
-them. Eleven scoping declarations remain, and are frozen by module and name
+them. Ten scoping declarations remain, and are frozen by module and name
 (:data:`FROZEN_SCOPING_TABLES`): the four per-relation cell tables the
 roadmap keeps, the planner's ``STATED_SCOPING`` with its ``with_without``
-row, which Phase 3's cells replace, and five that are debt, each labeled with
+row, which Phase 3's cells replace, and four that are debt, each labeled with
 the step that owes its deletion (the sixth, ``coverage._BOX_SCORE_SCOPING``,
-went with Phase 3, step 1: the floor follows the planned point's relation)."""
+went with Phase 3, step 1: the floor follows the planned point's relation;
+the fifth, ``compose.core.COMPILER_SLOTS``, with step 2's window: ``ranked_by``
+is the typed window's ``by``, a cell the player relation declares)."""
 
 from __future__ import annotations
 
@@ -88,7 +90,6 @@ FROZEN_SCOPING_TABLES: dict[tuple[str, str], str] = {
         " declines (Unsupported), and making them the planner's Causes moves answered_by on the unit tests' team calls"
         " (0 of 628 recorded, 0 of 2,082 feed answers reach them) - Jeff's enumerated-move rule, its own commit"
     ),
-    ("compose.core", "COMPILER_SLOTS"): "debt, owed by Phase 3: `ranked_by` is a measure the typed Reading carries, not a scoping slot that narrows nothing",
     ("reading", "SCOPING_SLOTS"): "debt, owed by Phase 3: the Reading's typed filters replace the scope's list of slot names",
     ("conditions", "_CONDITION_PLAYER_ONLY_CELLS"): (
         "debt, owed by Phase 3: the complement of TEAM_RELATION_SCOPING restated, which the planner's cell check over the team relation refuses by itself"

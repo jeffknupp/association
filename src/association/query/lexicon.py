@@ -11,11 +11,14 @@ joined the league"), a range ("since 2015", "the 2010s", "from 2019-20 to
 2023-24", "the past two seasons"), the postseason and both season types
 ("including the playoffs") - with the two readers of a season span that
 every other reader of a year goes through (:func:`season_spans`,
-:func:`season_from_text`). The other families' words follow, one slice
-each (``ROADMAP.md``, "Phase 3, the expected steps", step 2): the window,
-the games' cuts, the period, the line and the companions, the subject's
-own. Until each moves, its patterns stay in :mod:`association.query.router`
-and :mod:`association.query.subject`.
+:func:`season_from_text`). The window's followed (the second slice: a count of games
+or seasons and the end they are taken from, which end of a ranking, the
+measure a ranking of games is ordered by - :data:`WINDOW_GRAMMAR`,
+:data:`ORDER_WORDS`, :data:`SINGLE_GAME`, :data:`RANK_WORDS`, :data:`RANKED_BOOLEAN_GAMES`, and the family's intent
+guards). The other families' words follow, one slice each (``ROADMAP.md``,
+"Phase 3, the expected steps", step 2): the games' cuts, the period, the
+line and the companions, the subject's own. Until each moves, its patterns
+stay in :mod:`association.query.router` and :mod:`association.query.subject`.
 
 .. versionadded:: 6.0.0
 """
@@ -24,6 +27,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from typing import Literal
 
 from association.nba.season import current_season
 
@@ -309,6 +313,210 @@ NUMERIC_DATE_RANGE = re.compile(r"\b(?:since|after|from)\s+(?:the\s+)?(?:0?[1-9]
 """A range opened on a date written in numbers.
 
 .. versionadded:: 6.0.0
+"""
+
+
+# ---------------------------------------------------------------------------
+# The window family (Phase 3, step 2's second slice): which rows a read keeps
+# and from which end - "last 10 games", "his first game", "top 5", a count
+# of seasons for a history, which end of a team ranking, and the measure a
+# ranking of games is ordered by. Read by one tagger, ``query/window.py``.
+# ---------------------------------------------------------------------------
+
+# A count of games written in words. Read in code rather than with a package:
+# word2number is unmaintained, and text2num's rewrite of the whole question
+# would move every other reading. Until these existed the number was read
+# three times, and "last twelve games" read as a season line while "last 12
+# games" read the log (the package review, 2026-09-27).
+_ONES = ("one", "two", "three", "four", "five", "six", "seven", "eight", "nine")
+_TEENS = ("ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen")
+_TENS = ("twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety")
+COUNT_NUMBERS: dict[str, int] = {
+    **{word: n for n, word in enumerate(_ONES, 1)},
+    **{word: n for n, word in enumerate(_TEENS, 10)},
+    **{word: n * 10 for n, word in enumerate(_TENS, 2)},
+    **{f"{ten} {one}": t * 10 + o for t, ten in enumerate(_TENS, 2) for o, one in enumerate(_ONES, 1)},
+    "hundred": 100,
+    "a hundred": 100,
+}
+"""A count of games written in words, one through a hundred.
+
+.. versionadded:: 6.0.0
+   ``parse._NUMBERS`` until Phase 3, step 2.
+"""
+COUNT = r"(\d{1,3}|" + "|".join(re.escape(w).replace(r"\ ", r"[\s-]+") for w in sorted(COUNT_NUMBERS, key=len, reverse=True)) + ")"
+"""The fragment a count of games is written as: up to three digits, or a
+number word (``COUNT_NUMBERS``), the longest first. Shared by the window
+grammar and the subject grammar's log row ("last N games").
+
+.. versionadded:: 6.0.0
+   ``parse._COUNT`` until Phase 3, step 2.
+"""
+
+COUNT_WORD = re.compile(COUNT, re.IGNORECASE)
+"""One count, whole (:data:`COUNT` as a pattern of its own).
+
+.. versionadded:: 6.0.0
+"""
+
+
+def count_of(word: str) -> int:
+    """The number ``word`` writes - digits, or one of :data:`COUNT_NUMBERS`
+    with any spacing or hyphen between its parts ("twenty-five").
+
+    .. versionadded:: 6.0.0
+       ``parse._count`` until Phase 3, step 2.
+    """
+    return int(word) if word.isdigit() else COUNT_NUMBERS[" ".join(word.lower().replace("-", " ").split())]
+
+
+# The window grammar: the count and the end of the rows a question asks for,
+# read from its own words ("last 10 games", "top 5", "his last game") where
+# the router's model used to fill them in. Rows are tried in order and the
+# first match wins; a row's limit of 0 means "the number in the words".
+# Deliberately no "who led the league in ..." -> 1: a ranking with no limit
+# already leads with the one asked about and adds "Next: ..." (leaderboard,
+# threshold_count, single_game_high), and a limit of 1 cost those answers
+# their runners-up (the lead's offline run of the agent, 2026-09-27) - though
+# the router's references hold it.
+WINDOW_GRAMMAR: tuple[tuple[re.Pattern[str], str | None, int], ...] = (
+    (
+        re.compile(
+            rf"\b(last|past|previous|most recent|latest|final)\s+{COUNT}\s+((home|road|away|regular[- ]season|playoff|postseason)\s+){{0,2}}(games?|outings?|contests?|starts?)\b", re.IGNORECASE
+        ),
+        "recent",
+        0,
+    ),
+    # A bare count closing the question is games: "magic vs nets last 10".
+    (re.compile(rf"\b(last|past|previous)\s+{COUNT}\s*[?.!]*\s*\Z", re.IGNORECASE), "recent", 0),
+    (re.compile(rf"\bfirst\s+{COUNT}\s+games?\b", re.IGNORECASE), "first", 0),
+    (re.compile(r"\b(last|most recent|latest|final)\s+(regular[- ]season\s+|postseason\s+|playoff\s+)?game\b", re.IGNORECASE), "recent", 1),
+    (re.compile(r"\b(first|opening)\s+(regular[- ]season\s+|postseason\s+|playoff\s+)?game\b|\b(season\s+)?opener\b", re.IGNORECASE), "first", 1),
+    # "top 5" / "bottom 5" name a count and no end of the span: which end a
+    # ranking reads from is its own rank word's, and a games relation reads
+    # a bare count as the newest N (``player_relation.relation_window``).
+    (re.compile(rf"\b(top|bottom)\s+{COUNT}\b", re.IGNORECASE), None, 0),
+)
+"""The window grammar: ``(pattern, order, limit)`` rows, the first match
+winning; a ``limit`` of 0 is the count the words hold.
+
+.. versionadded:: 5.0.0
+
+.. versionchanged:: 6.0.0
+   In the lexicon, compiled (``parse.WINDOW_GRAMMAR`` until Phase 3, step 2).
+"""
+
+# Which end of the span a window reads from, said with "games": the two
+# forms the router's model emitted (``recent``, ``first``). Tighter than the
+# grammar's rows (no venue or season type between the count and "games": "his
+# last home game" is a phrasing they miss), which is why a reader of ORDER
+# alone - the window on an intent whose reader honors one, filled where the
+# grammar read none - uses them, and the words that keep an intent off a
+# split ("over the last 7 games" is a log, not a with/without) read them too.
+ORDER_WORDS: dict[str, re.Pattern[str]] = {
+    "recent": re.compile(r"\b(?:last|latest|previous|most\s+recent)\s+(?:\d+\s+)?games?\b", re.IGNORECASE),
+    "first": re.compile(r"\b(?:first|opening|earliest)\s+(?:\d+\s+)?games?\b", re.IGNORECASE),
+}
+"""Which end of the span a window of games reads from, by name.
+
+.. versionadded:: 2.1.0
+
+.. versionchanged:: 6.0.0
+   In the lexicon (``router.ORDER_WORDS`` until Phase 3, step 2).
+"""
+
+# One game at one end of the span, named as his: "his last game", "steph
+# curry's last regular season game", "the first game of the season". A
+# possessive names the subject as often as a pronoun does, and without it
+# that question kept a season the model misread (#153). Group 1 is the word
+# that says which end.
+SINGLE_GAME = re.compile(r"\b(?:his|her|their|the|\w+'s)\s+(last|first|latest|previous|most\s+recent|final|opening|earliest)\s+(?:\w+\s+){0,2}?game\b(?!s)", re.IGNORECASE)
+"""One game at one end of the span, named as the subject's own.
+
+.. versionadded:: 6.0.0
+   ``router._SINGLE_GAME`` until Phase 3, step 2.
+"""
+
+# Which end of a team ranking was asked for. The four are not two pairs: for
+# a stat where lower is better, "fewest turnovers" and "worst in turnovers"
+# sit at opposite ends, so the reader - which knows the stat - resolves them.
+# Tried in this order, the first match winning.
+RANK_WORDS: tuple[tuple[Literal["most", "fewest", "best", "worst"], re.Pattern[str]], ...] = (
+    ("worst", re.compile(r"\bworst\b", re.IGNORECASE)),
+    ("best", re.compile(r"\bbest\b", re.IGNORECASE)),
+    # "slowest pace" is the fewest possessions, "fastest" the most - without
+    # these, "slowest pace" listed the fastest teams first.
+    ("fewest", re.compile(r"\b(?:fewest|least|lowest|slowest)\b", re.IGNORECASE)),
+    ("most", re.compile(r"\b(?:most|highest|top|leads?|leaders?|fastest)\b", re.IGNORECASE)),
+)
+"""Which end of a team ranking was asked for, by name, in the order tried.
+
+.. versionadded:: 6.0.0
+   ``router.RANK_WORDS`` until Phase 3, step 2.
+"""
+
+# A ranking of the GAMES that satisfy a yes/no stat (a triple-double, a
+# double-double, fouling out) by another measure: "players with the highest
+# scoring triple doubles" (yardstick-v2 F124) carries the SAME names and stat
+# as "most triple doubles", which a count per player answers rightly. The
+# word that tells the two apart ("scoring", "biggest") is the window's
+# ``by`` - the measure the qualifying games are ranked by - and the measure
+# word itself is RANKED_BY_WORD's, points where none is named.
+RANKED_BOOLEAN_GAMES = re.compile(
+    r"\b(?:highest[- ]scoring|biggest|largest|best[- ]scoring)\b|\b(?:most|highest|fewest|lowest)\s+(?:points?|rebounds?|assists?|steals?|blocks?|minutes?)\s+in\s+(?:a|an|any|one)\b",
+    re.IGNORECASE,
+)
+"""The games over a yes/no stat ranked by another measure, named.
+
+.. versionadded:: 6.0.0
+   ``router._RANKED_BOOLEAN_GAMES`` until Phase 3, step 2.
+"""
+RANKED_BY_WORD = re.compile(r"\b(scoring|points?|rebounds?|assists?|steals?|blocks?|minutes?)\b", re.IGNORECASE)
+"""The measure a ranking of games is ordered by, as the question words it.
+
+.. versionadded:: 6.0.0
+   ``router._RANKED_BY_WORD`` until Phase 3, step 2.
+"""
+
+# The window family's guard words, read by the stages that choose an intent
+# (never a value): "games" or "last" beside a player's name is his log and
+# not his line; "who ... the most", "top 10", "leaders" asked with no player
+# named is the league's ranking; "most"/"highest"/"top"/"best" beside a
+# quarter ranks players unless a team is named; a log word or a window
+# ("last 10") beside two teams is one team's games, not their meetings.
+GAMES_WORDS = re.compile(r"\bgames?\b|\blast\b", re.IGNORECASE)
+"""A player's games rather than his line: "games", or "last".
+
+.. versionadded:: 6.0.0
+   ``router._GAMES_WORDS`` until Phase 3, step 2.
+"""
+WHO_RANKS = re.compile(r"\bwho\b.{0,30}\b(?:most|fewest|highest|lowest|best|worst|leads?|led)\b|\btop\s+\d+\b|\bleaders?\b", re.IGNORECASE)
+"""A ranking asked of the league - "who attempted the most", "who leads", "top 10".
+
+.. versionadded:: 6.0.0
+   ``router._WHO_RANKS`` until Phase 3, step 2.
+"""
+PERIOD_TOP = re.compile(r"\b(?:most|highest|top|best)\b", re.IGNORECASE)
+"""A rank word beside a quarter or half: players ranked by it, unless a
+team is named ("the Pistons' most points in a first half" is the team's
+single best half).
+
+.. versionadded:: 6.0.0
+   ``router._PERIOD_TOP`` until Phase 3, step 2.
+"""
+LAST_WORD = re.compile(r"\blast\b", re.IGNORECASE)
+"""The bare word "last": the one guard of this family the span tagger reads
+("last 8 games vs pistons" is every meeting across the seasons, whether or
+not a count was read beside it).
+
+.. versionadded:: 6.0.0
+   ``span._LAST`` until the window's slice.
+"""
+LOG_OR_WINDOW_WORDS = re.compile(r"\b(log|gamelog|game log|last \d+|past \d+|first \d+)\b", re.IGNORECASE)
+"""A log word or a window beside two teams: one team's games, not their meetings.
+
+.. versionadded:: 6.0.0
+   ``parse._LOG_OR_WINDOW_WORDS`` until Phase 3, step 2.
 """
 
 

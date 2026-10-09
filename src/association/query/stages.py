@@ -156,7 +156,8 @@ def _reading_record(reading: Reading, mask: Mapping[str, str] | None) -> dict[st
         subject = {f.name: plain(getattr(reading.subject, f.name), mask=mask) for f in fields(reading.subject) if f.name not in _SUBJECT_TEXT}
     point = None
     if reading.point is not None:
-        point = {name: plain(getattr(reading.point, name), mask=mask) for name in _POINT_FIELDS}
+        projected = reading.point.projected()
+        point = {name: plain(projected[name], mask=mask) for name in _POINT_FIELDS}
         # The span the subject is settled in, as the slot pair it was
         # recorded as until Phase 3, step 2.
         settled = reading.point.subject_span
@@ -169,9 +170,10 @@ def _reading_record(reading: Reading, mask: Mapping[str, str] | None) -> dict[st
     return {
         "intent": reading.intent,
         "scope": plain(reading.scope.to_slots(), mask=mask),
-        # The span as the reader typed it (Phase 3, step 2), beside the
-        # scope's slot-era projection of it.
+        # The span and the window as the reader typed them (Phase 3, step
+        # 2), beside the scope's slot-era projection of them.
         "span": plain(reading.scope.span, mask=mask),
+        "window": plain(reading.scope.window, mask=mask),
         "subject": subject,
         "misread": list(reading.misread),
         "decisions": [plain(decision.as_dict(), mask=mask) for decision in reading.decisions],
