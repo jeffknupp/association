@@ -71,7 +71,7 @@ import duckdb
 
 from association.nba.coverage import COVERAGE
 from association.nba.season import eastern_date_sql
-from association.query.reading import Scope, Unsupported, ordinal_word
+from association.query.reading import Scope, Unsupported, cell_set, ordinal_word
 
 from .season_text import MONTH_NAMES
 from .team_games import TeamNarrowed, games_subquery, named
@@ -960,8 +960,8 @@ def condition_span_label(covered: _Scope, scope: Scope, first: Any, last: Any) -
     label = covered.label(first, last)
     if scope.span.since:
         return f"from {scope.span.since} through {scope.span.until} ({label})" if scope.span.until else f"since {scope.span.since} ({label})"
-    if scope.season_n:
-        return f"in his {ordinal_word(scope.season_n)} season ({label})"
+    if scope.cuts.season_n:
+        return f"in his {ordinal_word(scope.cuts.season_n)} season ({label})"
     return label
 
 
@@ -1004,6 +1004,11 @@ def condition_span_label(covered: _Scope, scope: Scope, first: Any, last: Any) -
 # Silently dropping it answered a team's or the league's whole span as though
 # "76ers record when they score 120 when embiid starts" had named no
 # condition at all.
+#
+# `season_n` is a cut of the typed `reading.Cuts` since Phase 3, step 2
+# (read here by its cell name, `reading.cell_set`); it stays listed because
+# the planner lets it through to these branches (`plan._TEAM_READER_REFUSES`)
+# for this sentence, which names the missing player, to be the refusal.
 _CONDITION_PLAYER_ONLY_CELLS: tuple[str, ...] = ("without", "split", "season_n", "below", "above", "conditions")
 
 
@@ -1017,6 +1022,6 @@ def condition_needs_player_refusal(intent: str, scope: Scope, *extra: str) -> No
        Takes ``*extra`` (step 3, C4b), so the two intents' team branches no
        longer have to agree on exactly the same refused set.
     """
-    claimed = sorted(cell for cell in (*_CONDITION_PLAYER_ONLY_CELLS, *extra) if getattr(scope, cell))
+    claimed = sorted(cell for cell in (*_CONDITION_PLAYER_ONLY_CELLS, *extra) if cell_set(scope, cell))
     if claimed:
         raise Unsupported(f"{intent} cannot honor {claimed} without a named player - only his own games can be narrowed that way")

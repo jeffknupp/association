@@ -1863,7 +1863,7 @@ def test_a_presenter_steps_aside_for_a_narrowing_its_words_do_not_state(cx_ctx: 
     assert set(SHAPE_NAMES.values()) == ported | team_seasons | netpoints | shots
     narrowed = default_query("single_game_high", {"player": "Brandin Podziemski", "stat": "points", "opponent": "Boston Celtics"})
     assert read_single_game_high(cx_ctx.con, narrowed, stated=stated("single_game_high")) is None
-    assert read_single_game_high(cx_ctx.con, replace(narrowed, scope=replace(narrowed.scope, opponent=None)), stated=stated("single_game_high")) is not None
+    assert read_single_game_high(cx_ctx.con, replace(narrowed, scope=replace(narrowed.scope, cuts=replace(narrowed.scope.cuts, opponent=None))), stated=stated("single_game_high")) is not None
 
 
 #: One example of each cause's facts, for the sentence check below.

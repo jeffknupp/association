@@ -36,7 +36,7 @@ from association.query.metrics import LEADERBOARD_METRICS, PER_GAME_MIN_GAMES, P
 from association.query.parse import with_point
 from association.query.player_games import PERIOD_COLUMNS, PERIOD_RATES, period_distrust
 from association.query.player_relation import scoped_games, scoped_player
-from association.query.reading import SCOPING_SLOTS, PointShape, Reading, Scope, Span, Window, unhonored_scoping
+from association.query.reading import SCOPING_SLOTS, Cuts, PointShape, Reading, Scope, Span, Window, unhonored_scoping
 from association.query.result import Unanswered
 from association.query.season_text import season_phrase
 from association.query.shotchart import SHOT_AVAILABILITY
@@ -3544,7 +3544,7 @@ def test_fingerprint_declares_the_game_scoping_it_handles(fp_ctx: AnswerContext)
     assert unhonored_scoping("fingerprint", Scope.from_slots({"player": "Shai", "order": "recent", "date": "2026-01-02"}), stated("fingerprint")) == []
     # The game-scoping pair specifically - SCOPING_SLOTS also holds opponent,
     # venue, span and without, none of which a fingerprint can narrow to.
-    assert {"window", "date"} <= stated("fingerprint") <= SCOPING_SLOTS | Window.CELLS
+    assert {"window", "date"} <= stated("fingerprint") <= SCOPING_SLOTS | Window.CELLS | Cuts.CELLS
 
 
 def test_fingerprint_without_a_player_falls_through(fp_ctx: AnswerContext) -> None:
@@ -4978,7 +4978,7 @@ def test_narrowed_player_stat_never_reads_a_shooting_percentage_from_a_rebuilt_l
     measure) as well as through the answer, since the answer alone cannot
     tell this rule apart from the reader's own choice of measures."""
     con = narrowed_rebuilt_ctx.con
-    scope = Scope(player="Anthony Davis", opponent="Los Angeles Lakers")
+    scope = Scope(player="Anthony Davis", cuts=Cuts(opponent="Los Angeles Lakers"))
     assert compile_query(con, Query(scope=scope, skeleton="scalar", aggregate="line", measures=["points"])).rebuilt is True
     assert compile_query(con, Query(scope=scope, skeleton="scalar", aggregate="line", measures=["fg_pct"])).rebuilt is False
     assert compile_query(con, Query(scope=scope, skeleton="scalar", aggregate="line", measures=["points", "fg_pct"])).rebuilt is False

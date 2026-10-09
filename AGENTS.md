@@ -122,7 +122,8 @@ this tree:
   that door, where the count read 38 and the sites were 105 still; the
   argument's tracing is `_origin`'s docstring), a module outside the
   reader that imports `re` by any route or takes a reader's private
-  pattern (6, then 4 since `refusals.py` went), and a reader function that
+  pattern (6, then 4 since `refusals.py` went, 3 since `calendar.py`'s
+  patterns moved to the lexicon with the games' cuts), and a reader function that
   takes a DuckDB connection (23; a reader of the question's words takes
   the names' in-memory index instead, `entities.players_of`/`teams_of`). A
   fifth ratchet, a private name `compose/` took from `templates/`, reached
@@ -459,9 +460,11 @@ gets turned off.
     the tables built beside them.
   - `check/` - the coverage report. `query/` - the reader (`parse.py`, with
     what the model sees in `normalizer.py`, the stages it runs in
-    `router.py`, the words every tagger reads by in `lexicon.py` - the span
-    and window families' since Phase 3, step 2, the rest as each family's
-    slice lands - and the two taggers, `span.py` and `window.py`),
+    `router.py`, the words every tagger reads by in `lexicon.py` - the span,
+    window and cuts families' since Phase 3, step 2, the calendar's own
+    patterns among them, the rest as each family's slice lands - and the
+    three taggers, `span.py`, `window.py` and `cuts.py`; `calendar.py` is
+    the situation's parsers and clauses over the lexicon's words),
     entities, the relations (`player_games.py` and its
     shared steps `player_relation.py`, `team_games.py` and
     `team_relation.py`, `season_line.py`, `team_seasons.py`), the
@@ -545,7 +548,13 @@ Until Phase 2, step 6 the templates did the same through `check_scope()` and
 The player-games relation (`query/player_games.py`, its shared steps in
 `query/player_relation.py`) and the team-games relation (`query/team_games.py`,
 its steps in `query/team_relation.py`) each carry the narrowing once -
-opponent, venue, date, without, split, game_n, season_n, below/above, a
+the games' cuts (`reading.Cuts.CELLS`, Phase 3, step 2: `opponent`,
+`tenure` (the slot `own_team` until then, the player relation's alone),
+`venue`, `date`, `situation` (a calendar narrowing, an alignment of the
+opponent, or words nothing reads, parsed once into `reading.Situation`
+and refused by value where neither), `game_n`, `season_n` (the player
+relation's alone); `round` is a cut of no relation, refused wherever it
+is set), without, split, below/above, a
 quarter or half (`period`/`half`, which changes what a read SEES of each
 game rather than which games), the window's typed cell
 (`reading.Window.CELLS`, Phase 3, step 2: `window`, an end of the span
@@ -565,10 +574,11 @@ and declared once (`RELATION_SCOPING`, with a reasoned per-cell
 `relation_scoping(intent)` in `STATED_SCOPING`, and a reader whose other
 cells are its own list - the season line's ranking, the NetPoints
 relation's - states the span's through `relation_span(intent)` /
-`team_relation_span(intent)`, so no row of `STATED_SCOPING` names a span
-cell itself: the exclusions per reader, each with a reason about the
-answer, are the one declaration, and `unhonored_scoping` reads the typed
-value's cells against them). Two source-reading tests in
+`team_relation_span(intent)` and the cuts' through `relation_cuts(intent)`
+/ `team_relation_cuts(intent)`, so no row of `STATED_SCOPING` names a span
+cell or a cut itself: the exclusions per reader, each with a reason about
+the answer, are the one declaration, and `unhonored_scoping` reads the
+typed values' cells against them). Two source-reading tests in
 `tests/query/test_templates.py` enforce it, and they were watched to fail: a
 reader on the relation whose declaration is not the relation's less its
 exclusions, or that writes `pgl.opponent_team_id = ?` or
@@ -841,11 +851,47 @@ model's. Two things follow, and both matter when you add a shape:
   the check to rerun after a table change, beside the yardstick.
 - **A filter family is read by ONE tagger, from the lexicon, and claims
   the characters it read** (Phase 3, step 2; the span is the first, the
-  window the second, and the pattern the other families copy).
+  window the second, the games' cuts the third, and the pattern the other
+  families copy).
   `query/lexicon.py` holds every pattern the family is read by, named,
   with its reason beside it, and nothing that reads the warehouse or the
   answer side (contract 6: regexes only in the lexicon; it is the lowest
-  layer of the reader). `query/window.py` is the window's tagger:
+  layer of the reader). `query/cuts.py` is the cuts' tagger:
+  `read_cuts(question, CutsContext)` reads which games of the span a read
+  sees - a venue, a circumstance (`SITUATION`: a weekday, a month, a
+  holiday, "since <day>", the opponent's conference or division, or words
+  nothing narrows by - an age, overtime), one calendar day (`CALENDAR_DATE`,
+  the year fixed by the season the words name or the current one, never
+  on a career question; a date that opens a range or stands on a career
+  question is a situation, and the year it wrote is handed to the span
+  tagger), a playoff round, a game of a series, an ordinal season - over
+  the intent the stages settled, the split (a venue beside a venue split
+  is the split's), and the opponent and absent teammates the subject
+  reading read (an opponent that is the `without` list again is dropped;
+  the tenure the subject reading writes after the stages); it writes
+  `reading.Cuts` on `Scope.cuts`, the situation parsed once into
+  `reading.Situation` (`situation_of`: the words, and the
+  `CalendarNarrowing` or `AlignmentNarrowing` they name, which the
+  relations apply and never re-read), and claims what it read - the
+  opponent and the tenure it claims nothing for, since the subject
+  reading, which claims nothing yet, read them. Measured first
+  (`~/association-research/stages/cuts_family.py`, the eight slots as
+  each stage set them on all 2,710 readings): no stage moved a slot
+  between the route and the reading but the tenure (14, the subject's);
+  a date and its own month stand together on 4 ("in march 24 2018"),
+  two claims over one word, which `span.claimed` joins into one named for
+  both (a partial overlap raised until this slice, and "lebron's last game
+  7" - the window's "last game" and the postseason's "game 7" - raised out
+  of the reader to the user). The eight slots are gone from `Scope`;
+  `Scope.from_slots` still takes them (it builds the `Cuts`), `to_slots`
+  and `projected()` give the old shape back in the old field order
+  (`_CUT_SLOT_POSITIONS`), and the typed value is recorded beside the
+  reading (`stages._reading_record`, `cuts`). The tables declare the cuts
+  by name (`Cuts.CELLS` less `round` in `RELATION_SCOPING`, less `round`,
+  `tenure` and `season_n` in `TEAM_RELATION_SCOPING`), a reader whose
+  words state fewer takes `relation_cuts(intent)` with its exclusions,
+  and `reading.cell_set(scope, cell)` is the one reading of a cell name
+  against a Scope for the tables that list cells by name. `query/window.py` is the window's tagger:
   `read_window(question, WindowContext)` reads which rows a question keeps
   and from which end - the grammar's count and end ("last 10 games", "his
   first game", "top 5"), a history's "past 5 years" as its count of

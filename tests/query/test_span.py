@@ -19,7 +19,7 @@ from association.nba.season import current_season
 from association.query.answer import AnswerContext
 from association.query.compose.core import Query, compile_query, rows_of
 from association.query.player_relation import condition_scope, relation_scoping, relation_span, span_of
-from association.query.reading import Claim, Scope, ScopeError, Span, unhonored_cells
+from association.query.reading import Claim, Cuts, Scope, ScopeError, Span, unhonored_cells
 from association.query.span import SpanContext, claimed, read_span
 from association.query.team_games import TEAM_GAMES_SQL, TeamNarrowed
 from association.query.team_relation import scoped_team, team_games, team_relation_scoping, team_relation_span
@@ -140,13 +140,13 @@ def test_claimed_folds_a_nested_claim_and_joins_a_partial_overlap() -> None:
 
 def test_a_word_two_readings_share_reads_both_and_raises_nothing() -> None:
     """ "lebron's last game 7": one game at the end of his span (the window)
-    and the seventh game of a series (the postseason's word), both read, the
-    shared "game" claimed once for both."""
+    and the seventh game of a series (the postseason's word and the series
+    game), both read, the shared "game" claimed once for both."""
     from association.query.router import settle
 
     route = settle("game_log", {"player": "LeBron James"}, "lebron's last game 7")
-    assert route.scope.window.order == "recent" and route.scope.window.count == 1 and route.scope.span.season_type == 3 and route.slots["game_n"] == 7
-    assert [c.what for c in route.claims] == ["window+season_type"]
+    assert route.scope.window.order == "recent" and route.scope.window.count == 1 and route.scope.span.season_type == 3 and route.scope.cuts.game_n == 7
+    assert [c.what for c in route.claims] == ["window+game_n"]
 
 
 # ---------------- the typed value's door and projection ----------------
@@ -193,7 +193,7 @@ def test_the_cells_and_what_a_reader_leaves_unhonored() -> None:
     assert Span(since=2020).unhonored(frozenset()) == ["since"]
     assert Span(since=2020, until=2024).unhonored(frozenset({"career"})) == ["since", "until"]
     assert Span(both=True, career=True).unhonored(frozenset({"both"})) == ["span"]
-    assert unhonored_cells(Scope(opponent="BOS", span=Span(since=2020, both=True)), frozenset({"opponent", "range"})) == ["season_type_unstated"]
+    assert unhonored_cells(Scope(cuts=Cuts(opponent="BOS"), span=Span(since=2020, both=True)), frozenset({"opponent", "range"})) == ["season_type_unstated"]
     assert Span(season=2024, season_type=3, both=True).stated == {"season", "postseason", "both"}
     assert Span(since=2020).over_career() == Span(career=True, since=2020)
     assert Span(season=2024).as_career() == Span(season=2024, career=True)

@@ -99,7 +99,7 @@ def _with_without_read(con: duckdb.DuckDBPyConnection, scope: Scope) -> Result |
     # is his record in the games his team played BOSTON, not overall. Narrowing
     # is honest here because both rows narrow together - the split is still
     # played against missed, over the same pool (#163).
-    against = optional_team(con, scope.opponent, season=scope.span.season)
+    against = optional_team(con, scope.cuts.opponent, season=scope.span.season)
     if isinstance(against, Unanswered):
         return against
     predicates = _with_without_predicates(con, mates, roles, covered)

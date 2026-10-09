@@ -361,6 +361,14 @@ those were found.
 
 ## P2: misleading or incomplete
 
+### A worded since-date with a year is read as that season cut at the day, where the numeric form is every game from the date on: "since january 31st 2020" vs "since 1/31/2020"
+- **Found:** 2026-10-09, Phase 3, step 2, the games' cuts (measuring the family: `~/association-research/stages/cuts_family.py`, the situation and the span as each stage set them).
+- **Evidence:** the words are read twice, by two families: the span's `season_named` reads "2020" as the one season, and the cuts' `SITUATION` reads "since january 31st" (its date-range alternative carries no year), a `since_day` within each season of the span. The numeric form "since 1/31/2020" is read by `NUMERIC_DATE_RANGE` with its year into a `since_date` across seasons, and the cuts tagger hands the year to the span (`CutsRead.dated_since`), so the seasons start there. Measured on master (`78096f7`, `ask_unnamed.py`): "lebron ppg since january 31st 2020" answers his 2019-20 games from January 31 on (per game 32.9 minutes, 24.8 points, the 2020 regular season's last weeks); "lebron ppg since 1/31/2020" answers every game from that date through 2026 (per game 32.0, 19.9). The worded form with an abbreviated month fares worse: "Nick Richards stats after Dec 11 2023" (the feed) keeps the situation "after dec 11" - `CALENDAR_DATE` matched "after Dec 11 2023" with its year, but `SITUATION` had matched the shorter words first and the year never reached the span - and `SITUATION_SINCE_DAY` takes full month names only, so it is refused by value ("'after dec 11' is not something the games are read by") with the year gone from the sentence. On the 2,710 readings: 2 numeric since-dates, 13 worded `since_day`s with no year, 1 worded with a year ("after dec 11 2023"); none of the 628.
+- **User sees:** a narrower answer than asked, said as the season's ("since january 31st 2020" is the question's own words, and the answer heads the 2019-20 season); a refusal naming the date without its year.
+- **Next step:** decide what a worded since-date with a year means (the numeric form's reading, every game from that date on, is the natural one) and read both forms the same way: the cuts tagger prefers the `CALENDAR_DATE` range match where it carries a year (the situation's words whole, `dated_since` the year), `SITUATION_SINCE_DAY` takes an optional year as a `since_date` and the abbreviated months `CALENDAR_DATE` already takes, and the span does not read the range's year as the one season. One feed answer moves ("Nick Richards stats after Dec 11 2023", a refusal becoming his line since that date) - an enumerated commit with a test on both wordings.
+- **Priority:** P2 - a narrower question answered under the question's own words; the typed `Situation` records what was read (`ROADMAP-TYPES.md`, "Still open" 10).
+- **Source:** ours.
+
 ### "Stephen Curry free throw chart" (no "shot") answers his season averages
 - **Found:** 2026-10-05, the Phase 2 review
 - **Evidence:** read as `player_stat` on both trees; "free throw shot chart" reads as `shot_chart` and refuses correctly (no free-throw chart).
@@ -2814,6 +2822,14 @@ those were found.
 - **GitHub:** #312
 
 ## P4: tooling, docs, low impact
+
+### A month is read from the words of a day in it: "in march 24 2018" narrows by the month and the day, and the answer says both
+- **Found:** 2026-10-09, Phase 3, step 2, the games' cuts (the cuts tagger's claims: the situation's "in march" and the day's "march 24 2018" overlap on one word).
+- **Evidence:** `lexicon.SITUATION`'s month alternative (`in (the month of )?<month>`) matches "in march" inside "in march 24 2018", and `CALENDAR_DATE` matches "march 24 2018", so the reading carries `situation="in march"` beside `date="2018-03-24"`; the relation applies both (the month redundantly: the day is in it) and `Narrowed.filters` says both ("on 2018-03-24 in March"). 4 of the 2,710 readings ("nba Anthony Davis most offensive rebound in march 24 2018", "nba Clint capela double double in march 24 2018" <!-- codespell:ignore capela - a surname, as the feed typed it -->, "nba jerry stcokhouse mkst 3pm in march 14 2001", "nba rip hamilton mkst 3pm in march 14 2001"), all the feed's, none of the 628. The two claims are joined into one (`span.claimed`, "situation+date"), so the ledger counts "in" and "march" as read; dropping the month where a day inside it is named would reword those 4 answers (the redundant "in March" gone from the heading).
+- **User sees:** a correct answer whose heading names the month beside the day, redundantly.
+- **Next step:** the situation's month alternative stops at a month followed by a day number (a lookahead for `\s+\d{1,2}\b`), with the 4 feed answers enumerated before and after - a rewording commit.
+- **Priority:** P4 - the numbers are right; one redundant phrase.
+- **Source:** ours.
 
 ### The sayer's import contract is checked on direct imports only: `compose.say` reaches duckdb through four modules' constants
 - **Found:** 2026-10-05, Phase 2 step 6, when the last phrase helpers left `templates/` (the condition `pyproject.toml` named for checking the contract on chains).

@@ -375,12 +375,12 @@ def test_a_player_filed_as_the_opponent_is_checked_like_the_subject(con: duckdb.
     assert invented.intent == "game_log" and invented.misread == ("Nikola Jokic",)
     assert read_subject(con, "luka vs the lakers", "game_log", Scope.from_slots({"player": "Luka Doncic", "opponent": "Los Angeles Lakers"})).opponent == "Los Angeles Lakers"
     team = _parsed(con, "luka vs the lakers", ["luka", "lakers"])
-    assert team.scope.player == "Luka Doncic" and team.scope.opponent == "Los Angeles Lakers" and team.misread == ()
+    assert team.scope.player == "Luka Doncic" and team.scope.cuts.opponent == "Los Angeles Lakers" and team.misread == ()
     # A log against a player: his own games, the other on the far side (ROADMAP step 3); the bare pair is still the matchup.
     log = _parsed(con, "luka game log vs embiid", ["luka", "embiid"])
     assert log.intent == "game_log" and log.scope.player == "Luka Doncic" and [(c.player, c.side) for c in log.scope.conditions] == [("Joel Embiid", "opponent")] and log.misread == ()
     pair = _parsed(con, "luka vs embiid", ["luka", "embiid"])
-    assert pair.intent == "player_matchup" and pair.scope.players == ("Luka Doncic", "Joel Embiid") and not pair.scope.opponent and pair.misread == ()
+    assert pair.intent == "player_matchup" and pair.scope.players == ("Luka Doncic", "Joel Embiid") and not pair.scope.cuts.opponent and pair.misread == ()
 
 
 def test_a_supported_name_stays_as_the_router_spelled_it(con: duckdb.DuckDBPyConnection) -> None:
@@ -468,14 +468,14 @@ def test_a_team_is_read_in_the_season_the_question_names(franchises: duckdb.Duck
     # Paul's New Orleans team, not today's Charlotte Hornets, which the
     # answer then asked about as a name nobody typed (ISSUES.md #316).
     own = _parsed(franchises, "chris paul assists for the hornets in 2008", ["chris paul", "hornets"], "assists")
-    assert own.scope.own_team == "New Orleans Hornets" and own.scope.span.season == 2008
-    assert _parsed(franchises, "kevin durant points per game for the sonics in 2008", ["kevin durant", "sonics"], "points").scope.own_team == "Seattle SuperSonics"
+    assert own.scope.cuts.tenure == "New Orleans Hornets" and own.scope.span.season == 2008
+    assert _parsed(franchises, "kevin durant points per game for the sonics in 2008", ["kevin durant", "sonics"], "points").scope.cuts.tenure == "Seattle SuperSonics"
     # An opponent the same way.
     against = _parsed(franchises, "kobe points against the hornets in 2008", ["kobe", "hornets"], "points")
-    assert against.scope.opponent == "New Orleans Hornets"
+    assert against.scope.cuts.opponent == "New Orleans Hornets"
     # With no season named the name is today's, and the tenure rule reads a career.
     today = _parsed(franchises, "chris paul assists for the hornets", ["chris paul", "hornets"], "assists")
-    assert today.scope.own_team == "Charlotte Hornets" and today.scope.span.career
+    assert today.scope.cuts.tenure == "Charlotte Hornets" and today.scope.span.career
 
 
 def _assigned(con: duckdb.DuckDBPyConnection, question: str, parent: str, **slots: Any) -> tuple[str, dict[str, Any]]:

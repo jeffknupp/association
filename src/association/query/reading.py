@@ -28,6 +28,8 @@ from dataclasses import dataclass, field, fields, replace
 from datetime import date
 from typing import TYPE_CHECKING, Any, ClassVar, Literal
 
+from association.query.calendar import AlignmentNarrowing, CalendarNarrowing, parse_alignment, parse_situation
+
 if TYPE_CHECKING:
     from association.query.decisions import Decision
     from association.query.entities import Availability
@@ -507,6 +509,179 @@ class Window:
         return out
 
 
+#: The slot name each cut was declared and refused under until Phase 3,
+#: step 2 - the name a decline still says ("cannot honor ['situation']"),
+#: until the decline-to-Cause commit rewords it. ``own_team`` is the
+#: tenure's slot name; the rest are their own. The order is the old
+#: ``Scope``'s field order, which :meth:`Scope.to_slots` keeps.
+_CUT_SLOT_NAMES: dict[str, str] = {
+    "opponent": "opponent",
+    "tenure": "own_team",
+    "date": "date",
+    "situation": "situation",
+    "game_n": "game_n",
+    "season_n": "season_n",
+    "round": "round",
+    "venue": "venue",
+}
+
+
+@dataclass(frozen=True, kw_only=True)
+class Situation:
+    """A circumstance the words put the games under, as the reader read it
+    (``ROADMAP-TYPES.md``'s ``Calendar``, ``DateRange``, the alignment half
+    of its ``Opponent``, and its ``Unsupported`` for the rest): the words
+    as typed (``text``: "on tuesdays", "in march", "vs the west", "since
+    january 31st", "overtime", "18 year old"), and what they parse to -
+    the calendar narrowing (``calendar``: a weekday, a month, a holiday,
+    every game from a day of the season on, or from one date on across
+    seasons; the draft's ``DateRange`` is those last two kinds), or the
+    conference or division the opponent is in (``alignment``), or neither,
+    which the relation refuses by the words (an age, overtime, a return
+    from injury: nothing in the warehouse narrows by them). Parsed once,
+    where the words are read (:func:`situation_of`); the relations read
+    the parsed halves and never the words again.
+
+    One value for the three rather than three cells, because the cell the
+    relations declare is the ``situation`` (the one slot it was), and a
+    decline still names it so (``_CUT_SLOT_NAMES``): measured on the 2,710
+    readings of 2026-10-09 (``~/association-research/stages/cuts_family.py``),
+    96 carry one - 42 a calendar narrowing, 21 an alignment, 33 neither.
+
+    .. versionadded:: 6.0.0
+    """
+
+    text: str
+    calendar: CalendarNarrowing | None = None
+    alignment: AlignmentNarrowing | None = None
+
+    @property
+    def read(self) -> bool:
+        """Whether the words name a narrowing a relation applies: a calendar
+        narrowing or an alignment. False is the situation a relation
+        refuses by value."""
+        return self.calendar is not None or self.alignment is not None
+
+
+@dataclass(frozen=True, kw_only=True)
+class Cuts:
+    """Which games of a span a read sees, as the words gave them -
+    ``ROADMAP-TYPES.md``'s ``Opponent``, ``Tenure``, ``Venue``, ``OnDate``,
+    ``DateRange``, ``Calendar``, ``Round``, ``GameOfSeries`` and
+    ``SeasonOfCareer``, the third filter family typed (Phase 3, step 2).
+    One value in place of eight slots (``opponent``, ``own_team``, ``venue``,
+    ``date``, ``situation``, ``round``, ``game_n``, ``season_n``), read by
+    one tagger (:func:`~association.query.cuts.read_cuts`) from the words -
+    the opponent and the tenure taken from the subject reading, the one
+    reader of who stands against or beside the subject - and applied by one
+    step per relation (:func:`~association.query.player_relation.scoped_games`,
+    :func:`~association.query.team_relation.team_games`). Each field at its
+    default is the cut unstated: every game of the span.
+
+    The parts are fields rather than the draft's nine types, because the
+    readings hold them together and a relation applies each as one more
+    clause over the same rows: measured on the 2,710 readings of 2026-10-09
+    (``~/association-research/stages/cuts_family.py``), an opponent beside
+    a venue 32 times, a round beside a situation 5, a game of a series
+    beside a round 3 and beside an opponent 2, a date beside its own month 4.
+
+    .. versionadded:: 6.0.0
+    """
+
+    #: The team the subject is set against, as the subject reading read it
+    #: from the words ("vs the pistons"; :func:`~association.query.subject.read_subject`):
+    #: the name, which the relation resolves against the span's season.
+    opponent: str | None = None
+    #: The team the player played FOR ("as a starter for Miami"), a tenure
+    #: the subject reading writes beside him (``subject._apply_own_team``);
+    #: the relation keeps the games he played for it.
+    tenure: str | None = None
+    #: Where the games were played, where the words said one side: at home
+    #: or on the road. Both at once is a split, not a cut.
+    venue: Literal["home", "away"] | None = None
+    #: One calendar day, ``YYYY-MM-DD`` - a game named outright ("march
+    #: 17", "november 11 2019"), the year fixed by the season the words name
+    #: or the current one, never on a career question.
+    date: str | None = None
+    #: A circumstance the games are under: a calendar narrowing, an
+    #: alignment of the opponent, or words nothing reads (:class:`Situation`).
+    situation: Situation | None = None
+    #: A playoff round, as worded ("finals", "first round"); no table
+    #: carries one, so every relation refuses it by name.
+    round: str | None = None
+    #: One game of each playoff series ("game 4"), which the relation
+    #: numbers by date within the series.
+    game_n: int | None = None
+    #: A season named by its place in the player's career ("his 18th
+    #: season"), settled to a year once he is known.
+    season_n: int | None = None
+
+    #: The eight cuts, each under its own name: the ones a relation's cell
+    #: table declares (``player_relation.RELATION_SCOPING``,
+    #: ``team_relation.TEAM_RELATION_SCOPING``) and :meth:`cells` reports a
+    #: value as setting. A ``round`` is in neither table (no game is labeled
+    #: by its round, so every reader refuses it); a ``tenure`` and an
+    #: ordinal ``season_n`` are one player's, not the team relation's.
+    CELLS: ClassVar[frozenset[str]] = frozenset(_CUT_SLOT_NAMES)
+
+    @property
+    def named(self) -> bool:
+        """Whether the words cut the span at all."""
+        return bool(self.cells())
+
+    def cells(self) -> frozenset[str]:
+        """The cuts this value sets (:attr:`CELLS`): what a relation's table
+        must honor, or step aside or refuse for."""
+        return frozenset(name for name in _CUT_SLOT_NAMES if getattr(self, name) is not None)
+
+    def unhonored(self, honored: frozenset[str]) -> list[str]:
+        """The slot names (``own_team`` for the tenure, the rest their own)
+        of the cuts this value sets beyond ``honored`` - the names a decline
+        says."""
+        return [_CUT_SLOT_NAMES[cell] for cell in _CUT_SLOT_NAMES if cell in self.cells() and cell not in honored]
+
+    @classmethod
+    def from_slots(cls, slots: Mapping[str, Any]) -> Cuts:
+        """The Cuts eight slot values name (:meth:`Scope.from_slots` reads
+        them off a slot dict): ``opponent``, ``own_team``, ``venue``,
+        ``date``, ``situation`` (its words, parsed here), ``round``,
+        ``game_n``, ``season_n``."""
+        situation = slots.get("situation")
+        return cls(
+            opponent=slots.get("opponent"),
+            tenure=slots.get("own_team"),
+            venue=slots.get("venue"),
+            date=slots.get("date"),
+            situation=situation_of(situation) if isinstance(situation, str) else None,
+            round=slots.get("round"),
+            game_n=slots.get("game_n"),
+            season_n=slots.get("season_n"),
+        )
+
+    def to_slots(self) -> dict[str, Any]:
+        """The eight slots, exactly as the stages wrote them until Phase 3,
+        step 2 (the situation as its words), in the old field order - the
+        projection every recorded reading is compared through."""
+        out: dict[str, Any] = {}
+        for cell, slot in _CUT_SLOT_NAMES.items():
+            value = getattr(self, cell)
+            if value is not None:
+                out[slot] = value.text if isinstance(value, Situation) else value
+        return out
+
+
+def situation_of(text: str) -> Situation:
+    """The :class:`Situation` ``text`` names: its words, and the calendar
+    narrowing or - read only where there is none, as the relations read it
+    - the alignment they parse to. One reader for the tagger and the slot
+    door alike.
+
+    .. versionadded:: 6.0.0
+    """
+    calendar = parse_situation(text)
+    return Situation(text=text, calendar=calendar, alignment=None if calendar is not None else parse_alignment(text))
+
+
 @dataclass(frozen=True)
 class Claim:
     """The characters of the question one reader rule consumed - ``start``
@@ -541,8 +716,10 @@ class Scope:
     players: tuple[str, ...] = ()
     team: str | None = None
     teams: tuple[str, ...] = ()
-    opponent: str | None = None
-    own_team: str | None = None
+    #: Which games of the span: one typed value (:class:`Cuts`; the eight
+    #: slots ``opponent``, ``own_team``, ``venue``, ``date``, ``situation``,
+    #: ``round``, ``game_n`` and ``season_n`` until Phase 3, step 2).
+    cuts: Cuts = field(default_factory=Cuts)
     with_player: tuple[str, ...] = ()
     without: tuple[str, ...] = ()
     #: Each player named beside the subject, with his role.
@@ -563,19 +740,11 @@ class Scope:
     #: When: the seasons and the season type, one typed value
     #: (:class:`Span`; six slots until Phase 3, step 2).
     span: Span = field(default_factory=Span)
-    #: One calendar day, ``YYYY-MM-DD``.
-    date: str | None = None
-    #: A calendar or alignment narrowing, as the question worded it.
-    situation: str | None = None
     split: Split | None = None
-    game_n: int | None = None
-    season_n: int | None = None
-    round: str | None = None
     period: int | None = None
     half: Literal[1, 2] | None = None
     #: A period as a condition on which games count (:class:`PeriodCondition`).
     period_condition: PeriodCondition | None = None
-    venue: Literal["home", "away"] | None = None
     #: Which rows are kept, and from which end: one typed value
     #: (:class:`Window`; the four slots ``order``, ``limit``, ``rank`` and
     #: ``ranked_by`` until Phase 3, step 2).
@@ -590,12 +759,11 @@ class Scope:
 
         .. versionadded:: 5.0.0
         """
-        unknown = sorted(set(slots) - _SCOPE_FIELDS - _SPAN_SLOT_NAMES - _WINDOW_SLOT_NAMES)
+        unknown = sorted(set(slots) - _SCOPE_FIELDS - _SPAN_SLOT_NAMES - _WINDOW_SLOT_NAMES - _CUT_SLOT_KEYS)
         if unknown:
             raise ScopeError(f"no scope field for slot(s) {unknown}")
         values: dict[str, Any] = {}
-        span_slots: dict[str, Any] = {}
-        window_slots: dict[str, Any] = {}
+        typed_slots: dict[str, dict[str, Any]] = {"span": {}, "window": {}, "cuts": {}}
         for name, raw in slots.items():
             # A blank string is the slot absent too: the model files " " for
             # an opponent it has none of, and every template read it as
@@ -603,58 +771,63 @@ class Scope:
             # it as a team named nothing and refused.
             if raw is None or raw is False or (isinstance(raw, (str, list, tuple)) and not raw) or (isinstance(raw, str) and not raw.strip()):
                 continue
-            if (name == "span" and isinstance(raw, Span)) or (name == "window" and isinstance(raw, Window)):
+            family, whole = _typed_family(name, raw)
+            if whole:
                 values[name] = raw
-            elif name in _SPAN_SLOT_NAMES:
-                span_slots[name] = _CHECKS[name](name, raw)
-            elif name in _WINDOW_SLOT_NAMES:
-                window_slots[name] = _CHECKS[name](name, raw)
-            else:
+            elif family is None:
                 values[name] = _CHECKS[name](name, raw)
-        if span_slots:
-            if "span" in values:
-                raise ScopeError(f"a typed span and the slot(s) {sorted(span_slots)} at once")
-            values["span"] = Span.from_slots(span_slots)
-        if window_slots:
-            if "window" in values:
-                raise ScopeError(f"a typed window and the slot(s) {sorted(window_slots)} at once")
-            values["window"] = Window.from_slots(window_slots)
+            else:
+                typed_slots[family][name] = _CHECKS[name](name, raw)
+        for family, door in (("span", Span.from_slots), ("window", Window.from_slots), ("cuts", Cuts.from_slots)):
+            if typed_slots[family]:
+                if family in values:
+                    raise ScopeError(f"a typed {family} and the slot(s) {sorted(typed_slots[family])} at once")
+                values[family] = door(typed_slots[family])
         return cls(**values)
 
     def to_slots(self) -> dict[str, Any]:
         """The Scope as a slot dict - every field away from its default,
         sequences as lists: the shape a route is recorded in and the trace
-        prints (:meth:`Reading.describe`).
+        prints (:meth:`Reading.describe`). The cuts' eight slots print where
+        the fields stood until Phase 3, step 2 (:data:`_CUT_SLOT_POSITIONS`),
+        so the trace line reads as it did.
 
         .. versionadded:: 5.0.0
         """
         out: dict[str, Any] = {}
+        cut_slots = self.cuts.to_slots()
         for f in fields(self):
             value = getattr(self, f.name)
-            if value is None or value is False or value == ():
+            if f.name == "cuts":
                 continue
-            if f.name == "conditions":
-                out[f.name] = [condition.to_slot() for condition in value]
-            elif f.name == "period_condition":
-                out[f.name] = value.to_slot()
-            elif f.name in ("span", "window"):
-                out.update(value.to_slots())
-            else:
-                out[f.name] = list(value) if isinstance(value, tuple) else value
+            if not (value is None or value is False or value == ()):
+                if f.name == "conditions":
+                    out[f.name] = [condition.to_slot() for condition in value]
+                elif f.name == "period_condition":
+                    out[f.name] = value.to_slot()
+                elif f.name in ("span", "window"):
+                    out.update(value.to_slots())
+                else:
+                    out[f.name] = list(value) if isinstance(value, tuple) else value
+            for slot in _CUT_SLOT_POSITIONS.get(f.name, ()):
+                if slot in cut_slots:
+                    out[slot] = cut_slots[slot]
         return out
 
     def projected(self) -> dict[str, Any]:
         """Every field, at its default or not, with the span as the six
-        slots and the window as the four it was until Phase 3, step 2 - the
-        shape a recorded Scope kept (:func:`~association.query.stages.plain`),
-        so a reading recorded before a part was typed compares identical to
+        slots, the window as the four and the cuts as the eight they were
+        until Phase 3, step 2, in the field order they stood in - the shape
+        a recorded Scope kept (:func:`~association.query.stages.plain`), so
+        a reading recorded before a part was typed compares identical to
         one recorded after. The typed values are recorded beside the
-        reading (``stages._reading_record``, ``span`` and ``window``), never
-        here.
+        reading (``stages._reading_record``, ``span``, ``window`` and
+        ``cuts``), never here.
 
         .. versionadded:: 6.0.0
         """
         out: dict[str, Any] = {}
+        cut_slots = self.cuts.to_slots()
         for f in fields(self):
             value = getattr(self, f.name)
             if f.name == "span":
@@ -668,13 +841,59 @@ class Scope:
             elif f.name == "window":
                 out["order"] = value.order
                 out["limit"] = value.count
-            else:
+            elif f.name != "cuts":
                 out[f.name] = value
                 if f.name == "fields":
                     out["ranked_by"] = self.window.by
                 elif f.name == "kind":
                     out["rank"] = self.window.rank
+            for slot in _CUT_SLOT_POSITIONS.get(f.name, ()):
+                out[slot] = cut_slots.get(slot)
         return out
+
+
+def _typed_family(name: str, raw: Any) -> tuple[str | None, bool]:
+    """Which typed value the slot ``name`` belongs to at the door, and
+    whether ``raw`` IS that value whole: ``("span", True)`` for a
+    :class:`Span` under ``span``, ``("span", False)`` for the span's slot
+    ``season`` (and ``span``, the slot, as a string), the window's and the
+    cuts' the same, ``(None, False)`` for a field of the Scope's own."""
+    if (name == "span" and isinstance(raw, Span)) or (name == "window" and isinstance(raw, Window)) or (name == "cuts" and isinstance(raw, Cuts)):
+        return name, True
+    if name in _SPAN_SLOT_NAMES:
+        return "span", False
+    if name in _WINDOW_SLOT_NAMES:
+        return "window", False
+    if name in _CUT_SLOT_KEYS:
+        return "cuts", False
+    return None, False
+
+
+#: Where each cut's slot stood among the Scope's fields until Phase 3, step
+#: 2: the slots emitted after the named field, in order. The opponent and
+#: the tenure followed ``teams``; the date and the situation followed the
+#: span; a game of a series, an ordinal season and a round followed the
+#: split; the venue followed the period condition.
+_CUT_SLOT_POSITIONS: dict[str, tuple[str, ...]] = {"teams": ("opponent", "own_team"), "span": ("date", "situation"), "split": ("game_n", "season_n", "round"), "period_condition": ("venue",)}
+
+
+def cell_set(scope: Scope, cell: str) -> bool:
+    """Whether ``scope`` sets ``cell`` - a cut by its cell name
+    (:attr:`Cuts.CELLS`: ``tenure``, not ``own_team``), a span or window
+    cell by its name, or any other field by its truth - the one reading of
+    a cell name against a Scope for the tables that list cells by name
+    (``conditions._CONDITION_PLAYER_ONLY_CELLS``, the planner's
+    per-reader exclusions, the shot readers' narrowing check).
+
+    .. versionadded:: 6.0.0
+    """
+    if cell in Cuts.CELLS:
+        return cell in scope.cuts.cells()
+    if cell in Span.CELLS:
+        return cell in scope.span.cells()
+    if cell in Window.CELLS:
+        return cell in scope.window.cells()
+    return bool(getattr(scope, cell))
 
 
 def _text(name: str, raw: Any) -> str:
@@ -695,7 +914,7 @@ def _texts(name: str, raw: Any) -> tuple[str, ...]:
 
 
 def _iso_day(name: str, raw: Any) -> str:
-    # One calendar day as the router writes it (router._validate_date): an
+    # One calendar day as the cuts tagger writes it (cuts._day): an
     # ISO date and nothing else - "last night" would pass a text check and
     # then fail in whichever reader got it first.
     try:
@@ -758,6 +977,8 @@ _SCOPE_FIELDS = frozenset(f.name for f in fields(Scope))
 _SPAN_SLOT_NAMES = frozenset({"season", "season_type", "season_type_unstated", "span", "since", "until"})
 #: The four slot names the window's door still takes (:meth:`Window.from_slots`).
 _WINDOW_SLOT_NAMES = frozenset({"order", "limit", "rank", "ranked_by"})
+#: The eight slot names the cuts' door still takes (:meth:`Cuts.from_slots`).
+_CUT_SLOT_KEYS = frozenset(_CUT_SLOT_NAMES.values())
 
 
 CAUSES: frozenset[str] = frozenset(
@@ -1430,18 +1651,19 @@ def scope_reads_box_scores(scope: Scope, measures: list[Any]) -> bool:
        On the reader's side (``templates.players._player_stat_reads_box_scores`` was this).
     """
     split_side = scope.split if scope.split in STARTER_SIDES else None
+    cuts = scope.cuts
     return any(
         (
-            scope.opponent,
-            scope.venue,
+            cuts.opponent,
+            cuts.venue,
             scope.without,
             split_side,
             scope.span.since,
             measures,
-            scope.game_n,
-            scope.situation,
+            cuts.game_n,
+            cuts.situation,
             scope.span.both,
-            scope.own_team,
+            cuts.tenure,
             scope.conditions,
             scope.period_condition,
         )
@@ -1454,51 +1676,21 @@ def scope_reads_box_scores(scope: Scope, measures: list[Any]) -> bool:
 # extracts these CORRECTLY in each case, so check_routing cannot catch a
 # template dropping them; only this can.
 #
-# The five after those are read from the question text by the router and by
-# subject.apply_subject, never asked of the model, and exist for the same
+# Those read from the question text by the router and by
+# subject.apply_subject, never asked of the model, exist for the same
 # reason. Measured against real StatMuse queries before they did: "jaylen brown
 # last 8 games vs pistons" answered with the Celtics' last 8 games, "Knicks
 # home record" with their overall record, "career points leaders" with this
 # season's, and "Podziemski game log without curry" with his whole log. Each
-# was fast, fluent and about something else. `round` ("finals", "game 7") is
-# honored by no template at all: nothing in the warehouse records one. `split`
+# was fast, fluent and about something else. `split`
 # and `since` (a range of seasons) are read for every intent for the same reason:
 # a template that is not about splits or ranges answered them with one season.
 # `below` ("under 14 FTA") and `above` ("with 25 minutes") are lines a game's
 # box score is kept under or over - `measure_filters` reads them onto the
-# relation for the templates listed with them. `situation` is a weekday, a
-# month, a fixed holiday, "since <day>" (`calendar.parse_situation`), or - the
-# other half of the same slot, K3-2 - a conference or division the opponent is
-# in (`calendar.parse_alignment`), applied together by `apply_situation`
-# below. Anything else it could name (back-to-backs, overtime, an age, "since
-# returning") is refused by every template: nothing narrows to it yet, and
-# answering without it answered the whole season.
-# `until` closes a `since`-bounded range at the far end ("2019-20 to 2023-24",
-# "the 2010s") - `router._validate_range` - and is declared and read
-# everywhere `since` is (`span_of`, `ResolvedSpan.clause`), never on its own: a
-# template that honors `since` but not `until` would read a CLOSED range as an
-# open one and answer every season after it too, the same silent-widening
-# shape `since` itself exists to stop. `test_until_is_declared_wherever_since_is`
-# (tests/query/test_templates.py) enforces this pairing by reading the source.
-# `game_n` ("game 4") is one game of each playoff series, numbered by date over
-# `real_games`; the relation finds it, and a regular-season question refuses.
-# `season_n` ("his 18th season") is one season named by its place in a career;
-# `settle_ordinal_season` turns it into a year once the player is resolved.
+# relation for the templates listed with them.
 # `rate` is a per-possession rate asked of a metric that has no such form
 # ("points per 100 possessions", "netpoints / 90"): set by the router only
 # where it could not switch the metric itself, and honored by nothing.
-# `season_type_unstated` is not a narrowing at all but its opposite - a
-# "last N games" question naming no season type at all
-# (`router._route_game_log_recent_span`) - and it is listed here for the same
-# reason `situation` is: the discipline that a new slot is declared by the
-# templates that honor it and refused by the rest applies whether the slot
-# widens or narrows. Only `game_log` can ever see it - the router sets it for
-# no other intent - so it is refused everywhere else only in principle.
-# `until` (step 3, K1) is the inclusive LAST season of a range whose first the
-# router already files as `since` ("2019-20 to 2023-24", a decade) - never
-# alone, so a template honors it only by honoring `since` and reading `until`
-# beside it (`span_of`/`validated_until`); one not wired to `until` at all
-# would otherwise silently read only the range's first half.
 # `order` and `ranked_by` are the typed window's cells since Phase 3, step 2
 # (`Window.CELLS`: `window`, `ranked_by`), read beside this list by
 # `unhonored_cells`: a `leaderboard` question ranking the GAMES that satisfy
@@ -1506,40 +1698,29 @@ def scope_reads_box_scores(scope: Scope, measures: list[Any]) -> bool:
 # yardstick-v2 F124) carries the same slots as the count "most triple
 # doubles" but for the window's `by`, which the leaderboard's reader does
 # not state, so it steps aside and the compiler's boolean-game ranking answers.
-SCOPING_SLOTS = frozenset(
-    {
-        "date",
-        "opponent",
-        "venue",
-        "without",
-        "round",
-        "split",
-        "below",
-        "above",
-        "game_n",
-        "season_n",
-        "situation",
-        "conditions",
-        "rate",
-        "period",
-        "half",
-        "period_condition",
-    }
-)
+# The games' cuts - the opponent, the tenure, a venue, one date, a situation
+# (a weekday, a month, a holiday, "since <day>", or the conference or
+# division the opponent is in, applied by `apply_situation`; anything else
+# it could name - back-to-backs, overtime, an age, "since returning" - is
+# refused by value, since nothing narrows to it), a playoff round (honored
+# by nothing: no game is labeled by one), a game of each series and an
+# ordinal season - are the typed `Cuts`' cells since Phase 3, step 2
+# (`Cuts.CELLS`), read beside this list the same way.
+SCOPING_SLOTS = frozenset({"without", "split", "below", "above", "conditions", "rate", "period", "half", "period_condition"})
 
 
 def unhonored_cells(scope: Scope, honored: frozenset[str]) -> list[str]:
     """The slot names ``scope`` sets that ``honored`` does not hold, sorted:
-    every slot of :data:`SCOPING_SLOTS` that is truthy, and the span's and
-    the window's cells (:attr:`Span.CELLS`, :attr:`Window.CELLS`, by the
-    slot names they were refused under - :meth:`Span.unhonored`,
-    :meth:`Window.unhonored`). One reading of "what is set beyond what is
-    honored", for the planner's relation check and for a reader's own
-    words (:func:`unhonored_scoping`).
+    every slot of :data:`SCOPING_SLOTS` that is truthy, and the span's, the
+    window's and the cuts' cells (:attr:`Span.CELLS`, :attr:`Window.CELLS`,
+    :attr:`Cuts.CELLS`, by the slot names they were refused under -
+    :meth:`Span.unhonored`, :meth:`Window.unhonored`, :meth:`Cuts.unhonored`).
+    One reading of "what is set beyond what is honored", for the planner's
+    relation check and for a reader's own words (:func:`unhonored_scoping`).
 
     .. versionadded:: 6.0.0
     """
-    return sorted([name for name in SCOPING_SLOTS if getattr(scope, name) and name not in honored] + scope.span.unhonored(honored) + scope.window.unhonored(honored))
+    return sorted([name for name in SCOPING_SLOTS if getattr(scope, name) and name not in honored] + scope.span.unhonored(honored) + scope.window.unhonored(honored) + scope.cuts.unhonored(honored))
 
 
 #: Templates that honor one NAMED half of the starter/bench split and refuse

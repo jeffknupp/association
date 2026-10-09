@@ -67,7 +67,7 @@ from association.query.entities import (
 )
 from association.query.lexicon import N_SEASONS, season_from_text
 from association.query.measures import THRESHOLD_STAT_NAMES
-from association.query.reading import FILLER_PLAYER_WORDS, OWN_TEAM_RESTORABLE_INTENTS, PLAYER_REQUIRED_INTENTS, POSITIONS, SUBJECT_RESTORABLE_INTENTS, ConditionSpec, LeftOut, Scope
+from association.query.reading import FILLER_PLAYER_WORDS, OWN_TEAM_RESTORABLE_INTENTS, PLAYER_REQUIRED_INTENTS, POSITIONS, SUBJECT_RESTORABLE_INTENTS, ConditionSpec, Cuts, LeftOut, Scope
 from association.query.router import _ABSENCE_WORDS, _NAME_STOPWORDS, _THRESHOLD_WORDS, Beside, _threshold_from_text_scored
 
 #: The kinds a subject can be. ``team_players`` is "a Hawks player" - the
@@ -556,7 +556,7 @@ def _read_opponent(con: duckdb.DuckDBPyConnection, question: str, scope: Scope, 
     versus = _team_after_versus(teams_of(con), question, season)
     if versus is not None:
         return versus.name
-    held = scope.opponent
+    held = scope.cuts.opponent
     held_team = _team_named(teams_of(con), held, season) if isinstance(held, str) and held.strip() else None
     if held_team is not None and _team_grounded(teams_of(con), question, held_team) and not _named_as_own(con, question, held_team, season):
         return held_team.name
@@ -587,7 +587,7 @@ def _opponent_player(con: duckdb.DuckDBPyConnection, scope: Scope) -> str | None
     name to check against the question like the subject's own, never read
     as a team the subject is set against. A team opponent is a narrowing,
     not a subject."""
-    opponent = scope.opponent
+    opponent = scope.cuts.opponent
     if not isinstance(opponent, str) or not opponent.strip() or find_teams(con, opponent) or not find_players(con, opponent):
         return None
     return opponent
@@ -1264,11 +1264,10 @@ def _apply_team_record_when(subject: Subject, scope: Scope, intent: str) -> tupl
     player = scope.player
     rewritten = Scope(
         span=scope.span,
-        venue=scope.venue,
-        # The router filed the subject's own team as the opponent ("sixers"
-        # beside its invented Joel Embiid); the question sets the team
-        # against nobody.
-        opponent=scope.opponent if subject.opponent is not None else None,
+        # The venue stands; the router filed the subject's own team as the
+        # opponent ("sixers" beside its invented Joel Embiid), and the
+        # question sets the team against nobody.
+        cuts=Cuts(venue=scope.cuts.venue, opponent=scope.cuts.opponent if subject.opponent is not None else None),
         player=condition.name,
         stat=condition.stat,
         threshold=condition.threshold,
@@ -1340,9 +1339,9 @@ def _apply_own_team(subject: Subject, scope: Scope, intent: str) -> tuple[Scope,
     fifteen years into a Lakers career is not asking about this season."""
     if intent not in OWN_TEAM_RESTORABLE_INTENTS or subject.own_team is None or not (scope.player or scope.players):
         return scope, []
-    if scope.team or scope.opponent or scope.own_team:
+    if scope.team or scope.cuts.opponent or scope.cuts.tenure:
         return scope, []
-    out = replace(scope, own_team=subject.own_team)
+    out = replace(scope, cuts=replace(scope.cuts, tenure=subject.own_team))
     decisions = [Decision("subject", "own_team", None, subject.own_team, "from the question; the router left it out")]
     if subject.named_season is None and not scope.span.career:
         out = replace(out, span=out.span.over_career())

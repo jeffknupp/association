@@ -1623,7 +1623,7 @@ def test_condition_player_reads_a_scope_beside_the_opponent_its_caller_resolved(
     scope = Scope.from_slots(_slots(player="Jayson Tatum"))
     reads = [
         condition_player(league.con, scope, "needs a player", within, opponent=lakers),
-        condition_player(league.con, replace(scope, opponent="Los Angeles Lakers"), "needs a player", within),
+        condition_player(league.con, replace(scope, cuts=replace(scope.cuts, opponent="Los Angeles Lakers")), "needs a player", within),
     ]
     for read in reads:
         assert not isinstance(read, Unanswered)

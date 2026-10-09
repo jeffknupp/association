@@ -1004,7 +1004,7 @@ def test_a_players_record_against_a_team_is_his_own_games(scope_con: duckdb.Duck
     scope_con.execute("INSERT INTO players VALUES ('20','Joel Embiid')")
     for question, names in (("Embiid career record vs boston", ["embiid", "boston"]), ("Show Embiid's career record against Boston", ["Embiid", "Boston"])):
         reading = _parsed(scope_con, question, names)
-        assert reading.intent == "player_splits" and reading.scope.player == "Joel Embiid" and reading.scope.opponent == "Boston Celtics", question
+        assert reading.intent == "player_splits" and reading.scope.player == "Joel Embiid" and reading.scope.cuts.opponent == "Boston Celtics", question
         assert reading.scope.span.career and not reading.scope.without and not reading.scope.team, question
 
 

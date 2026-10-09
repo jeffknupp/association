@@ -67,7 +67,7 @@ from association.query.player_games import (
     period_rate,
 )
 from association.query.player_relation import ResolvedSpan, league_games, relation_window, scoped_games, span_of
-from association.query.reading import DEFAULT_GAME_LOG_LIMIT, STARTER_SIDES, PointShape, Scope, Unsupported, _clamp_limit, period_narrowing, unhonored_scoping
+from association.query.reading import DEFAULT_GAME_LOG_LIMIT, STARTER_SIDES, Cuts, PointShape, Scope, Unsupported, _clamp_limit, period_narrowing, unhonored_scoping
 from association.query.result import (
     Cell,
     Decided,
@@ -171,7 +171,7 @@ def _period_log(con: duckdb.DuckDBPyConnection, q: Query) -> Result | Unanswered
     measure = period_split_measure(scope.stat)
     if q.measures != [measure]:
         return None
-    if scope.date is None:
+    if scope.cuts.date is None:
         refused = _period_untrusted(scope.span.season or current_season(), measure)
         if refused is not None:
             return refused
@@ -181,7 +181,7 @@ def _period_log(con: duckdb.DuckDBPyConnection, q: Query) -> Result | Unanswered
         return None
     rows = rows_of(con, compiled)
     season = scope.span.season or current_season()
-    if scope.date is not None and rows:
+    if scope.cuts.date is not None and rows:
         # The season a date's game actually falls in, read off the row itself
         # rather than the slot: an explicit year in the question ("... on
         # november 11 2019") can name a date the season slot disagrees with.
@@ -262,8 +262,8 @@ def _period_log_result(
     return Result(
         subject=compiled.player.name,
         relation="player",
-        span=Span(season=season, season_type=season_type, date=None if fallback else scope.date),
-        narrowing=_period_narrowing(compiled.narrowed, scope.venue, (Period(label=period_label), *cells)),
+        span=Span(season=season, season_type=season_type, date=None if fallback else scope.cuts.date),
+        narrowing=_period_narrowing(compiled.narrowed, scope.cuts.venue, (Period(label=period_label), *cells)),
         window=window,
         parts=(Part(body=body),),
         notes=tuple(notes),
@@ -331,7 +331,7 @@ def _period_by_quarter(con: duckdb.DuckDBPyConnection, q: Query) -> Result | Una
     measure = period_split_measure(scope.stat)
     if q.measures != [measure]:
         return None
-    if scope.date is None:
+    if scope.cuts.date is None:
         refused = _period_untrusted(scope.span.season or current_season(), measure)
         if refused is not None:
             return refused
@@ -362,8 +362,8 @@ def _period_quarters_result(compiled: Compiled, scope: Scope, rows: list[dict[st
     return Result(
         subject=compiled.player.name,
         relation="player",
-        span=Span(season=season, season_type=scope.span.season_type or 2, date=scope.date),
-        narrowing=_period_narrowing(narrowed, scope.venue, cells),
+        span=Span(season=season, season_type=scope.span.season_type or 2, date=scope.cuts.date),
+        narrowing=_period_narrowing(narrowed, scope.cuts.venue, cells),
         window=window,
         parts=(Part(body=Grouped(by="period", rows=quarters)),),
         notes=tuple(notes),
@@ -377,7 +377,7 @@ def _period_quarters_season(scope: Scope, rows: list[dict[str, Any]], measure: s
     the rows as the one-quarter read does, and refused off it where its
     figures cannot be trusted. Labeled "2026 regular season on 2014-11-01"
     and caveated by 2026's agreement until 2026-10-04 (ISSUES.md #302)."""
-    if scope.date is None:
+    if scope.cuts.date is None:
         return scope.span.season or current_season()
     season = int(min(row["first_season"] for row in rows if row["first_season"] is not None))
     refused = _period_untrusted(season, measure)
@@ -422,7 +422,7 @@ def _team_quarter_points_team_and_span(con: duckdb.DuckDBPyConnection, scope: Sc
     outright: a date from a past season looked for inside the router's
     current-season default finds nothing, so a named date reads every
     season on record instead."""
-    if scope.date:
+    if scope.cuts.date:
         team = resolved_team(con, scope.team, season=slot_season(scope))
         if isinstance(team, Unanswered):
             return team
@@ -580,8 +580,8 @@ def read_team_quarter_points(con: duckdb.DuckDBPyConnection, q: TeamQuery, *, st
     # Every cell the shape reads, named: the quarter or half is the
     # relation's narrowing too, so every read of `narrowed` sees that part
     # of each game.
-    narrowing = Scope(venue=scope.venue, game_n=scope.game_n, situation=scope.situation, window=scope.window, period=scope.period, half=scope.half)
-    narrowed = team_games(con, team, span, narrowing, opponent=scope.opponent, date=scope.date)
+    narrowing = Scope(cuts=Cuts(venue=scope.cuts.venue, game_n=scope.cuts.game_n, situation=scope.cuts.situation), window=scope.window, period=scope.period, half=scope.half)
+    narrowed = team_games(con, team, span, narrowing, opponent=scope.cuts.opponent, date=scope.cuts.date)
     if isinstance(narrowed, Unanswered):
         return narrowed
     games, seasons = _team_quarter_points_games(con, narrowed, measure)
@@ -597,7 +597,7 @@ def read_team_quarter_points(con: duckdb.DuckDBPyConnection, q: TeamQuery, *, st
         narrowing=Narrowing(
             phrase=narrowed.filters(opponent=False, period=False),
             opponent=narrowed.opponent.name if narrowed.opponent else None,
-            venue=scope.venue,
+            venue=scope.cuts.venue,
             cells=(Period(label=period_label, periods=tuple(periods)),),
         ),
         parts=(Part(body=_team_quarter_points_line(shown, measure)), Part(role="detail", body=Rows(rows=tuple(shown)))),
@@ -618,7 +618,7 @@ def _period_leaderboard_minimum(con: duckdb.DuckDBPyConnection, narrowed: Narrow
     anyone played in it, which the minimum is half of (#185, Jeff's call,
     2026-09-30: a share of the narrowed games, never over the season's own
     minimum and never under one)."""
-    if not (scope.opponent or scope.venue):
+    if not (scope.cuts.opponent or scope.cuts.venue):
         return default, None
     row = values_of(con, Statement(*most_games_sql(narrowed, rebuilt=box_source(con).rebuilt)))
     most = int(row[0][0]) if row else 0

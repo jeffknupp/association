@@ -26,7 +26,6 @@ import duckdb
 
 from association.nba.coverage import COVERAGE, REGULAR_SEASON
 from association.nba.season import current_season, eastern_day_utc_range
-from association.query.calendar import parse_alignment, parse_situation
 from association.query.conditions import _game_scope, _Scope, box_source
 from association.query.entities import BOX_SCORES, Ambiguous, Availability, Entity, clarify, find_players, resolve_player, resolve_team, resolved_player, resolved_team, teammate_names
 from association.query.lines import MeasureFilter, measure_filters
@@ -47,7 +46,7 @@ from association.query.player_games import (
     scope_without_guard,
     season_type_clause,
 )
-from association.query.reading import ConditionSpec, PeriodCondition, Scope, Span, Unsupported, Window, _clamp_limit, ordinal_word, period_narrowing
+from association.query.reading import ConditionSpec, Cuts, PeriodCondition, Scope, Situation, Span, Unsupported, Window, _clamp_limit, ordinal_word, period_narrowing
 from association.query.result import Cell, GameOfSeries, Line, Refusal, Role, Unanswered
 from association.query.season_text import SEASON_TYPE_NAMES, season_phrase
 from association.query.team_games import TeamNarrowed
@@ -55,9 +54,10 @@ from association.query.team_games import TeamNarrowed
 # What the player-games relation narrows by, declared ONCE. Every template that
 # settles its player through `scoped_player` and his games through
 # `scoped_games` honors all of these, because the narrowing is done there and
-# not in the template: an opponent, a venue, a teammate's absence, a named half
-# of the starter/bench split, one game of each playoff series, a line on a
-# box-score column, one Eastern date, a span of seasons, a first season, an
+# not in the template: an opponent, his own team (a tenure), a venue, a
+# teammate's absence, a named half of the starter/bench split, one game of
+# each playoff series, a line on a box-score column, one Eastern date, a
+# calendar or alignment situation, a span of seasons, a first season, an
 # ordinal season. The window (`reading.Window`, typed since Phase 3, step 2:
 # an end of the span with its count) is the newest or oldest N of the
 # narrowed games, which the relation cuts after every row filter and before
@@ -74,18 +74,25 @@ from association.query.team_games import TeamNarrowed
 # to one template at a time, which is the O(templates x slots) matrix the
 # algebra port exists to remove. A template on the relation that cannot honor
 # one of these says so in RELATION_SCOPING_EXCLUDED, with the reason.
-RELATION_SCOPING = frozenset(
-    {"date", "opponent", "venue", "without", "split", "below", "above", "game_n", "season_n", "situation", "conditions", "period", "half", "period_condition", *Span.CELLS, *Window.CELLS}
-)
+#
+# The games' cuts (`reading.Cuts`, typed since Phase 3, step 2) are seven of
+# the eight by name: `round` is left out, since no game is labeled by its
+# round and every reader refuses it (`unhonored_cells` lists it wherever it
+# is set). The tenure is a cell of this relation alone: a team has none.
+RELATION_SCOPING = frozenset({"without", "split", "below", "above", "conditions", "period", "half", "period_condition", *(Cuts.CELLS - {"round"}), *Span.CELLS, *Window.CELLS})
 """The cells every reader on the player-games relation honors: the
-scoping slots, and the span's three cells (:attr:`~association.query.reading.Span.CELLS`,
+scoping slots, the games' cuts (:attr:`~association.query.reading.Cuts.CELLS`
+less ``round``: ``opponent``, ``tenure``, ``venue``, ``date``,
+``situation``, ``game_n``, ``season_n``, each applied by :func:`scoped_games`
+and said by :meth:`~association.query.player_games.Narrowed.filters`), and
+the span's three cells (:attr:`~association.query.reading.Span.CELLS`,
 Phase 3, step 2) - ``career`` (every season on record), ``range`` (a
 career cut at one or both ends: ``since``, ``until``) and ``both`` (both
 season types in one read), each applied by :func:`span_of` through
 :func:`scoped_player`, said by :meth:`ResolvedSpan.during` and
 :meth:`ResolvedSpan.years`, and refused where the span contradicts itself
 (a career beside a named season, a range beside one) by :func:`span_of`.
-A reader whose words do not state one of the three steps aside for it, or
+A reader whose words do not state one of these steps aside for it, or
 refuses it, by :data:`RELATION_SCOPING_EXCLUDED`.
 
 .. versionadded:: 4.4.0
@@ -97,7 +104,8 @@ refuses it, by :data:`RELATION_SCOPING_EXCLUDED`.
 .. versionchanged:: 6.0.0
    The span's cells by name (``career``, ``range``, ``both``) in place of
    the slots ``span``, ``since`` and ``until``; ``both`` was each reader's
-   own extra (``season_type_unstated``) until then.
+   own extra (``season_type_unstated``) until then. The games' cuts by name,
+   the ``tenure`` among them, which the compiler alone passed until then.
 """
 
 
@@ -221,6 +229,34 @@ RELATION_SCOPING_EXCLUDED.update(
     }
 )
 RELATION_SCOPING_EXCLUDED["single_game_high"]["range"] = "a high's words state a career, and the compiler's own ranking of games, which says the range it read, answers one"
+# The games' cuts (Phase 3, step 2's third slice), per reader whose words
+# state fewer than the relation's seven: each row names the cut and the
+# answer's reason, as the rule above this dict asks. A season line's reader
+# (a ranking, a history, a comparison) pools one row per player per season
+# and has no game to cut, so it steps aside for every cut and the
+# game-level read, whose sentence says the cut it applied, answers; a count
+# and a high state a career and (the count) an ordinal season, and the
+# compiler's own count or ranking answers the rest; a NetPoints rating is
+# one season's row, read per game for a first or last game alone, and no
+# cut of the games has a rating (a fingerprint's date is refused in its
+# reader's own words); a ranking by a quarter pools one season's players
+# against an opponent or at a venue and nothing cuts it further.
+_SEASON_LINE_CUTS_ASIDE = "a season line is one row per player per season, with no game to cut; the game-level read, whose sentence says the cut it applied, answers"
+for _reader in ("leaderboard", "player_history", "player_compare"):
+    for _cut in Cuts.CELLS - {"round"}:
+        RELATION_SCOPING_EXCLUDED[_reader][_cut] = _SEASON_LINE_CUTS_ASIDE
+for _cut in Cuts.CELLS - {"round"}:
+    RELATION_SCOPING_EXCLUDED["single_game_high"][_cut] = "a high's words state a career, and the compiler's own ranking of games, which says the cut it applied, answers one"
+for _cut in Cuts.CELLS - {"round", "season_n"}:
+    RELATION_SCOPING_EXCLUDED["threshold_count"][_cut] = "a count's words state a career and an ordinal season, and the compiler's own count, which says the cut it applied, answers one"
+for _cut in Cuts.CELLS - {"round"}:
+    RELATION_SCOPING_EXCLUDED["player_netpoints"][_cut] = "a NetPoints rating is one season's row; the per-game tables are read for a first or last game alone, and no cut of the games has a rating"
+for _cut in Cuts.CELLS - {"round", "date"}:
+    RELATION_SCOPING_EXCLUDED["fingerprint"][_cut] = "a fingerprint is drawn from one season's play types, or one game's chosen as a first or last game; no cut of the games has a fingerprint"
+for _cut in Cuts.CELLS - {"round", "opponent", "venue"}:
+    RELATION_SCOPING_EXCLUDED["period_leaderboard"][_cut] = (
+        "a ranking by a quarter pools one season's players, against an opponent or at a venue; one date ranks nothing per game, and a tenure, a series game or an ordinal season is one player's"
+    )
 """Per reader, the relation's cells it refuses or steps aside for, and why.
 
 .. versionadded:: 4.4.0
@@ -228,7 +264,8 @@ RELATION_SCOPING_EXCLUDED["single_game_high"]["range"] = "a high's words state a
 .. versionchanged:: 6.0.0
    The span's cells (``career``, ``range``, ``both``) per reader, the
    season line's and the NetPoints relation's readers included, since they
-   settle their span through this relation's steps (Phase 3, step 2).
+   settle their span through this relation's steps (Phase 3, step 2); the
+   games' cuts per reader whose words state fewer than the relation's.
 """
 
 
@@ -241,6 +278,17 @@ def relation_span(intent: str) -> frozenset[str]:
     .. versionadded:: 6.0.0
     """
     return Span.CELLS - set(RELATION_SCOPING_EXCLUDED.get(intent, {}))
+
+
+def relation_cuts(intent: str) -> frozenset[str]:
+    """The games' cuts ``intent`` states (:attr:`~association.query.reading.Cuts.CELLS`
+    less ``round``, which no relation carries, less
+    :data:`RELATION_SCOPING_EXCLUDED`'s), for a reader whose other cells
+    are its own list rather than the relation's.
+
+    .. versionadded:: 6.0.0
+    """
+    return (Cuts.CELLS - {"round"}) - set(RELATION_SCOPING_EXCLUDED.get(intent, {}))
 
 
 def relation_scoping(intent: str, *extra: str) -> frozenset[str]:
@@ -621,7 +669,7 @@ def scoped_player(
        is still taken, through :meth:`~association.query.reading.Scope.from_slots`,
        until every caller passes ``reading.scope``.
     """
-    season_n = scope.season_n
+    season_n = scope.cuts.season_n
     asked = span if span is not None else scope.span
     seasons = span_of(asked.over_career() if season_n else asked, table, season_type=player_relation_season_type(scope))
     player = resolved_player(con, scope.player, missing, available=available, season=seasons.season, through=career_end(seasons.season))
@@ -633,21 +681,22 @@ def scoped_player(
     return player, settled
 
 
-def apply_situation[NarrowedT: (Narrowed, TeamNarrowed)](narrowed: NarrowedT, situation: str) -> None:
-    """Read a ``situation`` value as the calendar narrowing it names (a
-    weekday, a month, a fixed day, "since <day>") or - the other half of the
-    same slot - the conference/division narrowing it names ("vs the west",
-    "against the southeast division"), and apply whichever one it is to
-    ``narrowed``. Refused BY VALUE (never silently dropped) when it names
-    neither: the relation carries the game's Eastern day and each opponent's
+def apply_situation[NarrowedT: (Narrowed, TeamNarrowed)](narrowed: NarrowedT, situation: Situation) -> None:
+    """Apply the ``situation`` cell to ``narrowed``: the calendar narrowing
+    the words named (a weekday, a month, a fixed day, "since <day>") or -
+    the other half of the same cell - the conference/division narrowing
+    they named ("vs the west", "against the southeast division"), as the
+    reader parsed them (:class:`~association.query.reading.Situation`).
+    Refused BY VALUE (never silently dropped) when they named neither: the
+    relation carries the game's Eastern day and each opponent's
     season-alignment, and nothing about the player's age or a return from
-    injury, so dropping the slot would answer a wider question under a
+    injury, so dropping the cell would answer a wider question under a
     heading that promised the narrower.
 
     The one place :func:`scoped_games`/:func:`league_games` (the player
     relation) and :func:`team_games` (the team relation) turn a ``situation``
-    value into a clause, so a reading either function adds here reaches every
-    template on both relations at once - the same discipline every other
+    into a clause, so a reading either function adds here reaches every
+    reader on both relations at once - the same discipline every other
     relation-scoping cell keeps (see ``RELATION_SCOPING``/``TEAM_RELATION_SCOPING``
     above).
 
@@ -656,17 +705,19 @@ def apply_situation[NarrowedT: (Narrowed, TeamNarrowed)](narrowed: NarrowedT, si
     .. versionchanged:: 5.0.0
        Public (``templates.common._apply_situation`` until then): both
        relations' shared steps call it.
+
+    .. versionchanged:: 6.0.0
+       Takes the typed :class:`~association.query.reading.Situation`, parsed
+       by the reader; the words are read here no more (Phase 3, step 2).
     """
-    calendar = parse_situation(situation)
-    if calendar is not None:
-        narrowed.narrow_calendar(calendar)
+    if situation.calendar is not None:
+        narrowed.narrow_calendar(situation.calendar)
         return
-    alignment = parse_alignment(situation)
-    if alignment is not None:
-        narrowed.narrow_alignment(alignment)
+    if situation.alignment is not None:
+        narrowed.narrow_alignment(situation.alignment)
         return
     raise Unsupported(
-        f'no narrowing in situation {situation!r} - a weekday, a month, a holiday, "since <day>", a conference ("vs the west") or a division '
+        f'no narrowing in situation {situation.text!r} - a weekday, a month, a holiday, "since <day>", a conference ("vs the west") or a division '
         '("vs the southeast division") is read; an age or anything else is not'
     )
 
@@ -764,12 +815,14 @@ def scoped_games(
     opponent: Any,
     measures: list[MeasureFilter],
     date: str | None = None,
-    team: Any = None,
 ) -> Narrowed | Unanswered:
     """``player``'s games in ``span`` under every row-level narrowing the
-    question carries: opponent, venue, an absent teammate, a starter/bench
-    half, a game of each playoff series, lines on box-score columns, one date,
-    and a window (``order``/``limit``) cut after all of the above.
+    question carries: opponent, his own team (a tenure), venue, an absent
+    teammate, a starter/bench half, a game of each playoff series, lines on
+    box-score columns, one date, a calendar or alignment situation, and a
+    window (``order``/``limit``) cut after all of the above - the games'
+    cuts read off the typed :class:`~association.query.reading.Cuts`
+    (``scope.cuts``), one step for every reader on the relation.
 
     Each is a filter over the same rows, so each means the same thing whatever
     the template then does with the rows - list them, average them, count them.
@@ -783,10 +836,11 @@ def scoped_games(
     ``team`` beside a named player is his opponent) and a template that needs
     the team's name before the read passes it already resolved; ``measures``
     because each template decides what a bare ``threshold`` means before any
-    name is resolved. ``team`` is passed the same way, but stays ``None`` for
-    every caller except ``player_stat`` - see
-    :func:`_narrow_player_games`'s own note on why this is a caller's explicit
-    choice rather than a plain read of ``scope.team`` here.
+    name is resolved. The tenure (``scope.cuts.tenure``, "lebron stats as a
+    starter for Miami" - his games for that team, written by
+    ``subject._apply_own_team`` for the one reader whose words state it) is
+    read here like every other cut; until Phase 3, step 2 the compiler
+    alone passed it, as ``team``.
 
     .. versionadded:: 4.4.0
 
@@ -810,19 +864,23 @@ def scoped_games(
        Reads the typed :class:`~association.query.reading.Scope`. A slot dict
        is still taken, through :meth:`~association.query.reading.Scope.from_slots`,
        until every caller passes ``reading.scope``.
+
+    .. versionchanged:: 6.0.0
+       Reads the cuts off ``scope.cuts`` (Phase 3, step 2), the tenure
+       among them; ``team`` is no longer taken.
     """
     narrowed = _narrow_player_games(
         con,
         player,
         span,
         opponent=opponent,
-        venue=scope.venue,
+        venue=scope.cuts.venue,
         # A list, as the slot always was: teammate_names reads a list or one
         # bare name, and a tuple would be neither - every teammate dropped.
         without=list(scope.without),
         split=scope.split,
-        game_n=scope.game_n,
-        team=team,
+        game_n=scope.cuts.game_n,
+        team=scope.cuts.tenure,
         conditions=scope.conditions,
     )
     if isinstance(narrowed, Unanswered):
@@ -833,11 +891,11 @@ def scoped_games(
         narrowed.extra.append("g.date >= ? AND g.date < ?")
         narrowed.extra_params += [start, end]
         narrowed.date = date
-    if scope.situation:
+    if scope.cuts.situation:
         # Honored where it names the calendar or a conference/division, and
         # refused BY VALUE where it names anything else (an age, "since
         # returning") - see apply_situation.
-        apply_situation(narrowed, scope.situation)
+        apply_situation(narrowed, scope.cuts.situation)
     apply_period(con, narrowed, scope)
     if scope.period_condition is not None:
         refused = _apply_period_condition(con, narrowed, scope.period_condition)
@@ -892,8 +950,8 @@ def league_games(con: duckdb.DuckDBPyConnection, span: ResolvedSpan, scope: Scop
     # would otherwise be counted under a NULL name and reported as a
     # nameless leader.
     narrowed.narrow("pgl.player_name IS NOT NULL")
-    if scope.opponent and scope.opponent.strip():
-        team = resolved_team(con, scope.opponent, season=span.season)
+    if scope.cuts.opponent and scope.cuts.opponent.strip():
+        team = resolved_team(con, scope.cuts.opponent, season=span.season)
         if isinstance(team, Unanswered):
             return team
         narrowed.opponent = team
@@ -904,11 +962,11 @@ def league_games(con: duckdb.DuckDBPyConnection, span: ResolvedSpan, scope: Scop
             return team
         narrowed.team = team
         narrowed.narrow("pgl.team_id = ?", team.id)
-    if scope.venue:
-        narrowed.venue = scope.venue
-        narrowed.narrow("(g.home_team_id = pgl.team_id) = ?", scope.venue == "home")
+    if scope.cuts.venue:
+        narrowed.venue = scope.cuts.venue
+        narrowed.narrow("(g.home_team_id = pgl.team_id) = ?", scope.cuts.venue == "home")
     narrow_measures(narrowed, measure_filters(scope.below, scope.above))
-    season_n = scope.season_n
+    season_n = scope.cuts.season_n
     if season_n is not None and season_n > 0:
         # Each player's Nth regular season, counted the way settle_ordinal_season
         # counts one player's: distinct regular seasons on the per-player season
@@ -921,8 +979,8 @@ def league_games(con: duckdb.DuckDBPyConnection, span: ResolvedSpan, scope: Scop
             season_n,
         )
         narrowed.ordinal = season_n
-    if scope.situation:
-        apply_situation(narrowed, scope.situation)
+    if scope.cuts.situation:
+        apply_situation(narrowed, scope.cuts.situation)
     if position:
         codes = POSITION_CODES.get(position, [position])
         narrowed.narrow(f"pgl.athlete_id IN (SELECT athlete_id FROM players WHERE position_abbr IN ({', '.join('?' for _ in codes)}))", *codes)
@@ -978,7 +1036,7 @@ def condition_player(
     if isinstance(subject, Unanswered):
         return subject
     player, span = subject
-    narrowed = scoped_games(con, player, span, scope, opponent=scope.opponent if opponent is None else opponent, measures=measures or [])
+    narrowed = scoped_games(con, player, span, scope, opponent=scope.cuts.opponent if opponent is None else opponent, measures=measures or [])
     if isinstance(narrowed, Unanswered):
         return narrowed
     if team is not None:

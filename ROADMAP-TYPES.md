@@ -292,6 +292,93 @@ otherwise.
     point's `offset` as 0), and the typed value is recorded beside the
     reading as `window`.
 
+- **Declared in code by Phase 3, step 2, the games' cuts** (2026-10-09, the
+  lead's brief; no answer, result, remark, planned query or reading moved on
+  the four populations - every reading compared through the projection, the
+  typed value recorded beside it):
+  - The draft's `Opponent`, `Tenure`, `Venue`, `OnDate`, `DateRange`,
+    `Calendar`, `Round`, `GameOfSeries` and `SeasonOfCareer`, as
+    `reading.Cuts(opponent, tenure, venue, date, situation, round, game_n,
+    season_n)` on `Scope.cuts`, in place of the eight slots `opponent`,
+    `own_team`, `venue`, `date`, `situation`, `round`, `game_n`,
+    `season_n`. **Fields, not nine types**, because the readings hold them
+    together and a relation applies each as one more clause over the same
+    rows: measured on the 2,710 readings (`cuts_family.py`), an opponent
+    beside a venue 32 times, a round beside a situation 5, a series game
+    beside a round 3 and beside an opponent 2, a date beside its own month
+    4. The `situation` is one typed value, `reading.Situation(text,
+    calendar, alignment)`: the words as typed and what they parse to - a
+    `CalendarNarrowing` (the draft's `Calendar`; its `since_day` and
+    `since_date` kinds are the draft's `DateRange`), an
+    `AlignmentNarrowing` (the alignment half of the draft's `Opponent`), or
+    neither (the draft's `Unsupported` for this family: an age, overtime,
+    "since returning" - refused by value, as before). One cell for the
+    three rather than three, because the relations' tables declare the
+    `situation` and a decline names it so; measured: 96 readings carry
+    one, 42 a calendar narrowing, 21 an alignment, 33 neither.
+  - One tagger: `cuts.read_cuts(question, CutsContext) -> CutsRead(cuts,
+    claims, dated_since)`, over `lexicon.py`'s `VENUE_HOME`/`VENUE_AWAY`,
+    `SITUATION`, `CALENDAR_DATE`, `NUMERIC_DATE_RANGE`, `ROUND_WORDS`,
+    `SERIES_GAME`, `ORDINAL_SEASON`, and the calendar's own readers of a
+    situation value (`SITUATION_WEEKDAY`, `SITUATION_MONTH`,
+    `SITUATION_SINCE_DAY`, `SITUATION_SINCE_NUMERIC`, `ALIGNMENT` with
+    `ALIGNMENT_NAMES`, `BARE_MONTH`, `HOLIDAY_SPELLINGS` and
+    `HOLIDAY_WORDS`, `CONFERENCE_WORDS`; `calendar.py` holds no pattern of
+    its own and imports no regex engine), run in `router._settle` at the
+    position of the last stage that wrote a cut, before the window's and
+    the span's taggers (the span reads the date, the series game, the
+    ordinal season and the year a dated range opened at from it); the
+    context is the settled intent, the split, and the subject reading's
+    opponent and absent teammates. The opponent and the tenure are the
+    subject reading's (`read_subject`, `_apply_own_team`): the tagger takes
+    the first and claims nothing for either. Measured first: no stage moved
+    a cut between the route and the reading except the tenure (14, the
+    subject's own write).
+  - **A word two readings share is one claim named for both.** "his last
+    game 7" is the window's "last game" and the postseason's "game 7";
+    "in march 24 2018" the month and the day in it. `span.claimed` joins a
+    partial overlap into one claim (`"window+game_n"`) instead of raising:
+    on master "lebron's last game 7" raised `ValueError` out of the reader
+    to the user, and the cuts tagger's "game 4" claim beside the window's
+    "last game" would have widened that. The nested-claim fold is unchanged.
+  - The cells (contract 4): the seven cuts by name in `RELATION_SCOPING`
+    (`Cuts.CELLS` less `round`: no game is labeled by its round, so every
+    reader refuses it and no table declares it) and five in
+    `TEAM_RELATION_SCOPING` (`team_relation.TEAM_CUTS`: less `tenure` and
+    `season_n`, one player's), each applied by `scoped_games` /
+    `league_games` / `team_games` (the tenure by `scoped_games` now, where
+    the compiler alone passed it until this slice) and said by
+    `Narrowed.filters` / `TeamNarrowed.filters`; a reader whose words state
+    fewer takes `relation_cuts(intent)` / `team_relation_cuts(intent)` with
+    its exclusions in the `*_EXCLUDED` rows under the cut's name with its
+    reason (a season line's three readers, a high, a count, the NetPoints
+    two, the quarter ranking, a team's line and projection, the with/without
+    split), and no row of `STATED_SCOPING` names a cut. `SCOPING_SLOTS` is
+    shorter by the seven; `_MODEL_SLOTS` by `date` (a model-era date is
+    dropped at the stages' door with the span's and window's keys);
+    `reading.cell_set(scope, cell)` is the one reading of a cell name
+    against a Scope for the tables that still list cells by name
+    (`_CONDITION_PLAYER_ONLY_CELLS`, the planner's per-reader exclusions,
+    the shot readers' narrowing check). `_TEAM_READER_REFUSES` and
+    `_CONDITION_PLAYER_ONLY_CELLS` keep `season_n`: removing it would hand
+    a team log's or a team streak's ordinal season to the planner's
+    sentence where the reader's own, naming the missing player, answers
+    today - the decline-to-Cause commit those two are owed by.
+  - The record keeps its old shape through the projection
+    (`Scope.projected()`, `to_slots()`: the eight slots emitted where the
+    fields stood, `_CUT_SLOT_POSITIONS` - the opponent and the tenure
+    after `teams`, the date and the situation after the span, the series
+    game, the ordinal season and the round after the split, the venue
+    after the period condition), and the typed value is recorded beside
+    the reading as `cuts`.
+  - Not this slice's, on purpose: a situation nothing reads is still
+    refused by the relation by value, at RUN, with the sentence it had
+    (`Reading.unsupported`'s `non_calendar_situation` is said only where
+    the answer side declined) - moving it to PLAN rewords 33 answers and is
+    a decline-to-Cause commit; the subject reading claims nothing for the
+    names it reads (the subject's own slice); the split beside the venue
+    is the role family's.
+
 ## What must be decided before which phase
 
 | Phase | Needs from this document |
@@ -729,3 +816,19 @@ moves into `data` before the slice that rewords its answer:
    end, the refusal of a dropped one, and a `bottom` end for a ranking are
    decisions for the step that types the `Measure` and the ranking's
    direction, with every moved answer named.
+10. **A situation nothing reads is a cell the relation refuses, not the
+    planner.** `Situation.read` is False on 33 of the 2,710 readings (an
+    age, overtime, the All-Star break, "since returning", a bare
+    "division"), and each still reaches RUN, where the relation refuses it
+    by value with the sentence it always had; `Reading.unsupported`'s
+    `non_calendar_situation` is said only where the answer side declined.
+    Three cells (`calendar`, `alignment`, and the unread words as the
+    draft's `Unsupported`) with the planner refusing the third is the
+    typed shape, and it rewords those 33 answers - a decline-to-Cause
+    commit of its own, after this slice. The same for a worded since-date
+    with a year: "since january 31st 2020" is read as the 2020 season cut
+    at January 31 (the span's year and the calendar's day, separately),
+    where "since 1/31/2020" is every game from that date on across seasons
+    (`since_date`); the typed value records what was read, and the
+    decision which the words mean is open (ISSUES.md, "A worded since-date
+    with a year...").

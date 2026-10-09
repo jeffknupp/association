@@ -360,7 +360,7 @@ def read_fingerprint(con: duckdb.DuckDBPyConnection, q: NetPointsQuery, *, state
     # the loader picks a player's first or last game, which are different
     # questions, so a dated request still says it cannot answer.
     order = scope.window.order
-    if scope.date and not order:
+    if scope.cuts.date and not order:
         return Refusal(kind="fingerprint_on_a_date")
     # Settled before any name is resolved: the season is what narrows an
     # ambiguous name to the players who have a fingerprint in it.

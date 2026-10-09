@@ -566,7 +566,7 @@ def _resolve_named(con: duckdb.DuckDBPyConnection, q: Query) -> tuple[Entity | N
     # ``None`` season read here could not mean "unset" - the slot's own
     # season came back and "Bam adebeyo jan 19" declined as "a career span
     # and the 2026 season at once" (#230).
-    dated = bool(scope.date)
+    dated = bool(scope.cuts.date)
     subject = scoped_player(
         con,
         scope,
@@ -578,11 +578,12 @@ def _resolve_named(con: duckdb.DuckDBPyConnection, q: Query) -> tuple[Entity | N
     if isinstance(subject, Unanswered):
         raise Refused(subject)
     player, span = subject
-    # ``own_team`` ("lebron stats as a starter for Miami" - his games for
-    # that team, written by subject._apply_own_team) narrows exactly as it
-    # does for player_stat, the one template that reads it; ignored here, the
-    # same question averaged his whole career's starts (1,612 games for 294).
-    narrowed = scoped_games(con, player, span, scope, opponent=scope.opponent, measures=measure_filters(scope.below, scope.above), date=scope.date, team=scope.own_team)
+    # The tenure ("lebron stats as a starter for Miami" - his games for that
+    # team, written by subject._apply_own_team) is the relation's own cut
+    # since Phase 3, step 2 (`scope.cuts.tenure`, read by scoped_games);
+    # passed by the compiler alone until then, and ignored once, the same
+    # question averaged his whole career's starts (1,612 games for 294).
+    narrowed = scoped_games(con, player, span, scope, opponent=scope.cuts.opponent, measures=measure_filters(scope.below, scope.above), date=scope.cuts.date)
     if isinstance(narrowed, Unanswered):
         raise Refused(narrowed)
     return player, span, narrowed
@@ -610,7 +611,7 @@ def _resolve_pair(con: duckdb.DuckDBPyConnection, q: Query) -> tuple[Entity, Ent
     texts = list(dict.fromkeys(n.strip() for n in [*scope.players, scope.player] if n is not None and n.strip()))
     if len(texts) != 2:
         raise Unsupported(f"player_matchup needs exactly two players, got {texts!r}")
-    first = replace(q, scope=replace(scope, player=texts[0], window=replace(scope.window, order=None, count=None), opponent=None))
+    first = replace(q, scope=replace(scope, player=texts[0], window=replace(scope.window, order=None, count=None), cuts=replace(scope.cuts, opponent=None)))
     a, span, narrowed = _resolve_named(con, first)
     assert a is not None
     b = resolved_player(con, texts[1], available=BOX_SCORES, season=span.season, through=career_end(span.season))
@@ -644,11 +645,11 @@ def _apply_team_slot(con: duckdb.DuckDBPyConnection, q: Query, player: Entity | 
     if team_text is None or not team_text.strip() or player is None:
         return narrowed
     if q.skeleton == "rows":
-        resolved_opponent = team_slot_for_player(con, player, team_text, season=scope.span.season, opponent=scope.opponent)
+        resolved_opponent = team_slot_for_player(con, player, team_text, season=scope.span.season, opponent=scope.cuts.opponent)
         if isinstance(resolved_opponent, Unanswered):
             raise Refused(resolved_opponent)
         if resolved_opponent is not None and narrowed.opponent is None:
-            rescoped = scoped_games(con, player, span, scope, opponent=resolved_opponent, measures=measure_filters(scope.below, scope.above), date=scope.date, team=scope.own_team)
+            rescoped = scoped_games(con, player, span, scope, opponent=resolved_opponent, measures=measure_filters(scope.below, scope.above), date=scope.cuts.date)
             if isinstance(rescoped, Unanswered):
                 raise Refused(rescoped)
             narrowed = rescoped
@@ -961,7 +962,7 @@ def run_scope(scope: Scope, *, named: bool) -> Any:
     .. versionadded:: 5.0.0
     """
     if named:
-        return condition_scope(scope.span.as_career() if scope.season_n else scope.span, _PLAYER_GAME_TABLES)
+        return condition_scope(scope.span.as_career() if scope.cuts.season_n else scope.span, _PLAYER_GAME_TABLES)
     return condition_scope(scope.span.without_range(), _PLAYER_GAME_TABLES)
 
 

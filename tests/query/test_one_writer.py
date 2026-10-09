@@ -147,7 +147,7 @@ def test_for_me_is_the_asker_not_the_memphis_grizzlies(monkeypatch: pytest.Monke
 
     def record(ctx: Any, reading: Reading) -> Reply:
         del ctx
-        seen.append(reading.scope.own_team)
+        seen.append(reading.scope.cuts.tenure)
         return Reply(data={}, answer="answered")
 
     monkeypatch.setattr("association.query.compose.answer", lambda ctx, reading, trace=None, declined=None, planned=None: record(ctx, reading))

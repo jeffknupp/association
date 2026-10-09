@@ -287,35 +287,6 @@ PAST_N_SEASONS = re.compile(rf"\b(?:past|last)\s+({_SEASON_COUNT})\s+(?:seasons?
 .. versionadded:: 6.0.0
 """
 
-# A calendar day written the way people write it: "march 17", "Jan 19",
-# "november 11 2019". The leading group is what makes a date a RANGE rather
-# than a day - "since January 31st" starts a window and names no single game -
-# and those are a `situation`, which the calendar reading narrows by. The
-# calendar family's words; here since Phase 3, step 2, because a range opened
-# on a date WITH a year is also where the span's range starts.
-CALENDAR_DATE = re.compile(
-    r"(?P<range>\b(?:since|after|before|from|through|until)\s+(?:the\s+)?)?"
-    r"\b(?P<month>jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t|tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\.?\s+"
-    r"(?P<day>\d{1,2})(?:st|nd|rd|th)?(?:,?\s+(?P<year>(?:19|20)\d\d))?\b",  # codespell:ignore nd - an ordinal suffix
-    re.IGNORECASE,
-)
-"""A calendar day, or a range opened on one.
-
-.. versionadded:: 6.0.0
-"""
-# The same range written in numbers: "since 1/26/20", "from 12/25/2019".
-# Only after a range word, so a shooting line ("7/14") or the 50/40/90 club is
-# never a date; it becomes a `situation`, which the calendar reading narrows by
-# (`calendar.parse_situation`) or refuses by value - never a narrowing dropped.
-# yardstick-v2 F110, "towns home rec including playoffs since 1/26/20 vs spurs",
-# read without it answered his whole career at home against San Antonio.
-NUMERIC_DATE_RANGE = re.compile(r"\b(?:since|after|from)\s+(?:the\s+)?(?:0?[1-9]|1[0-2])/(?:0?[1-9]|[12]\d|3[01])(?:/(?P<year>(?:19|20)?\d\d))?\b", re.IGNORECASE)
-"""A range opened on a date written in numbers.
-
-.. versionadded:: 6.0.0
-"""
-
-
 # ---------------------------------------------------------------------------
 # The window family (Phase 3, step 2's second slice): which rows a read keeps
 # and from which end - "last 10 games", "his first game", "top 5", a count
@@ -517,6 +488,358 @@ LOG_OR_WINDOW_WORDS = re.compile(r"\b(log|gamelog|game log|last \d+|past \d+|fir
 
 .. versionadded:: 6.0.0
    ``parse._LOG_OR_WINDOW_WORDS`` until Phase 3, step 2.
+"""
+
+
+# ---------------------------------------------------------------------------
+# The games' cuts (Phase 3, step 2's third slice): which games of a span a
+# read sees - a venue, one calendar day, a circumstance (a weekday, a month,
+# a holiday, "since <day>", the conference or division the opponent is in,
+# or words nothing narrows by), a playoff round, a game of a series, an
+# ordinal season. Read by one tagger, ``query/cuts.py``; the opponent and
+# the tenure are the subject reading's words (``subject.py``'s "vs" and
+# "for" readers), not this family's. The calendar module's own readers of a
+# situation value (``calendar.parse_situation``, ``parse_alignment``,
+# ``bare_month``) read the patterns below too, so the words the tagger
+# captures and the words the relations narrow by cannot drift apart.
+# ---------------------------------------------------------------------------
+
+# The one table of month words: the number each names, keyed by its first
+# three letters, which every spelling read here shares ("sept" included).
+# Until this slice the months were written out in the router (twice) and in
+# the calendar module (ISSUES.md #244); the sayer's capitalized names stay
+# `season_text.MONTH_NAMES`.
+MONTH_NUMBERS: dict[str, int] = {"jan": 1, "feb": 2, "mar": 3, "apr": 4, "may": 5, "jun": 6, "jul": 7, "aug": 8, "sep": 9, "oct": 10, "nov": 11, "dec": 12}
+"""Each month's number, by the first three letters of its name.
+
+.. versionadded:: 6.0.0
+"""
+#: A month written in full or abbreviated ("march", "mar", "sept"), as the
+#: group ``month`` of the date patterns.
+_MONTH_WORD = r"(?P<month>jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t|tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)"
+#: A month written in full, as the situation readers take it.
+_MONTH_NAME = r"(?P<month>january|february|march|april|may|june|july|august|september|october|november|december)"
+#: The season's months, in full: the ones "in <month>" is read for.
+_SEASON_MONTHS = r"october|november|december|january|february|march|april|may|june"
+
+
+def month_number(word: str) -> int:
+    """The number of the month ``word`` names, however it was spelled
+    ("March", "mar", "Sept.").
+
+    .. versionadded:: 6.0.0
+    """
+    return MONTH_NUMBERS[word[:3].lower()]
+
+
+# A calendar day written the way people write it: "march 17", "Jan 19",
+# "november 11 2019". The leading group is what makes a date a RANGE rather
+# than a day - "since January 31st" starts a window and names no single game -
+# and those are a `situation`, which the calendar reading narrows by. A range
+# opened on a date WITH a year is also where the span's range starts (the
+# cuts tagger hands the year to the span's).
+CALENDAR_DATE = re.compile(
+    r"(?P<range>\b(?:since|after|before|from|through|until)\s+(?:the\s+)?)?"
+    + r"\b"
+    + _MONTH_WORD
+    + r"\.?\s+(?P<day>\d{1,2})(?:st|nd|rd|th)?(?:,?\s+(?P<year>(?:19|20)\d\d))?\b",  # codespell:ignore nd - an ordinal suffix
+    re.IGNORECASE,
+)
+"""A calendar day, or a range opened on one.
+
+.. versionadded:: 6.0.0
+"""
+# The same range written in numbers: "since 1/26/20", "from 12/25/2019".
+# Only after a range word, so a shooting line ("7/14") or the 50/40/90 club is
+# never a date; it becomes a `situation`, which the calendar reading narrows by
+# (`calendar.parse_situation`) or refuses by value - never a narrowing dropped.
+# yardstick-v2 F110, "towns home rec including playoffs since 1/26/20 vs spurs",
+# read without it answered his whole career at home against San Antonio.
+NUMERIC_DATE_RANGE = re.compile(r"\b(?:since|after|from)\s+(?:the\s+)?(?:0?[1-9]|1[0-2])/(?:0?[1-9]|[12]\d|3[01])(?:/(?P<year>(?:19|20)?\d\d))?\b", re.IGNORECASE)
+"""A range opened on a date written in numbers.
+
+.. versionadded:: 6.0.0
+"""
+
+# Where a game was played. "Far away" and "fade away" are shot descriptions,
+# not venues - "How far away does Wembanyama shoot from?" is a routing case.
+# Both at once is a SPLIT ("home and away splits"), not a cut, so the tagger
+# sets nothing then.
+VENUE_HOME = re.compile(r"\bhome\b(?!\s+runs?)", re.IGNORECASE)
+"""The games at home.
+
+.. versionadded:: 6.0.0
+   ``router._HOME`` until Phase 3, step 2.
+"""
+VENUE_AWAY = re.compile(r"(?<!far )(?<!fade )\b(?:away|road)\b", re.IGNORECASE)
+"""The games on the road.
+
+.. versionadded:: 6.0.0
+   ``router._AWAY`` until Phase 3, step 2.
+"""
+
+# One round of the postseason. No table carries a round, so no reader can
+# narrow to one: "tatum stats in the 2024 finals" was answered with his whole
+# 2024 postseason, 19 games where the Finals were 5. A cut, so every reader
+# refuses it rather than widening the question.
+ROUND_WORDS = re.compile(r"\bfinals\b|\b(?:first|second)\s+round\b|\bsemi-?finals?\b", re.IGNORECASE)
+"""A playoff round, as worded.
+
+.. versionadded:: 6.0.0
+   ``router._ROUND_WORDS`` until Phase 3, step 2.
+"""
+
+# One game of a playoff series, by number: "game 4", "game 7s". Read as a
+# number rather than left in the situation (where "Ayton stats in game 4
+# playoff games" refused), because the relation can find it - the nth game by
+# date between two teams in one postseason (Narrowed.narrow_series_game).
+# "game 7" used to be a round; it is a game like the others.
+SERIES_GAME = re.compile(r"\bgame\s+([1-7])s?\b", re.IGNORECASE)
+"""One game of each playoff series, by its number.
+
+.. versionadded:: 6.0.0
+   ``router._GAME_N`` until Phase 3, step 2.
+"""
+
+# A season named by ordinal: "his 18th season", "15th season played". The
+# model read the ordinal as a year - "his 18th season" came back as season
+# 2018, with LeBron dropped entirely, and the answer was the 2018 league
+# leaderboard - so a year the question itself does not name goes with it.
+# Which year the ordinal IS needs the player, so the relation settles it after
+# resolving him (player_relation.settle_ordinal_season).
+ORDINAL_SEASON = re.compile(r"\b(\d{1,2})(?:st|nd|rd|th)\s+season\b", re.IGNORECASE)  # codespell:ignore nd - an ordinal suffix
+"""A season named by its place in a career.
+
+.. versionadded:: 6.0.0
+   ``router._SEASON_N`` until Phase 3, step 2.
+"""
+
+# One row per holiday a question can name as a day: its label, the kind and
+# value of the narrowing it is (`calendar.CalendarNarrowing`'s: a fixed
+# `day` as (month, day), or the `nth_weekday` of a month as (month, ISO
+# weekday, n) for one that moves), and every spelling read as it. The
+# calendar module builds its `HOLIDAYS` table from this, and the situation
+# pattern below captures every spelling, so a spelling added here is one the
+# tagger captures and the relations read.
+HOLIDAY_SPELLINGS: tuple[tuple[str, str, tuple[int, ...], tuple[str, ...]], ...] = (
+    ("Christmas Day", "day", (12, 25), ("christmas", "christmas day", "xmas")),
+    # Its own day, not Christmas: "christmas eve" was captured as "christmas"
+    # and answered December 25 (#238).
+    ("Christmas Eve", "day", (12, 24), ("christmas eve", "xmas eve")),
+    ("New Year's Day", "day", (1, 1), ("new year's", "new years", "new year's day", "new years day")),
+    ("New Year's Eve", "day", (12, 31), ("new year's eve", "new years eve")),
+    ("Halloween", "day", (10, 31), ("halloween",)),
+    ("Valentine's Day", "day", (2, 14), ("valentine's day", "valentines day")),
+    # The third Monday of January, not January 15: that is MLK Day in 5 of
+    # the 33 seasons 1994-2026 (2026's was January 19), and "on mlk day"
+    # answered every January 15 (#238). A federal holiday from 1986, before
+    # the first game on record. "martin luther king" alone is read too, so
+    # "martin luther king jr. day" is MLK Day and not a narrowing dropped.
+    ("MLK Day", "nth_weekday", (1, 1, 3), ("mlk day", "martin luther king day", "martin luther king")),
+    # The fourth Thursday of November - it moves the way MLK Day does, and
+    # was refused only while no moving date could be stated.
+    ("Thanksgiving", "nth_weekday", (11, 4, 4), ("thanksgiving", "thanksgiving day")),
+)
+"""Every holiday a question can name as a day: its label, the kind and value
+of the narrowing it is, and every spelling read as it (lowercase, straight
+apostrophes).
+
+.. versionadded:: 6.0.0
+   ``calendar._HOLIDAY_SPELLINGS`` until Phase 3, step 2.
+"""
+UNREAD_HOLIDAYS: tuple[str, ...] = ("easter",)
+"""Holidays a question can name that no day is read for. The tagger
+captures them all the same (:data:`HOLIDAY_WORDS`), so the answer refuses
+the holiday by name rather than answering the season it was asked to
+narrow. Easter follows the church calendar (the Gregorian computus), which
+no narrowing here states.
+
+.. versionadded:: 6.0.0
+   ``calendar.UNREAD_HOLIDAYS`` until Phase 3, step 2.
+"""
+
+
+def _holiday_words_spelling(spelling: str) -> str:
+    """One holiday spelling as a regex: any run of spaces between its words."""
+    return r"\s+".join(re.escape(word) for word in spelling.split())
+
+
+HOLIDAY_WORDS: str = "|".join(
+    _holiday_words_spelling(name) for name in sorted({*(spelling for _, _, _, spellings in HOLIDAY_SPELLINGS for spelling in spellings), *UNREAD_HOLIDAYS}, key=lambda name: (-len(name), name))
+)
+"""Every holiday spelling read (:data:`HOLIDAY_SPELLINGS`) or refused
+(:data:`UNREAD_HOLIDAYS`), as one regex alternation (no group of its own),
+longest first so "christmas eve" is not read as "christmas". The situation
+pattern is built from it, so the words the tagger captures and the words
+the calendar reads cannot drift apart: "valentine's day" was a key the
+router's own list never captured, and so narrowed nothing (#238).
+
+.. versionadded:: 6.0.0
+   ``calendar.HOLIDAY_WORDS`` until Phase 3, step 2.
+"""
+
+#: The conference and division words a situation names the OPPONENT to be
+#: in, mapped to ``(kind, value)`` - ``value`` the way
+#: ``fetch.parse.parse_team_alignment`` stores it ("Eastern Conference",
+#: "Southeast"). ``midwest`` answers a season before the 2004-05 realignment
+#: split it into three; asked of a later season it narrows to opponents
+#: nobody was ever aligned under, which is a real (empty) answer and not an
+#: error - the same as naming a division a team never played in.
+ALIGNMENT_NAMES: dict[str, tuple[str, str]] = {
+    "east": ("conference", "Eastern Conference"),
+    "eastern": ("conference", "Eastern Conference"),
+    "west": ("conference", "Western Conference"),
+    "western": ("conference", "Western Conference"),
+    "atlantic": ("division", "Atlantic"),
+    "central": ("division", "Central"),
+    "southeast": ("division", "Southeast"),
+    "northwest": ("division", "Northwest"),
+    "southwest": ("division", "Southwest"),
+    "pacific": ("division", "Pacific"),
+    "midwest": ("division", "Midwest"),
+}
+"""Each conference or division word, to the kind and the stored name.
+
+.. versionadded:: 6.0.0
+   ``calendar._ALIGNMENT_NAMES`` until Phase 3, step 2.
+"""
+_ALIGNMENT_WORD = "|".join(sorted(ALIGNMENT_NAMES, key=len, reverse=True))
+# Deliberately narrow, the same way the holidays are: only the fixed
+# vocabulary above, with an optional leading "vs"/"against"/"in", an optional
+# "the", and an optional trailing "conference"/"division"/"team(s)" - never a
+# name pulled from free text, since a conference or division is a closed set
+# of eleven words and nothing here guesses at a twelfth.
+ALIGNMENT = re.compile(rf"^(?:(?:vs\.?|against|in)\s+)?(?:the\s+)?(?P<name>{_ALIGNMENT_WORD})(?:\s+(?:conference|division))?(?:\s+teams?)?$", re.IGNORECASE)
+"""A whole situation value naming the opponent's conference or division.
+
+.. versionadded:: 6.0.0
+   ``calendar._ALIGNMENT`` until Phase 3, step 2.
+"""
+
+# The words after a subject that name a circumstance, filed in one
+# `situation` value - "tuesdays", "in october", "christmas", "since january
+# 31st" - alongside things no game table can filter on ("18 year old",
+# "since returning"). Setting it is enough on its own: a reader whose words
+# do not state it steps aside, the planner refuses what a relation cannot
+# honor, and a value the calendar cannot read is refused by the relation BY
+# VALUE - the ranking AGENTS.md sets: a refusal beats a fluent wrong answer.
+# Measured against 343 real questions when it was written (the 261-query feed
+# plus the 83 routing corpus cases): 14 feed queries match and no corpus case
+# does, so no question that routed correctly started refusing.
+SITUATION = re.compile(
+    r"\bback[- ]to[- ]backs?\b|\bb2bs?\b|\bsecond\s+night\b|\bovertime\b|"
+    # "in the month of march" as well as "in march" (F096) - the calendar
+    # reader (SITUATION_MONTH) already takes both.
+    rf"\bin\s+(?:the\s+month\s+of\s+)?(?:{_SEASON_MONTHS})\b|"
+    # A conference or division, kept WITH its name and its "vs"/"against"/"in"
+    # so `calendar.parse_alignment` reads it whole: "vs southeast division"
+    # used to be captured as the word "division" alone (#213), and the
+    # relation - which answers the phrase - refused the bare word. The bare
+    # forms stay as the last resort, still refused honestly by name.
+    r"\b(?:vs\.?|against|in)\s+(?:the\s+)?(?:east(?:ern)?|west(?:ern)?|atlantic|central|southeast|northwest|southwest|pacific|midwest)(?:\s+(?:conference|division))?(?:\s+teams?)?\b|"
+    r"\b(?:atlantic|central|southeast|northwest|southwest|pacific|midwest)\s+division\b|"
+    r"\b(?:east(?:ern)?|west(?:ern)?)\s+conference\b|\bdivision\b|\ball[- ]star\s+break\b|"
+    # A day of the week: 8 of the 14, and the most common shape in the feed.
+    r"\b(?:mon|tues|wednes|thurs|fri|satur|sun)days?\b|"
+    # A calendar holiday. "on christmas" answered with a whole season average.
+    rf"\b(?:{HOLIDAY_WORDS})\b|"
+    # An age. "most triple doubles before turning 27" answered with this
+    # season's triple-double leaders - `players` holds no birth date at all
+    # (DATA.md), so this one cannot be answered even in principle.
+    r"\b(?:before|after|by)\s+(?:turning|age)\s+\d+\b|\bat\s+age\s+\d+\b|\b\d+\s+years?\s+old\b|"
+    # A minutes condition used to be here ("paul reed gamelog with 25 minutes"
+    # returned his most recent game); it is a line (`below`/`above`) now, a
+    # slot the relation filters on.
+    # A window defined by an event rather than a date.
+    r"\bsince\s+(?:returning|coming\s+back|his\s+return|the\s+all[- ]star\s+break)\b|\bsince\s+(?:his\s+)?injury\b|\bafter\s+returning\b|"
+    # A calendar day is NOT here: the tagger resolves it to a real date
+    # (CALENDAR_DATE) and `game_log` then answers the game that was asked
+    # about. What is left here is the date this project cannot turn into one
+    # day - a window opened by "since March 1", and a date in a career
+    # question, which spans twenty Octobers and so fixes no year. Both refuse.
+    r"\b(?:since|after|before|from|through|until)\s+(?:the\s+)?(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t|tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\.?\s+\d{1,2}"
+    r"(?:st|nd|rd|th)?\b",  # codespell:ignore nd - an ordinal suffix
+    # A season named by ordinal ("his 18th season") used to be here; it is
+    # ORDINAL_SEASON now, settled to a year once the player is known.
+    re.IGNORECASE,
+)
+"""A circumstance the games are under, as the question worded it.
+
+.. versionadded:: 6.0.0
+   ``router._SITUATION`` until Phase 3, step 2.
+"""
+
+# The calendar module's readers of a situation VALUE, each anchored to the
+# whole value: a weekday, a month ("in march", "the month of march"), every
+# game from a day of the season on, the same in numbers, and a bare month
+# (the one shape a team's record reads off the standings by month).
+SITUATION_WEEKDAY = re.compile(r"^(?:on\s+)?(?P<day>monday|tuesday|wednesday|thursday|friday|saturday|sunday)s?$", re.IGNORECASE)
+"""A situation value that is a weekday.
+
+.. versionadded:: 6.0.0
+   ``calendar._WEEKDAY`` until Phase 3, step 2.
+"""
+SITUATION_MONTH = re.compile(rf"^(?:in\s+)?(?:the\s+month\s+of\s+)?{_MONTH_NAME}$", re.IGNORECASE)
+"""A situation value that is a month.
+
+.. versionadded:: 6.0.0
+   ``calendar._IN_MONTH`` until Phase 3, step 2.
+"""
+SITUATION_SINCE_DAY = re.compile(rf"^(?:since|from|after)\s+(?:the\s+)?{_MONTH_NAME}\s+(?P<num>\d{{1,2}})(?:st|nd|rd|th)?$", re.IGNORECASE)  # codespell:ignore nd - an ordinal suffix
+"""A situation value opening a range on a day of each season.
+
+.. versionadded:: 6.0.0
+   ``calendar._SINCE_DAY`` until Phase 3, step 2.
+"""
+SITUATION_SINCE_NUMERIC = re.compile(r"^(?:since|from|after)\s+(?:the\s+)?(?P<date>\d{1,2}/\d{1,2}(?:/\d{2}(?:\d{2})?)?)$", re.IGNORECASE)
+"""A situation value opening a range on a date written in numbers.
+
+.. versionadded:: 6.0.0
+   ``calendar._SINCE_NUMERIC`` until Phase 3, step 2.
+"""
+BARE_MONTH = re.compile(rf"^in {_MONTH_NAME}$", re.IGNORECASE)
+"""A situation value of exactly "in <month>" - anchored to that shape, so
+"since january 31st" (a window) is not mistaken for one.
+
+.. versionadded:: 6.0.0
+   ``calendar._BARE_MONTH`` until Phase 3, step 2.
+"""
+
+# Conference and division words where a TEAM belongs - the team or opponent
+# slot. As an opponent narrowing ("vs the west") they are read above
+# (ALIGNMENT, over `team_alignment`); as the team a record or a line is
+# about ("who leads the east"), nothing reads a conference's own standings
+# or leaders yet (ISSUES.md #25). So a team slot naming one is refused by
+# name; resolved as a team it would match nothing and be refused for the
+# wrong cause.
+CONFERENCE_WORDS = re.compile(r"\b(?:conferences?|divisions?|east(?:ern)?|west(?:ern)?|atlantic|central|southeast|northwest|pacific|southwest)\b", re.IGNORECASE)
+"""A conference or division word in a team's name slot.
+
+.. versionadded:: 6.0.0
+   ``calendar._CONFERENCE_WORDS`` until Phase 3, step 2.
+"""
+# How a situation nothing reads is told apart for the refusal's facts
+# (`reading.Cause("non_calendar_situation")`, its `reads_as`): an age, or a
+# conference or division phrase in a shape the alignment reader does not
+# take ("the Central Division these days").
+AGE_WORDS = re.compile(r"\b(?:\d+\s+years?\s+old|(?:before|after|by|at)\s+(?:turning|age)\s+\d+|age\s+\d+)\b", re.IGNORECASE)
+"""An age, which no table holds a birth date for.
+
+.. versionadded:: 6.0.0
+   ``parse._AGE`` until Phase 3, step 2.
+"""
+CONFERENCE_OR_DIVISION = re.compile(r"\b(?:east(?:ern)?|west(?:ern)?|conference|division|atlantic|central|southeast|northwest|pacific|southwest)\b", re.IGNORECASE)
+"""A conference or division word anywhere in a situation.
+
+.. versionadded:: 6.0.0
+   ``parse._CONFERENCE_OR_DIVISION`` until Phase 3, step 2.
+"""
+NAME_LIST_SPLIT = re.compile(r",|\band\b|&")
+"""Where a list of names written as one string splits ("Anthony Black,
+Franz Wagner"): the cuts tagger reads an opponent that is the absent
+teammates again by it.
+
+.. versionadded:: 6.0.0
 """
 
 

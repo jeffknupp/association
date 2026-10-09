@@ -304,7 +304,7 @@ def _team_narrowed(scope: Scope) -> bool:
     # sends the read to the game-level relation rather than the season line.
     # A quarter or half is one too: read as the season line, "the magic's
     # first-quarter threes" would be their whole season's.
-    if any((scope.opponent, scope.venue, scope.date, scope.span.since, scope.span.until, scope.game_n, scope.situation)):
+    if any((scope.cuts.opponent, scope.cuts.venue, scope.cuts.date, scope.span.since, scope.span.until, scope.cuts.game_n, scope.cuts.situation)):
         return True
     if scope.period is not None or scope.half is not None:
         return True
@@ -379,8 +379,8 @@ def _team_games_narrowed(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> tuple[
     if isinstance(settled, Unanswered):
         raise Refused(settled)
     team, span = settled
-    date = scope.date if scope.date is not None and len(scope.date) == 10 else None
-    narrowed = narrow_team_games(con, team, span, scope, opponent=scope.opponent, date=date)
+    date = scope.cuts.date if scope.cuts.date is not None and len(scope.cuts.date) == 10 else None
+    narrowed = narrow_team_games(con, team, span, scope, opponent=scope.cuts.opponent, date=date)
     if isinstance(narrowed, Unanswered):
         raise Refused(narrowed)
     return narrowed, team, span
@@ -390,7 +390,7 @@ def _team_mixed(scope: Scope) -> bool:
     """Whether a window read spans both season types: "last N games" naming
     no season type (``season_type_unstated``), with no date, career or game
     of a series fixing one - the same test the team log makes."""
-    return scope.span.both and not scope.date and not scope.span.career and not scope.game_n
+    return scope.span.both and not scope.cuts.date and not scope.span.career and not scope.cuts.game_n
 
 
 def _compile_team_games_mixed(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> TeamResult:
@@ -420,7 +420,7 @@ def _compile_team_games_mixed(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> T
     if span.season is None:
         raise Unsupported("a career span has no single season to read both season types within")
     limit = _clamp_limit(scope.window.count, DEFAULT_GAME_LOG_LIMIT)
-    mixed = _team_mixed_rows(con, team, span.season, opponent=scope.opponent, venue=scope.venue, limit=limit)
+    mixed = _team_mixed_rows(con, team, span.season, opponent=scope.cuts.opponent, venue=scope.cuts.venue, limit=limit)
     if isinstance(mixed, Unanswered):
         raise Refused(mixed)
     rows, counts, narrowed_text = mixed
@@ -462,7 +462,7 @@ def _compile_team_games_total(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> T
     if q.measure not in GAME_MEASURES:
         raise Unsupported(f"{q.measure!r} needs a box-score join the team relation does not have yet for a narrowed read")
     if _team_mixed(q.scope):
-        if q.scope.span.since or q.scope.span.until or q.scope.situation or q.scope.period is not None or q.scope.half is not None:
+        if q.scope.span.since or q.scope.span.until or q.scope.cuts.situation or q.scope.period is not None or q.scope.half is not None:
             # The both-types read is a plain window (an opponent and a venue
             # at most, as the log's is); a range of seasons or a calendar
             # would be dropped from it silently, so it is refused instead.

@@ -30,8 +30,7 @@ from typing import Any, Literal, cast, get_args
 
 import duckdb
 
-from association.query import names
-from association.query.calendar import parse_alignment, parse_situation
+from association.query import lexicon, names
 from association.query.decisions import Decision
 from association.query.entities import _edit_budget, _words, find_players, find_teams, players_of, suggest_players, team_abbreviations, teams_of
 from association.query.lexicon import COUNT, LOG_OR_WINDOW_WORDS
@@ -682,7 +681,7 @@ def _read_route_split(subject: Subject, question: str, intent: str, scope: Scope
     split = _route_calendar_slots_split(blanked)
     out = replace(scope, split=_as_split(split))
     if split == "home_away" and intent == "player_splits":
-        out = replace(out, venue=None)  # a split over venues is not a filter to one (router._route_intent_slots)
+        out = replace(out, cuts=replace(out.cuts, venue=None))  # a split over venues is not a filter to one (the cuts tagger drops it the same way)
     return out
 
 
@@ -953,8 +952,6 @@ _TITLE_ODDS = re.compile(r"\btitle\s+odds\b|\bchampionship\s+odds\b", re.IGNOREC
 """"Title odds": a regular-season projection ``team_outlook`` answers, not a
 championship."""
 _BENCH_POINTS = re.compile(r"\bbench\s+(?:points?|scoring|pts)\b", re.IGNORECASE)
-_AGE = re.compile(r"\b(?:\d+\s+years?\s+old|(?:before|after|by|at)\s+(?:turning|age)\s+\d+|age\s+\d+)\b", re.IGNORECASE)
-_CONFERENCE_OR_DIVISION = re.compile(r"\b(?:east(?:ern)?|west(?:ern)?|conference|division|atlantic|central|southeast|northwest|pacific|southwest)\b", re.IGNORECASE)
 _PERIOD_WORD = re.compile(r"\b(?:1st|2nd|3rd|4th|first|second|third|fourth)\s+(?:quarter|half)\b|\bq[1-4]\b|\b[1-4]q\b|\b[12]h\b|\b(?:quarter|half)\b", re.IGNORECASE)
 
 
@@ -1018,7 +1015,7 @@ def _reading_from_route_unsupported(question: str, reading: Reading) -> tuple[Ca
 
 def _unsupported_playoff_round(reading: Reading) -> Cause | None:
     """A named round: the games carry no round or series label (ISSUES #10)."""
-    playoff_round = reading.scope.round
+    playoff_round = reading.scope.cuts.round
     if not isinstance(playoff_round, str) or not playoff_round.strip():
         return None
     return Cause(kind="playoff_round", facts={"intent": reading.intent, "round": playoff_round})
@@ -1026,21 +1023,18 @@ def _unsupported_playoff_round(reading: Reading) -> Cause | None:
 
 def _unsupported_situation(reading: Reading) -> Cause | None:
     """A ``situation`` that names neither a calendar narrowing nor a
-    conference or division (:func:`~association.query.calendar.parse_situation`,
-    :func:`~association.query.calendar.parse_alignment` - the same two
-    readers the relations' own shared steps try): an age (no birth dates on
-    record), a conference or division word in a shape ``parse_alignment``
-    does not read ("the Central Division these days" - the words are right
-    and only the phrasing is not, a different sentence), or anything else
-    the games are not read by (``reads_as``: ``age``, ``alignment``,
-    ``other``)."""
-    situation = reading.scope.situation
-    if not isinstance(situation, str) or not situation.strip():
+    conference or division (:class:`~association.query.reading.Situation`,
+    parsed once where the words were read, by the same two readers the
+    relations' own shared steps apply): an age (no birth dates on record),
+    a conference or division word in a shape the alignment reader does not
+    take ("the Central Division these days" - the words are right and only
+    the phrasing is not, a different sentence), or anything else the games
+    are not read by (``reads_as``: ``age``, ``alignment``, ``other``)."""
+    situation = reading.scope.cuts.situation
+    if situation is None or situation.read:
         return None
-    if parse_situation(situation) is not None or parse_alignment(situation) is not None:
-        return None
-    reads_as = "age" if _AGE.search(situation) else "alignment" if _CONFERENCE_OR_DIVISION.search(situation) else "other"
-    return Cause(kind="non_calendar_situation", facts={"intent": reading.intent, "situation": situation, "reads_as": reads_as})
+    reads_as = "age" if lexicon.AGE_WORDS.search(situation.text) else "alignment" if lexicon.CONFERENCE_OR_DIVISION.search(situation.text) else "other"
+    return Cause(kind="non_calendar_situation", facts={"intent": reading.intent, "situation": situation.text, "reads_as": reads_as})
 
 
 def _unsupported_period_stat(reading: Reading) -> Cause | None:

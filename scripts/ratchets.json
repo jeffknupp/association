@@ -25,7 +25,6 @@
   "team_relation": 2
  },
  "regex_outside_the_reader": [
-  "calendar",
   "entities",
   "metrics",
   "team_metrics"

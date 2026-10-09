@@ -34,7 +34,7 @@ from association.query.measures import log_extras, stat_measure
 from association.query.notes import Note
 from association.query.player_games import Narrowed, aggregate_sql
 from association.query.player_relation import ResolvedSpan, box_score_notes_read, no_narrowed_games, scoped_games, span_of, whole_span
-from association.query.reading import DEFAULT_GAME_LOG_LIMIT, Scope, Unsupported, _clamp_limit, unhonored_scoping
+from association.query.reading import DEFAULT_GAME_LOG_LIMIT, Cuts, Scope, Unsupported, _clamp_limit, unhonored_scoping
 from association.query.result import LogFacts, Narrowing, Part, Refusal, Result, Rows, Span, Unanswered, Window
 from association.query.team_games import TEAM_GAMES_SQL, TeamNarrowed
 from association.query.team_relation import team_games
@@ -339,7 +339,7 @@ def read_player_log(con: duckdb.DuckDBPyConnection, q: Query, *, stated: frozens
     if compiled.player is None:
         return None
     asked = scope.window.count
-    if scope.span.both and not compiled.narrowed.date and not scope.span.career and not scope.game_n:
+    if scope.span.both and not compiled.narrowed.date and not scope.span.career and not scope.cuts.game_n:
         # "His last N games" naming no season type: each type on its own,
         # merged by date, over the season the compiler settled.
         if compiled.span.season is None:
@@ -432,10 +432,10 @@ def _team_mixed_rows(con: duckdb.DuckDBPyConnection, team: Any, season: int, *, 
     (``compose.team``), which summed one type alone before it."""
     rows_by_type: dict[int, list[dict[str, Any]]] = {}
     narrowed_text = ""
-    point = TeamQuery(scope=Scope(venue=venue), shape="rows")
+    point = TeamQuery(scope=Scope(cuts=Cuts(venue=venue)), shape="rows")
     for season_type in (2, 3):
         type_span = ResolvedSpan(season, season_type)
-        narrowed = team_games(con, team, type_span, Scope(venue=venue), opponent=opponent)
+        narrowed = team_games(con, team, type_span, Scope(cuts=Cuts(venue=venue)), opponent=opponent)
         if isinstance(narrowed, Unanswered):
             return narrowed
         narrowed_text = narrowed.filters()
@@ -497,9 +497,9 @@ def read_team_log(con: duckdb.DuckDBPyConnection, q: TeamQuery, *, stated: froze
     season_type = scope.span.season_type or 2
     limit = _clamp_limit(scope.window.count, default=DEFAULT_GAME_LOG_LIMIT)
     ascending = scope.window.order == "first"
-    date = scope.date
-    opponent, venue, without = scope.opponent, scope.venue, scope.without
-    game_n = scope.game_n
+    date = scope.cuts.date
+    opponent, venue, without = scope.cuts.opponent, scope.cuts.venue, scope.without
+    game_n = scope.cuts.game_n
     measures = _game_log_lines(scope.below, scope.above, scope.threshold)
     # A date names its game outright, so it replaces the season rather than
     # being filtered inside it.
@@ -512,7 +512,7 @@ def read_team_log(con: duckdb.DuckDBPyConnection, q: TeamQuery, *, stated: froze
     if isinstance(team, Unanswered):
         return team
     _team_log_refusals(without, measures, game_n)
-    if mixed and (scope.span.since or scope.span.until or scope.situation):
+    if mixed and (scope.span.since or scope.span.until or scope.cuts.situation):
         # The both-types read is a plain window (an opponent and a venue at
         # most); a range of seasons or a calendar narrowing is refused, as
         # the team compiler's window sum refuses the same read.
@@ -523,7 +523,7 @@ def read_team_log(con: duckdb.DuckDBPyConnection, q: TeamQuery, *, stated: froze
             raise Unsupported("a career span has no single season to read both season types within")
         return _team_log_mixed(con, team.name, team, resolved_season, opponent=opponent, venue=venue, limit=limit, stat=scope.stat)
     seasons = span_of(asked, "games", season_type=season_type)
-    narrowed = team_games(con, team, seasons, Scope(venue=venue), opponent=opponent, date=date)
+    narrowed = team_games(con, team, seasons, Scope(cuts=Cuts(venue=venue)), opponent=opponent, date=date)
     if isinstance(narrowed, Unanswered):
         return narrowed
     return _team_log(con, q, team, seasons, narrowed, limit=limit, ascending=ascending, stat=scope.stat)

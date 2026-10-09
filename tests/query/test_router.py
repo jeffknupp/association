@@ -1313,12 +1313,13 @@ def test_a_holiday_is_captured_whole_and_read_as_its_own_day(question: str, situ
 
 def test_every_holiday_the_calendar_names_is_one_the_router_captures() -> None:
     """The router's holiday words are built from the calendar's own lists
-    (`calendar.HOLIDAY_WORDS`), so the two cannot drift the way they did:
+    (`lexicon.HOLIDAY_WORDS`), so the two cannot drift the way they did:
     "valentine's day" was a day the calendar read that the router's
     hand-kept list never captured. Every spelling the calendar reads is
     captured whole and read as its day; every one it names and does not
     read is captured all the same, and refused by value downstream."""
-    from association.query.calendar import HOLIDAYS, UNREAD_HOLIDAYS, parse_situation
+    from association.query.calendar import HOLIDAYS, parse_situation
+    from association.query.lexicon import UNREAD_HOLIDAYS
 
     for spelling, narrowing in HOLIDAYS.items():
         got = _ask(f"lebron stats on {spelling} this season", '{"intent":"player_stat","player":"LeBron James"}').slots.get("situation")

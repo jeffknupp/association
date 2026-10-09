@@ -20,7 +20,7 @@ from association.nba.season import current_season
 from association.query.answer import AnswerContext
 from association.query.compose.core import Query, compile_query, rows_of
 from association.query.player_relation import RELATION_SCOPING, RELATION_SCOPING_EXCLUDED, relation_scoping, relation_window
-from association.query.reading import Claim, Scope, ScopeError, Span, Window, unhonored_cells
+from association.query.reading import Claim, Cuts, Scope, ScopeError, Span, Window, unhonored_cells
 from association.query.season_line import history_seasons
 from association.query.span import SpanContext, claimed, read_span
 from association.query.team_games import TeamNarrowed, rows_sql
@@ -228,7 +228,7 @@ def test_the_cells_and_what_a_reader_leaves_unhonored() -> None:
         "ranked_by",
     ]
     assert Window(order="first", count=1).unhonored(frozenset({"window"})) == []
-    assert unhonored_cells(Scope(opponent="BOS", window=Window(order="recent", count=3)), frozenset({"opponent"})) == ["order"]
+    assert unhonored_cells(Scope(cuts=Cuts(opponent="BOS"), window=Window(order="recent", count=3)), frozenset({"opponent"})) == ["order"]
     assert unhonored_cells(Scope(window=Window(by="points", count=10)), frozenset({"window"})) == ["ranked_by"]
 
 

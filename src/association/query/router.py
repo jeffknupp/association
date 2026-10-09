@@ -26,20 +26,16 @@ from __future__ import annotations
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from datetime import date
 from typing import TYPE_CHECKING, Any
 
-from association.nba.season import current_season
-
 from . import lexicon
+from .cuts import CutsContext, CutsRead, read_cuts
 from .decisions import Decision
-from .lexicon import CALENDAR_DATE, GAMES_WORDS, NUMERIC_DATE_RANGE, ORDER_WORDS, PAST_N_SEASONS, PERIOD_TOP, RANK_WORDS, WHO_RANKS, season_from_text
+from .lexicon import GAMES_WORDS, ORDER_WORDS, PAST_N_SEASONS, PERIOD_TOP, RANK_WORDS, WHO_RANKS
 from .measures import MEASURE_WORDS, STAT_ALIASES
 from .reading import Claim, Scope, Window
-from .span import SpanContext, career_named, claimed, range_named, read_span
+from .span import SpanContext, claimed, range_named, read_span
 from .window import WindowContext, read_window
-
-from .calendar import HOLIDAY_WORDS  # isort: skip - after .span, which calendar's own imports do not reach
 
 if TYPE_CHECKING:
     from .subject import Subject
@@ -357,106 +353,11 @@ def _validate_side(slots: dict[str, Any], question: str) -> str | None:
     return side if isinstance(side, str) and side in SIDE_VALUES else None
 
 
-# One round or game of the postseason. No table carries a round or a series
-# game number, so no template can narrow to one: "tatum stats in the 2024 finals"
-# was answered with his whole 2024 postseason, 19 games where the Finals were 5.
-# A scoping slot, so every template refuses it rather than widening the question.
-_ROUND_WORDS = re.compile(r"\bfinals\b|\b(?:first|second)\s+round\b|\bsemi-?finals?\b", re.IGNORECASE)
-
-# One game of a playoff series, by number: "game 4", "game 7s". Read as a
-# number rather than left in `situation` (where "Ayton stats in game 4 playoff
-# games" refused), because the relation can find it - the nth game by date
-# between two teams in one postseason (player_games.Narrowed.narrow_series_game).
-# "game 7" used to be a `round`; it is a game like the others.
-_GAME_N = re.compile(r"\bgame\s+([1-7])s?\b", re.IGNORECASE)
-
-# A season named by ordinal: "his 18th season", "15th season played". The model
-# reads the ordinal as a year - "his 18th season" came back as season 2018,
-# with LeBron dropped entirely, and the answer was the 2018 league leaderboard
-# - so a year the question itself does not name goes with it. Which year the
-# ordinal IS needs the player, so the templates settle it after resolving him
-# (player_relation.settle_ordinal_season).
-_SEASON_N = re.compile(r"\b(\d{1,2})(?:st|nd|rd|th)\s+season\b", re.IGNORECASE)  # codespell:ignore nd - an ordinal suffix
-
-
 # "record" asked with a counting intent means wins and losses, not a count of
 # games. Measured: "Sixers record when Embiid scores 30 points this season" came
 # back as threshold_count and was answered with the league's 30-point games,
 # Embiid dropped.
 _RECORD = re.compile(r"\brecord\b", re.IGNORECASE)
-
-
-_MONTHS = {
-    "jan": 1, "feb": 2, "mar": 3, "apr": 4, "may": 5, "jun": 6,
-    "jul": 7, "aug": 8, "sep": 9, "oct": 10, "nov": 11, "dec": 12,
-}  # fmt: skip
-
-
-def _validate_date(question: str, season: int | None) -> str | None:
-    """A calendar day as ``YYYY-MM-DD``, or None if the question names none.
-
-    The year is not in the question and does not need to be, because a season
-    fixes it: season Y runs from October of Y-1 through June of Y, so October
-    to December belong to ``season - 1`` and January onward to ``season``. That
-    is this project's own numbering (:func:`~association.nba.season.current_season`)
-    applied to a month, not a guess - "Desmond bane march 17" against season
-    2026 is 2026-03-17, and `game_log` answers it with that game.
-
-    Read from the text for the same reason the year and the side of the ball
-    are: the model is told to emit `date` only for an exact calendar day and
-    routinely does not. Measured, "Desmond bane march 17" arrived with no
-    `date` at all and `order="recent"`, and was answered with his most recent
-    game - a month later, and the wrong question.
-
-    Three things it will not do, each because the answer would be a guess
-    rather than a reading:
-
-    - **A year the question states wins.** "november 11 2019" is the calendar
-      day, not November of whatever season 2019 resolves to.
-    - **A date that opens a window is not a day.** "since January 31st" names a
-      range no template honors; it is left to `_SITUATION` to refuse.
-    - **No season, no date.** A career question has no season to fix the year
-      on ("lebron on march 17 all time" spans 20 of them), so it refuses
-      instead.
-
-    .. versionadded:: 2.2.0
-    """
-    match = CALENDAR_DATE.search(question)
-    if match is None or match.group("range"):
-        return None
-    month = _MONTHS[match.group("month")[:3].lower()]
-    day = int(match.group("day"))
-    stated = match.group("year")
-    if stated is not None:
-        year = int(stated)
-    elif season is not None:
-        year = season - 1 if month >= 10 else season
-    else:
-        return None
-    try:
-        return date(year, month, day).isoformat()
-    except ValueError:
-        return None  # "february 31"
-
-
-# Where a game was played. "Far away" and "fade away" are shot descriptions,
-# not venues - "How far away does Wembanyama shoot from?" is a routing case.
-_HOME = re.compile(r"\bhome\b(?!\s+runs?)", re.IGNORECASE)
-_AWAY = re.compile(r"(?<!far )(?<!fade )\b(?:away|road)\b", re.IGNORECASE)
-
-
-def _validate_venue(question: str) -> str | None:
-    """ "home" or "away" when the question restricts itself to one of them.
-
-    Both at once is a SPLIT ("home and away splits"), not a filter, so it sets
-    nothing here - see _validate_split. A template that cannot restrict to a
-    venue refuses one rather than answering the whole season: "Knicks home
-    record this season" was answered 53-29, their overall record.
-    """
-    home, away = bool(_HOME.search(question)), bool(_AWAY.search(question))
-    if home == away:
-        return None
-    return "home" if home else "away"
 
 
 # The subject of a single-game high or a threshold count, when the model
@@ -811,71 +712,6 @@ _BELOW = re.compile(
 # the templates that read one (threshold_count, record_when) already carry it.
 # Not the "35 minutes" inside "less than 35 minutes", which is `_BELOW`'s.
 _ABOVE = re.compile(r"\b(?:with\s+(?:at\s+least\s+)?)?(?<!than\s)(?<!under\s)(?<!below\s)\d+\+?\s*(?:minutes|mins?)\b(?!\s+or\s+less)(?:\s+(?:or\s+more|played))?", re.IGNORECASE)
-
-# Situations a game can be in that no template filters on: the second night of a
-# back-to-back, overtime, a calendar month, a conference or division, the
-# All-Star break. team_record answered each with the whole season's record.
-#
-# The second group below was added 2026-09-15 from the 261-query StatMuse feed
-# replay, where a narrowing ROUTER_SCHEMA has no slot for was the single largest
-# cause of a wrong answer - 14 of 261, more than any other. The words never
-# reached the scope check, because it can only refuse a slot the router emits, so
-# the template answered the un-narrowed question: "lebron james 2 3 pointers
-# all-time vs jazz on tuesdays" returned his career average against Utah over 48
-# games, with the Tuesday, the threes and the "2" all silently gone.
-#
-# Read from the question text rather than added to ROUTER_SCHEMA, which is the
-# cheap half of this fix and the safe one: a new slot in the schema moves slots
-# on unrelated questions (see _validate_side), while a regex here costs no
-# prompt tokens and cannot. Setting `situation` is enough on its own - a
-# reader whose words do not state it steps aside and the planner refuses
-# what the relation cannot honor, which is the ranking AGENTS.md sets: a
-# refusal beats a fluent wrong answer.
-#
-# Measured against 343 real questions (the 261-query feed plus the 83 routing
-# corpus cases): 14 feed queries match and **no corpus case does**, so no
-# question that routes correctly today starts refusing.
-_SITUATION = re.compile(
-    r"\bback[- ]to[- ]backs?\b|\bb2bs?\b|\bsecond\s+night\b|\bovertime\b|"
-    # "in the month of march" as well as "in march" (F096) - the calendar
-    # reader (calendar._IN_MONTH) already takes both.
-    r"\bin\s+(?:the\s+month\s+of\s+)?(?:october|november|december|january|february|march|april|may|june)\b|"
-    # A conference or division, kept WITH its name and its "vs"/"against"/"in"
-    # so `calendar.parse_alignment` reads it whole: "vs southeast division"
-    # used to be captured as the word "division" alone (#213), and the
-    # relation - which answers the phrase - refused the bare word. The bare
-    # forms stay as the last resort, still refused honestly by name.
-    r"\b(?:vs\.?|against|in)\s+(?:the\s+)?(?:east(?:ern)?|west(?:ern)?|atlantic|central|southeast|northwest|southwest|pacific|midwest)(?:\s+(?:conference|division))?(?:\s+teams?)?\b|"
-    r"\b(?:atlantic|central|southeast|northwest|southwest|pacific|midwest)\s+division\b|"
-    r"\b(?:east(?:ern)?|west(?:ern)?)\s+conference\b|\bdivision\b|\ball[- ]star\s+break\b|"
-    # A day of the week: 8 of the 14, and the most common shape in the feed.
-    r"\b(?:mon|tues|wednes|thurs|fri|satur|sun)days?\b|"
-    # A calendar holiday. "on christmas" answered with a whole season average.
-    # The words are the calendar reading's own (`calendar.HOLIDAY_WORDS`),
-    # longest first: this list was once written out here, and "valentine's
-    # day" - a day the calendar read - was never captured and so narrowed
-    # nothing, while "christmas eve" was captured as "christmas" (#238).
-    rf"\b(?:{HOLIDAY_WORDS})\b|"
-    # An age. "most triple doubles before turning 27" answered with this
-    # season's triple-double leaders - `players` holds no birth date at all
-    # (DATA.md), so this one cannot be answered even in principle.
-    r"\b(?:before|after|by)\s+(?:turning|age)\s+\d+\b|\bat\s+age\s+\d+\b|\b\d+\s+years?\s+old\b|"
-    # A minutes condition used to be here ("paul reed gamelog with 25 minutes"
-    # returned his most recent game); it is `_ABOVE` / `_BELOW` now, slots the
-    # relation filters on.
-    # A window defined by an event rather than a date.
-    r"\bsince\s+(?:returning|coming\s+back|his\s+return|the\s+all[- ]star\s+break)\b|\bsince\s+(?:his\s+)?injury\b|\bafter\s+returning\b|"
-    # A calendar day is NOT here: `_validate_date` resolves it to a real date
-    # and `game_log` then answers the game that was asked about. What is left
-    # here is the date this project cannot turn into one day - a window opened
-    # by "since March 1", and a date in a career question, which spans twenty
-    # Octobers and so fixes no year. Both refuse.
-    r"\b(?:since|after|before|from|through|until)\s+(?:the\s+)?(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t|tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\.?\s+\d{1,2}"
-    r"(?:st|nd|rd|th)?\b",  # codespell:ignore nd - an ordinal suffix
-    # A season named by ordinal ("his 18th season") used to be here; it is
-    # `_SEASON_N` now, settled to a year once the player is known.
-    re.IGNORECASE,
-)
 
 # Words that name a TEAM stat, beyond the box-score words _STAT_WORDS knows.
 _TEAM_STAT_WORDS = re.compile(r"\b(?:pace|ratings?|offen\w*|defen\w*|net|possessions?|record|wins?|losses)\b", re.IGNORECASE)  # codespell:ignore offen - a regex stem
@@ -1847,21 +1683,49 @@ def _route_line_and_record_intents(raw: dict[str, Any], question: str, beside: B
     return rerouted_to_line
 
 
-#: The model-era keys of the span and window families a raw route may still
-#: carry (a test's payload; a settled route run again): every one is read
-#: from the words by its tagger, so none passes the stages.
-_MODEL_SPAN_KEYS: frozenset[str] = frozenset({"season", "season_ref", "season_type", "season_type_unstated", "span", "since", "until", "order", "limit", "rank", "ranked_by"})
+#: The model-era keys of the span, window and cuts families a raw route may
+#: still carry (a test's payload; a settled route run again): every one is
+#: read from the words by its tagger, so none passes the stages. The
+#: opponent is not among them: it is the subject reading's word, which the
+#: cuts tagger takes as settled.
+_MODEL_SPAN_KEYS: frozenset[str] = frozenset(
+    {
+        "season",
+        "season_ref",
+        "season_type",
+        "season_type_unstated",
+        "span",
+        "since",
+        "until",
+        "order",
+        "limit",
+        "rank",
+        "ranked_by",
+        "date",
+        "venue",
+        "situation",
+        "round",
+        "game_n",
+        "season_n",
+        "own_team",
+    }
+)
 
 
 def _route_blank_slots(raw: dict[str, Any]) -> dict[str, Any]:
-    """The slots, with blanks and the span and window families' model-era
-    keys dropped: the season and the season type are the span tagger's
-    (:func:`~association.query.span.read_span`) and the window the window
-    tagger's (:func:`~association.query.window.read_window`), each read
-    last, over the intent the stages settle - a bare ``season`` the words
-    do not name was never trusted (#95: the model invented one), the
-    reader the model's ``season_ref`` named "last season" for reads the
-    words, and a model ``limit`` of 1 was filler on four readers."""
+    """The slots, with blanks and the span, window and cuts families'
+    model-era keys dropped: the season and the season type are the span
+    tagger's (:func:`~association.query.span.read_span`), the window the
+    window tagger's (:func:`~association.query.window.read_window`) and
+    the games' cuts the cuts tagger's (:func:`~association.query.cuts.read_cuts`),
+    each read last, over the intent the stages settle - a bare ``season``
+    the words do not name was never trusted (#95: the model invented one),
+    the reader the model's ``season_ref`` named "last season" for reads the
+    words, a model ``limit`` of 1 was filler on four readers, and a model
+    ``date`` with no calendar day in the question was the date half of #95
+    ("fingerprint maxey vs jaylen brown 2026" arrived with
+    ``date='2026-01-01'`` and was refused for a cause the question never
+    gave)."""
     # A blank string is how the model says "no value" for a required slot;
     # dropping it here keeps every template's `slots.get(...) or default`
     # working and keeps the logged Route readable.
@@ -1928,14 +1792,13 @@ def _route_threshold(raw: dict[str, Any], slots: dict[str, Any], question: str, 
 
 
 def _route_filter_slots(slots: dict[str, Any], question: str, beside: Beside) -> list[str]:
-    """Venue, teammates missing, a ceiling and a situation. Returns the absent teammates."""
+    """Teammates missing and a ceiling. Returns the absent teammates. (The
+    venue and the situation were this stage's until Phase 3, step 2; the
+    cuts tagger reads them, :func:`~association.query.cuts.read_cuts`.)"""
     # The scoping slots below are read from the question and never asked of the
     # model: none is in ROUTER_SCHEMA, so adding them changed no grammar and can
     # have moved no other question's routing. A reader that cannot honor one
     # refuses it (the planner) rather than answering a broader question.
-    venue = _validate_venue(question)
-    if venue is not None:
-        slots["venue"] = venue
     # "with Embiid out" is "without Embiid" written the other way round, for
     # every intent the way "without" is: a reader that cannot narrow by it
     # refuses (the planner), never answers the games he played too.
@@ -1960,59 +1823,20 @@ def _route_filter_slots(slots: dict[str, Any], question: str, beside: Beside) ->
         above += pairs
     if above:
         slots["above"] = above
-    situation = _SITUATION.search(question)
-    if situation is not None:
-        slots["situation"] = situation.group(0).casefold()
     return without
 
 
-def _route_calendar_slots(intent: str, slots: dict[str, Any], question: str) -> int | None:
-    """A calendar day, a playoff round, a game of a series, an ordinal
-    season, and a split. Returns the
-    year a range opened on a dated day names ("since 1/26/20"), for the
-    span tagger to start the seasons at."""
-    # The season that fixes a date's year is the one a reader would use -
-    # the season the words name, or the current one, the default they all
-    # apply - EXCEPT on a career question, which spans twenty Octobers and
-    # fixes nothing, so that refuses. Reading an absent season as "current"
-    # rather than "unknown" matters: "Desmond bane march 17" names none.
-    fixing_season = None if career_named(question)[0] else (season_from_text(question) or current_season())
-    calendar_day = _validate_date(question, fixing_season)
-    dated_since = None
-    if calendar_day is not None:
-        slots["date"] = calendar_day
-    else:
-        # A model-supplied `date` with no calendar day anywhere in the
-        # question is the date half of #95: "fingerprint maxey vs jaylen
-        # brown 2026" arrived with date='2026-01-01' and was refused ("not
-        # yet for a particular date") for a cause the question never gave -
-        # the model invented the date the same way it invents a season (see
-        # _validate_season). Dropped so the normal (whole-season) default
-        # applies, unconditionally - `date` is set nowhere else in this module.
-        slots.pop("date", None)
-        named_date = CALENDAR_DATE.search(question) or NUMERIC_DATE_RANGE.search(question)
-        if named_date is not None and "situation" not in slots:
-            # A date that named itself but could not be pinned to one day.
-            slots["situation"] = named_date.group(0).casefold()
-            dated_since = _dated_since(named_date)
-    playoff_round = _ROUND_WORDS.search(question)
-    if playoff_round is not None:
-        slots["round"] = playoff_round.group(0).casefold()
-    series_game = _GAME_N.search(question)
-    if series_game is not None:
-        slots["game_n"] = int(series_game.group(1))
-    ordinal_season = _SEASON_N.search(question)
-    if ordinal_season is not None:
-        slots["season_n"] = int(ordinal_season.group(1))
-    # A split is read for every intent, not only player_splits: it is a scoping
-    # slot, so the template that answers one honors it and every other refuses.
-    # Measured: "Joe Ingles stats when starting vs coming off the bench" was
-    # answered with his season minutes, "Giannis stats by month" with his points
-    # by season.
+def _route_split_slot(slots: dict[str, Any], question: str) -> None:
+    """The split, read for every intent, not only player_splits: it is a
+    scoping slot, so the reader that answers one honors it and every other
+    refuses. Measured: "Joe Ingles stats when starting vs coming off the
+    bench" was answered with his season minutes, "Giannis stats by month"
+    with his points by season. (The calendar stage this was part of wrote
+    the date, the round, the series game and the ordinal season beside it
+    until Phase 3, step 2; the cuts tagger reads those.)"""
     split = _route_calendar_slots_split(question)
     if split is not None:
         slots["split"] = split
-    return dated_since
 
 
 def _route_calendar_slots_split(question: str) -> str | None:
@@ -2025,22 +1849,6 @@ def _route_calendar_slots_split(question: str) -> str | None:
     return _split_side(splits[0], question) if len(splits) == 1 else None
 
 
-def _dated_since(named_date: re.Match[str]) -> int | None:
-    """The year a range opened on a date WITH a year ("since 1/26/20")
-    starts the seasons at: the season labeled that year ends in it, so no
-    game on or after the date is in an earlier one, and the date itself
-    (the ``situation``) makes the exact cut. Without this the default season
-    applied, and "since January 26, 2020" was read inside 2025-26 alone.
-    The span tagger takes it (:class:`~association.query.span.SpanContext`),
-    and a career or a range the words name stands over it."""
-    year = named_date.groupdict().get("year")
-    if not year:
-        return None
-    stated = int(year)
-    # Two digits the way strptime's %y reads them: 69-99 are the 1900s.
-    return stated if stated > 99 else (1900 + stated if stated >= 69 else 2000 + stated)
-
-
 def _route_intent_slots(intent: str, slots: dict[str, Any], question: str, without: list[str], beside: Beside) -> None:
     """Slots only one template reads."""
     # Intent-specific: each means nothing to any other template, so each is
@@ -2051,8 +1859,6 @@ def _route_intent_slots(intent: str, slots: dict[str, Any], question: str, witho
         with_player = list(beside.played)
         if with_player and not without:
             slots["with_player"] = with_player
-    if intent == "player_splits" and slots.get("split") == "home_away":
-        slots.pop("venue", None)  # a split over venues is not a filter to one
     if intent in ("team_leaderboard", "team_quarter_points"):
         # ISSUES.md #172: "nba team with least playoff wins since 2022" filed
         # the same word twice - correctly into the ranking's end (the window
@@ -2208,25 +2014,6 @@ def _route_side(intent: str, slots: dict[str, Any], question: str) -> None:
             slots["side"] = side
 
 
-def _route_opponent_named_as_teammates(slots: dict[str, Any], without: list[str]) -> None:
-    """An ``opponent`` that is the ``without`` list again is not an opponent.
-
-    "bane game log without anthony black and franz wagner this season"
-    (yardstick-v2 F158) arrived with both ``without: ['anthony black',
-    'franz wagner']`` and ``opponent: 'Anthony Black, Franz Wagner'``; the
-    second is no team, so the log fell through to the agent where the
-    first alone answers it. Dropped only when EVERY name in the opponent is
-    one of the teammates - a real team beside a without list is kept.
-    """
-    opponent = slots.get("opponent")
-    if not without or not isinstance(opponent, str) or not opponent.strip():
-        return
-    absent = {name.casefold().strip() for name in without}
-    named = [part.casefold().strip() for part in re.split(r",|\band\b|&", opponent) if part.strip()]
-    if named and all(part in absent for part in named):
-        slots.pop("opponent", None)
-
-
 #: The slot keys a raw route carries into the stages: the router model's
 #: schema properties less the intent, which is the shape the parser writes
 #: its names, stat and window in now that the model classification is gone
@@ -2235,9 +2022,11 @@ def _route_opponent_named_as_teammates(slots: dict[str, Any], without: list[str]
 #: the question for the intent they were run under (``since`` for a
 #: ``game_log``), and would
 #: otherwise survive into an intent whose template refuses it. The span's
-#: six slots and the window's four are not among them: the two taggers read
-#: every one from the words again (Phase 3, step 2).
-_MODEL_SLOTS: frozenset[str] = frozenset({"stat", "threshold", "player", "players", "team", "teams", "period", "opponent", "rate", "side", "date", "shot_value", "fields"})
+#: six slots, the window's four and the cuts' seven read from the words
+#: are not among them: the three taggers read every one from the words
+#: again (Phase 3, step 2); the ``opponent`` is, since it is the subject
+#: reading's word, which the cuts tagger takes as settled.
+_MODEL_SLOTS: frozenset[str] = frozenset({"stat", "threshold", "player", "players", "team", "teams", "period", "opponent", "rate", "side", "shot_value", "fields"})
 
 
 def settle(intent: str, slots: Mapping[str, Any] | Scope, question: str, beside: Beside | None = None) -> Route:
@@ -2305,7 +2094,7 @@ def _settle(raw: dict[str, Any], question: str, beside: Beside = Beside()) -> Ro
     slots = _route_blank_slots(raw)
     _route_threshold(raw, slots, question, beside)
     without = _route_filter_slots(slots, question, beside)
-    dated_since = _route_calendar_slots(raw["intent"], slots, question)
+    _route_split_slot(slots, question)
     _route_intent_slots(raw["intent"], slots, question, without, beside)
     _route_line_stat(raw["intent"], slots, question, rerouted_to_line)
     _route_game_score(raw["intent"], slots, question)
@@ -2319,24 +2108,30 @@ def _settle(raw: dict[str, Any], question: str, beside: Beside = Beside()) -> Ro
     _route_subject_slots(raw["intent"], slots, question)
     _route_record_when_threshold(raw["intent"], slots, question)
     _route_side(raw["intent"], slots, question)
-    _route_opponent_named_as_teammates(slots, without)
-    # The window, then the span, last: each the one reader of its family,
-    # over the intent the stages settled - and the span over the window,
-    # since three of its rules read it (Phase 3, step 2).
+    # The cuts, the window, then the span, last: each the one reader of
+    # its family, over the intent the stages settled - the cuts at the
+    # position of the last stage that wrote one (an opponent that was the
+    # without list again, dropped), the span over the window and the cuts,
+    # since its rules read both (Phase 3, step 2).
+    cuts = read_cuts(question, CutsContext(intent=raw["intent"], split=slots.get("split"), opponent=slots.get("opponent"), without=tuple(without)))
+    slots.pop("opponent", None)
+    slots["cuts"] = cuts.cuts
     window = read_window(question, WindowContext(intent=raw["intent"], boolean_stat=slots.get("stat") in _BOOLEAN_STATS))
     slots["window"] = window.window
-    read = read_span(question, _span_context(raw["intent"], slots, question, window=window.window, dated_since=dated_since))
+    read = read_span(question, _span_context(raw["intent"], slots, question, window=window.window, cuts=cuts))
     slots["span"] = read.span
     # The stages' working dict crosses into the typed Scope here, once: a
     # value no field holds raises ScopeError to the parser.
-    return Route(intent=raw["intent"], scope=Scope.from_slots(slots), claims=claimed([*window.claims, *read.claims]))
+    return Route(intent=raw["intent"], scope=Scope.from_slots(slots), claims=claimed([*cuts.claims, *window.claims, *read.claims]))
 
 
-def _span_context(intent: str, slots: dict[str, Any], question: str, *, window: Window, dated_since: int | None) -> SpanContext:
+def _span_context(intent: str, slots: dict[str, Any], question: str, *, window: Window, cuts: CutsRead) -> SpanContext:
     """What the span tagger reads beside the words
     (:class:`~association.query.span.SpanContext`): the stages' settled
-    intent, the typed window, and the guard words of other families it
-    keeps until their slices move them to the lexicon."""
+    intent, the typed window, the typed cuts (a date, a game of a series,
+    an ordinal season, and the year a range opened on a dated day starts
+    the seasons at), and the guard words of other families it keeps until
+    their slices move them to the lexicon."""
     return SpanContext(
         intent=intent,
         player_named=bool(slots.get("player")),
@@ -2346,8 +2141,8 @@ def _span_context(intent: str, slots: dict[str, Any], question: str, *, window: 
         record=_RECORD.search(question) is not None,
         order=window.order,
         limit=window.count,
-        date=slots.get("date") if isinstance(slots.get("date"), str) else None,
-        game_n=slots.get("game_n") if isinstance(slots.get("game_n"), int) else None,
-        season_n=slots.get("season_n") if isinstance(slots.get("season_n"), int) else None,
-        dated_since=dated_since,
+        date=cuts.cuts.date,
+        game_n=cuts.cuts.game_n,
+        season_n=cuts.cuts.season_n,
+        dated_since=cuts.dated_since,
     )

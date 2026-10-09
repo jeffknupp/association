@@ -52,7 +52,7 @@ def _pair_covered(scope: Scope) -> Any:
     way ``game_log``'s own date does (the season is usually the "current"
     default, and a date from an earlier season looked for in that one finds
     nothing)."""
-    if scope.date:
+    if scope.cuts.date:
         return condition_scope(scope.span.over_career(), _PLAYER_GAME_TABLES)
     return condition_scope(scope.span, _PLAYER_GAME_TABLES)
 

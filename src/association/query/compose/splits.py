@@ -84,7 +84,7 @@ def _splits_refusals(scope: Scope) -> None:
     (the same axis asked twice; the narrowing wins)."""
     if scope.window.count is not None and scope.window.count > 1:
         raise Unsupported("player_splits has no notion of a limited number of recent games")
-    if scope.split == "home_away" and scope.venue is not None:
+    if scope.split == "home_away" and scope.cuts.venue is not None:
         raise Unsupported("a home/away split conflicts with a venue already narrowed to one")
 
 
@@ -187,7 +187,7 @@ def read_player_splits(con: duckdb.DuckDBPyConnection, q: Query, *, stated: froz
     team = optional_team(con, scope.team, season=scope.span.season)
     if isinstance(team, Unanswered):
         return team
-    opponent = optional_team(con, scope.opponent, season=scope.span.season)
+    opponent = optional_team(con, scope.cuts.opponent, season=scope.span.season)
     if isinstance(opponent, Unanswered):
         return opponent
     covered = condition_scope(scope.span, _PLAYER_GAME_TABLES)
@@ -217,7 +217,7 @@ def _player_splits(
             refused = no_narrowed_games(con, player, span, narrowed, rebuilt=box_source(con).rebuilt)
             return replace(refused, shown={"player": player.name, "team": team.name if team else None, "span": covered.label(), "games": 0})
         return no_games(con, player, covered, team)
-    if scope.season_n and first is not None and first == last and covered.season != first:
+    if scope.cuts.season_n and first is not None and first == last and covered.season != first:
         # An ordinal season ("his 18th season") is not a year until the player
         # is known, so `covered` - built before the player was resolved -
         # could not carry it; the narrowed rows just settled it.
@@ -233,7 +233,7 @@ def _player_splits(
         narrowing=Narrowing(
             phrase=narrowed.filters(),
             opponent=opponent.name if opponent else None,
-            venue=scope.venue,
+            venue=scope.cuts.venue,
             without=tuple(mate.name for mate in narrowed.without),
             cells=narrowed_cells(narrowed),
         ),
@@ -301,12 +301,12 @@ def read_team_splits(con: duckdb.DuckDBPyConnection, q: TeamQuery, *, stated: fr
     team = optional_team(con, scope.team, season=scope.span.season)
     if isinstance(team, Unanswered):
         return team
-    opponent = optional_team(con, scope.opponent, season=scope.span.season)
+    opponent = optional_team(con, scope.cuts.opponent, season=scope.span.season)
     if isinstance(opponent, Unanswered):
         return opponent
     if team is None:
         raise Unsupported("player_splits needs a player or a team")
-    if measures or scope.game_n or scope.season_n or scope.without or scope.conditions:
+    if measures or scope.cuts.game_n or scope.cuts.season_n or scope.without or scope.conditions:
         # A team's own splits read the team tables directly, not the
         # player-games relation these narrow - so a line on a box-score
         # column, a playoff-series game, an ordinal season or a teammate's

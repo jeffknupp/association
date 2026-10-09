@@ -406,11 +406,11 @@ def read_team_leaderboard(con: duckdb.DuckDBPyConnection, q: TeamSeasonQuery, *,
     if isinstance(named, Unanswered):
         return named
     facts = TeamRankingFacts(metric=key, rank=scope.window.rank, descending=descending_for(TEAM_METRICS[key], scope.window.rank))
-    read = _team_leaderboard_values(con, key, span, scope.venue) if TEAM_METRICS[key].expression is None else _team_leaderboard_metric(con, key, span, scope.venue)
+    read = _team_leaderboard_values(con, key, span, scope.cuts.venue) if TEAM_METRICS[key].expression is None else _team_leaderboard_metric(con, key, span, scope.cuts.venue)
     if isinstance(read, Refusal):
         return read
     values, rows = read
-    return _team_leaderboard_ranked(span, facts, values, rows, _clamp_limit(scope.window.count, default=DEFAULT_TEAM_LEADERBOARD_LIMIT), named, scope.venue)
+    return _team_leaderboard_ranked(span, facts, values, rows, _clamp_limit(scope.window.count, default=DEFAULT_TEAM_LEADERBOARD_LIMIT), named, scope.cuts.venue)
 
 
 def _team_leaderboard_values(con: duckdb.DuckDBPyConnection, key: str, span: Span, venue: str | None) -> tuple[dict[str, float], dict[str, dict[str, Any]]] | Refusal:

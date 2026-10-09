@@ -176,8 +176,8 @@ def _everyone_guard(intent: str, question: str, position: str | None, *, period_
 
 def _everyone_opponent(scope: Scope, question: str) -> Scope:
     """A team beside no player, with "vs"/"against", is the opponent."""
-    if scope.team is not None and scope.team.strip() and not scope.opponent and _VS.search(question):
-        return replace(scope, opponent=scope.team, team=None)
+    if scope.team is not None and scope.team.strip() and not scope.cuts.opponent and _VS.search(question):
+        return replace(scope, cuts=replace(scope.cuts, opponent=scope.team), team=None)
     return scope
 
 
@@ -410,12 +410,12 @@ def _everyone_threshold_count(intent: str, scope: Scope, predicates: list[tuple[
         predicates = _everyone_threshold_count_line(scope)
     if not predicates:
         raise PointRefused(Cause(kind="needs_line"))
-    if scope.season_n:
+    if scope.cuts.season_n:
         # The refusal threshold_count's retired template gave:
         # "his 15th season" is a place in one career, and the league has none -
         # read over everyone it narrowed to players in their 15th season of the
         # default year while the sentence named only the year.
-        raise PointRefused(Cause(kind="career_place_needs_player", facts={"season_n": scope.season_n}))
+        raise PointRefused(Cause(kind="career_place_needs_player", facts={"season_n": scope.cuts.season_n}))
     # threshold_count's own leaderboard length (DEFAULT_LIMIT, five names)
     # where it is that intent's question; ten for a team's roster count
     # (F152), which also states the whole count beneath the ones listed.
@@ -753,7 +753,7 @@ def _default_game_log(scope: Scope) -> Reading:
         raise Unsupported("a team's log is the team relation's")
     if scope.stat and stat_column(scope.stat) is None:
         log_extras(scope.stat)
-    date = scope.date
+    date = scope.cuts.date
     return Reading(
         scope=scope,
         shape="rows",
@@ -796,9 +796,9 @@ def _default_player_stat(scope: Scope) -> Reading:
     measures = [col] if col else list(STAT_LINE)
     if scope.window.count or scope.window.order:
         return _default_game_log(scope)
-    if not (scope_reads_box_scores(scope, measure_filters(scope.below, scope.above)) or scope.date):
+    if not (scope_reads_box_scores(scope, measure_filters(scope.below, scope.above)) or scope.cuts.date):
         return Reading(scope=scope, shape="scalar", by="line", on="player_seasons", measures=measures, aggregate="per_game", group="none", predicates=[])
-    date = scope.date
+    date = scope.cuts.date
     return Reading(
         scope=scope,
         shape="scalar",
@@ -859,7 +859,7 @@ def _default_period_split(scope: Scope) -> Reading:
     if not _named_player_in(scope):
         raise Unsupported("period_split needs a player")
     measure = period_split_measure(scope.stat)
-    date = scope.date
+    date = scope.cuts.date
     if period_narrowing(scope) is None:
         return Reading(
             scope=scope,
@@ -961,7 +961,7 @@ def _streak_season(scope: Scope) -> int | None:
         return None
     if span.season is not None:
         return span.season
-    return None if scope.season_n or span.career else current_season()
+    return None if scope.cuts.season_n or span.career else current_season()
 
 
 def _default_streak(scope: Scope) -> Reading:
@@ -1025,7 +1025,7 @@ def _default_player_matchup(scope: Scope) -> Reading:
     texts = list(dict.fromkeys(n.strip() for n in [*scope.players, scope.player] if n is not None and n.strip()))
     if len(texts) != 2:
         raise PointRefused(Cause(kind="matchup_needs_two", facts={"names": texts}))
-    dated = bool(scope.date)
+    dated = bool(scope.cuts.date)
     return Reading(
         scope=scope,
         shape="comparison",

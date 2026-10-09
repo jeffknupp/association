@@ -21,7 +21,7 @@ import duckdb
 
 from association.query.entities import Entity, resolved_team
 from association.query.player_relation import ResolvedSpan, apply_situation, has_table, relation_window, span_of
-from association.query.reading import Scope, Span, Unsupported, period_narrowing
+from association.query.reading import Cuts, Scope, Span, Unsupported, period_narrowing
 from association.query.result import Refusal, Unanswered
 from association.query.season_text import season_phrase
 from association.query.team_games import TEAM_GAMES_SQL, TeamNarrowed
@@ -66,13 +66,21 @@ from association.query.team_games import TEAM_GAMES_SQL, TeamNarrowed
 # linescore's points, and every other column rebuilt from the plays
 # (`team_games.team_period_line_sql`) - applied by `team_games` through
 # `TeamNarrowed.narrow_periods`, the counterpart of the player relation's.
-TEAM_RELATION_SCOPING = frozenset({"opponent", "venue", "date", "window", "game_n", "situation", "period", "half", *Span.CELLS})
-"""The cells every reader on the team-games relation honors: the scoping
-slots, and the span's three cells (:attr:`~association.query.reading.Span.CELLS`,
-Phase 3, step 2) - ``career``, ``range`` (``since``, ``until``) and
-``both`` - each applied by :func:`~association.query.player_relation.span_of`
-through :func:`scoped_team` and :func:`team_span_clause` (a postseason by
-the calendar year it was played in), said by :func:`team_span_label`, and
+#: The games' cuts a team's games carry (:attr:`~association.query.reading.Cuts.CELLS`
+#: less three): no game is labeled by its ``round``, and a ``tenure`` and
+#: an ordinal ``season_n`` are one player's.
+TEAM_CUTS: frozenset[str] = Cuts.CELLS - {"round", "tenure", "season_n"}
+TEAM_RELATION_SCOPING = frozenset({"window", "period", "half", *TEAM_CUTS, *Span.CELLS})
+"""The cells every reader on the team-games relation honors: the games'
+cuts a team's games carry (:data:`TEAM_CUTS`: ``opponent``, ``venue``,
+``date``, ``situation``, ``game_n``, each applied by :func:`team_games`
+and said by :meth:`~association.query.team_games.TeamNarrowed.filters`),
+the window, a quarter or half, and the span's three cells
+(:attr:`~association.query.reading.Span.CELLS`, Phase 3, step 2) -
+``career``, ``range`` (``since``, ``until``) and ``both`` - each applied
+by :func:`~association.query.player_relation.span_of` through
+:func:`scoped_team` and :func:`team_span_clause` (a postseason by the
+calendar year it was played in), said by :func:`team_span_label`, and
 refused where the span contradicts itself by ``span_of``. ``both`` is read
 by a team's log and record, which merge or combine the two types and say
 so; a reader whose words do not state a cell steps aside for it, or
@@ -88,7 +96,7 @@ refuses it, by :data:`TEAM_RELATION_SCOPING_EXCLUDED`.
 
 .. versionchanged:: 6.0.0
    The span's cells by name (``career``, ``range``, ``both``) in place of
-   the slots ``span``, ``since`` and ``until``.
+   the slots ``span``, ``since`` and ``until``; the games' cuts by name.
 """
 
 
@@ -168,13 +176,26 @@ TEAM_RELATION_SCOPING_EXCLUDED: dict[str, dict[str, str]] = {
         "both": "the split reads one season type's games; both at once would join a teammate's regular-season and playoff absences as one",
     },
 }
+# The games' cuts (Phase 3, step 2's third slice), per reader whose words
+# state fewer than the relation's five: the team-season readers read one
+# row of the standings or one snapshot and have no game to cut; the
+# with/without split states one opponent (both rows narrow together, #163)
+# and nothing else that would narrow the teammates' games without its
+# sentence saying so.
+for _cut in TEAM_CUTS:
+    TEAM_RELATION_SCOPING_EXCLUDED["team_stat"][_cut] = "a team's line is one season's row of the standings, with no game to cut"
+    TEAM_RELATION_SCOPING_EXCLUDED["team_outlook"][_cut] = "a projection is one season's snapshot, with no game to cut"
+for _cut in TEAM_CUTS - {"opponent"}:
+    TEAM_RELATION_SCOPING_EXCLUDED["with_without"][_cut] = "the split's words state one opponent; another cut would narrow the teammates' games without the sentence saying so"
 """Per reader, the team relation's cells it refuses or steps aside for, and why.
 
 .. versionadded:: 4.4.0
 
 .. versionchanged:: 6.0.0
    The span's cells (``career``, ``range``, ``both``) per reader, the
-   team-season readers' and the with/without split's included (Phase 3, step 2).
+   team-season readers' and the with/without split's included (Phase 3,
+   step 2); the games' cuts per reader whose words state fewer than the
+   relation's.
 """
 
 
@@ -187,6 +208,16 @@ def team_relation_span(intent: str) -> frozenset[str]:
     .. versionadded:: 6.0.0
     """
     return Span.CELLS - set(TEAM_RELATION_SCOPING_EXCLUDED.get(intent, {}))
+
+
+def team_relation_cuts(intent: str) -> frozenset[str]:
+    """The games' cuts ``intent`` states on the team relation
+    (:data:`TEAM_CUTS` less :data:`TEAM_RELATION_SCOPING_EXCLUDED`'s), for a
+    reader whose other cells are its own list.
+
+    .. versionadded:: 6.0.0
+    """
+    return TEAM_CUTS - set(TEAM_RELATION_SCOPING_EXCLUDED.get(intent, {}))
 
 
 def team_relation_scoping(intent: str, *extra: str) -> frozenset[str]:
@@ -337,22 +368,22 @@ def team_games(con: duckdb.DuckDBPyConnection, team: Entity, span: ResolvedSpan,
             raise Unsupported("a team cannot be its own opponent")
         narrowed.opponent = rival
         narrowed.narrow("tg.opponent_id = ?", rival.id)
-    if scope.venue:
-        narrowed.venue = scope.venue
-        narrowed.narrow("tg.side = ?", scope.venue)
+    if scope.cuts.venue:
+        narrowed.venue = scope.cuts.venue
+        narrowed.narrow("tg.side = ?", scope.cuts.venue)
     if date:
         narrowed.narrow("tg.eastern_date = ?", date)
         narrowed.date = date
-    if scope.game_n:
+    if scope.cuts.game_n:
         if span.season_type != 3:
             # A series has games 1-7; a regular season has nothing "game 4" names.
-            raise Unsupported(f"game {scope.game_n} names a game of a playoff series, and this is a {span.kind} question")
-        narrowed.narrow_series_game(scope.game_n)
-    if scope.situation:
+            raise Unsupported(f"game {scope.cuts.game_n} names a game of a playoff series, and this is a {span.kind} question")
+        narrowed.narrow_series_game(scope.cuts.game_n)
+    if scope.cuts.situation:
         # Same discipline as scoped_games: honored where it names the
         # calendar or a conference/division, refused BY VALUE (never
         # silently dropped) otherwise - see apply_situation.
-        apply_situation(narrowed, scope.situation)
+        apply_situation(narrowed, scope.cuts.situation)
     # The same window rule as the player relation's - a named order, or a
     # bare limit read as the newest N (see relation_window).
     narrowed.window = relation_window(scope)

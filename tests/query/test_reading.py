@@ -122,7 +122,7 @@ def test_a_slot_dict_round_trips_through_the_scope() -> None:
         "season_type_unstated": True,
     }
     scope = Scope.from_slots({**slots, "team": None, "players": [], "stat": "", "per_game": False})
-    assert (scope.player, scope.without, scope.venue, scope.window.count, scope.span.both) == ("Joel Embiid", ("Tyrese Maxey",), "home", 10, True)
+    assert (scope.player, scope.without, scope.cuts.venue, scope.window.count, scope.span.both) == ("Joel Embiid", ("Tyrese Maxey",), "home", 10, True)
     assert scope.to_slots() == slots
 
 
@@ -160,17 +160,18 @@ def test_every_scope_field_is_checked_and_every_group_is_the_compilers() -> None
 
     from association.query.compose.core import GROUPS
     from association.query.player_relation import RELATION_SCOPING
-    from association.query.reading import _CHECKS, _SPAN_SLOT_NAMES, _WINDOW_SLOT_NAMES, SCOPING_SLOTS, Group
+    from association.query.reading import _CHECKS, _CUT_SLOT_KEYS, _SPAN_SLOT_NAMES, _WINDOW_SLOT_NAMES, SCOPING_SLOTS, Cuts, Group
 
     names = {f.name for f in fields(Scope)}
-    # The span's six slot names and the window's four pass the door into the typed values (Phase 3, step 2).
-    assert set(_CHECKS) == (names - {"span", "window"}) | _SPAN_SLOT_NAMES | _WINDOW_SLOT_NAMES
+    # The span's six slot names, the window's four and the cuts' eight pass the door into the typed values (Phase 3, step 2).
+    assert set(_CHECKS) == (names - {"span", "window", "cuts"}) | _SPAN_SLOT_NAMES | _WINDOW_SLOT_NAMES | _CUT_SLOT_KEYS
     # `presence` is the team relation's own group (compose.team.compile_team_presence), not a key of the player relation's GROUPS.
     # `period` is the player relation's own, four reads of the same games rather than a GROUP BY (compose.core._compile_by_period).
     # `line` is keyed on the point's own predicate rather than a fixed column (compose.core._line_group).
     assert set(get_args(Group)) == {"none", "presence", "period", "line", *GROUPS}
-    # The span's three cells and the window's two are the typed values', not fields of their own (Phase 3, step 2).
-    assert names >= SCOPING_SLOTS and names >= RELATION_SCOPING - Span.CELLS - Window.CELLS and Span.CELLS | Window.CELLS <= RELATION_SCOPING
+    # The span's three cells, the window's two and the cuts' seven are the typed values', not fields of their own (Phase 3, step 2).
+    assert names >= SCOPING_SLOTS and names >= RELATION_SCOPING - Span.CELLS - Window.CELLS - Cuts.CELLS
+    assert Span.CELLS | Window.CELLS | (Cuts.CELLS - {"round"}) <= RELATION_SCOPING and "round" not in RELATION_SCOPING
 
 
 def test_a_period_condition_round_trips_through_the_slot_door() -> None:

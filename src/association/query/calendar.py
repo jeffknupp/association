@@ -1,26 +1,35 @@
-"""The calendar narrowings a ``situation`` slot can name, read once for both
+"""The calendar narrowings a ``situation`` can name, read once for both
 relations.
 
-The router files the words after a subject that name a circumstance in one
-``situation`` slot - "tuesdays", "in october", "christmas", "since january
-31st" - alongside things no game table can filter on ("18 year old", "western
-conference", "since returning"). Only the calendar ones are a narrowing of a
-relation's games: a weekday, a month, a holiday, or every game
-from a day of the season on. Everything else parses to ``None`` and the
+The cuts tagger files the words after a subject that name a circumstance in
+one ``situation`` value - "tuesdays", "in october", "christmas", "since
+january 31st" - alongside things no game table can filter on ("18 year old",
+"western conference", "since returning"). Only the calendar ones are a
+narrowing of a relation's games: a weekday, a month, a holiday, or every
+game from a day of the season on. Everything else parses to ``None`` and the
 caller refuses it by name, the way it always did - a value that is not read
-is not dropped.
+is not dropped. The words are the lexicon's (:mod:`association.query.lexicon`,
+Phase 3, step 2): this module reads them and builds the clauses, and holds
+no pattern of its own.
 
 .. versionadded:: 4.4.0
+
+.. versionchanged:: 6.0.0
+   Every pattern here moved to the lexicon (``SITUATION_WEEKDAY``,
+   ``SITUATION_MONTH``, ``SITUATION_SINCE_DAY``, ``SITUATION_SINCE_NUMERIC``,
+   ``ALIGNMENT``, ``ALIGNMENT_NAMES``, ``BARE_MONTH``, ``CONFERENCE_WORDS``,
+   ``HOLIDAY_SPELLINGS``, ``HOLIDAY_WORDS``, ``UNREAD_HOLIDAYS``), so the
+   module imports no regex engine.
 """
 
 from __future__ import annotations
 
-import re
 import time
 from dataclasses import dataclass
 from datetime import date
 from typing import TYPE_CHECKING, Any
 
+from association.query import lexicon
 from association.query.season_text import MONTH_NAMES as _MONTH_NAMES
 
 if TYPE_CHECKING:
@@ -34,41 +43,6 @@ WEEKDAYS: tuple[str, ...] = ("monday", "tuesday", "wednesday", "thursday", "frid
 # parser folds it where a question enters (parse.read_route and
 # parse.reading_from_route, ISSUES.md #259), so no reader here keeps a
 # second, local fold.
-
-_MONTH = "(?P<month>january|february|march|april|may|june|july|august|september|october|november|december)"
-_WEEKDAY = re.compile(r"^(?:on\s+)?(?P<day>monday|tuesday|wednesday|thursday|friday|saturday|sunday)s?$", re.IGNORECASE)
-_IN_MONTH = re.compile(rf"^(?:in\s+)?(?:the\s+month\s+of\s+)?{_MONTH}$", re.IGNORECASE)
-_SINCE_DAY = re.compile(rf"^(?:since|from|after)\s+(?:the\s+)?{_MONTH}\s+(?P<num>\d{{1,2}})(?:st|nd|rd|th)?$", re.IGNORECASE)  # codespell:ignore nd - an ordinal suffix
-_SINCE_NUMERIC = re.compile(r"^(?:since|from|after)\s+(?:the\s+)?(?P<date>\d{1,2}/\d{1,2}(?:/\d{2}(?:\d{2})?)?)$", re.IGNORECASE)
-_HOLIDAY = re.compile(r"^(?:on\s+)?(?P<name>.+?)$", re.IGNORECASE)
-
-#: A ``situation`` word naming a conference or division, mapped to
-#: ``(kind, value)`` - ``value`` the way :func:`association.fetch.parse.parse_team_alignment`
-#: stores it (``"Eastern Conference"``, ``"Southeast"``), read once here and
-#: nowhere else, the same discipline :data:`HOLIDAYS` keeps for a holiday.
-#: ``midwest`` answers a season before the 2004-05 realignment split it into
-#: three; asked of a later season it narrows to opponents nobody was ever
-#: aligned under, which is a real (empty) answer and not an error - the same
-#: as naming a division a team never played in.
-_ALIGNMENT_NAMES: dict[str, tuple[str, str]] = {
-    "east": ("conference", "Eastern Conference"),
-    "eastern": ("conference", "Eastern Conference"),
-    "west": ("conference", "Western Conference"),
-    "western": ("conference", "Western Conference"),
-    "atlantic": ("division", "Atlantic"),
-    "central": ("division", "Central"),
-    "southeast": ("division", "Southeast"),
-    "northwest": ("division", "Northwest"),
-    "southwest": ("division", "Southwest"),
-    "pacific": ("division", "Pacific"),
-    "midwest": ("division", "Midwest"),
-}
-
-_ALIGNMENT_WORD = "|".join(sorted(_ALIGNMENT_NAMES, key=len, reverse=True))
-_ALIGNMENT = re.compile(
-    rf"^(?:(?:vs\.?|against|in)\s+)?(?:the\s+)?(?P<name>{_ALIGNMENT_WORD})(?:\s+(?:conference|division))?(?:\s+teams?)?$",
-    re.IGNORECASE,
-)
 
 
 @dataclass(frozen=True)
@@ -98,35 +72,14 @@ class CalendarNarrowing:
     label: str
 
 
-# One row per holiday a question can name as a day: its label, the kind and
-# value of the narrowing it is, and every spelling read as it. Built into
-# HOLIDAYS below, and from there into the router's own reading of the words
-# (`HOLIDAY_WORDS`), so a spelling added here is one the router captures.
-_HOLIDAY_SPELLINGS: tuple[tuple[str, str, Any, tuple[str, ...]], ...] = (
-    ("Christmas Day", "day", (12, 25), ("christmas", "christmas day", "xmas")),
-    # Its own day, not Christmas: "christmas eve" was captured as "christmas"
-    # and answered December 25 (#238).
-    ("Christmas Eve", "day", (12, 24), ("christmas eve", "xmas eve")),
-    ("New Year's Day", "day", (1, 1), ("new year's", "new years", "new year's day", "new years day")),
-    ("New Year's Eve", "day", (12, 31), ("new year's eve", "new years eve")),
-    ("Halloween", "day", (10, 31), ("halloween",)),
-    ("Valentine's Day", "day", (2, 14), ("valentine's day", "valentines day")),
-    # The third Monday of January, not January 15: that is MLK Day in 5 of
-    # the 33 seasons 1994-2026 (2026's was January 19), and "on mlk day"
-    # answered every January 15 (#238). A federal holiday from 1986, before
-    # the first game on record. "martin luther king" alone is read too, so
-    # "martin luther king jr. day" is MLK Day and not a narrowing dropped.
-    ("MLK Day", "nth_weekday", (1, 1, 3), ("mlk day", "martin luther king day", "martin luther king")),
-    # The fourth Thursday of November - it moves the way MLK Day does, and
-    # was refused only while no moving date could be stated.
-    ("Thanksgiving", "nth_weekday", (11, 4, 4), ("thanksgiving", "thanksgiving day")),
-)
-
-HOLIDAYS: dict[str, CalendarNarrowing] = {spelling: CalendarNarrowing(kind, value, f"on {label}") for label, kind, value, spellings in _HOLIDAY_SPELLINGS for spelling in spellings}
+HOLIDAYS: dict[str, CalendarNarrowing] = {spelling: CalendarNarrowing(kind, value, f"on {label}") for label, kind, value, spellings in lexicon.HOLIDAY_SPELLINGS for spelling in spellings}
 """Every spelling of a holiday :func:`parse_situation` reads, mapped to the
 narrowing it names: a fixed day ("christmas" is December 25) or, for a
 holiday that moves, a weekday of its month ("mlk day" is the third Monday
-of January). Keys are lowercase, with straight apostrophes.
+of January). Keys are lowercase, with straight apostrophes. Built from the
+lexicon's one table of spellings (:data:`~association.query.lexicon.HOLIDAY_SPELLINGS`),
+which the situation pattern captures from too, so a spelling added there is
+one the tagger captures and this reads.
 
 .. versionchanged:: 5.0.0
    Maps to a :class:`CalendarNarrowing` rather than ``(month, day, label)``,
@@ -134,33 +87,10 @@ of January). Keys are lowercase, with straight apostrophes.
    rather than January 15, and Thanksgiving is read. Christmas Eve and New
    Year's Eve are their own days, and "new years" and "martin luther king
    day" are read.
-"""
 
-UNREAD_HOLIDAYS: tuple[str, ...] = ("easter",)
-"""Holidays a question can name that no day is read for. The router captures
-them all the same (:data:`HOLIDAY_WORDS`), so the answer refuses the
-holiday by name rather than answering the season it was asked to narrow.
-Easter follows the church calendar (the Gregorian computus), which no
-narrowing here states.
-
-.. versionadded:: 5.0.0
-"""
-
-
-def _holiday_words_spelling(spelling: str) -> str:
-    """One holiday spelling as a regex: any run of spaces between its words."""
-    return r"\s+".join(re.escape(word) for word in spelling.split())
-
-
-HOLIDAY_WORDS: str = "|".join(_holiday_words_spelling(name) for name in sorted({*HOLIDAYS, *UNREAD_HOLIDAYS}, key=lambda name: (-len(name), name)))
-"""Every holiday spelling :data:`HOLIDAYS` reads and :data:`UNREAD_HOLIDAYS`
-refuses, as one regex alternation (no group of its own), longest first so
-"christmas eve" is not read as "christmas". The router's ``situation``
-reading is built from it, so the words it captures and the words this
-module reads cannot drift apart: "valentine's day" was a key here that the
-router's own list never captured, and so narrowed nothing (#238).
-
-.. versionadded:: 5.0.0
+.. versionchanged:: 6.0.0
+   The spellings are the lexicon's (``HOLIDAY_SPELLINGS``), as are
+   ``HOLIDAY_WORDS`` and ``UNREAD_HOLIDAYS``.
 """
 
 
@@ -192,27 +122,24 @@ class AlignmentNarrowing:
     label: str
 
 
-# A record's own month filter: only a bare "in <month>" - anchored to that
-# exact shape, so "since january 31st" (a window) is not mistaken for one.
-_BARE_MONTH = re.compile(r"^in (january|february|march|april|may|june|july|august|september|october|november|december)$", re.IGNORECASE)
-
-
 def bare_month(situation: str | None) -> int | None:
     """The calendar month a ``situation`` of exactly "in <month>" names
     ("in october" -> 10), or None for anything else - a weekday, a holiday,
-    "since <day>", or no month at all. A team's record filters a bare month
-    by the game's own Eastern date; anything else is a fuller calendar
-    narrowing (:func:`parse_situation`).
+    "since <day>", or no month at all (:data:`~association.query.lexicon.BARE_MONTH`,
+    anchored to that exact shape, so "since january 31st" - a window - is not
+    mistaken for one). A team's record filters a bare month by the game's
+    own Eastern date; anything else is a fuller calendar narrowing
+    (:func:`parse_situation`).
 
     .. versionadded:: 5.0.0
        ``templates.teams._team_record_month`` was this.
     """
     if situation is None:
         return None
-    match = _BARE_MONTH.fullmatch(situation.strip())
+    match = lexicon.BARE_MONTH.fullmatch(situation.strip())
     if match is None:
         return None
-    return [name.lower() for name in _MONTH_NAMES].index(match.group(1).lower()) + 1
+    return lexicon.month_number(match.group("month"))
 
 
 def parse_situation(text: Any) -> CalendarNarrowing | None:
@@ -234,26 +161,26 @@ def parse_situation(text: Any) -> CalendarNarrowing | None:
     if not isinstance(text, str) or not text.strip():
         return None
     words = " ".join(text.strip().lower().split())
-    m = _WEEKDAY.fullmatch(words)
+    m = lexicon.SITUATION_WEEKDAY.fullmatch(words)
     if m:
         day = m.group("day")
         return CalendarNarrowing("weekday", WEEKDAYS.index(day) + 1, f"on {day.capitalize()}s")
-    m = _IN_MONTH.fullmatch(words)
+    m = lexicon.SITUATION_MONTH.fullmatch(words)
     if m:
-        month = [n.lower() for n in _MONTH_NAMES].index(m.group("month")) + 1
+        month = lexicon.month_number(m.group("month"))
         return CalendarNarrowing("month", month, f"in {_MONTH_NAMES[month - 1]}")
-    m = _SINCE_DAY.fullmatch(words)
+    m = lexicon.SITUATION_SINCE_DAY.fullmatch(words)
     if m:
-        month = [n.lower() for n in _MONTH_NAMES].index(m.group("month")) + 1
+        month = lexicon.month_number(m.group("month"))
         day = int(m.group("num"))
         if not 1 <= day <= 31:
             return None
         return CalendarNarrowing("since_day", (month, day), f"since {_MONTH_NAMES[month - 1]} {day}")
-    m = _SINCE_NUMERIC.fullmatch(words)
+    m = lexicon.SITUATION_SINCE_NUMERIC.fullmatch(words)
     if m:
         return _since_numeric(m.group("date"))
-    m = _HOLIDAY.fullmatch(words)
-    return HOLIDAYS.get(m.group("name")) if m else None
+    # A holiday, with or without "on" before it.
+    return HOLIDAYS.get(words.removeprefix("on ") if words.startswith("on ") else words)
 
 
 def _since_numeric(text: str) -> CalendarNarrowing | None:
@@ -331,21 +258,20 @@ def parse_alignment(text: Any) -> AlignmentNarrowing | None:
     :func:`parse_situation` keeps for a calendar value.
 
     Deliberately narrow, the same way :data:`HOLIDAYS` is: only the fixed
-    vocabulary of :data:`_ALIGNMENT_NAMES`, with an optional leading "vs"/
-    "against"/"in", an optional "the", and an optional trailing "conference"/
-    "division"/"team(s)" - never a name pulled from free text, since a
-    conference or division is a closed set of eleven words and nothing here
-    guesses at a twelfth.
+    vocabulary of :data:`~association.query.lexicon.ALIGNMENT_NAMES`, in
+    the shape :data:`~association.query.lexicon.ALIGNMENT` reads - never a
+    name pulled from free text, since a conference or division is a closed
+    set of eleven words and nothing here guesses at a twelfth.
 
     .. versionadded:: 4.4.0
     """
     if not isinstance(text, str) or not text.strip():
         return None
     words = " ".join(text.strip().lower().split())
-    m = _ALIGNMENT.fullmatch(words)
+    m = lexicon.ALIGNMENT.fullmatch(words)
     if not m:
         return None
-    kind, value = _ALIGNMENT_NAMES[m.group("name")]
+    kind, value = lexicon.ALIGNMENT_NAMES[m.group("name")]
     label = f"against {value} teams" if kind == "conference" else f"against the {value} Division"
     return AlignmentNarrowing(kind, value, label)
 
@@ -373,19 +299,15 @@ def alignment_clause(narrowing: AlignmentNarrowing, opponent_team_id: str, seaso
     )
 
 
-# Conference and division words where a TEAM belongs - the team or opponent
-# slot. As an opponent narrowing ("vs the west") they are read above
-# (parse_alignment, over `team_alignment`); as the team a record or a line is
-# about ("who leads the east"), nothing reads a conference's own standings or
-# leaders yet (ISSUES.md #25). So a team slot naming one is refused by name;
-# resolved as a team it would match nothing and be refused for the wrong cause.
-_CONFERENCE_WORDS = re.compile(r"\b(?:conferences?|divisions?|east(?:ern)?|west(?:ern)?|atlantic|central|southeast|northwest|pacific|southwest)\b", re.IGNORECASE)
-
-
 def conference_named(scope: Scope) -> str | None:
-    """The team slot (``team``, ``opponent`` or one of ``teams``) that holds
-    a conference or a division rather than a team, or None - a team's record
-    is refused naming it (``compose.say.say_conference_refusal``).
+    """The team slot (``team``, the cuts' ``opponent`` or one of ``teams``)
+    that holds a conference or a division rather than a team
+    (:data:`~association.query.lexicon.CONFERENCE_WORDS`: as the team a
+    record or a line is about, "who leads the east", nothing reads a
+    conference's own standings yet, ISSUES.md #25), or None - a team's
+    record is refused naming it (``compose.say.say_conference_refusal``);
+    resolved as a team it would match nothing and be refused for the wrong
+    cause.
 
     .. versionadded:: 5.0.0
        ``templates.teams._conference_refusal``'s reading.
@@ -395,4 +317,4 @@ def conference_named(scope: Scope) -> str | None:
        words as an opponent narrowing: it was ``refusals.conference_named``,
        and ``refusals`` is gone (Phase 3, step 0).
     """
-    return next((c for c in (scope.team, scope.opponent, *scope.teams) if c and _CONFERENCE_WORDS.search(c)), None)
+    return next((c for c in (scope.team, scope.cuts.opponent, *scope.teams) if c and lexicon.CONFERENCE_WORDS.search(c)), None)

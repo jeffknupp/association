@@ -155,7 +155,7 @@ def test_a_player_after_a_versus_word_reaches_the_route_as_a_condition(con: duck
     pair = _read(con, "tyrese maxey vs tatum", ["tyrese maxey", "tatum"], "")
     assert pair.intent == "player_matchup" and pair.scope.conditions == () and len(pair.scope.players) == 2
     narrowed = _read(con, "tyrese maxey points vs boston without embiid", ["tyrese maxey", "boston", "embiid"], "points")
-    assert narrowed.intent == "player_stat" and narrowed.scope.opponent == "Boston Celtics" and narrowed.scope.without == ("Joel Embiid",)
+    assert narrowed.intent == "player_stat" and narrowed.scope.cuts.opponent == "Boston Celtics" and narrowed.scope.without == ("Joel Embiid",)
 
 
 def test_a_player_against_a_team_is_never_a_matchup(con: duckdb.DuckDBPyConnection) -> None:
@@ -174,7 +174,7 @@ def test_a_player_against_a_team_is_never_a_matchup(con: duckdb.DuckDBPyConnecti
     ):
         r = _read(con, question, names)
         assert r.intent != "player_matchup" and r.subject is not None and r.subject.kind == "player", (question, names, r.intent)
-        assert r.scope.player == "Tyrese Maxey" and r.scope.opponent == "Boston Celtics", (question, names, r.scope)
+        assert r.scope.player == "Tyrese Maxey" and r.scope.cuts.opponent == "Boston Celtics", (question, names, r.scope)
     r = _read(con, "maxey vs embiid", ["maxey", "embiid"])
     assert (r.intent, r.subject.kind if r.subject else None) == ("player_matchup", "pair")
 

@@ -15,9 +15,7 @@ import duckdb
 import pytest
 
 from association.query.calendar import (
-    HOLIDAY_WORDS,
     HOLIDAYS,
-    UNREAD_HOLIDAYS,
     AlignmentNarrowing,
     CalendarNarrowing,
     alignment_clause,
@@ -25,6 +23,7 @@ from association.query.calendar import (
     parse_alignment,
     parse_situation,
 )
+from association.query.lexicon import HOLIDAY_WORDS, UNREAD_HOLIDAYS
 
 
 @pytest.mark.parametrize(

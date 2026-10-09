@@ -40,7 +40,7 @@ from association.query.lines import MeasureFilter, measure_filters
 from association.query.notes import Note
 from association.query.player_games import Narrowed, games_subquery
 from association.query.player_relation import RELATION_SCOPING, ResolvedSpan, no_narrowed_games, scoped_games, scoped_player, settle_ordinal_season, span_of
-from association.query.reading import Scope, Unsupported, unhonored_scoping
+from association.query.reading import Scope, Unsupported, cell_set, unhonored_scoping
 from association.query.result import Chart, Decided, Narrowing, OnDate, Part, Refusal, Result, Scalar, ShotValue, Span, Unanswered, Window
 from association.query.season_line import Statement, season_redirect, seasons_played
 from association.query.season_text import SEASON_TYPE_NAMES, season_phrase
@@ -118,7 +118,7 @@ def _shots_other_narrowing(scope: Scope, date: str | None, measures: list[Measur
     a shot read at once - ``situation`` and ``conditions`` once silently
     drew the whole span because a hand list predated them."""
     cells = RELATION_SCOPING - reading.Span.CELLS - reading.Window.CELLS - {"season_n", "date", "below", "above"}
-    return bool(any(getattr(scope, cell) for cell in cells) or scope.span.since is not None or scope.span.until is not None or date or measures)
+    return bool(any(cell_set(scope, cell) for cell in cells) or scope.span.since is not None or scope.span.until is not None or date or measures)
 
 
 def _shots_has_narrowing(scope: Scope, date: str | None, measures: list[MeasureFilter]) -> bool:
@@ -217,7 +217,7 @@ def _shot_distance_games(con: duckdb.DuckDBPyConnection, player: Entity, span: R
     window it was the end of; any other set
     is said as the span and the relation's own phrase for the narrowing
     (:meth:`~association.query.player_games.Narrowed.filters`)."""
-    narrowed = scoped_games(con, player, span, scope, opponent=scope.opponent, measures=measures, date=scope.date)
+    narrowed = scoped_games(con, player, span, scope, opponent=scope.cuts.opponent, measures=measures, date=scope.cuts.date)
     if isinstance(narrowed, Unanswered):
         return narrowed
     found = _shots_narrowed_rows(con, player, span, narrowed)
@@ -225,7 +225,7 @@ def _shot_distance_games(con: duckdb.DuckDBPyConnection, player: Entity, span: R
         return found
     ids, dates = found
     opponent = narrowed.opponent.name if narrowed.opponent else None
-    if len(ids) == 1 and not _shots_other_narrowing(scope, scope.date, measures):
+    if len(ids) == 1 and not _shots_other_narrowing(scope, scope.cuts.date, measures):
         return ids, Narrowing(opponent=opponent, venue=narrowed.venue, cells=(OnDate(day=dates[0]),)), Window(limit=1, ascending=scope.window.order == "first")
     return ids, Narrowing(phrase=f" {_shots_span_prefix(span)}{narrowed.filters(windowed=True)}", opponent=opponent, venue=narrowed.venue), None
 
@@ -268,7 +268,7 @@ def read_shot_distance(con: duckdb.DuckDBPyConnection, q: ShotQuery, *, stated: 
         return refusal
     ids: list[str] | None = None
     narrowing, game = Narrowing(), None
-    if _shots_has_narrowing(scope, scope.date, measures):
+    if _shots_has_narrowing(scope, scope.cuts.date, measures):
         pinned = _shot_distance_games(con, player, span, scope, measures)
         if isinstance(pinned, Unanswered):
             return pinned
@@ -338,7 +338,7 @@ def _shot_chart_settle_player(con: duckdb.DuckDBPyConnection, name: str, scope: 
     the candidates narrowed to those with shots in the span, and the best
     match kept where nobody is left, since a chart is titled with the name
     that won."""
-    season_n = scope.season_n
+    season_n = scope.cuts.season_n
     seasons = span_of(scope.span.over_career() if season_n else scope.span, "player_game_log")
     resolved = resolve_chart_player(con, name, SHOT_AVAILABILITY, seasons.season)
     if resolved is None:
@@ -357,9 +357,9 @@ def _shot_chart_games(con: duckdb.DuckDBPyConnection, player: Entity, span: Reso
     question, else the relation's own read (``scoped_games``,
     :func:`_shots_narrowed_rows`) - one game, or a set named by the span
     and the relation's phrase for the narrowing."""
-    if not _shots_has_narrowing(scope, scope.date, measures):
+    if not _shots_has_narrowing(scope, scope.cuts.date, measures):
         return _ShotChartGames()
-    narrowed = scoped_games(con, player, span, scope, opponent=scope.opponent, measures=measures, date=scope.date)
+    narrowed = scoped_games(con, player, span, scope, opponent=scope.cuts.opponent, measures=measures, date=scope.cuts.date)
     if isinstance(narrowed, Unanswered):
         return narrowed
     found = _shots_narrowed_rows(con, player, span, narrowed)

@@ -40,13 +40,13 @@ import duckdb
 from association.nba.coverage import unavailable
 from association.nba.season import current_season
 from association.query import reading
-from association.query.calendar import CalendarNarrowing, bare_month, parse_situation
+from association.query.calendar import CalendarNarrowing, bare_month
 from association.query.conditions import _season_month_order
 from association.query.coverage import coverage_refusal, floor_refusal
 from association.query.entities import Entity, resolved_team, slot_season
 from association.query.notes import Note
 from association.query.player_relation import ResolvedSpan, span_of, validated_until
-from association.query.reading import PointShape, Unsupported, unhonored_scoping
+from association.query.reading import PointShape, Situation, Unsupported, unhonored_scoping
 from association.query.result import Calendar, Cell, GameOfSeries, Grouped, Narrowing, Part, Refusal, Result, Rows, Scalar, Span, TeamRecordFacts, Unanswered
 from association.query.season_line import Statement
 from association.query.season_text import MONTH_NAMES
@@ -59,22 +59,23 @@ from .standings import read_standings_career, read_standings_season
 from .team import TeamQuery, compile_team_over
 
 
-def _team_record_month_and_split(split: str | None, situation: str | None, limit: int | None) -> tuple[str | None, int | None, CalendarNarrowing | None]:
+def _team_record_month_and_split(split: str | None, situation: Situation | None, limit: int | None) -> tuple[str | None, int | None, CalendarNarrowing | None]:
     """The validated ``split``, the bare calendar month a question narrows
     to, and the fuller calendar narrowing (a weekday, a fixed holiday,
     "since <month day>") ``situation`` names when it is not a bare month -
     or the refusal for a ``split`` that is not "month", a ``situation``
-    naming no calendar narrowing, a non-month narrowing beside a month
-    split, or a bare ``limit`` with none of the three ("last 10 games" is a
-    game log's question: standings hold only the full season)."""
+    naming no calendar narrowing (an alignment is one here: the standings
+    hold no opponent), a non-month narrowing beside a month split, or a
+    bare ``limit`` with none of the three ("last 10 games" is a game log's
+    question: standings hold only the full season)."""
     if split is not None and split != "month":
         raise Unsupported(f"no split named {split!r}")
-    month = bare_month(situation)
+    month = bare_month(situation.text if situation is not None else None)
     narrowing = None
-    if situation and month is None:
-        narrowing = parse_situation(situation)
+    if situation is not None and month is None:
+        narrowing = situation.calendar
         if narrowing is None:
-            raise Unsupported(f'no calendar narrowing in situation {situation!r} - a weekday, a month, a holiday or "since <day>" is read; an age, a conference or a division is not')
+            raise Unsupported(f'no calendar narrowing in situation {situation.text!r} - a weekday, a month, a holiday or "since <day>" is read; an age, a conference or a division is not')
         if split == "month":
             raise Unsupported("a month split already covers every month; narrowing it further to one weekday or holiday is not built")
     if limit and split is None and month is None and narrowing is None:
@@ -108,7 +109,7 @@ def _team_record_teams(con: duckdb.DuckDBPyConnection, scope: Any) -> tuple[Enti
     team = resolved_team(con, team_text, season=slot_season(scope))
     if isinstance(team, Unanswered):
         return team
-    opponent_text = scope.opponent
+    opponent_text = scope.cuts.opponent
     if opponent_text and opponent_text.strip():
         found = resolved_team(con, opponent_text, season=slot_season(scope))
         if isinstance(found, Unanswered):
@@ -149,7 +150,7 @@ def read_team_record(con: duckdb.DuckDBPyConnection, q: TeamQuery, *, stated: fr
     named = conference_named(scope)
     if named is not None:
         return Refusal(kind="conference_named", facts={"named": named}, shown={"unanswerable": named})
-    split, month, calendar = _team_record_month_and_split(scope.split, scope.situation, scope.window.count)
+    split, month, calendar = _team_record_month_and_split(scope.split, scope.cuts.situation, scope.window.count)
     teams = _team_record_teams(con, scope)
     if isinstance(teams, Unanswered):
         return teams
@@ -161,18 +162,18 @@ def read_team_record(con: duckdb.DuckDBPyConnection, q: TeamQuery, *, stated: fr
         # "all-time ... in 2020" is either a slip or a range this cannot read.
         raise Unsupported("a career span and a single season at once")
     since = _team_record_since(scope.span.since, career, season)
-    asked = _Asked(team=team, opponent=opponent, month=month, venue=scope.venue, career=career, season=season, since=since, until=validated_until(scope.span.until, since), calendar=calendar)
+    asked = _Asked(team=team, opponent=opponent, month=month, venue=scope.cuts.venue, career=career, season=season, since=since, until=validated_until(scope.span.until, since), calendar=calendar)
     if scope.span.both:
         # "including the playoffs": checked before the game_n/season_type
         # conflict below, which assumes one named type.
-        if scope.game_n:
+        if scope.cuts.game_n:
             raise Unsupported("a game of a playoff series needs one named season type, not both combined")
         if split == "month":
             raise Unsupported("a month split has no combined-season-type form yet")
         return _combined(con, q, asked)
-    if scope.game_n and season_type != 3:
-        raise Unsupported(f"game {scope.game_n} names a game of a playoff series, and this is a regular season question")
-    return _route(con, q, replace(asked, game_n=scope.game_n, split=split), season_type)
+    if scope.cuts.game_n and season_type != 3:
+        raise Unsupported(f"game {scope.cuts.game_n} names a game of a playoff series, and this is a regular season question")
+    return _route(con, q, replace(asked, game_n=scope.cuts.game_n, split=split), season_type)
 
 
 @dataclass(frozen=True, kw_only=True)
