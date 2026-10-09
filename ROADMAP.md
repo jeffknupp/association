@@ -1,11 +1,13 @@
 # Roadmap
 
 **Status: ACCEPTED 2026-09-30, after two independent reviews; Phase 0
-closed 2026-10-01, Phase 1 closed 2026-10-03** (see "Phase 1, as it stands";
-closed by the live run `live_parser24`: 167/175, families 156/166, every
-answer identical to parser23, after an Opus review of the phase whose
-findings are fixed or filed - `ROADMAP-HISTORY.md`, the working log, entry
-12). Next: Phase 2, slice (i). The reviews corrected the
+closed 2026-10-01, Phase 1 closed 2026-10-03, Phase 2 closed 2026-10-05**
+(each by a live run - `live_parser24` and `live_parser28`: 167/175,
+families 156/166, every answer identical to the run before - and an Opus
+review of the phase whose findings are fixed or filed; `ROADMAP-HISTORY.md`,
+the working log, entries 12 and 20-21; Phase 2's cleanup landed
+2026-10-06). Next: Phase 3, step 0, in flight since 2026-10-09 ("Phase 3,
+the expected steps"). The reviews corrected the
 measurements below and changed the phases. Jeff's decisions are recorded
 under "Decisions"; one is still open (the season type a question that names
 none reads) and does not block Phase 1.
@@ -474,6 +476,53 @@ guards for recorded failure shapes. Unclaimed words go to the trace, are
 measured, and only then considered as a refusal trigger. Exit: `router.py`,
 `Route`, `intent` in the reader, and the reader's regexes outside the
 lexicon are gone.
+
+**Phase 3, the expected steps (written 2026-10-09, before the phase; each
+step is re-planned in its own row as it lands, as Phase 2's were).** The
+paragraph above was written on 2026-09-30, before Phases 1 and 2 showed
+how a stage is moved here: the "typed reader built beside the old one and
+run in shadow" is not a second reader in `src/` - a dispatcher between an
+old and a new reader is the shape "Every step deletes the path it
+replaces" forbids - it is the four populations, which already diff every
+reading on 2,710 wordings and every reader test's call, stage by stage.
+So the reader converges on `ROADMAP-TYPES.md`'s `Reading` one part at a
+time, each step writing the typed part, deleting the slot-era carrier and
+the stage that read it in the same change, and proving on the four
+populations that no query, result or answer moved and that every reading
+moved only in the part the step typed. Where the step is in flight the
+lead is `/home/jeff/code/association`'s session; agents work one at a time
+on the parser-compiler seam (AGENTS.md, "Parallelism is for disjoint,
+bounded, measurable work"), so the steps are serial unless a row says
+otherwise.
+
+What the reader is today, measured on `87cc782`: `router.py` 3,072 lines,
+70 functions, 102 regex sites, 26 stages run in order by `_settle` over a
+raw slot dict; `subject.py` 1,482 lines and 24 regex sites; `point.py`
+1,543 and 20; `parse.py` 1,000 and 16; `Scope` 44 slots; 24 functions
+outside the reader take the question (`scripts/ratchets.json`,
+`question_outside_the_reader`), 6 modules outside it import `re`, 23
+reader functions take a connection; the reader tests are
+`test_router.py` 213, `test_entities.py` 99, `test_subject.py` 47,
+`test_parser.py` 33, `test_refusals.py` 16. The done table's targets for
+each are at the end of this file.
+
+| Step | What | Deletes | Proof |
+| --- | --- | --- | --- |
+| 0 | (b)4 from the Phase 2 review: the three question re-reads in `agent.py` (`compared_but_unmatched`, `player_named_on_a_team_only_question`, `refusals.unanswerable` with `by_question` and `too_short`) become typed values and `reading.Cause`s on the Reading, read by the parser and said by the planner through `refusal_phrase` with the sentence identical - the order the planner says them in unchanged (the eight `unanswerable` checks only where the planner declines). The draft's `Unsupported(what, as_typed)` filter is what this declares. `entities.py`'s readers of the question (`players_named_in` and its kin) move to the reader's side once nothing else calls them | `refusals.py` (its regexes to the reader, its sentences to the phrase table), the three sites in `agent.py`; `question_outside_the_reader` 24 -> the trace writer alone; the regex ratchet's two `refusals` entries | the four populations; the one enumerated move is every reading whose verdict gains a cause, answers identical. **In flight 2026-10-09**, one Opus agent on `phase3-b4` |
+| 1 | The answer side's key is the Reading's own: `Reading.shape` and a `by` the reader names (the point's `shape`/`group` today, which `plan.shape_of(intent, query)` re-derives), so `shape_of`, `SHAPE_WORDS` and `words_stated` go and `Planned.shape` is read off the Reading; `Planned.floor` from the relation's declared tables (`coverage.SOURCES` keyed by relation and the tables the read touches, not the retired words). Before any filter moves, so the planner's cell checks of step 2 have a key that is not an intent. With it, the readings population's projection: `stage_snapshots.py` and `reader_pop.py` compare a Reading through one projection function (`reading.projected()`, the old slot dict and verdict), so a step that types a part proves it against the same baseline | the three `# Phase 3: needs ...` markers in `compose/plan.py`; `SHAPE_WORDS`; the intent key of `SOURCES` | the four populations; readings identical through the projection |
+| 2 | The filters, one family at a time, each slice its own commit: the typed `Filter` on the Reading (`ROADMAP-TYPES.md`, "Filter"), the stage(s) of `_settle` that read it rewritten as ONE tagger that claims the span it read (contract 2) and keeps its regexes in `query/lexicon.py` (created by the first slice; contract 6), the relation's cell table row saying how the cell is applied, said or refused (contract 4; the planner checks the typed cell against it, which is what retires `STATED_SCOPING` and the six debt declarations row by row), and the `Scope` slot deleted. Families, least risk first: the span (`season`, `season_type`, `season_type_unstated`, `span`, `since`, `until` -> `Span`); the window (`order`, `limit`, `rank`, `ranked_by`, `offset` -> `Window`); the games' cuts (`opponent`, `own_team`, `venue`, `date`, `situation` as calendar or alignment, `round`, `game_n`, `season_n` -> `Opponent`, `Tenure`, `Venue`, `OnDate`, `DateRange`, `Calendar`, `Round`, `GameOfSeries`, `SeasonOfCareer`); the period (`period`, `half` -> `Reading.period`); the line and the companions together (`stat`+`threshold`, `above`, `below`, the point's `predicates`, `ConditionSpec`, `PeriodCondition`, `with_player`, `without`, `conditions`, `router.Beside` -> `Line`, `Companion`, `Won`, `Met` - the five carriers of a line become one type, built from the words and never converted from the slot pair, the nine multi-line corpus questions the test); the subject's own (`position`, `team` as `of_team`, the `everyone` relation). The reader's `measures`/`aggregate`/`order`-by-measure go with the window and the line (the `Measure` catalog, `ROADMAP-TYPES.md`). Each slice measured first: a harness answering every recorded question with the slot and with the typed cell, the relation's cell applied both ways | per slice: its `_route_*` stages (26 in all), its `Scope` slots (44 in all), its rows of `STATED_SCOPING`, `RELATION_SCOPING*`'s untyped form and the debt declarations (`_TEAM_READER_REFUSES`, `COMPILER_SLOTS`, `SCOPING_SLOTS`, `_BOX_SCORE_SCOPING`, `_CONDITION_PLAYER_ONLY_CELLS`, `_MODEL_SLOTS`); at the end `Scope` itself, `STATED_SCOPING`, `WITH_WITHOUT_STATED`, and the freeze test holds one cell table per relation | per slice, the four populations through the projection; `claims_ledger.py` not grown; a behavioral test per (relation, cell) that applying the cell changes the result |
+| 3 | The unread words on the Reading: every tagger has claimed its span since step 2, so `Reading.unread` is the content words nothing claimed, overlapping claims fail in the reader, and `scripts/claims_ledger.py` becomes the check from outside that the Reading's own `unread` agrees with deletion (the two measure the same thing two ways; a disagreement is a rule that matched a word it did not need). The nine unread numbers reviewed one by one: each is a `Line` or a `Window` the reader missed, or a refusal | the ledger's deletion probing as the only measure | the ledger's count not grown; the Reading's `unread` identical to it on the 628 |
+| 4 | The exit: `intent` leaves the reader. The grammar names a subject kind, a shape and a `by` (`PARENT_GRAMMAR`, `KIND_ASSIGNED_INTENTS`, `CODE_ASSIGNED_INTENTS` re-keyed), `DEFAULT_POINTS`, `TEAM_SEASON_POINTS`, the subject reading's intent sets (`PLAYER_INTENTS`, `TEAM_ONLY_INTENTS`, `PLAYER_REQUIRED_INTENTS`, ...), `COMPILED_INTENTS`, `CHART_INTENTS`, `TABLELESS_INTENTS` and `coverage.SOURCES` become predicates on the Reading's kind, shape and relation; what is left of `_settle` after the taggers is the Route's construction, so `router.py` and `Route` go, `parse.read_route` returns the Reading, and the reader takes the names index rather than a connection (`con_in_the_reader` 23 -> 0; the reader issues 0 statements). `Answer.intent` stays for the page as ONE table from the planned `PointShape` to the retired label, which Phase 4 deletes with the renderers (D3: the page renders by shape). Reader tests re-seated as question-to-Reading snapshot cases (`tests/query/test_router.py`'s 213 first), the 25-intent freeze retired with the intent | `router.py`, `Route`, `reading.intent`, the intent sets, the regexes outside `lexicon.py` (the regex ratchet 6 -> 0 and deleted), the intent freeze | the four populations; the readings compared through the projection one last time, then the projection deleted and the snapshot records the typed Reading |
+| 5 | A live run closes the phase (`live_parser29`, graded blind against `live_parser28`), and an independent review of it, as Phases 1 and 2 had; the done table's Phase 3 rows at their measured values | | 167/175, 156/166 not lower |
+
+Three rules hold throughout, and two are Phase 2's: a decline or a
+refusal becoming a Cause is ONE enumerated commit (Jeff's rule, AGENTS.md
+"Identical means identical"); a boundary that moves (`parse.read_route`
+returning a Reading in step 4) is recorded in `tests/stage_calls.py` on
+both sides first; and new, for the reader: **a tagger claims the span it
+read, and a word claimed twice fails the reader** - which is what makes
+"the reading and the query are the same without the word" a property the
+Reading states rather than one the ledger has to probe for.
 
 **Phase 4 - Close out.** `Answer.intent` removed and the web page's
 renderers keyed by shape (22 become one per shape); the browser check run;
