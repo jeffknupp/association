@@ -4241,13 +4241,6 @@ those were found.
 - **Next step:** the typed notes of `ROADMAP.md` Phase 0 (every writer records a kind and facts) replace `data["notes"]`; do not patch the thirteen one by one.
 - **GitHub:** #307
 
-### A list of matched names is printed as a Python list, and four small wording faults
-- **Found:** 2026-09-30, the notes inventory for `ROADMAP-TYPES.md` (an Opus agent reading `011091f`; reported, not re-verified).
-- **Evidence:** `compose.say.decision_phrase`'s `also_matched` (`shotchart.py:418` until Phase 2, step 5) and `fingerprint.py:951` interpolate the list itself ("['Seth Curry', ...]"); `fingerprint.py:890` joins it. "({A}, {B} has no ...)" at `templates/players.py:1924` when found (`compose.say` now). The box-score floor is "the 1993-94 season" in `templates/common.py:2534` (gone with `templates/`) and "the 1994 regular season" in `conditions.py:269`. A history `limit` over 20 silently becomes 4 (`season_line.history_seasons`, over `MAX_HISTORY_SEASONS`). `render_shot_chart` and `render_fingerprint` (`shotchart.py:186`, `fingerprint.py:1035`) have no caller in `src`, only tests.
-- **User sees:** brackets and quotes in a chart's note; otherwise nothing wrong, only uneven.
-- **Next step:** join the names; the rest goes with each kind's one phrase (Phase 2).
-- **GitHub:** #308
-
 ### Numbers an answer states that are only in its text, so no comparison of values can see them move
 - **Found:** 2026-09-30, the review of `ROADMAP-TYPES.md` (an Opus agent over the stage snapshot of the 628 recorded questions at `7f6425b`); the answers quoted were re-read from the snapshot.
 - **Evidence:** the shot chart's made/attempted ("10/22 made"); a single game's NetPoints possessions and win probability added; a career's true-shooting attempts; a matchup's "met 27 times in all, 4 of them with ..."; the compiled team total's playoff addendum ("78 more over a 7-game playoff run", `compose/team.py:297`). None is in `data`, so `scripts/stage_snapshots.py compare --values-only` would pass a rewording that dropped or changed one. Also in the snapshot: a combined line is carried twice in the nine multi-line questions (`stat`/`threshold` say `assists`/20 for "20+ point 5+ assist" while `above` holds both lines) - harmless today, a trap when the five carriers of a line become one type.

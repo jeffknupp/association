@@ -191,6 +191,15 @@ def test_a_league_count_names_the_leaders_and_the_rest() -> None:
     )
 
 
+def test_the_other_matched_names_are_joined_not_printed_as_a_list() -> None:
+    """ISSUES.md #308: the shot chart's note printed the list itself."""
+    from association.query.compose.say import decision_phrase
+    from association.query.result import Decided
+
+    said = decision_phrase(Decided(kind="also_matched", field="player", chose="Stephen Curry", instead_of=("Seth Curry", "Dell Curry")))
+    assert said == ". Note: other players also matched: Seth Curry, Dell Curry"
+
+
 def test_a_single_game_high_is_said_with_its_floor_its_tie_and_its_redirect() -> None:
     """The league's high over a career: a tie said as a tie, then the floor
     a league career is under. A named player's defaulted season that held

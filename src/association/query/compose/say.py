@@ -372,8 +372,9 @@ def decision_phrase(each: Decided, **said_with: Any) -> str:
     elif each.kind == "season_fallback":
         text = f"No games this season, so these are his most recent {said_with['games']}{said_with['at']}, from the {said_with['season_label']}."
     elif each.kind == "also_matched":
-        # The best match was drawn: the others are named, as a list.
-        text = f". Note: other players also matched: {list(each.instead_of)}"
+        # The best match was drawn: the others are named (ISSUES.md #308: this
+        # printed the list itself, brackets and quotes).
+        text = f". Note: other players also matched: {', '.join(each.instead_of)}"
     elif each.kind == "name_left_out":
         # A "vs" fingerprint that drew one polygon: the name the question
         # also holds, or - where it names nobody else - a spelling to check.
