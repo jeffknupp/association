@@ -429,6 +429,19 @@ the answer it is about, rather than living only in your head or a chat
 scrollback. Saving again adds a second note rather than replacing the first,
 so more than one thought about the same answer is never lost to the last save.
 
+The thread is kept in the browser. Each answered turn - the question, the
+answer as the server sent it, the trace - is stored in the browser's own
+storage (the newest fifty), and the page rebuilds the thread from it when it
+loads, with the question recall (ArrowUp in the box) matching what is on
+screen; "forget history" in the header clears it. It is per browser, not
+shared, and a chart a kept answer refers to is served from the output
+directory, so one the server no longer has shows as missing. The header's
+indicator checks the server every ten seconds - connected, answering,
+reconnecting, disconnected - and when the server has restarted (a deployment
+restarts it on every commit and every warehouse rebuild) the page reloads
+itself if nothing is typed or in flight, or offers a click; a tab brought back
+into view re-checks at once, the health line included.
+
 The server binds to localhost and has no authentication. It has no business
 being reachable by anything but you.
 
