@@ -127,6 +127,40 @@ def test_empty_text_is_not_found_rather_than_everyone(con: duckdb.DuckDBPyConnec
     assert isinstance(resolve_player(con, "   "), NotFound)
 
 
+def test_a_typo_inside_a_hyphenated_surname_reaches_its_player(con: duckdb.DuckDBPyConnection) -> None:
+    """ISSUES.md #241: the typed token was compared whole against each word
+    of the name, so "Jackson-Davs" was near neither "Jackson" nor "Davis".
+    Each token is split as a name's words are, and every piece must be near
+    one of them."""
+    from association.query.entities import read_near_spelling, suggest_players
+
+    con.execute("INSERT INTO players VALUES ('41', 'Trayce Jackson-Davis')")
+    assert [e.name for e in suggest_players(con, "Jackson-Davs")] == ["Trayce Jackson-Davis"]
+    assert (read_near_spelling(con, "Jackson-Davs") or Entity("", "")).name == "Trayce Jackson-Davis"
+    assert suggest_players(con, "Jackson-Smith") == []  # every piece must be near a word of ONE name
+
+
+def test_a_typo_near_too_many_players_is_narrowed_to_the_latest_seasons_before_it_is_dropped(con: duckdb.DuckDBPyConnection) -> None:
+    """ISSUES.md #240: "crry" is within one edit of six Currys, more than a
+    suggestion names, so it was dropped and the answer read "No player
+    found". Narrowed to the players with a box score in the latest season
+    on record - elimination, as a bare surname's namesakes are - it asks
+    between the two who have one; with no games table there is no latest
+    season, and the list is dropped as before."""
+    from association.query.entities import read_near_spelling, suggest_players
+
+    con.execute("INSERT INTO players VALUES ('51', 'Dell Curry'), ('52', 'Eddy Curry'), ('53', 'JamesOn Curry'), ('54', 'Michael Curry')")
+    assert suggest_players(con, "crry") == []  # six near, no latest season to narrow by
+    con.execute("CREATE TABLE games (event_id VARCHAR, season INTEGER, season_type INTEGER, winner_team_id VARCHAR)")
+    con.execute("INSERT INTO games VALUES ('g1', 2026, 2, '9')")
+    con.execute("CREATE TABLE player_box_stats (event_id VARCHAR, season INTEGER, athlete_id VARCHAR)")
+    con.execute("INSERT INTO player_box_stats VALUES ('g1', 2026, '1'), ('g1', 2026, '2'), ('g1', 2025, '51')")
+    assert [e.name for e in suggest_players(con, "crry")] == ["Seth Curry", "Stephen Curry"]
+    assert read_near_spelling(con, "crry") is None  # two survivors: asked, not defaulted
+    con.execute("DELETE FROM player_box_stats WHERE athlete_id = '2'")
+    assert (read_near_spelling(con, "crry") or Entity("", "")).name == "Stephen Curry"  # one survivor: the default, said
+
+
 def test_a_like_wildcard_in_a_name_is_a_literal_character(con: duckdb.DuckDBPyConnection) -> None:
     """ISSUES.md #315: the pattern was built from the text with no escape,
     as the SQL's ``ILIKE ?`` was, so "_" matched every one-letter run and

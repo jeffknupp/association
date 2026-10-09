@@ -37,6 +37,7 @@ import duckdb
 from association.nba.franchises import FRANCHISE_ERAS, FranchiseEra, season_name
 from association.nba.season import current_season
 from association.query import names
+from association.query.connection import latest_season_on_record
 from association.query.notes import decided
 from association.query.reading import Scope, Unsupported
 from association.query.result import Clarify, Refusal
@@ -791,13 +792,31 @@ def _suggest_players_by_surname(con: duckdb.DuckDBPyConnection, tokens: list[str
 def _suggest_players_by_spelling(con: duckdb.DuckDBPyConnection, tokens: list[str]) -> list[Entity]:
     """:func:`suggest_players`' second pass: the players every one of whose
     ``tokens`` is within :func:`_edit_budget` of some word of the name,
-    closest first - or nobody, when more than ``MAX_CLARIFY_CANDIDATES`` are."""
+    closest first - or nobody, when more than ``MAX_CLARIFY_CANDIDATES``
+    are, even among those with a box score in the latest season on record.
+
+    Each token is split as a name's words are (:func:`names.spelled_words`),
+    so "Gilgeous-Alexandr" is measured as "gilgeous" and "alexandr", each
+    against its nearest word; compared whole, the typed token was near
+    neither half and the typo reached nobody (ISSUES.md #241).
+
+    A list too long to suggest is narrowed before it is dropped, the way a
+    bare surname's namesakes are (``resolve_player``, the recency rule: not
+    a preference, an elimination): "crry" is within one edit of six Currys,
+    and only Seth and Stephen have a box score in the latest season, so the
+    question asks between those two where it said "No player found"
+    (ISSUES.md #240)."""
     index = _player_index(con)
+    pieces = [piece for token in tokens for piece in names.spelled_words(token)] or tokens
     # Closest first, then by name; two players of one name and one distance
     # stay in table order (an ORDER BY leaves that tie to the engine).
-    near = sorted(index.near([(t, _edit_budget(t)) for t in tokens]), key=lambda found: (found[1], str(index.rows[found[0]][1])))
-    rows = [row for row, _total in near][: MAX_CLARIFY_CANDIDATES + 1]
-    return [] if len(rows) > MAX_CLARIFY_CANDIDATES else _entities(index, rows)
+    near = sorted(index.near([(t, _edit_budget(t)) for t in pieces]), key=lambda found: (found[1], str(index.rows[found[0]][1])))
+    found = _entities(index, [row for row, _total in near])
+    if len(found) <= MAX_CLARIFY_CANDIDATES:
+        return found
+    latest = latest_season_on_record(con)
+    active = narrow_to_available(con, found, BOX_SCORES, season=latest) if latest is not None else []
+    return active if 0 < len(active) <= MAX_CLARIFY_CANDIDATES else []
 
 
 def read_near_spelling(con: duckdb.DuckDBPyConnection, text: str) -> Entity | None:
