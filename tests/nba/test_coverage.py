@@ -35,9 +35,7 @@ def test_every_routed_shape_declares_the_tables_it_reads() -> None:
 
     from association.query import compose
 
-    # Plus the one shape no reader takes that is held to a reader's floor:
-    # the game-level ranking the planner re-plans a season-line ranking as.
-    assert set(SOURCES) == set(compose._ROUTES) | {PointShape("player_games", "ranking", "player")}
+    assert set(SOURCES) == set(compose._ROUTES)
     assert set(RELATION_SOURCES) == set(typing.get_args(PointRelation))
 
 
@@ -118,6 +116,20 @@ def test_the_floor_follows_the_relation_the_point_reader_named() -> None:
         assert refused is not None and refused.startswith("Player game logs only go back to 1994"), narrowing
     unnarrowed = default_point("player_stat", Scope.from_slots({"player": "Michael Jordan", "stat": "points", "season": 1990, "season_type": REGULAR_SEASON}))
     assert unnarrowed.on == "player_seasons" and check_coverage(point_shape(unnarrowed), unnarrowed.scope) is None
+
+
+def test_a_game_level_ranking_is_floored_by_the_box_scores_it_reads() -> None:
+    """A league ranking over a line the season line has no metric for
+    ("how many players averaged 30 ppg", a count of games over a line) is
+    the planner's game-level ranking, read from the box scores: its floor
+    is theirs (1994), named in their words. Held to the metric's table -
+    none - it answered "No games for every player in the 1986 regular
+    season", the wrong cause."""
+    game_level = PointShape("player_games", "ranking", "player")
+    assert sources_for(game_level, {"stat": "points", "threshold": 30, "season": 1986}) == ("player_game_log", "player_box_stats", "games")
+    refused = check_coverage(game_level, {"stat": "points", "threshold": 30, "season": 1986, "season_type": REGULAR_SEASON})
+    assert refused is not None and refused.startswith("Player game logs only go back to 1994")
+    assert check_coverage(game_level, {"stat": "points", "threshold": 30, "season": 1994, "season_type": REGULAR_SEASON}) is None
 
 
 def test_the_ranking_refusal_does_not_claim_the_data_is_missing() -> None:

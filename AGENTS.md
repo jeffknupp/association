@@ -1723,8 +1723,7 @@ holds them as a table — `COVERAGE`, one entry per queryable table — and
 whose planned point lands under one. Add an entry whenever a reader reads
 a new table, and declare the shape's tables in `coverage.SOURCES`, keyed
 by the planned point's `reading.PointShape` (one entry per route in
-`compose._ROUTES`, which a test holds equal, plus the game-level ranking
-no reader takes; resolved per question where the table depends on the
+`compose._ROUTES`, which a test holds equal; resolved per question where the table depends on the
 measure asked for - an advanced stat, a ranking's metric, a team ranking's
 standings - and `RELATION_SOURCES` for a point no reader takes; keyed by
 intent and resolved from slot lists of its own until Phase 3, step 1,

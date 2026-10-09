@@ -131,15 +131,15 @@ SOURCES: dict[PointShape, Tables] = {
     PointShape("player_games", "scalar", "line"): _player_games_line_tables,
     PointShape("player_seasons", "comparison", "subject"): ("player_season_stats_deduped",),
     PointShape("player_seasons", "split", "season"): ("player_season_stats_deduped",),
-    # A ranking's table depends on the metric asked for. The game-level
-    # ranking (the planner's re-plan of a season-line ranking its reader did
-    # not read, which no reader takes) is held to the same floor - the
-    # metric's pool - rather than the box scores it reads: 2 of 2,710
-    # readings would move otherwise ("how many players averaged 30 ppg in
-    # 1986", unfloored because the metric resolves to no table), and the
-    # step that re-keyed the floor moves no verdict.
+    # A season-line ranking's table depends on the metric asked for. The
+    # game-level ranking (the planner's re-plan of a season-line ranking its
+    # reader did not read, which no reader takes) has no entry: it reads
+    # the box scores, and RELATION_SOURCES floors it there. Until the commit
+    # after Phase 3, step 1 it was held to the metric's table - none, for a
+    # line the season line has no metric for - and "how many players
+    # averaged 30 ppg in 1986" answered "No games for every player in the
+    # 1986 regular season", the wrong cause.
     PointShape("player_seasons", "ranking", "player"): _metric_tables,
-    PointShape("player_games", "ranking", "player"): _metric_tables,
     PointShape("netpoints", "scalar", "ratings"): ("net_points_player", "net_points_player_fingerprint"),
     PointShape("netpoints", "chart", "fingerprint"): ("net_points_player_fingerprint", "net_points_player_game_fingerprint"),
     PointShape("team_games", "scalar", "record"): _team_record_tables,

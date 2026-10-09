@@ -395,9 +395,8 @@ def test_the_answer_side_chooses_by_shape_and_never_by_intent() -> None:
 
     compose = importlib.import_module("association.query.compose")
     sayer = importlib.import_module("association.query.compose.say")
-    # One key: the routes, the stated scoping, the decline's name and the
-    # floor's tables (which also declare the game-level ranking no reader takes).
-    assert set(compose._ROUTES) == set(SHAPE_NAMES) == set(STATED_SCOPING) <= set(SOURCES)
+    # One key: the routes, the stated scoping, the decline's name and the floor's tables.
+    assert set(compose._ROUTES) == set(SHAPE_NAMES) == set(STATED_SCOPING) == set(SOURCES)
     assert set(sayer._SCALAR_SAYERS) == set(typing.get_args(typing.get_type_hints(Scalar)["how"]))
     for module in (compose, sayer):
         tree = ast.parse(Path(module.__file__ or "").read_text())
