@@ -1,34 +1,28 @@
 Installation
 ============
 
-From GitHub
------------
+From PyPI
+---------
 
-.. note::
-
-   ``pip install association-py`` is the install command from the next
-   release on: the distribution is named ``association-py`` on PyPI, since
-   PyPI refuses the bare name though nobody holds it (the import package,
-   the ``association`` command and the repository keep it). Nothing is on
-   PyPI yet, so install from the tag below for now; this section goes back
-   to being *From PyPI* once the first version is up.
-
-Install from a release tag:
+The distribution is named ``association-py`` - PyPI refuses the bare name -
+while the import package and the command are ``association``:
 
 .. code-block:: console
 
-   $ pip install git+https://github.com/jeffknupp/association@v5.0.0
+   $ pip install association-py
 
 Or, to get the CLI on your PATH without adding it to a project environment:
 
 .. code-block:: console
 
-   $ uv tool install git+https://github.com/jeffknupp/association@v5.0.0
+   $ uv tool install association-py
 
-Releases cut from now on also carry the built wheel and sdist as downloadable
-assets, so ``pip install ./association_py-X.Y.Z-py3-none-any.whl`` works from
-a local copy (``association-X.Y.Z-...`` for the releases before the rename).
-Releases made before that have none attached; use the tag above.
+Each release also attaches its wheel and sdist to the `GitHub release
+<https://github.com/jeffknupp/association/releases>`_, so
+``pip install ./association_py-X.Y.Z-py3-none-any.whl`` works from a local
+copy, and ``pip install git+https://github.com/jeffknupp/association@vX.Y.Z``
+installs any tag. Versions before 5.0.0 were never uploaded to PyPI and carry
+the old name; install those from their tag.
 
 Python 3.14 or newer is required. The package is pure Python and ships no
 compiled extensions, so there is a single wheel for every platform.

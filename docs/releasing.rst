@@ -5,18 +5,11 @@ Distribution is automated by ``.github/workflows/publish.yml``. Publishing uses
 PyPI's `Trusted Publishing
 <https://docs.pypi.org/trusted-publishers/>`_, so there is no API token stored
 in the repository: PyPI verifies the GitHub Actions workflow identity over OIDC
-at upload time.
-
-.. note::
-
-   The PyPI upload currently fails, and that is expected: Trusted Publishing
-   answers ``invalid-publisher`` because no publisher is registered for this
-   repository on PyPI yet, pending an account-access issue — not a workflow
-   bug, and not something to fix by adding a token or making the job tolerate
-   failure. The rest of the ``build`` job still runs (the full gate suite,
-   then the wheel and sdist attached to the GitHub release), so a release
-   still ships from there; see :doc:`installation`. Every version tagged so
-   far stays uploadable under its own number once the account is restored.
+at upload time. The publisher on PyPI is registered for the project
+``association-py`` (the distribution's name since 5.0.0, the first version
+uploaded; PyPI refuses the bare name), repository ``jeffknupp/association``,
+workflow ``publish.yml``, environment ``pypi``. The ``build`` job also attaches
+the wheel and sdist to the GitHub release.
 
 Versioning
 ----------
@@ -60,11 +53,11 @@ Cutting a release
       $ scripts/bump_version.py minor --tag
 
    Accepts ``major``, ``minor``, ``patch`` or an explicit ``X.Y.Z``. It renames
-   the ``## Unreleased`` heading to the version and today's date, rewrites the
-   install-command pins in ``README.md``, ``docs/installation.rst`` and
-   ``docs/usage.rst`` from the old tag to the new one, refuses to run on a
-   dirty working tree, and refuses to reuse a tag that already exists — PyPI
-   would not accept a second upload for that version either.
+   the ``## Unreleased`` heading to the version and today's date, rewrites any
+   install command a doc pins to the old release tag to the new one (none
+   since 5.0.0: the install commands are PyPI's), refuses to run on a dirty
+   working tree, and refuses to reuse a tag that already exists — PyPI would
+   not accept a second upload for that version either.
 
 #. Rehearse against TestPyPI if the packaging itself changed: run the *Publish*
    workflow manually with the target ``testpypi``, then check the result

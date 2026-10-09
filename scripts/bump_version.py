@@ -52,13 +52,6 @@ UNRELEASED = re.compile(r"^## Unreleased\s*$", re.MULTILINE)
 # appears, so a doc that grows a new pin is covered without editing this list.
 PIN = re.compile(r"association@v(\d+\.\d+\.\d+)")
 
-# The distribution was renamed ``association-py`` on 2026-10-09 (PyPI refuses
-# the bare name; AGENTS.md, "Releasing"). pip and uv refuse a ``name @ url``
-# install whose metadata name differs, so the bump that moves a pin onto a
-# post-rename tag moves the name with it. Goes with the git-tag install lines
-# once ``pip install association-py`` works.
-EXTRAS_PIN = ("association[web] @ git+", "association-py[web] @ git+")
-
 BUMPS = ("major", "minor", "patch")
 
 
@@ -219,15 +212,11 @@ def rewrite_install_pins(files: list[Path], current: str, version: str, root: Pa
     .. versionchanged:: 4.1.0
        Skips the paths that hold the pattern for reasons other than
        instructing an install.
-
-    .. versionchanged:: 5.0.0
-       An ``association[web] @ git+`` pin is moved to the renamed distribution
-       (:data:`EXTRAS_PIN`) with its tag.
     """
     old = f"association@v{current}"
     new = f"association@v{version}"
     for path in files:
-        path.write_text(path.read_text().replace(old, new).replace(*EXTRAS_PIN))
+        path.write_text(path.read_text().replace(old, new))
 
     leftover = subprocess.run(
         ["git", "grep", "--fixed-strings", "--files-with-matches", old],
