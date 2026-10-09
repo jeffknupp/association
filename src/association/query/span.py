@@ -321,15 +321,27 @@ def claimed(claims: list[Claim]) -> tuple[Claim, ...]:
     claim inside another's characters is the same reading (the season span
     a range was read from, the "playoffs" inside "including the playoffs")
     and folds into it; two claims that overlap without one holding the
-    other are two rules reading one word, a bug in the reader.
+    other share a word two readings both need, and become one claim over
+    both stretches, named for both (``"window+season_type"``): "his last
+    game 7" is one game at the end of his span AND the seventh game of a
+    series, and "in march 24 2018" the month and the day in it. Until
+    2026-10-09 such an overlap raised, as two rules reading one word - and
+    "lebron's last game 7" raised out of the reader to the user, since the
+    window's "last game" and the postseason's "game 7" are both right.
 
     .. versionadded:: 6.0.0
+
+    .. versionchanged:: 6.0.0
+       A partial overlap is one claim named for both readings, not a
+       ``ValueError``.
     """
     kept: list[Claim] = []
     for claim in sorted(claims, key=lambda c: (c.start, -c.end)):
         if kept and claim.start < kept[-1].end:
             if claim.end <= kept[-1].end:
                 continue  # inside the last claim: the same reading
-            raise ValueError(f"the reader claimed {claim} across {kept[-1]}")
+            last = kept.pop()
+            kept.append(Claim(last.start, claim.end, f"{last.what}+{claim.what}"))
+            continue
         kept.append(claim)
     return tuple(kept)

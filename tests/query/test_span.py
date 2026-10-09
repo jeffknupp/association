@@ -128,10 +128,25 @@ def test_no_two_claims_overlap(question: str) -> None:
     assert all(a.end <= b.start for a, b in itertools.pairwise(claims))
 
 
-def test_claimed_folds_a_nested_claim_and_refuses_a_partial_overlap() -> None:
+def test_claimed_folds_a_nested_claim_and_joins_a_partial_overlap() -> None:
+    """A claim inside another is the same reading; two that share a word are
+    one claim named for both readings - "his last game 7" is the window's
+    "last game" and the postseason's "game 7", and until 2026-10-09 it raised
+    out of the reader ("lebron's last game 7" was a traceback, not an answer)."""
     assert claimed([Claim(10, 30, "both"), Claim(20, 28, "season_type")]) == (Claim(10, 30, "both"),)
-    with pytest.raises(ValueError, match="claimed"):
-        claimed([Claim(10, 20, "range"), Claim(15, 25, "season")])
+    assert claimed([Claim(10, 20, "range"), Claim(15, 25, "season")]) == (Claim(10, 25, "range+season"),)
+    assert claimed([Claim(15, 25, "season"), Claim(10, 20, "range"), Claim(22, 30, "career")]) == (Claim(10, 30, "range+season+career"),)
+
+
+def test_a_word_two_readings_share_reads_both_and_raises_nothing() -> None:
+    """ "lebron's last game 7": one game at the end of his span (the window)
+    and the seventh game of a series (the postseason's word), both read, the
+    shared "game" claimed once for both."""
+    from association.query.router import settle
+
+    route = settle("game_log", {"player": "LeBron James"}, "lebron's last game 7")
+    assert route.scope.window.order == "recent" and route.scope.window.count == 1 and route.scope.span.season_type == 3 and route.slots["game_n"] == 7
+    assert [c.what for c in route.claims] == ["window+season_type"]
 
 
 # ---------------- the typed value's door and projection ----------------
