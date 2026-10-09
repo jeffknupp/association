@@ -181,17 +181,22 @@ def test_the_real_repository_is_bumpable() -> None:
     regex. The next real bump would have stopped dead, which is worse than the
     rotting pins this script exists to prevent.
 
-    So this asserts the real tree resolves to exactly the three files that are
-    install instructions, and that the pre-flight check passes on it.
+    So this asserts what the real tree resolves to, and that the pre-flight
+    check passes on it. Until 5.0.0 three docs pinned an install command to
+    the release tag and were rewritten at each bump; since 5.0.0 the install
+    commands are PyPI's (``pip install association-py``) and pin nothing, so
+    the raw grep finds only the two docs that mention the pattern with no
+    version attached, and the check rewrites none - a doc that grows a tag
+    pin again would show up in both sets.
     """
     root = Path(__file__).resolve().parents[2]
     candidates = {p.relative_to(root).as_posix() for p in bump_version.find_pinned_files(root)}
-    assert candidates == {"README.md", "docs/installation.rst", "docs/usage.rst", "docs/releasing.rst"}
+    assert candidates == {"docs/installation.rst", "docs/releasing.rst"}
 
     current = bump_version.current_version()
-    # Does not raise: every version-bearing pin names the current release.
+    # Does not raise, and finds no version-bearing pin to rewrite.
     pinned = bump_version.check_install_pins(current, "99.0.0", root)
-    assert {p.relative_to(root).as_posix() for p in pinned} == {"README.md", "docs/installation.rst", "docs/usage.rst"}
+    assert pinned == []
 
 
 def test_rewriting_tolerates_the_old_pin_surviving_where_it_is_meant_to(tmp_path: Path) -> None:
