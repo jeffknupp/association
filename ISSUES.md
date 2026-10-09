@@ -326,6 +326,15 @@ those were found.
 - **Priority:** P1 - a different question answered.
 - **GitHub:** #347
 
+### A team's points allowed asked with the verb is answered as its points scored: "how many points did the sixers allow in the 2001 playoffs" answers 92.3 points per game
+- **Found:** 2026-10-09, the lead, probing the team-season caveat fix (#227) with `~/association-research/stages/ask_unnamed.py` (the stat `points allowed`).
+- **Evidence:** "how many points did the sixers allow in the 2001 playoffs" answers "The Philadelphia 76ers' points per game was 92.3 in the 2001 postseason (23 games), 6th-best of 16 teams" - their own scoring - where "sixers points allowed in the 2001 playoffs" reads the right measure (and is refused for the games shortfall, naming it: "Opponent points per game can't be given for the 2001 postseason: ESPN's game list holds 16 of the Philadelphia 76ers' 23 games ..."); "give up" is answered the same wrong way. `point._TEAM_WORD_MEASURES` reads the measure from the words before the model's stat: its opponent-points pattern is `\bpoints? allowed\b|\bopponent'?s? points\b`, which the verb "allow" (and "give up", "concede") does not match, and its points pattern `\bhow many points\b` does, so the measure is `points` and the normalizer's `points allowed` is never consulted. Measured on the main warehouse at `1599742`.
+- **User sees:** a fluent, wrong answer - the other team's side of the score - with nothing in the sentence saying the stat was substituted. The failure shape at the top of `AGENTS.md`.
+- **Next step:** in the team measure grammar (`point._TEAM_WORD_MEASURES`; the lexicon once step 2's line family moves it), read "points ... allow/allowed/allows/allowing", "give up"/"gave up"/"given up" and "concede(d)" as `points_allowed` ahead of the bare points pattern, and prefer the model's `points allowed` over a bare "how many points" match; a case per wording in `tests/query/test_parser.py` (or the point reader's tests); the readings and the feed answers that move enumerated. Not fixed here: `point.py` is the window slice's seam (2026-10-09).
+- **Source:** ours.
+- **Priority:** P1 - a different stat answered.
+- **GitHub:** #348
+
 ## P2: misleading or incomplete
 
 ### "Stephen Curry free throw chart" (no "shot") answers his season averages
@@ -1772,20 +1781,6 @@ those were found.
   finding is still open.
 - **GitHub:** #25
 
-### A player's career TS% is refused
-- **Found:** 2026-09-11, final corpus run
-- **Evidence:** "kevin durant true shooting percentage career" routes to
-  `player_stat` with `stat='ts_pct'`, which refuses. It is derivable from
-  career totals: PTS / (2 × (FGA + 0.44 FTA)).
-- **User sees:** a refusal naming the stat. The wrong 3P% answer this used to
-  give is fixed.
-- **Next step:** add TS% and eFG% to `player_stat` as computed ratios, like
-  `SHOOTING_STATS`.
-- **Re-checked 2026-09-15: wider than filed.** `player_stat` refuses
-  `ts_pct`/`efg_pct` for a single season too, not only a career, although
-  `player_season_advanced_stats` holds both per season.
-- **GitHub:** #26
-
 ### Fingerprint for a specific date
 - **Found:** before 2026-09-11 (docstring)
 - **Evidence:** the fingerprint template in `query/templates/netpoints.py` said "... but not
@@ -2353,6 +2348,7 @@ those were found.
 - **Evidence:** `src/association/query/player_relation.py` `condition_scope`: `_Scope(None, kind, max(since, scope.first), scope.phantoms)` with no last season; `compose/splits.py:193`, `compose/pairs.py:56-57`, `compose/core.py` `run_scope`. The games themselves are read through `span_of` (`scoped_player`), which bounds both ends, so the rows are right; only the `_Scope` the "no games" refusal (`player_relation.no_games`: "in any regular season on record (2019 onward)"), its label and the empty-box-score count are built from is open at the far end. On the 2,710 readings 4 carry a closed range on one of these shapes (2 `player_splits`, 2 `player_matchup`, 0 `streak`), none of them a "no games" case.
 - **User sees:** a refusal or a caveat naming "since 2019" where "2019-20 to 2023-24" was asked, on a split, run or matchup with no games in the range - a wrong-cause sentence, not a wrong answer, and rare.
 - **Next step:** `_Scope` gains a `last`, `condition_scope` sets it from `span.until`, `where_in`/`label` say "from X through Y" as `ResolvedSpan.during` does, and the three readers' counts bound by it; one unit test per reader with a closed range and no games.
+- **GitHub:** #349
 
 ### A team's log drops a calendar, quarter or half narrowing silently
 - **Found:** 2026-10-05, porting the team log onto the team compiler (Phase 2, step 4)
