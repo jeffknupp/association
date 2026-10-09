@@ -2916,7 +2916,8 @@ def say_with_without(result: Result) -> Reply:
         whom = (any_of if asked_without else all_of) if played else (all_of if asked_without else any_of)
         rows.append((f"{prefix}{whom} {verbs[0] if played else verbs[1]}", cells))
     title, headers, whose = _with_without_heading(result, named, all_of)
-    unknown = "whether he played is unknown; they are on neither side"
+    # "he" for one teammate, "they" for several (ISSUES.md #313, item 2).
+    unknown = f"whether {'they' if len(named) > 1 else 'he'} played is unknown; they are on neither side"
     notes = [note(each.kind, note_phrase(each, about=whose, consequence=unknown), **each.facts) for each in result.notes]
     tenure = next(list(each.facts["stints"]) for each in result.notes if each.facts.get("term") == "tenure_counted")
     data = {
