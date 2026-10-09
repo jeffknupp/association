@@ -30,7 +30,7 @@ from association.query.measures import PERIOD_COLUMNS
 from association.query.metrics import LEADERBOARD_METRICS
 from association.query.notes import Note, decided, note
 from association.query.player_games import PERIOD_LOG_COLUMNS, PERIOD_RATES, STAT_LABELS, _joined, period_columns
-from association.query.reading import ordinal_word
+from association.query.reading import LeftOut, ordinal_word
 from association.query.result import (
     Calendar,
     Chart,
@@ -374,6 +374,14 @@ def decision_phrase(each: Decided, **said_with: Any) -> str:
     elif each.kind == "also_matched":
         # The best match was drawn: the others are named, as a list.
         text = f". Note: other players also matched: {list(each.instead_of)}"
+    elif each.kind == "name_left_out":
+        # A "vs" fingerprint that drew one polygon: the name the question
+        # also holds, or - where it names nobody else - a spelling to check.
+        dropped = each.facts.get("names")
+        if dropped:
+            text = f"Note: the question also names {' and '.join(dropped)}, who was not included in this answer."
+        else:
+            text = "Note: the question compares two players, but only one of them matches anybody in the warehouse - check the spelling of the other."
     elif each.kind == "season_redirected":
         first, last, kind = each.facts["first"], each.facts["last"], each.facts["what"]
         # Singular for one season, plural for a range - the same rule _Span.years
@@ -386,6 +394,20 @@ def decision_phrase(each: Decided, **said_with: Any) -> str:
     else:
         raise ValueError(f"no phrase for decision kind {each.kind!r}")
     return decided(each.kind, text, field=each.field, chose=each.chose, before=each.before, instead_of=each.instead_of, why=each.why, **each.facts)
+
+
+def say_left_out(left_out: LeftOut) -> str:
+    """What a fingerprint that drew one polygon of a "vs" question says
+    beside it (:class:`~association.query.reading.LeftOut`), as the
+    ``name_left_out`` decision - the players it drew chosen, the names the
+    question also holds (``dropped``), or none matching (``unmatched``).
+
+    .. versionadded:: 6.0.0
+       ``entities.compared_but_unmatched``'s sentence, which read the
+       question in the answering loop.
+    """
+    names = list(left_out.names)
+    return decision_phrase(Decided(kind="name_left_out", field="players", chose=list(left_out.held), why="dropped" if names else "unmatched", facts={"names": names} if names else {}))
 
 
 def note_phrase(each: Note, *, narrowing: str = "", consequence: str = "", listed: bool = False, about: str = "", placed: str = "") -> str:

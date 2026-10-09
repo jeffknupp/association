@@ -66,8 +66,7 @@ from association.query.entities import (
     teams_of,
 )
 from association.query.measures import THRESHOLD_STAT_NAMES
-from association.query.notes import decided
-from association.query.reading import FILLER_PLAYER_WORDS, OWN_TEAM_RESTORABLE_INTENTS, PLAYER_REQUIRED_INTENTS, POSITIONS, SUBJECT_RESTORABLE_INTENTS, ConditionSpec, Scope
+from association.query.reading import FILLER_PLAYER_WORDS, OWN_TEAM_RESTORABLE_INTENTS, PLAYER_REQUIRED_INTENTS, POSITIONS, SUBJECT_RESTORABLE_INTENTS, ConditionSpec, LeftOut, Scope
 from association.query.router import _ABSENCE_WORDS, _NAME_STOPWORDS, _THRESHOLD_WORDS, Beside, _threshold_from_text_scored
 from association.query.season_text import season_from_text
 
@@ -1824,9 +1823,11 @@ def _question_derived_player_search(players: names.PlayerIndex, window: list[str
 _VERSUS = re.compile(r"\b(?:vs\.?|versus)\b", re.IGNORECASE)
 
 
-def compared_but_unmatched(players: names.PlayerIndex, question: str, held: list[str]) -> str | None:
-    """The caveat for a "vs" fingerprint question that drew only one polygon,
-    or None where none applies.
+def compared_but_unmatched(players: names.PlayerIndex, question: str, held: list[str]) -> LeftOut | None:
+    """What a "vs" question the reading holds fewer than two players of
+    leaves out (:class:`~association.query.reading.LeftOut`), or None where
+    it compares nothing or holds both sides. The answer says it beside a
+    fingerprint that drew one polygon (the ``name_left_out`` decision).
 
     A misspelling nothing can repair - "generate fingerprints for embiid vs
     jolic" drew Joel Embiid alone, because "jolic" matches no player and is not
@@ -1857,14 +1858,13 @@ def compared_but_unmatched(players: names.PlayerIndex, question: str, held: list
        Lives in :mod:`association.query.subject`, the reader's, and takes the
        players' in-memory index (:func:`~association.query.entities.players_of`)
        in place of a connection: it was ``entities.compared_but_unmatched``.
+       Returns the names as values (a :class:`~association.query.reading.LeftOut`),
+       which the parser carries on the Reading; the sentence is the sayer's.
     """
     if len(held) >= 2 or not _VERSUS.search(question):
         return None
     dropped = [name for name in players_named_in(players, question) if not any(_shares_word(name, k) for k in held)]
-    if dropped:
-        return decided("name_left_out", f"Note: the question also names {' and '.join(dropped)}, who was not included in this answer.", field="players", chose=list(held), why="dropped", names=dropped)
-    said = "Note: the question compares two players, but only one of them matches anybody in the warehouse - check the spelling of the other."
-    return decided("name_left_out", said, field="players", chose=list(held), why="unmatched")
+    return LeftOut(held=tuple(held), names=tuple(dropped))
 
 
 def _has_a_real_team(teams: names.TeamIndex, slots: dict[str, Any], question: str) -> bool:

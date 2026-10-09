@@ -763,8 +763,14 @@ def test_a_vs_question_that_matched_one_player_is_flagged(con: duckdb.DuckDBPyCo
     """ "generate fingerprints for embiid vs jolic" drew Joel Embiid alone. The
     typo cannot be repaired - measured, a near-spelling search over leftover
     words finds a spurious player in 29 of 51 corpus questions - so the answer
-    has to say a player is missing rather than quietly drop one."""
-    assert compared_but_unmatched(players_of(con), "generate fingerprints for embiid vs jolic in 2026", ["Joel Embiid"])
+    has to say a player is missing rather than quietly drop one: the
+    reading carries what the "vs" left out, and the sayer says it."""
+    from association.query.compose.say import say_left_out
+    from association.query.reading import LeftOut
+
+    left_out = compared_but_unmatched(players_of(con), "generate fingerprints for embiid vs jolic in 2026", ["Joel Embiid"])
+    assert left_out == LeftOut(held=("Joel Embiid",), names=())
+    assert say_left_out(left_out) == "Note: the question compares two players, but only one of them matches anybody in the warehouse - check the spelling of the other."
 
 
 def test_a_vs_question_with_both_players_is_not_flagged(con: duckdb.DuckDBPyConnection) -> None:
@@ -788,8 +794,12 @@ def test_a_name_that_resolves_is_never_called_a_warehouse_miss(con: duckdb.DuckD
     c = duckdb.connect(":memory:")
     c.execute("CREATE TABLE players (athlete_id VARCHAR, display_name VARCHAR)")
     c.execute("INSERT INTO players VALUES ('1', 'Tyrese Maxey'), ('2', 'Marlon Maxey'), ('3', 'Jaylen Brown')")
-    note = compared_but_unmatched(players_of(c), "show a fingerprint for maxey vs jaylen brown in 2026", ["Maxey"])
-    assert note == "Note: the question also names Jaylen Brown, who was not included in this answer."
+    from association.query.compose.say import say_left_out
+    from association.query.reading import LeftOut
+
+    left_out = compared_but_unmatched(players_of(c), "show a fingerprint for maxey vs jaylen brown in 2026", ["Maxey"])
+    assert left_out == LeftOut(held=("Maxey",), names=("Jaylen Brown",))
+    assert say_left_out(left_out) == "Note: the question also names Jaylen Brown, who was not included in this answer."
 
 
 def test_a_refusal_with_no_names_is_still_a_sentence() -> None:

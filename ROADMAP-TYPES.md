@@ -118,6 +118,13 @@ otherwise.
     stops carrying a point beside itself.
   - `too_short` is the parser's verdict before any Reading exists
     (`parse.too_short` returns the cause). `reading.CAUSES` 17 -> 27.
+  - `Reading.left_out: LeftOut | None` - a fingerprint's "vs" the reading
+    holds one side of: `LeftOut(held, names)`, the players held and the
+    names the words also name (none: only one compared name matched
+    anybody). A plain value, not the draft's `Met`: `Met` is the games two
+    subjects shared, a cell of the pair relation; this is a reading of the
+    words the answer states as the `name_left_out` decision. Read for a
+    fingerprint alone, the one shape that says it.
 
 ## What must be decided before which phase
 

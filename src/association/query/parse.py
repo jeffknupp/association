@@ -37,7 +37,7 @@ from association.query.entities import _edit_budget, _words, find_players, find_
 from association.query.measures import MEASURE_WORDS, PERIOD_COLUMNS, PERIOD_RATE_STATS, TEAM_PERIOD_COLUMNS
 from association.query.metrics import EXTRA_FIELD_COLUMNS, TEAM_FIELD_WORDS
 from association.query.point import read_point
-from association.query.reading import TEAM_ONLY_INTENTS, Cause, ConditionSpec, PeriodCondition, PointRefused, Reading, Scope, ScopeError, Split, Unsupported
+from association.query.reading import TEAM_ONLY_INTENTS, Cause, ConditionSpec, LeftOut, PeriodCondition, PointRefused, Reading, Scope, ScopeError, Split, Unsupported
 from association.query.router import _PERIOD_AS_CONDITION, Route, _period_asked, _route_calendar_slots_split, settle
 from association.query.subject import (
     TEAM_SINGULARS,
@@ -49,6 +49,7 @@ from association.query.subject import (
     apply_subject,
     beside,
     child_named,
+    compared_but_unmatched,
     nicknames_in,
     player_named_on_a_team_only_question,
     question_derived_player,
@@ -1005,6 +1006,7 @@ def reading_from_route(con: duckdb.DuckDBPyConnection, question: str, route: Rou
         pointed,
         refused=_reading_from_route_refused(players_of(con), teams_of(con), asked, pointed),
         unsupported=_reading_from_route_unsupported(asked, pointed),
+        left_out=_reading_from_route_left_out(players_of(con), asked, pointed),
     )
 
 
@@ -1203,6 +1205,21 @@ def _unsupported_team_boolean_count(reading: Reading) -> Cause | None:
     if reading.intent != "leaderboard" or scope.stat not in ("triple_double", "double_double") or subject is None or subject.kind not in ("team", "team_players") or not scope.team:
         return None
     return Cause(kind="team_boolean_count", facts={"intent": reading.intent, "stat": scope.stat})
+
+
+def _reading_from_route_left_out(players: names.PlayerIndex, question: str, reading: Reading) -> LeftOut | None:
+    """A fingerprint's "vs" the reading holds one side of - the names the
+    words name beyond the players it holds (``Reading.left_out``), which the
+    answer says beside the one polygon it draws
+    (:func:`~association.query.subject.compared_but_unmatched`). Read for a
+    fingerprint alone, the one shape that says it; until Phase 3, step 0
+    the answering loop re-read the question for it."""
+    if reading.intent != "fingerprint":
+        return None
+    scope = reading.scope
+    raw = list(scope.players) if scope.players else [scope.player]
+    held = [name for name in raw if isinstance(name, str) and name.strip()]
+    return compared_but_unmatched(players, question, held)
 
 
 def _subject_decisions(subject: Subject) -> tuple[Decision, ...]:

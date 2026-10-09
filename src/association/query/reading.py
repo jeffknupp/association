@@ -532,6 +532,22 @@ class Cause:
 
 
 @dataclass(frozen=True, kw_only=True)
+class LeftOut:
+    """A question setting two players against each other ("embiid vs jolic")
+    that the reading holds fewer than two players of: the players it holds
+    (``held``) and the ones the question's words also name that it does not
+    (``names``) - none where only one of the compared names matches anybody.
+    What the answer says beside a one-polygon fingerprint, as values: the
+    sentence is the sayer's (``name_left_out``, a decision).
+
+    .. versionadded:: 6.0.0
+    """
+
+    held: tuple[str, ...]
+    names: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True, kw_only=True)
 class Reading:
     """One question, read. The point fields (shape, measures, aggregate,
     group, predicates, order, direction, limit) mirror
@@ -618,6 +634,14 @@ class Reading:
     #:
     #: .. versionadded:: 6.0.0
     unsupported: tuple[Cause, ...] = ()
+    #: A fingerprint's "vs" the reading holds one side of
+    #: (:class:`LeftOut`): which names the question's words name beyond the
+    #: players it holds, said beside the polygon it draws. Read by the
+    #: parser; until Phase 3, step 0 the answering loop re-read the question
+    #: for it (``entities.compared_but_unmatched``).
+    #:
+    #: .. versionadded:: 6.0.0
+    left_out: LeftOut | None = None
 
     @classmethod
     def from_slots(cls, slots: Mapping[str, Any], *, intent: str = "", subject: Subject | None = None) -> Reading:

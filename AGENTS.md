@@ -1108,9 +1108,13 @@ model's. Two things follow, and both matter when you add a shape:
   `compose.netpoints.draw_fingerprint` writes with `query/radar.py` before
   `compose.say.say_fingerprint` words it - a reader reads and names no file
   that does not exist yet, and the sayer takes the Result and nothing
-  else. The "vs" note for a fingerprint that drew one polygon
-  (`subject.compared_but_unmatched`) reads the question, so the answering
-  loop attaches it (`agent._unmatched_fingerprint`). The shot relation's
+  else. The "vs" note for a fingerprint that drew one polygon is read by
+  the parser (`Reading.left_out`, a `reading.LeftOut` of the players held
+  and the names the words also hold - `subject.compared_but_unmatched`)
+  and said by the sayer as the `name_left_out` decision
+  (`say.say_left_out`); the answering loop attaches it after the coverage
+  caveat (`agent._unmatched_fingerprint`), reading the Reading and nothing
+  else. The shot relation's
   (`compose.shots.ShotQuery` on the declared `shots` relation, declined
   beyond what its retired template's words state, `compose.plan.STATED_SCOPING`)
   is read the same way: `read_shot_chart` and `read_shot_distance` are the

@@ -39,17 +39,17 @@ from association.query.reading import PLAYER_INTENTS
 from .answer import Answer, AnsweredBy, Artifact, Timing
 from .compose import COMPILED_INTENTS
 from .compose.plan import Planned, plan_point, refusal_result
+from .compose.say import say_left_out
 from .connection import connect_read_only, latest_season_on_record
-from .entities import collect_name_readings, misread_players, players_of
+from .entities import collect_name_readings, misread_players
 from .history import DEFAULT_HISTORY_DIR, RunHistory, echo_to_stderr
 from .models import DEFAULT_ROUTER_MODEL
 from .names import loaded as names_loaded
 from .notes import collect as collect_remarks
 from .notes import unsaid
 from .parse import MIN_QUESTION_WORDS, too_short
-from .reading import Reading, Scope, ScopeError
+from .reading import Reading, ScopeError
 from .router import Route, RouterUnavailable
-from .subject import compared_but_unmatched
 
 # The subset of Reply.data a compose.answer() carries that describes
 # WHAT was answered - the point on the relation - rather than the rows
@@ -256,12 +256,6 @@ class Agent:
             decisions=tuple(history.decisions),
         )
 
-    @staticmethod
-    def _named_in(scope: Scope) -> list[str]:
-        """The player names a Reading's scope carries, however the route split them."""
-        raw = list(scope.players) if scope.players else [scope.player]
-        return [name for name in raw if isinstance(name, str) and name.strip()]
-
     def _try_fast_path(self, question: str, history: RunHistory) -> tuple[str, Reply] | None:
         """Route -> Reading -> plan -> reader and sayer -> answer, returning
         the intent alongside the whole :class:`~association.query.answer.Reply`.
@@ -305,7 +299,7 @@ class Agent:
         if settled is not None:
             return settled
         if reading.intent in COMPILED_INTENTS:
-            return self._run_compiled(question, reading, history)
+            return self._run_compiled(reading, history)
         return None
 
     def _reading(self, question: str, routed: Route, history: RunHistory) -> Reading:
@@ -412,7 +406,7 @@ class Agent:
         self.unanswered = f"intent {reading.intent!r} has no reader"
         return None
 
-    def _run_compiled(self, question: str, reading: Reading, history: RunHistory) -> tuple[str, Reply] | None:
+    def _run_compiled(self, reading: Reading, history: RunHistory) -> tuple[str, Reply] | None:
         """An intent the compiler alone answers (``compose.COMPILED_INTENTS``:
         every intent since Phase 2 retired the templates). Where the
         compiler has no reading of the point, in this order: the
@@ -426,7 +420,7 @@ class Agent:
         t0 = time.monotonic()
         intent, scope = reading.intent, reading.scope
         declined: list[str] = []
-        composed = self._try_compose(question, reading, history, declined=declined.append)
+        composed = self._try_compose(reading, history, declined=declined.append)
         if composed is not None:
             history.record_tool_call(f"compose {intent}", time.monotonic() - t0)
             return intent, composed
@@ -446,7 +440,7 @@ class Agent:
         self.unanswered = f"{intent}: {why}"
         return None
 
-    def _try_compose(self, question: str, reading: Reading, history: RunHistory, declined: Callable[[str], None] | None = None) -> Reply | None:
+    def _try_compose(self, reading: Reading, history: RunHistory, declined: Callable[[str], None] | None = None) -> Reply | None:
         """The compiler's answer to the point the parser read
         (``association.query.compose.answer``): the compiled intents' only
         answer. The name readings the reader noted and the coverage caveat
@@ -482,26 +476,25 @@ class Agent:
         if note:
             composed.answer = f"{composed.answer} {note}"
             _note(composed, note)
-        self._unmatched_fingerprint(question, reading, composed)
+        self._unmatched_fingerprint(reading, composed)
         point = {key: composed.data[key] for key in _COMPOSE_POINT_KEYS if key in composed.data}
         history.log(f"  -> (compose) intent={reading.intent!r} point={point}")
         return composed
 
-    def _unmatched_fingerprint(self, question: str, reading: Reading, composed: Reply) -> None:
+    def _unmatched_fingerprint(self, reading: Reading, composed: Reply) -> None:
         """A "vs" fingerprint that drew one polygon answered half of itself:
-        :func:`~association.query.subject.compared_but_unmatched` says which
-        name the question compares matched nobody, or was left out - see its
-        docstring. Read here because it reads the question's text, which
-        only the reader and this loop hold; said after the coverage caveat,
-        and only where the reader answered - never beside the coverage
-        floor's refusal, which read no name (the retired template's order:
-        the floor, then the answer and this note)."""
-        if reading.intent != "fingerprint" or check_coverage(reading.intent, reading.scope) is not None:
+        the parser read which names the question compares beyond the
+        players the reading holds (:attr:`Reading.left_out <association.query.reading.Reading.left_out>`),
+        and the sayer says it (:func:`~association.query.compose.say.say_left_out`)
+        - after the coverage caveat, and only where the reader answered:
+        never beside the coverage floor's refusal, which read no name (the
+        retired template's order: the floor, then the answer and this note).
+        Until Phase 3, step 0 this re-read the question."""
+        if reading.left_out is None or check_coverage(reading.intent, reading.scope) is not None:
             return
-        unmatched_note = compared_but_unmatched(players_of(self.con), question, self._named_in(reading.scope))
-        if unmatched_note:
-            composed.answer = f"{composed.answer} {unmatched_note}"
-            _note(composed, unmatched_note)
+        unmatched_note = say_left_out(reading.left_out)
+        composed.answer = f"{composed.answer} {unmatched_note}"
+        _note(composed, unmatched_note)
 
     def _ask_inner(self, question: str, history: RunHistory) -> Answer:
         # A question too short to be one is refused before anything else
