@@ -3050,24 +3050,6 @@ those were found.
   `conditions.py`/the templates outside `common.py`, or a follow-up pass.
 - **Source:** ours, not ESPN's.
 - **GitHub:** #216
-### A league-wide rows read orders ties by chance when several players share one game
-- **Found:** 2026-09-24, by the compose agent re-running `k2_run_pkg.py`
-  (reported to the lead; transcribed here).
-- **Evidence:** a "rows over everyone" read (`compose` with
-  `subject="everyone"`, e.g. "biggest triple double ever" - top N by points)
-  orders by the measure and the date only; two players with the same figure
-  in the same game have no tiebreaker, so repeated runs list them in either
-  order. Observed as row-order flips between two otherwise identical
-  `k2_run_pkg.py` runs.
-- **User sees:** the same question listing tied rows in a different order
-  from one run to the next - never a different set of rows or a wrong
-  number.
-- **Next step:** add `athlete_id` (and `event_id`) as the last ORDER BY keys
-  in the relation's league reader (`player_games.league()` / `rows_sql`), the
-  same tie rule the golden harness normalizes for.
-- **Source:** ours.
-- **GitHub:** #211
-
 ### `head_to_head`'s venue-narrowed sentence says "won the series" for a since-bounded or career span too
 - **Found:** 2026-09-22, step 3, team cells (`team_record`/`head_to_head`
   honoring `since`/`game_n`/`span`).
@@ -3122,30 +3104,6 @@ those were found.
 - **Priority note:** P4 - no wrong answer today, a maintenance risk if the
   next two ports each add their own copy instead of reading this one first.
 - **GitHub:** #193
-
-### `since` reaches the metric templates only by a second season-scoping path
-- **Found:** 2026-09-18, looking for the next compositional-scoping win after
-  the starter/bench filter landed; **narrowed 2026-09-19** when `since` landed
-  on the relation
-- **Evidence:** `since` is composed once now: `_span_of` and `_condition_scope`
-  build a span from that season on, and `game_log`, `player_stat` and
-  `player_matchup` honor it by declaring it (`HONORED_SCOPING`,
-  `compose.plan.STATED_SCOPING` since 2026-10-05) - "jokic vs cade since 2022" answers their 7 meetings.
-  What is left is the templates that do not sit on the player-games relation
-  and read `slots.get("season")` into their own metric SQL: `leaderboard`
-  ("most steals by bucks players 2010s", `run_leaderboard`) and
-  `team_leaderboard` ("nba team with least playoff wins since 2022",
-  `templates/teams.py` then; `compose/team_stats.py` over `team_seasons.py` now, which reads it since slice (iv)). Both still refuse `since`, and `until` is set beside
-  `since` by the stages (`router._route_season_range`) but is in neither `HONORED_SCOPING` nor `SCOPING_SLOTS`
-  (see #23). So the "three separate season-handling paths" this entry first
-  counted are two: the relation's span, and the metric templates' own.
-- **User sees:** the two leaderboard questions are refused; every other
-  `since` question answers.
-- **Next step:** give `run_leaderboard` / `run_career_leaderboard` and
-  `team_leaderboard` a span argument built by `_span_of` rather than a bare
-  season, so a range reaches them the way it reaches the relation, and add
-  `until` to `SCOPING_SLOTS` in the same change.
-- **GitHub:** #137
 
 ### A team word only names a player when a second word of that player's name is present
 - **Found:** 2026-09-18, after a per-question candidate enum regressed on team
