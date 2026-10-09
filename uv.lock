@@ -60,7 +60,7 @@ wheels = [
 
 [[package]]
 name = "association-py"
-version = "4.4.0"
+version = "5.0.0"
 source = { editable = "." }
 dependencies = [
     { name = "boto3" },
