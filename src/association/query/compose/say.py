@@ -2992,7 +2992,10 @@ def _head_to_head_sentence(result: Result, a: str, b: str, a_wins: int, b_wins: 
         where = _head_to_head_where(result, a)
         if games == 0:
             return f"The warehouse has no games between the {a} and the {b} {where}."
-        return _head_to_head_series(f"The {a} and the {b} met {times} {where}", a, b, a_wins, b_wins)
+        # A since-bounded or whole-career rivalry is led, not won - the venue-less path's wording
+        # below, so the two agree over one shape of span (ISSUES.md #195); one season's, or one day's, is won.
+        open_ended = span.since is not None or _facts(result, MeetingsFacts).span == "career"
+        return _head_to_head_series(f"The {a} and the {b} met {times} {where}", a, b, a_wins, b_wins, won="lead the all-time series" if open_ended else "won the series")
     if span.career:
         if games == 0:
             since, until = span.since, span.until

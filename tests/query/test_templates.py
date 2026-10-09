@@ -2575,10 +2575,14 @@ def test_head_to_head_since_with_no_meetings_names_the_since_bound(team_cells_co
 
 def test_head_to_head_since_narrows_by_venue(team_cells_con: AnswerContext) -> None:
     """`since` composes with `venue` the same way a single season already
-    does - narrowed to the first-named team's home games."""
+    does - narrowed to the first-named team's home games - and an open-ended
+    span is led, not won, as the venue-less sentence says it (ISSUES.md #195:
+    the two paths disagreed over one shape of span)."""
     result = head_to_head(team_cells_con, Reading.from_slots({"teams": ["Celtics", "Knicks"], "since": _TC_S1, "venue": "home"}))
     assert result.data["games"] == 1 and result.data["wins"] == {"Boston Celtics": 1, "New York Knicks": 0}
-    assert result.answer == f"The Boston Celtics and the New York Knicks met once in the Boston Celtics' home games since {_TC_S1}; the Boston Celtics won the series 1-0."
+    assert result.answer == f"The Boston Celtics and the New York Knicks met once in the Boston Celtics' home games since {_TC_S1}; the Boston Celtics lead the all-time series 1-0."
+    career = head_to_head(team_cells_con, Reading.from_slots({"teams": ["Celtics", "Knicks"], "span": "career", "venue": "home"}))
+    assert (career.answer or "").endswith("home games on record; the Boston Celtics lead the all-time series 2-0."), career.answer
 
 
 def test_head_to_head_since_conflicts_with_a_date(team_cells_con: AnswerContext) -> None:
