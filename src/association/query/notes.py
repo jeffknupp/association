@@ -92,7 +92,7 @@ FACTS: dict[str, frozenset[str]] = {
     "stat_blank": frozenset({"games", "stat", "columns", "whose"}),
     "seasons_missing": frozenset({"seasons", "stat", "label", "why"}),
     "standings_short": frozenset({"team", "seasons"}),
-    "game_list_disagrees": frozenset({"team", "seasons", "what"}),
+    "game_list_disagrees": frozenset({"team", "seasons", "what", "narrowed"}),
     "shots_unlabeled": frozenset({"shots", "seasons", "why"}),
     "shot_values_derived": frozenset({"season"}),
     "snapshot": frozenset({"what", "season", "team", "date", "snapshot", "snapshots"}),

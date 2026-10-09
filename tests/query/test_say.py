@@ -191,6 +191,20 @@ def test_a_league_count_names_the_leaders_and_the_rest() -> None:
     )
 
 
+def test_a_gap_note_claims_only_what_a_narrowed_tally_can() -> None:
+    """ISSUES.md #298: a season's game list short by a game made an October
+    road record "off by those games" though the missing game may have been
+    neither; a narrowed tally says the games may or may not be among those
+    tallied, an unnarrowed one keeps its claim."""
+    from association.query.compose.say import note_phrase
+
+    seasons = [{"season": 2000, "listed": 81, "played": 82}]
+    whole = note_phrase(Note("game_list_disagrees", {"team": "Philadelphia 76ers", "what": "regular-season", "narrowed": False, "seasons": seasons}))
+    assert whole.endswith("in 2000 (81 listed, 82 played), so this tally is off by those games.")
+    part = note_phrase(Note("game_list_disagrees", {"team": "Philadelphia 76ers", "what": "regular-season", "narrowed": True, "seasons": seasons}))
+    assert part.endswith("in 2000 (81 listed, 82 played), those games may or may not be among the ones tallied here.")
+
+
 def test_the_other_matched_names_are_joined_not_printed_as_a_list() -> None:
     """ISSUES.md #308: the shot chart's note printed the list itself."""
     from association.query.compose.say import decision_phrase

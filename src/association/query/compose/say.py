@@ -342,7 +342,11 @@ def _say_record_note(kind: str, facts: dict[str, Any]) -> str:
         return f"Note: ESPN's standings do not cover the {possessive(facts['team'])} whole season in {parts}, so this record is short by those games."
     if kind == "game_list_disagrees":
         parts = _joined([f"{s['season']} ({s['listed']} listed, {s['played']} played)" for s in facts["seasons"]])
-        return f"Note: ESPN's game list and the {possessive(facts['team'])} season totals disagree on how many {facts['what']} games they played in {parts}, so this tally is off by those games."
+        # A tally of some of a season's games cannot say the missing games
+        # are among them (ISSUES.md #298: an October road record was "off by"
+        # a 2000 game that may have been neither).
+        claim = "those games may or may not be among the ones tallied here" if facts.get("narrowed") else "so this tally is off by those games"
+        return f"Note: ESPN's game list and the {possessive(facts['team'])} season totals disagree on how many {facts['what']} games they played in {parts}, {claim}."
     if facts["table"] == "standings" and facts.get("what") == "home_road_split":
         return f" - ESPN's standings carry no home/road split before {season_label(facts['first'])}"
     if facts["table"] == "standings":

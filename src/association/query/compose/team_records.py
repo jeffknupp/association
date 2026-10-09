@@ -278,18 +278,21 @@ def _no_games_cause(con: duckdb.DuckDBPyConnection, team: Entity, opponent: Enti
     return "not_met" if opponent is not None and own else "none_played"
 
 
-def _game_list_gaps(con: duckdb.DuckDBPyConnection, team: Entity, season_type: int, season: int | None, *, since: int | None, until: int | None) -> list[Note]:
+def _game_list_gaps(con: duckdb.DuckDBPyConnection, team: Entity, season_type: int, season: int | None, *, since: int | None, until: int | None, partial: bool = False) -> list[Note]:
     """Seasons where the games tallied for a team do not number its games in
     ``team_season_stats`` - measured: the 2000 and 2001 postseasons hold 15
     of the Lakers' 23 and 10 of their 16 games. Only seasons from 1994,
-    where the totals exist, can be checked."""
+    where the totals exist, can be checked. ``partial`` says the tally
+    covers some of each season's games, so the missing ones may fall
+    outside it (ISSUES.md #298)."""
     narrowed, _span = _record_narrowed(team, season, season_type, since=since, until=until)
     floor = max(FIRST_FULL_REGULAR_SEASON, since) if since is not None else FIRST_FULL_REGULAR_SEASON
     rows = values_of(con, Statement(*game_list_gaps_sql(narrowed, team.id, season_type, season=season, since=since, until=until, floor=floor)))
     if not rows:
         return []
     kind = "postseason" if season_type == 3 else "regular-season"
-    return [Note("game_list_disagrees", {"team": team.name, "what": kind, "seasons": [{"season": int(s), "listed": int(listed), "played": int(played)} for s, listed, played in rows]})]
+    seasons = [{"season": int(s), "listed": int(listed), "played": int(played)} for s, listed, played in rows]
+    return [Note("game_list_disagrees", {"team": team.name, "what": kind, "narrowed": partial, "seasons": seasons})]
 
 
 def _span_floor(season: int | None, since: int | None, season_type: int) -> list[Note]:
@@ -386,7 +389,11 @@ def _games_record_remarks(
             notes.append(Note("definition", {"term": "neutral_site", "games": neutral}))
     if asked.opponent is not None and season_type == 2:
         parts.append(Part(role="detail", body=Rows(rows=tuple(_cup_finals(con, q, asked, season)))))
-    return notes + _game_list_gaps(con, asked.team, season_type, season, since=asked.since, until=asked.until)
+    # A tally narrowed to some of a season's games (an opponent, a venue, a
+    # month, a weekday, a game of a series) may or may not hold the games
+    # the list is short by; the note says which claim it can make.
+    partial = any(x is not None for x in (asked.opponent, asked.venue, asked.month, asked.calendar, asked.game_n))
+    return notes + _game_list_gaps(con, asked.team, season_type, season, since=asked.since, until=asked.until, partial=partial)
 
 
 def _month_rows(games: list[dict[str, Any]], season: int | None) -> list[dict[str, Any]]:

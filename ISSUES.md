@@ -2366,13 +2366,6 @@ those were found.
 - **Next step:** measure over the corpus's splits; say the seasons the unseen games are in.
 - **GitHub:** #295
 
-### The game-list caveat says a narrowed record "is off by those games"
-- **Found:** 2026-09-30, the notes inventory for `ROADMAP-TYPES.md` (an Opus agent reading `011091f`; reported, not re-verified).
-- **Evidence:** `compose.team_records._game_list_gaps` (`templates/teams.py:967,803` when found) ignores opponent, venue, month, calendar and game_n, so a record against one opponent or in one month in a season whose list is short says "this tally is off by those games" though the missing games may be none of the ones counted.
-- **User sees:** a caveat claiming an error the answer may not have.
-- **Next step:** say the season's list is short by N games and that they may fall outside the narrowing, or check whether they do.
-- **GitHub:** #298
-
 ### A postseason NetPoints answer prints the whole season's play-type split under a postseason label
 - **Found:** 2026-09-30, the notes inventory for `ROADMAP-TYPES.md` (an Opus agent reading `011091f`; reported, not re-verified).
 - **Evidence:** the season fingerprint table has no season type (`compose/netpoints.py`, `templates/netpoints.py:98-102` when found; `fingerprint.py:457,979-980`); its sayer (`compose.say`'s NetPoints phrases; `templates/netpoints.py:113,331` when found) labels the answer "{season} postseason" and `fingerprint.py:853` captions the plot "{season} season". Nothing says the split is the whole season's.
