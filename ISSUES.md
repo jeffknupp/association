@@ -4101,15 +4101,6 @@ those were found.
   subtitle.
 - **GitHub:** #55
 
-### The PyPI upload fails
-- **Found:** documented in `AGENTS.md` ("Releasing")
-- **Evidence:** trusted publishing answers `invalid-publisher`, pending an
-  account-access issue. It is not a workflow bug.
-- **User sees:** releases only on GitHub.
-- **Next step:** register the publisher once the account is back, then upload
-  each tagged version.
-- **GitHub:** #58
-
 ### A coverage caveat is added to a refusal that drew nothing
 - **Found:** 2026-09-11, docs edits for 2.1.0
 - **Evidence:** "plot Kobe Bryant's threes in 2002" is refused, and the answer
@@ -4290,15 +4281,6 @@ those were found.
   the right player).
 - **Source:** ours; DATA.md "Coverage floors" for why the players are absent.
 - **GitHub:** #245
-
-### The wall-clock budget test fails under load: its 10ms budget is spent building the prompt, before the first call
-- **Found:** 2026-09-27, running `scripts/check_fast.sh` for plan item 6 step (d) round 2, with four other agents' gates on the same 8 cores (load average 17).
-- **Evidence:** `test_the_agent_gives_up_on_a_wall_clock_budget_rather_than_on_tool_calls` (`tests/query/test_agent.py:1015`) failed once in 2,291 (`assert 1 <= len(calls)`, 0 calls, the run's timing line 0.04s) and passed 5 of 5 run alone. Its docstring says the first call always runs, but `Agent` takes `started` before `build_system_prompt(question)` and checks the budget before every call, the first included (`query/agent.py`, the loop after `started = time.monotonic()`), so with `budget_seconds=0.01` the first call runs only when the prompt builds in under 10ms.
-- **Seen again:** 2026-09-27, once more in another agent's full `pytest -n auto` gate run on a contended machine, clean on an immediate rerun with no code change.
-- **User sees:** nothing - the real budget is 120s (`models.AGENT_BUDGET_SECONDS`). A red gate for whoever runs the suite on a loaded machine, which is how parallel agents run it.
-- **Next step:** make the code keep the docstring's promise (skip the check before the first call, or start the clock after the prompt is built) and let the test assert that; or, if the check before the first call is wanted, give the test a budget above prompt-building time and say so in its docstring.
-- **Source:** ours.
-- **GitHub:** #251
 
 ### `player_netpoints`' season-totals reading (`rate: "total"`) cannot be reached
 - **Found:** 2026-09-27, plan item 6 step (d) round 2 (moving `templates/netpoints.py` onto the typed Scope).

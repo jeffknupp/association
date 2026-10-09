@@ -408,7 +408,13 @@ def _shot_chart_statement(athlete_id: str, season: int | None, season_type: int 
         params.append(shot_value)
     else:
         where.append(f"{SHOT_VALUE_SQL} IS DISTINCT FROM 1")
-    return Statement(f"SELECT coordinate_x, coordinate_y, made, shot_type, period, clock, event_id, season, {SHOT_VALUE_SQL} FROM shot_chart WHERE {' AND '.join(where)}", params)
+    # Ordered, so a chart's bytes are a function of its shots and nothing
+    # else (ISSUES.md #254: read with no ORDER BY, a multi-game chart's
+    # markup came out in whichever order the scan delivered the rows, and
+    # two draws of one chart differed as bytes while identical as sorted
+    # fragments). Every column of the key, so the order is total.
+    order = "ORDER BY event_id, period, clock, coordinate_x, coordinate_y, made, shot_type"
+    return Statement(f"SELECT coordinate_x, coordinate_y, made, shot_type, period, clock, event_id, season, {SHOT_VALUE_SQL} FROM shot_chart WHERE {' AND '.join(where)} {order}", params)
 
 
 def _shot_chart_notes(kept: list[tuple[Any, ...]], unknown: list[tuple[Any, ...]], shot_value: int | None) -> list[Note]:

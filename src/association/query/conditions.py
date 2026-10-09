@@ -61,6 +61,7 @@ several seasons leaves it out rather than counting 1993-94 twice.
 
 from __future__ import annotations
 
+import weakref
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from datetime import date
@@ -173,6 +174,14 @@ RAW_BOX = BoxSource("player_box_stats", False, frozenset())
 """
 
 
+#: Each connection's answer, kept for the connection's life: the warehouse
+#: does not change under a question, and every reader of rebuilt lines asks
+#: (ISSUES.md #337: 474 ``DESCRIBE`` statements over the 614 answered
+#: recorded questions, one per read). Weak, so a closed connection takes its
+#: entry with it, and a test's fresh connection never inherits another's.
+_BOX_SOURCES: weakref.WeakKeyDictionary[duckdb.DuckDBPyConnection, BoxSource] = weakref.WeakKeyDictionary()
+
+
 def box_source(con: duckdb.DuckDBPyConnection) -> BoxSource:
     """The filled view where the warehouse has it, the stored table otherwise.
 
@@ -180,14 +189,27 @@ def box_source(con: duckdb.DuckDBPyConnection) -> BoxSource:
     warehouse built before a view change is not detected": the view and its
     flag arrive with a `data load`, and a query written as though they were
     always there raises a Binder error against an older warehouse - or against
-    a test fixture that builds only `player_box_stats`.
+    a test fixture that builds only `player_box_stats`. Asked once per
+    connection (:data:`_BOX_SOURCES`).
 
     .. versionadded:: 2.2.0
 
     .. versionchanged:: 5.0.0
        Asks ``player_game_log`` for the flag as well as the filled view;
        the one rule, where ``player_games.log_carries_rebuilt`` was a second.
+
+    .. versionchanged:: 6.0.0
+       Answered once per connection; the statement ran on every read.
     """
+    cached = _BOX_SOURCES.get(con)
+    if cached is not None:
+        return cached
+    _BOX_SOURCES[con] = found = _box_source_read(con)
+    return found
+
+
+def _box_source_read(con: duckdb.DuckDBPyConnection) -> BoxSource:
+    """:func:`box_source`'s one statement: the view's and the log's columns."""
     try:
         # DESCRIBE, not duckdb_columns(): a view's catalog row lists the
         # columns it had when created, and a table altered beneath it (the

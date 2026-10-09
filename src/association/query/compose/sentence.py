@@ -136,6 +136,12 @@ def _predicates(q: Query) -> str:
     return (" " + " and ".join(parts)) if parts else ""
 
 
+def _games(count: int) -> str:
+    """``"1 game"``, ``"12 games"``: a count of games with its noun agreeing
+    (ISSUES.md #36: "had 1 games with a triple-double", "last 1 games")."""
+    return f"{count} game{'' if count == 1 else 's'}"
+
+
 def _rows_sentence(q: Query, out: dict[str, Any]) -> str:
     """A ``rows`` read: a log, or the top game(s) by a measure."""
     rows = out["rows"]
@@ -148,7 +154,7 @@ def _rows_sentence(q: Query, out: dict[str, Any]) -> str:
     if q.order == "measure":
         head += f" - top {len(rows)} by {LABELS.get(q.measures[0], q.measures[0])}"
     elif q.limit:
-        head += f" - {'first' if q.direction == 'asc' else 'last'} {len(rows)} games"
+        head += f" - {'first' if q.direction == 'asc' else 'last'} {_games(len(rows))}"
     named = max((len(str(r.get("player") or "")) for r in rows), default=0)
     lines = [
         f"  {r['day']}  "
@@ -169,16 +175,16 @@ def _scalar_sentence(q: Query, out: dict[str, Any]) -> str:
     r = rows[0] if rows else {}
     games = r.get("games") or 0
     if q.aggregate == "count":
-        return f"{who} had {games} games{_predicates(q)}{where} in the {span}."
+        return f"{who} had {_games(games)}{_predicates(q)}{where} in the {span}."
     if q.aggregate == "record":
-        return f"{who}'s team went {r.get('wins', 0)}-{r.get('losses', 0)} in the {games} games{_predicates(q)}{where} in the {span}."
+        return f"{who}'s team went {r.get('wins', 0)}-{r.get('losses', 0)} in the {_games(games)}{_predicates(q)}{where} in the {span}."
     if not games:
         return f"No games for {who}{where} in the {span}."
     stats = ", ".join(f"{_fmt(r.get(m), m)} {LABELS.get(m, m)}" for m in q.measures)
     how = "per game" if q.aggregate == "per_game" else q.aggregate
     if q.aggregate == "per_game":
-        return f"{who} averaged {stats} {how} over {games} games{where} in the {span}."
-    return f"{who}: {stats} ({how}) over {games} games{where} in the {span}."
+        return f"{who} averaged {stats} {how} over {_games(games)}{where} in the {span}."
+    return f"{who}: {stats} ({how}) over {_games(games)}{where} in the {span}."
 
 
 def _grouped_line(q: Query, r: dict[str, Any]) -> str:

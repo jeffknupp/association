@@ -253,6 +253,18 @@ def test_scalar_skeleton_reads_a_count_or_an_average(cx_ctx: AnswerContext) -> N
     assert out["rows"][0]["games"] == 3  # g1 (20), g2 (15), g3 (28) - g5 (10) does not clear the line
 
 
+def test_a_count_of_one_game_is_said_in_the_singular(cx_ctx: AnswerContext) -> None:
+    """ISSUES.md #36: the compiler's count said "had 1 games with ..." (five
+    feed answers, "Cade Cunningham had 1 games with a triple-double on
+    2024-12-16"), and a one-row log was headed "last 1 games"."""
+    q = default_query("threshold_count", {"player": "Brandin Podziemski", "stat": "points", "threshold": 28})
+    out = _run(cx_ctx.con, q)
+    assert out["rows"][0]["games"] == 1  # g3 (28) alone clears the line
+    said = sentence(q, out)
+    assert "had 1 game " in said, said
+    assert "1 games" not in said
+
+
 def test_grouped_skeleton_reads_a_split(cx_ctx: AnswerContext) -> None:
     """``player_splits``' point: a record grouped by venue."""
     q = default_query("player_splits", {"player": "Brandin Podziemski"})
