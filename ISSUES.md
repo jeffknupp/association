@@ -292,6 +292,7 @@ those were found.
 - **User sees:** a fluent answer to a different question - this season's leaders where a six-season span was asked.
 - **Next step:** Phase 3, step 2's span family (in flight 2026-10-09): the span tagger reads "from X to Y" and "from X through Y" as the range `X..Y` beside "X-Y" and "between X and Y"; a test per wording; measure on the 2,710 readings how many carry an unread four-digit year.
 - **Source:** ours.
+- **GitHub:** #345
 
 ### A conference or division the players or teams belong to is answered as the whole league, or as games against it
 - **Found:** 2026-10-09, Phase 3 step 0, probing which questions reach `calendar.conference_named` (none of the 2,710 readings does)
