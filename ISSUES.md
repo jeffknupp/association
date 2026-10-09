@@ -286,6 +286,13 @@ those were found.
 - **Source:** ours.
 - **GitHub:** #323
 
+### A season range worded "from X to Y" or "from X through Y" is not read, and the current season is answered: "most 40 point games from 2013 to 2018" answers 2026
+- **Found:** 2026-10-09, probing league-wide counts for #303 (`~/association-research/stages/ask_unnamed.py`, no model, the feed's way, on `24ade83`)
+- **Evidence:** "most 40 point games from 2013 to 2018" and "... from 2013 through 2018" answer "Luka Doncic had the most games with 40+ points in the 2026 regular season, with 16"; "who scored 40 points the most times from 2013 to 2018" answers the 2026 scoring leaders. The same range worded "2013-2018", "between 2013 and 2018" or "since 2013" is read (the reading carries `since`/`until`, and the answer is headed "regular season career (2013-2018)"). The claims ledger would count "from", "2013", "to" and "2018" as unread words, and "2013"/"2018" are unread NUMBERS (AGENTS.md: "a number among them is a bug").
+- **User sees:** a fluent answer to a different question - this season's leaders where a six-season span was asked.
+- **Next step:** Phase 3, step 2's span family (in flight 2026-10-09): the span tagger reads "from X to Y" and "from X through Y" as the range `X..Y` beside "X-Y" and "between X and Y"; a test per wording; measure on the 2,710 readings how many carry an unread four-digit year.
+- **Source:** ours.
+
 ### A conference or division the players or teams belong to is answered as the whole league, or as games against it
 - **Found:** 2026-10-09, Phase 3 step 0, probing which questions reach `calendar.conference_named` (none of the 2,710 readings does)
 - **Evidence:** through the whole agent on `4b9c254`, replies as `run --feed` gives them (no names; the stat where named): "who leads the east in scoring" answers "Luka Doncic led the league in points per game in the 2026 regular season ... at 33.5" - the league, and a Western player; "who leads the east" answers every player by points per game; "top scorers in the western conference this season" answers "every player against Western Conference teams" - `situation` "in the western conference" read as the OPPONENT's alignment (`calendar.parse_alignment` takes "in the west" as a narrowing to games against it), where the question asks for players IN the West. "best record in the east" is refused ("team_leaderboard cannot honor ['situation']"), the one wording probed that does not answer. #25's "What remains" said "a refusal for 'who leads the East'": no longer true.
@@ -2365,13 +2372,6 @@ those were found.
 - **User sees:** a cause that may be false for his span.
 - **Next step:** measure over the corpus's splits; say the seasons the unseen games are in.
 - **GitHub:** #295
-
-### A league-wide compiled answer carries no box-score caveat
-- **Found:** 2026-09-30, the notes inventory for `ROADMAP-TYPES.md` (an Opus agent reading `011091f`; reported, not re-verified).
-- **Evidence:** `compose/core.py:899-900` reads the notes only for a named player; the `threshold_count` presenter did say them league-wide (`templates/players.py:259` when found; `compose/counts.py` and `compose.say.say_threshold_count` now).
-- **User sees:** a league-wide count or list over 2013-2018 with nothing saying games are empty or rebuilt.
-- **Next step:** measure on "most 40 point games 2013-2018" both ways; the note belongs to the relation's read, not to one presenter.
-- **GitHub:** #303
 
 ### A surname that is also a word loses the subject, and the refusal names a slot: "since 1/26/20, what are the towns home records including playoffs against the spurs?"
 - **Found:** 2026-09-30, the review of `ROADMAP-TYPES.md` (an Opus agent over the stage snapshot of the 628 recorded questions at `7f6425b`); the answers quoted were re-read from the snapshot.
