@@ -4336,13 +4336,6 @@ those were found.
 - **Next step:** each goes when its kind gets its one phrase (`ROADMAP.md`, Phase 2); rename the two locals in (4) with the next change to that file.
 - **GitHub:** #313
 
-### User text reaches the name index's LIKE unescaped: a name slot holding `%` or `_` matches most of the roster
-- **Found:** 2026-10-01, the name-index agent's report (Phase 1); reported, not re-verified.
-- **Evidence:** `entities.find_players(con, "_")` and `find_players(con, "%")` match most players: the pattern is built from the text with no escape, as the SQL's `ILIKE ?` was. The index reproduces it on purpose (no answer may move). Nothing in the 628 recorded questions triggers it. Also recorded there: two players who share a `display_name` (21 names, "Chris Smith", "Dee Brown") came back from `ORDER BY display_name` in an order DuckDB left unspecified and that changed with the rows being sorted; the index returns them in table order, so `find_players(..., limit=None)` differs from the old code in the order of such a pair on 30 of 478,304 inputs, never in the first candidate.
-- **User sees:** nothing today; a name typed as "_" would ask among dozens of players.
-- **Next step:** treat `%` and `_` in a name slot as literal characters, with a test; then no name matches them.
-- **GitHub:** #315
-
 ### The stages run twice on 59 of 2,082 out-of-corpus wordings (2.8%); the roadmap quotes the corpus figure alone
 - **Found:** 2026-10-03, the Opus review of Phase 1.
 - **Evidence:** `~/association-research/stages/reader_pop.py` at `c38600f`: 63 of 2,710 readings run the stages twice - 4 of the 628 corpus questions and 59 of the 2,082 outside it (every one a child the stages declined, then the parent). `ROADMAP.md`'s "stages run once" row and `CHANGES.md` state the corpus figure.

@@ -537,13 +537,15 @@ def _nickname_match(teams: names.TeamIndex, text: str, season: int | None) -> En
         named = _franchise_in(teams, nickname, season)
         if named is None:
             index = team_columns(teams, "team_id", "display_name", "name")
-            named = [Entity(id=str(t["team_id"]), name=t["display_name"]) for t in index.rows if _team_like(index, t, "name", nickname) or _team_like(index, t, "name", f"% {nickname}")]
+            named = [
+                Entity(id=str(t["team_id"]), name=t["display_name"]) for t in index.rows if _team_like(index, t, "name", _literal(nickname)) or _team_like(index, t, "name", f"% {_literal(nickname)}")
+            ]
         if len(named) != 1:
             continue
         in_city = _franchise_in(teams, city, season)
         if in_city is None:
             index = team_columns(teams, "team_id", "location")
-            in_city = [Entity(id=str(t["team_id"]), name="") for t in index.rows if _team_like(index, t, "location", city)]
+            in_city = [Entity(id=str(t["team_id"]), name="") for t in index.rows if _team_like(index, t, "location", _literal(city))]
         if not in_city or named[0].id in {team.id for team in in_city}:
             return named[0]
     return None
@@ -606,7 +608,10 @@ def _team_named(teams: names.TeamIndex, text: Any, season: int | None = None) ->
         rows = [
             (t["team_id"], t["display_name"])
             for t in index.rows
-            if t["team_id"] == text or _team_like(index, t, "abbreviation", text) or _team_like(index, t, "display_name", f"{text}%") or _team_like(index, t, "display_name", f"% {text}%")
+            if t["team_id"] == text
+            or _team_like(index, t, "abbreviation", _literal(text))
+            or _team_like(index, t, "display_name", f"{_literal(text)}%")
+            or _team_like(index, t, "display_name", f"% {_literal(text)}%")
         ][:2]
     except duckdb.CatalogException:
         # A warehouse without `teams` (a partial load) has no team to find.
@@ -1002,8 +1007,24 @@ def _starts_a_word(name: str, token: str) -> bool:
 @functools.lru_cache(maxsize=4096)
 def _like_pattern(pattern: str) -> re.Pattern[str]:
     """A LIKE pattern as a regex: ``%`` any run, ``_`` any one character,
-    and no escape character - DuckDB's LIKE has none unless one is named."""
-    return re.compile("".join(".*" if char == "%" else "." if char == "_" else re.escape(char) for char in pattern), re.DOTALL)
+    and a backslash making the next character literal - the escape the
+    statements this reproduces never had (DuckDB's LIKE has none unless one
+    is named), added for :func:`_literal`, so the question's own text is
+    matched as typed."""
+    parts, chars = [], iter(pattern)
+    for char in chars:
+        if char == "\\":
+            parts.append(re.escape(next(chars, "\\")))
+        else:
+            parts.append(".*" if char == "%" else "." if char == "_" else re.escape(char))
+    return re.compile("".join(parts), re.DOTALL)
+
+
+def _literal(text: str) -> str:
+    """``text`` as a LIKE pattern matching exactly those characters: a name
+    slot holding ``%`` or ``_`` matched most of the roster, since the
+    pattern was built from the text with no escape (ISSUES.md #315)."""
+    return text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
 def _ilike(value: str | None, pattern: str, plain: bool) -> bool:
@@ -1061,7 +1082,11 @@ def find_players(con: duckdb.DuckDBPyConnection, text: str, limit: int | None = 
     # left that tie to the engine, whose order for it depended on which rows
     # were being sorted.
     index = _player_index(con)
-    rows = [(athlete_id, name, all(_starts_a_word(name, t) for t in tokens)) for athlete_id, name in index.rows if name is not None and all(_ilike(name, f"%{t}%", index.ascii_only) for t in tokens)]
+    rows = [
+        (athlete_id, name, all(_starts_a_word(name, t) for t in tokens))
+        for athlete_id, name in index.rows
+        if name is not None and all(_ilike(name, f"%{_literal(t)}%", index.ascii_only) for t in tokens)
+    ]
     rows.sort(key=lambda row: (not row[2], row[1]))
     if limit is not None:
         rows = rows[: int(limit)]
@@ -1094,7 +1119,7 @@ def find_teams(con: duckdb.DuckDBPyConnection, text: str, season: int | None = N
     text = _TEAM_NICKNAMES.get(text.strip().casefold(), text)
 
     index = _team_index(con, "team_id", "abbreviation", "display_name")
-    matched = [t for t in index.rows if t["team_id"] == text or _team_like(index, t, "abbreviation", text) or _team_like(index, t, "display_name", f"%{text}%")]
+    matched = [t for t in index.rows if t["team_id"] == text or _team_like(index, t, "abbreviation", _literal(text)) or _team_like(index, t, "display_name", f"%{_literal(text)}%")]
     # Best tier first, then by name (a missing name last, as DuckDB sorts a
     # NULL); two teams of one name stay in table order.
     ranked = sorted(((t["team_id"], t["display_name"], _find_teams_rank(index, t, text)) for t in matched), key=lambda r: (-r[2], r[1] is None, r[1] or ""))
@@ -1120,9 +1145,9 @@ def _find_teams_rank(index: names.TeamIndex, team: dict[str, Any], text: str) ->
     or abbreviation; 1 a name match that starts a word ('LA%' catches "LA
     Clippers", '% LA%' catches "Los Angeles Lakers"); 0 an incidental
     substring."""
-    if team["team_id"] == text or _team_like(index, team, "abbreviation", text):
+    if team["team_id"] == text or _team_like(index, team, "abbreviation", _literal(text)):
         return 2
-    return 1 if _team_like(index, team, "display_name", f"{text}%") or _team_like(index, team, "display_name", f"% {text}%") else 0
+    return 1 if _team_like(index, team, "display_name", f"{_literal(text)}%") or _team_like(index, team, "display_name", f"% {_literal(text)}%") else 0
 
 
 def _resolve(candidates: list[Entity], text: str, exact_keys: tuple[str, ...]) -> Resolution:

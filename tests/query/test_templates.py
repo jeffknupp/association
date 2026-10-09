@@ -4088,6 +4088,20 @@ def test_a_players_log_is_read_into_a_result_and_said_from_it_alone(pg_ctx: Answ
     assert answered is not None and say(read).answer == answered.answer and say(read).data == answered.data
 
 
+def test_a_logs_heading_names_the_span_it_counts_not_the_rows_shown(pg_ctx: AnswerContext) -> None:
+    """ISSUES.md #217 and #285: the parenthesis named the seasons of the rows
+    SHOWN, so a career's "last 10 of 118 games" read "(2026 regular
+    season)"; and a span the question cut ("the past two seasons") was
+    headed "of his career". The heading names the seasons the count covers,
+    and says "career" only of a career."""
+    s = current_season()
+    newest = game_log(pg_ctx, Reading.from_slots({"player": "Brandin Podziemski", "opponent": "Detroit Pistons", "span": "career", "limit": 1}))
+    assert [g["season"] for g in newest.data["games"]] == [s]
+    assert f"most recent of 3 games of his career ({s - 1}-{s} regular seasons):" in newest.answer
+    cut = game_log(pg_ctx, Reading.from_slots({"player": "Brandin Podziemski", "opponent": "Detroit Pistons", "since": s - 1, "limit": 8}))
+    assert f"last 3 games ({s - 1}-{s} regular seasons):" in cut.answer and "career" not in cut.answer.split("\n")[0]
+
+
 def test_a_career_log_against_an_opponent_crosses_seasons(pg_ctx: AnswerContext) -> None:
     s = current_season()
     result = game_log(pg_ctx, Reading.from_slots({"player": "Brandin Podziemski", "opponent": "Detroit Pistons", "span": "career", "limit": 8}))

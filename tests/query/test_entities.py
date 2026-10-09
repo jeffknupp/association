@@ -127,6 +127,21 @@ def test_empty_text_is_not_found_rather_than_everyone(con: duckdb.DuckDBPyConnec
     assert isinstance(resolve_player(con, "   "), NotFound)
 
 
+def test_a_like_wildcard_in_a_name_is_a_literal_character(con: duckdb.DuckDBPyConnection) -> None:
+    """ISSUES.md #315: the pattern was built from the text with no escape,
+    as the SQL's ``ILIKE ?`` was, so "_" matched every one-letter run and
+    "%" every name. A name slot holding either matches exactly that
+    character now - and nobody is named with one."""
+    from association.query.entities import find_teams
+
+    assert find_players(con, "_") == []
+    assert find_players(con, "%") == []
+    assert find_players(con, "Cur%") == []
+    assert find_teams(con, "%") == []
+    assert find_teams(con, "_") == []
+    assert [c.name for c in find_players(con, "Curry")] == ["Seth Curry", "Stephen Curry"]
+
+
 def test_find_players_returns_all_candidates_best_first(con: duckdb.DuckDBPyConnection) -> None:
     # The chart path relies on this ordering: it narrows these candidates to
     # the ones with data for the season asked about, and falls back to the

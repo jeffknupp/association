@@ -136,7 +136,12 @@ def test_a_word_starts_where_re2_says_it_does() -> None:
 def test_ilike_is_duckdbs_on_either_kind_of_column(plain: bool) -> None:
     """An all-ASCII column is matched by DuckDB's ASCII-only ILIKE, so a
     pattern with any other character finds nothing in it; one accented value
-    anywhere in the column changes that."""
+    anywhere in the column changes that. One departure from the statements
+    the index replaced, which had no escape at all: since ISSUES.md #315 a
+    backslash makes the next character literal (``entities._literal`` writes
+    one before a ``%`` or ``_`` the question typed), asserted outright below
+    - DuckDB's own ``ESCAPE`` clause takes its full-Unicode path, so it is no
+    reference for the ASCII-only matching this reproduces."""
     c = duckdb.connect()
     c.execute("CREATE TABLE t (v VARCHAR)")
     values = ["Indiana Pacers", "Kelvin", "a_b", "50%", "LA Clippers"] + ([] if plain else ["Montr\N{LATIN SMALL LETTER E WITH ACUTE}al"])
@@ -146,9 +151,7 @@ def test_ilike_is_duckdbs_on_either_kind_of_column(plain: bool) -> None:
         "\N{LATIN CAPITAL LETTER I WITH DOT ABOVE}ndiana%",
         "%\N{KELVIN SIGN}elvin",
         "kelvin",
-        "a\\_b",
         "a_b",
-        "%0\\%",
         "50%",
         "_a%",
         "% clip%",
@@ -160,6 +163,12 @@ def test_ilike_is_duckdbs_on_either_kind_of_column(plain: bool) -> None:
         expected = [row[0] for row in c.execute("SELECT v FROM t WHERE v ILIKE ?", [pattern]).fetchall()]
         assert [v for v in values if entities._ilike(v, pattern, plain)] == expected, pattern
     assert not entities._ilike(None, "%", plain)
+    # The escape: a backslash makes the next character literal.
+    assert [v for v in values if entities._ilike(v, "a\\_b", plain)] == ["a_b"]
+    assert [v for v in values if entities._ilike(v, "%0\\%", plain)] == ["50%"]
+    assert [v for v in values if entities._ilike(v, "_\\_b", plain)] == ["a_b"]
+    assert [v for v in values if entities._ilike(v, entities._literal("50%"), plain)] == ["50%"]
+    assert [v for v in values if entities._ilike(v, entities._literal("_"), plain)] == []
 
 
 def test_rows_come_in_table_order(con: duckdb.DuckDBPyConnection) -> None:

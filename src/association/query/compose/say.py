@@ -881,7 +881,9 @@ def _player_log_header(result: Result, body: Rows) -> str:
         scope_text = f"{word} {count} of {total} games" if cut else f"{word} {count} games"
     if span.season is not None:
         where_text = f" of the {season_phrase(span.season, span.season_type or 2)}"
-    elif span.date:
+    elif span.date or span.since is not None or span.until is not None:
+        # One day, or a span the question cut ("the past two seasons"): the
+        # seasons alone, since a cut span is not his career (ISSUES.md #285).
         where_text = f" ({span.years})"
     else:
         where_text = f" of his career ({span.years})"

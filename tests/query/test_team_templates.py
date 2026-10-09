@@ -945,7 +945,9 @@ def test_team_record_combines_both_season_types_for_one_season(team_ctx: AnswerC
     assert "56-30" in result.answer
     # The regular half's neutral-site game is said inside its own record
     # (written and not said until Phase 2, slice (iv)).
-    assert "53-29 (.646) regular season (1 neutral-site game counts as neither home nor away)," in result.answer
+    # ISSUES.md #336: the regular half's neutral-site count explains a
+    # home/road split this answer does not show, so it is not said here.
+    assert "53-29 (.646) regular season," in result.answer and "neutral-site" not in result.answer
     assert f"3-1 (.750) playoffs from {S})" in result.answer
 
 

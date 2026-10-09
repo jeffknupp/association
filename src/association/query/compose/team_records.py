@@ -466,6 +466,12 @@ def _half(read: Result | Unanswered) -> tuple[int, int, Any, tuple[Note, ...], s
     return int(values.get("wins") or 0), int(values.get("losses") or 0), first, read.notes, placed
 
 
+def _without_neutral_site(notes: tuple[Note, ...]) -> tuple[Note, ...]:
+    """``notes`` less a neutral-site definition - the one remark a half
+    writes about a home/road split."""
+    return tuple(each for each in notes if not (each.kind == "definition" and each.facts.get("term") == "neutral_site"))
+
+
 def _combined(con: duckdb.DuckDBPyConnection, q: TeamQuery, asked: _Asked) -> Result:
     """Both season types together - "including the playoffs" - each read
     through the record's own single-type route, so from exactly the source a
@@ -474,6 +480,11 @@ def _combined(con: duckdb.DuckDBPyConnection, q: TeamQuery, asked: _Asked) -> Re
     type alone."""
     halves = [_half(_route(con, q, asked, season_type)) for season_type in (2, 3)]
     (r_wins, r_losses, r_first, r_notes, r_placed), (p_wins, p_losses, p_first, p_notes, p_placed) = halves
+    if asked.venue is None:
+        # A half's neutral-site count explains a home/road figure the half's
+        # own answer shows beside it; the combined answer shows none, so the
+        # note would be about a split the reader cannot see (ISSUES.md #336).
+        r_notes, p_notes = _without_neutral_site(r_notes), _without_neutral_site(p_notes)
     rows = (
         {"key": 2, "wins": r_wins, "losses": r_losses, "first_season": r_first, "notes": len(r_notes), "placed": r_placed},
         {"key": 3, "wins": p_wins, "losses": p_losses, "first_season": p_first, "notes": len(p_notes), "placed": p_placed},

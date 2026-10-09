@@ -178,16 +178,21 @@ def _player_log_averages(headers: list[str], raws: list[dict[str, Any]]) -> dict
     return averages
 
 
-def _player_log_total(con: duckdb.DuckDBPyConnection, narrowed: Narrowed, *, rebuilt: bool) -> int:
+def _player_log_total(con: duckdb.DuckDBPyConnection, narrowed: Narrowed, *, rebuilt: bool) -> tuple[int, int | None, int | None]:
     """How many of the player's games match every narrowing the question
     carries, before the window (``order``/``limit``) cuts them to the rows
-    listed - what the heading says "of how many" with (F149). Read through
-    :func:`~association.query.player_games.aggregate_sql` over
+    listed - what the heading says "of how many" with (F149) - and the first
+    and last season among them, which the heading's parenthesis names:
+    until ISSUES.md #285/#277 it named the seasons of the rows SHOWN, so a
+    career's "last 10 of 118 games" read "(2026 regular season)". Read
+    through :func:`~association.query.player_games.aggregate_sql` over
     :func:`~association.query.player_relation.whole_span`, never a
     hand-written ``COUNT(*)``."""
-    sql, params = aggregate_sql(whole_span(narrowed), ["COUNT(*)"], rebuilt=rebuilt)
+    sql, params = aggregate_sql(whole_span(narrowed), ["COUNT(*)", "MIN(pgl.season)", "MAX(pgl.season)"], rebuilt=rebuilt)
     row = con.execute(sql, params).fetchone()
-    return int(row[0]) if row and row[0] is not None else 0
+    if not row or row[0] is None:
+        return 0, None, None
+    return int(row[0]), (int(row[1]) if row[1] is not None else None), (int(row[2]) if row[2] is not None else None)
 
 
 def _player_narrowing(narrowed: Narrowed) -> Narrowing:
@@ -213,9 +218,22 @@ def _player_log(con: duckdb.DuckDBPyConnection, compiled: Compiled, headers: lis
         return Result(subject=player.name, relation="player", span=about, narrowing=narrowing, window=window, parts=(Part(body=Rows()),), facts=LogFacts(), empty=empty)
     games, raws = _player_log_rows(rows, needed, headers)
     averages = _player_log_averages(headers, raws)
-    total = _player_log_total(con, narrowed, rebuilt=compiled.rebuilt)
+    total, first_season, last_season = _player_log_total(con, narrowed, rebuilt=compiled.rebuilt)
     seasons = [g["season"] for g in games]
-    about = Span(season=span.season, season_type=span.season_type, career=about.career, date=narrowed.date, first=min(seasons), last=max(seasons), years=span.years(min(seasons), max(seasons)))
+    first_season, last_season = first_season if first_season is not None else min(seasons), last_season if last_season is not None else max(seasons)
+    # The span the count covers, with its cut where the question made one
+    # ("the past two seasons"): the heading says a cut span is not his career.
+    about = Span(
+        season=span.season,
+        season_type=span.season_type,
+        career=about.career,
+        date=narrowed.date,
+        first=first_season,
+        last=last_season,
+        years=span.years(first_season, last_season),
+        since=span.since,
+        until=span.until,
+    )
     notes: list[Note] = []
     count = len(games)
     if asked and count < asked and not narrowed.date:
