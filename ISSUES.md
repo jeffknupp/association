@@ -3170,13 +3170,6 @@ those were found.
 
 ## P4: tooling, docs, low impact
 
-### A combined record says "(1 neutral-site game counts as neither home nor away)" with no home or road figure in the answer
-- **Found:** 2026-10-05, the Phase 2 review (`~/association-research/reviews/phase2-2026-10-05/REVIEW.md`)
-- **Evidence:** "How many wins did the Knicks have this season including playoffs" since `4db543a`; also `test_team_record_combines_both_season_types_for_one_season`. One of the four feed answers that moved unenumerated.
-- **User sees:** a note about a split the answer does not show.
-- **Next step:** say the neutral-site count only beside a home or road figure.
-- **GitHub:** #336
-
 ### The sayer's import contract is checked on direct imports only: `compose.say` reaches duckdb through four modules' constants
 - **Found:** 2026-10-05, Phase 2 step 6, when the last phrase helpers left `templates/` (the condition `pyproject.toml` named for checking the contract on chains).
 - **Evidence:** `allow_indirect_imports = false` on "The compiler's sentence reads no warehouse" breaks it: `compose.say` imports `compose.logs` (`LOG_PERCENTAGES`, `log_key`), `conditions` (the split tables and labels), `player_games` (`PERIOD_LOG_COLUMNS`, `PERIOD_RATES`, `period_columns`) and `season_line` (`NETPOINTS_COMPARE_ROWS`, the season line's column tables), each of which imports duckdb for its statements.
