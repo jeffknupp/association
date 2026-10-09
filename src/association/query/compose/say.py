@@ -351,6 +351,11 @@ def _say_record_note(kind: str, facts: dict[str, Any]) -> str:
         return f" - ESPN's standings carry no home/road split before {season_label(facts['first'])}"
     if facts["table"] == "standings":
         return "the warehouse's standings begin there, so this is not the franchise's whole history"
+    if facts.get("earliest") is not None:
+        # A since-bounded span that starts before the list does (#300).
+        left_out = f"{facts['earliest']}" if facts["first"] - facts["earliest"] == 1 else f"{facts['earliest']}-{facts['first'] - 1}"
+        held = f"the {facts['first']} playoffs" if facts.get("what") == "postseason" else f"the {season_label(facts['first'])} season"
+        return f"Seasons {left_out} are left out: the warehouse's game list holds every {facts['what'].replace(' ', '-')} game from {held} on."
     if facts.get("what") == "postseason":
         return f" - the warehouse's game list starts with the {facts['first']} playoffs"
     return " - the first the warehouse holds every game of"
@@ -3648,8 +3653,11 @@ def say_team_record_by_month(result: Result) -> Reply:
         title = f"The {team}, record by month{where_played}{against}, {span_words}:"
         tables.append(_table(title, ["G", "W-L"], [(row["month"], [str(row["games"]), f"{row['wins']}-{row['losses']}"]) for row in rows]))
     answer = "\n\n".join(tables)
+    if since is not None and floor:
+        # The seasons the list could not reach, before the tables (#300).
+        answer = f"{floor}\n\n{answer}"
     if since is not None:
-        data = {"team": team, "opponent": opponent, "venue": venue, "months": months, "since": since, "until": result.span.until, "headline": answer.split("\n")[0].rstrip(":")}
+        data = {"team": team, "opponent": opponent, "venue": venue, "months": months, "since": since, "until": result.span.until, "headline": tables[0].split("\n")[0].rstrip(":")}
     else:
         data = {"team": team, "season": span.season, "opponent": opponent, "venue": venue, "months": months, "headline": answer.split("\n")[0].rstrip(":")}
     return Reply(data=data, answer=answer)

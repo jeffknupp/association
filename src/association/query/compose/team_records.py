@@ -441,17 +441,24 @@ def _by_month_span(con: duckdb.DuckDBPyConnection, q: TeamQuery, asked: _Asked, 
     assert since is not None
     last = asked.until if asked.until is not None else current_season()
     rows: list[dict[str, Any]] = []
+    skipped: list[int] = []
     for season in range(since, last + 1):
         if unavailable(("games",), season, season_type) is not None:
+            skipped.append(season)
             continue
         games, _narrowed = _record_games(con, q, replace(asked, since=None, until=None), season, season_type, narrowed_by=False)
         rows += _month_rows([g for g in games if asked.venue is None or g["venue"] == asked.venue], season)
+    # The seasons the game list cannot reach are said, not dropped (ISSUES.md
+    # #300: "knicks record by month since 1990" began at 1994 in silence).
+    kept = [season for season in range(since, last + 1) if season not in skipped]
+    notes = [Note("floor", {"table": "games", "first": kept[0], "earliest": since, "what": "postseason" if season_type == 3 else "regular season"})] if skipped and kept else []
     return Result(
         subject=asked.team.name,
         relation="team",
         span=Span(season_type=season_type, career=True, since=since, until=asked.until),
         narrowing=Narrowing(opponent=asked.opponent.name if asked.opponent else None, venue=asked.venue),
         parts=(Part(body=Grouped(by="month", rows=tuple(rows))),),
+        notes=tuple(notes),
         facts=TeamRecordFacts(),
     )
 

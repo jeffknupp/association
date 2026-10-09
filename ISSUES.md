@@ -2373,13 +2373,6 @@ those were found.
 - **Next step:** confirm against a playoff NetPoints question; say the split covers the whole season, or refuse the split for a postseason.
 - **GitHub:** #299
 
-### A team's record by month silently drops seasons under the games floor, and never carries the gap note
-- **Found:** 2026-09-30, the notes inventory for `ROADMAP-TYPES.md` (an Opus agent reading `011091f`; reported, not re-verified).
-- **Evidence:** `compose.team_records._by_month_span` (`templates/teams.py:1179-1180` when found) skips seasons below the floor with no remark; the by-month tables (`_by_month`, `_by_month_span`) never call `_game_list_gaps`.
-- **User sees:** a span of months that leaves seasons out without saying so.
-- **Next step:** reproduce with an all-time by-month record; say which seasons the table starts from.
-- **GitHub:** #300
-
 ### A league-wide compiled answer carries no box-score caveat
 - **Found:** 2026-09-30, the notes inventory for `ROADMAP-TYPES.md` (an Opus agent reading `011091f`; reported, not re-verified).
 - **Evidence:** `compose/core.py:899-900` reads the notes only for a named player; the `threshold_count` presenter did say them league-wide (`templates/players.py:259` when found; `compose/counts.py` and `compose.say.say_threshold_count` now).

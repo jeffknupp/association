@@ -1035,6 +1035,20 @@ def test_team_record_by_month_spans_since_until_with_one_table_per_season(team_c
     assert jan_1994 == {"season": 1994, "month": "January", "games": 1, "wins": 1, "losses": 0}
 
 
+def test_a_by_month_span_says_the_seasons_the_game_list_cannot_reach(team_ctx: AnswerContext) -> None:
+    """ISSUES.md #300: "knicks record by month since 1990" began its tables at
+    1994 in silence. The seasons under the game list's floor are said first;
+    a span that starts at the floor says nothing."""
+    result = team_record(team_ctx, Reading.from_slots({"team": "Knicks", "split": "month", "since": 1990, "until": S}))
+    assert result.answer.startswith(
+        "Seasons 1990-1993 are left out: the warehouse's game list holds every regular-season game from the 1993-94 season on.\n\nThe New York Knicks, record by month, the 1994 regular season:"
+    )
+    assert {row["season"] for row in result.data["months"]} == {1994, S}
+    assert result.data["headline"] == "The New York Knicks, record by month, the 1994 regular season"
+    at_the_floor = team_record(team_ctx, Reading.from_slots({"team": "Knicks", "split": "month", "since": 1994, "until": S}))
+    assert not at_the_floor.answer.startswith("Seasons")
+
+
 # ---------------- team_leaderboard: `since` (step 3, C4b) ----------------
 
 
