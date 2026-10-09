@@ -1000,6 +1000,32 @@ agents' reports named here are in `~/association-research/stages/`.
     conflicts), the four populations run fresh on both trees, the
     relation's resolution re-held on 2,710 of 2,710. Filed: a P3, the
     condition read's covered scope open-ended for a closed range.
+25. **Phase 3, step 2, the window (2026-10-09).** The second family, on
+    the span's pattern: one Fable agent at medium effort measured the four
+    window slots on all 2,710 readings first - which stage set each, by
+    which words, and what the relation cut - and found that the parser
+    read the grammar twice, before and after the stages, so every drop of
+    the COUNT the model-era filler rules made was put back by the second
+    read: five rules and their callers were dead, and are deleted, not
+    ported. What moved: `reading.Window(order, count, of, rank, by)` on
+    `Scope.window` (fields, because a count stands with no end on 102
+    readings and an end never without one); `query/window.py`, the one
+    tagger, run just before the span's, which takes the typed window as
+    context; the cells in both relation tables, `COMPILER_SLOTS` gone with
+    them; `router.py` 322 lines shorter. Proved identical on all four
+    populations through the projection, the relation's cut re-held on
+    2,710 of 2,710, the ledger identical. What it taught: the model-era
+    rule that dropped an end on a reader that refuses one hides a wrong
+    answer ("Warriors vs Mavs record last ten games" answers this
+    season's three), and keeping identical meant porting it and filing it
+    as the P1 it is, for a decline-to-Cause commit; and a bare count on
+    the games relations is a default nothing says out loud (open item 9).
+    A fix made in passing - one game named as his in a phrasing the
+    grammar misses - grows the unread-word ledger by 15 words that were
+    only ever counted as read by accident, so it waits on the branch for
+    Jeff's call under the "may not grow" rule. Cost: the lead's rebase
+    over sixteen isolated fixes and a fresh four-population run on both
+    trees.
 
 ## The plan items, as written
 
