@@ -385,18 +385,6 @@ those were found.
   rule in `season_text`, with the answer stating which season it read.
 - **GitHub:** #292
 
-### A shot chart for a name two active players share is refused as naming nobody: "Plot Curry's threes from last season" says "shot_chart needs a player name"
-- **Found:** 2026-09-30, roadmap review (agent B), on live parser22 and an
-  instrumented offline replay; not re-measured by the lead.
-- **Evidence:** the answer is "Nothing here answers this question:
-  shot_chart: shot_chart needs a player name." The question names Curry;
-  the cause is two active namesakes - elsewhere ("curry assist each game")
-  the same name gets "did you mean Seth Curry or Stephen Curry?".
-- **User sees:** a refusal naming the wrong missing fact (yardstick F003).
-- **Next step:** the chart resolver's ambiguity reaches the refusal as the
-  clarification, with a test.
-- **GitHub:** #280
-
 ### A refusal for an unhonored narrowing prints the intent's identifier and a Python list: "player_compare: player_compare cannot honor ['since']"
 - **Found:** 2026-09-30, roadmap review (agent B), on live parser22.
 - **Evidence:** "compare Jaylen Brown and Jason Tatum's netpoints over the
@@ -1808,35 +1796,6 @@ those were found.
   and division are now #25's finding, not this one's.
 - **GitHub:** #32
 
-### A router-invented name one edit from a real one is refused instead of asking
-- **Found:** 2026-09-11, probing the season-narrowing branch
-- **Evidence:** "how many rebounds does davis average" routed to `player_stat`
-  with `player='Davies (Davic)'`. `override_invented_players` counts it as
-  grounded, since "davies" is one edit from "davis". Nothing matches it, and
-  `suggest_players` offers nobody, so `_resolved_player` raises
-  `TemplateUnsupported`. The likely reason the suggestion pass finds nobody is
-  the parenthesized second token, since every token must be near some word of
-  the name. That was not confirmed. Seen once.
-- **User sees:** the question is refused, rather than asking which Davis
-  was meant.
-- **Next step:** reproduce it. If it recurs, drop punctuated tokens before
-  `suggest_players`, or back off to the word the question holds.
-- **Re-checked 2026-09-15:** reproduces, but the suspected cause is only half
-  right. Dropping the parenthesized token would not help: `suggest_players`
-  returns [] for "Davies" alone too, because a single token skips the surname
-  pass and the near-spelling pass finds 23+ "Davis" players against
-  `MAX_CLARIFY_CANDIDATES=5`. Backing off to the question's own word does work.
-- **Re-checked 2026-09-16: "23+" was not a measurement, and the count depends
-  on what is being counted.** Against the current `players` table: **20**
-  `display_name`s carry "Davis" as a whole word (a space-delimited token, so
-  "Davis" the name and "Davis Bertans" count, "Hayes-Davis" does not), **21**
-  have "davis" as a substring of the SURNAME specifically (adds "JD Davison",
-  drops "Davis Bertans" since its surname is "Bertans"), and **41** are within
-  one edit (Levenshtein distance) of "davis" on some name token. Any of the
-  three clears `MAX_CLARIFY_CANDIDATES=5` many times over, so the conclusion is
-  unaffected - but "23+" should be replaced with one of these, named.
-- **GitHub:** #33
-
 ### The surname backoff in `suggest_players` can confidently name a different real player
 - **Found:** 2026-09-18, entity-resolution pass over the StatMuse replay set
 - **Fixed 2026-09-18, for the reported case** (span-contract work,
@@ -2420,30 +2379,6 @@ those were found.
 - **Source:** ours.
 - **GitHub:** #208
 
-### `team_record`'s combined-season-types sentence drops the regular half's "standings from 1993-94" caveat
-- **Found:** 2026-09-23, grading `live_sweep.jsonl` (yardstick-v2 F116).
-- **Evidence:** "warriors all-time record including playoff record at away"
-  now answers "574-843 (.405) combined on the road, including the playoffs
-  (523-791 (.398) regular season, 51-52 (.495) playoffs)" plus the 2000
-  standings-gap note. Asked for one season type, the regular half says
-  "across the 33 regular seasons from 1993-94 through 2025-26 - ESPN's
-  standings carry no home/road split before 1993-94", and the playoff half
-  "in every postseason from 1989 through the latest". Combined
-  (`compose.say._say_combined_record`; `templates/teams.py`'s `_combined_record_result` when found), only "Note:" lines are
-  carried over (`_extract_note`), so the two halves' different starting
-  seasons are not stated - the reader cannot see that the regular half starts
-  five seasons later than the playoff half. Measured: the 523-791 is right
-  for what standings hold (the key's 550-811 counted the phantom 1993 season
-  and six pre-1994 stray games in the game list; `DATA.md`).
-- **User sees:** a combined record with no word about the two spans it
-  combines; the number is right but its coverage is not stated.
-- **Next step:** carry each half's span into the parenthesis - "(523-791
-  regular season from 1993-94, 51-52 playoffs from 1989)" - from the halves'
-  own `data` (add the first season there if it is not), not by parsing their
-  sentences.
-- **Source:** ours (the standings' own floor is ESPN's, in `DATA.md`).
-- **GitHub:** #204
-
 ### No leaderboard metric ranks average three-point shot distance
 - **Found:** 2026-09-23, fixing the wrong-cause refusal `leaderboard` gives
   for `stat: "shot_distance"` (yardstick-v2 F019 - "who lead the league in
@@ -2934,13 +2869,6 @@ those were found.
 - **Source:** DATA.md, "A team's play-by-play does not add up to its box
   score in six seasons"
 - **GitHub:** #278
-
-### A record over both season types drops each half's floor and neutral-site remarks: "warriors all-time record including playoff record at away"
-- **Found:** 2026-10-01, closing ROADMAP Phase 0 (a kind on every remark); measured by `scripts/stage_snapshots.py remarks` over the 628 recorded questions at the merged tree: 2 answers have a remark written and not said, both this one.
-- **Evidence:** `_team_record_combined_types` answers each season type through `_team_record_route`, and `_combined_record_result` (`templates/teams.py` then; `compose.say._say_combined_record` now) writes its own heading and keeps only each half's "Note:" tail, found by searching the text (`_extract_note`). So the halves' heading floors ("ESPN's standings carry no home/road split before 1993-94", "the warehouse's game list starts with the 1989 playoffs") and any neutral-site remark are written and never said. The combined answer shows the years each span starts from, with no cause.
-- **User sees:** "from 1993-94" and "from 1989" with nothing saying why the record starts there; where neutral-site games are in the span, home and road halves that do not add up, unexplained.
-- **Next step:** the combined result takes its halves' remarks from the notes each recorded (`query/notes.py`), not from their text; goes with the team shapes' slice (`ROADMAP.md`, Phase 2 (iv)). Until then `stage_snapshots.py remarks` exits 1 on the corpus for these two, which is the check working.
-- **GitHub:** #311
 
 ### A team's splits count blank box-score columns from field-goal attempts alone
 - **Found:** 2026-10-01, closing ROADMAP Phase 0 (a kind on every remark); the splits agent, reading `templates/splits.py:609-613` (the count is `compose/team.py`'s `blank` column now, said by `compose.say`); reported, not measured.
