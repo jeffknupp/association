@@ -66,6 +66,8 @@
   }
   header h1 { font-size: 15px; margin: 0; font-weight: 600; letter-spacing: .02em; }
   header .status { font-size: 12px; color: var(--muted); margin-left: auto; }
+  header .forget { font-size: 11px; color: var(--muted); background: none; border: 0; cursor: pointer; text-decoration: underline; padding: 0; }
+  header .forget[hidden] { display: none; }
   /* The connection indicator: whether this page can still reach its server,
      and whether that server has restarted under it (a new commit or a rebuilt
      warehouse, on the deployed box). */
@@ -451,6 +453,7 @@
   <h1>association</h1>
   <span class="status" id="status">checking…</span>
   <span class="conn" id="conn" role="status" aria-live="polite"><span class="dot"></span><span id="conn-text">connecting…</span></span>
+  <button type="button" class="forget" id="forget" hidden title="Clear the thread this browser kept">forget history</button>
 </header>
 <div class="coverage" id="coverage"></div>
 
@@ -504,9 +507,9 @@
   // fresh each time it starts - and the deployed server restarts on every
   // commit to master and every warehouse rebuild, so a changed instance means
   // this page may be out of date. It reloads itself only when that loses
-  // nothing: no answer on screen, no draft, no question in flight. Otherwise
-  // it says so, and a click reloads - a thread of answers is not something to
-  // throw away behind the reader's back.
+  // nothing: no draft, no question in flight - the thread itself is kept in
+  // this browser and rebuilt at load (below), so a reload loses no answer.
+  // Otherwise it says so, and a click reloads.
   const conn = document.getElementById("conn");
   const connText = document.getElementById("conn-text");
   const PING_EVERY_MS = 10000;
@@ -522,7 +525,7 @@
     conn.title = title;
   }
   function nothingToLose() {
-    return !thread.querySelector(".turn") && !input.value.trim() && !send.disabled;
+    return !input.value.trim() && !send.disabled;
   }
   function ping() {
     fetch("/api/ping", {cache: "no-store"}).then(r => {
@@ -533,7 +536,7 @@
       if (instance === null) instance = p.instance;
       else if (p.instance !== instance) updated = true;
       if (updated && nothingToLose()) { location.reload(); return; }
-      if (updated) setConn("updated", "updated · reload", "The server restarted, possibly with a newer version. Click to reload this page - the answers on it will be cleared.");
+      if (updated) setConn("updated", "updated · reload", "The server restarted, possibly with a newer version. Click to reload this page; the thread is kept in this browser.");
       else setConn("ok", p.busy ? "connected · answering" : "connected", "Connected to the server" + (p.busy ? "; it is answering a question." : "."));
     }).catch(() => {
       failures += 1;
@@ -611,11 +614,41 @@
   // `asked` is only appended to by ask(), so the examples buttons and a typed
   // question land in it the same way.
   //
-  // In memory, and so lost on reload - the page keeps no history of answers
-  // either (ISSUES.md #69), and putting only the questions in localStorage
-  // would leave a reader with a recall list that no longer matches anything
-  // on screen.
+  // Rebuilt at load from the thread this browser kept (below), so the recall
+  // list matches what is on screen, and appended to as questions are asked.
   const asked = [];
+
+  // ---- the thread, kept in this browser ------------------------------------
+  //
+  // Each answered turn - the question, the answer event as the server sent
+  // it, the trace lines - is kept in localStorage (ISSUES.md #69), oldest
+  // first and capped, and the thread is rebuilt from it at load through the
+  // same code that renders a live answer. Per browser, not shared: a
+  // server-side store is the shareable version this is not. Storage can be
+  // missing or full (a private window, a quota), so every read and write is
+  // guarded and the page works the same without it.
+  const TURNS_KEY = "association.turns.v1";
+  const TURNS_MAX = 50;
+  const forget = document.getElementById("forget");
+  function storedTurns() {
+    try {
+      const raw = localStorage.getItem(TURNS_KEY);
+      const turns = raw ? JSON.parse(raw) : [];
+      return Array.isArray(turns) ? turns : [];
+    } catch (e) { return []; }
+  }
+  function storeTurn(question, a, lines) {
+    try {
+      const turns = storedTurns();
+      turns.push({question, answer: a, trace: lines, at: Date.now()});
+      localStorage.setItem(TURNS_KEY, JSON.stringify(turns.slice(-TURNS_MAX)));
+      forget.hidden = false;
+    } catch (e) { /* no storage, or none left: the live page is unaffected */ }
+  }
+  forget.addEventListener("click", () => {
+    try { localStorage.removeItem(TURNS_KEY); } catch (e) { /* nothing kept, nothing to forget */ }
+    location.reload();
+  });
   // null means "editing a new question"; otherwise an index into `asked`.
   let recallAt = null;
   // What was typed before stepping back, restored on stepping past the newest
@@ -1842,19 +1875,12 @@
     input.style.height = "auto";
     send.disabled = true;
 
-    const turn = el("div", "turn");
-    const row = el("div", "q-row");
-    row.appendChild(copyButton(question));
-    row.appendChild(el("div", "q", question));
-    turn.appendChild(row);
-    const answer = el("div", "a");
+    const answer = newTurn(question);
     // The trace is the answer until there is one: what the normalizer
     // returned, what the parser read, which template or compiled point
     // answered - so a refusal's cause is on screen before the refusal is.
     const trace = el("pre", "trace", "asking…");
     answer.appendChild(trace);
-    turn.appendChild(answer);
-    thread.appendChild(turn);
     scroll();
 
     const source = new EventSource("/api/ask/stream?question=" + encodeURIComponent(question));
@@ -1875,6 +1901,45 @@
 
     source.addEventListener("answer", e => {
       const a = JSON.parse(e.data);
+      showAnswer(answer, a, lines);
+      storeTurn(question, a, lines);
+      scroll();
+    });
+
+    source.addEventListener("error", e => {
+      // Two different things arrive here: an `error` event the server sent,
+      // which has a message, and EventSource's own connection error, which has
+      // no data at all.
+      if (e.data) {
+        answer.innerHTML = "";
+        answer.appendChild(el("pre", null, JSON.parse(e.data).message));
+      }
+      finish();
+    });
+
+    function finish() { source.close(); send.disabled = false; input.focus(); }
+    // The server closes the stream when it is done; EventSource reports that
+    // as an error with no data, which finish() above already handles.
+    source.addEventListener("answer", finish);
+  }
+
+  // One turn's balloon and its answer box, appended to the thread; the box
+  // is returned for the trace, the answer or a stored answer to fill.
+  function newTurn(question) {
+    const turn = el("div", "turn");
+    const row = el("div", "q-row");
+    row.appendChild(copyButton(question));
+    row.appendChild(el("div", "q", question));
+    turn.appendChild(row);
+    const answer = el("div", "a");
+    turn.appendChild(answer);
+    thread.appendChild(turn);
+    return answer;
+  }
+
+  // The answer event `a` rendered into `answer`, with its meta line - the
+  // one path for a live answer and for one restored from this browser.
+  function showAnswer(answer, a, lines) {
       answer.innerHTML = "";
       // A rendered form when this intent has one, the text otherwise.
       const rendered = renderAnswer(a);
@@ -1910,25 +1975,24 @@
       // history file's own trace line ever went by - real traffic always
       // writes one, but there is nothing to attach a note to without it.
       if (a.history_file) answer.appendChild(noteControl(a.history_file));
-      scroll();
-    });
-
-    source.addEventListener("error", e => {
-      // Two different things arrive here: an `error` event the server sent,
-      // which has a message, and EventSource's own connection error, which has
-      // no data at all.
-      if (e.data) {
-        answer.innerHTML = "";
-        answer.appendChild(el("pre", null, JSON.parse(e.data).message));
-      }
-      finish();
-    });
-
-    function finish() { source.close(); send.disabled = false; input.focus(); }
-    // The server closes the stream when it is done; EventSource reports that
-    // as an error with no data, which finish() above already handles.
-    source.addEventListener("answer", finish);
   }
+
+  // The thread this browser kept, rebuilt before the first question: each
+  // stored turn through newTurn and showAnswer, its question into the recall
+  // list. A stored answer's artifacts may be gone (the server's output
+  // directory is not this browser's), in which case their frames say so.
+  function restoreTurns() {
+    const turns = storedTurns();
+    if (!turns.length) return;
+    if (empty) empty.remove();
+    for (const t of turns) {
+      showAnswer(newTurn(t.question), t.answer, t.trace || []);
+      if (asked[asked.length - 1] !== t.question) asked.push(t.question);
+    }
+    forget.hidden = false;
+    scroll();
+  }
+  restoreTurns();
 })();
 </script>
 </body>

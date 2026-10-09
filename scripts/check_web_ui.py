@@ -186,6 +186,25 @@ with sync_playwright() as p:
     page.press("#input", "ArrowUp")
     check("typing restarts recall from the newest", page.input_value("#input") == "second question", page.input_value("#input"))
 
+    # The thread is kept in this browser (#69): a reload rebuilds the two turns
+    # through the same renderer, the recall list matches them, and the forget
+    # control empties both.
+    page.fill("#input", "")
+    kept = [q.inner_text() for q in page.query_selector_all(".q")]
+    page.reload()
+    page.wait_for_selector("#input")
+    restored = [q.inner_text() for q in page.query_selector_all(".q")]
+    check("a reload keeps the thread", restored == kept and len(kept) >= 2, (kept, restored))
+    answers = page.query_selector_all(".turn .a")
+    check("a kept turn is rendered as an answer, not a trace", len(answers) == len(kept) and all("an answer" in a.inner_text() for a in answers), len(answers))
+    page.press("#input", "ArrowUp")
+    check("the recall list is rebuilt from the kept thread", page.input_value("#input") == "second question", page.input_value("#input"))
+    page.fill("#input", "")
+    check("the forget control shows once something is kept", page.evaluate("!document.getElementById('forget').hidden"))
+    page.click("#forget")
+    page.wait_for_selector("#input")
+    check("forgetting empties the thread and the page", len(page.query_selector_all(".turn")) == 0 and page.query_selector("#empty") is not None, len(page.query_selector_all(".turn")))
+
     # Connection indicator and live reload, on pages with a fake clock. A
     # marker set on `window` survives everything except a real reload, which
     # is how "it reloaded" and "it did not" are told apart.
@@ -249,7 +268,14 @@ with sync_playwright() as p:
     live.clock.run_for(100)
     live.evaluate("window.__ping.instance = 'second'")
     live.clock.run_for(10_500)
-    check("a restart with an answer on screen does not reload it away", conn(live) == "updated · reload" and not reloaded(live), conn(live))
+    # The thread is kept (#69), so an answer on screen is nothing to lose: the
+    # page reloads itself and the turn is there after.
+    check(
+        "a restart with an answer on screen reloads, and the thread is kept",
+        reloaded(live) and [q.inner_text() for q in live.query_selector_all(".q")] == ["a question"],
+        [q.inner_text() for q in live.query_selector_all(".q")],
+    )
+    live.evaluate("localStorage.removeItem('association.turns.v1')")
     live.click("#conn")
     check("clicking the indicator reloads", reloaded(live))
     live.close()
