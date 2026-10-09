@@ -335,6 +335,24 @@ those were found.
 - **Priority:** P1 - a different stat answered.
 - **GitHub:** #348
 
+### "worst" is not a ranking word, so "who has the worst fg% with at least 1000 fg attempted" (typed as one word) answers the best, at the default floor
+- **Found:** 2026-10-09, the lead, reading the feed population's field-goal rankings while re-floored `fg_pct` (#12).
+- **Evidence:** the feed answer is "Rudy Gobert led the league in field-goal percentage in the 2026 regular season (minimum 400 field-goal attempts), at 68.2% ..." - the best, where the worst was asked, and the default floor where the question stated its own. `point._RANKING` is `leaders?|most|highest|top|best|fewest|least|lowest`: no "worst", so the direction stays descending; and the stated minimum is read by `point._ranking_minimum` from "at least N"/"minimum N", which "atleast" (one word, as typed) does not match, so "1000" is an unread number - the claims ledger's own class (`AGENTS.md`, "a number among them is a bug"). Probed with no model at f77c30b. <!-- codespell:ignore atleast - the question as the user typed it -->
+- **User sees:** the opposite ranking, fluently, with a floor the question did not ask for.
+- **Next step:** "worst" joins the ranking words with "lowest"'s direction (the window family's words - step 2's window slice is rewriting them, so after it lands, or in it); the one-word spelling of "at least" reads as the phrase (the lexicon's fold, as "3's" and "76ers" need); a case per wording in `tests/query/test_parser.py`; the readings and feed answers that move enumerated.
+- **Source:** ours.
+- **Priority:** P1 - the opposite question answered.
+- **GitHub:** #350
+
+### "defensive field goal percentage" is answered as the team's own field-goal percentage: "Pelicans players defensive field goal percentage 2025-26"
+- **Found:** 2026-10-09, the lead, the same reading.
+- **Evidence:** the feed answer is "Zion Williamson led the New Orleans Pelicans in field-goal percentage in the 2026 regular season (minimum 400 field-goal attempts), at 60.0% ..." - the Pelicans' own shooting, where the field-goal percentage they allow (a defender's "DFG%", a tracking stat the warehouse does not hold) was asked; "defensive" is unread, the ledger's class again. Probed with no model at f77c30b.
+- **User sees:** a fluent ranking of a different stat, with nothing saying the word was dropped.
+- **Next step:** "defensive field goal percentage"/"dfg%"/"opponent field goal percentage" read as what the words name that nothing reads (`Reading.unsupported`, step 0's family, beside "ats" - #118), said where the answer side would otherwise rank the player's own; count the feed's wordings first.
+- **Source:** ours (the stat is not in the warehouse; a refusal is the honest answer).
+- **Priority:** P1 - a different stat answered.
+- **GitHub:** #351
+
 ## P2: misleading or incomplete
 
 ### "Stephen Curry free throw chart" (no "shot") answers his season averages
