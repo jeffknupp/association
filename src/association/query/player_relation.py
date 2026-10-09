@@ -19,8 +19,8 @@ beside it rather than in it because the two together would pass 2,500 lines.
 from __future__ import annotations
 
 from collections.abc import Sequence
-from dataclasses import dataclass
-from typing import Any, Literal
+from dataclasses import dataclass, replace
+from typing import Any
 
 import duckdb
 
@@ -47,7 +47,7 @@ from association.query.player_games import (
     scope_without_guard,
     season_type_clause,
 )
-from association.query.reading import ConditionSpec, PeriodCondition, Scope, Unsupported, _clamp_limit, ordinal_word, period_narrowing
+from association.query.reading import ConditionSpec, PeriodCondition, Scope, Span, Unsupported, _clamp_limit, ordinal_word, period_narrowing
 from association.query.result import Cell, GameOfSeries, Line, Refusal, Role, Unanswered
 from association.query.season_text import SEASON_TYPE_NAMES, season_phrase
 from association.query.team_games import TeamNarrowed
@@ -74,15 +74,29 @@ from association.query.team_games import TeamNarrowed
 # algebra port exists to remove. A template on the relation that cannot honor
 # one of these says so in RELATION_SCOPING_EXCLUDED, with the reason.
 RELATION_SCOPING = frozenset(
-    {"order", "date", "opponent", "venue", "span", "without", "split", "since", "until", "below", "above", "game_n", "season_n", "situation", "conditions", "period", "half", "period_condition"}
+    {"order", "date", "opponent", "venue", "without", "split", "below", "above", "game_n", "season_n", "situation", "conditions", "period", "half", "period_condition", *Span.CELLS}
 )
-"""The scoping slots every template on the player-games relation honors.
+"""The cells every reader on the player-games relation honors: the
+scoping slots, and the span's three cells (:attr:`~association.query.reading.Span.CELLS`,
+Phase 3, step 2) - ``career`` (every season on record), ``range`` (a
+career cut at one or both ends: ``since``, ``until``) and ``both`` (both
+season types in one read), each applied by :func:`span_of` through
+:func:`scoped_player`, said by :meth:`ResolvedSpan.during` and
+:meth:`ResolvedSpan.years`, and refused where the span contradicts itself
+(a career beside a named season, a range beside one) by :func:`span_of`.
+A reader whose words do not state one of the three steps aside for it, or
+refuses it, by :data:`RELATION_SCOPING_EXCLUDED`.
 
 .. versionadded:: 4.4.0
 
 .. versionchanged:: 5.0.0
    ``period_condition`` - a quarter or half as a condition on which games
    count (ROADMAP step 2, #275), applied by :func:`_apply_period_condition`.
+
+.. versionchanged:: 6.0.0
+   The span's cells by name (``career``, ``range``, ``both``) in place of
+   the slots ``span``, ``since`` and ``until``; ``both`` was each reader's
+   own extra (``season_type_unstated``) until then.
 """
 
 
@@ -145,9 +159,9 @@ RELATION_SCOPING_EXCLUDED: dict[str, dict[str, str]] = {
     "shot_chart": {"period": "the chart draws every shot of each game, not the quarter's", "half": "the chart draws every shot of each game, not the half's"},
     "shot_distance": {"period": "the average reads every shot of each game, not the quarter's", "half": "the average reads every shot of each game, not the half's"},
     "period_split": {
-        "span": "the accuracy caveat is measured per season, not across a career",
-        "since": "the accuracy caveat is measured per season, and the header names one season - both wrong for a range",
-        "until": "the accuracy caveat is measured per season, and the header names one season - both wrong for a range",
+        "career": "the accuracy caveat is measured per season, not across a career",
+        "range": "the accuracy caveat is measured per season, and the header names one season - both wrong for a range",
+        "both": "the accuracy caveat is measured per season and per season type; a read over both types would carry one caveat for games of two reliabilities",
         # Excluded from the presenter's WORDS, not from the point: its point
         # keeps the cell and the compiler's own sentence, which names both
         # the quarter measured and the quarter conditioning the games,
@@ -156,10 +170,76 @@ RELATION_SCOPING_EXCLUDED: dict[str, dict[str, str]] = {
     },
 }
 RELATION_SCOPING_EXCLUDED["player_matchup"]["period_condition"] = "a meeting is both players' whole game; a quarter's line conditioning it would be read on one side of the pair only"
-"""Per template, the relation's slots it refuses, and why.
+# The span's `both` cell (both season types in one read) is stated by a
+# log, a line and a count - their words said "including the playoffs", or
+# named no type on "last N games" - and by nothing else on the relation: a
+# reader whose answer is one season type's steps aside, and the compiler's
+# own sentence, which reads both and says so, answers. The reason is the
+# answer's in each case, as the rule above this dict asks.
+_BOTH_TYPES_ASIDE = "the answer is one season type's; read over both at once its sentence would not say which games were the postseason's"
+for _reader in ("streak", "player_splits", "record_when", "player_matchup", "shot_chart", "shot_distance", "single_game_high"):
+    RELATION_SCOPING_EXCLUDED.setdefault(_reader, {})["both"] = _BOTH_TYPES_ASIDE
+# The season line's and the NetPoints relation's readers settle their
+# player and span through this relation's steps (`scoped_player`), so what
+# their words do not state of the span is declared here with the rest, per
+# reader: a ranking of season lines and a comparison of them are one
+# season or a career, never a range (the game-level ranking reads one); a
+# history is every season or the last N; a count's and a high's words
+# state a career and not a range; NetPoints has one season per rating.
+RELATION_SCOPING_EXCLUDED.update(
+    {
+        "leaderboard": {
+            "range": "a ranking of season lines pools one season or a career; a range of seasons is the game-level ranking's, which reads it",
+            "both": "a season line is one season type's row; a ranking over both at once would rank two rows per player",
+        },
+        "player_history": {
+            "range": "a history is every season or the last N of them, newest first; a range bounded by years is not how its rows are chosen",
+            "both": "a history lists one season type's rows; both at once would interleave two rows per season",
+        },
+        "player_compare": {
+            "career": "a comparison of two lines is one season's; the retired words state no span",
+            "range": "a comparison of two lines is one season's; the retired words state no span",
+            "both": "a comparison of two lines is one season's; the retired words state no span",
+        },
+        "threshold_count": {"range": "a count's words state a career, and the compiler's own count, which says the range it read, answers one"},
+        "player_netpoints": {
+            "career": "a NetPoints rating is one season's; there is no career rating to read",
+            "range": "a NetPoints rating is one season's; there is no range of seasons to sum",
+            "both": "a NetPoints rating is one season type's row",
+        },
+        "fingerprint": {
+            "career": "a fingerprint is drawn from one season's play types",
+            "range": "a fingerprint is drawn from one season's play types",
+            "both": "a fingerprint is drawn from one season type's play types",
+        },
+        "period_leaderboard": {
+            "career": "a ranking by a quarter is one season's: the rebuilt figures' accuracy is measured per season",
+            "range": "a ranking by a quarter is one season's: the rebuilt figures' accuracy is measured per season",
+            "both": "a ranking by a quarter is one season's and one type's: the rebuilt figures' accuracy is measured per season and type",
+        },
+    }
+)
+RELATION_SCOPING_EXCLUDED["single_game_high"]["range"] = "a high's words state a career, and the compiler's own ranking of games, which says the range it read, answers one"
+"""Per reader, the relation's cells it refuses or steps aside for, and why.
 
 .. versionadded:: 4.4.0
+
+.. versionchanged:: 6.0.0
+   The span's cells (``career``, ``range``, ``both``) per reader, the
+   season line's and the NetPoints relation's readers included, since they
+   settle their span through this relation's steps (Phase 3, step 2).
 """
+
+
+def relation_span(intent: str) -> frozenset[str]:
+    """The span's cells ``intent`` states (:attr:`~association.query.reading.Span.CELLS`
+    less :data:`RELATION_SCOPING_EXCLUDED`'s), for a reader whose other
+    cells are its own list rather than the relation's (the season line's
+    ranking, which states a career and a rate and nothing else).
+
+    .. versionadded:: 6.0.0
+    """
+    return Span.CELLS - set(RELATION_SCOPING_EXCLUDED.get(intent, {}))
 
 
 def relation_scoping(intent: str, *extra: str) -> frozenset[str]:
@@ -313,37 +393,47 @@ def validated_until(until: int | None, since: int | None) -> int | None:
     return until
 
 
-def span_of(span: Literal["career"] | None, season: int | None, season_type: int, table: str, since: int | None = None, until: int | None = None) -> ResolvedSpan:
-    """The seasons a question covers. ``table`` sets how far back a career
-    reaches - box scores from 1994, the season line from 1977 - since a career
-    is only as long as the table it is summed from. ``since`` (a season) is a
-    career that starts there instead: every season from it on, the phantom
-    still excluded, and never earlier than the table reaches. ``until`` bounds
-    the other end - the inclusive last season of a range - and is validated
-    against ``since`` here too (see :func:`validated_until`), so a caller
-    that reads ``since`` straight off the slots and hands both here without
-    checking first still gets the same refusal.
+def span_of(span: Span, table: str, *, season_type: int | None = None) -> ResolvedSpan:
+    """The seasons a question covers - the relation's reading of the typed
+    :class:`~association.query.reading.Span`. ``table`` sets how far back a
+    career reaches - box scores from 1994, the season line from 1977 -
+    since a career is only as long as the table it is summed from. A range
+    (``since``) is a career that starts there instead: every season from it
+    on, the phantom still excluded, and never earlier than the table
+    reaches; ``until`` bounds the other end - the inclusive last season -
+    and is validated against ``since`` here (see :func:`validated_until`).
+    No season named is the current one (``defaulted``); a career beside a
+    named season, or a range beside one, is refused rather than picked
+    between. ``season_type`` is the type to read, where a caller reads
+    both types as one (:func:`player_relation_season_type`); the span's own
+    type, or the regular season, otherwise.
 
     .. versionchanged:: 4.3.0
        Honors ``since``.
 
     .. versionchanged:: 4.4.0
        Honors ``until`` (step 3, K1).
+
+    .. versionchanged:: 6.0.0
+       Takes the typed :class:`~association.query.reading.Span` (Phase 3,
+       step 2) in place of the six slot values.
     """
-    until = validated_until(until, since)
+    kind = season_type if season_type is not None else (span.season_type or REGULAR_SEASON)
+    season, since = span.season, span.since
+    until = validated_until(span.until, since)
     if since:
         if season:
             raise Unsupported(f"since {since} and the {season} season at once")
         coverage = COVERAGE[table]
-        return ResolvedSpan(None, season_type, max(since, coverage.floor(season_type).season), coverage.phantom, since=since, until=until)
-    if span is None:
-        return ResolvedSpan(season or current_season(), season_type, defaulted=not season)
+        return ResolvedSpan(None, kind, max(since, coverage.floor(kind).season), coverage.phantom, since=since, until=until)
+    if not span.career:
+        return ResolvedSpan(season or current_season(), kind, defaulted=not season)
     if season:
         # "Career" and a named year at once. Either reading answers a different
         # question from the other, so neither is picked.
         raise Unsupported(f"a career span and the {season} season at once")
     coverage = COVERAGE[table]
-    return ResolvedSpan(None, season_type, coverage.floor(season_type).season, coverage.phantom)
+    return ResolvedSpan(None, kind, coverage.floor(kind).season, coverage.phantom)
 
 
 def settle_ordinal_season(con: duckdb.DuckDBPyConnection, player: Entity, season_n: Any, span: ResolvedSpan) -> ResolvedSpan | Unanswered:
@@ -493,9 +583,9 @@ def player_relation_season_type(scope: Scope) -> int:
 
     .. versionadded:: 4.4.0
     """
-    if scope.season_type_unstated:
+    if scope.span.both:
         return BOTH_SEASON_TYPES
-    return scope.season_type or REGULAR_SEASON
+    return scope.span.season_type or REGULAR_SEASON
 
 
 def scoped_player(
@@ -505,8 +595,7 @@ def scoped_player(
     *,
     table: str,
     available: Availability | tuple[Availability, ...],
-    span: Any,
-    season: Any,
+    span: Span | None = None,
 ) -> tuple[Entity, ResolvedSpan] | Unanswered:
     """The player a question is about and the seasons it covers, settled in the
     one order that works - or the :class:`~association.query.result.Clarify` asking which player was meant.
@@ -519,10 +608,10 @@ def scoped_player(
     raw ``season`` slot, not a defaulted one, is what narrows the name - had to
     be found and repeated in each.
 
-    ``span`` and ``season`` are passed rather than read, because a template may
-    have a reason to override them: a date names its own game, so ``game_log``
-    reads the career for it. ``since``, ``season_n`` and ``season_type`` are the
-    question's and are read here.
+    ``span`` overrides the scope's own where a reader has a reason to: a
+    date names its own game, so a log reads the career for it
+    (:meth:`~association.query.reading.Span.over_career`). ``season_n`` and
+    the season type are the question's and are read here.
 
     .. versionadded:: 4.4.0
 
@@ -532,7 +621,8 @@ def scoped_player(
        until every caller passes ``reading.scope``.
     """
     season_n = scope.season_n
-    seasons = span_of("career" if season_n else span, None if season_n else season, player_relation_season_type(scope), table, since=scope.since, until=scope.until)
+    asked = span if span is not None else scope.span
+    seasons = span_of(asked.over_career() if season_n else asked, table, season_type=player_relation_season_type(scope))
     player = resolved_player(con, scope.player, missing, available=available, season=seasons.season, through=career_end(seasons.season))
     if isinstance(player, Unanswered):
         return player
@@ -875,7 +965,10 @@ def condition_player(
        ``opponent``: a Scope holds names, so a team already resolved goes
        beside it. The template's own ``_Scope`` is ``condition_scope``.
     """
-    subject = scoped_player(con, scope, missing, table="player_game_log", available=BOX_SCORES, span=None if condition_scope.season else "career", season=condition_scope.season)
+    # The name is narrowed over the games the condition covers: the one
+    # season it settled on, or the career (the range and the type the
+    # scope's own).
+    subject = scoped_player(con, scope, missing, table="player_game_log", available=BOX_SCORES, span=replace(scope.span, career=condition_scope.season is None, season=condition_scope.season))
     if isinstance(subject, Unanswered):
         return subject
     player, span = subject
@@ -1175,16 +1268,20 @@ def box_score_notes_read(
     return notes
 
 
-def condition_scope(season: int | None, span: Literal["career"] | None, season_type: int | None, tables: tuple[str, ...], since: int | None = None) -> _Scope:
-    """The games a question covers. No season means the current one - except
-    for a career, where it means every season on record, which is what the
-    word asked for. A season the question named beats "career": the router keeps
-    a named year alongside it, and "career ... in 2015" is asking about 2015.
-    ``since`` is every season from that one on - and, like ``span_of``'s own
-    pairing of the two, conflicts with a named ``season`` rather than silently
-    picking one: a caller that let both through here would resolve "since 2022
-    and 2020 at once" as though only "since 2022" had been asked, with nothing
-    saying the named year was dropped.
+def condition_scope(span: Span, tables: tuple[str, ...]) -> _Scope:
+    """The games a question covers, for a condition read - the typed
+    :class:`~association.query.reading.Span` as the condition module's own
+    scope. No season means the current one - except for a career, where it
+    means every season on record, which is what the word asked for. A
+    season the question named beats "career": the reader keeps a named
+    year alongside it, and "career ... in 2015" is asking about 2015. A
+    range is every season from its first on - and, like ``span_of``'s own
+    pairing of the two, conflicts with a named season rather than silently
+    picking one: a caller that let both through here would resolve "since
+    2022 and 2020 at once" as though only "since 2022" had been asked,
+    with nothing saying the named year was dropped. The range's ``until``
+    is not read here: the condition reads are the streak's, the splits'
+    and the pair's, whose retired bodies read ``since`` alone.
 
     .. versionchanged:: 4.3.0
        Honors ``since``.
@@ -1192,8 +1289,12 @@ def condition_scope(season: int | None, span: Literal["career"] | None, season_t
     .. versionchanged:: 4.4.0
        Refuses ``since`` alongside a named ``season`` instead of silently
        preferring ``since``.
+
+    .. versionchanged:: 6.0.0
+       Takes the typed :class:`~association.query.reading.Span` (Phase 3, step 2).
     """
-    kind = season_type or 2
+    kind = span.season_type or 2
+    season, since = span.season, span.since
     if since:
         if season:
             raise Unsupported(f"since {since} and the {season} season at once")
@@ -1201,7 +1302,7 @@ def condition_scope(season: int | None, span: Literal["career"] | None, season_t
         return _Scope(None, kind, max(since, scope.first), scope.phantoms)
     if season is not None:
         return _game_scope(season, kind, tables)
-    return _game_scope(None if span == "career" else current_season(), kind, tables)
+    return _game_scope(None if span.career else current_season(), kind, tables)
 
 
 def where_in(scope: _Scope) -> str:

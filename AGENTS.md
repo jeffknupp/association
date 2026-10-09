@@ -94,7 +94,10 @@ this tree:
   `_TEAM_READER_REFUSES`, `compose.core.COMPILER_SLOTS`,
   `reading.SCOPING_SLOTS`, `conditions._CONDITION_PLAYER_ONLY_CELLS`,
   `router._MODEL_SLOTS`; the sixth, `coverage._BOX_SCORE_SCOPING`, went
-  with Phase 3, step 1 - the floor follows the planned point's relation). A P1 wrong answer is
+  with Phase 3, step 1 - the floor follows the planned point's relation;
+  step 2 took the span's names out of `SCOPING_SLOTS`, `_MODEL_SLOTS` and
+  every `STATED_SCOPING` row, and the relation tables carry the span's
+  three cells by name). A P1 wrong answer is
   still fixed, in the code that exists. The sections below describe the
   readers and the sayer, because they are what runs; they are not an
   invitation to add a shape.
@@ -453,8 +456,10 @@ gets turned off.
     warehouse build; `fetch/repairs/` - load-time repairs of ESPN's faults and
     the tables built beside them.
   - `check/` - the coverage report. `query/` - the reader (`parse.py`, with
-    what the model sees in `normalizer.py` and the stages it runs in
-    `router.py`), entities, the relations (`player_games.py` and its
+    what the model sees in `normalizer.py`, the stages it runs in
+    `router.py`, the words every tagger reads by in `lexicon.py` - the span
+    family's since Phase 3, step 2, the rest as each family's slice lands -
+    and the span tagger in `span.py`), entities, the relations (`player_games.py` and its
     shared steps `player_relation.py`, `team_games.py` and
     `team_relation.py`, `season_line.py`, `team_seasons.py`), the
     compiler's readers and the sayer (`compose/`), the coverage
@@ -537,14 +542,25 @@ Until Phase 2, step 6 the templates did the same through `check_scope()` and
 The player-games relation (`query/player_games.py`, its shared steps in
 `query/player_relation.py`) and the team-games relation (`query/team_games.py`,
 its steps in `query/team_relation.py`) each carry the narrowing once -
-opponent, venue, date, span, since, without, split, game_n, season_n,
-below/above, a quarter or half (`period`/`half`, which changes what a read SEES
-of each game rather than which games), and order+limit as a window cut after
-every other filter - applied in the shared steps
-(`scoped_player`/`scoped_games`, `scoped_team`/`team_games`,
-`condition_player`) and declared once (`RELATION_SCOPING`, with a reasoned
-per-cell `RELATION_SCOPING_EXCLUDED`; a reader on the relation states
-`relation_scoping(intent)` in `STATED_SCOPING`). Two source-reading tests in
+opponent, venue, date, without, split, game_n, season_n, below/above, a
+quarter or half (`period`/`half`, which changes what a read SEES of each
+game rather than which games), order+limit as a window cut after every
+other filter, and the span's three typed cells (`reading.Span.CELLS`,
+Phase 3, step 2: `career`, every season on record; `range`, a career cut
+at one or both ends, `since`/`until`; `both`, both season types in one
+read - the slots `span`, `since`, `until` and `season_type_unstated` until
+then) - applied in the shared steps (`scoped_player`/`scoped_games`,
+`scoped_team`/`team_games`, `condition_player`; the span by `span_of`,
+which takes the typed `Scope.span` and resolves it once for every reader)
+and declared once (`RELATION_SCOPING`, with a reasoned per-cell
+`RELATION_SCOPING_EXCLUDED`; a reader on the relation states
+`relation_scoping(intent)` in `STATED_SCOPING`, and a reader whose other
+cells are its own list - the season line's ranking, the NetPoints
+relation's - states the span's through `relation_span(intent)` /
+`team_relation_span(intent)`, so no row of `STATED_SCOPING` names a span
+cell itself: the exclusions per reader, each with a reason about the
+answer, are the one declaration, and `unhonored_scoping` reads the typed
+value's cells against them). Two source-reading tests in
 `tests/query/test_templates.py` enforce it, and they were watched to fail: a
 reader on the relation whose declaration is not the relation's less its
 exclusions, or that writes `pgl.opponent_team_id = ?` or
@@ -814,6 +830,42 @@ model's. Two things follow, and both matter when you add a shape:
   that found those (`~/association-research/yardstick-v2/holdout_compare.py`:
   the recorded corpus's questions outside day10, both readers, no model) is
   the check to rerun after a table change, beside the yardstick.
+- **A filter family is read by ONE tagger, from the lexicon, and claims
+  the characters it read** (Phase 3, step 2; the span is the first, and
+  the pattern the other families copy). `query/lexicon.py` holds every
+  pattern the family is read by, named, with its reason beside it, and
+  nothing that reads the warehouse or the answer side (contract 6:
+  regexes only in the lexicon; it is the lowest layer of the reader).
+  `query/span.py` is the tagger: `read_span(question, SpanContext)` reads
+  the seasons and the season type - a season named, a career, a range, the
+  postseason, both types - in the order the retired stages read them
+  (measured first, `~/association-research/stages/span_family.py`: the six
+  slots as each stage set them on all 2,710 readings), from the words and
+  the few facts the stages settled before it (the intent, a window, a
+  player, a dated range), writes one typed value (`reading.Span`, on
+  `Scope.span`) and returns the `Claim`s - `(start, end, what)` - of the
+  characters it consumed, which the Route carries onto `Reading.claims`.
+  A claim inside another's characters folds into it (the "playoffs" in
+  "including the playoffs"); two claims that overlap without one holding
+  the other fail the reader (`span.claimed`) - a rule that read a word
+  another rule read. The tagger runs LAST in `router._settle`, after the
+  window and the subject are settled, because three of its rules read
+  them (a bare "last N games" log reads both types; a count's "how many"
+  with a player named is his career; a log's "last N vs the Pistons" is
+  every meeting), and a model-era span key a route still carries
+  (`season`, `season_ref`, `season_type`, ...) is dropped at the stages'
+  door (`router._MODEL_SPAN_KEYS`): the words are the one source. The
+  six slots are gone from `Scope`; `Scope.from_slots` still takes them
+  (it builds the `Span`), `Scope.to_slots` projects the value back to
+  them, and `Scope.projected()` / `Reading.projected()` /
+  `Query.projected()` keep every recorded shape as it was so the four
+  populations compare with no field ignored but the typed value itself,
+  recorded beside the scope (`stages._reading_record`, `span`). The point
+  reader writes no span of its own: where it settles the subject's span
+  apart from the scope's (a date names its own game, so the name is
+  settled over the career; a run's season is this one outright, never a
+  defaulted one) it says so in `Reading.subject_span`, the one typed
+  override, where a `span`/`season` pair of slots stood.
 - **Names arrive as typed.** A typo reaches the entity index, which reads a
   single near spelling as that player and says so
   (`entities.read_near_spelling`); nothing corrects it upstream any more.

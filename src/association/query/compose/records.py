@@ -94,11 +94,11 @@ def read_record_when(con: duckdb.DuckDBPyConnection, q: Query, *, stated: frozen
     stat, _column, threshold = line
     # The template's own scope - it names the span in the heading, the floor
     # note and the unseen-games count - read off the same slots the same way.
-    covered = condition_scope(scope.season, "career" if scope.season_n else scope.span, scope.season_type, _PLAYER_GAME_TABLES, since=scope.since)
+    covered = condition_scope(scope.span.as_career() if scope.season_n else scope.span, _PLAYER_GAME_TABLES)
     compiled = compile_query(con, replace(q, skeleton="grouped", group="line", measures=["margin"]))
     if compiled.player is None:
         return None
-    team = optional_team(con, scope.team, season=scope.season)
+    team = optional_team(con, scope.team, season=scope.span.season)
     if isinstance(team, Unanswered):
         return team
     found = rows_of(con, compiled)
@@ -177,13 +177,13 @@ def read_team_record_when(con: duckdb.DuckDBPyConnection, q: TeamQuery, *, state
     if refused is not None:
         return refused
     condition_needs_player_refusal("record_when", scope)
-    team = optional_team(con, scope.team, season=scope.season)
+    team = optional_team(con, scope.team, season=scope.span.season)
     if isinstance(team, Unanswered):
         return team
     if team is None:
         raise Unsupported("record_when needs a player or a team")
     stat, threshold = _record_when_team_stat(scope.stat, scope.threshold)
-    span = span_of(scope.span, scope.season, scope.season_type or 2, "games", since=scope.since, until=scope.until)
+    span = span_of(scope.span, "games")
     narrowed = team_games(con, team, span, scope, opponent=scope.opponent)
     if isinstance(narrowed, Unanswered):
         return narrowed

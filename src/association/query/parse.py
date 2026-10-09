@@ -902,7 +902,7 @@ def read_route(con: duckdb.DuckDBPyConnection, question: str, names: list[str] |
         teams=subject.teams if subject.kind == "teams" else settled.teams,
         opponent=subject.opponent if subject.kind == "teams" else settled.opponent,
     )
-    return Route(final, scope, decisions, settled), subject, parent
+    return Route(final, scope, decisions, subject=settled, claims=staged.claims), subject, parent
 
 
 def _read_route_staged(question: str, slots: dict[str, Any], parent: str, read: Subject) -> tuple[Route, tuple[Decision, ...], str | None]:
@@ -996,6 +996,7 @@ def reading_from_route(con: duckdb.DuckDBPyConnection, question: str, route: Rou
         subject=subject,
         decisions=(*_subject_decisions(subject), *route.decisions, *applied.decisions),
         misread=tuple(applied.dropped),
+        claims=route.claims,
     )
     pointed = with_point(con, question, reading)
     # What the words name that nothing reads, read once, here: a refusal

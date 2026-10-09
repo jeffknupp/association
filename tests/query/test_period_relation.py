@@ -20,7 +20,7 @@ from association.fetch.repairs import real_games
 from association.query.answer import AnswerContext
 from association.query.player_games import PERIOD_AGREEMENT, PERIOD_COLUMNS, Narrowed, aggregate_sql, period_line_sql, rows_sql
 from association.query.player_relation import RELATION_SCOPING, RELATION_SCOPING_EXCLUDED
-from association.query.reading import Reading, Scope, period_narrowing
+from association.query.reading import Reading, Scope, Span, period_narrowing
 from association.query.team_games import TEAM_PERIOD_AGREEMENT, TEAM_PERIOD_COLUMNS, TeamNarrowed, team_period_line_sql
 from association.query.team_games import aggregate_sql as team_aggregate_sql
 from association.query.team_games import rows_sql as team_rows_sql
@@ -275,7 +275,7 @@ def test_compiling_a_period_read_of_minutes_refuses_before_the_warehouse_is_read
     from association.query.compose.core import Query, Unsupported, compile_query
 
     with pytest.raises(Unsupported, match="minutes"):
-        compile_query(duckdb.connect(":memory:"), Query(scope=Scope(player="x", period=1, season=SEASON, season_type=2)))
+        compile_query(duckdb.connect(":memory:"), Query(scope=Scope(player="x", period=1, span=Span(season=SEASON, season_type=2))))
 
 
 # ---------------------------------------------------------------------------

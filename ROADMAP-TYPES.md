@@ -165,6 +165,81 @@ otherwise.
     words the answer states as the `name_left_out` decision. Read for a
     fingerprint alone, the one shape that says it.
 
+- **Declared in code by Phase 3, step 2, the span** (2026-10-09, the lead's
+  brief; no answer, result, remark, planned query or reading moved on the
+  four populations - every reading compared through the projection, the
+  typed value recorded beside it):
+  - The draft's `Span`, as `reading.Span` on `Scope.span`, in place of the
+    six slots `season`, `season_type`, `season_type_unstated`, `span`,
+    `since`, `until`: `season` (one named, the year it ends in; never a
+    default), `season_type` (3 where the words said the postseason, 2
+    otherwise, None where no reader settled it), `both` (both types in one
+    read: named outright, or none named on a "last N games" log),
+    `career`, `since`, `until`. **Fields, not the draft's union over
+    `one | range | career`**, because the readings hold the parts together
+    and the relation is what picks between them, with its refusal where
+    it cannot: measured on the 2,710 readings (`span_family.py`), a career
+    beside a named season 3 times ("a career span and the 2001 season at
+    once", refused by `span_of`), a career beside a range 8 (the range
+    wins), both types beside a season 4, a range 3, a career 8. The draft's
+    `stated` is a property (`season`, `career`, `range`, `postseason`,
+    `both`); the regular season named outright is not told from the default
+    (every reader reads it as the default, nothing says it was asked), and
+    that is the one part a planner's season-type default note would need -
+    still open below.
+  - **One tagger per family, claiming what it read** (contract 2):
+    `span.read_span(question, SpanContext) -> SpanRead(span, claims)`, over
+    `lexicon.py`'s named patterns (contract 6; the module exists from this
+    slice, the other families' words follow with their slices), run once
+    and last in the stages, with the facts the earlier stages settled
+    handed to it as a typed context (the intent, whether a player and a
+    window were named, "vs"/"how many"/"record", the window, a date, a game
+    of a series, an ordinal season, a range opened on a dated day) rather
+    than read from the slot dict. `reading.Claim(start, end, what)`;
+    `Reading.claims` (the Route carries them); a nested claim folds, a
+    partial overlap raises (`span.claimed`). Step 3 reads the unread words
+    off the claims.
+  - **The relation's cell table carries the family's row** (contract 4):
+    `RELATION_SCOPING` and `TEAM_RELATION_SCOPING` hold the three cells by
+    name (`Span.CELLS`: `career`, `range`, `both`), each applied by
+    `span_of` (which takes the `Span`) through `scoped_player`/`scoped_team`,
+    said by `ResolvedSpan.during`/`years` and `team_span_label`, and
+    refused per reader in `RELATION_SCOPING_EXCLUDED` /
+    `TEAM_RELATION_SCOPING_EXCLUDED` with a reason about the answer - the
+    season line's, the NetPoints relation's and the team-season readers'
+    rows live in the table of the relation whose steps settle their span.
+    `STATED_SCOPING`'s rows name no span cell: `relation_scoping(intent)`
+    carries the relation's, `relation_span(intent)` /
+    `team_relation_span(intent)` a reader's own; `unhonored_scoping` reads
+    the typed value's cells against them and still says the old slot
+    names in a decline ("cannot honor ['since']", `reading._CELL_SLOT_NAMES`)
+    until the decline-to-Cause commit rewords it. The `both` cell is
+    "words only" for the three readers whose exclusions the planner
+    refuses outright (period_split, streak, player_matchup): they step
+    aside for it and the compiler's sentence, which reads both, answers -
+    as the retired bodies did.
+  - **The record keeps its old shape through a projection**, which is how
+    a retyped part is proven identical with no field ignored:
+    `Scope.projected()`, `Reading.projected()`, `Query.projected()` give
+    `stages.plain` the slot-era keys (the six slots; the point's
+    `span`/`season` pair) from the typed values, and the typed value is
+    recorded beside the reading under its own key (`span`), listed by count.
+  - `Reading.subject_span: Span | None` (and `Query.subject_span`): the one
+    typed override where the point reader settles the subject's span apart
+    from the scope's - over the career for a date (the name narrowed over
+    every season, the date the scope), this season outright for a run (an
+    empty run is refused, not redirected). The `span`/`season` slot pair
+    on the point and the Query, and the point reader's own "ever" rule
+    (every one of its 48 matches was the lexicon's career word too), are
+    gone.
+  - Not this slice's, on purpose: `season_n` stays a slot (the games'
+    cuts family, `SeasonOfCareer`); the window's half of "the past N
+    seasons" (a history's `limit` as a count of seasons, a filler limit
+    dropped) stays a stage (`router._route_relative_window`) until the
+    window's slice; the guard words of other families the tagger reads
+    ("vs", "how many", "record", "last") reach it as context until their
+    slices move them to the lexicon.
+
 ## What must be decided before which phase
 
 | Phase | Needs from this document |
@@ -583,3 +658,9 @@ moves into `data` before the slice that rewords its answer:
    data identical. Proposed: Phase 4's renderers take the body, the cells
    and the cause, and both go - a renderer that needs a value a record
    holds is the signal that the value belongs on the body.
+8. **The regular season named outright.** `Span.stated` cannot tell "regular
+   season" said from the default, since every reader reads 2 either way;
+   the tagger claims the words. A planner that notes a defaulted season
+   type (the open season-type default in `ROADMAP.md`) needs a bit the
+   tagger has and the value does not carry; add it when that note is
+   written, not before.

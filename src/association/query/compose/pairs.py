@@ -53,8 +53,8 @@ def _pair_covered(scope: Scope) -> Any:
     default, and a date from an earlier season looked for in that one finds
     nothing)."""
     if scope.date:
-        return condition_scope(None, "career", scope.season_type, _PLAYER_GAME_TABLES, since=scope.since)
-    return condition_scope(scope.season, scope.span, scope.season_type, _PLAYER_GAME_TABLES, since=scope.since)
+        return condition_scope(scope.span.over_career(), _PLAYER_GAME_TABLES)
+    return condition_scope(scope.span, _PLAYER_GAME_TABLES)
 
 
 def _pair_meeting(row: dict[str, Any]) -> dict[str, Any]:

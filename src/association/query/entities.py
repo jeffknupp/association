@@ -1498,7 +1498,7 @@ def resolved_team(con: duckdb.DuckDBPyConnection, text: Any, season: int | None 
 def slot_season(scope: Scope) -> int | None:
     """The season a question's team names are read for: the one it named, or
     None for "now" - the same default every template applies."""
-    return scope.season
+    return scope.span.season
 
 
 def optional_team(con: duckdb.DuckDBPyConnection, text: Any, season: int | None = None) -> Entity | Clarify | None:

@@ -955,8 +955,8 @@ def condition_span_label(covered: _Scope, scope: Scope, first: Any, last: Any) -
        in the sentence (ISSUES.md).
     """
     label = covered.label(first, last)
-    if scope.since:
-        return f"from {scope.since} through {scope.until} ({label})" if scope.until else f"since {scope.since} ({label})"
+    if scope.span.since:
+        return f"from {scope.span.since} through {scope.span.until} ({label})" if scope.span.until else f"since {scope.span.since} ({label})"
     if scope.season_n:
         return f"in his {ordinal_word(scope.season_n)} season ({label})"
     return label

@@ -26,7 +26,7 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field, fields, replace
 from datetime import date
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, ClassVar, Literal
 
 if TYPE_CHECKING:
     from association.query.decisions import Decision
@@ -252,6 +252,169 @@ class PeriodCondition:
         return {"stat": self.stat, "threshold": self.threshold, "op": self.op, **({"period": self.period} if self.period is not None else {"half": self.half})}
 
 
+#: The slot name each span cell was declared and refused under until Phase
+#: 3, step 2 - the name a decline still says ("cannot honor ['since']"),
+#: until the decline-to-Cause commit rewords it.
+_CELL_SLOT_NAMES: dict[str, tuple[str, ...]] = {"career": ("span",), "range": ("since", "until"), "both": ("season_type_unstated",)}
+
+
+@dataclass(frozen=True, kw_only=True)
+class Span:
+    """The seasons a question covers and the season type it reads, as the
+    words gave them - ``ROADMAP-TYPES.md``'s ``Span``, the first filter
+    family typed (Phase 3, step 2). One value in place of six slots
+    (``season``, ``season_type``, ``season_type_unstated``, ``span``,
+    ``since``, ``until``), read by one tagger
+    (:func:`~association.query.span.read_span`) and resolved by one step
+    per relation (:func:`~association.query.player_relation.span_of`).
+    Each field at its default is the part unstated, which the relation
+    defaults - no season named is the current one, or every one on record
+    for a career; no type named is the regular season.
+
+    The parts are fields rather than one union over ``one | range | career``
+    because the words name them separately and the readings hold them
+    together: measured on the 2,710 readings of 2026-10-09, a career beside a
+    named season (3, refused as "a career span and the 2001 season at
+    once"), a career beside a range (8, the range wins), both season types
+    beside a season (4), a range (3) or a career (8). A union would have to
+    pick, and the relation is what picks, with its refusal where it cannot.
+
+    .. versionadded:: 6.0.0
+    """
+
+    #: One season the words named ("2023-24", "last season", "in 2019"):
+    #: the year it ends in. None where none was named - never a default.
+    season: int | None = None
+    #: The season type the words named - the postseason (3) where they
+    #: said so, the regular season (2) otherwise - or None where no reader
+    #: settled it (a Scope built from a slot dict naming none).
+    season_type: SeasonType | None = None
+    #: Both season types read together: named outright ("including the
+    #: playoffs", "regular season and playoffs"), or none named on a "last
+    #: N games" log, which reads the newest games whatever their type.
+    #: ``season_type`` stays 2 beside it, never 3, so a reader of the type
+    #: alone never narrows to the postseason.
+    both: bool = False
+    #: Every season on record ("career", "all time", "ever", "all his
+    #: playoff games", "since he joined the league"), or implied: a count
+    #: of a player's games with no season, a pair's record, a tenure.
+    career: bool = False
+    #: The first season of a range ("since 2015", "the 2010s", "the past
+    #: two seasons", "from 2019-20 to 2023-24"), every season from it on.
+    since: int | None = None
+    #: The inclusive last season of a range (a decade, "2019-20 to
+    #: 2023-24") - only ever beside ``since``.
+    until: int | None = None
+
+    #: The span's three cells, the ones a relation's cell table declares
+    #: (``player_relation.RELATION_SCOPING``, ``team_relation.TEAM_RELATION_SCOPING``)
+    #: and :meth:`cells` reports a value as setting: every season on record
+    #: (``career``), a range of seasons bounded at one or both ends
+    #: (``range``: ``since``, and ``until`` beside it), and both season
+    #: types read together (``both``). A named season and a season type
+    #: are not cells: every relation reads them, and nothing steps aside
+    #: for or refuses one.
+    CELLS: ClassVar[frozenset[str]] = frozenset({"career", "range", "both"})
+
+    @property
+    def named(self) -> bool:
+        """Whether the words said which seasons: a season, a career or a range."""
+        return self.season is not None or self.career or self.since is not None
+
+    @property
+    def stated(self) -> frozenset[str]:
+        """Which parts the words gave - ``season``, ``career``, ``range``,
+        ``postseason``, ``both`` - and so which the relation defaults. The
+        regular season named outright is not told from the default: every
+        reader reads it as the default, and nothing says it was asked."""
+        parts = {name for name, held in (("season", self.season is not None), ("career", self.career), ("range", self.since is not None), ("both", self.both)) if held}
+        if self.season_type == 3:
+            parts.add("postseason")
+        return frozenset(parts)
+
+    def cells(self) -> frozenset[str]:
+        """The span cells this value sets (:attr:`CELLS`): what a relation's
+        table must honor, or step aside or refuse for."""
+        return frozenset(cell for cell, held in (("career", self.career), ("range", self.since is not None or self.until is not None), ("both", self.both)) if held)
+
+    def unhonored(self, honored: frozenset[str]) -> list[str]:
+        """The slot names (``span``, ``since``, ``until``,
+        ``season_type_unstated``) of the cells this value sets beyond
+        ``honored`` - the names a decline says, in the order the slot list
+        said them."""
+        held = {"span": self.career, "since": self.since is not None, "until": self.until is not None, "season_type_unstated": self.both}
+        return [slot for cell in self.cells() - honored for slot in _CELL_SLOT_NAMES[cell] if held[slot]]
+
+    def over_career(self) -> Span:
+        """This span read over every season: a name narrowed over a career
+        (an ordinal season, a date that names its own game) - the career
+        set and the one season dropped, the range and the type kept."""
+        return replace(self, career=True, season=None)
+
+    def without_range(self) -> Span:
+        """This span with no range: what a read whose retired body took the
+        season or the career alone covers (the league's longest run, the
+        with/without split's teammates) - the planner has refused the range
+        for it before it is read."""
+        return replace(self, since=None, until=None)
+
+    def as_career(self) -> Span:
+        """This span with the career set and nothing else moved - what a
+        count of a player's games, a tenure or "ever" implies where no
+        season was named."""
+        return replace(self, career=True)
+
+    @classmethod
+    def from_slots(cls, slots: Mapping[str, Any]) -> Span:
+        """The Span six slot values name (:meth:`Scope.from_slots` reads
+        them off a slot dict): ``season``, ``season_type``,
+        ``season_type_unstated``, ``span``, ``since``, ``until``."""
+        return cls(
+            season=slots.get("season"),
+            season_type=slots.get("season_type"),
+            both=bool(slots.get("season_type_unstated")),
+            career=slots.get("span") == "career",
+            since=slots.get("since"),
+            until=slots.get("until"),
+        )
+
+    def to_slots(self) -> dict[str, Any]:
+        """The six slots, exactly as the stages wrote them until Phase 3,
+        step 2 - the projection every recorded reading is compared through."""
+        out: dict[str, Any] = {}
+        if self.season is not None:
+            out["season"] = self.season
+        if self.season_type is not None:
+            out["season_type"] = self.season_type
+        if self.both:
+            out["season_type_unstated"] = True
+        if self.career:
+            out["span"] = "career"
+        if self.since is not None:
+            out["since"] = self.since
+        if self.until is not None:
+            out["until"] = self.until
+        return out
+
+
+@dataclass(frozen=True)
+class Claim:
+    """The characters of the question one reader rule consumed - ``start``
+    and ``end`` as a slice of the question, and ``what`` it read them as
+    (``season``, ``season_type``, ``career``, ``range``, ...). A tagger
+    claims each span it read once; two rules claiming overlapping
+    characters is a bug the reader says out loud
+    (:func:`~association.query.span.claimed`), and the words nothing
+    claimed are what Phase 3's step 3 records on the Reading.
+
+    .. versionadded:: 6.0.0
+    """
+
+    start: int
+    end: int
+    what: str
+
+
 @dataclass(frozen=True, kw_only=True)
 class Scope:
     """What narrows the answer, one typed field per scoping slot. A field at
@@ -289,14 +452,9 @@ class Scope:
     #: A streak's kind (``"win"``, ``"loss"``).
     kind: str | None = None
     rank: Literal["most", "fewest", "best", "worst"] | None = None
-    #: When.
-    season: int | None = None
-    season_type: SeasonType | None = None
-    #: No season type was named, and the answer reads both.
-    season_type_unstated: bool = False
-    span: Literal["career"] | None = None
-    since: int | None = None
-    until: int | None = None
+    #: When: the seasons and the season type, one typed value
+    #: (:class:`Span`; six slots until Phase 3, step 2).
+    span: Span = field(default_factory=Span)
     #: One calendar day, ``YYYY-MM-DD``.
     date: str | None = None
     #: A calendar or alignment narrowing, as the question worded it.
@@ -330,10 +488,11 @@ class Scope:
 
         .. versionadded:: 5.0.0
         """
-        unknown = sorted(set(slots) - _SCOPE_FIELDS)
+        unknown = sorted(set(slots) - _SCOPE_FIELDS - _SPAN_SLOT_NAMES)
         if unknown:
             raise ScopeError(f"no scope field for slot(s) {unknown}")
         values: dict[str, Any] = {}
+        span_slots: dict[str, Any] = {}
         for name, raw in slots.items():
             # A blank string is the slot absent too: the model files " " for
             # an opponent it has none of, and every template read it as
@@ -341,7 +500,16 @@ class Scope:
             # it as a team named nothing and refused.
             if raw is None or raw is False or (isinstance(raw, (str, list, tuple)) and not raw) or (isinstance(raw, str) and not raw.strip()):
                 continue
-            values[name] = _CHECKS[name](name, raw)
+            if name == "span" and isinstance(raw, Span):
+                values[name] = raw
+            elif name in _SPAN_SLOT_NAMES:
+                span_slots[name] = _CHECKS[name](name, raw)
+            else:
+                values[name] = _CHECKS[name](name, raw)
+        if span_slots:
+            if "span" in values:
+                raise ScopeError(f"a typed span and the slot(s) {sorted(span_slots)} at once")
+            values["span"] = Span.from_slots(span_slots)
         return cls(**values)
 
     def to_slots(self) -> dict[str, Any]:
@@ -360,8 +528,35 @@ class Scope:
                 out[f.name] = [condition.to_slot() for condition in value]
             elif f.name == "period_condition":
                 out[f.name] = value.to_slot()
+            elif f.name == "span":
+                out.update(value.to_slots())
             else:
                 out[f.name] = list(value) if isinstance(value, tuple) else value
+        return out
+
+    def projected(self) -> dict[str, Any]:
+        """Every field, at its default or not, with the span as the six
+        slots it was until Phase 3, step 2 - the shape a recorded Scope
+        kept (:func:`~association.query.stages.plain`), so a reading
+        recorded before the span was typed compares identical to one
+        recorded after. The typed value is recorded beside the reading
+        (``stages._reading_record``, ``span``), never here.
+
+        .. versionadded:: 6.0.0
+        """
+        out: dict[str, Any] = {}
+        for f in fields(self):
+            value = getattr(self, f.name)
+            if f.name == "span":
+                slots = value.to_slots()
+                out["season"] = slots.get("season")
+                out["season_type"] = slots.get("season_type")
+                out["season_type_unstated"] = bool(slots.get("season_type_unstated"))
+                out["span"] = slots.get("span")
+                out["since"] = slots.get("since")
+                out["until"] = slots.get("until")
+            else:
+                out[f.name] = value
         return out
 
 
@@ -442,6 +637,8 @@ _CHECKS: dict[str, Callable[[str, Any], Any]] = {
     "order": _one_of("recent", "first"),
 }
 _SCOPE_FIELDS = frozenset(f.name for f in fields(Scope))
+#: The six slot names the span's door still takes (:meth:`Span.from_slots`).
+_SPAN_SLOT_NAMES = frozenset({"season", "season_type", "season_type_unstated", "span", "since", "until"})
 
 
 CAUSES: frozenset[str] = frozenset(
@@ -643,8 +840,16 @@ class Reading:
     #: Binding parity with the template being mirrored (see
     #: :class:`~association.query.compose.core.Query`).
     available: Availability | None = None
-    span: Literal["career"] | None = None
-    season: int | None = None
+    #: The span the subject is settled in and his games read over, where
+    #: the point reader settles it apart from the scope's own: over the
+    #: career for a date that names its own game (the name settled over
+    #: every season, the date the scope), this season outright for a run
+    #: (never a defaulted one, so an empty run is refused and not
+    #: redirected). ``None`` is the scope's own span. Until Phase 3, step 2
+    #: this was the slot pair ``span``/``season`` beside the scope's.
+    #:
+    #: .. versionadded:: 6.0.0
+    subject_span: Span | None = None
     relation: Relation = "player"
     #: A position code, honored on the ``"everyone"`` relation.
     position: str | None = None
@@ -664,6 +869,13 @@ class Reading:
     #: refuses by name rather than answer about somebody the question never
     #: mentioned (AGENTS.md: "when it cannot be repaired, say so").
     misread: tuple[str, ...] = ()
+    #: The characters of the question each tagger consumed
+    #: (:class:`Claim`), in the question's order: the span's since Phase 3,
+    #: step 2, each family's as its slice lands. What they leave unclaimed
+    #: is step 3's ``unread``.
+    #:
+    #: .. versionadded:: 6.0.0
+    claims: tuple[Claim, ...] = ()
     #: The compiler's point for the question - its word tables' reading of it
     #: on the relation it names (:func:`~association.query.point.read_point`),
     #: read once, by the parser, so the compiler only plans and runs it
@@ -718,6 +930,20 @@ class Reading:
         .. versionadded:: 5.0.0
         """
         return cls(scope=Scope.from_slots(slots), intent=intent, subject=subject)
+
+    def projected(self) -> dict[str, Any]:
+        """Every field as a Reading was recorded until Phase 3, step 2
+        (:func:`~association.query.stages.plain`): ``subject_span`` as the
+        ``span`` and ``season`` pair it replaced, every other field as it
+        is - ``claims`` included, the one field the record gained.
+
+        .. versionadded:: 6.0.0
+        """
+        out = {f.name: getattr(self, f.name) for f in fields(self) if f.name != "subject_span"}
+        settled = self.subject_span
+        out["span"] = "career" if settled is not None and settled.career else None
+        out["season"] = settled.season if settled is not None else None
+        return out
 
     def describe(self) -> str:
         """The one trace line: every field that decides the answer."""
@@ -977,8 +1203,7 @@ def ordinal_word(n: int) -> str:
 def _career_scope(scope: Scope) -> Scope:
     """The point reader's rule (``route()``'s own, before it) for a count by a player (``_HOW_MANY_OR_OFTEN``, step 2
     B5): with no season named, "how many ... has he" is his career."""
-    unscoped = scope.season is None and not scope.span and not scope.since
-    return replace(scope, span="career") if unscoped else scope
+    return scope if scope.span.named else replace(scope, span=scope.span.as_career())
 
 
 def named_player_in(scope: Scope) -> bool:
@@ -1089,11 +1314,11 @@ def scope_reads_box_scores(scope: Scope, measures: list[Any]) -> bool:
             scope.venue,
             scope.without,
             split_side,
-            scope.since,
+            scope.span.since,
             measures,
             scope.game_n,
             scope.situation,
-            scope.season_type_unstated,
+            scope.span.both,
             scope.own_team,
             scope.conditions,
             scope.period_condition,
@@ -1164,12 +1389,9 @@ SCOPING_SLOTS = frozenset(
         "date",
         "opponent",
         "venue",
-        "span",
         "without",
         "round",
         "split",
-        "since",
-        "until",
         "below",
         "above",
         "game_n",
@@ -1177,13 +1399,25 @@ SCOPING_SLOTS = frozenset(
         "situation",
         "conditions",
         "rate",
-        "season_type_unstated",
         "ranked_by",
         "period",
         "half",
         "period_condition",
     }
 )
+
+
+def unhonored_cells(scope: Scope, honored: frozenset[str]) -> list[str]:
+    """The slot names ``scope`` sets that ``honored`` does not hold, sorted:
+    every slot of :data:`SCOPING_SLOTS` that is truthy, and the span's cells
+    (:attr:`Span.CELLS`, by the slot names they were refused under -
+    :meth:`Span.unhonored`). One reading of "what is set beyond what is
+    honored", for the planner's relation check and for a reader's own
+    words (:func:`unhonored_scoping`).
+
+    .. versionadded:: 6.0.0
+    """
+    return sorted([name for name in SCOPING_SLOTS if getattr(scope, name) and name not in honored] + scope.span.unhonored(honored))
 
 
 #: Templates that honor one NAMED half of the starter/bench split and refuse
@@ -1201,7 +1435,7 @@ def unhonored_scoping(intent: str, scope: Scope, honored: frozenset[str]) -> lis
 
     .. versionadded:: 5.0.0
     """
-    ignored = sorted(name for name in SCOPING_SLOTS if getattr(scope, name) and name not in honored)
+    ignored = unhonored_cells(scope, honored)
     # `split` is honored by the filtering templates only for a NAMED half. The
     # bare category means "show me both groups", which is player_splits' whole
     # answer and something they cannot do - so it is refused here rather than

@@ -339,7 +339,7 @@ def read_player_log(con: duckdb.DuckDBPyConnection, q: Query, *, stated: frozens
     if compiled.player is None:
         return None
     asked = scope.limit
-    if scope.season_type_unstated and not compiled.narrowed.date and not scope.span and not scope.game_n:
+    if scope.span.both and not compiled.narrowed.date and not scope.span.career and not scope.game_n:
         # "His last N games" naming no season type: each type on its own,
         # merged by date, over the season the compiler settled.
         if compiled.span.season is None:
@@ -494,18 +494,17 @@ def read_team_log(con: duckdb.DuckDBPyConnection, q: TeamQuery, *, stated: froze
     refused = coverage_refusal(PointShape("team_games", "rows", "date"), scope)
     if refused is not None:
         return refused
-    season_type = scope.season_type or 2
+    season_type = scope.span.season_type or 2
     limit = _clamp_limit(scope.limit, default=DEFAULT_GAME_LOG_LIMIT)
     ascending = scope.order == "first"
     date = scope.date
-    opponent, venue, span, without = scope.opponent, scope.venue, scope.span, scope.without
+    opponent, venue, without = scope.opponent, scope.venue, scope.without
     game_n = scope.game_n
     measures = _game_log_lines(scope.below, scope.above, scope.threshold)
     # A date names its game outright, so it replaces the season rather than
     # being filtered inside it.
-    season = None if date else scope.season
-    span = "career" if date else span
-    mixed = scope.season_type_unstated and not date and not span and not game_n
+    asked = scope.span.over_career() if date else scope.span
+    mixed = scope.span.both and not date and not asked.career and not game_n
     team_text = scope.team
     if not team_text or scope.player:
         raise Unsupported("game_log needs a team or a player")
@@ -513,17 +512,17 @@ def read_team_log(con: duckdb.DuckDBPyConnection, q: TeamQuery, *, stated: froze
     if isinstance(team, Unanswered):
         return team
     _team_log_refusals(without, measures, game_n)
-    if mixed and (scope.since or scope.until or scope.situation):
+    if mixed and (scope.span.since or scope.span.until or scope.situation):
         # The both-types read is a plain window (an opponent and a venue at
         # most); a range of seasons or a calendar narrowing is refused, as
         # the team compiler's window sum refuses the same read.
         raise Unsupported("a window over both season types is read for a plain 'last N games' only")
     if mixed:
-        resolved_season = span_of(span, season, 2, "games").season
+        resolved_season = span_of(asked.without_range(), "games", season_type=2).season
         if resolved_season is None:
             raise Unsupported("a career span has no single season to read both season types within")
         return _team_log_mixed(con, team.name, team, resolved_season, opponent=opponent, venue=venue, limit=limit, stat=scope.stat)
-    seasons = span_of(span, season, season_type, "games", since=scope.since, until=scope.until)
+    seasons = span_of(asked, "games", season_type=season_type)
     narrowed = team_games(con, team, seasons, Scope(venue=venue), opponent=opponent, date=date)
     if isinstance(narrowed, Unanswered):
         return narrowed

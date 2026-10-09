@@ -75,13 +75,13 @@ def _with_without_read(con: duckdb.DuckDBPyConnection, scope: Scope) -> Result |
     games in it - or the answer the reading gives up with."""
     mate_texts, asked_without, roles = with_without_named(scope)
     texts = list(dict.fromkeys(n.strip() for n in (scope.player, *scope.players) if n is not None and n.strip()))
-    team = optional_team(con, scope.team, season=scope.season)
+    team = optional_team(con, scope.team, season=scope.span.season)
     if isinstance(team, Unanswered):
         return team
     if not mate_texts:
         mate_texts, texts = _with_without_infer_teammate(team, texts)
 
-    covered = condition_scope(scope.season, scope.span, scope.season_type, _PLAYER_GAME_TABLES)
+    covered = condition_scope(scope.span.without_range(), _PLAYER_GAME_TABLES)
     resolved = _with_without_resolve(con, mate_texts, texts, covered)
     if isinstance(resolved, Unanswered):
         return resolved
@@ -99,7 +99,7 @@ def _with_without_read(con: duckdb.DuckDBPyConnection, scope: Scope) -> Result |
     # is his record in the games his team played BOSTON, not overall. Narrowing
     # is honest here because both rows narrow together - the split is still
     # played against missed, over the same pool (#163).
-    against = optional_team(con, scope.opponent, season=scope.season)
+    against = optional_team(con, scope.opponent, season=scope.span.season)
     if isinstance(against, Unanswered):
         return against
     predicates = _with_without_predicates(con, mates, roles, covered)

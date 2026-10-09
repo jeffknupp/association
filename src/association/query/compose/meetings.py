@@ -21,6 +21,7 @@ from typing import Literal
 import duckdb
 
 from association.nba.season import current_season
+from association.query import reading
 from association.query.coverage import coverage_refusal
 from association.query.entities import Entity, resolved_team, slot_season
 from association.query.player_relation import ResolvedSpan, span_of, validated_until
@@ -75,9 +76,9 @@ def _head_to_head_span_slots(scope: Scope, date: str | None) -> tuple[int | None
     """The ``since``/``until``/``span`` reading and the conflicts that are
     the meetings' own (a date and a since-bounded or career span at once;
     ``since`` and ``career`` together)."""
-    since = scope.since or None
-    until = validated_until(scope.until, since)
-    career = scope.span == "career"
+    since = scope.span.since or None
+    until = validated_until(scope.span.until, since)
+    career = scope.span.career
     if (since is not None or career or until is not None) and date:
         raise Unsupported("a date and a since-bounded or career span of meetings at once")
     if since is not None and career:
@@ -144,12 +145,12 @@ def read_head_to_head(con: duckdb.DuckDBPyConnection, q: TeamQuery, *, stated: f
     if isinstance(teams, Unanswered):
         return teams
     a, b = teams
-    season_type = scope.season_type or 2
+    season_type = scope.span.season_type or 2
     date, venue = scope.date, scope.venue
     since, until, career = _head_to_head_span_slots(scope, date)
     if since is not None or career or until is not None:
         return _head_to_head_over_span(con, replace(q, shape="rows"), a, b, venue, season_type, since=since, until=until, career=career)
-    narrowed, season = _head_to_head_narrowed(con, a, b, venue, date, scope.season, season_type)
+    narrowed, season = _head_to_head_narrowed(con, a, b, venue, date, scope.span.season, season_type)
     if isinstance(narrowed, Unanswered):
         return narrowed
     won = [row["won"] for row in rows_of(con, compile_team_over(replace(q, shape="rows"), a, ResolvedSpan(season, season_type), narrowed, ascending=True))]
@@ -171,7 +172,7 @@ def _head_to_head_over_span(
     ``year(tg.eastern_date)`` for a postseason, whose label is not the year
     it was played in before 1994) - the span's own words beside them
     (``Span.phrase``, :meth:`~association.query.player_relation.ResolvedSpan.during`)."""
-    span = span_of("career" if career else None, None, season_type, "games", since=since, until=until)
+    span = span_of(reading.Span(career=career, since=since, until=until), "games", season_type=season_type)
     narrowed = team_games(con, a, span, Scope(venue=venue), opponent=b)
     if isinstance(narrowed, Unanswered):
         return narrowed

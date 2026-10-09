@@ -19,7 +19,7 @@ from association.query.answer import Answer, Artifact, Reply, Timing
 from association.query.compose.core import Query
 from association.query.compose.plan import plan_point
 from association.query.decisions import Decision
-from association.query.reading import Cause, Reading, Scope
+from association.query.reading import Cause, Reading, Scope, Span
 from association.query.stages import STAGES, WORDING, Difference, differences, plain, read_stages, snapshot
 from association.query.subject import Subject
 
@@ -28,7 +28,7 @@ _TIMING = Timing(total_seconds=0.0, model_seconds=0.0, model_calls=0, tool_secon
 
 
 def _reading() -> Reading:
-    scope = Scope(player="Nikola Jokic", opponent="Boston Celtics", season=2026)
+    scope = Scope(player="Nikola Jokic", opponent="Boston Celtics", span=Span(season=2026))
     point = Reading(scope=scope, shape="scalar", measures=["points"], aggregate="total", intent="player_stat")
     subject = Subject(kind="player", players=("Nikola Jokic",), opponent="Boston Celtics", evidence=("'jokic' names one player",))
     return Reading(scope=scope, intent="player_stat", subject=subject, point=point, decisions=(Decision("subject", "kind", None, "player", ""),))

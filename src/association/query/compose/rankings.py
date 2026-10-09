@@ -74,9 +74,9 @@ def leaderboard_reads(q: Query, stated: frozenset[str]) -> bool:
     if not _leaderboard_is_own_point(q) or unhonored_scoping("leaderboard", q.scope, stated):
         return False
     scope = q.scope
-    if scope.stat == "shot_distance" or (scope.span is not None and scope.season is not None):
+    if scope.stat == "shot_distance" or (scope.span.career and scope.span.season is not None):
         return True
-    if resolve_metric(scope.stat, career=scope.span is not None) is None:
+    if resolve_metric(scope.stat, career=scope.span.career) is None:
         return False
     if scope.rate is not None and scope.rate != "total":
         return True
@@ -91,10 +91,10 @@ def _leaderboard_career(scope: Scope) -> bool:
     through 2010" (a cutoff) all arrive as the same two slots - answering
     any of them as one of the others is the substitution this refuses
     (``templates.players._career_span`` until the template's words moved)."""
-    if scope.span is None:
+    if not scope.span.career:
         return False
-    if scope.season is not None:
-        raise Unsupported(f"leaderboard cannot tell whether a career span with {scope.season} named means that season, since it, or through it")
+    if scope.span.season is not None:
+        raise Unsupported(f"leaderboard cannot tell whether a career span with {scope.span.season} named means that season, since it, or through it")
     return True
 
 
@@ -179,7 +179,14 @@ def read_leaderboard(con: duckdb.DuckDBPyConnection, q: Query, *, stated: frozen
         _leaderboard_career_refusals(scope, fields)
     try:
         ranking = rank_season_line(
-            con, metric, career=career, season=scope.season, season_type=scope.season_type or 2, team=scope.team, fields=fields, limit=_clamp_limit(scope.limit, default=DEFAULT_LEADERBOARD_LIMIT)
+            con,
+            metric,
+            career=career,
+            season=scope.span.season,
+            season_type=scope.span.season_type or 2,
+            team=scope.team,
+            fields=fields,
+            limit=_clamp_limit(scope.limit, default=DEFAULT_LEADERBOARD_LIMIT),
         )
     except LeaderboardError as exc:
         # An ambiguous team, an unknown metric, a team column with no season
@@ -204,7 +211,7 @@ def read_leaderboard(con: duckdb.DuckDBPyConnection, q: Query, *, stated: frozen
         span = Span(season=found.season, season_type=found.season_type, source="seasons")
         notes = (Note("definition", {"term": "most_recent_team"}),) if ranking.traded else ()
         facts = replace(facts, team=found.team_name)
-        if scope.season is None:
+        if scope.span.season is None:
             # The season was the reader's choice (the latest on record), not
             # the question's: recorded as the decision it is, said by the
             # span the heading names anyway (Jeff, 2026-10-05: the default is

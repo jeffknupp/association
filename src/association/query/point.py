@@ -141,24 +141,6 @@ def _asc_or_desc(question: str) -> Literal["asc", "desc"]:
     return "asc" if _FEWEST.search(question) else "desc"
 
 
-_EVER = re.compile(r"\bever\b|\ball[- ]time\b", re.I)
-
-
-def _everyone_career_scope(scope: Scope, question: str) -> Scope:
-    """ "Ever"/"all-time" in the question is a career span for a league-wide
-    read, the way :func:`_career_scope` gives a named player's own unscoped
-    count his whole career - stated because a league-wide read with no
-    season named otherwise defaults to the CURRENT season
-    (:func:`~association.query.compose.core._resolve_everyone`), not "every
-    season on record" the word asks for.
-
-    .. versionadded:: 4.4.0
-    """
-    if _EVER.search(question) and scope.season is None:
-        return replace(scope, span="career")
-    return scope
-
-
 _AT_LEAST = re.compile(r"\bat least\s+(\d+)\s+([a-z]+)", re.I)
 
 
@@ -545,7 +527,7 @@ def _leaderboard_season_line(intent: str, scope: Scope, question: str, measure: 
     own_boolean = all(name == scope.stat and value is True for name, _, value in predicates)
     if intent != "leaderboard" or not own_boolean or position is not None or _ranking_minimum(question) is not None:
         return None
-    metric = resolve_metric(scope.stat, career=scope.span == "career")
+    metric = resolve_metric(scope.stat, career=scope.span.career)
     if metric is None:
         return None
     if measure is not None and stat_measure(scope.stat) not in (None, measure):
@@ -602,16 +584,13 @@ def _everyone_point(intent: str, scope: Scope, question: str, measure: str | Non
     clearing every one.
 
     .. versionchanged:: 4.4.0
-       "Ever"/"all-time" moves the default current-season span to a career
-       one (:func:`_everyone_career_scope`), and tries
-       :func:`_everyone_boolean_game_ranking` (#199) and
+       Tries :func:`_everyone_boolean_game_ranking` (#199) and
        :func:`_everyone_multi_line_games` (F161) before the per-player count
        and ranking moves, since both are more specific readings of a
        ``threshold_count``/ranking question than either of those.
     """
     _everyone_guard(intent, question, position, period_is_condition=scope.period_condition is not None)
     scope = _everyone_opponent(scope, question)
-    scope = _everyone_career_scope(scope, question)
     words = _measure_words(question)
     measure, predicates = _measure_and_predicates(words, measure if measure not in BOOLEAN_MEASURES else None)
     predicates = _everyone_threshold_predicates(scope, question, measure, predicates)
@@ -786,8 +765,7 @@ def _default_game_log(scope: Scope) -> Reading:
         order="date",
         direction="asc" if scope.order == "first" else "desc",
         limit=_clamp_limit(scope.limit, DEFAULT_GAME_LOG_LIMIT),
-        span="career" if date else scope.span,
-        season=None if date else scope.season,
+        subject_span=scope.span.over_career() if date else scope.span,
     )
 
 
@@ -829,8 +807,7 @@ def _default_player_stat(scope: Scope) -> Reading:
         aggregate="per_game",
         group="none",
         predicates=[],
-        span="career" if date else scope.span,
-        season=None if date else scope.season,
+        subject_span=scope.span.over_career() if date else scope.span,
     )
 
 
@@ -897,8 +874,7 @@ def _default_period_split(scope: Scope) -> Reading:
             direction="asc",
             limit=None,
             available=SHOT_AVAILABILITY,
-            span="career" if date else scope.span,
-            season=None if date else scope.season,
+            subject_span=scope.span.over_career() if date else scope.span,
         )
     return Reading(
         scope=scope,
@@ -913,8 +889,7 @@ def _default_period_split(scope: Scope) -> Reading:
         direction="asc" if scope.order == "first" else "desc",
         limit=_clamp_limit(scope.limit, DEFAULT_GAME_LOG_LIMIT),
         available=SHOT_AVAILABILITY,
-        span="career" if date else scope.span,
-        season=None if date else scope.season,
+        subject_span=scope.span.over_career() if date else scope.span,
     )
 
 
@@ -979,13 +954,14 @@ def _streak_season(scope: Scope) -> int | None:
     on, and refused beside a named season rather than silently preferring
     one; an ordinal season ("his 5th season") is read over his career; no
     season is this one, except for a career."""
-    if scope.since:
-        if scope.season:
-            raise Unsupported(f"since {scope.since} and the {scope.season} season at once")
+    span = scope.span
+    if span.since:
+        if span.season:
+            raise Unsupported(f"since {span.since} and the {span.season} season at once")
         return None
-    if scope.season is not None:
-        return scope.season
-    return None if ("career" if scope.season_n else scope.span) == "career" else current_season()
+    if span.season is not None:
+        return span.season
+    return None if scope.season_n or span.career else current_season()
 
 
 def _default_streak(scope: Scope) -> Reading:
@@ -1019,8 +995,10 @@ def _default_streak(scope: Scope) -> Reading:
             predicates=predicates,
             limit=DEFAULT_NAMED_RUNS,
             available=BOX_SCORES,
-            span="career" if season is None else None,
-            season=season,
+            # The run's season settled outright: this one, never a
+            # defaulted one, so an empty run is refused rather than
+            # redirected to his last games.
+            subject_span=replace(scope.span, season=season, career=season is None),
         )
     if scope.team and scope.team.strip():
         if column is not None:
@@ -1057,8 +1035,7 @@ def _default_player_matchup(scope: Scope) -> Reading:
         group="none",
         predicates=[],
         available=BOX_SCORES,
-        span="career" if dated else scope.span,
-        season=None if dated else scope.season,
+        subject_span=scope.span.over_career() if dated else scope.span,
     )
 
 

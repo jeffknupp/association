@@ -74,7 +74,7 @@ def _metric_tables(scope: Scope) -> tuple[str, ...]:
     """The table the asked-for leaderboard metric is ranked from; nothing
     for a metric the ranking's reader refuses with a better message than a
     coverage floor could."""
-    metric = resolve_metric(scope.stat, career=scope.span == "career")
+    metric = resolve_metric(scope.stat, career=scope.span.career)
     spec = LEADERBOARD_METRICS.get(metric) if metric else None
     return (spec.table,) if spec else ()
 
@@ -84,7 +84,7 @@ def _team_record_tables(scope: Scope) -> tuple[str, ...]:
     ``games`` for a tally - a record against one team, or in a postseason,
     can only be tallied from `games`, whose regular seasons start later."""
     against = bool(scope.opponent) or len(scope.teams) > 1
-    return ("games",) if against or scope.season_type == 3 else ("standings",)
+    return ("games",) if against or scope.span.season_type == 3 else ("standings",)
 
 
 def _team_ranking_tables(scope: Scope) -> tuple[str, ...]:
@@ -94,7 +94,7 @@ def _team_ranking_tables(scope: Scope) -> tuple[str, ...]:
     are one team's schedule would be no rating."""
     key = resolve_team_metric(scope.stat)
     if key is not None and TEAM_METRICS[key].expression is None:
-        return ("games",) if scope.season_type == 3 else ("standings",)
+        return ("games",) if scope.span.season_type == 3 else ("standings",)
     return ("team_season_stats", "games")
 
 
@@ -272,11 +272,11 @@ def check_coverage(shape: PointShape | None, scope: Scope | Mapping[str, Any]) -
        (Phase 3, step 1), not an intent.
     """
     scope = _as_scope(scope)
-    if scope.season is None or shape is None:
+    if scope.span.season is None or shape is None:
         # No season means the current one, which every table covers; no
         # point means nothing was read.
         return None
-    return unavailable(sources_for(shape, scope), scope.season, scope.season_type or 2, ranking=shape.shape == "ranking")
+    return unavailable(sources_for(shape, scope), scope.span.season, scope.span.season_type or 2, ranking=shape.shape == "ranking")
 
 
 def floor_refusal(tables: tuple[str, ...], season: int, season_type: int, *, ranking: bool = False, shown: Mapping[str, Any] | None = None, under: tuple[str, ...] = ("message",)) -> Refusal | None:
@@ -307,9 +307,9 @@ def coverage_refusal(shape: PointShape | None, scope: Scope) -> Refusal | None:
     .. versionchanged:: 6.0.0
        Keyed by the planned point's :class:`~association.query.reading.PointShape`.
     """
-    if scope.season is None or shape is None:
+    if scope.span.season is None or shape is None:
         return None
-    return floor_refusal(sources_for(shape, scope), scope.season, scope.season_type or 2, ranking=shape.shape == "ranking")
+    return floor_refusal(sources_for(shape, scope), scope.span.season, scope.span.season_type or 2, ranking=shape.shape == "ranking")
 
 
 def coverage_caveat(shape: PointShape | None, scope: Scope | Mapping[str, Any], *, intent: str = "") -> str | None:
@@ -329,7 +329,7 @@ def coverage_caveat(shape: PointShape | None, scope: Scope | Mapping[str, Any], 
        the intent is the note's label only.
     """
     scope = _as_scope(scope)
-    if scope.season is None or shape is None:
+    if scope.span.season is None or shape is None:
         return None
-    said = caveat(sources_for(shape, scope), scope.season, scope.season_type or REGULAR_SEASON, ranking=shape.shape == "ranking")
-    return note("partial_season", said, season=scope.season, season_type=scope.season_type or REGULAR_SEASON, intent=intent) if said else None
+    said = caveat(sources_for(shape, scope), scope.span.season, scope.span.season_type or REGULAR_SEASON, ranking=shape.shape == "ranking")
+    return note("partial_season", said, season=scope.span.season, season_type=scope.span.season_type or REGULAR_SEASON, intent=intent) if said else None

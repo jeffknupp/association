@@ -23,7 +23,6 @@ against a whitelist before it reaches SQL. Nothing here is trusted.
 
 from __future__ import annotations
 
-import itertools
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field
@@ -32,20 +31,17 @@ from typing import TYPE_CHECKING, Any
 
 from association.nba.season import current_season
 
-from .calendar import HOLIDAY_WORDS
+from . import lexicon
 from .decisions import Decision
+from .lexicon import CALENDAR_DATE, NUMERIC_DATE_RANGE, PAST_N_SEASONS, season_from_text
 from .measures import MEASURE_WORDS, STAT_ALIASES
-from .reading import Scope
-from .season_text import season_from_text, season_spans
+from .reading import Claim, Scope
+from .span import LIMIT_COUNTS_SEASONS, SpanContext, career_named, range_named, read_span, relative_seasons
+
+from .calendar import HOLIDAY_WORDS  # isort: skip - after .span, which calendar's own imports do not reach
 
 if TYPE_CHECKING:
     from .subject import Subject
-
-# The model picks a word; the numeric season_type every table uses is looked up
-# here. Without this slot a playoff question silently answers for the regular
-# season - the same "answered an easier question and said nothing" failure the
-# standing rules were written to prevent.
-SEASON_TYPES = {"regular": 2, "playoffs": 3}
 
 # Questions no template can answer, recognized from the text rather than left
 # to the model. Deliberately tiny: not a rules engine, just subjects that read
@@ -282,6 +278,12 @@ class Route:
     #:
     #: .. versionadded:: 5.0.0
     subject: Subject | None = None
+    #: The characters of the question the taggers consumed
+    #: (:class:`~association.query.reading.Claim`): the span's
+    #: (:func:`~association.query.span.read_span`), carried onto the Reading.
+    #:
+    #: .. versionadded:: 6.0.0
+    claims: tuple[Claim, ...] = ()
 
     @property
     def slots(self) -> dict[str, Any]:
@@ -314,42 +316,6 @@ class Beside:
     absent: tuple[str, ...] = ()
 
 
-def _validate_season(slots: dict[str, Any], question: str = "") -> int | None:
-    """Resolve the season the code's way, not the model's. season_ref is
-    deliberately an enum the model can only pick from, because relative-date
-    arithmetic ("last season") is arithmetic, not language - it belongs here,
-    next to current_season(), not in a prompt.
-
-    .. versionchanged:: 4.4.0
-       A bare ``season`` integer the model supplied is no longer trusted on
-       its own - only kept when :func:`~association.query.season_text.season_from_text`
-       finds a year (or a relative reference like "last season") IN THE
-       QUESTION. ROUTER_PROMPT already only asks the model to set ``season``
-       when the question names one (its own worked examples all have the year
-       in the question text); a value that survives with nothing in the
-       question to back it is the model inventing one, not reading one - #95.
-       Measured live: "show me stats for sixers when maxey scored 20+ points"
-       arrived with season=2023 (nothing in the text but "20+") and answered a
-       real player's real average for a season nobody asked about; "what was
-       steph curry's avg 3pt shot distance" arrived with season=2022 while two
-       other wordings of the identical question answered the current season.
-       `season_ref` is untouched - it is a two-value enum the model can only
-       set to "previous"/"current", not a free year, and ROUTER_PROMPT already
-       instructs "current" for anything that does not say "last season".
-    """
-    # The question text first: it is the source, and the model drops this slot
-    # often enough that deferring to it silently answered for the wrong season.
-    from_text = season_from_text(question)
-    if from_text is not None:
-        return from_text
-    ref = slots.get("season_ref")
-    if ref == "previous":
-        return current_season() - 1
-    if ref == "current":
-        return current_season()
-    return None
-
-
 # The side of the ball a fingerprint asked for, recognized from the text. The
 # words are matched whole so "offensive" and "defensive" count but a player
 # named Offenberg would not.
@@ -367,7 +333,7 @@ SIDE_VALUES = ("offense", "defense", "total")
 def _validate_side(slots: dict[str, Any], question: str) -> str | None:
     """Which half of a fingerprint was asked for, the question first.
 
-    Same reasoning as :func:`_validate_season` reading the year out of the
+    Same reasoning as the span tagger reading the year out of the
     text: the question is the source, and this slot is dropped often enough
     that deferring to the model silently answers a broader question than the
     one asked - the whole radar where its defensive half was wanted.
@@ -388,47 +354,6 @@ def _validate_side(slots: dict[str, Any], question: str) -> str | None:
         return named[0]
     side = slots.get("side")
     return side if isinstance(side, str) and side in SIDE_VALUES else None
-
-
-# The postseason, named in the question. The model sets season_type="playoffs"
-# on questions that never mention them - measured at temperature 0, "Sga record
-# 36 plus points" and "lebron vs kawhi 2015" both came back as playoff questions,
-# and "tatum stats in the 2024 finals" came back as a regular-season one. Read
-# from the text for the same reason the year is: the question is the source,
-# and the model is wrong in both directions. "Title" and "championship" are left
-# out on purpose - "title odds" is a regular-season projection.
-_PLAYOFF_WORDS = re.compile(r"\b(?:playoffs?|post-?season|finals|elimination|game\s+(?:7|seven))\b", re.IGNORECASE)
-
-# The regular season, named outright - the one further word
-# `_route_game_log_recent_span` needs beside `_PLAYOFF_WORDS`: a "last N games"
-# question that says "regular season" has stated its type as plainly as one
-# that says "playoffs", and must keep meaning only that.
-_REGULAR_SEASON_WORDS = re.compile(r"\bregular[- ]season\b", re.IGNORECASE)
-
-# Both season types at once, named outright: "including the playoffs",
-# "including postseason", "regular season and playoffs", "playoffs included".
-# Read APART from _PLAYOFF_WORDS, which used to be consulted alone -
-# "including playoffs" contains the word "playoffs", so _validate_season_type
-# returned season_type=3, silently dropping the regular season the question
-# asked to KEEP: "warriors all-time record including playoff record at away"
-# answered only the playoff road record (51-52), and "Payton Prichard stats vs
-# 76ers at home including playoffs game log" answered 7 playoff meetings and
-# then told the reader "Only 7 games ... in his box scores" - a false claim
-# about games (the 9 regular-season meetings) that were never read at all, not
-# a true count of what was found. Read the same way `season_type_unstated`
-# already is for a "last N games" question naming no type
-# (`_route_game_log_recent_span`): the honored meaning is identical - read
-# both, merged or combined - so this reuses the slot rather than adding a
-# second one, and the planner already refuses it wherever nothing honors it
-# yet (`compose.plan.STATED_SCOPING`), which is the right answer for a
-# reader that has not been taught to read both.
-_BOTH_SEASON_TYPES_WORDS = re.compile(
-    r"\bincluding\s+(?:the\s+)?(?:playoffs?|post-?season)\b"
-    r"|\b(?:playoffs?|post-?season)\s+included\b"
-    r"|\bregular\s+season\s+and\s+(?:the\s+)?(?:playoffs?|post-?season)\b"
-    r"|\b(?:playoffs?|post-?season)\s+and\s+regular\s+season\b",
-    re.IGNORECASE,
-)
 
 
 # One round or game of the postseason. No table carries a round or a series
@@ -453,50 +378,6 @@ _GAME_N = re.compile(r"\bgame\s+([1-7])s?\b", re.IGNORECASE)
 _SEASON_N = re.compile(r"\b(\d{1,2})(?:st|nd|rd|th)\s+season\b", re.IGNORECASE)  # codespell:ignore nd - an ordinal suffix
 
 
-# A range of seasons rather than one. "since 2020" is every season from the one
-# ending in 2020; a decade ("the 2010s") is the seasons ending in it. Stated this
-# way, not guessed at, so a template that honors it can print the exact range.
-_SINCE = re.compile(r"\bsince\s+(?:the\s+)?((?:19|20)\d\d)\b", re.IGNORECASE)
-# "since 2000-01" / "since 2000-2001" / "since 00-01": a season written as a
-# span after "since", which is the season ENDING in the second year
-# (nba/season.py) - `_SINCE` alone read its leading "2000" and started a
-# season early (#207). What a span is, is `season_text.season_spans`'s to say
-# - the one definition, so "00-01" reads here as it does alone - and the
-# span must be one season's two years: a range ("since 2019-2024", "since
-# 2000-05") is read before this, as the range it writes (`_validate_range_span`).
-_SINCE_SPAN = re.compile(r"\bsince\s+(?:the\s+)?\Z", re.IGNORECASE)
-_DECADE = re.compile(r"\b(?:the\s+)?((?:19|20)\d)0'?s\b", re.IGNORECASE)
-
-# A CLOSED range - both ends named - rather than the open "since 2020" above.
-# `until` was declared nowhere and honored nowhere until this existed
-# (AGENTS.md's own worst-failure-shape example: "best 3 point shooters of the
-# 2010s" answered 2010 through now), so every form here fills BOTH slots.
-#
-# "2019-20 to 2023-24" / "from 2010-11 to 2018-19" / "02-03 to 06-07": a
-# season written as a span on each side of "to"/"through" - the words this
-# matches BETWEEN two spans `season_text.season_spans` found, so the short
-# form ("kobe bryant playoff stats from 02-03 to 06-07") is a range here
-# exactly where it is a season alone, and not the first season of the two.
-_RANGE_TO_WORDS = re.compile(r"\s+(?:to|through)\s+", re.IGNORECASE)
-# "between 2020 and 2024": bare calendar-shaped years, read as season NUMBERS
-# (the same reading `_SINCE`'s own bare year gets), not calendar years.
-_RANGE_BETWEEN = re.compile(r"\bbetween\s+((?:19|20)\d\d)\s+and\s+((?:19|20)\d\d)\b", re.IGNORECASE)
-# "2020-2024", "2015-18", "00-02": one span whose years do not follow each
-# other is a range of seasons, both ends season numbers - read by
-# `season_text.season_spans` (`SeasonSpan.is_range`), the one definition of a
-# span, in `_validate_range_span`. CONSECUTIVE years are not a range at all:
-# "the 2023-2024 season" is how people write ONE season (2024) with both
-# digits spelled out, exactly as "2023-24" means; a regex of its own here once
-# re-matched that text as since=2023/until=2024, silently overwriting a right
-# answer with a wrong one a step later. "2024-2026" is Jeff's own yardstick
-# wording ("how many 20+ point games did SGA have 2024-2026?"); "2015-18" read
-# as 2018 alone, and "00-02" as nothing, until the span said range (#261).
-# "knicks record by month 2024 2025": two bare, ADJACENT season numbers with
-# nothing joining them - only when the second is exactly one more than the
-# first, so this reads as a range and not two unrelated years mentioned in
-# passing.
-_RANGE_BARE_YEARS = re.compile(r"\b((?:19|20)\d\d)\s+((?:19|20)\d\d)\b")
-
 # "record" asked with a counting intent means wins and losses, not a count of
 # games. Measured: "Sixers record when Embiid scores 30 points this season" came
 # back as threshold_count and was answered with the league's 30-point games,
@@ -504,148 +385,10 @@ _RANGE_BARE_YEARS = re.compile(r"\b((?:19|20)\d\d)\s+((?:19|20)\d\d)\b")
 _RECORD = re.compile(r"\brecord\b", re.IGNORECASE)
 
 
-def _validate_range(question: str) -> tuple[int, int | None] | None:
-    """The first and last season a range covers - (first, None) for an open one.
-
-    .. versionchanged:: 4.4.0
-       Reads four CLOSED forms beside the open "since 2020" one: a
-       season-hyphenated span joined by "to"/"through" (optionally led by
-       "from"), "between YYYY and YYYY", a bare "YYYY-YYYY" and two adjacent
-       season numbers with nothing joining them. Each fills ``until`` as well
-       as ``since`` - see AGENTS.md, "a season range", for why an unfilled
-       ``until`` is this project's worst failure shape rather than a missing
-       nicety.
-
-    .. versionchanged:: 5.0.0
-       A span written short whose years do not follow is a range too, read
-       by :func:`~association.query.season_text.season_spans`: "2015-18" is
-       2015 through 2018 and "00-02" 2000 through 2002, as "2020-2024" is
-       2020 through 2024.
-    """
-    to_spans = _validate_range_to(question)
-    if to_spans is not None:
-        return to_spans
-    between = _RANGE_BETWEEN.search(question)
-    if between is not None:
-        first, last = int(between.group(1)), int(between.group(2))
-        return (first, last) if first <= last else (last, first)
-    span_range = _validate_range_span(question)
-    if span_range is not None:
-        return span_range
-    bare_years = _RANGE_BARE_YEARS.search(question)
-    if bare_years is not None and int(bare_years.group(2)) == int(bare_years.group(1)) + 1:
-        return int(bare_years.group(1)), int(bare_years.group(2))
-    since_season = _validate_range_since_season(question)
-    if since_season is not None:
-        return since_season, None
-    since = _SINCE.search(question)
-    if since is not None:
-        return int(since.group(1)), None
-    decade = _DECADE.search(question)
-    if decade is not None:
-        first = int(decade.group(1) + "0")
-        return first, first + 9
-    return None
-
-
-def _validate_range_to(question: str) -> tuple[int, int] | None:
-    """The first and last season of two seasons written as spans with only
-    "to" or "through" between them - "2019-20 to 2023-24", "from 02-03 to
-    06-07" - or ``None`` where the question writes no such pair. The spans
-    are :func:`~association.query.season_text.season_spans`', so each end is
-    the season it names alone, or a range's own first and last ("1999-00 to
-    2001-06" ends in 2006)."""
-    for left, right in itertools.pairwise(season_spans(question)):
-        if _RANGE_TO_WORDS.fullmatch(question, left.end, right.start):
-            first = left.first if left.is_range else left.season
-            return (first, right.season) if first <= right.season else (right.season, first)
-    return None
-
-
-def _validate_range_span(question: str) -> tuple[int, int] | None:
-    """The first and last season of the first span the question writes as a
-    range - "2020-2024", "2015-18", "00-02"
-    (:attr:`~association.query.season_text.SeasonSpan.is_range`) - or
-    ``None``."""
-    return next(((span.first, span.season) for span in season_spans(question) if span.is_range), None)
-
-
-def _validate_range_since_season(question: str) -> int | None:
-    """The season "since 2000-01" (or "since 2000-2001", "since 00-01")
-    starts from - the one ending in the later year - or ``None`` when the
-    span after "since" is not one season's two years."""
-    for span in season_spans(question):
-        if _SINCE_SPAN.search(question, 0, span.start):
-            return span.season if span.season == span.first + 1 else None
-    return None
-
-
-# "past two seasons", "last 3 years": a relative window counted back from NOW,
-# not a games count and not a season named outright. Read into `since` alone
-# (never `until`) because "past N seasons" already ends at the current one -
-# _span_of's `since` branch reaches every season from there through whatever
-# the table holds, which is exactly "now" since nothing is played later. #140:
-# "show tyrese maxey's games against boston in the past two seasons" put the
-# "two" in `limit` instead (see _PAST_N_SEASONS_COUNT_WORDS in _names_a_count)
-# and answered his last 2 games of his CAREER, not his last two SEASONS - 7
-# games measured on player_game_log (3 in 2025, 4 in 2026).
-_PAST_N_SEASONS_COUNT_WORDS = {
-    "one": 1, "two": 2, "three": 3, "four": 4, "five": 5,
-    "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10,
-}  # fmt: skip
-#: Intents whose ``limit`` counts SEASONS rather than games, so a relative
-#: window ("the past 5 years") is that count and not a `since` span.
-_LIMIT_COUNTS_SEASONS: frozenset[str] = frozenset({"player_history"})
-
-_PAST_N_SEASONS = re.compile(
-    r"\b(?:past|last)\s+(\d{1,2}|one|two|three|four|five|six|seven|eight|nine|ten)\s+(?:seasons?|years?)\b",
-    re.IGNORECASE,
-)
-
-
-def _validate_relative_season_span(question: str) -> int | None:
-    """The first season "past/last N seasons" (or "...years") reaches, counted
-    back from the current one - "past two seasons" from season 2026 is 2025
-    and 2026, so `since=2025` alone already names exactly those two."""
-    match = _PAST_N_SEASONS.search(question)
-    if match is None:
-        return None
-    word = match.group(1).lower()
-    count = _PAST_N_SEASONS_COUNT_WORDS.get(word) or int(word)
-    return current_season() - count + 1
-
-
-def _validate_season_type(question: str) -> int:
-    """The season type the question asks about: the postseason only when it
-    says so. The model's own slot is not consulted - see _PLAYOFF_WORDS."""
-    return SEASON_TYPES["playoffs"] if _PLAYOFF_WORDS.search(question) else SEASON_TYPES["regular"]
-
-
 _MONTHS = {
     "jan": 1, "feb": 2, "mar": 3, "apr": 4, "may": 5, "jun": 6,
     "jul": 7, "aug": 8, "sep": 9, "oct": 10, "nov": 11, "dec": 12,
 }  # fmt: skip
-
-# A calendar day written the way people write it: "march 17", "Jan 19",
-# "november 11 2019". The leading group is what makes a date a RANGE rather
-# than a day - "since January 31st" starts a window and names no single game -
-# and those are left for _SITUATION to refuse, since no template honors a
-# range of dates.
-_CALENDAR_DATE = re.compile(
-    r"(?P<range>\b(?:since|after|before|from|through|until)\s+(?:the\s+)?)?"
-    r"\b(?P<month>jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t|tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\.?\s+"
-    r"(?P<day>\d{1,2})(?:st|nd|rd|th)?(?:,?\s+(?P<year>(?:19|20)\d\d))?\b",  # codespell:ignore nd - an ordinal suffix
-    re.IGNORECASE,
-)
-
-
-# The same range written in numbers: "since 1/26/20", "from 12/25/2019".
-# Only after a range word, so a shooting line ("7/14") or the 50/40/90 club is
-# never a date; it becomes a `situation`, which the calendar reading narrows by
-# (`calendar.parse_situation`) or refuses by value - never a narrowing dropped.
-# yardstick-v2 F110, "towns home rec including playoffs since 1/26/20 vs spurs",
-# read without it answered his whole career at home against San Antonio.
-_NUMERIC_DATE_RANGE = re.compile(r"\b(?:since|after|from)\s+(?:the\s+)?(?:0?[1-9]|1[0-2])/(?:0?[1-9]|[12]\d|3[01])(?:/(?P<year>(?:19|20)?\d\d))?\b", re.IGNORECASE)
 
 
 def _validate_date(question: str, season: int | None) -> str | None:
@@ -677,7 +420,7 @@ def _validate_date(question: str, season: int | None) -> str | None:
 
     .. versionadded:: 2.2.0
     """
-    match = _CALENDAR_DATE.search(question)
+    match = CALENDAR_DATE.search(question)
     if match is None or match.group("range"):
         return None
     month = _MONTHS[match.group("month")[:3].lower()]
@@ -714,11 +457,6 @@ def _validate_venue(question: str) -> str | None:
         return None
     return "home" if home else "away"
 
-
-# A whole career rather than one season. "Career high" is the exception: with a
-# season named ("career high this season") it means that season's best, and it
-# is a worked example of single_game_high in ROUTER_PROMPT.
-_CAREER_HIGH = re.compile(r"\bcareer[- ]highs?\b", re.IGNORECASE)
 
 # The subject of a single-game high or a threshold count, when the model
 # drops it. Measured live: "most points curry scored in a game this season"
@@ -960,51 +698,6 @@ def _subject_named_in(question: str) -> str | None:
                 return f"{lead} {word}"
             return word
     return None
-
-
-_SPAN_WORDS = re.compile(r"\b(?:career|all[- ]?time|ever|(?:in|of)\s+(?:nba\s+)?history|of\s+all\s+time)\b", re.IGNORECASE)
-# "since he/she joined the league", "since entering the league": the same
-# "every season" reading `_SPAN_WORDS`' own "career" gets, in words that do
-# not contain it - yardstick-v2 F031, "Show me luka's avg assists since he
-# joined the league", used to answer one season (whichever the router's
-# season default happened to be) where the question asked for his whole
-# career. Anchored on "the league" so it cannot fire on "since he joined the
-# team" (#147's own team question) or "since he joined the Mavericks".
-_SPAN_JOINED_LEAGUE_WORDS = re.compile(r"\bsince\s+(?:he|she|they)\s+(?:joined|entered)\s+the\s+league\b|\bsince\s+(?:joining|entering)\s+the\s+league\b", re.IGNORECASE)
-# "this postseason" names the current season as surely as "this season" does:
-# without it, "maxey's stats for game 4 against the knicks this postseason"
-# read as a career question and asked which Maxey.
-_SEASON_WORDS = re.compile(r"\b(?:this|last|next)\s+(?:season|year|postseason|playoffs)\b", re.IGNORECASE)
-
-# "all playoff games" / "every playoff game" / "all his playoff games" (#141):
-# none of _SPAN_WORDS' words appear in them, so "show a shot chart for steph
-# curry in all playoff games" carried no span at all and the season defaulted
-# to the latest with data - one postseason drawn and presented as all of them,
-# with nothing in the answer saying so. Anchored on a season-TYPE word
-# ("playoff", "postseason", "preseason", "regular season") immediately after
-# "all"/"every" (and an optional possessive) so it cannot fire on "all star" -
-# "star" is not one of them - or on an unrelated "all ... games" ("all the
-# games Curry played in March").
-_SPAN_ALL_GAMES_WORDS = re.compile(r"\b(?:all|every)\b(?:\s+(?:his|her|their))?\s+(?:playoff|post-?season|pre-?season|regular[- ]season)\s+games?\b", re.IGNORECASE)
-
-
-def _validate_span(question: str) -> str | None:
-    """ "career" when the question asks about more than one season's worth of
-    games at once. Measured before this existed: "career points leaders" and
-    "Jokic career averages" were both answered with one season, fluently.
-
-    .. versionchanged:: 4.4.0
-       Reads "all playoff games" and its variants too - see
-       :data:`_SPAN_ALL_GAMES_WORDS` (#141).
-
-    .. versionchanged:: 4.4.0
-       Reads "since he/she joined the league" - see
-       :data:`_SPAN_JOINED_LEAGUE_WORDS`.
-    """
-    text = question
-    if _CAREER_HIGH.search(text) and (season_from_text(question) is not None or _SEASON_WORDS.search(text)):
-        text = _CAREER_HIGH.sub(" ", text)
-    return "career" if _SPAN_WORDS.search(text) or _SPAN_ALL_GAMES_WORDS.search(text) or _SPAN_JOINED_LEAGUE_WORDS.search(text) else None
 
 
 # The words that end a teammate's name in "without X this season" and the like.
@@ -1811,8 +1504,8 @@ def _names_a_count(question: str) -> bool:
     """Whether the question names a number of games, once the numbers that
     belong to a line on a box-score stat ("under 14 fta", "with 25 minutes"),
     to a game of a series ("game 4"), or to a count of SEASONS rather than
-    games ("past two seasons" - see _PAST_N_SEASONS) are set aside."""
-    stripped = _GAME_N.sub(" ", _ABOVE.sub(" ", _BELOW.sub(" ", _PAST_N_SEASONS.sub(" ", _THRESHOLD_PAIR.sub(" ", question)))))
+    games ("past two seasons" - :data:`~association.query.lexicon.PAST_N_SEASONS`) are set aside."""
+    stripped = _GAME_N.sub(" ", _ABOVE.sub(" ", _BELOW.sub(" ", PAST_N_SEASONS.sub(" ", _THRESHOLD_PAIR.sub(" ", question)))))
     return _COUNT_WORDS.search(stripped) is not None
 
 
@@ -1863,7 +1556,7 @@ be refused instead.
    (ISSUES.md) needs this slot kept, not dropped, to reach the template with
    the window it asked for. No change to :data:`ROUTER_PROMPT` or
    :data:`ROUTER_SCHEMA`: this is code-side post-processing only
-   (:func:`_route_side_and_order`), the same as :func:`_validate_season` and
+   (:func:`_route_side_and_order`), the same as the span tagger and
    :func:`_validate_side` - so no other question's routing can have moved.
 """
 
@@ -2203,7 +1896,7 @@ def _route_pair_over_seasons(raw: dict[str, Any], question: str, listed: list[st
     "Luka vs Giannis this year" stays a comparison."""
     if raw["intent"] != "player_compare" or len(listed) != 2 or not _VERSUS_WORDS.search(question) or _COMPARE_WORDS.search(question):
         return
-    if _validate_range(question) is not None or _PAST_N_SEASONS.search(question):
+    if range_named(question) is not None or PAST_N_SEASONS.search(question):
         raw["intent"] = "player_matchup"
 
 
@@ -2306,7 +1999,7 @@ def _route_line_and_record_intents(raw: dict[str, Any], question: str, beside: B
         raw["intent"] = "team_leaderboard"
         raw["stat"] = "record"
         raw.pop("team", None)
-    if raw["intent"] == "player_stat" and _CAREER_HIGH.search(question):
+    if raw["intent"] == "player_stat" and lexicon.CAREER_HIGH.search(question):
         # A career high is one game's total, which player_stat never reports.
         # Measured: "Diabate career high assists" was answered with his assists
         # per game.
@@ -2314,32 +2007,23 @@ def _route_line_and_record_intents(raw: dict[str, Any], question: str, beside: B
     return rerouted_to_line
 
 
-def _route_season_slots(raw: dict[str, Any], question: str) -> dict[str, Any]:
-    """The slots, with blanks dropped and the season and season type read the code's way."""
+#: The model-era keys of the span family a raw route may still carry (a
+#: test's payload; a settled route run again): every one is read from the
+#: words by the span tagger, so none passes the stages.
+_MODEL_SPAN_KEYS: frozenset[str] = frozenset({"season", "season_ref", "season_type", "season_type_unstated", "span", "since", "until"})
+
+
+def _route_blank_slots(raw: dict[str, Any]) -> dict[str, Any]:
+    """The slots, with blanks and the span family's model-era keys dropped:
+    the season and the season type are the span tagger's
+    (:func:`~association.query.span.read_span`), read last, over the intent
+    and the window the stages settle - a bare ``season`` the words do not
+    name was never trusted (#95: the model invented one), and the reader
+    the model's ``season_ref`` named "last season" for reads the words."""
     # A blank string is how the model says "no value" for a required slot;
     # dropping it here keeps every template's `slots.get(...) or default`
     # working and keeps the logged Route readable.
-    slots = {k: v for k, v in raw.items() if k != "intent" and not (isinstance(v, str) and not v.strip())}
-    resolved_season = _validate_season(slots, question)
-    slots.pop("season_ref", None)
-    if resolved_season is None:
-        slots.pop("season", None)
-    else:
-        slots["season"] = resolved_season
-    slots["season_type"] = _validate_season_type(question)
-    if _BOTH_SEASON_TYPES_WORDS.search(question):
-        # Both, named outright - not merely unnamed the way
-        # `_route_game_log_recent_span` reads a bare "last N games" later in
-        # `route()`. Same slot, same honored meaning: a template that reads it
-        # (`player_relation.player_relation_season_type`) reads both types;
-        # one that does not is refused by the planner rather than guessing
-        # which half the question meant. `season_type` itself is left at the
-        # regular-season default (never 3) so nothing that reads it directly,
-        # ignoring the flag, narrows to the postseason ALONE - the specific
-        # wrong-cause shape this exists to stop.
-        slots["season_type_unstated"] = True
-        slots["season_type"] = SEASON_TYPES["regular"]
-    return slots
+    return {k: v for k, v in raw.items() if k != "intent" and k not in _MODEL_SPAN_KEYS and not (isinstance(v, str) and not v.strip())}
 
 
 def _absent_by_phrase(question: str, beside: Beside) -> bool:
@@ -2401,19 +2085,12 @@ def _route_threshold(raw: dict[str, Any], slots: dict[str, Any], question: str, 
         raw["intent"] = "leaderboard"
 
 
-def _route_filter_slots(slots: dict[str, Any], question: str, beside: Beside) -> tuple[str | None, list[str]]:
-    """Span, venue, teammates missing, a ceiling and a situation. Returns the span and the absent teammates."""
+def _route_filter_slots(slots: dict[str, Any], question: str, beside: Beside) -> list[str]:
+    """Venue, teammates missing, a ceiling and a situation. Returns the absent teammates."""
     # The scoping slots below are read from the question and never asked of the
     # model: none is in ROUTER_SCHEMA, so adding them changed no grammar and can
     # have moved no other question's routing. A reader that cannot honor one
     # refuses it (the planner) rather than answering a broader question.
-    span = _validate_span(question)
-    if span is not None:
-        slots["span"] = span
-        # A career is every season. A year the MODEL filled in ("current", by
-        # default) would narrow it back to one; a year the question named is kept.
-        if season_from_text(question) is None:
-            slots.pop("season", None)
     venue = _validate_venue(question)
     if venue is not None:
         slots["venue"] = venue
@@ -2444,62 +2121,47 @@ def _route_filter_slots(slots: dict[str, Any], question: str, beside: Beside) ->
     situation = _SITUATION.search(question)
     if situation is not None:
         slots["situation"] = situation.group(0).casefold()
-    return span, without
+    return without
 
 
-def _route_season_range(intent: str, slots: dict[str, Any], question: str) -> None:
-    """The seasons a question spans when it names a range rather than one
-    year: "since 2020", "the 2010s", "the past two seasons"."""
-    # Measured: "most 3 pointers made since 2020" became season=2020 and was
-    # answered as "the most games with 0+ 3-pointers in the 2020 regular season".
-    seasons = _validate_range(question)
-    if seasons is not None:
-        slots["since"] = seasons[0]
-        if seasons[1] is not None:
-            slots["until"] = seasons[1]
-        slots.pop("season", None)
-    else:
-        # "past two seasons" / "last 3 years": a relative window, not the
-        # absolute one "since YYYY" or a decade name - see
-        # _validate_relative_season_span. No `until`: the window already ends
-        # at "now", the same place `since` alone reaches.
-        relative_since = _validate_relative_season_span(question)
-        if relative_since is not None and intent in _LIMIT_COUNTS_SEASONS:
-            # A history's `limit` counts SEASONS, not games, so "the past 5
-            # years" IS that limit and needs no span. Setting `since` here
-            # instead would hand the template a slot it does not honor, and
-            # "show me sga's 2pt percentage for the past 5 years" - which the
-            # question below answers - would refuse. Found on the merged tree:
-            # #140 (this rule) and #114 (the stat) were each sound alone.
-            slots["limit"] = current_season() - relative_since + 1
-            slots.pop("season", None)
-        elif relative_since is not None:
-            slots["since"] = relative_since
-            slots.pop("season", None)
-            if isinstance(slots.get("limit"), int) and not _names_a_count(question):
-                # The model's own count word landed on `limit` instead of the
-                # season count it actually modifies (#140): "...in the past
-                # two seasons" arrived with limit=2 and, from that alone,
-                # answered his last 2 games of his career. `_names_a_count`
-                # already looks past _PAST_N_SEASONS's own number here, so
-                # this only fires when nothing ELSE in the question names a
-                # real count of games ("last 5 games in the past two seasons"
-                # keeps its limit).
-                slots.pop("limit", None)
+def _route_relative_window(intent: str, slots: dict[str, Any], question: str) -> None:
+    """The window's half of "the past two seasons" / "last 3 years" (the
+    span tagger reads the seasons it names): a history's ``limit`` counts
+    SEASONS, not games, so "the past 5 years" IS that limit and needs no
+    range - set as a range instead, "show me sga's 2pt percentage for the
+    past 5 years" would refuse (found on the merged tree: #140, this rule,
+    and #114, the stat, were each sound alone); and on any other intent the
+    model's own count word, landed on ``limit`` instead of the season count
+    it modifies (#140: "...in the past two seasons" arrived with limit=2
+    and, from that alone, answered his last 2 games of his career), goes -
+    only where nothing ELSE in the question names a real count of games
+    ("last 5 games in the past two seasons" keeps its limit;
+    ``_names_a_count`` looks past the seasons' own number). The window
+    family's slice folds this into its tagger."""
+    if range_named(question) is not None:
+        return
+    seasons = relative_seasons(question)
+    if seasons is None:
+        return
+    if intent in LIMIT_COUNTS_SEASONS:
+        slots["limit"] = seasons
+    elif isinstance(slots.get("limit"), int) and not _names_a_count(question):
+        slots.pop("limit", None)
 
 
-def _route_calendar_slots(intent: str, slots: dict[str, Any], question: str, span: str | None) -> None:
-    """A calendar day, a playoff round, a range of seasons and a split."""
-    # After `span`, which pops the season on a career question. The season that
-    # fixes the year is the one a template would use - `slots.get("season") or
-    # current_season()`, the same default they all apply - EXCEPT on a career
-    # question, which spans twenty Octobers and fixes nothing, so that refuses.
-    # Reading the model's absent season as "current" rather than "unknown"
-    # matters: it omits `season_ref` often, and "Desmond bane march 17" arrives
-    # with no season at all.
-    asked_season = slots.get("season") if isinstance(slots.get("season"), int) else None
-    fixing_season = None if span == "career" else (asked_season or current_season())
+def _route_calendar_slots(intent: str, slots: dict[str, Any], question: str) -> int | None:
+    """A calendar day, a playoff round, a game of a series, an ordinal
+    season, the window's half of a relative span, and a split. Returns the
+    year a range opened on a dated day names ("since 1/26/20"), for the
+    span tagger to start the seasons at."""
+    # The season that fixes a date's year is the one a reader would use -
+    # the season the words name, or the current one, the default they all
+    # apply - EXCEPT on a career question, which spans twenty Octobers and
+    # fixes nothing, so that refuses. Reading an absent season as "current"
+    # rather than "unknown" matters: "Desmond bane march 17" names none.
+    fixing_season = None if career_named(question)[0] else (season_from_text(question) or current_season())
     calendar_day = _validate_date(question, fixing_season)
+    dated_since = None
     if calendar_day is not None:
         slots["date"] = calendar_day
     else:
@@ -2511,11 +2173,11 @@ def _route_calendar_slots(intent: str, slots: dict[str, Any], question: str, spa
         # _validate_season). Dropped so the normal (whole-season) default
         # applies, unconditionally - `date` is set nowhere else in this module.
         slots.pop("date", None)
-        named_date = _CALENDAR_DATE.search(question) or _NUMERIC_DATE_RANGE.search(question)
+        named_date = CALENDAR_DATE.search(question) or NUMERIC_DATE_RANGE.search(question)
         if named_date is not None and "situation" not in slots:
             # A date that named itself but could not be pinned to one day.
             slots["situation"] = named_date.group(0).casefold()
-            _route_since_dated(slots, named_date)
+            dated_since = _dated_since(named_date)
     playoff_round = _ROUND_WORDS.search(question)
     if playoff_round is not None:
         slots["round"] = playoff_round.group(0).casefold()
@@ -2525,9 +2187,7 @@ def _route_calendar_slots(intent: str, slots: dict[str, Any], question: str, spa
     ordinal_season = _SEASON_N.search(question)
     if ordinal_season is not None:
         slots["season_n"] = int(ordinal_season.group(1))
-        if season_from_text(question) is None:
-            slots.pop("season", None)
-    _route_season_range(intent, slots, question)
+    _route_relative_window(intent, slots, question)
     # A split is read for every intent, not only player_splits: it is a scoping
     # slot, so the template that answers one honors it and every other refuses.
     # Measured: "Joe Ingles stats when starting vs coming off the bench" was
@@ -2536,6 +2196,7 @@ def _route_calendar_slots(intent: str, slots: dict[str, Any], question: str, spa
     split = _route_calendar_slots_split(question)
     if split is not None:
         slots["split"] = split
+    return dated_since
 
 
 def _route_calendar_slots_split(question: str) -> str | None:
@@ -2548,21 +2209,20 @@ def _route_calendar_slots_split(question: str) -> str | None:
     return _split_side(splits[0], question) if len(splits) == 1 else None
 
 
-def _route_since_dated(slots: dict[str, Any], named_date: re.Match[str]) -> None:
-    """A range opened on a date WITH a year ("since 1/26/20") spans every
-    season from it on, so the seasons start at the date's own calendar year:
-    the season labeled that year ends in it, so no game on or after the date
-    is in an earlier one, and the date itself (the ``situation``) makes the
-    exact cut. Without this the default season applied, and "since January
-    26, 2020" was read inside 2025-26 alone. A span or a ``since`` the
-    question already named stands."""
+def _dated_since(named_date: re.Match[str]) -> int | None:
+    """The year a range opened on a date WITH a year ("since 1/26/20")
+    starts the seasons at: the season labeled that year ends in it, so no
+    game on or after the date is in an earlier one, and the date itself
+    (the ``situation``) makes the exact cut. Without this the default season
+    applied, and "since January 26, 2020" was read inside 2025-26 alone.
+    The span tagger takes it (:class:`~association.query.span.SpanContext`),
+    and a career or a range the words name stands over it."""
     year = named_date.groupdict().get("year")
-    if not year or "since" in slots or slots.get("span"):
-        return
+    if not year:
+        return None
     stated = int(year)
     # Two digits the way strptime's %y reads them: 69-99 are the 1900s.
-    slots["since"] = stated if stated > 99 else (1900 + stated if stated >= 69 else 2000 + stated)
-    slots.pop("season", None)
+    return stated if stated > 99 else (1900 + stated if stated >= 69 else 2000 + stated)
 
 
 def _route_intent_slots(intent: str, slots: dict[str, Any], question: str, without: list[str], beside: Beside) -> None:
@@ -2604,14 +2264,6 @@ def _route_relation_intent_slots(intent: str, slots: dict[str, Any], question: s
     for the complexity gate."""
     if intent == "streak":
         slots["kind"] = "loss" if _LOSING_STREAK.search(question) else "win"
-    if intent == "player_matchup" and _RECORD.search(question) and season_from_text(question) is None and not _SEASON_WORDS.search(question):
-        # "steph curry record vs lebron regular season without kd"
-        # (yardstick-v2 F114): a pair's record with no season named is
-        # their meetings across their careers, not the model's default
-        # season - in which Durant was not Curry's teammate and the answer
-        # was "no meetings". Said in the answer's own span line.
-        slots["span"] = "career"
-        slots.pop("season", None)
     if intent in ("threshold_count", "single_game_high") and isinstance(slots.get("limit"), int) and not _names_a_count(question):
         # The model's `limit: 1` for "who had the most" under a leaderboard
         # (its parent since 5.0.0) is filler here: the count's and the
@@ -2730,26 +2382,9 @@ _SUBJECT_RESTORED_INTENTS = ("single_game_high", "threshold_count", "record_when
 
 
 def _route_subject_slots(intent: str, slots: dict[str, Any], question: str) -> None:
-    """The last meetings with an opponent across seasons, and a single-game
-    high's or a threshold count's missing subject."""
-    # "last 8 games vs pistons" with no season named means the last eight
-    # meetings, wherever they fall - answered from the current season alone it
-    # found four and said so. A season the question names still wins.
-    if (
-        intent == "game_log"
-        and _VERSUS_WORDS.search(question)
-        and (isinstance(slots.get("limit"), int) or re.search(r"\blast\b", question, re.IGNORECASE) or _BOTH_SEASON_TYPES_WORDS.search(question))
-        and season_from_text(question) is None
-        and not _SEASON_WORDS.search(question)
-    ):
-        # "including playoffs" joins "last N": a log against one team that
-        # asks for both season types and names no year is his meetings
-        # wherever they fall - "Payton Prichard stats vs 76ers at home
-        # including playoffs game log" read the model's default season on
-        # day5/6 (6 games) where the key's 16 span 2024-2026, and day4's
-        # career came only from the model omitting season_ref that day.
-        slots["span"] = "career"
-        slots.pop("season", None)
+    """A single-game high's or a threshold count's missing subject. (A
+    log's last meetings with an opponent across seasons, and a count's
+    career, are the span tagger's: :func:`~association.query.span.read_span`.)"""
     if intent in _SUBJECT_RESTORED_INTENTS and not slots.get("player") and not slots.get("players"):
         # An optional slot the model dropped, restored from the question's own
         # grammar - see _subject_named_in. Only where the template reads one
@@ -2761,19 +2396,6 @@ def _route_subject_slots(intent: str, slots: dict[str, Any], question: str) -> N
         subject = _subject_named_in(question)
         if subject is not None:
             slots["player"] = subject
-    if (
-        intent == "threshold_count"
-        and slots.get("player")
-        and _HOW_MANY.search(question)
-        and not slots.get("span")
-        and not slots.get("season_n")
-        and season_from_text(question) is None
-        and not _SEASON_WORDS.search(question)
-    ):
-        # See _HOW_MANY. A season the question names, this one included,
-        # still wins; so does an ordinal season, settled later.
-        slots["span"] = "career"
-        slots.pop("season", None)
 
 
 def _route_side_and_order(intent: str, slots: dict[str, Any], question: str) -> None:
@@ -2860,15 +2482,6 @@ def _drop_filler_limit(intent: str, slots: dict[str, Any], question: str) -> Non
         # last game") or a count ("last 5 games") keeps it.
         slots.pop("limit", None)
     _drop_filler_order_on_a_series_game(intent, slots, question)
-    if _SINGLE_GAME.search(question) and season_from_text(question) is None and not _SEASON_WORDS.search(question) and isinstance(slots.get("season"), int) and slots["season"] != current_season():
-        # "show a shot chart of steph curry's last regular season game" came
-        # back as season 2025: the model read "last regular season" as the
-        # season before this one, and the chart drew a game a year off (#153).
-        # A question naming one game at one end of the span, with no year and
-        # no season words of its own, means the current season - the default
-        # every template already applies. A year the question states, and
-        # "last season", both still win.
-        slots.pop("season", None)
     if intent in _LIMIT_REFUSING_INTENTS and isinstance(slots.get("limit"), int) and not slots.get("order") and not _names_a_count(question):
         # The same filler, arriving WITHOUT an `order` to carry it in.
         # "westbrook stats as a starter for kings" came back with limit=1 and
@@ -2932,42 +2545,6 @@ def _route_opponent_named_as_teammates(slots: dict[str, Any], without: list[str]
         slots.pop("opponent", None)
 
 
-def _route_game_log_recent_span(intent: str, slots: dict[str, Any], question: str) -> None:
-    """A "last N games" question naming no season type: a signal for
-    ``game_log`` to read both season types and take the newest N by date,
-    rather than silently defaulting to the regular season the way
-    ``_validate_season_type`` already does everywhere else - see ISSUES.md,
-    ``"Last N games" means the last N regular-season games...``. "Show me the
-    Knicks last 5 games" used to list games through 2026-04-12 while their
-    real last five were the 2026 Finals, played weeks later.
-
-    The template sees only slots, not the question, so the signal has to be
-    set here - the same discipline ``side`` and ``coach`` follow. Only for
-    ``game_log``, and only for the shape the issue names: ``order`` is
-    ``"recent"`` beside a real ``limit`` (the pair `_route_side_and_order`
-    already settled, filler dropped), and nothing already fixes which games
-    are meant - ``game_n`` (one game of a KNOWN playoff series), ``span``
-    (a career has no single year to mix two types within), ``since`` (a
-    range of seasons) and ``date`` (one calendar day already finds its own
-    game, whatever type it was) are each a narrower question than "last N",
-    so none of them widen here.
-
-    ``ROUTER_PROMPT`` and ``ROUTER_SCHEMA`` are untouched, so this can move no
-    other question's routing.
-
-    .. versionadded:: 4.4.0
-    """
-    if intent != "game_log" or slots.get("order") != "recent":
-        return
-    if not isinstance(slots.get("limit"), int) or slots["limit"] < 1:
-        return
-    if slots.get("game_n") or slots.get("span") or slots.get("since") or slots.get("date"):
-        return
-    if _PLAYOFF_WORDS.search(question) or _REGULAR_SEASON_WORDS.search(question):
-        return
-    slots["season_type_unstated"] = True
-
-
 #: The slot keys a raw route carries into the stages: the router model's
 #: schema properties less the intent, which is the shape the parser writes
 #: its names, stat and window in now that the model classification is gone
@@ -2975,10 +2552,10 @@ def _route_game_log_recent_span(intent: str, slots: dict[str, Any], question: st
 #: stages again, since every other key is one the stages themselves read off
 #: the question for the intent they were run under (``since`` for a
 #: ``game_log``, ``limit``-as-seasons for a ``player_history``), and would
-#: otherwise survive into an intent whose template refuses it.
-_MODEL_SLOTS: frozenset[str] = frozenset(
-    {"stat", "threshold", "player", "players", "team", "teams", "period", "opponent", "season", "season_ref", "season_type", "order", "rate", "side", "date", "limit", "shot_value", "fields"}
-)
+#: otherwise survive into an intent whose template refuses it. The span's
+#: six slots are not among them: the span tagger reads every one from the
+#: words again (Phase 3, step 2).
+_MODEL_SLOTS: frozenset[str] = frozenset({"stat", "threshold", "player", "players", "team", "teams", "period", "opponent", "order", "rate", "side", "date", "limit", "shot_value", "fields"})
 
 
 def settle(intent: str, slots: Mapping[str, Any] | Scope, question: str, beside: Beside | None = None) -> Route:
@@ -2996,10 +2573,7 @@ def settle(intent: str, slots: Mapping[str, Any] | Scope, question: str, beside:
     text - so re-running them under the child is the whole recovery, and
     one definition of each slot rather than a second reader per child.
     ``slots`` may be a settled route's, so the keys the stages derive are
-    dropped first (:data:`_MODEL_SLOTS`) and a season resolved from a
-    relative reference is put back as that reference, since
-    :func:`_validate_season` keeps a bare ``season`` only where the question
-    names one. The stages may settle on a DIFFERENT intent than
+    dropped first (:data:`_MODEL_SLOTS`). The stages may settle on a DIFFERENT intent than
     asked - a count with no threshold is a ranking, a "when X and Y played"
     record is ``with_without`` - and the caller reads the returned intent
     rather than assuming its own.
@@ -3029,15 +2603,6 @@ def settle(intent: str, slots: Mapping[str, Any] | Scope, question: str, beside:
         slots = slots.to_slots()
     raw: dict[str, Any] = {key: value for key, value in slots.items() if key in _MODEL_SLOTS}
     raw["intent"] = intent
-    season = slots.get("season")
-    if isinstance(season, int) and season_from_text(question) is None and "season_ref" not in raw:
-        # The model said "current" or "previous" and the first run resolved
-        # it; a bare year nothing in the question names is dropped by the
-        # season stage, so the reference is restored for it to resolve again.
-        if season == current_season():
-            raw["season_ref"] = "current"
-        elif season == current_season() - 1:
-            raw["season_ref"] = "previous"
     return _settle(raw, question, beside or Beside())
 
 
@@ -3055,10 +2620,10 @@ def _settle(raw: dict[str, Any], question: str, beside: Beside = Beside()) -> Ro
     _route_triple_double_abbreviation(raw, question)
     _route_team_and_player_intents(raw, question)
     rerouted_to_line = _route_line_and_record_intents(raw, question, beside)
-    slots = _route_season_slots(raw, question)
+    slots = _route_blank_slots(raw)
     _route_threshold(raw, slots, question, beside)
-    span, without = _route_filter_slots(slots, question, beside)
-    _route_calendar_slots(raw["intent"], slots, question, span)
+    without = _route_filter_slots(slots, question, beside)
+    dated_since = _route_calendar_slots(raw["intent"], slots, question)
     _route_intent_slots(raw["intent"], slots, question, without, beside)
     _route_line_stat(raw["intent"], slots, question, rerouted_to_line)
     _route_game_score(raw["intent"], slots, question)
@@ -3071,11 +2636,40 @@ def _settle(raw: dict[str, Any], question: str, beside: Beside = Beside()) -> Ro
     _route_rate(raw["intent"], slots, question)
     _route_team_total(raw["intent"], slots, question)
     _route_subject_slots(raw["intent"], slots, question)
+    # Whether a window was named before the filler is dropped: a log's last
+    # meetings with an opponent read the count the words gave, not the one
+    # left after the filler went.
+    window_named = isinstance(slots.get("limit"), int)
     _route_record_when_threshold(raw["intent"], slots, question)
     _route_side_and_order(raw["intent"], slots, question)
     _route_period_window(raw["intent"], slots, question)
     _route_opponent_named_as_teammates(slots, without)
-    _route_game_log_recent_span(raw["intent"], slots, question)
+    # The span, last: the one reader of the seasons and the season type,
+    # over the intent and the window the stages settled (Phase 3, step 2).
+    read = read_span(question, _span_context(raw["intent"], slots, question, window_named=window_named, dated_since=dated_since))
+    slots["span"] = read.span
     # The stages' working dict crosses into the typed Scope here, once: a
     # value no field holds (a window of 0) raises ScopeError to the parser.
-    return Route(intent=raw["intent"], scope=Scope.from_slots(slots))
+    return Route(intent=raw["intent"], scope=Scope.from_slots(slots), claims=read.claims)
+
+
+def _span_context(intent: str, slots: dict[str, Any], question: str, *, window_named: bool, dated_since: int | None) -> SpanContext:
+    """What the span tagger reads beside the words
+    (:class:`~association.query.span.SpanContext`): the stages' settled
+    intent and window, and the guard words of other families it keeps
+    until their slices move them to the lexicon."""
+    limit = slots.get("limit")
+    return SpanContext(
+        intent=intent,
+        player_named=bool(slots.get("player")),
+        window_named=window_named,
+        versus=_VERSUS_WORDS.search(question) is not None,
+        how_many=_HOW_MANY.search(question) is not None,
+        record=_RECORD.search(question) is not None,
+        order=slots.get("order") if isinstance(slots.get("order"), str) else None,
+        limit=limit if isinstance(limit, int) and not isinstance(limit, bool) else None,
+        date=slots.get("date") if isinstance(slots.get("date"), str) else None,
+        game_n=slots.get("game_n") if isinstance(slots.get("game_n"), int) else None,
+        season_n=slots.get("season_n") if isinstance(slots.get("season_n"), int) else None,
+        dated_since=dated_since,
+    )

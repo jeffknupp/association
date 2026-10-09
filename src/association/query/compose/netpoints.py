@@ -180,9 +180,9 @@ def read_player_netpoints(con: duckdb.DuckDBPyConnection, q: NetPointsQuery, *, 
         return None
     # Settled before the name is resolved: the season is what narrows an
     # ambiguous name to the players with NetPoints in it.
-    defaulted = not scope.season
-    season = scope.season or current_season()
-    season_type = scope.season_type or 2
+    defaulted = not scope.span.season
+    season = scope.span.season or current_season()
+    season_type = scope.span.season_type or 2
     # A named order ("recent", "first") is one game.
     order = scope.order
     player = resolved_player(con, scope.player, "player_netpoints needs a player name", available=_NETPOINTS_GAMES if order else _NETPOINTS_TABLES, season=season)
@@ -364,8 +364,8 @@ def read_fingerprint(con: duckdb.DuckDBPyConnection, q: NetPointsQuery, *, state
         return Refusal(kind="fingerprint_on_a_date")
     # Settled before any name is resolved: the season is what narrows an
     # ambiguous name to the players who have a fingerprint in it.
-    season = scope.season or current_season()
-    season_type = scope.season_type or 2
+    season = scope.span.season or current_season()
+    season_type = scope.span.season_type or 2
     # A one-game plot is narrowed against the table it will actually be drawn
     # from. Availability in the season file does not imply a row per game, and
     # the season file has no season_type at all.

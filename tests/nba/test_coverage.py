@@ -15,7 +15,7 @@ from shapes import key
 
 from association.nba.coverage import COVERAGE, KNOWN_TABLES, POSTSEASON, REGULAR_SEASON, caveat, unavailable
 from association.query.coverage import RELATION_SOURCES, SOURCES, check_coverage, coverage_caveat, sources_for
-from association.query.reading import PointRelation, PointShape, Scope
+from association.query.reading import PointRelation, PointShape, Scope, Span
 
 
 def test_every_covered_table_is_a_real_table() -> None:
@@ -50,7 +50,7 @@ def test_a_reading_with_no_point_is_neither_refused_nor_caveated() -> None:
 
 
 def test_every_declared_source_has_a_floor() -> None:
-    probes = (Scope(), Scope(stat="ts_pct"), Scope(stat="points"), Scope(stat="record"), Scope(season_type=3), Scope(opponent="Boston Celtics"), Scope(stat="netpoints"))
+    probes = (Scope(), Scope(stat="ts_pct"), Scope(stat="points"), Scope(stat="record"), Scope(span=Span(season_type=3)), Scope(opponent="Boston Celtics"), Scope(stat="netpoints"))
     for shape, declared in SOURCES.items():
         tables = {table for probe in probes for table in (declared(probe) if callable(declared) else declared)}
         for table in tables:

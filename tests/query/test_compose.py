@@ -36,8 +36,8 @@ from association.query.compose.shots import ShotQuery
 from association.query.compose.team import TeamQuery, run_team
 from association.query.compose.team_stats import TeamSeasonQuery
 from association.query.parse import with_point
-from association.query.point import _asc_or_desc, _everyone_career_scope, _ranking_minimum, read_point, team_read_point
-from association.query.reading import Cause, PointRefused, Reading, Scope, _career_scope
+from association.query.point import _asc_or_desc, _ranking_minimum, read_point, team_read_point
+from association.query.reading import Cause, PointRefused, Reading, Scope, Span, _career_scope
 from association.query.subject import Subject, read_subject
 
 
@@ -414,7 +414,7 @@ def test_how_many_won_is_a_career_count_with_a_predicate(cx_ctx: AnswerContext) 
     unscoped-count-is-career rule, read here in code."""
     q = move_point(cx_ctx.con, "record_when", {"player": "Brandin Podziemski"}, "how many games has Podziemski's team won?")
     assert isinstance(q, Query)  # a named player never returns a TeamQuery
-    assert q.scope.span == "career"  # Query.span (a binding-parity override) is unset; the scope itself carries it
+    assert q.scope.span.career  # the scope itself carries it; the point settles no span of its own
     out = _run(cx_ctx.con, q)
     assert out["rows"][0]["games"] == 4  # g1, g3, g5, g7 - every win across both seasons (g4 DNP excluded)
 
@@ -442,10 +442,10 @@ def test_a_boolean_measure_on_a_per_game_intent_is_counted_never_averaged(cx_ctx
 def test_career_scope_forces_a_career_span_only_when_nothing_else_scoped_it() -> None:
     """The helper ``_move_how_many_won``/``_move_boolean_count`` share: no
     season, span or since means "his career"; any of the three left alone."""
-    assert _career_scope(Scope(player="X")) == Scope(player="X", span="career")
-    assert _career_scope(Scope(player="X", season=2024)) == Scope(player="X", season=2024)
-    assert _career_scope(Scope(player="X", span="career")) == Scope(player="X", span="career")
-    assert _career_scope(Scope(player="X", since=2020)) == Scope(player="X", since=2020)
+    assert _career_scope(Scope(player="X")) == Scope(player="X", span=Span(career=True))
+    assert _career_scope(Scope(player="X", span=Span(season=2024))) == Scope(player="X", span=Span(season=2024))
+    assert _career_scope(Scope(player="X", span=Span(career=True))) == Scope(player="X", span=Span(career=True))
+    assert _career_scope(Scope(player="X", span=Span(since=2020))) == Scope(player="X", span=Span(since=2020))
 
 
 def test_a_ranking_word_with_no_player_groups_by_player_league_wide(cx_ctx: AnswerContext) -> None:
@@ -855,7 +855,7 @@ def test_a_team_point_refuses_a_cell_only_a_players_games_carry() -> None:
             plan(team_point(shape, **cells))
     passes: list[tuple[str, dict[str, Any]]] = [
         ("scalar", {"opponent": "Boston", "venue": "home", "order": "recent", "limit": 10}),
-        ("rows", {"since": 2022, "until": 2024}),
+        ("rows", {"span": Span(since=2022, until=2024)}),
         ("grouped", {"split": "home_away"}),
         ("rows", {"without": ("Paolo Banchero",)}),  # the log's own reader says where that question belongs
     ]
@@ -950,20 +950,13 @@ def test_biggest_with_no_stat_word_defaults_to_points(cx_ctx: AnswerContext) -> 
     """ "Biggest triple double" names no stat word at all -
     :func:`~association.query.point._boolean_game_measure` falls
     back to points, the same default a "career-high" question gets."""
-    q = move_point(cx_ctx.con, "leaderboard", {"stat": "triple_double", "season_type": 2}, "biggest triple double ever")
+    # "ever" is the span tagger's reading (lexicon.CAREER_WORDS), in the
+    # stages before the point is read; the point reader reads no span of
+    # its own since Phase 3, step 2, so the slots carry what the stages would.
+    q = move_point(cx_ctx.con, "leaderboard", {"stat": "triple_double", "season_type": 2, "span": "career"}, "biggest triple double ever")
     assert isinstance(q, Query)
     assert q.measures[0] == "points"
-    assert q.scope.span == "career"  # "ever" moved the default current-season span
-
-
-def test_everyone_career_scope_reads_ever_and_all_time_only_with_no_season_named() -> None:
-    """:func:`_everyone_career_scope`: "ever"/"all-time" is a career span for
-    a league-wide read UNLESS the question also named a season - the same
-    "do not silently override a named year" discipline
-    :func:`~association.query.compose.core._span_of` keeps for ``since``."""
-    assert _everyone_career_scope(Scope(), "the best triple double ever") == Scope(span="career")
-    assert _everyone_career_scope(Scope(), "the best triple double this season") == Scope()
-    assert _everyone_career_scope(Scope(season=2024), "the best triple double of all time") == Scope(season=2024)  # a named season is not overridden
+    assert q.scope.span.career
 
 
 # ---------------------------------------------------------------------------

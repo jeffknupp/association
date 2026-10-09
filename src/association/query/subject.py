@@ -65,10 +65,10 @@ from association.query.entities import (
     teams_named_by_word,
     teams_of,
 )
+from association.query.lexicon import N_SEASONS, season_from_text
 from association.query.measures import THRESHOLD_STAT_NAMES
 from association.query.reading import FILLER_PLAYER_WORDS, OWN_TEAM_RESTORABLE_INTENTS, PLAYER_REQUIRED_INTENTS, POSITIONS, SUBJECT_RESTORABLE_INTENTS, ConditionSpec, LeftOut, Scope
 from association.query.router import _ABSENCE_WORDS, _NAME_STOPWORDS, _THRESHOLD_WORDS, Beside, _threshold_from_text_scored
-from association.query.season_text import season_from_text
 
 #: The kinds a subject can be. ``team_players`` is "a Hawks player" - the
 #: team's players as a group, which the compiler's team-where-a-player-
@@ -93,7 +93,6 @@ _TEAM_RECORD_WHEN = "a team's record in the games a player named beside it reach
 # A line at or above a number, however it is written: "30+", "36-plus",
 # "30 or more", "at least 2" (the paraphrases' spellings, parser-greenfield).
 _N_PLUS = r"(?:\d{1,3}[\s-]*(?:\+|plus\b|or more\b)|\bat least \d{1,3})"
-_N_SEASONS = r"(?:\d{1,2}|one|two|three|four|five|six|seven|eight|nine|ten)\s+(?:seasons?|years?)"
 _NOT_A_TEAM: frozenset[str] = SUBJECT_KINDS - {"team", "teams", "team_players"}
 _PLAYER_OR_PAIR: frozenset[str] = frozenset({"player", "pair"})
 _PLAYER_RELATION_PARENTS: frozenset[str] = frozenset({"game_log", "player_stat", "leaderboard", "other"})
@@ -167,7 +166,7 @@ _CHILD_GRAMMARS: tuple[tuple[str, re.Pattern[str], frozenset[str], frozenset[str
     (
         "player_history",
         re.compile(
-            rf"\b(?:over|for|in|during) the (?:past|last) {_N_SEASONS}\b|\b(?:last|past) {_N_SEASONS}\b|\bby (?:season|year)\b|\b(?:each|every) (?:season|year)\b"
+            rf"\b(?:over|for|in|during) the (?:past|last) {N_SEASONS}\b|\b(?:last|past) {N_SEASONS}\b|\bby (?:season|year)\b|\b(?:each|every) (?:season|year)\b"
             r"|\bseason[- ](?:by|over)[- ]season\b|\byear[- ](?:by|over)[- ]year\b|\bfrom (?:year|season) to (?:year|season)\b",
             re.IGNORECASE,
         ),
@@ -1018,7 +1017,7 @@ def read_subject(con: duckdb.DuckDBPyConnection, question: str, intent: str, sco
     # read here, or "the hornets in 2008" is today's Charlotte Hornets and
     # Chris Paul's New Orleans team is asked about as a name nobody typed
     # (ISSUES.md #316).
-    season = scope.season if scope.season is not None else season_from_text(question)
+    season = scope.span.season if scope.span.season is not None else season_from_text(question)
     own = _team_after_for(teams_of(con), question, season)
     team_word = _team_word(con, question)
     position = next((code for pattern, code in POSITIONS if re.search(pattern, question, re.IGNORECASE)), None)
@@ -1264,17 +1263,12 @@ def _apply_team_record_when(subject: Subject, scope: Scope, intent: str) -> tupl
     condition = next(c for c in subject.conditions if c.predicate == "reached")
     player = scope.player
     rewritten = Scope(
-        season=scope.season,
-        season_type=scope.season_type,
         span=scope.span,
         venue=scope.venue,
         # The router filed the subject's own team as the opponent ("sixers"
         # beside its invented Joel Embiid); the question sets the team
         # against nobody.
         opponent=scope.opponent if subject.opponent is not None else None,
-        since=scope.since,
-        until=scope.until,
-        season_type_unstated=scope.season_type_unstated,
         player=condition.name,
         stat=condition.stat,
         threshold=condition.threshold,
@@ -1350,8 +1344,8 @@ def _apply_own_team(subject: Subject, scope: Scope, intent: str) -> tuple[Scope,
         return scope, []
     out = replace(scope, own_team=subject.own_team)
     decisions = [Decision("subject", "own_team", None, subject.own_team, "from the question; the router left it out")]
-    if subject.named_season is None and not scope.span:
-        out = replace(out, span="career", season=None)
+    if subject.named_season is None and not scope.span.career:
+        out = replace(out, span=out.span.over_career())
         decisions.append(Decision("subject", "span", None, "career", 'a team named with no season is a tenure, not "now"'))
     return out, decisions
 

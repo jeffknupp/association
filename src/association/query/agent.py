@@ -431,7 +431,7 @@ class Agent:
         refused = check_coverage(self.planned.shape, reading.point.scope if reading.point is not None else scope)
         if refused is not None:
             history.log(f"  -> (coverage) {refused}")
-            return intent, Reply(data={"message": refused, "season": scope.season}, answer=refused)
+            return intent, Reply(data={"message": refused, "season": scope.span.season}, answer=refused)
         if reading.unsupported:
             # What the words name that nothing reads, said in place of the
             # plain decline - only here, where the answer side declined, so

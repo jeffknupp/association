@@ -90,7 +90,7 @@ def read_single_game_high(con: duckdb.DuckDBPyConnection, q: Query, *, stated: f
     # A season read by default ("career high" names none, "kawhi most threes in
     # a game" neither) that held nothing for a named player is redirected, not
     # answered as though the season had been asked.
-    defaulted = season is not None and not scope.season
+    defaulted = season is not None and not scope.span.season
     redirect = _single_game_high_redirect(con, defaulted, player, bool(games), empty[0], withheld, season_type)
     return Result(
         subject=name or "every player",

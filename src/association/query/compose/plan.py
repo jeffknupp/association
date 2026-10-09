@@ -16,11 +16,11 @@ from association.query.answer import Reply
 from association.query.conditions import condition_needs_player_refusal
 from association.query.coverage import coverage_refusal
 from association.query.measures import stat_measure
-from association.query.player_relation import RELATION_SCOPING_EXCLUDED, relation_scoping
+from association.query.player_relation import RELATION_SCOPING_EXCLUDED, relation_scoping, relation_span
 from association.query.point import TEAM_SEASON_POINTS, team_season_point
-from association.query.reading import CHART_INTENTS, Cause, PointShape, Reading, Scope, _career_scope, unhonored_scoping
+from association.query.reading import CHART_INTENTS, Cause, PointShape, Reading, Scope, Span, _career_scope, unhonored_scoping
 from association.query.result import Refusal
-from association.query.team_relation import team_relation_scoping
+from association.query.team_relation import team_relation_scoping, team_relation_span
 
 from .core import Query, Refused, Unsupported, _check_relation_scoping
 from .netpoints import NetPointsQuery
@@ -31,7 +31,7 @@ from .shots import ShotQuery
 from .team import TeamQuery
 from .team_stats import TeamSeasonQuery, team_season_declines
 
-WITH_WITHOUT_STATED: frozenset[str] = frozenset({"span", "without", "opponent", "conditions"})
+WITH_WITHOUT_STATED: frozenset[str] = frozenset({"without", "opponent", "conditions"}) | team_relation_span("with_without")
 """The scoping ``with_without``'s words state - a career, the teammates
 divided by, one opponent (both rows narrow together, #163) and a
 companion's role - the retired template's own declaration; any other
@@ -46,15 +46,17 @@ In the planner, which declines by it, since the last adapter
 
 
 STATED_SCOPING: dict[PointShape, frozenset[str]] = {
-    # game_log and player_stat retired stating the relation's whole set, and
-    # `season_type_unstated`: read over both season types merged by date for
-    # a log (compose.logs, which takes this set since Phase 2's first
-    # slice), and from box scores as one combined read for an average
+    # game_log and player_stat retired stating the relation's whole set,
+    # the span's `both` cell included: read over both season types merged
+    # by date for a log (compose.logs, which takes this set since Phase 2's
+    # first slice), and from box scores as one combined read for an average
     # (`_player_stat_reads_box_scores`, `player_relation_season_type`).
-    PointShape("player_games", "rows", "date"): relation_scoping("game_log", "season_type_unstated"),
-    PointShape("team_games", "rows", "date"): relation_scoping("game_log", "season_type_unstated"),
-    PointShape("player_games", "scalar", "line"): relation_scoping("player_stat", "season_type_unstated"),
-    PointShape("player_seasons", "scalar", "line"): relation_scoping("player_stat", "season_type_unstated"),
+    # Every span cell a shape states comes from the relation's own table
+    # (Phase 3, step 2): a row here names none of them.
+    PointShape("player_games", "rows", "date"): relation_scoping("game_log"),
+    PointShape("team_games", "rows", "date"): relation_scoping("game_log"),
+    PointShape("player_games", "scalar", "line"): relation_scoping("player_stat"),
+    PointShape("player_seasons", "scalar", "line"): relation_scoping("player_stat"),
     # player_splits' words: the relation's set less a date and a window
     # (RELATION_SCOPING_EXCLUDED: one game has nothing to split).
     PointShape("player_games", "split", "splits"): relation_scoping("player_splits"),
@@ -63,10 +65,10 @@ STATED_SCOPING: dict[PointShape, frozenset[str]] = {
     # retired (ROADMAP plan item 6, step (d), part 4).
     PointShape("player_games", "split", "line"): relation_scoping("record_when"),
     PointShape("team_games", "split", "line"): relation_scoping("record_when"),
-    PointShape("player_seasons", "split", "season"): frozenset({"span"}),
+    PointShape("player_seasons", "split", "season"): relation_span("player_history"),
     # leaderboard's words: a career pool, and a season total or a unit it
     # refuses by name (the template's own HONORED_SCOPING when it retired).
-    PointShape("player_seasons", "ranking", "player"): frozenset({"span", "rate"}),
+    PointShape("player_seasons", "ranking", "player"): frozenset({"rate"}) | relation_span("leaderboard"),
     # period_split's words: the relation's set less a career and a since/until
     # range (RELATION_SCOPING_EXCLUDED: the accuracy caveat is per season),
     # which its point refuses outright (compose.adapt._adapt_period_split).
@@ -79,7 +81,7 @@ STATED_SCOPING: dict[PointShape, frozenset[str]] = {
     PointShape("player_periods", "split", "period"): relation_scoping("period_split"),
     # player_compare's words state no narrowing at all; its point refuses
     # one outright (query/point.py._compare_point), as the retired scope check did.
-    PointShape("player_seasons", "comparison", "subject"): frozenset(),
+    PointShape("player_seasons", "comparison", "subject"): relation_span("player_compare"),
     # streak's words: the relation's set less one date, a window and a
     # quarter (RELATION_SCOPING_EXCLUDED: a run is a run of whole games over
     # every game in the span), which the planner refuses outright
@@ -94,23 +96,23 @@ STATED_SCOPING: dict[PointShape, frozenset[str]] = {
     # with_without's words: a career, the teammates, one opponent and a
     # companion's role, the template's own declaration when it retired.
     PointShape("team_games", "split", "presence"): WITH_WITHOUT_STATED,
-    PointShape("player_games", "rows", "measure"): frozenset({"span"}),
+    PointShape("player_games", "rows", "measure"): relation_span("single_game_high"),
     # A count is already a line on a column; `below` is the same line the
     # other way ("games with under 14 fta"), and a phrase carrying the count's
-    # own number IS the count, misread - compose.counts reads it so.
-    # `season_type_unstated` is stated the way `scoped_player` reads it -
-    # one combined `season_type IN (2, 3)` read (player_relation_season_type).
-    PointShape("player_games", "scalar", "count"): frozenset({"span", "below", "above", "season_n", "season_type_unstated"}),
-    PointShape("player_games", "ranking", "count"): frozenset({"span", "below", "above", "season_n", "season_type_unstated"}),
-    PointShape("player_games", "rows", "count"): frozenset({"span", "below", "above", "season_n", "season_type_unstated"}),
+    # own number IS the count, misread - compose.counts reads it so. The
+    # span's `both` cell is stated the way `scoped_player` reads it - one
+    # combined `season_type IN (2, 3)` read (player_relation_season_type).
+    PointShape("player_games", "scalar", "count"): frozenset({"below", "above", "season_n"}) | relation_span("threshold_count"),
+    PointShape("player_games", "ranking", "count"): frozenset({"below", "above", "season_n"}) | relation_span("threshold_count"),
+    PointShape("player_games", "rows", "count"): frozenset({"below", "above", "season_n"}) | relation_span("threshold_count"),
     # The team-season readers' words (compose.team_stats), as the retired
     # templates honored them: one team's line and its power index state no
     # narrowing at all; a ranking states the team relation's cells less the
     # ones TEAM_RELATION_SCOPING_EXCLUDED["team_leaderboard"] gives a reason
     # for - and refuses, by name, a venue or a span its metric has no
     # reading over (compose.team_stats).
-    PointShape("team_seasons", "scalar", "line"): frozenset(),
-    PointShape("team_snapshots", "scalar", "projection"): frozenset(),
+    PointShape("team_seasons", "scalar", "line"): team_relation_span("team_stat"),
+    PointShape("team_snapshots", "scalar", "projection"): team_relation_span("team_outlook"),
     PointShape("team_seasons", "ranking", "team"): team_relation_scoping("team_leaderboard"),
     # The shapes Phase 2's slice (iv) ported from templates (PORTED_SHAPES):
     # each retired template's HONORED_SCOPING row, moved with it. Every
@@ -126,19 +128,19 @@ STATED_SCOPING: dict[PointShape, frozenset[str]] = {
     # narrowed by an opponent or a venue; a range of seasons and one date are
     # refused (the accuracy is measured per season, and one game ranks
     # nothing per game).
-    PointShape("player_periods", "ranking", "player"): frozenset({"period", "half", "opponent", "venue"}),
+    PointShape("player_periods", "ranking", "player"): frozenset({"period", "half", "opponent", "venue"}) | relation_span("period_leaderboard"),
     # A team's record: the team relation's cells less a date and a window
     # (TEAM_RELATION_SCOPING_EXCLUDED says why), a split by month, and both
     # season types together ("including the playoffs").
-    PointShape("team_games", "scalar", "record"): team_relation_scoping("team_record", "split", "season_type_unstated"),
+    PointShape("team_games", "scalar", "record"): team_relation_scoping("team_record", "split"),
     # The NetPoints relation's two (Phase 2, slice (v)), as the retired
     # templates honored them: a first or last game, one game's NetPoints or
     # its fingerprint drawn from the per-game tables; and a calendar date on
     # a fingerprint, honored by refusing it in the reader's own words - the
     # loader picks a player's first or last game, which is a different
     # question from a date (``compose.netpoints``).
-    PointShape("netpoints", "scalar", "ratings"): frozenset({"order"}),
-    PointShape("netpoints", "chart", "fingerprint"): frozenset({"order", "date"}),
+    PointShape("netpoints", "scalar", "ratings"): frozenset({"order"}) | relation_span("player_netpoints"),
+    PointShape("netpoints", "chart", "fingerprint"): frozenset({"order", "date"}) | relation_span("fingerprint"),
     # The shot relation's readers (compose.shots, Phase 2, step 5): every
     # cell of the player relation they take their games from, less a quarter
     # and a half (RELATION_SCOPING_EXCLUDED: a shot read draws every shot of
@@ -359,12 +361,29 @@ def _shape_declines(point: Reading) -> str | None:
             return str(exc)
     if intent in ("period_split", "streak", "player_matchup"):
         excluded = RELATION_SCOPING_EXCLUDED[intent]
-        # A period condition is excluded from period_split's presenter's
-        # WORDS only: the point keeps it, and the compiler's own sentence
-        # names both quarters.
-        refused = [slot for slot in excluded if (intent != "period_split" or slot != "period_condition") and getattr(scope, slot) not in (None, "", (), False)]
-        return f"{intent} cannot honor {refused} - {excluded[refused[0]]}" if refused else None
+        refused = _excluded_cells_set(intent, scope, excluded)
+        return f"{intent} cannot honor {[slot for slot, _ in refused]} - {excluded[refused[0][1]]}" if refused else None
     return None
+
+
+def _excluded_cells_set(intent: str, scope: Scope, excluded: dict[str, str]) -> list[tuple[str, str]]:
+    """The cells ``scope`` sets that ``excluded`` refuses for ``intent``, as
+    ``(slot name, cell)`` in the table's order. A period condition is
+    excluded from period_split's presenter's WORDS only: the point keeps
+    it, and the compiler's own sentence names both quarters - as both
+    season types are excluded from each of the three readers' words only,
+    the reader stepping aside for the compiler's sentence, which reads
+    both. A span cell is refused by the slot names it was declared under
+    (``reading._CELL_SLOT_NAMES``)."""
+    refused: list[tuple[str, str]] = []
+    for cell in excluded:
+        if cell == "both" or (intent == "period_split" and cell == "period_condition"):
+            continue
+        if cell in Span.CELLS:
+            refused += [(slot, cell) for slot in scope.span.unhonored(Span.CELLS - {cell})]
+        elif getattr(scope, cell) not in (None, "", (), False):
+            refused.append((cell, cell))
+    return refused
 
 
 def plan(reading: Reading) -> Query | TeamQuery | TeamSeasonQuery | NetPointsQuery | ShotQuery:
@@ -457,8 +476,7 @@ def _plan(reading: Reading) -> Query | TeamQuery | TeamSeasonQuery | NetPointsQu
         offset=reading.offset,
         minimum_games=reading.minimum_games,
         available=reading.available,
-        span=reading.span,
-        season=reading.season,
+        subject_span=reading.subject_span,
         source="seasons" if key.relation == "player_seasons" else "games",
         subject=subject,
         position=reading.position,

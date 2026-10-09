@@ -21,7 +21,7 @@ import duckdb
 
 from association.query.entities import Entity, resolved_team
 from association.query.player_relation import ResolvedSpan, apply_situation, has_table, relation_window, span_of
-from association.query.reading import Scope, Unsupported, period_narrowing
+from association.query.reading import Scope, Span, Unsupported, period_narrowing
 from association.query.result import Refusal, Unanswered
 from association.query.season_text import season_phrase
 from association.query.team_games import TEAM_GAMES_SQL, TeamNarrowed
@@ -65,8 +65,17 @@ from association.query.team_games import TEAM_GAMES_SQL, TeamNarrowed
 # linescore's points, and every other column rebuilt from the plays
 # (`team_games.team_period_line_sql`) - applied by `team_games` through
 # `TeamNarrowed.narrow_periods`, the counterpart of the player relation's.
-TEAM_RELATION_SCOPING = frozenset({"opponent", "venue", "date", "since", "until", "span", "order", "game_n", "situation", "period", "half"})
-"""The scoping slots every template on the team-games relation honors.
+TEAM_RELATION_SCOPING = frozenset({"opponent", "venue", "date", "order", "game_n", "situation", "period", "half", *Span.CELLS})
+"""The cells every reader on the team-games relation honors: the scoping
+slots, and the span's three cells (:attr:`~association.query.reading.Span.CELLS`,
+Phase 3, step 2) - ``career``, ``range`` (``since``, ``until``) and
+``both`` - each applied by :func:`~association.query.player_relation.span_of`
+through :func:`scoped_team` and :func:`team_span_clause` (a postseason by
+the calendar year it was played in), said by :func:`team_span_label`, and
+refused where the span contradicts itself by ``span_of``. ``both`` is read
+by a team's log and record, which merge or combine the two types and say
+so; a reader whose words do not state a cell steps aside for it, or
+refuses it, by :data:`TEAM_RELATION_SCOPING_EXCLUDED`.
 
 .. versionadded:: 4.4.0
 
@@ -75,6 +84,10 @@ TEAM_RELATION_SCOPING = frozenset({"opponent", "venue", "date", "since", "until"
 
 .. versionchanged:: 5.0.0
    Adds ``period`` and ``half`` (the period relation's team half).
+
+.. versionchanged:: 6.0.0
+   The span's cells by name (``career``, ``range``, ``both``) in place of
+   the slots ``span``, ``since`` and ``until``.
 """
 
 
@@ -89,7 +102,8 @@ TEAM_RELATION_SCOPING_EXCLUDED: dict[str, dict[str, str]] = {
     "team_leaderboard": {
         "opponent": "a leaderboard ranks every team; it has no reading for one named opponent",
         "date": "a leaderboard ranks a season, not one day's games",
-        "span": "a leaderboard ranks one season's teams; a career total across every season is not built",
+        "career": "a leaderboard ranks one season's teams; a career total across every season is not built",
+        "both": "a leaderboard ranks one season type's lines; the standings hold no row for both at once",
         "order": "a leaderboard ranks a season, not a window of games",
         "game_n": "a leaderboard ranks a season, not one game of a series",
         # step 3, K1: a leaderboard ranks a season or a since/until-bounded
@@ -130,12 +144,48 @@ TEAM_RELATION_SCOPING_EXCLUDED: dict[str, dict[str, str]] = {
         "situation": "head_to_head tallies every meeting in the span; narrowing that tally to one weekday, month or holiday within it is not built",
         "period": "a series is won and lost in whole games; a quarter of each meeting has no winner to tally",
         "half": "a series is won and lost in whole games; a half of each meeting has no winner to tally",
+        "both": "a series is tallied in one season type; both at once would count regular-season and playoff meetings as one series",
+    },
+    "team_quarter_points": {"both": "a quarter's figures are reconciled per season and per type; one read over both types would carry one caveat for two"},
+    # The team-season readers (compose.team_stats, over the standings and the
+    # power index) and the with/without split settle no span of their own:
+    # one season's line, one season's projection, or the teammates' games
+    # over a career; what their words do not state is declared here with
+    # the rest.
+    "team_stat": {
+        "career": "a team's line is one season's row of the standings; there is no career row to read",
+        "range": "a team's line is one season's row of the standings; a range of seasons is not summed",
+        "both": "a team's line is one season type's row of the standings",
+    },
+    "team_outlook": {
+        "career": "a projection is one season's snapshot",
+        "range": "a projection is one season's snapshot",
+        "both": "a projection is one season type's snapshot",
+    },
+    "with_without": {
+        "range": "the split's words state a career or one season; a range of seasons would cut the teammates' stints without saying so",
+        "both": "the split reads one season type's games; both at once would join a teammate's regular-season and playoff absences as one",
     },
 }
-"""Per template, the team relation's slots it refuses, and why.
+"""Per reader, the team relation's cells it refuses or steps aside for, and why.
 
 .. versionadded:: 4.4.0
+
+.. versionchanged:: 6.0.0
+   The span's cells (``career``, ``range``, ``both``) per reader, the
+   team-season readers' and the with/without split's included (Phase 3, step 2).
 """
+
+
+def team_relation_span(intent: str) -> frozenset[str]:
+    """The span's cells ``intent`` states on the team relation
+    (:attr:`~association.query.reading.Span.CELLS` less
+    :data:`TEAM_RELATION_SCOPING_EXCLUDED`'s), for a reader whose other
+    cells are its own list (the with/without split, a team's own line).
+
+    .. versionadded:: 6.0.0
+    """
+    return Span.CELLS - set(TEAM_RELATION_SCOPING_EXCLUDED.get(intent, {}))
 
 
 def team_relation_scoping(intent: str, *extra: str) -> frozenset[str]:
@@ -149,7 +199,7 @@ def team_relation_scoping(intent: str, *extra: str) -> frozenset[str]:
     return frozenset((TEAM_RELATION_SCOPING | set(extra)) - set(TEAM_RELATION_SCOPING_EXCLUDED.get(intent, {})))
 
 
-def scoped_team(con: duckdb.DuckDBPyConnection, scope: Scope, missing: str, *, span: Any, season: Any) -> tuple[Entity, ResolvedSpan] | Unanswered:
+def scoped_team(con: duckdb.DuckDBPyConnection, scope: Scope, missing: str, *, span: Span | None = None) -> tuple[Entity, ResolvedSpan] | Unanswered:
     """The team a question is about and the seasons it covers - the team
     counterpart of :func:`scoped_player`. A franchise's name is a fact about a
     season (see :func:`resolved_team`: "Hornets" is New Orleans in 2008 and
@@ -158,12 +208,11 @@ def scoped_team(con: duckdb.DuckDBPyConnection, scope: Scope, missing: str, *, s
     even though a team's name (unlike an ambiguous player's) never needs the
     span to disambiguate it.
 
-    Takes: ``con``; ``scope`` (read here for ``team``, ``season_type``,
-    ``since`` and ``until``);
+    Takes: ``con``; ``scope`` (read here for ``team`` and its typed span);
     ``missing`` (the :class:`Unsupported` message when no team was
-    named); ``span`` and ``season`` (the raw ``span``/``season`` slot values -
-    passed rather than read, the same as ``scoped_player``'s own, so a caller
-    with a reason to override them can).
+    named); ``span`` (a :class:`~association.query.reading.Span` overriding
+    the scope's own, the same as ``scoped_player``'s, so a caller with a
+    reason to override it can).
 
     Returns ``(team, span)``, or the :class:`~association.query.result.Clarify` asking which team was
     meant. Honors ``since`` the same way :func:`scoped_player` does for a
@@ -178,7 +227,7 @@ def scoped_team(con: duckdb.DuckDBPyConnection, scope: Scope, missing: str, *, s
        is still taken, through :meth:`~association.query.reading.Scope.from_slots`,
        until every caller passes ``reading.scope``.
     """
-    seasons = span_of(span, season, scope.season_type or 2, "games", since=scope.since, until=scope.until)
+    seasons = span_of(span if span is not None else scope.span, "games")
     if not scope.team or not scope.team.strip():
         raise Unsupported(missing)
     team = resolved_team(con, scope.team, season=seasons.season)

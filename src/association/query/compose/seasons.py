@@ -136,7 +136,7 @@ def read_player_line(con: duckdb.DuckDBPyConnection, q: Query, *, stated: frozen
     facts = LineFacts(stat=stat if shooting else None, wanted=tuple(wanted))
     if span.career:
         return _player_line_career(con, player, span, wanted, shooting, facts)
-    return _player_line_season(con, player, span, scope.season_type or 2, wanted, shooting, facts)
+    return _player_line_season(con, player, span, scope.span.season_type or 2, wanted, shooting, facts)
 
 
 def _player_line_season(con: duckdb.DuckDBPyConnection, player: Entity, span: ResolvedSpan, season_type: int, wanted: list[str], shooting: Any, facts: LineFacts) -> Result:
@@ -319,8 +319,8 @@ def read_player_history(con: duckdb.DuckDBPyConnection, q: Query, *, stated: fro
     stat = scope.stat
     assert stat is not None
     latest = history_through(scope)
-    career = scope.span == "career"
-    season_type = scope.season_type or 2
+    career = scope.span.career
+    season_type = scope.span.season_type or 2
     columns = HISTORY_COLUMNS[stat][1]
     keys = ["key", "games"] + [k for _, _, k in columns]
     rows = tuple(dict(zip(keys, r, strict=True)) for r in values_of(con, history_statement(player.id, stat, season_type, latest, history_seasons(scope))))
@@ -392,7 +392,7 @@ def read_player_compare(con: duckdb.DuckDBPyConnection, q: Query, *, stated: fro
     if not player_compare_reads(q, stated):
         return None
     scope = q.scope
-    season = scope.season or current_season()
+    season = scope.span.season or current_season()
     resolved: list[Entity] = []
     for name in scope.players[:MAX_COMPARED_PLAYERS]:
         player = compared_player(con, name, season)
@@ -402,7 +402,7 @@ def read_player_compare(con: duckdb.DuckDBPyConnection, q: Query, *, stated: fro
             resolved.append(player)
     if len(resolved) < 2:
         raise Unsupported("the named players resolved to the same person")
-    season_type = scope.season_type or 2
+    season_type = scope.span.season_type or 2
     wanted = wanted_stats(scope, COMPARE_STAT_LINE)
     lines = _player_compare_lines(con, resolved, wanted, season, season_type)
     parts = [Part(body=Grouped(by="subject", rows=tuple(lines.values())))]

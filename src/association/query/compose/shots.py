@@ -31,6 +31,7 @@ from typing import Any, Literal
 import duckdb
 
 from association.nba.coverage import COVERAGE
+from association.query import reading
 from association.query.conditions import box_source
 from association.query.court import HAS_POSITION_SQL, SHOT_DISTANCE_SQL, render_court_html
 from association.query.entities import SHOT_AVAILABILITY, Ambiguous, Entity, clarify, unmatched
@@ -116,8 +117,8 @@ def _shots_other_narrowing(scope: Scope, date: str | None, measures: list[Measur
     relation's set rather than listed, so a cell the relation gains reaches
     a shot read at once - ``situation`` and ``conditions`` once silently
     drew the whole span because a hand list predated them."""
-    cells = RELATION_SCOPING - {"order", "span", "season_n", "date", "below", "above"}
-    return bool(any(getattr(scope, cell) for cell in cells) or date or measures)
+    cells = RELATION_SCOPING - reading.Span.CELLS - {"order", "season_n", "date", "below", "above"}
+    return bool(any(getattr(scope, cell) for cell in cells) or scope.span.since is not None or scope.span.until is not None or date or measures)
 
 
 def _shots_has_narrowing(scope: Scope, date: str | None, measures: list[MeasureFilter]) -> bool:
@@ -250,7 +251,7 @@ def read_shot_distance(con: duckdb.DuckDBPyConnection, q: ShotQuery, *, stated: 
     if q.shape != "scalar" or unhonored_scoping("shot_distance", scope, stated):
         return None
     measures = measure_filters(scope.below, scope.above)
-    subject = scoped_player(con, scope, "shot_distance needs a player name", table="player_game_log", available=SHOT_AVAILABILITY, span=scope.span, season=scope.season)
+    subject = scoped_player(con, scope, "shot_distance needs a player name", table="player_game_log", available=SHOT_AVAILABILITY)
     if isinstance(subject, Unanswered):
         return subject
     player, span = subject
@@ -338,7 +339,7 @@ def _shot_chart_settle_player(con: duckdb.DuckDBPyConnection, name: str, scope: 
     match kept where nobody is left, since a chart is titled with the name
     that won."""
     season_n = scope.season_n
-    seasons = span_of("career" if season_n else scope.span, None if season_n else scope.season, scope.season_type or 2, "player_game_log", since=scope.since, until=scope.until)
+    seasons = span_of(scope.span.over_career() if season_n else scope.span, "player_game_log")
     resolved = resolve_chart_player(con, name, SHOT_AVAILABILITY, seasons.season)
     if resolved is None:
         return unmatched(con, name)

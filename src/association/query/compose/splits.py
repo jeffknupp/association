@@ -184,13 +184,13 @@ def read_player_splits(con: duckdb.DuckDBPyConnection, q: Query, *, stated: froz
         line = _splits_line(scope.stat, _PLAYER_LINE, alias="p")
     except Unsupported:
         return None
-    team = optional_team(con, scope.team, season=scope.season)
+    team = optional_team(con, scope.team, season=scope.span.season)
     if isinstance(team, Unanswered):
         return team
-    opponent = optional_team(con, scope.opponent, season=scope.season)
+    opponent = optional_team(con, scope.opponent, season=scope.span.season)
     if isinstance(opponent, Unanswered):
         return opponent
-    covered = condition_scope(scope.season, scope.span, scope.season_type, _PLAYER_GAME_TABLES, since=scope.since)
+    covered = condition_scope(scope.span, _PLAYER_GAME_TABLES)
     compiled = compile_query(con, q)
     if compiled.player is None:
         return None
@@ -298,10 +298,10 @@ def read_team_splits(con: duckdb.DuckDBPyConnection, q: TeamQuery, *, stated: fr
         return refused
     _splits_refusals(scope)
     measures = measure_filters(scope.below, scope.above)
-    team = optional_team(con, scope.team, season=scope.season)
+    team = optional_team(con, scope.team, season=scope.span.season)
     if isinstance(team, Unanswered):
         return team
-    opponent = optional_team(con, scope.opponent, season=scope.season)
+    opponent = optional_team(con, scope.opponent, season=scope.span.season)
     if isinstance(opponent, Unanswered):
         return opponent
     if team is None:
@@ -329,7 +329,7 @@ def _team_splits(con: duckdb.DuckDBPyConnection, q: TeamQuery, team: Entity, opp
     of :func:`read_team_splits`."""
     scope = q.scope
     line = _splits_line(scope.stat, _TEAM_LINE, alias="t")
-    span = span_of(scope.span, scope.season, scope.season_type or 2, "games", since=scope.since, until=scope.until)
+    span = span_of(scope.span, "games")
     narrowed = team_games(con, team, span, scope, opponent=opponent)
     if isinstance(narrowed, Unanswered):
         return narrowed

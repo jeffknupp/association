@@ -67,19 +67,9 @@ def test_nonsense_season_is_dropped_not_passed_to_sql() -> None:
     assert got is not None and "season" not in got.slots
 
 
-def test_season_ref_is_resolved_in_code_not_by_the_model() -> None:
-    assert _route('{"intent":"threshold_count","season_ref":"current"}').slots["season"] == current_season()
-    assert _route('{"intent":"threshold_count","season_ref":"previous"}').slots["season"] == current_season() - 1
-
-
 def test_season_ref_never_leaks_through_as_a_slot() -> None:
     got = _route('{"intent":"threshold_count","season_ref":"current"}')
     assert got is not None and "season_ref" not in got.slots
-
-
-def test_bad_season_falls_back_to_season_ref() -> None:
-    got = _route('{"intent":"threshold_count","season":20222023,"season_ref":"previous"}')
-    assert got is not None and got.slots["season"] == current_season() - 1
 
 
 # #95, "the router invents a date or a season the question never states":
@@ -174,16 +164,6 @@ def test_explicit_year_still_wins_over_a_required_season_ref() -> None:
     fixes; see test_a_bare_season_with_no_textual_support_is_dropped."""
     got = _ask("who led the league in points in 2024", '{"intent":"leaderboard","stat":"points","season":2024,"season_ref":"current"}')
     assert got.slots["season"] == 2024
-
-
-def test_season_ref_wins_when_the_question_names_no_year_at_all() -> None:
-    """The mirror case, added alongside the #95 fix: with nothing in the text,
-    the enum-bounded `season_ref` is still trusted - the model can only set it
-    to "previous"/"current", never a free year, and the router's prompt
-    instructed "current" for anything that did not say "last season" - but the
-    bare `season` integer beside it is not."""
-    got = _route('{"intent":"leaderboard","stat":"points","season":2024,"season_ref":"current"}')
-    assert got is not None and got.slots["season"] == current_season()
 
 
 def test_every_intent_is_reachable_from_the_reader() -> None:
@@ -646,45 +626,36 @@ def test_a_last_n_games_question_naming_its_season_type_is_not_widened(question:
 
 
 def test_a_last_n_games_signal_requires_a_real_limit_and_the_recent_order() -> None:
-    from association.query.router import _route_game_log_recent_span
+    from association.query.span import SpanContext, read_span
 
     # No `order` at all: an ordinary game_log question with a limit, not "last
     # N games" - e.g. "top 5" is `order` absent, `limit` present.
-    no_order: dict[str, Any] = {"limit": 5}
-    _route_game_log_recent_span("game_log", no_order, "Knicks top 5 wins this season")
-    assert "season_type_unstated" not in no_order
+    assert not read_span("Knicks top 5 wins this season", SpanContext(intent="game_log", limit=5)).span.both
     # `order="first"` is "his first N games", the opposite end of the season -
     # a real question, but not the one this signal is for.
-    first: dict[str, Any] = {"order": "first", "limit": 5}
-    _route_game_log_recent_span("game_log", first, "Knicks first 5 games")
-    assert "season_type_unstated" not in first
+    assert not read_span("Knicks first 5 games", SpanContext(intent="game_log", order="first", limit=5)).span.both
     # No real limit at all.
-    no_limit: dict[str, Any] = {"order": "recent"}
-    _route_game_log_recent_span("game_log", no_limit, "Knicks last games")
-    assert "season_type_unstated" not in no_limit
+    assert not read_span("Knicks last games", SpanContext(intent="game_log", order="recent")).span.both
     # A non-game_log intent never sees it, whatever else is set.
-    other_intent: dict[str, Any] = {"order": "recent", "limit": 5}
-    _route_game_log_recent_span("player_stat", other_intent, "Knicks last 5 games")
-    assert "season_type_unstated" not in other_intent
+    assert not read_span("Knicks last 5 games", SpanContext(intent="player_stat", order="recent", limit=5)).span.both
+    assert read_span("Knicks last 5 games", SpanContext(intent="game_log", order="recent", limit=5)).span.both
 
 
 @pytest.mark.parametrize(
-    "extra_slots",
+    ("question", "context"),
     [
-        {"game_n": 4},  # one game of a KNOWN playoff series
-        {"span": "career"},  # a career has no single year to mix two types within
-        {"since": 2020},  # a range of seasons
-        {"date": "2026-04-12"},  # one calendar day already finds its own game
+        ("Knicks last 5 games", {"game_n": 4}),  # one game of a KNOWN playoff series
+        ("Knicks last 5 games of his career", {}),  # a career has no single year to mix two types within
+        ("Knicks last 5 games since 2020", {}),  # a range of seasons
+        ("Knicks last 5 games", {"date": "2026-04-12"}),  # one calendar day already finds its own game
     ],
 )
-def test_a_last_n_games_signal_defers_to_a_narrower_slot_already_set(extra_slots: dict[str, Any]) -> None:
+def test_a_last_n_games_signal_defers_to_a_narrower_slot_already_set(question: str, context: dict[str, Any]) -> None:
     """Each of these already fixes which games are meant more precisely than
     "last N" does, so none of them widen to both season types."""
-    from association.query.router import _route_game_log_recent_span
+    from association.query.span import SpanContext, read_span
 
-    slots: dict[str, Any] = {"order": "recent", "limit": 5, **extra_slots}
-    _route_game_log_recent_span("game_log", slots, "Knicks last 5 games")
-    assert "season_type_unstated" not in slots
+    assert not read_span(question, SpanContext(intent="game_log", order="recent", limit=5, **context)).span.both
 
 
 @pytest.mark.parametrize(
@@ -2540,7 +2511,7 @@ def test_settle_reproduces_a_route_under_its_own_intent() -> None:
     from association.query.router import settle
 
     for intent, slots, question in (
-        ("game_log", {"stat": "points", "player": "Stephen Curry", "season": current_season(), "season_type": 2, "order": "recent", "limit": 5, "season_type_unstated": True}, "Curry's last 5 games"),
+        ("game_log", {"stat": "points", "player": "Stephen Curry", "season_type": 2, "order": "recent", "limit": 5, "season_type_unstated": True}, "Curry's last 5 games"),
         ("threshold_count", {"stat": "points", "threshold": 30, "player": "Nikola Jokic", "season": 2024, "season_type": 2}, "How many 30+ point games did Jokic have in 2024?"),
         ("player_history", {"stat": "twoPointFieldGoalPct", "player": "LeBron James", "limit": 10, "season_type": 2}, "show me lebron's 2pt percentage for the past 10 years"),
         ("player_stat", {"player": "Nikola Jokic", "season_type": 2, "span": "career"}, "Jokic career averages"),

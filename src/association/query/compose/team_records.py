@@ -39,6 +39,7 @@ import duckdb
 
 from association.nba.coverage import unavailable
 from association.nba.season import current_season
+from association.query import reading
 from association.query.calendar import CalendarNarrowing, bare_month, parse_situation
 from association.query.conditions import _season_month_order
 from association.query.coverage import coverage_refusal, floor_refusal
@@ -153,15 +154,15 @@ def read_team_record(con: duckdb.DuckDBPyConnection, q: TeamQuery, *, stated: fr
     if isinstance(teams, Unanswered):
         return teams
     team, opponent = teams
-    season_type = scope.season_type or 2
-    career = scope.span == "career"
-    season = scope.season
+    season_type = scope.span.season_type or 2
+    career = scope.span.career
+    season = scope.span.season
     if career and season is not None:
         # "all-time ... in 2020" is either a slip or a range this cannot read.
         raise Unsupported("a career span and a single season at once")
-    since = _team_record_since(scope.since, career, season)
-    asked = _Asked(team=team, opponent=opponent, month=month, venue=scope.venue, career=career, season=season, since=since, until=validated_until(scope.until, since), calendar=calendar)
-    if scope.season_type_unstated:
+    since = _team_record_since(scope.span.since, career, season)
+    asked = _Asked(team=team, opponent=opponent, month=month, venue=scope.venue, career=career, season=season, since=since, until=validated_until(scope.span.until, since), calendar=calendar)
+    if scope.span.both:
         # "including the playoffs": checked before the game_n/season_type
         # conflict below, which assumes one named type.
         if scope.game_n:
@@ -215,7 +216,7 @@ def _record_narrowed(team: Entity, season: int | None, season_type: int, *, sinc
     (which excludes the NBA Cup final from a regular season) plus the team,
     or a since-bounded span's own clause - and the span it covers."""
     if since is not None:
-        span = span_of(None, None, season_type, "games", since=since, until=until)
+        span = span_of(reading.Span(since=since, until=until), "games", season_type=season_type)
         clause, params = team_span_clause(span)
         base = ["tg.team_id = ?", "tg.season_type = ?", clause]
         if season_type == 2:

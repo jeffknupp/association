@@ -35,7 +35,7 @@ from __future__ import annotations
 
 import copy
 from collections.abc import Callable
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field, fields, replace
 from typing import TYPE_CHECKING, Any
 
 import duckdb
@@ -63,7 +63,7 @@ from association.query.player_relation import (
     span_of,
     team_slot_for_player,
 )
-from association.query.reading import DEFAULT_NAMED_RUNS, SCOPING_SLOTS, Scope, period_narrowing
+from association.query.reading import DEFAULT_NAMED_RUNS, Scope, Span, period_narrowing, unhonored_cells
 from association.query.reading import Unsupported as Unsupported
 from association.query.result import Refusal, Unanswered
 from association.query.season_line import Statement, seasons_on_record
@@ -334,13 +334,14 @@ class Query:
     #: The minimum games a group needs to be kept, for a ranking.
     minimum_games: int | None = None
     #: Binding parity with the template being mirrored: which availability
-    #: narrows an ambiguous name (game logs vs box scores), and the span and
-    #: season the subject is settled in - the templates compute these before
-    #: :func:`~association.query.player_relation.scoped_player`, and a raw
-    #: slot narrows differently.
+    #: narrows an ambiguous name (game logs vs box scores) - the templates
+    #: computed it before :func:`~association.query.player_relation.scoped_player`.
     available: Any = None
-    span: Any = None
-    season: Any = None
+    #: The span the subject is settled in and his games read over, where
+    #: the point reader settles it apart from the scope's own
+    #: (:attr:`~association.query.reading.Reading.subject_span`); ``None``
+    #: is the scope's.
+    subject_span: Span | None = None
     #: ``"games"`` - the player-games relation, one row per player per game -
     #: or ``"seasons"``, the season line (``player_season_stats_deduped``, one
     #: row per player per season) an unnarrowed player line or a per-season
@@ -354,6 +355,19 @@ class Query:
     #: A position code (``"C"``, ``"G"``, ``"PG"``, ...), honored only when
     #: ``subject`` is ``"everyone"``.
     position: str | None = None
+
+    def projected(self) -> dict[str, Any]:
+        """Every field as the query was recorded until Phase 3, step 2:
+        ``subject_span`` as the ``span`` and ``season`` it replaced
+        (:func:`~association.query.stages.plain`).
+
+        .. versionadded:: 6.0.0
+        """
+        out = {f.name: getattr(self, f.name) for f in fields(self) if f.name != "subject_span"}
+        settled = self.subject_span
+        out["span"] = "career" if settled is not None and settled.career else None
+        out["season"] = settled.season if settled is not None else None
+        return out
 
 
 @dataclass
@@ -472,8 +486,14 @@ def _check_relation_scoping(scope: Scope, subject: str = "player", honored_extra
     # 2026-09-30). An allow list, so a cell added to one relation is refused
     # on the other until it is built there.
     relation = TEAM_RELATION_SCOPING if subject == "team" else RELATION_SCOPING
-    honored = relation | COMPILER_SLOTS | honored_extra | ({"season_type_unstated"} if subject in ("player", "team") else set())
-    unhonored = sorted(k for k in SCOPING_SLOTS - honored if getattr(scope, k) not in (None, "", (), False))
+    # The span's `both` cell (both season types in one read) is a named
+    # player's or a team's: the league-wide read settles one type
+    # (`_resolve_everyone`) and refuses it rather than answer the regular
+    # season alone.
+    honored = relation | COMPILER_SLOTS | honored_extra
+    if subject == "everyone":
+        honored -= {"both"}
+    unhonored = unhonored_cells(scope, honored)
     if unhonored:
         whose = "a team's games cannot be narrowed by" if subject == "team" else "the relation cannot honor"
         raise Unsupported(f"{whose} {unhonored} - it would answer for a different span than was asked")
@@ -527,12 +547,14 @@ def _resolve_everyone(con: duckdb.DuckDBPyConnection, q: Query) -> tuple[Entity 
     same contradiction ``span_of`` refuses for a player.
     """
     scope = q.scope
-    season_type = scope.season_type or 2
-    season = scope.season
-    if season is None and scope.span != "career" and scope.since is None:
+    # A named season reads that season whatever else the span says (a
+    # career word beside it narrows nothing here); none named is the
+    # current one, unless the span is a career or a range.
+    season = scope.span.season
+    if season is None and not scope.span.career and scope.span.since is None:
         season = current_season()
     try:
-        span = span_of("career" if season is None else None, season, season_type, "player_game_log", since=scope.since, until=scope.until)
+        span = span_of(replace(scope.span, season=season, career=season is None), "player_game_log")
     except Unsupported as exc:
         raise Unsupported(str(exc)) from exc
     # The shared steps read the slot dict until they take the Scope.
@@ -562,8 +584,7 @@ def _resolve_named(con: duckdb.DuckDBPyConnection, q: Query) -> tuple[Entity | N
         "no player named",
         table="player_game_log",
         available=q.available or GAME_LOGS,
-        span="career" if dated else (q.span if q.span is not None else scope.span),
-        season=None if dated else (q.season if q.season is not None else scope.season),
+        span=scope.span.over_career() if dated else q.subject_span,
     )
     if isinstance(subject, Unanswered):
         raise Refused(subject)
@@ -634,7 +655,7 @@ def _apply_team_slot(con: duckdb.DuckDBPyConnection, q: Query, player: Entity | 
     if team_text is None or not team_text.strip() or player is None:
         return narrowed
     if q.skeleton == "rows":
-        resolved_opponent = team_slot_for_player(con, player, team_text, season=scope.season, opponent=scope.opponent)
+        resolved_opponent = team_slot_for_player(con, player, team_text, season=scope.span.season, opponent=scope.opponent)
         if isinstance(resolved_opponent, Unanswered):
             raise Refused(resolved_opponent)
         if resolved_opponent is not None and narrowed.opponent is None:
@@ -645,7 +666,7 @@ def _apply_team_slot(con: duckdb.DuckDBPyConnection, q: Query, player: Entity | 
         return narrowed
     if not (q.aggregate in ("count", "record") or q.skeleton in ("grouped", "run")):
         return narrowed
-    team = resolved_team(con, team_text, season=scope.season)
+    team = resolved_team(con, team_text, season=scope.span.season)
     if isinstance(team, Unanswered):
         raise Refused(team)
     narrowed.narrow("pgl.team_id = ?", team.id)
@@ -951,8 +972,8 @@ def run_scope(scope: Scope, *, named: bool) -> Any:
     .. versionadded:: 5.0.0
     """
     if named:
-        return condition_scope(scope.season, "career" if scope.season_n else scope.span, scope.season_type, _PLAYER_GAME_TABLES, since=scope.since)
-    return condition_scope(scope.season, scope.span, scope.season_type, _PLAYER_GAME_TABLES)
+        return condition_scope(scope.span.as_career() if scope.season_n else scope.span, _PLAYER_GAME_TABLES)
+    return condition_scope(scope.span.without_range(), _PLAYER_GAME_TABLES)
 
 
 def _compile_run(q: Query, narrowed: Narrowed, box: BoxSource, player: Entity | None, span: ResolvedSpan) -> Compiled:

@@ -52,7 +52,7 @@ narrowed reader is one season type at a time.
 from __future__ import annotations
 
 from collections.abc import Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 import duckdb
@@ -304,7 +304,7 @@ def _team_narrowed(scope: Scope) -> bool:
     # sends the read to the game-level relation rather than the season line.
     # A quarter or half is one too: read as the season line, "the magic's
     # first-quarter threes" would be their whole season's.
-    if any((scope.opponent, scope.venue, scope.date, scope.since, scope.until, scope.game_n, scope.situation)):
+    if any((scope.opponent, scope.venue, scope.date, scope.span.since, scope.span.until, scope.game_n, scope.situation)):
         return True
     if scope.period is not None or scope.half is not None:
         return True
@@ -316,7 +316,7 @@ def _resolved_team_subject(con: duckdb.DuckDBPyConnection, scope: Scope) -> Enti
     team_text = scope.team
     if team_text is None or not team_text.strip():
         raise Unsupported("no team named")
-    season: int = scope.season if scope.season is not None else current_season()
+    season: int = scope.span.season if scope.span.season is not None else current_season()
     team = resolved_team(con, team_text, season=season)
     if isinstance(team, Unanswered):
         raise Refused(team)
@@ -354,8 +354,8 @@ def _compile_team_season(con: duckdb.DuckDBPyConnection, q: TeamQuery, team: Ent
     ``team_season_stats`` - F127's shape."""
     if q.measure not in SEASON_MEASURES:
         raise Unsupported(f"no season total on record for {q.measure!r}")
-    season_type = q.scope.season_type or 2
-    season: int = q.scope.season if q.scope.season is not None else current_season()
+    season_type = q.scope.span.season_type or 2
+    season: int = q.scope.span.season if q.scope.span.season is not None else current_season()
     column = SEASON_MEASURES[q.measure]
     found = _season_total(con, team, season, season_type, column)
     if found is None:
@@ -375,7 +375,7 @@ def _team_games_narrowed(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> tuple[
     together - the same order every other team template keeps."""
     scope = q.scope
     # The shared steps read the slot dict until they take the Scope.
-    settled = scoped_team(con, scope, "no team named", span=scope.span, season=scope.season)
+    settled = scoped_team(con, scope, "no team named")
     if isinstance(settled, Unanswered):
         raise Refused(settled)
     team, span = settled
@@ -390,7 +390,7 @@ def _team_mixed(scope: Scope) -> bool:
     """Whether a window read spans both season types: "last N games" naming
     no season type (``season_type_unstated``), with no date, career or game
     of a series fixing one - the same test the team log makes."""
-    return scope.season_type_unstated and not scope.date and not scope.span and not scope.game_n
+    return scope.span.both and not scope.date and not scope.span.career and not scope.game_n
 
 
 def _compile_team_games_mixed(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> TeamResult:
@@ -411,7 +411,9 @@ def _compile_team_games_mixed(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> T
     from association.query.reading import DEFAULT_GAME_LOG_LIMIT
 
     scope = q.scope
-    settled = scoped_team(con, scope, "no team named", span=None, season=scope.season)
+    # One season's window over both types: the span less its career (a
+    # career has no single season to read both types within, refused below).
+    settled = scoped_team(con, scope, "no team named", span=replace(scope.span, career=False))
     if isinstance(settled, Unanswered):
         raise Refused(settled)
     team, span = settled
@@ -460,7 +462,7 @@ def _compile_team_games_total(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> T
     if q.measure not in GAME_MEASURES:
         raise Unsupported(f"{q.measure!r} needs a box-score join the team relation does not have yet for a narrowed read")
     if _team_mixed(q.scope):
-        if q.scope.since or q.scope.until or q.scope.situation or q.scope.period is not None or q.scope.half is not None:
+        if q.scope.span.since or q.scope.span.until or q.scope.situation or q.scope.period is not None or q.scope.half is not None:
             # The both-types read is a plain window (an opponent and a venue
             # at most, as the log's is); a range of seasons or a calendar
             # would be dropped from it silently, so it is refused instead.
@@ -516,7 +518,7 @@ def compile_team_run(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> TeamCompil
         limit, best = 3, False
     else:
         team = None
-        span = span_of(scope.span, scope.season, scope.season_type or 2, "games", since=scope.since, until=scope.until)
+        span = span_of(scope.span, "games")
         narrowed = league_team_narrowed(span)
         limit, best = _clamp_limit(scope.limit, DEFAULT_STREAK_LIMIT), True
     base, params = team_named(*team_aggregate_sql(narrowed, list(_TEAM_STREAK_SELECT)))
@@ -756,10 +758,10 @@ def team_coverage_refusal(q: TeamQuery) -> Refusal | None:
     """
     # No season named means the current one, which every table covers - the
     # same guard check_coverage applies before charging a floor.
-    season = q.scope.season
+    season = q.scope.span.season
     if season is None:
         return None
-    season_type = q.scope.season_type or 2
+    season_type = q.scope.span.season_type or 2
     return floor_refusal(_team_coverage_tables(q), season, season_type, shown={"season": season}, under=())
 
 

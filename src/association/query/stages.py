@@ -88,7 +88,7 @@ _SUBJECT_TEXT = frozenset({"evidence"})
 # step 1; ``shape`` was the compiler's skeleton and ``source`` the season
 # line's flag until then - both derived by the planner now, and on the
 # query record still).
-_POINT_FIELDS = ("relation", "on", "shape", "by", "measures", "aggregate", "group", "predicates", "order", "direction", "limit", "offset", "minimum_games", "available", "span", "season", "position")
+_POINT_FIELDS = ("relation", "on", "shape", "by", "measures", "aggregate", "group", "predicates", "order", "direction", "limit", "offset", "minimum_games", "available", "position")
 
 
 def plain(value: Any, *, mask: Mapping[str, str] | None = None) -> Any:
@@ -115,7 +115,7 @@ def plain(value: Any, *, mask: Mapping[str, str] | None = None) -> Any:
     if isinstance(value, Path):
         return _masked(str(value), mask)
     if is_dataclass(value) and not isinstance(value, type):
-        return {f.name: plain(getattr(value, f.name), mask=mask) for f in fields(value)}
+        return _plain_record(value, mask)
     if isinstance(value, Mapping):
         return {str(key): plain(each, mask=mask) for key, each in value.items()}
     if isinstance(value, (list, tuple)):
@@ -127,6 +127,18 @@ def plain(value: Any, *, mask: Mapping[str, str] | None = None) -> Any:
         # A numpy scalar DuckDB handed back: its Python value.
         return plain(item(), mask=mask)
     return {"unknown": type(value).__name__, "repr": _masked(repr(value), mask)}
+
+
+def _plain_record(value: Any, mask: Mapping[str, str] | None) -> dict[str, Any]:
+    """A dataclass as a dict of its fields - or, where it has a
+    ``projected()``, of the fields it had before a part was typed (Phase 3,
+    step 2: the Scope's six span slots, the Query's span pair), so a record
+    made before the part was typed compares identical to one made after;
+    the typed value is recorded beside it, by name."""
+    projected = getattr(value, "projected", None)
+    if callable(projected):
+        return {name: plain(each, mask=mask) for name, each in projected().items()}
+    return {f.name: plain(getattr(value, f.name), mask=mask) for f in fields(value)}
 
 
 def _masked(text: str, mask: Mapping[str, str] | None) -> str:
@@ -145,6 +157,11 @@ def _reading_record(reading: Reading, mask: Mapping[str, str] | None) -> dict[st
     point = None
     if reading.point is not None:
         point = {name: plain(getattr(reading.point, name), mask=mask) for name in _POINT_FIELDS}
+        # The span the subject is settled in, as the slot pair it was
+        # recorded as until Phase 3, step 2.
+        settled = reading.point.subject_span
+        point["span"] = "career" if settled is not None and settled.career else None
+        point["season"] = settled.season if settled is not None else None
         point["scope"] = plain(reading.point.scope.to_slots(), mask=mask)
         # Whose default the point is: the planner declines by it until
         # intent leaves the reader (Phase 3).
@@ -152,6 +169,9 @@ def _reading_record(reading: Reading, mask: Mapping[str, str] | None) -> dict[st
     return {
         "intent": reading.intent,
         "scope": plain(reading.scope.to_slots(), mask=mask),
+        # The span as the reader typed it (Phase 3, step 2), beside the
+        # scope's slot-era projection of it.
+        "span": plain(reading.scope.span, mask=mask),
         "subject": subject,
         "misread": list(reading.misread),
         "decisions": [plain(decision.as_dict(), mask=mask) for decision in reading.decisions],

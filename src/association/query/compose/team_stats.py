@@ -138,8 +138,8 @@ def read_team_outlook(con: duckdb.DuckDBPyConnection, q: TeamSeasonQuery, *, sta
     team = _team_season_subject(con, "team_outlook", q.scope, stated)
     if isinstance(team, Unanswered):
         return team
-    season = q.scope.season or current_season()
-    postseason = (q.scope.season_type or 2) == 3
+    season = q.scope.span.season or current_season()
+    postseason = (q.scope.span.season_type or 2) == 3
     snapshots = values_of(con, team_outlook_snapshots_statement(team.id, season))
     chosen = team_outlook_chosen(snapshots, postseason)
     span = Span(season=season, season_type=3 if postseason else 2, source="team_snapshots")
@@ -256,8 +256,8 @@ def read_team_stat(con: duckdb.DuckDBPyConnection, q: TeamSeasonQuery, *, stated
     if isinstance(team, Unanswered):
         return team
     key = _team_stat_metric(scope)
-    season = scope.season or current_season()
-    season_type = scope.season_type or 2
+    season = scope.span.season or current_season()
+    season_type = scope.span.season_type or 2
     span = Span(season=season, season_type=season_type, source="team_seasons")
     if key is not None and TEAM_METRICS[key].expression is None:
         return _team_stat_record(con, team, key, span)
@@ -359,10 +359,10 @@ def _team_leaderboard_span(scope: Scope, season: int, season_type: int) -> Span:
     """The ranking's span: one season, or the seasons from ``since`` on
     (through ``until`` where it bounds the other end) - a ``since`` beside a
     named season, and an ``until`` with no ``since`` or before it, declined."""
-    since = scope.since or None
-    if since is not None and scope.season:
-        raise Unsupported(f"since {since} and the {scope.season} season at once")
-    until = validated_until(scope.until, since)
+    since = scope.span.since or None
+    if since is not None and scope.span.season:
+        raise Unsupported(f"since {since} and the {scope.span.season} season at once")
+    until = validated_until(scope.span.until, since)
     return Span(season=season, season_type=season_type, first=since, last=until, source="team_seasons")
 
 
@@ -399,8 +399,8 @@ def read_team_leaderboard(con: duckdb.DuckDBPyConnection, q: TeamSeasonQuery, *,
     # `season` still settles to a real year under `since` - unread by the
     # since-bounded read, and here only for the named team's own-season name
     # lookup, which stays "now" either way.
-    season = scope.season or current_season()
-    season_type = scope.season_type or 2
+    season = scope.span.season or current_season()
+    season_type = scope.span.season_type or 2
     span = _team_leaderboard_span(scope, season, season_type)
     named = resolved_team(con, scope.team, season=slot_season(scope)) if scope.team and scope.team.strip() else None
     if isinstance(named, Unanswered):

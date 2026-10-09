@@ -8,7 +8,7 @@ covered the current season instead.
 import pytest
 
 from association.nba.season import current_season
-from association.query.season_text import season_from_text, season_spans
+from association.query.lexicon import season_from_text, season_spans
 
 
 @pytest.mark.parametrize(
@@ -120,7 +120,7 @@ def test_a_two_digit_span_takes_the_century_the_league_could_have_played(monkeyp
     season, the 1900s past it - and nothing at all before the league's first
     season, so a line like "30-31" names none. Pinned to the 2025-26 season,
     since which century is which moves with the calendar."""
-    monkeypatch.setattr("association.query.season_text.current_season", lambda: 2026)
+    monkeypatch.setattr("association.query.lexicon.current_season", lambda: 2026)
     assert season_from_text("stats for 25-26") == 2026
     assert season_from_text("stats for 26-27") == 2027  # next season: announced schedules are asked about
     assert season_from_text("stats for 27-28") is None  # 1927-28, before the league

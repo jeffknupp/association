@@ -38,7 +38,7 @@ def test_team_templates_declare_scoping_through_the_shared_helper() -> None:
     # itself (step 3, K1): every team template now honors it through the base
     # set, `team_record` included, so it is no longer listed as its own here.
     # The team shapes' readers declare in compose.plan.STATED_SCOPING (Phase 2, slice (iv)).
-    on_the_relation = {"team_record": {"split", "season_type_unstated"}, "head_to_head": set(), "team_quarter_points": {"period", "half"}}
+    on_the_relation = {"team_record": {"split"}, "head_to_head": set(), "team_quarter_points": {"period", "half"}}
     for intent, extra in on_the_relation.items():
         excluded = TEAM_RELATION_SCOPING_EXCLUDED.get(intent, {})
         for slot, reason in excluded.items():
@@ -52,7 +52,7 @@ def test_team_relation_scoping_helper_matches_the_declared_dict() -> None:
     HONORED_SCOPING entry for a template on this relation - proven by
     reconstructing each one from the helper directly, the way the test above
     checks the dict but this checks the FUNCTION agrees with itself."""
-    assert team_relation_scoping("team_record", "split", "season_type_unstated") == stated("team_record")
+    assert team_relation_scoping("team_record", "split") == stated("team_record")
     # team_leaderboard's reader (compose.team_stats, Phase 2, step 4) declares through the same helper.
     assert team_relation_scoping("team_leaderboard") == stated("team_leaderboard")
     assert team_relation_scoping("head_to_head") == stated("head_to_head")

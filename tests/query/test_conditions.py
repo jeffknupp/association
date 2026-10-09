@@ -38,7 +38,7 @@ from association.query.conditions import RAW_BOX, UNGATED_ON_REBUILD, box_source
 from association.query.coverage import check_coverage
 from association.query.parse import with_point
 from association.query.player_games import REBUILT_STATS
-from association.query.reading import SPLIT_KINDS, PointShape, Reading, Scope, Unsupported, unhonored_scoping
+from association.query.reading import SPLIT_KINDS, PointShape, Reading, Scope, Span, Unsupported, unhonored_scoping
 from association.query.result import Unanswered
 from association.query.subject import Subject
 
@@ -324,7 +324,15 @@ def _rate_ranking(minimum: int) -> Query:
     """The league's FG% leaders this season with a minimum, as the planner
     hands a position or postseason ranking to the player-games relation."""
     return Query(
-        scope=Scope(season_type=2, stat="fg_pct"), skeleton="grouped", subject="everyone", group="player", aggregate="per_game", measures=["fg_pct"], order="measure", minimum_games=minimum, limit=10
+        scope=Scope(span=Span(season_type=2), stat="fg_pct"),
+        skeleton="grouped",
+        subject="everyone",
+        group="player",
+        aggregate="per_game",
+        measures=["fg_pct"],
+        order="measure",
+        minimum_games=minimum,
+        limit=10,
     )
 
 
@@ -360,7 +368,7 @@ def test_a_named_players_grouped_read_says_the_rebuilt_games_once(rebuilt_league
     """A named player's compiled split already says his rebuilt games
     (``lines_rebuilt``, "shown"); where a measure could not read them, the
     one sentence says both rather than two saying the same games."""
-    query = Query(scope=Scope(player="Jayson Tatum", season_type=2), skeleton="grouped", group="venue", aggregate="per_game", measures=["points", "fg_pct"])
+    query = Query(scope=Scope(player="Jayson Tatum", span=Span(season_type=2)), skeleton="grouped", group="venue", aggregate="per_game", measures=["points", "fg_pct"])
     out = run(rebuilt_league.con, query)
     home = next(row for row in out["rows"] if row["group"] == "home")
     assert (home["games"], home["fg_pct_games"]) == (2, 1)
@@ -1607,11 +1615,11 @@ def test_condition_player_reads_a_scope_beside_the_opponent_its_caller_resolved(
     from association.query.entities import Entity, resolved_team
     from association.query.player_games import games_subquery
     from association.query.player_relation import condition_player, condition_scope
-    from association.query.reading import Scope
+    from association.query.reading import Scope, Span
 
     lakers = resolved_team(league.con, "Los Angeles Lakers")
     assert isinstance(lakers, Entity)
-    within = condition_scope(None, None, 2, _PLAYER_GAME_TABLES)
+    within = condition_scope(Span(season_type=2), _PLAYER_GAME_TABLES)
     scope = Scope.from_slots(_slots(player="Jayson Tatum"))
     reads = [
         condition_player(league.con, scope, "needs a player", within, opponent=lakers),

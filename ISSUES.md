@@ -2372,6 +2372,12 @@ those were found.
 
 ## P3: refusal or gap
 
+### A condition read's covered scope reads a range's first season and not its last: a split, a run or a matchup "from 2019-20 to 2023-24" with nothing to show is refused "since 2019"
+- **Found:** 2026-10-09, Phase 3, step 2 (the span typed): `player_relation.condition_scope` takes the typed `Span` now and its docstring says so - the retired bodies it serves (`compose.splits`, `compose.runs` through `core.run_scope`, `compose.pairs`) passed `since` alone, never `until`, and still do.
+- **Evidence:** `src/association/query/player_relation.py` `condition_scope`: `_Scope(None, kind, max(since, scope.first), scope.phantoms)` with no last season; `compose/splits.py:193`, `compose/pairs.py:56-57`, `compose/core.py` `run_scope`. The games themselves are read through `span_of` (`scoped_player`), which bounds both ends, so the rows are right; only the `_Scope` the "no games" refusal (`player_relation.no_games`: "in any regular season on record (2019 onward)"), its label and the empty-box-score count are built from is open at the far end. On the 2,710 readings 4 carry a closed range on one of these shapes (2 `player_splits`, 2 `player_matchup`, 0 `streak`), none of them a "no games" case.
+- **User sees:** a refusal or a caveat naming "since 2019" where "2019-20 to 2023-24" was asked, on a split, run or matchup with no games in the range - a wrong-cause sentence, not a wrong answer, and rare.
+- **Next step:** `_Scope` gains a `last`, `condition_scope` sets it from `span.until`, `where_in`/`label` say "from X through Y" as `ResolvedSpan.during` does, and the three readers' counts bound by it; one unit test per reader with a closed range and no games.
+
 ### A team's log drops a calendar, quarter or half narrowing silently
 - **Found:** 2026-10-05, porting the team log onto the team compiler (Phase 2, step 4)
 - **Evidence:** `compose/logs.py` `read_team_log` narrows the team's games with `Scope(venue=...)` and the opponent/date alone (`team_games`), while `compose.plan.STATED_SCOPING["game_log"]` declares `situation`, `period` and `half` as stated - so a team log asked "in January" or "in the 4th quarter" lists the whole span under a heading that does not say so. It was the retired template's behavior too; not measured on any population yet.

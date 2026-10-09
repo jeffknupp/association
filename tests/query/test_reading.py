@@ -13,7 +13,7 @@ from routed import default_query, default_reading
 from association.query.compose.core import Query
 from association.query.compose.plan import plan
 from association.query.compose.team import TeamQuery
-from association.query.reading import Reading, Scope
+from association.query.reading import Reading, Scope, Span
 
 
 def test_the_default_point_is_a_reading_and_its_plan_is_the_query_it_always_was() -> None:
@@ -56,14 +56,14 @@ def test_the_planner_copies_and_never_decides() -> None:
     assert q.scope == reading.scope
     assert (q.skeleton, q.measures, q.aggregate, q.group, q.predicates) == ("grouped", ["points"], "per_game", "player", [("won", "=", True)])
     assert (q.order, q.direction, q.limit, q.offset, q.minimum_games, q.subject, q.position, q.source) == ("measure", "asc", 7, 2, 20, "everyone", "C", "games")
-    assert q.available is None and q.span is None and q.season is None
+    assert q.available is None and q.subject_span is None
     # The two records mirror each other on purpose: a point field added to
     # one and not the other is a decision the planner would be making alone.
     # The point's shape, by and on are the target's vocabulary, from which
     # the planner derives the compiler's skeleton and source (plan.skeleton_of).
-    point = {"shape", "by", "on", "measures", "aggregate", "group", "predicates", "order", "direction", "limit", "offset", "minimum_games", "available", "span", "season", "position"}
+    point = {"shape", "by", "on", "measures", "aggregate", "group", "predicates", "order", "direction", "limit", "offset", "minimum_games", "available", "subject_span", "position"}
     assert point <= {f.name for f in fields(Reading)}
-    assert {"skeleton", "measures", "aggregate", "group", "predicates", "order", "direction", "limit", "offset", "minimum_games", "available", "span", "season", "source", "position"} <= {
+    assert {"skeleton", "measures", "aggregate", "group", "predicates", "order", "direction", "limit", "offset", "minimum_games", "available", "subject_span", "source", "position"} <= {
         f.name for f in fields(Query)
     }
 
@@ -72,7 +72,7 @@ def test_a_team_reading_plans_to_the_team_relation() -> None:
     reading = Reading(scope=Scope.from_slots({"team": "Orlando Magic", "season": 2026}), shape="scalar", measures=["threePointFieldGoalsMade"], aggregate="total", relation="team")
     q = plan(reading)
     assert isinstance(q, TeamQuery)
-    assert (q.scope, q.measure, q.aggregate) == (Scope(team="Orlando Magic", season=2026), "threePointFieldGoalsMade", "total")
+    assert (q.scope, q.measure, q.aggregate) == (Scope(team="Orlando Magic", span=Span(season=2026)), "threePointFieldGoalsMade", "total")
 
 
 def test_the_compilers_points_are_keyword_only() -> None:
@@ -122,7 +122,7 @@ def test_a_slot_dict_round_trips_through_the_scope() -> None:
         "season_type_unstated": True,
     }
     scope = Scope.from_slots({**slots, "team": None, "players": [], "stat": "", "per_game": False})
-    assert (scope.player, scope.without, scope.venue, scope.limit, scope.season_type_unstated) == ("Joel Embiid", ("Tyrese Maxey",), "home", 10, True)
+    assert (scope.player, scope.without, scope.venue, scope.limit, scope.span.both) == ("Joel Embiid", ("Tyrese Maxey",), "home", 10, True)
     assert scope.to_slots() == slots
 
 
@@ -160,15 +160,17 @@ def test_every_scope_field_is_checked_and_every_group_is_the_compilers() -> None
 
     from association.query.compose.core import GROUPS
     from association.query.player_relation import RELATION_SCOPING
-    from association.query.reading import _CHECKS, SCOPING_SLOTS, Group
+    from association.query.reading import _CHECKS, _SPAN_SLOT_NAMES, SCOPING_SLOTS, Group
 
     names = {f.name for f in fields(Scope)}
-    assert set(_CHECKS) == names
+    # The span's six slot names pass the door into the typed Span (Phase 3, step 2).
+    assert set(_CHECKS) == (names - {"span"}) | _SPAN_SLOT_NAMES
     # `presence` is the team relation's own group (compose.team.compile_team_presence), not a key of the player relation's GROUPS.
     # `period` is the player relation's own, four reads of the same games rather than a GROUP BY (compose.core._compile_by_period).
     # `line` is keyed on the point's own predicate rather than a fixed column (compose.core._line_group).
     assert set(get_args(Group)) == {"none", "presence", "period", "line", *GROUPS}
-    assert names >= (SCOPING_SLOTS | RELATION_SCOPING)
+    # The span's three cells are the typed value's, not fields of their own (Phase 3, step 2).
+    assert names >= SCOPING_SLOTS and names >= RELATION_SCOPING - Span.CELLS and Span.CELLS <= RELATION_SCOPING
 
 
 def test_a_period_condition_round_trips_through_the_slot_door() -> None:

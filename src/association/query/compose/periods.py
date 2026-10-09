@@ -43,6 +43,7 @@ import duckdb
 
 from association.nba.coverage import POSTSEASON
 from association.nba.season import current_season, eastern_date
+from association.query import reading
 from association.query.conditions import box_source
 from association.query.coverage import coverage_refusal
 from association.query.entities import Entity, resolved_team, slot_season
@@ -171,7 +172,7 @@ def _period_log(con: duckdb.DuckDBPyConnection, q: Query) -> Result | Unanswered
     if q.measures != [measure]:
         return None
     if scope.date is None:
-        refused = _period_untrusted(scope.season or current_season(), measure)
+        refused = _period_untrusted(scope.span.season or current_season(), measure)
         if refused is not None:
             return refused
     read = replace(q, measures=_PERIOD_LOG_MEASURES, limit=None, offset=0, direction="asc")
@@ -179,7 +180,7 @@ def _period_log(con: duckdb.DuckDBPyConnection, q: Query) -> Result | Unanswered
     if compiled.player is None:
         return None
     rows = rows_of(con, compiled)
-    season = scope.season or current_season()
+    season = scope.span.season or current_season()
     if scope.date is not None and rows:
         # The season a date's game actually falls in, read off the row itself
         # rather than the slot: an explicit year in the question ("... on
@@ -249,7 +250,7 @@ def _period_log_result(
     games = _period_games(rows, measure)
     if games and _period_unread(games, measure):
         return Refusal(kind="period_unread", facts={"measure": measure})
-    season_type = scope.season_type or 2
+    season_type = scope.span.season_type or 2
     notes: list[Note] = []
     if games:
         notes = period_agreement_notes(season, measure, full_line=scope.per_game and scope.stat is None and len(games) > 1)
@@ -299,7 +300,7 @@ def _period_redirect(con: duckdb.DuckDBPyConnection, read: Query, compiled: Comp
     window = relation_window(scope)
     if not span.defaulted or window is None or window[0] != "recent":
         return None
-    career = span_of("career", None, span.season_type, "player_game_log")
+    career = span_of(reading.Span(career=True), "player_game_log", season_type=span.season_type)
     narrowed = scoped_games(con, player, career, scope, opponent=compiled.narrowed.opponent, measures=measure_filters(scope.below, scope.above))
     if isinstance(narrowed, Unanswered):
         return None
@@ -331,7 +332,7 @@ def _period_by_quarter(con: duckdb.DuckDBPyConnection, q: Query) -> Result | Una
     if q.measures != [measure]:
         return None
     if scope.date is None:
-        refused = _period_untrusted(scope.season or current_season(), measure)
+        refused = _period_untrusted(scope.span.season or current_season(), measure)
         if refused is not None:
             return refused
     compiled = compile_query(con, q)
@@ -348,7 +349,7 @@ def _period_quarters_result(compiled: Compiled, scope: Scope, rows: list[dict[st
     games = max((int(row["games"]) for row in rows), default=0)
     if games and any(row.get(measure) is None and row.get(f"{measure}_total") is None and measure not in PERIOD_RATES for row in by_quarter.values()):
         return Refusal(kind="period_unread", facts={"measure": measure})
-    season = _period_quarters_season(scope, rows, measure) if games else scope.season or current_season()
+    season = _period_quarters_season(scope, rows, measure) if games else scope.span.season or current_season()
     if isinstance(season, Unanswered):
         return season
     narrowed = compiled.narrowed
@@ -361,7 +362,7 @@ def _period_quarters_result(compiled: Compiled, scope: Scope, rows: list[dict[st
     return Result(
         subject=compiled.player.name,
         relation="player",
-        span=Span(season=season, season_type=scope.season_type or 2, date=scope.date),
+        span=Span(season=season, season_type=scope.span.season_type or 2, date=scope.date),
         narrowing=_period_narrowing(narrowed, scope.venue, cells),
         window=window,
         parts=(Part(body=Grouped(by="period", rows=quarters)),),
@@ -377,7 +378,7 @@ def _period_quarters_season(scope: Scope, rows: list[dict[str, Any]], measure: s
     figures cannot be trusted. Labeled "2026 regular season on 2014-11-01"
     and caveated by 2026's agreement until 2026-10-04 (ISSUES.md #302)."""
     if scope.date is None:
-        return scope.season or current_season()
+        return scope.span.season or current_season()
     season = int(min(row["first_season"] for row in rows if row["first_season"] is not None))
     refused = _period_untrusted(season, measure)
     return refused if refused is not None else season
@@ -425,9 +426,9 @@ def _team_quarter_points_team_and_span(con: duckdb.DuckDBPyConnection, scope: Sc
         team = resolved_team(con, scope.team, season=slot_season(scope))
         if isinstance(team, Unanswered):
             return team
-        return team, ResolvedSpan(None, scope.season_type or 2)
-    scoped = Scope(team=scope.team, season=scope.season, season_type=scope.season_type, since=scope.since, until=scope.until)
-    return scoped_team(con, scoped, "team_quarter_points needs a team", span=scope.span, season=scope.season)
+        return team, ResolvedSpan(None, scope.span.season_type or 2)
+    scoped = Scope(team=scope.team, span=scope.span)
+    return scoped_team(con, scoped, "team_quarter_points needs a team")
 
 
 def _team_quarter_points_games(con: duckdb.DuckDBPyConnection, narrowed: TeamNarrowed, measure: str) -> tuple[list[dict[str, Any]], list[int]]:
@@ -669,12 +670,12 @@ def read_period_leaderboard(con: duckdb.DuckDBPyConnection, q: Query, *, stated:
         # A games-played qualifier says nothing about attempts, and a
         # percentage over a handful of them ranks noise.
         return Refusal(kind="period_rank_rate", facts={"measure": measure}, shown={"stat": measure})
-    season = scope.season or current_season()
-    season_type = scope.season_type or 2
+    season = scope.span.season or current_season()
+    season_type = scope.span.season_type or 2
     distrust = period_distrust(season, measure)
     if distrust is not None:
         return Refusal(kind="period_untrusted", facts=distrust, shown={"season": distrust["season"]})
-    span = span_of(None, season, season_type, "player_game_log")
+    span = span_of(reading.Span(season=season), "player_game_log", season_type=season_type)
     minimum = PER_GAME_MIN_POSTSEASON_GAMES if season_type == POSTSEASON else PER_GAME_MIN_GAMES
     asked = period_narrowing(scope)
     if asked is None:

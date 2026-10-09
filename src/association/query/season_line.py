@@ -48,6 +48,7 @@ import duckdb
 from association.nba.coverage import COVERAGE, POSTSEASON, REGULAR_SEASON
 from association.nba.franchises import season_name_sql
 from association.nba.season import current_season
+from association.query import reading
 from association.query.entities import Ambiguous, Availability, Entity, NotFound, resolve_team, resolved_player
 from association.query.measures import STAT_LINE
 from association.query.metrics import EXTRA_FIELD_COLUMNS, LEADERBOARD_METRICS, SEASON_TYPE_LABELS, CareerAggregate, LeaderboardMetric
@@ -176,7 +177,7 @@ def line_subject(con: duckdb.DuckDBPyConnection, scope: Scope) -> tuple[Entity, 
     .. versionadded:: 5.0.0
        ``templates.players._player_stat_season_line_subject`` was this.
     """
-    return scoped_player(con, scope, "player_stat needs a player name", table="player_season_stats_deduped", available=SEASON_LINES, span=scope.span, season=scope.season)
+    return scoped_player(con, scope, "player_stat needs a player name", table="player_season_stats_deduped", available=SEASON_LINES)
 
 
 def history_through(scope: Scope) -> int:
@@ -186,7 +187,7 @@ def history_through(scope: Scope) -> int:
 
     .. versionadded:: 5.0.0
     """
-    return scope.season or current_season()
+    return scope.span.season or current_season()
 
 
 def history_subject(con: duckdb.DuckDBPyConnection, scope: Scope) -> Entity | Unanswered:
@@ -289,7 +290,7 @@ def advanced_span(span: ResolvedSpan) -> ResolvedSpan:
 
     .. versionadded:: 5.0.0
     """
-    return span_of("career", span.season, span.season_type, "player_season_advanced_stats") if span.career else span
+    return span_of(reading.Span(career=True), "player_season_advanced_stats", season_type=span.season_type) if span.career else span
 
 
 def advanced_statement(athlete_id: str, span: ResolvedSpan, spec: AdvancedStat) -> Statement:
@@ -334,7 +335,7 @@ def history_seasons(scope: Scope) -> int | None:
 
     .. versionadded:: 5.0.0
     """
-    if scope.span == "career":
+    if scope.span.career:
         return None
     limit = scope.limit
     return limit if limit is not None and limit <= MAX_HISTORY_SEASONS else DEFAULT_HISTORY_SEASONS

@@ -36,7 +36,7 @@ from association.query.metrics import LEADERBOARD_METRICS, PER_GAME_MIN_GAMES, P
 from association.query.parse import with_point
 from association.query.player_games import PERIOD_COLUMNS, PERIOD_RATES, period_distrust
 from association.query.player_relation import scoped_games, scoped_player
-from association.query.reading import SCOPING_SLOTS, PointShape, Reading, Scope, unhonored_scoping
+from association.query.reading import SCOPING_SLOTS, PointShape, Reading, Scope, Span, unhonored_scoping
 from association.query.result import Unanswered
 from association.query.season_text import season_phrase
 from association.query.shotchart import SHOT_AVAILABILITY
@@ -4424,7 +4424,7 @@ def test_the_relation_window_is_cut_after_the_row_filters(pg_ctx: AnswerContext)
     from association.query.player_relation import _narrow_player_games, span_of
 
     s = current_season()
-    span = span_of("career", None, 2, "player_game_log")
+    span = span_of(Span(career=True), "player_game_log")
     narrowed = _narrow_player_games(pg_ctx.con, Entity("10", "Brandin Podziemski"), span, opponent="Detroit Pistons", venue=None, without=None)
     assert not isinstance(narrowed, Unanswered)
     narrowed.window = ("recent", 2)
@@ -5565,7 +5565,7 @@ def test_a_career_read_sums_every_season_now_the_shot_join_needs_no_season_param
     # career (the per-season caveat), so the join is exercised the way the
     # cross-season redirect (compose.periods._period_redirect) exercises it.
     scope = Scope.from_slots({"player": "Stephen Curry", "period": 1, "span": "career"})
-    subject = scoped_player(period_ctx.con, scope, "no player named", table="player_game_log", available=SHOT_AVAILABILITY, span="career", season=None)
+    subject = scoped_player(period_ctx.con, scope, "no player named", table="player_game_log", available=SHOT_AVAILABILITY, span=Span(career=True))
     assert not isinstance(subject, Unanswered)
     player, span = subject
     narrowed = scoped_games(period_ctx.con, player, span, scope, opponent=None, measures=[])
@@ -5930,16 +5930,18 @@ def test_templates_on_the_relation_declare_no_scoping_of_their_own() -> None:
        and ``RELATION_SCOPING_EXCLUDED`` is read live below, so this does not
        need to guess which cells that branch ends up excluding or why - only
        that the two facts still balance the same equation every other
-       relation template does. ``player_stat`` now also carries the
-       ``season_type_unstated`` extra beside ``game_log``'s - the season line
-       has no "both at once" row, so the slot sends it to box scores the same
-       way a ``since`` range already does.
+       relation template does.
+
+    .. versionchanged:: 6.0.0
+       The span's cells are the relation's own (``career``, ``range``,
+       ``both``; Phase 3, step 2): ``game_log`` and ``player_stat`` state
+       ``both`` as every other cell, through the table, not as an extra.
     """
     from association.query.player_relation import RELATION_SCOPING, RELATION_SCOPING_EXCLUDED
 
-    on_the_relation = {
-        "game_log": {"season_type_unstated"},
-        "player_stat": {"season_type_unstated"},
+    on_the_relation: dict[str, set[str]] = {
+        "game_log": set(),
+        "player_stat": set(),
         "period_split": set(),
         "player_splits": set(),
         "record_when": set(),
@@ -5951,38 +5953,6 @@ def test_templates_on_the_relation_declare_no_scoping_of_their_own() -> None:
         for slot, reason in excluded.items():
             assert slot in RELATION_SCOPING and reason.strip(), f"{intent} excludes {slot!r} without a reason"
         assert _declared_scoping(intent) == (RELATION_SCOPING | extra) - set(excluded), f"{intent} declares scoping of its own"
-
-
-def test_until_is_declared_wherever_since_is() -> None:
-    """A new scoping dimension is one clause on ``ResolvedSpan`` plus a template
-    turning it on - never a slot honored for ``since`` and silently dropped
-    for ``until``, the same shape ``RELATION_SCOPING`` exists to stop for
-    every other cell. ``until`` closes a ``since``-bounded range at the far
-    end (``router._validate_range``'s closed forms - "2019-20 to 2023-24",
-    "between 2020 and 2024", "2020-2024", two adjacent bare years) and is
-    read nowhere ``since`` is not: ``period_split`` excludes both for the
-    same reason (its accuracy caveat is measured per season), and every
-    player-relation template that honors ``since`` honors ``until`` beside
-    it - checked by reading the source dicts rather than trusting a comment.
-
-    Scoped to the PLAYER relation's own structures (``RELATION_SCOPING``,
-    ``RELATION_SCOPING_EXCLUDED``, and ``HONORED_SCOPING`` for the intents on
-    it) rather than ``HONORED_SCOPING`` as a whole: the team relation's
-    ``since``/``until`` pairing is ``TEAM_RELATION_SCOPING``'s own claim, made
-    and tested separately.
-
-    .. versionadded:: 4.4.0
-    """
-    from association.query.player_relation import RELATION_SCOPING, RELATION_SCOPING_EXCLUDED
-
-    assert {"since", "until"} <= RELATION_SCOPING
-    for intent, excluded in RELATION_SCOPING_EXCLUDED.items():
-        assert ("since" in excluded) == ("until" in excluded), f"{intent} excludes since XOR until"
-    on_the_relation = ["game_log", "player_stat", "period_split", "player_splits", "record_when", "streak"]
-    on_the_relation += ["shot_chart", "shot_distance"]
-    for intent in on_the_relation:
-        honored = _declared_scoping(intent)
-        assert ("since" in honored) == ("until" in honored), f"{intent} honors since XOR until"
 
 
 def test_templates_on_the_relation_do_not_narrow_it_themselves() -> None:
