@@ -28,14 +28,15 @@ from association.query.season_line import (
 )
 
 
-def test_scales_with_schedule_is_set_for_exactly_ts_efg_fg() -> None:
-    """The three floors ISSUES.md #13 measured (550, 480, 400) - and no
-    other metric, including the two built from the same ``_percentage``
-    helper (``three_pt_pct``, ``ft_pct``) that share the identical flaw but
-    were not measured, so they stay flat as a deliberate follow-up rather
-    than a guess."""
+def test_scales_with_schedule_is_set_for_exactly_the_five_percentage_floors() -> None:
+    """The three floors ISSUES.md #13 measured (550, 480, 400) and the two
+    ISSUES.md #104 measured the same way on 2026-10-09 (200 three-point
+    attempts, 125 free throws: the 72-game seasons qualified 149/161 and
+    128/129 players flat against 163-197 and 146-166 in full seasons, and
+    164/177 and 153/153 scaled) - and no other metric: a floor scales only
+    once its shortened-season counts have been measured, never by analogy."""
     scaled = {name for name, spec in LEADERBOARD_METRICS.items() if spec.scales_with_schedule}
-    assert scaled == {"ts_pct", "efg_pct", "fg_pct"}
+    assert scaled == {"ts_pct", "efg_pct", "fg_pct", "three_pt_pct", "ft_pct"}
 
 
 def test_scale_min_sample_matches_the_82_game_floor_at_82_games() -> None:

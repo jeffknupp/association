@@ -469,8 +469,16 @@ _BOX_SCORE_METRICS: dict[str, LeaderboardMetric] = {
     # fg_pct's 400 is one of the three floors ISSUES.md #13 measured against a
     # shortened season, so it scales; three_pt_pct and ft_pct do not yet.
     "fg_pct": _percentage("fieldGoalPct", "fieldGoalsMade", "fieldGoalsAttempted", "field-goal percentage", (400, 50, 2000, 250), scales_with_schedule=True),
-    "three_pt_pct": _percentage("threePointFieldGoalPct", "threePointFieldGoalsMade", "threePointFieldGoalsAttempted", "3-point percentage", (200, 25, 1000, 125)),
-    "ft_pct": _percentage("freeThrowPct", "freeThrowsMade", "freeThrowsAttempted", "free-throw percentage", (125, 15, 600, 75)),
+    # Scaled to the schedule like the three floors #13 measured, on the same
+    # measurement (ISSUES.md #104, 2026-10-09): at the flat floors 2020 and
+    # 2021 qualified 149 and 161 for 3-point percentage against 163-197 in
+    # every full season from 2019 on, and 128 and 129 for free-throw
+    # percentage against 146-166; scaled (176 and 110 attempts) they
+    # qualify 164/177 and 153/153. The 66-game 2012 season qualified 67 and
+    # 125 flat against its neighbours' 102-105 and 169-178; scaled (161 and
+    # 101) it qualifies 89 and 171.
+    "three_pt_pct": _percentage("threePointFieldGoalPct", "threePointFieldGoalsMade", "threePointFieldGoalsAttempted", "3-point percentage", (200, 25, 1000, 125), scales_with_schedule=True),
+    "ft_pct": _percentage("freeThrowPct", "freeThrowsMade", "freeThrowsAttempted", "free-throw percentage", (125, 15, 600, 75), scales_with_schedule=True),
 }
 LEADERBOARD_METRICS.update(_BOX_SCORE_METRICS)
 

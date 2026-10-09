@@ -1195,30 +1195,6 @@ those were found.
   number, or say in each comment why they differ.
 - **GitHub:** #12
 
-### `three_pt_pct` and `ft_pct` are the same shape as #13 and are not scaled
-- **Found:** 2026-09-18, while fixing #13 (shooting qualifiers flat across
-  shortened seasons)
-- **Evidence:** `three_pt_pct` (200 attempts) and `ft_pct` (125 attempts) are
-  built by the same `_percentage()` helper as `fg_pct`, calibrated the same
-  way - "5, 2.5 and 1.5 attempts a game... over 82... games" - and so carry
-  the identical 82-game-flat flaw #13 measured for `ts_pct`/`efg_pct`/`fg_pct`.
-  Not measured here: #13's evidence and next step named only those three
-  floors (`query/metrics.py:220,230,398` at the time), so only those three
-  were fixed (`LeaderboardMetric.scales_with_schedule`,
-  `season_line.default_min_sample`) - extending it to two more floors nobody
-  had measured would have been a guess, not a fix.
-- **User sees:** a 3-point or free-throw percentage leaderboard for a
-  shortened season (2020, 2021, the 2012 lockout season, and any earlier
-  strike/lockout season) applies a stricter-than-published qualifier, the
-  same way #13's three floors did before the fix.
-- **Next step:** measure `three_pt_pct` and `ft_pct`'s qualifying counts for
-  2020/2021/2012 against full seasons the way #13 was measured, then set
-  `scales_with_schedule=True` on both in `_percentage()`'s callers
-  (`query/metrics.py`) - the scaling mechanism (`season_line.py`,
-  `_team_games_for_season`/`_scale_min_sample`) already handles any metric
-  that flag is set on.
-- **GitHub:** #104
-
 ### Smaller game and box-score gaps, 1994-2003
 - **Found:** 2026-09-11, template work (agents A, D) and the issues audit;
   **the refetch question settled per event 2026-09-17**
