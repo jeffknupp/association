@@ -128,34 +128,6 @@ def test_a_stat_the_period_line_does_not_rebuild_is_refused(con: duckdb.DuckDBPy
     assert advanced is not None and "free throw percentages from them" in advanced.answer and "'ts_pct' is not among them" in advanced.answer
 
 
-def test_a_team_in_the_player_slot_asks_which_player(con: duckdb.DuckDBPyConnection) -> None:
-    """yardstick-v2 F125 "Most reb by a hawk player history" routed
-    player_history with player='Hawks': a team where one player belongs."""
-    refusal = unanswerable(con, "player_history", {"player": "Hawks", "stat": "rebounds"}, "Most reb by a hawk player history")
-    assert refusal is not None
-    assert "'Hawks' is a team" in refusal.answer and "rebounds" in refusal.answer
-    assert unanswerable(con, "player_history", {"player": "LeBron James", "stat": "rebounds"}, "lebron rebounds by year") is None
-    # A team-only intent is not this module's business - the team templates read it.
-    assert unanswerable(con, "team_record", {"player": "Hawks"}, "hawks record") is None
-
-
-def test_a_player_beside_a_team_is_never_called_a_team(con: duckdb.DuckDBPyConnection) -> None:
-    """ "celtics record when jayson tatum scores 30" was refused as "'jayson
-    tatum' is a team": the reading is the team's, with Tatum beside it, and
-    the refusal fired on the kind without asking the team index. What is
-    missing there is the line the record is split by, and the refusal says
-    so; with the line it is no refusal at all."""
-    con.execute("INSERT INTO players VALUES ('4','Jayson Tatum')")
-    con.execute("INSERT INTO teams VALUES ('3','Boston Celtics','BOS')")
-    slots: dict[str, Any] = {"player": "jayson tatum", "team": "Boston Celtics", "stat": "points", "season_type": 2}
-    refusal = unanswerable(con, "record_when", slots, "celtics record when jayson tatum has 30")
-    assert refusal is not None and refusal.data["refused"] == "team_where_a_player_belongs"
-    assert "is a team" not in refusal.answer and "needs a line" in refusal.answer and "'jayson tatum'" in refusal.answer
-    assert unanswerable(con, "record_when", {**slots, "threshold": 30}, "celtics record when jayson tatum scores 30") is None
-    # Beside a team, a player in any other template's slot has no sentence here: nothing is claimed.
-    assert unanswerable(con, "player_stat", {"player": "jayson tatum", "team": "Boston Celtics"}, "celtics stats when jayson tatum has a big game") is None
-
-
 def test_a_player_set_against_another_is_the_second_of_two_players(con: duckdb.DuckDBPyConnection) -> None:
     """yardstick-v2 F081 "lebron vs kawhi head to head": the pair relation
     is read by ``player_matchup``. The router filed the second player as the

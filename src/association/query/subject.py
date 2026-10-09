@@ -1526,7 +1526,7 @@ def team_named_in(teams: names.TeamIndex, question: str) -> str | None:
     .. versionchanged:: 5.0.0
        A possessive ("the Sixers' record") names the team as the bare word does.
 
-    .. versionchanged:: 5.0.0
+    .. versionchanged:: 6.0.0
        Lives in :mod:`association.query.subject`, the reader's, and takes the
        teams' in-memory index (:func:`~association.query.entities.teams_of`)
        in place of a connection: it was ``entities.team_named_in``.
@@ -1568,7 +1568,7 @@ def nicknames_in(question: str) -> list[str]:
 
     .. versionadded:: 2.1.0
 
-    .. versionchanged:: 5.0.0
+    .. versionchanged:: 6.0.0
        Lives in :mod:`association.query.subject`, the reader's: it was
        ``entities.nicknames_in``.
     """
@@ -1600,7 +1600,7 @@ def players_named_in(players: names.PlayerIndex, question: str) -> list[str]:
 
     .. versionadded:: 2.1.0
 
-    .. versionchanged:: 5.0.0
+    .. versionchanged:: 6.0.0
        Lives in :mod:`association.query.subject`, the reader's, and takes the
        players' in-memory index (:func:`~association.query.entities.players_of`)
        in place of a connection: it was ``entities.players_named_in``.
@@ -1742,7 +1742,7 @@ def question_derived_player(players: names.PlayerIndex, question: str, name: str
         more than one player (left for :func:`~association.query.entities.resolve_player` to ask about)
         or to none.
 
-    .. versionadded:: 5.0.0
+    .. versionadded:: 6.0.0
        ``entities._question_derived_player``, public in the reader, taking
        the players' in-memory index (:func:`~association.query.entities.players_of`).
     """
@@ -1853,7 +1853,7 @@ def compared_but_unmatched(players: names.PlayerIndex, question: str, held: list
        bool, so a name that resolves against the roster gets a true sentence
        instead of being folded into the same claim as one that does not.
 
-    .. versionchanged:: 5.0.0
+    .. versionchanged:: 6.0.0
        Lives in :mod:`association.query.subject`, the reader's, and takes the
        players' in-memory index (:func:`~association.query.entities.players_of`)
        in place of a connection: it was ``entities.compared_but_unmatched``.
@@ -1924,7 +1924,7 @@ def player_named_on_a_team_only_question(players: names.PlayerIndex, teams: name
 
     .. versionadded:: 4.4.0
 
-    .. versionchanged:: 5.0.0
+    .. versionchanged:: 6.0.0
        Lives in :mod:`association.query.subject`, the reader's, and takes the
        players' and teams' in-memory indexes (:func:`~association.query.entities.players_of`)
        in place of a connection: it was ``entities.player_named_on_a_team_only_question``.

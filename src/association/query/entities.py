@@ -86,7 +86,7 @@ def players_of(con: duckdb.DuckDBPyConnection) -> names.PlayerIndex:
     cannot run a statement (``scripts/check_ratchets.py``,
     ``con_in_the_reader``).
 
-    .. versionadded:: 5.0.0
+    .. versionadded:: 6.0.0
     """
     return names.players_for(con, _read_players)
 
@@ -95,7 +95,7 @@ def teams_of(con: duckdb.DuckDBPyConnection) -> names.TeamIndex:
     """The teams' index for ``con``, as :func:`players_of` hands the
     players': unchecked, its error kept (:func:`team_columns` raises it).
 
-    .. versionadded:: 5.0.0
+    .. versionadded:: 6.0.0
     """
     return names.teams_for(con, _read_teams)
 
@@ -104,7 +104,7 @@ def checked_players(index: names.PlayerIndex) -> names.PlayerIndex:
     """``index``, for a lookup that used to read ``players`` - raising what
     reading ``players`` raised, as that lookup's SQL did.
 
-    .. versionadded:: 5.0.0
+    .. versionadded:: 6.0.0
     """
     if index.error is not None:
         raise _again(index.error)
@@ -118,7 +118,7 @@ def team_columns(index: names.TeamIndex, *columns: str) -> names.TeamIndex:
     (:class:`duckdb.BinderException`). Several tests build a ``teams`` with
     no ``name`` or ``location``, and callers tell those errors apart.
 
-    .. versionadded:: 5.0.0
+    .. versionadded:: 6.0.0
     """
     if index.error is not None:
         raise _again(index.error)
@@ -151,7 +151,7 @@ def teams_named_by_word(teams: names.TeamIndex, word: str) -> list[str]:
 
     .. versionadded:: 5.0.0
 
-    .. versionchanged:: 5.0.0
+    .. versionchanged:: 6.0.0
        Takes the teams' in-memory index (:func:`teams_of`) in place of a
        connection.
     """

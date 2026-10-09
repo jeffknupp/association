@@ -34,10 +34,9 @@ import duckdb
 
 from association.query.answer import Reply
 from association.query.calendar import parse_alignment, parse_situation
-from association.query.entities import find_teams
 from association.query.measures import PERIOD_RATE_STATS
 from association.query.player_games import PERIOD_COLUMNS
-from association.query.reading import PLAYER_INTENTS, Reading, Scope
+from association.query.reading import Reading, Scope
 from association.query.router import _PERIOD_AS_CONDITION
 from association.query.subject import Subject
 from association.query.team_games import TEAM_PERIOD_COLUMNS
@@ -88,7 +87,7 @@ def unanswerable(con: duckdb.DuckDBPyConnection, reading: Reading, question: str
         # with none is a caller's mistake, said here rather than as an
         # AttributeError inside a check.
         raise ValueError("unanswerable needs the reading's subject - who the question is about, as the parser read it")
-    for check in (_playoff_round, _non_calendar_situation, _period_stat, _period_as_condition, _team_period_stat, _bench_points, _team_where_a_player_belongs, _team_boolean_count):
+    for check in (_playoff_round, _non_calendar_situation, _period_stat, _period_as_condition, _team_period_stat, _bench_points, _team_boolean_count):
         message = check(con, reading.intent, reading.scope, question, subject)
         if message is not None:
             return Reply(data={"message": message, "refused": check.__name__.lstrip("_"), "intent": reading.intent}, answer=message)
@@ -157,45 +156,6 @@ def _period_stat(con: duckdb.DuckDBPyConnection, intent: str, scope: Scope, ques
     return (
         f"By quarter or half, a line is rebuilt from the play-by-play - points, field goals, free throws, rebounds, assists, steals, blocks, turnovers and fouls, "
         f"and the field goal, 3-point and free throw percentages from them - and {stat!r} is not among them. Ask for one of those in {where}, or for {stat} over whole games."
-    )
-
-
-def _team_where_a_player_belongs(con: duckdb.DuckDBPyConnection, intent: str, scope: Scope, question: str, subject: Subject) -> str | None:
-    """A team in the ``player`` slot of a template that answers for one
-    player - the reading says the subject is the team and names no player:
-    ask which player was meant, or send the team's own question to the team
-    templates.
-
-    Only where the slot does name a team, by the team index: a team's record
-    split by a PLAYER beside it ("celtics record when jayson tatum scores")
-    reads as a team subject with Tatum in the ``player`` slot, and was
-    refused as "'jayson tatum' is a team". There the fact missing is the line
-    the record is split by, and the refusal says that
-    (:func:`_team_where_a_player_belongs_line`) - or nothing, for a shape it
-    has no sentence for. A word that is a team's and a player's both
-    ("magic") is the team here: the reading already chose it over the
-    player."""
-    player = scope.player
-    if intent not in PLAYER_INTENTS or not isinstance(player, str) or not player.strip():
-        return None
-    if subject.kind not in ("team", "team_players") or subject.players:
-        return None
-    if not find_teams(con, player):
-        return _team_where_a_player_belongs_line(intent, scope, player)
-    return f"'{player}' is a team, and this was read as a question about one player's {scope.stat or 'stats'}. Name a player, or ask for the team's own record or stats."
-
-
-def _team_where_a_player_belongs_line(intent: str, scope: Scope, player: str) -> str | None:
-    """The refusal for a player named beside a team where ``record_when`` has
-    no line to split the team's games by: the number and the stat together,
-    which is what the template needs and the question did not give."""
-    threshold = scope.threshold
-    if intent != "record_when" or (isinstance(threshold, int) and not isinstance(threshold, bool) and threshold >= 1 and scope.stat):
-        return None
-    team = f" {scope.team}" if isinstance(scope.team, str) and scope.team.strip() else " team's"
-    return (
-        f"A record split by '{player}' needs a line - a number and a stat, as in \"when {player} scores 30+ points\" - and this question gives none it can read. "
-        f"Ask with the line, or for the{team} record with and without {player}."
     )
 
 

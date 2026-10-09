@@ -15,6 +15,7 @@ from routed import slots_route
 from association.nba.season import current_season
 from association.query import names, subject
 from association.query.decisions import Decision
+from association.query.entities import find_teams
 from association.query.reading import Scope
 from association.query.subject import SUBJECT_KINDS, Subject, apply_subject, child_named, question_supports, read_subject, settle_subject
 
@@ -206,6 +207,41 @@ def test_a_team_conditioned_on_a_player_is_the_teams_question(con: duckdb.DuckDB
     assert s.kind == "team" and s.teams == ("Philadelphia 76ers",) and s.own_team is None
     s = _read(con, "lebron stats as a starter for the lakers", player="LeBron James")
     assert s.kind == "player" and s.own_team == "Los Angeles Lakers" and s.teams == ()
+
+
+@pytest.mark.parametrize(
+    ("question", "named", "stat"),
+    [
+        ("Most reb by a hawk player history", ["hawk"], "rebounds"),
+        ("Most reb by a hawk player history", ["Hawks"], "rebounds"),
+        ("celtics record when jayson tatum has 30", ["celtics", "jayson tatum"], "points"),
+        ("celtics record when jayson tatum scores 30 points", ["celtics", "jayson tatum"], "points"),
+        ("celtics record when jayson tatum has a big game", ["celtics", "jayson tatum"], ""),
+    ],
+)
+def test_no_reading_puts_a_team_where_a_player_belongs(con: duckdb.DuckDBPyConnection, question: str, named: list[str], stat: str) -> None:
+    """``refusals._team_where_a_player_belongs`` refused a TEAM in the
+    ``player`` slot of a one-player intent ("'Hawks' is a team, and this
+    was read as a question about one player's rebounds") and a team's
+    record split by a player beside it with no line to split by ("needs a
+    line"). It was deleted in Phase 3's first step, because no reading
+    reaches either shape: asked of every one of the 2,710 recorded and
+    feed questions it says nothing (``~/association-research/stages/refusal_sites.py``,
+    on 87cc782), and the parser reads the wordings its two tests were
+    written for with the team as the subject - never a team where a
+    player belongs, never a companion's record with no line. Held here,
+    on the reader, by the deleted check's own predicate."""
+    from association.query.parse import read_route, reading_from_route
+    from association.query.reading import PLAYER_INTENTS
+
+    route, _, _ = read_route(con, question, named, stat)
+    reading = reading_from_route(con, question, route)
+    assert reading.subject is not None
+    player = reading.scope.player
+    team_subject = reading.subject.kind in ("team", "team_players") and not reading.subject.players
+    if reading.intent in PLAYER_INTENTS and team_subject and player:
+        no_line = reading.intent == "record_when" and not (reading.scope.threshold and reading.scope.stat)
+        assert not find_teams(con, player) and not no_line, (question, reading.intent, player)
 
 
 def test_a_router_entry_that_is_not_what_its_slot_says_is_dropped(con: duckdb.DuckDBPyConnection) -> None:
