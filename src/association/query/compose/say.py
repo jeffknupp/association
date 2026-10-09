@@ -3254,10 +3254,13 @@ def say_period_leaderboard(result: Result) -> Reply:
 
 def _say_conference_named(facts: Mapping[str, Any]) -> str:
     """The refusal for a team slot that names a conference or a division:
-    no table maps a team to one."""
+    a record or a line here is one team's, and nothing adds a conference's
+    or a division's teams together yet (ISSUES.md #25). Not "no
+    membership": ``team_alignment`` has held every team's conference and
+    division since 2026-09-24, and a player's games against one are read."""
     return (
-        f"The warehouse has no conference or division membership for any team, so nothing about {facts['named']!r} can be tallied from it. "
-        "The only conference figure it holds is each team's record in its own conference's games."
+        f"{facts['named']!r} is a conference or a division, not a team: a record or a line here is read for one team, "
+        "and nothing adds up a conference's or a division's teams yet. Name a team instead."
     )
 
 

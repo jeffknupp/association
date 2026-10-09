@@ -1840,7 +1840,7 @@ those were found.
   over.
 - **What remains (the SUBJECT-is-a-conference half - "who leads the East",
   "Western Conference standings").** Unchanged by this fix: `_conference_refusal`
-  (`templates/teams.py` then; `refusals.conference_named` and `compose.say.say_conference_refusal`, from `compose/team_records.py`, now) still refuses a `team`/`opponent` slot that names a
+  (`templates/teams.py` then; `calendar.conference_named` and the sayer's `conference_named` phrase, from `compose/team_records.py` and `team_stats.py`, now - its sentence said "no conference or division membership" until 2026-10-09 and names the tally that is missing now; no reading of the 2,710 puts a conference in a team slot, measured that day) still refuses a `team`/`opponent` slot that names a
   conference or division, and "Western Conference standings" was still handed
   to an agent with no conference data grounded for it either, because
   neither shape reads `situation` - the router files a conference/division

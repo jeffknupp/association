@@ -381,9 +381,16 @@ def test_an_all_time_home_record_counts_only_seasons_with_a_split(team_ctx: Answ
 
 
 def test_a_conference_is_refused_by_name(team_ctx: AnswerContext) -> None:
-    """No table maps a team to a conference, so there is nothing to tally."""
+    """A conference where a team belongs is refused for what is missing - a
+    tally of the conference's teams - never "no membership": the warehouse
+    holds every team's conference and division (``team_alignment``), and
+    said otherwise until 2026-10-09 (Phase 3, step 0)."""
     answer = team_record(team_ctx, Reading.from_slots({"team": "Knicks", "opponent": "Western Conference"})).answer
-    assert "no conference or division membership" in answer and "53-29" not in answer
+    assert answer == (
+        "'Western Conference' is a conference or a division, not a team: a record or a line here is read for one team, "
+        "and nothing adds up a conference's or a division's teams yet. Name a team instead."
+    )
+    assert "membership" not in answer and "53-29" not in answer
 
 
 def test_a_career_span_and_a_single_season_at_once_falls_through(team_ctx: AnswerContext) -> None:
