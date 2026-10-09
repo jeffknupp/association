@@ -47,25 +47,6 @@ _AGE = re.compile(r"\b(?:\d+\s+years?\s+old|(?:before|after|by|at)\s+(?:turning|
 _CONFERENCE_OR_DIVISION = re.compile(r"\b(?:east(?:ern)?|west(?:ern)?|conference|division|atlantic|central|southeast|northwest|pacific|southwest)\b", re.IGNORECASE)
 
 
-# Conference and division words. The warehouse holds no membership for either:
-# no table maps a team to one, and standings carry only each team's record in
-# its OWN conference's and division's games. So a team slot naming one cannot be
-# answered, and is refused by name; resolved as a team it would match nothing
-# and be refused for the wrong cause.
-_CONFERENCE_WORDS = re.compile(r"\b(?:conferences?|divisions?|east(?:ern)?|west(?:ern)?|atlantic|central|southeast|northwest|pacific|southwest)\b", re.IGNORECASE)
-
-
-def conference_named(scope: Scope) -> str | None:
-    """The team slot (``team``, ``opponent`` or one of ``teams``) that holds
-    a conference or a division rather than a team, or None - a team's record
-    is refused naming it (``compose.say.say_conference_refusal``).
-
-    .. versionadded:: 5.0.0
-       ``templates.teams._conference_refusal``'s reading.
-    """
-    return next((c for c in (scope.team, scope.opponent, *scope.teams) if c and _CONFERENCE_WORDS.search(c)), None)
-
-
 def unanswerable(con: duckdb.DuckDBPyConnection, reading: Reading, question: str) -> Reply | None:
     """The refusal for a question shape nothing here reads, or None where
     this module has nothing to add to the template's or compiler's own
@@ -234,34 +215,6 @@ def _bench_points(con: duckdb.DuckDBPyConnection, intent: str, scope: Scope, que
         "Bench points are not read yet - the box score flags starters, so a bench total could be built, but no template or the compiler adds one up today. "
         "Ask for a named player's points, or a team's points, instead."
     )
-
-
-MIN_QUESTION_WORDS = 3
-"""A question with fewer words than this is refused unread.
-
-Jeff, 2026-09-29: short or nonsensical questions are refused with a generic
-sentence, and no effort is spent on them - most of the StatMuse feed's
-two-word rows ("Tatum rec", "bam stats", "jaylen brown") are a user hitting
-enter before the question was typed, and a system that guesses at them
-answered "Tatum rec" with his splits. Measured before choosing the line: 215
-of the large feed's 2,285 questions have one or two words, almost all bare
-names; in the 175-question yardstick only "Tatum rec" has under three, and
-every three-word question ("76ers away record", "luka td3s home") answers.
-
-.. versionadded:: 5.0.0
-"""
-
-
-def too_short(question: str) -> str | None:
-    """The generic refusal for a question of fewer than
-    :data:`MIN_QUESTION_WORDS` words, or None. Decided from the words alone,
-    before the normalizer is asked, so a short question costs no model call.
-
-    .. versionadded:: 5.0.0
-    """
-    if len(question.split()) >= MIN_QUESTION_WORDS:
-        return None
-    return f"I couldn't understand your question, '{question.strip()}'. Please try re-phrasing it."
 
 
 def by_question(question: str, intent: str | None) -> Reply | None:

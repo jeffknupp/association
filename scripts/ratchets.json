@@ -9,7 +9,6 @@
   "refusals:_team_boolean_count",
   "refusals:_team_period_stat",
   "refusals:by_question",
-  "refusals:too_short",
   "refusals:unanswerable"
  ],
  "sql_outside_the_relations": {

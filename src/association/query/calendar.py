@@ -19,9 +19,12 @@ import re
 import time
 from dataclasses import dataclass
 from datetime import date
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from association.query.season_text import MONTH_NAMES as _MONTH_NAMES
+
+if TYPE_CHECKING:
+    from association.query.reading import Scope
 
 WEEKDAYS: tuple[str, ...] = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
 """ISO order, Monday first - ``EXTRACT(ISODOW ...)`` numbers them 1-7."""
@@ -368,3 +371,28 @@ def alignment_clause(narrowing: AlignmentNarrowing, opponent_team_id: str, seaso
         f"EXISTS (SELECT 1 FROM team_alignment ta WHERE ta.team_id = {opponent_team_id} AND ta.season = {season} AND ta.{column} = ?)",
         [narrowing.value],
     )
+
+
+# Conference and division words where a TEAM belongs - the team or opponent
+# slot. As an opponent narrowing ("vs the west") they are read above
+# (parse_alignment, over `team_alignment`); as the team a record or a line is
+# about ("who leads the east"), nothing reads a conference's own standings or
+# leaders yet (ISSUES.md #25). So a team slot naming one is refused by name;
+# resolved as a team it would match nothing and be refused for the wrong cause.
+_CONFERENCE_WORDS = re.compile(r"\b(?:conferences?|divisions?|east(?:ern)?|west(?:ern)?|atlantic|central|southeast|northwest|pacific|southwest)\b", re.IGNORECASE)
+
+
+def conference_named(scope: Scope) -> str | None:
+    """The team slot (``team``, ``opponent`` or one of ``teams``) that holds
+    a conference or a division rather than a team, or None - a team's record
+    is refused naming it (``compose.say.say_conference_refusal``).
+
+    .. versionadded:: 5.0.0
+       ``templates.teams._conference_refusal``'s reading.
+
+    .. versionchanged:: 6.0.0
+       Lives here, beside :func:`parse_alignment`, which reads the same
+       words as an opponent narrowing: it was ``refusals.conference_named``,
+       and ``refusals`` is gone (Phase 3, step 0).
+    """
+    return next((c for c in (scope.team, scope.opponent, *scope.teams) if c and _CONFERENCE_WORDS.search(c)), None)

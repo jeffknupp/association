@@ -1842,6 +1842,7 @@ _CAUSE_EXAMPLES: dict[str, dict[str, Any]] = {
     "matchup_needs_two": {"names": ["Jayson Tatum"]},
     "no_period_stat": {"stat": "minutes"},
     "no_coach_table": {"unanswerable": "coach"},
+    "too_short": {"asked": "Tatum rec"},
 }
 
 

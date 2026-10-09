@@ -137,7 +137,7 @@ def read_team_record(con: duckdb.DuckDBPyConnection, q: TeamQuery, *, stated: fr
     .. versionadded:: 5.0.0
        ``templates.teams.team_record`` was this, with its sentences.
     """
-    from association.query.refusals import conference_named
+    from association.query.calendar import conference_named
 
     scope = q.scope
     if unhonored_scoping("team_record", scope, stated):

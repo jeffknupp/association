@@ -35,7 +35,7 @@ from association.query.entities import _edit_budget, _words, find_players, find_
 from association.query.measures import MEASURE_WORDS, PERIOD_COLUMNS
 from association.query.metrics import EXTRA_FIELD_COLUMNS, TEAM_FIELD_WORDS
 from association.query.point import read_point
-from association.query.reading import ConditionSpec, PeriodCondition, PointRefused, Reading, Scope, ScopeError, Split, Unsupported
+from association.query.reading import Cause, ConditionSpec, PeriodCondition, PointRefused, Reading, Scope, ScopeError, Split, Unsupported
 from association.query.router import Route, _period_asked, _route_calendar_slots_split, settle
 from association.query.subject import (
     TEAM_SINGULARS,
@@ -796,6 +796,45 @@ def _read_route_split(subject: Subject, question: str, intent: str, scope: Scope
 # question - and never before the normalizer is asked, since the model
 # copies the names from the question as typed and its recorded replies are
 # keyed on it.
+MIN_QUESTION_WORDS = 3
+"""A question with fewer words than this is refused unread.
+
+Jeff, 2026-09-29: short or nonsensical questions are refused with a generic
+sentence, and no effort is spent on them - most of the StatMuse feed's
+two-word rows ("Tatum rec", "bam stats", "jaylen brown") are a user hitting
+enter before the question was typed, and a system that guesses at them
+answered "Tatum rec" with his splits. Measured before choosing the line: 215
+of the large feed's 2,285 questions have one or two words, almost all bare
+names; in the 175-question yardstick only "Tatum rec" has under three, and
+every three-word question ("76ers away record", "luka td3s home") answers.
+
+.. versionadded:: 5.0.0
+
+.. versionchanged:: 6.0.0
+   The parser's: it was ``refusals.MIN_QUESTION_WORDS``.
+"""
+
+
+def too_short(question: str) -> Cause | None:
+    """The parser's first reading of the words: a question of fewer than
+    :data:`MIN_QUESTION_WORDS` words is refused unread, by the
+    ``too_short`` :class:`~association.query.reading.Cause` (the words as
+    typed, which its generic sentence quotes), or None. Decided from the
+    words alone, before the normalizer is asked, so a short question costs
+    no model call; the answering loop refuses by this verdict and the
+    planner says it (:func:`~association.query.compose.plan.refusal_result`).
+
+    .. versionadded:: 5.0.0
+
+    .. versionchanged:: 6.0.0
+       The parser's, returning the cause: it was ``refusals.too_short``,
+       which returned the sentence.
+    """
+    if len(question.split()) >= MIN_QUESTION_WORDS:
+        return None
+    return Cause(kind="too_short", facts={"asked": question.strip()})
+
+
 _READ_ROUTE_APOSTROPHES = str.maketrans({"\u2019": "'", "\u2018": "'"})
 
 

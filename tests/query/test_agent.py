@@ -717,7 +717,7 @@ def test_a_slot_the_reading_cannot_hold_is_refused_rather_than_crashing(monkeypa
 def test_a_short_question_is_refused_before_the_model_is_asked(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """ "Tatum rec" used to answer his splits; a question of fewer than three
     words is refused with the generic sentence and costs no model call
-    (refusals.too_short)."""
+    (the parser's first verdict, parse.too_short, said by the planner)."""
 
     def never(model: str, question: str) -> None:
         raise AssertionError("the normalizer must not be asked a two-word question")

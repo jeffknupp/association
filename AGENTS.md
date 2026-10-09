@@ -744,9 +744,11 @@ that is not allowed.
 sentence ("I couldn't understand your question, 'Tatum rec'. Please try
 re-phrasing it."), and no effort is spent on them - most of the StatMuse
 feed's two-word rows are a user hitting enter before the question was typed,
-and guessing at "Tatum rec" answered his splits. `refusals.too_short` (fewer
-than `MIN_QUESTION_WORDS`, three) runs in `Agent.ask` before the normalizer,
-so a short question costs no model call.
+and guessing at "Tatum rec" answered his splits. It is the parser's first
+verdict: `parse.too_short` (fewer than `parse.MIN_QUESTION_WORDS`, three)
+reads the words as typed into the `too_short` cause, and `Agent.ask` asks it
+before the normalizer, so a short question costs no model call, and has the
+planner say it (`compose.plan.refusal_result`, answered `"refused"`).
 Measured before the line was chosen: 215 of the large feed's 2,285 questions
 have one or two words, almost all bare names, and in the yardstick only
 "Tatum rec" has under three while every three-word question answers. Do not

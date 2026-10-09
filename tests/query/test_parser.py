@@ -656,3 +656,22 @@ def test_a_period_used_as_a_condition_is_read_into_the_scope_and_off_the_period_
     assert plain.intent == "period_split" and plain.scope.period_condition is None
     unread, _, _ = read_route(con, "tyrese maxey three points made per game after scoring a lot in the first quarter", ["tyrese maxey"], "threePointFieldGoalsMade")
     assert unread.intent == "other" and unread.scope.period_condition is None
+
+
+def test_a_question_of_fewer_than_three_words_is_refused_unread() -> None:
+    """Jeff, 2026-09-29: "Tatum rec" and the feed's bare names are a user
+    hitting enter early, and are refused with a generic sentence rather than
+    guessed at. Three words is a question ("76ers away record"). The
+    parser's first verdict, a cause the planner says (Phase 3, step 0: it
+    was ``refusals.too_short``, which returned the sentence)."""
+    from association.query.compose.plan import refusal_result
+    from association.query.parse import MIN_QUESTION_WORDS, too_short
+    from association.query.reading import Cause
+
+    assert MIN_QUESTION_WORDS == 3
+    assert too_short("Tatum rec") == Cause(kind="too_short", facts={"asked": "Tatum rec"})
+    assert refusal_result(Cause(kind="too_short", facts={"asked": "Tatum rec"})).answer == "I couldn't understand your question, 'Tatum rec'. Please try re-phrasing it."
+    short = too_short("  bam stats ")
+    assert short is not None and refusal_result(short).answer == "I couldn't understand your question, 'bam stats'. Please try re-phrasing it."
+    assert too_short("76ers away record") is None
+    assert too_short("luka td3s home") is None

@@ -440,6 +440,7 @@ CAUSES: frozenset[str] = frozenset(
         "matchup_needs_two",
         "no_period_stat",
         "no_coach_table",
+        "too_short",
     }
 )
 """The closed set of causes a point reading refuses by (:class:`Cause.kind`),
@@ -469,7 +470,10 @@ missing thing, never only the slot"):
   players (``matchup_needs_two``: ``names``); a quarter's or half's figure
   the period's line does not rebuild (``no_period_stat``: ``stat``);
 - a question about a coach, which no table here holds (``no_coach_table``:
-  ``unanswerable``, the shape nothing reads).
+  ``unanswerable``, the shape nothing reads);
+- a question too short to be one, refused unread before the normalizer is
+  asked (``too_short``: ``asked``, the words as typed - the parser's
+  :func:`~association.query.parse.too_short`).
 
 The planner says each (``compose.plan.refusal_result``); a new cause is an
 entry here and a sentence there.

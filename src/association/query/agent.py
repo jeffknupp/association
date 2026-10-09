@@ -37,7 +37,7 @@ from association.query.reading import PLAYER_INTENTS, TEAM_ONLY_INTENTS
 
 from .answer import Answer, AnsweredBy, Artifact, Timing
 from .compose import COMPILED_INTENTS
-from .compose.plan import Planned, plan_point
+from .compose.plan import Planned, plan_point, refusal_result
 from .connection import connect_read_only, latest_season_on_record
 from .entities import collect_name_readings, misread_players, players_of, team_only_question_names_a_player, teams_of
 from .history import DEFAULT_HISTORY_DIR, RunHistory, echo_to_stderr
@@ -45,8 +45,9 @@ from .models import DEFAULT_ROUTER_MODEL
 from .names import loaded as names_loaded
 from .notes import collect as collect_remarks
 from .notes import unsaid
+from .parse import MIN_QUESTION_WORDS, too_short
 from .reading import Reading, Scope, ScopeError
-from .refusals import MIN_QUESTION_WORDS, by_question, too_short, unanswerable
+from .refusals import by_question, unanswerable
 from .router import Route, RouterUnavailable
 from .subject import compared_but_unmatched, player_named_on_a_team_only_question
 
@@ -184,7 +185,7 @@ class Agent:
            why (``answered_by="refused"``), never handed to a model.
 
         .. versionchanged:: 5.0.0
-           A question of fewer than :data:`~association.query.refusals.MIN_QUESTION_WORDS`
+           A question of fewer than :data:`~association.query.parse.MIN_QUESTION_WORDS`
            words is refused unread, with a generic sentence, before the
            normalizer is asked.
         """
@@ -503,13 +504,14 @@ class Agent:
             _note(composed, unmatched_note)
 
     def _ask_inner(self, question: str, history: RunHistory) -> Answer:
-        # A question too short to be one is refused before anything reads
-        # it (refusals.too_short): no model call, no guess at "Tatum rec".
+        # A question too short to be one is refused before anything else
+        # reads it - the parser's first verdict (parse.too_short), said by
+        # the planner: no model call, no guess at "Tatum rec".
         short = too_short(question)
         if short is not None:
             self.unanswered = f"fewer than {MIN_QUESTION_WORDS} words"
             history.log(f"  -> (refused) {self.unanswered}")
-            return self._answer(question, history, short, "refused")
+            return self._answer(question, history, refusal_result(short).answer, "refused")
         fast = self._try_fast_path(question, history)
         if fast is not None:
             intent, templated = fast

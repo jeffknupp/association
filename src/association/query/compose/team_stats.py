@@ -63,13 +63,13 @@ class TeamSeasonQuery:
 
 def conference_refusal(scope: Scope) -> Unanswered | None:
     """The refusal naming the real cause, where a team slot holds a
-    conference or a division rather than a team (``refusals.conference_named``,
+    conference or a division rather than a team (``calendar.conference_named``,
     said by the sayer's ``conference_named`` phrase) - None otherwise.
 
     .. versionadded:: 5.0.0
        ``templates.teams.conference_refusal`` was this.
     """
-    from association.query.refusals import conference_named
+    from association.query.calendar import conference_named
 
     named = conference_named(scope)
     return Refusal(kind="conference_named", facts={"named": named}, shown={"unanswerable": named}) if named is not None else None
