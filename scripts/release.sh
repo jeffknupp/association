@@ -63,6 +63,11 @@ fi
 # the section's leading entries - whole ones, cut at a top-level "- " line -
 # followed by a link to the full section in CHANGES.md at this tag, so the
 # release page is still a prefix of the changelog and never a rewrite of it.
+#
+# The notes travel through stdin, never as an argument or an environment
+# variable: Linux caps either at 128 KiB (MAX_ARG_STRLEN), 5.0.0's section
+# was 293,016 bytes, and the cut below failed with "Argument list too long"
+# before the prompt - 4.4.0's 129,987 had fit by 1,085 bytes.
 NOTES_LIMIT=125000
 if (( ${#notes} > NOTES_LIMIT )); then
     heading=$(grep -m1 "^## ${VERSION} " CHANGES.md)
@@ -70,9 +75,9 @@ if (( ${#notes} > NOTES_LIMIT )); then
     link="https://github.com/jeffknupp/association/blob/${TAG}/CHANGES.md#${anchor}"
     pointer=$'\n\n'"**These notes are cut short: the full ${VERSION} section (${#notes} characters) is longer than a GitHub release allows. Read all of it in [CHANGES.md](${link}).**"
     budget=$(( NOTES_LIMIT - ${#pointer} - 1000 ))
-    notes=$(NOTES="${notes}" BUDGET="${budget}" python3 -c '
-import os
-notes, budget = os.environ["NOTES"], int(os.environ["BUDGET"])
+    notes=$(printf '%s' "${notes}" | BUDGET="${budget}" python3 -c '
+import os, sys
+notes, budget = sys.stdin.read(), int(os.environ["BUDGET"])
 cut = notes.rfind("\n- ", 0, budget)
 print(notes[:cut].rstrip() if cut > 0 else notes[:budget])
 ')"${pointer}"
@@ -101,7 +106,7 @@ echo "-------------"
 read -r -p "Continue? [y/N] " reply
 [[ "${reply}" == "y" || "${reply}" == "Y" ]] || { echo "aborted"; exit 1; }
 
-args=(release create "${TAG}" --title "association ${VERSION}" --notes "${notes}")
+args=(release create "${TAG}" --title "association ${VERSION}" --notes-file -)
 [[ "${DRAFT}" == "--draft" ]] && args+=(--draft)
 
-gh "${args[@]}"
+printf '%s' "${notes}" | gh "${args[@]}"
