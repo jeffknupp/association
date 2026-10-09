@@ -4285,14 +4285,6 @@ those were found.
 - **Source:** ours.
 - **GitHub:** #253
 
-### A multi-game shot chart's markup order changes from run to run
-- **Found:** 2026-09-27, plan item 6 step (d) round 2, diffing the charts a direct-call golden wrote.
-- **Evidence:** `shotchart.py:513` selects the shots with no `ORDER BY`. Drawing the same games twice on 0a7140a gave six multi-game charts (Stephen Curry's 14, 23, 28, 41, 187 and 194 games) different bytes that are identical as sorted markup fragments: the same shots, in another order.
-- **User sees:** nothing, beyond which of two overlapping markers is drawn on top.
-- **Next step:** order the read (event, period, clock) so a chart is byte-reproducible, and a golden can compare chart contents rather than only file names.
-- **Source:** ours.
-- **GitHub:** #254
-
 ### The normalizer's `names` array has no `maxItems`, the bound the router's schema put on every array after a live hang
 - **Found:** 2026-09-27, plan item 6 step (d) part 3, re-aiming the router's schema tests at the normalizer: `test_array_slots_are_bounded` could not be kept, because it would fail.
 - **Evidence:** `NORMALIZER_SCHEMA["properties"]["names"]` is `{"type": "array", "items": {"type": "string"}}` (`query/normalizer.py`). The router's schema bounded `players` and `fields` because, measured live, an unbounded array under constrained decoding let the grammar permit "one more item" forever: the model emitted `["points","minutes","minutes"]` on one question and then hung for over five minutes on the next (the comment went with `router_prompt.py`). Not seen on the normalizer: three live runs over the 277 day10 wordings finished at about 5.3 minutes each.
