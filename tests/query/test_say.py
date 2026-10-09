@@ -191,6 +191,28 @@ def test_a_league_count_names_the_leaders_and_the_rest() -> None:
     )
 
 
+def test_a_postseason_netpoints_split_is_labeled_the_whole_seasons() -> None:
+    """ISSUES.md #299: ESPN's fingerprint table has no season type, so a
+    postseason question's play-type split was headed "in the 2025
+    postseason" over the whole season's 5,387 possessions. The reader notes
+    the term and the headline names the season whole, with why."""
+    from association.query.compose.say import _say_netpoints_headline
+    from association.query.result import NetPointsFacts, Scalar
+
+    result = Result(
+        subject="Nikola Jokic",
+        relation="player",
+        span=Span(season=2025, season_type=3, phrase="2025 postseason", source="netpoints"),
+        parts=(Part(body=Scalar(games=0, how="per_100")),),
+        notes=(Note("part_missing", {"what": "season_totals"}), Note("definition", {"term": "fingerprint_per_season"})),
+        facts=NetPointsFacts(per_100=True, possessions=5387),
+    )
+    assert _say_netpoints_headline(result, None) == [
+        "Nikola Jokic, NetPoints fingerprint in the 2025 season (no season totals on record)"
+        " - ESPN publishes the play-type split per season, with no postseason breakout, so this is the whole season's:"
+    ]
+
+
 def test_a_gap_note_claims_only_what_a_narrowed_tally_can() -> None:
     """ISSUES.md #298: a season's game list short by a game made an October
     road record "off by those games" though the missing game may have been

@@ -2366,13 +2366,6 @@ those were found.
 - **Next step:** measure over the corpus's splits; say the seasons the unseen games are in.
 - **GitHub:** #295
 
-### A postseason NetPoints answer prints the whole season's play-type split under a postseason label
-- **Found:** 2026-09-30, the notes inventory for `ROADMAP-TYPES.md` (an Opus agent reading `011091f`; reported, not re-verified).
-- **Evidence:** the season fingerprint table has no season type (`compose/netpoints.py`, `templates/netpoints.py:98-102` when found; `fingerprint.py:457,979-980`); its sayer (`compose.say`'s NetPoints phrases; `templates/netpoints.py:113,331` when found) labels the answer "{season} postseason" and `fingerprint.py:853` captions the plot "{season} season". Nothing says the split is the whole season's.
-- **User sees:** a play-type split labeled as the playoffs' that is not.
-- **Next step:** confirm against a playoff NetPoints question; say the split covers the whole season, or refuse the split for a postseason.
-- **GitHub:** #299
-
 ### A league-wide compiled answer carries no box-score caveat
 - **Found:** 2026-09-30, the notes inventory for `ROADMAP-TYPES.md` (an Opus agent reading `011091f`; reported, not re-verified).
 - **Evidence:** `compose/core.py:899-900` reads the notes only for a named player; the `threshold_count` presenter did say them league-wide (`templates/players.py:259` when found; `compose/counts.py` and `compose.say.say_threshold_count` now).

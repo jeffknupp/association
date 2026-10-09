@@ -145,6 +145,8 @@ _FIXED_DEFINITIONS: dict[str, str] = {
     "most_recent_team": "\nTeam is each player's most recent team that season.",
     "rank_meaning": "Rank 1st is the best in the league (for pace, the fastest).",
     "unseen_ends_run": " A game with no box score in the warehouse ends a run rather than being carried across, since it cannot be checked.",
+    # A postseason question over ESPN's per-season split (ISSUES.md #299).
+    "fingerprint_per_season": " - ESPN publishes the play-type split per season, with no postseason breakout, so this is the whole season's",
     # Inside the heading of NetPoints' play-type detail, which it splits over two lines.
     "netpoints_overlap": "overlapping slices - a driving layup at the rim\n  counts in driving, layup and rim, so these do not add up",
 }
@@ -3804,8 +3806,14 @@ def _say_netpoints_season(result: Result, totals: Mapping[str, Any] | None, brea
 def _say_netpoints_headline(result: Result, totals: Mapping[str, Any] | None) -> list[str]:
     """The season-total line, and its minutes and games, or the note that there are none."""
     name, period = result.subject, result.span.phrase
+    per_season = next((each for each in result.notes if each.kind == "definition" and each.facts.get("term") == "fingerprint_per_season"), None)
+    if per_season is not None:
+        # A postseason question over the per-season split (#299): the season
+        # named as a whole, and why.
+        period = f"{result.span.season} season"
     if totals is None:
-        return [f"{name}, NetPoints fingerprint in the {period} {_netpoints_said(result, 'part_missing', what='season_totals')}:"]
+        heading = f"{name}, NetPoints fingerprint in the {period} {_netpoints_said(result, 'part_missing', what='season_totals')}"
+        return [heading + (note(per_season.kind, note_phrase(per_season), **per_season.facts) if per_season is not None else "") + ":"]
     lines = [f"{name}, NetPoints in the {period}: {table_cell(totals['overall'])} overall ({table_cell(totals['offense'])} offense, {table_cell(totals['defense'])} defense)"]
     detail = _netpoints_line_detail(totals)
     if detail:

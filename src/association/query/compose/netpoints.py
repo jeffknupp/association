@@ -224,6 +224,11 @@ def _netpoints_season(con: duckdb.DuckDBPyConnection, player: Entity, season: in
         parts.append(Part(body=Scalar(games=int(totals_row[5]) if totals_row[5] else 0, values=dict(zip(_NETPOINTS_TOTALS, totals_row, strict=True)), how="per_100")))
     else:
         notes.append(Note("part_missing", {"what": "season_totals"}))
+    if breakdown and season_type == 3:
+        # The fingerprint table has no season type: its split is the whole
+        # season's, and a postseason answer says so rather than labeling it
+        # the playoffs' (ISSUES.md #299).
+        notes.append(Note("definition", {"term": "fingerprint_per_season"}))
     if breakdown:
         parts.append(Part(role="detail" if parts else "answer", body=Grouped(by="category", rows=tuple(breakdown))))
         units = "per 100 possessions" if per_100 else "season totals"
