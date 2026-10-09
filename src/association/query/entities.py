@@ -306,11 +306,23 @@ PLAYER_NICKNAMES = {
 }
 
 
+# The letters NFKD leaves whole, having no decomposition - a dotless i, a
+# stroked o, d or l, an eszett, the ligatures - which the ASCII encode then
+# dropped: Omer Asik typed with his dotless i folded to "Ask", a stroked D
+# at the head of a name vanished, "Soren" with a stroked o became "Sren"
+# (ISSUES.md #244). Each to the plain letters the warehouse spells it with.
+_FOLD_WHOLE_LETTERS = str.maketrans(
+    {"ı": "i", "ø": "o", "Ø": "O", "đ": "d", "Đ": "D", "ł": "l", "Ł": "L", "ß": "ss", "æ": "ae", "Æ": "AE", "œ": "oe", "Œ": "OE", "þ": "th", "Þ": "Th", "ð": "d", "Ð": "D"}  # noqa: RUF001 - the dotless i is the letter being spelled out
+)
+
+
 def _fold(text: str) -> str:
     """``"dončić"`` -> ``"doncic"``: the warehouse spells every name in plain
     letters, and a question typed with the accents matched nothing - "luka
-    dončić last 15 games vs. magic" lost Luka and answered the Lakers' log."""
-    return unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode()
+    dončić last 15 games vs. magic" lost Luka and answered the Lakers' log.
+    A letter with no decomposition - the dotless i in Omer Asik's surname,
+    a stroked o - is spelled out first (:data:`_FOLD_WHOLE_LETTERS`)."""
+    return unicodedata.normalize("NFKD", text.translate(_FOLD_WHOLE_LETTERS)).encode("ascii", "ignore").decode()
 
 
 # Words of a name or a question, split on anything that is not a letter so

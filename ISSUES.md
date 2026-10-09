@@ -2883,15 +2883,14 @@ those were found.
 ### Package review leftovers: one fold, one ordinal, one month list, and an untested third of the parent grammar
 - **Found:** 2026-09-27, the package review of plan item 6's steps (a)-(d) (read-only agent; not each re-verified by the lead).
 - **Evidence:**
-  - `entities._fold` (entities.py:255) drops letters with no decomposition: "Aşık" -> "Ask", "Đorđević" -> "orevic", "Søren" -> "Sren"; `fetch/parse.py:975` folds differently, keeping them. A 10-entry `str.maketrans` (or anyascii, ISC) fixes it.
   - The ordinal suffix is written four times: `reading.ordinal_word` and `templates/common.py`'s `_ordinal` (since deleted) (identical, same module), `player_games.py:407`, `fingerprint.py:727`. All agree today.
   - Month names are defined six times (router.py:501, :511, :1084; calendar.py:44; conditions.py:451; subject.py:301), and `parse._PLAYER_LOG` omits May and June; number words were five copies until fe53c72 gave the parser one table (router.py:469, :477, :1706 and subject.py:111 still hold their own).
   - 13 of `PARENT_GRAMMAR`'s 30 rows have no direct `parent_intent` case in tests/query/test_parser.py (period_leaderboard, period_split, coach, team_players, the team top-N leaderboard, team streak, the team_stat fallback, player_netpoints, player+companions, both position rows, the everyone streak, everyone finals/game_log); the measurement that exercises them lives outside the repo.
   - `pyproject.toml`'s import-linter comment says pydantic comes from `association[web]`; it is in every core install through ollama (uv.lock), which imports it at load.
   - `nba/season.py:40` says every day 1970-2040 is checked against zoneinfo; the test covers 1976-01-01 to 2039-12-31.
   - DuckDB's `levenshtein`/`damerau_levenshtein` count UTF-8 bytes, not letters: `damerau_levenshtein('ö','o')` is 2 and `('şengün','sengun')` 4 (measured with the rapidfuzz switch, which agrees with DuckDB on all 142,880 ASCII word pairs tried). The entity index measures with them (entities.py:347, :397, :1400); where an accented string reaches them unfolded it is charged double - not checked whether any does.
-- **User sees:** "Ömer Aşık" typed with the Turkish letter matches nobody; the rest is maintenance - a vocabulary fixed in one copy and not the others, or a grammar row deleted with no repo test failing.
-- **Next step:** one table per concept (months, ordinals, number words) imported everywhere; a parametrized `parent_intent` table with a meta-assert that every row is hit, watched to fail; the fold's translate table; the two comments corrected.
+- **User sees:** maintenance - a vocabulary fixed in one copy and not the others, or a grammar row deleted with no repo test failing.
+- **Next step:** one table per concept (months, ordinals, number words) imported everywhere - the span and window slices gave the lexicon the season and count tables, the games' cuts slice takes the months; a parametrized `parent_intent` table with a meta-assert that every row is hit, watched to fail; the two comments corrected. (The fold's translate table landed 2026-10-09.)
 - **Source:** ours.
 - **GitHub:** #244
 

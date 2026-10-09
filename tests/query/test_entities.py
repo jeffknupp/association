@@ -900,6 +900,19 @@ def test_a_name_typed_with_accents_still_names_its_player(scope_con: duckdb.Duck
     assert [p.name for p in find_players(scope_con, "dončić")] == ["Luka Doncic"]
 
 
+def test_a_letter_with_no_decomposition_folds_to_its_plain_spelling() -> None:
+    """ISSUES.md #244: NFKD leaves a dotless i, a stroked o, d or l, an eszett
+    and the ligatures whole, and the ASCII encode dropped them - Omer Asik's
+    surname, typed with its dotless i, folded to "Ask"."""
+    from association.query.entities import _fold
+
+    assert _fold("Ömer Aşık") == "Omer Asik"  # noqa: RUF001 - the dotless i is the letter under test
+    assert _fold("Đorđević") == "Dordevic"
+    assert _fold("Søren") == "Soren"
+    assert _fold("Łukasz Straßer Æsir") == "Lukasz Strasser AEsir"
+    assert _fold("dončić") == "doncic"
+
+
 def test_a_team_beside_a_player_stays_unless_the_question_plays_against_it(scope_con: duckdb.DuckDBPyConnection) -> None:
     # His own team, which no "vs" names.
     slots: dict[str, Any] = {"player": "LeBron James", "team": "Los Angeles Lakers"}
