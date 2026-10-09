@@ -263,6 +263,30 @@ def test_a_count_of_one_game_is_said_in_the_singular(cx_ctx: AnswerContext) -> N
     said = sentence(q, out)
     assert "had 1 game " in said, said
     assert "1 games" not in said
+    # ISSUES.md #257: the line is said as the counts say it, not raw.
+    assert "with 28+ points" in said and ">=" not in said, said
+    from dataclasses import replace
+
+    from association.query.compose.sentence import _predicates
+
+    chained = replace(q, predicates=[("triple_double", "=", True), ("points", ">=", 30), ("rebounds", "<", 5), ("won", "=", True)])
+    assert _predicates(chained) == " with a triple-double and 30+ points and under 5 rebounds and won"
+
+
+def test_a_run_is_still_going_only_in_the_season_on_record_now() -> None:
+    """ISSUES.md #297: the SQL's ``open`` says a run reached its partition's
+    last game; "still going" is true of that only in the season on record
+    now - a run that ended with a finished season, or at a retired player's
+    last game, is not still going."""
+    from association.nba.season import current_season
+    from association.query.compose.runs import _settled_open
+    from association.query.result import run_of
+
+    now = current_season()
+    row = {"length": 9, "first_day": "2024-03-20", "last_day": "2024-04-14", "first_season": 2024, "last_season": 2024, "open": True}
+    finished, current = run_of(row), run_of({**row, "first_season": now, "last_season": now})
+    assert (finished.still_open, current.still_open) == (True, True)  # the SQL's flag, before the rule
+    assert [run.still_open for run in _settled_open((finished, current))] == [False, True]
 
 
 def test_grouped_skeleton_reads_a_split(cx_ctx: AnswerContext) -> None:

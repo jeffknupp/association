@@ -214,6 +214,29 @@ def test_a_single_game_high_is_said_with_its_floor_its_tie_and_its_redirect() ->
         "A Guard and B Guard tied for the most assists in a single game in the regular season since 1993-94, with 23 each."
         " Box scores begin in 1993-94, so this is not an all-time record: earlier games are not in this warehouse."
     )
+    # ISSUES.md #262: a player tied with himself ("Stephen Curry and Stephen
+    # Curry tied for the most 3-pointers") is named once, with his games.
+    twice = (
+        {"player": "A Guard", "value": 12, "date": "2025-02-27", "opponent": "ORL", "reconstructed": False},
+        {"player": "A Guard", "value": 12, "date": "2025-04-01", "opponent": "MEM", "reconstructed": False},
+        {"player": "B Guard", "value": 10, "date": "2025-03-01", "opponent": "", "reconstructed": False},
+    )  # the sayer's label is the stat's own; "assists" keeps the case about the tie
+    alone = Result(
+        subject="every player",
+        relation="everyone",
+        span=Span(season=2025, season_type=2),
+        parts=(Part(body=Rows(columns=("assists",), rows=twice, by="assists")),),
+        facts=CountFacts(stat="assists", box_scores_from=1994, empty_box_scores=0),
+    )
+    assert say(alone).answer == "A Guard had the most assists in a single game in the 2025 regular season: 12, twice - on 2025-02-27 vs ORL and on 2025-04-01 vs MEM. Next: B Guard (10)."
+    beside = Result(
+        subject="every player",
+        relation="everyone",
+        span=Span(season=2025, season_type=2),
+        parts=(Part(body=Rows(columns=("assists",), rows=(*twice[:2], {"player": "B Guard", "value": 12, "date": "2025-03-01", "opponent": "", "reconstructed": False}), by="assists")),),
+        facts=CountFacts(stat="assists", box_scores_from=1994, empty_box_scores=0),
+    )
+    assert say(beside).answer == "A Guard (twice) and B Guard tied for the most assists in a single game in the 2025 regular season, with 12 each."
     redirect = Decided(kind="season_redirected", field="season", chose=None, why="the season read by default holds nothing for him", facts={"first": 1990, "last": 1999, "what": "regular season"})
     retired = Result(
         subject="Old Timer",

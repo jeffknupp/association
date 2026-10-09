@@ -1835,13 +1835,31 @@ def _single_game_high_phrase(result: Result, games: list[dict[str, Any]], label:
     if named:
         return f"{named}'s highest {label} total in a single game {when} was {top['value']}, on {top['date']}{where}."
     tied = [g for g in games if g["value"] == top["value"]]
-    if len(tied) > 1:
-        names = ", ".join(g["player"] for g in tied[:-1]) + f" and {tied[-1]['player']}"
+    players = list(dict.fromkeys(g["player"] for g in tied))
+    if len(players) > 1:
+        # A player with two tied games is named once, with how many times
+        # (ISSUES.md #262: "Stephen Curry and Stephen Curry tied for ...").
+        tied_names = [f"{name}{_times_phrase(sum(g['player'] == name for g in tied))}" for name in players]
+        names = ", ".join(tied_names[:-1]) + f" and {tied_names[-1]}"
         sentence = f"{names} tied for the most {label}s in a single game {when}, with {top['value']} each."
+    elif len(tied) > 1:
+        # One player, several games at the top: his games, by date.
+        dates = " and ".join(f"on {g['date']}" + (f" vs {g['opponent']}" if g["opponent"] else "") for g in tied)
+        sentence = f"{top['player']} had the most {label}s in a single game {when}: {top['value']}, {_count_times(len(tied))} - {dates}."
     else:
         sentence = f"{top['player']} had the most {label}s in a single game {when}: {top['value']}, on {top['date']}{where}."
     rest = [f"{g['player']} ({g['value']})" for g in games if g["value"] != top["value"]]
     return sentence + (f" Next: {', '.join(rest)}." if rest else "")
+
+
+def _count_times(count: int) -> str:
+    """``"twice"``, ``"3 times"``."""
+    return "twice" if count == 2 else f"{count} times"
+
+
+def _times_phrase(count: int) -> str:
+    """`` (twice)`` beside a name tied with itself as well as with others; nothing for one game."""
+    return f" ({_count_times(count)})" if count > 1 else ""
 
 
 def say_single_game_high(result: Result) -> Reply:

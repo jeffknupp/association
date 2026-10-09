@@ -4347,7 +4347,7 @@ def test_game_log_keeps_only_the_games_past_a_threshold_rather_than_ignoring_it(
     e1 15 FGA and e2 20 stay, e3 10 goes - and one beside no stat is refused,
     there being no column to keep a line on."""
     kept = game_log(pg_ctx, Reading.from_slots({"player": "Brandin Podziemski", "stat": "fieldGoalsAttempted", "threshold": 15}))
-    assert "FGA >= 15" in kept.answer and len(kept.data["rows"]) == 2 and {r["fieldGoalsAttempted"] for r in kept.data["rows"]} == {15, 20}
+    assert "with 15+ FGA" in kept.answer and len(kept.data["rows"]) == 2 and {r["fieldGoalsAttempted"] for r in kept.data["rows"]} == {15, 20}
     assert game_log(pg_ctx, Reading.from_slots({"player": "Brandin Podziemski", "threshold": 15})).answer == "Keeping only the games past 15 needs the stat they reach it in, and none was read."
 
 

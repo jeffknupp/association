@@ -18,6 +18,7 @@ presenter ``compose.present._present_team_streak`` until then).
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import Any
 
 import duckdb
@@ -36,6 +37,17 @@ from association.query.team_relation import condition_team_no_games, team_span_l
 
 from .core import Compiled, Query, compile_query, rows_of, run_scope
 from .team import TeamCompiled, TeamQuery, compile_team_range, compile_team_run, team_coverage_refusal
+
+
+def _settled_open(runs: tuple[Run, ...]) -> tuple[Run, ...]:
+    """The runs with ``still_open`` meaning what the answer says of it: a run
+    that reached its partition's last game is still going only where that
+    partition is the season on record now (ISSUES.md #297). Before, the
+    flag was the SQL's alone - the run reached the last game - so a run that
+    ended with a finished season, or at a retired player's last game, was
+    listed "(still going)" wherever the sayer did not guard it."""
+    now = current_season()
+    return tuple(replace(run, still_open=run.still_open and run.last_season == now) for run in runs)
 
 
 def read_streak(con: duckdb.DuckDBPyConnection, q: Query, *, stated: frozenset[str]) -> Result | Unanswered | None:
@@ -90,14 +102,14 @@ def _streak_player_result(con: duckdb.DuckDBPyConnection, q: Query, covered: Any
     games, first, last = _totals(con, base, params)
     if not games:
         return no_games(con, player, covered, team)
-    runs = tuple(run_of(row) for row in rows)
+    runs = _settled_open(tuple(run_of(row) for row in rows))
     notes: list[Note] = []
     if runs:
         # The rule and the unseen games qualify a run; a player with none has nothing for them to qualify.
         notes.append(Note("definition", {"term": "streak_rule", "what": "player_games_played", "across_seasons": covered.season is None}))
         if _unseen(con, covered, base, {**params, **covered.params()}, box):
             notes.append(Note("definition", {"term": "unseen_ends_run"}))
-        if runs[0].still_open and (covered.season is None or covered.season == current_season()):
+        if runs[0].still_open:
             notes.append(Note("still_open"))
     return Result(
         subject=player.name,
@@ -115,7 +127,7 @@ def _streak_league_result(con: duckdb.DuckDBPyConnection, q: Query, covered: Any
     a question about every season reads as a narrower search) and the
     remarks: the rule, and a game with no box score ending a run."""
     names = _names(con, "players", "athlete_id", [row["athlete_id"] for row in rows])
-    runs = tuple(run_of(row, names[row["athlete_id"]]) for row in rows)
+    runs = _settled_open(tuple(run_of(row, names[row["athlete_id"]]) for row in rows))
     notes: list[Note] = []
     if runs:
         notes.append(Note("definition", {"term": "streak_rule", "what": "league_player_games_played", "across_seasons": covered.season is None}))
@@ -183,11 +195,11 @@ def _streak_team_result(q: TeamQuery, compiled: TeamCompiled, found: dict[str, A
     team, span = compiled.team, compiled.span
     assert team is not None
     first, last = found["first_season"], found["last_season"]
-    runs = tuple(run_of(row) for row in rows)
+    runs = _settled_open(tuple(run_of(row) for row in rows))
     notes: list[Note] = []
     if runs:
         notes.append(Note("definition", {"term": "streak_rule", "what": "team_within_season"}))
-        if runs[0].still_open and (span.season is None or span.season == current_season()):
+        if runs[0].still_open:
             notes.append(Note("still_open"))
     return Result(
         subject=team.name,
@@ -208,7 +220,7 @@ def _streak_league_teams_result(con: duckdb.DuckDBPyConnection, q: TeamQuery, co
     # Every run lies inside one season, so each is named as its team was
     # that season. This used to add "franchises are named as they are
     # today" to every all-seasons answer, which is what it was.
-    runs = tuple(run_of(row, season_name(row["team_id"], int(row["season"]), names[row["team_id"]]) + (f" ({row['season']})" if span.season is None else "")) for row in rows)
+    runs = _settled_open(tuple(run_of(row, season_name(row["team_id"], int(row["season"]), names[row["team_id"]]) + (f" ({row['season']})" if span.season is None else "")) for row in rows))
     notes: list[Note] = []
     if runs:
         # The rule qualifies a run: with none, the answer says so and nothing beneath it.

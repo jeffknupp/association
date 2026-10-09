@@ -4286,14 +4286,6 @@ those were found.
 - **Source:** ours.
 - **GitHub:** #255
 
-### A composed count under a condition prints its line raw: "had 34 games points >= 30 with Joel Embiid starting"
-- **Found:** 2026-09-27, plan item 6 step (d) follow-ups, once a teammate's start reached the compiler-first counts as a condition.
-- **Evidence:** "how many 30 point games did maxey have when embiid started" (parser reader, main warehouse) answers "Tyrese Maxey had 34 games points >= 30 with Joel Embiid starting in the regular season career (2021-2026)", where the same count unnarrowed reads "Tyrese Maxey had 86 games with 30+ points in his regular season career (2020-21 through 2025-26)". The number is right (34, checked against `player_game_log` directly); the narrowed sentence (`compose/sentence.py`) prints the predicate as `points >= 30` and drops "with ... in his".
-- **User sees:** a right count in an awkward sentence.
-- **Next step:** say the line the way the unnarrowed count does ("with 30+ points") before the narrowing's own phrase.
-- **Source:** ours.
-- **GitHub:** #257
-
 ### Easter is refused with a sentence that says a holiday is read
 - **Found:** 2026-09-27, fixing #238.
 - **Evidence:** stubbed offline through the whole agent (main warehouse): "lebron stats on easter" answers "'easter' is not something the games are read by - a weekday, a month, a holiday, "since <day>", a conference or a division is. Ask without it, or with one of those." (`refusals._non_calendar_situation`, refusals.py:103) - refusing a holiday while listing a holiday among what is read. Before #238's fix the same sentence answered "thanksgiving", "new years" and "martin luther king"; Easter is the one holiday word left that reaches it (`calendar.UNREAD_HOLIDAYS`, captured on purpose so it is refused rather than dropped). No research-corpus question names Easter.

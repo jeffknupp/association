@@ -125,15 +125,34 @@ def _fmt(v: Any, name: str) -> str:
     return str(v)
 
 
+#: How a line on a stat is said, by its comparison: "with 30+ points",
+#: "with under 5 free throw attempts", "with 10 or fewer rebounds",
+#: "with more than 3 steals", "with exactly 0 turnovers" - the way the
+#: retired count's words said it, not the raw ``points >= 30`` the point
+#: carries (ISSUES.md #257).
+_LINE_WORDS: dict[str, str] = {
+    ">=": "{value}+ {label}",
+    ">": "more than {value} {label}",
+    "<": "under {value} {label}",
+    "<=": "{value} or fewer {label}",
+    "=": "exactly {value} {label}",
+    "!=": "other than {value} {label}",
+}
+
+
 def _predicates(q: Query) -> str:
-    """ " with a triple-double" / " won and rebounds >= 10" - the predicates on a point, as a trailing phrase."""
+    """ " with a triple-double" / " won and with 10+ rebounds" - the predicates on a point, as a trailing phrase."""
     parts = []
     for name, op, value in q.predicates:
         if name in PREDICATE_WORDS and value is True:
             parts.append(PREDICATE_WORDS[name])
         else:
-            parts.append(f"{LABELS.get(name, name)} {op} {value}")
-    return (" " + " and ".join(parts)) if parts else ""
+            words = _LINE_WORDS.get(op, "{label} " + op + " {value}")
+            parts.append("with " + words.format(value=value, label=LABELS.get(name, name)))
+    # One "with" carries a chain: "with a triple-double and 30+ points", not
+    # "with a triple-double and with 30+ points".
+    chained = [part[5:] if i and part.startswith("with ") and parts[i - 1].startswith("with ") else part for i, part in enumerate(parts)]
+    return (" " + " and ".join(chained)) if chained else ""
 
 
 def _games(count: int) -> str:
