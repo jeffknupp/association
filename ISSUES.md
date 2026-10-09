@@ -2375,14 +2375,6 @@ those were found.
 - **Source:** ours.
 - **GitHub:** #249
 
-### A single-game high tied between two games of one player names him twice: "Stephen Curry and Stephen Curry tied for the most 3-pointers in a single game"
-- **Found:** 2026-09-27, checking the answers the #168 fix moved.
-- **Evidence:** stubbed offline through the whole agent (main warehouse): "most 3 pointers made in a single game 24-25" answers "Stephen Curry and Stephen Curry tied for the most 3-pointers in a single game in the 2025 regular season, with 12 each. Next: Damian Lillard (10)." Curry made 12 on 2025-02-27 against Orlando and on 2025-04-01 against Memphis (Eastern dates, `player_game_log`). The tie sentence (`compose.say._single_game_high_phrase`; `templates/players.py`'s `_single_game_high_answer` when found, which the compiler answers `single_game_high` with) joins the tied rows' player names and gives no date, so one player's two games read as a typo; and "Next" names one of the seven players who made 10 that season, the cut at a tie #99 already records.
-- **User sees:** a right number in a sentence that reads as a mistake, with neither game's date.
-- **Next step:** in the tie branch, name a player once with each of his games' dates ("Stephen Curry, twice - 12 on 2025-02-27 vs ORL and 2025-04-01 vs MEM"), and the dates beside several players' names; a case with one player's two tied games.
-- **Source:** ours.
-- **GitHub:** #262
-
 ### An apostrophe typed inside a name's word splits the name, and the question is answered without its player
 - **Found:** 2026-09-28, fixing #259 - the one research-corpus question the fold moved from a right answer to a wrong one.
 - **Evidence:** stubbed offline through the whole agent (main warehouse, names `["jo’sh hart", "philadelphia"]`): before #259, Josh Hart's last 3 games against the 76ers; after, the league read, "No games for every player vs the Philadelphia 76ers in the 2026 regular season" - what "jo'sh hart" with a straight apostrophe answered all along. The entity index's accent fold (`entities._fold`, NFKD to ASCII) drops a U+2019 outright, so "jo’sh" read as "josh"; a straight apostrophe splits the word (`entities._words`), so "jo'sh hart" is the words jo, sh, hart, which no player holds, and its near spellings are three players (Isaiah Hartenstein, Jason Hart, Josh Hart), which ask rather than default. Every name that really carries an apostrophe (32 players, "D'Angelo Russell", "De'Aaron Fox") splits the same way on both sides and matches. <!-- codespell:ignore hart - Josh Hart's surname -->
