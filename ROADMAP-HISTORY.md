@@ -931,6 +931,30 @@ agents' reports named here are in `~/association-research/stages/`.
     4 feed answers moved unseen - is measured and held by a gate now.
     Phase 3 opens with (b)4: the three question re-reads in `agent.py`
     onto the Reading.
+22. **Phase 3, step 0 (2026-10-09).** The lead wrote the phase's expected
+    steps before the first (the 2026-09-30 "shadow reader" re-planned as
+    the four populations: no second reader in `src/`), and one Opus agent
+    took step 0. What it measured: every refusal the answering loop still
+    decided from the question's own text - eleven checks - asked of every
+    question on the 628 and the 2,082, with what fired, what it said and
+    whether it reached the answer; none was answered by the compiler, none
+    fired twice. What moved: those readings are the parser's, as a refusal
+    the words come to (`Reading.refused`), the draft's `Unsupported` filter
+    (`Reading.unsupported`, said only where the answer side declines, since
+    most of its questions decline at RUN, not at PLAN - a correction to the
+    brief) and the fingerprint's left-out names; `refusals.py` is gone,
+    the twelve name readers of `entities.py` are the subject reading's and
+    take the index, and the ratchet of question-taking functions outside
+    the reader reads 1. Proved on all four populations with every moved
+    reading enumerated by question (9 of 628, 164 of 2,082, 173 of 2,710,
+    14 calls), answers identical everywhere. What it cost: the agent's
+    base moved under it when 5.0.0 was cut mid-step (the first PyPI upload,
+    as `association-py`), so the lead rebased and re-proved against a
+    fresh run of master; and `compare-calls` needed an aligning harness,
+    since a step that adds a recorded call shifts every later call of its
+    test. Two wrong answers fixed in passing (a quarter's plus-minus
+    answered as points; a false conference sentence), two P1s filed (#339,
+    #340) for the filter families step 2 reaches.
 
 ## The plan items, as written
 

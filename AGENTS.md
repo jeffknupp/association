@@ -158,7 +158,15 @@ this tree:
   `plan_point` and `refusal_result`, `compose.answer` with the reason it
   declined by, `Agent.ask`): run the suite on each tree with
   `ASSOCIATION_STAGE_CALLS=<dir>` and `compare-calls` the two
-  directories. The planner joined on 2026-10-05 (#331): the refusals the
+  directories. It keys a call by its position among its test's calls
+  and records each Reading whole, so a step that ADDS a recorded call
+  (a `refusal_result` the planner now says) reads as every later call
+  of that test moved, and a Reading field added with an empty default
+  reads as every call moved: align first, with
+  `~/association-research/stages/calls_aligned.py` (the enumerated new
+  calls by their cause's kind taken out, the new empty fields stripped,
+  a renamed test mapped), which is how Phase 3's step 0 proved 2,536 of
+  2,550 identical and 14 moved. The planner joined on 2026-10-05 (#331): the refusals the
   templates said are the planner's since Phase 2, and 93 tests recorded
   no refusal, decline or answer text until then (1,408
   calls became 2,554: 1,085 `plan_point`, 61 `refusal_result`, the 1,408

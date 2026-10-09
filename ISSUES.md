@@ -291,12 +291,14 @@ those were found.
 - **Evidence:** through the whole agent on `4b9c254`, replies as `run --feed` gives them (no names; the stat where named): "who leads the east in scoring" answers "Luka Doncic led the league in points per game in the 2026 regular season ... at 33.5" - the league, and a Western player; "who leads the east" answers every player by points per game; "top scorers in the western conference this season" answers "every player against Western Conference teams" - `situation` "in the western conference" read as the OPPONENT's alignment (`calendar.parse_alignment` takes "in the west" as a narrowing to games against it), where the question asks for players IN the West. "best record in the east" is refused ("team_leaderboard cannot honor ['situation']"), the one wording probed that does not answer. #25's "What remains" said "a refusal for 'who leads the East'": no longer true.
 - **User sees:** a fluent answer to a different question - the league's leaders, or every player's games against the conference.
 - **Next step:** read a conference or division the subject belongs to ("in the east", "the east's", "eastern conference players/teams") as the subject's own alignment - a ranking pool narrowed by `team_alignment` on the player's or team's own team that season - distinct from "vs/against the east" (the opponent's); until a reader takes it, refuse it by name rather than answer the league. #25 is the same gap from the data side.
+- **GitHub:** #339
 
 ### A team's record when a companion reaches a line the stages cannot read is answered as the with/without split
 - **Found:** 2026-10-09, Phase 3 step 0, while measuring whether `refusals._team_where_a_player_belongs` was reachable (it was not, and this is why)
 - **Evidence:** feed answers on `4b9c254`: "knicks record in playoff games when mitchell robinson has 4 fta" and "... has 6 fta" answer "New York Knicks with and without Mitchell Robinson, 2026 postseason"; probed with names: "sixers record when maxey has 20+" (stat points) and "celtics record when tatum has 30" answer the with/without split too. `subject._CHILD_GRAMMARS` names `record_when` for each (`\brecord\b.*\b(when|with)\b.*\b(scored|scores|had|has)\b.*\d+`), the stages decline it when they read no line (no stat word after the number, or an abbreviation such as "fta"), and the parent the reading falls back to for a team with a companion is `with_without`. The deleted check refused exactly this shape ("A record split by 'X' needs a line ...") but sat after the compiler, which the with/without split satisfies first.
 - **User sees:** the team's record with and without the player, where its record in the games he reached a line was asked.
 - **Next step:** read the companion's line from "has N" with the normalizer's stat and from box-score abbreviations ("fta", "3pm") in the condition reader (`subject._condition_role`, `_CONDITION_THRESHOLD`); where a number is named and no line can be read, refuse naming the missing stat rather than fall back to the parent.
+- **GitHub:** #340
 
 ## P2: misleading or incomplete
 
@@ -2486,12 +2488,14 @@ those were found.
 - **Evidence:** on `4b9c254`: "celtics record vs the west", "celtics record against western conference teams this season" and "celtics wins vs the southeast division" are refused "Nothing here answers this question: team_record: no calendar narrowing in situation 'vs the west' - a weekday, a month, a holiday or "since <day>" is read; an age, a conference or a division is not" (`compose/team_records.py`, `_team_record_month_and_split`). The relations read the same words as an alignment narrowing ("tatum points per game vs the west" answers 18.9 in 7 games), and #25 lists `team_record` among the shapes that read it - it does not.
 - **User sees:** a refusal saying a conference is not read, about a narrowing the team relation applies.
 - **Next step:** let `read_team_record` take an alignment `situation` through the team relation's tally (`TeamNarrowed.narrow_alignment`) rather than the standings line; until then the refusal says the record reader's own gap, not that conferences are unread. Correct #25's list in the same change.
+- **GitHub:** #341
 
 ### The team-only player check reads a month or an ordinary word as a player
 - **Found:** 2026-10-09, Phase 3 step 0 (`~/association-research/stages/refusal_sites.py`)
 - **Evidence:** 3 of the 2,082 feed answers (no names, no stat, as `run --feed` asks them): "curry playoff stats from may 10th 2019 to april 30th 2023 including record and ts% ..." and its "may 13th" twin are refused "This was read as a question about Sean May, a player, but team leaderboard has no reading for one ..."; "Nba curry most 3PM in Jan 3 2019" names Jan Vesely. `subject.player_named_on_a_team_only_question` reads `players_named_in` raw ("may" and "jan" are whole surnames) while the subject reading drops a dictionary word nobody routed (`subject._question_players`, `_dictionary()`), so two readers of "who the words name" disagree; `_named_only_by_a_common_word` knows only "best" and "head". With the normalizer's names ("curry") production reads these as Curry questions, so the names-less population is where it shows.
 - **User sees:** a refusal naming a player the question never meant (the wrong cause).
 - **Next step:** read the team-only check's player from the subject reading's own players (`Reading.subject`), which already excludes ordinary words, rather than a second `players_named_in` pass; re-measure the three.
+- **GitHub:** #342
 
 ## P3: refusal or gap
 
@@ -4427,9 +4431,11 @@ those were found.
 - **Evidence:** a player's quarter of an unrebuilt stat is refused by the point reader's `no_period_stat` cause ("A quarter or half has no per-period 'minutes' - the period's line rebuilds points, fieldGoalsMade, ..." - column names) and the league's quarter ranking by the reading's `period_stat` ("By quarter or half, a line is rebuilt from the play-by-play - points, field goals, ... - and 'minutes' is not among them ...") - one missing fact, two kinds and two wordings in `say.refusal_phrase`; `period_stat` is also recognized beside `no_period_stat` on a player's question, unsaid there.
 - **User sees:** nothing wrong; two phrasings of one refusal.
 - **Next step:** one cause for the fact (the reading's, decided from the words), one sentence in plain words; with Phase 3's period family (step 2), since it rewords an answer.
+- **GitHub:** #343
 
 ### `calendar.conference_named` is reached by no reading
 - **Found:** 2026-10-09, Phase 3 step 0, moving it out of `refusals.py`
 - **Evidence:** none of the 2,710 readings (the 628 recorded, the feed's and the extra wordings) puts a conference or division word in the `team`, `opponent` or `teams` slot - the parser refuses one as a name (`test_a_conference_or_a_pronoun_is_never_a_name`) and the team readers resolve only real teams - so the `conference_named` refusal `compose.team_records` and `compose.team_stats` check at RUN fires only for a hand-built Reading (`test_a_conference_is_refused_by_name`). Its sentence was false until `14c4ba8`.
 - **User sees:** nothing.
 - **Next step:** delete it with its RUN cause and phrase when the conference-as-subject reading lands (the P1 "A conference or division the players or teams belong to ..."), or keep it as that reading's guard - decide there.
+- **GitHub:** #344
