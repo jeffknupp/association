@@ -440,30 +440,6 @@ those were found.
 - **Source:** ours, not ESPN's.
 - **GitHub:** #226
 
-### A composed team season total carries a caveat about a different table: "88 3-pointers over the complete 2001 postseason (23 games). Note: ... Philadelphia's run reads 16 games against the 23"
-- **Found:** 2026-09-25, checking the compiler's partial-season caveat while
-  removing its duplicate (plan item 2 step 2a).
-- **Evidence:** "how many 3 pointers did the sixers make in the 2001
-  playoffs" composed as `team_stat` reads `team_season_stats` - ESPN's own
-  23-game season line, complete - and the answering loop then appends
-  `coverage_caveat("team_stat", slots)` (`agent._try_compose`), which is
-  keyed by the INTENT's tables (`TEMPLATE_SOURCES`), not the table the
-  compiler read, and says the run "reads 16 games against the 23". The
-  compiler's own table-accurate note (`compose/team.py`'s
-  `_team_coverage_note`, over `team_season_stats`: none) was removed in the
-  same change because every composed answer printed the intent's note twice
-  over it; the misfit itself predates that.
-- **User sees:** a correct total beside a note contradicting its game count.
-  Reached only where the `team_stat` template refuses and the compiler
-  answers.
-- **Next step:** let a composed result name the tables it read (a
-  `TemplateResult.data` key `agent.py` reads before `coverage_caveat`), and
-  have `_try_compose` call `association.nba.coverage.caveat` over those
-  instead of the intent's.
-- **Source:** ours, not ESPN's - the missing 2001 games themselves are
-  `DATA.md`'s ("The 2000 and 2001 playoffs stop before the Finals").
-- **GitHub:** #227
-
 ### Template data the page cannot render from
 - **Found:** 2026-09-24/25, building the web page's typeset tables and going
   through both preview galleries (`/tmp/claude-1000/gallery_before_live` and

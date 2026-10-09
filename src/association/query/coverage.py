@@ -98,6 +98,26 @@ def _team_ranking_tables(scope: Scope) -> tuple[str, ...]:
     return ("team_season_stats", "games")
 
 
+def _team_line_tables(scope: Scope) -> tuple[str, ...]:
+    """One team's own season line or total (``team_seasons.team_lines_statement``,
+    ``compose.team``'s unnarrowed read): ESPN's season totals, with the
+    games beside them only where the read needs opponent points - the
+    whole line (no stat asked: its ratings and points allowed are read
+    from ``real_games``, and dashed where the tally is short), or a metric
+    whose expression takes ``opp_points`` - so the games table's floor and
+    its gaps apply there and not to a count ESPN's own line holds: a 2001
+    postseason 3-point total carried "Philadelphia's run reads 16 games
+    against the 23" about a figure read from the 23-game line (ISSUES.md
+    #227)."""
+    key = resolve_team_metric(scope.stat)
+    if key is None:
+        return ("team_season_stats", "games")
+    metric = TEAM_METRICS.get(key)
+    if metric is not None and metric.expression is not None and "opp_points" in metric.expression:
+        return ("team_season_stats", "games")
+    return ("team_season_stats",)
+
+
 Tables = tuple[str, ...] | Callable[[Scope], tuple[str, ...]]
 """A shape's declared tables: the tuple itself, or a resolver over the
 scope where the table depends on the measure asked for.
@@ -179,8 +199,10 @@ SOURCES: dict[PointShape, Tables] = {
     # The with/without split reads whether named teammates played: the
     # player box scores, on the team relation.
     PointShape("team_games", "split", "presence"): _PLAYER_GAME_TABLES,
-    # Opponent points come from `games`, so its floor applies too.
-    PointShape("team_seasons", "scalar", "line"): ("team_season_stats", "games"),
+    # Opponent points come from `games`, so its floor applies where the
+    # read needs them (the whole line, a rating, points allowed) - not to a
+    # count ESPN's own line holds (#227).
+    PointShape("team_seasons", "scalar", "line"): _team_line_tables,
     PointShape("team_seasons", "ranking", "team"): _team_ranking_tables,
     PointShape("team_snapshots", "scalar", "projection"): ("team_power_index",),
 }

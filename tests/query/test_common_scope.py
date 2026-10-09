@@ -21,6 +21,21 @@ from association.query.reading import SCOPING_SLOTS, PointShape, Scope, Unsuppor
 _FIELDS = {field.name for field in fields(Scope)}
 
 
+def test_a_team_season_line_names_the_games_table_only_where_it_reads_opponent_points() -> None:
+    """ISSUES.md #227: "how many 3 pointers did the sixers make in the 2001
+    playoffs" reads ESPN's own 23-game season line, and carried the games
+    table's note that the run "reads 16 games against the 23" - a caveat
+    about a table the figure was not read from. The games table stays
+    declared where the read needs opponent points: the whole line (its
+    ratings and points allowed are dashed where the tally is short) and a
+    metric built on them."""
+    line = PointShape("team_seasons", "scalar", "line")
+    assert sources_for(line, Scope.from_slots({"team": "Philadelphia 76ers", "stat": "3 pointers made", "season": 2001, "season_type": 3})) == ("team_season_stats",)
+    assert sources_for(line, Scope.from_slots({"team": "Philadelphia 76ers", "stat": "points", "season": 2001, "season_type": 3})) == ("team_season_stats",)
+    for stat in (None, "point differential", "points allowed", "defensive rating"):
+        assert sources_for(line, Scope.from_slots({"team": "Philadelphia 76ers", "stat": stat, "season": 2001, "season_type": 3})) == ("team_season_stats", "games"), stat
+
+
 def test_every_scoping_slot_is_a_field_of_the_typed_scope() -> None:
     """``unhonored_scoping`` reads each name in ``SCOPING_SLOTS`` as a Scope
     field: a name that is no field would raise AttributeError on every
