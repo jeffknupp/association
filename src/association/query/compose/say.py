@@ -740,6 +740,21 @@ def suggestion(text: str, candidates: Sequence[str], kind: str = "player") -> st
     return f"No {kind} found matching {text!r} - did you mean {joined}?"
 
 
+def _say_name_unmatched(facts: Mapping[str, Any]) -> str:
+    """A name nothing matched and nothing is near: the plain refusal, and
+    for a player's name of two or more words the one cause the warehouse
+    cannot rule out (ISSUES.md #2003) - "kareem stats vs bob lanier" asked
+    about two men who retired before ESPN's box scores begin, and "no
+    player matching" read as a spelling problem. A one-word name (initials,
+    a nickname, a stray word) says nothing of the kind, and a near spelling
+    is asked about instead of refused."""
+    kind = facts.get("kind", "player")
+    said = suggestion(facts["asked"], (), kind)
+    if kind == "player" and len([w for w in str(facts["asked"]).split() if w.strip("'.-")]) >= 2:
+        said += " ESPN's box scores, which the warehouse's players come from, start with 1993-94, so a player whose career ended before then may not be on record."
+    return said
+
+
 def _say_no_such_season_n(facts: Mapping[str, Any]) -> str:
     """An ordinal season past the player's career on record."""
     on_record = facts["on_record"]
@@ -4063,7 +4078,7 @@ _RUN_PHRASES: dict[str, Callable[[Mapping[str, Any]], str | None]] = {
     "advanced_from_empty_box_scores": lambda facts: (
         f"{facts['player']} has no {facts['label']} on record {facts['during']}: ESPN serves {facts['games']} of his box scores that season with every line zeroed, and the rate is computed from them."
     ),
-    "name_unmatched": lambda facts: suggestion(facts["asked"], (), facts.get("kind", "player")),
+    "name_unmatched": _say_name_unmatched,
     "opponent_is_absent": lambda facts: (
         f"{facts['opponent']} is both the player {facts['player']} is matched against and the teammate named as absent - no game can be both. Name the opponent team, or drop 'without'."
     ),

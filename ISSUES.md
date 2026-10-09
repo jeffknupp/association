@@ -1836,39 +1836,13 @@ those were found.
 - **Source:** ours (a matching heuristic), not ESPN's.
 - **GitHub:** #122
 
-### A pre-1994 legend gets "no player matching", not the coverage-floor refusal
-- **Found:** 2026-09-18, entity-resolution pass over the StatMuse replay set
-- **Evidence:** "kareem stats vs bob lanier" routes to `player_matchup` with
-  `players=['Kareem Abdul-Jabbar', 'Bob Lanier']`; both retired before the
-  warehouse's 1993-94 floor and neither is in `players` at all (`SELECT ...
-  FROM players WHERE display_name ILIKE '%abdul-jabbar%'` and `'%lanier%'`
-  each return zero rows, checked 2026-09-18 against
-  `/home/jeff/code/association/nba.duckdb`) - this is DATA.md's documented
-  fact ("Coverage floors": "Kareem Abdul-Jabbar, Larry Bird and Julius Erving
-  are not in `players` at all"), not a name-matching bug: no amount of
-  suggestion or nickname repair can find a row that does not exist.
-  `suggest_players` correctly returns nothing for both names. The refusal that
-  reaches the user is the generic `no_match` sentence, "no player matching
-  'Kareem Abdul-Jabbar'", which reads exactly like a typo problem - the same
-  false-cause shape as the Maxey example in `AGENTS.md`, one step earlier: the
-  question is not asking about a player our matching failed to find, it is
-  asking about a player who played before the warehouse's discovery mechanism
-  (box scores from 1994) could ever have found him.
-- **User sees:** a refusal that names the wrong cause; a person reading
-  "no player matching" goes to check their spelling, not learn that pre-1994
-  legends are out of reach entirely.
-- **Next step:** not fixable in `entities.py` - there is no near-spelling
-  distance from "no such row" to "the era is too early". Best done where
-  `check_coverage`/`no_match` meet a `PLAYER_INTENTS` template: when
-  `find_players`/`suggest_players` both come back empty for a name that is
-  otherwise well-formed (no digits, no obvious typo signal), consider whether
-  a coverage-floor sentence ("ESPN's box scores start in 1994; ... may have
-  played earlier than that") is more honest than "no player matching".
-  Speculative until measured against how many other empty-`players`-match
-  cases are actually pre-1994 legends versus genuine typos.
-- **Source:** DATA.md, "Coverage floors" (`player_season_stats` section).
+### A pre-1994 legend whose surname a current player shares is asked "did you mean", with no word about the era: "how many times did bill russell score below 10 points"
+- **Found:** 2026-09-18 (the entry's first shape, "kareem stats vs bob lanier" refused as "no player matching" with nothing about the era, is fixed 2026-10-09: a player's name of two or more words that nothing matches and nothing is near says "ESPN's box scores, which the warehouse's players come from, start with 1993-94, so a player whose career ended before then may not be on record" - `compose.say._say_name_unmatched`).
+- **Evidence:** the feed's "how many times did bill russell score below 10 points" answers "No player found matching 'bill russell' - did you mean Bryon Russell, D'Angelo Russell, Russell Westbrook or Walker Russell Jr.?" (the surname back-off, `entities.suggest_players` pass 1), and "kareem stats vs bob lanier" "No player found matching 'Bob Lanier' - did you mean Chaz Lanier?". The suggestion reads as a spelling problem; the real cause is that Russell and Lanier retired before 1994. The back-off cannot tell a legend's surname from a made-up given name on a current player's ("Jemel Embiid", the shape it was built for), so the era clause is not said on it: it would be noise on every typo.
+- **User sees:** a question back naming the wrong men, where the honest sentence names the era.
+- **Next step:** a table of the pre-1994 names people ask about (the Hall of Fame, say) checked before the surname back-off, so a name on it is refused by the era outright - a declared vocabulary, like `PLAYER_NICKNAMES`; or the back-off's candidates narrowed to those sharing the given name's initial before the clause is said. Measure how many feed questions name a pre-1994 player first (the 26 betting wordings were counted the same way).
+- **Source:** ours (the warehouse's floor is ESPN's, `DATA.md` "Coverage floors").
 - **GitHub:** #123
-
 ### The web page keeps no history, so closing the tab loses every answer
 - **Found:** 2026-09-14, requested
 - **Evidence:** each turn is built straight into the DOM

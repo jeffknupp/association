@@ -462,7 +462,10 @@ def test_render_fingerprint_says_how_it_read_a_near_spelling(con: duckdb.DuckDBP
 
 
 def test_render_fingerprint_reports_an_unknown_name_rather_than_raising(con: duckdb.DuckDBPyConnection, tmp_path: Path) -> None:
-    assert _asked(con, tmp_path, "Nobody At All", season=2026) == RenderResult("No player found matching 'Nobody At All'.", None)
+    assert _asked(con, tmp_path, "Nobody At All", season=2026) == RenderResult(
+        "No player found matching 'Nobody At All'. ESPN's box scores, which the warehouse's players come from, start with 1993-94, so a player whose career ended before then may not be on record.",
+        None,
+    )
 
 
 def test_render_fingerprint_reports_a_missing_season_rather_than_raising(con: duckdb.DuckDBPyConnection, tmp_path: Path) -> None:

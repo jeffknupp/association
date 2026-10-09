@@ -816,7 +816,10 @@ def test_player_stat_asks_instead_of_guessing_between_players(ps_con: AnswerCont
 def test_player_stat_unknown_player_is_refused_by_name(ps_con: AnswerContext) -> None:
     """A name nothing matches is the read's own refusal (6.0.0; a decline the
     user saw as "Nothing here answers this question: ..." until then)."""
-    assert player_stat(ps_con, Reading.from_slots({"player": "Nobody At All"})).answer == "No player found matching 'Nobody At All'."
+    assert (
+        player_stat(ps_con, Reading.from_slots({"player": "Nobody At All"})).answer
+        == "No player found matching 'Nobody At All'. ESPN's box scores, which the warehouse's players come from, start with 1993-94, so a player whose career ended before then may not be on record."
+    )
 
 
 def test_player_stat_missing_player_slot_falls_through(ps_con: AnswerContext) -> None:
@@ -1790,7 +1793,10 @@ def test_player_compare_reads_a_single_near_spelling_as_that_player(ps_con: Answ
 
 def test_a_name_with_nothing_near_it_is_refused_by_name(ps_con: AnswerContext) -> None:
     """No near spelling to ask about: the read's ``name_unmatched`` refusal, naming the one name (6.0.0)."""
-    assert player_compare(ps_con, Reading.from_slots({"players": ["Luka Doncic", "Asdf Qwerty"]})).answer == "No player found matching 'Asdf Qwerty'."
+    assert (
+        player_compare(ps_con, Reading.from_slots({"players": ["Luka Doncic", "Asdf Qwerty"]})).answer
+        == "No player found matching 'Asdf Qwerty'. ESPN's box scores, which the warehouse's players come from, start with 1993-94, so a player whose career ended before then may not be on record."
+    )
 
 
 def test_player_compare_needs_two_distinct_players(ps_con: AnswerContext) -> None:
@@ -5846,7 +5852,10 @@ def test_a_period_without_a_teammate_nothing_resolves_refuses_rather_than_droppi
     being dropped and the period totaled over every game, which would answer
     a wider question than was asked with nothing saying so."""
     result = period_split(period_ctx, Reading.from_slots({"player": "Stephen Curry", "period": 1, "season": SEASON, "season_type": 2, "without": ["Nobody At All"]}))
-    assert result.answer == "No player found matching 'Nobody At All'."
+    assert (
+        result.answer
+        == "No player found matching 'Nobody At All'. ESPN's box scores, which the warehouse's players come from, start with 1993-94, so a player whose career ended before then may not be on record."
+    )
 
 
 def test_a_teams_half_is_the_two_quarters_of_its_own_linescore(tq_con: AnswerContext) -> None:

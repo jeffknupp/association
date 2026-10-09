@@ -5,7 +5,7 @@ held to them with no warehouse behind it."""
 
 from __future__ import annotations
 
-from association.query.compose.say import mixed_where, note_phrase, say, say_player_log, say_team_log
+from association.query.compose.say import mixed_where, note_phrase, refusal_phrase, say, say_player_log, say_team_log
 from association.query.notes import Note, collect
 from association.query.result import CountFacts, Line, LogFacts, Narrowing, Part, RankingFacts, RecordFacts, Refusal, Result, Rows, Span, Window
 
@@ -404,6 +404,12 @@ def test_a_refusal_is_said_from_its_facts_beside_the_pages_values() -> None:
     assert asked.data == {"ambiguous": "Curry", "candidates": ["Seth Curry", "Stephen Curry"]}
     near = say(Clarify(asked="embid", candidates=("Joel Embiid",), why="near_spelling"))
     assert near.answer == "No player found matching 'embid' - did you mean Joel Embiid?" and near.data == {"unmatched": "embid", "suggestions": ["Joel Embiid"]}
+    # ISSUES.md #2003: a full name nothing matches names the one cause the warehouse cannot rule out; a lone word, initials or a team says nothing of the kind.
+    assert refusal_phrase("name_unmatched", {"asked": "wilt chamberlain"}) == (
+        "No player found matching 'wilt chamberlain'. ESPN's box scores, which the warehouse's players come from, start with 1993-94, so a player whose career ended before then may not be on record."
+    )
+    assert refusal_phrase("name_unmatched", {"asked": "mpj"}) == "No player found matching 'mpj'."
+    assert refusal_phrase("name_unmatched", {"asked": "Las Vegas Aces", "kind": "team"}) == "No team found matching 'Las Vegas Aces'."
 
 
 def test_the_cells_a_read_applied_are_typed_and_read_by_type() -> None:

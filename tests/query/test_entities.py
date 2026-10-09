@@ -802,7 +802,10 @@ def test_no_match_names_the_near_miss(con: duckdb.DuckDBPyConnection) -> None:
 
 
 def test_no_match_says_only_that_when_nothing_is_near(con: duckdb.DuckDBPyConnection) -> None:
-    assert _no_match(con, "asdf qwerty") == "No player found matching 'asdf qwerty'."
+    assert (
+        _no_match(con, "asdf qwerty")
+        == "No player found matching 'asdf qwerty'. ESPN's box scores, which the warehouse's players come from, start with 1993-94, so a player whose career ended before then may not be on record."
+    )
 
 
 # ---------------- players the router dropped ----------------
