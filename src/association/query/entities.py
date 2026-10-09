@@ -1444,7 +1444,7 @@ def resolved_player(
     available: Availability | tuple[Availability, ...],
     season: int | None = None,
     through: int | None = None,
-) -> Entity | Clarify:
+) -> Entity | Clarify | Refusal:
     """One player, or a clarifying question - the player counterpart
     to resolved_team. Returning the question rather than raising it keeps
     ambiguity a handled outcome: the caller answers with the question instead of
@@ -1454,7 +1454,12 @@ def resolved_player(
     where its answer comes from: an ambiguous name is narrowed to the players
     with a row there, for `season` or any season up to `through`, before
     anybody is asked about. See entities.resolve_player - "Curry" this season
-    asked about four men who never played in it and left out Stephen."""
+    asked about four men who never played in it and left out Stephen.
+
+    .. versionchanged:: 6.0.0
+       A name nothing matches is returned as the ``name_unmatched`` refusal,
+       not raised as a decline.
+    """
     if not isinstance(text, str) or not text.strip():
         raise Unsupported(missing)
     try:
@@ -1477,13 +1482,22 @@ def resolved_player(
             near = tuple(player.name for player in suggest_players(con, text))
             if near:
                 return Clarify(asked=text, candidates=near, why="near_spelling")
-            raise Unsupported(f"no player matching {text!r}")
+            # The read's own refusal, as the near-spelling question above is its
+            # own Clarify: raised as a decline until 6.0.0, the user saw "Nothing
+            # here answers this question: with_without: relation: no player
+            # matching 'mpj'" - the intent's and the relation's identifiers.
+            return Refusal(kind="name_unmatched", facts={"asked": text})
 
 
-def resolved_team(con: duckdb.DuckDBPyConnection, text: Any, season: int | None = None) -> Entity | Clarify:
+def resolved_team(con: duckdb.DuckDBPyConnection, text: Any, season: int | None = None) -> Entity | Clarify | Refusal:
     """One team, a clarifying question, or a refusal - read for ``season``,
     because a franchise's name is a fact about a season. "Hornets" is New
-    Orleans in 2008 and Charlotte in 2026; see entities.franchise_by_name."""
+    Orleans in 2008 and Charlotte in 2026; see entities.franchise_by_name.
+
+    .. versionchanged:: 6.0.0
+       A name nothing matches is returned as the ``name_unmatched`` refusal,
+       not raised as a decline.
+    """
     if not isinstance(text, str) or not text.strip():
         raise Unsupported("no team named")
     match resolve_team(con, text, season):
@@ -1492,7 +1506,7 @@ def resolved_team(con: duckdb.DuckDBPyConnection, text: Any, season: int | None 
         case Ambiguous(candidates=candidates):
             return clarify(text, candidates, kind="team")
         case _:
-            raise Unsupported(f"no team matching {text!r}")
+            return Refusal(kind="name_unmatched", facts={"asked": text, "kind": "team"})
 
 
 def slot_season(scope: Scope) -> int | None:
@@ -1501,7 +1515,7 @@ def slot_season(scope: Scope) -> int | None:
     return scope.span.season
 
 
-def optional_team(con: duckdb.DuckDBPyConnection, text: Any, season: int | None = None) -> Entity | Clarify | None:
+def optional_team(con: duckdb.DuckDBPyConnection, text: Any, season: int | None = None) -> Entity | Clarify | Refusal | None:
     """A team slot that may be empty: ``None`` for no text, else
     :func:`resolved_team`'s entity or its refusal.
 

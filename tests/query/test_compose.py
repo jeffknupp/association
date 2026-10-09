@@ -38,6 +38,7 @@ from association.query.compose.team_stats import TeamSeasonQuery
 from association.query.parse import with_point
 from association.query.point import _asc_or_desc, _ranking_minimum, read_point, team_read_point
 from association.query.reading import Cause, PointRefused, Reading, Scope, Span, _career_scope
+from association.query.result import Refusal
 from association.query.subject import Subject, read_subject
 
 
@@ -520,13 +521,17 @@ def test_refused_carries_the_relations_own_wording(cx_ctx: AnswerContext) -> Non
     assert "podziemski" in (say(excinfo.value.result).answer or "").lower()
 
 
-def test_a_name_nothing_resolves_to_is_unsupported_not_refused(cx_ctx: AnswerContext) -> None:
+def test_a_name_nothing_resolves_to_is_the_reads_refusal(cx_ctx: AnswerContext) -> None:
     """A name with no near match at all (:func:`~association.query.entities.suggest_players`
-    finds nothing) is the compiler declining outright - ``Unsupported``, which
-    the agent may still do better with, not a handled ``Refused``."""
+    finds nothing) is the read's typed refusal, ``name_unmatched`` - until
+    6.0.0 a decline (``Unsupported``), on the reasoning that the agent might
+    do better with it; the agent is gone, and a decline was the user's
+    "Nothing here answers this question: ... no player matching"."""
     q = default_query("game_log", {"player": "Zzyzx Nobody"})
-    with pytest.raises(Unsupported):
+    with pytest.raises(Refused) as caught:
         run(cx_ctx.con, q)
+    outcome = caught.value.result
+    assert isinstance(outcome, Refusal) and outcome.kind == "name_unmatched" and outcome.facts["asked"] == "Zzyzx Nobody"
 
 
 def test_answer_returns_none_for_a_question_the_compiler_cannot_say(cx_ctx: AnswerContext) -> None:

@@ -813,9 +813,10 @@ def test_player_stat_asks_instead_of_guessing_between_players(ps_con: AnswerCont
     assert result.data["candidates"] == ["Seth Curry", "Stephen Curry"]
 
 
-def test_player_stat_unknown_player_falls_through(ps_con: AnswerContext) -> None:
-    with pytest.raises(Unsupported):
-        player_stat(ps_con, Reading.from_slots({"player": "Nobody At All"}))
+def test_player_stat_unknown_player_is_refused_by_name(ps_con: AnswerContext) -> None:
+    """A name nothing matches is the read's own refusal (6.0.0; a decline the
+    user saw as "Nothing here answers this question: ..." until then)."""
+    assert player_stat(ps_con, Reading.from_slots({"player": "Nobody At All"})).answer == "No player found matching 'Nobody At All'."
 
 
 def test_player_stat_missing_player_slot_falls_through(ps_con: AnswerContext) -> None:
@@ -1787,9 +1788,9 @@ def test_player_compare_reads_a_single_near_spelling_as_that_player(ps_con: Answ
     assert readings == ["('Nikoal Jokic' matches no player exactly and was read as Nikola Jokic, the only near spelling on record - spell the name exactly to ask about someone else.)"]
 
 
-def test_a_name_with_nothing_near_it_still_falls_through(ps_con: AnswerContext) -> None:
-    with pytest.raises(Unsupported):
-        player_compare(ps_con, Reading.from_slots({"players": ["Luka Doncic", "Asdf Qwerty"]}))
+def test_a_name_with_nothing_near_it_is_refused_by_name(ps_con: AnswerContext) -> None:
+    """No near spelling to ask about: the read's ``name_unmatched`` refusal, naming the one name (6.0.0)."""
+    assert player_compare(ps_con, Reading.from_slots({"players": ["Luka Doncic", "Asdf Qwerty"]})).answer == "No player found matching 'Asdf Qwerty'."
 
 
 def test_player_compare_needs_two_distinct_players(ps_con: AnswerContext) -> None:
@@ -5838,12 +5839,14 @@ def test_a_period_log_takes_the_end_of_the_season_the_question_asked_for(period_
 
 
 def test_a_period_without_a_teammate_nothing_resolves_refuses_rather_than_dropping_him(period_ctx: AnswerContext) -> None:
-    """A name the roster does not hold falls through, exactly as it does for
-    every other template on the relation. What must not happen is the name
+    """A name the roster does not hold is refused by name - the read's own
+    ``name_unmatched`` refusal, as every reader on the relation says it
+    (until 6.0.0 a decline, which the user saw as "Nothing here answers this
+    question: ... no player matching"). What must not happen is the name
     being dropped and the period totaled over every game, which would answer
     a wider question than was asked with nothing saying so."""
-    with pytest.raises(Unsupported, match="no player matching"):
-        period_split(period_ctx, Reading.from_slots({"player": "Stephen Curry", "period": 1, "season": SEASON, "season_type": 2, "without": ["Nobody At All"]}))
+    result = period_split(period_ctx, Reading.from_slots({"player": "Stephen Curry", "period": 1, "season": SEASON, "season_type": 2, "without": ["Nobody At All"]}))
+    assert result.answer == "No player found matching 'Nobody At All'."
 
 
 def test_a_teams_half_is_the_two_quarters_of_its_own_linescore(tq_con: AnswerContext) -> None:
