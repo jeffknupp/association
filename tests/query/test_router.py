@@ -498,10 +498,9 @@ def test_an_ordinal_attached_to_the_season_is_not_a_request_for_one_game(questio
 def test_a_model_era_order_is_dropped_at_the_stages_door() -> None:
     """The words are the window's one source (Phase 3, step 2): a model-era
     ``order``, valid or not, is dropped before the stages run, and the
-    window tagger reads the words - "his last home game" is a phrasing the
-    grammar misses, so no end is read, where the model's slot used to stand
-    in for it."""
-    got = _asking('{"intent":"shot_chart","player":"Stephen Curry","order":"recent"}', "curry's shot chart for his last home game")
+    window tagger reads the words - a question naming no game at either
+    end gets no end, where the model's slot used to stand in."""
+    got = _asking('{"intent":"shot_chart","player":"Stephen Curry","order":"recent"}', "curry's shot chart from his home games")
     assert "order" not in got.slots
     got = _asking('{"intent":"game_log","player":"Stephen Curry","order":"sideways"}', "how did curry do this season")
     assert "order" not in got.slots
@@ -1372,9 +1371,11 @@ def test_a_filler_order_does_not_narrow_a_chart_to_one_game() -> None:
     shots" drew a single game, 7 of 12."""
     got = _asking('{"intent":"shot_chart","player":"Stephen Curry","order":"recent","shot_value":3,"season":2025}', "show a shot chart of steph curry's 2025 season for 3 point shots")
     assert "order" not in got.slots and got.slots.get("season") == 2025
-    # A game the question does name keeps it.
+    # A game the question does name keeps it, however it is phrased.
     named = _asking('{"intent":"shot_chart","player":"Stephen Curry"}', "curry's shot chart for his last game")
     assert (named.slots.get("order"), named.slots.get("limit")) == ("recent", 1)
+    phrased = _asking('{"intent":"shot_chart","player":"Stephen Curry"}', "curry's shot chart for his last home game")
+    assert (phrased.slots.get("order"), phrased.slots.get("limit"), phrased.slots.get("venue")) == ("recent", 1, "home")
     # game_log is unaffected: there an order sorts a list rather than picking a game - and, since Phase 3,
     # step 2, is read from the words alone (a model-era `order` is dropped at the stages' door).
     log = _asking('{"intent":"game_log","player":"Stephen Curry","order":"recent"}', "curry's last 10 games in 2025")

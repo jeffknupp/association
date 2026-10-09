@@ -32,6 +32,7 @@ gone rather than ported.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Literal
 
@@ -74,6 +75,14 @@ _ORDER_ON_A_SINGLE_GAME: frozenset[str] = frozenset({"player_stat"})
 #: 12, where 2025 held hundreds (#153) - and the question has to name a game
 #: at one end of the span for it to stand.
 _ORDER_IS_ONE_GAME: frozenset[str] = frozenset({"shot_chart", "shot_distance", "player_netpoints", "fingerprint"})
+
+#: The readers that honor an end and read one game named as the subject's
+#: own ("his last home game") where the grammar's rows miss it: the two
+#: period readers are left out, since a quarter's or half's ordinal sits
+#: exactly where SINGLE_GAME allows two words ("his first quarter stats per
+#: game" would read as his first game), and a question naming a quarter or
+#: half is theirs before the tagger runs.
+_ONE_GAME_NAMED_INTENTS: frozenset[str] = ORDER_INTENTS - {"period_split", "team_quarter_points"}
 
 #: The intents whose ranking has an end the question names ("most", "fewest",
 #: "best", "worst"): a team ranking, and a team's single best quarter or
@@ -194,7 +203,8 @@ def _order(question: str, context: WindowContext, order: str | None, count: int 
     the question to the log; on an intent whose reader honors an end
     (:data:`ORDER_INTENTS`) one the grammar missed is read from the
     looser :data:`~association.query.lexicon.ORDER_WORDS` where exactly one
-    matches, and on the four where an end means ONE game
+    matches - after one game named as his, which the grammar's rows miss
+    between "last" and "game" ("his last home game") - and on the four where an end means ONE game
     (:data:`_ORDER_IS_ONE_GAME`) it stands only where the words name a game
     at one end; on any other intent an end read beside a count of two or
     more is dropped, since the reader refuses the question for it, while
@@ -204,11 +214,20 @@ def _order(question: str, context: WindowContext, order: str | None, count: int 
     if context.intent in _ORDER_ON_A_SINGLE_GAME:
         single = lexicon.SINGLE_GAME.search(question)
         if single is not None:
-            end = "first" if single.group(1).lower() in ("first", "opening", "earliest") else "recent"
-            return end, Claim(single.start(), single.end(), "window"), True
+            return _single_game_end(single), Claim(single.start(), single.end(), "window"), True
         return *_order_elsewhere(question, order, count), False
     if context.intent in ORDER_INTENTS:
         claim = None
+        if order is None and count is None and context.intent in _ONE_GAME_NAMED_INTENTS:
+            # One game named as his, in a phrasing the grammar misses ("his
+            # last home game", "her first road game"): the end and a count
+            # of one, as a player's line reads it. Until 2026-10-09 the four
+            # one-game readers and the log read no window here and answered
+            # the whole season (its home games) with nothing saying so; 0 of
+            # the 2,710 readings name one so, measured.
+            single = lexicon.SINGLE_GAME.search(question)
+            if single is not None:
+                return _single_game_end(single), Claim(single.start(), single.end(), "window"), True
         if order is None:
             named = [(name, match) for name, pattern in lexicon.ORDER_WORDS.items() if (match := pattern.search(question)) is not None]
             if len(named) == 1:
@@ -218,6 +237,12 @@ def _order(question: str, context: WindowContext, order: str | None, count: int 
             return None, None, False
         return order, claim, False
     return *_order_elsewhere(question, order, count), False
+
+
+def _single_game_end(single: re.Match[str]) -> str:
+    """Which end of the span one game named as the subject's own sits at
+    (:data:`~association.query.lexicon.SINGLE_GAME`'s first group)."""
+    return "first" if single.group(1).lower() in ("first", "opening", "earliest") else "recent"
 
 
 def _order_elsewhere(question: str, order: str | None, count: int | None) -> tuple[str | None, Claim | None]:

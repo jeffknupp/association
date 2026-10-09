@@ -99,6 +99,14 @@ def test_an_end_the_grammar_missed_is_read_on_a_reader_that_honors_one() -> None
     assert _read("show a shot chart of steph curry's 2025 season for 3 point shots", "shot_chart") == Window()
     assert _read("Create a shot chart for steph curry's last two games of the regular season", "shot_chart") == Window(count=2)
     assert _read("show me a fingerprint for steph curry's last game in 2026", "fingerprint") == Window(order="recent", count=1)
+    # One game named as his in a phrasing the grammar misses is that game on these readers too (2026-10-09: the
+    # chart drew the season's home games, the log listed ten, with nothing saying "last" went unread).
+    assert _read("curry's shot chart for his last home game", "shot_chart") == Window(order="recent", count=1)
+    assert _read("jokic game log for his first road game", "game_log") == Window(order="first", count=1)
+    assert _read("curry's shot chart for his last home game", "head_to_head") == Window()
+    # A quarter's ordinal sits where that rule allows two words: the period readers never take it.
+    assert _read("harrison barnes's first quarter per game against the magic", "period_split") == Window()
+    assert _read("rudy gobert's first half game log", "period_split") == Window()
     assert _read("fingerprint for curry's first game of 2026", "fingerprint") == Window(order="first", count=1)
 
 
