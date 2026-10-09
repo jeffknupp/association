@@ -300,7 +300,7 @@ def query(question: str, router_model: str, db_path: str, out_dir: str, verbose:
 def web(port: int, host: str, router_model: str, db_path: str, out_dir: str) -> None:
     """Serve a local web interface for asking questions, until interrupted.
 
-    Needs the `web` extra: pip install 'association[web]'
+    Needs the `web` extra: pip install 'association-py[web]'
     """
     from association.web.serve import serve
 

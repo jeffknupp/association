@@ -17,7 +17,7 @@ from ..query.history import DEFAULT_HISTORY_DIR
 from .app import INDEX_HTML, create_app
 from .runner import AgentRunner, discard
 
-INSTALL_HINT = "The web interface needs extra packages. Install them with:\n\n    pip install 'association[web]'\n"
+INSTALL_HINT = "The web interface needs extra packages. Install them with:\n\n    pip install 'association-py[web]'\n"
 """What to say when ``fastapi``/``uvicorn`` are missing.
 
 They are an optional extra so the core install stays small, which means a

@@ -166,12 +166,14 @@ ollama pull qwen2.5:3b            # the normalizer - required, ~1.9GB
 One model: it copies the names and the stat out of the question for the
 parser, which reads everything else from the words.
 
-> **Note** — `pip install association` does not work yet. The PyPI project is
-> unreachable pending an account-access issue, so releases live on GitHub only
-> for now — install from the tag as above. Releases cut from here on also
-> attach their wheel and sdist to the
+> **Note** — `pip install association-py` is the install command from the
+> next release on: the distribution is named `association-py` on PyPI, since
+> PyPI refuses the bare name though nobody holds it (the import package, the
+> `association` command and this repository keep it). Nothing is on PyPI yet,
+> so install from the tag as above for now. Releases also attach their wheel
+> and sdist to the
 > [releases page](https://github.com/jeffknupp/association/releases). This note
-> goes away once PyPI publishing is restored.
+> goes away once the first version is up.
 
 To work on `association` itself, clone the repo and sync it instead (see
 [Development](#development)).

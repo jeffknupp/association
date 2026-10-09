@@ -1505,7 +1505,7 @@ everything about it is constrained by things measured elsewhere in this file.
   installing the wheel into a fresh venv *outside* the repo and loading the
   page — importing the module proves nothing about the HTML.
 - **`fastapi`/`uvicorn` are the `web` extra**, so CI syncs `--extra web` and a
-  missing install must print the `pip install 'association[web]'` line rather
+  missing install must print the `pip install 'association-py[web]'` line rather
   than raising ImportError.
 - **`GET /api/artifacts/{name}` serves a directory a person owns.** The name is
   checked twice, and the two checks stop different things: an allowlist regex
@@ -1968,15 +1968,30 @@ before closing anything.
 under `## Unreleased`, then `scripts/bump_version.py minor --tag`, push, then
 `scripts/release.sh X.Y.Z`. Nothing before the final step is irreversible.
 
-**The PyPI upload currently fails, and that is expected.** Trusted publishing
-answers `invalid-publisher` because no publisher is registered for this
-repository on PyPI, pending an account-access issue — it is not a workflow bug
-and not something to "fix" by adding a token or making the job tolerate
-failure. The `build` job still runs the whole gate suite and attaches the wheel
-and sdist to the GitHub release, which is where releases live for now
-(`README.md` and `docs/installation.rst` say so, in notes written to be deleted
-in one commit). Every version tagged so far is still uploadable under its own
-number once the account is back.
+**The distribution is `association-py`; the import package, the `association`
+command and the repository keep the bare name.** Decided 2026-10-09: PyPI
+refuses `association` as a project name though nobody holds it - no project
+row (PyPI's per-project RSS route answers 404, as for a made-up name, where
+a registered project with no releases answers 200), no release ever, no name
+confusable with it under PyPI's rule over its full index of 909,700
+projects, and no standard-library module; of the four causes PyPI's own help
+page lists, that leaves an administrator's prohibition, for which it gives no
+appeal. So `pyproject.toml`'s `name`, `association.__version__`'s metadata
+lookup and `docs/conf.py`'s read `association-py`, and the web extra's install
+hint says `association-py[web]`. Publishing is Trusted Publishing (OIDC) and
+nothing is stored in the repository: the pending publisher on PyPI is
+registered for project `association-py`, owner `jeffknupp`, repository
+`association`, workflow `publish.yml`, environment `pypi` - the environment
+name included, since the job runs under it and a publisher without it does
+not match. The first release after the rename is the first upload; the tags
+before it (4.0.1 to 4.4.0) carry the old name in their metadata, cannot be
+uploaded, and stay on GitHub only. Until that upload the notes in `README.md`
+and `docs/installation.rst` stand, written to be deleted in one commit with
+the git-tag install lines once `pip install association-py` works; the
+`build` job attaches the wheel and sdist to the GitHub release either way.
+`bump_version.py` moves the tag-pinned `association[web] @ git+...` lines to
+the new name with the pin, because pip and uv refuse a `name @ url` install
+whose metadata name differs.
 
 Before bumping, check that anything added or reshaped on the public surface
 carries a `.. versionadded::` / `.. versionchanged::` for the version about to

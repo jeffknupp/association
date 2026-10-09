@@ -221,7 +221,7 @@ def test_version_flag_reports_the_packaged_version() -> None:
     for flag in ("--version", "-V"):
         result = CliRunner().invoke(cli, [flag])
         assert result.exit_code == 0, result.output
-        assert version("association") in result.output
+        assert version("association-py") in result.output
 
 
 def test_dunder_version_matches_installed_metadata() -> None:
@@ -230,7 +230,7 @@ def test_dunder_version_matches_installed_metadata() -> None:
 
     import association
 
-    assert association.__version__ == version("association")
+    assert association.__version__ == version("association-py")
 
 
 # ---------------- which tables a pull rebuilds ----------------
@@ -348,7 +348,7 @@ def test_web_reports_the_install_command_when_the_extra_is_missing(monkeypatch: 
     result = CliRunner().invoke(web, [])
 
     assert result.exit_code != 0
-    assert "pip install 'association[web]'" in result.output
+    assert "pip install 'association-py[web]'" in result.output
     assert "Traceback" not in result.output
 
 

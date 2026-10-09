@@ -70,7 +70,7 @@ Cutting a release
    workflow manually with the target ``testpypi``, then check the result
    installs::
 
-      $ uv run --with association --index-url https://test.pypi.org/simple/ \
+      $ uv run --with association-py --index-url https://test.pypi.org/simple/ \
             --extra-index-url https://pypi.org/simple/ association --version
 
 #. Push, then create the release::

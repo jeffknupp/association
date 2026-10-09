@@ -34,7 +34,7 @@ copyright = f"{date.today().year}, {author}"  # noqa: DTZ011 - a copyright year 
 # __version__ as release`: that spelling reads as an unused import to the
 # linter, which removes it and leaves `release` silently undefined - Sphinx
 # treats it as optional and builds happily with an empty version.
-release = installed_version("association")
+release = installed_version("association-py")
 
 extensions = [
     "sphinx.ext.autodoc",

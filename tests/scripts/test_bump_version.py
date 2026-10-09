@@ -144,6 +144,20 @@ def test_rewrite_install_pins_updates_every_matched_file_and_leaves_no_old_pin(t
     assert "association@v1.0.0" not in usage
 
 
+def test_rewrite_install_pins_moves_an_extras_pin_to_the_renamed_distribution(tmp_path: Path) -> None:
+    """A ``name[extra] @ url`` pin names the distribution, and the tag it moves to
+    is named ``association-py`` (the 2026-10-09 rename): pip and uv refuse the
+    install when the two disagree, so the name moves with the tag."""
+    repo = _repo(tmp_path)
+    (repo / "README.md").write_text("uv tool install 'association[web] @ git+https://github.com/jeffknupp/association@v1.0.0'\n")
+    _commit_all(repo)
+
+    files = bump_version.check_install_pins("1.0.0", "1.1.0", repo)
+    bump_version.rewrite_install_pins(files, "1.0.0", "1.1.0", repo)
+
+    assert (repo / "README.md").read_text() == "uv tool install 'association-py[web] @ git+https://github.com/jeffknupp/association@v1.1.0'\n"
+
+
 def test_symlink_is_never_a_pin_candidate_and_survives_rewriting(tmp_path: Path) -> None:
     """A symlink like CLAUDE.md is a git blob holding only its target path.
 
