@@ -16,6 +16,7 @@ import duckdb
 import pytest
 from test_templates import player_stat  # the compiler's, player_stat's template retired (compose.COMPILED_INTENTS)
 
+from association.nba.season import current_season
 from association.query.answer import AnswerContext
 from association.query.coverage import _ADVANCED_STAT_NAMES, check_coverage, sources_for
 from association.query.reading import PointShape, Reading, Scope, Unsupported
@@ -64,6 +65,33 @@ def advanced_ctx(tmp_path: Path) -> AnswerContext:
         "(2017, 2, '12', 40, 0, 0, NULL, NULL, NULL, NULL)"
     )
     return AnswerContext(con=con, out_dir=tmp_path)
+
+
+def test_an_empty_advanced_season_names_the_zeroed_box_scores_not_the_1994_floor(advanced_ctx: AnswerContext) -> None:
+    """ISSUES.md #293: Noah's 2015 usage was refused "it is computed from box
+    scores, which start in 1994" - the wrong fact - with a ranking's caveat
+    ("missing from this ranking entirely") appended to a one-player lookup.
+    The read names his zeroed box scores, and the caveat keeps its lookup
+    half alone."""
+    con = advanced_ctx.con
+    con.execute("CREATE TABLE player_box_stats (event_id VARCHAR, season INTEGER, season_type INTEGER, athlete_id VARCHAR, minutes INTEGER, did_not_play BOOLEAN)")
+    con.execute("INSERT INTO player_box_stats VALUES ('e1', 2015, 2, '11', NULL, FALSE), ('e2', 2015, 2, '11', NULL, FALSE), ('e3', 2015, 2, '10', 30, FALSE)")
+    result = player_stat(advanced_ctx, Reading.from_slots({"player": "Joakim Noah", "stat": "usage_pct", "season": 2015}))
+    assert result.answer.startswith(
+        "Joakim Noah has no usage rate on record in the 2015 regular season: ESPN serves 2 of his box scores that season with every line zeroed, and the rate is computed from them."
+    )
+    assert "1994" not in result.answer and "missing from this ranking" not in result.answer
+
+
+def test_an_empty_defaulted_advanced_season_redirects_to_the_seasons_on_record(advanced_ctx: AnswerContext) -> None:
+    """A retired player's "now" is empty: the plain refusal, and where he IS
+    on record - as the plain line does - never the 1994 floor (#293)."""
+    con = advanced_ctx.con
+    con.execute("CREATE TABLE player_season_stats_deduped (athlete_id VARCHAR, season INTEGER, season_type INTEGER)")
+    con.execute("INSERT INTO player_season_stats_deduped VALUES ('11', 2014, 2), ('11', 2015, 2), ('11', 2016, 2)")
+    result = player_stat(advanced_ctx, Reading.from_slots({"player": "Joakim Noah", "stat": "usage_pct"}))
+    assert result.answer.startswith(f"Joakim Noah has no usage rate on record in the {current_season()} regular season. He last appears in 2016.")
+    assert "1994" not in result.answer
 
 
 def test_a_career_rate_is_weighted_by_its_own_volume_not_averaged(advanced_ctx: AnswerContext) -> None:

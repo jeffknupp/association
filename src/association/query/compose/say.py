@@ -2326,7 +2326,9 @@ def _say_player_line_advanced(result: Result, line: Scalar) -> Reply:
     stat, span, name = facts.stat, result.span, result.subject
     spec = ADVANCED_STATS[stat]
     if not line.values:
-        message = f"{name} has no {spec.label} on record {span.phrase} - it is computed from box scores, which start in 1994."
+        # The read's own cause (``Result.empty``), and the seasons he IS on
+        # record for where the season was defaulted.
+        message = _empty_said(result) + "".join(decision_phrase(each) for each in result.decisions)
         return Reply(data={"player": name, "stat": stat, "stats": {}}, answer=message)
     value, volume, games = line.values[stat], line.sums["volume"], line.games
     printed = _advanced_value(spec.percentage, value)
@@ -4038,6 +4040,13 @@ def defaulted_season_note(season_range: tuple[int, int] | None, kind: str, *, ca
 #: phrase each, from the Refusal's facts.
 _RUN_PHRASES: dict[str, Callable[[Mapping[str, Any]], str | None]] = {
     "season_out_of_reach": lambda facts: unavailable(tuple(facts["tables"]), facts["season"], facts["season_type"], ranking=facts["ranking"]),
+    # An advanced stat with no figure (ISSUES.md #293): the cause the read
+    # found, where "computed from box scores, which start in 1994" was said
+    # of every empty line, a retired player's defaulted season included.
+    "no_advanced_line": lambda facts: f"{facts['player']} has no {facts['label']} on record {facts['during']}.",
+    "advanced_from_empty_box_scores": lambda facts: (
+        f"{facts['player']} has no {facts['label']} on record {facts['during']}: ESPN serves {facts['games']} of his box scores that season with every line zeroed, and the rate is computed from them."
+    ),
     "name_unmatched": lambda facts: suggestion(facts["asked"], (), facts.get("kind", "player")),
     "opponent_is_absent": lambda facts: (
         f"{facts['opponent']} is both the player {facts['player']} is matched against and the teammate named as absent - no game can be both. Name the opponent team, or drop 'without'."

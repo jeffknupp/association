@@ -248,12 +248,17 @@ _TEAM_POSTSEASON_NOTES: Mapping[int, str] = MappingProxyType({**_TEAM_EMPTY_POST
 
 _PLAYER_POSTSEASON_NOTES: Mapping[int, str] = MappingProxyType({**_PLAYER_EMPTY_POSTSEASON_NOTES, 2001: _PLAYER_2001_POSTSEASON_NOTE})
 
+_EMPTY_BOX_SEASON_RANKING_TAIL = ". 21 to 33 players a season clear the qualifying floor by ESPN's own season totals and fall under it here, so they are missing from this ranking entirely"
+"""The half of the empty-box-season note that is about a RANKING: a lookup of
+one player's rate carries the first half alone (:func:`caveat`, ``ranking``),
+since "missing from this ranking" is no claim about his number (ISSUES.md
+#293)."""
+
 _EMPTY_BOX_SEASON_NOTES: Mapping[int, str] = MappingProxyType(
     dict.fromkeys(
         range(2013, 2019),
         "ESPN serves every Chicago and New Orleans game from 2013 to 2018 with each player's line zeroed, and these rates are summed from those box scores, so the attempts "
-        "are short for anyone who played in one - not just those two rosters. 21 to 33 players a season clear the qualifying floor by ESPN's own season totals and fall "
-        "under it here, so they are missing from this ranking entirely",
+        "are short for anyone who played in one - not just those two rosters" + _EMPTY_BOX_SEASON_RANKING_TAIL,
     )
 )
 
@@ -484,7 +489,7 @@ def unavailable(tables: tuple[str, ...], season: int, season_type: int = REGULAR
     return None if season >= narrowest.season else narrowest.refusal(season)
 
 
-def caveat(tables: tuple[str, ...], season: int, season_type: int = REGULAR_SEASON) -> str | None:
+def caveat(tables: tuple[str, ...], season: int, season_type: int = REGULAR_SEASON, *, ranking: bool = True) -> str | None:
     """A note for a season that is covered but only partly, or None.
 
     Not a refusal: half a season is a real answer, and saying which half it is
@@ -505,6 +510,10 @@ def caveat(tables: tuple[str, ...], season: int, season_type: int = REGULAR_SEAS
     .. versionchanged:: 4.0.0
        Reads the note declared for that season rather than the table's one
        shared note. See :class:`Coverage`.
+
+    .. versionchanged:: 6.0.0
+       ``ranking``: a note's ranking-only tail
+       (:data:`_EMPTY_BOX_SEASON_RANKING_TAIL`) is left off a lookup.
     """
     notes = []
     for table in tables:
@@ -513,5 +522,5 @@ def caveat(tables: tuple[str, ...], season: int, season_type: int = REGULAR_SEAS
             continue
         declared = coverage.postseason_partial if season_type == POSTSEASON else coverage.partial
         if season in declared:
-            notes.append(declared[season])
+            notes.append(declared[season] if ranking else declared[season].removesuffix(_EMPTY_BOX_SEASON_RANKING_TAIL))
     return f"Note: {notes[0]}." if notes else None

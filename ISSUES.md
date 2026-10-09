@@ -2353,13 +2353,6 @@ those were found.
 - **Source:** ours.
 - **GitHub:** #271
 
-### A player's advanced stat in one 2013-2018 season is refused naming the wrong cause, with a ranking's caveat appended
-- **Found:** 2026-09-30, the notes inventory for `ROADMAP-TYPES.md` (an Opus agent reading `011091f`; reported, not re-verified).
-- **Evidence:** `compose.say` (the season line's advanced-stat sentence; `templates/players.py:1419-1423` when found) says the stat "is computed from box scores, which start in 1994" where the value is NULL because that season's box scores are empty; `coverage_caveat` then appends `nba/coverage.py:250-257` ("missing from this ranking entirely") to a one-player lookup.
-- **User sees:** a refusal that sends him to the wrong fact, and a note about a ranking he did not ask for.
-- **Next step:** reproduce with a Chicago or New Orleans player's usage in 2015; name the empty box scores as the cause.
-- **GitHub:** #293
-
 ### A coverage caveat is the first declared table's, whoever the answer is about: a player's 2001 playoff quarter gets the team-worded games note
 - **Found:** 2026-09-30, the notes inventory for `ROADMAP-TYPES.md` (an Opus agent reading `011091f`; reported, not re-verified).
 - **Evidence:** `nba/coverage.py:517` returns the first source's note; `period_split` and `period_leaderboard` list `shot_chart`, `games`, ... (`coverage.SOURCES`), so a 2001 postseason player answer says "Philadelphia's run reads 16 games ... a series can look shorter" - wording the module's own comment (`coverage.py:192-193`) calls wrong for a player. Same family as "A composed team season total carries a caveat about a different table".

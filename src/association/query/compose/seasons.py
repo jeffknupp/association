@@ -30,9 +30,9 @@ from association.nba.season import current_season
 from association.query.entities import Entity
 from association.query.measures import stat_measure
 from association.query.notes import Note
-from association.query.player_relation import ResolvedSpan
+from association.query.player_relation import ResolvedSpan, empty_box_scores
 from association.query.reading import Unsupported, unhonored_scoping
-from association.query.result import Decided, Grouped, LineFacts, Part, Result, Scalar, Span, Unanswered
+from association.query.result import Decided, Grouped, LineFacts, Part, Refusal, Result, Scalar, Span, Unanswered
 from association.query.season_line import (
     ADVANCED_STATS,
     COMPARE_STAT_LINE,
@@ -238,12 +238,41 @@ def _player_line_advanced(con: duckdb.DuckDBPyConnection, player: Entity, span: 
     facts = LineFacts(stat=stat)
     if row is None or row[0] is None:
         empty = Span(season=span.season, season_type=span.season_type, career=span.career, phrase=span.during(), source="seasons")
-        return Result(subject=player.name, relation="player", span=empty, parts=(Part(body=Scalar(games=0, how="season")),), facts=facts)
+        return Result(
+            subject=player.name,
+            relation="player",
+            span=empty,
+            parts=(Part(body=Scalar(games=0, how="season")),),
+            decisions=_player_line_redirect(con, player, span, span.season_type),
+            empty=_advanced_empty(con, player, span, spec),
+            facts=facts,
+        )
     value, volume, games, first, last, seasons, missing = row
     notes = (Note("seasons_missing", {"seasons": int(missing), "why": "empty_box_score", "stat": spec.column, "label": spec.label}),) if missing else ()
     scalar = Scalar(games=games, values={stat: value}, sums={"volume": volume, "seasons_missing": int(missing)}, how="season")
     line_span = Span(season=span.season, season_type=span.season_type, career=span.career, first=first, last=last, phrase=span.during(first, last), source="seasons")
     return Result(subject=player.name, relation="player", span=line_span, parts=(Part(body=scalar),), notes=notes, facts=replace(facts, season_count=seasons))
+
+
+#: The seasons whose box scores ESPN serves empty for two teams (DATA.md, "Nearly every Bulls and Pelicans box score from 2013 to 2018 is zeros").
+EMPTY_BOX_SEASONS: tuple[int, int] = (2013, 2018)
+
+
+def _advanced_empty(con: duckdb.DuckDBPyConnection, player: Entity, span: ResolvedSpan, spec: Any) -> Refusal:
+    """Why an advanced stat has no figure: the player's box scores that
+    season are empty (every Chicago and New Orleans game from 2013 to 2018,
+    which the rate is computed from), or nothing is on record - never "box
+    scores start in 1994", which the coverage floor refuses before this
+    reads and which was said of a retired player's defaulted season and of
+    an empty 2015 alike (ISSUES.md #293)."""
+    facts: dict[str, Any] = {"player": player.name, "label": spec.label, "during": span.during()}
+    if span.season is not None and EMPTY_BOX_SEASONS[0] <= span.season <= EMPTY_BOX_SEASONS[1]:
+        # Only a season the fault touches is asked, so a fixture with no box
+        # scores and a season outside it reads nothing.
+        games, _first, _last = empty_box_scores(con, span.season, span.season_type, player.id)
+        if games:
+            return Refusal(kind="advanced_from_empty_box_scores", facts={**facts, "games": games})
+    return Refusal(kind="no_advanced_line", facts=facts)
 
 
 # --- a stat season by season ----------------------------------------------------------

@@ -331,5 +331,5 @@ def coverage_caveat(shape: PointShape | None, scope: Scope | Mapping[str, Any], 
     scope = _as_scope(scope)
     if scope.season is None or shape is None:
         return None
-    said = caveat(sources_for(shape, scope), scope.season, scope.season_type or REGULAR_SEASON)
+    said = caveat(sources_for(shape, scope), scope.season, scope.season_type or REGULAR_SEASON, ranking=shape.shape == "ranking")
     return note("partial_season", said, season=scope.season, season_type=scope.season_type or REGULAR_SEASON, intent=intent) if said else None

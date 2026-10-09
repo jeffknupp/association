@@ -314,6 +314,18 @@ def test_a_2013_to_2018_shooting_board_says_who_is_missing_from_it() -> None:
         assert coverage_caveat(key("leaderboard"), {"season": season, "stat": "ts_pct"}) is None, season
 
 
+def test_the_shooting_caveats_ranking_sentence_is_left_off_a_lookup() -> None:
+    """ISSUES.md #293: "21 to 33 players ... are missing from this ranking
+    entirely" was appended to one player's own rate. The note's lookup half
+    stands alone off a ranking."""
+    ranked = caveat(("player_season_advanced_stats",), 2015)
+    looked_up = caveat(("player_season_advanced_stats",), 2015, ranking=False)
+    assert ranked is not None and looked_up is not None
+    assert ranked.endswith("so they are missing from this ranking entirely.") and "missing from this ranking" not in looked_up
+    assert looked_up.endswith("so the attempts are short for anyone who played in one - not just those two rosters.")
+    assert ranked.startswith(looked_up[:-1])
+
+
 def test_the_shooting_caveat_does_not_reach_a_board_ranked_from_espns_own_totals() -> None:
     """`player_season_stats` is fetched per player and is complete for these
     seasons - Anthony Davis has all 1,656 of his 2015 points there. A points
