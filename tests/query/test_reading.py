@@ -32,11 +32,13 @@ def test_the_default_point_is_a_reading_and_its_plan_is_the_query_it_always_was(
 
 def test_the_planner_copies_and_never_decides() -> None:
     """Every point field on the Reading lands on the Query under its own
-    name (``shape`` -> ``skeleton``, ``relation`` -> ``subject``), and a
-    field the Reading left unset is unset on the Query too."""
+    name (``shape`` and ``by`` -> ``skeleton``, ``on`` -> ``source``,
+    ``relation`` -> ``subject``), and a field the Reading left unset is
+    unset on the Query too."""
     reading = Reading(
         scope=Scope.from_slots({"player": "X", "season": 2025}),
-        shape="grouped",
+        shape="ranking",
+        by="player",
         measures=["points"],
         aggregate="per_game",
         group="player",
@@ -48,7 +50,6 @@ def test_the_planner_copies_and_never_decides() -> None:
         minimum_games=20,
         relation="everyone",
         position="C",
-        source="games",
     )
     q = plan(reading)
     assert isinstance(q, Query)
@@ -58,7 +59,9 @@ def test_the_planner_copies_and_never_decides() -> None:
     assert q.available is None and q.span is None and q.season is None
     # The two records mirror each other on purpose: a point field added to
     # one and not the other is a decision the planner would be making alone.
-    point = {"shape", "measures", "aggregate", "group", "predicates", "order", "direction", "limit", "offset", "minimum_games", "available", "span", "season", "source", "position"}
+    # The point's shape, by and on are the target's vocabulary, from which
+    # the planner derives the compiler's skeleton and source (plan.skeleton_of).
+    point = {"shape", "by", "on", "measures", "aggregate", "group", "predicates", "order", "direction", "limit", "offset", "minimum_games", "available", "span", "season", "position"}
     assert point <= {f.name for f in fields(Reading)}
     assert {"skeleton", "measures", "aggregate", "group", "predicates", "order", "direction", "limit", "offset", "minimum_games", "available", "span", "season", "source", "position"} <= {
         f.name for f in fields(Query)
@@ -99,7 +102,7 @@ def test_describe_names_every_deciding_field_and_drops_empty_scope() -> None:
         intent="threshold_count",
     )
     line = reading.describe()
-    assert line.startswith("relation=player subject=? shape=scalar measures=[] aggregate=count group=none predicates=[('points', '>=', 30)] window=date/desc source=games")
+    assert line.startswith("relation=player subject=? shape=scalar by= on=player_games measures=[] aggregate=count group=none predicates=[('points', '>=', 30)] window=date/desc")
     assert "scope={'player': 'Joel Embiid', 'season': 2026}" in line
 
 

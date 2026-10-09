@@ -2,7 +2,7 @@
 
 Every shared step takes the :class:`~association.query.reading.Scope`
 alone, except the three coverage checks (``check_coverage``,
-``coverage_caveat`` and ``_sources_for``), which still take a route's slot
+``coverage_caveat`` and ``sources_for``), which still take a route's slot
 dict from the tests: these check that a check gives the same answer, or the
 same refusal, for a Scope and for its slot dict.
 """
@@ -15,19 +15,17 @@ from typing import Any
 
 import pytest
 
-from association.query.coverage import _BOX_SCORE_SCOPING, _sources_for, check_coverage, coverage_caveat
-from association.query.reading import SCOPING_SLOTS, Scope, Unsupported
+from association.query.coverage import check_coverage, coverage_caveat, sources_for
+from association.query.reading import SCOPING_SLOTS, PointShape, Scope, Unsupported
 
 _FIELDS = {field.name for field in fields(Scope)}
 
 
 def test_every_scoping_slot_is_a_field_of_the_typed_scope() -> None:
-    """``unhonored_scoping`` reads each name in ``SCOPING_SLOTS`` as a Scope field,
-    and the box-score sources each in ``_BOX_SCORE_SCOPING``: a name that is
-    no field would raise AttributeError on every question rather than refuse
-    the one that set it."""
+    """``unhonored_scoping`` reads each name in ``SCOPING_SLOTS`` as a Scope
+    field: a name that is no field would raise AttributeError on every
+    question rather than refuse the one that set it."""
     assert SCOPING_SLOTS <= _FIELDS, sorted(SCOPING_SLOTS - _FIELDS)
-    assert set(_BOX_SCORE_SCOPING) <= _FIELDS, sorted(set(_BOX_SCORE_SCOPING) - _FIELDS)
 
 
 def _outcome(step: Callable[..., Any], *args: Any) -> Any:
@@ -69,21 +67,28 @@ _SLOTS: list[dict[str, Any]] = [
     },
 ]
 
-_INTENTS = [
-    "game_log",
-    "player_stat",
-    "player_splits",
-    "streak",
-    "record_when",
-    "team_record",
-    "team_leaderboard",
-    "leaderboard",
-    "shot_chart",
-    "period_split",
-    "threshold_count",
-    "head_to_head",
-    "team_quarter_points",
-    "coach",
+# The shapes whose floor resolves per question, the fixed ones, and no
+# point at all (a refusal the reading came to).
+_KEYS: list[PointShape | None] = [
+    PointShape("player_games", "rows", "date"),
+    PointShape("team_games", "rows", "date"),
+    PointShape("player_seasons", "scalar", "line"),
+    PointShape("player_games", "scalar", "line"),
+    PointShape("player_games", "split", "splits"),
+    PointShape("player_games", "runs", "line"),
+    PointShape("team_games", "runs", "won"),
+    PointShape("player_games", "split", "line"),
+    PointShape("team_games", "scalar", "record"),
+    PointShape("team_seasons", "ranking", "team"),
+    PointShape("player_seasons", "ranking", "player"),
+    PointShape("player_games", "ranking", "player"),
+    PointShape("shots", "chart", "shots"),
+    PointShape("player_periods", "rows", "date"),
+    PointShape("player_games", "scalar", "count"),
+    PointShape("team_games", "comparison", "opponent"),
+    PointShape("team_periods", "scalar", "total"),
+    PointShape("player_games", "rows", ""),
+    None,
 ]
 
 
@@ -91,6 +96,6 @@ _INTENTS = [
 def test_a_check_reads_a_scope_and_its_slot_dict_alike(slots: dict[str, Any]) -> None:
     """The scoping and coverage checks over both doors."""
     scope = Scope.from_slots(slots)
-    for intent in _INTENTS:
-        for step in (check_coverage, coverage_caveat, _sources_for):
-            assert _outcome(step, intent, scope) == _outcome(step, intent, slots), (step.__name__, intent)
+    for shape in _KEYS:
+        for step in (check_coverage, coverage_caveat, sources_for):
+            assert _outcome(step, shape, scope) == _outcome(step, shape, slots), (step.__name__, shape)

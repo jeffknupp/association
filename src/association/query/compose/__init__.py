@@ -6,8 +6,8 @@ The pipeline is parser -> template or compiler -> refusal. :func:`answer`
 is handed the point the parser read from the question's words
 (:attr:`Reading.point <association.query.reading.Reading.point>`), plans it
 (:mod:`~association.query.compose.plan`) and answers it one of three ways,
-chosen by the shape the planner settled
-(:class:`~association.query.compose.plan.PointShape`: the relation, the
+chosen by the shape the point reader declared and the planner settled
+(:class:`~association.query.reading.PointShape`: the relation, the
 shape and what it is by) and by nothing else: the shape's reader and the
 sayer (``compose.logs``, ``compose.runs``, ``compose.presence``, ... and
 :mod:`~association.query.compose.say`), a team's sum through
@@ -44,6 +44,7 @@ import duckdb
 
 from association.query.answer import AnswerContext, Reply
 from association.query.coverage import coverage_refusal
+from association.query.reading import PointShape
 from association.query.result import Result, Unanswered
 
 from .core import Query, Refused, Unsupported, run
@@ -54,7 +55,7 @@ from .meetings import read_head_to_head
 from .netpoints import NetPointsQuery, draw_fingerprint, read_fingerprint, read_player_netpoints
 from .pairs import read_player_matchup
 from .periods import read_period_leaderboard, read_period_split, read_team_quarter_points
-from .plan import SHAPE_WORDS, STATED_SCOPING, Planned, PointShape
+from .plan import SHAPE_NAMES, STATED_SCOPING, Planned
 from .presence import read_with_without
 from .rankings import read_leaderboard
 from .records import read_record_when, read_team_record_when
@@ -245,7 +246,7 @@ def answer(
 
     .. versionchanged:: 5.0.0
        Chooses the reader by ``planned.shape``
-       (:class:`~association.query.compose.plan.PointShape`), where it read
+       (:class:`~association.query.reading.PointShape`), where it read
        the reading's intent (the Phase 2 review's cleanup (b)6); a reader's
        refusal or question is typed and said by the sayer.
     """
@@ -298,7 +299,7 @@ class _Route:
     only: bool = False
 
 
-#: The readers, by the shape the planner settled (:class:`~association.query.compose.plan.PointShape`):
+#: The readers, by the shape the point declares (:class:`~association.query.reading.PointShape`):
 #: the one table the answer side chooses by - never by an intent.
 _ROUTES: dict[PointShape, _Route] = {
     PointShape("player_games", "rows", "date"): _Route(read_player_log),
@@ -348,11 +349,11 @@ def _read(con: duckdb.DuckDBPyConnection, shape: PointShape, query: Query | Team
         return None
     stated = STATED_SCOPING[shape]
     if route.only:
-        return _read_only(lambda: route.reader(con, query, stated=stated), SHAPE_WORDS[shape])
+        return _read_only(lambda: route.reader(con, query, stated=stated), SHAPE_NAMES[shape])
     return _read_log(lambda: route.reader(con, query, stated=stated))
 
 
-def _read_drawn(ctx: AnswerContext, shape: PointShape, query: NetPointsQuery | ShotQuery, floor: str | None) -> Reply:
+def _read_drawn(ctx: AnswerContext, shape: PointShape, query: NetPointsQuery | ShotQuery) -> Reply:
     """A point on a declared relation (NetPoints, located shots; Phase 2,
     slice (v)) read, drawn and said - its only answer, as its retired
     template was, and after the same coverage floor: a season before the
@@ -361,7 +362,7 @@ def _read_drawn(ctx: AnswerContext, shape: PointShape, query: NetPointsQuery | S
     (:func:`~association.query.compose.netpoints.draw_fingerprint`,
     :func:`~association.query.compose.shots.draw_shot_chart`), which names
     the file."""
-    refusal = coverage_refusal(floor or "", query.scope)
+    refusal = coverage_refusal(shape, query.scope)
     if refusal is not None:
         raise Refused(refusal)
     read = _read(ctx.con, shape, query)
@@ -416,7 +417,7 @@ def _answer_point(
         if trace is not None:
             trace(point)
         if isinstance(query, (NetPointsQuery, ShotQuery)):
-            return _read_drawn(ctx, shape, query, planned.floor)
+            return _read_drawn(ctx, shape, query)
         if isinstance(query, TeamSeasonQuery):
             return _said(_read(ctx.con, shape, query))
         if shape.relation in ("team_seasons", "team_snapshots"):
@@ -430,7 +431,7 @@ def _answer_point(
             result = run_team(ctx.con, query)
             return Reply(data=_team_point_data(query, result), answer=_team_sentence(query, result), artifacts=[])
         # The season's coverage floor, before any reader runs.
-        refusal = coverage_refusal(planned.floor or "", query.scope)
+        refusal = coverage_refusal(shape, query.scope)
         if refusal is not None:
             raise Refused(refusal)
         ported = _said(_read(ctx.con, shape, query)) if shape.relation not in ("team_seasons", "team_snapshots") else None

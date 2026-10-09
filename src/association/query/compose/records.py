@@ -28,7 +28,7 @@ from association.query.entities import optional_team
 from association.query.notes import Note
 from association.query.player_games import STAT_LABELS, THRESHOLD_STAT_COLUMNS, games_subquery
 from association.query.player_relation import condition_scope, no_games, span_of, whole_span
-from association.query.reading import Scope, Unsupported, unhonored_scoping
+from association.query.reading import PointShape, Scope, Unsupported, unhonored_scoping
 from association.query.result import Grouped, Line, Narrowing, Part, RecordFacts, Refusal, Result, Span, Unanswered
 from association.query.team_games import TeamNarrowed
 from association.query.team_relation import condition_team_no_games, team_games, team_span_label, team_where_in
@@ -173,7 +173,7 @@ def read_team_record_when(con: duckdb.DuckDBPyConnection, q: TeamQuery, *, state
     scope = q.scope
     if scope.threshold is None or unhonored_scoping("record_when", scope, stated):
         return None
-    refused = coverage_refusal("record_when", scope)
+    refused = coverage_refusal(PointShape("team_games", "split", "line"), scope)
     if refused is not None:
         return refused
     condition_needs_player_refusal("record_when", scope)

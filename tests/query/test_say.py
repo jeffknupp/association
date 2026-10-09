@@ -389,12 +389,15 @@ def test_the_answer_side_chooses_by_shape_and_never_by_intent() -> None:
     import typing
     from pathlib import Path
 
-    from association.query.compose.plan import SHAPE_WORDS, STATED_SCOPING
+    from association.query.compose.plan import SHAPE_NAMES, STATED_SCOPING
+    from association.query.coverage import SOURCES
     from association.query.result import Scalar
 
     compose = importlib.import_module("association.query.compose")
     sayer = importlib.import_module("association.query.compose.say")
-    assert set(compose._ROUTES) == set(SHAPE_WORDS) == set(STATED_SCOPING)
+    # One key: the routes, the stated scoping, the decline's name and the
+    # floor's tables (which also declare the game-level ranking no reader takes).
+    assert set(compose._ROUTES) == set(SHAPE_NAMES) == set(STATED_SCOPING) <= set(SOURCES)
     assert set(sayer._SCALAR_SAYERS) == set(typing.get_args(typing.get_type_hints(Scalar)["how"]))
     for module in (compose, sayer):
         tree = ast.parse(Path(module.__file__ or "").read_text())

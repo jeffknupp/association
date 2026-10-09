@@ -45,7 +45,7 @@ from association.query.coverage import coverage_refusal, floor_refusal
 from association.query.entities import Entity, resolved_team, slot_season
 from association.query.notes import Note
 from association.query.player_relation import ResolvedSpan, span_of, validated_until
-from association.query.reading import Unsupported, unhonored_scoping
+from association.query.reading import PointShape, Unsupported, unhonored_scoping
 from association.query.result import Calendar, Cell, GameOfSeries, Grouped, Narrowing, Part, Refusal, Result, Rows, Scalar, Span, TeamRecordFacts, Unanswered
 from association.query.season_line import Statement
 from association.query.season_text import MONTH_NAMES
@@ -142,7 +142,7 @@ def read_team_record(con: duckdb.DuckDBPyConnection, q: TeamQuery, *, stated: fr
     scope = q.scope
     if unhonored_scoping("team_record", scope, stated):
         return None
-    refused = coverage_refusal("team_record", scope)
+    refused = coverage_refusal(PointShape("team_games", "scalar", "record"), scope)
     if refused is not None:
         return refused
     named = conference_named(scope)

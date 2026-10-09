@@ -17,11 +17,11 @@ from pathlib import Path
 
 import duckdb
 import pytest
+from shapes import stated
 
 from association.nba.netpoints import FINGERPRINT_CATEGORIES
 from association.query.answer import RenderResult
 from association.query.compose.netpoints import NetPointsQuery, draw_fingerprint, fingerprint_result, read_fingerprint
-from association.query.compose.plan import words_stated
 from association.query.compose.say import refusal_phrase, say
 from association.query.entities import Entity, collect_name_readings
 from association.query.fingerprint import (
@@ -73,7 +73,7 @@ def _asked(con: duckdb.DuckDBPyConnection, out_dir: Path, names: str, *, season:
     as the retired ``fingerprint.render_fingerprint`` took them."""
     split = [name.strip() for name in names.split(" vs ")]
     scope = Scope(players=tuple(split), season=season) if len(split) > 1 else Scope(player=split[0], season=season)
-    return _said(con, out_dir, read_fingerprint(con, NetPointsQuery(scope=scope, shape="chart"), stated=words_stated("fingerprint")))
+    return _said(con, out_dir, read_fingerprint(con, NetPointsQuery(scope=scope, shape="chart"), stated=stated("fingerprint")))
 
 
 def _drawn(result: RenderResult) -> Path:

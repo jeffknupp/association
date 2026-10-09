@@ -66,7 +66,7 @@ from association.query.player_games import (
     period_rate,
 )
 from association.query.player_relation import ResolvedSpan, league_games, relation_window, scoped_games, span_of
-from association.query.reading import DEFAULT_GAME_LOG_LIMIT, STARTER_SIDES, Scope, Unsupported, _clamp_limit, period_narrowing, unhonored_scoping
+from association.query.reading import DEFAULT_GAME_LOG_LIMIT, STARTER_SIDES, PointShape, Scope, Unsupported, _clamp_limit, period_narrowing, unhonored_scoping
 from association.query.result import (
     Cell,
     Decided,
@@ -559,7 +559,7 @@ def read_team_quarter_points(con: duckdb.DuckDBPyConnection, q: TeamQuery, *, st
     scope = q.scope
     if unhonored_scoping("team_quarter_points", scope, stated):
         return None
-    refused = coverage_refusal("team_quarter_points", scope)
+    refused = coverage_refusal(PointShape("team_periods", "scalar", "total"), scope)
     if refused is not None:
         return refused
     asked = period_narrowing(scope)

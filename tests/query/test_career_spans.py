@@ -15,11 +15,11 @@ from typing import Any
 import duckdb
 import pytest
 from routed import planned_answer as compose_answer
+from shapes import stated
 from test_templates import leaderboard  # the compiler's, leaderboard's template retired (compose.COMPILED_INTENTS)
 
 from association.nba.season import current_season
 from association.query.answer import AnswerContext, Reply
-from association.query.compose.plan import words_stated
 from association.query.measures import resolve_metric
 from association.query.metrics import LEADERBOARD_METRICS
 from association.query.normalizer import NORMALIZER_STATS
@@ -239,9 +239,9 @@ def test_a_career_leaderboard_refuses_what_it_cannot_answer(career_ctx: AnswerCo
 @pytest.mark.parametrize("intent", ["leaderboard", "threshold_count", "single_game_high"])
 def test_a_career_span_is_honored_by_the_ranking_templates(intent: str) -> None:
     """A career is declared by what each reader's retired words state
-    (``compose.plan.words_stated``), beside the relation, which honors
+    (``compose.plan.STATED_SCOPING``), beside the relation, which honors
     a career for any named player."""
-    assert unhonored_scoping(intent, Scope.from_slots({"span": "career"}), words_stated(intent)) == []
+    assert unhonored_scoping(intent, Scope.from_slots({"span": "career"}), stated(intent)) == []
 
 
 # ---------------- career counts and highs, from box scores ----------------

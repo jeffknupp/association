@@ -157,16 +157,16 @@ def test_player_stat_honors_a_reached_condition(pstat_conditions_ctx: AnswerCont
 def test_the_default_point_also_reads_box_scores_for_a_condition() -> None:
     """``point._default_player_stat`` takes the same test
     (``_player_stat_reads_box_scores``) to decide its default point's
-    ``source`` - fixed by the same one-line change, not a second copy of the
-    bug. Unnarrowed, the point is the season line (``source="seasons"``); a
+    ``on`` - fixed by the same one-line change, not a second copy of the
+    bug. Unnarrowed, the point is the season line (``on="player_seasons"``); a
     bare ``conditions`` entry now switches it to box scores
-    (``source="games"``), the same as ``without`` already did."""
+    (``on="player_games"``), the same as ``without`` already did."""
     from routed import default_reading
 
     season = default_reading("player_stat", {"player": "Tyrese Maxey", "stat": "points"})
-    assert season.source == "seasons"
+    assert season.on == "player_seasons"
     narrowed = default_reading("player_stat", {"player": "Tyrese Maxey", "stat": "points", "conditions": [_condition("started")]})
-    assert narrowed.source == "games"
+    assert narrowed.on == "player_games"
 
 
 def _agent_warehouse(tmp_path: Path) -> Path:

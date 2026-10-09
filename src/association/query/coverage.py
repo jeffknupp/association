@@ -1,19 +1,29 @@
-"""Which warehouse tables each intent's answer is built from, and the refusal or
-caveat a season under or partly under their floors gets.
+"""Which warehouse tables each shape's answer is built from, and the refusal
+or caveat a season under or partly under their floors gets.
 
 The floors themselves are claims about the data, in
 :mod:`association.nba.coverage`; what this module adds is the readers'
-declaration of which tables they read (:data:`SOURCES`, one table for every
-intent, resolved per question where the table depends on what was asked) and
-the two checks the answering loop and the readers run against it.
+declaration of which tables they read (:data:`SOURCES`, one entry per
+:class:`~association.query.reading.PointShape` the answer side routes -
+resolved per question where the table depends on the measure asked for -
+and :data:`RELATION_SOURCES` for a point no reader takes) and the checks
+the answering loop and the readers run against it, keyed by the planned
+point's shape and never by an intent.
 
 .. versionadded:: 5.0.0
    Moved from ``association.query.templates.common`` (Phase 2, step 6); ``SOURCES`` was ``TEMPLATE_SOURCES``.
+
+.. versionchanged:: 6.0.0
+   Keyed by the planned point's :class:`~association.query.reading.PointShape`
+   (Phase 3, step 1); by intent, resolved per question by the retired
+   words' slot lists, until then. ``TABLELESS_INTENTS`` and
+   ``RANKING_INTENTS`` are gone: a refusal the reading comes to has no
+   point and so no floor, and whether a floor is a ranking's is the shape.
 """
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from typing import Any
 
 from association.nba.coverage import REGULAR_SEASON, caveat, unavailable
@@ -21,141 +31,189 @@ from association.query.conditions import _PLAYER_GAME_TABLES, _TEAM_GAME_TABLES
 from association.query.measures import resolve_metric
 from association.query.metrics import LEADERBOARD_METRICS
 from association.query.notes import note
-from association.query.reading import Scope
+from association.query.reading import PointShape, Scope
 from association.query.result import Refusal
 from association.query.team_metrics import TEAM_METRICS, resolve_team_metric
 
-# Which warehouse tables each intent's answer is built from, so a question
+# The box scores a player's games are read from: the log for the stats a
+# rebuild gets right, the stored table for the rest, and `games` for the
+# game itself; both box floors are 1994 with the same phantom 1993.
+_PLAYER_BOX_SOURCES = ("player_game_log", "player_box_stats", "games")
+
+# A count of games over a line, or a single game's high: the box scores,
+# and player_season_stats, read to tell whether a named player's career
+# began before the box scores do. Listed after the box-score tables so a
+# season under both floors is refused in the box scores' words, not as a
+# ranking.
+_PLAYER_COUNT_SOURCES = ("player_game_log", "player_box_stats", "player_season_stats")
+
+# The computed advanced stats live in their own table with its own floor,
+# and a player's line answers them from it. Named here rather than imported
+# from the reader, which imports this module.
+_ADVANCED_STAT_NAMES = frozenset({"ts_pct", "efg_pct", "usage_pct", "game_score"})
+
+
+def _player_line_tables(scope: Scope) -> tuple[str, ...]:
+    """One player's unnarrowed line: the season line, or - for a computed
+    stat (true shooting, effective FG%, usage, game score) - the advanced
+    table alone, which reaches back only to 1994 where the season line
+    reaches 1977: "Kareem's true shooting in 1980" is refused because that
+    stat is not computed that far back, and refusing it in the season
+    line's words would name a floor the question does not depend on."""
+    return ("player_season_advanced_stats",) if scope.stat in _ADVANCED_STAT_NAMES else ("player_season_stats_deduped",)
+
+
+def _player_games_line_tables(scope: Scope) -> tuple[str, ...]:
+    """One player's line over his narrowed games: the box scores, or the
+    advanced table for a computed stat (the same floor year, named for the
+    stat)."""
+    return ("player_season_advanced_stats",) if scope.stat in _ADVANCED_STAT_NAMES else _PLAYER_BOX_SOURCES
+
+
+def _metric_tables(scope: Scope) -> tuple[str, ...]:
+    """The table the asked-for leaderboard metric is ranked from; nothing
+    for a metric the ranking's reader refuses with a better message than a
+    coverage floor could."""
+    metric = resolve_metric(scope.stat, career=scope.span == "career")
+    spec = LEADERBOARD_METRICS.get(metric) if metric else None
+    return (spec.table,) if spec else ()
+
+
+def _team_record_tables(scope: Scope) -> tuple[str, ...]:
+    """The standings for a season's record (and its home/road split);
+    ``games`` for a tally - a record against one team, or in a postseason,
+    can only be tallied from `games`, whose regular seasons start later."""
+    against = bool(scope.opponent) or len(scope.teams) > 1
+    return ("games",) if against or scope.season_type == 3 else ("standings",)
+
+
+def _team_ranking_tables(scope: Scope) -> tuple[str, ...]:
+    """The record metrics read standings (or ``games`` for a postseason);
+    the rest, the team season stats - and opponent points come from
+    `games`, so its floor applies too: a rating from a season whose games
+    are one team's schedule would be no rating."""
+    key = resolve_team_metric(scope.stat)
+    if key is not None and TEAM_METRICS[key].expression is None:
+        return ("games",) if scope.season_type == 3 else ("standings",)
+    return ("team_season_stats", "games")
+
+
+Tables = tuple[str, ...] | Callable[[Scope], tuple[str, ...]]
+"""A shape's declared tables: the tuple itself, or a resolver over the
+scope where the table depends on the measure asked for.
+
+.. versionadded:: 6.0.0
+"""
+
+# Which warehouse tables each shape's answer is built from, so a question
 # about a season none of them reach is refused rather than answered with the
-# empty result that season produces. One table for every reader rather than
-# a declaration on each reader module: several readers share an intent's
-# floor (a player's log and a team's), and _sources_for picks between them
-# per question. Hand-maintained - deriving it by scanning for table names
-# picks up every one mentioned in a comment - and guarded by
-# test_every_template_declares_the_tables_it_reads.
-#
-# `leaderboard` is absent on purpose: its table depends on the metric asked
-# for, and _sources_for resolves it per question.
-SOURCES: dict[str, tuple[str, ...]] = {
-    # player_season_stats is read to tell whether a named player's career began
-    # before the box scores do. Listed after the box-score table so a season
-    # under both floors is refused in the box scores' words, not as a ranking.
-    # player_game_log is read for the stats a rebuild gets right, and the
-    # stored table for the rest; both floors are 1994 with the same phantom
-    # 1993, so declaring the log refuses no question the box scores answer.
-    "threshold_count": ("player_game_log", "player_box_stats", "player_season_stats"),
-    "single_game_high": ("player_game_log", "player_box_stats", "player_season_stats"),
-    # The season line by default and box scores once the question narrows the
-    # games, so _sources_for picks per question: a 1990 season line is
-    # answerable, and a 1990 line against one opponent is not.
-    # player_season_advanced_stats is the third case: a computed stat (true
-    # shooting, effective FG%, usage, game score) is answered from it alone,
-    # and it reaches back only to 1994 where the season line reaches 1977.
-    "player_stat": ("player_season_stats_deduped", "player_game_log", "player_box_stats", "games", "player_season_advanced_stats"),
-    "player_compare": ("player_season_stats_deduped",),
-    "player_history": ("player_season_stats_deduped",),
-    "player_netpoints": ("net_points_player", "net_points_player_fingerprint"),
-    "team_record": ("standings",),
+# empty result that season produces. One entry per shape the answer side
+# routes (``compose._ROUTES``; a test holds the two sets equal) rather than
+# a declaration on each reader module - hand-maintained, since deriving it
+# by scanning for table names picks up every one mentioned in a comment.
+SOURCES: dict[PointShape, Tables] = {
+    PointShape("player_games", "scalar", "count"): _PLAYER_COUNT_SOURCES,
+    PointShape("player_games", "ranking", "count"): _PLAYER_COUNT_SOURCES,
+    PointShape("player_games", "rows", "count"): _PLAYER_COUNT_SOURCES,
+    PointShape("player_games", "rows", "measure"): _PLAYER_COUNT_SOURCES,
+    # A player's log reads the box scores; a team's, the team tables - a
+    # team question refused with "Player game logs only go back to..."
+    # names the wrong thing.
+    PointShape("player_games", "rows", "date"): _PLAYER_BOX_SOURCES,
+    PointShape("team_games", "rows", "date"): ("games", "team_box_stats"),
+    # The season line for an unnarrowed line and the box scores for a
+    # narrowed one - which is which the point reader settled when it named
+    # the relation: a 1990 season line is answerable, and a 1990 line
+    # against one opponent, or since a date, is not (#212, closed by
+    # keying the floor on the point: until Phase 3, step 1 the floor read
+    # four slots of its own and the reader a longer list).
+    PointShape("player_seasons", "scalar", "line"): _player_line_tables,
+    PointShape("player_games", "scalar", "line"): _player_games_line_tables,
+    PointShape("player_seasons", "comparison", "subject"): ("player_season_stats_deduped",),
+    PointShape("player_seasons", "split", "season"): ("player_season_stats_deduped",),
+    # A ranking's table depends on the metric asked for. The game-level
+    # ranking (the planner's re-plan of a season-line ranking its reader did
+    # not read, which no reader takes) is held to the same floor - the
+    # metric's pool - rather than the box scores it reads: 2 of 2,710
+    # readings would move otherwise ("how many players averaged 30 ppg in
+    # 1986", unfloored because the metric resolves to no table), and the
+    # step that re-keyed the floor moves no verdict.
+    PointShape("player_seasons", "ranking", "player"): _metric_tables,
+    PointShape("player_games", "ranking", "player"): _metric_tables,
+    PointShape("netpoints", "scalar", "ratings"): ("net_points_player", "net_points_player_fingerprint"),
+    PointShape("netpoints", "chart", "fingerprint"): ("net_points_player_fingerprint", "net_points_player_game_fingerprint"),
+    PointShape("team_games", "scalar", "record"): _team_record_tables,
     # Answered from `real_games`, but the FLOOR is `games`': the filtered list
     # is the same data with the rows that are not games removed, and it reaches
     # exactly as far back. Declaring `real_games` would need a second, identical
     # COVERAGE entry to drift out of step with the first.
-    "head_to_head": ("games",),
-    "team_quarter_points": ("team_box_stats", "games"),
+    PointShape("team_games", "comparison", "opponent"): ("games",),
+    PointShape("team_periods", "scalar", "total"): ("team_box_stats", "games"),
     # Points per period are summed out of the shot table, so the shot floor is
     # the one that applies - not the play-by-play floor, even though the two
     # start in the same year, because a season whose plays are complete can
     # still be missing the located shots this reads.
-    "period_split": ("shot_chart", "games"),
+    PointShape("player_periods", "rows", "date"): ("shot_chart", "games"),
+    PointShape("player_periods", "split", "period"): ("shot_chart", "games"),
     # Same two, plus the box table the denominator (games PLAYED) comes from.
-    "period_leaderboard": ("shot_chart", "games", "player_box_stats"),
-    # A player's log and a team's come from different tables, and _sources_for
-    # picks between them - a team question refused with "Player game logs only
-    # go back to..." names the wrong thing.
-    "game_log": ("games", "team_box_stats", "player_game_log", "player_box_stats", "player_season_stats_deduped"),
+    PointShape("player_periods", "ranking", "player"): ("shot_chart", "games", "player_box_stats"),
     # player_season_stats_deduped is read only on a career span, to say
     # whether the 2002 shot floor clips a career that started earlier
     # (season_line.seasons_played). Its own floor (1977) is earlier than
     # shot_chart's, so declaring it here changes no refusal - shot_chart's
     # 2002 still wins as the narrower of the two.
-    "shot_chart": ("shot_chart", "player_season_stats_deduped"),
-    "shot_distance": ("shot_chart", "player_season_stats_deduped"),
-    "fingerprint": ("net_points_player_fingerprint", "net_points_player_game_fingerprint"),
-    # A team's splits and streaks read only the team tables; _sources_for
-    # picks between the two per question.
-    "player_splits": _PLAYER_GAME_TABLES,
-    "with_without": _PLAYER_GAME_TABLES,
-    # The fallback for a player question; _sources_for picks the team tables
-    # instead for a team's own threshold (no `player` slot) - declaring
-    # player_box_stats there too would refuse a team's 1989-1993 postseason
-    # question in player box scores' words, the wrong cause, since that table
-    # sets no postseason_first_season override and so floors at 1994 like its
-    # regular season (team_box_stats and games both floor postseasons at 1989).
-    "record_when": _PLAYER_GAME_TABLES,
-    "player_matchup": _PLAYER_GAME_TABLES,
-    "streak": _PLAYER_GAME_TABLES,
-    # Opponent points come from `games`, so its floor applies too - a rating
-    # from a season whose games are one team's schedule would be no rating.
-    "team_stat": ("team_season_stats", "games"),
-    # The record metrics read standings instead; _sources_for picks per metric.
-    "team_leaderboard": ("team_season_stats", "games"),
-    "team_outlook": ("team_power_index",),
+    PointShape("shots", "chart", "shots"): ("shot_chart", "player_season_stats_deduped"),
+    PointShape("shots", "scalar", "distance"): ("shot_chart", "player_season_stats_deduped"),
+    # A player's splits, record over a line and run read the player tables;
+    # a team's read only the team tables - charging them a player box
+    # score's floor would refuse a 1990 playoff question with a sentence
+    # about player box scores, the wrong cause (team_box_stats and games
+    # both floor postseasons at 1989; player_box_stats at 1994).
+    PointShape("player_games", "split", "splits"): _PLAYER_GAME_TABLES,
+    PointShape("team_games", "split", "splits"): _TEAM_GAME_TABLES,
+    PointShape("player_games", "split", "line"): _PLAYER_GAME_TABLES,
+    PointShape("team_games", "split", "line"): _TEAM_GAME_TABLES,
+    PointShape("player_games", "runs", "line"): _PLAYER_GAME_TABLES,
+    PointShape("team_games", "runs", "won"): _TEAM_GAME_TABLES,
+    PointShape("player_games", "comparison", "met"): _PLAYER_GAME_TABLES,
+    # The with/without split reads whether named teammates played: the
+    # player box scores, on the team relation.
+    PointShape("team_games", "split", "presence"): _PLAYER_GAME_TABLES,
+    # Opponent points come from `games`, so its floor applies too.
+    PointShape("team_seasons", "scalar", "line"): ("team_season_stats", "games"),
+    PointShape("team_seasons", "ranking", "team"): _team_ranking_tables,
+    PointShape("team_snapshots", "scalar", "projection"): ("team_power_index",),
 }
-"""Per intent, the warehouse tables its answer reads, whose coverage floors
-:func:`check_coverage` refuses a season under.
+"""Per shape the answer side routes, the warehouse tables its reader reads,
+whose coverage floors :func:`check_coverage` refuses a season under.
 
 .. versionadded:: 5.0.0
    ``association.query.templates.TEMPLATE_SOURCES`` until the templates were
    gone (Phase 2, step 6).
+
+.. versionchanged:: 6.0.0
+   Keyed by :class:`~association.query.reading.PointShape` (Phase 3, step 1).
 """
 
 
-TABLELESS_INTENTS: frozenset[str] = frozenset({"coach"})
-"""Intents whose answer reads no warehouse table at all.
+RELATION_SOURCES: dict[str, tuple[str, ...]] = {
+    "player_games": _PLAYER_BOX_SOURCES,
+    "player_periods": ("shot_chart", "games"),
+    "player_seasons": ("player_season_stats_deduped",),
+    "team_games": ("games", "team_box_stats"),
+    "team_periods": ("team_box_stats", "games"),
+    "team_seasons": ("team_season_stats", "games"),
+    "team_snapshots": ("team_power_index",),
+    "netpoints": ("net_points_player", "net_points_player_fingerprint"),
+    "shots": ("shot_chart", "player_season_stats_deduped"),
+}
+"""Per relation, the tables a point no reader takes reads - the compiler's
+own sentence over the relation's games or line (a league ranking of games
+by a measure, a history re-planned over the games) - for a shape with no
+entry in :data:`SOURCES`.
 
-Only ``coach`` today: it is a refusal (the reading's ``no_coach_table``
-cause, said by ``compose.plan.refusal_result``), and there is nothing for it to read -
-no table here holds a coach, which is the whole reason it refuses. So it
-declares no sources, and :func:`check_coverage` and :func:`coverage_caveat`
-both come back None for it, which is right: appending "there is no data for
-1996" to a sentence that already explains what is missing would name a second,
-wrong cause.
-
-A named constant rather than a literal in a test, for the reason
-:data:`association.query.router.CODE_ASSIGNED_INTENTS` is: a template absent
-from ``SOURCES`` is normally one no floor can refuse, and the two
-lists have to disagree deliberately rather than by drift.
-
-.. versionadded:: 4.0.0
+.. versionadded:: 6.0.0
 """
-
-
-# Templates that rank players AGAINST each other, rather than reporting the
-# numbers of players the question named. The distinction is the whole reason
-# coverage.Coverage carries two floors: player_season_stats holds Michael
-# Jordan's real 1990 line, so "how many did Jordan average" is answerable from
-# it, while "who led the league" is not - the pool it would rank is 217 players
-# out of a ~350-player league, and 7 out of a full league in 1980.
-#
-# player_compare is NOT here. It compares players the question named, which a
-# per-player table answers exactly as well as a single lookup does.
-# `streak` ranks players when no one is named ("most 40 point games in a row").
-RANKING_INTENTS = frozenset({"leaderboard", "threshold_count", "single_game_high", "streak"})
-
-
-# The slots that turn player_stat from a season-line lookup into a sum over box
-# scores, and the tables that sum reads. Kept here so _sources_for and the
-# template cannot disagree about which question needs which floor.
-_BOX_SCORE_SCOPING = ("opponent", "venue", "without", "conditions")
-
-
-_PLAYER_BOX_SOURCES = ("player_game_log", "player_box_stats", "games")
-
-
-# The computed advanced stats live in their own table with its own floor, and
-# `player_stat` answers them from it. Named here rather than imported from the
-# template, which imports this module.
-_ADVANCED_STAT_NAMES = frozenset({"ts_pct", "efg_pct", "usage_pct", "game_score"})
 
 
 def _as_scope(value: Scope | Mapping[str, Any]) -> Scope:
@@ -165,105 +223,42 @@ def _as_scope(value: Scope | Mapping[str, Any]) -> Scope:
     it is where the parser builds the Reading.
 
     Only the three coverage checks take a slot dict still
-    (:func:`check_coverage`, :func:`coverage_caveat` and ``_sources_for``),
-    and only from the tests: the agent hands them the Reading's own Scope,
-    which the parser writes (:func:`~association.query.parse.reading_from_route`).
-    Every other step here takes the Scope alone."""
+    (:func:`check_coverage`, :func:`coverage_caveat` and :func:`sources_for`),
+    and only from the tests: the agent hands them the planned point's own
+    scope. Every other step here takes the Scope alone."""
     return value if isinstance(value, Scope) else Scope.from_slots(value)
 
 
-def _sources_for_player_stat(scope: Scope) -> tuple[str, ...]:
-    """The table one player's numbers would come from.
+def sources_for(shape: PointShape | None, scope: Scope | Mapping[str, Any]) -> tuple[str, ...]:
+    """The tables the answer to a point of ``shape`` would be built from,
+    resolved per question where the table depends on the measure asked for
+    (:data:`SOURCES`); the relation's own for a shape no reader takes
+    (:data:`RELATION_SOURCES`); none for no point at all (``None``: a
+    refusal the reading came to, which read nothing - appending "there is
+    no data for 1996" to a sentence that already explains what is missing
+    would name a second, wrong cause).
 
-    An advanced stat is charged its own floor (1994, from box scores) rather
-    than the season line's (1977): "Kareem's true shooting in 1980" is refused
-    because that stat is not computed that far back, and refusing it in the
-    season line's words would name a floor the question does not depend on.
+    .. versionadded:: 6.0.0
     """
-    if scope.stat in _ADVANCED_STAT_NAMES:
-        return ("player_season_advanced_stats",)
-    return _PLAYER_BOX_SOURCES if any(getattr(scope, name) for name in _BOX_SCORE_SCOPING) else ("player_season_stats_deduped",)
-
-
-def _sources_for(intent: str, scope: Scope | Mapping[str, Any]) -> tuple[str, ...]:
-    """The tables an answer would be built from, resolved per question because
-    a leaderboard's depends on which metric was asked for."""
+    if shape is None:
+        return ()
     scope = _as_scope(scope)
-    if intent == "game_log":
-        return _sources_for_game_log(scope)
-    if intent == "player_stat":
-        return _sources_for_player_stat(scope)
-    if intent in ("player_splits", "streak"):
-        return _sources_for_splits_or_streak(intent, scope)
-    if intent == "record_when":
-        return _sources_for_record_when(scope)
-    if intent == "team_record":
-        return _sources_for_team_record(scope)
-    if intent == "team_leaderboard":
-        return _sources_for_team_leaderboard(scope)
-    if intent != "leaderboard":
-        return SOURCES.get(intent, ())
-    return _sources_for_leaderboard(scope)
+    declared = SOURCES.get(shape)
+    if declared is None:
+        return RELATION_SOURCES.get(shape.relation, ())
+    return declared(scope) if callable(declared) else declared
 
 
-def _sources_for_game_log(scope: Scope) -> tuple[str, ...]:
-    """A player's log reads the box scores; a team's, the team tables."""
-    named_player = bool(scope.player and scope.player.strip())
-    return _PLAYER_BOX_SOURCES if named_player else ("games", "team_box_stats")
-
-
-def _sources_for_record_when(scope: Scope) -> tuple[str, ...]:
-    """A named player's threshold reads the player tables; a team's own
-    threshold (no ``player`` slot) reads only the team tables - the same split
-    _sources_for_splits_or_streak makes, and for the same reason: a team
-    question refused in player box scores' words names the wrong cause."""
-    named_player = bool(scope.player and scope.player.strip())
-    return _PLAYER_GAME_TABLES if named_player else _TEAM_GAME_TABLES
-
-
-def _sources_for_splits_or_streak(intent: str, scope: Scope) -> tuple[str, ...]:
-    """The player tables for a player's splits or streak, the team tables otherwise."""
-    # A team's splits or streak never touch a player box score, and
-    # charging them that table's floor would refuse a 1990 playoff question
-    # with a sentence about player box scores - the wrong cause.
-    named_player = bool(scope.player and scope.player.strip())
-    by_player = named_player or (intent == "streak" and scope.threshold is not None)
-    return _PLAYER_GAME_TABLES if by_player else _TEAM_GAME_TABLES
-
-
-def _sources_for_team_record(scope: Scope) -> tuple[str, ...]:
-    """The standings for a season's record, ``games`` for a tally."""
-    # A season's record, and its home/road split, are the standings'; a
-    # record against one team, or in a postseason, can only be tallied
-    # from `games`, whose regular seasons start later.
-    against = bool(scope.opponent) or len(scope.teams) > 1
-    return ("games",) if against or scope.season_type == 3 else ("standings",)
-
-
-def _sources_for_team_leaderboard(scope: Scope) -> tuple[str, ...]:
-    """The record metrics read standings (or ``games`` for a postseason); the rest, the team season stats."""
-    key = resolve_team_metric(scope.stat)
-    if key is not None and TEAM_METRICS[key].expression is None:
-        return ("games",) if scope.season_type == 3 else ("standings",)
-    return SOURCES["team_leaderboard"]
-
-
-def _sources_for_leaderboard(scope: Scope) -> tuple[str, ...]:
-    """The table the asked-for leaderboard metric is ranked from."""
-    metric = resolve_metric(scope.stat, career=scope.span == "career")
-    spec = LEADERBOARD_METRICS.get(metric) if metric else None
-    # An unrecognized metric is left to the template, which refuses it with a
-    # better message than a coverage floor could.
-    return (spec.table,) if spec else ()
-
-
-def check_coverage(intent: str, scope: Scope | Mapping[str, Any]) -> str | None:
-    """Why this question's season is out of reach, or None.
+def check_coverage(shape: PointShape | None, scope: Scope | Mapping[str, Any]) -> str | None:
+    """Why this question's season is out of reach for a point of ``shape``,
+    or None.
 
     Returned rather than raised, and deliberately: a narrowing a reader
     cannot honor is declined so the compiler's own sentence gets its turn,
     and may do better. Nothing does better here: a season under the floor
-    is empty for every reader. The refusal IS the answer.
+    is empty for every reader. The refusal IS the answer. A ranking's
+    floor (``player_season_stats``' survivor sample ranks nobody before
+    1994) applies where the shape is a ranking.
 
     .. versionadded:: 2.1.0
 
@@ -271,17 +266,17 @@ def check_coverage(intent: str, scope: Scope | Mapping[str, Any]) -> str | None:
        Reads the typed :class:`~association.query.reading.Scope`. A slot dict
        is still taken, through :meth:`~association.query.reading.Scope.from_slots`,
        until every caller passes ``reading.scope``.
+
+    .. versionchanged:: 6.0.0
+       Keyed by the planned point's :class:`~association.query.reading.PointShape`
+       (Phase 3, step 1), not an intent.
     """
     scope = _as_scope(scope)
-    if scope.season is None:
-        # No season means the current one, which every table covers.
+    if scope.season is None or shape is None:
+        # No season means the current one, which every table covers; no
+        # point means nothing was read.
         return None
-    return unavailable(
-        _sources_for(intent, scope),
-        scope.season,
-        scope.season_type or 2,
-        ranking=intent in RANKING_INTENTS,
-    )
+    return unavailable(sources_for(shape, scope), scope.season, scope.season_type or 2, ranking=shape.shape == "ranking")
 
 
 def floor_refusal(tables: tuple[str, ...], season: int, season_type: int, *, ranking: bool = False, shown: Mapping[str, Any] | None = None, under: tuple[str, ...] = ("message",)) -> Refusal | None:
@@ -302,20 +297,25 @@ def floor_refusal(tables: tuple[str, ...], season: int, season_type: int, *, ran
     return Refusal(kind="season_out_of_reach", facts=facts, shown={"season": season} if shown is None else shown, under=under)
 
 
-def coverage_refusal(intent: str, scope: Scope) -> Refusal | None:
+def coverage_refusal(shape: PointShape | None, scope: Scope) -> Refusal | None:
     """:func:`check_coverage`, typed: the floor this question's season is
     under, as the :class:`~association.query.result.Refusal` a reader
     returns, or None.
 
     .. versionadded:: 5.0.0
+
+    .. versionchanged:: 6.0.0
+       Keyed by the planned point's :class:`~association.query.reading.PointShape`.
     """
-    if scope.season is None:
+    if scope.season is None or shape is None:
         return None
-    return floor_refusal(_sources_for(intent, scope), scope.season, scope.season_type or 2, ranking=intent in RANKING_INTENTS)
+    return floor_refusal(sources_for(shape, scope), scope.season, scope.season_type or 2, ranking=shape.shape == "ranking")
 
 
-def coverage_caveat(intent: str, scope: Scope | Mapping[str, Any]) -> str | None:
+def coverage_caveat(shape: PointShape | None, scope: Scope | Mapping[str, Any], *, intent: str = "") -> str | None:
     """A note for a season this question can reach but only partly, or None.
+    ``intent`` is the page's label, recorded on the note beside the season
+    (``Answer.intent`` stays for the page until Phase 4).
 
     .. versionadded:: 2.1.0
 
@@ -323,9 +323,13 @@ def coverage_caveat(intent: str, scope: Scope | Mapping[str, Any]) -> str | None
        Reads the typed :class:`~association.query.reading.Scope`. A slot dict
        is still taken, through :meth:`~association.query.reading.Scope.from_slots`,
        until every caller passes ``reading.scope``.
+
+    .. versionchanged:: 6.0.0
+       Keyed by the planned point's :class:`~association.query.reading.PointShape`;
+       the intent is the note's label only.
     """
     scope = _as_scope(scope)
-    if scope.season is None:
+    if scope.season is None or shape is None:
         return None
-    said = caveat(_sources_for(intent, scope), scope.season, scope.season_type or REGULAR_SEASON)
+    said = caveat(sources_for(shape, scope), scope.season, scope.season_type or REGULAR_SEASON)
     return note("partial_season", said, season=scope.season, season_type=scope.season_type or REGULAR_SEASON, intent=intent) if said else None

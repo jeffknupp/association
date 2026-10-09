@@ -24,7 +24,7 @@ from association.nba.season import current_season
 from association.query.coverage import coverage_refusal
 from association.query.entities import Entity, resolved_team, slot_season
 from association.query.player_relation import ResolvedSpan, span_of, validated_until
-from association.query.reading import Scope, Unsupported, unhonored_scoping
+from association.query.reading import PointShape, Scope, Unsupported, unhonored_scoping
 from association.query.result import Grouped, MeetingsFacts, Narrowing, Part, Result, Span, Unanswered
 from association.query.team_games import TeamNarrowed
 from association.query.team_relation import team_games
@@ -136,7 +136,7 @@ def read_head_to_head(con: duckdb.DuckDBPyConnection, q: TeamQuery, *, stated: f
     scope = q.scope
     if unhonored_scoping("head_to_head", scope, stated):
         return None
-    refused = coverage_refusal("head_to_head", scope)
+    refused = coverage_refusal(PointShape("team_games", "comparison", "opponent"), scope)
     if refused is not None:
         return refused
     names = _head_to_head_names(scope.teams, scope.team, scope.opponent)

@@ -47,8 +47,12 @@ remark that was written and did not reach its answer.
 ``compare`` exits 1 on any difference, and 2 when the two runs share
 nothing to compare (a wrong path must not read as a clean run). ``--values-only`` leaves the
 sentences out (``stages.WORDING``): for a change allowed to reword an answer
-but not to move a number. Run the baseline twice and compare it with itself
-before reading anything into a difference.
+but not to move a number. ``--ignore <stage.path>`` (repeatable) leaves one
+field out of the comparison and lists its values on each side by count -
+only for a field the commit names as added to, or deleted from, a record
+(``reading.point.by``, Phase 3, step 1); everything else stays compared
+whole. Run the baseline twice and compare it with itself before reading
+anything into a difference.
 
 The recorded replies are jsonl rows ``{"q": question, "out": {"names": [...],
 "stat": ...}}``; by default the three files of the 628-question corpus under
@@ -196,6 +200,22 @@ def _question_differences(before: dict[str, Any], after: dict[str, Any], args: a
     # remarks were recorded has none to compare.
     if "remarks" in before and "remarks" in after and not args.ignore_remarks:
         found.extend(value_differences("remarks", before["remarks"], after["remarks"], tolerance=args.tolerance))
+    return [each for each in found if f"{each.stage}.{each.path}" not in args.ignore]
+
+
+def _ignored_values(records: dict[str, dict[str, Any]], ignored: list[str]) -> dict[str, Counter[str]]:
+    """Per ignored ``stage.path``, the values the run holds there by count
+    (``<absent>`` where the record has no such field), so a field a commit
+    adds is listed, not only left out."""
+    found: dict[str, Counter[str]] = {path: Counter() for path in ignored}
+    for record in records.values():
+        for path in ignored:
+            value: Any = record
+            for key in path.split("."):
+                value = value.get(key) if isinstance(value, dict) else None
+                if value is None:
+                    break
+            found[path][repr(value) if value is not None else "<absent>"] += 1
     return found
 
 
@@ -222,6 +242,25 @@ def compare(args: argparse.Namespace) -> int:
             moved.append((question, found))
             first_stage[found[0].stage] += 1
             kinds.update(each.kind for each in found)
+    _print_moved(moved, args)
+    compared = len(before.keys() & after.keys())
+    scope = "values only" if args.values_only else "values and wording"
+    for side, records in (("before", before), ("after", after)):
+        for path, values in _ignored_values(records, args.ignore).items():
+            print(f"IGNORED {path} ({side}): " + ", ".join(f"{value} {count}" for value, count in values.most_common()))
+    ignored = f"{len(args.ignore)} field(s) ignored"
+    print(f"\n{compared} questions compared ({scope}, tolerance {args.tolerance}, {ignored}): {compared - len(moved)} identical, {len(moved)} differ, {len(only)} in one run only")
+    if moved:
+        print("first stage that differs: " + ", ".join(f"{stage} {count}" for stage, count in first_stage.most_common()))
+        print("kinds of difference: " + ", ".join(f"{kind} {count}" for kind, count in kinds.most_common()))
+    if not compared:
+        print("NOTHING COMPARED: the two runs share no question - an empty comparison is not a clean one")
+        return 2
+    return 1 if moved or only else 0
+
+
+def _print_moved(moved: list[tuple[str, list[Any]]], args: argparse.Namespace) -> None:
+    """The first ``--show`` moved questions, ``--lines`` differences each."""
     for question, found in moved[: args.show]:
         print(f"\n{question}")
         for each in found[: args.lines]:
@@ -230,16 +269,6 @@ def compare(args: argparse.Namespace) -> int:
             print(f"    ... and {len(found) - args.lines} more")
     if len(moved) > args.show:
         print(f"\n... and {len(moved) - args.show} more questions (--show)")
-    compared = len(before.keys() & after.keys())
-    scope = "values only" if args.values_only else "values and wording"
-    print(f"\n{compared} questions compared ({scope}, tolerance {args.tolerance}): {compared - len(moved)} identical, {len(moved)} differ, {len(only)} in one run only")
-    if moved:
-        print("first stage that differs: " + ", ".join(f"{stage} {count}" for stage, count in first_stage.most_common()))
-        print("kinds of difference: " + ", ".join(f"{kind} {count}" for kind, count in kinds.most_common()))
-    if not compared:
-        print("NOTHING COMPARED: the two runs share no question - an empty comparison is not a clean one")
-        return 2
-    return 1 if moved or only else 0
 
 
 def remarks(args: argparse.Namespace) -> int:
@@ -335,6 +364,9 @@ def main() -> int:
     compare_parser.add_argument("after", type=Path)
     compare_parser.add_argument("--values-only", action="store_true", help="leave the sentences out (stages.WORDING)")
     compare_parser.add_argument("--ignore-remarks", action="store_true", help="do not compare the notes and stated decisions: only for a change whose whole point is to record more of them")
+    compare_parser.add_argument(
+        "--ignore", action="append", default=[], metavar="STAGE.PATH", help="leave one field out and list its values by count: only for a field the commit names as added or deleted (repeatable)"
+    )
     compare_parser.add_argument("--tolerance", type=float, default=FLOAT_TOLERANCE)
     compare_parser.add_argument("--show", type=int, default=20, help="questions to print")
     compare_parser.add_argument("--lines", type=int, default=6, help="differences to print per question")

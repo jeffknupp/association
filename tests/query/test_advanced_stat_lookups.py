@@ -17,8 +17,8 @@ import pytest
 from test_templates import player_stat  # the compiler's, player_stat's template retired (compose.COMPILED_INTENTS)
 
 from association.query.answer import AnswerContext
-from association.query.coverage import _ADVANCED_STAT_NAMES, _sources_for, check_coverage
-from association.query.reading import Reading, Scope, Unsupported
+from association.query.coverage import _ADVANCED_STAT_NAMES, check_coverage, sources_for
+from association.query.reading import PointShape, Reading, Scope, Unsupported
 from association.query.season_line import ADVANCED_STATS
 
 
@@ -126,19 +126,20 @@ def test_a_narrowed_set_of_games_is_never_answered_with_the_season(advanced_ctx:
         "",
         Reading(scope=Scope.from_slots({"player": "Klay Thompson", "stat": "ts_pct", "opponent": "Boston Celtics"}), intent="player_stat", subject=Subject("player", players=("Klay Thompson",))),
     )
-    assert reading.point is not None and reading.point.source == "games" and reading.point.measures == ["ts_pct"]
+    assert reading.point is not None and reading.point.on == "player_games" and reading.point.measures == ["ts_pct"]
 
 
 def test_an_advanced_stat_is_charged_its_own_floor_not_the_season_lines() -> None:
     """``player_season_stats`` reaches 1977 and the computed stats reach 1994.
     Refusing a 1980 true-shooting question in the season line's words would
     name a floor the question does not depend on."""
-    assert _sources_for("player_stat", {"player": "Kareem Abdul-Jabbar", "stat": "ts_pct", "season": 1980}) == ("player_season_advanced_stats",)
-    refusal = check_coverage("player_stat", {"player": "Kareem Abdul-Jabbar", "stat": "ts_pct", "season": 1980, "season_type": 2})
+    line = PointShape("player_seasons", "scalar", "line")
+    assert sources_for(line, {"player": "Kareem Abdul-Jabbar", "stat": "ts_pct", "season": 1980}) == ("player_season_advanced_stats",)
+    refusal = check_coverage(line, {"player": "Kareem Abdul-Jabbar", "stat": "ts_pct", "season": 1980, "season_type": 2})
     assert refusal is not None
     assert "Advanced season stats only go back to 1994" in refusal
     # A stat the season line does hold still reads from the season line.
-    assert _sources_for("player_stat", {"player": "Kareem Abdul-Jabbar", "stat": "points", "season": 1980}) == ("player_season_stats_deduped",)
+    assert sources_for(line, {"player": "Kareem Abdul-Jabbar", "stat": "points", "season": 1980}) == ("player_season_stats_deduped",)
 
 
 def test_the_two_advanced_stat_vocabularies_agree() -> None:

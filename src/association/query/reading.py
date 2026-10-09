@@ -33,13 +33,18 @@ if TYPE_CHECKING:
     from association.query.entities import Availability
     from association.query.subject import Subject
 
-Shape = Literal["rows", "scalar", "grouped", "run", "pair", "chart"]
-"""Which reader answers the point: rows, one number, one row per group, the
-longest runs of consecutive games the point's one predicate holds along
-(``run``: a streak, read as a window over the games in date order), two
-named players' lines over the games they met in, on opposite teams
-(``pair``: a matchup, the pair relation), or a drawing (``chart``: the
-artifact, and what it drew - ``ROADMAP-TYPES.md``, "The shapes").
+Shape = Literal["scalar", "rows", "ranking", "comparison", "split", "runs", "chart"]
+"""The form of the point's one body, in the target's vocabulary
+(``ROADMAP-TYPES.md``, "The shapes"): one number over the whole narrowed set
+(``scalar``), one row per game (``rows``), one row per value of what it is
+``by`` - an entity over the league (``ranking``), the named subjects
+(``comparison``), a dimension of the games (``split``) - the longest runs
+of consecutive games one predicate holds along (``runs``), or a drawing
+(``chart``). Named by the point reader, with :attr:`Reading.by` and
+:attr:`Reading.on`; the compiler's skeleton (``rows``, ``scalar``,
+``grouped``, ``run``, ``pair``, ``chart`` - :class:`~association.query.compose.core.Query`'s)
+is derived from the three by the planner
+(:func:`~association.query.compose.plan.skeleton_of`).
 
 .. versionadded:: 5.0.0
 
@@ -47,6 +52,24 @@ artifact, and what it drew - ``ROADMAP-TYPES.md``, "The shapes").
    ``run`` and ``pair`` (ROADMAP plan item 6, step (g): ``streak``'s and
    ``player_matchup``'s retired templates); ``chart`` (Phase 2, step 5:
    ``fingerprint``; ``shot_chart``).
+
+.. versionchanged:: 6.0.0
+   The target's seven shapes, which the reader names (Phase 3, step 1);
+   the compiler's skeleton until then, copied into ``Query.skeleton``.
+"""
+
+PointRelation = Literal["player_games", "player_periods", "player_seasons", "team_games", "team_periods", "team_seasons", "team_snapshots", "netpoints", "shots"]
+"""The relation a point is read ON, in the target's vocabulary
+(``ROADMAP-TYPES.md``, "Query": its ``relation``): a player's or the
+league's games, a quarter or half of them (``player_periods``), the season
+line (``player_seasons``), a team's games or a quarter of them, a team's own
+season (``team_seasons``: its line and its place in the standings), ESPN's
+power index for it (``team_snapshots``), NetPoints and the located shots.
+Named by the point reader (:attr:`Reading.on`). Beside it :data:`Relation`
+still says which compiler plans the point and whether its subject is
+everyone, which Phase 3's step 2 retypes with the subject.
+
+.. versionadded:: 6.0.0
 """
 
 Aggregate = Literal["none", "per_game", "total", "count", "record"]
@@ -547,19 +570,63 @@ class LeftOut:
     names: tuple[str, ...] = ()
 
 
-@dataclass(frozen=True, kw_only=True)
-class Reading:
-    """One question, read. The point fields (shape, measures, aggregate,
-    group, predicates, order, direction, limit) mirror
-    :class:`~association.query.compose.core.Query` on purpose: the planner
-    is a copy, not a second decision. Every construction names its fields.
+@dataclass(frozen=True)
+class PointShape:
+    """What a planned point is read and said as (``ROADMAP-TYPES.md``,
+    "Where today's 25 intents land": the draft's ``Query.relation``,
+    ``shape`` and ``by``): the ``relation`` it reads (:data:`PointRelation`),
+    its ``shape`` (:data:`Shape`) and what one row is ``by`` (or, for a
+    scalar, how it is reduced; ``""`` for a point no reader takes). The
+    answer side chooses a reader, its stated scoping and the coverage
+    floor by this and by nothing else (``compose.answer``, ``coverage``).
+    Built by the planner from the point's own :attr:`Reading.on`,
+    :attr:`Reading.shape` and :attr:`Reading.by`, the one place it differs
+    being a season-line point re-planned at the game level
+    (:func:`~association.query.compose.plan.point_shape`).
 
     .. versionadded:: 5.0.0
+
+    .. versionchanged:: 6.0.0
+       In ``reading``, built from the point's own fields; ``compose.plan``'s,
+       translated from the intent by ``shape_of``, until Phase 3, step 1.
+    """
+
+    relation: PointRelation
+    shape: Shape
+    by: str = ""
+
+
+@dataclass(frozen=True, kw_only=True)
+class Reading:
+    """One question, read. The point fields (measures, aggregate, group,
+    predicates, order, direction, limit) mirror
+    :class:`~association.query.compose.core.Query` on purpose: the planner
+    is a copy, not a second decision; its shape, ``by`` and ``on`` are the
+    target's own vocabulary, from which the planner derives the compiler's
+    skeleton and source. Every construction names its fields.
+
+    .. versionadded:: 5.0.0
+
+    .. versionchanged:: 6.0.0
+       ``shape`` takes the target's vocabulary, and ``by`` and ``on`` are
+       named beside it (Phase 3, step 1); ``source`` is gone - the season
+       line is ``on="player_seasons"``.
     """
 
     #: The scoping the relation narrows by.
     scope: Scope = field(default_factory=Scope)
+    #: The point's shape, what one row is ``by`` and the relation it is read
+    #: ``on`` - the three the answer side keys a reader and its stated
+    #: scoping by (:class:`PointShape`), named by the point reader and
+    #: never derived from the intent after it (Phase 3, step 1). ``by`` is
+    #: what one row is for a grouped shape (``player``, ``season``,
+    #: ``subject``, ``presence``, ...), how a scalar is reduced or what rows
+    #: are ordered by for a reader's shape (``line``, ``count``, ``date``,
+    #: ``measure``), and ``""`` where no reader takes the point and the
+    #: compiler's own sentence states what the query reads.
     shape: Shape = "rows"
+    by: str = ""
+    on: PointRelation = "player_games"
     #: The measures the answer reads (box-score columns or derived measures).
     measures: list[str] = field(default_factory=list)
     aggregate: Aggregate = "none"
@@ -578,8 +645,6 @@ class Reading:
     available: Availability | None = None
     span: Literal["career"] | None = None
     season: int | None = None
-    #: ``"games"`` (the player-games relation) or ``"seasons"`` (the season line).
-    source: Literal["games", "seasons"] = "games"
     relation: Relation = "player"
     #: A position code, honored on the ``"everyone"`` relation.
     position: str | None = None
@@ -659,8 +724,8 @@ class Reading:
         window = f"{self.order}/{self.direction}" + (f"/{self.limit}" if self.limit is not None else "")
         who = self.subject.kind if self.subject is not None else "?"
         return (
-            f"relation={self.relation} subject={who} shape={self.shape} measures={self.measures} aggregate={self.aggregate} "
-            f"group={self.group} predicates={self.predicates} window={window} source={self.source} scope={self.scope.to_slots()}"
+            f"relation={self.relation} subject={who} shape={self.shape} by={self.by} on={self.on} measures={self.measures} aggregate={self.aggregate} "
+            f"group={self.group} predicates={self.predicates} window={window} scope={self.scope.to_slots()}"
         )
 
 
@@ -821,7 +886,7 @@ naming the player it read rather than answering the wrong one.
 Deliberately not every team-shaped intent: ``head_to_head`` is only ever
 two teams meeting - the parser reads a player's record against a team as
 his own games (``player_splits``, #163) from the subject's kind - and
-``coach`` is TABLELESS_INTENTS and already refuses on its own terms -
+``coach`` reads no point (a cause, ``no_coach_table``) and already refuses on its own terms -
 neither needs a second, more general check that could only disagree with
 the first.
 

@@ -25,6 +25,7 @@ from typing import Any
 import duckdb
 import pytest
 from routed import planned_answer as compose_answer
+from shapes import key, stated
 from test_templates import player_matchup, player_splits, streak, with_without  # the compiler's, the templates retired (compose.COMPILED_INTENTS)
 
 from association.fetch.repairs import real_games
@@ -32,13 +33,12 @@ from association.fetch.repairs.reconstructed_box import _FILLED_COLUMNS as FILLE
 from association.nba.season import current_season
 from association.query.answer import AnswerContext, Reply
 from association.query.compose.core import Query, run
-from association.query.compose.plan import words_stated
 from association.query.compose.sentence import sentence
 from association.query.conditions import RAW_BOX, UNGATED_ON_REBUILD, box_source
 from association.query.coverage import check_coverage
 from association.query.parse import with_point
 from association.query.player_games import REBUILT_STATS
-from association.query.reading import SPLIT_KINDS, Reading, Scope, Unsupported, unhonored_scoping
+from association.query.reading import SPLIT_KINDS, PointShape, Reading, Scope, Unsupported, unhonored_scoping
 from association.query.result import Unanswered
 from association.query.subject import Subject
 
@@ -1318,7 +1318,7 @@ def test_a_league_run_in_a_postseason_before_1994_is_the_floors_refusal() -> Non
     the misfiled label (``templates.splits._misfiled_postseason``) went
     with it, unreached."""
     for season in (1988, 1990, 1992, 1993):
-        refusal = check_coverage("streak", Scope.from_slots({"stat": "points", "threshold": 30, "season": season, "season_type": 3}))
+        refusal = check_coverage(key("streak"), Scope.from_slots({"stat": "points", "threshold": 30, "season": season, "season_type": 3}))
         assert refusal is not None and "1994" in refusal, season
 
 
@@ -1448,11 +1448,11 @@ def test_a_teams_streak_or_split_is_floored_by_the_team_tables_alone() -> None:
     """Team games reach back to 1988 in the postseason, player box scores to
     1994. A 1990 playoff question about a team is answerable, and refusing it
     with a sentence about player box scores would name the wrong cause."""
-    assert check_coverage("streak", {"season": 1990, "season_type": 3, "team": "Chicago Bulls"}) is None
-    assert check_coverage("player_splits", {"season": 1990, "season_type": 3, "team": "Chicago Bulls"}) is None
-    refused = check_coverage("streak", {"season": 1990, "season_type": 3, "player": "Michael Jordan", "stat": "points", "threshold": 30})
+    assert check_coverage(PointShape("team_games", "runs", "won"), {"season": 1990, "season_type": 3, "team": "Chicago Bulls"}) is None
+    assert check_coverage(PointShape("team_games", "split", "splits"), {"season": 1990, "season_type": 3, "team": "Chicago Bulls"}) is None
+    refused = check_coverage(key("streak"), {"season": 1990, "season_type": 3, "player": "Michael Jordan", "stat": "points", "threshold": 30})
     assert refused is not None and refused.startswith("Player box scores")
-    refused = check_coverage("with_without", {"season": 1990, "season_type": 3, "team": "Chicago Bulls", "without": "Jordan"})
+    refused = check_coverage(key("with_without"), {"season": 1990, "season_type": 3, "team": "Chicago Bulls", "without": "Jordan"})
     assert refused is not None and refused.startswith("Player box scores")
 
 
@@ -1883,11 +1883,9 @@ def test_a_condition_the_relation_cannot_read_refuses(league: AnswerContext) -> 
         _brown_games(league, {"player": "Jayson Tatum", "side": "own", "predicate": "dunked"})
     with pytest.raises(Unsupported, match="reached condition"):
         _brown_games(league, {"player": "Jayson Tatum", "side": "own", "predicate": "reached", "stat": "vibes", "threshold": 3})
-    # A history's words state no condition (compose.plan.words_stated):
+    # A history's words state no condition (compose.plan.STATED_SCOPING):
     # its presenter steps aside, and the compiler's sentence says what it read.
-    assert unhonored_scoping("player_history", Scope.from_slots({"player": "Jaylen Brown", "stat": "points", "conditions": [{"player": "Jayson Tatum"}]}), words_stated("player_history")) == [
-        "conditions"
-    ]
+    assert unhonored_scoping("player_history", Scope.from_slots({"player": "Jaylen Brown", "stat": "points", "conditions": [{"player": "Jayson Tatum"}]}), stated("player_history")) == ["conditions"]
 
 
 def test_a_matchup_emptied_by_an_absence_says_what_it_counted(league: AnswerContext) -> None:

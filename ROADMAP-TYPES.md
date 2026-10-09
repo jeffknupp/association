@@ -88,10 +88,11 @@ otherwise.
     answer says (a quarter, a pair's `Met`) read inside it.
   - `PointShape(relation, shape, by)` is the planned point's shape - the
     draft's `Query.relation`/`shape`/`by` triple, carried beside today's
-    `Query` on the plan (`compose.plan.Planned.shape`) and settled by the
-    planner from the reading's intent where the query alone cannot tell
-    two retired templates' words apart (`plan.shape_of`); the answer side
-    reads only it. Relations named beyond the draft's seven:
+    `Query` on the plan (`compose.plan.Planned.shape`); the answer side
+    reads only it. Settled by the planner from the reading's intent where
+    the query alone could not tell two retired templates' words apart
+    (`plan.shape_of`) until Phase 3, step 1, which the point reader names
+    it since (below). Relations named beyond the draft's seven:
     `player_periods` and `team_periods` (a quarter or half of the games).
 
 - **Declared in code by Phase 3, step 0** (2026-10-09, the lead's brief;
@@ -118,6 +119,44 @@ otherwise.
     stops carrying a point beside itself.
   - `too_short` is the parser's verdict before any Reading exists
     (`parse.too_short` returns the cause). `reading.CAUSES` 17 -> 27.
+
+- **Declared in code by Phase 3, step 1** (2026-10-09, the lead's brief;
+  no answer, result, remark or planned query moved on the four
+  populations):
+  - The draft's `Reading.shape` and `Reading.by`, named by the point
+    reader: `shape` takes the target's seven (`reading.Shape`: `scalar`,
+    `rows`, `ranking`, `comparison`, `split`, `runs`, `chart`), `by` is
+    `PointShape.by` as it stood (what one row is for a grouped shape; how
+    a scalar is reduced or what a reader's rows are ordered by - `line`,
+    `count`, `date`, `measure` - and `""` where no reader takes the point).
+    `by` is a string, not the draft's `tuple[Dimension, ...]`, because it
+    still doubles as a reader's key; it narrows to the dimension when step
+    4 keys the readers on the grammar.
+  - `Reading.on`, the relation the point is read on, in the target's
+    vocabulary (`reading.PointRelation`, the nine): the draft puts the
+    relation on the Query alone and has the planner pick it, but two
+    points the planner cannot tell apart from the fields - a quarter's log
+    against a game log (`player_periods` against `player_games`, the same
+    shape and `by`) and a team's own total said as its season's shape
+    (`team_seasons` on a point the team compiler plans) - have to be named
+    by the reader, so it names the relation outright. Today's
+    `Reading.relation` (which compiler plans it, and the subject's
+    everyone-ness: `player | everyone | team | ...`) stays beside it until
+    step 2 retypes the subject (the `everyone` relation is in its list),
+    measured not derivable from the subject's kind (581 of 674 `everyone`
+    points have an `everyone` subject; 10 are `player`, 10 `team`, 35
+    `team_players`, 48 `position`).
+  - `Reading.source` is gone: the season line is `on="player_seasons"`,
+    and the planner derives `Query.source` and `Query.skeleton` from the
+    three (`plan.skeleton_of`) - one vocabulary on the Reading (contract 6).
+    `PointShape` lives in `reading` and is built by the planner on every
+    verdict (`plan.point_shape`), the one move the planner makes being a
+    season-line point re-planned at the game level (`player_games`).
+  - `coverage.SOURCES` is keyed by the `PointShape` (one entry per route,
+    resolved per question where the table depends on the measure; the
+    relation's own tables for a point no reader takes), the ranking floor
+    applies where the shape is a `ranking`, and a reading with no point
+    has no floor.
   - `Reading.left_out: LeftOut | None` - a fingerprint's "vs" the reading
     holds one side of: `LeftOut(held, names)`, the players held and the
     names the words also name (none: only one compared name matched

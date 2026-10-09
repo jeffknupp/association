@@ -486,11 +486,12 @@ def read_team_log(con: duckdb.DuckDBPyConnection, q: TeamQuery, *, stated: froze
     .. versionadded:: 5.0.0
     """
     from association.query.coverage import coverage_refusal
+    from association.query.reading import PointShape
 
     scope = q.scope
     if unhonored_scoping("game_log", scope, stated):
         return None
-    refused = coverage_refusal("game_log", scope)
+    refused = coverage_refusal(PointShape("team_games", "rows", "date"), scope)
     if refused is not None:
         return refused
     season_type = scope.season_type or 2

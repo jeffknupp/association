@@ -1818,16 +1818,18 @@ def test_the_planner_refuses_after_the_parser_has_read_and_only_once(cx_ctx: Ans
 
 def test_a_presenter_steps_aside_for_a_narrowing_its_words_do_not_state(cx_ctx: AnswerContext) -> None:
     """A retired template's words name the narrowings it honored and no
-    other (``compose.plan.words_stated``): an opponent on a single-game
+    other (``compose.plan.STATED_SCOPING``): an opponent on a single-game
     high is the relation's to narrow by and the compiler's sentence's to
     state, so the presenter answers nothing and every presenter declares."""
     from dataclasses import replace
 
-    from association.query.compose.highs import read_single_game_high
-    from association.query.compose.plan import SHAPE_WORDS, words_stated
+    from shapes import stated
 
-    # Every shape's words are the sayer's (compose.say) since slice (iv); their stated sets stay listed in
-    # words_stated so one table declares for every compiled intent.
+    from association.query.compose.highs import read_single_game_high
+    from association.query.compose.plan import SHAPE_NAMES
+
+    # Every shape's words are the sayer's (compose.say) since slice (iv); the
+    # name a decline gives each shape (SHAPE_NAMES) still names every one.
     ported = {
         "game_log",
         "record_when",
@@ -1853,10 +1855,10 @@ def test_a_presenter_steps_aside_for_a_narrowing_its_words_do_not_state(cx_ctx: 
     # And the NetPoints relation's (compose.netpoints, Phase 2, step 5), and the shot relation's (compose.shots).
     netpoints = {"player_netpoints", "fingerprint"}
     shots = {"shot_chart", "shot_distance"}
-    assert set(SHAPE_WORDS.values()) == ported | team_seasons | netpoints | shots
+    assert set(SHAPE_NAMES.values()) == ported | team_seasons | netpoints | shots
     narrowed = default_query("single_game_high", {"player": "Brandin Podziemski", "stat": "points", "opponent": "Boston Celtics"})
-    assert read_single_game_high(cx_ctx.con, narrowed, stated=words_stated("single_game_high")) is None
-    assert read_single_game_high(cx_ctx.con, replace(narrowed, scope=replace(narrowed.scope, opponent=None)), stated=words_stated("single_game_high")) is not None
+    assert read_single_game_high(cx_ctx.con, narrowed, stated=stated("single_game_high")) is None
+    assert read_single_game_high(cx_ctx.con, replace(narrowed, scope=replace(narrowed.scope, opponent=None)), stated=stated("single_game_high")) is not None
 
 
 #: One example of each cause's facts, for the sentence check below.

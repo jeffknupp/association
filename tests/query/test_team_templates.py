@@ -17,12 +17,12 @@ from typing import Any
 import duckdb
 import pytest
 from routed import planned_answer as compose_answer
+from shapes import key, stated
 from test_templates import streak  # the compiler's, the template retired (compose.COMPILED_INTENTS)
 
 from association.fetch.repairs import real_games
 from association.nba.season import current_season
 from association.query.answer import AnswerContext, Reply
-from association.query.compose.plan import words_stated
 from association.query.coverage import check_coverage
 from association.query.parse import with_point
 from association.query.reading import Reading, Scope, Unsupported, unhonored_scoping
@@ -405,17 +405,17 @@ def test_the_team_as_its_own_opponent_falls_through(team_ctx: AnswerContext) -> 
 
 def test_team_record_honors_venue_opponent_and_span_but_not_order() -> None:
     # The compiler's since Phase 2's slice (iv): its words state these, and the planner declines `order`.
-    stated = words_stated("team_record")
-    assert unhonored_scoping("team_record", Scope.from_slots({"venue": "home", "opponent": "Boston Celtics", "span": "career"}), stated) == []
-    assert unhonored_scoping("team_record", Scope.from_slots({"order": "recent"}), stated) == ["order"]
+    declared = stated("team_record")
+    assert unhonored_scoping("team_record", Scope.from_slots({"venue": "home", "opponent": "Boston Celtics", "span": "career"}), declared) == []
+    assert unhonored_scoping("team_record", Scope.from_slots({"order": "recent"}), declared) == ["order"]
 
 
 def test_team_record_honors_situation_and_split_at_the_declaration_level() -> None:
     """The declaration only says the slot is stated - the reader itself
     still refuses a `situation` that names no month and a `split` that is not
     "month" (see the tests above), the same way it always refused `order`."""
-    stated = words_stated("team_record")
-    assert unhonored_scoping("team_record", Scope.from_slots({"situation": "in october", "split": "month"}), stated) == []
+    declared = stated("team_record")
+    assert unhonored_scoping("team_record", Scope.from_slots({"situation": "in october", "split": "month"}), declared) == []
 
 
 # ---------------- team_stat ----------------
@@ -754,15 +754,15 @@ def test_a_season_with_no_snapshot(team_ctx: AnswerContext) -> None:
 
 
 def test_each_question_is_held_to_the_floor_of_the_table_it_reads() -> None:
-    assert check_coverage("team_record", {"season": 1990, "season_type": 2}) is None  # standings, from 1988
-    against = check_coverage("team_record", {"season": 1990, "season_type": 2, "opponent": "Boston Celtics"})
+    assert check_coverage(key("team_record"), {"season": 1990, "season_type": 2}) is None  # standings, from 1988
+    against = check_coverage(key("team_record"), {"season": 1990, "season_type": 2, "opponent": "Boston Celtics"})
     assert against is not None and "1994" in against  # a tally of games, from 1994
-    assert check_coverage("team_record", {"season": 1990, "season_type": 3}) is None  # postseason games, from 1988
-    stat = check_coverage("team_stat", {"season": 1990, "season_type": 2})
+    assert check_coverage(key("team_record"), {"season": 1990, "season_type": 3}) is None  # postseason games, from 1988
+    stat = check_coverage(key("team_stat"), {"season": 1990, "season_type": 2})
     assert stat is not None and stat.startswith("Team season stats")
-    assert check_coverage("team_leaderboard", {"stat": "record", "season": 1990, "season_type": 2}) is None
-    assert check_coverage("team_leaderboard", {"stat": "points", "season": 1990, "season_type": 2}) is not None
-    outlook = check_coverage("team_outlook", {"season": 2016, "season_type": 2})
+    assert check_coverage(key("team_leaderboard"), {"stat": "record", "season": 1990, "season_type": 2}) is None
+    assert check_coverage(key("team_leaderboard"), {"stat": "points", "season": 1990, "season_type": 2}) is not None
+    outlook = check_coverage(key("team_outlook"), {"season": 2016, "season_type": 2})
     assert outlook is not None and "2017" in outlook
 
 

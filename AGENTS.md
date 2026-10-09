@@ -75,7 +75,7 @@ this tree:
 - **New shapes are frozen** (decision D4). No new intent, template,
   presenter, scoping table or per-intent renderer.
   `tests/query/test_frozen_shapes.py` holds the 25 intents the reader can
-  name, the page's 22 renderers and the 12 scoping declarations left in
+  name, the page's 22 renderers and the 11 scoping declarations left in
   `src` (by module and name, read from the source), each of which retires
   with its slice and none of which is added; and that `templates/`,
   `compose/present.py` and `compose/adapt.py` do not come back as source
@@ -89,11 +89,12 @@ this tree:
   (`RELATION_SCOPING*` on `query/player_relation.py`,
   `TEAM_RELATION_SCOPING*` on `query/team_relation.py`), 2 are the
   planner's `STATED_SCOPING` and its `with_without` row
-  (`WITH_WITHOUT_STATED`), which Phase 3's cells replace, and 6 are debt,
+  (`WITH_WITHOUT_STATED`), which Phase 3's cells replace, and 5 are debt,
   each naming the step that owes its deletion (`compose.plan`'s
   `_TEAM_READER_REFUSES`, `compose.core.COMPILER_SLOTS`,
-  `reading.SCOPING_SLOTS`, `coverage._BOX_SCORE_SCOPING`,
-  `conditions._CONDITION_PLAYER_ONLY_CELLS`, `router._MODEL_SLOTS`). A P1 wrong answer is
+  `reading.SCOPING_SLOTS`, `conditions._CONDITION_PLAYER_ONLY_CELLS`,
+  `router._MODEL_SLOTS`; the sixth, `coverage._BOX_SCORE_SCOPING`, went
+  with Phase 3, step 1 - the floor follows the planned point's relation). A P1 wrong answer is
   still fixed, in the code that exists. The sections below describe the
   readers and the sayer, because they are what runs; they are not an
   invitation to add a shape.
@@ -899,22 +900,50 @@ model's. Two things follow, and both matter when you add a shape:
     that needs a new fact adds a field to its record. A read that found
     nothing keeps its body's shape (an empty `Rows`, a `Scalar` with no
     values) and gives its reason as `Result.empty`, a `Refusal`.
-  - **The answer side chooses by shape, never by intent.** The planner
-    settles what a point is read and said as - `plan.PointShape(relation,
-    shape, by)`, by `plan.shape_of(intent, query)`, on `Planned.shape` -
-    and `compose.answer` picks the reader from `_ROUTES` by that key alone;
-    `STATED_SCOPING` is keyed by it too (`plan.words_stated(name)` is the
-    planner's lookup by a template's name while it still reads intents;
-    `SHAPE_WORDS` names each shape's retired words). `say()` chooses the
+  - **The answer side chooses by shape, never by intent, and the shape is
+    the point reader's own.** Since Phase 3, step 1 (2026-10-09) the point
+    declares what it is read and said as on the Reading itself -
+    `Reading.shape` in the target's vocabulary (`scalar`, `rows`,
+    `ranking`, `comparison`, `split`, `runs`, `chart`), `Reading.by` (what
+    one row is, how a scalar is reduced or what a reader's rows are ordered
+    by; `""` where no reader takes the point and the compiler's own
+    sentence answers) and `Reading.on` (the relation, `reading.PointRelation`:
+    `player_games`, `player_periods`, `player_seasons`, `team_games`,
+    `team_periods`, `team_seasons`, `team_snapshots`, `netpoints`,
+    `shots`). Every `Reading(...)` in `query/point.py` names the three; a
+    shared move read under several intents' words says `by` from the words
+    (`point._ROWS_BY`, `_COUNT_SHAPES`), and a team-season intent's point
+    on the team relation is stamped its season's shape
+    (`point.TEAM_SEASON_POINTS`, a `PointShape` per intent). The planner
+    builds `reading.PointShape(relation, shape, by)` from them
+    (`plan.point_shape`; its one move: a season-line point re-planned at
+    the game level is on `player_games`) on every verdict, and derives the
+    compiler's skeleton and source from them (`plan.skeleton_of`:
+    `ranking`/`split` group, a `comparison` by `met` is the pair, a
+    `split` by `line` compiles as the scalar record its reader says as a
+    split, a team's total under its season's shape is the team compiler's
+    scalar; `Query.source` is `"seasons"` for `on="player_seasons"` -
+    `Reading.source` is gone). `compose.answer` picks the reader from
+    `_ROUTES` by that key alone; `STATED_SCOPING` is one literal table
+    keyed by it; `SHAPE_NAMES` keeps a retired template's name for ONE
+    job, the decline sentence ("game_log has no reading of this point",
+    the ported shapes' "cannot honor"), until step 2's typed causes reword
+    those declines as an enumerated commit; `coverage.SOURCES` is keyed by
+    it (below). `shape_of`, `SHAPE_WORDS`, `words_stated`, `Planned.floor`
+    and the three `# Phase 3: needs ...` markers are gone. `say()` chooses the
     sayer from the headline body's type and the one field that says what
     it is (`Scalar.how`, `Grouped.by`, `Rows.by`, `Chart.kind`) - never
     `Span.source`, the relation or a facts key; a sayer reached so may
     still tell its subject's kind or a cell it says (a quarter's
-    `Period`, a matchup's `Met`). What still reads the intent: the
-    planner (Phase 3 gives the Reading its own shape and `by`, and
-    `shape_of` goes), `Planned.floor` (the coverage entry, `coverage.SOURCES`
-    keyed by the retired words: `# Phase 3: needs the relation's declared
-    tables`), `Answer.intent` for the page (Phase 4).
+    `Period`, a matchup's `Met`). What still reads the intent: the point
+    reader itself (`DEFAULT_POINTS`, the `by` tables - step 4 re-keys them
+    on the grammar), the planner's declines by a shape's words
+    (`_shape_declines`, step 2's cells), `Answer.intent` for the page
+    (Phase 4). Proved on the four populations: 628 of 628, 2,082 of 2,082
+    and the 2,710 readings identical with the point's `by`, `on`, `shape`
+    and `source` left out (`compare --ignore`, `reader_cmp.py --ignore`:
+    each lists the field's values by count), 2,608 of 2,608 unit-test
+    calls aligned past the same fields (`calls_aligned.py --drop`).
 
   The game log is the first (2026-10-03, `ROADMAP.md`,
   "Phase 2, the expected steps", step 0): `compose/logs.py` reads a
@@ -1135,7 +1164,7 @@ model's. Two things follow, and both matter when you add a shape:
   reader gave no point has a default point of its own
   (`point.DEFAULT_POINTS`: its readings gained one when it moved), is
   declined beyond the scoping its retired words state
-  (`compose.plan.words_stated`) by the planner, in the sentence the
+  (`compose.plan.STATED_SCOPING`, under the point's own key) by the planner, in the sentence the
   retired scope check refused it with (`compose.plan.PORTED_SHAPES`), and
   is read and said with nothing after it: a decline is refused, never
   handed to the compilers' own sentences (`compose._read_only`, a route
@@ -1268,9 +1297,11 @@ model's. Two things follow, and both matter when you add a shape:
   Since 2026-10-05 it has no template: the point reader refuses it by a
   cause (`reading.Cause("no_coach_table")`, `point._read_point`) and the
   planner says it (`compose.plan.refusal_result`, `COACH_REFUSAL`) - a
-  refusal the reading comes to is a cause, not a body to run. An intent
-  that reads no table still goes in `coverage.TABLELESS_INTENTS`, or the
-  coverage gate fails.
+  refusal the reading comes to is a cause, not a body to run. A refusal
+  the reading comes to has no point, so no coverage floor is checked for
+  it (`coverage.sources_for(None, ...)` is empty): appending "there is no
+  data for 1996" to a sentence that already explains what is missing would
+  name a second, wrong cause.
 
   The children come one step later, where the subject's KIND is known:
   `subject.KIND_ASSIGNED_INTENTS` (`_CHILD_GRAMMARS`). A child of a parent
@@ -1688,12 +1719,20 @@ everything about it is constrained by things measured elsewhere in this file.
 
 **Those floors are enforced, not just documented.** `association/nba/coverage.py`
 holds them as a table — `COVERAGE`, one entry per queryable table — and
-`query/coverage.py`'s `check_coverage()` refuses a question that lands under
-one. Add an entry whenever a reader reads a new table, and declare the
-intent's tables in `coverage.SOURCES` (one table for every reader, resolved
-per question where the table depends on what was asked; `TEMPLATE_SOURCES`
-until 2026-10-05); an intent missing from it is one no floor can refuse.
-Three things about that module are load-bearing:
+`query/coverage.py`'s `check_coverage(shape, scope)` refuses a question
+whose planned point lands under one. Add an entry whenever a reader reads
+a new table, and declare the shape's tables in `coverage.SOURCES`, keyed
+by the planned point's `reading.PointShape` (one entry per route in
+`compose._ROUTES`, which a test holds equal, plus the game-level ranking
+no reader takes; resolved per question where the table depends on the
+measure asked for - an advanced stat, a ranking's metric, a team ranking's
+standings - and `RELATION_SOURCES` for a point no reader takes; keyed by
+intent and resolved from slot lists of its own until Phase 3, step 1,
+which is how `player_stat`'s floor read four slots where the reader read
+a longer list, ISSUES.md #212, closed). The answering loop checks the
+floor of the point the words named (`Planned.shape`, set on every verdict)
+over the point's own scope; a reading with no point has no floor. Three
+things about that module are load-bearing:
 
 - **It returns the refusal rather than raising it.** That is the opposite of
   a reader declining a narrowing, and deliberate: a decline lets the
@@ -1708,8 +1747,10 @@ Three things about that module are load-bearing:
   ~350-player league. In 1980 the pool is *seven* — and before this existed,
   "who led the league in scoring in 1980" answered "Moses Malone, at 25.8.
   Next: Bill Cartwright (21.7)". Kareem, Bird and Erving are not in `players`
-  at all. `first_ranking_season` is that second floor, and `RANKING_INTENTS`
-  says which intents it applies to.
+  at all. `first_ranking_season` is that second floor, and it applies
+  where the planned shape is a `ranking` (the flag only speaks through a
+  season-line table's ranking floor; on a count's or a high's box-score
+  tables the box floor is the narrower and names itself either way).
 - **A missing season and an unrepresentative one need different sentences.**
   Saying "there is no data for 1980" about a warehouse holding Moses Malone's
   real 1980 line is the same false-cause answer in the other direction, which

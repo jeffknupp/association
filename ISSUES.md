@@ -548,44 +548,6 @@ those were found.
   bugs (a wrong dict key; an answer-only append) independent of the page.
 - **GitHub:** #218
 
-### `player_stat`'s coverage floor is computed from the wrong slot list, and misses `situation`, `since`, `game_n`
-- **Found:** 2026-09-24, in passing while verifying the K3-2 conference/division
-  narrowing did not need a new coverage-floor entry of its own.
-- **Evidence:** `coverage._sources_for_player_stat` decides whether a
-  question reads the season line (`player_season_stats_deduped`, floor 1977)
-  or box scores (`player_game_log`, floor 1994) by checking
-  `_BOX_SCORE_SCOPING = ("opponent", "venue", "without")` against the slots -
-  but the template's OWN decision of which table to actually read,
-  `players._player_stat_reads_box_scores`, checks a longer list: also
-  `situation`, `since`, `measures` (below/above), `game_n`, `season_type_unstated`
-  and `own_team`. A question that sets one of the five slots the floor check
-  does not know about is checked against the WRONG table's floor (1977, too
-  lenient) while actually reading the narrower one (1994). Reproduced
-  read-only against `/home/jeff/code/association/nba.duckdb`, 2026-09-24:
-  `check_coverage("player_stat", {"player": "Michael Jordan", "stat":
-  "points", "season": 1990, "situation": "on tuesdays"})` returns `None` (no
-  floor problem), and the template then answers "No 1990 regular season
-  games found for Michael Jordan" - true of `player_game_log` alone, and the
-  same false-cause shape AGENTS.md warns about ("a refusal that names the
-  wrong cause"): the real cause is `player_game_log`'s 1994 floor, not that
-  Jordan skipped Tuesdays in 1990. Pre-existing (the calendar half of
-  `situation` has been honored since step 3, K3, before this session), not
-  introduced by K3-2's conference/division addition - just found while
-  checking whether K3-2 needed a similar fix and it did not (the alignment
-  narrowing's own floor, 1988, is never the binding one regardless, so this
-  gap is `since`/`game_n`/`measures`/`own_team`'s to begin with, situation is
-  only one of five).
-- **User sees:** a "no games found" answer for a pre-1994 box-score-narrowed
-  question about a player whose career reaches back that far, instead of the
-  informative "player game logs only go back to 1994" sentence every other
-  under-floor question on this template gets.
-- **Next step:** make `_sources_for_player_stat` call
-  `_player_stat_reads_box_scores` (or the same slot list) instead of its own
-  narrower `_BOX_SCORE_SCOPING`, so the two decisions read the same slots. Not
-  fixed here: `templates/players.py` was outside that task's file ownership (the box-score decision is `reading.scope_reads_box_scores` now).
-- **Source:** ours, not ESPN's.
-- **GitHub:** #212
-
 ### A short, genuinely ambiguous question is guessed at rather than asked about: "Tatum rec"
 - **Found:** 2026-09-23, working yardstick-v2's wrong-land bucket 4
   (`~/association-research/yardstick-v2/wrong_land.md`, F112).
@@ -2877,8 +2839,8 @@ those were found.
   2000" - and no table holds a selection or a vote share (DATA.md, "No award,
   All-Star or All-NBA selection anywhere"). Nothing catches the shape: no
   coverage floor (there is no table to put one on), no keyword refusal the way
-  `coach` has one in `CODE_ASSIGNED_INTENTS`, and `TABLELESS_INTENTS` has no
-  entry for it. Not re-verified end to end - running the router is out of
+  `coach` has one in `CODE_ASSIGNED_INTENTS`, and no floor can see a
+  question that reads no point. Not re-verified end to end - running the router is out of
   scope for a read-only pass - but the path was the one `check_coverage`'s
   own reasoning describes: a question with nothing to find reached the
   fall-through agent (removed 2026-09-29), which filled the silence from its

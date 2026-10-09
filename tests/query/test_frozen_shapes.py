@@ -7,11 +7,12 @@ Phase 2 (2026-10-03 to 2026-10-05) removed what the rest of this file froze:
 the twelve templates, the presenters and ``compose/present.py``, the ten
 adapters and ``compose/adapt.py``, and - with step 6 - ``HONORED_SCOPING``,
 ``check_scope`` and the ``templates`` package itself. Their freezes went with
-them. Twelve scoping declarations remain, and are frozen by module and name
+them. Eleven scoping declarations remain, and are frozen by module and name
 (:data:`FROZEN_SCOPING_TABLES`): the four per-relation cell tables the
 roadmap keeps, the planner's ``STATED_SCOPING`` with its ``with_without``
-row, which Phase 3's cells replace, and six that are debt, each labeled with
-the step that owes its deletion."""
+row, which Phase 3's cells replace, and five that are debt, each labeled with
+the step that owes its deletion (the sixth, ``coverage._BOX_SCORE_SCOPING``,
+went with Phase 3, step 1: the floor follows the planned point's relation)."""
 
 from __future__ import annotations
 
@@ -68,7 +69,8 @@ def test_no_intent_is_added_and_a_retired_one_leaves_the_list() -> None:
 # Every module-level declaration of which scoping slots a read honors,
 # states, excludes or refuses, by module and name, as it stood after Phase 2
 # (restored 2026-10-05, #330: step 6 deleted this freeze while 12 of its 14
-# entries were still in src). Each is labeled with why it is still here:
+# entries were still in src; 11 since Phase 3, step 1). Each is labeled with
+# why it is still here:
 CELL_TABLE = "a per-relation cell table: stays through Phase 4"
 STATED = "STATED_SCOPING: Phase 3's cells (the planner's checks over the Reading's typed filters) replace it"
 FROZEN_SCOPING_TABLES: dict[tuple[str, str], str] = {
@@ -88,10 +90,6 @@ FROZEN_SCOPING_TABLES: dict[tuple[str, str], str] = {
     ),
     ("compose.core", "COMPILER_SLOTS"): "debt, owed by Phase 3: `ranked_by` is a measure the typed Reading carries, not a scoping slot that narrows nothing",
     ("reading", "SCOPING_SLOTS"): "debt, owed by Phase 3: the Reading's typed filters replace the scope's list of slot names",
-    ("coverage", "_BOX_SCORE_SCOPING"): (
-        "debt, owed by Phase 3: which floor a `player_stat` reads could follow the planned point's relation (Planned.shape, since"
-        " 2026-10-05), but the answering loop's declined path checks the floor with no plan (agent: check_coverage(intent, scope))"
-    ),
     ("conditions", "_CONDITION_PLAYER_ONLY_CELLS"): (
         "debt, owed by Phase 3: the complement of TEAM_RELATION_SCOPING restated, which the planner's cell check over the team relation refuses by itself"
     ),

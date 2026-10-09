@@ -11,11 +11,11 @@ ranked a league of seven players.
 
 from __future__ import annotations
 
-import pytest
+from shapes import key
 
 from association.nba.coverage import COVERAGE, KNOWN_TABLES, POSTSEASON, REGULAR_SEASON, caveat, unavailable
-from association.query.compose import COMPILED_INTENTS
-from association.query.coverage import RANKING_INTENTS, SOURCES, TABLELESS_INTENTS, check_coverage, coverage_caveat
+from association.query.coverage import RELATION_SOURCES, SOURCES, check_coverage, coverage_caveat, sources_for
+from association.query.reading import PointRelation, PointShape, Scope
 
 
 def test_every_covered_table_is_a_real_table() -> None:
@@ -24,33 +24,46 @@ def test_every_covered_table_is_a_real_table() -> None:
     assert set(COVERAGE) <= KNOWN_TABLES
 
 
-def test_every_template_declares_the_tables_it_reads() -> None:
-    """SOURCES and the intents answered - the compiler's
-    (``compose.COMPILED_INTENTS``, whose answers check these floors) - are
-    two hand-maintained lists of the same intents, the
-    shape that already produced the player_compare bug. An intent missing
-    here is one no floor can ever refuse."""
-    declared = set(SOURCES) | {"leaderboard"} | TABLELESS_INTENTS  # leaderboard resolves its table per metric; the tableless ones read none
-    assert declared == COMPILED_INTENTS
+def test_every_routed_shape_declares_the_tables_it_reads() -> None:
+    """SOURCES and the shapes the answer side routes (``compose._ROUTES``,
+    whose readers' answers check these floors) are two hand-maintained
+    lists of the same keys, the shape that already produced the
+    player_compare bug. A shape missing here is one no floor can ever
+    refuse; a point no reader takes falls to its relation's own tables,
+    declared for every relation a point can be on."""
+    import typing
+
+    from association.query import compose
+
+    # Plus the one shape no reader takes that is held to a reader's floor:
+    # the game-level ranking the planner re-plans a season-line ranking as.
+    assert set(SOURCES) == set(compose._ROUTES) | {PointShape("player_games", "ranking", "player")}
+    assert set(RELATION_SOURCES) == set(typing.get_args(PointRelation))
 
 
-def test_a_tableless_intent_is_neither_refused_nor_caveated() -> None:
-    """`coach` is a refusal that reads nothing, so a coverage floor has no
-    purchase on it. Appending "there is no data for 1996" to a sentence that
-    already explains what is missing would name a second, wrong cause."""
-    for intent in TABLELESS_INTENTS:
-        assert check_coverage(intent, {"season": 1996, "season_type": REGULAR_SEASON}) is None, intent
-        assert coverage_caveat(intent, {"season": 2015}) is None, intent
+def test_a_reading_with_no_point_is_neither_refused_nor_caveated() -> None:
+    """A refusal the reading comes to (`coach`, a championship) reads
+    nothing, so a coverage floor has no purchase on it. Appending "there is
+    no data for 1996" to a sentence that already explains what is missing
+    would name a second, wrong cause."""
+    assert sources_for(None, {"season": 1996}) == ()
+    assert check_coverage(None, {"season": 1996, "season_type": REGULAR_SEASON}) is None
+    assert coverage_caveat(None, {"season": 2015}) is None
 
 
 def test_every_declared_source_has_a_floor() -> None:
-    for intent, tables in SOURCES.items():
+    probes = (Scope(), Scope(stat="ts_pct"), Scope(stat="points"), Scope(stat="record"), Scope(season_type=3), Scope(opponent="Boston Celtics"), Scope(stat="netpoints"))
+    for shape, declared in SOURCES.items():
+        tables = {table for probe in probes for table in (declared(probe) if callable(declared) else declared)}
         for table in tables:
-            assert table in COVERAGE, f"{intent} reads {table}, which declares no coverage floor"
+            assert table in COVERAGE, f"{shape} reads {table}, which declares no coverage floor"
+    for relation, own in RELATION_SOURCES.items():
+        for table in own:
+            assert table in COVERAGE, f"{relation} reads {table}, which declares no coverage floor"
 
 
 def test_a_season_below_the_floor_is_refused() -> None:
-    got = check_coverage("shot_chart", {"season": 1996, "season_type": REGULAR_SEASON})
+    got = check_coverage(key("shot_chart"), {"season": 1996, "season_type": REGULAR_SEASON})
     assert got is not None
     assert "2002" in got and "1996" in got
 
@@ -58,17 +71,17 @@ def test_a_season_below_the_floor_is_refused() -> None:
 def test_the_refusal_says_no_pull_would_help() -> None:
     """The distinction that matters to somebody reading it: this is ESPN's gap,
     not a season nobody has fetched yet."""
-    got = check_coverage("fingerprint", {"season": 2005, "season_type": REGULAR_SEASON})
+    got = check_coverage(key("fingerprint"), {"season": 2005, "season_type": REGULAR_SEASON})
     assert got is not None and "no pull would add any" in got
 
 
 def test_a_covered_season_is_not_refused() -> None:
-    assert check_coverage("shot_chart", {"season": 2003, "season_type": REGULAR_SEASON}) is None
-    assert check_coverage("leaderboard", {"stat": "points", "season": 1994, "season_type": REGULAR_SEASON}) is None
+    assert check_coverage(key("shot_chart"), {"season": 2003, "season_type": REGULAR_SEASON}) is None
+    assert check_coverage(key("leaderboard"), {"stat": "points", "season": 1994, "season_type": REGULAR_SEASON}) is None
 
 
 def test_an_absent_season_slot_means_the_current_season_and_is_never_refused() -> None:
-    assert check_coverage("shot_chart", {"season_type": REGULAR_SEASON}) is None
+    assert check_coverage(key("shot_chart"), {"season_type": REGULAR_SEASON}) is None
 
 
 # ---------------- the two floors that are not one ----------------
@@ -78,16 +91,40 @@ def test_a_ranking_is_refused_where_a_named_player_is_not() -> None:
     """The sharpest line in the data. player_season_stats holds Michael
     Jordan's real 1990 line, so his own average is answerable from it; the pool
     it would RANK is 217 players against a ~350-player league, and 7 in 1980."""
-    assert check_coverage("player_stat", {"season": 1990, "season_type": REGULAR_SEASON}) is None
-    assert check_coverage("player_compare", {"season": 1990, "season_type": REGULAR_SEASON}) is None
-    assert check_coverage("leaderboard", {"stat": "points", "season": 1990, "season_type": REGULAR_SEASON}) is not None
+    assert check_coverage(PointShape("player_seasons", "scalar", "line"), {"season": 1990, "season_type": REGULAR_SEASON}) is None
+    assert check_coverage(key("player_compare"), {"season": 1990, "season_type": REGULAR_SEASON}) is None
+    assert check_coverage(key("leaderboard"), {"stat": "points", "season": 1990, "season_type": REGULAR_SEASON}) is not None
+    # The ranking's floor is the shape's: a named player's count of 30-point
+    # games over the same tables is refused in the box scores' words.
+    refused = check_coverage(key("threshold_count"), {"player": "Michael Jordan", "stat": "points", "threshold": 30, "season": 1990, "season_type": REGULAR_SEASON})
+    assert refused is not None and refused.startswith("Player game logs")
+
+
+def test_the_floor_follows_the_relation_the_point_reader_named() -> None:
+    """ISSUES.md #212 (closed by Phase 3, step 1): the floor read four slots
+    of its own to tell a season-line question from a box-score one, and the
+    point reader a longer list, so "Jordan's points in 1990 on tuesdays"
+    (a calendar narrowing, which only the reader knew sends the read to the
+    box scores) was checked against the season line's 1977 floor and
+    answered "no 1990 games found" - the wrong cause. The floor is keyed by
+    the point now, so the two cannot disagree."""
+    from association.query.compose.plan import point_shape
+    from association.query.point import default_point
+
+    for narrowing in ({"situation": "on tuesdays"}, {"since": 1989}, {"game_n": 3}):
+        point = default_point("player_stat", Scope.from_slots({"player": "Michael Jordan", "stat": "points", "season": 1990, "season_type": REGULAR_SEASON, **narrowing}))
+        assert point.on == "player_games", narrowing
+        refused = check_coverage(point_shape(point), point.scope)
+        assert refused is not None and refused.startswith("Player game logs only go back to 1994"), narrowing
+    unnarrowed = default_point("player_stat", Scope.from_slots({"player": "Michael Jordan", "stat": "points", "season": 1990, "season_type": REGULAR_SEASON}))
+    assert unnarrowed.on == "player_seasons" and check_coverage(point_shape(unnarrowed), unnarrowed.scope) is None
 
 
 def test_the_ranking_refusal_does_not_claim_the_data_is_missing() -> None:
     """It is not missing - it is unrepresentative, and saying "no data for
     1980" about a warehouse holding Moses Malone's real 1980 line would be the
     same false-cause answer in the opposite direction."""
-    got = check_coverage("leaderboard", {"stat": "points", "season": 1980, "season_type": REGULAR_SEASON})
+    got = check_coverage(key("leaderboard"), {"stat": "points", "season": 1980, "season_type": REGULAR_SEASON})
     assert got is not None
     assert "no data for 1980" not in got
     assert "would not be one" in got and "for a player you name are still available" in got
@@ -96,7 +133,7 @@ def test_the_ranking_refusal_does_not_claim_the_data_is_missing() -> None:
 def test_a_ranking_over_a_table_with_no_survivor_problem_uses_the_plain_floor() -> None:
     """netpoints ranks over net_points_player, which is league-wide from its
     first season - so its refusal is about missing rows, not about the pool."""
-    got = check_coverage("leaderboard", {"stat": "netpoints", "season": 2010, "season_type": REGULAR_SEASON})
+    got = check_coverage(key("leaderboard"), {"stat": "netpoints", "season": 2010, "season_type": REGULAR_SEASON})
     assert got is not None and "no pull would add any" in got
 
 
@@ -104,8 +141,8 @@ def test_the_playoffs_reach_further_back_than_the_regular_season() -> None:
     """`games` holds full 16-team brackets to 1988 while its regular seasons
     before 1994 are one team's schedule. One floor would either refuse real
     playoff data or admit 82 games as a season."""
-    assert check_coverage("head_to_head", {"season": 1990, "season_type": POSTSEASON}) is None
-    assert check_coverage("head_to_head", {"season": 1990, "season_type": REGULAR_SEASON}) is not None
+    assert check_coverage(key("head_to_head"), {"season": 1990, "season_type": POSTSEASON}) is None
+    assert check_coverage(key("head_to_head"), {"season": 1990, "season_type": REGULAR_SEASON}) is not None
 
 
 def test_the_narrowest_table_decides() -> None:
@@ -124,35 +161,30 @@ def test_a_table_with_no_declared_floor_is_skipped_rather_than_assumed() -> None
 
 
 def test_a_half_season_is_answered_with_a_caveat_rather_than_refused() -> None:
-    assert check_coverage("shot_chart", {"season": 2002, "season_type": REGULAR_SEASON}) is None
-    note = coverage_caveat("shot_chart", {"season": 2002})
+    assert check_coverage(key("shot_chart"), {"season": 2002, "season_type": REGULAR_SEASON}) is None
+    note = coverage_caveat(key("shot_chart"), {"season": 2002})
     assert note is not None and "part of the year" in note
 
 
 def test_a_full_season_carries_no_caveat() -> None:
     # 2005, not 2003: measured, 2003 has located shots for only 986 of its 1,190
     # games, and is a partial season itself.
-    assert coverage_caveat("shot_chart", {"season": 2005}) is None
+    assert coverage_caveat(key("shot_chart"), {"season": 2005}) is None
     assert caveat(("shot_chart",), 2005) is None
-
-
-@pytest.mark.parametrize("intent", sorted(RANKING_INTENTS))
-def test_ranking_intents_are_all_real_intents(intent: str) -> None:
-    assert intent in COMPILED_INTENTS
 
 
 def test_the_first_playoffs_on_record_is_1989_and_the_refusal_says_why() -> None:
     """ESPN's archive files the 1989 playoffs under 1988 and has no 1987-88
     postseason at all, so "the 1988 playoffs" is refused - in the postseason's
     own words, not the regular season's "one team's 82 games"."""
-    got = check_coverage("head_to_head", {"season": 1988, "season_type": POSTSEASON})
+    got = check_coverage(key("head_to_head"), {"season": 1988, "season_type": POSTSEASON})
     assert got is not None and got.startswith("Playoff games only go back to 1989") and "82 games" not in got
-    assert check_coverage("head_to_head", {"season": 1989, "season_type": POSTSEASON}) is None
+    assert check_coverage(key("head_to_head"), {"season": 1989, "season_type": POSTSEASON}) is None
 
 
 def test_2003_shots_carry_a_partial_season_caveat() -> None:
-    assert coverage_caveat("shot_chart", {"season": 2003}) is not None
-    assert coverage_caveat("shot_chart", {"season": 2004}) is None
+    assert coverage_caveat(key("shot_chart"), {"season": 2003}) is not None
+    assert coverage_caveat(key("shot_chart"), {"season": 2004}) is None
 
 
 def test_a_postseason_that_stops_early_is_caveated_on_postseason_questions() -> None:
@@ -161,7 +193,7 @@ def test_a_postseason_that_stops_early_is_caveated_on_postseason_questions() -> 
     and no pull adds them:
     the scoreboard endpoint, which had the whole 2000 Final, answers 23 of
     those days with nothing at all."""
-    note = coverage_caveat("head_to_head", {"season": 2001, "season_type": POSTSEASON})
+    note = coverage_caveat(key("head_to_head"), {"season": 2001, "season_type": POSTSEASON})
     assert note is not None and "2001 playoffs" in note
 
 
@@ -170,8 +202,8 @@ def test_the_same_season_carries_no_caveat_for_its_regular_season() -> None:
     season is complete (1,190 games), so a note about missing playoff games
     would be a claim about the wrong half of the year - and one shared tuple
     would also exempt that complete season from its own floor check."""
-    assert coverage_caveat("head_to_head", {"season": 2001, "season_type": REGULAR_SEASON}) is None
-    assert coverage_caveat("head_to_head", {"season": 2001}) is None
+    assert coverage_caveat(key("head_to_head"), {"season": 2001, "season_type": REGULAR_SEASON}) is None
+    assert coverage_caveat(key("head_to_head"), {"season": 2001}) is None
 
 
 def test_the_recovered_2000_postseason_carries_no_caveat() -> None:
@@ -179,7 +211,7 @@ def test_the_recovered_2000_postseason_carries_no_caveat() -> None:
     endpoint even though no team's schedule lists them, so they were fetched
     rather than caveated. Declaring it partial would be an apology for data
     that is now there."""
-    assert coverage_caveat("head_to_head", {"season": 2000, "season_type": POSTSEASON}) is None
+    assert coverage_caveat(key("head_to_head"), {"season": 2000, "season_type": POSTSEASON}) is None
 
 
 def test_a_postseason_caveat_covers_the_team_box_as_well_as_the_game_list() -> None:
@@ -196,9 +228,9 @@ def test_the_2001_caveat_reaches_the_templates_that_never_read_the_game_list() -
     "4 games with 30+ points" was stated as fact over 11 of the 16 playoff
     games he played."""
     for intent in ("single_game_high", "threshold_count"):
-        note = coverage_caveat(intent, {"season": 2001, "season_type": POSTSEASON, "player": "Shaquille O'Neal", "stat": "points"})
+        note = coverage_caveat(key(intent), {"season": 2001, "season_type": POSTSEASON, "player": "Shaquille O'Neal", "stat": "points"})
         assert note is not None and "2001 playoffs" in note, intent
-        assert coverage_caveat(intent, {"season": 2001, "season_type": REGULAR_SEASON, "player": "Shaquille O'Neal", "stat": "points"}) is None
+        assert coverage_caveat(key(intent), {"season": 2001, "season_type": REGULAR_SEASON, "player": "Shaquille O'Neal", "stat": "points"}) is None
 
 
 def test_the_2001_player_caveat_says_what_a_player_is_missing() -> None:
@@ -240,11 +272,11 @@ def test_an_empty_playoff_box_score_is_caveated_from_1995_to_1998() -> None:
     zero athlete lines where control games in the same seasons return 24.
     Michael Jordan's 1997 postseason reads 14 games against ESPN's own 19."""
     for season in (1995, 1996, 1997, 1998):
-        note = coverage_caveat("threshold_count", {"season": season, "season_type": POSTSEASON, "player": "Michael Jordan", "stat": "points"})
+        note = coverage_caveat(key("threshold_count"), {"season": season, "season_type": POSTSEASON, "player": "Michael Jordan", "stat": "points"})
         assert note is not None and "empty box score" in note, season
         # The regular seasons of those years are whole.
-        assert coverage_caveat("threshold_count", {"season": season, "season_type": REGULAR_SEASON, "player": "Michael Jordan", "stat": "points"}) is None, season
-    assert coverage_caveat("threshold_count", {"season": 1999, "season_type": POSTSEASON, "player": "Michael Jordan", "stat": "points"}) is None
+        assert coverage_caveat(key("threshold_count"), {"season": season, "season_type": REGULAR_SEASON, "player": "Michael Jordan", "stat": "points"}) is None, season
+    assert coverage_caveat(key("threshold_count"), {"season": 1999, "season_type": POSTSEASON, "player": "Michael Jordan", "stat": "points"}) is None
 
 
 def test_the_game_list_is_not_caveated_for_an_empty_box_score() -> None:
@@ -254,7 +286,7 @@ def test_the_game_list_is_not_caveated_for_an_empty_box_score() -> None:
     for data that is there. 2001 is the opposite case: those games are absent
     from `games` too."""
     assert caveat(("games",), 1997, POSTSEASON) is None
-    assert coverage_caveat("head_to_head", {"season": 1997, "season_type": POSTSEASON}) is None
+    assert coverage_caveat(key("head_to_head"), {"season": 1997, "season_type": POSTSEASON}) is None
     assert caveat(("games",), 2001, POSTSEASON) is not None
 
 
@@ -264,10 +296,10 @@ def test_a_2013_to_2018_shooting_board_says_who_is_missing_from_it() -> None:
     21-33 players a season clear the qualifying floor by ESPN's own season
     totals and fall under it here. The board dropped them silently."""
     for season in (2013, 2015, 2018):
-        note = coverage_caveat("leaderboard", {"season": season, "stat": "ts_pct"})
+        note = coverage_caveat(key("leaderboard"), {"season": season, "stat": "ts_pct"})
         assert note is not None and "missing from this ranking" in note, season
     for season in (2012, 2019):
-        assert coverage_caveat("leaderboard", {"season": season, "stat": "ts_pct"}) is None, season
+        assert coverage_caveat(key("leaderboard"), {"season": season, "stat": "ts_pct"}) is None, season
 
 
 def test_the_shooting_caveat_does_not_reach_a_board_ranked_from_espns_own_totals() -> None:
@@ -276,7 +308,7 @@ def test_the_shooting_caveat_does_not_reach_a_board_ranked_from_espns_own_totals
     board reads it, so caveating one would apologize for data that is right,
     and it is the table the shortfall is measured against."""
     for season in (2013, 2015, 2018):
-        assert coverage_caveat("leaderboard", {"season": season, "stat": "points"}) is None, season
+        assert coverage_caveat(key("leaderboard"), {"season": season, "stat": "points"}) is None, season
     assert caveat(("player_season_stats",), 2015) is None
 
 

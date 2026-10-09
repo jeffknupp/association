@@ -20,6 +20,7 @@ from association.query.coverage import coverage_refusal
 from association.query.entities import Entity, resolved_team, slot_season
 from association.query.notes import Note
 from association.query.player_relation import validated_until
+from association.query.point import TEAM_SEASON_POINTS
 from association.query.reading import Scope, Unsupported, _clamp_limit, unhonored_scoping
 from association.query.result import Grouped, Narrowing, OutlookFacts, Part, Refusal, Result, Scalar, Span, TeamRankingFacts, TeamStatFacts, Unanswered
 from association.query.team_metrics import DEFAULT_TEAM_LINE, TEAM_METRICS, TeamLine, TeamMetric, descending_for, ranked, resolve_team_metric
@@ -98,7 +99,7 @@ def _team_season_subject(con: duckdb.DuckDBPyConnection, intent: str, scope: Sco
     declined = team_season_declines(intent, scope, stated)
     if declined is not None:
         raise Unsupported(declined)
-    refused = coverage_refusal(intent, scope)
+    refused = coverage_refusal(TEAM_SEASON_POINTS[intent], scope)
     if refused is not None:
         raise Refused(refused)
     conference = conference_refusal(scope)
@@ -348,7 +349,7 @@ def _team_leaderboard_checks(scope: Scope, stated: frozenset[str]) -> Unanswered
     declined = team_season_declines("team_leaderboard", scope, stated)
     if declined is not None:
         raise Unsupported(declined)
-    refused = coverage_refusal("team_leaderboard", scope)
+    refused = coverage_refusal(TEAM_SEASON_POINTS["team_leaderboard"], scope)
     if refused is not None:
         raise Refused(refused)
     return conference_refusal(scope)

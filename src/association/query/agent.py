@@ -425,7 +425,10 @@ class Agent:
             history.record_tool_call(f"compose {intent}", time.monotonic() - t0)
             return intent, composed
         why = declined[0] if declined else "the compiler has no reading of this point"
-        refused = check_coverage(intent, scope)
+        # The floor of the point the words named (Planned.shape, declared on
+        # every verdict), over the point's own scope; no point, no floor.
+        assert self.planned is not None
+        refused = check_coverage(self.planned.shape, reading.point.scope if reading.point is not None else scope)
         if refused is not None:
             history.log(f"  -> (coverage) {refused}")
             return intent, Reply(data={"message": refused, "season": scope.season}, answer=refused)
@@ -472,7 +475,7 @@ class Agent:
             _note(composed, name_reading)
         if readings:
             composed.data["name_readings"] = list(readings)
-        note = coverage_caveat(reading.intent, reading.scope)
+        note = coverage_caveat(self.planned.shape, reading.point.scope if reading.point is not None else reading.scope, intent=reading.intent)
         if note:
             composed.answer = f"{composed.answer} {note}"
             _note(composed, note)
@@ -490,7 +493,8 @@ class Agent:
         never beside the coverage floor's refusal, which read no name (the
         retired template's order: the floor, then the answer and this note).
         Until Phase 3, step 0 this re-read the question."""
-        if reading.left_out is None or check_coverage(reading.intent, reading.scope) is not None:
+        assert self.planned is not None
+        if reading.left_out is None or check_coverage(self.planned.shape, reading.point.scope if reading.point is not None else reading.scope) is not None:
             return
         unmatched_note = say_left_out(reading.left_out)
         composed.answer = f"{composed.answer} {unmatched_note}"

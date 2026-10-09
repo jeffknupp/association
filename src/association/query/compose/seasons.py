@@ -94,7 +94,7 @@ def player_line_reads(q: Query, stated: frozenset[str]) -> bool:
     except Unsupported:
         return False
     named = stat_measure(q.scope.stat)
-    return own.source == "seasons" and (q.measures == own.measures or (named is not None and q.measures == [named]))
+    return own.on == "player_seasons" and (q.measures == own.measures or (named is not None and q.measures == [named]))
 
 
 def read_player_line(con: duckdb.DuckDBPyConnection, q: Query, *, stated: frozenset[str]) -> Result | Unanswered | None:

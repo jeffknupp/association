@@ -609,7 +609,7 @@ def test_a_compiled_intent_is_read_planned_and_answered_by_the_compiler_alone(mo
     assert answer.text == "Joel Embiid had 9 games with 30+ points." and answer.answered_by == "fast" and answer.intent == "threshold_count"
     assert calls == ["compose"]
     reading_lines = [line for line in seen if "(reading)" in line]
-    expected = "  -> (reading) relation=player subject=? shape=scalar measures=[] aggregate=count group=none predicates=[('points', '>=', 30)] window=date/desc source=games"
+    expected = "  -> (reading) relation=player subject=? shape=scalar by= on=player_games measures=[] aggregate=count group=none predicates=[('points', '>=', 30)] window=date/desc"
     # The scope prints in the Scope's field order, whatever order the slots came in.
     assert reading_lines == [f"{expected} scope={{'player': 'Joel Embiid', 'stat': 'points', 'threshold': 30}}"]
 

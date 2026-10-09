@@ -84,7 +84,11 @@ _SUBJECT_TEXT = frozenset({"evidence"})
 
 # The point's own fields - the algebra as the reader read it - in the order
 # the trace prints them.
-_POINT_FIELDS = ("relation", "shape", "measures", "aggregate", "group", "predicates", "order", "direction", "limit", "offset", "minimum_games", "available", "span", "season", "source", "position")
+# ``shape``, ``by`` and ``on`` are the point reader's declaration (Phase 3,
+# step 1; ``shape`` was the compiler's skeleton and ``source`` the season
+# line's flag until then - both derived by the planner now, and on the
+# query record still).
+_POINT_FIELDS = ("relation", "on", "shape", "by", "measures", "aggregate", "group", "predicates", "order", "direction", "limit", "offset", "minimum_games", "available", "span", "season", "position")
 
 
 def plain(value: Any, *, mask: Mapping[str, str] | None = None) -> Any:

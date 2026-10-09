@@ -288,11 +288,12 @@ def read_team_splits(con: duckdb.DuckDBPyConnection, q: TeamQuery, *, stated: fr
     .. versionadded:: 5.0.0
     """
     from association.query.coverage import coverage_refusal
+    from association.query.reading import PointShape
 
     scope = q.scope
     if unhonored_scoping("player_splits", scope, stated):
         return None
-    refused = coverage_refusal("player_splits", scope)
+    refused = coverage_refusal(PointShape("team_games", "split", "splits"), scope)
     if refused is not None:
         return refused
     _splits_refusals(scope)

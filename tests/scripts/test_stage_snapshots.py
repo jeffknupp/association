@@ -55,11 +55,29 @@ def _compare(monkeypatch: pytest.MonkeyPatch, before: Path, after: Path, *flags:
     return int(stage_snapshots.main())
 
 
+def test_an_ignored_field_is_left_out_and_its_values_listed(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """``--ignore stage.path`` is for a field a commit ADDS to a record (the
+    point's ``by``, Phase 3, step 1): the comparison leaves exactly that
+    field out, says it did, and lists the values each run holds there by
+    count - so the addition is enumerated, not hidden. Anything else that
+    differs is still a difference."""
+    before = _write(tmp_path / "a.jsonl", _record("q one"), _record("q two"))
+    after = _write(tmp_path / "b.jsonl", _record("q one", reading__by="line"), _record("q two", reading__by="line"))
+    assert _compare(monkeypatch, before, after) == 1
+    assert _compare(monkeypatch, before, after, "--ignore", "reading.by") == 0
+    out = capsys.readouterr().out
+    assert "IGNORED reading.by (before): <absent> 2" in out and "IGNORED reading.by (after): 'line' 2" in out
+    assert "1 field(s) ignored): 2 identical, 0 differ" in out
+    # A second field moved beside the ignored one is still reported.
+    moved = _write(tmp_path / "c.jsonl", _record("q one", reading__by="line"), _record("q two", reading__by="line", result__value=54))
+    assert _compare(monkeypatch, before, moved, "--ignore", "reading.by") == 1
+
+
 def test_two_identical_runs_compare_clean(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     before = _write(tmp_path / "a.jsonl", _record("q one"), _record("q two"))
     after = _write(tmp_path / "b.jsonl", _record("q two"), _record("q one"))
     assert _compare(monkeypatch, before, after) == 0
-    assert "2 questions compared (values and wording, tolerance 1e-09): 2 identical, 0 differ, 0 in one run only" in capsys.readouterr().out
+    assert "2 questions compared (values and wording, tolerance 1e-09, 0 field(s) ignored): 2 identical, 0 differ, 0 in one run only" in capsys.readouterr().out
 
 
 def test_a_moved_value_fails_the_comparison_and_names_the_first_stage(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
