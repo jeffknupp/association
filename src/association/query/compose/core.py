@@ -748,10 +748,13 @@ def _compile_rows(q: Query, narrowed: Narrowed, rebuilt: bool, player: Entity | 
     if q.order == "measure":
         if not q.measures:
             raise Unsupported("ordering by a measure needs one")
-        # Ties by date, earliest first - the order single_game_high lists them.
-        order = f"{measure_sql(q.measures[0])} {'ASC' if q.direction == 'asc' else 'DESC'} NULLS LAST, g.date ASC, pgl.event_id"
+        # Ties by date, earliest first - the order single_game_high lists them
+        # - and, within one game, by player, so a league-wide list cut at a
+        # tie is the same list every run (ISSUES.md #99: Latrell Sprewell
+        # or Vernon Maxwell, both with 9 on 1996-04-06, was the engine's).
+        order = f"{measure_sql(q.measures[0])} {'ASC' if q.direction == 'asc' else 'DESC'} NULLS LAST, g.date ASC, pgl.event_id, pgl.athlete_id"
     else:
-        order = f"g.date {'ASC' if q.direction == 'asc' else 'DESC'}, pgl.event_id"
+        order = f"g.date {'ASC' if q.direction == 'asc' else 'DESC'}, pgl.event_id, pgl.athlete_id"
     sql, params = rows_sql(narrowed, select, order=order, limit=q.limit, offset=q.offset, rebuilt=rebuilt)
     return Compiled(sql, params, player, span, narrowed, rebuilt, list(q.measures))
 

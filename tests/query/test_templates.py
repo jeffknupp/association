@@ -1954,6 +1954,23 @@ def test_single_game_high_for_a_named_player(sgh_ctx: AnswerContext) -> None:
     assert answer == f"Nikola Jokic's highest assist total in a single game in the {current_season()} regular season was 19, on 2026-03-25 vs DAL."
 
 
+def test_a_tie_within_one_game_is_listed_in_one_order(sgh_ctx: AnswerContext) -> None:
+    """ISSUES.md #99: a league-wide list ordered by the stat, then the date,
+    then the game left two players tied in ONE game to the engine, so a list
+    cut at that tie named Latrell Sprewell on five runs and Vernon Maxwell on
+    three. The order ends with the player, so it is the same every run."""
+    s = current_season()
+    sgh_ctx.con.execute("INSERT INTO players VALUES ('9', 'Zed Tie'), ('8', 'Abe Tie')")
+    sgh_ctx.con.executemany(
+        "INSERT INTO player_game_log_rows VALUES (?,?,?,?,?,?,?,?,?,?,FALSE)",
+        [("9", s, 2, "Zed Tie", "2026-02-02T02:00Z", "MIA", 1, 40, 30, "e9"), ("8", s, 2, "Abe Tie", "2026-02-02T02:00Z", "MIA", 1, 40, 30, "e9")],
+    )
+    result = single_game_high(sgh_ctx, Reading.from_slots({"stat": "points"}))
+    # Jokic's 40 came first (2026-01-02); the two of one game follow by athlete id.
+    assert [g["player"] for g in result.data["games"][:3]] == ["Nikola Jokic", "Abe Tie", "Zed Tie"]
+    assert result.answer.startswith("Nikola Jokic, Abe Tie and Zed Tie tied for the most points in a single game")
+
+
 def test_single_game_high_reports_a_tie_as_a_tie(sgh_ctx: AnswerContext) -> None:
     sgh_ctx.con.execute("UPDATE player_game_log_rows SET assists = 23 WHERE player_name = 'Nikola Jokic' AND opponent_abbr = 'DAL' AND season_type = 2")
     assert "tied for the most" in (single_game_high(sgh_ctx, Reading.from_slots({"stat": "assists"})).answer or "")
