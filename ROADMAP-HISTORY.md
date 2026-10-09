@@ -955,6 +955,23 @@ agents' reports named here are in `~/association-research/stages/`.
     test. Two wrong answers fixed in passing (a quarter's plus-minus
     answered as points; a false conference sentence), two P1s filed (#339,
     #340) for the filter families step 2 reaches.
+23. **Phase 3, step 1 (2026-10-09).** The answer side's key stops being
+    derived from the intent: the point reader declares `shape`, `by` and
+    the relation it is `on`, the planner builds the key and the compiler's
+    skeleton from those, and the coverage floor is declared per key with
+    the relation's tables. One Fable agent at medium effort (the day's
+    exception), measured first on 2,457 planned points under 32 keys. What
+    it taught: the target relation is not a function of the point's other
+    fields (a quarter's log and a game log share shape and `by`), so the
+    Reading carries `on` beside today's `relation` until step 2 retypes the
+    subject; and a floor keyed by intent had put three table sets under one
+    key, which is how "Jordan's points in 1990 on tuesdays" was held to the
+    season line's 1977 floor (#212, fixed) and two feed rankings were
+    refused "No games" instead of by the box-score floor (fixed, the two
+    named). The lead merged it onto a master ten isolated fixes ahead of its
+    base - the parallel stream Jeff asked for, each proven the same way -
+    and re-proved it there: identical on all four populations with the
+    four added point fields ignored and listed by count.
 
 ## The plan items, as written
 
