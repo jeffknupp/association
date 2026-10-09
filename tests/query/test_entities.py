@@ -12,20 +12,19 @@ from association.query.entities import (
     Entity,
     NotFound,
     collect_name_readings,
-    compared_but_unmatched,
     find_players,
     find_teams,
     misread_players,
-    nicknames_in,
-    player_named_on_a_team_only_question,
-    players_named_in,
+    players_of,
     read_near_spelling,
     resolve_player,
     resolve_team,
     suggest_players,
     team_only_question_names_a_player,
+    teams_of,
 )
 from association.query.reading import Scope
+from association.query.subject import compared_but_unmatched, nicknames_in, player_named_on_a_team_only_question, players_named_in
 
 
 @pytest.fixture
@@ -585,26 +584,26 @@ def test_an_ambiguous_span_is_left_for_the_clarification_to_ask(span_con: duckdb
 
 
 def test_players_named_in_reads_names_and_nicknames_in_order(con: duckdb.DuckDBPyConnection) -> None:
-    assert players_named_in(con, "compare sga and embiid") == ["Shai Gilgeous-Alexander", "Joel Embiid"]
+    assert players_named_in(players_of(con), "compare sga and embiid") == ["Shai Gilgeous-Alexander", "Joel Embiid"]
 
 
 def test_a_possessive_s_is_not_a_player(con: duckdb.DuckDBPyConnection) -> None:
     """ "Klay Thompson's" splits into a stray one-letter word, which is a whole
     word of "John S. Williams" - measured against the warehouse, that put him
     in nine of the routing corpus's questions."""
-    assert players_named_in(con, "what was klay thompson's 3pt percentage") == ["Klay Thompson"]
+    assert players_named_in(players_of(con), "what was klay thompson's 3pt percentage") == ["Klay Thompson"]
 
 
 def test_an_ordinary_word_that_only_looks_like_a_name_is_not_one(con: duckdb.DuckDBPyConnection) -> None:
     """Substring matching would read "the highest scoring game" as naming
     Jaron Blossomgame and "with" as naming Jeff Withey, so a span has to equal
     a whole word of the name."""
-    assert players_named_in(con, "what was the highest scoring game with 20 rebounds?") == []
+    assert players_named_in(players_of(con), "what was the highest scoring game with 20 rebounds?") == []
 
 
 def test_a_surname_two_players_share_names_neither_of_them(con: duckdb.DuckDBPyConnection) -> None:
     """This overrules the router, so it may only speak where it is certain."""
-    assert players_named_in(con, "plot curry's threes") == []
+    assert players_named_in(players_of(con), "plot curry's threes") == []
 
 
 # ---------------- did you mean ----------------
@@ -766,17 +765,17 @@ def test_a_vs_question_that_matched_one_player_is_flagged(con: duckdb.DuckDBPyCo
     typo cannot be repaired - measured, a near-spelling search over leftover
     words finds a spurious player in 29 of 51 corpus questions - so the answer
     has to say a player is missing rather than quietly drop one."""
-    assert compared_but_unmatched(con, "generate fingerprints for embiid vs jolic in 2026", ["Joel Embiid"])
+    assert compared_but_unmatched(players_of(con), "generate fingerprints for embiid vs jolic in 2026", ["Joel Embiid"])
 
 
 def test_a_vs_question_with_both_players_is_not_flagged(con: duckdb.DuckDBPyConnection) -> None:
-    assert not compared_but_unmatched(con, "fingerprints for embiid vs jokic", ["Joel Embiid", "Nikola Jokic"])
+    assert not compared_but_unmatched(players_of(con), "fingerprints for embiid vs jokic", ["Joel Embiid", "Nikola Jokic"])
 
 
 def test_a_question_comparing_nobody_is_not_flagged(con: duckdb.DuckDBPyConnection) -> None:
     """One name and no "vs" is a question about one player, which is not a
     half-answer to anything."""
-    assert not compared_but_unmatched(con, "plot embiid's fingerprint", ["Joel Embiid"])
+    assert not compared_but_unmatched(players_of(con), "plot embiid's fingerprint", ["Joel Embiid"])
 
 
 def test_a_name_that_resolves_is_never_called_a_warehouse_miss(con: duckdb.DuckDBPyConnection) -> None:
@@ -790,7 +789,7 @@ def test_a_name_that_resolves_is_never_called_a_warehouse_miss(con: duckdb.DuckD
     c = duckdb.connect(":memory:")
     c.execute("CREATE TABLE players (athlete_id VARCHAR, display_name VARCHAR)")
     c.execute("INSERT INTO players VALUES ('1', 'Tyrese Maxey'), ('2', 'Marlon Maxey'), ('3', 'Jaylen Brown')")
-    note = compared_but_unmatched(c, "show a fingerprint for maxey vs jaylen brown in 2026", ["Maxey"])
+    note = compared_but_unmatched(players_of(c), "show a fingerprint for maxey vs jaylen brown in 2026", ["Maxey"])
     assert note == "Note: the question also names Jaylen Brown, who was not included in this answer."
 
 
@@ -1071,7 +1070,7 @@ def test_a_team_only_question_naming_one_player_is_read_back(scope_con: duckdb.D
     either - and answered the league standings, Sengun never read.
     Diacritics are already folded (players_named_in._fold)."""
     slots: dict[str, Any] = {"stat": "record", "limit": 1}
-    named = player_named_on_a_team_only_question(scope_con, "alperen şengün alltime record", slots)
+    named = player_named_on_a_team_only_question(players_of(scope_con), teams_of(scope_con), "alperen şengün alltime record", slots)
     assert named == "Alperen Sengun"
     message = team_only_question_names_a_player(named, "team_leaderboard")
     assert "Alperen Sengun" in message and "team leaderboard" in message
@@ -1084,9 +1083,9 @@ def test_a_team_named_wins_over_a_coincidental_player_word(scope_con: duckdb.Duc
     same reasoning that leaves a stray name alone on head_to_head elsewhere
     in this module."""
     with_team: dict[str, Any] = {"stat": "record", "team": "Boston Celtics"}
-    assert player_named_on_a_team_only_question(scope_con, "alperen şengün celtics record", with_team) is None
+    assert player_named_on_a_team_only_question(players_of(scope_con), teams_of(scope_con), "alperen şengün celtics record", with_team) is None
     with_teams: dict[str, Any] = {"stat": "record", "teams": ["Boston Celtics", "Orlando Magic"]}
-    assert player_named_on_a_team_only_question(scope_con, "alperen şengün celtics vs magic", with_teams) is None
+    assert player_named_on_a_team_only_question(players_of(scope_con), teams_of(scope_con), "alperen şengün celtics vs magic", with_teams) is None
 
 
 def test_an_invented_team_holding_the_players_own_name_does_not_block_the_refusal(scope_con: duckdb.DuckDBPyConnection) -> None:
@@ -1098,7 +1097,7 @@ def test_an_invented_team_holding_the_players_own_name_does_not_block_the_refusa
     otherwise `team_leaderboard` would refuse "no team matching 'Alperen
     Şengün'" instead, the same wrong-cause shape this check exists to fix."""
     invented: dict[str, Any] = {"stat": "record", "team": "Alperen Şengün"}
-    assert player_named_on_a_team_only_question(scope_con, "alperen şengün alltime record", invented) == "Alperen Sengun"
+    assert player_named_on_a_team_only_question(players_of(scope_con), teams_of(scope_con), "alperen şengün alltime record", invented) == "Alperen Sengun"
 
 
 def test_a_real_team_the_question_never_names_does_not_block_the_refusal(scope_con: duckdb.DuckDBPyConnection) -> None:
@@ -1110,9 +1109,9 @@ def test_a_real_team_the_question_never_names_does_not_block_the_refusal(scope_c
     the question does name ("lakers") still wins."""
     scope_con.execute("INSERT INTO teams VALUES ('28','Toronto Raptors','TOR')")
     invented: dict[str, Any] = {"stat": "wins", "team": "Toronto Raptors", "venue": "home", "opponent": "San Antonio Spurs"}
-    assert player_named_on_a_team_only_question(scope_con, "towns home rec including playoffs since 1/26/20 vs spurs", invented) == "Karl-Anthony Towns"
+    assert player_named_on_a_team_only_question(players_of(scope_con), teams_of(scope_con), "towns home rec including playoffs since 1/26/20 vs spurs", invented) == "Karl-Anthony Towns"
     named: dict[str, Any] = {"stat": "wins", "team": "Los Angeles Lakers"}
-    assert player_named_on_a_team_only_question(scope_con, "towns lakers home rec", named) is None
+    assert player_named_on_a_team_only_question(players_of(scope_con), teams_of(scope_con), "towns lakers home rec", named) is None
 
 
 def test_a_common_word_is_not_read_as_the_team_only_questions_player(scope_con: duckdb.DuckDBPyConnection) -> None:
@@ -1120,8 +1119,8 @@ def test_a_common_word_is_not_read_as_the_team_only_questions_player(scope_con: 
     false-positive trap F093's restore_subject was measured against, applied
     here too."""
     slots: dict[str, Any] = {"stat": "record", "limit": 1}
-    assert player_named_on_a_team_only_question(scope_con, "Best record from 2010-11 to 2018-19 nba", slots) is None
-    assert player_named_on_a_team_only_question(scope_con, "Celtics vs Bulls head to head record", slots) is None
+    assert player_named_on_a_team_only_question(players_of(scope_con), teams_of(scope_con), "Best record from 2010-11 to 2018-19 nba", slots) is None
+    assert player_named_on_a_team_only_question(players_of(scope_con), teams_of(scope_con), "Celtics vs Bulls head to head record", slots) is None
 
 
 def test_restore_team_subject_does_not_fire_with_a_player_already_present(scope_con: duckdb.DuckDBPyConnection) -> None:

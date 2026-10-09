@@ -31,7 +31,7 @@ from typing import Any, Literal, cast, get_args
 import duckdb
 
 from association.query.decisions import Decision
-from association.query.entities import _edit_budget, _question_derived_player, _words, find_players, find_teams, nicknames_in, suggest_players, team_abbreviations, team_named_in
+from association.query.entities import _edit_budget, _words, find_players, find_teams, players_of, suggest_players, team_abbreviations, teams_of
 from association.query.measures import MEASURE_WORDS, PERIOD_COLUMNS
 from association.query.metrics import EXTRA_FIELD_COLUMNS, TEAM_FIELD_WORDS
 from association.query.point import read_point
@@ -47,9 +47,12 @@ from association.query.subject import (
     apply_subject,
     beside,
     child_named,
+    nicknames_in,
+    question_derived_player,
     question_supports,
     read_subject,
     settle_subject,
+    team_named_in,
 )
 
 _PAIR_MEETING = (
@@ -390,7 +393,7 @@ def classify_span(con: duckdb.DuckDBPyConnection, text: str) -> str | None:
     low = text.lower().strip().removesuffix("'s").rstrip("'")
     if low.removeprefix("the ") in _NEVER_A_NAME:
         return None
-    if low in TEAM_SINGULARS or team_named_in(con, low) is not None or _classify_span_abbreviation(con, low):
+    if low in TEAM_SINGULARS or team_named_in(teams_of(con), low) is not None or _classify_span_abbreviation(con, low):
         return "team"
     teams = find_teams(con, text)
     players = find_players(con, text)
@@ -456,7 +459,7 @@ def _as_typed_part(con: duckdb.DuckDBPyConnection, question: str, name: str) -> 
     no answer. Left alone besides: a name the question spells in full, a
     nickname the question used (the curated table's resolution, "steph
     curry" as Stephen), and a name the question's own span resolves to
-    (:func:`~association.query.entities._question_derived_player` - "Dylon
+    (:func:`~association.query.subject.question_derived_player` - "Dylon
     harper" typos the given name, and the corrected "Dylan" is not a word
     the question lacks). A completion that resolves to nobody is cut back
     whatever the part reaches ("derozan" came back "Derozan Valenčić", a
@@ -470,7 +473,7 @@ def _as_typed_part(con: duckdb.DuckDBPyConnection, question: str, name: str) -> 
     held = [word for word in words if word.casefold() in asked]
     if not held or len(held) == len(words) or name in nicknames_in(question):
         return name
-    derived = _question_derived_player(con, question, name)
+    derived = question_derived_player(players_of(con), question, name)
     if derived is not None and derived.name.casefold() == name.casefold():
         return name
     part = " ".join(held)

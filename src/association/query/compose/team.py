@@ -62,7 +62,6 @@ from association.nba.season import current_season
 from association.query.conditions import _PLAYER_GAME_TABLES, _TEAM_LINE, _longest_runs_sql, box_source, presence_games_sql
 from association.query.coverage import floor_refusal
 from association.query.entities import Entity, resolved_team
-from association.query.entities import team_named_in as team_named_in
 from association.query.player_relation import ResolvedSpan, span_of, whole_span
 from association.query.reading import DEFAULT_STREAK_LIMIT, Scope, _clamp_limit
 from association.query.result import Refusal, Unanswered

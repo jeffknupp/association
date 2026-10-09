@@ -625,8 +625,8 @@ splits: "show me Embiid's splits against boston" arrived as the 76ers and
 the Celtics meeting with Embiid dropped, once the intent left the router's
 prompt in 5.0.0) - so a name is restored only where the
 question's own words name exactly one player and that naming survives
-:func:`~association.query.entities._named_only_by_a_team_word` and
-:func:`~association.query.entities._named_only_by_a_common_word`.
+:func:`~association.query.subject._named_only_by_a_team_word` and
+:func:`~association.query.subject._named_only_by_a_common_word`.
 
 Separate from :data:`PLAYER_REQUIRED_INTENTS` on purpose: those templates
 cannot answer at all without a player, while these two have a real,
@@ -651,7 +651,7 @@ Gordan Giricek instead of Aaron Gordon) - and NONE of the five route to
 ``single_game_high`` or ``threshold_count``, so restricting to this pair
 alone already clears the measured corpus with zero false positives. The
 ``best``/``head`` pair is still excluded by
-:func:`~association.query.entities._named_only_by_a_common_word` as a
+:func:`~association.query.subject._named_only_by_a_common_word` as a
 forward-looking gate, since a future question in either intent could still
 collide with one of them; the typo case is not addressed here (a wrong
 candidate, not an ungrounded one - the entity index's near-spelling pass is
@@ -735,7 +735,7 @@ yardstick-v2 F111, "alperen şengün alltime record" routed to
 ``team_leaderboard`` with no player and no team slot at all, and answered
 the league standings, entirely off Sengun. AGENTS.md's "Refuse by name
 where the intent cannot be about the subject" is exactly this shape;
-``entities.player_named_on_a_team_only_question`` is the check, called from
+``subject.player_named_on_a_team_only_question`` is the check, called from
 ``agent.py`` before the template runs, and its refusal names the player it
 read rather than answering the wrong one.
 

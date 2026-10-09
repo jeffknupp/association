@@ -39,13 +39,7 @@ from .answer import Answer, AnsweredBy, Artifact, Timing
 from .compose import COMPILED_INTENTS
 from .compose.plan import Planned, plan_point
 from .connection import connect_read_only, latest_season_on_record
-from .entities import (
-    collect_name_readings,
-    compared_but_unmatched,
-    misread_players,
-    player_named_on_a_team_only_question,
-    team_only_question_names_a_player,
-)
+from .entities import collect_name_readings, misread_players, players_of, team_only_question_names_a_player, teams_of
 from .history import DEFAULT_HISTORY_DIR, RunHistory, echo_to_stderr
 from .models import DEFAULT_ROUTER_MODEL
 from .names import loaded as names_loaded
@@ -54,6 +48,7 @@ from .notes import unsaid
 from .reading import Reading, Scope, ScopeError
 from .refusals import MIN_QUESTION_WORDS, by_question, too_short, unanswerable
 from .router import Route, RouterUnavailable
+from .subject import compared_but_unmatched, player_named_on_a_team_only_question
 
 # The subset of Reply.data a compose.answer() carries that describes
 # WHAT was answered - the point on the relation - rather than the rows
@@ -317,7 +312,7 @@ class Agent:
         # compiled intents too: the team-season intents are the compiler's
         # since Phase 2, step 4.
         if reading.intent in TEAM_ONLY_INTENTS:
-            named_player = player_named_on_a_team_only_question(self.con, question, reading.scope.to_slots())
+            named_player = player_named_on_a_team_only_question(players_of(self.con), teams_of(self.con), question, reading.scope.to_slots())
             if named_player is not None:
                 message = team_only_question_names_a_player(named_player, reading.intent)
                 history.log(f"  -> (player) {message}")
@@ -493,7 +488,7 @@ class Agent:
 
     def _unmatched_fingerprint(self, question: str, reading: Reading, composed: Reply) -> None:
         """A "vs" fingerprint that drew one polygon answered half of itself:
-        :func:`~association.query.entities.compared_but_unmatched` says which
+        :func:`~association.query.subject.compared_but_unmatched` says which
         name the question compares matched nobody, or was left out - see its
         docstring. Read here because it reads the question's text, which
         only the reader and this loop hold; said after the coverage caveat,
@@ -502,7 +497,7 @@ class Agent:
         the floor, then the answer and this note)."""
         if reading.intent != "fingerprint" or check_coverage(reading.intent, reading.scope) is not None:
             return
-        unmatched_note = compared_but_unmatched(self.con, question, self._named_in(reading.scope))
+        unmatched_note = compared_but_unmatched(players_of(self.con), question, self._named_in(reading.scope))
         if unmatched_note:
             composed.answer = f"{composed.answer} {unmatched_note}"
             _note(composed, unmatched_note)

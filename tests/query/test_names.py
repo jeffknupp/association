@@ -11,7 +11,8 @@ import duckdb
 import pytest
 
 from association.query import entities, names
-from association.query.entities import Entity, find_players, find_teams, players_named_in
+from association.query.entities import Entity, find_players, find_teams, players_of, teams_of
+from association.query.subject import players_named_in, question_derived_player
 
 
 class Counting:
@@ -162,8 +163,8 @@ def test_ilike_is_duckdbs_on_either_kind_of_column(plain: bool) -> None:
 
 
 def test_rows_come_in_table_order(con: duckdb.DuckDBPyConnection) -> None:
-    assert entities._exact_name_span(con, ["curry"]) == [Entity("3", "Seth Curry"), Entity("1", "Stephen Curry")]
-    assert [e.id for e in entities._exact_name_span(con, ["curry"], limit=10)] == ["3", "1", "2"]
+    assert entities._exact_name_span(players_of(con), ["curry"]) == [Entity("3", "Seth Curry"), Entity("1", "Stephen Curry")]
+    assert [e.id for e in entities._exact_name_span(players_of(con), ["curry"], limit=10)] == ["3", "1", "2"]
     # Two players of one name: table order, which ORDER BY display_name left
     # to the engine.
     assert [e.id for e in find_players(con, "chris smith")] == ["9", "8"]
@@ -173,7 +174,7 @@ def test_rows_come_in_table_order(con: duckdb.DuckDBPyConnection) -> None:
 def test_a_question_reads_each_table_once_inside_the_block(con: duckdb.DuckDBPyConnection) -> None:
     counting = Counting(con)
     with names.loaded():
-        assert players_named_in(counting, "how did jokic and seth curry do") == ["Nikola Jokic", "Seth Curry"]  # type: ignore[arg-type]
+        assert players_named_in(players_of(counting), "how did jokic and seth curry do") == ["Nikola Jokic", "Seth Curry"]  # type: ignore[arg-type]
         assert find_teams(counting, "lakers") == [Entity("13", "Los Angeles Lakers")]  # type: ignore[arg-type]
         assert find_teams(counting, "blazers")[0].id == "22"  # type: ignore[arg-type]
         assert entities.suggest_players(counting, "jokci") == [Entity("4", "Nikola Jokic")]  # type: ignore[arg-type]
@@ -215,7 +216,7 @@ def test_a_warehouse_without_teams_raises_what_the_sql_raised() -> None:
     c = duckdb.connect(":memory:")
     c.execute("CREATE TABLE players (athlete_id VARCHAR, display_name VARCHAR)")
     c.execute("INSERT INTO players VALUES ('4', 'Nikola Jokic')")
-    assert entities._team_named(c, "lakers") is None  # caught: a partial load has no team to find
+    assert entities._team_named(teams_of(c), "lakers") is None  # caught: a partial load has no team to find
     assert entities.suggest_players(c, "jokci") == [Entity("4", "Nikola Jokic")]
     with pytest.raises(duckdb.CatalogException):
         find_teams(c, "lakers")
@@ -227,19 +228,19 @@ def test_a_teams_without_its_name_columns_raises_what_the_sql_raised() -> None:
     c.execute("INSERT INTO teams VALUES ('22', 'POR', 'Portland Trail Blazers')")
     # No `name` column: the nickname reading's statement failed to bind, and
     # its caller reads that as finding nothing.
-    assert entities._by_nickname(c, "Portland Blazers", None) is None
-    assert entities._team_named(c, "trailblazers") == Entity("22", "Portland Trail Blazers")
+    assert entities._by_nickname(teams_of(c), "Portland Blazers", None) is None
+    assert entities._team_named(teams_of(c), "trailblazers") == Entity("22", "Portland Trail Blazers")
     bare = duckdb.connect(":memory:")
     bare.execute("CREATE TABLE teams (team_id VARCHAR, display_name VARCHAR)")
     with pytest.raises(duckdb.BinderException):
-        entities._team_named(bare, "lakers")  # no `abbreviation`, and nothing caught that
+        entities._team_named(teams_of(bare), "lakers")  # no `abbreviation`, and nothing caught that
 
 
 def test_a_warehouse_without_players_raises_what_the_sql_raised() -> None:
     c = duckdb.connect(":memory:")
     with pytest.raises(duckdb.CatalogException):
-        players_named_in(c, "how did jokic do")
-    assert entities._question_derived_player(c, "how did jokic do", "Nikola Jokic") is None
+        players_named_in(players_of(c), "how did jokic do")
+    assert question_derived_player(players_of(c), "how did jokic do", "Nikola Jokic") is None
 
 
 def test_the_readers_own_team_lookups_come_from_the_index_too(con: duckdb.DuckDBPyConnection) -> None:
@@ -248,18 +249,17 @@ def test_the_readers_own_team_lookups_come_from_the_index_too(con: duckdb.DuckDB
     the team compiler still issued per word after the entity module's own
     went to the index. One read of ``teams`` inside the block serves them
     all, and each gives what its SQL gave."""
-    from association.query.compose.team import team_named_in
     from association.query.entities import team_abbreviations, teams_named_by_word
     from association.query.parse import _classify_span_abbreviation
-    from association.query.subject import _team_abbreviation
+    from association.query.subject import _team_abbreviation, team_named_in
 
-    assert teams_named_by_word(con, "blazers") == ["Portland Trail Blazers"] and teams_named_by_word(con, "trail") == ["Portland Trail Blazers"]
-    assert teams_named_by_word(con, "blazer") == [] and teams_named_by_word(con, "los") == ["Los Angeles Lakers"]
+    assert teams_named_by_word(teams_of(con), "blazers") == ["Portland Trail Blazers"] and teams_named_by_word(teams_of(con), "trail") == ["Portland Trail Blazers"]
+    assert teams_named_by_word(teams_of(con), "blazer") == [] and teams_named_by_word(teams_of(con), "los") == ["Los Angeles Lakers"]
     assert team_abbreviations(con) == {"lal": "Los Angeles Lakers", "por": "Portland Trail Blazers", "ind": "Indiana Pacers"}
     counting = Counting(con)
     with names.loaded():
-        assert team_named_in(counting, "how many threes have the Blazers' guards made") == "Portland Trail Blazers"  # type: ignore[arg-type]
-        assert team_named_in(counting, "who led the league in scoring") is None  # type: ignore[arg-type]
+        assert team_named_in(teams_of(counting), "how many threes have the Blazers' guards made") == "Portland Trail Blazers"  # type: ignore[arg-type]
+        assert team_named_in(teams_of(counting), "who led the league in scoring") is None  # type: ignore[arg-type]
         assert _team_abbreviation(counting, "POR record 2026") == "Portland Trail Blazers" and _team_abbreviation(counting, "por record") is None  # type: ignore[arg-type]
         assert _classify_span_abbreviation(counting, "ind") and not _classify_span_abbreviation(counting, "indy")  # type: ignore[arg-type]
     assert counting.statements == ["SELECT * FROM teams"]
@@ -268,4 +268,4 @@ def test_the_readers_own_team_lookups_come_from_the_index_too(con: duckdb.DuckDB
     assert "none" not in team_abbreviations(con) and len(team_abbreviations(con)) == 3
     bare = duckdb.connect(":memory:")
     with pytest.raises(duckdb.CatalogException):
-        teams_named_by_word(bare, "lakers")
+        teams_named_by_word(teams_of(bare), "lakers")

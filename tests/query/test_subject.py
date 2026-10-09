@@ -287,7 +287,7 @@ def test_a_typo_of_the_questions_own_is_resolved_from_the_span_the_routers_name_
     """ "Seph Curry" is the QUESTION's typo: no whole-word match finds Seth
     Curry in it, and the router's "Stephen Curry" is supported by "curry".
     The span around the router's name, resolved with near spelling
-    (entities._question_derived_player), is what reaches him - the last
+    (subject.question_derived_player), is what reaches him - the last
     thing override_invented_players did that the reading did not, per the
     golden (live_day2: "Seph Curry" twice, "Payton Prichard" once)."""
     from association.query.subject import apply_subject
@@ -310,7 +310,7 @@ def test_the_routers_spelling_stands_where_a_whole_word_names_somebody_else(con:
     is not about - and the first `apply_subject` respelled the router's
     correct "Kareem Abdul-Jabbar" to Kareem Rush from that. ISSUES.md #123's
     shape, reintroduced through the reading. The anchored span settles
-    neither name (entities._question_derived_player's own guard), so the
+    neither name (subject.question_derived_player's own guard), so the
     router's spelling stands and the template says nobody matched."""
     from association.query.subject import apply_subject
 

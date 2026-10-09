@@ -75,22 +75,51 @@ def _again(error: Exception) -> Exception:
     return type(error)(*error.args)
 
 
-def _player_index(con: duckdb.DuckDBPyConnection) -> names.PlayerIndex:
-    """The players' index, for a lookup that used to read ``players`` -
-    raising what reading ``players`` raised, as that lookup's SQL did."""
-    index = names.players_for(con, _read_players)
+def players_of(con: duckdb.DuckDBPyConnection) -> names.PlayerIndex:
+    """The players' index for ``con``, as it was read: the error reading
+    ``players`` raised is kept on it, not raised (:func:`checked_players`
+    raises it where a lookup needs the rows, as that lookup's SQL did).
+
+    What a reader of the question's words is handed in place of the
+    connection: the in-memory index is all name recognition reads
+    (``ROADMAP.md``, contract 3), and a function that holds no connection
+    cannot run a statement (``scripts/check_ratchets.py``,
+    ``con_in_the_reader``).
+
+    .. versionadded:: 5.0.0
+    """
+    return names.players_for(con, _read_players)
+
+
+def teams_of(con: duckdb.DuckDBPyConnection) -> names.TeamIndex:
+    """The teams' index for ``con``, as :func:`players_of` hands the
+    players': unchecked, its error kept (:func:`team_columns` raises it).
+
+    .. versionadded:: 5.0.0
+    """
+    return names.teams_for(con, _read_teams)
+
+
+def checked_players(index: names.PlayerIndex) -> names.PlayerIndex:
+    """``index``, for a lookup that used to read ``players`` - raising what
+    reading ``players`` raised, as that lookup's SQL did.
+
+    .. versionadded:: 5.0.0
+    """
     if index.error is not None:
         raise _again(index.error)
     return index
 
 
-def _team_index(con: duckdb.DuckDBPyConnection, *columns: str) -> names.TeamIndex:
-    """The teams' index, for a lookup whose SQL read ``columns`` of ``teams``
-    - raising what that SQL raised on a warehouse without the table
+def team_columns(index: names.TeamIndex, *columns: str) -> names.TeamIndex:
+    """``index``, for a lookup whose SQL read ``columns`` of ``teams`` -
+    raising what that SQL raised on a warehouse without the table
     (:class:`duckdb.CatalogException`) or without one of the columns
     (:class:`duckdb.BinderException`). Several tests build a ``teams`` with
-    no ``name`` or ``location``, and callers tell those errors apart."""
-    index = names.teams_for(con, _read_teams)
+    no ``name`` or ``location``, and callers tell those errors apart.
+
+    .. versionadded:: 5.0.0
+    """
     if index.error is not None:
         raise _again(index.error)
     missing = [column for column in columns if column not in index.columns]
@@ -99,52 +128,19 @@ def _team_index(con: duckdb.DuckDBPyConnection, *columns: str) -> names.TeamInde
     return index
 
 
-_LETTER_RUN = re.compile(r"[a-zA-Z']+")
+def _player_index(con: duckdb.DuckDBPyConnection) -> names.PlayerIndex:
+    """The players' index, for a lookup that used to read ``players`` -
+    raising what reading ``players`` raised, as that lookup's SQL did."""
+    return checked_players(players_of(con))
 
 
-def team_named_in(con: duckdb.DuckDBPyConnection, question: str) -> str | None:
-    """The one team the question itself names, by a whole word of it (or a
-    curated nickname) - the team counterpart of
-    :func:`players_named_in`, kept deliberately
-    minimal: single words only, since no franchise name has an internal
-    ambiguity a span needs to resolve the way a player's first/last name
-    does ("Portland Trail Blazers" is found by "blazers" alone; nothing
-    named "Trail" collides with it). Never a guess between two candidates -
-    only an exact single match counts, and the first match wins, read left
-    to right the way a question states its subject first.
-
-    Used to restore a team the router dropped entirely (F127, ISSUES.md:
-    "how many 3 pointers have the magic made" routed with no ``team`` slot
-    at all) - the same repair :func:`players_named_in`
-    already makes for a dropped player.
-
-    .. versionadded:: 4.4.0
-
-    .. versionchanged:: 5.0.0
-       Lives here, beside the player's reader: it was ``compose.team``'s,
-       which the subject reading and the parser imported from the answer
-       side to read a team word (``ROADMAP.md``, Phase 1).
-
-    .. versionchanged:: 5.0.0
-       A possessive ("the Sixers' record") names the team as the bare word does.
-    """
-    for found in _LETTER_RUN.findall(question.lower()):
-        # "the Sixers' record", "the Knicks' last 5 games": the possessive
-        # is the question's, not the name's (ISSUES.md #232 - 11 of 277
-        # paraphrases read no team at all).
-        word = found.removesuffix("'s").rstrip("'")
-        if len(word) < 4:
-            continue
-        nickname = _TEAM_NICKNAMES.get(word)
-        if nickname:
-            return nickname
-        named = teams_named_by_word(con, word)
-        if len(named) == 1:
-            return str(named[0])
-    return None
+def _team_index(con: duckdb.DuckDBPyConnection, *columns: str) -> names.TeamIndex:
+    """The teams' index, for a lookup whose SQL read ``columns`` of ``teams``
+    (:func:`team_columns`)."""
+    return team_columns(teams_of(con), *columns)
 
 
-def teams_named_by_word(con: duckdb.DuckDBPyConnection, word: str) -> list[str]:
+def teams_named_by_word(teams: names.TeamIndex, word: str) -> list[str]:
     """The distinct display names of the teams ``word`` is a whole word of
     ("blazers" for the Portland Trail Blazers), in table order - from the
     teams' index, as every name lookup is (:mod:`association.query.names`).
@@ -154,9 +150,13 @@ def teams_named_by_word(con: duckdb.DuckDBPyConnection, word: str) -> list[str]:
     one statement per word of the question.
 
     .. versionadded:: 5.0.0
+
+    .. versionchanged:: 5.0.0
+       Takes the teams' in-memory index (:func:`teams_of`) in place of a
+       connection.
     """
     found: list[str] = []
-    for team in _team_index(con, "display_name").rows:
+    for team in team_columns(teams, "display_name").rows:
         name = team["display_name"]
         if name is not None and name not in found and word in names.sql_words(str(name)):
             found.append(name)
@@ -304,34 +304,6 @@ PLAYER_NICKNAMES = {
     "the birdman": "Chris Andersen",
 }
 
-# Built once: an alternation of every nickname, longest first so "greek freak"
-# wins over a hypothetical "greek". Word boundaries are spelled as lookarounds
-# rather than \b because several keys end in a non-word character ("a.i."),
-# where \b asserts the opposite of what is wanted.
-_NICKNAME_RE = re.compile(
-    r"(?<![\w])(" + "|".join(re.escape(k) for k in sorted(PLAYER_NICKNAMES, key=len, reverse=True)) + r")(?![\w])",
-    re.IGNORECASE,
-)
-
-
-def nicknames_in(question: str) -> list[str]:
-    """Player names for every nickname appearing as a whole word in ``question``,
-    in the order they appear, without repeats.
-
-    Matched against the user's own words, which is the only place a nickname
-    still exists: by the time a model has filled a slot it has usually
-    rewritten the nickname, and when it rewrites one wrongly there is nothing
-    downstream to notice.
-
-    .. versionadded:: 2.1.0
-    """
-    seen: list[str] = []
-    for match in _NICKNAME_RE.finditer(question):
-        name = PLAYER_NICKNAMES[match.group(1).casefold()]
-        if name not in seen:
-            seen.append(name)
-    return seen
-
 
 def _fold(text: str) -> str:
     """``"dončić"`` -> ``"doncic"``: the warehouse spells every name in plain
@@ -354,309 +326,31 @@ def _initials(name: str) -> str:
     return "".join(w[0] for w in words).casefold() if len(words) > 1 else ""
 
 
-def players_named_in(con: duckdb.DuckDBPyConnection, question: str) -> list[str]:
-    """Players the question itself names, in the order it names them.
-
-    The generalization of :func:`nicknames_in` from the curated table to the
-    whole roster, and the same idea: the question is the only place a name the
-    user actually typed still exists. Spans of three words down to one are
-    tried left to right, longest first, so "karl anthony towns" is read as one
-    name rather than three.
-
-    Deliberately strict about what counts as naming somebody, because this is
-    used to overrule the router. A span matches only if it is a nickname key or
-    if every word of it equals a whole word of exactly one player's name -
-    substring matching would read "What was the highest scoring game" as naming
-    Jaron Blossomgame, and word-boundary matching would read "with" as naming
-    Jeff Withey. Single words shorter than three letters are ignored for the
-    same reason: the possessive left behind by "Jokic's" is an "s", which is a
-    whole word of "John S. Williams".
-
-    .. versionadded:: 2.1.0
-    """
-    words = _words(question)
-    found: list[str] = []
-    index = 0
-    while index < len(words):
-        for size in (3, 2, 1):
-            if index + size > len(words):
-                continue
-            span = words[index : index + size]
-            nickname = PLAYER_NICKNAMES.get(" ".join(span).casefold())
-            if nickname is not None:
-                found.append(nickname)
-                index += size
-                break
-            if any(len(w) < 3 for w in span):
-                continue
-            rows = _exact_name_span(con, span)
-            if len(rows) == 1:
-                found.append(rows[0].name)
-                index += size
-                break
-        else:
-            index += 1
-    seen: list[str] = []
-    for name in found:
-        if name not in seen:
-            seen.append(name)
-    return seen
-
-
-def _exact_name_span(con: duckdb.DuckDBPyConnection, span: list[str], limit: int = 2) -> list[Entity]:
+def _exact_name_span(players: names.PlayerIndex, span: list[str], limit: int = 2) -> list[Entity]:
     """Players whose ``display_name`` holds every word of ``span`` as a whole
-    word - the exact-match building block :func:`players_named_in` and
-    :func:`_question_derived_player` both need, so the query is written once.
+    word - the exact-match building block the subject reading's
+    :func:`~association.query.subject.players_named_in` and
+    :func:`~association.query.subject.question_derived_player` both need, so
+    the lookup is written once.
 
     ``limit`` bounds the scan; 2 is enough to tell "exactly one" from "more
     than one" without reading out a whole surname's worth of rows. Rows come
     in table order, as the SQL this replaced returned them.
     """
-    index = _player_index(con)
+    index = checked_players(players)
     return _entities(index, index.with_words([w.casefold() for w in span], int(limit)))
 
 
-def _fuzzy_name_span(con: duckdb.DuckDBPyConnection, span: list[str], limit: int) -> list[Entity]:
+def _fuzzy_name_span(players: names.PlayerIndex, span: list[str], limit: int) -> list[Entity]:
     """Players within :func:`_edit_budget` of every word of ``span``, each
     against its nearest word of the name - the near-spelling counterpart of
     :func:`_exact_name_span`, and the same match :func:`suggest_players`
     makes for its own last pass, in table order. The AND across tokens is
     what keeps a short span from matching everybody.
     """
-    index = _player_index(con)
+    index = checked_players(players)
     near = index.near([(w, _edit_budget(w)) for w in span])
     return _entities(index, [row for row, _total in near][: int(limit)])
-
-
-# players_named_in's own cap: a name is never longer than three words once
-# _words has split a hyphenated one into halves.
-_SPAN_MAX_WORDS = 3
-
-
-def _anchor_word_position(q_words: list[str], lowered_q: list[str], word: str) -> int | None:
-    """Where ``word`` (one word of the router's name) turns up in the
-    question - exactly, or the nearest near spelling within
-    :func:`_edit_budget` - or ``None`` when it turns up nowhere at all."""
-    exact = next((i for i, w in enumerate(lowered_q) if w == word.casefold()), None)
-    if exact is not None:
-        return exact
-    if len(word) < 3:
-        return None  # a near spelling of a word this short is a different word
-    # Measured as DuckDB's damerau_levenshtein(lower(q), word) measured it,
-    # when this asked the warehouse to do the arithmetic.
-    row = [names.distance(names.sql_lower(q), word.casefold()) for q in q_words]
-    budget = _edit_budget(word)
-    near = [i for i, d in enumerate(row) if d <= budget and len(lowered_q[i]) >= 3]
-    return min(near, key=lambda i: row[i]) if near else None
-
-
-def _resolve_word_span(con: duckdb.DuckDBPyConnection, span: list[str]) -> Entity | None:
-    """``span``, resolved to one player - exact words before near ones, the
-    same order :func:`players_named_in` tries - or ``None``. A single word is
-    never handed to the fuzzy pass; see :func:`_question_derived_player`."""
-    if any(len(w) < 3 for w in span):
-        return None
-    matches = _exact_name_span(con, span)
-    if len(matches) != 1 and len(span) > 1:
-        matches = _fuzzy_name_span(con, span, limit=2)
-    return matches[0] if len(matches) == 1 else None
-
-
-def _question_derived_player(con: duckdb.DuckDBPyConnection, question: str, name: str) -> Entity | None:
-    """The one player a window of the question's OWN words - anchored to
-    wherever ``name`` (the router's guess, right or wrong) itself appears -
-    plausibly names, when that is confident enough to act on.
-
-    Two faults this repairs, both structural, and both invisible to the
-    "any one word is enough" check a name is otherwise held to
-    (:func:`~association.query.subject.question_supports`), because that check
-    is deliberately generous: the router TRUNCATES a name the question spells in
-    full ("dennis schröder", typed correctly, arrived as just ``'Dennis'`` -
-    grounded, and a 7-way surname), and it FABRICATES a word next to a real
-    one ("tatum rec home" arrived as ``'Jaylen Tatum'``, the league's only
-    Tatum with an invented given name bolted on; "Grady dick" arrived as
-    ``'Grady Dickinson'``, grounded by its own typo'd given name). Neither
-    ever reaches a repair, because grounding already says yes.
-
-    So this reads the question instead of trusting the router's spelling: it
-    anchors each of ``name``'s own words to where it turns up nearby - exactly,
-    or within :func:`_edit_budget`, since the router silently corrects typos
-    and a near spelling still marks the spot - and resolves the question's
-    literal words there against the roster, never the router's spelling.
-
-    Deliberately anchored, never a sentence-wide scan: fuzzy-matching a
-    question's leftover words was measured and rejected elsewhere in this
-    module ("season" is one edit from Tari Eason, wherever it turns up), and
-    what keeps this safe is that nothing is tried unless it sits next to a
-    word the router already pointed at - a name with no anchor at all is left
-    for the ungrounded path below to report, exactly as before.
-
-    Two things measured against real corpus rows keep this from trusting too
-    little of a coincidence:
-
-    - **Two or more of the router's own words anchoring is answered from
-      within exactly that range of the question, narrowed a word at a time -
-      but never down to one word alone.** "kareem stats vs bob lanier"
-      anchors both "bob" and "lanier" (the question's own words, spelled
-      exactly), and that pair names nobody: Bob Lanier retired before the
-      warehouse's 1993-94 floor. Falling back to "lanier" alone then named
-      Chaz Lanier, a real but wholly unrelated player - the same false-cause
-      shape the Maxey example in the module docstring warns about, arrived at
-      through this function instead of a nickname. The range still shrinks
-      rather than being tried whole-or-nothing, because the router's own
-      spelling can itself be the mismatch: "de'angelo russell" anchors "de",
-      "angelo" and "russell" all exactly, and the full three-word span fails
-      only because the roster spells the first of them "d", not "de" -
-      dropping it and resolving "angelo russell" alone is what recovers
-      D'Angelo Russell. What is never tried is the SINGLE remaining word once
-      the range is down to it: two anchored words failing together, with no
-      narrower range above one word left to try, is the answer, not an
-      invitation to trust one of them alone.
-    - **With exactly one anchor, a WINDOW around it (two words or more) is
-      trusted regardless of where the anchor sits** - "Grady dick" anchors
-      only on the given name "Grady", and the window's "grady dick" is what
-      resolves it to Gradey Dick. What is trusted only when that anchor is
-      the LAST of the router's words, the position a surname sits in, is
-      falling all the way back to the anchor word ALONE, with nothing else
-      corroborating it. "Jaylen Tatum" anchors only on "Tatum", its last
-      word, and the league's only Tatum is trustworthy alone. "Kareem
-      Abdul-Jabbar" anchors only on "Kareem", its FIRST word, and "Kareem"
-      alone is exactly as unrelated a near-miss as "lanier" alone above, for
-      the identical reason - Kareem Abdul-Jabbar is the other player these
-      two corpus rows have in common, and neither he nor Bob Lanier has a
-      row in `players` at all. A router-supplied given name with nothing
-      else in the question corroborating it is left alone here, for the
-      "any one word" check to judge as it always has.
-
-    Returns:
-        The one player the question's own words resolve to, or ``None`` when
-        nothing anchors at all, when two or more anchored words do not
-        resolve together, when a single anchor resolves only alone and is
-        not the last of the router's words, or when what is left resolves to
-        more than one player (left for :func:`resolve_player` to ask about)
-        or to none.
-    """
-    q_words = _words(question)
-    name_words = [w for w in _words(name) if w]
-    if not q_words or not name_words:
-        return None
-
-    lowered_q = [w.casefold() for w in q_words]
-    positions = [_anchor_word_position(q_words, lowered_q, word) for word in name_words]
-    anchors = {p for p in positions if p is not None}
-    if not anchors:
-        return None
-
-    bounds = _question_derived_player_multi_anchor_window(q_words, anchors) if len(anchors) >= 2 else _question_derived_player_single_anchor_window(q_words, name_words, positions, anchors)
-    if bounds is None:
-        return None
-    window, min_size = bounds
-
-    try:
-        return _question_derived_player_search(con, window, min_size)
-    except duckdb.CatalogException:
-        # A warehouse without `players` (a partial load, or a test double) has
-        # nothing here to resolve against - the same best-effort rule
-        # `_team_named` follows: finding nothing leaves the slots exactly as
-        # the router gave them, which is never worse than before this ran.
-        return None
-
-
-def _question_derived_player_multi_anchor_window(q_words: list[str], anchors: set[int]) -> tuple[list[str], int] | None:
-    """The window and size floor for two or more anchored words - resolved
-    from exactly that range of the question, one word narrower at a time,
-    but never down to a single word alone. See
-    :func:`_question_derived_player`'s docstring's "kareem ... bob lanier"
-    measurement for why: falling back that far is what named Chaz Lanier.
-    "de'angelo russell" is why the range still shrinks at all - the router's
-    own spelling of "De" does not match the roster's "D", and dropping it
-    lets "angelo russell" resolve on its own. ``None`` when the anchors are
-    too spread out to be one coherent name."""
-    if max(anchors) - min(anchors) > 4:
-        return None
-    return q_words[min(anchors) : max(anchors) + 1], 2
-
-
-def _question_derived_player_single_anchor_window(q_words: list[str], name_words: list[str], positions: list[int | None], anchors: set[int]) -> tuple[list[str], int]:
-    """The window and size floor for exactly one anchored word: a small
-    window around it, never the whole question - what keeps
-    :func:`_question_derived_player` from becoming the rejected
-    leftover-word scan. Two or more words of THIS window agreeing is trusted
-    regardless of where the anchor sits ("Grady dick" anchors on the given
-    name "Grady", and the window's "grady dick" is what resolves it) - what
-    is trusted only from the surname position (the floor of 1 rather than 2)
-    is falling all the way back to the anchor WORD ALONE, with nothing else
-    corroborating it; see the docstring's "Kareem" measurement."""
-    anchor_index = next(i for i, p in enumerate(positions) if p is not None)
-    anchor = next(iter(anchors))
-    window = q_words[max(0, anchor - 1) : min(len(q_words), anchor + 2)]
-    min_size = 1 if anchor_index == len(name_words) - 1 else 2
-    return window, min_size
-
-
-def _question_derived_player_search(con: duckdb.DuckDBPyConnection, window: list[str], min_size: int) -> Entity | None:
-    """``window``, tried longest span first down to ``min_size``, exact
-    words before near ones - the shared search both
-    :func:`_question_derived_player_multi_anchor_window` and
-    :func:`_question_derived_player_single_anchor_window` resolve into."""
-    for size in range(min(_SPAN_MAX_WORDS, len(window)), min_size - 1, -1):
-        found = [resolved for start in range(len(window) - size + 1) if (resolved := _resolve_word_span(con, window[start : start + size])) is not None]
-        unique_ids = {c.id for c in found}
-        if len(unique_ids) == 1:
-            return found[0]
-    return None
-
-
-# The question saying it compares things at all. Restoring a dropped player
-# needs this, because players_named_in is strict but not infallible: "best" is
-# Travis Best and "boston" is Brandon Boston Jr., so "plot jokic's fingerprint
-# from his best season" names two players by its rules and would otherwise
-# have drawn Travis Best a polygon.
-_COMPARISON = re.compile(r"\b(?:vs\.?|versus|compare[ds]?|comparing|comparison)\b", re.IGNORECASE)
-
-# "X vs Y", the one structural signal that two SUBJECTS were meant. Tighter
-# than _COMPARISON on purpose: "compare Jokic's fingerprint to last season"
-# compares seasons, and a note claiming a player is missing there would be
-# noise. Matched whole so a surname containing "vs" does not count.
-_VERSUS = re.compile(r"\b(?:vs\.?|versus)\b", re.IGNORECASE)
-
-
-def compared_but_unmatched(con: duckdb.DuckDBPyConnection, question: str, held: list[str]) -> str | None:
-    """The caveat for a "vs" fingerprint question that drew only one polygon,
-    or None where none applies.
-
-    A misspelling nothing can repair - "generate fingerprints for embiid vs
-    jolic" drew Joel Embiid alone, because "jolic" matches no player and is not
-    close enough to exactly one to guess at. Recovering it was measured and
-    rejected: a near-spelling search over a question's leftover words finds a
-    spurious player in 29 of 51 corpus questions ("season" is one edit from
-    Tari Eason, "most" from Quinten Post), and it does not find Nikola Jokic
-    here either. That case still gets the spelling note.
-
-    But one polygon on a "vs" question has a second cause that is not a
-    misspelling at all: "show a fingerprint for maxey vs jaylen brown in 2026"
-    said "only one of them matches anybody in the warehouse - check the
-    spelling of the other" about Jaylen Brown, whom ``players`` holds and
-    ``net_points_player_fingerprint`` has a 2026 row for - he was simply never
-    carried into the answer. That is the mirror-image bug AGENTS.md calls out
-    under "a refusal that names the wrong cause", so before blaming a
-    spelling, the leftover name is resolved against the roster - and where
-    it resolves, the sentence says the player was dropped, never that he is
-    missing from the warehouse.
-
-    .. versionadded:: 2.1.0
-    .. versionchanged:: 4.4.0
-       Takes ``con`` and returns the caveat text (or ``None``) rather than a
-       bool, so a name that resolves against the roster gets a true sentence
-       instead of being folded into the same claim as one that does not.
-    """
-    if len(held) >= 2 or not _VERSUS.search(question):
-        return None
-    dropped = [name for name in players_named_in(con, question) if not any(_shares_word(name, k) for k in held)]
-    if dropped:
-        return decided("name_left_out", f"Note: the question also names {' and '.join(dropped)}, who was not included in this answer.", field="players", chose=list(held), why="dropped", names=dropped)
-    said = "Note: the question compares two players, but only one of them matches anybody in the warehouse - check the spelling of the other."
-    return decided("name_left_out", said, field="players", chose=list(held), why="unmatched")
 
 
 def misread_players(names: list[str]) -> str:
@@ -682,71 +376,8 @@ def misread_players(names: list[str]) -> str:
     )
 
 
-def _has_a_real_team(con: duckdb.DuckDBPyConnection, slots: dict[str, Any], question: str) -> bool:
-    """Whether ``slots`` carries a ``team``/``teams`` value that actually
-    resolves to a real franchise - not merely a non-empty string. The router
-    invents a team the way it invents a player (AGENTS.md, "the router
-    invents names"): "alperen şengün alltime record" arrived one run with no
-    `team` at all, and another with `team='Alperen Şengün'` - the player's
-    own name, filed as though it were a franchise, which
-    ``team_record``-shaped readers then refuse as "no team matching", the
-    wrong cause. A team
-    slot nothing resolves is functionally the same as no team slot at all.
-
-    So is one that resolves to a franchise the question never names:
-    "towns home rec including playoffs since 1/26/20 vs spurs" (yardstick-v2
-    F110) arrived with ``team='Toronto Raptors'`` - a real team, and no word
-    of it in the question - and would have answered the Raptors' record
-    about a question naming Karl-Anthony Towns (:func:`_team_grounded`)."""
-    season = slots.get("season") if isinstance(slots.get("season"), int) else None
-    teams = slots.get("teams")
-    texts = [slots.get("team"), *(teams if isinstance(teams, list) else [teams])]
-    for text in texts:
-        team = _team_named(con, text, season) if isinstance(text, str) and text.strip() else None
-        if team is not None and _team_grounded(con, question, team):
-            return True
-    return False
-
-
-def player_named_on_a_team_only_question(con: duckdb.DuckDBPyConnection, question: str, slots: dict[str, Any]) -> str | None:
-    """The one player a question names, when the routed intent has no
-    reading for him at all and the question names no REAL team either - or
-    None.
-
-    yardstick-v2 F111: "alperen şengün alltime record" routed to
-    ``team_leaderboard`` - no player slot exists on that intent at all, and
-    no ``team`` slot that resolves to a real franchise was filled either -
-    and answered the league standings, entirely off the subject the
-    question named. Diacritics are already handled: ``players_named_in``
-    folds "şengün" to "sengun" (:func:`_fold`) before matching, the same way
-    it reads "dončić". See :func:`_has_a_real_team` for why an invented
-    ``team`` value (the player's own name, filed as though it were a
-    franchise - measured live, a second run of this exact question) counts
-    as no team at all rather than stopping this check.
-
-    Caller-gated to :data:`~association.query.reading.TEAM_ONLY_INTENTS`
-    (this function does not check the intent itself, the same shape the
-    subject reading's intent sets take in
-    :func:`association.query.subject.apply_subject`): a REAL team already named there is the
-    real subject, and a player coincidentally named beside it changes no
-    answer - the same reasoning that keeps a stray name on ``head_to_head``
-    from being refused elsewhere in this module. A word that names only a
-    team ("magic" in "magic vs nets" is the Orlando Magic, not Magic
-    Johnson - :func:`_named_only_by_a_team_word`) or only a common English
-    word that collides with a surname ("best" is Travis Best -
-    :func:`_named_only_by_a_common_word`) is excluded the same way
-    the subject reading already excludes both.
-
-    .. versionadded:: 4.4.0
-    """
-    if _has_a_real_team(con, slots, question):
-        return None
-    named = [name for name in players_named_in(con, question) if not _named_only_by_a_team_word(con, question, name) and not _named_only_by_a_common_word(question, name)]
-    return named[0] if len(named) == 1 else None
-
-
 def team_only_question_names_a_player(named_player: str, intent: str) -> str:
-    """The refusal sentence for :func:`player_named_on_a_team_only_question`
+    """The refusal sentence for :func:`~association.query.subject.player_named_on_a_team_only_question`
     - names the player it read rather than answering the league or a team's
     own numbers, the wrong subject.
 
@@ -867,7 +498,7 @@ def franchise_by_name(text: str, season: int | None = None) -> list[Entity] | No
     return [Entity(id=team_id, name=_era_name(team_id, season) or next(era.name for era in eras if era.team_id == team_id)) for team_id in ids]
 
 
-def _franchise_in(con: duckdb.DuckDBPyConnection, text: str, season: int | None) -> list[Entity] | None:
+def _franchise_in(teams: names.TeamIndex, text: str, season: int | None) -> list[Entity] | None:
     """:func:`franchise_by_name`, kept only where the warehouse agrees.
 
     The era table names ESPN's ids, and a franchise is only trusted to be what
@@ -880,7 +511,7 @@ def _franchise_in(con: duckdb.DuckDBPyConnection, text: str, season: int | None)
     if found is None:
         return None
     try:
-        rows = {_as_varchar(team["team_id"]): team["display_name"] for team in _team_index(con, "team_id", "display_name").rows}
+        rows = {_as_varchar(team["team_id"]): team["display_name"] for team in team_columns(teams, "team_id", "display_name").rows}
     except duckdb.Error:
         return None
     today = {era.team_id: era.name for era in FRANCHISE_ERAS if era.last_season is None}
@@ -888,7 +519,7 @@ def _franchise_in(con: duckdb.DuckDBPyConnection, text: str, season: int | None)
     return kept or None
 
 
-def _by_nickname(con: duckdb.DuckDBPyConnection, text: str, season: int | None) -> Entity | None:
+def _by_nickname(teams: names.TeamIndex, text: str, season: int | None) -> Entity | None:
     """The one team a name's NICKNAME points to, when its city is garbled.
 
     The router expands a question's nickname into a full name, and the city it
@@ -904,28 +535,28 @@ def _by_nickname(con: duckdb.DuckDBPyConnection, text: str, season: int | None) 
     :func:`association.query.subject.apply_subject`.
     """
     try:
-        return _nickname_match(con, text, season)
+        return _nickname_match(teams, text, season)
     except duckdb.Error:
         # `name` and `location` are columns of the real `teams` table and not
         # of every partial one. Finding nothing is the pre-existing answer.
         return None
 
 
-def _nickname_match(con: duckdb.DuckDBPyConnection, text: str, season: int | None) -> Entity | None:
+def _nickname_match(teams: names.TeamIndex, text: str, season: int | None) -> Entity | None:
     words = _team_key(text).split()
     for size in (2, 1):
         if len(words) <= size:
             continue
         nickname, city = " ".join(words[-size:]), " ".join(words[:-size])
-        named = _franchise_in(con, nickname, season)
+        named = _franchise_in(teams, nickname, season)
         if named is None:
-            index = _team_index(con, "team_id", "display_name", "name")
+            index = team_columns(teams, "team_id", "display_name", "name")
             named = [Entity(id=str(t["team_id"]), name=t["display_name"]) for t in index.rows if _team_like(index, t, "name", nickname) or _team_like(index, t, "name", f"% {nickname}")]
         if len(named) != 1:
             continue
-        in_city = _franchise_in(con, city, season)
+        in_city = _franchise_in(teams, city, season)
         if in_city is None:
-            index = _team_index(con, "team_id", "location")
+            index = team_columns(teams, "team_id", "location")
             in_city = [Entity(id=str(t["team_id"]), name="") for t in index.rows if _team_like(index, t, "location", city)]
         if not in_city or named[0].id in {team.id for team in in_city}:
             return named[0]
@@ -944,7 +575,7 @@ def _run_together(name: str) -> set[str]:
     return {"".join(words[start:end]) for start in range(len(words)) for end in range(start + 2, len(words) + 1)}
 
 
-def _run_together_team(con: duckdb.DuckDBPyConnection, text: str, season: int | None) -> Entity | None:
+def _run_together_team(teams: names.TeamIndex, text: str, season: int | None) -> Entity | None:
     """The one team ``text`` names with a space left out, or None.
 
     "trailblazers stats last 10 games" is how people write the only NBA team
@@ -961,7 +592,7 @@ def _run_together_team(con: duckdb.DuckDBPyConnection, text: str, season: int | 
     """
     key = "".join(_words(text)).casefold()
     try:
-        rows = [(t["team_id"], t["display_name"]) for t in _team_index(con, "team_id", "display_name").rows]
+        rows = [(t["team_id"], t["display_name"]) for t in team_columns(teams, "team_id", "display_name").rows]
     except duckdb.CatalogException:
         # A partial warehouse with no `teams`; see `_team_named`.
         return None
@@ -971,13 +602,7 @@ def _run_together_team(con: duckdb.DuckDBPyConnection, text: str, season: int | 
     return Entity(id=str(found[0][0]), name=_named_for_season(str(found[0][0]), found[0][1], season))
 
 
-# "vs", "versus", "against" or "v" and whatever follows. Whether what follows is
-# a team is decided against the teams table, not here: "lebron vs kawhi" is two
-# players and must stay a comparison.
-_AGAINST = re.compile(r"\b(?:vs\.?|versus|against|v\.?)\s+(?:the\s+)?(.+)", re.IGNORECASE)
-
-
-def _team_named(con: duckdb.DuckDBPyConnection, text: Any, season: int | None = None) -> Entity | None:
+def _team_named(teams: names.TeamIndex, text: Any, season: int | None = None) -> Entity | None:
     """The one team ``text`` names outright - an id, an abbreviation, a nickname,
     or a name match starting a word - or None. Never a substring guess: "LA"
     is two teams and stays None, which is the point.
@@ -986,12 +611,12 @@ def _team_named(con: duckdb.DuckDBPyConnection, text: Any, season: int | None = 
     :func:`franchise_by_name`."""
     if not isinstance(text, str) or not text.strip():
         return None
-    historic = _franchise_in(con, text, season)
+    historic = _franchise_in(teams, text, season)
     if historic is not None:
         return historic[0] if len(historic) == 1 else None
     text = _TEAM_NICKNAMES.get(text.strip().casefold(), text.strip())
     try:
-        index = _team_index(con, "team_id", "abbreviation", "display_name")
+        index = team_columns(teams, "team_id", "abbreviation", "display_name")
         rows = [
             (t["team_id"], t["display_name"])
             for t in index.rows
@@ -1007,141 +632,8 @@ def _team_named(con: duckdb.DuckDBPyConnection, text: Any, season: int | None = 
     if rows:
         # Two matched, which is the ambiguity this refuses to guess at.
         return None
-    nicknamed = _by_nickname(con, text, season)
-    return nicknamed if nicknamed is not None else _run_together_team(con, text, season)
-
-
-def _team_after_versus(con: duckdb.DuckDBPyConnection, question: str, season: int | None = None) -> Entity | None:
-    """The team a question sets a subject AGAINST ("jaylen brown last 8 games vs
-    pistons"), or None. Spans of three words down to one are tried, so "vs new
-    york" is the Knicks rather than an ambiguous "new"."""
-    for match in _AGAINST.finditer(question):
-        words = _words(match.group(1))[:3]
-        for size in (3, 2, 1):
-            if size <= len(words) and len(" ".join(words[:size])) >= 2:
-                team = _team_named(con, " ".join(words[:size]), season)
-                if team is not None:
-                    return team
-    return None
-
-
-# "for", "with the" and whatever follows - a player's OWN team, unlike
-# _AGAINST's opponent. Loose on purpose, the same way _AGAINST is: a false
-# match ("stats for this season") tries "this season" against the teams
-# table and simply fails to find one, which costs nothing - the DB lookup
-# is the real gate, not the regex. "with" alone is not read here: "westbrook
-# stats with the clippers" and "westbrook stats vs the clippers" mean
-# different things, but a bare "with" also introduces `without`'s own
-# teammate phrasing ("stats with steph curry on the floor" names a
-# TEAMMATE, not a team), so only "with the" - which a teammate's name never
-# takes - is read as this shape.
-_FOR_TEAM = re.compile(r"\bfor\s+(?:the\s+)?(.+)|\bwith\s+the\s+(.+)", re.IGNORECASE)
-
-
-def _team_after_for(con: duckdb.DuckDBPyConnection, question: str, season: int | None = None) -> tuple[Entity, int] | None:
-    """The player's OWN team a question names with "for"/"with the"
-    ("lebron stats as a starter for Miami", yardstick-v2 F166) with where
-    in the question the phrase starts, or None. Spans of three words down
-    to one are tried, the same as :func:`_team_after_versus`.
-
-    .. versionadded:: 4.4.0
-    """
-    for match in _FOR_TEAM.finditer(question):
-        span_text = match.group(1) or match.group(2) or ""
-        words = _words(span_text)[:3]
-        for size in (3, 2, 1):
-            if size <= len(words) and len(" ".join(words[:size])) >= 2:
-                if size == 1 and words[0].casefold() in _COMMON_WORDS_THAT_NAME_TEAMS:
-                    # "for me" is the asker, not the Memphis Grizzlies.
-                    continue
-                team = _team_named(con, " ".join(words[:size]), season)
-                if team is not None:
-                    return team, match.start()
-    return None
-
-
-#: Ordinary English words that collide with a real NBA team abbreviation,
-#: found the same way :data:`_COMMON_WORDS_THAT_NAME_PLAYERS` was - measured
-#: against the full routing corpus.
-#: :func:`_team_named` matches an abbreviation with no length floor of its
-#: own (`abbreviation ILIKE ?`), so a bare three-letter word run through it
-#: directly can resolve to a team nobody meant: "was" is the Washington
-#: Wizards ("What was the highest scoring game by a player this year?"),
-#: "min" is the Minnesota Timberwolves (a plausible box-score "20+ min"),
-#: and "me" is the Memphis Grizzlies, whose name starts with it ("show kat's
-#: average points for me" read Memphis as his own team, and answered that he
-#: never played for them - plan item 6, step (d), part 3c, where the day10
-#: paraphrases found it once nothing rewrote "kat" to a name the question
-#: does not hold). Unlike the player list, this one is checked against the SPAN actually
-#: tried rather than the team's own name, because a team's matched span is
-#: often not a word of its display name at all (an abbreviation matches
-#: nothing in "Washington Wizards" except by lookup).
-#:
-#: .. versionadded:: 4.4.0
-_COMMON_WORDS_THAT_NAME_TEAMS: frozenset[str] = frozenset({"was", "min", "me"})
-
-
-def _team_grounded(con: duckdb.DuckDBPyConnection, question: str, team: Entity) -> bool:
-    """Whether the question shows any trace of ``team`` - a word of its name,
-    its abbreviation, or a nickname: the team counterpart of the check a
-    player's name is held to (:func:`~association.query.subject.question_supports`)."""
-    row = next(((t["abbreviation"], t["display_name"]) for t in _team_index(con, "abbreviation", "display_name", "team_id").rows if t["team_id"] == team.id), None)
-    if row is None:
-        return True  # nothing to check it against; leave it alone
-    asked = {word.casefold() for word in _words(question)}
-    carried = {word.casefold() for word in _words(row[1])} | {str(row[0]).casefold()}
-    carried |= {nickname for nickname, name in _TEAM_NICKNAMES.items() if name == row[1]}
-    # A name written with a space left out is a trace of the team as plainly as
-    # its own words are: "trailblazers stats last 10 games" was dropped as a
-    # team the question never mentioned, and refused for naming no team at all.
-    carried |= _run_together(row[1])
-    if carried & asked:
-        return True
-    # A clipped word is a trace too: "cav vs celtic last 10games" names both
-    # teams, and the router's expansion of "cav" to the Cavaliers is its job,
-    # not an invention. Three letters, so "la" and "no" ground nothing.
-    return any(len(word) >= 3 and any(name.startswith(word) for name in carried) for word in asked)
-
-
-#: Ordinary English words that also happen to be an NBA player's whole
-#: surname - measured against the full routing corpus
-#: (the routing check's cases, retired in 5.0.0, plus
-#: ``/home/jeff/association-research/statmuse-2026-09/feed_queries.txt``, 380
-#: questions) before :data:`~association.query.reading.SUBJECT_RESTORABLE_INTENTS`
-#: shipped: "Best true shooting percentage last season?" and "Best record
-#: from 2010-11 to 2018-19 nba" both named Travis Best, and "Celtics vs Bulls
-#: head to head record" named Luther Head - three genuine team/league
-#: questions with no player intended at all. The narrowest gate that removes
-#: them, per AGENTS.md's own instruction for this exact trap: not a general
-#: dictionary (environment-dependent, and this project's other word lists -
-#: ``_COUNT_SUBJECT_WORDS``, ``_NAME_STOPWORDS`` - are hand-curated for the
-#: same reason), grown from what a corpus measurement actually finds.
-#:
-#: .. versionadded:: 4.4.0
-_COMMON_WORDS_THAT_NAME_PLAYERS: frozenset[str] = frozenset({"best", "head"})
-
-
-def _named_only_by_a_common_word(question: str, player: str) -> bool:
-    """Whether every word of ``player``'s name the question holds is ALSO an
-    ordinary English word known to collide with a real surname
-    (:data:`_COMMON_WORDS_THAT_NAME_PLAYERS`) - the same shape
-    :func:`_named_only_by_a_team_word` checks for a team name, applied to a
-    plain word instead of a team's.
-
-    .. versionadded:: 4.4.0
-    """
-    asked = {w.casefold() for w in _words(question)}
-    supporting = [w for w in _words(player) if w.casefold() in asked]
-    return bool(supporting) and all(w.casefold() in _COMMON_WORDS_THAT_NAME_PLAYERS for w in supporting)
-
-
-def _named_only_by_a_team_word(con: duckdb.DuckDBPyConnection, question: str, player: str) -> bool:
-    """Whether every word of ``player``'s name the question holds also names a
-    team - "magic" in "magic vs nets" is the Orlando Magic, not Magic Johnson,
-    and "boston" is the Celtics before it is Brandon Boston Jr."""
-    asked = {w.casefold() for w in _words(question)}
-    supporting = [w for w in _words(player) if w.casefold() in asked]
-    return bool(supporting) and all(_team_named(con, w) is not None for w in supporting)
+    nicknamed = _by_nickname(teams, text, season)
+    return nicknamed if nicknamed is not None else _run_together_team(teams, text, season)
 
 
 def teammate_names(value: Any) -> list[str]:
@@ -1157,10 +649,6 @@ def teammate_names(value: Any) -> list[str]:
     """
     values = value if isinstance(value, list) else [value]
     return [v.strip() for v in values if isinstance(v, str) and v.strip()]
-
-
-def _shares_word(one: str, other: str) -> bool:
-    return bool({w.casefold() for w in _words(one) if len(w) >= 3} & {w.casefold() for w in _words(other) if len(w) >= 3})
 
 
 @dataclass(frozen=True)
@@ -1270,7 +758,7 @@ def suggest_players(con: duckdb.DuckDBPyConnection, text: str) -> list[Entity]:
     if not tokens:
         return []
 
-    if _team_named(con, text) is not None:
+    if _team_named(teams_of(con), text) is not None:
         # A team name is not a near miss on a player. "Hawks" is one edit
         # from Spencer Hawes, and "Most reb by a hawk player history"
         # answered "did you mean Spencer Hawes?" instead of naming the real
@@ -1354,7 +842,7 @@ def read_near_spelling(con: duckdb.DuckDBPyConnection, text: str) -> Entity | No
     .. versionadded:: 5.0.0
     """
     tokens = [t for t in text.split() if t]
-    if not tokens or _team_named(con, text) is not None:
+    if not tokens or _team_named(teams_of(con), text) is not None:
         return None
     near = _suggest_players_by_spelling(con, tokens)
     if not near and len(tokens[-1]) > 3 and tokens[-1].casefold().endswith("s"):
@@ -1611,7 +1099,8 @@ def find_teams(con: duckdb.DuckDBPyConnection, text: str, season: int | None = N
        Reads ``season``, resolves former franchise names, and falls back to the
        nickname when the city is wrong.
     """
-    historic = _franchise_in(con, text, season)
+    teams = teams_of(con)
+    historic = _franchise_in(teams, text, season)
     if historic is not None:
         return historic
     # "Sixers" and "Cavs" are no word of any ESPN team name; the router emits
@@ -1634,7 +1123,7 @@ def find_teams(con: duckdb.DuckDBPyConnection, text: str, season: int | None = N
     # ambiguous - no team is abbreviated that - and both Los Angeles teams sit
     # at rank 1 together.
     if not rows:
-        nicknamed = _by_nickname(con, text, season) or _run_together_team(con, text, season)
+        nicknamed = _by_nickname(teams, text, season) or _run_together_team(teams, text, season)
         return [nicknamed] if nicknamed is not None else []
     best = max((r[2] for r in rows), default=0)
     return [Entity(id=str(r[0]), name=_named_for_season(str(r[0]), r[1], season)) for r in rows if r[2] == best]

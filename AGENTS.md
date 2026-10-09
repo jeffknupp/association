@@ -131,7 +131,7 @@ this tree:
   (nine when it was written; the last, `point -> compose.adapt`, went
   with the last adapter, whose default point the reader now reads itself,
   `point.DEFAULT_POINTS` - the rest were vocabulary and intent sets that
-  now live on the reader's side: `entities.team_named_in`, `reading`'s
+  now live on the reader's side: `subject.team_named_in`, `reading`'s
   intent sets, limits, `ordinal_word` and `Unsupported`,
   `measures.STAT_ALIASES`, `PERIOD_COLUMNS`, the metric and measure
   aliases and `resolve_metric`/`stat_measure`). A new one fails; an
@@ -815,7 +815,15 @@ model's. Two things follow, and both matter when you add a shape:
   UTF-8 bytes, RE2's case folding, ILIKE that lowers ASCII only on an
   all-ASCII column, table order where the SQL had no `ORDER BY`. A new name
   lookup goes through `entities._player_index` / `_team_index`; do not
-  write `FROM players` or `FROM teams` on the reader's path again. The
+  write `FROM players` or `FROM teams` on the reader's path again. A
+  reader of the question's words takes the index itself, never a
+  connection (`entities.players_of` / `teams_of`, checked where a lookup
+  needs the rows by `checked_players` / `team_columns`): since Phase 3's
+  first step the readers that lived in `entities.py` - `players_named_in`,
+  `team_named_in`, `nicknames_in`, `question_derived_player`, the team
+  after "vs" or "for", a team's grounding in the words - are
+  `subject.py`'s, and the `con_in_the_reader` ratchet held at 23 while they
+  moved. The
   reader issued 38.5 statements a question before this and issues the two
   loads now. One thing is not reproduced: the order of two players who
   share a `display_name` (21 names), which DuckDB's sort left unspecified;
@@ -1086,7 +1094,7 @@ model's. Two things follow, and both matter when you add a shape:
   `compose.say.say_fingerprint` words it - a reader reads and names no file
   that does not exist yet, and the sayer takes the Result and nothing
   else. The "vs" note for a fingerprint that drew one polygon
-  (`entities.compared_but_unmatched`) reads the question, so the answering
+  (`subject.compared_but_unmatched`) reads the question, so the answering
   loop attaches it (`agent._unmatched_fingerprint`). The shot relation's
   (`compose.shots.ShotQuery` on the declared `shots` relation, declined
   beyond what its retired template's words state, `compose.plan.STATED_SCOPING`)

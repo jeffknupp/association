@@ -1,17 +1,5 @@
 {
  "question_outside_the_reader": [
-  "entities:_has_a_real_team",
-  "entities:_named_only_by_a_common_word",
-  "entities:_named_only_by_a_team_word",
-  "entities:_question_derived_player",
-  "entities:_team_after_for",
-  "entities:_team_after_versus",
-  "entities:_team_grounded",
-  "entities:compared_but_unmatched",
-  "entities:nicknames_in",
-  "entities:player_named_on_a_team_only_question",
-  "entities:players_named_in",
-  "entities:team_named_in",
   "history:RunHistory.write",
   "refusals:_bench_points",
   "refusals:_non_calendar_situation",

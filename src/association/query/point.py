@@ -1319,7 +1319,7 @@ def team_splits_point(scope: Scope, subject: Subject) -> Reading | None:
 def team_read_point(scope: Scope, question: str, subject: Subject) -> Reading | None:
     """Whether ``question``/``scope`` name a team as the grammatical
     SUBJECT - no player, a team identifiable (the router's own ``team`` slot,
-    or :func:`~association.query.entities.team_named_in` when the router
+    or :func:`~association.query.subject.team_named_in` when the router
     dropped it, F127's shape), and no ranking/log/period/"who" framing that
     would make it a league-wide read of the PLAYER relation instead
     (``_everyone_point``'s own question - "who leads the Lakers in scoring"

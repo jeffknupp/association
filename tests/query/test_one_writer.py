@@ -130,7 +130,8 @@ def test_for_me_is_the_asker_not_the_memphis_grizzlies(monkeypatch: pytest.Monke
     The router-era nickname repair hid it by rewriting "kat" to a name the
     question does not hold, so the own-team reading never matched; with the
     name as typed it did (a day10 paraphrase, plan item 6 step (d) part 3c)."""
-    from association.query.entities import _team_after_for
+    from association.query.entities import teams_of
+    from association.query.subject import _team_after_for
 
     db_path = tmp_path / "test.duckdb"
     con = duckdb.connect(str(db_path))
@@ -138,8 +139,8 @@ def test_for_me_is_the_asker_not_the_memphis_grizzlies(monkeypatch: pytest.Monke
     con.execute("CREATE TABLE teams (team_id VARCHAR, abbreviation VARCHAR, display_name VARCHAR)")
     con.execute("INSERT INTO players VALUES ('1', 'Karl-Anthony Towns'), ('2', 'LeBron James')")
     con.execute("INSERT INTO teams VALUES ('29', 'MEM', 'Memphis Grizzlies'), ('14', 'MIA', 'Miami Heat')")
-    assert _team_after_for(con, "Display kat's average points for me") is None
-    miami = _team_after_for(con, "lebron stats as a starter for Miami")
+    assert _team_after_for(teams_of(con), "Display kat's average points for me") is None
+    miami = _team_after_for(teams_of(con), "lebron stats as a starter for Miami")
     assert miami is not None and miami[0].name == "Miami Heat"
     con.close()
     seen: list[str | None] = []

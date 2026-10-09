@@ -687,7 +687,7 @@ def test_team_move_point_reads_an_unnarrowed_season_total(team_cx_ctx: AnswerCon
 def test_team_move_point_finds_a_team_the_router_dropped(team_cx_ctx: AnswerContext) -> None:
     """The router filed no ``team`` slot at all for this exact question, live
     (ISSUES.md) - ``team_named_in`` reads "magic" from the text itself, the
-    same repair :func:`association.query.entities.players_named_in` already
+    same repair :func:`association.query.subject.players_named_in` already
     makes for a dropped PLAYER."""
     q = team_move_point(team_cx_ctx.con, {"stat": "threePointFieldGoalsMade"}, "how many 3 pointers have the magic made so far this season")
     assert isinstance(q, TeamQuery)
