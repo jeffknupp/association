@@ -3823,19 +3823,6 @@ those were found.
 - **Source:** DATA.md, "`pointsInPaint` is -1 before 2009, and two lead columns exist only in 2026"
 - **GitHub:** #78
 
-### A player's single qualifying game reads "1 games"
-- **Found:** 2026-09-11, while narrowing `threshold_count` by season
-- **Evidence:** `templates._phrase_threshold_count` (`compose.say.say_threshold_count` now) builds the named-player
-  sentence as `f"{player} had {games} {label} {when}."` with `label` always
-  "games with ...", so one game prints "Aay Jones had 1 games with 30+ points in
-  the 2026 regular season." (seen in a test fixture). The league-wide sentences
-  are not affected.
-- **User sees:** a plural typo in "how many 40-point games did Brunson have
-  this season" whenever the answer is one.
-- **Next step:** say "1 game with" when `games == 1`, and add the case to
-  `test_answer_for_a_single_named_player`.
-- **GitHub:** #36
-
 ### A warehouse built before a view change is not detected
 - **Found:** 2026-09-11, while qualifying true shooting and eFG% (`f66e1f1`)
 - **Evidence:** a view's SQL is stored in the warehouse file. Code that reads a
