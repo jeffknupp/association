@@ -2404,13 +2404,6 @@ those were found.
 - **Next step:** measure over the corpus's splits; say the seasons the unseen games are in.
 - **GitHub:** #295
 
-### A streak in a finished season is marked "still going at the last game on record"
-- **Found:** 2026-09-30, the notes inventory for `ROADMAP-TYPES.md` (an Opus agent reading `011091f`; reported, not re-verified).
-- **Evidence:** `open` means the run reached the partition's last game (`conditions.py:811,835`). `_single_streak` guarded on the current season (`templates/splits.py:1560` when found; the streak is `compose/runs.py` and `compose.say` now, with `Run.still_open`); `templates/splits.py:1526` and `compose/sentence.py:285,301` do not.
-- **User sees:** "still going" beside a streak that ended with its season.
-- **Next step:** reproduce with a league-wide streak ranking for 2024; guard the two unguarded writers.
-- **GitHub:** #297
-
 ### The game-list caveat says a narrowed record "is off by those games"
 - **Found:** 2026-09-30, the notes inventory for `ROADMAP-TYPES.md` (an Opus agent reading `011091f`; reported, not re-verified).
 - **Evidence:** `compose.team_records._game_list_gaps` (`templates/teams.py:967,803` when found) ignores opponent, venue, month, calendar and game_n, so a record against one opponent or in one month in a season whose list is short says "this tally is off by those games" though the missing games may be none of the ones counted.
