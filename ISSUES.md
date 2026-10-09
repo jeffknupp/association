@@ -1189,20 +1189,6 @@ those were found.
 - **Source:** DATA.md, "The NBA Cup final is stored as a regular-season game"
 - **GitHub:** #11
 
-### `fg_pct` and `efg_pct` qualify on different floors over the same denominator
-- **Found:** 2026-09-11, while qualifying true shooting and eFG% on attempts (`f66e1f1`)
-- **Evidence:** `fg_pct` needs 400 field-goal attempts, `efg_pct` 480, and both
-  divide by FGA. Only eFG% was measured: against StatMuse's published eFG% top
-  15s (300 made field goals per 82 games), a 400-FGA floor put 4 unlisted
-  players into 2025's top 15 and 6 into 2026's, while 480 put in 1 and 3.
-  Nobody has checked `fg_pct`'s 400 against a published FG% list. NBA.com's
-  FG% rule is 300 made field goals.
-- **User sees:** an FG% leaderboard that may include players a published list
-  excludes, and a player who qualifies for one percentage and not the other.
-- **Next step:** check `fg_pct` against a published list. Then either share one
-  number, or say in each comment why they differ.
-- **GitHub:** #12
-
 ### Smaller game and box-score gaps, 1994-2003
 - **Found:** 2026-09-11, template work (agents A, D) and the issues audit;
   **the refetch question settled per event 2026-09-17**

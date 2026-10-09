@@ -426,9 +426,8 @@ def _percentage(column: str, made: str, attempted: str, label: str, qualifiers: 
 
     ``scales_with_schedule`` carries through to the metric the same way it does
     for ``ts_pct``/``efg_pct`` - see ``LeaderboardMetric.scales_with_schedule``.
-    Only ``fg_pct`` sets it (ISSUES.md #13 measured only the 550/480/400
-    floors); ``three_pt_pct`` and ``ft_pct`` are the identical shape,
-    unmeasured, and left flat - a follow-up, not this fix.
+    All three set it: ``fg_pct`` with the floors ISSUES.md #13 measured, and
+    ``three_pt_pct`` and ``ft_pct`` since #104 measured them the same way.
     """
     season, postseason, career, postseason_career = qualifiers
     return LeaderboardMetric(
@@ -465,10 +464,13 @@ _BOX_SCORE_METRICS: dict[str, LeaderboardMetric] = {
     "avg_turnovers": _per_game("avgTurnovers", "turnovers", "turnovers per game"),
     "avg_minutes": _per_game("avgMinutes", None, "minutes per game"),
     "avg_fouls": _per_game("avgFouls", "fouls", "fouls per game"),
-    # 5, 2.5 and 1.5 attempts a game, over 82 / 10 / 400 / 50 games, rounded.
-    # fg_pct's 400 is one of the three floors ISSUES.md #13 measured against a
-    # shortened season, so it scales; three_pt_pct and ft_pct do not yet.
-    "fg_pct": _percentage("fieldGoalPct", "fieldGoalsMade", "fieldGoalsAttempted", "field-goal percentage", (400, 50, 2000, 250), scales_with_schedule=True),
+    # About 6, 2.5 and 1.5 attempts a game, over 82 / 10 / 400 / 50 games,
+    # rounded. fg_pct's 480 is eFG%'s floor, and the attempts floor that best
+    # matches the league's own 300-made rule (ISSUES.md #12, measured
+    # 2026-10-09 on 2019 and 2022-2026: a 400-attempt floor put 4, 5, 2, 1, 5
+    # and 4 players into the top 15 that the rule leaves out, 480 put 2, 1, 0,
+    # 0, 2 and 1, and 500 or 550 more again). All five scale to the schedule.
+    "fg_pct": _percentage("fieldGoalPct", "fieldGoalsMade", "fieldGoalsAttempted", "field-goal percentage", (480, 59, 2400, 300), scales_with_schedule=True),
     # Scaled to the schedule like the three floors #13 measured, on the same
     # measurement (ISSUES.md #104, 2026-10-09): at the flat floors 2020 and
     # 2021 qualified 149 and 161 for 3-point percentage against 163-197 in

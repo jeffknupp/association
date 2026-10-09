@@ -60,11 +60,10 @@ def test_scale_min_sample_matches_measured_2020_and_2021_and_2012_floors() -> No
     These are the exact scaled floors the fix produces - a regression here is
     a regression in the sentence a user reads."""
     assert _scale_min_sample(550, 72) == 483  # ts_pct, 2020 and 2021
-    assert _scale_min_sample(480, 72) == 421  # efg_pct, 2020 and 2021
-    assert _scale_min_sample(400, 72) == 351  # fg_pct, 2020 and 2021
+    assert _scale_min_sample(480, 72) == 421  # efg_pct and fg_pct (480 since ISSUES.md #12), 2020 and 2021
     assert _scale_min_sample(550, 66) == 443  # ts_pct, 2012
-    assert _scale_min_sample(480, 66) == 386  # efg_pct, 2012
-    assert _scale_min_sample(400, 66) == 322  # fg_pct, 2012
+    assert _scale_min_sample(480, 66) == 386  # efg_pct and fg_pct, 2012
+    assert LEADERBOARD_METRICS["fg_pct"].default_min_sample == LEADERBOARD_METRICS["efg_pct"].default_min_sample == 480
 
 
 @pytest.fixture
