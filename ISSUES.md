@@ -1934,30 +1934,6 @@ those were found.
   (`scripts/sync_issues.py` only opens issues for headings with no
   `- **GitHub:**` line yet, so a rename here does not retitle it).
 
-### The connection indicator is written once at load and never updated
-- **Found:** 2026-09-14, requested
-- **Evidence:** `web/static/index.html` calls `/api/health` exactly once, on
-  load, and writes a status line from it (the example status here was
-  "3,043 games, 1994-2026" when this was written; re-checked 2026-09-16, the
-  same call would today read "43,504 games, 1988-2026" - see #71's re-check
-  for that number - so read the figure as illustrative, not current), plus
-  "ollama unreachable" when `ollama_ready` is false; "server unreachable" if
-  the fetch itself fails). Nothing polls afterwards. If ollama stops, the
-  server restarts, or the warehouse is replaced mid-session, the page goes on
-  showing what was true when it was opened. The data needed is already on the
-  response: `HealthResponse` carries `ollama_ready` and `busy`, and both are
-  live properties on the runner. The `queued` SSE event, which says a question
-  is waiting behind another, is rendered only as a line of trace text.
-- **User sees:** a page that looks connected when it is not. The first sign of
-  trouble is asking a question and waiting for a failure.
-- **Next step:** poll `/api/health` on an interval and on window focus, and
-  render a real indicator with the states the server already distinguishes -
-  connected, busy, queued, ollama down, server unreachable. One caution:
-  `_warehouse_seasons` opens its own DuckDB connection per call, so cache the
-  season figures and poll only the liveness fields, or the indicator pays for
-  a query every few seconds.
-- **GitHub:** #70
-
 ### ESPN publishes PER, RPM, VORP and WARP per player-season, and we store none of it
 - **Found:** 2026-09-14, fixing the NULL-totals issue (#5)
 - **Evidence:** the core per-season endpoint now read by

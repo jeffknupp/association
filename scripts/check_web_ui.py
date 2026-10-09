@@ -58,7 +58,10 @@ window.__notes = [];
 window.__ping = {instance: "first", fail: false};
 const realFetch = window.fetch;
 window.fetch = (u, o) => {
-  if (String(u).indexOf("/api/health") >= 0) return Promise.resolve(new Response(JSON.stringify({ready: true, model: "stub", db: "stub"}), {headers: {"content-type": "application/json"}}));
+  if (String(u).indexOf("/api/health") >= 0) {
+    window.__healthCalls = (window.__healthCalls || 0) + 1;
+    return Promise.resolve(new Response(JSON.stringify({ready: true, model: "stub", db: "stub"}), {headers: {"content-type": "application/json"}}));
+  }
   if (String(u).indexOf("/api/ping") >= 0) {
     if (window.__ping.fail) return Promise.reject(new TypeError("Failed to fetch"));
     return Promise.resolve(new Response(JSON.stringify({instance: window.__ping.instance, busy: false}), {headers: {"content-type": "application/json"}}));
@@ -220,6 +223,14 @@ with sync_playwright() as p:
     live.clock.run_for(6_500)
     check("three missed polls read as disconnected", conn(live) == "disconnected", conn(live))
     live.evaluate("window.__ping.fail = false")
+    # Back to the tab (#70): the next check is immediate, not at the retry
+    # interval, and the health line is re-read - the model's reachability is
+    # reported there, since the poll never probes it.
+    before_health = live.evaluate("window.__healthCalls || 0")
+    live.evaluate("Object.defineProperty(document, 'visibilityState', {get: () => 'visible', configurable: true}); document.dispatchEvent(new Event('visibilitychange'))")
+    live.clock.run_for(100)
+    check("a return to the tab reconnects at once rather than at the retry interval", conn(live) == "connected", conn(live))
+    check("a return to the tab re-reads the health line", live.evaluate("window.__healthCalls") == before_health + 1, live.evaluate("window.__healthCalls"))
     live.clock.run_for(3_500)
     check("it says connected again when the server comes back", conn(live) == "connected", conn(live))
 

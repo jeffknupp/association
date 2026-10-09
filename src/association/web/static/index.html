@@ -484,14 +484,21 @@
   const send = document.getElementById("send");
   const status = document.getElementById("status");
 
-  fetch("/api/health").then(r => r.json()).then(h => {
-    const parts = [];
-    if (h.seasons) parts.push(`${h.seasons.games.toLocaleString()} games, ${h.seasons.first}–${h.seasons.last}`);
-    else parts.push("no games loaded");
-    if (!h.ollama_ready) parts.push("ollama unreachable");
-    status.textContent = parts.join(" · ");
-    status.title = `${h.warehouse}\nnormalizer: ${h.models.router}`;
-  }).catch(() => { status.textContent = "server unreachable"; });
+  // The health line: the warehouse's reach and whether the model backend
+  // answers. Read at load and again each time the tab comes back into view
+  // (below) - never on the ten-second poll, which asks /api/ping and by
+  // design never probes the model (#70).
+  function refreshHealth() {
+    fetch("/api/health").then(r => r.json()).then(h => {
+      const parts = [];
+      if (h.seasons) parts.push(`${h.seasons.games.toLocaleString()} games, ${h.seasons.first}–${h.seasons.last}`);
+      else parts.push("no games loaded");
+      if (!h.ollama_ready) parts.push("ollama unreachable");
+      status.textContent = parts.join(" · ");
+      status.title = `${h.warehouse}\nnormalizer: ${h.models.router}`;
+    }).catch(() => { status.textContent = "server unreachable"; });
+  }
+  refreshHealth();
 
   // Connection and live reload. /api/ping names the server's instance, drawn
   // fresh each time it starts - and the deployed server restarts on every
@@ -507,6 +514,8 @@
   let instance = null;
   let failures = 0;
   let updated = false;
+  let pingTimer = null;
+  function schedulePing(ms) { clearTimeout(pingTimer); pingTimer = setTimeout(ping, ms); }
   function setConn(state, text, title) {
     conn.className = "conn " + state;
     connText.textContent = text;
@@ -531,9 +540,14 @@
       // One missed poll is a restart in progress as often as an outage.
       if (failures < 3) setConn("stale", "reconnecting…", "The last check could not reach the server; retrying.");
       else setConn("down", "disconnected", "The server has not answered " + failures + " checks in a row; still retrying.");
-    }).finally(() => { setTimeout(ping, failures ? RETRY_EVERY_MS : PING_EVERY_MS); });
+    }).finally(() => { schedulePing(failures ? RETRY_EVERY_MS : PING_EVERY_MS); });
   }
   conn.addEventListener("click", () => { if (updated) location.reload(); });
+  // Back to the tab: check now rather than at the next tick, and re-read the
+  // health line, which is where the model's reachability is reported.
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") { refreshHealth(); schedulePing(0); }
+  });
   ping();
 
   // #71: what's actually answerable, per tier - read straight off the
