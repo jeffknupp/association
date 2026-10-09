@@ -1904,7 +1904,7 @@ def _validate_order(slots: dict[str, Any], question: str) -> str | None:
 _STAT_WORDS = re.compile(
     r"\b(points?|scor\w*|pts?|rebound\w*|boards|reb|assist\w*|passing|dimes|ast|steal\w*|stl|block\w*|blk|"
     r"turnover\w*|giveaways?|fouls?|minutes?|mins?|shoot\w*|shots?|three\w*|3pt|3-point\w*|field goals?|free throws?|"
-    r"percentage|efficien\w*|usage|double-doubles?|triple-doubles?|td3s?|ppg|rpg|apg|spg|bpg|fg|ft|3p|ts|efg)\b",
+    r"percentage|efficien\w*|usage|double-doubles?|triple-doubles?|td3s?|ppg|rpg|apg|spg|bpg|fg|ft|3p|ts|efg|plus[ /-]?minus)\b|\+/-",
     re.IGNORECASE,
 )
 
@@ -1924,6 +1924,15 @@ def _named_a_stat(question: str) -> bool:
     it matches too eagerly leaves the behavior exactly as it was. Neither can
     produce a wrong number, which is why the list may be loose here and could
     not be if `leaderboard` read it.
+
+    It is read beyond the comparison now - a quarter's line and its ranking
+    (``_route_period_split_slots``, ``_route_period_intents_choose``), a
+    team's line, a streak - and there a word it misses DOES move a number:
+    "vj edgecombe 2nd half plus minus" lost its stat and answered his
+    second-half points ("567 points in the 2nd half"), and "who has the most
+    4th quarter plus minus" the league's fourth-quarter scorers (found
+    2026-10-09, Phase 3, step 0). Plus-minus is a stat the question names,
+    and reads as one; a stat word added here is a number kept.
     """
     return bool(_STAT_WORDS.search(question))
 

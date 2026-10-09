@@ -675,3 +675,30 @@ def test_a_question_of_fewer_than_three_words_is_refused_unread() -> None:
     assert short is not None and refusal_result(short).answer == "I couldn't understand your question, 'bam stats'. Please try re-phrasing it."
     assert too_short("76ers away record") is None
     assert too_short("luka td3s home") is None
+
+
+@pytest.mark.parametrize(
+    ("question", "named", "intent"),
+    [
+        ("tatum 2nd half plus minus", ["tatum"], "period_split"),
+        ("tatum first quarter +/- this season", ["tatum"], "period_split"),
+        ("who has the most 4th quarter plus minus", [], "period_leaderboard"),
+    ],
+)
+def test_a_quarters_plus_minus_keeps_its_stat_and_is_refused_for_it(con: duckdb.DuckDBPyConnection, question: str, named: list[str], intent: str) -> None:
+    """ "vj edgecombe 2nd half plus minus" answered his second-half POINTS and
+    "who has the most 4th quarter plus minus" the league's fourth-quarter
+    scorers: the stages kept a period question's stat only where a stat word
+    named one, plus-minus was no such word, and a quarter's line defaults to
+    points (found 2026-10-09, Phase 3, step 0). The stat is kept now, and a
+    quarter has no plus-minus to give - refused for it, never answered with
+    points."""
+    route, _subject, _parent = read_route(con, question, named, "")
+    reading = reading_from_route(con, question, route)
+    assert reading.intent == intent and reading.scope.stat == "plus_minus"
+    planned = plan_point(reading)
+    if intent == "period_split":
+        assert reading.point_refusal is not None and reading.point_refusal.kind == "no_period_stat"
+        assert planned.refusal is not None and "no per-period 'plus_minus'" in planned.refusal.answer
+    else:
+        assert [cause.kind for cause in reading.unsupported] == ["period_stat"] and reading.unsupported[0].facts["stat"] == "plus_minus"
