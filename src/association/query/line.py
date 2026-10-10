@@ -72,16 +72,28 @@ log is read by nothing, and stays so until the measure slice).
 #: whose stat the model filed, and the record.
 _PAIR_NAMES_THE_STAT: frozenset[str] = frozenset({"record_when", "threshold_count"})
 
+#: The readers of a player's games that narrow by ONE line stated outright -
+#: "N+ stat", "N or more stat", "at least N stat" - as they narrow by two:
+#: "lebron game log with 20+ points" is his 20-point games, where until Phase
+#: 3, step 3 the line was read by nothing and every game listed (ISSUES.md
+#: #357; the Reading's unread words named its number). A bare "N stat" stays
+#: unread there ("harden 61 points" can as well name one game), and a
+#: player's line is not among them ("lebron 20+ points this season" can ask
+#: whether he averages it).
+_ONE_LINE_NARROWS: frozenset[str] = frozenset({"game_log", "player_splits"})
+
 
 @dataclass(frozen=True, kw_only=True)
 class LineContext:
     """What was settled before the lines are read: the intent the stages
-    settled on.
+    settled on, and whether a companion beside the subject reached a line
+    (``beside_line``: the line the words state is his, not the subject's).
 
     .. versionadded:: 6.0.0
     """
 
     intent: str
+    beside_line: bool = False
 
 
 @dataclass(frozen=True)
@@ -139,30 +151,7 @@ def read_lines(question: str, context: LineContext) -> LinesRead:
     pairs = lexicon.threshold_pairs(question)
     lined = context.intent in THRESHOLD_INTENTS
     plus_pairs = [match for match in pairs if lexicon.THRESHOLD_PAIR.fullmatch(match.group(0)) is not None]
-    # On a reader whose shape is a line, every line; elsewhere two or more
-    # "N+ stat" pairs on one game, which the relation narrows by together -
-    # one alone was read by nothing there (the stages' two rules, measured
-    # on the 2,710: a single "10+ point leads" on a team's line carried no
-    # threshold).
-    # Two or more "N+ stat" pairs are filters the relation narrows by
-    # together, on every reader; on a reader whose shape is a line the first
-    # line of the words is the shape's own (keyed), the pairs among them
-    # filters as well, and a second bare "N stat" neither.
-    found.extend(
-        (
-            match.start(),
-            Line(
-                measure=lexicon.THRESHOLD_WORDS[match.group(2).casefold()],
-                value=int(match.group(1)),
-                as_typed=match.group(0).casefold(),
-                keyed=lined and match is pairs[0],
-                narrows=match in plus_pairs and len(plus_pairs) > 1,
-            ),
-            Claim(match.start(), match.end(), "line"),
-        )
-        for match in pairs
-        if lined or (match in plus_pairs and len(plus_pairs) > 1)
-    )
+    found.extend(_read_lines_pairs(question, context, pairs, plus_pairs))
     stat: str | None = None
     if lined and not pairs:
         scored = lexicon.scored_threshold(question)
@@ -176,6 +165,41 @@ def read_lines(question: str, context: LineContext) -> LinesRead:
         stat = lexicon.THRESHOLD_WORDS[plus_pairs[0].group(2).casefold()]
     found.sort(key=lambda each: each[0])
     return LinesRead(tuple(line for _, line, _ in found), tuple(claim for _, _, claim in found), stat)
+
+
+def _read_lines_pairs(question: str, context: LineContext, pairs: list[re.Match[str]], plus_pairs: list[re.Match[str]]) -> list[tuple[int, Line, Claim]]:
+    """The "N stat" pairs :func:`read_lines` reads as lines, each with where
+    it stands and its claim. On a reader whose shape is a line, every line;
+    elsewhere two or more "N+ stat" pairs on one game, which the relation
+    narrows by together - one alone was read by nothing there (the stages'
+    two rules, measured on the 2,710: a single "10+ point leads" on a team's
+    line carried no threshold) - and on a reader whose shape is a line the
+    first line of the words is the shape's own (keyed), the pairs among them
+    filters as well, and a second bare "N stat" neither. One line stated
+    outright - "N+ stat", or "at least N stat" - on a reader of a player's
+    games narrows them (:data:`_ONE_LINE_NARROWS`), as two do everywhere;
+    never a line a companion beside him reached ("splits when tatum scores
+    30+ points" is Tatum's line)."""
+    lined = context.intent in THRESHOLD_INTENTS
+    at_least = [m.span(1) for m in lexicon.AT_LEAST_PAIR.finditer(question)]
+    stated = [match for match in pairs if match in plus_pairs or (match.start(), match.start() + len(match.group(1))) in at_least]
+    one = context.intent in _ONE_LINE_NARROWS and not context.beside_line and len(pairs) == 1 and len(stated) == 1
+    narrowing = stated if one else plus_pairs
+    return [
+        (
+            match.start(),
+            Line(
+                measure=lexicon.THRESHOLD_WORDS[match.group(2).casefold()],
+                value=int(match.group(1)),
+                as_typed=match.group(0).casefold(),
+                keyed=lined and match is pairs[0],
+                narrows=match in narrowing and (len(narrowing) > 1 or one),
+            ),
+            Claim(match.start(), match.end(), "line"),
+        )
+        for match in pairs
+        if lined or (match in narrowing and (len(narrowing) > 1 or one))
+    ]
 
 
 def read_period_line(question: str) -> tuple[Line, Claim] | None:

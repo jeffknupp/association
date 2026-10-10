@@ -1009,7 +1009,7 @@ def _settle(raw: dict[str, Any], question: str, companions: tuple[Companion, ...
     # The lines, at the position of the last stage that wrote one
     # (``_route_record_when_threshold``, the pair's stat and number), over
     # the settled intent.
-    line_context = LineContext(intent=raw["intent"])
+    line_context = LineContext(intent=raw["intent"], beside_line=any(c.line is not None for c in companions))
     read = read_lines(question, line_context)
     slots["lines"] = (*lines, *read.lines)
     # The measure, at the position of the last stage that wrote one of its

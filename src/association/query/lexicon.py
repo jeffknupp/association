@@ -1339,6 +1339,14 @@ inside his phrase (``subject._condition_role`` reads it through this too).
    ``router._THRESHOLD`` and ``subject._CONDITION_THRESHOLD``, one pattern
    twice, until Phase 3, step 2.
 """
+# "anthony edwards log with at least 50 points": the floor said in words before
+# the number - a line stated outright, as "50+ points" is, where a bare "50
+# points" beside a log can as well name one game ("harden 61 points").
+AT_LEAST_PAIR = re.compile(rf"\bat\s+least\s+(\d{{1,3}})[\s-]*({_THRESHOLD_ALTERNATION})\b", re.IGNORECASE)
+"""A line at or above a number said as "at least N stat".
+
+.. versionadded:: 6.0.0
+"""
 # A number after a scoring verb is a line on points, stat word or not:
 # "celtics record when jayson tatum scores 30" read no threshold, and was
 # refused as a question about a team named Jayson Tatum. Not where a stat

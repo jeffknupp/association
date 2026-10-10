@@ -81,8 +81,13 @@ def _shape(line: Line) -> tuple[str | None, str, int | bool, str, bool, bool]:
         ("curry games with 25 minutes", "game_log", [("minutes", ">=", 25, "with 25 minutes", False, True)], None),
         # One "N+ stat" pair on a reader whose shape is not a line is read by nothing - the stages' rule, measured (a team's line carried no threshold).
         ("How many 10+ point leads did the Sacramento Kings have", "team_leaderboard", [], None),
-        # ... and on a log the same (ISSUES.md, "A single line on a game log is read by nothing": the measure slice's).
-        ("lebron game log with 20+ points this season", "game_log", [], None),
+        # ... but on a reader of a player's games one line stated outright narrows them (ISSUES.md #357, Phase 3,
+        # step 3), "at least N stat" as well as "N+ stat"; a bare "N stat" there stays unread ("harden 61 points").
+        ("lebron game log with 20+ points this season", "game_log", [("points", ">=", 20, "20+ points", False, True)], None),
+        ("anthony edwards log with at least 50 points", "game_log", [("points", ">=", 50, "50 points", False, True)], None),
+        # A player's line is not among them ("lebron 20+ points this season" can ask whether he averages it).
+        ("lebron 20+ points per game this season", "player_stat", [], None),
+        ("2 threes in games Jamal Murray played", "player_stat", [], None),
         # A second and third bare line under a count are read, keyed on nothing and narrowing nothing: the league's multi-line listing alone applies them.
         (
             "most playoff games with 46 points 6 assists 6 rebounds",
