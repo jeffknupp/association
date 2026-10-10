@@ -2509,6 +2509,12 @@ VERSUS_WORD = re.compile(r"\b(?:vs\.?|versus)\b", re.IGNORECASE)
 .. versionadded:: 6.0.0
    ``subject._VERSUS`` until Phase 3, step 2.
 """
+TEAM_SPELLING_RUN = re.compile(r"[a-zA-Z0-9']+")
+"""A run of letters, digits and apostrophes: a word a team may be spelled by
+with a digit in it ("76ers"), read whole before its letters are.
+
+.. versionadded:: 6.0.0
+"""
 LETTER_RUN = re.compile(r"[a-zA-Z']+")
 """A run of letters and apostrophes - the words a team's name is read from.
 
@@ -2602,6 +2608,10 @@ TEAM_SINGULARS: dict[str, str] = {
     "trailblazers": "Portland Trail Blazers",
     "blazers": "Portland Trail Blazers",
     "okc": "Oklahoma City Thunder",
+    # The one name written with a digit: the letter split every name is read
+    # by makes "76ers" the word "ers", and no team was read from it - "giannis
+    # stats vs 76ers this season" answered his whole season.
+    "76ers": "Philadelphia 76ers",
 }
 """A team's singular nickname, or a one-word spelling, mapped to its name.
 

@@ -239,3 +239,27 @@ def test_a_players_name_after_vs_is_not_a_team_it_only_clips() -> None:
     assert versus("KEVIN GARNETT VS TIM DUNCAN GAMES", ()) == "Minnesota Timberwolves"
     assert versus("jalen brunson vs buck", ("Jalen Brunson", "Buck Williams")) == "Milwaukee Bucks"
     assert versus("kevin garnett vs the wolves", ("Kevin Garnett",)) == "Minnesota Timberwolves"
+
+
+def test_the_76ers_are_read_from_their_own_spelling(league: AnswerContext) -> None:  # noqa: F811 - the fixture
+    """ "76ers", the one team name spelled with a digit, split into the word
+    "ers" every name is read by, and no team was read from it: "giannis
+    stats vs 76ers this season" answered his whole season, "76ers leaders in
+    3s" the league's. Read whole, where the question gives it - in the
+    question's order, so "chicago bulls vs 76ers" is still the Bulls against
+    the 76ers."""
+    from association.query.entities import teams_of
+    from association.query.subject import _team_after_versus, _teams_by_word, team_named_in
+
+    teams = teams_of(league.con)
+    assert team_named_in(teams, "76ers leaders in 3s") == "Philadelphia 76ers"
+    # Every team the words name is one no player's name is read from:
+    # "boston" beside the 76ers is the Celtics, not Brandon Boston Jr.
+    assert _teams_by_word(teams, "how many times did the 76ers play boston") == {"Philadelphia 76ers", "Boston Celtics"}
+    assert team_named_in(teams, "the 76ers' record this season") == "Philadelphia 76ers"
+    assert team_named_in(teams, "celtics vs 76ers") == "Boston Celtics"
+    found = _team_after_versus(teams, "jayson tatum stats vs 76ers this season")
+    assert found is not None and found.name == "Philadelphia 76ers"
+    question = "jayson tatum stats vs 76ers this season"
+    route, _subject, _parent = read_route(league.con, question, [], "")
+    assert reading_from_route(league.con, question, route).scope.cuts.opponent == "Philadelphia 76ers"

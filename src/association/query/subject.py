@@ -383,6 +383,18 @@ def _team_abbreviation(con: duckdb.DuckDBPyConnection, question: str) -> str | N
     return None
 
 
+def _teams_by_word(teams: names.TeamIndex, question: str) -> set[str]:
+    """Every team a word of the question names by itself - a singular, a
+    one-word spelling, a nickname or a whole word of exactly one team's
+    name (:func:`team_named_in`, word by word)."""
+    found: set[str] = set()
+    for run in lexicon.TEAM_SPELLING_RUN.findall(question.lower()):
+        team = lexicon.TEAM_SINGULARS.get(run.removesuffix("'s").rstrip("'")) or team_named_in(teams, run)
+        if team is not None:
+            found.add(team)
+    return found
+
+
 def _team_word(con: duckdb.DuckDBPyConnection, question: str) -> str | None:
     """The team the question names as a word: a singular or one-word
     nickname first, then :func:`~association.query.entities.team_named_in`
@@ -392,6 +404,19 @@ def _team_word(con: duckdb.DuckDBPyConnection, question: str) -> str | None:
         if w in lexicon.TEAM_SINGULARS:
             return lexicon.TEAM_SINGULARS[w]
     return team_named_in(teams_of(con), question) or _team_abbreviation(con, question)
+
+
+def _team_words(text: str) -> list[str]:
+    """``text``'s words as a team's name is read from them: the letter runs
+    every name is split into (:func:`~association.query.entities._words`),
+    except a word a team is spelled by with a digit in it ("76ers",
+    :data:`~association.query.lexicon.TEAM_SINGULARS`), kept whole where the
+    split would leave "ers"."""
+    words: list[str] = []
+    for run in lexicon.WORD_RUN.finditer(_fold(text)):
+        token = run.group(0)
+        words.extend([token] if token.casefold() in lexicon.TEAM_SINGULARS else _words(token))
+    return words
 
 
 def _by_nickname(name: str, question: str) -> bool:
@@ -955,7 +980,10 @@ def read_subject(con: duckdb.DuckDBPyConnection, question: str, intent: str, sco
     position = next((code for pattern, code in lexicon.POSITION_WORDS if pattern.search(question)), None)
     routed_opponent = _opponent_player(con, scope)
     opponent = _read_opponent(con, question, scope, season) if routed_opponent is None else None
-    teams_here = {t for t in (opponent, own[0].name if own is not None else None, team_word) if t}
+    # Every team the words name, not only the first: "how many times did the
+    # 76ers play boston" names the Celtics by "boston" beside the 76ers, and
+    # "boston" is no player there (Brandon Boston Jr.).
+    teams_here = {t for t in (opponent, own[0].name if own is not None else None, team_word) if t} | _teams_by_word(teams_of(con), question)
 
     routed, invented = _routed_names(con, scope, question, routed_opponent)
     filler = _filler_names(con, scope, question)
@@ -1490,21 +1518,28 @@ def team_named_in(teams: names.TeamIndex, question: str) -> str | None:
     .. versionchanged:: 6.0.0
        Lives in :mod:`association.query.subject`, the reader's, and takes the
        teams' in-memory index (:func:`~association.query.entities.teams_of`)
-       in place of a connection: it was ``entities.team_named_in``.
+       in place of a connection: it was ``entities.team_named_in``. Reads
+       "76ers", the one name spelled with a digit, where it stands.
     """
-    for found in lexicon.LETTER_RUN.findall(question.lower()):
-        # "the Sixers' record", "the Knicks' last 5 games": the possessive
-        # is the question's, not the name's (ISSUES.md #232 - 11 of 277
-        # paraphrases read no team at all).
-        word = found.removesuffix("'s").rstrip("'")
-        if len(word) < 4:
-            continue
-        nickname = _TEAM_NICKNAMES.get(word)
-        if nickname:
-            return nickname
-        named = teams_named_by_word(teams, word)
-        if len(named) == 1:
-            return str(named[0])
+    for run in lexicon.TEAM_SPELLING_RUN.findall(question.lower()):
+        # "76ers", the one name spelled with a digit, which the letter runs
+        # below split into "ers": read whole, where the question gives it.
+        spelled = run.removesuffix("'s").rstrip("'")
+        if spelled in lexicon.TEAM_SINGULARS and any(ch.isdigit() for ch in spelled):
+            return lexicon.TEAM_SINGULARS[spelled]
+        for found in lexicon.LETTER_RUN.findall(run):
+            # "the Sixers' record", "the Knicks' last 5 games": the possessive
+            # is the question's, not the name's (ISSUES.md #232 - 11 of 277
+            # paraphrases read no team at all).
+            word = found.removesuffix("'s").rstrip("'")
+            if len(word) < 4:
+                continue
+            nickname = _TEAM_NICKNAMES.get(word)
+            if nickname:
+                return nickname
+            named = teams_named_by_word(teams, word)
+            if len(named) == 1:
+                return str(named[0])
     return None
 
 
@@ -2007,7 +2042,7 @@ def _team_after_versus(teams: names.TeamIndex, question: str, season: int | None
     refused as one ("player_matchup cannot honor ['opponent']")."""
     held = {word.casefold() for name in names for word in _words(name)}
     for match in lexicon.AGAINST_PHRASE.finditer(question):
-        words = _words(match.group(1))[:3]
+        words = _team_words(match.group(1))[:3]
         for size in (3, 2, 1):
             if size <= len(words) and len(" ".join(words[:size])) >= 2:
                 team = _team_named(teams, " ".join(words[:size]), season)
@@ -2040,7 +2075,7 @@ def _team_after_for(teams: names.TeamIndex, question: str, season: int | None = 
     """
     for match in lexicon.FOR_TEAM_PHRASE.finditer(question):
         span_text = match.group(1) or match.group(2) or ""
-        words = _words(span_text)[:3]
+        words = _team_words(span_text)[:3]
         for size in (3, 2, 1):
             if size <= len(words) and len(" ".join(words[:size])) >= 2:
                 if size == 1 and words[0].casefold() in lexicon.COMMON_WORDS_THAT_NAME_TEAMS:
