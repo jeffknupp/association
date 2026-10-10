@@ -46,6 +46,22 @@ before that commit needs re-checking against the current warehouse.
 
 ## P1: wrong answer
 
+### A team named with "in a single game" is answered with the team's season line: "most points in a single game on the 76ers" answers 115.9 points per game
+- **Found:** 2026-10-10, Phase 3, step 2's subject slice, reading the feed answers the "76ers" fix moved (`b1daa88`).
+- **Evidence:** on the 2,710 readings 13 feed questions read a `team` subject, words naming one game ("in a game", "in a single game") and `team_stat` - "most points in a single game on the 76ers" / "... on the knicks" / "... on the magic" / "... on the thunder", "most points in a game in cavs history", "most points in a game in pistons history", "most points in a game by a knicks playter", "most points by a knick in a game; 1988-89", "most fgm + opp fgm in a game by Knicks; 1988-89", "best free throw percentage in a game with 13+ free throw attempts by the 76ers", ... - and each answers the team's season line ("The Philadelphia 76ers' points per game was 115.9 in the 2026 regular season (82 games), 14th-best of 30 teams."). The parent grammar's team rows send a team subject with no "players"/"scorers" word to `team_stat` (`parse.PARENT_GRAMMAR`), and the `single_game_high` child is gated off team kinds (`subject._CHILD_GRAMMARS`, `_NOT_A_TEAM`). Production reads these the same way: with the model's span `["76ers"]` the subject slice's tree reads `team_stat {'team': '76ers', 'stat': 'points'}` for the first. Until `b1daa88` the words-only reading missed "76ers" and answered two of them right by accident (the quarter stage filed the nickname as the team of a `single_game_high`: Tyrese Maxey's 54). #167 is the span half of the same family ("history" not read as a career) and assumed the compiler's single-game read.
+- **User sees:** a team's season average where its (or its players') best single game was asked - a different question, fluently.
+- **Next step:** read "on the <team>" / "<team> player" / a single game beside a team as the team's players' single-game high (`team_players`, the league's read narrowed to the team, as "most points in a game for a 76ers player" already answers), and "by the <team>" as the team's own single-game high on the team relation; decide the two in the child grammar (step 4's), every moved answer enumerated.
+- **Source:** ours.
+- **Priority:** P1 - 13 feed questions answered as another question.
+
+### A position group beside a named player is read and dropped: "centers vs gobert gamelog with 34 minutes 2024" answers Gobert's own log
+- **Found:** 2026-10-10, Phase 3, step 2's subject slice, measuring the subject family (`~/association-research/stages/subject_family.py`).
+- **Evidence:** 51 of the 2,710 readings carry a position group; 50 are `position` subjects and every league-wide point honors the group. One is a `player` subject carrying the group C ("centers vs gobert gamelog with 34 minutes 2024", the feed): the point reader honors a position on the league's own moves alone (`point._everyone_point`), so the point is Rudy Gobert's game log with 34+ minutes, and the answer lists his games. The question is the centers' games against Gobert.
+- **User sees:** one player's log where a position group's games against him were asked.
+- **Next step:** read a position group with a player after "vs" as the group's games with the player an opponent-side companion (`Companion(side="opponent")`, which the league's read honors); failing that, the planner refusing a position on a point that takes none (a decline-to-Cause commit, `ROADMAP-TYPES.md` "Still open" 14).
+- **Source:** ours.
+- **Priority:** P1 - a different question answered (1 feed question).
+
 
 ### A team's "allowed" figure is read as its own where a longer alias stands: "which team allowed the most points per game" ranks the teams' own scoring
 - **Found:** 2026-10-10, Phase 3 step 2's measure slice, writing the tagger's cases
@@ -393,6 +409,22 @@ those were found.
 - **GitHub:** #352
 
 ## P2: misleading or incomplete
+
+### A matchup of two players who did not play this season answers "<player> has no games in the 2026 regular season"
+- **Found:** 2026-10-10, Phase 3, step 2's subject slice: the "vs Tim Duncan" fix (`0f87652`) moved two refusals to this sentence.
+- **Evidence:** 14 of the 2,082 feed answers on `player_matchup` say "<first player> has no games in the 2026 regular season in the warehouse." - "TIM DUNCAN VS SHAQ GAME STATS", "tim duncan VS KEVIN GARNETT games", "KEVIN GARNETT VS TIM DUNCAN GAMES", "SHAQ VS TIM DUNCAN GAME STATS", "kobe vs jason williams", "kobe stats against lebron", "lebron stats against kobe", "allen iverson vs michael jordan vs bulls", "bulls michael jordan vs allen iverson", "dwight howard vs Marc gasol", "Jamal Crawford vs. Lou Williams", "lamarcus aldridge vs marc gasol", "kyrie irving vs steph curry", "Nba Anthony Edwards stats vs kyrie Irving" (and its playoffs wording). The matchup's span defaults to this season (`point._default_player_matchup`: `subject_span` is the scope's span unless a date names the game), and its "no games" sentence names the season the question never asked; the redirect a single player's line takes ("no games this season, so his most recent") is not applied to a pair.
+- **User sees:** a true but useless sentence about the default season, where the question asks for every meeting of two (often retired) players.
+- **Next step:** read a matchup with no season named over the two players' shared career (the meetings they had), or redirect to the seasons both played, stated as a decision; enumerate the moved answers.
+- **Source:** ours.
+- **Priority:** P2 - a sentence short of the question, 14 feed answers.
+
+### The quarter stage files the opponent's nickname as the team: "1st q log sabonis vs clippers" is refused "a team cannot be its own opponent"
+- **Found:** 2026-10-10, Phase 3, step 2's subject slice, measuring the stages' name writes.
+- **Evidence:** `router._team_slot_or_word` (a quarter or half question, or one with a ranking word, where no team is handed) files the one team nickname the words hold as the subject's team - on 27 of the 2,710 readings at `054d9e9`: 24 a nickname the subject reading had already read as the OPPONENT ("vs clippers", "vs cavs"), 3 the "76ers" the reading did not read until `b1daa88`. Where no player is read (the words-only feed, an ambiguous surname or a dictionary word: "1st q log sabonis vs clippers", "Al horfird first quarter stats against hawks", "Brunson 1st half log vs Celtics 23-24 season", "Josh hart first half game log vs Celtics", "miles bridges stats vs raptors second half" and its "last game" wording) the stage then chooses `team_quarter_points` for that team against itself, and the 6 answers are "Nothing here answers this question: team_quarter_points: a team cannot be its own opponent." Where a player is read ("luka highest scoring games vs bucks", 21 more) the extra team changes no answer. With the model's span the player is read and the stage does not fire. <!-- codespell:ignore hart - Josh Hart's surname -->
+- **User sees:** a refusal naming a cause the question never gave.
+- **Next step:** the stage files no nickname the hand-off already holds as the opponent (`router.Named.opponent`); the 6 answers move from the false cause to the question's own refusal or answer, enumerated. Step 4 deletes the stage.
+- **Source:** ours.
+- **Priority:** P2 - a refusal naming the wrong cause, 6 feed questions.
 
 ### A worded since-date with a year is read as that season cut at the day, where the numeric form is every game from the date on: "since january 31st 2020" vs "since 1/31/2020"
 - **Found:** 2026-10-09, Phase 3, step 2, the games' cuts (measuring the family: `~/association-research/stages/cuts_family.py`, the situation and the span as each stage set them).
@@ -2874,6 +2906,14 @@ those were found.
 - **GitHub:** #312
 
 ## P4: tooling, docs, low impact
+
+### A measure tagger's claim holds the team's name: "how many 3 pointers have the magic made" is claimed whole as the measure
+- **Found:** 2026-10-10, Phase 3, step 2's subject slice, adding the subject reading's claims.
+- **Evidence:** on the 2,710 readings 4 settled team names claim no characters of their own: their words sit inside a `measure` claim the measure tagger made over the whole team-total phrase (`lexicon.TEAM_TOTAL`: "how many 3 pointers have the magic made", "so far this season, how many three-pointers have the magic made?", "How many 10+ point leads did the Sacramento Kings have", "How many games in the 23-24 NBA season did the Los Angeles lakers have"), so the team's claim folds into it (`span.claimed`). Every reading is right; the claims say "measure" for the team's words.
+- **User sees:** nothing today; step 3's unread words would count the claim's characters as the measure's.
+- **Next step:** the measure tagger claims the measure's own words ("3 pointers", "made"), not the span its total pattern matched; the 4 readings' claims move, nothing else.
+- **Source:** ours.
+- **Priority:** P4 - claims precision, 4 readings.
 
 
 ### The 2-point percentage has no measure on the games relation, so a narrowed one is the season's
