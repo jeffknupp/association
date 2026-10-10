@@ -213,3 +213,29 @@ def test_a_period_is_never_the_one_who_scored_in_it_and_most_recent_is_no_rank(l
     reading = reading_from_route(league.con, question, route)
     assert reading.intent == "team_quarter_points" and reading.scope.subject.team == "Philadelphia 76ers" and reading.scope.subject.players == ()
     assert (reading.scope.window.order, reading.scope.window.count, reading.scope.window.rank) == ("recent", 10, None)
+
+
+def test_a_players_name_after_vs_is_not_a_team_it_only_clips() -> None:
+    """ "KEVIN GARNETT VS TIM DUNCAN GAMES" read "TIM" as the Minnesota
+    Timberwolves (the start of "Timberwolves"), the opponent of a matchup
+    that has none, and refused it ("player_matchup cannot honor
+    ['opponent']"). A word the team only clips that is a name the question
+    gives a player is the player; a team's own word, abbreviation or
+    singular stays the team whoever else shares it."""
+    import duckdb
+
+    from association.query.entities import teams_of
+    from association.query.subject import _team_after_versus
+
+    con = duckdb.connect(":memory:")
+    con.execute("CREATE TABLE teams (team_id VARCHAR, abbreviation VARCHAR, display_name VARCHAR)")
+    con.execute("INSERT INTO teams VALUES ('16', 'MIN', 'Minnesota Timberwolves'), ('15', 'MIL', 'Milwaukee Bucks')")
+
+    def versus(question: str, named: tuple[str, ...]) -> str | None:
+        found = _team_after_versus(teams_of(con), question, names=named)
+        return found.name if found is not None else None
+
+    assert versus("KEVIN GARNETT VS TIM DUNCAN GAMES", ("Kevin Garnett", "Tim Duncan")) is None
+    assert versus("KEVIN GARNETT VS TIM DUNCAN GAMES", ()) == "Minnesota Timberwolves"
+    assert versus("jalen brunson vs buck", ("Jalen Brunson", "Buck Williams")) == "Milwaukee Bucks"
+    assert versus("kevin garnett vs the wolves", ("Kevin Garnett",)) == "Minnesota Timberwolves"

@@ -454,8 +454,10 @@ def _read_opponent(con: duckdb.DuckDBPyConnection, question: str, scope: Scope, 
     quarter points against boston" is ``team_quarter_points``' own slot. And
     with a "vs" whose word resolves to nothing, the router's ``team`` stands
     as the opponent where the question holds it nowhere else - its reading
-    of that word."""
-    versus = _team_after_versus(teams_of(con), question, season)
+    of that word. A word after the "vs" that is a player's name the question
+    names is the player, not a team it clips: "kevin garnett vs tim duncan
+    games" read "tim" as the Timberwolves (:func:`_team_after_versus`)."""
+    versus = _team_after_versus(teams_of(con), question, season, names=players_named_in(players_of(con), question))
     if versus is not None:
         return versus.name
     held = scope.cuts.opponent
@@ -1993,18 +1995,34 @@ def player_named_on_a_team_only_question(players: names.PlayerIndex, teams: name
     return named[0] if len(named) == 1 else None
 
 
-def _team_after_versus(teams: names.TeamIndex, question: str, season: int | None = None) -> Entity | None:
+def _team_after_versus(teams: names.TeamIndex, question: str, season: int | None = None, *, names: list[str] | tuple[str, ...] = ()) -> Entity | None:
     """The team a question sets a subject AGAINST ("jaylen brown last 8 games vs
     pistons"), or None. Spans of three words down to one are tried, so "vs new
-    york" is the Knicks rather than an ambiguous "new"."""
+    york" is the Knicks rather than an ambiguous "new". A span the team only
+    clips - no word of its name, abbreviation or nickname, only the start of
+    one ("tim" of "Timberwolves") - is no team where its words are a name
+    the question gives a player (``names``, :func:`players_named_in`):
+    "kevin garnett vs tim duncan games" is two players, and read "tim" as
+    the Timberwolves, the opponent of a matchup that has none, it was
+    refused as one ("player_matchup cannot honor ['opponent']")."""
+    held = {word.casefold() for name in names for word in _words(name)}
     for match in lexicon.AGAINST_PHRASE.finditer(question):
         words = _words(match.group(1))[:3]
         for size in (3, 2, 1):
             if size <= len(words) and len(" ".join(words[:size])) >= 2:
                 team = _team_named(teams, " ".join(words[:size]), season)
-                if team is not None:
+                if team is not None and not _team_after_versus_a_name(teams, team, words[:size], held):
                     return team
     return None
+
+
+def _team_after_versus_a_name(teams: names.TeamIndex, team: Entity, span: list[str], held: set[str]) -> bool:
+    """Whether ``span`` is a player's name the question gives (``held``,
+    its words) that ``team`` only clips: none of its words a trace of the
+    team (:func:`_team_traces`, or its singular: "vs buck" is the Bucks
+    whoever else is named Buck) and every one a word of that name."""
+    traces = _team_traces(teams, team) | {word for word, name in lexicon.TEAM_SINGULARS.items() if name == team.name}
+    return bool(held) and all(word.casefold() in held for word in span) and not any(word.casefold() in traces for word in span)
 
 
 # "for", "with the" and whatever follows (lexicon.FOR_TEAM_PHRASE) - a
