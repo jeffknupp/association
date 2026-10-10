@@ -255,7 +255,8 @@ this tree:
   13 rebounds, 10 assists, 2 blocks, and 2 steals?" came to be read (689)
   and the "against" of "evaluate sga against embiid" stopped being read
   through a spelling the window took from the next name (690, an overcount
-  exposed, as `d12f899`'s was). Seven
+  exposed, as `d12f899`'s fifteen words were; Jeff's call, 2026-10-10, to
+  let it grow by that one word: 702 -> 690 across the step). Seven
   questions have an unread NUMBER since then: five "100"s of "per 100
   possessions" (the rate reads per 100 from "per possessions" alone, so the
   number restates it), the "2" of "in 2 hours", which nothing can read, and
@@ -275,10 +276,15 @@ this tree:
   measure one thing two ways, so a disagreement is a finding - a claim
   over a word the reading does not depend on, or a word a stage reads
   without claiming it. They agree on 625 of the 628 since step 3 (284
-  before its claims); the 3 that differ are the subject reading's, which is
-  read once and never probed for its claims ("head" in "lebron vs kawhi
-  head to head" stops the spelling reader completing "kawhi"; "against"
-  where the second team named is the opponent anyway, twice). And a disagreement the other way round is the
+  before its claims), and 625 is the step's exit by Jeff's ruling
+  (2026-10-10): the 3 that differ are the subject reading's, which is read
+  once and never probed for its claims ("head" in "lebron vs kawhi head to
+  head" stops the spelling reader completing "kawhi"; "against" where the
+  second team named is the opponent anyway, twice), and the ledger holds
+  them by question text, each with its reason (`HELD_DISAGREEMENTS`):
+  `report` exits 0 while the questions that differ are exactly those, and
+  1 on any other - or on a held one that agrees now, which leaves the list
+  with the change that cleared it, as a ratchet's GONE entry does. And a disagreement the other way round is the
   one that found answers: a word whose presence makes a rule read LESS -
   "2024 and 2025", two seasons read as none - is read by the deletion (take
   one year away and the other is read) and claimed by nothing

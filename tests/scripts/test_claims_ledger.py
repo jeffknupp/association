@@ -105,3 +105,22 @@ def test_the_report_names_each_question_the_reading_and_the_deletion_disagree_on
     path.write_text("".join(json.dumps({key: value for key, value in row.items() if key != "reading_unread"}) + "\n" for row in rows))
     assert ledger.report(argparse.Namespace(ledger=path, top=5, show=0)) == 0
     assert "not recorded" in capsys.readouterr().out
+
+
+def test_the_held_disagreements_pass_and_one_that_clears_fails_until_it_is_removed(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """Jeff's ruling (2026-10-10): the subject reading's three holdouts are
+    held by question text; another question differing fails the report, and
+    so does a held one that agrees now (it leaves the list with its fix)."""
+    import argparse
+
+    held = list(ledger.HELD_DISAGREEMENTS)
+    assert len(held) == 3 and all(ledger.HELD_DISAGREEMENTS[question] for question in held)
+    rows = [{"question": question, "content_words": ["against"], "unread": ["against"], "reading_unread": []} for question in held]
+    path = tmp_path / "ledger.jsonl"
+    path.write_text("".join(json.dumps(row) + "\n" for row in rows))
+    assert ledger.report(argparse.Namespace(ledger=path, top=5, show=0)) == 0
+    assert "(held)" in capsys.readouterr().out
+    cleared = [{**rows[0], "reading_unread": rows[0]["unread"]}, *rows[1:]]
+    path.write_text("".join(json.dumps(row) + "\n" for row in cleared))
+    assert ledger.report(argparse.Namespace(ledger=path, top=5, show=0)) == 1
+    assert f"GONE: {held[0]!r}" in capsys.readouterr().out

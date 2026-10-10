@@ -190,10 +190,33 @@ def report(args: argparse.Namespace) -> int:
     return _report_disagreements(rows)
 
 
+#: The questions whose Reading states other unread words than the deletion
+#: finds, held by Jeff's ruling (2026-10-10, Phase 3, step 3: 625 of the 628
+#: agreeing is the step's exit), each with why: every one is the subject
+#: reading's, which is read once and never asked again for its claims
+#: (``ROADMAP-TYPES.md``, "Still open" 16). ``report`` exits 0 while the
+#: questions that differ are exactly these, and 1 on any other question - or
+#: on one of these that no longer differs, which is removed from the list with
+#: the change that cleared it (``scripts/check_ratchets.py``'s GONE rule).
+HELD_DISAGREEMENTS: dict[str, str] = {
+    "lebron vs kawhi head to head": (
+        '"head" stops the subject reading\'s spelling reader completing "kawhi" (the window "kawhi head" names nobody); '
+        'deleting it lets "kawhi" be spelled Kawhi Leonard, so the deletion counts it read, while the reading carries nothing for it'
+    ),
+    "How many points did the 76ers score in the 4th quarter against Boston this season?": (
+        '"against" is claimed with the opponent it stands before, and the second team named is the opponent without it: the subject reading declares its claims, so it claims the versus word it read'
+    ),
+    "This season, how many times did the 76ers play against the Celtics?": (
+        '"against" is claimed with the opponent it stands before, and "play" makes the two teams meet without it: the subject reading declares its claims, so it claims the versus word it read'
+    ),
+}
+
+
 def _report_disagreements(rows: list[dict[str, Any]]) -> int:
     """Every question whose Reading states other unread words than the
-    deletion finds, and 1 if there is one (0 where the ledger was run on a
-    tree whose Reading states none)."""
+    deletion finds, each held one (:data:`HELD_DISAGREEMENTS`) marked, and 1
+    where another differs or a held one no longer does (0 where the ledger
+    was run on a tree whose Reading states none)."""
     stated = [row for row in rows if "reading_unread" in row]
     if not stated:
         print("the Reading's own unread words: not recorded (a tree before Phase 3, step 3)")
@@ -201,8 +224,14 @@ def _report_disagreements(rows: list[dict[str, Any]]) -> int:
     differ = [row for row in stated if row["reading_unread"] != row["unread"]]
     print(f"the Reading's own unread words: {len(stated) - len(differ)} of {len(stated)} questions agree with the deletion, {len(differ)} differ")
     for row in differ:
-        print(f"  {row['question']}  ->  Reading {row['reading_unread']}  deletion {row['unread']}")
-    return 1 if differ else 0
+        held = " (held)" if row["question"] in HELD_DISAGREEMENTS else " (NEW)"
+        print(f"  {row['question']}  ->  Reading {row['reading_unread']}  deletion {row['unread']}{held}")
+    asked = {row["question"] for row in stated}
+    cleared = [question for question in HELD_DISAGREEMENTS if question in asked and question not in {row["question"] for row in differ}]
+    for question in cleared:
+        print(f"  GONE: {question!r} agrees now - remove it from HELD_DISAGREEMENTS with the change that cleared it")
+    new = [row for row in differ if row["question"] not in HELD_DISAGREEMENTS]
+    return 1 if new or cleared else 0
 
 
 def main() -> int:
