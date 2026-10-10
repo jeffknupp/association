@@ -2262,7 +2262,12 @@ CHILD_THRESHOLD_COUNT = re.compile(
     r"|\b\d{1,3}[\s-]*(?:pts?|points?|rebs?|rebounds?|asts?|assists?|steals?|blocks?|threes|3s)[\s-]+games?\b"
     # The paraphrases' shapes (parser-greenfield, step b): "which games had 15 or more assists", "the highest number of
     # 30+ point games", "how many games did he score 30 points or more in".
-    rf"|\b(?:which|what) games?\b.*{N_PLUS}|\bnumber of\b.*{N_PLUS}.*\bgames?\b|\bhow many\b.*\bgames?\b.*\b\d{{1,3}}\s+\w+\s+or more\b",
+    rf"|\b(?:which|what) games?\b.*{N_PLUS}|\bnumber of\b.*{N_PLUS}.*\bgames?\b|\bhow many\b.*\bgames?\b.*\b\d{{1,3}}\s+\w+\s+or more\b"
+    # "how many games have players recorded 33 points, 13 rebounds, 10
+    # assists, 2 blocks, and 2 steals" (ISSUES.md #290): a count of games
+    # over bare lines, as "players with 33 point and 13 rebound ... games" is
+    # - until Phase 3, step 3 a rebounds ranking with the five numbers unread.
+    r"|\bhow many\b.{0,20}\bgames?\b.*\b\d{1,3}\s+(?:pts?|points?|rebs?|rebounds?|asts?|assists?|steals?|blocks?|threes|3s)\b",
     re.IGNORECASE,
 )
 """A count of games over a line.

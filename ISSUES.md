@@ -76,6 +76,7 @@ before that commit needs re-checking against the current warehouse.
 ### A single "N+ stat" line on a reader whose shape is not a line is read by nothing: "lebron game log with 20+ points this season" lists his last 10 games
 - **Found:** 2026-10-09, Phase 3 step 2's line slice, measuring the five carriers of a line on the 2,710 readings (`~/association-research/stages/line_family.py`)
 - **Evidence:** the stages' rule, kept by the lines tagger (`line.read_lines`): a bare "N+ stat" pair is a line only on `threshold_count`, `record_when`, `streak` and `single_game_high` (`line.THRESHOLD_INTENTS`); on every other reader only a floor of minutes, a line under a number, or two or more pairs is read. Answered on this tree with the names stubbed in the model's place (`/tmp/s2e/ask_stub.py`, names `["LeBron James"]`, stat `points`): "LeBron James, last 10 of 60 games of the 2026 regular season" - every game, 12- and 13-point games among them. The 2,710 readings hold one single pair on such a reader, and it is no stat line ("How many 10+ point leads did the Sacramento Kings have last season", `team_stat`), so no population answer carries this; the typed `Line` records the fact (`Line.narrows` is False and the line is not read at all) and `tests/query/test_line.py` pins today's reading so the change is deliberate.
+- **Also (2026-10-10, Phase 3, step 3's review of the nine unread numbers; #290 folded in):** the bare form "N stat" with no "+" is read by nothing on such a reader either, and the recorded corpus holds one: "2 threes in games Jamal Murray played including playoffs" (`player_stat`) answers his 3.2 threes per game over 81 games, the "2" unread by the Reading's own words and by the claims ledger alike. #290's other two wordings are read since that step ("18-year-old" as an age, refused for the birth date; "how many games have players recorded 33 points, 13 rebounds, ..." as a count of games over the five lines).
 - **User sees:** a fluent log of every game where the games over a line were asked - the failure shape at the top of `AGENTS.md`.
 - **Next step:** the measure slice (Phase 3, step 2's next): once a `Line`'s measure is the typed `Measure`, one "N+ stat" on a log, a line or a split is a `line` cell the relation narrows by (`narrows=True`), and the four readers that key on it keep `keyed`. Enumerate the moved answers from the feed first (`run --feed`), since a single pair on a non-line reader is common wording outside the corpus.
 - **Priority:** P1 - a broader question answered fluently; 0 of the 2,710 readings today, the wording common.
@@ -110,31 +111,6 @@ before that commit needs re-checking against the current warehouse.
 - **User sees:** a different question answered fluently.
 - **Next step:** a `head_to_head` with a box-score stat is the meetings' totals (the team compiler's rows read sums them), or a refusal naming the stat.
 - **GitHub:** #326
-
-### A number the question states is dropped and a broader question answered: three paraphrases the unread-words ledger found
-- **Found:** 2026-09-30, `scripts/claims_ledger.py` over the 628 recorded
-  questions at `011091f` (the first run of the instrument: 11 questions
-  have a number the reading does not depend on; these three are answered
-  fluently without it).
-- **Evidence:** (1) "since 2000-01, how many games have players recorded
-  33 points, 13 rebounds, 10 assists, 2 blocks, and 2 steals?" reads
-  `leaderboard` with `stat: rebounds` and answers a rebounds-per-game
-  ranking since 2001 (Andre Drummond 11.9 ...); none of the five lines is
-  read. The yardstick's own wording of it (F161, "players with 33 point
-  and 13 rebound ... games since 2000-01") is answered correctly. (2) "2
-  threes in games Jamal Murray played including playoffs" answers his 3.2
-  threes per game over 81 games; the 2 is not read. (The third, "18-year-old
-  Lebron's ppg total", is read as the age it names since Phase 3, step 3,
-  and refused for the birth date no table holds.)
-- **User sees:** a fluent answer to a broader question than the one
-  asked, with nothing saying a number was set aside.
-- **Next step:** reader fixes, one per wording: "N <stat>, N <stat> ...
-  and N <stat>" joined by commas reads as lines the way "and"-joined ones
-  do. The
-  structural answer is `ROADMAP.md` contract 2 (a content word nothing
-  claimed is recorded, measured, then said or refused); re-run the ledger
-  after each reader change and read its unread NUMBERS first.
-- **GitHub:** #290
 
 ### A quarter named as a vague condition is read as the period asked about: "jokic assists per game after a big first quarter" answers his first-quarter assists
 - **Found:** 2026-09-30, checking the period condition (ROADMAP step 2);

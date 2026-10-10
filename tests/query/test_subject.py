@@ -510,6 +510,13 @@ def test_a_count_of_games_over_a_threshold_is_assigned_under_its_parents(con: du
     # attempted column the question names - not the model's nearest made-stat.
     intent, slots = _assigned(con, "Sga games with under 14 fta in his whole career", "game_log", stat="freeThrowsMade", player="Shai Gilgeous-Alexander", season_type=2)
     assert intent == "threshold_count" and slots["below"] == ["under 14 fta"] and slots["stat"] == "freeThrowsAttempted" and "threshold" not in slots
+    # "How many games ... N stat" with bare numbers (ISSUES.md #290): the count, its lines the
+    # five numbers - where until Phase 3, step 3 it stayed the league's ranking by one stat.
+    question = "since 2000-01, how many games have players recorded 33 points, 13 rebounds, 10 assists, 2 blocks, and 2 steals?"
+    intent, slots = _assigned(con, question, "leaderboard", stat="rebounds")
+    assert intent == "threshold_count" and slots["threshold"] == 33 and "player" not in slots
+    intent, slots = _assigned(con, "how many games in 2005-2006 did kobe score under 25 points", "game_log", stat="points", player="Kobe Bryant")
+    assert intent == "threshold_count" and slots["below"] == ["under 25 points"]
 
 
 def test_a_count_with_no_threshold_in_the_text_stays_the_routers_question(con: duckdb.DuckDBPyConnection) -> None:
