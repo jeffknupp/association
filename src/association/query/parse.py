@@ -739,9 +739,6 @@ def reading_from_route(index: names.NameIndex, question: str, route: Route) -> R
     .. versionchanged:: 6.0.0
        Takes the name index in place of a connection.
     """
-    scope = route.scope
-    asked = question
-    question = _read_route_folded(question)
     # The subject is read once, by read_route, settled there under the
     # intent the route ends with, and rides on the route. A route with none
     # is a caller's mistake, said here: until 5.0.0's last change the
@@ -750,21 +747,46 @@ def reading_from_route(index: names.NameIndex, question: str, route: Route) -> R
     # name read without the season; ROADMAP.md, Phase 1).
     if route.subject is None:
         raise ValueError("reading_from_route needs the route's subject - who the question is about, as read_route read it")
-    subject = route.subject
-    applied = apply_subject(subject, scope, asked=route.asked)
+    return _reading(index, question, route.asked, route.scope, route.subject, decisions=route.decisions, claims=route.claims, model_names=route.model_names, model_stat=route.model_stat)
+
+
+def _reading(
+    index: names.NameIndex,
+    question: str,
+    asked_key: PointShape | None,
+    scope: Scope,
+    subject: Subject,
+    *,
+    decisions: tuple[Decision, ...] = (),
+    claims: tuple[Claim, ...] = (),
+    model_names: tuple[str, ...] = (),
+    model_stat: str = "",
+) -> Reading:
+    """The parser's last step, over what the words were read as: the key
+    they ask, the typed scope the taggers wrote, the subject reading
+    settled under that key, the parser's decisions and the claims of every
+    rule that read them, and the model's reply (its names and stat, which no
+    unread word counts) - written into the Reading through the subject's one
+    writer (:func:`~association.query.subject.apply_subject`), with the
+    point read and what the words name that nothing reads. A test that
+    hands the answer side a reading of its own words builds it here
+    (``tests/routed.py``)."""
+    asked = question
+    question = _read_route_folded(question)
+    applied = apply_subject(subject, scope, asked=asked_key)
     # The subject reading's claims on the names it settled and their
-    # position group, beside the taggers' and the companions' the route
-    # carries. The subject is read once (read_route), so its claims are the
-    # ones it makes where it reads - never found by reading it again.
-    claims = [*route.claims, *subject_claims(index.teams, question, applied.scope)]
+    # position group, beside the taggers' and the companions' the words
+    # carry. The subject is read once, so its claims are the ones it makes
+    # where it reads - never found by reading it again.
+    found = [*claims, *subject_claims(index.teams, question, applied.scope)]
     reading = Reading(
         scope=applied.scope,
         asked=applied.asked,
         intent=asked_label(applied.asked),
         subject=subject,
-        decisions=(*_subject_decisions(subject), *route.decisions, *applied.decisions),
+        decisions=(*_subject_decisions(subject), *decisions, *applied.decisions),
         misread=tuple(applied.dropped),
-        claims=claimed_once(claims),
+        claims=claimed_once(found),
     )
     pointed = with_point(question, reading)
     # What the words name that nothing reads, read once, here: a refusal
@@ -779,22 +801,22 @@ def reading_from_route(index: names.NameIndex, question: str, route: Route) -> R
     # decisions (span.read_by): "most", "at least 400 attempts", "per game",
     # a championship. The point reader reads its tables over the whole
     # question, as the grammars do.
-    claims += read_by(question, "point", lambda probed: _reading_from_route_point(with_point(probed, reading)))
-    claims += read_by(
+    found += read_by(question, "point", lambda probed: _reading_from_route_point(with_point(probed, reading)))
+    found += read_by(
         asked,
         "refused",
         lambda probed: (_reading_from_route_refused(players, teams, probed, pointed), _reading_from_route_unsupported(probed, pointed), _reading_from_route_left_out(players, probed, pointed)),
     )
-    claims = list(claimed_once(claims))
+    found = list(claimed_once(found))
     return replace(
         pointed,
         refused=refused,
         unsupported=unsupported,
         left_out=left_out,
-        claims=tuple(claims),
+        claims=tuple(found),
         # The words nothing claimed, by the claims ledger's rule, over the
         # question as it was asked (the fold keeps every position).
-        unread=lexicon.unread_words(asked, [(c.start, c.end) for c in claims], (*route.model_names, *_reading_from_route_names(applied.scope, subject, applied.asked)), route.model_stat),
+        unread=lexicon.unread_words(asked, [(c.start, c.end) for c in found], (*model_names, *_reading_from_route_names(applied.scope, subject, applied.asked)), model_stat),
     )
 
 

@@ -56,9 +56,15 @@ from typing import Any
 #: ``refusal_result`` is recorded inside ``plan_point`` too (its call comes
 #: first, as it returns first), since a test that calls it alone is the
 #: only record of the sentence it asserts.
+#: ``parse:_reading``, the parser's last step over what the words were read
+#: as, joined on 2026-10-10 (Phase 3, step 4, slice (b)) before
+#: ``reading_from_route`` folded into ``read_route``: both trees record the
+#: Reading it builds from the same arguments, the tree with the Route and
+#: the one without it.
 BOUNDARIES: tuple[str, ...] = (
     "association.query.parse:read_route",
     "association.query.parse:reading_from_route",
+    "association.query.parse:_reading",
     "association.query.compose.plan:plan_point",
     "association.query.compose.plan:refusal_result",
     "association.query.compose:answer",
