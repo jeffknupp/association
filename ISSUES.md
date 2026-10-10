@@ -53,6 +53,7 @@ before that commit needs re-checking against the current warehouse.
 - **Next step:** read "on the <team>" / "<team> player" / a single game beside a team as the team's players' single-game high (`team_players`, the league's read narrowed to the team, as "most points in a game for a 76ers player" already answers), and "by the <team>" as the team's own single-game high on the team relation; decide the two in the child grammar (step 4's), every moved answer enumerated.
 - **Source:** ours.
 - **Priority:** P1 - 13 feed questions answered as another question.
+- **GitHub:** #364
 
 ### A position group beside a named player is read and dropped: "centers vs gobert gamelog with 34 minutes 2024" answers Gobert's own log
 - **Found:** 2026-10-10, Phase 3, step 2's subject slice, measuring the subject family (`~/association-research/stages/subject_family.py`).
@@ -61,6 +62,7 @@ before that commit needs re-checking against the current warehouse.
 - **Next step:** read a position group with a player after "vs" as the group's games with the player an opponent-side companion (`Companion(side="opponent")`, which the league's read honors); failing that, the planner refusing a position on a point that takes none (a decline-to-Cause commit, `ROADMAP-TYPES.md` "Still open" 14).
 - **Source:** ours.
 - **Priority:** P1 - a different question answered (1 feed question).
+- **GitHub:** #365
 
 
 ### A team's "allowed" figure is read as its own where a longer alias stands: "which team allowed the most points per game" ranks the teams' own scoring
@@ -417,6 +419,7 @@ those were found.
 - **Next step:** read a matchup with no season named over the two players' shared career (the meetings they had), or redirect to the seasons both played, stated as a decision; enumerate the moved answers.
 - **Source:** ours.
 - **Priority:** P2 - a sentence short of the question, 14 feed answers.
+- **GitHub:** #366
 
 ### The quarter stage files the opponent's nickname as the team: "1st q log sabonis vs clippers" is refused "a team cannot be its own opponent"
 - **Found:** 2026-10-10, Phase 3, step 2's subject slice, measuring the stages' name writes.
@@ -425,6 +428,7 @@ those were found.
 - **Next step:** the stage files no nickname the hand-off already holds as the opponent (`router.Named.opponent`); the 6 answers move from the false cause to the question's own refusal or answer, enumerated. Step 4 deletes the stage.
 - **Source:** ours.
 - **Priority:** P2 - a refusal naming the wrong cause, 6 feed questions.
+- **GitHub:** #367
 
 ### A worded since-date with a year is read as that season cut at the day, where the numeric form is every game from the date on: "since january 31st 2020" vs "since 1/31/2020"
 - **Found:** 2026-10-09, Phase 3, step 2, the games' cuts (measuring the family: `~/association-research/stages/cuts_family.py`, the situation and the span as each stage set them).
@@ -2059,21 +2063,6 @@ those were found.
   summed; the gap is what it does not say.
 - **GitHub:** #159
 
-### "76ers" is not a word, so every "vs 76ers" question loses its opponent
-- **Found:** 2026-09-21, reading today's corpus fall-throughs
-- **Evidence:** `entities._words` splits on `[^A-Za-z]+`, so
-  `_words("myles turner vs 76ers last 5 games")` is
-  `['myles', 'turner', 'vs', 'ers', 'last', 'games']` and `_team_after_versus`
-  returns None, while `_team_named("76ers")` resolves team 20 fine. The same
-  slot shape with "nyk" works ("tim hardaway vs nyk"). 22 of 1,972 reasonable
-  large-set questions say "76ers", 12 of 2,285 after vs/against.
-- **User sees:** "game_log needs a team or a player" - a refusal - for the
-  one franchise whose name starts with a digit.
-- **Next step:** keep digits inside a word in `_words` (or fold "76ers" to
-  "sixers" in `_fold`), then re-run the entity golden comparison: `_words`
-  feeds `players_named_in`, where a stray number must not start naming people.
-- **GitHub:** #176
-
 ### A name written without its periods matches nobody ("Pj washington")
 - **Found:** 2026-09-21, live sample
 - **Evidence:** `find_players(con, "Pj Washington")` is empty;
@@ -2914,6 +2903,7 @@ those were found.
 - **Next step:** the measure tagger claims the measure's own words ("3 pointers", "made"), not the span its total pattern matched; the 4 readings' claims move, nothing else.
 - **Source:** ours.
 - **Priority:** P4 - claims precision, 4 readings.
+- **GitHub:** #368
 
 
 ### The 2-point percentage has no measure on the games relation, so a narrowed one is the season's

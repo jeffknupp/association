@@ -1164,6 +1164,38 @@ agents' reports named here are in `~/association-research/stages/`.
     subject's names will take. Cost: no rebase (master had not moved) and
     a fresh four-population run on both trees.
 
+30. **Phase 3, step 2, the subject's own (2026-10-10).** The seventh and
+    last family, and the first slice run on Opus after the one-day Fable
+    exception: the agent measured the four name slots and the Subject
+    record on all 2,710 readings first - the model's spans and the words
+    disagree on 134 and the words win all 134; a stage still writes a name
+    on 58; a player stands under the team kind on 23 readings and under
+    the everyone kind on 11, so the kind is a fact the names cannot give -
+    and typed `reading.Subject(kind, players, teams, position)` on
+    `Scope.subject`, written by the one subject reading, which now claims
+    the names' and the position's spans (2,621 claims on the 2,710). The
+    stages are handed the names and write none; the lexicon took the
+    family's words and `subject.py` holds no pattern; `_MODEL_SLOTS` is
+    gone; `router.py` 338 lines shorter. The slice alone is identical on
+    every population. Three fixes rode with it, each enumerated: a quarter
+    read as the player who scored in it ("first quarter" was Tim
+    Quarterman); a player's name after "vs" clipped to a team by a
+    word-prefix match ("TIM" the Timberwolves); and "76ers", the one team
+    spelled with a digit, split by the name reader into the word "ers" and
+    no team at all - 18 feed answers move on that one, 12 to the question
+    asked, and the recorded corpus holds it only in the reading, because
+    the model's span had always carried the name production reads. What
+    it taught: the feed population reads the words alone, so a fix the
+    model's span was masking shows there and nowhere else, and the two
+    answers that moved to a team's season line where one game was asked
+    are what production already said - a P1 on the team relation, filed;
+    the stages' last three name writes (the grammar's subject, a nickname's
+    opponent, the quarter's player) are step 4's, since they choose an
+    intent as they write; and a helper that nearly took a connection took
+    the team index instead, which is how `con_in_the_reader` stays at 23.
+    Cost: no rebase (master had not moved) and a fresh four-population run
+    on both trees.
+
 ## The plan items, as written
 
 In order of lift per unit of structural change, each measured on the
