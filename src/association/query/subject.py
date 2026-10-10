@@ -66,7 +66,7 @@ from association.query.entities import (
     teams_named_by_word,
     teams_of,
 )
-from association.query.lexicon import season_from_text
+from association.query.lexicon import season_from_text, season_named
 from association.query.measures import THRESHOLD_STAT_NAMES
 from association.query.reading import (
     OWN_TEAM_RESTORABLE_INTENTS,
@@ -82,6 +82,7 @@ from association.query.reading import (
     Scope,
     SubjectKind,
 )
+from association.query.span import needed
 
 if TYPE_CHECKING:
     import re
@@ -621,7 +622,10 @@ def _conditions_read(question: str, players: tuple[str, ...], scope: Scope) -> t
     .. versionadded:: 6.0.0
     """
     found: list[Companion] = []
-    claims: list[Claim] = []
+    # A compare verb that owns a "with" ("contrast luka with sga") reads that
+    # "with" as joining two subjects, never as a companion's phrase: its
+    # words are read here (span.needed keeps the ones the reading needs).
+    claims: list[Claim] = [Claim(m.start(), m.end(), "companion") for m in lexicon.COMPARED_WITH.finditer(question)]
     for match in _companion_phrases(question):
         word, text = match.group(1).lower(), match.group(2)
         predicate, line, role_end = _condition_role(word, text)
@@ -992,7 +996,7 @@ def read_subject(con: duckdb.DuckDBPyConnection, question: str, intent: str, sco
     spellings = _spellings(con, question, routed)
     players = _merge_names([spellings.get(r, r) for r in routed], named)
     unrouted = _unrouted_companions(con, question, players, scope)
-    conditions, claims = _conditions_read(question, (*players, *unrouted), scope)
+    conditions, claims = _read_subject_conditions(question, (*players, *unrouted), scope)
     companions = tuple(dict.fromkeys(c.player for c in conditions))
     players = tuple(p for p in players if p not in companions)
     if _read_subject_alone(players, teams_here, conditions, scope):
@@ -1007,13 +1011,33 @@ def read_subject(con: duckdb.DuckDBPyConnection, question: str, intent: str, sco
     evidence = _evidence(named, routed, spellings, invented, team_word, opponent)
     if unrouted:
         evidence = (*evidence, f"companions the router named nobody for {list(unrouted)}")
-    subject = replace(_decide(players, teams, position, opponent, own_team, companions, evidence, intent, question), conditions=conditions, claims=claims)
+    decided = _decide(players, teams, position, opponent, own_team, companions, evidence, intent, question)
+    subject = replace(decided, conditions=conditions, claims=(*claims, *_decide_claims(decided, question)))
     # Read, not decided: the intent the subject's shape settles is the
     # parser's step (:func:`child_named`, with the stages run once under
     # it), and :func:`settle_subject` writes it here. Until 5.0.0's last
     # change this ran the stages under each child the words named, before
     # the parser ran them at all.
-    return replace(subject, invented=tuple(invented), named_season=season_from_text(question), intent=intent, filler=filler)
+    return replace(subject, invented=tuple(invented), named_season=season_from_text(question), intent=intent, filler=filler, claims=(*subject.claims, *_read_subject_season_claims(question)))
+
+
+def _read_subject_conditions(question: str, beside: tuple[str, ...], scope: Scope) -> tuple[tuple[Companion, ...], tuple[Claim, ...]]:
+    """The companions beside the subject (:func:`_conditions_read`), each
+    phrase's claim cut to the words the companion reader needed
+    (:func:`~association.query.span.needed`): "play" in "when Embiid and
+    Paul George play" reads the same companions without it. A word outside
+    every phrase that the companions turn on is claimed beside them."""
+    conditions, claims = _conditions_read(question, beside, scope)
+    return conditions, needed(question, claims, lambda probed: _conditions_read(probed, beside, scope)[0], outside="companion", gives_up=True)
+
+
+def _read_subject_season_claims(question: str) -> tuple[Claim, ...]:
+    """The words of the season the names are settled in, where the words
+    name one (:func:`~association.query.lexicon.season_named`): read here -
+    the span tagger reads them again, and its claim holds the same
+    characters; a coach's question runs no tagger."""
+    named_season = season_named(question)
+    return () if named_season is None else needed(question, [Claim(start, end, "season") for start, end in named_season[1]], season_from_text)
 
 
 def settle_subject(subject: Subject, intent: str, *, parent: str | None = None, words: str | None = None) -> Subject:
@@ -1159,6 +1183,14 @@ def _decide(
     if teams:
         return Subject("team", (), tuple(teams), position, opponent, own_team, companions, evidence)
     return Subject("everyone", (), (), position, opponent, own_team, companions, evidence)
+
+
+def _decide_claims(subject: Subject, question: str) -> tuple[Claim, ...]:
+    """The words :func:`_decide` read the subject's kind from beside the
+    names (which :func:`subject_claims` claims): the "player" of "a Hawks
+    player", which makes the team's players the subject."""
+    noun = lexicon.PLAYER_NOUN.search(question) if subject.kind == "team_players" else None
+    return () if noun is None else (Claim(noun.start(), noun.end(), "subject"),)
 
 
 def apply_subject(subject: Subject, scope: Scope, *, intent: str) -> Applied:

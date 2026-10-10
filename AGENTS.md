@@ -914,7 +914,25 @@ model's. Two things follow, and both matter when you add a shape:
   the characters it read** (Phase 3, step 2; the span is the first, the
   window the second, the games' cuts the third, the period the fourth, the
   line and the companions the fifth, the measure the sixth, the subject's
-  own the seventh).
+  own the seventh). Since Phase 3, step 3 a claim says what a rule's
+  reading DEPENDS on, measured by the rule itself: a tagger's claims are
+  cut to the words it could not do without - each word deleted in turn,
+  the claims ledger's own probe, and the tagger asked again over the
+  context its own words give it (`span.needed`: "games" in "last 10
+  games", "100" in "per 100 possessions", a "regular season" that reads
+  the default go) - and the words outside them its reading turns on are
+  claimed beside them under the family's name (the possessive that makes
+  "curry's last game" one game of his), except a word whose presence made
+  it read LESS (`gives_up`: "2024 and 2025" read as no season is two
+  unread years, never the span's). The grammars, the stages and the point
+  reader, rules over the whole question with lookaheads and blockers,
+  claim the words their decisions turned on (`span.read_by`, `what`
+  `intent`, `point`, `refused`: "compare" keeps a pair off the matchup
+  row). The subject reading is read once and is never probed: it declares
+  its claims where it reads (the names, the companions' phrases, the
+  kind's "player", a compare verb's "with", the season the names are
+  settled in). The content words no claim covers are `Reading.unread`
+  ("A word the reading does not depend on is counted").
   The subject's own has no tagger in the stages: its one reader is the
   subject reading (`subject.read_subject`, once per question, below), and
   its one writer `subject.apply_subject`, which writes ONE typed value,

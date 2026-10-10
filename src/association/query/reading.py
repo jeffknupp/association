@@ -1338,13 +1338,15 @@ def _kind_named(players: tuple[str, ...], teams: tuple[str, ...]) -> SubjectKind
 
 @dataclass(frozen=True)
 class Claim:
-    """The characters of the question one reader rule consumed - ``start``
-    and ``end`` as a slice of the question, and ``what`` it read them as
-    (``season``, ``season_type``, ``career``, ``range``, ...). A tagger
-    claims each span it read once; two rules claiming overlapping
-    characters is a bug the reader says out loud
-    (:func:`~association.query.span.claimed`), and the words nothing
-    claimed are what Phase 3's step 3 records on the Reading.
+    """The characters of the question one reader rule read - ``start`` and
+    ``end`` as a slice of the question, and ``what`` it read them as
+    (``season``, ``season_type``, ``career``, ``range``, ``intent``, ...).
+    A tagger claims each span it read once, cut to the words its reading
+    depends on (:func:`~association.query.span.needed`); a rule over the
+    whole question claims the words its decision turned on
+    (:func:`~association.query.span.read_by`). Two claims over one word fold
+    or join into one (:func:`~association.query.span.claimed`), and the
+    content words nothing claimed are the Reading's :attr:`Reading.unread`.
 
     .. versionadded:: 6.0.0
     """
@@ -2230,10 +2232,11 @@ class Reading:
     #: refuses by name rather than answer about somebody the question never
     #: mentioned (AGENTS.md: "when it cannot be repaired, say so").
     misread: tuple[str, ...] = ()
-    #: The characters of the question each tagger consumed
-    #: (:class:`Claim`), in the question's order: the span's since Phase 3,
-    #: step 2, each family's as its slice lands. What they leave unclaimed
-    #: is :attr:`unread`.
+    #: The characters of the question each reader rule read
+    #: (:class:`Claim`), in the question's order: each tagger's since Phase
+    #: 3, step 2, cut to what its reading depends on and joined by the
+    #: grammars', the stages' and the point reader's since step 3. What they
+    #: leave unclaimed is :attr:`unread`.
     #:
     #: .. versionadded:: 6.0.0
     claims: tuple[Claim, ...] = ()

@@ -129,8 +129,11 @@ def test_a_day_and_its_own_month_are_one_claim_named_for_both() -> None:
 def test_the_cuts_claims_ride_the_route_with_the_windows_and_the_spans() -> None:
     route = settle("game_log", {"player": "Jayson Tatum"}, "tatum last 5 home games vs the celtics in the 2024 playoffs")
     assert route.scope.cuts == Cuts(venue="home") and route.scope.window.count == 5 and route.scope.span.season == 2024
-    # The venue's "home" sits inside the window's "last 5 home games", one reading (the nested fold).
-    assert sorted(c.what for c in route.claims) == ["season", "season_type", "window"]
+    # Each tagger's claim is cut to the words it needed (Phase 3, step 3, span.needed): the window
+    # needs "last 5" and "games" (without "games", "last 5 home" names no window), not "home",
+    # which is the venue's alone.
+    q = "tatum last 5 home games vs the celtics in the 2024 playoffs"
+    assert [(c.what, q[c.start : c.end]) for c in route.claims] == [("window", "last 5"), ("venue", "home"), ("window", "games"), ("season", "2024"), ("season_type", "playoffs")]
 
 
 # ---------------- the typed value's door and projection ----------------

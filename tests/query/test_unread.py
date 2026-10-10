@@ -92,3 +92,78 @@ def test_a_word_the_model_copied_is_read_though_no_claim_holds_it(con: duckdb.Du
     route, _, _ = read_route(con, "how many points does embiid average", ["embiid"], "points")
     assert route.model_names == ("embiid",) and route.model_stat == "points"
     assert reading_from_route(con, "how many points does embiid average", route).unread == ("average",)
+
+
+# ---------------- the claims cut to what each rule read (span.needed, span.read_by) ----------------
+
+
+def test_a_claim_stops_short_of_a_word_its_rule_did_not_need() -> None:
+    """A tagger's claim keeps the words whose deletion changes what the
+    tagger read: ten games either way without "games" in "last 10 games";
+    "per" reads the rate with "100" or "possessions" gone, so neither is
+    claimed, and the claims ledger counts both unread."""
+    from association.query.reading import Claim
+    from association.query.span import needed
+    from association.query.window import WindowContext, read_window
+
+    question = "tatum last 10 games"
+    context = WindowContext(intent="game_log")
+    read = read_window(question, context)
+    assert [question[c.start : c.end] for c in read.claims] == ["last 10 games"]
+    assert [question[c.start : c.end] for c in needed(question, read.claims, lambda q: read_window(q, context).window)] == ["last 10"]
+    # A word between two kept ones that the rule did not need splits the claim; a function word between them stays.
+    assert needed("ab cd ef", [Claim(0, 8, "x")], lambda q: ("ab" in q.split(), "ef" in q.split())) == (Claim(0, 2, "x"), Claim(6, 8, "x"))
+    assert needed("ab of ef", [Claim(0, 8, "x")], lambda q: ("ab" in q.split(), "ef" in q.split())) == (Claim(0, 8, "x"),)
+
+
+def test_a_word_outside_every_claim_the_rule_turns_on_is_claimed_beside_them() -> None:
+    """With ``outside``, the rule is asked about every other word too: the
+    possessive that makes "curry's last regular season game" one game of
+    his is read by the window, though its claim starts at "last"."""
+    from association.query.span import needed
+    from association.query.window import WindowContext, read_window
+
+    question = "create a shot chart of steph curry's last regular season game"
+    context = WindowContext(intent="shot_chart")
+    read = read_window(question, context)
+    trimmed = needed(question, read.claims, lambda q: read_window(q, context).window, outside="window")
+    assert sorted(question[c.start : c.end] for c in trimmed) == ["curry's", "game", "last"]
+
+
+def test_a_word_whose_presence_makes_the_rule_read_less_is_not_claimed() -> None:
+    """``gives_up``: a word outside every claim whose deletion only ADDS to
+    the rule's reading suppressed what it read, and the words it suppressed
+    are unread - claiming it would hide them."""
+    from association.query.span import needed
+
+    def reads(q: str) -> tuple[str | None, ...]:
+        years = [w for w in q.split() if w.isdigit()]
+        return (years[0] if len(years) == 1 else None,)
+
+    question = "2024 and 2025 record"
+    assert needed(question, (), reads, outside="span") != ()
+    assert needed(question, (), reads, outside="span", gives_up=True) == ()
+
+
+def test_a_grammar_over_the_whole_question_claims_the_words_its_decision_turned_on() -> None:
+    """``read_by``: a row written as lookaheads reads the words it wants and
+    the words that rule it out anywhere in the question - "compare" keeps a
+    pair off the matchup row, and is read."""
+    from association.query.parse import parent_intent
+    from association.query.span import read_by
+
+    question = "compare curry and lebron vs the celtics"
+    assert parent_intent(question, "pair") == "player_compare"
+    assert [question[c.start : c.end] for c in read_by(question, "intent", lambda q: parent_intent(q, "pair"))] == ["compare"]
+    question = "show sga fingerprint for this season"
+    assert [question[c.start : c.end] for c in read_by(question, "intent", lambda q: parent_intent(q, "player"))] == ["fingerprint"]
+
+
+def test_the_reading_claims_what_the_grammar_the_stages_and_the_point_read(con: duckdb.DuckDBPyConnection) -> None:
+    """The words that name the intent and the point's word tables' words
+    are claimed by the rule that reads them, so the Reading lists none of
+    them unread: "fingerprint", "record", "log", "most"."""
+    assert _read(con, "show me a fingerprint for Maxey for 2026", names=["Maxey"]).unread == ()
+    assert _read(con, "luka ft log", names=["luka"], stat="freeThrowsMade").unread == ()
+    reading = _read(con, "how many points does embiid average", names=["embiid"], stat="points")
+    assert reading.unread == ("average",)

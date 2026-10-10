@@ -35,8 +35,8 @@ from .lexicon import BY_QUARTER, GAMES_WORDS, HALF_WORDS, ORDER_WORDS, PAST_N_SE
 from .line import LineContext, LinesRead, read_lines, threshold_named
 from .measure import BOOLEAN_KEYS, GAMES_STATS, MeasureContext, named, names_a_stat, read_measure
 from .period import PeriodContext, read_period, which_period
-from .reading import Claim, Companion, Line, Period, Scope, Window
-from .span import SpanContext, range_named, read_span
+from .reading import Claim, Companion, Cuts, Line, Period, Scope, Window
+from .span import SpanContext, needed, range_named, read_by, read_span
 from .span import claimed as claimed_once
 from .subject import is_team_name, subject_named_in, team_named_in_text, team_words_in
 from .window import WindowContext, read_window
@@ -181,9 +181,12 @@ class Route:
     #:
     #: .. versionadded:: 5.0.0
     subject: subject_reading.Subject | None = None
-    #: The characters of the question the taggers consumed
-    #: (:class:`~association.query.reading.Claim`): the span's
-    #: (:func:`~association.query.span.read_span`), carried onto the Reading.
+    #: The characters of the question the reader's rules read
+    #: (:class:`~association.query.reading.Claim`): each tagger's, cut to
+    #: what its reading depends on (:func:`~association.query.span.needed`),
+    #: the grammars' and the stages' by their decisions
+    #: (:func:`~association.query.span.read_by`), the subject reading's,
+    #: carried onto the Reading.
     #:
     #: .. versionadded:: 6.0.0
     claims: tuple[Claim, ...] = ()
@@ -991,10 +994,81 @@ def _settle(raw: dict[str, Any], question: str, companions: tuple[Companion, ...
     raw["subject"] = handed.subject
     if handed.opponent is not None:
         raw["opponent"] = handed.opponent
+    model_key = raw.get("stat")
+    given = dict(raw)
+    coach, slots = _settle_stages(raw, question, companions, handed)
+    # What the stages read: the words whose deletion changes the intent they
+    # settle or a slot they write (span.read_by) - the stages are rules over
+    # the whole question ("which team", "as a starter", "log"), so what they
+    # read is what their decision turned on (Phase 3, step 3).
+    stage_claims = read_by(question, "intent", lambda probed: _settle_stages_read(given, probed, companions, Named.of(probed, subject=handed.subject, opponent=handed.opponent)))
+    # A coach question is refused whatever the model said, and carries no
+    # slots, so it short-circuits before any of the taggers below run.
+    if coach:
+        return Route(intent=raw["intent"], claims=claimed_once(list(stage_claims)))
+    # The lines, at the position of the last stage that wrote one
+    # (``_route_record_when_threshold``, the pair's stat and number), over
+    # the settled intent.
+    line_context = LineContext(intent=raw["intent"])
+    read = read_lines(question, line_context)
+    slots["lines"] = (*lines, *read.lines)
+    # The measure, at the position of the last stage that wrote one of its
+    # slots (the side, after the lines), over the settled intent, the
+    # model's key as context and the stat the lines tagger read beside a line.
+    measure_context = _measure_context(raw, question, read)
+    measure = read_measure(question, measure_context)
+    for slot in _MEASURE_CONTEXT_KEYS:
+        slots.pop(slot, None)
+    slots["measure"] = measure.measure
+    # The period, the cuts, the window, then the span, last: each the one
+    # reader of its family, over the intent the stages settled - the
+    # period once the intent is final (the stage that chose it wrote the
+    # value beside its choice, and the parser again for a team's quarter,
+    # until Phase 3, step 2), the cuts at the position of the last stage
+    # that wrote one (an opponent that was the without list again,
+    # dropped), the span over the window and the cuts, since its rules
+    # read both.
+    period_context = PeriodContext(intent=raw["intent"])
+    period = read_period(question, period_context)
+    slots["period"] = period.period
+    cuts_context = CutsContext(intent=raw["intent"], split=slots.get("split"), opponent=slots.get("opponent"), without=_absent(companions))
+    cuts = read_cuts(question, cuts_context)
+    slots.pop("opponent", None)
+    slots["cuts"] = cuts.cuts
+    window_context = WindowContext(intent=raw["intent"], boolean_stat=measure.measure is not None and measure.measure.key in BOOLEAN_KEYS)
+    window = read_window(question, window_context)
+    slots["window"] = window.window
+    span_context = _span_context(raw["intent"], slots, question, window=window.window, cuts=cuts)
+    span = read_span(question, span_context)
+    slots["span"] = span.span
+    # Each tagger's claims cut to the words it could not do without, asked
+    # of the tagger itself (span.needed), with the context its own words
+    # give it read again from the same words (the measure the words name,
+    # an order word, the span's guard words); and every other word its
+    # reading turns on claimed beside them, under the family's name - the
+    # possessive of "curry's last game", the "record" of a matchup's career.
+    claims = [
+        *needed(question, period.claims, lambda q: read_period(q, period_context).period, outside="period", gives_up=True),
+        *needed(question, cuts.claims, lambda q: _settle_cuts_read(read_cuts(q, cuts_context)), outside="cuts", gives_up=True),
+        *needed(question, window.claims, lambda q: read_window(q, window_context).window, outside="window", gives_up=True),
+        *needed(question, read.claims, lambda q: _settle_lines_read(read_lines(q, line_context)), outside="line", gives_up=True),
+        *needed(question, measure.claims, lambda q: read_measure(q, _measure_context({**raw, "stat": _settle_worded_key(q, model_key)}, q, read)).measure, outside="measure", gives_up=True),
+        *needed(question, span.claims, lambda q: read_span(q, _span_context(raw["intent"], slots, q, window=window.window, cuts=cuts)).span, outside="span", gives_up=True),
+    ]
+    # The stages' working dict crosses into the typed Scope here, once: a
+    # value no field holds raises ScopeError to the parser.
+    return Route(intent=raw["intent"], scope=Scope.from_slots(slots), claims=claimed_once([*stage_claims, *claims]))
+
+
+def _settle_stages(raw: dict[str, Any], question: str, companions: tuple[Companion, ...], handed: Named) -> tuple[bool, dict[str, Any]]:
+    """The stages before the taggers, over ``raw`` (rewritten in place):
+    whether the question is a coach's (refused whatever the model said; no
+    slot is read) and the slots the stages settled, with ``raw["intent"]``
+    the intent they settled on."""
     # A coach question is refused whatever the model said, and carries no
     # slots, so it short-circuits before any of the stages below run.
     if _route_coach_intent(raw, question):
-        return Route(intent=raw["intent"])
+        return True, {}
     # The measure the words name stands over the model's key as the stages'
     # CONTEXT (the intents that turn on a games count read it); the measure
     # tagger reads the family itself once the intent is settled.
@@ -1014,38 +1088,38 @@ def _settle(raw: dict[str, Any], question: str, companions: tuple[Companion, ...
     _route_split_slot(slots, question)
     _route_shot_distance_subject(raw["intent"], slots, question)
     _route_subject_slots(raw["intent"], slots, handed)
-    # The lines, at the position of the last stage that wrote one
-    # (``_route_record_when_threshold``, the pair's stat and number), over
-    # the settled intent.
-    read = read_lines(question, LineContext(intent=raw["intent"]))
-    slots["lines"] = (*lines, *read.lines)
-    # The measure, at the position of the last stage that wrote one of its
-    # slots (the side, after the lines), over the settled intent, the
-    # model's key as context and the stat the lines tagger read beside a line.
-    measure = read_measure(question, _measure_context(raw, question, read))
-    for slot in _MEASURE_CONTEXT_KEYS:
-        slots.pop(slot, None)
-    slots["measure"] = measure.measure
-    # The period, the cuts, the window, then the span, last: each the one
-    # reader of its family, over the intent the stages settled - the
-    # period once the intent is final (the stage that chose it wrote the
-    # value beside its choice, and the parser again for a team's quarter,
-    # until Phase 3, step 2), the cuts at the position of the last stage
-    # that wrote one (an opponent that was the without list again,
-    # dropped), the span over the window and the cuts, since its rules
-    # read both.
-    period = read_period(question, PeriodContext(intent=raw["intent"]))
-    slots["period"] = period.period
-    cuts = read_cuts(question, CutsContext(intent=raw["intent"], split=slots.get("split"), opponent=slots.get("opponent"), without=_absent(companions)))
-    slots.pop("opponent", None)
-    slots["cuts"] = cuts.cuts
-    window = read_window(question, WindowContext(intent=raw["intent"], boolean_stat=measure.measure is not None and measure.measure.key in BOOLEAN_KEYS))
-    slots["window"] = window.window
-    span = read_span(question, _span_context(raw["intent"], slots, question, window=window.window, cuts=cuts))
-    slots["span"] = span.span
-    # The stages' working dict crosses into the typed Scope here, once: a
-    # value no field holds raises ScopeError to the parser.
-    return Route(intent=raw["intent"], scope=Scope.from_slots(slots), claims=claimed_once([*period.claims, *cuts.claims, *window.claims, *read.claims, *measure.claims, *span.claims]))
+    return False, slots
+
+
+def _settle_stages_read(raw: dict[str, Any], question: str, companions: tuple[Companion, ...], handed: Named) -> tuple[Any, bool, dict[str, Any]]:
+    """What the stages settle over ``question`` from a copy of ``raw`` - the
+    intent, whether it is a coach's, the slots that reach the Scope - as one
+    value, the stages' reading the words they read are claimed by
+    (:func:`_settle`)."""
+    probed = dict(raw)
+    coach, slots = _settle_stages(probed, question, companions, handed)
+    # The measure's keys are the stages' context alone: the measure tagger
+    # reads the family itself, so they leave the slots before the Scope.
+    return probed["intent"], coach, {key: value for key, value in slots.items() if key not in _MEASURE_CONTEXT_KEYS}
+
+
+def _settle_worded_key(question: str, model_key: Any) -> Any:
+    """The measure key the stages read beside the words: the one the words
+    name (:func:`~association.query.measure.named`), else the model's."""
+    worded = named(question)
+    return worded[0] if worded is not None else model_key
+
+
+def _settle_cuts_read(read: CutsRead) -> tuple[Cuts, int | None]:
+    """What the cuts tagger writes into the reading: the cuts, and the year
+    a dated range opened at, which the span tagger reads."""
+    return read.cuts, read.dated_since
+
+
+def _settle_lines_read(read: LinesRead) -> tuple[tuple[Line, ...], str | None]:
+    """What the lines tagger writes into the reading: the lines, and the
+    stat it read beside a threshold, which the measure tagger reads."""
+    return read.lines, read.stat
 
 
 def _measure_context(raw: dict[str, Any], question: str, read: LinesRead) -> MeasureContext:

@@ -200,7 +200,10 @@ def _question_differences(before: dict[str, Any], after: dict[str, Any], args: a
     # remarks were recorded has none to compare.
     if "remarks" in before and "remarks" in after and not args.ignore_remarks:
         found.extend(value_differences("remarks", before["remarks"], after["remarks"], tolerance=args.tolerance))
-    return [each for each in found if f"{each.stage}.{each.path}" not in args.ignore]
+    # An ignored field is left out whole - a list's items with it ("reading.unread[2]"), as
+    # reader_cmp.py leaves them out - so a field both runs hold and a commit moves is compared
+    # by its values' counts alone.
+    return [each for each in found if f"{each.stage}.{each.path}".split("[")[0] not in args.ignore]
 
 
 def _ignored_values(records: dict[str, dict[str, Any]], ignored: list[str]) -> dict[str, Counter[str]]:

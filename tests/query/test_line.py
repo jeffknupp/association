@@ -259,7 +259,10 @@ def test_the_subject_reading_reads_the_companions_and_claims_their_phrase(league
     question = "jaylen brown game log without jayson tatum this season"
     subject = read_subject(league.con, question, "game_log", Scope(subject=Who(kind="player", players=("Jaylen Brown",))))
     assert subject.conditions == (Companion(player="Jayson Tatum", predicate="absent"),)
-    assert len(subject.claims) == 1 and subject.claims[0].what == "companion" and question[subject.claims[0].start : subject.claims[0].end] == "without jayson tatum"
+    # The phrase's claim cut to the words the companion reader needed (Phase 3, step 3,
+    # span.needed): either of "jayson" and "tatum" names him alone, so the keyword is the one
+    # word it cannot do without; and the season the names are settled in is the reading's too.
+    assert [(c.what, question[c.start : c.end]) for c in subject.claims] == [("companion", "without"), ("season", "season")]
     reached = read_subject(league.con, "celtics record when jayson tatum scores 20+ points", "record_when", Scope(subject=Who(kind="team", teams=("Boston Celtics",))))
     assert reached.conditions == (Companion(player="Jayson Tatum", predicate="reached", line=Line(measure="points", value=20, as_typed="20+ points")),)
     # The companions reach the Reading typed, through the one writer, and ride the route's claims.

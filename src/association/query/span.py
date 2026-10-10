@@ -23,7 +23,8 @@ intent's implied careers, then both types for a bare "last N games".
 from __future__ import annotations
 
 import itertools
-from dataclasses import dataclass
+from collections.abc import Callable, Iterable
+from dataclasses import dataclass, fields, is_dataclass
 
 from association.nba.season import current_season
 from association.query import lexicon
@@ -314,6 +315,136 @@ def _reads_both_types(question: str, context: SpanContext, career: bool, since: 
     if context.game_n or career or since is not None or context.date:
         return False
     return not (lexicon.PLAYOFF_WORDS.search(question) or lexicon.REGULAR_SEASON_WORDS.search(question))
+
+
+def needed(question: str, claims: Iterable[Claim], reads: Callable[[str], object], *, outside: str | None = None, gives_up: bool = False) -> tuple[Claim, ...]:
+    """``claims`` cut to the words the rule that made them could not do
+    without (Phase 3, step 3): each content word a claim touches is deleted
+    from the question in turn (:func:`~association.query.lexicon.without_word`,
+    the claims ledger's own probe) and the rule asked again - ``reads``, its
+    reading of a question, everything it writes into the reading - and a
+    word whose deletion leaves that reading as it was is one the rule did
+    not need: its claim stops short of it. "games" in "last 10 games" (ten
+    games either way), the "100" of "netpoints per 100 possessions" (the
+    rate reads per 100 without it), "regular season" where the season type
+    read is the default anyway. A function word
+    (:data:`~association.query.lexicon.CONTENT_STOPWORDS`) between two words
+    kept stays inside the claim; one at its edge goes. A claim keeps its
+    ``what``, split where a word between two kept ones was not needed.
+
+    With ``outside``, every other content word is asked too, and a run of
+    the ones the rule's reading turns on is claimed under that name: a word
+    the rule read without claiming it - the possessive that makes "curry's
+    last game" one game of his, the "record" that makes a matchup his
+    career, a "contrast" that keeps "with sga" from naming a companion.
+
+    With ``gives_up``, a word outside every claim whose deletion only ADDS
+    to the reading (:func:`_gives_up`: every field the rule set stays as it
+    was, and one it left unset is set) is not claimed: its presence made the
+    rule read less, and the words it suppressed are words nothing read.
+    "2024 and 2025" names two seasons, so neither year is THE season, and
+    the span reads none - the years are unread, and say so, where claiming
+    them as the span's would hide that the question's seasons were dropped.
+
+    So the claims and the ledger measure one thing - which words the
+    reading depends on - from inside each rule and from outside the whole
+    reading, and the Reading's unread words (:attr:`Reading.unread
+    <association.query.reading.Reading.unread>`) agree with the ledger's
+    wherever the reading of a word is one rule's.
+
+    .. versionadded:: 6.0.0
+    """
+    claims = tuple(claims)
+    if not claims and outside is None:
+        return ()
+    held = reads(question)
+    tokens = lexicon.content_tokens(question)
+    verdicts: dict[tuple[int, int], bool | None] = {}
+
+    def verdict(start: int, end: int, word: str) -> bool | None:
+        """Whether the word at ``start``-``end`` was needed, asked once -
+        None for a function word, kept only between two words kept."""
+        if (start, end) not in verdicts:
+            verdicts[(start, end)] = None if not word or lexicon.without_possessive(word) in lexicon.CONTENT_STOPWORDS else reads(lexicon.without_word(question, start, end)) != held
+        return verdicts[(start, end)]
+
+    kept: list[Claim] = []
+    for claim in claims:
+        touched = [(index, max(start, claim.start), min(end, claim.end), verdict(start, end, word)) for index, (start, end, word) in enumerate(tokens) if start < claim.end and end > claim.start]
+        kept.extend(_needed_runs(touched, claim.what))
+    if outside is not None:
+        untouched = [(index, start, end, verdict(start, end, word)) for index, (start, end, word) in enumerate(tokens) if not any(start < claim.end and end > claim.start for claim in claims)]
+        if gives_up:
+            untouched = [(index, start, end, False if keep and _gives_up(held, reads(lexicon.without_word(question, start, end))) else keep) for index, start, end, keep in untouched]
+        kept.extend(_needed_runs(untouched, outside))
+    return tuple(kept)
+
+
+def _gives_up(held: object, probed: object) -> bool:
+    """Whether ``probed`` - a rule's reading with one word deleted - only
+    adds to ``held``, its reading of the whole question: each part ``held``
+    set is the same, and a part it left unset (None, False, empty) is set.
+    Parts are a typed value's fields, a tuple's items in order."""
+    if held == probed:
+        return False
+    return _gives_up_parts(held, probed)
+
+
+def _gives_up_parts(held: object, probed: object) -> bool:
+    """:func:`_gives_up` without the equality, part by part."""
+    if held is None or held is False or held == () or held == "":
+        return True
+    if is_dataclass(held) and not isinstance(held, type) and type(held) is type(probed):
+        return all(getattr(held, f.name) == getattr(probed, f.name) or _gives_up_parts(getattr(held, f.name), getattr(probed, f.name)) for f in fields(held))
+    if isinstance(held, tuple) and isinstance(probed, tuple) and len(held) == len(probed):
+        return all(a == b or _gives_up_parts(a, b) for a, b in zip(held, probed, strict=True))
+    return False
+
+
+def read_by(question: str, what: str, reads: Callable[[str], object]) -> tuple[Claim, ...]:
+    """The words of ``question`` a rule that reads the whole question
+    decided by - a grammar of rows written as lookaheads, which look for the
+    words they want and the words that rule them out anywhere in it - as
+    claims named ``what``: each word whose deletion changes the rule's
+    decision (``reads``; :func:`needed` over no claim, every word
+    ``outside``). What such a rule consumed is no stretch of characters its
+    match spans, so what it read is what its decision turned on.
+
+    .. versionadded:: 6.0.0
+    """
+    return needed(question, (), reads, outside=what)
+
+
+def _needed_runs(pieces: list[tuple[int, int, int, bool | None]], what: str) -> list[Claim]:
+    """One claim per run of kept words in ``pieces`` (each the word's place
+    in the question, its stretch, and whether it was needed - None for a
+    function word, kept only between two kept ones), in order, each named
+    ``what``: a run ends at a word not needed, and where the next piece is
+    not the question's next word."""
+    out: list[Claim] = []
+    run: list[tuple[int, int]] = []
+    pending: list[tuple[int, int]] = []
+    last = -2
+    for index, start, end, keep in pieces:
+        if index != last + 1:
+            out.extend(_needed_claim(run, what))
+            run, pending = [], []
+        last = index
+        if keep is None:
+            pending.append((start, end))
+        elif keep:
+            run.extend([*pending, (start, end)] if run else [(start, end)])
+            pending = []
+        else:
+            out.extend(_needed_claim(run, what))
+            run, pending = [], []
+    out.extend(_needed_claim(run, what))
+    return out
+
+
+def _needed_claim(run: list[tuple[int, int]], what: str) -> list[Claim]:
+    """One claim over a run of kept words, or none for an empty run."""
+    return [Claim(run[0][0], run[-1][1], what)] if run else []
 
 
 def claimed(claims: list[Claim]) -> tuple[Claim, ...]:

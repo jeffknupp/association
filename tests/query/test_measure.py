@@ -129,10 +129,13 @@ def test_the_tagger_claims_the_characters_it_read_once_and_they_ride_the_route()
     route = settle("leaderboard", {}, question)
     # The rate's stretch inside the grammar's is the one reading, folded into one claim of it on the route.
     assert [(c.what, question[c.start : c.end]) for c in route.claims if c.what != "window"] == [("measure", "defensive netpoints / 100")]
-    # Two stretches of one reading that overlap without one holding the other are one claim of it, not a joined one.
+    # Two stretches of one reading that overlap without one holding the other are one claim of it,
+    # not a joined one - cut to the words the tagger needed (Phase 3, step 3, span.needed): "per"
+    # reads the rate with either "100" or "possessions" gone, so neither is claimed, and both are
+    # unread words, as the claims ledger counts them.
     question = "which players ranked in the top 10 for offensive netpoints per 100 possessions"
     route = settle("leaderboard", {}, question)
-    assert [(c.what, question[c.start : c.end]) for c in route.claims if c.what != "window"] == [("measure", "offensive netpoints per 100 possessions")]
+    assert [(c.what, question[c.start : c.end]) for c in route.claims if c.what != "window"] == [("measure", "offensive netpoints per")]
     # A word the split found between characters its pattern breaks on is read, with no characters to claim.
     assert named("most (3ot + 4ot) points in a game by a team nba") == ("points", Claim(17, 23, "measure"))
     assert named("who averages the most TO per game") == ("turnovers", Claim(22, 24, "measure"))

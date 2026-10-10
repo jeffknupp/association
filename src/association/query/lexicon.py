@@ -2861,6 +2861,25 @@ def content_words(question: str, names: tuple[str, ...] | list[str], stat: str) 
     return [(start, end, word) for start, end, word in content_tokens(question) if word and without_possessive(word) not in CONTENT_STOPWORDS and not read_by_the_model(word, names, stat)]
 
 
+CONTENT_SPACES = re.compile(r"\s+")
+"""A run of white space, closed to one space where a word was deleted
+(:func:`without_word`).
+
+.. versionadded:: 6.0.0
+"""
+
+
+def without_word(question: str, start: int, end: int) -> str:
+    """``question`` with the word at ``start``-``end`` deleted and the gap
+    it left closed - the claims ledger's probe, and the one a rule asks
+    itself whether it needed a word by (:func:`~association.query.span.needed`).
+
+    .. versionadded:: 6.0.0
+       ``scripts/claims_ledger.py``'s ``without`` until Phase 3, step 3.
+    """
+    return CONTENT_SPACES.sub(" ", question[:start] + " " + question[end:]).strip()
+
+
 def unread_words(question: str, claimed: list[tuple[int, int]], names: tuple[str, ...] | list[str], stat: str) -> tuple[str, ...]:
     """The content words of ``question`` (:func:`content_words`) no stretch
     of ``claimed`` touches - each ``(start, end)`` the characters a reader

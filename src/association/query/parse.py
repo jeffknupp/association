@@ -41,6 +41,7 @@ from association.query.reading import TEAM_ONLY_INTENTS, Cause, Claim, LeftOut, 
 from association.query.reading import Subject as ReadSubject
 from association.query.router import Named, Route, _route_calendar_slots_split, settle
 from association.query.span import claimed as claimed_once
+from association.query.span import read_by
 from association.query.subject import (
     Subject,
     _companion_phrases,
@@ -180,7 +181,11 @@ def parent_intent(question: str, kind: str, companions: bool = False) -> str:
     """The parent intent :data:`PARENT_GRAMMAR` names for ``question`` read
     as a subject of ``kind``; ``companions`` says the reading found a player
     named beside the subject with a role, which the ``<kind>+companions``
-    rows require ("when playing away" and "when he started" name nobody)."""
+    rows require ("when playing away" and "when he started" name nobody).
+    What the grammar read is claimed by its decision
+    (:func:`~association.query.span.read_by`, in :func:`read_route`): a row
+    written as lookaheads reads the whole question for the words it wants
+    and the words that rule it out."""
     for kinds, pattern, parent in _PARENT_ROWS:
         if (kind in kinds or (companions and f"{kind}+companions" in kinds)) and pattern.search(question):
             return parent
@@ -542,7 +547,8 @@ def read_route(con: duckdb.DuckDBPyConnection, question: str, names: list[str] |
     names = [_read_route_folded(name) for name in names or []]
     slots = _slots_from_names(con, [_as_typed_part(con, question, _as_typed(question, name)) for name in names], stat)
     # THE reading of who the question is about: everything after this
-    # settles it (subject.settle_subject), nothing reads the names again.
+    # settles it (subject.settle_subject), nothing reads the names again -
+    # not even to ask which words it read (its claims are its own, below).
     read = read_subject(con, question, "other", Scope.from_slots(slots))
     subject = _two_teams(read, question, slots)
     # A quarter or half used as a condition on which games count is read
@@ -561,7 +567,15 @@ def read_route(con: duckdb.DuckDBPyConnection, question: str, names: list[str] |
     # Who the stages are handed: the names the reading read, typed, and the
     # words they settle a name from - read over the question they read.
     named = _read_route_names(subject, slots, question)
-    parent = parent_intent(question, subject.kind, _read_route_beside(subject, question))
+    beside = _read_route_beside(subject, question)
+    parent = parent_intent(question, subject.kind, beside)
+    # What the grammar read: the words whose deletion names another parent
+    # (span.read_by) - a row's own words ("fingerprint", "record"), a word
+    # that rules an earlier row out ("compare" keeps a pair off the matchup
+    # row), the meeting word that makes two teams the kind it reads ("how
+    # many times did the 76ers play boston"); not the "game" of "game log",
+    # which "log" names alone.
+    parent_claims = read_by(question, "intent", lambda probed: parent_intent(probed, _two_teams(read, probed, slots).kind, beside))
     staged, decisions, words = _read_route_staged(question, {"stat": stat} if stat else {}, parent, read, period_lines, named)
     final = staged.intent
     # A teammate's start is his, never the subject's own split: the stages
@@ -579,7 +593,7 @@ def read_route(con: duckdb.DuckDBPyConnection, question: str, names: list[str] |
     )
     # The companions' phrases are the subject reading's claims, the line in
     # a quarter the parser's; the taggers' ride the staged route.
-    claims = claimed_once([*staged.claims, *period_claims, *read.claims])
+    claims = claimed_once([*staged.claims, *period_claims, *read.claims, *parent_claims])
     return Route(final, scope, decisions, subject=settled, claims=claims, model_names=given, model_stat=stat), subject, parent
 
 
@@ -607,6 +621,11 @@ def _read_route_staged(question: str, slots: dict[str, Any], parent: str, read: 
     named = child_named(read, parent, question)
     companions = read.conditions
     decisions: list[Decision] = []
+    # The words the child grammars read, whether a child stands or the
+    # stages decline it (the decision records them either way): the words
+    # whose deletion names another child, or its words otherwise (a child's
+    # words are said in its reason) - span.read_by.
+    child_claims = read_by(question, "intent", lambda probed: child_named(read, parent, probed))
     if named is not None:
         child, words = named
         staged = settle(child, slots, question, companions, lines=lines, handed=handed)
@@ -616,12 +635,12 @@ def _read_route_staged(question: str, slots: dict[str, Any], parent: str, read: 
             decisions.append(Decision("parser", "intent", parent, child, _why_named(child, words)))
             if staged.intent != child:
                 decisions.append(Decision("parser", "intent", child, staged.intent, "the stages settle it from the question's words"))
-            return staged, tuple(decisions), words
+            return replace(staged, claims=(*staged.claims, *child_claims)), tuple(decisions), words
         decisions.append(Decision("parser", "intent", child, parent, f"the words {words!r} name {child}, and the stages declined it"))
     staged = settle(parent, slots, question, companions, lines=lines, handed=handed)
     if staged.intent != parent:
         decisions.append(Decision("parser", "intent", parent, staged.intent, "the stages settle it from the question's words"))
-    return staged, tuple(decisions), None
+    return replace(staged, claims=(*staged.claims, *child_claims)), tuple(decisions), None
 
 
 def _why_named(child: str, words: str | None) -> str:
@@ -672,30 +691,52 @@ def reading_from_route(con: duckdb.DuckDBPyConnection, question: str, route: Rou
     applied = apply_subject(subject, scope, intent=route.intent)
     # The subject reading's claims on the names it settled and their
     # position group, beside the taggers' and the companions' the route
-    # carries.
-    claims = claimed_once([*route.claims, *subject_claims(teams_of(con), question, applied.scope)])
+    # carries. The subject is read once (read_route), so its claims are the
+    # ones it makes where it reads - never found by reading it again.
+    claims = [*route.claims, *subject_claims(teams_of(con), question, applied.scope)]
     reading = Reading(
         scope=applied.scope,
         intent=applied.intent,
         subject=subject,
         decisions=(*_subject_decisions(subject), *route.decisions, *applied.decisions),
         misread=tuple(applied.dropped),
-        claims=claims,
-        # The words nothing claimed, by the claims ledger's rule, over the
-        # question as it was asked (the fold keeps every position).
-        unread=lexicon.unread_words(asked, [(c.start, c.end) for c in claims], (*route.model_names, *_reading_from_route_names(applied.scope, subject, applied.intent)), route.model_stat),
+        claims=claimed_once(claims),
     )
     pointed = with_point(con, question, reading)
     # What the words name that nothing reads, read once, here: a refusal
     # said before any reader runs, and the shapes recognized and read by
     # nothing, said where the answer side declines (the question as it was
     # asked, unfolded, as the answering loop read it until Phase 3, step 0).
+    players, teams = players_of(con), teams_of(con)
+    refused = _reading_from_route_refused(players, teams, asked, pointed)
+    unsupported = _reading_from_route_unsupported(asked, pointed)
+    left_out = _reading_from_route_left_out(players, asked, pointed)
+    # What the point reader's word tables and the refusals read, by their
+    # decisions (span.read_by): "most", "at least 400 attempts", "per game",
+    # a championship. The point reader reads its tables over the whole
+    # question, as the grammars do.
+    claims += read_by(question, "point", lambda probed: _reading_from_route_point(with_point(con, probed, reading)))
+    claims += read_by(
+        asked,
+        "refused",
+        lambda probed: (_reading_from_route_refused(players, teams, probed, pointed), _reading_from_route_unsupported(probed, pointed), _reading_from_route_left_out(players, probed, pointed)),
+    )
+    claims = list(claimed_once(claims))
     return replace(
         pointed,
-        refused=_reading_from_route_refused(players_of(con), teams_of(con), asked, pointed),
-        unsupported=_reading_from_route_unsupported(asked, pointed),
-        left_out=_reading_from_route_left_out(players_of(con), asked, pointed),
+        refused=refused,
+        unsupported=unsupported,
+        left_out=left_out,
+        claims=tuple(claims),
+        # The words nothing claimed, by the claims ledger's rule, over the
+        # question as it was asked (the fold keeps every position).
+        unread=lexicon.unread_words(asked, [(c.start, c.end) for c in claims], (*route.model_names, *_reading_from_route_names(applied.scope, subject, applied.intent)), route.model_stat),
     )
+
+
+def _reading_from_route_point(reading: Reading) -> tuple[Reading | None, str | None, Cause | None]:
+    """What the point reader wrote: the point, or why there is none."""
+    return reading.point, reading.point_declined, reading.point_refusal
 
 
 # The slots a name is recorded under, on the reading's scope and on its
