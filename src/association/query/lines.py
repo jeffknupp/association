@@ -24,7 +24,7 @@ from dataclasses import dataclass
 from association.query import lexicon
 from association.query.measure import spelled
 from association.query.measures import THRESHOLD_STAT_NAMES
-from association.query.reading import Cause, Line, LineOp, PointRefused, Scope
+from association.query.reading import GAMES_COUNTED, Cause, Line, LineOp, PointRefused, Scope, asked_label
 
 #: How the answer names each column a game was kept under or over.
 _MEASURE_LABELS: dict[str, str] = {
@@ -185,12 +185,12 @@ def threshold_count_line(scope: Scope) -> tuple[str, int | None]:
     if column is None or (threshold is None and not lined):
         message = f"threshold_count needs a known stat and an integer threshold, got {stat!r}/{threshold!r}"
         if column is None and stat is not None and stat.strip():
-            raise PointRefused(Cause(kind="unknown_stat", facts={"intent": "threshold_count", "stat": stat}), message)
+            raise PointRefused(Cause(kind="unknown_stat", facts={"intent": asked_label(GAMES_COUNTED), "stat": stat}), message)
         if column is None and threshold is not None:
-            raise PointRefused(Cause(kind="threshold_needs_stat", facts={"intent": "threshold_count", "threshold": threshold}), message)
+            raise PointRefused(Cause(kind="threshold_needs_stat", facts={"intent": asked_label(GAMES_COUNTED), "threshold": threshold}), message)
         if column is None:
-            raise PointRefused(Cause(kind="needs_stat", facts={"intent": "threshold_count"}), message)
-        raise PointRefused(Cause(kind="needs_threshold", facts={"intent": "threshold_count", "stat": column}), message)
+            raise PointRefused(Cause(kind="needs_stat", facts={"intent": asked_label(GAMES_COUNTED)}), message)
+        raise PointRefused(Cause(kind="needs_threshold", facts={"intent": asked_label(GAMES_COUNTED), "stat": column}), message)
     if threshold is None:
         return column, None
     if threshold < 1:
@@ -198,7 +198,7 @@ def threshold_count_line(scope: Scope) -> tuple[str, int | None]:
         # pointers made since 2020" arrived as threshold 0 and was answered as
         # "the most games with 0+ 3-pointers".
         raise PointRefused(
-            Cause(kind="threshold_counts_every_game", facts={"intent": "threshold_count", "threshold": threshold}),
+            Cause(kind="threshold_counts_every_game", facts={"intent": asked_label(GAMES_COUNTED), "threshold": threshold}),
             f"a threshold of {threshold} counts every game - not a question threshold_count answers",
         )
     return column, threshold

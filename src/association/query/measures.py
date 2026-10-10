@@ -22,7 +22,7 @@ from association.query.lexicon import MEASURE_WORDS
 # is re-exported here under the name team_metrics keys its catalog by.
 from association.query.lexicon import STAT_ALIASES as STAT_ALIASES
 from association.query.measure import column_name, measure_name, metric_name
-from association.query.reading import Cause, Measure, PointRefused
+from association.query.reading import LINE_RUNS, PLAYER_LOG, Cause, Measure, PointRefused, asked_label
 
 # The columns a quarter or half rebuilds - the period relation's own list,
 # moved here from player_games.py on 2026-10-02 because the parser reads it
@@ -251,14 +251,14 @@ def streak_column(measure: Measure | None, threshold: int | None) -> str | None:
     column = measure.key if measure is not None and measure.key in THRESHOLD_STAT_NAMES and measure.whose == "own" else None
     named_stat = stat is not None and bool(stat.strip()) and stat.strip().casefold() not in STREAK_RESULT_STATS
     if named_stat and column is None:
-        raise PointRefused(Cause(kind="unknown_stat", facts={"intent": "streak", "stat": stat}), f"no per-game column for stat {stat!r}")
+        raise PointRefused(Cause(kind="unknown_stat", facts={"intent": asked_label(LINE_RUNS), "stat": stat}), f"no per-game column for stat {stat!r}")
     message = f"a streak of a stat needs both a known stat and a positive threshold, got {stat!r}/{threshold!r}"
     if column is not None and threshold is None:
-        raise PointRefused(Cause(kind="needs_threshold", facts={"intent": "streak", "stat": column}), message)
+        raise PointRefused(Cause(kind="needs_threshold", facts={"intent": asked_label(LINE_RUNS), "stat": column}), message)
     if column is None and threshold is not None:
-        raise PointRefused(Cause(kind="threshold_needs_stat", facts={"intent": "streak", "threshold": threshold}), message)
+        raise PointRefused(Cause(kind="threshold_needs_stat", facts={"intent": asked_label(LINE_RUNS), "threshold": threshold}), message)
     if threshold is not None and threshold < 1:
-        raise PointRefused(Cause(kind="threshold_counts_every_game", facts={"intent": "streak", "threshold": threshold}), message)
+        raise PointRefused(Cause(kind="threshold_counts_every_game", facts={"intent": asked_label(LINE_RUNS), "threshold": threshold}), message)
     return column
 
 
@@ -386,5 +386,5 @@ def log_extras(measure: Measure | None) -> tuple[str, ...]:
     if key in GAME_LOG_STAT_COLUMNS:
         return GAME_LOG_STAT_COLUMNS[key]
     if key in PLAYER_STAT_NAMES or key in HISTORY_STATS or key in THRESHOLD_STAT_NAMES or resolve_metric(measure) is not None:
-        raise PointRefused(Cause(kind="unknown_stat", facts={"intent": "game_log", "stat": measure.as_typed}), f"a game log has no per-game column for {measure.as_typed!r}")
+        raise PointRefused(Cause(kind="unknown_stat", facts={"intent": asked_label(PLAYER_LOG), "stat": measure.as_typed}), f"a game log has no per-game column for {measure.as_typed!r}")
     return ()
