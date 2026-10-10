@@ -1315,15 +1315,25 @@ things follow, and both matter when you add a shape:
   reader's path again. The reader of the question's words holds no
   connection at all (Phase 3, step 4, slice (b); `con_in_the_reader` 23 ->
   0): `parse.read_route`, its last step `parse._reading`, `classify_span`
-  and `subject.read_subject` take a `names.NameIndex` - the players' and the
-  teams' indexes and `names.ActivePlayers`, the players with a box score
-  in the latest season on record, which a typo near more than five
-  players is narrowed by (`entities.suggest_players`; measured, the one
-  warehouse fact the reader read beyond the two tables, through
-  `classify_span` on 2 of the 2,710 readings) - all three read by
-  `Agent.ask` (`entities.names_of`) before the parser runs, so the reader
-  issues no statement: it issued 38.5 a question before the index, the two
-  table loads (inside its first lookups) until the slice, and none now.
+  and `subject.read_subject` take a `names.NameIndex` - the players' and
+  the teams' indexes, which `Agent.ask` reads before the parser runs
+  (`entities.names_of`), and `names.ActivePlayers`, the players with a box
+  score in the latest season on record, which a typo near more than five
+  players is narrowed by (`entities.suggest_players`; the one warehouse
+  fact the reader reads beyond the two tables, through `classify_span` on
+  2 of the 2,710 readings), read on first use in the block through the
+  index (`NameIndex.active`, a reader the answering loop hands it) so no
+  question that does not narrow pays for it. Measured over the 628
+  recorded questions through `Agent.ask` with a counting connection
+  (`~/association-research/stages/statements_per_question.py`,
+  2026-10-10): 5.17 statements a question before the slice - the two table
+  loads inside the parser's first lookups, the latest season and a
+  box-score narrowing on 2 questions (8 statements) - and 5.16 after it:
+  the two loads in the answering loop, before the parser, and in the
+  parser the latest season and the active set on the same 2 questions (4
+  statements, read once a block where each lookup read its own); every
+  statement after the parser identical (1,358, and the latest season once
+  a question). The reader issued 38.5 a question before the index.
   One thing is not reproduced: the order of two players who share a
   `display_name` (21 names), which DuckDB's sort left unspecified; the
   index uses table order.

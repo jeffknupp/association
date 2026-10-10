@@ -339,19 +339,31 @@ class ActivePlayers:
 @dataclass(frozen=True)
 class NameIndex:
     """What a reader of the question's words recognizes names from, and
-    nothing else: the players' and the teams' indexes and the players active
-    in the latest season on record - all three read before the reader runs
-    (:func:`~association.query.entities.names_of`, by the answering loop),
-    so the reader holds no connection and runs no statement
+    nothing else: the players' and the teams' indexes, read before the
+    reader runs (:func:`~association.query.entities.names_of`, by the
+    answering loop), and the players active in the latest season on record
+    (:attr:`active`), read the first time a lookup needs them in the
+    :func:`loaded` block - so the reader holds no connection
     (``scripts/check_ratchets.py``, ``con_in_the_reader``; ``ROADMAP.md``,
-    contract 3).
+    contract 3) and a question reads the active set only where a typo within
+    reach of more than five players is narrowed by it (2 of the 628
+    recorded questions, measured).
 
     .. versionadded:: 6.0.0
     """
 
     players: PlayerIndex
     teams: TeamIndex
-    active: ActivePlayers
+    read_active: Callable[[], ActivePlayers] = field(repr=False, compare=False)
+    """How :attr:`active` is read: the answering loop's reader of it, once
+    per block (:func:`active_for`)."""
+
+    @property
+    def active(self) -> ActivePlayers:
+        """The players with a box score in the latest season on record,
+        read on first use in the block (:func:`active_for`) - a statement
+        over the box scores no question pays for that does not need it."""
+        return self.read_active()
 
 
 @dataclass

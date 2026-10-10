@@ -188,19 +188,14 @@ def test_a_question_reads_each_table_once_inside_the_block(con: duckdb.DuckDBPyC
         assert find_teams(teams_of(counting), "blazers")[0].id == "22"  # type: ignore[arg-type]
         assert entities.suggest_players(names_of(counting), "jokci") == [Entity("4", "Nikola Jokic")]  # type: ignore[arg-type]
     # The name index the parser takes (entities.names_of) reads the players
-    # active in the latest season on record beside the two tables - here a
-    # warehouse with no games, so there is no season to read them for.
-    assert counting.statements == [
-        "SELECT athlete_id, display_name FROM players",
-        "SELECT * FROM teams",
-        "SELECT MAX(season) FROM real_games WHERE season_type IN (2, 3) AND winner_team_id IS NOT NULL",
-        "SELECT MAX(season) FROM games WHERE season_type IN (2, 3) AND winner_team_id IS NOT NULL",
-    ]
+    # active in the latest season on record only where a typo near more
+    # than five players is narrowed by them: "jokci" is near one.
+    assert counting.statements == ["SELECT athlete_id, display_name FROM players", "SELECT * FROM teams"]
     # The next block (the next question) reads again, once.
     with names.loaded():
         find_players(players_of(counting), "jokic")  # type: ignore[arg-type]
         find_players(players_of(counting), "curry")  # type: ignore[arg-type]
-    assert len(counting.statements) == 5
+    assert len(counting.statements) == 3
 
 
 def test_a_block_serves_only_its_own_connection(con: duckdb.DuckDBPyConnection) -> None:

@@ -126,16 +126,21 @@ def active_of(con: duckdb.DuckDBPyConnection) -> names.ActivePlayers:
 
 
 def names_of(con: duckdb.DuckDBPyConnection) -> names.NameIndex:
-    """Everything a name is recognized from, read for ``con`` before any
-    reader of the question's words runs: the players' and the teams' indexes
-    (:func:`players_of`, :func:`teams_of`) and the players active in the
-    latest season on record (:func:`active_of`). The answering loop reads it
-    once per question and hands it to the parser, which holds no connection
-    (``scripts/check_ratchets.py``, ``con_in_the_reader``).
+    """Everything a name is recognized from, for ``con``: the players' and
+    the teams' indexes (:func:`players_of`, :func:`teams_of`), read here,
+    before any reader of the question's words runs, and the players active
+    in the latest season on record (:func:`active_of`), read where a lookup
+    first needs them (:attr:`names.NameIndex.active`). The answering loop
+    reads it once per question and hands it to the parser, which holds no
+    connection (``scripts/check_ratchets.py``, ``con_in_the_reader``).
+    Measured over the 628 recorded questions through ``Agent.ask``
+    (``~/association-research/stages/statements_per_question.py``): the
+    two table loads once a question, as before the parser took the index,
+    and the active set on the 2 that narrow a typo by it.
 
     .. versionadded:: 6.0.0
     """
-    return names.NameIndex(players=players_of(con), teams=teams_of(con), active=active_of(con))
+    return names.NameIndex(players=players_of(con), teams=teams_of(con), read_active=functools.partial(active_of, con))
 
 
 def checked_players(index: names.PlayerIndex) -> names.PlayerIndex:
