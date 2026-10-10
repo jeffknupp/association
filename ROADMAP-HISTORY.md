@@ -1196,6 +1196,37 @@ agents' reports named here are in `~/association-research/stages/`.
     Cost: no rebase (master had not moved) and a fresh four-population run
     on both trees.
 
+31. **Phase 3, step 2 closed (2026-10-10).** The closing slice, on Opus:
+    with all seven families typed and their cells in the two relation
+    tables, the agent measured every verdict the planner and the readers
+    gave by a cell on the 2,710 answered questions (212 verdicts under 62
+    kinds; 3 of the stated table's 32 rows never planned, 98 of the 138
+    exclusion rows never hit) and, by construction, 68,794 verdicts over
+    every distinct planned point under every cell variant, against a
+    connection that raises on first use - then replaced the planner's
+    slot-era checks with one: the exclusion tables keyed by the planned
+    point as a record per shape, and `cells_unhonored` over the typed
+    values' cells and the tables, read by the planner and by the answer
+    side before it asks any reader. Twenty-one names and a parameter on
+    twenty-nine readers went; the freeze test holds the four cell tables
+    and nothing else, and the debt it carried since 2026-10-05 is zero.
+    The slice is identical on every population with nothing ignored. The
+    measurement found the step's last fluent wrong answers: the league's
+    own read had no subject for six cells and the planner never asked, so
+    "most blocks in a game 7" listed the postseason's highs - sixty-two
+    feed answers now refuse by the cell's name, each listed. What it
+    taught: a per-shape row needs three facts of the shape, not reasons
+    alone, because the sentences a decline takes come in four forms and
+    a fifth table was the one thing the freeze forbade; a check built by
+    construction over every planned point and cell catches a table
+    perturbation the population never reaches, which the three
+    deliberate ones proved; and `Scope` stays until step 4 deletes the
+    Route that carries it. Step 2 took two days, eight slices and eight
+    agents (six on Fable under the 9th's exception, two on Opus), each
+    measured before writing and proved on four populations through a
+    projection of the typed part back to the record it replaced. Cost:
+    no rebase and a fresh four-population run on both trees.
+
 ## The plan items, as written
 
 In order of lift per unit of structural change, each measured on the
