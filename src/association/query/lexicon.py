@@ -773,7 +773,10 @@ SITUATION = re.compile(
     # An age. "most triple doubles before turning 27" answered with this
     # season's triple-double leaders - `players` holds no birth date at all
     # (DATA.md), so this one cannot be answered even in principle.
-    r"\b(?:before|after|by)\s+(?:turning|age)\s+\d+\b|\bat\s+age\s+\d+\b|\b\d+\s+years?\s+old\b|"
+    # Hyphenated too ("18-year-old Lebron's ppg total", ISSUES.md #290):
+    # until Phase 3, step 3 that form matched nothing, and his 2026 line was
+    # answered with the age a number nothing read.
+    r"\b(?:before|after|by)\s+(?:turning|age)\s+\d+\b|\bat\s+age\s+\d+\b|\b\d+[\s-]+years?[\s-]+old\b|"
     # A minutes condition used to be here ("paul reed gamelog with 25 minutes"
     # returned his most recent game); it is a line (`below`/`above`) now, a
     # slot the relation filters on.
@@ -849,7 +852,7 @@ CONFERENCE_WORDS = re.compile(r"\b(?:conferences?|divisions?|east(?:ern)?|west(?
 # (`reading.Cause("non_calendar_situation")`, its `reads_as`): an age, or a
 # conference or division phrase in a shape the alignment reader does not
 # take ("the Central Division these days").
-AGE_WORDS = re.compile(r"\b(?:\d+\s+years?\s+old|(?:before|after|by|at)\s+(?:turning|age)\s+\d+|age\s+\d+)\b", re.IGNORECASE)
+AGE_WORDS = re.compile(r"\b(?:\d+[\s-]+years?[\s-]+old|(?:before|after|by|at)\s+(?:turning|age)\s+\d+|age\s+\d+)\b", re.IGNORECASE)
 """An age, which no table holds a birth date for.
 
 .. versionadded:: 6.0.0

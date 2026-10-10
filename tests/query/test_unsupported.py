@@ -81,6 +81,14 @@ def test_an_age_is_refused_because_no_birth_date_is_on_record(con: duckdb.DuckDB
     refusal = unanswerable(con, "player_stat", {"player": "LeBron James", "stat": "points", "situation": "18 year old"}, "lebron ppg as an 18 year old")
     assert refusal is not None
     assert "birth date" in refusal.answer and "'18 year old'" in refusal.answer
+    # Hyphenated, as "18-year-old Lebron's ppg total" types it (ISSUES.md #290): read as the same
+    # age, where until Phase 3, step 3 nothing read it and his 2026 line was answered.
+    from association.query.cuts import CutsContext, read_cuts
+
+    situation = read_cuts("18-year-old Lebron's ppg total", CutsContext(intent="player_stat")).cuts.situation
+    assert situation is not None and situation.text == "18-year-old" and not situation.read
+    hyphenated = unanswerable(con, "player_stat", {"player": "LeBron James", "stat": "points", "situation": "18-year-old"}, "18-year-old Lebron's ppg total")
+    assert hyphenated is not None and "birth date" in hyphenated.answer and "'18-year-old'" in hyphenated.answer
 
 
 def test_a_conference_or_division_in_no_recognized_shape_names_its_own_cause(con: duckdb.DuckDBPyConnection) -> None:

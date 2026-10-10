@@ -123,15 +123,14 @@ before that commit needs re-checking against the current warehouse.
   read. The yardstick's own wording of it (F161, "players with 33 point
   and 13 rebound ... games since 2000-01") is answered correctly. (2) "2
   threes in games Jamal Murray played including playoffs" answers his 3.2
-  threes per game over 81 games; the 2 is not read. (3) "18-year-old
-  Lebron's ppg total" answers "20.9 points per game in 60 games in the
-  2026 regular season"; the age is not read, and `refusals` has a named
-  refusal for an age that did not fire on this wording.
+  threes per game over 81 games; the 2 is not read. (The third, "18-year-old
+  Lebron's ppg total", is read as the age it names since Phase 3, step 3,
+  and refused for the birth date no table holds.)
 - **User sees:** a fluent answer to a broader question than the one
   asked, with nothing saying a number was set aside.
 - **Next step:** reader fixes, one per wording: "N <stat>, N <stat> ...
   and N <stat>" joined by commas reads as lines the way "and"-joined ones
-  do; a hyphenated age ("18-year-old") reaches the age refusal. The
+  do. The
   structural answer is `ROADMAP.md` contract 2 (a content word nothing
   claimed is recorded, measured, then said or refused); re-run the ledger
   after each reader change and read its unread NUMBERS first.
