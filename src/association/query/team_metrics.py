@@ -52,11 +52,12 @@ What was measured, against the built warehouse:
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass, field
 from typing import Any
 
+from .measure import team_metric_name
 from .measures import STAT_ALIASES as STAT_ALIASES
+from .reading import Measure
 from .team_games import TEAM_GAMES_SQL as TEAM_GAMES_SQL
 
 
@@ -167,34 +168,27 @@ DEFAULT_TEAM_LINE: tuple[str, ...] = (
 .. versionadded:: 2.1.0
 """
 
-# Slot text -> metric key. A whitelist, not a fuzzy match: `stat` is the one
-# REQUIRED router slot, so the model fills it on every question, and the words
-# it chooses are free text. An unlisted word refuses; it is never guessed at.
-# Keys are in normalize_stat's form: camelCase split, lower case, underscores
-# and hyphens as spaces - which is how "threePointFieldGoalPct", the router's
-# own stat name, arrives here as "three point field goal pct".
+# The words a question names a team metric by are the lexicon's
+# (lexicon.TEAM_METRIC_WORDS), and which measure each names is the catalog's
+# (measure.ALIASES): a whitelist, not a fuzzy match - `stat` was the one
+# REQUIRED router slot, so the model filled it on every question with free
+# text, and an unlisted word refuses rather than being guessed at.
 
 
-def normalize_stat(text: str) -> str:
-    """The form :data:`STAT_ALIASES` is keyed in: camelCase split into words,
-    lower case, underscores and hyphens as spaces, whitespace collapsed.
-
-    .. versionadded:: 2.1.0
-    """
-    spaced = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", " ", text)
-    return " ".join(spaced.replace("_", " ").replace("-", " ").casefold().split())
-
-
-def resolve_team_metric(stat: object) -> str | None:
-    """The :data:`TEAM_METRICS` key a ``stat`` slot names, or None - for an
-    absent slot and for one this whitelist does not know alike, so the caller
+def resolve_team_metric(measure: Measure | None) -> str | None:
+    """The :data:`TEAM_METRICS` key ``measure`` names
+    (:func:`~association.query.measure.team_metric_name`), or None - for no
+    measure and for one this whitelist does not know alike, so the caller
     decides which of those is a refusal.
 
     .. versionadded:: 2.1.0
+
+    .. versionchanged:: 6.0.0
+       Takes the typed :class:`~association.query.reading.Measure` (Phase 3,
+       step 2); ``normalize_stat``, which split a camelCase key to look it
+       up, is the catalog's.
     """
-    if not isinstance(stat, str) or not stat.strip():
-        return None
-    return STAT_ALIASES.get(normalize_stat(stat))
+    return team_metric_name(measure)
 
 
 # TEAM_GAMES_SQL - the WITH clause defining `team_games`, one row per team per

@@ -15,9 +15,16 @@ from association.query.compose.plan import plan_point
 from association.query.decisions import Decision
 from association.query.line import threshold_named as _threshold_from_text
 from association.query.lines import threshold_of
-from association.query.parse import classify_span, measure, parent_intent, read_route, reading_from_route
+from association.query.measure import named
+from association.query.parse import classify_span, parent_intent, read_route, reading_from_route
 from association.query.reading import Companion, Reading
 from association.query.router import Route, settle
+
+
+def _measure(question: str) -> str | None:
+    """The measure the words name, as its spelling (the measure tagger's grammar, ``measure.named``)."""
+    found = named(question)
+    return found[0] if found is not None else None
 
 
 @pytest.fixture
@@ -46,28 +53,28 @@ def test_a_span_is_a_team_a_player_or_nothing(con: duckdb.DuckDBPyConnection) ->
 
 
 def test_the_measure_grammar_reads_the_words_before_the_models_key() -> None:
-    assert measure("who were the top 10 in defensive netpoints / 100 possessions") == "netpoints_defense_per_100"
-    assert measure("who led the league in offensive netpoints?") == "netpoints_offense"
-    assert measure("who are the top 50 in total adjusted netpoints") == "netpoints_per_100"
-    assert measure("what were SGA's netpoint stats this season") == "netpoints"
-    assert measure("KNICKS point differential over the last 7 games") == "points_differential"
-    assert measure("show me lebron's 2pt percentage for the past 5 years") == "twoPointFieldGoalPct"
-    assert measure("Top 5 scorers on the Lakers?") == "points"
-    assert measure("who had the highest avg rebounds") == "rebounds"
-    assert measure("what did Nikola Jokic do in his last game?") is None
+    assert _measure("who were the top 10 in defensive netpoints / 100 possessions") == "netpoints_defense_per_100"
+    assert _measure("who led the league in offensive netpoints?") == "netpoints_offense"
+    assert _measure("who are the top 50 in total adjusted netpoints") == "netpoints_per_100"
+    assert _measure("what were SGA's netpoint stats this season") == "netpoints"
+    assert _measure("KNICKS point differential over the last 7 games") == "points_differential"
+    assert _measure("show me lebron's 2pt percentage for the past 5 years") == "twoPointFieldGoalPct"
+    assert _measure("Top 5 scorers on the Lakers?") == "points"
+    assert _measure("who had the highest avg rebounds") == "rebounds"
+    assert _measure("what did Nikola Jokic do in his last game?") is None
     # A three is its own column, never the "point" in it.
-    assert measure("davion mitchell 3 point stats") == "threePointFieldGoalsMade"
-    assert measure("vj edgecombe three points made per game") == "threePointFieldGoalsMade"
-    assert measure("Trailblazers 3-point average in the first quarter") == "threePointFieldGoalsMade"
-    assert measure("klay thompson 3 point attempts per game") == "threePointFieldGoalsAttempted"
-    assert measure("show me lebron's 3pt percentage for the past 5 years") == "threePointFieldGoalPct"
+    assert _measure("davion mitchell 3 point stats") == "threePointFieldGoalsMade"
+    assert _measure("vj edgecombe three points made per game") == "threePointFieldGoalsMade"
+    assert _measure("Trailblazers 3-point average in the first quarter") == "threePointFieldGoalsMade"
+    assert _measure("klay thompson 3 point attempts per game") == "threePointFieldGoalsAttempted"
+    assert _measure("show me lebron's 3pt percentage for the past 5 years") == "threePointFieldGoalPct"
     # What a team gives up is the opponent's line.
-    assert measure("rebounds allowed per team") == "rebounds allowed"
-    assert measure("which team allowed the most points per game") == "points allowed"
-    assert measure("derozan's total points against the knicks") == "points"
+    assert _measure("rebounds allowed per team") == "rebounds allowed"
+    assert _measure("which team allowed the most points per game") == "points allowed"
+    assert _measure("derozan's total points against the knicks") == "points"
     # "to" is a word before it is a turnover count.
-    assert measure("25-26 Knicks playoff stats compared to other historical teams") is None
-    assert measure("who averages the most TO per game") == "turnovers"
+    assert _measure("25-26 Knicks playoff stats compared to other historical teams") is None
+    assert _measure("who averages the most TO per game") == "turnovers"
 
 
 def test_the_parent_grammar_by_kind_and_words() -> None:
@@ -111,7 +118,7 @@ def test_the_parser_reads_a_question_into_a_reading(con: duckdb.DuckDBPyConnecti
     read, the window and the measure from the words, the child assigned."""
     r = _read(con, "How many 30+ point games did Jokic have this season?", names=["Jokic"], stat="points")
     assert r.intent == "threshold_count" and r.subject is not None and r.subject.kind == "player" and r.subject.players == ("Nikola Jokic",)
-    assert threshold_of(r.scope) == 30 and r.scope.stat == "points"
+    assert threshold_of(r.scope) == 30 and r.scope.measure is not None and r.scope.measure.as_typed == "points"
     r = _read(con, "Lakers vs Celtics record this season", names=["Lakers", "Celtics"], stat="")
     assert r.intent == "head_to_head" and r.subject is not None and r.subject.kind == "teams"
     # A window over the two teams' meetings is still their meetings when a record is asked for; a log word is one team's games.
@@ -120,7 +127,7 @@ def test_the_parser_reads_a_question_into_a_reading(con: duckdb.DuckDBPyConnecti
     r = _read(con, "lakers game log vs celtics last 10", names=["lakers", "celtics"], stat="")
     assert r.subject is not None and r.subject.kind == "team"
     r = _read(con, "who were the top 10 in defensive netpoints / 100 possessions", names=[], stat="")
-    assert r.subject is not None and r.subject.kind == "everyone" and r.scope.stat == "netpoints_defense_per_100" and r.scope.window.count == 10
+    assert r.subject is not None and r.subject.kind == "everyone" and r.scope.measure is not None and r.scope.measure.as_typed == "netpoints_defense_per_100" and r.scope.window.count == 10
     # A span no player or team has never becomes a subject.
     r = _read(con, "alperen sengun double-doubles vs southeast division career away", names=["alperen sengun", "southeast division"], stat="")
     assert r.subject is not None and r.subject.kind != "pair"
@@ -237,10 +244,10 @@ def test_the_hold_out_rows_the_router_answered_and_the_parser_did_not(con: duckd
     (c) fix was tuned on), answered by both paths: each of these was a
     fluent wrong answer or a fall-through on the parser's alone."""
     # "%" takes no \b: "3pt %" read as 3-pointers made.
-    assert measure("who had the highest 3pt % this season") == "threePointFieldGoalPct"
+    assert _measure("who had the highest 3pt % this season") == "threePointFieldGoalPct"
     # Attempts AND makes asked for: the made line reports both.
-    assert measure("show embiid's 3pt attempts and 3pts mad for his career") == "threePointFieldGoalsMade"
-    assert measure("embiid 3pt attempts per game") == "threePointFieldGoalsAttempted"
+    assert _measure("show embiid's 3pt attempts and 3pts mad for his career") == "threePointFieldGoalsMade"
+    assert _measure("embiid 3pt attempts per game") == "threePointFieldGoalsAttempted"
     # A team's opener is one game of its log, not its season line.
     assert parent_intent("Lakers opening game of the season", "team") == "game_log"
     # A team's odds are its outlook, not its postseason stats.
@@ -683,7 +690,7 @@ def test_a_quarters_plus_minus_keeps_its_stat_and_is_refused_for_it(con: duckdb.
     points."""
     route, _subject, _parent = read_route(con, question, named, "")
     reading = reading_from_route(con, question, route)
-    assert reading.intent == intent and reading.scope.stat == "plus_minus"
+    assert reading.intent == intent and reading.scope.measure is not None and reading.scope.measure.as_typed == "plus_minus"
     planned = plan_point(reading)
     if intent == "period_split":
         assert reading.point_refusal is not None and reading.point_refusal.kind == "no_period_stat"

@@ -30,6 +30,7 @@ from association.nba.season import current_season
 from association.query import lexicon
 from association.query.entities import BOX_SCORES, SHOT_AVAILABILITY
 from association.query.lines import measure_filters, relation_lines, threshold_count_line, threshold_line, threshold_of
+from association.query.measure import named_by_a_team_metric
 from association.query.measures import (
     BOOLEAN_MEASURES,
     DERIVED_LINES,
@@ -39,7 +40,6 @@ from association.query.measures import (
     STAT_LINE,
     TEAM_GAME_MEASURES,
     TEAM_SEASON_MEASURES,
-    WORD_MEASURES,
     log_extras,
     period_split_measure,
     resolve_metric,
@@ -47,7 +47,7 @@ from association.query.measures import (
     stat_measure,
     streak_column,
 )
-from association.query.metrics import PER_GAME_MIN_GAMES, TEAM_FIELD_WORDS
+from association.query.metrics import PER_GAME_MIN_GAMES
 from association.query.reading import (
     CHART_INTENTS,
     DEFAULT_GAME_LOG_LIMIT,
@@ -114,13 +114,13 @@ _COUNT_SHAPES: dict[str, tuple[Shape, str]] = {"player_stat": ("scalar", "line")
 
 
 def _measure_words(question: str) -> list[str]:
-    """Every measure :data:`WORD_MEASURES` finds named in ``question``, in list order."""
-    found: list[str] = []
-    ql = question.lower()
-    for pattern, name in WORD_MEASURES:
-        if re.search(pattern, ql):
-            found.append(name)
-    return found
+    """Every measure :data:`~association.query.lexicon.WORD_MEASURES` finds named in ``question``, in list order."""
+    return [name for pattern, name in lexicon.WORD_MEASURES if pattern.search(question)]
+
+
+def _named_stat(scope: Scope) -> str | None:
+    """The measure's spelling as the reader wrote it, where the question named one - what a refusal prints."""
+    return scope.measure.as_typed if scope.measure is not None else None
 
 
 _RANKING = re.compile(r"\b(leaders?|most|highest|top|best|fewest|least|lowest)\b", re.I)
@@ -168,7 +168,7 @@ def _everyone_guard(intent: str, question: str, position: str | None, *, period_
         raise Unsupported("a quarter or half is the period relation's question")
     # "the top 50 ... with the team they play for" (F017) names no team's
     # question: the team is a column the ranking shows.
-    if _NOT_PLAYERS.search(TEAM_FIELD_WORDS.sub(" ", question)) and not position:
+    if _NOT_PLAYERS.search(lexicon.TEAM_FIELD_WORDS.sub(" ", question)) and not position:
         raise Unsupported("a team, an opponent's figure or a franchise is the team relation's question")
     if intent in TEAM_ONLY_INTENTS:
         raise Unsupported("a team's own question is not the player relation's")
@@ -192,7 +192,7 @@ def _everyone_threshold_predicates(scope: Scope, measure: str | None, predicates
     line = threshold_line(scope)
     if line is None or int(line.value) <= 0:
         return predicates
-    column = line.measure or stat_measure(scope.stat)
+    column = line.measure or stat_measure(scope.measure)
     if column and column != measure:
         return [*predicates, (column, ">=", int(line.value))]
     return predicates
@@ -227,28 +227,16 @@ def _everyone_single_game(intent: str, scope: Scope, question: str, measure: str
     )
 
 
-#: A word in the question naming what a "highest/biggest ... triple-double"
-#: ranking of GAMES orders by - the local counterpart of ``WORD_MEASURES``
-#: for the plain box-score words that list does not carry (those name the
-#: default four-stat line already; this is only reached once a boolean
-#: measure has taken the ranking word - see :func:`_everyone_boolean_game_ranking`).
-_BOOLEAN_RANK_WORDS: list[tuple[str, str]] = [
-    (r"\bscoring\b|\bpoints?\b|\bpts\b", "points"),
-    (r"\brebounds?\b|\bboards?\b", "rebounds"),
-    (r"\bassists?\b", "assists"),
-    (r"\bsteals?\b", "steals"),
-    (r"\bblocks?\b", "blocks"),
-]
 _BOOLEAN_GAME_RANKING = re.compile(r"\b(highest|biggest|largest|best)\b", re.I)
 
 
 def _boolean_game_measure(question: str) -> str:
     """The measure a "highest/biggest ... triple-double" ranks the
-    qualifying games BY - the question's own word (:data:`_BOOLEAN_RANK_WORDS`)
+    qualifying games BY - the question's own word (:data:`~association.query.lexicon.BOOLEAN_RANK_WORDS`)
     first, points otherwise: "highest scoring" and "biggest" both mean the
     game's point total unless another stat is named."""
-    for pattern, name in _BOOLEAN_RANK_WORDS:
-        if re.search(pattern, question, re.I):
+    for pattern, name in lexicon.BOOLEAN_RANK_WORDS:
+        if pattern.search(question):
             return name
     return "points"
 
@@ -275,7 +263,7 @@ def _everyone_boolean_game_ranking(intent: str, question: str, scope: Scope, pre
     # the question sizes them - "highest scoring", "biggest", or a stat word
     # of its own ("most rebounds in a double double"), or the parser's
     # `ranked_by`.
-    sized = _BOOLEAN_GAME_RANKING.search(question) or scope.window.by or any(re.search(pattern, question, re.I) for pattern, _ in _BOOLEAN_RANK_WORDS)
+    sized = _BOOLEAN_GAME_RANKING.search(question) or scope.window.by or any(pattern.search(question) for pattern, _ in lexicon.BOOLEAN_RANK_WORDS)
     if not sized:
         return None
     measure = _boolean_game_measure(question)
@@ -366,7 +354,7 @@ def _everyone_threshold_count_line(scope: Scope) -> list[tuple[str, str, Any]]:
 
     .. versionadded:: 5.0.0
     """
-    column = stat_measure(scope.stat)
+    column = stat_measure(scope.measure)
     threshold = threshold_of(scope)
     if column is None or column in BOOLEAN_MEASURES or threshold is None or threshold < 1:
         return []
@@ -450,9 +438,9 @@ def _everyone_ranking(intent: str, scope: Scope, question: str, measure: str | N
     if seasons is not None:
         return seasons
     if measure is None:
-        stat = scope.stat
-        if stat == "shot_distance":
-            # The parser's sentinel (router._route_leaderboard_shot_distance):
+        stat = _named_stat(scope)
+        if scope.measure is not None and scope.measure.key == "shot_distance":
+            # The measure tagger's sentinel key (lexicon.SHOT_DISTANCE_RANKED):
             # the retired template's own refusal, naming the real cause.
             raise PointRefused(Cause(kind="shot_distance_ranking"))
         if stat is not None and stat.strip():
@@ -505,20 +493,21 @@ def _leaderboard_season_line(intent: str, scope: Scope, question: str, measure: 
     # A boolean stat's own predicate ("most triple-doubles": triple_double is
     # True) is the count the season line keeps; any other line on a column
     # is the game-level ranking's.
-    own_boolean = all(name == scope.stat and value is True for name, _, value in predicates)
+    own_boolean = all(scope.measure is not None and name == scope.measure.key and value is True for name, _, value in predicates)
     if intent != "leaderboard" or not own_boolean or position is not None or _ranking_minimum(question) is not None:
         return None
-    metric = resolve_metric(scope.stat, career=scope.span.career)
+    metric = resolve_metric(scope.measure, career=scope.span.career)
     if metric is None:
         return None
-    if measure is not None and stat_measure(scope.stat) not in (None, measure):
+    if measure is not None and stat_measure(scope.measure) not in (None, measure):
         return None
-    if scope.rate is not None and scope.rate != "total":
+    unit = scope.measure.unit if scope.measure is not None else None
+    if unit is not None and unit != "total":
         # A unit the metric has no form of ("who were the top 10 in
         # defensive netpoints / 90"): the ranking's refusal, naming the
         # forms THIS metric has (the planner's sentence) - "total" is a
         # season total, the one other form every metric's rate reads.
-        raise PointRefused(Cause(kind="ranking_unit", facts={"metric": metric, "rate": scope.rate}))
+        raise PointRefused(Cause(kind="ranking_unit", facts={"metric": metric, "rate": unit}))
     return Reading(
         scope=scope,
         shape="ranking",
@@ -599,7 +588,7 @@ def _everyone_point(intent: str, scope: Scope, question: str, measure: str | Non
 def _measure_for_named(scope: Scope, question: str) -> str | None:
     """The measure a named-player question moves to: the question's own word first, the router's stat otherwise."""
     words = _measure_words(question)
-    stat = stat_measure(scope.stat)
+    stat = stat_measure(scope.measure)
     return words[0] if words else stat
 
 
@@ -659,7 +648,7 @@ def _move_boolean_count_is_line(measure: str, scope: Scope) -> bool:
     """Whether a boolean measure is, by its one definition
     (:data:`~association.query.measures.DERIVED_LINES`), exactly the router's
     own ``stat``/``threshold`` line (``fouled_out`` is ``fouls >= 6``)."""
-    column = stat_measure(scope.stat)
+    column = stat_measure(scope.measure)
     threshold = threshold_of(scope)
     if column is None or threshold is None:
         return False
@@ -673,12 +662,12 @@ def _move_player_history(intent: str, scope: Scope, career: Scope, measure: str 
     career of games grouped by season, newest first (``compose.plan.plan``)."""
     if intent != "player_history":
         return None
-    if measure is None and scope.stat is not None and scope.stat not in HISTORY_STATS:
+    if measure is None and scope.measure is not None and scope.measure.named and scope.measure.key not in HISTORY_STATS:
         # A stat named that neither the season line nor the games carry
         # ("shot_distance"): refused, as player_history's retired template
         # refused it - never drawn as the points history the default measure
         # below would read in its place.
-        raise Unsupported(f"no per-season history for stat {scope.stat!r}")
+        raise Unsupported(f"no per-season history for stat {scope.measure.as_typed!r}")
     del career  # the season line reads the question's own span; the planner's game-level point widens it
     return Reading(
         scope=scope,
@@ -732,8 +721,8 @@ def _default_game_log(scope: Scope) -> Reading:
     date's."""
     if not _named_player_in(scope):
         raise Unsupported("a team's log is the team relation's")
-    if scope.stat and stat_column(scope.stat) is None:
-        log_extras(scope.stat)
+    if _named_stat(scope) and stat_column(scope.measure) is None:
+        log_extras(scope.measure)
     date = scope.cuts.date
     return Reading(
         scope=scope,
@@ -757,7 +746,7 @@ def _threshold_line(scope: Scope) -> list[tuple[str, str, Any]]:
     threshold = threshold_of(scope)
     if threshold is None or any(line.value == threshold for line in measure_filters(scope)):
         return []
-    col = stat_column(scope.stat)
+    col = stat_column(scope.measure)
     if col is None:
         raise PointRefused(Cause(kind="threshold_needs_stat", facts={"intent": "game_log", "threshold": threshold}))
     return [(col, ">=", threshold)]
@@ -773,7 +762,7 @@ def _default_player_stat(scope: Scope) -> Reading:
     is ``game_log``'s."""
     if not _named_player_in(scope):
         raise Unsupported("player_stat needs a player")
-    col = stat_column(scope.stat)
+    col = stat_column(scope.measure)
     measures = [col] if col else list(STAT_LINE)
     if scope.window.count or scope.window.order:
         return _default_game_log(scope)
@@ -808,13 +797,14 @@ def _default_record_when(scope: Scope) -> Reading:
     A line of 0 is every game he played: never a record "when". Refused by
     the fact missing - the stat, a stat with no per-game column, the number,
     or a number every game clears - where it named one line only in part."""
-    col = stat_column(scope.stat)
+    col = stat_column(scope.measure)
     threshold = threshold_of(scope)
     if not _named_player_in(scope):
         # read_point reads a named player's moves only; a caller's mistake.
         raise Unsupported("record_when needs a player, a stat and a positive threshold here")
-    if col is None and scope.stat and scope.stat.strip():
-        raise PointRefused(Cause(kind="unknown_stat", facts={"intent": "record_when", "stat": scope.stat}))
+    stat = _named_stat(scope)
+    if col is None and stat and stat.strip():
+        raise PointRefused(Cause(kind="unknown_stat", facts={"intent": "record_when", "stat": stat}))
     if col is None:
         raise PointRefused(
             Cause(kind="threshold_needs_stat", facts={"intent": "record_when", "threshold": threshold}) if threshold is not None else Cause(kind="needs_stat", facts={"intent": "record_when"})
@@ -839,7 +829,7 @@ def _default_period_split(scope: Scope) -> Reading:
     and over his career when a date names the game."""
     if not _named_player_in(scope):
         raise Unsupported("period_split needs a player")
-    measure = period_split_measure(scope.stat)
+    measure = period_split_measure(scope.measure)
     date = scope.cuts.date
     if period_narrowing(scope) is None:
         return Reading(
@@ -882,7 +872,7 @@ def _default_threshold_count(scope: Scope) -> Reading:
     reader reads it (:func:`~association.query.lines.threshold_count_line`).
     A league-wide count is declined here; the point reader's own move reads
     it as a count by player."""
-    col = stat_column(scope.stat)
+    col = stat_column(scope.measure)
     threshold = threshold_of(scope)
     if not _named_player_in(scope):
         raise Unsupported("a league-wide count is not on the one-player relation")
@@ -909,9 +899,10 @@ def _default_single_game_high(scope: Scope) -> Reading:
     own move (a ranking of games), declined here. The decline names the
     fact that is missing - the stat, or the player - never both where one
     was given: "brice sensabaugh career high asistss" named its player."""
-    col = stat_column(scope.stat)
+    col = stat_column(scope.measure)
+    stat = _named_stat(scope)
     if col is None:
-        raise PointRefused(Cause(kind="unknown_stat", facts={"intent": "single_game_high", "stat": scope.stat}) if scope.stat else Cause(kind="needs_stat", facts={"intent": "single_game_high"}))
+        raise PointRefused(Cause(kind="unknown_stat", facts={"intent": "single_game_high", "stat": stat}) if stat else Cause(kind="needs_stat", facts={"intent": "single_game_high"}))
     if not _named_player_in(scope):
         raise Unsupported("single_game_high needs a named player here")
     return Reading(
@@ -962,8 +953,8 @@ def _default_streak(scope: Scope) -> Reading:
        On the reader's side (``compose.adapt._adapt_streak`` was this).
     """
     threshold = threshold_of(scope)
-    column = streak_column(scope.stat, threshold)
-    want_win = scope.kind != "loss"
+    column = streak_column(scope.measure, threshold)
+    want_win = scope.measure is None or scope.measure.won is not False
     predicates: list[tuple[str, str, Any]] = [(column, ">=", threshold)] if column is not None else [("won", "=", want_win)]
     if _named_player_in(scope):
         season = _streak_season(scope)
@@ -1223,27 +1214,6 @@ def _move_named(intent: str, scope: Scope, question: str) -> Reading:
     return _move_default(intent, scope, measure)
 
 
-#: A word in the question naming a team's own measure directly - the team
-#: counterpart of :data:`WORD_MEASURES`, over :data:`~association.query.measures.TEAM_GAME_MEASURES`
-#: and :data:`~association.query.compose.team.SEASON_MEASURES` rather than
-#: the player relation's columns.
-_TEAM_WORD_MEASURES: list[tuple[str, str]] = [
-    (r"\bpoint(?:s)? differential\b|\bpoint diff\b|\bdifferential\b", "differential"),
-    (r"\bpoints? allowed\b|\bopponent'?s? points\b", "points_allowed"),
-    (r"\b(?:3|three)[- ]?point(?:er)?s?\b(?:.{0,10}\bmade\b)?", "threePointFieldGoalsMade"),
-    (r"\btotal points\b|\bpoints scored\b|\bhow many points\b", "points"),
-    (r"\brebounds\b", "rebounds"),
-    (r"\bassists\b", "assists"),
-    (r"\bsteals\b", "steals"),
-    (r"\bblocks\b", "blocks"),
-    (r"\bturnovers\b", "turnovers"),
-]
-"""``(pattern, measure)`` - a phrase naming one of :data:`~association.query.measures.TEAM_GAME_MEASURES`
-or :data:`~association.query.measures.TEAM_SEASON_MEASURES` directly.
-
-.. versionadded:: 4.4.0
-"""
-
 #: A question about players ON a team - a ranking, a log, or an explicit
 #: "who"/"which player" framing - is the league-wide read's question, never
 #: the team's own subject.
@@ -1253,19 +1223,25 @@ _TEAM_NOT_SUBJECT = re.compile(r"\bwho\b|\bwhich player\b|\bwhich\b.{0,15}\bplay
 def _team_measure(scope: Scope, question: str) -> str | None:
     """The team measure a question names - the question's own word first
     (the same priority :func:`_measure_for_named` gives a player's), the
-    router's ``stat`` slot otherwise, when it is a column
+    measure's key otherwise, when it is a column
     :data:`~association.query.measures.TEAM_GAME_MEASURES` or
     :data:`~association.query.measures.TEAM_SEASON_MEASURES` knows.
 
     .. versionadded:: 4.4.0
     """
-    ql = question.lower()
-    for pattern, name in _TEAM_WORD_MEASURES:
-        if re.search(pattern, ql):
-            return name
-    stat = scope.stat
-    if stat is not None and (stat in TEAM_GAME_MEASURES or stat in TEAM_SEASON_MEASURES):
-        return stat
+    for pattern, word in lexicon.TEAM_WORD_MEASURES:
+        if pattern.search(question):
+            return word
+    measure = scope.measure
+    if measure is None or measure.key is None or named_by_a_team_metric(measure):
+        # A team metric's alias text ("fgm", "ppg") names the team-season
+        # relation's per-game line, never a total: the stages' alias text
+        # matched no column, and the per-game reader answers it as before
+        # (ISSUES.md, "A team total named by a metric's alias").
+        return None
+    name: str | None = "points_allowed" if measure.key == "points" and measure.whose == "opponent" else measure.key if measure.whose == "own" else None
+    if name is not None and (name in TEAM_GAME_MEASURES or name in TEAM_SEASON_MEASURES):
+        return name
     return None
 
 
@@ -1484,7 +1460,7 @@ def read_point(reading: Reading, question: str) -> Reading:
 def _leaderboard_declines(scope: Scope, subject: Subject) -> None:
     """What a ``leaderboard`` point is not, declined before any move - split
     out of :func:`_read_point` to keep it inside the complexity gate."""
-    if scope.stat in ("triple_double", "double_double") and subject.kind in ("team", "team_players") and not subject.players:
+    if scope.measure is not None and scope.measure.key in ("triple_double", "double_double") and subject.kind in ("team", "team_players") and not subject.players:
         # A TEAM's total of its players' triple-doubles ("oklahoma city
         # thunder all-time triple doubles vs west", leaderboard with the team
         # filed - day5): not a ranking this relation lacks a measure for, but
@@ -1494,7 +1470,7 @@ def _leaderboard_declines(scope: Scope, subject: Subject) -> None:
         # so the reading's own cause names it (``team_boolean_count``,
         # Reading.unsupported, said where the answer side declines) rather
         # than the ranking's sentence naming the wrong one.
-        raise Unsupported(f"a team's total of its players' {scope.stat} is not read")
+        raise Unsupported(f"a team's total of its players' {scope.measure.as_typed} is not read")
     if _named_player_in(scope):
         # A leaderboard ranks the league or a team, never one named person -
         # the retired template's own refusal ("Klay Thompson's 3pt percentage
@@ -1523,7 +1499,7 @@ def _read_point(intent: str, scope: Scope, question: str, subject: Subject) -> R
         # record when they scored 120 points" (ISSUES.md #144) - is neither the
         # season sum nor the window sum the team subject otherwise reads: it is
         # record_when's team reader's (compose.records.read_team_record_when).
-        return Reading(scope=scope, shape="split", by="line", on="team_games", measures=[scope.stat or "points"], aggregate="record", relation="team")
+        return Reading(scope=scope, shape="split", by="line", on="team_games", measures=[_named_stat(scope) or "points"], aggregate="record", relation="team")
     if intent == "game_log":
         # A team's log, before the team's sums: "knicks last 5 games" lists
         # them (the retired template's team half, ROADMAP plan item 6, step
@@ -1564,5 +1540,5 @@ def _read_point(intent: str, scope: Scope, question: str, subject: Subject) -> R
             # branch above); naming neither, it has nobody to read - the
             # reason record_when's retired template gave.
             raise PointRefused(Cause(kind="needs_subject", facts={"intent": "record_when"}))
-        return _everyone_point(intent, scope, question, stat_measure(scope.stat), subject.position)
+        return _everyone_point(intent, scope, question, stat_measure(scope.measure), subject.position)
     return _move_named(intent, scope, question)

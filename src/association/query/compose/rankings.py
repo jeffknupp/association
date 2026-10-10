@@ -36,12 +36,13 @@ from dataclasses import replace
 
 import duckdb
 
+from association.query.measure import keyed
 from association.query.measures import resolve_metric
 from association.query.metrics import EXTRA_FIELD_COLUMNS, LEADERBOARD_METRICS
 from association.query.notes import Note
 from association.query.reading import Scope, Unsupported, _clamp_limit, unhonored_scoping
 from association.query.result import Decided, Part, RankingFacts, Refusal, Result, Span, Unanswered
-from association.query.season_line import MIN_SAMPLE_LABELS, SEASON_TOTAL_OF, CareerLeaderboardResult, LeaderboardError, rank_season_line
+from association.query.season_line import MIN_SAMPLE_LABELS, CareerLeaderboardResult, LeaderboardError, rank_season_line
 
 from .core import Query
 
@@ -74,11 +75,12 @@ def leaderboard_reads(q: Query, stated: frozenset[str]) -> bool:
     if not _leaderboard_is_own_point(q) or unhonored_scoping("leaderboard", q.scope, stated):
         return False
     scope = q.scope
-    if scope.stat == "shot_distance" or (scope.span.career and scope.span.season is not None):
+    if keyed(scope.measure) == "shot_distance" or (scope.span.career and scope.span.season is not None):
         return True
-    if resolve_metric(scope.stat, career=scope.span.career) is None:
+    if resolve_metric(scope.measure, career=scope.span.career) is None:
         return False
-    if scope.rate is not None and scope.rate != "total":
+    unit = scope.measure.unit if scope.measure is not None else None
+    if unit is not None and unit != "total":
         return True
     return q.position is None
 
@@ -117,7 +119,7 @@ def _leaderboard_fields(scope: Scope, metric: str) -> list[str]:
     answered without the second half, silently); a repeated one is the
     router's slip and is said once, and one restating the ranked metric is
     left out (it rendered the same 33.5 twice under two headings)."""
-    requested = scope.fields
+    requested = scope.measure.beside if scope.measure is not None else ()
     unknown = [f for f in requested if f not in EXTRA_FIELD_COLUMNS and f != "team"]
     if unknown:
         raise Unsupported(f"unknown leaderboard field(s) {unknown}")
@@ -126,20 +128,20 @@ def _leaderboard_fields(scope: Scope, metric: str) -> list[str]:
 
 def _leaderboard_metric(scope: Scope, career: bool) -> str | None:
     """The metric the ranking reads (a unit it has no form of declined), or ``None`` where no season-line metric reads the stat (the
-    game-level ranking reads it instead). ``rate`` "total" ranks a season
-    total: ``stat`` names a category, never which of its two readings ("most
-    points this season" is a total, "leads in points" a per-game rate)."""
-    metric = resolve_metric(scope.stat, career=career)
+    game-level ranking reads it instead). A season total asked for ranks the
+    total: the key names a category, never which of its two readings ("most
+    points this season" is a total, "leads in points" a per-game rate) - the
+    catalog resolves the pair (:func:`~association.query.measure.metric_name`)."""
+    metric = resolve_metric(scope.measure, career=career)
     if metric is None:
         return None
-    if scope.rate == "total":
-        return SEASON_TOTAL_OF.get(metric, metric)
-    if scope.rate is not None:
+    unit = scope.measure.unit if scope.measure is not None else None
+    if unit is not None and unit != "total":
         # A unit the metric has no form of is the point reader's refusal
         # (the ``ranking_unit`` Cause, said by the planner) before the
         # point is planned; read here it is declined, never ranked as
         # another unit.
-        raise Unsupported(f"leaderboard has no {scope.rate!r} form of {metric}")
+        raise Unsupported(f"leaderboard has no {unit!r} form of {metric}")
     return metric
 
 
@@ -162,8 +164,8 @@ def read_leaderboard(con: duckdb.DuckDBPyConnection, q: Query, *, stated: frozen
     if not leaderboard_reads(q, stated):
         return None
     scope = q.scope
-    if scope.stat == "shot_distance":
-        # router._route_leaderboard_shot_distance's sentinel, checked before
+    if keyed(scope.measure) == "shot_distance":
+        # The measure tagger's sentinel key, checked before
         # the metric and the named-player refusal so neither names the wrong
         # cause (ISSUES.md #114); the planner says it first today
         # (the point reader's ``shot_distance_ranking`` Cause).

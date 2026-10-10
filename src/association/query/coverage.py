@@ -28,6 +28,7 @@ from typing import Any
 
 from association.nba.coverage import REGULAR_SEASON, caveat, unavailable
 from association.query.conditions import _PLAYER_GAME_TABLES, _TEAM_GAME_TABLES
+from association.query.measure import keyed
 from association.query.measures import resolve_metric
 from association.query.metrics import LEADERBOARD_METRICS
 from association.query.notes import note
@@ -62,21 +63,21 @@ def _player_line_tables(scope: Scope) -> tuple[str, ...]:
     reaches 1977: "Kareem's true shooting in 1980" is refused because that
     stat is not computed that far back, and refusing it in the season
     line's words would name a floor the question does not depend on."""
-    return ("player_season_advanced_stats",) if scope.stat in _ADVANCED_STAT_NAMES else ("player_season_stats_deduped",)
+    return ("player_season_advanced_stats",) if keyed(scope.measure) in _ADVANCED_STAT_NAMES else ("player_season_stats_deduped",)
 
 
 def _player_games_line_tables(scope: Scope) -> tuple[str, ...]:
     """One player's line over his narrowed games: the box scores, or the
     advanced table for a computed stat (the same floor year, named for the
     stat)."""
-    return ("player_season_advanced_stats",) if scope.stat in _ADVANCED_STAT_NAMES else _PLAYER_BOX_SOURCES
+    return ("player_season_advanced_stats",) if keyed(scope.measure) in _ADVANCED_STAT_NAMES else _PLAYER_BOX_SOURCES
 
 
 def _metric_tables(scope: Scope) -> tuple[str, ...]:
     """The table the asked-for leaderboard metric is ranked from; nothing
     for a metric the ranking's reader refuses with a better message than a
     coverage floor could."""
-    metric = resolve_metric(scope.stat, career=scope.span.career)
+    metric = resolve_metric(scope.measure, career=scope.span.career)
     spec = LEADERBOARD_METRICS.get(metric) if metric else None
     return (spec.table,) if spec else ()
 
@@ -94,7 +95,7 @@ def _team_ranking_tables(scope: Scope) -> tuple[str, ...]:
     the rest, the team season stats - and opponent points come from
     `games`, so its floor applies too: a rating from a season whose games
     are one team's schedule would be no rating."""
-    key = resolve_team_metric(scope.stat)
+    key = resolve_team_metric(scope.measure)
     if key is not None and TEAM_METRICS[key].expression is None:
         return ("games",) if scope.span.season_type == 3 else ("standings",)
     return ("team_season_stats", "games")
@@ -111,7 +112,7 @@ def _team_line_tables(scope: Scope) -> tuple[str, ...]:
     postseason 3-point total carried "Philadelphia's run reads 16 games
     against the 23" about a figure read from the 23-game line (ISSUES.md
     #227)."""
-    key = resolve_team_metric(scope.stat)
+    key = resolve_team_metric(scope.measure)
     if key is None:
         return ("team_season_stats", "games")
     metric = TEAM_METRICS.get(key)

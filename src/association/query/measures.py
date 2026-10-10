@@ -13,93 +13,16 @@ agreed (`ISSUES.md` #164).
 
 from __future__ import annotations
 
-from typing import Any
-
 # The words a question calls a column by are the lexicon's (Phase 3, step 2,
 # the line); re-exported here under the name every column list is built from.
 from association.query.lexicon import MEASURE_WORDS
-from association.query.metrics import LEADERBOARD_METRICS
-from association.query.reading import Cause, PointRefused
 
-# The words a question uses for a TEAM metric - moved here from
-# team_metrics.py on 2026-10-02, where the catalog that ranks the metrics
-# held them and the router imported the catalog to read a word (ROADMAP.md,
-# Phase 1: the reader's imports of the answer side). team_metrics re-exports
-# STAT_ALIASES under its old name and still keys its catalog by the same
-# names.
-
-_ALIASES: dict[str, tuple[str, ...]] = {
-    "record": ("record", "records", "wins", "win", "win pct", "win percentage", "winning percentage", "win percent", "standings", "win loss", "win loss record"),
-    "losses": ("losses", "loss", "losing record"),
-    "points": ("points", "point", "ppg", "points per game", "scoring", "points scored", "avg points"),
-    "opponent_points": (
-        "opponent points",
-        "opponent points per game",
-        "opponent ppg",
-        "opp points",
-        "opp ppg",
-        "points allowed",
-        "points allowed per game",
-        "points against",
-        "points given up",
-    ),
-    "point_differential": ("point differential", "differential", "point diff", "margin", "point margin", "scoring margin", "margin of victory", "plus minus"),
-    "pace": ("pace", "pace factor", "possessions", "possessions per game"),
-    "offensive_rating": ("offensive rating", "off rating", "ortg", "offensive efficiency", "offensive rtg"),
-    "defensive_rating": ("defensive rating", "def rating", "drtg", "defensive efficiency", "defensive rtg", "defense", "defensive"),
-    "net_rating": ("net rating", "net efficiency", "net rtg", "nrtg"),
-    "field_goal_pct": ("field goal pct", "field goal percentage", "fg pct", "fg%", "fg percentage", "field goal %", "shooting percentage"),
-    "three_point_pct": (
-        "three point field goal pct",
-        "three point field goal percentage",
-        "three point pct",
-        "three point percentage",
-        "3pt pct",
-        "3pt%",
-        "3pt percentage",
-        "3 point pct",
-        "3 point percentage",
-        "3p%",
-        "3p pct",
-        "three point shooting",
-    ),
-    "free_throw_pct": ("free throw pct", "free throw percentage", "ft pct", "ft%", "free throw %"),
-    "true_shooting_pct": ("ts pct", "ts%", "true shooting", "true shooting pct", "true shooting percentage"),
-    "effective_fg_pct": ("efg pct", "efg%", "efg", "effective field goal pct", "effective field goal percentage", "effective fg pct"),
-    "rebounds": ("rebounds", "rebound", "rpg", "total rebounds", "rebounding", "boards", "avg rebounds"),
-    "offensive_rebounds": ("offensive rebounds", "offensive rebound", "oreb", "offensive boards"),
-    "defensive_rebounds": ("defensive rebounds", "defensive rebound", "dreb", "defensive boards"),
-    "assists": ("assists", "assist", "apg", "dimes", "avg assists"),
-    "turnovers": ("turnovers", "turnover", "tov", "giveaways", "total turnovers"),
-    "steals": ("steals", "steal", "spg"),
-    "blocks": ("blocks", "block", "bpg", "blocked shots"),
-    "fouls": ("fouls", "foul", "personal fouls"),
-    "three_pointers_made": (
-        "three point field goals made",
-        "threes",
-        "threes made",
-        "three pointers",
-        "three pointers made",
-        "3 pointers",
-        "3 pointers made",
-        "3pm",
-        "3pt made",
-        "made threes",
-    ),
-    "three_pointers_attempted": ("three point field goals attempted", "three point attempts", "threes attempted", "3 point attempts", "3pa", "3pt attempts"),
-    "field_goals_made": ("field goals made", "field goals", "fgm"),
-    "free_throws_made": ("free throws made", "free throws", "ftm"),
-    "free_throws_attempted": ("free throws attempted", "free throw attempts", "fta"),
-    "points_in_paint": ("points in the paint", "points in paint", "paint points"),
-    "fast_break_points": ("fast break points", "fastbreak points", "fast break"),
-}
-
-STAT_ALIASES: dict[str, str] = {alias: key for key, aliases in _ALIASES.items() for alias in aliases}
-"""Normalized slot text -> :data:`TEAM_METRICS` key.
-
-.. versionadded:: 2.1.0
-"""
-
+# The words a question uses for a TEAM metric are the lexicon's
+# (lexicon.TEAM_METRIC_WORDS, Phase 3, step 2: the measure); the flat table
+# is re-exported here under the name team_metrics keys its catalog by.
+from association.query.lexicon import STAT_ALIASES as STAT_ALIASES
+from association.query.measure import column_name, measure_name, metric_name
+from association.query.reading import Cause, Measure, PointRefused
 
 # The columns a quarter or half rebuilds - the period relation's own list,
 # moved here from player_games.py on 2026-10-02 because the parser reads it
@@ -242,151 +165,42 @@ HISTORY_STATS: frozenset[str] = frozenset(
 """
 
 
-# The router has one stat vocabulary (the `stat` line of ROUTER_PROMPT) for
-# every intent, so each of its names needs a metric here: every one it taught
-# that had none - turnovers, minutes, fouls, the three kinds of make, the three
-# percentages - fell through to the agent. Keys are casefolded.
-#
-# Which reading a bare name gets follows the record books. The five a scoring,
-# rebounding, assist, steal or block title is decided on are per game, as they
-# always were here; a make is a season COUNT ("most threes this season" is the
-# 402-three kind of record, not a rate); turnovers, minutes and fouls are per
-# game, the way a league leaderboard lists them. Every answer names which it
-# ranked, and `rate` "total" asks for the other - see SEASON_TOTAL_OF.
-METRIC_ALIASES = {
-    "points": "avg_points",
-    "rebounds": "avg_rebounds",
-    "assists": "avg_assists",
-    "steals": "avg_steals",
-    "blocks": "avg_blocks",
-    "turnovers": "avg_turnovers",
-    "minutes": "avg_minutes",
-    "fouls": "avg_fouls",
-    "threepointfieldgoalsmade": "total_three_pointers_made",
-    "fieldgoalsmade": "total_field_goals_made",
-    "freethrowsmade": "total_free_throws_made",
-    "threepointfieldgoalpct": "three_pt_pct",
-    "fieldgoalpct": "fg_pct",
-    "freethrowpct": "ft_pct",
-    "double_double": "double_doubles",
-    "triple_double": "triple_doubles",
-    "netpoints": "netpoints_total",
-    "true_shooting": "ts_pct",
-    "usage": "usage_pct",
-}
-
-CAREER_METRIC_ALIASES = {
-    "points": "total_points",
-    "rebounds": "total_rebounds",
-    "assists": "total_assists",
-    "steals": "total_steals",
-    "blocks": "total_blocks",
-    "turnovers": "total_turnovers",
-}
-"""How a bare stat name reads in a CAREER ranking, where it differs.
-
-A career list is a list of totals: "career points leaders" is the all-time
-scoring list LeBron James tops at 43,440, not Michael Jordan's 30.1 a game.
-Names absent here read as they do for a season (minutes and fouls have no
-career-total metric, so they stay per game).
-
-.. versionadded:: 2.1.0
-"""
-
-
-def resolve_metric(name: str | None, *, career: bool = False) -> str | None:
-    """Router slot -> a real metric name, via an EXPLICIT alias table.
-
-    Deliberately not get_close_matches: fuzzy matching is fine for suggesting a
-    fix a person can act on, but a template silently ranking by whichever
-    metric happened to score highest is exactly the substitution failure this
-    architecture exists to prevent. An unmapped name returns None and the
-    question is refused.
-
-    With ``career``, a bare box-score name reads as the career TOTAL - see
-    ``CAREER_METRIC_ALIASES``. A real metric name is never reinterpreted, so a
-    career average stays reachable as ``avg_points``.
+def resolve_metric(measure: Measure | None, *, career: bool = False) -> str | None:
+    """The ranking metric ``measure`` names, through the catalog
+    (:func:`~association.query.measure.metric_name`): a bare box-score name
+    reads as the record books do (a scoring title is per game, a make a
+    season count), as the career TOTAL with ``career``, and a form asked
+    for outright (per game, a total, a NetPoints rate) by that form. An
+    unmapped measure returns None and the question is refused - never
+    matched to whichever metric happened to score highest, which is the
+    substitution this architecture exists to prevent.
 
     .. versionchanged:: 2.1.0
        Added ``career``, and an alias for every stat name the router is taught.
 
     .. versionchanged:: 5.0.0
        Lives in ``measures`` with its alias tables (``leaderboard`` re-exports them).
+
+    .. versionchanged:: 6.0.0
+       Takes the typed :class:`~association.query.reading.Measure`; the
+       alias tables it read (the metric and career-metric aliases) are the
+       catalog's facets (Phase 3, step 2).
     """
-    if not isinstance(name, str):
-        return None
-    if name in LEADERBOARD_METRICS:
-        return name
-    key = name.strip().casefold()
-    if career and key in CAREER_METRIC_ALIASES:
-        return CAREER_METRIC_ALIASES[key]
-    return METRIC_ALIASES.get(key)
+    return metric_name(measure, career=career)
 
 
-#: The router's own stat names that are not relation columns, as measures.
-MEASURE_ALIASES: dict[str, str] = {
-    "ts_pct": "ts_pct",
-    "true_shooting": "ts_pct",
-    "efg_pct": "efg_pct",
-    "usage_pct": "usage_pct",
-    "game_score": "game_score",
-    "plus_minus": "plusMinus",
-    "plusMinus": "plusMinus",
-    "threePointFieldGoalPct": "three_pct",
-    "three_point_pct": "three_pct",
-    "fieldGoalPct": "fg_pct",
-    "fg_pct": "fg_pct",
-    "freeThrowPct": "ft_pct",
-    "points_per_game": "points",
-    "rebounds_per_game": "rebounds",
-    "assists_per_game": "assists",
-    "triple_double": "triple_double",
-    "triple_doubles": "triple_double",
-    "double_double": "double_double",
-    "double_doubles": "double_double",
-    "pra": "pra",
-    "wins": "won",
-}
-"""A router ``stat`` value that names a measure this package computes rather
-than a stored column, mapped to that measure's name.
-
-.. versionadded:: 4.4.0
-"""
-
-#: Words in the question for a measure the router may not have named.
-WORD_MEASURES: list[tuple[str, str]] = [
-    (r"\bts ?%|\btrue shooting\b", "ts_pct"),
-    (r"\befg\b|\beffective field goal", "efg_pct"),
-    (r"\bplus[ /-]?minus\b|\+/-", "plusMinus"),
-    (r"\bgame score\b", "game_score"),
-    (r"\busage\b", "usage_pct"),
-    (r"\btriple[ -]?doubles?\b|\btd3s?\b|\btds\b", "triple_double"),
-    (r"\bdouble[ -]?doubles?\b|\bdd\b", "double_double"),
-    (r"\bfg ?%|\bfg percentage\b|\bfield goal percentage\b", "fg_pct"),
-    (r"\b3 ?pt ?%|\b3 point percentage\b|\bthree point percentage\b|\b3p%", "three_pct"),
-    (r"\bft ?%|\bfree throw percentage\b", "ft_pct"),
-    (r"\bpra\b|\bpts\+reb\+ast\b|points\+rebounds\+assists", "pra"),
-    (r"\bfouled out\b|\bfoul(ed)? outs?\b", "fouled_out"),
-]
-"""``(pattern, measure)`` - a phrase the question carries that names a measure directly.
-
-.. versionadded:: 4.4.0
-"""
-
-
-def stat_measure(stat: str | None) -> str | None:
-    """A router ``stat`` as a measure this package knows, through
-    :data:`MEASURE_ALIASES` and then :data:`MEASURE_WORDS`.
+def stat_measure(measure: Measure | None) -> str | None:
+    """The compiler's name for ``measure`` over the games relation - a
+    game-log column or a derived measure - through the catalog
+    (:func:`~association.query.measure.measure_name`).
 
     .. versionadded:: 5.0.0
+
+    .. versionchanged:: 6.0.0
+       Takes the typed :class:`~association.query.reading.Measure`; the
+       measure alias table it read is the catalog's facet.
     """
-    if stat is None or not stat.strip():
-        return None
-    if stat in MEASURE_ALIASES:
-        return MEASURE_ALIASES[stat]
-    if stat in GAME_COLUMNS or (stat in DERIVED_MEASURES and stat not in LABEL_MEASURES):
-        return stat
-    return MEASURE_WORDS.get(stat.strip().lower())
+    return measure_name(measure)
 
 
 STAT_LINE: tuple[str, ...] = ("points", "rebounds", "assists")
@@ -419,9 +233,9 @@ must not come back as the Lakers' best run of wins.
 """
 
 
-def streak_column(stat: str | None, threshold: int | None) -> str | None:
+def streak_column(measure: Measure | None, threshold: int | None) -> str | None:
     """The per-game column a streak holds a line on (``None`` for a run of
-    wins or losses), read from the question's stat and threshold. Raises
+    wins or losses), read from the question's measure and threshold. Raises
     :class:`~association.query.reading.PointRefused` (by the missing fact) for a named stat with no
     per-game column, or a stat/threshold pair that only half-names a
     condition - "most consecutive double-doubles" must not come back as a
@@ -429,8 +243,12 @@ def streak_column(stat: str | None, threshold: int | None) -> str | None:
 
     .. versionadded:: 5.0.0
        On the reader's side (``templates.splits._streak_kind`` was this).
+
+    .. versionchanged:: 6.0.0
+       Takes the typed :class:`~association.query.reading.Measure`.
     """
-    column = stat if stat in THRESHOLD_STAT_NAMES else None
+    stat = measure.as_typed if measure is not None else None
+    column = measure.key if measure is not None and measure.key in THRESHOLD_STAT_NAMES and measure.whose == "own" else None
     named_stat = stat is not None and bool(stat.strip()) and stat.strip().casefold() not in STREAK_RESULT_STATS
     if named_stat and column is None:
         raise PointRefused(Cause(kind="unknown_stat", facts={"intent": "streak", "stat": stat}), f"no per-game column for stat {stat!r}")
@@ -468,7 +286,7 @@ question asking for one is refused naming what is.
 """
 
 
-def period_split_measure(stat: str | None) -> str:
+def period_split_measure(measure: Measure | None) -> str:
     """The column a period question measures: points where it names none,
     else the one it names - any column the period's line rebuilds
     (:data:`~association.query.player_games.PERIOD_COLUMNS`), or a shooting
@@ -482,33 +300,36 @@ def period_split_measure(stat: str | None) -> str:
 
     .. versionchanged:: 5.0.0
        Lives in ``measures``, on the reader's side (``templates.games._period_split_measure`` was this).
+
+    .. versionchanged:: 6.0.0
+       Takes the typed :class:`~association.query.reading.Measure`, read by its key.
     """
-    if stat is None or not stat.strip() or stat == "all":
+    if measure is None or measure.as_typed is None or measure.as_typed == "all":
+        # "all" is a model-era filler for "the whole line" (a test's payload), read as points.
         return "points"
-    if stat in PERIOD_COLUMNS:
-        return stat
-    if stat in PERIOD_RATE_STATS:
-        return PERIOD_RATE_STATS[stat]
+    key = measure.key if measure.whose == "own" else None
+    if key in PERIOD_COLUMNS:
+        return key
+    if key in PERIOD_RATE_STATS:
+        return PERIOD_RATE_STATS[key]
     raise PointRefused(
-        Cause(kind="no_period_stat", facts={"stat": stat}),
-        f"period_split has no per-period {stat!r} - the period's line rebuilds {', '.join(PERIOD_COLUMNS)} from the plays, "
+        Cause(kind="no_period_stat", facts={"stat": measure.as_typed}),
+        f"period_split has no per-period {measure.as_typed!r} - the period's line rebuilds {', '.join(PERIOD_COLUMNS)} from the plays, "
         "and a field goal, 3-point or free throw percentage is a ratio of those; nothing else",
     )
 
 
-def stat_column(stat: str | None) -> str | None:
-    """A router ``stat`` as a relation column - the router's own column names
-    (``points``, ``threePointFieldGoalsMade``) or a word :data:`MEASURE_WORDS`
-    knows - or ``None``.
+def stat_column(measure: Measure | None) -> str | None:
+    """The stored game-log column ``measure`` is read from, through the
+    catalog (:func:`~association.query.measure.column_name`) - or None.
 
     .. versionadded:: 5.0.0
        On the reader's side (``compose.adapt._stat_column`` was this).
+
+    .. versionchanged:: 6.0.0
+       Takes the typed :class:`~association.query.reading.Measure`.
     """
-    if stat is None or not stat.strip():
-        return None
-    if stat in GAME_COLUMNS:
-        return stat
-    return MEASURE_WORDS.get(stat.strip().lower())
+    return column_name(measure)
 
 
 GAME_LOG_STAT_COLUMNS: dict[str, tuple[str, ...]] = {
@@ -544,22 +365,26 @@ attempts, and a percentage is computed from them per game.
 """
 
 
-def log_extras(stat: Any) -> tuple[str, ...]:
-    """The columns a named stat adds to a player's log.
+def log_extras(measure: Measure | None) -> tuple[str, ...]:
+    """The columns a named measure adds to a player's log.
 
-    ``stat`` is required in ROUTER_SCHEMA, so the model fills it on every
-    question, including ones that name no stat at all - text that is not a stat
-    name adds nothing. A REAL stat the log has no column for refuses instead:
+    ``stat`` was required in ROUTER_SCHEMA, so the model filled it on every
+    question, including ones that name no stat at all - a measure no column
+    list holds adds nothing. A REAL stat the log has no column for refuses instead:
     "luka ts% log" answered with no TS% in it would be the narrower answer
     passed off as the one asked for.
 
     .. versionadded:: 5.0.0
        On the reader's side (``compose.logs._log_extras`` and ``templates.games._log_extras`` were this).
+
+    .. versionchanged:: 6.0.0
+       Takes the typed :class:`~association.query.reading.Measure`, read by its key.
     """
-    if not isinstance(stat, str) or not stat.strip():
+    if measure is None or measure.key is None or measure.whose != "own":
         return ()
-    if stat in GAME_LOG_STAT_COLUMNS:
-        return GAME_LOG_STAT_COLUMNS[stat]
-    if stat in PLAYER_STAT_NAMES or stat in HISTORY_STATS or stat in THRESHOLD_STAT_NAMES or resolve_metric(stat) is not None:
-        raise PointRefused(Cause(kind="unknown_stat", facts={"intent": "game_log", "stat": stat}), f"a game log has no per-game column for {stat!r}")
+    key = measure.key
+    if key in GAME_LOG_STAT_COLUMNS:
+        return GAME_LOG_STAT_COLUMNS[key]
+    if key in PLAYER_STAT_NAMES or key in HISTORY_STATS or key in THRESHOLD_STAT_NAMES or resolve_metric(measure) is not None:
+        raise PointRefused(Cause(kind="unknown_stat", facts={"intent": "game_log", "stat": measure.as_typed}), f"a game log has no per-game column for {measure.as_typed!r}")
     return ()

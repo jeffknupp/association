@@ -20,6 +20,7 @@ from test_templates import leaderboard  # the compiler's, leaderboard's template
 
 from association.nba.season import current_season
 from association.query.answer import AnswerContext, Reply
+from association.query.measure import measure_of
 from association.query.measures import resolve_metric
 from association.query.metrics import LEADERBOARD_METRICS
 from association.query.normalizer import NORMALIZER_STATS
@@ -102,17 +103,17 @@ def test_every_box_score_stat_the_model_may_name_ranks_by_a_metric() -> None:
     assert len(names) == 14, names
     for name in names:
         assert name in NORMALIZER_STATS, name
-        assert resolve_metric(name) in LEADERBOARD_METRICS, name
-        career = resolve_metric(name, career=True)
+        assert resolve_metric(measure_of(name)) in LEADERBOARD_METRICS, name
+        career = resolve_metric(measure_of(name), career=True)
         assert career in LEADERBOARD_METRICS and LEADERBOARD_METRICS[career].career is not None, name
 
 
 def test_a_career_reads_a_bare_stat_as_a_total_and_a_season_as_it_always_did() -> None:
-    assert resolve_metric("points") == "avg_points"
-    assert resolve_metric("points", career=True) == "total_points"
-    # A real metric name is never reinterpreted, so a career average stays reachable.
-    assert resolve_metric("avg_points", career=True) == "avg_points"
-    assert resolve_metric("threePointFieldGoalsMade") == "total_three_pointers_made"
+    assert resolve_metric(measure_of("points")) == "avg_points"
+    assert resolve_metric(measure_of("points"), career=True) == "total_points"
+    # A metric name spelled outright keeps its form, so a career average stays reachable.
+    assert resolve_metric(measure_of("avg_points"), career=True) == "avg_points"
+    assert resolve_metric(measure_of("threePointFieldGoalsMade")) == "total_three_pointers_made"
 
 
 # ---------------- season leaderboards ----------------

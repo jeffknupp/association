@@ -35,6 +35,7 @@ import duckdb
 from association.nba.coverage import COVERAGE
 from association.query.entities import Entity
 from association.query.lines import measure_filters, threshold_count_line, threshold_of
+from association.query.measure import spelled
 from association.query.notes import Note
 from association.query.player_games import REBUILT_STATS, STAT_LABELS
 from association.query.player_relation import empty_box_scores, player_relation_season_type, rebuilt_in_scope
@@ -126,7 +127,7 @@ def read_threshold_count(con: duckdb.DuckDBPyConnection, q: Query, *, stated: fr
     season, season_type = compiled.span.season, player_relation_season_type(scope)
     span, notes = box_score_span(con, season, season_type, player)
     empty = empty_box_scores(con, season, season_type, player.id if player is not None else None, covered_by_rebuild=compiled.rebuilt)
-    stat = scope.stat
+    stat = spelled(scope.measure)
     label = STAT_LABELS.get(stat or "", stat or "")
     notes += _threshold_count_notes(con, (season, season_type), player, rows, column, label, empty)
     facts = CountFacts(stat=stat, box_scores_from=COVERAGE["player_box_stats"].first_season, empty_box_scores=empty[0])

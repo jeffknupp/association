@@ -50,6 +50,7 @@ from association.nba.franchises import season_name_sql
 from association.nba.season import current_season
 from association.query import reading
 from association.query.entities import Ambiguous, Availability, Entity, NotFound, resolve_team, resolved_player
+from association.query.measure import spelled
 from association.query.measures import STAT_LINE
 from association.query.metrics import EXTRA_FIELD_COLUMNS, LEADERBOARD_METRICS, SEASON_TYPE_LABELS, CareerAggregate, LeaderboardMetric
 from association.query.player_games import season_type_clause
@@ -1270,7 +1271,7 @@ def wanted_stats(scope: Scope, default: tuple[str, ...] = STAT_LINE) -> list[str
     default line - that is how "what was Steph Curry's avg 3pt shot distance"
     came back as "26.6 points, 3.6 rebounds and 4.7 assists per game". A
     refusal names the stat; answering a different question is worse."""
-    stat = scope.stat
+    stat = spelled(scope.measure)
     if stat is None or not stat.strip():
         return list(default)
     if stat in PLAYER_STAT_COLUMNS:

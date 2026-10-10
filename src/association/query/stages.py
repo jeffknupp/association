@@ -172,15 +172,16 @@ def _reading_record(reading: Reading, mask: Mapping[str, str] | None) -> dict[st
     return {
         "intent": reading.intent,
         "scope": plain(reading.scope.to_slots(split_by_presence=reading.intent == "with_without"), mask=mask),
-        # The span, the window, the games' cuts, the period, the lines and
-        # the companions as the reader typed them (Phase 3, step 2), beside
-        # the scope's slot-era projection of them.
+        # The span, the window, the games' cuts, the period, the lines, the
+        # companions and the measure as the reader typed them (Phase 3,
+        # step 2), beside the scope's slot-era projection of them.
         "span": plain(reading.scope.span, mask=mask),
         "window": plain(reading.scope.window, mask=mask),
         "cuts": plain(reading.scope.cuts, mask=mask),
         "period": plain(reading.scope.period, mask=mask),
         "lines": plain(reading.scope.lines, mask=mask),
         "companions": plain(reading.scope.companions, mask=mask),
+        "measure": plain(reading.scope.measure, mask=mask),
         "subject": subject,
         "misread": list(reading.misread),
         "decisions": [plain(decision.as_dict(), mask=mask) for decision in reading.decisions],

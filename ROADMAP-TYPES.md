@@ -514,6 +514,98 @@ otherwise.
     the Reading - neither is a filter the relations apply, so neither is
     a `Filter` member here. Still open below.
 
+- **Declared in code by Phase 3, step 2, the measure** (2026-10-10, the
+  lead's brief; no answer, result, remark, planned query or reading moved
+  on the four populations - every reading compared through the
+  projection, the typed value recorded beside it):
+  - The draft's `Measure(key, how, whose, category, side)` as
+    `reading.Measure(key, as_typed, how, unit, whose, side, shot_value,
+    category, won, beside)` on `Scope.measure`, in place of the seven slots
+    `stat`, `rate`, `per_game`, `side`, `shot_value`, `fields`, `kind`.
+    `key` is the catalog's (`measure.CATALOG`, `MeasureKey`: 42 keys, the
+    normalizer's spelling where it has one and the compiler's otherwise,
+    one key for `threePointFieldGoalPct`/`three_pct`/`three_pt_pct`/
+    `three_point_pct`; per key how it is read on each relation - the game
+    column, the compiler's derived measure, the ranking's metric for a bare
+    name, a career, a total and a per-game figure, the team metric and the
+    opponent's), `how` the draft's less `count`, `rate` and `percentile`
+    (a count is the shape's, `per_100` is the one rate, nothing ranks a
+    percentile) plus `per_90`, a unit nothing holds that the refusal names.
+    **Beyond the draft, each a fact the slots carried:** `as_typed`, the
+    spelling the reader wrote (what a refusal prints: "no team metric for
+    stat 'ppg'" - and what the slot-era `stat` projects to; a key no
+    catalog holds, `career_playoffs`, is `key=None` with its spelling),
+    `unit`, the rate's words (the `rate` cell, a reader honors or declines
+    it by name), `shot_value` (the shots relation's: the measure's rather
+    than a cell of the relation, since a stat naming the same shots arrives
+    beside it on 5 of 13 and the relation reads the value first), `won` (a
+    run's result, the `kind` slot - open item 12's proposal, taken: a run
+    of wins is a measure of `wins`, the words' "losing streak" read beside
+    whatever stat is named, as the stages wrote it on every run), `beside`
+    (the columns a ranking shows, `fields`). `category` is set only where a
+    fingerprint metric is named outright (`assist_o_net_pts`: `netpoints`
+    of the `assist` category on offense, 66 names). A Measure with no key
+    and no spelling holds what the question says about its measure without
+    naming which (a unit, a side, which shots, a run's result).
+  - **The six vocabularies are lookups into the catalog** (`measure.ALIASES`,
+    390 spellings, `key_of`): the normalizer's keys, the grammar's, the
+    box-score words, the team metrics' alias texts (`lexicon.TEAM_METRIC_WORDS`,
+    `STAT_ALIASES`), the leaderboard metrics' names (a metric named
+    outright keeps its form: `avg_points` over a career stays the average),
+    the compiler's derived names. `measures.resolve_metric`, `stat_measure`,
+    `stat_column`, `log_extras`, `period_split_measure`, `streak_column`
+    and `team_metrics.resolve_team_metric` take the `Measure` and read the
+    facets; the alias tables they read (`METRIC_ALIASES`,
+    `CAREER_METRIC_ALIASES`, `MEASURE_ALIASES`, `WORD_MEASURES`,
+    `normalize_stat`) are gone. Where two spellings of one key resolved
+    differently before (a team alias text had no game column, an
+    abbreviation no metric), the key's own spelling decides - measured on
+    `tests/query/measure_spellings.json` (391 spellings, the four lookups
+    on `508d643`): every facet a vocabulary reached is unchanged, and 12
+    spellings no reader reached with the facets that moved are unified.
+    The team compiler's total still declines a measure named by a team
+    metric's alias (`measure.named_by_a_team_metric`): the alias text never
+    matched a column, so the per-game line answered, and holding that
+    identical is a finding, not a design (ISSUES.md).
+  - **One tagger** (contract 2): `measure.read_measure(question,
+    MeasureContext) -> MeasureRead(measure, claims)`, in `router._settle`
+    at the position of the last stage that wrote one of the seven, over
+    the settled intent, the model's key as CONTEXT, the stat the lines
+    tagger read beside a line and whether one is keyed, and a test's side,
+    shot value and columns. The words' own measure (`measure.named`: the
+    grammar, `lexicon.MEASURE_GRAMMAR`, then the longest box-score word)
+    stands over the model's key, and where the words name none the key
+    stands as it did; the intent stages that turn on a games key read the
+    same context before the tagger. It reproduces the sixteen writers the
+    stages had, in their order (`measure.py`'s docstring lists them), and
+    claims what it read: 890 claims on the 2,710 readings, and two
+    overlapping stretches of ONE reading ("netpoints per 100" and "per 100
+    possessions") are one claim of it (`span.claimed` keeps the name where
+    both readings are the same; 6 read as `measure+measure` before).
+  - The cell (contract 4): `Measure.CELLS` is `rate` alone - a unit asked
+    for, which the season-line ranking honors (a total, a NetPoints
+    metric's per-100 form; a unit the metric has no form of is the point's
+    `ranking_unit` refusal) and the team compiler's unnarrowed total
+    honors, and every other reader declines in the sentence it had ("the
+    relation cannot honor ['rate']"). Named in `STATED_SCOPING`'s ranking
+    row and the planner's team-scalar cells through `Measure.CELLS`;
+    `SCOPING_SLOTS` is `split` alone; declared in NO relation table, since
+    a unit narrows no games - the measure's other parts are the shape's
+    (what is read), not cells (which games are read).
+  - The record keeps its old shape through the projection (`to_slots()`,
+    `projected()`: the seven slots where the fields stood, the lines'
+    three after `stat`, the window's `ranked_by` after `fields` and its
+    `rank` after `kind`; a side or a rate the key's own spelling folds in,
+    `netpoints_defense_per_100`, `avg_game_score`, is left out, as the
+    slots never carried it apart), and the typed value is recorded beside
+    the reading as `measure`.
+  - Not this slice's, on purpose: the point's `measures` (a list of the
+    compiler's names) and `aggregate` stay the compiler's, derived from the
+    `Measure` through the catalog at 54 construction sites - retyping them
+    as `tuple[Measure, ...]` is the `Query`'s shape, RUN's input (open item
+    13 below); the subject's own slots (`player`, `players`, `team`,
+    `teams`, `position`) are the next slice's.
+
 ## What must be decided before which phase
 
 | Phase | Needs from this document |
@@ -897,7 +989,7 @@ moves into `data` before the slice that rewords its answer:
 | one body, plus `summary` and `detail` | 16 splits carry four groupings; standings, NetPoints and a two-season by-month record are multi-part; detail is common (about 45 answers), not rare | `Result.parts`, each a typed body with a role |
 | a row is a game | in 26 answers the subject is everyone and a row is (player, game); league-wide runs have an owner; rows carry a rebuilt flag, a span, a tied rank | row types say so |
 | `Result \| Refusal` | 20 answers are questions back; refusals carry facts | `Result \| Clarify \| Refusal(cause, facts)` |
-| `Measure(key, how, side)` | no per-100, percentile or per-N-minutes; no opponent's figure; no NetPoints category; six vocabularies, not four | `whose`, `category`, more `how`, `Unsupported` |
+| `Measure(key, how, side)` | no per-100, percentile or per-N-minutes; no opponent's figure; no NetPoints category; six vocabularies, not four | `whose`, `category`, more `how`, `Unsupported` - settled in code by Phase 3, step 2's measure slice: `whose` and `category` as drafted, `how` as `per_game`/`total`/`per_100`/`per_90` (no `count`, `rate` or `percentile`: the count is the shape's), the `Unsupported` unit as `Measure.unit`, the words kept beside a `how` of None |
 | `Window(order, count)`, no minimum | nowhere for `ranked_by` or a stated qualifier | `Window.by`, `Minimum` |
 | `Calendar` for every `situation` | date cuts and conferences are not calendar values | `DateRange`, `Opponent(alignment)` |
 | the 25-intent table | six rows wrong, among them `team_record` (five forms), `period_split` (never grouped), `player_netpoints` (not a chart) | corrected, with the counts |
@@ -989,8 +1081,18 @@ moves into `data` before the slice that rewords its answer:
     deletes `_TEAM_READER_REFUSES`.
 12. **`Won` and `Met` are not filters.** The draft lists both under
     `Filter`; in the code a team's run of wins is the point's `won`
-    predicate (`Reading.kind`), and two players' meetings are the pair
-    shape itself (`Reading.by="met"`, the pair relation's own read) -
-    neither is a cell a relation table declares or a reader declines.
-    Proposed: type `kind` with the `Measure` catalog (a boolean measure's
-    line) and leave `Met` as the shape's `by`.
+    predicate, and two players' meetings are the pair shape itself
+    (`Reading.by="met"`, the pair relation's own read) - neither is a cell
+    a relation table declares or a reader declines. `Won` is typed with the
+    `Measure` since the measure slice (`Measure.won`, the `kind` slot: a
+    run's result, read from the words beside whatever stat is named);
+    `Met` stays the shape's `by`.
+13. **The point's `measures` and `aggregate` are the compiler's names.**
+    `Reading.measures` is a list of the compiler's column and derived
+    names and `aggregate` one of five, derived from `Scope.measure` through
+    the catalog at 54 construction sites in `point.py`; the draft's
+    `Query.measures: tuple[Measure, ...]` with `how` as the aggregate is
+    RUN's input, and retyping it means the compiler (`compose.core`,
+    `compose.team`, 1,345 and 846 lines) reads `Measure` values. Proposed:
+    with step 4, when the point reader is re-keyed on the grammar and the
+    `by` tables go.

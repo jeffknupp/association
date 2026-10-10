@@ -15,7 +15,7 @@ from association.nba.season import current_season
 from association.query.compose.plan import refusal_result
 from association.query.lexicon import ORDER_WORDS
 from association.query.reading import Cause, Companion, Scope, Window
-from association.query.router import CODE_ASSIGNED_INTENTS, SIDE_VALUES, Route, _settle
+from association.query.router import CODE_ASSIGNED_INTENTS, Route, _settle
 from association.query.window import ORDER_INTENTS
 
 
@@ -291,11 +291,14 @@ def _scope_values(field: str, of: type = Scope) -> set[object]:
 
 def test_the_side_values_match_the_scope() -> None:
     """Two hand-maintained lists of the same names is the shape that produced
-    the player_compare bug - a value here the Scope refuses falls the question
-    through, and one the Scope holds that is missing here gets dropped. The
-    other list was the router's schema enum until 5.0.0; every route now
-    passes the Scope's door (``Scope.from_slots``)."""
-    assert set(SIDE_VALUES) == _scope_values("side")
+    the player_compare bug - a side word the Measure refuses falls the question
+    through, and one the Measure holds that no word names gets dropped. The
+    other list was the router's schema enum until 5.0.0, then the router's
+    ``SIDE_WORDS``; the measure tagger reads the lexicon's since Phase 3, step 2."""
+    from association.query.lexicon import SIDE_WORDS
+    from association.query.reading import MeasureSide
+
+    assert set(SIDE_WORDS) | {"total"} == set(get_args(MeasureSide))
 
 
 @pytest.mark.parametrize("question", ["points per quarter for Luka", "Jokic points by quarter", "luka points each quarter this season"])
@@ -741,11 +744,15 @@ def test_a_team_metric_given_up_is_named_as_asked() -> None:
     ranked the teams' own rebounds. Named as asked, no team metric holds it
     and the template refuses by name; "points allowed" is an alias of its own,
     and "against the knicks" is the team's own side."""
-    from association.query.router import _team_metric_in
+    from association.query.measure import team_metric_named
 
-    assert _team_metric_in("rebounds allowed per team") == "rebounds allowed"
-    assert _team_metric_in("which team has given up the most points allowed") == "points allowed"
-    assert _team_metric_in("celtics rebounds against the knicks") == "rebounds"
+    def _named(question: str) -> str | None:
+        found = team_metric_named(question)
+        return found[0] if found is not None else None
+
+    assert _named("rebounds allowed per team") == "rebounds allowed"
+    assert _named("which team has given up the most points allowed") == "points allowed"
+    assert _named("celtics rebounds against the knicks") == "rebounds"
 
 
 def test_attempts_and_a_misspelled_made_keep_the_made_line() -> None:
@@ -1743,7 +1750,10 @@ def test_game_score_player_stat_gets_the_player_stat_spelling() -> None:
 )
 def test_game_score_pattern_does_not_fire_on_ordinary_scoring_language(question: str) -> None:
     got = _ask(question, '{"intent":"leaderboard","stat":"points"}')
-    assert got.slots["stat"] == "points"
+    # The words' own measure stands (the measure tagger reads the grammar
+    # before the model's key: "double double" is a double-double); game score
+    # is never read into it.
+    assert got.slots["stat"] not in ("avg_game_score", "game_score")
 
 
 def test_a_question_actually_about_points_still_emits_points() -> None:
@@ -1760,7 +1770,9 @@ def test_game_score_is_left_alone_outside_leaderboard_and_player_stat() -> None:
     own (wrong) guess is left in place, same as before this fix; that is a
     pre-existing gap this task is scoped not to touch."""
     got = _ask("compare durant and lebron in game score", '{"intent":"player_compare","players":["Kevin Durant","LeBron James"],"stat":"points"}')
-    assert got.slots.get("stat") == "points"
+    # The grammar's own spelling of the words stands ("game_score"), never
+    # the ranking's ("avg_game_score"), which only the ranking reads.
+    assert got.slots.get("stat") == "game_score"
 
 
 def test_a_log_asked_of_player_stat_is_a_game_log() -> None:
@@ -1815,7 +1827,7 @@ def test_a_team_metric_named_in_the_question_wins() -> None:
     from association.query.team_metrics import resolve_team_metric
 
     got = _ask("Lowest defensive rating by a team this season", '{"intent":"team_leaderboard","stat":"usage_pct_defense","team":"all_teams"}')
-    assert resolve_team_metric(got.slots["stat"]) == "defensive_rating"
+    assert got.scope.measure is not None and resolve_team_metric(got.scope.measure) == "defensive_rating"
     assert "team" not in got.slots
 
 
@@ -1909,7 +1921,10 @@ def test_two_thresholds_leave_a_record_when_alone() -> None:
         "sixers record when maxey had 20+ points and 5+ assists",
         '{"intent":"record_when","stat":"wins","team":"Philadelphia 76ers","threshold":20,"season_ref":"current"}',
     )
-    assert got.slots["stat"] == "wins"
+    # Neither pair names the record's one line: the two are the relation's
+    # lines together, and the measure is the words' longest box-score word
+    # (as the parser's grammar read it before the stages), never a pair's.
+    assert got.slots["stat"] == "assists" and got.slots["threshold"] == 20 and got.slots["above"] == ["20+ points", "5+ assists"]
 
 
 def test_the_router_and_the_templates_agree_on_what_a_stat_word_means() -> None:
@@ -2291,10 +2306,13 @@ def test_two_point_percentage_pattern_does_not_fire_on_near_misses(question: str
 
 def test_two_point_percentage_is_left_alone_outside_its_two_intents() -> None:
     """player_compare reads a player's stat line through PLAYER_STAT_COLUMNS,
-    never SHOOTING_STATS - a "twoPointFieldGoalPct" value there would be
-    silently unreadable, the same reason game_score is scoped away from it."""
+    never SHOOTING_STATS - a "twoPointFieldGoalPct" the stage wrote there
+    would be silently unreadable, the same reason game_score is scoped away
+    from it. The measure grammar reads the words before the model's key,
+    though, and "2pt percentage" IS the 2-point percentage: the measure the
+    words name stands, and the comparison's reader declines it by name."""
     got = _ask("compare sga and embiid on 2pt percentage", '{"intent":"player_compare","players":["Shai Gilgeous-Alexander","Joel Embiid"],"stat":"fieldGoalPct"}')
-    assert got.slots.get("stat") != "twoPointFieldGoalPct"
+    assert got.slots.get("stat") == "twoPointFieldGoalPct"
 
 
 def test_a_question_actually_about_field_goal_percentage_still_emits_it() -> None:

@@ -22,6 +22,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from association.query import lexicon
+from association.query.measure import spelled
 from association.query.measures import THRESHOLD_STAT_NAMES
 from association.query.reading import Cause, Line, LineOp, PointRefused, Scope
 
@@ -168,7 +169,7 @@ def threshold_count_line(scope: Scope) -> tuple[str, int | None]:
        On the reader's side, where ``threshold_count``'s default point reads
        it (``templates.players._threshold_count_ask`` was this).
     """
-    stat, threshold = scope.stat, threshold_of(scope)
+    stat, threshold = spelled(scope.measure), threshold_of(scope)
     lined = bool(relation_lines(scope))
     if lined and (stat is None or stat not in THRESHOLD_STAT_NAMES):
         # No stat from the model at all (under a player_stat parent, "fta"

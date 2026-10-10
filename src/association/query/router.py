@@ -31,9 +31,9 @@ from typing import TYPE_CHECKING, Any
 from . import lexicon
 from .cuts import CutsContext, CutsRead, read_cuts
 from .decisions import Decision
-from .lexicon import BY_QUARTER, GAMES_WORDS, HALF_WORDS, ORDER_WORDS, PAST_N_SEASONS, PERIOD_AS_CONDITION, PERIOD_GAMES_WORDS, PERIOD_LEADERS, PERIOD_TOP, QUARTER_WORDS, RANK_WORDS, WHO_RANKS
+from .lexicon import BY_QUARTER, GAMES_WORDS, HALF_WORDS, ORDER_WORDS, PAST_N_SEASONS, PERIOD_AS_CONDITION, PERIOD_LEADERS, PERIOD_TOP, QUARTER_WORDS, RANK_WORDS, WHO_RANKS
 from .line import LineContext, LinesRead, read_lines, threshold_named
-from .measures import STAT_ALIASES
+from .measure import BOOLEAN_KEYS, GAMES_STATS, MeasureContext, named, names_a_stat, read_measure
 from .period import PeriodContext, read_period, which_period
 from .reading import Claim, Companion, Line, Period, Scope, Window
 from .span import SpanContext, range_named, read_span
@@ -202,45 +202,12 @@ class Route:
         return out
 
 
-# The side of the ball a fingerprint asked for, recognized from the text. The
-# words are matched whole so "offensive" and "defensive" count but a player
-# named Offenberg would not.
-SIDE_WORDS: dict[str, re.Pattern[str]] = {
-    "offense": re.compile(r"\boffens(?:e|ive)\b", re.IGNORECASE),
-    "defense": re.compile(r"\bdefens(?:e|ive)\b", re.IGNORECASE),
-}
-
-# Kept in step with ROUTER_SCHEMA's own enum by
-# test_the_side_values_match_the_router_schema - two hand-maintained lists of
-# the same thing is the shape that already produced the player_compare bug.
-SIDE_VALUES = ("offense", "defense", "total")
-
-
-def _validate_side(slots: dict[str, Any], question: str) -> str | None:
-    """Which half of a fingerprint was asked for, the question first.
-
-    Same reasoning as the span tagger reading the year out of the
-    text: the question is the source, and this slot is dropped often enough
-    that deferring to the model silently answers a broader question than the
-    one asked - the whole radar where its defensive half was wanted.
-
-    Why it is dropped is worth writing down, because no prompt wording fixes
-    it. `stat` is the one REQUIRED slot (see ROUTER_SCHEMA), and a constrained
-    decoder fills what it must before what it may: on "Show me Wembanyama's
-    defensive fingerprint chart" the model spends the adjective on
-    stat="defensive" and then omits `side` entirely. Measured 6/6 at
-    temperature 0, and that question appears verbatim as a worked example in
-    ROUTER_PROMPT with the right answer next to it, so it is not a wording the
-    prompt failed to cover.
-    """
-    named = [side for side, pattern in SIDE_WORDS.items() if pattern.search(question)]
-    # Exactly one, or nothing. A question naming both halves is asking for the
-    # whole radar, which is what leaving this unset already means.
-    if len(named) == 1:
-        return named[0]
-    side = slots.get("side")
-    return side if isinstance(side, str) and side in SIDE_VALUES else None
-
+# The side of the ball, the rate, the team's total, the stat words, a team
+# metric's alias, the advanced metrics, game score, a 2-point percentage, a
+# ranking by shot distance, the shots and the attempts beside a make are the
+# measure tagger's since Phase 3, step 2 (``measure.read_measure`` over the
+# lexicon's words); the stages read nothing of the measure but the model's
+# key as context (``raw["stat"]``), for the intents that turn on it.
 
 # "record" asked with a counting intent means wins and losses, not a count of
 # games. Measured: "Sixers record when Embiid scores 30 points this season" came
@@ -508,8 +475,8 @@ SPLIT_WORDS: dict[str, re.Pattern[str]] = {
 # of everything with a starter/bench breakdown, and `AnswerContext` carries
 # no question text, so the direction can only be recovered here.
 #
-# Read from the question for the same reason `_validate_side` reads the side of
-# the ball: it costs nothing and cannot move a slot on any other question,
+# Read from the question for the same reason the measure tagger reads the side
+# of the ball: it costs nothing and cannot move a slot on any other question,
 # where teaching `ROUTER_SCHEMA` a new value reproducibly can. A question that
 # names BOTH halves ("starting vs coming off the bench") keeps the category, on
 # purpose - that IS the splits question.
@@ -534,13 +501,9 @@ def _split_side(split: str, question: str) -> str:
     return split
 
 
-# Words that name a TEAM stat, beyond the box-score words _STAT_WORDS knows.
-_TEAM_STAT_WORDS = re.compile(r"\b(?:pace|ratings?|offen\w*|defen\w*|net|possessions?|record|wins?|losses)\b", re.IGNORECASE)  # codespell:ignore offen - a regex stem
-
 # "vs"/"against", for a game log's last N meetings - see route().
 _VERSUS_WORDS = re.compile(r"\b(?:vs\.?|versus|against)\s", re.IGNORECASE)
 
-_LOSING_STREAK = re.compile(r"\blos(?:ing|s|e)\s+streaks?\b|\bstraight\s+losses\b|\blosses\s+in\s+a\s+row\b|\bskid\b", re.IGNORECASE)
 
 # A ranking of TEAMS, asked with a player-ranking intent. Measured: "which team
 # scores the most points per game" came back as `leaderboard` and was answered
@@ -567,223 +530,28 @@ _FINGERPRINT_REROUTABLE = frozenset({"player_compare", "player_stat", "player_ne
 _FINGERPRINT_WORDS = re.compile(r"\bfinger\s?prints?\b|\bradar\b|\bnet\s?points?\b|\bplay[- ]types?\b", re.IGNORECASE)
 _SHOT_WORDS = re.compile(r"\bshots?\b|\bthrees\b|\b3s\b|\b(?:3|three)[- ]?pointers?\b|\bjumpers?\b|\blayups?\b|\bdunks?\b|\bchart\b", re.IGNORECASE)
 
-# Rate stats the prompt never lists as a player `stat`, so the model reaches for
-# the nearest one it knows. Measured: "kevin durant true shooting percentage
-# career" came back as stat='threePointFieldGoalPct' and was answered with his
-# 3-point percentage - a different stat, fluently. Named in the question, the
-# stat is read from it; a template that has no such stat then refuses.
-_ADVANCED_STAT_WORDS: tuple[tuple[str, re.Pattern[str]], ...] = (
-    ("ts_pct", re.compile(r"\btrue[- ]shooting\b|\bts\s?%|\bts\s+pct\b", re.IGNORECASE)),
-    ("efg_pct", re.compile(r"\beffective\s+(?:field\s+goal|fg)\b|\befg\b", re.IGNORECASE)),
-    ("usage_pct", re.compile(r"\busage\b", re.IGNORECASE)),
-)
-_ADVANCED_STAT_INTENTS = frozenset({"player_stat", "player_compare", "player_history", "leaderboard", "game_log"})
 
-# Hollinger's single-game composite (ISSUES.md #114). ROUTER_SCHEMA has no
-# `stat` value for it, and `stat` is the one REQUIRED slot, so the decoder
-# fills it with the nearest one it knows: "game score nba leader" arrived at
-# `leaderboard` with stat='points' and was answered "Luka Doncic led the
-# league in points per game ... at 33.5" - correct about points, and not what
-# was asked. Same mechanism as `_validate_side`, same remedy: read it off the
-# question text in route() rather than teach ROUTER_SCHEMA a new enum value,
-# which would move slots on unrelated questions and cannot be measured
-# without ollama.
-#
-# Anchored to the two-word phrase and not to "score" alone, because "score"
-# alone means points everywhere else in basketball - "pacers score", "what
-# was the score of the game", "total points scored by the toronto raptors"
-# would all be hijacked into a Game Score leaderboard, trading one fluently
-# wrong answer for several. The trailing `\b` is what keeps "per game scored
-# on fridays" out: "scored" fails the boundary after "score". Verified against
-# the 261-question StatMuse feed corpus: the phrase appears in exactly one
-# question, and the pattern rejects all three near-miss shapes above.
-_GAME_SCORE = re.compile(r"\bgame\s*scores?\b", re.IGNORECASE)
-
-# The two templates that can look this metric up name it differently, so the
-# question's own intent decides which spelling to emit - a value correct for
-# one is unknown to the other. `leaderboard` reads it through
-# `metrics.LEADERBOARD_METRICS`, keyed "avg_game_score" like every other
-# per-game average there (avg_points, avg_rebounds); `player_stat` reads it
-# through `season_line.ADVANCED_STATS`, keyed "game_score" with no
-# prefix, alongside ts_pct/efg_pct/usage_pct. Left out of every other intent
-# in _ADVANCED_STAT_INTENTS on purpose: player_compare, player_history and
-# game_log read a player's stat line through PLAYER_STAT_COLUMNS /
-# COMPARE_STAT_LINE, never ADVANCED_STATS, so a game_score value there would
-# be silently unreadable rather than answered - the same "looks handled, does
-# nothing" trap a stray slot leaves everywhere else in this module.
-_GAME_SCORE_STAT_BY_INTENT: dict[str, str] = {"leaderboard": "avg_game_score", "player_stat": "game_score"}
-
-
-def _route_game_score(intent: str, slots: dict[str, Any], question: str) -> None:
-    """Hollinger's single-game composite, read from the question text - see
-    the comment above :data:`_GAME_SCORE` for why and :data:`_GAME_SCORE_STAT_BY_INTENT`
-    for why the value it sets depends on the intent.
-
-    Runs after the rest of ``stat`` resolution so it overrides whatever the
-    model or ``_ADVANCED_STAT_WORDS`` guessed, not just fills a gap: "game
-    score" contains "score", which ``_named_a_stat`` already treats as naming
-    a stat, so the model's wrong guess (typically ``points``) would otherwise
-    survive untouched.
-
-    .. versionadded:: 4.3.0
-    """
-    if intent not in _GAME_SCORE_STAT_BY_INTENT or not _GAME_SCORE.search(question):
-        return
-    slots["stat"] = _GAME_SCORE_STAT_BY_INTENT[intent]
-
-
-# Two-point field-goal percentage (ISSUES.md #114). ROUTER_SCHEMA leaves
-# `stat` an open string with no enum - see the comment on that field - so the
-# model CAN emit "twoPointFieldGoalPct" verbatim, and measured over the
-# 2026-09-20 web session it did 3 times out of 10. The other 7 it substituted
-# the nearest stat ROUTER_PROMPT actually teaches ("threePointFieldGoalPct,
-# fieldGoalPct, freeThrowPct"), which is fieldGoalPct here, and answered
-# overall shooting where 2-point shooting was asked - the same substitution
-# _ADVANCED_STAT_WORDS exists to stop for ts_pct/efg_pct/usage_pct. Read from
-# the question rather than taught to the prompt, for the same reason every
-# other entry in this file gives: a prompt edit moves slots on unrelated
-# questions and needs ollama to measure; a regex costs nothing and cannot.
-#
-# "2pt", "2-pt", "2 point", "two point" and "2p", each read against
-# percentage/pct/% (optionally with "field goal(s)" in between, the way the
-# router's own worked examples phrase the other two percentages) - and
-# nothing shorter, so "3 point percentage" and a plain "field goal
-# percentage" are never swept in: neither alternative can start matching
-# without a literal "2" or "two" immediately before the pt/point token, and
-# "20 point" (a threshold, not a shooting split) fails the same way - the "0"
-# sits where "pt"/"point" must start.
-_TWO_POINT_PCT = re.compile(
-    r"\b(?:2[- ]?pts?|2p|2[- ]?points?|two[- ]?points?)\b(?:\s+field\s*goals?)?\s*(?:%|pct\.?|percent(?:age)?)\b",
-    re.IGNORECASE,
-)
-_TWO_POINT_PCT_INTENTS = frozenset({"player_history", "player_stat"})
-
-
-def _route_two_point_pct(intent: str, slots: dict[str, Any], question: str) -> None:
-    """2-point field-goal percentage, read from the question text - see
-    :data:`_TWO_POINT_PCT`.
-
-    Overrides whatever the model guessed, the same discipline
-    :func:`_route_game_score` uses and for the same reason: "2pt" and
-    "percentage" are both words ``_named_a_stat`` already reads as naming a
-    stat, so a wrong guess (typically ``fieldGoalPct``) would otherwise
-    survive untouched. Scoped to the two readers that can look the stat up
-    (``player_history``'s ``HISTORY_COLUMNS`` and ``player_stat``'s
-    ``SHOOTING_STATS``, both in ``season_line.py``) - the same
-    discipline ``_GAME_SCORE_STAT_BY_INTENT`` follows for game score, so a
-    value lands only where something reads it.
+def _route_shot_distance_subject(intent: str, slots: dict[str, Any], question: str) -> None:
+    """A ranking by shot distance names no player: any `player` the model
+    filled, filler or real, is dropped - `leaderboard` never reads one for
+    real (a named player is refused separately), and a filler value here
+    ("player": "player" on a question that names nobody) would otherwise
+    reach `subject.apply_subject` first and refuse for the WRONG cause -
+    "read as a question about player, who the question does not mention" -
+    before the ranking's own refusal (``shot_distance_ranking``, the measure
+    tagger's sentinel key) ever runs.
 
     .. versionadded:: 4.4.0
+       ``_route_leaderboard_shot_distance``, which wrote the sentinel too, until Phase 3, step 2.
     """
-    if intent not in _TWO_POINT_PCT_INTENTS or not _TWO_POINT_PCT.search(question):
+    if intent != "leaderboard" or not lexicon.SHOT_DISTANCE_RANKED.search(question):
         return
-    slots["stat"] = "twoPointFieldGoalPct"
-
-
-# A leaderboard ranking of shot distance (ISSUES.md #114). No such metric
-# exists and none is planned - a shot's distance has no leaderboard-shaped
-# rate the way a percentage or a per-game average does. Measured: "who lead
-# the league in avg 3 point distance" arrived at `leaderboard` with the
-# nearest real metric the model knew (threePointFieldGoalPct) and answered
-# Luke Kennard's 3-point PERCENTAGE, 47.8% - a real, fluently wrong number.
-# The sibling phrasing with no metric word in it ("...in shot distance for 3
-# point shots") arrived with a filler `player: "player"` instead, which
-# the invented-name check (agent.py) then refused for naming a player the
-# question does not mention - honest-sounding, and also the wrong cause,
-# since no leaderboard could answer either question anyway.
-_LEADERBOARD_SHOT_DISTANCE = re.compile(
-    r"\bshot\s+distance\b|\b(?:3|three)[- ]?points?\s+distance\b|\bdistance\s+for\s+(?:3|three)[- ]?points?\b",
-    re.IGNORECASE,
-)
-
-
-_ATTEMPTED = re.compile(r"\battempt(?:ed|s)?\b|\bfga\b|\b3pa\b|\bfta\b|\bshots?\s+taken\b", re.IGNORECASE)
-_MADE_TO_ATTEMPTED = {"threePointFieldGoalsMade": "threePointFieldGoalsAttempted", "fieldGoalsMade": "fieldGoalsAttempted", "freeThrowsMade": "freeThrowsAttempted"}
-
-
-def _route_attempted_stat(slots: dict[str, Any], question: str) -> None:
-    """ "Who attempted the most three pointers" filed ``threePointFieldGoalsMade``
-    and answered makes (Jeff's session, 2026-09-24) - the model's stat enum
-    reaches for the made column whenever a shot is named. The question's own
-    "attempted"/"attempts"/"FGA" word decides: a made-stat beside it is the
-    attempted column. Read only where the question names attempts and NOT
-    makes ("made" / "hit" / "makes"), so "3-pointers made per attempt" is
-    left alone.
-
-    .. versionadded:: 4.4.0
-    """
-    stat = slots.get("stat")
-    # "mad" too: "show embiid's 3pt attempts and 3pts mad for his career" asks
-    # for both, which the made line reports ("585 of 1,727").
-    if stat not in _MADE_TO_ATTEMPTED or not _ATTEMPTED.search(question) or re.search(r"\b(?:made|mad|makes?|hit|hits)\b", question, re.IGNORECASE):
-        return
-    slots["stat"] = _MADE_TO_ATTEMPTED[stat]
-
-
-# Which shots a distance or a chart is about, from the question's own words.
-# The intents that read `shot_value` (templates.shots._shot_value: a
-# shot_distance and a shot_chart) used to have the model taught it by their
-# own worked examples in ROUTER_PROMPT; with shot_distance assigned from the
-# text instead (subject.KIND_ASSIGNED_INTENTS), "avg 3pt shot distance" has
-# to read its 3 here - the same discipline `_validate_side` follows, and for
-# the same reason: a value read off the question cannot move any other slot.
-_SHOT_VALUE_WORDS: tuple[tuple[int, re.Pattern[str]], ...] = (
-    (3, re.compile(r"\b(?:3|three)[- ]?(?:pt|pts|point(?:er)?s?)\b|\bthrees\b|\b3s\b", re.IGNORECASE)),
-    (2, re.compile(r"\b(?:2|two)[- ]?(?:pt|pts|point(?:er)?s?)\b|\btwos\b", re.IGNORECASE)),
-    (1, re.compile(r"\bfree[- ]throws?\b|\bfts?\b", re.IGNORECASE)),
-)
-_SHOT_VALUE_INTENTS = frozenset({"shot_distance", "shot_chart"})
-
-
-def _route_shot_value(intent: str, slots: dict[str, Any], question: str) -> None:
-    """The shot value a distance or chart question names, where the model
-    left the slot empty - never over a value it did fill, and only where
-    exactly one value is named ("twos and threes" is neither).
-
-    .. versionadded:: 5.0.0
-    """
-    if intent not in _SHOT_VALUE_INTENTS or isinstance(slots.get("shot_value"), int):
-        return
-    named = [value for value, pattern in _SHOT_VALUE_WORDS if pattern.search(question)]
-    if len(named) == 1:
-        slots["shot_value"] = named[0]
-
-
-def _route_leaderboard_shot_distance(intent: str, slots: dict[str, Any], question: str) -> None:
-    """No leaderboard ranks shot distance - see :data:`_LEADERBOARD_SHOT_DISTANCE`.
-
-    Sets `stat` to the sentinel ``"shot_distance"`` - not a real metric name,
-    an explicit string `templates.players.leaderboard` checks for by value
-    (the two modules agree on the literal rather than sharing a symbol, the
-    same way `_GAME_SCORE_STAT_BY_INTENT`'s spellings are agreed rather than
-    imported) - so the template can refuse naming the real cause instead of
-    resolving to the nearest real metric.
-
-    Also drops any `player` the router filled, filler or real: `leaderboard`
-    never reads one for real (a named player is refused separately), and a
-    filler value here ("player": "player" on a question that names nobody)
-    would otherwise reach `subject.apply_subject` first and refuse for
-    the WRONG cause - "read as a question about player, who the question does
-    not mention" - before this refusal, the right one, ever runs.
-
-    .. versionadded:: 4.4.0
-    """
-    if intent != "leaderboard" or not _LEADERBOARD_SHOT_DISTANCE.search(question):
-        return
-    slots["stat"] = "shot_distance"
     slots.pop("player", None)
-
-
-#: The stats that are a yes/no about a game, which `leaderboard` counts per
-#: player ("most triple-doubles"). Ranking THOSE GAMES by another measure
-#: ("highest scoring triple doubles") is the window's `by`, which the window
-#: tagger reads where the stat is one of these (`window.WindowContext.boolean_stat`).
-_BOOLEAN_STATS = frozenset({"triple_double", "double_double", "fouled_out"})
 
 
 # A game log asked for by name. Measured: "luka ft log" routed to player_stat
 # and was answered with a season average.
-_LOG_WORDS = re.compile(r"\b(?:game\s*logs?|gamelogs?|logs?)\b|\b(?:each|every|by)\s+game\b", re.IGNORECASE)
+_LOG_WORDS = lexicon.LOG_WORDS
 
 # The thirty team nicknames, and the shorthand a question uses for some. Only to
 # tell a team from a player in a slot the model filled: "zach lavine vs nuggets"
@@ -907,139 +675,6 @@ _BEST_WORST_RECORD = re.compile(r"\b(?:best|worst)\s+(?:nba\s+|league\s+)?record
 _PSEUDO_TEAM = re.compile(r"(?:the\s+)?(?:all[-_ ]?nba|nba|league|all[-_ ]?teams?|teams?|every\s+team|worst|best)", re.IGNORECASE)
 
 
-# A NetPoints rate asked for by any of its names. In this data the only
-# adjusted form of NetPoints is the per-100-possessions rate, so "adjusted"
-# has exactly one honest reading; the model reaches for the season total
-# whatever the question says ("top 10 in defensive netpoints / 100
-# possessions" came back as netpoints_defense, and the two lists disagree
-# from the second name down - Holmgren is 2nd by season total and outside
-# the top three per 100). "/ 90" is a rate nothing here holds, and refuses
-# (#152).
-_RATE_WORDS = re.compile(r"\badjusted\b|\bper\s+(?:100\s+)?poss?ess?ions?\b|\bper\s+100\b|/\s*100\b", re.IGNORECASE)
-_PER_90 = re.compile(r"\bper\s+90\b|/\s*90\b", re.IGNORECASE)
-_NETPOINTS_PER_100: dict[str, str] = {
-    "netpoints": "netpoints_per_100",
-    "netpoints_total": "netpoints_per_100",
-    "netpoints_offense": "netpoints_offense_per_100",
-    "netpoints_defense": "netpoints_defense_per_100",
-}
-
-
-def _route_rate(intent: str, slots: dict[str, Any], question: str) -> None:
-    """A per-possession rate the question asks a ranking for - see _RATE_WORDS.
-    Switches a NetPoints metric to its per-100 variant; any other metric, or a
-    per-90 rate, gets a ``rate`` slot no reader honors, so the planner
-    refuses rather than ranking the wrong unit."""
-    if intent != "leaderboard":
-        return
-    stat = slots.get("stat")
-    if isinstance(stat, str) and stat in ("netpoints", "netpoints_per_100", "netpoints_total"):
-        # "who are the top 10 in adjusted offensive netpoints" arrived as
-        # the total after the 5.0.0 prompt shrink; the side word decides.
-        sides = [name for name, pattern in SIDE_WORDS.items() if pattern.search(question)]
-        if len(sides) == 1:
-            slots["stat"] = f"netpoints_{sides[0]}" + ("_per_100" if stat.endswith("_per_100") else "")
-    per_90 = _PER_90.search(question)
-    if per_90 is not None:
-        slots["rate"] = per_90.group(0).casefold()
-        return
-    rate = _RATE_WORDS.search(question)
-    if rate is None:
-        return
-    stat = slots.get("stat")
-    if isinstance(stat, str) and stat in _NETPOINTS_PER_100:
-        slots["stat"] = _NETPOINTS_PER_100[stat]
-    elif not (isinstance(stat, str) and stat.endswith("_per_100")):
-        slots["rate"] = rate.group(0).casefold()
-
-
-#: A team's season TOTAL asked for by "how many ... made/scored/have" or
-#: "total", with no per-game word beside it - the compiler's unnarrowed team
-#: read (compose/team.py), never team_stat's per-game line.
-_TEAM_TOTAL = re.compile(r"\bhow\s+many\b.{0,60}\b(?:made|scored|have|has|had|hit|grabbed|dished)\b|\btotal\b", re.IGNORECASE)
-_PER_GAME_WORDS = re.compile(r"\bper\s+game\b|\bppg\b|\brpg\b|\bapg\b|\baverages?\b|\bavg\b", re.IGNORECASE)
-
-
-def _route_team_total(intent: str, slots: dict[str, Any], question: str) -> None:
-    """A season total asked of a team's own stat is filed as ``rate: "total"``
-    (the schema's own word for it, which NetPoints already uses), which
-    ``team_stat``'s words do not state - its reader steps aside - so the
-    compiler reads the season's raw total.
-    "how many 3 pointers have the magic made so far this season" arrived as
-    ``team_stat`` after the 5.0.0 prompt shrink (it was ``leaderboard`` with
-    no team before, which the reading restored and the compiler answered)
-    and was answered "11.7 per game" - the right stat, the wrong question.
-
-    .. versionadded:: 5.0.0
-    """
-    if intent != "team_stat" or slots.get("rate") or not _TEAM_TOTAL.search(question) or _PER_GAME_WORDS.search(question):
-        return
-    slots["rate"] = "total"
-
-
-def _team_metric_in(question: str) -> str | None:
-    """The longest team-metric alias the question names ("defensive rating"),
-    or None. The model invents team stats ("usage_pct_defense" for "lowest
-    defensive rating"), and the question says which one it meant. An alias
-    the question qualifies as given up comes back as asked ("rebounds
-    allowed"), for the template to refuse by name - see :data:`_GIVEN_UP`."""
-    text = question.casefold()
-    for alias in sorted(STAT_ALIASES, key=len, reverse=True):
-        found = re.search(r"(?<![a-z0-9])" + re.escape(alias) + r"(?![a-z0-9])", text)
-        if found:
-            return f"{alias} allowed" if _GIVEN_UP.match(text, found.end()) else alias
-    return None
-
-
-# A team metric's word qualified as the OTHER side's: "rebounds allowed per
-# team" is what a team gives up, and reading it as the alias `rebounds`
-# answered the teams' own rebounds, best first (yardstick-v2 F101). It is
-# named as asked instead, which no team metric is, so the template refuses by
-# name rather than ranking a different column. A metric whose own alias holds
-# the qualifier ("points allowed") matches whole first, being longer. Not
-# "against": "rebounds against the knicks" is the team's own.
-_GIVEN_UP = re.compile(r"\s+(?:allowed|given\s+up|conceded)\b")
-
-
-# The words a question uses when it is actually asking about one stat, as
-# opposed to asking who is better. Loose on purpose, and safe because of where
-# it is used: see :func:`_named_a_stat`.
-_STAT_WORDS = re.compile(
-    r"\b(points?|scor\w*|pts?|rebound\w*|boards|reb|assist\w*|passing|dimes|ast|steal\w*|stl|block\w*|blk|"
-    r"turnover\w*|giveaways?|fouls?|minutes?|mins?|shoot\w*|shots?|three\w*|3pt|3-point\w*|field goals?|free throws?|"
-    r"percentage|efficien\w*|usage|double-doubles?|triple-doubles?|td3s?|ppg|rpg|apg|spg|bpg|fg|ft|3p|ts|efg|plus[ /-]?minus)\b|\+/-",
-    re.IGNORECASE,
-)
-
-
-def _named_a_stat(question: str) -> bool:
-    """Whether the question asked about a particular stat at all.
-
-    ``stat`` is the one REQUIRED slot in ``ROUTER_SCHEMA``, so the model fills
-    it on every question whether or not the question named one: "compare sga
-    and embiid" comes back with ``stat='points'`` 12 times out of 12. For
-    ``player_compare`` that slot is not a detail - it collapses the whole line
-    the template exists to show back to the single average it used to print.
-
-    The same fix as ``_validate_side``, and forgiving in both directions
-    *because it is used for one intent only*. A word this misses widens a
-    comparison to the full line, which still holds the stat asked about; a word
-    it matches too eagerly leaves the behavior exactly as it was. Neither can
-    produce a wrong number, which is why the list may be loose here and could
-    not be if `leaderboard` read it.
-
-    It is read beyond the comparison now - a quarter's line and its ranking
-    (``_route_period_split_slots``, ``_route_period_intents_choose``), a
-    team's line, a streak - and there a word it misses DOES move a number:
-    "vj edgecombe 2nd half plus minus" lost its stat and answered his
-    second-half points ("567 points in the 2nd half"), and "who has the most
-    4th quarter plus minus" the league's fourth-quarter scorers (found
-    2026-10-09, Phase 3, step 0). Plus-minus is a stat the question names,
-    and reads as one; a stat word added here is a number kept.
-    """
-    return bool(_STAT_WORDS.search(question))
-
-
 def _route_coach_intent(raw: dict[str, Any], question: str) -> bool:
     """True when the question is about a coach, which nothing here can answer.
 
@@ -1085,19 +720,9 @@ def _recover_period_subject(raw: dict[str, Any], question: str, asked: tuple[Per
 def _route_period_split_slots(raw: dict[str, Any], question: str, subject: str | None) -> None:
     """The slots `period_split` reads once its intent is chosen - split out
     of :func:`_route_period_intents` to keep it inside the complexity gate."""
-    # `stat` is the one REQUIRED slot, so the model fills it whether or
-    # not the question named one - measured, "duren v nets 1h gameloh"
-    # arrived with stat="none" and "scottie barnes stats 2nd half log"
-    # with stat="minutes", and the template refused both as asking for
-    # a stat it cannot give. Only a stat the question names is kept,
-    # the same rule player_compare follows (see _named_a_stat).
-    if not _named_a_stat(question):
-        raw.pop("stat", None)
-    # A log was asked for, not a season average. Measured, 7 of the 11
-    # questions this template answered in its first replay said "log",
-    # "by game" or "each game" and got a total and an average.
-    if _LOG_WORDS.search(question) or (PERIOD_GAMES_WORDS.search(question) and "stat" not in raw):
-        raw["per_game"] = True
+    # The model's required `stat`, kept only where the words name one, and
+    # a log asked for in place of a season average, are the measure
+    # tagger's reading (``measure.read_measure``) since Phase 3, step 2.
     if subject is not None:
         # The player came from the text, not from the model's own
         # `player` slot - so its `team`/`opponent` are no more
@@ -1118,9 +743,8 @@ def _route_period_intents(raw: dict[str, Any], question: str) -> None:
     low = question.lower()
     if lexicon.FOULED_OUT.search(low):
         # The count of a player's foul-outs: the line itself (fouls at six)
-        # is the lines tagger's (``line.read_lines``).
+        # is the lines tagger's (``line.read_lines``), the stat the measure tagger's.
         raw["intent"] = "threshold_count"
-        raw["stat"] = "fouls"
     ranks_players = PERIOD_LEADERS.search(low) is not None or (PERIOD_TOP.search(low) is not None and not _team_slot_or_word(raw, low))
     if (QUARTER_WORDS.search(low) and (ranks_players or not _is_team_quarter_points(raw) or _names_a_period_subject(question))) or HALF_WORDS.search(low):
         # A named player's quarter or half now HAS a template, so the override
@@ -1156,8 +780,6 @@ def _route_period_intents_choose(raw: dict[str, Any], question: str, asked: tupl
         # quarter scoring leaders"), where it narrows the ranking to that
         # team's players rather than becoming the subject.
         raw["intent"] = "period_leaderboard"
-        if not _named_a_stat(question):
-            raw.pop("stat", None)
     elif asked is not None and not named_player and (_team_slot_or_word(raw, low)):
         # A TEAM's half. A team's QUARTER never reaches here - the
         # exemption above keeps it on its own template - but a half always
@@ -1184,8 +806,6 @@ def _route_period_intents_choose(raw: dict[str, Any], question: str, asked: tupl
         # team's players' breakdown ("knicks points by quarter") reads
         # as the TEAM's by quarter, which is not built, and stays `other`.
         raw["intent"] = "period_leaderboard"
-        if not _named_a_stat(question):
-            raw.pop("stat", None)
     else:
         raw["intent"] = "other"
 
@@ -1233,8 +853,8 @@ def _route_triple_double_abbreviation(raw: dict[str, Any], question: str) -> Non
     leaderboard or a count the model chose keeps its own intent."""
     if not lexicon.TRIPLE_DOUBLE_ABBREVIATION.search(question):
         return
-    raw["stat"] = "triple_double"
-    raw.pop("shot_value", None)
+    # The stat (``triple_double``) and the shot value it is never one of are
+    # the measure tagger's reading since Phase 3, step 2.
     # `shot_chart` too, since the 5.0.0 prompt shrink: the "3" reads as a
     # shot to the model ("luka td3s home" arrived as a chart of his twos),
     # and a count of triple-doubles is never a chart unless the question
@@ -1321,14 +941,13 @@ def _route_one_player_intents(raw: dict[str, Any], question: str, listed: list[s
     if raw["intent"] == "player_stat" and _LOG_WORDS.search(question):
         raw["intent"] = "game_log"
     _route_pair_over_seasons(raw, question, listed)
-    if raw["intent"] == "game_log" and _HOW_MANY.search(question) and raw.get("stat") in _GAMES_STATS and not any(p.search(question) for p in ORDER_WORDS.values()):
+    if raw["intent"] == "game_log" and _HOW_MANY.search(question) and raw.get("stat") in GAMES_STATS and not any(p.search(question) for p in ORDER_WORDS.values()):
         # "how many games did embid play" arrived as a log of his most
         # recent game (order recent, limit 1) after the 5.0.0 prompt shrink;
         # the count is the line's ("... in 38 games"), which player_stat
-        # states, and a log of one game states nothing of the kind.
+        # states, and a log of one game states nothing of the kind. The
+        # games key is no measure: the measure tagger drops it.
         raw["intent"] = "player_stat"
-        for key in ("stat", "fields"):
-            raw.pop(key, None)
     if raw["intent"] == "player_stat" and not _named_player(raw) and WHO_RANKS.search(question):
         # No player named and "who ... the most": the league's ranking, not
         # one player's line - "who attempted the most three pointers this
@@ -1336,7 +955,6 @@ def _route_one_player_intents(raw: dict[str, Any], question: str, listed: list[s
         raw["intent"] = "leaderboard"
 
 
-_GAMES_STATS = frozenset({"games", "game", "games_played", "gamesPlayed", "gp"})
 _COMPARE_WORDS = re.compile(r"\bcompar(?:e[ds]?|ing|ison)\b|\bbetter\b|\bwho scores more\b|\bside by side\b", re.IGNORECASE)
 
 
@@ -1371,17 +989,14 @@ def _route_matchup_against_team(raw: dict[str, Any], question: str, listed: list
 _PLAYED_TOGETHER_REROUTABLE = frozenset({"head_to_head", "team_record", "team_stat", "game_log", "other"})
 
 
-def _route_line_and_record_intents(raw: dict[str, Any], question: str, companions: tuple[Companion, ...]) -> bool:
-    """A history that is really a line, a record ranking, and a career high.
-    Returns whether a history was rerouted to a line."""
-    rerouted_to_line = False
-    if raw["intent"] == "player_history" and (not _named_a_stat(question) or (_VERSUS_WORDS.search(question) and _TEAM_WORD.search(question))):
+def _route_line_and_record_intents(raw: dict[str, Any], question: str, companions: tuple[Companion, ...]) -> None:
+    """A history that is really a line, a record ranking, and a career high."""
+    if raw["intent"] == "player_history" and (not names_a_stat(question) or (_VERSUS_WORDS.search(question) and _TEAM_WORD.search(question))):
         # A season-by-season history of one stat is neither "career averages"
         # (no stat named - the whole line) nor a career against one team.
         # Measured: "Jokic career averages" answered with points by season,
         # "derozan career points vs knicks" refused on its opponent.
         raw["intent"] = "player_stat"
-        rerouted_to_line = True
     if raw["intent"] == "with_without" and not _absent(companions) and not _played(companions) and any(pattern.search(question) for pattern in ORDER_WORDS.values()):
         # No teammate named, and "the last 7 games": a team's log, not a
         # split. "KNICKS point differential over the last 7 games" arrived
@@ -1397,15 +1012,15 @@ def _route_line_and_record_intents(raw: dict[str, Any], question: str, companion
         # "record with Embiid out" is the same split, from the other side.
         raw["intent"] = "with_without"
     if raw["intent"] == "team_record" and _BEST_WORST_RECORD.search(question) and not _TEAM_WORD.search(question):
+        # The ranking's metric, the record, is the measure tagger's reading
+        # of the same words (the team metric's alias "record").
         raw["intent"] = "team_leaderboard"
-        raw["stat"] = "record"
         raw.pop("team", None)
     if raw["intent"] == "player_stat" and lexicon.CAREER_HIGH.search(question):
         # A career high is one game's total, which player_stat never reports.
         # Measured: "Diabate career high assists" was answered with his assists
         # per game.
         raw["intent"] = "single_game_high"
-    return rerouted_to_line
 
 
 #: The model-era keys of the span, window, cuts, period, line and companion
@@ -1511,7 +1126,6 @@ def _route_count_intents(raw: dict[str, Any], slots: dict[str, Any], question: s
         # which states how many there were and his line in them. Measured
         # over the replayed corpus: this question is the only one routed so.
         raw["intent"] = "game_log"
-        slots.pop("stat", None)
         # The count's subject, restored as a count's would be
         # (_route_subject_slots) - game_log is not one of the intents that
         # step restores for, and the model dropped Bam here.
@@ -1569,46 +1183,17 @@ def _route_intent_slots(intent: str, slots: dict[str, Any], question: str) -> No
         team_slot = slots.get("team")
         if isinstance(team_slot, str) and any(pattern.fullmatch(team_slot.strip()) for _, pattern in RANK_WORDS):
             slots.pop("team", None)
-    if intent == "streak":
-        slots["kind"] = "loss" if _LOSING_STREAK.search(question) else "win"
 
 
-def _route_line_stat(intent: str, slots: dict[str, Any], question: str, rerouted_to_line: bool) -> None:
-    """A required ``stat`` the question never named, a history's season count, and an advanced metric the question did name."""
-    # For the two templates whose default is a whole line, which still holds
-    # any stat the word list missed. Dropping it for `leaderboard` would leave
-    # it with no metric to rank by. Measured on player_stat: "Jokic career
-    # averages" arrived with stat='points' and "LeBron James career playoff
-    # stats" with stat='career_playoffs'.
-    if intent in ("player_compare", "player_stat") and not _named_a_stat(question):
-        slots.pop("stat", None)
-    if rerouted_to_line:
-        # A history's `fields` were its own; the line it became has none
-        # (its count of seasons the window tagger never reads for a line).
-        slots.pop("fields", None)
-    if intent in _ADVANCED_STAT_INTENTS:
-        advanced = next((metric for metric, pattern in _ADVANCED_STAT_WORDS if pattern.search(question)), None)
-        if advanced is not None:
-            slots["stat"] = advanced
-
-
-def _route_team_slots(intent: str, slots: dict[str, Any], question: str) -> None:
-    """A pseudo-team dropped, and a team's or a streak's ``stat`` kept only where the question names one."""
+def _route_team_slots(slots: dict[str, Any]) -> None:
+    """A pseudo-team dropped: a `team` slot that names the league rather
+    than a team ("all-NBA", "all_teams", "worst"), measured on three
+    questions, each of which then refused as an unknown team. (A team's or
+    a streak's ``stat``, kept only where the question names one, and a
+    team metric's alias are the measure tagger's since Phase 3, step 2.)"""
     team_slot = slots.get("team")
     if isinstance(team_slot, str) and _PSEUDO_TEAM.fullmatch(team_slot.strip()):
         slots.pop("team", None)
-    # The same drop for two more intents where the required slot is noise when
-    # the question names no stat: "Knicks stats" arrived as stat='points' and
-    # narrowed a team's line to one number, and a team's winning streak arrived
-    # with a stat and no threshold and was refused.
-    if intent == "team_stat" and not (_named_a_stat(question) or _TEAM_STAT_WORDS.search(question)):
-        slots.pop("stat", None)
-    if intent in ("team_stat", "team_leaderboard"):
-        named_metric = _team_metric_in(question)
-        if named_metric is not None:
-            slots["stat"] = named_metric
-    if intent == "streak" and not _named_a_stat(question):
-        slots.pop("stat", None)
 
 
 # A count asked of one player with no season in sight: "how many times has
@@ -1616,29 +1201,6 @@ def _route_team_slots(intent: str, slots: dict[str, Any], question: str) -> None
 # is the question. Product decision (2026-09-19): an unscoped count by a named
 # player reads as his career, and the answer names the scope it used.
 _HOW_MANY = re.compile(r"\bhow\s+many\b", re.IGNORECASE)
-
-
-def _route_games_won(intent: str, slots: dict[str, Any], question: str, read: LinesRead) -> None:
-    """A player's games won or lost - "how many playoff games has embiid
-    won?" - is his team's record in the games he played, with no line at
-    all: the compiler's read once the record's reader steps aside, and it
-    reads "wins"/"losses", not the model's own word for it ("playoff_wins",
-    day5). Where the words name a line the record is over it, and the
-    stat the lines tagger read beside it stands (``read.stat``: "scores 30"
-    is points; one "N+ stat" pair under a count or a record is that word's
-    column - until Phase 3, step 2 ``_route_record_when_threshold`` wrote
-    both off the words here: "what was the sixers record this season when
-    tyrese maxey had 20+ points?" came back with ``stat='wins'``, the word
-    "record" filed under the required slot, and the template refused with
-    "record_when needs a known stat and a positive threshold, got
-    'wins'/20" about a question that states its stat plainly).
-    """
-    won = lexicon.GAMES_WON.search(question)
-    if intent == "record_when" and won is not None and not any(line.keyed for line in read.lines):
-        slots["stat"] = "losses" if won.group(1).lower().startswith("los") else "wins"
-        return
-    if read.stat is not None:
-        slots["stat"] = read.stat
 
 
 # The intents whose missing subject is read back out of the question's grammar.
@@ -1675,18 +1237,6 @@ def _route_subject_slots(intent: str, slots: dict[str, Any], question: str) -> N
             slots["player"] = subject
 
 
-def _route_side(intent: str, slots: dict[str, Any], question: str) -> None:
-    """The side of the ball for a fingerprint. Until Phase 3, step 2 this
-    stage (``_route_side_and_order``) wrote the window beside it; the
-    window tagger reads it now (:func:`~association.query.window.read_window`)."""
-    if intent == "fingerprint":
-        side = _validate_side(slots, question)
-        if side is None:
-            slots.pop("side", None)
-        else:
-            slots["side"] = side
-
-
 #: The slot keys a raw route carries into the stages: the router model's
 #: schema properties less the intent, which is the shape the parser writes
 #: its names, stat and window in now that the model classification is gone
@@ -1695,11 +1245,17 @@ def _route_side(intent: str, slots: dict[str, Any], question: str) -> None:
 #: the question for the intent they were run under (``since`` for a
 #: ``game_log``), and would
 #: otherwise survive into an intent whose template refuses it. The span's
-#: six slots, the window's four, the cuts' seven and the period's two read
-#: from the words are not among them: the four taggers read every one from
-#: the words again (Phase 3, step 2); the ``opponent`` is, since it is the
-#: subject reading's word, which the cuts tagger takes as settled.
-_MODEL_SLOTS: frozenset[str] = frozenset({"stat", "player", "players", "team", "teams", "opponent", "rate", "side", "shot_value", "fields"})
+#: six slots, the window's four, the cuts' seven, the period's two and the
+#: measure's seven read from the words are not among them: the taggers read
+#: every one from the words again (Phase 3, step 2); the ``opponent`` is,
+#: since it is the subject reading's word, which the cuts tagger takes as
+#: settled. The subject's names alone, then - the model's ``stat`` enters
+#: beside them as the measure tagger's context (:func:`settle`).
+_MODEL_SLOTS: frozenset[str] = frozenset({"player", "players", "team", "teams", "opponent"})
+
+#: The measure's model-era slots a raw route may carry (a test's payload):
+#: read as the tagger's context, never passed to the Scope.
+_MEASURE_CONTEXT_KEYS: tuple[str, ...] = ("stat", "side", "shot_value", "fields")
 
 
 def settle(intent: str, slots: Mapping[str, Any] | Scope, question: str, companions: tuple[Companion, ...] = (), *, lines: tuple[Line, ...] = ()) -> Route:
@@ -1753,7 +1309,7 @@ def settle(intent: str, slots: Mapping[str, Any] | Scope, question: str, compani
     """
     if isinstance(slots, Scope):
         slots = slots.to_slots()
-    raw: dict[str, Any] = {key: value for key, value in slots.items() if key in _MODEL_SLOTS}
+    raw: dict[str, Any] = {key: value for key, value in slots.items() if key in _MODEL_SLOTS or key in _MEASURE_CONTEXT_KEYS}
     raw["intent"] = intent
     return _settle(raw, question, companions, lines=lines)
 
@@ -1764,6 +1320,12 @@ def _settle(raw: dict[str, Any], question: str, companions: tuple[Companion, ...
     # slots, so it short-circuits before any of the stages below run.
     if _route_coach_intent(raw, question):
         return Route(intent=raw["intent"])
+    # The measure the words name stands over the model's key as the stages'
+    # CONTEXT (the intents that turn on a games count read it); the measure
+    # tagger reads the family itself once the intent is settled.
+    worded = named(question)
+    if worded is not None:
+        raw["stat"] = worded[0]
     # The stages run in this order because each reads what the ones before it
     # rewrote: the intents code assigns decide which slots are read, and a
     # count whose words carry no line turns back into a ranking before any
@@ -1771,29 +1333,26 @@ def _settle(raw: dict[str, Any], question: str, companions: tuple[Companion, ...
     _route_period_intents(raw, question)
     _route_triple_double_abbreviation(raw, question)
     _route_team_and_player_intents(raw, question)
-    rerouted_to_line = _route_line_and_record_intents(raw, question, companions)
+    _route_line_and_record_intents(raw, question, companions)
     slots = _route_blank_slots(raw)
     _route_count_intents(raw, slots, question, companions)
     _route_split_slot(slots, question)
     _route_intent_slots(raw["intent"], slots, question)
-    _route_line_stat(raw["intent"], slots, question, rerouted_to_line)
-    _route_game_score(raw["intent"], slots, question)
-    _route_two_point_pct(raw["intent"], slots, question)
-    _route_leaderboard_shot_distance(raw["intent"], slots, question)
-    _route_shot_value(raw["intent"], slots, question)
-    _route_attempted_stat(slots, question)
-    _route_team_slots(raw["intent"], slots, question)
-    _route_rate(raw["intent"], slots, question)
-    _route_team_total(raw["intent"], slots, question)
+    _route_shot_distance_subject(raw["intent"], slots, question)
+    _route_team_slots(slots)
     _route_subject_slots(raw["intent"], slots, question)
     # The lines, at the position of the last stage that wrote one
     # (``_route_record_when_threshold``, the pair's stat and number), over
-    # the settled intent; the stat the words name beside a line is written
-    # where that stage wrote it.
+    # the settled intent.
     read = read_lines(question, LineContext(intent=raw["intent"]))
     slots["lines"] = (*lines, *read.lines)
-    _route_games_won(raw["intent"], slots, question, read)
-    _route_side(raw["intent"], slots, question)
+    # The measure, at the position of the last stage that wrote one of its
+    # slots (the side, after the lines), over the settled intent, the
+    # model's key as context and the stat the lines tagger read beside a line.
+    measure = read_measure(question, _measure_context(raw, question, read))
+    for slot in _MEASURE_CONTEXT_KEYS:
+        slots.pop(slot, None)
+    slots["measure"] = measure.measure
     # The period, the cuts, the window, then the span, last: each the one
     # reader of its family, over the intent the stages settled - the
     # period once the intent is final (the stage that chose it wrote the
@@ -1807,13 +1366,33 @@ def _settle(raw: dict[str, Any], question: str, companions: tuple[Companion, ...
     cuts = read_cuts(question, CutsContext(intent=raw["intent"], split=slots.get("split"), opponent=slots.get("opponent"), without=_absent(companions)))
     slots.pop("opponent", None)
     slots["cuts"] = cuts.cuts
-    window = read_window(question, WindowContext(intent=raw["intent"], boolean_stat=slots.get("stat") in _BOOLEAN_STATS))
+    window = read_window(question, WindowContext(intent=raw["intent"], boolean_stat=measure.measure is not None and measure.measure.key in BOOLEAN_KEYS))
     slots["window"] = window.window
     span = read_span(question, _span_context(raw["intent"], slots, question, window=window.window, cuts=cuts))
     slots["span"] = span.span
     # The stages' working dict crosses into the typed Scope here, once: a
     # value no field holds raises ScopeError to the parser.
-    return Route(intent=raw["intent"], scope=Scope.from_slots(slots), claims=claimed_once([*period.claims, *cuts.claims, *window.claims, *read.claims, *span.claims]))
+    return Route(intent=raw["intent"], scope=Scope.from_slots(slots), claims=claimed_once([*period.claims, *cuts.claims, *window.claims, *read.claims, *measure.claims, *span.claims]))
+
+
+def _measure_context(raw: dict[str, Any], question: str, read: LinesRead) -> MeasureContext:
+    """What the measure tagger reads beside the words
+    (:class:`~association.query.measure.MeasureContext`): the settled
+    intent, the model's key (a test's side, shot value and columns beside
+    it), the stat the lines tagger read beside a line and whether a line is
+    keyed, and whether a game of ordering was named."""
+    stat = raw.get("stat")
+    shot_value = raw.get("shot_value")
+    return MeasureContext(
+        intent=raw["intent"],
+        key=stat if isinstance(stat, str) and stat.strip() else None,
+        side=raw.get("side") if isinstance(raw.get("side"), str) else None,
+        shot_value=shot_value if isinstance(shot_value, int) and not isinstance(shot_value, bool) else None,
+        fields=tuple(raw["fields"]) if isinstance(raw.get("fields"), (list, tuple)) else (),
+        line_stat=read.stat,
+        keyed_line=any(line.keyed for line in read.lines),
+        order_named=any(pattern.search(question) for pattern in ORDER_WORDS.values()),
+    )
 
 
 def _span_context(intent: str, slots: dict[str, Any], question: str, *, window: Window, cuts: CutsRead) -> SpanContext:

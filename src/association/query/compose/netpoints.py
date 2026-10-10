@@ -379,7 +379,8 @@ def read_fingerprint(con: duckdb.DuckDBPyConnection, q: NetPointsQuery, *, state
     # skill already carries the side it is measured on and this only picks
     # which skills are drawn. The Reading's door refuses any side but the
     # renderer's three, so only an absent one needs the default.
-    return fingerprint_result(con, players, ambiguous, season, view=scope.side or "total", season_type=season_type, order=order)
+    side = scope.measure.side if scope.measure is not None else None
+    return fingerprint_result(con, players, ambiguous, season, view=side or "total", season_type=season_type, order=order)
 
 
 def _fingerprint_names(players_slot: tuple[str, ...], player_slot: str | None) -> list[str]:

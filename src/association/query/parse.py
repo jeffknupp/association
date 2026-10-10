@@ -35,8 +35,7 @@ from association.query.decisions import Decision
 from association.query.entities import _edit_budget, _words, find_players, find_teams, players_of, suggest_players, team_abbreviations, teams_of
 from association.query.lexicon import COUNT, LOG_OR_WINDOW_WORDS
 from association.query.line import read_period_line
-from association.query.measures import MEASURE_WORDS, PERIOD_COLUMNS, PERIOD_RATE_STATS, TEAM_PERIOD_COLUMNS
-from association.query.metrics import EXTRA_FIELD_COLUMNS, TEAM_FIELD_WORDS
+from association.query.measures import PERIOD_COLUMNS, PERIOD_RATE_STATS, TEAM_PERIOD_COLUMNS
 from association.query.point import read_point
 from association.query.reading import TEAM_ONLY_INTENTS, Cause, Claim, LeftOut, Line, PointRefused, Reading, Scope, ScopeError, Split, Unsupported
 from association.query.router import Route, _route_calendar_slots_split, settle
@@ -151,81 +150,10 @@ under it by the subject reading, as they are on the router's parent today.
 .. versionadded:: 5.0.0
 """
 
-MEASURE_GRAMMAR: tuple[tuple[str, str], ...] = (
-    # (the words, the measure key) - first match wins; the netpoints family before its parts.
-    (
-        r"\b(defensive|def|defense)\b.{0,20}\b(net ?po?i?nts?|netpts)\b.{0,30}\b(per 100|/ ?100|adjusted|per possession)\b|\b(net ?po?i?nts?"
-        r"|netpts)\b.{0,20}\b(defensive|def|defense)\b.{0,30}\b(per 100|/ ?100|adjusted|per possession)\b"
-        r"|\badjusted\b.{0,12}\bdefensive\b.{0,12}\b(net ?po?i?nts?|netpts)\b|\bdefensive\b.{0,12}\b(netpts|net ?po?i?nts?)\s*/\s*100\b",
-        "netpoints_defense_per_100",
-    ),
-    (
-        r"\b(offensive|off|offense)\b.{0,20}\b(net ?po?i?nts?|netpts)\b.{0,30}\b(per 100|/ ?100|adjusted|per possession)\b|\b(net ?po?i?nts?"
-        r"|netpts)\b.{0,20}\b(offensive|off|offense)\b.{0,30}\b(per 100|/ ?100|adjusted|per possession)\b"
-        r"|\badjusted\b.{0,12}\boffensive\b.{0,12}\b(net ?po?i?nts?|netpts)\b",
-        "netpoints_offense_per_100",
-    ),
-    (r"\b(defensive|def|defense)\b.{0,20}\b(net ?po?i?nts?|netpts)\b|\b(net ?po?i?nts?|netpts)\b.{0,20}\b(defensive|def|defense)\b", "netpoints_defense"),
-    (r"\b(offensive|off|offense)\b.{0,20}\b(net ?po?i?nts?|netpts)\b|\b(net ?po?i?nts?|netpts)\b.{0,20}\b(offensive|off|offense)\b", "netpoints_offense"),
-    (r"\b(net ?po?i?nts?|netpts)\b.{0,30}\b(per 100|/ ?100|adjusted|per possession)\b|\badjusted\b.{0,12}\b(net ?po?i?nts?|netpts)\b", "netpoints_per_100"),
-    (r"\b(net ?po?i?nts?|netpts)\b", "netpoints"),
-    (r"\bpoints? differential\b|\bpoint diff\b|\bdifferential\b", "points_differential"),
-    (r"\bplus[ /-]?minus\b|\+/-", "plus_minus"),
-    (r"\bts ?%|\btrue shooting\b", "ts_pct"),
-    (r"\befg\b|\beffective field goal", "efg_pct"),
-    (r"\busage\b|\busg\b", "usage_pct"),
-    (r"\bgame score\b", "game_score"),
-    (r"\btriple[ -]?doubles?\b|\btd3s?\b|\btds\b", "triple_double"),
-    (r"\bdouble[ -]?doubles?\b|\bdd\b", "double_double"),
-    # "%" is not a word character, so it takes no \b: "who had the highest
-    # 3pt % this season" read as 3-pointers made while it did.
-    (r"\b(3|three)[ -]?(pt|point|pointer)s?\b.{0,12}(\bpercentage\b|\bpct\b|%)|\b3p%|\b3pt%", "threePointFieldGoalPct"),
-    (r"\b(2|two)[ -]?(pt|point|pointer)s?\b.{0,12}(\bpercentage\b|\bpct\b|%)|\b2p%|\b2pt%", "twoPointFieldGoalPct"),
-    (r"\bfg ?%|\bfg percentage\b|\bfield goal percentage\b", "fieldGoalPct"),
-    (r"\bft ?%|\bfree throw percentage\b", "freeThrowPct"),
-    # What a team gives up is the opponent's line, never its own: "rebounds
-    # allowed per team" read as the teams' own rebounds and was answered with
-    # them, best first. Points allowed is a team metric; the rest name a key
-    # no template ranks, which refuses rather than answering the team's own.
-    (r"\b(points?|pts)\b.{0,12}\b(allowed|given up|conceded)\b|\b(allowed|gave up|conceded)\b.{0,12}\b(points?|pts)\b|\bopponents?'? (points|ppg)\b", "points allowed"),
-    (r"\b(rebounds?|boards)\b.{0,12}\b(allowed|given up|conceded)\b|\b(allowed|gave up|conceded)\b.{0,12}\b(rebounds?|boards)\b", "rebounds allowed"),
-    (r"\bassists?\b.{0,12}\b(allowed|given up|conceded)\b", "assists allowed"),
-    (r"\b(threes|3s|(3|three)[ -]?(pt|point|pointer)s?)\b.{0,12}\b(allowed|given up|conceded)\b", "threes allowed"),
-    # A three is its own column: "3 point stats", "three points made" and
-    # "3-point average" are threes made (a percentage is read above), never
-    # the "point" in them read as points.
-    # Both asked for: the made line already says "585 of 1,727", and no
-    # per-game line reads the attempted column alone.
-    (r"(?=.*\b(3|three)[ -]?(pt|point|pointer)s?\b)(?=.*\b(attempts?|attempted|tries|3pa)\b)(?=.*\b(made|makes|mad|hit)\b)", "threePointFieldGoalsMade"),
-    (r"\b(3|three)[ -]?(pt|point|pointer)s?\b.{0,12}\b(attempts?|attempted|tries)\b|\b3pa\b", "threePointFieldGoalsAttempted"),
-    (r"\b(3|three)[ -]?(pt|point|pointer)s?\b(?!.{0,20}\b(distance|range|shots?)\b)", "threePointFieldGoalsMade"),
-    (r"\bscorers?\b|\bscores\b|\bscoring\b", "points"),
-)
-"""The measure grammar: the stat a question names in its own words, read
-before the normalizer's key so a phrase the closed vocabulary holds never
-depends on the model - the NetPoints family above all (the 3B misses most
-of it), then the derived rates and the words :data:`~association.query.measures.MEASURE_WORDS`
-does not hold.
-
-.. versionadded:: 5.0.0
-"""
-
-
-_MEASURE_ORDINARY_WORDS = frozenset({"to", "min"})
-"""Abbreviations in :data:`~association.query.measures.MEASURE_WORDS` that are
-also ordinary words ("compared to other teams" is no turnover count): read
-only where the question writes them in capitals ("TO", "MIN")."""
-
-
-def measure(question: str) -> str | None:
-    """The measure :data:`MEASURE_GRAMMAR` or :data:`~association.query.measures.MEASURE_WORDS` names in ``question``, or ``None``."""
-    for pattern, key in MEASURE_GRAMMAR:
-        if re.search(pattern, question, re.IGNORECASE):
-            return key
-    words = " " + re.sub(r"[^a-z0-9%/+]+", " ", question.lower()) + " "
-    hits = [(w, c) for w, c in MEASURE_WORDS.items() if f" {w} " in words and (w not in _MEASURE_ORDINARY_WORDS or re.search(rf"\b{w.upper()}S?\b", question))]
-    return max(hits, key=lambda x: len(x[0]))[1] if hits else None
-
+# The measure grammar - the stat a question names in its own words, read
+# before the normalizer's key - is the lexicon's (lexicon.MEASURE_GRAMMAR)
+# and the measure tagger's one reading (measure.named) since Phase 3, step
+# 2; the stages take it as their context (router._settle).
 
 # A window over two teams meeting is still their meetings when a record is
 # asked for ("lakers vs mavs record last 10 home games"); a log word never is.
@@ -413,13 +341,6 @@ def _slots_from_names(con: duckdb.DuckDBPyConnection, names: list[str], stat: st
     return slots
 
 
-def _with_measure(question: str, slots: dict[str, Any]) -> dict[str, Any]:
-    """``slots`` with the stat the words name (:func:`measure`) over the
-    normalizer's key: the words are the question's own; the key is a guess."""
-    named = measure(question)
-    return {**slots, "stat": named} if named else slots
-
-
 def _two_teams(subject: Subject, question: str, slots: dict[str, Any]) -> Subject:
     """Two teams meeting (ISSUES.md #235): a team subject set against a
     second team, no player named, and a meeting word between them - the
@@ -474,32 +395,9 @@ def _read_route_players(subject: Subject, slots: dict[str, Any]) -> list[str]:
     return [*subject.players, *(span for span in typed if not any(question_supports(name, span) for name in read))]
 
 
-# Columns asked for beside a ranking - "top 5 scorers with their rebounds and
-# assists", "... and the team they play for" (yardstick-v2 F017): the
-# leaderboard's `fields`, a slot the router's model filled from the words.
-_FIELDS_AFTER = re.compile(r"\b(?:with|alongside|and|plus|including)\s+(?:their|his|the)\s+(?P<rest>.+)$", re.IGNORECASE)
-
-
-def _read_route_fields(intent: str, scope: Scope, question: str) -> Scope:
-    """The columns a leaderboard question asks to see beside its ranking:
-    each stat word after "with their" / "alongside their" that the
-    leaderboard shows (:data:`~association.query.metrics.EXTRA_FIELD_COLUMNS`),
-    and "team" for the team each player plays for. Only for the leaderboard,
-    the one template that reads them; a word it cannot show is left out, and
-    the answer is the ranking the question also asked for."""
-    if intent != "leaderboard" or scope.fields:
-        return scope
-    fields: list[str] = []
-    after = _FIELDS_AFTER.search(question)
-    if after:
-        for word in re.findall(r"[a-z]+", after.group("rest").lower()):
-            key = MEASURE_WORDS.get(word)
-            if key in EXTRA_FIELD_COLUMNS and key not in fields:
-                fields.append(key)
-    if TEAM_FIELD_WORDS.search(question):
-        fields.append("team")
-    return replace(scope, fields=tuple(fields)) if fields else scope
-
+# The columns asked for beside a ranking ("top 5 scorers with their rebounds
+# and assists", F017) are the measure tagger's reading since Phase 3, step 2
+# (``Measure.beside``, over lexicon.FIELDS_AFTER and TEAM_FIELD_WORDS).
 
 # A quarter or half used as a CONDITION on which games count is the lines
 # tagger's reading (``line.read_period_line``), made here before the stages
@@ -660,7 +558,7 @@ def read_route(con: duckdb.DuckDBPyConnection, question: str, names: list[str] |
     """
     question = _read_route_folded(question)
     names = [_read_route_folded(name) for name in names or []]
-    slots = _with_measure(question, _slots_from_names(con, [_as_typed_part(con, question, _as_typed(question, name)) for name in names], stat))
+    slots = _slots_from_names(con, [_as_typed_part(con, question, _as_typed(question, name)) for name in names], stat)
     # THE reading of who the question is about: everything after this
     # settles it (subject.settle_subject), nothing reads the names again.
     read = read_subject(con, question, "other", Scope.from_slots(slots))
@@ -682,10 +580,9 @@ def read_route(con: duckdb.DuckDBPyConnection, question: str, names: list[str] |
     parent = parent_intent(question, subject.kind, _read_route_beside(subject, question))
     staged, decisions, words = _read_route_staged(question, slots, parent, read, period_lines)
     final = staged.intent
-    scope = _read_route_fields(final, staged.scope, question)
     # A teammate's start is his, never the subject's own split: the stages
     # read the split from the whole question.
-    scope = _read_route_split(subject, question, final, scope)
+    scope = _read_route_split(subject, question, final, staged.scope)
     # The one reading, settled under the intent the route ends with: what
     # the parser's last step and everything after it answer from.
     settled = settle_subject(read, final, parent=parent, words=words)
@@ -947,11 +844,14 @@ def _unsupported_period_stat(reading: Reading) -> Cause | None:
     goal, 3-point or free throw percentage IS read (``PERIOD_RATE_STATS``).
     The period and whether it is a half are the sentence's."""
     scope, intent = reading.scope, reading.intent
-    stat = scope.stat
-    if intent not in ("period_split", "period_leaderboard") or not isinstance(stat, str) or stat in ("pts", "", "all") or stat in PERIOD_COLUMNS or stat in PERIOD_RATE_STATS:
+    measure = scope.measure
+    if intent not in ("period_split", "period_leaderboard") or measure is None or measure.as_typed is None or measure.as_typed in ("pts", "all"):
+        return None
+    key = measure.key if measure.whose == "own" else None
+    if key in PERIOD_COLUMNS or key in PERIOD_RATE_STATS:
         return None
     slots = scope.period.to_slots() if scope.period is not None else {}
-    return Cause(kind="period_stat", facts={"intent": intent, "stat": stat, "period": slots.get("period"), "half": slots.get("half")})
+    return Cause(kind="period_stat", facts={"intent": intent, "stat": measure.as_typed, "period": slots.get("period"), "half": slots.get("half")})
 
 
 def _unsupported_period_as_condition(question: str, reading: Reading) -> Cause | None:
@@ -973,10 +873,13 @@ def _unsupported_team_period_stat(reading: Reading) -> Cause | None:
     points) nor the period's rebuilt line
     (:data:`~association.query.measures.TEAM_PERIOD_COLUMNS`) holds:
     minutes, plus-minus, points in the paint."""
-    stat, intent = reading.scope.stat, reading.intent
-    if intent != "team_quarter_points" or not isinstance(stat, str) or stat in ("points", "pts", "") or stat in TEAM_PERIOD_COLUMNS or stat in PERIOD_RATE_STATS:
+    measure, intent = reading.scope.measure, reading.intent
+    if intent != "team_quarter_points" or measure is None or measure.as_typed is None or measure.as_typed in ("points", "pts"):
         return None
-    return Cause(kind="team_period_stat", facts={"intent": intent, "stat": stat})
+    key = measure.key if measure.whose == "own" else None
+    if key in TEAM_PERIOD_COLUMNS or key in PERIOD_RATE_STATS:
+        return None
+    return Cause(kind="team_period_stat", facts={"intent": intent, "stat": measure.as_typed})
 
 
 def _unsupported_bench_points(question: str, reading: Reading) -> Cause | None:
@@ -995,9 +898,10 @@ def _unsupported_team_boolean_count(reading: Reading) -> Cause | None:
     ("no ranking reads triple_double") - one player's triple-doubles ARE
     counted; what is not read is the team's aggregate of them."""
     scope, subject = reading.scope, reading.subject
-    if reading.intent != "leaderboard" or scope.stat not in ("triple_double", "double_double") or subject is None or subject.kind not in ("team", "team_players") or not scope.team:
+    measure = scope.measure
+    if reading.intent != "leaderboard" or measure is None or measure.key not in ("triple_double", "double_double") or subject is None or subject.kind not in ("team", "team_players") or not scope.team:
         return None
-    return Cause(kind="team_boolean_count", facts={"intent": reading.intent, "stat": scope.stat})
+    return Cause(kind="team_boolean_count", facts={"intent": reading.intent, "stat": measure.as_typed})
 
 
 def _reading_from_route_left_out(players: names.PlayerIndex, question: str, reading: Reading) -> LeftOut | None:

@@ -241,7 +241,7 @@ def test_no_reading_puts_a_team_where_a_player_belongs(con: duckdb.DuckDBPyConne
     player = reading.scope.player
     team_subject = reading.subject.kind in ("team", "team_players") and not reading.subject.players
     if reading.intent in PLAYER_INTENTS and team_subject and player:
-        no_line = reading.intent == "record_when" and not (threshold_of(reading.scope) and reading.scope.stat)
+        no_line = reading.intent == "record_when" and not (threshold_of(reading.scope) and reading.scope.measure is not None and reading.scope.measure.named)
         assert not find_teams(con, player) and not no_line, (question, reading.intent, player)
 
 
@@ -614,7 +614,7 @@ def test_a_teams_record_when_a_player_reached_a_threshold_is_assigned(con: duckd
     # filed the subject as an outlook's "team" named Joel Embiid (day5), a
     # shape the parser never writes.
     reading = _parsed(con, "how many playoff games has embiid won?", ["embiid"])
-    assert reading.intent == "record_when" and reading.scope.player == "Joel Embiid" and not reading.scope.team and reading.scope.stat == "wins"
+    assert reading.intent == "record_when" and reading.scope.player == "Joel Embiid" and not reading.scope.team and reading.scope.measure is not None and reading.scope.measure.as_typed == "wins"
     intent, _ = _assigned(con, "how many games have the celtics won this season", "team_record", stat="wins", team="Boston Celtics", season=2026, season_type=2)
     assert intent == "team_record"
 

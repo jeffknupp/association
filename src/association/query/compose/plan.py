@@ -15,10 +15,11 @@ from dataclasses import dataclass, replace
 from association.query.answer import Reply
 from association.query.conditions import condition_needs_player_refusal
 from association.query.coverage import coverage_refusal
+from association.query.measure import spelled
 from association.query.measures import stat_measure
 from association.query.player_relation import RELATION_SCOPING_EXCLUDED, relation_cuts, relation_period, relation_scoping, relation_span
 from association.query.point import TEAM_SEASON_POINTS, team_season_point
-from association.query.reading import CHART_INTENTS, Cause, Companion, Cuts, Line, Period, PointShape, Reading, Scope, Span, Window, _career_scope, cell_set, slot_names_set, unhonored_scoping
+from association.query.reading import CHART_INTENTS, Cause, Companion, Cuts, Line, Measure, Period, PointShape, Reading, Scope, Span, Window, _career_scope, cell_set, slot_names_set, unhonored_scoping
 from association.query.result import Refusal
 from association.query.team_relation import team_relation_cuts, team_relation_scoping, team_relation_span
 
@@ -59,7 +60,7 @@ STATED_SCOPING: dict[PointShape, frozenset[str]] = {
     PointShape("player_seasons", "split", "season"): relation_span("player_history") | relation_cuts("player_history"),
     # leaderboard's words: a career pool, and a season total or a unit it
     # refuses by name (the template's own HONORED_SCOPING when it retired).
-    PointShape("player_seasons", "ranking", "player"): frozenset({"rate"}) | relation_span("leaderboard") | relation_cuts("leaderboard"),
+    PointShape("player_seasons", "ranking", "player"): Measure.CELLS | relation_span("leaderboard") | relation_cuts("leaderboard"),
     # period_split's words: the relation's set less a career and a since/until
     # range (RELATION_SCOPING_EXCLUDED: the accuracy caveat is per season),
     # which its point refuses outright (compose.adapt._adapt_period_split).
@@ -301,7 +302,7 @@ def _team_shape_cells(reading: Reading) -> frozenset[str]:
         # The log, the run and a record over a line (record_when's team
         # reader) each refuse these by name.
         return _TEAM_READER_REFUSES
-    return frozenset({"rate"})
+    return Measure.CELLS
 
 
 def _streak_league_cells(scope: Scope) -> None:
@@ -464,7 +465,7 @@ def _plan(reading: Reading) -> Query | TeamQuery | TeamSeasonQuery | NetPointsQu
     # - a season total, or a unit refused by name - which no game-level read
     # does; a point its reader declines is refused with it (_game_level).
     key = point_shape(reading)
-    _check_relation_scoping(reading.scope, subject, frozenset({"rate"}) if key.relation == "player_seasons" and subject == "everyone" else frozenset())
+    _check_relation_scoping(reading.scope, subject, Measure.CELLS if key.relation == "player_seasons" and subject == "everyone" else frozenset())
     planned = Query(
         scope=reading.scope,
         skeleton=skeleton_of(reading),
@@ -527,12 +528,12 @@ def _game_level(key: PointShape, q: Query) -> Query:
     if q.group == "season":
         return replace(q, scope=_career_scope(q.scope), source="games")
     if q.group == "player" and q.subject == "everyone":
-        stat = q.scope.stat
-        if stat is not None and stat.strip() and stat_measure(stat) is None:
+        stat = spelled(q.scope.measure)
+        if stat is not None and stat.strip() and stat_measure(q.scope.measure) is None:
             raise Refused(Refusal(kind="no_ranking_measure", facts={"stat": stat}, shown={"stat": stat}))
-        if q.scope.rate:
+        if cell_set(q.scope, "rate"):
             raise Unsupported("the relation cannot honor ['rate'] - it would answer for a different span than was asked")
-        if q.scope.fields:
+        if q.scope.measure is not None and q.scope.measure.beside:
             raise Unsupported("the game-level ranking shows no columns beside its measure")
         return replace(q, source="games")
     raise Unsupported("an unnarrowed player line the season line's reader did not say")

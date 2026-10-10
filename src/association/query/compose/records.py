@@ -26,6 +26,7 @@ from association.query.conditions import _PLAYER_GAME_TABLES, _names, _unseen, b
 from association.query.coverage import coverage_refusal
 from association.query.entities import optional_team
 from association.query.lines import threshold_of
+from association.query.measure import spelled
 from association.query.notes import Note
 from association.query.player_games import STAT_LABELS, THRESHOLD_STAT_COLUMNS, games_subquery
 from association.query.player_relation import condition_scope, no_games, span_of, whole_span
@@ -56,7 +57,7 @@ def _own_line(q: Query, stated: frozenset[str]) -> tuple[str, str, int] | None:
     scope = q.scope
     if unhonored_scoping("record_when", scope, stated):
         return None
-    stat = scope.stat
+    stat = spelled(scope.measure)
     column = THRESHOLD_STAT_COLUMNS.get(stat) if stat is not None else None
     threshold = threshold_of(scope)
     if stat is None or column is None or threshold is None or threshold < 1:
@@ -183,7 +184,7 @@ def read_team_record_when(con: duckdb.DuckDBPyConnection, q: TeamQuery, *, state
         return team
     if team is None:
         raise Unsupported("record_when needs a player or a team")
-    stat, threshold = _record_when_team_stat(scope.stat, threshold_of(scope))
+    stat, threshold = _record_when_team_stat(spelled(scope.measure), threshold_of(scope))
     span = span_of(scope.span, "games")
     narrowed = team_games(con, team, span, scope, opponent=scope.cuts.opponent)
     if isinstance(narrowed, Unanswered):

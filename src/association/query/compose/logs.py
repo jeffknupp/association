@@ -30,6 +30,7 @@ from association.nba.season import current_season
 from association.nba.season import eastern_date as _eastern_date
 from association.query.entities import resolved_team, slot_season
 from association.query.lines import MeasureFilter, measure_filters, threshold_of
+from association.query.measure import spelled
 from association.query.measures import log_extras, stat_measure
 from association.query.notes import Note
 from association.query.player_games import Narrowed, aggregate_sql
@@ -323,13 +324,13 @@ def read_player_log(con: duckdb.DuckDBPyConnection, q: Query, *, stated: frozens
         return None
     scope = q.scope
     try:
-        extras = log_extras(scope.stat)
+        extras = log_extras(scope.measure)
         _game_log_lines(scope)
     except Unsupported:
         return None
     # The router's own stat, which the log shows as its extra columns; a
     # measure the question's words moved in instead is the compiler's point.
-    if [m for m in q.measures if m not in LINE] not in ([], [stat_measure(scope.stat)]):
+    if [m for m in q.measures if m not in LINE] not in ([], [stat_measure(scope.measure)]):
         return None
     headers, needed = _player_log_columns(extras)
     limit = _clamp_limit(scope.window.count, DEFAULT_GAME_LOG_LIMIT)
@@ -522,9 +523,9 @@ def read_team_log(con: duckdb.DuckDBPyConnection, q: TeamQuery, *, stated: froze
         resolved_season = span_of(asked.without_range(), "games", season_type=2).season
         if resolved_season is None:
             raise Unsupported("a career span has no single season to read both season types within")
-        return _team_log_mixed(con, team.name, team, resolved_season, opponent=opponent, venue=venue, limit=limit, stat=scope.stat)
+        return _team_log_mixed(con, team.name, team, resolved_season, opponent=opponent, venue=venue, limit=limit, stat=spelled(scope.measure))
     seasons = span_of(asked, "games", season_type=season_type)
     narrowed = team_games(con, team, seasons, Scope(cuts=Cuts(venue=venue)), opponent=opponent, date=date)
     if isinstance(narrowed, Unanswered):
         return narrowed
-    return _team_log(con, q, team, seasons, narrowed, limit=limit, ascending=ascending, stat=scope.stat)
+    return _team_log(con, q, team, seasons, narrowed, limit=limit, ascending=ascending, stat=spelled(scope.measure))

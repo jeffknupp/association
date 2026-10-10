@@ -25,9 +25,7 @@
   "team_relation": 2
  },
  "regex_outside_the_reader": [
-  "entities",
-  "metrics",
-  "team_metrics"
+  "entities"
  ],
  "con_in_the_reader": [
   "parse:_as_typed_part",

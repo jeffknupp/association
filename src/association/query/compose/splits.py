@@ -21,6 +21,7 @@ import duckdb
 from association.query.conditions import _PLAYER_GAME_TABLES, _PLAYER_LINE, _SPLIT_GROUPS, _TEAM_LINE, _season_month_order, _totals, _unseen, box_source
 from association.query.entities import Entity, optional_team
 from association.query.lines import measure_filters
+from association.query.measure import spelled
 from association.query.notes import Note
 from association.query.player_games import _PLAYER_GAMES, Narrowed, games_subquery
 from association.query.player_relation import condition_scope, narrowed_cells, no_games, no_narrowed_games, span_of
@@ -181,7 +182,7 @@ def read_player_splits(con: duckdb.DuckDBPyConnection, q: Query, *, stated: froz
         return None
     _splits_refusals(scope)
     try:
-        line = _splits_line(scope.stat, _PLAYER_LINE, alias="p")
+        line = _splits_line(spelled(scope.measure), _PLAYER_LINE, alias="p")
     except Unsupported:
         return None
     team = optional_team(con, scope.team, season=scope.span.season)
@@ -328,7 +329,7 @@ def _team_splits(con: duckdb.DuckDBPyConnection, q: TeamQuery, team: Entity, opp
     (:func:`~association.query.compose.team.compile_team_over`) - the tail
     of :func:`read_team_splits`."""
     scope = q.scope
-    line = _splits_line(scope.stat, _TEAM_LINE, alias="t")
+    line = _splits_line(spelled(scope.measure), _TEAM_LINE, alias="t")
     span = span_of(scope.span, "games")
     narrowed = team_games(con, team, span, scope, opponent=opponent)
     if isinstance(narrowed, Unanswered):

@@ -36,6 +36,7 @@ from association.query.compose.core import Query, run
 from association.query.compose.sentence import sentence
 from association.query.conditions import RAW_BOX, UNGATED_ON_REBUILD, box_source
 from association.query.coverage import check_coverage
+from association.query.measure import measure_of
 from association.query.parse import with_point
 from association.query.player_games import REBUILT_STATS
 from association.query.reading import SPLIT_KINDS, PointShape, Reading, Scope, Span, Unsupported, unhonored_scoping
@@ -324,7 +325,7 @@ def _rate_ranking(minimum: int) -> Query:
     """The league's FG% leaders this season with a minimum, as the planner
     hands a position or postseason ranking to the player-games relation."""
     return Query(
-        scope=Scope(span=Span(season_type=2), stat="fg_pct"),
+        scope=Scope(span=Span(season_type=2), measure=measure_of("fg_pct")),
         skeleton="grouped",
         subject="everyone",
         group="player",

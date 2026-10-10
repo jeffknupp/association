@@ -24,6 +24,7 @@ from association.fetch.repairs import real_games
 from association.nba.season import current_season
 from association.query.answer import AnswerContext, Reply
 from association.query.coverage import check_coverage
+from association.query.measure import measure_of
 from association.query.parse import with_point
 from association.query.reading import Reading, Scope, Unsupported, unhonored_scoping
 from association.query.subject import Subject
@@ -781,7 +782,7 @@ def test_each_question_is_held_to_the_floor_of_the_table_it_reads() -> None:
     ],
 )
 def test_the_stat_slot_is_read_through_a_whitelist(stat: Any, key: str | None) -> None:
-    assert resolve_team_metric(stat) == key
+    assert resolve_team_metric(measure_of(stat) if stat is not None else None) == key
 
 
 def test_best_and_worst_depend_on_the_metric() -> None:

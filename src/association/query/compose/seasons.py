@@ -28,6 +28,7 @@ import duckdb
 
 from association.nba.season import current_season
 from association.query.entities import Entity
+from association.query.measure import spelled
 from association.query.measures import stat_measure
 from association.query.notes import Note
 from association.query.player_relation import ResolvedSpan, empty_box_scores
@@ -93,7 +94,7 @@ def player_line_reads(q: Query, stated: frozenset[str]) -> bool:
         own = default_point("player_stat", q.scope)
     except Unsupported:
         return False
-    named = stat_measure(q.scope.stat)
+    named = stat_measure(q.scope.measure)
     return own.on == "player_seasons" and (q.measures == own.measures or (named is not None and q.measures == [named]))
 
 
@@ -117,7 +118,7 @@ def read_player_line(con: duckdb.DuckDBPyConnection, q: Query, *, stated: frozen
     if not player_line_reads(q, stated):
         return None
     scope = q.scope
-    stat = scope.stat
+    stat = spelled(scope.measure)
     if not (stat is not None and (stat in ADVANCED_STATS or stat in SHOOTING_STATS)):
         wanted_stats(scope)
     subject = line_subject(con, scope)
@@ -287,10 +288,10 @@ def player_history_reads(q: Query, stated: frozenset[str]) -> bool:
 
     .. versionadded:: 5.0.0
     """
-    stat = q.scope.stat
+    stat = spelled(q.scope.measure)
     if q.source != "seasons" or q.group != "season" or stat is None or stat not in HISTORY_COLUMNS:
         return False
-    if stat_measure(stat) not in (None, *q.measures[:1]):
+    if stat_measure(q.scope.measure) not in (None, *q.measures[:1]):
         return False
     return not unhonored_scoping("player_history", q.scope, stated)
 
@@ -316,7 +317,7 @@ def read_player_history(con: duckdb.DuckDBPyConnection, q: Query, *, stated: fro
     player = history_subject(con, scope)
     if isinstance(player, Unanswered):
         return player
-    stat = scope.stat
+    stat = spelled(scope.measure)
     assert stat is not None
     latest = history_through(scope)
     career = scope.span.career

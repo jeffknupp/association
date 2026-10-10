@@ -18,6 +18,7 @@ import duckdb
 from association.nba.season import current_season
 from association.query.coverage import coverage_refusal
 from association.query.entities import Entity, resolved_team, slot_season
+from association.query.measure import spelled
 from association.query.notes import Note
 from association.query.player_relation import validated_until
 from association.query.point import TEAM_SEASON_POINTS
@@ -222,9 +223,10 @@ def _team_stat_metric(scope: Scope) -> str | None:
     """The metric the ``stat`` slot names through the whitelist
     (``team_metrics.STAT_ALIASES``), ``None`` for no stat - and a word it does
     not know declined rather than matched to something close."""
-    key = resolve_team_metric(scope.stat)
-    if key is None and scope.stat and scope.stat.strip():
-        raise Unsupported(f"no team metric for stat {scope.stat!r}")
+    key = resolve_team_metric(scope.measure)
+    stat = spelled(scope.measure)
+    if key is None and stat and stat.strip():
+        raise Unsupported(f"no team metric for stat {stat!r}")
     return key
 
 
@@ -393,9 +395,9 @@ def read_team_leaderboard(con: duckdb.DuckDBPyConnection, q: TeamSeasonQuery, *,
     conference = _team_leaderboard_checks(scope, stated)
     if conference is not None:
         return conference
-    key = resolve_team_metric(scope.stat)
+    key = resolve_team_metric(scope.measure)
     if key is None:
-        raise Unsupported(f"no team metric for stat {scope.stat!r}")
+        raise Unsupported(f"no team metric for stat {spelled(scope.measure)!r}")
     # `season` still settles to a real year under `since` - unread by the
     # since-bounded read, and here only for the named team's own-season name
     # lookup, which stays "now" either way.

@@ -33,6 +33,7 @@ import duckdb
 from association.nba.coverage import COVERAGE
 from association.nba.season import eastern_date
 from association.query.entities import Entity
+from association.query.measure import spelled
 from association.query.notes import Note
 from association.query.player_games import REBUILT_STATS, STAT_LABELS, THRESHOLD_STAT_COLUMNS
 from association.query.player_relation import empty_box_scores, player_relation_season_type, rebuilt_in_scope
@@ -50,7 +51,7 @@ def _single_game_high_column(q: Query) -> str | None:
     own point - the router's own stat, whitelisted, first among the
     measures, top games first, nothing the question's words added - else
     ``None``."""
-    stat = q.scope.stat
+    stat = spelled(q.scope.measure)
     column = THRESHOLD_STAT_COLUMNS.get(stat) if stat is not None else None
     if stat is None or column is None or q.skeleton != "rows" or q.order != "measure" or q.direction != "desc" or q.predicates or q.position or not q.measures or q.measures[0] != column:
         return None
@@ -86,7 +87,8 @@ def read_single_game_high(con: duckdb.DuckDBPyConnection, q: Query, *, stated: f
     player_id = player.id if player is not None else None
     empty = empty_box_scores(con, season, season_type, player_id, covered_by_rebuild=compiled.rebuilt)
     withheld = 0 if games or column in REBUILT_STATS else rebuilt_in_scope(con, season, season_type, player_id)
-    notes += _single_game_high_notes(games, STAT_LABELS.get(scope.stat or "", scope.stat or ""), season, name, empty, withheld)
+    stat = spelled(scope.measure)
+    notes += _single_game_high_notes(games, STAT_LABELS.get(stat or "", stat or ""), season, name, empty, withheld)
     # A season read by default ("career high" names none, "kawhi most threes in
     # a game" neither) that held nothing for a named player is redirected, not
     # answered as though the season had been asked.
@@ -99,7 +101,7 @@ def read_single_game_high(con: duckdb.DuckDBPyConnection, q: Query, *, stated: f
         parts=(Part(body=Rows(columns=(column,), rows=tuple(games), by=column)),),
         notes=tuple(notes),
         decisions=(redirect,) if redirect is not None else (),
-        facts=CountFacts(stat=scope.stat, box_scores_from=COVERAGE["player_box_stats"].first_season, empty_box_scores=empty[0]),
+        facts=CountFacts(stat=stat, box_scores_from=COVERAGE["player_box_stats"].first_season, empty_box_scores=empty[0]),
     )
 
 

@@ -929,6 +929,235 @@ class Companion:
         }
 
 
+MeasureHow = Literal["per_game", "total", "per_100", "per_90"]
+"""How a measure is asked for: a figure per game, a season total, a rate per
+100 possessions (the one adjusted form NetPoints has), or per 90 - a unit
+nothing here holds, kept so the refusal names it.
+
+.. versionadded:: 6.0.0
+"""
+
+MeasureWhose = Literal["own", "opponent"]
+"""Whose figure a measure is: the subject's own, or what it gave up ("points
+allowed" is the opponent's points).
+
+.. versionadded:: 6.0.0
+"""
+
+MeasureSide = Literal["offense", "defense", "total"]
+"""The side of the ball a NetPoints measure or a fingerprint is asked on.
+
+.. versionadded:: 6.0.0
+"""
+
+
+@dataclass(frozen=True, kw_only=True)
+class Measure:
+    """What a question asks about - ``ROADMAP-TYPES.md``'s
+    ``Measure(key, how, whose, category, side)``, the sixth filter family
+    typed (Phase 3, step 2): one value in place of the seven slots that
+    carried it (``stat``, ``rate``, ``per_game``, ``side``, ``shot_value``,
+    ``fields``, ``kind``). The ``key`` is one of the catalog's
+    (:data:`association.query.measure.CATALOG`), which says how the measure
+    is read on each relation - as a game column or a derived measure, as the
+    season line's column, as a ranking's metric, as a team's metric - and
+    what it is called; the six vocabularies the slot was read against are
+    lookups into it (:func:`association.query.measure.key_of`).
+
+    Measured first on the 2,710 readings of 2026-10-09
+    (``~/association-research/stages/measure_family.py``): a ``stat`` on
+    1,004 readings in 69 spellings - 23 the model's, 37 the words', and the
+    team metrics' alias texts for the rest ("fgm", "ppg", "defensive
+    rating") - the model's key and the words' disagreeing on 58 (the words
+    won every one, as the stages wrote them), a key no catalog held on 24
+    (``shot_distance``, a sentinel the ranking refuses by; ``games_played``;
+    the given-up keys), a rate on 13, a per-game log on 38, a side on 1, a
+    shot value on 13 (every one 3, beside a stat naming the same shots on 5),
+    columns beside a ranking on 7, a run's kind on 6.
+
+    .. versionadded:: 6.0.0
+    """
+
+    #: The catalog's key (:data:`association.query.measure.CATALOG`), or
+    #: None where the words or the model named a measure no catalog holds
+    #: (``as_typed`` says what), or where the question says something about
+    #: its measure (a unit, a side, which shots, a run's result, the columns
+    #: beside a ranking) without naming which.
+    key: str | None = None
+    #: How the reader wrote the measure: the model's key, the grammar's,
+    #: a stage's spelling or a team metric's alias text as the words had it
+    #: - what a refusal prints ("no team metric for stat 'ppg'") and what
+    #: the ``stat`` slot projects to (:meth:`Scope.to_slots`). None where
+    #: no measure was named.
+    as_typed: str | None = None
+    #: How the figure is asked for (:data:`MeasureHow`); None where the
+    #: words say nothing and the reader's default applies.
+    how: MeasureHow | None = None
+    #: The unit's words, as the ``rate`` slot carried them ("per 100", "per
+    #: possession", "/ 90", "total"): the cell a relation honors or refuses
+    #: by name (:attr:`CELLS`), and what the refusal quotes. None where the
+    #: unit is the key's own (a NetPoints rate folded into its metric).
+    unit: str | None = None
+    whose: MeasureWhose = "own"
+    #: NetPoints only: the side of the ball a fingerprint or a rating is
+    #: asked on.
+    side: MeasureSide | None = None
+    #: The shots relation only: which shots a chart or a distance is about
+    #: (1, 2 or 3). The measure's rather than a cell of the relation,
+    #: because a stat naming the same shots arrives beside it ("threes" is
+    #: 3-pointers made AND shot value 3) and the relation reads the value
+    #: first, then the stat (``compose.shots.shot_value_of``).
+    shot_value: Literal[1, 2, 3] | None = None
+    #: NetPoints only: one of the play-type categories a fingerprint's
+    #: metric is of (``nba.netpoints.FINGERPRINT_CATEGORIES``' own
+    #: spellings: ``two_pt``, ``assist``, ...), where a metric of one was
+    #: named outright (``assist_o_net_pts``); None otherwise.
+    category: str | None = None
+    #: A run's result (the streak shape): True for a run of wins, False for
+    #: losses, read from the words ("losing streak", "skid") - the ``kind``
+    #: slot until Phase 3, step 2, written on every run and read by the
+    #: run's reader only where no stat line is.
+    won: bool | None = None
+    #: The columns a ranking asks to see beside its measure ("with their
+    #: rebounds and assists", "the team they play for"): catalog keys, or
+    #: ``team`` - the ``fields`` slot until Phase 3, step 2.
+    beside: tuple[str, ...] = ()
+
+    #: The family's one cell a relation's table declares and a decline
+    #: names: ``rate``, a unit asked for - honored by the season-line
+    #: ranking (a season total, a NetPoints metric's per-100 form; a unit the
+    #: metric has no form of refused by name) and the team compiler's
+    #: unnarrowed total, refused by every other reader as the slot was.
+    CELLS: ClassVar[frozenset[str]] = frozenset({"rate"})
+
+    def __post_init__(self) -> None:
+        if self.as_typed is not None and (not isinstance(self.as_typed, str) or not self.as_typed.strip()):
+            raise ScopeError(f"measure as_typed {self.as_typed!r} is not text")
+        if self.how is not None and self.how not in ("per_game", "total", "per_100", "per_90"):
+            raise ScopeError(f"measure how {self.how!r} is not one of ('per_game', 'total', 'per_100', 'per_90')")
+        if self.whose not in ("own", "opponent"):
+            raise ScopeError(f"measure whose {self.whose!r} is not one of ('own', 'opponent')")
+        if self.side is not None and self.side not in ("offense", "defense", "total"):
+            raise ScopeError(f"scope side={self.side!r} is not one of ('offense', 'defense', 'total')")
+        if self.shot_value is not None and (isinstance(self.shot_value, bool) or self.shot_value not in (1, 2, 3)):
+            raise ScopeError(f"scope shot_value={self.shot_value!r} is not one of (1, 2, 3)")
+
+    @property
+    def named(self) -> bool:
+        """Whether the question named a measure at all (``as_typed``), known
+        to the catalog or not."""
+        return self.as_typed is not None
+
+    def cells(self) -> frozenset[str]:
+        """The cell this value sets (:attr:`CELLS`): ``rate`` where a unit
+        was asked for that the key did not fold in."""
+        return frozenset({"rate"}) if self.unit is not None else frozenset()
+
+    def unhonored(self, honored: frozenset[str]) -> list[str]:
+        """The cell set that ``honored`` does not hold, by its slot name."""
+        return [cell for cell in sorted(self.cells()) if cell not in honored]
+
+    @classmethod
+    def from_slots(cls, slots: Mapping[str, Any]) -> Measure | None:
+        """The measure the seven slot values name (:meth:`Scope.from_slots`
+        reads them off a slot dict): the ``stat`` resolved through the
+        catalog (:func:`association.query.measure.key_of`), ``rate`` as
+        the unit and its reading, ``per_game`` as the per-game ``how``,
+        ``side``, ``shot_value``, ``fields`` as ``beside``, ``kind`` as
+        ``won``. None where every one is absent."""
+        from association.query.measure import key_of  # the catalog; `measure` imports this module's types
+
+        stat, rate, per_game = slots.get("stat"), slots.get("rate"), slots.get("per_game")
+        side, shot_value, fields, kind = slots.get("side"), slots.get("shot_value"), slots.get("fields"), slots.get("kind")
+        if not any((stat, rate, per_game, side, shot_value, fields, kind)):
+            return None
+        key, whose, keyed_side, keyed_how, category = key_of(stat) if stat else (None, "own", None, None, None)
+        how: MeasureHow | None = keyed_how
+        if rate:
+            how = _how_of_unit(rate)
+        elif per_game:
+            how = "per_game"
+        return cls(
+            key=key,
+            as_typed=stat or None,
+            how=how,
+            unit=rate or None,
+            whose=whose,
+            side=side or keyed_side,
+            shot_value=shot_value or None,
+            category=category,
+            won=None if kind is None else kind != "loss",
+            beside=tuple(fields or ()),
+        )
+
+    def to_slots(self) -> dict[str, Any]:
+        """The seven slots this value was recorded as until Phase 3, step 2,
+        in the field order they stood in - each only where set, as the
+        slot dict held them."""
+        out: dict[str, Any] = {}
+        folded_side, folded_how = self._folded()
+        if self.as_typed is not None:
+            out["stat"] = self.as_typed
+        if self.beside:
+            out["fields"] = list(self.beside)
+        if self.how == "per_game" and self.unit is None and folded_how is None:
+            out["per_game"] = True
+        if self.unit is not None:
+            out["rate"] = self.unit
+        if self.side is not None and folded_side is None:
+            out["side"] = self.side
+        if self.shot_value is not None:
+            out["shot_value"] = self.shot_value
+        if self.won is not None:
+            out["kind"] = "win" if self.won else "loss"
+        return out
+
+    def _folded(self) -> tuple[MeasureSide | None, MeasureHow | None]:
+        """The side and the rate the key's own spelling folds in
+        (``netpoints_defense_per_100``, ``avg_game_score``), which the slots
+        never carried apart from it - left out of the projection."""
+        from association.query.measure import key_of  # the catalog; `measure` imports this module's types
+
+        if self.as_typed is None:
+            return None, None
+        _key, _whose, side, how, _category = key_of(self.as_typed)
+        return side, how
+
+    def projected(self) -> dict[str, Any]:
+        """Every one of the seven slots, at its default or not, in field
+        order (:meth:`Scope.projected`)."""
+        folded_side, folded_how = self._folded()
+        return {
+            "stat": self.as_typed,
+            "fields": self.beside,
+            "per_game": self.how == "per_game" and self.unit is None and folded_how is None,
+            "rate": self.unit,
+            "side": self.side if folded_side is None else None,
+            "shot_value": self.shot_value,
+            "kind": None if self.won is None else ("win" if self.won else "loss"),
+        }
+
+
+_UNIT_HOW: tuple[tuple[str, MeasureHow], ...] = (("total", "total"), ("90", "per_90"), ("100", "per_100"), ("possession", "per_100"), ("adjusted", "per_100"))
+
+
+def _how_of_unit(unit: str) -> MeasureHow | None:
+    """The reading of a unit's words (the ``rate`` slot's value): a season
+    total, per 90, per 100 possessions in any of its spellings; None for a
+    unit nothing here reads ("per_36"), which the cell still carries."""
+    for word, how in _UNIT_HOW:
+        if word in unit.casefold():
+            return how
+    return None
+
+
+#: The seven slots the measure was carried as until Phase 3, step 2, in
+#: the order they stood among the Scope's fields - where the projection
+#: emits them (:meth:`Scope.projected`), with the window's ``ranked_by``
+#: after ``fields`` and its ``rank`` after ``kind`` as before.
+_MEASURE_SLOT_NAMES = frozenset({"stat", "fields", "per_game", "rate", "side", "shot_value", "kind"})
+
+
 @dataclass(frozen=True)
 class Claim:
     """The characters of the question one reader rule consumed - ``start``
@@ -977,17 +1206,11 @@ class Scope:
     #: phrases and the ``period_condition`` until Phase 3, step 2), in the
     #: question's order.
     lines: tuple[Line, ...] = ()
-    #: What is measured: the question's measure, the model's word until the
-    #: measure slice types it (a line's own measure is the :class:`Line`'s).
-    stat: str | None = None
-    #: The columns a ranking asks to see beside its measure.
-    fields: tuple[str, ...] = ()
-    per_game: bool = False
-    rate: str | None = None
-    side: Literal["offense", "defense", "total"] | None = None
-    shot_value: Literal[1, 2, 3] | None = None
-    #: A streak's kind (``"win"``, ``"loss"``).
-    kind: str | None = None
+    #: What is measured: one typed value (:class:`Measure`; the seven slots
+    #: ``stat``, ``fields``, ``per_game``, ``rate``, ``side``, ``shot_value``
+    #: and ``kind`` until Phase 3, step 2), None where the question says
+    #: nothing about its measure (a line's own measure is the :class:`Line`'s).
+    measure: Measure | None = None
     #: When: the seasons and the season type, one typed value
     #: (:class:`Span`; six slots until Phase 3, step 2).
     span: Span = field(default_factory=Span)
@@ -1010,11 +1233,11 @@ class Scope:
 
         .. versionadded:: 5.0.0
         """
-        unknown = sorted(set(slots) - _SCOPE_FIELDS - _SPAN_SLOT_NAMES - _WINDOW_SLOT_NAMES - _CUT_SLOT_KEYS - _PERIOD_SLOT_NAMES - _LINE_SLOT_NAMES - _COMPANION_SLOT_NAMES)
+        unknown = sorted(set(slots) - _SCOPE_FIELDS - _SPAN_SLOT_NAMES - _WINDOW_SLOT_NAMES - _CUT_SLOT_KEYS - _PERIOD_SLOT_NAMES - _LINE_SLOT_NAMES - _COMPANION_SLOT_NAMES - _MEASURE_SLOT_NAMES)
         if unknown:
             raise ScopeError(f"no scope field for slot(s) {unknown}")
         values: dict[str, Any] = {}
-        typed_slots: dict[str, dict[str, Any]] = {"span": {}, "window": {}, "cuts": {}, "period": {}, "lines": {}, "companions": {}}
+        typed_slots: dict[str, dict[str, Any]] = {"span": {}, "window": {}, "cuts": {}, "period": {}, "lines": {}, "companions": {}, "measure": {}}
         for name, raw in slots.items():
             # A blank string is the slot absent too: the model files " " for
             # an opponent it has none of, and every template read it as
@@ -1030,6 +1253,7 @@ class Scope:
             else:
                 typed_slots[family][name] = _CHECKS[name](name, raw)
         for family, door in (
+            ("measure", Measure.from_slots),
             ("span", Span.from_slots),
             ("window", Window.from_slots),
             ("cuts", Cuts.from_slots),
@@ -1040,7 +1264,8 @@ class Scope:
             if typed_slots[family]:
                 if family in values:
                     raise ScopeError(f"a typed {family} and the slot(s) {sorted(typed_slots[family])} at once")
-                values[family] = door({**typed_slots[family], **({"stat": values.get("stat")} if family == "lines" else {})})
+                # The lines' door reads the keyed line's stat off the measure.
+                values[family] = door({**typed_slots[family], **({"stat": typed_slots["measure"].get("stat")} if family == "lines" else {})})
         return cls(**values)
 
     def to_slots(self, *, split_by_presence: bool = False) -> dict[str, Any]:
@@ -1074,8 +1299,22 @@ class Scope:
             if not (value is None or value is False or value == ()):
                 if f.name in ("span", "window", "period"):
                     out.update(value.to_slots())
+                elif f.name == "measure":
+                    # The seven slots, with the lines' three attached after
+                    # the first of them, where they stood.
+                    measure_slots = value.to_slots()
+                    for slot in ("stat", "fields"):
+                        if slot in measure_slots:
+                            out[slot] = measure_slots[slot]
+                        if slot == "stat":
+                            out.update(_attached_line_slots(line_slots))
+                    out.update({slot: measure_slots[slot] for slot in ("per_game", "rate", "side", "shot_value", "kind") if slot in measure_slots})
+                    continue
                 else:
                     out[f.name] = list(value) if isinstance(value, tuple) else value
+            elif f.name == "measure":
+                out.update(_attached_line_slots(line_slots))
+                continue
             for family, slot in _ATTACHED_SLOT_POSITIONS.get(f.name, ()):
                 held = {"cuts": cut_slots, "companions": companion_slots, "lines": line_slots}[family]
                 if slot in held:
@@ -1171,12 +1410,23 @@ class Scope:
                 slots = value.to_slots() if value is not None else {}
                 out["period"] = slots.get("period")
                 out["half"] = slots.get("half")
+            elif f.name == "measure":
+                # The seven slots where the fields stood - the lines' three
+                # after `stat`, the window's `ranked_by` after `fields` and
+                # its `rank` after `kind`, as the record held them.
+                measure_slots = value.projected() if value is not None else _NO_MEASURE_RECORD
+                for slot in ("stat", "fields", "per_game", "rate", "side", "shot_value", "kind"):
+                    out[slot] = measure_slots[slot]
+                    if slot == "stat":
+                        for attached in ("threshold", "above", "below"):
+                            out[attached] = _projected_slot(self, "lines", attached, cut_slots, companion_slots, line_slots)
+                    elif slot == "fields":
+                        out["ranked_by"] = self.window.by
+                    elif slot == "kind":
+                        out["rank"] = self.window.rank
+                continue
             elif f.name != "cuts":
                 out[f.name] = value
-                if f.name == "fields":
-                    out["ranked_by"] = self.window.by
-                elif f.name == "kind":
-                    out["rank"] = self.window.rank
             for family, slot in _ATTACHED_SLOT_POSITIONS.get(f.name, ()):
                 out[slot] = _projected_slot(self, family, slot, cut_slots, companion_slots, line_slots)
         return out
@@ -1251,10 +1501,10 @@ def _lines_from_slots(slots: Mapping[str, Any]) -> tuple[Line, ...]:
     lines += [phrase_line(str(phrase), below=False) for phrase in _as_list(slots.get("above"))]
     threshold = slots.get("threshold")
     if threshold is not None:
-        from association.query.measures import stat_column
+        from association.query.measure import column_of  # the catalog; `measure` imports this module's types
 
         stat = slots.get("stat")
-        lines.insert(0, Line(measure=stat_column(stat) if isinstance(stat, str) else None, value=threshold, as_typed=f"{threshold} {stat}" if isinstance(stat, str) else str(threshold), keyed=True))
+        lines.insert(0, Line(measure=column_of(stat) if isinstance(stat, str) else None, value=threshold, as_typed=f"{threshold} {stat}" if isinstance(stat, str) else str(threshold), keyed=True))
     in_period = slots.get("period_condition")
     if in_period is not None:
         lines.append(Line.from_period_slot(in_period))
@@ -1289,22 +1539,14 @@ def _typed_family(name: str, raw: Any) -> tuple[str | None, bool]:
     ``season`` (and ``span``, the slot, as a string), the window's and the
     cuts' and the period's the same, ``(None, False)`` for a field of the
     Scope's own."""
-    if (name == "span" and isinstance(raw, Span)) or (name == "window" and isinstance(raw, Window)) or (name == "cuts" and isinstance(raw, Cuts)) or (name == "period" and isinstance(raw, Period)):
+    whole = _WHOLE_VALUES.get(name)
+    if whole is not None and isinstance(raw, whole):
         return name, True
     if name in ("lines", "companions") and isinstance(raw, (tuple, list)) and all(isinstance(each, Line if name == "lines" else Companion) for each in raw):
         return name, True
-    if name in _SPAN_SLOT_NAMES:
-        return "span", False
-    if name in _WINDOW_SLOT_NAMES:
-        return "window", False
-    if name in _CUT_SLOT_KEYS:
-        return "cuts", False
-    if name in _PERIOD_SLOT_NAMES:
-        return "period", False
-    if name in _LINE_SLOT_NAMES:
-        return "lines", False
-    if name in _COMPANION_SLOT_NAMES:
-        return "companions", False
+    for slot_names, family in _FAMILY_SLOT_NAMES:
+        if name in slot_names:
+            return family, False
     return None, False
 
 
@@ -1317,16 +1559,26 @@ def _typed_family(name: str, raw: Any) -> tuple[str | None, bool]:
 #: 3, step 2 - ``(family, slot)`` emitted after the named field, in order.
 #: The opponent and the tenure followed ``teams``, then the companions'
 #: three; the lines' ``threshold``, ``above`` and ``below`` followed
-#: ``stat``; the date and the situation followed the span; a game of a
+#: ``stat`` (the measure's first slot, emitted by the measure's own branch);
+#: the date and the situation followed the span; a game of a
 #: series, an ordinal season and a round followed the split; the line in a
 #: quarter followed the period, and the venue it.
 _ATTACHED_SLOT_POSITIONS: dict[str, tuple[tuple[str, str], ...]] = {
     "teams": (("cuts", "opponent"), ("cuts", "own_team"), ("companions", "with_player"), ("companions", "without"), ("companions", "conditions")),
-    "stat": (("lines", "threshold"), ("lines", "above"), ("lines", "below")),
     "span": (("cuts", "date"), ("cuts", "situation")),
     "split": (("cuts", "game_n"), ("cuts", "season_n"), ("cuts", "round")),
     "period": (("lines", "period_condition"), ("cuts", "venue")),
 }
+
+
+#: Every measure slot at its default, for a Scope with no measure.
+_NO_MEASURE_RECORD: dict[str, Any] = {"stat": None, "fields": (), "per_game": False, "rate": None, "side": None, "shot_value": None, "kind": None}
+
+
+def _attached_line_slots(line_slots: dict[str, Any]) -> dict[str, Any]:
+    """The lines' three slots that followed ``stat`` (``threshold``,
+    ``above``, ``below``), each where set, for :meth:`Scope.to_slots`."""
+    return {slot: line_slots[slot] for slot in ("threshold", "above", "below") if slot in line_slots}
 
 
 def _projected_slot(scope: Scope, family: str, slot: str, cut_slots: dict[str, Any], companion_slots: dict[str, Any], line_slots: dict[str, Any]) -> Any:
@@ -1368,6 +1620,8 @@ def cell_set(scope: Scope, cell: str) -> bool:
         return scope.period is not None
     if cell in Line.CELLS or cell in Companion.CELLS:
         return cell in scope.cells()
+    if cell in Measure.CELLS:
+        return scope.measure is not None and cell in scope.measure.cells()
     return bool(getattr(scope, cell))
 
 
@@ -1460,6 +1714,19 @@ _PERIOD_SLOT_NAMES = frozenset({"period", "half"})
 _LINE_SLOT_NAMES = frozenset({"threshold", "above", "below", "period_condition"})
 #: The three slot names the companions' door still takes (:func:`_companions_from_slots`).
 _COMPANION_SLOT_NAMES = frozenset({"with_player", "without", "conditions"})
+
+#: Each typed value's field, and the type a whole value under it has.
+_WHOLE_VALUES: dict[str, type] = {"span": Span, "window": Window, "cuts": Cuts, "period": Period, "measure": Measure}
+#: Each family's slot names, and the family they pass the door into.
+_FAMILY_SLOT_NAMES: tuple[tuple[frozenset[str], str], ...] = (
+    (_SPAN_SLOT_NAMES, "span"),
+    (_WINDOW_SLOT_NAMES, "window"),
+    (_CUT_SLOT_KEYS, "cuts"),
+    (_PERIOD_SLOT_NAMES, "period"),
+    (_LINE_SLOT_NAMES, "lines"),
+    (_COMPANION_SLOT_NAMES, "companions"),
+    (_MEASURE_SLOT_NAMES, "measure"),
+)
 
 
 CAUSES: frozenset[str] = frozenset(
@@ -2171,9 +2438,11 @@ def scope_reads_box_scores(scope: Scope, measures: list[Any]) -> bool:
 # `below` ("under 14 FTA") and `above` ("with 25 minutes") are lines a game's
 # box score is kept under or over - `measure_filters` reads them onto the
 # relation for the templates listed with them.
-# `rate` is a per-possession rate asked of a metric that has no such form
-# ("points per 100 possessions", "netpoints / 90"): set by the router only
-# where it could not switch the metric itself, and honored by nothing.
+# `rate` - a unit asked of a measure ("points per 100 possessions",
+# "netpoints / 90", a season total) - is the typed `Measure`'s one cell since
+# Phase 3, step 2 (`Measure.CELLS`), read beside this list by
+# `unhonored_cells`: honored by the season-line ranking and the team
+# compiler's total, refused by every other reader as the slot was.
 # `order` and `ranked_by` are the typed window's cells since Phase 3, step 2
 # (`Window.CELLS`: `window`, `ranked_by`), read beside this list by
 # `unhonored_cells`: a `leaderboard` question ranking the GAMES that satisfy
@@ -2199,15 +2468,16 @@ def scope_reads_box_scores(scope: Scope, measures: list[Any]) -> bool:
 # `companion`), read beside this list the same way; a decline still says the
 # slot names they were declared under (`below`, `above`, `period_condition`,
 # `without`, `conditions`: `line_slot_names`, `companion_slot_names`).
-SCOPING_SLOTS = frozenset({"split", "rate"})
+SCOPING_SLOTS = frozenset({"split"})
 
 
 def unhonored_cells(scope: Scope, honored: frozenset[str]) -> list[str]:
     """The slot names ``scope`` sets that ``honored`` does not hold, sorted:
     every slot of :data:`SCOPING_SLOTS` that is truthy, and the span's, the
-    window's, the cuts', the period's, the lines' and the companions' cells
+    window's, the cuts', the period's, the lines', the companions' and the
+    measure's cells
     (:attr:`Span.CELLS`, :attr:`Window.CELLS`, :attr:`Cuts.CELLS`,
-    :attr:`Period.CELLS`, :attr:`Line.CELLS`, :attr:`Companion.CELLS`, by
+    :attr:`Period.CELLS`, :attr:`Line.CELLS`, :attr:`Companion.CELLS`, :attr:`Measure.CELLS`, by
     the slot names they were refused under - :meth:`Span.unhonored`,
     :meth:`Window.unhonored`, :meth:`Cuts.unhonored`, :meth:`Period.unhonored`,
     :func:`line_slot_names`, :func:`companion_slot_names`).
@@ -2217,7 +2487,8 @@ def unhonored_cells(scope: Scope, honored: frozenset[str]) -> list[str]:
     .. versionadded:: 6.0.0
     """
     period = scope.period.unhonored(honored) if scope.period is not None else []
-    slots = [name for name in SCOPING_SLOTS if getattr(scope, name) and name not in honored]
+    measure = scope.measure.unhonored(honored) if scope.measure is not None else []
+    slots = [name for name in SCOPING_SLOTS if getattr(scope, name) and name not in honored] + measure
     lines = [slot for cell in Line.CELLS if cell in scope.cells() and cell not in honored for slot in line_slot_names(scope, cell)]
     companions = companion_slot_names(scope) if "companion" in scope.cells() and "companion" not in honored else []
     return sorted(slots + scope.span.unhonored(honored) + scope.window.unhonored(honored) + scope.cuts.unhonored(honored) + period + lines + companions)

@@ -333,7 +333,7 @@ def claimed(claims: list[Claim]) -> tuple[Claim, ...]:
 
     .. versionchanged:: 6.0.0
        A partial overlap is one claim named for both readings, not a
-       ``ValueError``.
+       ``ValueError``; two overlapping stretches of one reading keep its name.
     """
     kept: list[Claim] = []
     for claim in sorted(claims, key=lambda c: (c.start, -c.end)):
@@ -341,7 +341,9 @@ def claimed(claims: list[Claim]) -> tuple[Claim, ...]:
             if claim.end <= kept[-1].end:
                 continue  # inside the last claim: the same reading
             last = kept.pop()
-            kept.append(Claim(last.start, claim.end, f"{last.what}+{claim.what}"))
+            # Two stretches of ONE reading ("netpoints per 100" and "per 100
+            # possessions", both the measure's) are one claim of it.
+            kept.append(Claim(last.start, claim.end, last.what if last.what == claim.what else f"{last.what}+{claim.what}"))
             continue
         kept.append(claim)
     return tuple(kept)

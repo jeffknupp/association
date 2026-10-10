@@ -165,6 +165,7 @@ def test_every_scope_field_is_checked_and_every_group_is_the_compilers() -> None
         _COMPANION_SLOT_NAMES,
         _CUT_SLOT_KEYS,
         _LINE_SLOT_NAMES,
+        _MEASURE_SLOT_NAMES,
         _PERIOD_SLOT_NAMES,
         _SPAN_SLOT_NAMES,
         _WINDOW_SLOT_NAMES,
@@ -179,7 +180,8 @@ def test_every_scope_field_is_checked_and_every_group_is_the_compilers() -> None
     # The span's six slot names, the window's four, the cuts' eight, the period's two, the lines' four and the companions' three pass the door into the typed values (Phase 3, step 2).
     assert (
         set(_CHECKS)
-        == (names - {"span", "window", "cuts", "period", "lines", "companions"})
+        == (names - {"span", "window", "cuts", "period", "lines", "companions", "measure"})
+        | _MEASURE_SLOT_NAMES
         | _SPAN_SLOT_NAMES
         | _WINDOW_SLOT_NAMES
         | _CUT_SLOT_KEYS

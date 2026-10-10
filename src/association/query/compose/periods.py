@@ -48,6 +48,7 @@ from association.query.conditions import box_source
 from association.query.coverage import coverage_refusal
 from association.query.entities import Entity, resolved_team, slot_season
 from association.query.lines import measure_filters
+from association.query.measure import keyed, spelled
 from association.query.measures import PERIOD_RATE_STATS, period_split_measure, resolve_metric
 from association.query.metrics import PER_GAME_MIN_GAMES, PER_GAME_MIN_POSTSEASON_GAMES
 from association.query.notes import Note
@@ -67,7 +68,7 @@ from association.query.player_games import (
     period_rate,
 )
 from association.query.player_relation import ResolvedSpan, league_games, relation_window, scoped_games, span_of
-from association.query.reading import DEFAULT_GAME_LOG_LIMIT, STARTER_SIDES, Cuts, PointShape, Scope, Unsupported, _clamp_limit, period_narrowing, unhonored_scoping
+from association.query.reading import DEFAULT_GAME_LOG_LIMIT, STARTER_SIDES, Cuts, Measure, PointShape, Scope, Unsupported, _clamp_limit, period_narrowing, unhonored_scoping
 from association.query.result import (
     Cell,
     Decided,
@@ -169,7 +170,7 @@ def _period_log(con: duckdb.DuckDBPyConnection, q: Query) -> Result | Unanswered
     if asked is None:
         slots = scope.period.to_slots() if scope.period is not None else {}
         raise Unsupported(f"period_split needs a period 1-10 or a half 1-2, got period={slots.get('period')!r} half={slots.get('half')!r}")
-    measure = period_split_measure(scope.stat)
+    measure = period_split_measure(scope.measure)
     if q.measures != [measure]:
         return None
     if scope.cuts.date is None:
@@ -253,10 +254,13 @@ def _period_log_result(
         return Refusal(kind="period_unread", facts={"measure": measure})
     season_type = scope.span.season_type or 2
     notes: list[Note] = []
+    # A log asked for (the measure's per-game `how`), and whether a stat was named at all.
+    per_game = scope.measure is not None and scope.measure.how == "per_game"
+    named = spelled(scope.measure)
     if games:
-        notes = period_agreement_notes(season, measure, full_line=scope.per_game and scope.stat is None and len(games) > 1)
+        notes = period_agreement_notes(season, measure, full_line=per_game and named is None and len(games) > 1)
     cells, also = where
-    facts = PeriodFacts(stat=measure, per_game=scope.per_game, full_line=scope.stat is None, also=also)
+    facts = PeriodFacts(stat=measure, per_game=per_game, full_line=named is None, also=also)
     # The log beneath a per-game figure: the newest N, or the first N.
     window = Window(limit=_clamp_limit(scope.window.count, default=DEFAULT_GAME_LOG_LIMIT), asked=scope.window.count, ascending=scope.window.order == "first")
     body = Rows(columns=PERIOD_COLUMNS, rows=tuple(games), summary=_period_figures(games, measure) if games else {})
@@ -329,7 +333,7 @@ def _period_by_quarter(con: duckdb.DuckDBPyConnection, q: Query) -> Result | Una
     figure and total in each quarter over the same games - the compiler's
     ``grouped``-by-``period`` read, executed."""
     scope = q.scope
-    measure = period_split_measure(scope.stat)
+    measure = period_split_measure(scope.measure)
     if q.measures != [measure]:
         return None
     if scope.cuts.date is None:
@@ -399,7 +403,7 @@ def _period_quarter(row: dict[str, Any], quarter: int, measure: str) -> dict[str
 # --- a team's quarter or half ------------------------------------------------------------
 
 
-def _team_quarter_points_measure(stat: Any) -> str | Unanswered:
+def _team_quarter_points_measure(asked: Measure | None) -> str | Unanswered:
     """The column a team's period question measures - points where it names
     none (the linescore's), else any column the team's period line rebuilds
     (:data:`~association.query.team_games.TEAM_PERIOD_COLUMNS`), or a
@@ -407,12 +411,14 @@ def _team_quarter_points_measure(stat: Any) -> str | Unanswered:
     for one nothing splits by period: answering it with the team's POINTS
     was the fluent wrong answer this guards against ("trailblazers stats
     last 10 games 3 point average 1st quarter")."""
-    if stat is None or not str(stat).strip() or stat == "all" or resolve_metric(stat) in ("avg_points", "total_points"):
+    stat = spelled(asked)
+    if stat is None or stat == "all" or resolve_metric(asked) in ("avg_points", "total_points"):
         return "points"
-    if stat in TEAM_PERIOD_COLUMNS:
-        return str(stat)
-    if stat in PERIOD_RATE_STATS:
-        return PERIOD_RATE_STATS[stat]
+    key = keyed(asked)
+    if key in TEAM_PERIOD_COLUMNS:
+        return key
+    if key in PERIOD_RATE_STATS:
+        return PERIOD_RATE_STATS[key]
     return Refusal(kind="team_period_unknown", facts={"stat": stat}, shown={"stat": stat})
 
 
@@ -572,7 +578,7 @@ def read_team_quarter_points(con: duckdb.DuckDBPyConnection, q: TeamQuery, *, st
     if scope.player is not None and scope.player.strip():
         # A named player's quarter or half is period_split's.
         raise Unsupported("team_quarter_points cannot answer for a named player")
-    measure = _team_quarter_points_measure(scope.stat)
+    measure = _team_quarter_points_measure(scope.measure)
     if isinstance(measure, Unanswered):
         return measure
     settled = _team_quarter_points_team_and_span(con, scope)
@@ -665,7 +671,7 @@ def read_period_leaderboard(con: duckdb.DuckDBPyConnection, q: Query, *, stated:
     if unhonored_scoping("period_leaderboard", scope, stated):
         return None
     try:
-        measure = period_split_measure(scope.stat)
+        measure = period_split_measure(scope.measure)
     except Unsupported as exc:
         raise Unsupported(f"period_leaderboard ranks only what the period's line rebuilds - {exc}") from exc
     if measure in PERIOD_RATES:

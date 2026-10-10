@@ -46,6 +46,21 @@ before that commit needs re-checking against the current warehouse.
 
 ## P1: wrong answer
 
+
+### A measure the words name is dropped where the stat-word list misses its word: "grayson allen 3s made last season" answers his points line
+- **Found:** 2026-10-10, Phase 3 step 2's measure slice, measuring the seven measure slots on the 2,710 readings (`~/association-research/stages/measure_family.py`: "dropped: words" on 22 readings)
+- **Evidence:** the measure tagger keeps the stages' rule (`measure._key_by_intent`, `router._route_line_stat` and kin until the slice): on `player_stat`, `player_compare`, `period_split`, `period_leaderboard`, `team_stat` and `streak` the key is dropped where `lexicon.STAT_WORDS` finds no stat word - a rule written for the model's REQUIRED key, which is noise where the words name no stat, and applied to the words' own reading too. `STAT_WORDS` has `three\w*`, `3pt` and `3-point\w*` but not "3s" or "3pm", and "triple-doubles?" hyphenated only. On the feed (`/tmp/s2f/feed-before.jsonl`, identical after): "grayson allen 3s made last season" and "... this season" answer "Grayson Allen averaged 10.6 points, 3 rebounds and 2.1 assists per game in 64 games in the 2025 regular season." - the grammar read `threePointFieldGoalsMade` and the drop lost it; "klay 3pm each HOME game LAST season" answers his per-game points/rebounds/assists at home. The other 19 of the 22 (double/triple doubles, "rebs 2h") are answered right anyway, because the point reader's own word table (`lexicon.WORD_MEASURES`) reads "triple double" and the period tagger "rebs"; 3 of 22 are wrong.
+- **User sees:** a fluent per-game line where 3-pointers made were asked - the failure shape at the top of `AGENTS.md`.
+- **Next step:** the drop applies to the model's key alone, never to a measure the words named (`MeasureContext.key` is the model's; `measure.named` is the words'): in `_key_by_intent`, drop only where `named(question)` is None. Enumerate the 3 moved feed answers first (`run --feed`), and pin "3s made" and "3pm" in `tests/query/test_measure.py`.
+- **Priority:** P1 - 3 of the 2,710 readings answer a different question fluently; the wording ("3s", "3pm") is common.
+
+### A team's "allowed" figure is read as its own where a longer alias stands: "which team allowed the most points per game" ranks the teams' own scoring
+- **Found:** 2026-10-10, Phase 3 step 2's measure slice, writing the tagger's cases
+- **Evidence:** the team metric's alias is the LONGEST alias text the question holds anywhere (`measure.team_metric_named`, `router._team_metric_in` until the slice; `lexicon.TEAM_METRIC_NAMED`), and "allowed"/"given up"/"conceded" makes it the opponent's only when it follows that alias. "which team allowed the most points per game" holds "points per game" (15 characters) and "points allowed" (14): the longer wins, nothing follows it, and the measure is the teams' own points per game (`measure_of("points per game")`, key `points`, whose `own`); "which team gave up the most points" holds "points" with "gave up" BEFORE it, and reads the teams' own points too. The grammar (`lexicon.MEASURE_GRAMMAR`) reads both as "points allowed" before the stages, and the team alias overwrites it - the one place a later writer beats the grammar. 0 of the 2,710 readings hold either wording; `tests/query/test_measure.py` pins today's reading so the change is deliberate.
+- **User sees:** the league's best offenses listed where its worst defenses were asked - a wrong answer fluently.
+- **Next step:** in the tagger, the opponent's reading the grammar made (`whose="opponent"`) survives the team alias: when the words name a given-up measure of the same key, the alias confirms the key and not whose. Enumerate on the feed first.
+- **Priority:** P1 - a wrong ranking fluently; 0 of the 2,710 readings, the wording natural.
+
 ### A single "N+ stat" line on a reader whose shape is not a line is read by nothing: "lebron game log with 20+ points this season" lists his last 10 games
 - **Found:** 2026-10-09, Phase 3 step 2's line slice, measuring the five carriers of a line on the 2,710 readings (`~/association-research/stages/line_family.py`)
 - **Evidence:** the stages' rule, kept by the lines tagger (`line.read_lines`): a bare "N+ stat" pair is a line only on `threshold_count`, `record_when`, `streak` and `single_game_high` (`line.THRESHOLD_INTENTS`); on every other reader only a floor of minutes, a line under a number, or two or more pairs is read. Answered on this tree with the names stubbed in the model's place (`/tmp/s2e/ask_stub.py`, names `["LeBron James"]`, stat `points`): "LeBron James, last 10 of 60 games of the 2026 regular season" - every game, 12- and 13-point games among them. The 2,710 readings hold one single pair on such a reader, and it is no stat line ("How many 10+ point leads did the Sacramento Kings have last season", `team_stat`), so no population answer carries this; the typed `Line` records the fact (`Line.narrows` is False and the line is not read at all) and `tests/query/test_line.py` pins today's reading so the change is deliberate.
@@ -2224,6 +2239,14 @@ those were found.
 
 ## P3: refusal or gap
 
+
+### A team total named by a metric's alias stays the per-game line: "how many fgm did the knicks make this season" answers field goals per game
+- **Found:** 2026-10-10, Phase 3 step 2's measure slice, holding the team compiler's total identical
+- **Evidence:** `point._team_measure` reads a team's game-level or season-total measure from the words (`lexicon.TEAM_WORD_MEASURES`) and then from the measure's key - but a measure written as a team metric's ALIAS text ("fgm", "ppg", "field goals", "scoring") never matched a column name before the slice (the alias text was the slot's value), so the team compiler's total never read it and the team-season reader answered the per-game line; the catalog would read "fgm" as `fieldGoalsMade` and the total, which moves 12 of the 2,710 readings (`team_stat` with an alias-spelled stat: "pippen ppg, rpg apg for the bulls", "most fgm + opp fgm in a game by Knicks; 1988-89", "How many 10+ point leads did the Sacramento Kings have last season", ...) - some to a better answer ("how many fgm" as a total), most to a worse one ("ppg" summed). `measure.named_by_a_team_metric` keeps the slot-era reading on purpose, and `tests/query/test_measure.py` pins it.
+- **User sees:** a per-game figure where a season total was asked, with a "how many ... made" wording the total reader exists for.
+- **Next step:** the reading should turn on `Measure.how`, not the spelling: a team's measure with `how="total"` (the words' "how many ... made"/"total") is the total, per game otherwise - which also reads "pippen ppg" as the per-game line it is. Enumerate the 12 first.
+- **Priority:** P3 - a wrong per-game answer where a total was asked, on a wording the alias happens to catch; 0 of the 12 recorded readings is a clear case.
+
 ### An overtime period named in the words is refused as a situation, never read as a period
 - **Found:** 2026-10-09, Phase 3, step 2, the period (the family measured on all 2,710 readings; the cuts slice counted these 4 among the 33 unread situations).
 - **Evidence:** `period.which_period` reads a quarter (1-4) or a half (1-2) and nothing else, though `reading.Period(number=5)` and the relations' `narrow_periods` take an overtime period by number (`period_label(5)` is "overtime", the team relation's `test_an_overtime_no_game_reached_is_null_not_zero`). "overtime" is `lexicon.SITUATION`'s word, so the 4 of the 2,710 readings that name one - "most points in an overtime game by a team nba", "most points in an overtime game nba", "most quadruple overtime points in a game by a team nba", "most triple overtime + quadruple overtime points in a game by a team nba", all `period_leaderboard` by the grammar's `overtime` word, all the feed's - carry `situation="overtime"` and are refused by the planner ("period_leaderboard cannot honor ['situation'] ..."); "OT"/"in ot" is read by nothing (0 of the 2,710 name it). Reading "overtime" as `Period(number=5)` would move those 4 answers from a refusal to a ranking by the overtime period's line, and "an overtime game" asks for the WHOLE game's points in games that went to overtime, not the period's - a different question still, which no cut expresses.
@@ -2856,6 +2879,14 @@ those were found.
 - **GitHub:** #312
 
 ## P4: tooling, docs, low impact
+
+
+### The 2-point percentage has no measure on the games relation, so a narrowed one is the season's
+- **Found:** 2026-10-10, Phase 3 step 2's measure slice, writing the catalog (`measure.CATALOG["twoPointFieldGoalPct"]`: no `measure`, no `column`, no metric)
+- **Evidence:** `stat_measure("twoPointFieldGoalPct")` was None on `508d643` (the compiler's `two_pct` derived measure exists, `compose.core.DERIVED`, but no alias reached it), so the point reader's `_default_player_stat` reads the whole line for a 2-point percentage narrowed to games ("lebron 2pt percentage vs the celtics") and the season line's reader answers it over the season instead (`season_line.SHOOTING_STATS` holds it). 22 of the 2,710 readings carry it, all histories or unnarrowed lines, so no population answer moves; the catalog records the gap as the code has it.
+- **User sees:** a season figure where a narrowed one was asked, with no sentence saying so.
+- **Next step:** give the key its games-relation measure (`two_pct`) in the catalog and check `compose/stats.py` reads the rate's parts; enumerate the moved readings (the point's `measures` change for the 22).
+- **Priority:** P4 - no recorded question narrows it; filed from the catalog's own gap.
 
 ### A teammate who played beside an absent one on the with/without split is dropped from the split without a word
 - **Found:** 2026-10-09, Phase 3 step 2's line slice, writing the companions' projection

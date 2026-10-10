@@ -28,6 +28,7 @@ from association.nba.season import current_season
 from association.query.conditions import _box_missing, _names, _totals, _unseen, box_source, condition_span_label
 from association.query.entities import Entity, optional_team
 from association.query.lines import threshold_of
+from association.query.measure import won
 from association.query.measures import streak_column
 from association.query.notes import Note
 from association.query.player_games import Narrowed, games_subquery, named
@@ -88,8 +89,9 @@ def _streak_runs(q: Query, runs: tuple[Run, ...]) -> Runs:
     wins or losses."""
     scope = q.scope
     threshold = threshold_of(scope)
-    line = Line(column=scope.stat, value=threshold) if streak_column(scope.stat, threshold) is not None else None
-    return Runs(runs=runs, line=line, won=scope.kind != "loss")
+    column = streak_column(scope.measure, threshold)
+    line = Line(column=column, value=threshold) if column is not None else None
+    return Runs(runs=runs, line=line, won=won(scope.measure))
 
 
 def _streak_player_result(con: duckdb.DuckDBPyConnection, q: Query, covered: Any, player: Entity, narrowed: Narrowed, team: Entity | None, rows: list[dict[str, Any]]) -> Result | Unanswered:
@@ -187,7 +189,7 @@ def read_team_streak(con: duckdb.DuckDBPyConnection, q: TeamQuery, *, stated: fr
 
 def _streak_team_runs(q: TeamQuery, runs: tuple[Run, ...]) -> Runs:
     """A team's runs of wins or losses: no stat and no line."""
-    return Runs(runs=runs, won=q.scope.kind != "loss")
+    return Runs(runs=runs, won=won(q.scope.measure))
 
 
 def _streak_team_result(q: TeamQuery, compiled: TeamCompiled, found: dict[str, Any], rows: list[dict[str, Any]]) -> Result:

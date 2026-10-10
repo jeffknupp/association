@@ -1637,3 +1637,493 @@ def scored_threshold(text: str) -> re.Match[str] | None:
     """
     match = SCORED.search(text)
     return match if match is not None and int(match.group(1)) >= 1 else None
+
+
+# --- The measure: what a question asks about ------------------------------------------------
+#
+# Phase 3, step 2's sixth slice. Every pattern the measure's writers read by,
+# moved here from the router's stages, the parser's measure grammar, the
+# point reader's word tables and the metrics' word table, each with its
+# reason; the one tagger reads them (``query/measure.py``).
+
+MEASURE_GRAMMAR: tuple[tuple[re.Pattern[str], str], ...] = tuple(
+    (re.compile(pattern, re.IGNORECASE), key)
+    for pattern, key in (
+        # (the words, the measure as typed) - first match wins; the netpoints family before its parts.
+        (
+            r"\b(defensive|def|defense)\b.{0,20}\b(net ?po?i?nts?|netpts)\b.{0,30}\b(per 100|/ ?100|adjusted|per possession)\b|\b(net ?po?i?nts?"
+            r"|netpts)\b.{0,20}\b(defensive|def|defense)\b.{0,30}\b(per 100|/ ?100|adjusted|per possession)\b"
+            r"|\badjusted\b.{0,12}\bdefensive\b.{0,12}\b(net ?po?i?nts?|netpts)\b|\bdefensive\b.{0,12}\b(netpts|net ?po?i?nts?)\s*/\s*100\b",
+            "netpoints_defense_per_100",
+        ),
+        (
+            r"\b(offensive|off|offense)\b.{0,20}\b(net ?po?i?nts?|netpts)\b.{0,30}\b(per 100|/ ?100|adjusted|per possession)\b|\b(net ?po?i?nts?"
+            r"|netpts)\b.{0,20}\b(offensive|off|offense)\b.{0,30}\b(per 100|/ ?100|adjusted|per possession)\b"
+            r"|\badjusted\b.{0,12}\boffensive\b.{0,12}\b(net ?po?i?nts?|netpts)\b",
+            "netpoints_offense_per_100",
+        ),
+        (r"\b(defensive|def|defense)\b.{0,20}\b(net ?po?i?nts?|netpts)\b|\b(net ?po?i?nts?|netpts)\b.{0,20}\b(defensive|def|defense)\b", "netpoints_defense"),
+        (r"\b(offensive|off|offense)\b.{0,20}\b(net ?po?i?nts?|netpts)\b|\b(net ?po?i?nts?|netpts)\b.{0,20}\b(offensive|off|offense)\b", "netpoints_offense"),
+        (r"\b(net ?po?i?nts?|netpts)\b.{0,30}\b(per 100|/ ?100|adjusted|per possession)\b|\badjusted\b.{0,12}\b(net ?po?i?nts?|netpts)\b", "netpoints_per_100"),
+        (r"\b(net ?po?i?nts?|netpts)\b", "netpoints"),
+        (r"\bpoints? differential\b|\bpoint diff\b|\bdifferential\b", "points_differential"),
+        (r"\bplus[ /-]?minus\b|\+/-", "plus_minus"),
+        (r"\bts ?%|\btrue shooting\b", "ts_pct"),
+        (r"\befg\b|\beffective field goal", "efg_pct"),
+        (r"\busage\b|\busg\b", "usage_pct"),
+        (r"\bgame score\b", "game_score"),
+        (r"\btriple[ -]?doubles?\b|\btd3s?\b|\btds\b", "triple_double"),
+        (r"\bdouble[ -]?doubles?\b|\bdd\b", "double_double"),
+        # "%" is not a word character, so it takes no \b: "who had the highest
+        # 3pt % this season" read as 3-pointers made while it did.
+        (r"\b(3|three)[ -]?(pt|point|pointer)s?\b.{0,12}(\bpercentage\b|\bpct\b|%)|\b3p%|\b3pt%", "threePointFieldGoalPct"),
+        (r"\b(2|two)[ -]?(pt|point|pointer)s?\b.{0,12}(\bpercentage\b|\bpct\b|%)|\b2p%|\b2pt%", "twoPointFieldGoalPct"),
+        (r"\bfg ?%|\bfg percentage\b|\bfield goal percentage\b", "fieldGoalPct"),
+        (r"\bft ?%|\bfree throw percentage\b", "freeThrowPct"),
+        # What a team gives up is the opponent's line, never its own: "rebounds
+        # allowed per team" read as the teams' own rebounds and was answered with
+        # them, best first. Points allowed is a team metric; the rest name a key
+        # no reader ranks, which refuses rather than answering the team's own.
+        (r"\b(points?|pts)\b.{0,12}\b(allowed|given up|conceded)\b|\b(allowed|gave up|conceded)\b.{0,12}\b(points?|pts)\b|\bopponents?'? (points|ppg)\b", "points allowed"),
+        (r"\b(rebounds?|boards)\b.{0,12}\b(allowed|given up|conceded)\b|\b(allowed|gave up|conceded)\b.{0,12}\b(rebounds?|boards)\b", "rebounds allowed"),
+        (r"\bassists?\b.{0,12}\b(allowed|given up|conceded)\b", "assists allowed"),
+        (r"\b(threes|3s|(3|three)[ -]?(pt|point|pointer)s?)\b.{0,12}\b(allowed|given up|conceded)\b", "threes allowed"),
+        # A three is its own column: "3 point stats", "three points made" and
+        # "3-point average" are threes made (a percentage is read above), never
+        # the "point" in them read as points.
+        # Both asked for: the made line already says "585 of 1,727", and no
+        # per-game line reads the attempted column alone.
+        (r"(?=.*\b(3|three)[ -]?(pt|point|pointer)s?\b)(?=.*\b(attempts?|attempted|tries|3pa)\b)(?=.*\b(made|makes|mad|hit)\b)", "threePointFieldGoalsMade"),
+        (r"\b(3|three)[ -]?(pt|point|pointer)s?\b.{0,12}\b(attempts?|attempted|tries)\b|\b3pa\b", "threePointFieldGoalsAttempted"),
+        (r"\b(3|three)[ -]?(pt|point|pointer)s?\b(?!.{0,20}\b(distance|range|shots?)\b)", "threePointFieldGoalsMade"),
+        (r"\bscorers?\b|\bscores\b|\bscoring\b", "points"),
+    )
+)
+"""The measure grammar: the stat a question names in its own words, read
+before the normalizer's key so a phrase the closed vocabulary holds never
+depends on the model - the NetPoints family above all (the 3B misses most
+of it), then the derived rates and the words :data:`MEASURE_WORDS` does
+not hold. Each key is the spelling the stages wrote (the ``stat`` slot's),
+which the catalog resolves (``measure.key_of``).
+
+.. versionadded:: 6.0.0
+   ``parse.MEASURE_GRAMMAR`` until Phase 3, step 2.
+"""
+
+MEASURE_ORDINARY_WORDS: frozenset[str] = frozenset({"to", "min"})
+"""Abbreviations in :data:`MEASURE_WORDS` that are also ordinary words
+("compared to other teams" is no turnover count): read only where the
+question writes them in capitals ("TO", "MIN").
+
+.. versionadded:: 6.0.0
+   ``parse._MEASURE_ORDINARY_WORDS`` until Phase 3, step 2.
+"""
+
+MEASURE_WORD_SPLIT = re.compile(r"[^a-z0-9%/+]+")
+"""What splits a casefolded question into the words :data:`MEASURE_WORDS`
+is matched on - every character but a letter, a digit, "%", "/" and "+".
+
+.. versionadded:: 6.0.0
+"""
+
+MEASURE_WORD_AT: dict[str, re.Pattern[str]] = {word: re.compile("(?<![a-z0-9%/+])" + re.escape(word) + "(?![a-z0-9%/+])") for word in MEASURE_WORDS}
+"""Each box-score word with the pattern that finds it whole in the casefolded
+question - where the measure tagger's claim of it starts and ends.
+
+.. versionadded:: 6.0.0
+"""
+
+MEASURE_TOKEN = re.compile(r"[A-Za-z0-9%/+]+")
+"""One token of the question as typed, capitals kept - how an abbreviation
+that is also an ordinary word ("TO", "MIN") is told from the word.
+
+.. versionadded:: 6.0.0
+"""
+
+# The words a question uses when it is actually asking about one stat, as
+# opposed to asking who is better. Loose on purpose, and safe because of
+# where it is used: a word it misses widens a comparison or a team's line
+# to the whole line, which still holds the stat asked about; a word it
+# matches too eagerly leaves the model's key where it was. It is read
+# beyond the comparison - a quarter's line and its ranking, a team's line,
+# a streak - and there a word it misses DOES move a number: "vj edgecombe
+# 2nd half plus minus" lost its stat and answered his second-half points
+# (found 2026-10-09, Phase 3, step 0). Plus-minus is a stat the question
+# names, and reads as one; a stat word added here is a number kept.
+STAT_WORDS = re.compile(
+    r"\b(points?|scor\w*|pts?|rebound\w*|boards|reb|assist\w*|passing|dimes|ast|steal\w*|stl|block\w*|blk|"
+    r"turnover\w*|giveaways?|fouls?|minutes?|mins?|shoot\w*|shots?|three\w*|3pt|3-point\w*|field goals?|free throws?|"
+    r"percentage|efficien\w*|usage|double-doubles?|triple-doubles?|td3s?|ppg|rpg|apg|spg|bpg|fg|ft|3p|ts|efg|plus[ /-]?minus)\b|\+/-",
+    re.IGNORECASE,
+)
+"""Whether the question asked about a particular stat at all - the test
+the model's required key is dropped by where the words name none.
+
+.. versionadded:: 6.0.0
+   ``router._STAT_WORDS`` until Phase 3, step 2.
+"""
+
+TEAM_STAT_WORDS = re.compile(r"\b(?:pace|ratings?|offen\w*|defen\w*|net|possessions?|record|wins?|losses)\b", re.IGNORECASE)  # codespell:ignore offen - a regex stem
+"""A team's own measure named beside :data:`STAT_WORDS`' box-score words:
+pace, a rating, possessions, the record.
+
+.. versionadded:: 6.0.0
+   ``router._TEAM_STAT_WORDS`` until Phase 3, step 2.
+"""
+
+# Rate stats the prompt never lists as a player `stat`, so the model reaches
+# for the nearest one it knows. Measured: "kevin durant true shooting
+# percentage career" came back as stat='threePointFieldGoalPct' and was
+# answered with his 3-point percentage - a different stat, fluently. Named in
+# the question, the stat is read from it; a reader that has no such stat
+# then refuses.
+ADVANCED_STAT_WORDS: tuple[tuple[str, re.Pattern[str]], ...] = (
+    ("ts_pct", re.compile(r"\btrue[- ]shooting\b|\bts\s?%|\bts\s+pct\b", re.IGNORECASE)),
+    ("efg_pct", re.compile(r"\beffective\s+(?:field\s+goal|fg)\b|\befg\b", re.IGNORECASE)),
+    ("usage_pct", re.compile(r"\busage\b", re.IGNORECASE)),
+)
+"""``(key, pattern)`` - a computed rate named in the words, read over the
+model's key on the readers that look one up.
+
+.. versionadded:: 6.0.0
+   ``router._ADVANCED_STAT_WORDS`` until Phase 3, step 2.
+"""
+
+# Hollinger's single-game composite (ISSUES.md #114). Anchored to the
+# two-word phrase and not to "score" alone, because "score" alone means
+# points everywhere else in basketball - "pacers score", "what was the score
+# of the game" would be hijacked into a Game Score ranking. The trailing \b
+# keeps "per game scored on fridays" out. Verified against the 261-question
+# StatMuse feed corpus: the phrase appears in exactly one question.
+GAME_SCORE = re.compile(r"\bgame\s*scores?\b", re.IGNORECASE)
+"""Game score, by its two-word name.
+
+.. versionadded:: 6.0.0
+   ``router._GAME_SCORE`` until Phase 3, step 2.
+"""
+
+# Two-point field-goal percentage (ISSUES.md #114): "2pt", "2-pt", "2 point",
+# "two point" and "2p", each read against percentage/pct/% (optionally with
+# "field goal(s)" between) - and nothing shorter, so "3 point percentage"
+# and a plain "field goal percentage" are never swept in, and "20 point" (a
+# threshold) fails the same way - the "0" sits where "pt"/"point" must start.
+TWO_POINT_PCT = re.compile(r"\b(?:2[- ]?pts?|2p|2[- ]?points?|two[- ]?points?)\b(?:\s+field\s*goals?)?\s*(?:%|pct\.?|percent(?:age)?)\b", re.IGNORECASE)
+"""A 2-point percentage, named.
+
+.. versionadded:: 6.0.0
+   ``router._TWO_POINT_PCT`` until Phase 3, step 2.
+"""
+
+# A ranking of shot distance (ISSUES.md #114): no metric ranks it, and none is
+# planned. "who lead the league in avg 3 point distance" arrived with the
+# nearest real metric the model knew and answered a 3-point PERCENTAGE.
+SHOT_DISTANCE_RANKED = re.compile(r"\bshot\s+distance\b|\b(?:3|three)[- ]?points?\s+distance\b|\bdistance\s+for\s+(?:3|three)[- ]?points?\b", re.IGNORECASE)
+"""Shot distance named as a thing to rank by.
+
+.. versionadded:: 6.0.0
+   ``router._LEADERBOARD_SHOT_DISTANCE`` until Phase 3, step 2.
+"""
+
+ATTEMPTED = re.compile(r"\battempt(?:ed|s)?\b|\bfga\b|\b3pa\b|\bfta\b|\bshots?\s+taken\b", re.IGNORECASE)
+"""The attempts named beside a shot ("who attempted the most three pointers"
+filed the made column).
+
+.. versionadded:: 6.0.0
+   ``router._ATTEMPTED`` until Phase 3, step 2.
+"""
+
+# "mad" too: "show embiid's 3pt attempts and 3pts mad for his career" asks
+# for both, which the made line reports ("585 of 1,727").
+MADE = re.compile(r"\b(?:made|mad|makes?|hit|hits)\b", re.IGNORECASE)
+"""The makes named beside a shot - with the attempts, both are asked for and the made line answers.
+
+.. versionadded:: 6.0.0
+"""
+
+# Which shots a distance or a chart is about, from the question's own words:
+# "avg 3pt shot distance" reads its 3 here. Exactly one value named counts;
+# "twos and threes" is neither.
+SHOT_VALUE_WORDS: tuple[tuple[int, re.Pattern[str]], ...] = (
+    (3, re.compile(r"\b(?:3|three)[- ]?(?:pt|pts|point(?:er)?s?)\b|\bthrees\b|\b3s\b", re.IGNORECASE)),
+    (2, re.compile(r"\b(?:2|two)[- ]?(?:pt|pts|point(?:er)?s?)\b|\btwos\b", re.IGNORECASE)),
+    (1, re.compile(r"\bfree[- ]throws?\b|\bfts?\b", re.IGNORECASE)),
+)
+"""``(value, pattern)`` - a shot value named.
+
+.. versionadded:: 6.0.0
+   ``router._SHOT_VALUE_WORDS`` until Phase 3, step 2.
+"""
+
+# The side of the ball a fingerprint or a NetPoints rating asked for,
+# matched whole so "offensive" and "defensive" count but a player named
+# Offenberg would not.
+SIDE_WORDS: dict[str, re.Pattern[str]] = {
+    "offense": re.compile(r"\boffens(?:e|ive)\b", re.IGNORECASE),
+    "defense": re.compile(r"\bdefens(?:e|ive)\b", re.IGNORECASE),
+}
+"""The side words, by side.
+
+.. versionadded:: 6.0.0
+   ``router.SIDE_WORDS`` until Phase 3, step 2.
+"""
+
+# A NetPoints rate asked for by any of its names. In this data the only
+# adjusted form of NetPoints is the per-100-possessions rate, so "adjusted"
+# has exactly one honest reading; "/ 90" is a rate nothing here holds, and
+# refuses (#152).
+RATE_WORDS = re.compile(r"\badjusted\b|\bper\s+(?:100\s+)?poss?ess?ions?\b|\bper\s+100\b|/\s*100\b", re.IGNORECASE)
+"""A per-possession rate named.
+
+.. versionadded:: 6.0.0
+   ``router._RATE_WORDS`` until Phase 3, step 2.
+"""
+
+PER_90 = re.compile(r"\bper\s+90\b|/\s*90\b", re.IGNORECASE)
+"""A per-90 rate named - a football unit, held in nothing here.
+
+.. versionadded:: 6.0.0
+   ``router._PER_90`` until Phase 3, step 2.
+"""
+
+#: A team's season TOTAL asked for by "how many ... made/scored/have" or
+#: "total", with no per-game word beside it (:data:`PER_GAME_WORDS`).
+TEAM_TOTAL = re.compile(r"\bhow\s+many\b.{0,60}\b(?:made|scored|have|has|had|hit|grabbed|dished)\b|\btotal\b", re.IGNORECASE)
+"""A season total asked of a team's own stat.
+
+.. versionadded:: 6.0.0
+   ``router._TEAM_TOTAL`` until Phase 3, step 2.
+"""
+
+PER_GAME_WORDS = re.compile(r"\bper\s+game\b|\bppg\b|\brpg\b|\bapg\b|\baverages?\b|\bavg\b", re.IGNORECASE)
+"""A per-game figure asked for outright.
+
+.. versionadded:: 6.0.0
+   ``router._PER_GAME_WORDS`` until Phase 3, step 2.
+"""
+
+# A team metric's word qualified as the OTHER side's: "rebounds allowed per
+# team" is what a team gives up, and reading it as the alias `rebounds`
+# answered the teams' own rebounds, best first (yardstick-v2 F101). Not
+# "against": "rebounds against the knicks" is the team's own.
+GIVEN_UP = re.compile(r"\s+(?:allowed|given\s+up|conceded)\b")
+"""The words that make a measure the opponent's, after its name.
+
+.. versionadded:: 6.0.0
+   ``router._GIVEN_UP`` until Phase 3, step 2.
+"""
+
+LOSING_STREAK = re.compile(r"\blos(?:ing|s|e)\s+streaks?\b|\bstraight\s+losses\b|\blosses\s+in\s+a\s+row\b|\bskid\b", re.IGNORECASE)
+"""A run of losses, named.
+
+.. versionadded:: 6.0.0
+   ``router._LOSING_STREAK`` until Phase 3, step 2.
+"""
+
+# Columns asked for beside a ranking - "top 5 scorers with their rebounds and
+# assists", "... and the team they play for" (yardstick-v2 F017).
+FIELDS_AFTER = re.compile(r"\b(?:with|alongside|and|plus|including)\s+(?:their|his|the)\s+(?P<rest>.+)$", re.IGNORECASE)
+"""The words after which a ranking names the columns to show beside it.
+
+.. versionadded:: 6.0.0
+   ``parse._FIELDS_AFTER`` until Phase 3, step 2.
+"""
+
+TEAM_FIELD_WORDS = re.compile(r"\bteams?\s+(?:they|he)\s+plays?(?:ed)?\s+for\b|\b(?:with|and|plus)\s+(?:the|their)\s+teams?\b|\btheir\s+current\s+teams?\b", re.IGNORECASE)
+"""The words that ask a ranking to show each player's team beside him
+("with the team they play for", F017) - read as the ``team`` column, and
+set aside by the compiler's league-wide guard, which otherwise reads any
+team word as a team's own question.
+
+.. versionadded:: 6.0.0
+   ``metrics.TEAM_FIELD_WORDS`` until Phase 3, step 2.
+"""
+
+#: Words in the question for a measure the model may not have named - the
+#: point reader's table, which moves a point by the words (a measure beyond
+#: a reader's list, a boolean measure as a condition).
+WORD_MEASURES: tuple[tuple[re.Pattern[str], str], ...] = tuple(
+    (re.compile(pattern, re.IGNORECASE), name)
+    for pattern, name in (
+        (r"\bts ?%|\btrue shooting\b", "ts_pct"),
+        (r"\befg\b|\beffective field goal", "efg_pct"),
+        (r"\bplus[ /-]?minus\b|\+/-", "plusMinus"),
+        (r"\bgame score\b", "game_score"),
+        (r"\busage\b", "usage_pct"),
+        (r"\btriple[ -]?doubles?\b|\btd3s?\b|\btds\b", "triple_double"),
+        (r"\bdouble[ -]?doubles?\b|\bdd\b", "double_double"),
+        (r"\bfg ?%|\bfg percentage\b|\bfield goal percentage\b", "fg_pct"),
+        (r"\b3 ?pt ?%|\b3 point percentage\b|\bthree point percentage\b|\b3p%", "three_pct"),
+        (r"\bft ?%|\bfree throw percentage\b", "ft_pct"),
+        (r"\bpra\b|\bpts\+reb\+ast\b|points\+rebounds\+assists", "pra"),
+        (r"\bfouled out\b|\bfoul(ed)? outs?\b", "fouled_out"),
+    )
+)
+"""``(pattern, measure)`` - a phrase naming one of the compiler's measures directly.
+
+.. versionadded:: 6.0.0
+   ``measures.WORD_MEASURES`` until Phase 3, step 2.
+"""
+
+#: A word in the question naming a team's own measure directly - the team
+#: counterpart of :data:`WORD_MEASURES`, over the team compiler's game and
+#: season measures rather than the player relation's columns.
+TEAM_WORD_MEASURES: tuple[tuple[re.Pattern[str], str], ...] = tuple(
+    (re.compile(pattern, re.IGNORECASE), name)
+    for pattern, name in (
+        (r"\bpoint(?:s)? differential\b|\bpoint diff\b|\bdifferential\b", "differential"),
+        (r"\bpoints? allowed\b|\bopponent'?s? points\b", "points_allowed"),
+        (r"\b(?:3|three)[- ]?point(?:er)?s?\b(?:.{0,10}\bmade\b)?", "threePointFieldGoalsMade"),
+        (r"\btotal points\b|\bpoints scored\b|\bhow many points\b", "points"),
+        (r"\brebounds\b", "rebounds"),
+        (r"\bassists\b", "assists"),
+        (r"\bsteals\b", "steals"),
+        (r"\bblocks\b", "blocks"),
+        (r"\bturnovers\b", "turnovers"),
+    )
+)
+"""``(pattern, measure)`` - a phrase naming a team's game-level or season-total measure.
+
+.. versionadded:: 6.0.0
+   ``point._TEAM_WORD_MEASURES`` until Phase 3, step 2.
+"""
+
+#: A word in the question naming what a "highest/biggest ... triple-double"
+#: ranking of GAMES orders by - the plain box-score words
+#: :data:`WORD_MEASURES` does not carry.
+BOOLEAN_RANK_WORDS: tuple[tuple[re.Pattern[str], str], ...] = tuple(
+    (re.compile(pattern, re.IGNORECASE), name)
+    for pattern, name in (
+        (r"\bscoring\b|\bpoints?\b|\bpts\b", "points"),
+        (r"\brebounds?\b|\bboards?\b", "rebounds"),
+        (r"\bassists?\b", "assists"),
+        (r"\bsteals?\b", "steals"),
+        (r"\bblocks?\b", "blocks"),
+    )
+)
+"""``(pattern, measure)`` - the measure a ranking of boolean games is ordered by.
+
+.. versionadded:: 6.0.0
+   ``point._BOOLEAN_RANK_WORDS`` until Phase 3, step 2.
+"""
+
+# The words a question uses for a TEAM metric, by the metric's key - the
+# team-season relation's vocabulary (``team_metrics.TEAM_METRICS``), read
+# by the tagger as the longest alias the words hold. Moved here from
+# `measures._ALIASES` (Phase 3, step 2), where the router imported it; the
+# catalog keys each alias to the measure it names (``measure.ALIASES``).
+TEAM_METRIC_WORDS: dict[str, tuple[str, ...]] = {
+    "record": ("record", "records", "wins", "win", "win pct", "win percentage", "winning percentage", "win percent", "standings", "win loss", "win loss record"),
+    "losses": ("losses", "loss", "losing record"),
+    "points": ("points", "point", "ppg", "points per game", "scoring", "points scored", "avg points"),
+    "opponent_points": (
+        "opponent points",
+        "opponent points per game",
+        "opponent ppg",
+        "opp points",
+        "opp ppg",
+        "points allowed",
+        "points allowed per game",
+        "points against",
+        "points given up",
+    ),
+    "point_differential": ("point differential", "differential", "point diff", "margin", "point margin", "scoring margin", "margin of victory", "plus minus"),
+    "pace": ("pace", "pace factor", "possessions", "possessions per game"),
+    "offensive_rating": ("offensive rating", "off rating", "ortg", "offensive efficiency", "offensive rtg"),
+    "defensive_rating": ("defensive rating", "def rating", "drtg", "defensive efficiency", "defensive rtg", "defense", "defensive"),
+    "net_rating": ("net rating", "net efficiency", "net rtg", "nrtg"),
+    "field_goal_pct": ("field goal pct", "field goal percentage", "fg pct", "fg%", "fg percentage", "field goal %", "shooting percentage"),
+    "three_point_pct": (
+        "three point field goal pct",
+        "three point field goal percentage",
+        "three point pct",
+        "three point percentage",
+        "3pt pct",
+        "3pt%",
+        "3pt percentage",
+        "3 point pct",
+        "3 point percentage",
+        "3p%",
+        "3p pct",
+        "three point shooting",
+    ),
+    "free_throw_pct": ("free throw pct", "free throw percentage", "ft pct", "ft%", "free throw %"),
+    "true_shooting_pct": ("ts pct", "ts%", "true shooting", "true shooting pct", "true shooting percentage"),
+    "effective_fg_pct": ("efg pct", "efg%", "efg", "effective field goal pct", "effective field goal percentage", "effective fg pct"),
+    "rebounds": ("rebounds", "rebound", "rpg", "total rebounds", "rebounding", "boards", "avg rebounds"),
+    "offensive_rebounds": ("offensive rebounds", "offensive rebound", "oreb", "offensive boards"),
+    "defensive_rebounds": ("defensive rebounds", "defensive rebound", "dreb", "defensive boards"),
+    "assists": ("assists", "assist", "apg", "dimes", "avg assists"),
+    "turnovers": ("turnovers", "turnover", "tov", "giveaways", "total turnovers"),
+    "steals": ("steals", "steal", "spg"),
+    "blocks": ("blocks", "block", "bpg", "blocked shots"),
+    "fouls": ("fouls", "foul", "personal fouls"),
+    "three_pointers_made": (
+        "three point field goals made",
+        "threes",
+        "threes made",
+        "three pointers",
+        "three pointers made",
+        "3 pointers",
+        "3 pointers made",
+        "3pm",
+        "3pt made",
+        "made threes",
+    ),
+    "three_pointers_attempted": ("three point field goals attempted", "three point attempts", "threes attempted", "3 point attempts", "3pa", "3pt attempts"),
+    "field_goals_made": ("field goals made", "field goals", "fgm"),
+    "free_throws_made": ("free throws made", "free throws", "ftm"),
+    "free_throws_attempted": ("free throws attempted", "free throw attempts", "fta"),
+    "points_in_paint": ("points in the paint", "points in paint", "paint points"),
+    "fast_break_points": ("fast break points", "fastbreak points", "fast break"),
+}
+"""Team metric key -> the words a question names it by.
+
+.. versionadded:: 6.0.0
+   ``measures._ALIASES`` until Phase 3, step 2.
+"""
+
+STAT_ALIASES: dict[str, str] = {alias: key for key, aliases in TEAM_METRIC_WORDS.items() for alias in aliases}
+"""Normalized slot text -> ``team_metrics.TEAM_METRICS`` key.
+
+.. versionadded:: 6.0.0
+   ``measures.STAT_ALIASES`` until Phase 3, step 2 (``measures`` and ``team_metrics`` re-export it).
+"""
+
+TEAM_METRIC_NAMED: tuple[tuple[str, re.Pattern[str]], ...] = tuple((alias, re.compile("(?<![a-z0-9])" + re.escape(alias) + "(?![a-z0-9])")) for alias in sorted(STAT_ALIASES, key=len, reverse=True))
+"""Each team-metric alias with the pattern that finds it whole in the
+casefolded question, longest alias first: the LONGEST alias the question
+holds anywhere names the metric ("turnover percentage" beside "record"
+reads turnovers), as the stages read it - the model invents team stats
+("usage_pct_defense" for "lowest defensive rating"), and the question says
+which one it meant.
+
+.. versionadded:: 6.0.0
+   ``router._team_metric_in``'s search until Phase 3, step 2.
+"""
+
+CAMEL_CASE_BREAK = re.compile(r"(?<=[a-z0-9])(?=[A-Z])")
+"""Where a camelCase key breaks into words (``threePointFieldGoalsMade``).
+
+.. versionadded:: 6.0.0
+   ``team_metrics.normalize_stat``'s pattern until Phase 3, step 2.
+"""
+
+HOW_MANY_GAMES = re.compile(r"\bhow\s+many\b", re.IGNORECASE)
+"""A count asked outright ("how many") - beside a games key, a line's count of games rather than a log of one.
+
+.. versionadded:: 6.0.0
+   ``router._HOW_MANY`` until Phase 3, step 2 (the router keeps its own for the span's context).
+"""
+
+LOG_WORDS = re.compile(r"\b(?:game\s*logs?|gamelogs?|logs?)\b|\b(?:each|every|by)\s+game\b", re.IGNORECASE)
+"""A game log asked for by name ("luka ft log" routed to a season average once).
+
+.. versionadded:: 6.0.0
+   ``router._LOG_WORDS`` until Phase 3, step 2 (the router reads it for the intent too).
+"""
+
+WORD = re.compile(r"[a-z]+")
+"""A run of letters: the words a casefolded phrase is read as.
+
+.. versionadded:: 6.0.0
+"""

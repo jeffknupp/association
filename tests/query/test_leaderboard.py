@@ -258,11 +258,12 @@ def test_get_leaderboard_missing_table_reports_requires_hint(con: duckdb.DuckDBP
 
 
 def test_double_and_triple_doubles_are_registered_metrics() -> None:
+    from association.query.measure import measure_of
     from association.query.measures import resolve_metric
     from association.query.metrics import LEADERBOARD_METRICS
 
-    assert resolve_metric("triple_double") == "triple_doubles"
-    assert resolve_metric("double_double") == "double_doubles"
+    assert resolve_metric(measure_of("triple_double")) == "triple_doubles"
+    assert resolve_metric(measure_of("double_double")) == "double_doubles"
     assert LEADERBOARD_METRICS["triple_doubles"].column == "tripleDouble"
     assert LEADERBOARD_METRICS["double_doubles"].dedup_traded is True
 

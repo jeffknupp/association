@@ -78,6 +78,7 @@ from association.query.reading import (
     Cuts,
     LeftOut,
     Line,
+    Measure,
     Predicate,
     Scope,
 )
@@ -1286,7 +1287,7 @@ def _apply_team_record_when(subject: Subject, scope: Scope, intent: str) -> tupl
         # question sets the team against nobody.
         cuts=Cuts(venue=scope.cuts.venue, opponent=scope.cuts.opponent if subject.opponent is not None else None),
         player=condition.player,
-        stat=condition.line.measure if condition.line is not None else None,
+        measure=Measure.from_slots({"stat": condition.line.measure}) if condition.line is not None else None,
         # The companion's line is the record's own now: the shape is keyed on it.
         lines=(replace(condition.line, keyed=True),) if condition.line is not None else (),
         team=subject.teams[0] if subject.teams else None,

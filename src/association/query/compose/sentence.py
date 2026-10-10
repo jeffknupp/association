@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from association.query.measure import won
 from association.query.notes import decided, note
 from association.query.player_games import BOTH_SEASON_TYPES
 from association.query.reading import period_label
@@ -302,7 +303,7 @@ def _team_run_sentence(q: TeamQuery, result: TeamResult, span: str) -> str:
     """The ``run`` shape on the team relation in the compiler's own words: a
     team's, or the league's, longest run of wins or losses."""
     who = f"The {result.team.name}" if result.team is not None else "Every team"
-    what = "lost" if q.scope.kind == "loss" else "won"
+    what = "won" if won(q.scope.measure) else "lost"
     if not result.runs:
         return f"No run of games {what} for {who[0].lower() + who[1:]}{result.narrowed_text} in the {span}."
     lines = []

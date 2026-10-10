@@ -100,7 +100,8 @@ this tree:
   typed window's `by`, a cell the player relation declares; step 2 took
   the span's, the window's, the cuts', the period's, the lines' and the
   companions' names out of `SCOPING_SLOTS`, `_MODEL_SLOTS` and every
-  `STATED_SCOPING` row - `SCOPING_SLOTS` is `split` and `rate` now - and
+  `STATED_SCOPING` row, and the measure's took `rate` (`Measure.CELLS`) -
+  `SCOPING_SLOTS` is `split` alone now - and
   the relation tables carry the span's three cells, the window's, the
   cuts', the period's one, the lines' two and the companions' one by
   name). A P1 wrong answer is
@@ -465,10 +466,11 @@ gets turned off.
   - `check/` - the coverage report. `query/` - the reader (`parse.py`, with
     what the model sees in `normalizer.py`, the stages it runs in
     `router.py`, the words every tagger reads by in `lexicon.py` - the span,
-    window, cuts and period families' since Phase 3, step 2, the calendar's
-    own patterns among them, the rest as each family's slice lands - and the
-    five taggers, `span.py`, `window.py`, `cuts.py`, `period.py` and
-    `line.py`;
+    window, cuts, period, line and measure families' since Phase 3, step 2,
+    the calendar's own patterns and the team metrics' words among them,
+    the subject's as its slice lands - and the six taggers, `span.py`,
+    `window.py`, `cuts.py`, `period.py`, `line.py` and `measure.py`, which
+    also holds the measure catalog;
     `calendar.py` is the situation's parsers and clauses over the lexicon's
     words),
     entities, the relations (`player_games.py` and its
@@ -879,8 +881,8 @@ model's. Two things follow, and both matter when you add a shape:
 - **A filter family is read by ONE tagger, from the lexicon, and claims
   the characters it read** (Phase 3, step 2; the span is the first, the
   window the second, the games' cuts the third, the period the fourth, the
-  line and the companions the fifth, and the pattern the other families
-  copy).
+  line and the companions the fifth, the measure the sixth, and the pattern
+  the subject's slice copies).
   `query/lexicon.py` holds every pattern the family is read by, named,
   with its reason beside it, and nothing that reads the warehouse or the
   answer side (contract 6: regexes only in the lexicon; it is the lowest
@@ -1012,7 +1014,68 @@ model's. Two things follow, and both matter when you add a shape:
   off the group; a teammate who played projects as a `conditions` entry on
   any other point, as the slot era wrote him) - and the typed values are
   recorded beside the reading (`stages._reading_record`, `lines`,
-  `companions`). `query/window.py` is the window's tagger:
+  `companions`). `query/measure.py` is the measure's tagger AND the one
+  catalog of what a question can ask about: `read_measure(question,
+  MeasureContext)` reads the measure - the words' own reading over the
+  normalizer's key (`measure.named`: the grammar first, `MEASURE_GRAMMAR`,
+  then the longest box-score word, `MEASURE_WORDS`), then every rule the
+  stages wrote by, in their order (fouling out is the count's stat; a
+  games count under a line's reader is no measure; a quarter's, a
+  comparison's, a line's, a team's or a run's stat is kept only where the
+  words name one, `names_a_stat`; an advanced metric; game score by the
+  reader's own spelling; a 2-point percentage; a ranking by shot distance,
+  the `shot_distance` sentinel; the attempts beside a make; the LONGEST
+  team-metric alias the words hold, `team_metric_named`, "allowed" after it
+  making it the opponent's; a NetPoints rate folded into its key and any
+  other unit kept as the `rate` cell; a team's total; the stat the lines
+  tagger read beside a line; a run's result; a fingerprint's side; a chart's
+  shots; the columns beside a ranking) - into `reading.Measure(key,
+  as_typed, how, unit, whose, side, shot_value, category, won, beside)` on
+  `Scope.measure`, and claims what it read. The model's key is CONTEXT
+  (`raw["stat"]`, the one REQUIRED key the normalizer fills whether or not
+  the question names a stat): the words win where they name a measure, and
+  where they name none the key stands as it did, so no answer moves; the
+  intent stages that turn on a games key read the same context, the words
+  over the key, before the tagger runs. `measure.CATALOG` is the one
+  catalog (`MeasureKey`, 42 keys; per key how it is read on each relation:
+  the game column, the compiler's measure, the ranking's metric for a bare
+  name, a career, a total, a per-game figure, the team metric, the
+  opponent's) and `measure.ALIASES` every spelling the six vocabularies
+  named a measure by (390: the normalizer's keys, the grammar's, the
+  box-score words, the team metrics' alias texts, the leaderboard metrics'
+  names, the compiler's derived names), through `key_of`; the answer side's
+  lookups (`measures.resolve_metric`, `stat_measure`, `stat_column`,
+  `log_extras`, `period_split_measure`, `streak_column`,
+  `team_metrics.resolve_team_metric`) take the `Measure` and read the
+  catalog's facets, and `tests/query/measure_spellings.json` holds what each
+  returned for every reachable spelling before the catalog, which a test
+  holds them to on the facets each vocabulary reached. `Measure.as_typed`
+  is what a refusal prints and the `stat` slot projects to - a team metric's
+  alias text ("fgm") is one, and `named_by_a_team_metric` is how the team
+  compiler's total still declines it (ISSUES.md). Measured first
+  (`~/association-research/stages/measure_family.py`, the seven slots and
+  the point's `measures`/`aggregate` as each stage set them on all 2,710
+  readings): a stat on 1,004 readings in 69 spellings - the model's on 280
+  (23 distinct), the words' on 958 (37), the two disagreeing on 58 with the
+  words winning every one, the model's key standing alone on 32 - a rate on
+  13, a per-game log on 38, a side on 1, a shot value on 13 (all 3), columns
+  beside a ranking on 7, a run's kind on 6; no stage moved a slot between
+  the route and the reading; 24 readings carried a key no answer-side
+  vocabulary held (`shot_distance`, the ranking's sentinel; `games_played`,
+  read by nothing; the grammar's given-up keys, refused by name). The seven
+  slots are gone from `Scope`; `Scope.from_slots` still takes them (it
+  builds the `Measure` through the catalog), `to_slots` and `projected()`
+  give the old shape back in the old field order (a side or a rate the key
+  folds in, `netpoints_defense_per_100`, is the key's and no slot), and the
+  typed value is recorded beside the reading (`stages._reading_record`,
+  `measure`). ONE cell, `rate` (`Measure.CELLS`): honored by the
+  season-line ranking and the team compiler's total, declined by every
+  other reader in the sentence it had, named in `STATED_SCOPING` and the
+  planner's team-scalar cells through `Measure.CELLS`, declared in no
+  relation table (a unit narrows no games). The point's `measures` and
+  `aggregate` are still the compiler's names, derived from the `Measure`
+  through the catalog (`stat_measure`): retyping them is the `Query`'s, the
+  RUN stage's input. `query/window.py` is the window's tagger:
   `read_window(question, WindowContext)` reads which rows a question keeps
   and from which end - the grammar's count and end ("last 10 games", "his
   first game", "top 5"), a history's "past 5 years" as its count of
@@ -1531,18 +1594,26 @@ model's. Two things follow, and both matter when you add a shape:
   decoder fills whether or not the question asked for it.** `stat` came back as
   `'points'` on "compare sga and embiid" 12 times out of 12, which narrowed
   `player_compare` to one average and undid the whole-line default it exists
-  for - and the normalizer's `stat` is required too. The stages drop it for
-  that intent only (`router._named_a_stat`). Note why the word list can be
+  for - and the normalizer's `stat` is required too. The measure tagger
+  drops it on the whole-line readers where the words name no stat
+  (`measure.names_a_stat` over `lexicon.STAT_WORDS`; `router._named_a_stat`
+  until Phase 3, step 2). Note why the word list can be
   loose there and could not be anywhere else: for a comparison, a missed word
   widens the answer to a line that still holds the stat asked about, while
-  `leaderboard` with no stat has nothing to rank by.
+  `leaderboard` with no stat has nothing to rank by. The same drop takes a
+  measure the WORDS named where the list misses its word ("grayson allen 3s
+  made last season": "3s" is a box-score word and no `STAT_WORDS` word, so
+  the 3-pointers the grammar read are dropped and his points line answers) -
+  filed, since a fix moves answers (ISSUES.md).
 
   Two ways out, and prefer the second. Making a slot *required* works (that
   is why `stat` is) but was measured and reverted for the router's
   `season_ref`, because requiring more slots crowds out others. Reading the
   value **from the question text** costs nothing and cannot move any other
   slot: that is what the parser does for every slot but the names and the
-  stat, and what `_validate_season` and `_validate_side` did for the
+  stat - and for the stat too, where the words name one (the measure
+  tagger reads the words over the key) - and what `_validate_season` and
+  `_validate_side` did for the
   router. Hash `NORMALIZER_PROMPT` and `NORMALIZER_SCHEMA` before and after a
   change to prove the model's input is unchanged - if both hashes match, the
   normalizer's recorded replies still stand and the offline rehearsal (below)

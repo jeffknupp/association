@@ -27,6 +27,7 @@ from typing import Any
 import duckdb
 
 from association.nba.season import eastern_date
+from association.query.measure import spelled
 from association.query.notes import Note
 from association.query.player_relation import box_score_notes_read, narrowed_cells, no_narrowed_games
 from association.query.reading import Unsupported, unhonored_scoping
@@ -60,7 +61,7 @@ def _player_stat_measures(q: Query) -> list[str] | None:
     default line) where they are the point's own - else ``None``, and the
     compiler's sentence answers. A stat with no per-game column is the
     template's own decline, kept: ``None``, as the presenter returned."""
-    stat = q.scope.stat
+    stat = spelled(q.scope.measure)
     if stat is not None and stat in ADVANCED_STATS:
         return None
     if stat is not None and stat in SHOOTING_STATS:
@@ -153,7 +154,7 @@ def _player_stat_result(con: duckdb.DuckDBPyConnection, q: Query, compiled: Comp
     player, span, narrowed = compiled.player, compiled.span, compiled.narrowed
     assert player is not None
     games = int(line["games"] or 0)
-    stat = q.scope.stat
+    stat = spelled(q.scope.measure)
     facts = LineFacts(stat=stat if stat in SHOOTING_STATS else None, wanted=() if stat in SHOOTING_STATS else tuple(compiled.measures))
     narrowing = Narrowing(
         phrase=narrowed.filters(dated=False),

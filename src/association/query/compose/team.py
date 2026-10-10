@@ -63,6 +63,7 @@ from association.query.conditions import _PLAYER_GAME_TABLES, _TEAM_LINE, _longe
 from association.query.coverage import floor_refusal
 from association.query.entities import Entity, resolved_team
 from association.query.lines import threshold_of
+from association.query.measure import won
 from association.query.player_relation import ResolvedSpan, span_of, whole_span
 from association.query.reading import DEFAULT_STREAK_LIMIT, Scope, _clamp_limit
 from association.query.result import Refusal, Unanswered
@@ -512,7 +513,7 @@ _TEAM_STREAK_SELECT: tuple[str, ...] = ("tg.team_id", "tg.season", "tg.event_id"
 
 def compile_team_run(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> TeamCompiled:
     """The ``run`` shape as SQL: a named team's longest run of wins or
-    losses (``scope.kind``) within a season, over the team-games relation
+    losses (``Measure.won``) within a season, over the team-games relation
     narrowed exactly as every team template narrows it
     (:func:`_team_games_narrowed`) and read over every game in the span
     (``whole_span``) - or, with no team named, each team-season's own
@@ -538,7 +539,7 @@ def compile_team_run(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> TeamCompil
         limit, best = _clamp_limit(scope.window.count, DEFAULT_STREAK_LIMIT), True
     base, params = team_named(*team_aggregate_sql(narrowed, list(_TEAM_STREAK_SELECT)))
     sql = _longest_runs_sql(base, ("team_id", "season"), "x.won = $want", best_per_partition=best)
-    return TeamCompiled(sql, {**params, "want": scope.kind != "loss", "limit": limit}, team, span, narrowed, run_rows=base, run_params=params)
+    return TeamCompiled(sql, {**params, "want": won(scope.measure), "limit": limit}, team, span, narrowed, run_rows=base, run_params=params)
 
 
 def compile_team_range(compiled: TeamCompiled) -> TeamCompiled:

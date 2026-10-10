@@ -1,0 +1,2739 @@
+{
+"3 point attempts": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "three_pointers_attempted"
+},
+"3 point attempts allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"3 point pct": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "three_point_pct"
+},
+"3 point pct allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"3 point percentage": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "three_point_pct"
+},
+"3 point percentage allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"3 pointers": {
+"career_metric": null,
+"metric": null,
+"stat_column": "threePointFieldGoalsMade",
+"stat_measure": "threePointFieldGoalsMade",
+"team": "three_pointers_made"
+},
+"3 pointers allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"3 pointers made": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "three_pointers_made"
+},
+"3 pointers made allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"3p pct": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "three_point_pct"
+},
+"3p pct allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"3p%": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "three_point_pct"
+},
+"3p% allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"3pa": {
+"career_metric": null,
+"metric": null,
+"stat_column": "threePointFieldGoalsAttempted",
+"stat_measure": "threePointFieldGoalsAttempted",
+"team": "three_pointers_attempted"
+},
+"3pa allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"3pm": {
+"career_metric": null,
+"metric": null,
+"stat_column": "threePointFieldGoalsMade",
+"stat_measure": "threePointFieldGoalsMade",
+"team": "three_pointers_made"
+},
+"3pm allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"3pt attempts": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "three_pointers_attempted"
+},
+"3pt attempts allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"3pt made": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "three_pointers_made"
+},
+"3pt made allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"3pt pct": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "three_point_pct"
+},
+"3pt pct allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"3pt percentage": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "three_point_pct"
+},
+"3pt percentage allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"3pt%": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "three_point_pct"
+},
+"3pt% allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"3s": {
+"career_metric": null,
+"metric": null,
+"stat_column": "threePointFieldGoalsMade",
+"stat_measure": "threePointFieldGoalsMade",
+"team": null
+},
+"all": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"apg": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "assists"
+},
+"apg allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"assist": {
+"career_metric": null,
+"metric": null,
+"stat_column": "assists",
+"stat_measure": "assists",
+"team": "assists"
+},
+"assist allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"assists": {
+"career_metric": "total_assists",
+"metric": "avg_assists",
+"stat_column": "assists",
+"stat_measure": "assists",
+"team": "assists"
+},
+"assists allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"ast": {
+"career_metric": null,
+"metric": null,
+"stat_column": "assists",
+"stat_measure": "assists",
+"team": null
+},
+"asts": {
+"career_metric": null,
+"metric": null,
+"stat_column": "assists",
+"stat_measure": "assists",
+"team": null
+},
+"avg assists": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "assists"
+},
+"avg assists allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"avg points": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "points"
+},
+"avg points allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"avg rebounds": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "rebounds"
+},
+"avg rebounds allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"avg_game_score": {
+"career_metric": "avg_game_score",
+"metric": "avg_game_score",
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"avg_points": {
+"career_metric": "avg_points",
+"metric": "avg_points",
+"stat_column": null,
+"stat_measure": null,
+"team": "points"
+},
+"blk": {
+"career_metric": null,
+"metric": null,
+"stat_column": "blocks",
+"stat_measure": "blocks",
+"team": null
+},
+"block": {
+"career_metric": null,
+"metric": null,
+"stat_column": "blocks",
+"stat_measure": "blocks",
+"team": "blocks"
+},
+"block allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"blocked shots": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "blocks"
+},
+"blocked shots allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"blocks": {
+"career_metric": "total_blocks",
+"metric": "avg_blocks",
+"stat_column": "blocks",
+"stat_measure": "blocks",
+"team": "blocks"
+},
+"blocks allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"boards": {
+"career_metric": null,
+"metric": null,
+"stat_column": "rebounds",
+"stat_measure": "rebounds",
+"team": "rebounds"
+},
+"boards allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"bpg": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "blocks"
+},
+"bpg allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"career_playoffs": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"def rating": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "defensive_rating"
+},
+"def rating allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"defense": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "defensive_rating"
+},
+"defense allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"defensive": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "defensive_rating"
+},
+"defensive allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"defensive boards": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "defensive_rebounds"
+},
+"defensive boards allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"defensive efficiency": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "defensive_rating"
+},
+"defensive efficiency allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"defensive rating": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "defensive_rating"
+},
+"defensive rating allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"defensive rebound": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "defensive_rebounds"
+},
+"defensive rebound allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"defensive rebounds": {
+"career_metric": null,
+"metric": null,
+"stat_column": "defensiveRebounds",
+"stat_measure": "defensiveRebounds",
+"team": "defensive_rebounds"
+},
+"defensive rebounds allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"defensive rtg": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "defensive_rating"
+},
+"defensive rtg allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"defensiveRebounds": {
+"career_metric": null,
+"metric": null,
+"stat_column": "defensiveRebounds",
+"stat_measure": "defensiveRebounds",
+"team": "defensive_rebounds"
+},
+"differential": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "point_differential"
+},
+"differential allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"dimes": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "assists"
+},
+"dimes allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"double_double": {
+"career_metric": "double_doubles",
+"metric": "double_doubles",
+"stat_column": null,
+"stat_measure": "double_double",
+"team": null
+},
+"dreb": {
+"career_metric": null,
+"metric": null,
+"stat_column": "defensiveRebounds",
+"stat_measure": "defensiveRebounds",
+"team": "defensive_rebounds"
+},
+"dreb allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"drtg": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "defensive_rating"
+},
+"drtg allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"effective fg pct": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "effective_fg_pct"
+},
+"effective fg pct allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"effective field goal pct": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "effective_fg_pct"
+},
+"effective field goal pct allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"effective field goal percentage": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "effective_fg_pct"
+},
+"effective field goal percentage allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"efg": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "effective_fg_pct"
+},
+"efg allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"efg pct": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "effective_fg_pct"
+},
+"efg pct allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"efg%": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "effective_fg_pct"
+},
+"efg% allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"efg_pct": {
+"career_metric": "efg_pct",
+"metric": "efg_pct",
+"stat_column": "efg_pct",
+"stat_measure": "efg_pct",
+"team": "effective_fg_pct"
+},
+"fast break": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "fast_break_points"
+},
+"fast break allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"fast break points": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "fast_break_points"
+},
+"fast break points allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"fastbreak points": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "fast_break_points"
+},
+"fastbreak points allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"fg pct": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "field_goal_pct"
+},
+"fg pct allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"fg percentage": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "field_goal_pct"
+},
+"fg percentage allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"fg%": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "field_goal_pct"
+},
+"fg% allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"fg_pct": {
+"career_metric": "fg_pct",
+"metric": "fg_pct",
+"stat_column": null,
+"stat_measure": "fg_pct",
+"team": "field_goal_pct"
+},
+"fga": {
+"career_metric": null,
+"metric": null,
+"stat_column": "fieldGoalsAttempted",
+"stat_measure": "fieldGoalsAttempted",
+"team": null
+},
+"fgm": {
+"career_metric": null,
+"metric": null,
+"stat_column": "fieldGoalsMade",
+"stat_measure": "fieldGoalsMade",
+"team": "field_goals_made"
+},
+"fgm allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"field goal %": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "field_goal_pct"
+},
+"field goal % allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"field goal attempts": {
+"career_metric": null,
+"metric": null,
+"stat_column": "fieldGoalsAttempted",
+"stat_measure": "fieldGoalsAttempted",
+"team": null
+},
+"field goal pct": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "field_goal_pct"
+},
+"field goal pct allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"field goal percentage": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "field_goal_pct"
+},
+"field goal percentage allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"field goals": {
+"career_metric": null,
+"metric": null,
+"stat_column": "fieldGoalsMade",
+"stat_measure": "fieldGoalsMade",
+"team": "field_goals_made"
+},
+"field goals allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"field goals made": {
+"career_metric": null,
+"metric": null,
+"stat_column": "fieldGoalsMade",
+"stat_measure": "fieldGoalsMade",
+"team": "field_goals_made"
+},
+"field goals made allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"fieldGoalPct": {
+"career_metric": "fg_pct",
+"metric": "fg_pct",
+"stat_column": null,
+"stat_measure": "fg_pct",
+"team": "field_goal_pct"
+},
+"fieldGoalsAttempted": {
+"career_metric": null,
+"metric": null,
+"stat_column": "fieldGoalsAttempted",
+"stat_measure": "fieldGoalsAttempted",
+"team": null
+},
+"fieldGoalsMade": {
+"career_metric": "total_field_goals_made",
+"metric": "total_field_goals_made",
+"stat_column": "fieldGoalsMade",
+"stat_measure": "fieldGoalsMade",
+"team": "field_goals_made"
+},
+"foul": {
+"career_metric": null,
+"metric": null,
+"stat_column": "fouls",
+"stat_measure": "fouls",
+"team": "fouls"
+},
+"foul allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"fouled_out": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": "fouled_out",
+"team": null
+},
+"fouls": {
+"career_metric": "avg_fouls",
+"metric": "avg_fouls",
+"stat_column": "fouls",
+"stat_measure": "fouls",
+"team": "fouls"
+},
+"fouls allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"free throw %": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "free_throw_pct"
+},
+"free throw % allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"free throw attempts": {
+"career_metric": null,
+"metric": null,
+"stat_column": "freeThrowsAttempted",
+"stat_measure": "freeThrowsAttempted",
+"team": "free_throws_attempted"
+},
+"free throw attempts allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"free throw pct": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "free_throw_pct"
+},
+"free throw pct allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"free throw percentage": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "free_throw_pct"
+},
+"free throw percentage allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"free throws": {
+"career_metric": null,
+"metric": null,
+"stat_column": "freeThrowsMade",
+"stat_measure": "freeThrowsMade",
+"team": "free_throws_made"
+},
+"free throws allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"free throws attempted": {
+"career_metric": null,
+"metric": null,
+"stat_column": "freeThrowsAttempted",
+"stat_measure": "freeThrowsAttempted",
+"team": "free_throws_attempted"
+},
+"free throws attempted allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"free throws made": {
+"career_metric": null,
+"metric": null,
+"stat_column": "freeThrowsMade",
+"stat_measure": "freeThrowsMade",
+"team": "free_throws_made"
+},
+"free throws made allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"freeThrowPct": {
+"career_metric": "ft_pct",
+"metric": "ft_pct",
+"stat_column": null,
+"stat_measure": "ft_pct",
+"team": "free_throw_pct"
+},
+"freeThrowsAttempted": {
+"career_metric": null,
+"metric": null,
+"stat_column": "freeThrowsAttempted",
+"stat_measure": "freeThrowsAttempted",
+"team": "free_throws_attempted"
+},
+"freeThrowsMade": {
+"career_metric": "total_free_throws_made",
+"metric": "total_free_throws_made",
+"stat_column": "freeThrowsMade",
+"stat_measure": "freeThrowsMade",
+"team": "free_throws_made"
+},
+"ft pct": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "free_throw_pct"
+},
+"ft pct allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"ft%": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "free_throw_pct"
+},
+"ft% allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"ft_pct": {
+"career_metric": "ft_pct",
+"metric": "ft_pct",
+"stat_column": null,
+"stat_measure": "ft_pct",
+"team": "free_throw_pct"
+},
+"fta": {
+"career_metric": null,
+"metric": null,
+"stat_column": "freeThrowsAttempted",
+"stat_measure": "freeThrowsAttempted",
+"team": "free_throws_attempted"
+},
+"fta allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"ftm": {
+"career_metric": null,
+"metric": null,
+"stat_column": "freeThrowsMade",
+"stat_measure": "freeThrowsMade",
+"team": "free_throws_made"
+},
+"ftm allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"game": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"game_score": {
+"career_metric": null,
+"metric": null,
+"stat_column": "game_score",
+"stat_measure": "game_score",
+"team": null
+},
+"games": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"gamesPlayed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"games_played": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"giveaways": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "turnovers"
+},
+"giveaways allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"gp": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"losing record": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "losses"
+},
+"losing record allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"loss": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "losses"
+},
+"loss allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"losses": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "losses"
+},
+"losses allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"made threes": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "three_pointers_made"
+},
+"made threes allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"margin": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": "margin",
+"team": "point_differential"
+},
+"margin allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"margin of victory": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "point_differential"
+},
+"margin of victory allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"min": {
+"career_metric": null,
+"metric": null,
+"stat_column": "minutes",
+"stat_measure": "minutes",
+"team": null
+},
+"mins": {
+"career_metric": null,
+"metric": null,
+"stat_column": "minutes",
+"stat_measure": "minutes",
+"team": null
+},
+"minute": {
+"career_metric": null,
+"metric": null,
+"stat_column": "minutes",
+"stat_measure": "minutes",
+"team": null
+},
+"minutes": {
+"career_metric": "avg_minutes",
+"metric": "avg_minutes",
+"stat_column": "minutes",
+"stat_measure": "minutes",
+"team": null
+},
+"net efficiency": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "net_rating"
+},
+"net efficiency allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"net rating": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "net_rating"
+},
+"net rating allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"net rtg": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "net_rating"
+},
+"net rtg allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"netpoints": {
+"career_metric": "netpoints_total",
+"metric": "netpoints_total",
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"netpoints_defense": {
+"career_metric": "netpoints_defense",
+"metric": "netpoints_defense",
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"netpoints_defense_per_100": {
+"career_metric": "netpoints_defense_per_100",
+"metric": "netpoints_defense_per_100",
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"netpoints_offense": {
+"career_metric": "netpoints_offense",
+"metric": "netpoints_offense",
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"netpoints_offense_per_100": {
+"career_metric": "netpoints_offense_per_100",
+"metric": "netpoints_offense_per_100",
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"netpoints_per_100": {
+"career_metric": "netpoints_per_100",
+"metric": "netpoints_per_100",
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"netpoints_total": {
+"career_metric": "netpoints_total",
+"metric": "netpoints_total",
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"none": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"nrtg": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "net_rating"
+},
+"nrtg allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"off rating": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "offensive_rating"
+},
+"off rating allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"offensive boards": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "offensive_rebounds"
+},
+"offensive boards allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"offensive efficiency": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "offensive_rating"
+},
+"offensive efficiency allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"offensive rating": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "offensive_rating"
+},
+"offensive rating allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"offensive rebound": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "offensive_rebounds"
+},
+"offensive rebound allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"offensive rebounds": {
+"career_metric": null,
+"metric": null,
+"stat_column": "offensiveRebounds",
+"stat_measure": "offensiveRebounds",
+"team": "offensive_rebounds"
+},
+"offensive rebounds allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"offensive rtg": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "offensive_rating"
+},
+"offensive rtg allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"offensiveRebounds": {
+"career_metric": null,
+"metric": null,
+"stat_column": "offensiveRebounds",
+"stat_measure": "offensiveRebounds",
+"team": "offensive_rebounds"
+},
+"opp points": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "opponent_points"
+},
+"opp points allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"opp ppg": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "opponent_points"
+},
+"opp ppg allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"opponent points": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "opponent_points"
+},
+"opponent points allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"opponent points per game": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "opponent_points"
+},
+"opponent points per game allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"opponent ppg": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "opponent_points"
+},
+"opponent ppg allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"oreb": {
+"career_metric": null,
+"metric": null,
+"stat_column": "offensiveRebounds",
+"stat_measure": "offensiveRebounds",
+"team": "offensive_rebounds"
+},
+"oreb allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"ortg": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "offensive_rating"
+},
+"ortg allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"pace": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "pace"
+},
+"pace allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"pace factor": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "pace"
+},
+"pace factor allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"paint points": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "points_in_paint"
+},
+"paint points allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"per_36": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"personal fouls": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "fouls"
+},
+"personal fouls allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"pf": {
+"career_metric": null,
+"metric": null,
+"stat_column": "fouls",
+"stat_measure": "fouls",
+"team": null
+},
+"plus minus": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "point_differential"
+},
+"plus minus allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"plusMinus": {
+"career_metric": null,
+"metric": null,
+"stat_column": "plusMinus",
+"stat_measure": "plusMinus",
+"team": "point_differential"
+},
+"plus_minus": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": "plusMinus",
+"team": "point_differential"
+},
+"point": {
+"career_metric": null,
+"metric": null,
+"stat_column": "points",
+"stat_measure": "points",
+"team": "points"
+},
+"point allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"point diff": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "point_differential"
+},
+"point diff allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"point differential": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "point_differential"
+},
+"point differential allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"point margin": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "point_differential"
+},
+"point margin allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"point_differential": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "point_differential"
+},
+"points": {
+"career_metric": "total_points",
+"metric": "avg_points",
+"stat_column": "points",
+"stat_measure": "points",
+"team": "points"
+},
+"points against": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "opponent_points"
+},
+"points against allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"points allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "opponent_points"
+},
+"points allowed allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"points allowed per game": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "opponent_points"
+},
+"points allowed per game allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"points given up": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "opponent_points"
+},
+"points given up allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"points in paint": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "points_in_paint"
+},
+"points in paint allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"points in the paint": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "points_in_paint"
+},
+"points in the paint allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"points per game": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "points"
+},
+"points per game allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"points scored": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "points"
+},
+"points scored allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"points_allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "opponent_points"
+},
+"points_differential": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"possessions": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "pace"
+},
+"possessions allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"possessions per game": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "pace"
+},
+"possessions per game allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"ppg": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "points"
+},
+"ppg allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"pra": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": "pra",
+"team": null
+},
+"pt": {
+"career_metric": null,
+"metric": null,
+"stat_column": "points",
+"stat_measure": "points",
+"team": null
+},
+"pts": {
+"career_metric": null,
+"metric": null,
+"stat_column": "points",
+"stat_measure": "points",
+"team": null
+},
+"reb": {
+"career_metric": null,
+"metric": null,
+"stat_column": "rebounds",
+"stat_measure": "rebounds",
+"team": null
+},
+"rebound": {
+"career_metric": null,
+"metric": null,
+"stat_column": "rebounds",
+"stat_measure": "rebounds",
+"team": "rebounds"
+},
+"rebound allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"rebounding": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "rebounds"
+},
+"rebounding allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"rebounds": {
+"career_metric": "total_rebounds",
+"metric": "avg_rebounds",
+"stat_column": "rebounds",
+"stat_measure": "rebounds",
+"team": "rebounds"
+},
+"rebounds allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"rebs": {
+"career_metric": null,
+"metric": null,
+"stat_column": "rebounds",
+"stat_measure": "rebounds",
+"team": null
+},
+"record": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "record"
+},
+"record allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"records": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "record"
+},
+"records allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"rpg": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "rebounds"
+},
+"rpg allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"scoring": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "points"
+},
+"scoring allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"scoring margin": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "point_differential"
+},
+"scoring margin allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"shooting percentage": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "field_goal_pct"
+},
+"shooting percentage allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"shot attempts": {
+"career_metric": null,
+"metric": null,
+"stat_column": "fieldGoalsAttempted",
+"stat_measure": "fieldGoalsAttempted",
+"team": null
+},
+"shot_distance": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"shots": {
+"career_metric": null,
+"metric": null,
+"stat_column": "fieldGoalsAttempted",
+"stat_measure": "fieldGoalsAttempted",
+"team": null
+},
+"spg": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "steals"
+},
+"spg allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"standings": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "record"
+},
+"standings allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"steal": {
+"career_metric": null,
+"metric": null,
+"stat_column": "steals",
+"stat_measure": "steals",
+"team": "steals"
+},
+"steal allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"steals": {
+"career_metric": "total_steals",
+"metric": "avg_steals",
+"stat_column": "steals",
+"stat_measure": "steals",
+"team": "steals"
+},
+"steals allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"stl": {
+"career_metric": null,
+"metric": null,
+"stat_column": "steals",
+"stat_measure": "steals",
+"team": null
+},
+"three point attempts": {
+"career_metric": null,
+"metric": null,
+"stat_column": "threePointFieldGoalsAttempted",
+"stat_measure": "threePointFieldGoalsAttempted",
+"team": "three_pointers_attempted"
+},
+"three point attempts allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"three point field goal pct": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "three_point_pct"
+},
+"three point field goal pct allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"three point field goal percentage": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "three_point_pct"
+},
+"three point field goal percentage allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"three point field goals attempted": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "three_pointers_attempted"
+},
+"three point field goals attempted allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"three point field goals made": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "three_pointers_made"
+},
+"three point field goals made allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"three point pct": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "three_point_pct"
+},
+"three point pct allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"three point percentage": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "three_point_pct"
+},
+"three point percentage allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"three point shooting": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "three_point_pct"
+},
+"three point shooting allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"three pointers": {
+"career_metric": null,
+"metric": null,
+"stat_column": "threePointFieldGoalsMade",
+"stat_measure": "threePointFieldGoalsMade",
+"team": "three_pointers_made"
+},
+"three pointers allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"three pointers made": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "three_pointers_made"
+},
+"three pointers made allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"threePointFieldGoalPct": {
+"career_metric": "three_pt_pct",
+"metric": "three_pt_pct",
+"stat_column": null,
+"stat_measure": "three_pct",
+"team": "three_point_pct"
+},
+"threePointFieldGoalsAttempted": {
+"career_metric": null,
+"metric": null,
+"stat_column": "threePointFieldGoalsAttempted",
+"stat_measure": "threePointFieldGoalsAttempted",
+"team": "three_pointers_attempted"
+},
+"threePointFieldGoalsMade": {
+"career_metric": "total_three_pointers_made",
+"metric": "total_three_pointers_made",
+"stat_column": "threePointFieldGoalsMade",
+"stat_measure": "threePointFieldGoalsMade",
+"team": "three_pointers_made"
+},
+"three_pct": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": "three_pct",
+"team": null
+},
+"three_point_pct": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": "three_pct",
+"team": "three_point_pct"
+},
+"three_pt_pct": {
+"career_metric": "three_pt_pct",
+"metric": "three_pt_pct",
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"threes": {
+"career_metric": null,
+"metric": null,
+"stat_column": "threePointFieldGoalsMade",
+"stat_measure": "threePointFieldGoalsMade",
+"team": "three_pointers_made"
+},
+"threes allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"threes attempted": {
+"career_metric": null,
+"metric": null,
+"stat_column": "threePointFieldGoalsAttempted",
+"stat_measure": "threePointFieldGoalsAttempted",
+"team": "three_pointers_attempted"
+},
+"threes attempted allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"threes made": {
+"career_metric": null,
+"metric": null,
+"stat_column": "threePointFieldGoalsMade",
+"stat_measure": "threePointFieldGoalsMade",
+"team": "three_pointers_made"
+},
+"threes made allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"to": {
+"career_metric": null,
+"metric": null,
+"stat_column": "turnovers",
+"stat_measure": "turnovers",
+"team": null
+},
+"total rebounds": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "rebounds"
+},
+"total rebounds allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"total turnovers": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "turnovers"
+},
+"total turnovers allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"total_points": {
+"career_metric": "total_points",
+"metric": "total_points",
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"tov": {
+"career_metric": null,
+"metric": null,
+"stat_column": "turnovers",
+"stat_measure": "turnovers",
+"team": "turnovers"
+},
+"tov allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"triple_double": {
+"career_metric": "triple_doubles",
+"metric": "triple_doubles",
+"stat_column": null,
+"stat_measure": "triple_double",
+"team": null
+},
+"true shooting": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "true_shooting_pct"
+},
+"true shooting allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"true shooting pct": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "true_shooting_pct"
+},
+"true shooting pct allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"true shooting percentage": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "true_shooting_pct"
+},
+"true shooting percentage allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"true_shooting": {
+"career_metric": "ts_pct",
+"metric": "ts_pct",
+"stat_column": null,
+"stat_measure": "ts_pct",
+"team": "true_shooting_pct"
+},
+"ts pct": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "true_shooting_pct"
+},
+"ts pct allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"ts%": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "true_shooting_pct"
+},
+"ts% allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"ts_pct": {
+"career_metric": "ts_pct",
+"metric": "ts_pct",
+"stat_column": "ts_pct",
+"stat_measure": "ts_pct",
+"team": "true_shooting_pct"
+},
+"turnover": {
+"career_metric": null,
+"metric": null,
+"stat_column": "turnovers",
+"stat_measure": "turnovers",
+"team": "turnovers"
+},
+"turnover allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"turnovers": {
+"career_metric": "total_turnovers",
+"metric": "avg_turnovers",
+"stat_column": "turnovers",
+"stat_measure": "turnovers",
+"team": "turnovers"
+},
+"turnovers allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"twoPointFieldGoalPct": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"two_pct": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": "two_pct",
+"team": null
+},
+"usage": {
+"career_metric": "usage_pct",
+"metric": "usage_pct",
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"usage_pct": {
+"career_metric": "usage_pct",
+"metric": "usage_pct",
+"stat_column": "usage_pct",
+"stat_measure": "usage_pct",
+"team": null
+},
+"vibes": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"win": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "record"
+},
+"win allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"win loss": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "record"
+},
+"win loss allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"win loss record": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "record"
+},
+"win loss record allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"win pct": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "record"
+},
+"win pct allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"win percent": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "record"
+},
+"win percent allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"win percentage": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "record"
+},
+"win percentage allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"winning percentage": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": "record"
+},
+"winning percentage allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"wins": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": "won",
+"team": "record"
+},
+"wins allowed": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": null,
+"team": null
+},
+"won": {
+"career_metric": null,
+"metric": null,
+"stat_column": null,
+"stat_measure": "won",
+"team": null
+}
+}

@@ -37,6 +37,7 @@ from association.query.court import HAS_POSITION_SQL, SHOT_DISTANCE_SQL, render_
 from association.query.entities import SHOT_AVAILABILITY, Ambiguous, Entity, clarify, unmatched
 from association.query.game_label import game_label
 from association.query.lines import MeasureFilter, measure_filters
+from association.query.measure import keyed
 from association.query.notes import Note
 from association.query.player_games import Narrowed, games_subquery
 from association.query.player_relation import RELATION_SCOPING, ResolvedSpan, no_narrowed_games, scoped_games, scoped_player, settle_ordinal_season, span_of
@@ -77,16 +78,19 @@ mean the same shots.
 
 
 def shot_value_of(scope: Scope) -> int | None:
-    """Which shots a question meant: its ``shot_value`` (1, 2 or 3, the
-    Reading's door refuses any other), or the one its stat names
+    """Which shots a question meant: the measure's ``shot_value`` (1, 2 or
+    3, the Reading's door refuses any other), or the one its key names
     (:data:`SHOT_VALUE_FROM_STAT`), or every shot (``None``).
 
     .. versionadded:: 5.0.0
        ``templates.shots._shot_value`` was this.
     """
-    if scope.shot_value is not None:
-        return scope.shot_value
-    return SHOT_VALUE_FROM_STAT.get(scope.stat) if scope.stat is not None else None
+    if scope.measure is None:
+        return None
+    if scope.measure.shot_value is not None:
+        return scope.measure.shot_value
+    key = keyed(scope.measure)
+    return SHOT_VALUE_FROM_STAT.get(key) if key is not None else None
 
 
 # ---------------- games: which ones a shot read draws from ----------------
