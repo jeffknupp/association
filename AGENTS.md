@@ -1945,7 +1945,11 @@ you add a shape:
   0 and `intent+opponent` 5 -> 0 joined claims, every reading, answer and
   unread word identical. A row that reads a number or a versus word reads
   the mark beside it (`N_PLUS`, `MARKED_NUMBER`, `MEETING_WORDS`,
-  `_PAIR_MEETING`); a new row does the same.
+  `_PAIR_MEETING`); a new row does the same. The count's child grammar
+  reads no bare digits beside its marks: a count is named from a line the
+  tagger read, so a number no line is read from ("games with 40 field
+  goal percentage") stays in `Reading.unread`, where it was hidden in the
+  child's claim (`intent+measure`, 11 -> 0; ISSUES.md, the P1 it hid).
   The child is named from the grammar alone (`subject.child_named`), and
   the grammar's rules run ONCE, under it (`parse._read_route_staged`); they
   may decline it (a count with no threshold is a ranking), and only then

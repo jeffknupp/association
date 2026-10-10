@@ -1452,11 +1452,12 @@ moves into `data` before the slice that rewords its answer:
     Measured at slice (b) (`route_family.py`): with the key's readings
     moved to the point reader the taggers read the words alone, and the
     grammars read the line and the opponent through their marks - 48
-    joins on the 2,710 became 26: `intent+line` 17 -> 0, `intent+opponent`
-    5 -> 0, the 628's held table 21 -> 5. Left, each named in
-    `claims_ledger.py` with its owner: `intent+measure` 11 (a number no
-    line is read from - "games with 40 field goal percentage" - which the
-    child grammar reads bare), `window+intent` 3 (the window and the log
+    joins on the 2,710 became 15: `intent+line` 17 -> 0, `intent+opponent`
+    5 -> 0, `intent+measure` 11 -> 0 (the count's child grammar names a
+    count from a typed line, never a bare number no line is read from:
+    "games with 40 field goal percentage", a P1 the join hid), the 628's
+    held table 21 -> 5. Left, each named in `claims_ledger.py` with its
+    owner: `window+intent` 3 (the window and the log
     row both need "game" in "last 25 game log"), `opponent+intent` 2 and
     `opponent+intent+window` 1 (the rules read the opponent's team word),
     `companion+intent` 2 and `intent+companion` 1 (the rules and the parent

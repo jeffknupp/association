@@ -253,7 +253,10 @@ def _report_disagreements(rows: list[dict[str, Any]]) -> int:
 #: read the line and the opponent as the taggers type them, written over
 #: their words (``lexicon.mark_lines``, ``mark_opponent``), so a grammar
 #: claims its own words around them: ``intent+line`` 12 -> 0 (17 -> 0 on the
-#: 2,710) and ``intent+opponent`` 4 -> 0 (5 -> 0), the 2,710's 48 -> 26.
+#: 2,710) and ``intent+opponent`` 4 -> 0 (5 -> 0); and the count's child
+#: grammar names a count from a line the tagger read, never a bare number
+#: no line is read from (``intent+measure``, 11 -> 0 on the 2,710: "games
+#: with 40 field goal percentage" - a P1 the join hid, ISSUES.md).
 #: What is held:
 #: - ``companion+intent`` 2 and ``intent+companion`` 1: the grammar's rules
 #:   and the parent row read a companion's phrase ("when maxey scored",
@@ -270,10 +273,7 @@ def _report_disagreements(rows: list[dict[str, Any]]) -> int:
 #:   628): one tagger reading a day's month again as a situation - a word two
 #:   RULES of one tagger read, which is a bug (ISSUES.md, "A month is read
 #:   from the words of a day in it").
-#: On the 2,710 beside them: ``intent+measure`` 11, a number no line is
-#: read from ("games with 40 field goal percentage": the child grammar
-#: reads the bare number itself; the lines tagger reads no percentage
-#: line), ``window+intent`` 3 ("last 25 game log": the window and the log
+#: On the 2,710 beside them (15 in all, from 48): ``window+intent`` 3 ("last 25 game log": the window and the log
 #: row both need "game"), ``opponent+intent`` 2 and
 #: ``opponent+intent+window`` 1 (the grammar's rules read the opponent's
 #: team word - "vs raptors second half", "v warriors most recent 5 games" -

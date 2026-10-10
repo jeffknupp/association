@@ -1031,3 +1031,20 @@ def test_a_spelling_one_name_took_from_the_next_names_words_is_not_its_own(con: 
     read = _read(con, "compare sga embiid", "player_compare", players=["sga", "embiid"])
     assert read.players[1] == "Joel Embiid" and read.players[0] != "Joel Embiid"
     assert not any("spells 'sga' as 'Joel Embiid'" in line for line in read.evidence)
+
+
+def test_a_count_is_named_from_a_line_the_tagger_read_never_a_bare_number() -> None:
+    """The count's child grammar reads the line the lines tagger typed,
+    marked where its words stand (``LinesNamed.marked``): "games with 15
+    points" names a count, and "games with more than 40 field goal
+    percentage" - a number no line is read from - names none, so the number
+    stays unread rather than claimed by a count the rules then decline
+    (ISSUES.md, the percentage line). The words a child is named by are the
+    question's own."""
+    from association.query.line import lines_named
+
+    player = Subject("player", players=("Stephen Curry",))
+    question = "steph curry games with 15 points"
+    assert child_named(player, asked("game_log"), lines_named(question).marked(question), original=question) == (asked("threshold_count"), "games with 15 points")
+    question = "kobe bryant career games with more than 40 field goal percentage"
+    assert child_named(player, asked("game_log"), lines_named(question).marked(question), original=question) is None
