@@ -61,7 +61,17 @@ from association.query.fingerprint import (
 )
 from association.query.metrics import SEASON_TYPE_LABELS
 from association.query.notes import Note
-from association.query.reading import Scope, Unsupported
+from association.query.reading import (  # noqa: F401 - the folded filters' field types (reading.Filtered), which the docs build resolves in the module of each query inheriting them
+    Companion,
+    Cuts,
+    Filtered,
+    Line,
+    Measure,
+    Period,
+    Split,
+    Subject,
+    Unsupported,
+)
 from association.query.result import Chart, ChartFacts, Clarify, Decided, Grouped, NetPointsFacts, Part, Refusal, Result, Scalar, Span, Unanswered, Window
 from association.query.season_line import Statement, season_redirect
 from association.query.season_text import SEASON_TYPE_NAMES, season_phrase
@@ -70,8 +80,8 @@ from association.query.shotchart import resolve_chart_player
 from .core import values_of
 
 
-@dataclass(frozen=True)
-class NetPointsQuery:
+@dataclass(frozen=True, kw_only=True)
+class NetPointsQuery(Filtered):
     """A point on the NetPoints relation, planned: the scope the question
     settled and the shape the reader names - one player's NetPoints
     (``"scalar"``: a season's ratings and the split by play type behind
@@ -82,7 +92,6 @@ class NetPointsQuery:
     .. versionadded:: 5.0.0
     """
 
-    scope: Scope
     shape: Literal["scalar", "chart"]
     relation: Literal["netpoints"] = "netpoints"
     #: Whose the point is - one or more named players - for the stage
@@ -180,7 +189,7 @@ def read_player_netpoints(con: duckdb.DuckDBPyConnection, q: NetPointsQuery) -> 
        its shape's row before asking (``compose.plan.cells_unhonored``,
        Phase 3, step 2's closing slice).
     """
-    scope = q.scope
+    scope = q
     if q.shape != "scalar":
         return None
     # Settled before the name is resolved: the season is what narrows an
@@ -190,7 +199,7 @@ def read_player_netpoints(con: duckdb.DuckDBPyConnection, q: NetPointsQuery) -> 
     season_type = scope.span.season_type or 2
     # A named order ("recent", "first") is one game.
     order = scope.window.order
-    player = resolved_player(con, scope.subject.player, "player_netpoints needs a player name", available=_NETPOINTS_GAMES if order else _NETPOINTS_TABLES, season=season)
+    player = resolved_player(con, scope.who.player, "player_netpoints needs a player name", available=_NETPOINTS_GAMES if order else _NETPOINTS_TABLES, season=season)
     if isinstance(player, Unanswered):
         return player
     # "NetPoints from his LAST regular season game" was answered with the
@@ -359,10 +368,10 @@ def read_fingerprint(con: duckdb.DuckDBPyConnection, q: NetPointsQuery) -> Resul
        its shape's row before asking (``compose.plan.cells_unhonored``,
        Phase 3, step 2's closing slice).
     """
-    scope = q.scope
+    scope = q
     if q.shape != "chart":
         return None
-    names = _fingerprint_names(scope.subject.players)
+    names = _fingerprint_names(scope.who.players)
     # A question about one game draws that game, from the long per-game table
     # rather than the season file - see fingerprint.load_game_fingerprints for
     # why its numbers are the game's own net points and not a per-100 rate. A

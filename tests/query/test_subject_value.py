@@ -17,6 +17,7 @@ from typing import Any
 
 import pytest
 from shapes import asked
+from slots import slots_scope
 from test_compose import cx_ctx  # noqa: F401 - the fixture with positions, imported by name
 from test_conditions import league  # noqa: F401 - the league fixture, imported by name
 
@@ -27,7 +28,7 @@ from association.query.entities import names_of
 from association.query.grammar import settle
 from association.query.parse import read_route
 from association.query.player_relation import POSITION_CODES
-from association.query.reading import Reading, Scope, ScopeError, Span
+from association.query.reading import Filtered, Reading, ScopeError, Span
 from association.query.reading import Subject as Who
 from association.query.subject import is_team_name, subject_claims, subject_named_in, team_named_in_text, team_words_in
 from association.query.team_relation import scoped_team
@@ -49,10 +50,10 @@ from association.query.team_relation import scoped_team
 def test_the_name_slots_pass_the_door_into_the_typed_subject_and_project_back(slots: dict[str, Any], who: Who) -> None:
     """Every shape the parser writes - one player or two and more, one team
     or a list - is the typed subject and comes back as it went in."""
-    scope = Scope.from_slots(slots)
-    assert scope.subject == who
+    scope = slots_scope(slots)
+    assert scope.who == who
     assert scope.to_slots() == slots
-    record = scope.projected()
+    record = scope.scope_record()
     assert {key: record[key] for key in ("player", "players", "team", "teams")} == {
         "player": slots.get("player"),
         "players": tuple(slots.get("players", ())),
@@ -66,9 +67,9 @@ def test_a_router_era_slot_shape_comes_back_as_its_count_says() -> None:
     and ``teams``, are slot dicts no reader of the words writes (0 of the
     2,710 readings): the typed subject holds the names, and the count says
     which slot each projects to."""
-    assert Scope.from_slots({"players": ["Luka Doncic"]}).to_slots() == {"player": "Luka Doncic"}
-    assert Scope.from_slots({"team": "Knicks", "teams": ["Celtics"]}).subject.teams == ("Knicks", "Celtics")
-    assert Scope.from_slots({"team": "Knicks", "teams": ["Knicks"]}).to_slots() == {"team": "Knicks"}
+    assert slots_scope({"players": ["Luka Doncic"]}).to_slots() == {"player": "Luka Doncic"}
+    assert slots_scope({"team": "Knicks", "teams": ["Celtics"]}).who.teams == ("Knicks", "Celtics")
+    assert slots_scope({"team": "Knicks", "teams": ["Knicks"]}).to_slots() == {"team": "Knicks"}
 
 
 def test_the_subject_holds_its_kind_its_names_and_its_position_to_their_sets() -> None:
@@ -86,9 +87,9 @@ def test_the_points_position_is_its_subjects_where_the_league_is_read() -> None:
     """The point's ``position`` was a field until this slice: a league-wide
     point honors its subject's position group, and every other Reading held
     none - which the record keeps (``Reading.projected``)."""
-    scope = replace(Scope(), subject=Who(kind="position", position="C"))
-    assert Reading(scope=scope, relation="everyone").projected()["position"] == "C"
-    assert Reading(scope=scope).projected()["position"] is None
+    scope = replace(Reading(), who=Who(kind="position", position="C"))
+    assert Reading(**scope.filters(), relation="everyone").projected()["position"] == "C"
+    assert Reading(**scope.filters()).projected()["position"] is None
 
 
 # ---------------- what the grammar's rules are handed ----------------
@@ -132,22 +133,22 @@ def test_the_subject_reading_claims_the_names_and_the_position_it_settled(league
 
     teams = teams_of(league.con)
 
-    def said(question: str, scope: Scope) -> list[tuple[str, str]]:
+    def said(question: str, scope: Filtered) -> list[tuple[str, str]]:
         return [(question[c.start : c.end], c.what) for c in subject_claims(teams, question, scope)]
 
-    assert said("jayson tatum stats vs the lakers", Scope.from_slots({"player": "Jayson Tatum", "opponent": "Los Angeles Lakers"})) == [
+    assert said("jayson tatum stats vs the lakers", slots_scope({"player": "Jayson Tatum", "opponent": "Los Angeles Lakers"})) == [
         ("jayson tatum", "player"),
         ("vs the lakers", "opponent"),
     ]
     # A near spelling where no word of the name stands as typed; a team's
     # nickname and its abbreviation; a team named "for".
-    assert said("embid's points", Scope.from_slots({"player": "Joel Embiid"})) == [("embid", "player")]
-    assert said("sixers record vs BOS", Scope.from_slots({"team": "Philadelphia 76ers", "opponent": "Boston Celtics"})) == [("sixers", "team"), ("vs BOS", "opponent")]
-    assert said("lebron stats for the lakers", Scope.from_slots({"player": "LeBron James", "own_team": "Los Angeles Lakers"})) == [("lebron", "player"), ("for the lakers", "tenure")]
+    assert said("embid's points", slots_scope({"player": "Joel Embiid"})) == [("embid", "player")]
+    assert said("sixers record vs BOS", slots_scope({"team": "Philadelphia 76ers", "opponent": "Boston Celtics"})) == [("sixers", "team"), ("vs BOS", "opponent")]
+    assert said("lebron stats for the lakers", slots_scope({"player": "LeBron James", "own_team": "Los Angeles Lakers"})) == [("lebron", "player"), ("for the lakers", "tenure")]
     # The position group's words.
-    assert said("most rebounds by a center", replace(Scope(), subject=Who(kind="position", position="C"))) == [("center", "position")]
+    assert said("most rebounds by a center", replace(Reading(), who=Who(kind="position", position="C"))) == [("center", "position")]
     # A name the scope does not settle claims nothing.
-    assert said("best true shooting percentage", Scope()) == []
+    assert said("best true shooting percentage", Reading()) == []
 
 
 def test_the_claims_ride_the_reading(league: AnswerContext) -> None:  # noqa: F811 - the fixture
@@ -161,16 +162,16 @@ def test_the_claims_ride_the_reading(league: AnswerContext) -> None:  # noqa: F8
 # ---------------- contract 4: the typed subject changes what each relation reads ----------------
 
 
-def _total(ctx: AnswerContext, scope: Scope, *, subject: str = "player", position: str | None = None) -> tuple[int, int]:
-    query = Query(scope=scope, skeleton="scalar", measures=["points"], aggregate="total", subject="everyone" if subject == "everyone" else "player", position=position)
+def _total(ctx: AnswerContext, scope: Filtered, *, subject: str = "player", position: str | None = None) -> tuple[int, int]:
+    query = Query(**scope.filters(), skeleton="scalar", measures=["points"], aggregate="total", subject="everyone" if subject == "everyone" else "player", position=position)
     (row,) = rows_of(ctx.con, compile_query(ctx.con, query))
     return int(row["games"]), int(row["points"] or 0)
 
 
 def test_the_player_changes_what_the_player_relation_reads(league: AnswerContext) -> None:  # noqa: F811 - the fixture
     span = Span(season_type=2)
-    brown = _total(league, Scope(subject=Who(kind="player", players=("Jaylen Brown",)), span=span))
-    tatum = _total(league, Scope(subject=Who(kind="player", players=("Jayson Tatum",)), span=span))
+    brown = _total(league, Reading(who=Who(kind="player", players=("Jaylen Brown",)), span=span))
+    tatum = _total(league, Reading(who=Who(kind="player", players=("Jayson Tatum",)), span=span))
     assert brown != tatum and brown[0] > 0 and tatum[0] > 0
 
 
@@ -178,26 +179,26 @@ def test_the_team_changes_what_the_league_relation_and_the_team_relation_read(le
     """The league's read narrowed to a team's players (the draft's
     ``of_team``), and the team relation's own subject."""
     span = Span(season_type=2)
-    every = _total(league, Scope(span=span), subject="everyone")
-    celtics = _total(league, Scope(subject=Who(kind="team", teams=("Boston Celtics",)), span=span), subject="everyone")
+    every = _total(league, Reading(span=span), subject="everyone")
+    celtics = _total(league, Reading(who=Who(kind="team", teams=("Boston Celtics",)), span=span), subject="everyone")
     assert every[0] > celtics[0] > 0
-    boston = scoped_team(league.con, Scope(subject=Who(kind="team", teams=("Boston Celtics",)), span=span), "no team")
-    lakers = scoped_team(league.con, Scope(subject=Who(kind="team", teams=("Los Angeles Lakers",)), span=span), "no team")
+    boston = scoped_team(league.con, Reading(who=Who(kind="team", teams=("Boston Celtics",)), span=span), "no team")
+    lakers = scoped_team(league.con, Reading(who=Who(kind="team", teams=("Los Angeles Lakers",)), span=span), "no team")
     assert isinstance(boston, tuple) and isinstance(lakers, tuple) and boston[0].id != lakers[0].id
     with pytest.raises(Exception, match="no team"):
-        scoped_team(league.con, Scope(span=span), "no team")
+        scoped_team(league.con, Reading(span=span), "no team")
 
 
 def test_the_position_group_changes_what_the_league_relation_reads(cx_ctx: AnswerContext) -> None:  # noqa: F811 - the fixture
-    every = _total(cx_ctx, Scope(), subject="everyone")
-    centers = _total(cx_ctx, replace(Scope(), subject=Who(kind="position", position="C")), subject="everyone", position="C")
+    every = _total(cx_ctx, Reading(), subject="everyone")
+    centers = _total(cx_ctx, replace(Reading(), who=Who(kind="position", position="C")), subject="everyone", position="C")
     assert every[0] > centers[0] > 0 and centers[1] == 18 + 14 + 0  # Sabonis, the one center on record: 18 and 14 this season
 
 
 def test_two_players_are_the_pair_a_matchup_reads(league: AnswerContext) -> None:  # noqa: F811 - the fixture
     from association.query.compose.core import _resolve_pair
 
-    pair = Query(scope=Scope(subject=Who(kind="pair", players=("Jayson Tatum", "LeBron James")), span=Span(season_type=2)), skeleton="pair", measures=["points"])
+    pair = Query(**(Reading(who=Who(kind="pair", players=("Jayson Tatum", "LeBron James")), span=Span(season_type=2))).filters(), skeleton="pair", measures=["points"])
     a, b, _span, _narrowed = _resolve_pair(league.con, pair)
     assert (a.name, b.name) == ("Jayson Tatum", "LeBron James")
 
@@ -214,8 +215,8 @@ def test_a_period_is_never_the_one_who_scored_in_it_and_most_recent_is_no_rank(l
     assert subject_named_in(question) is None
     route = read_route(names_of(league.con), question, ["Sixers"], "points")
     reading = route
-    assert reading.intent == "team_quarter_points" and reading.scope.subject.team == "Philadelphia 76ers" and reading.scope.subject.players == ()
-    assert (reading.scope.window.order, reading.scope.window.count, reading.scope.window.rank) == ("recent", 10, None)
+    assert reading.intent == "team_quarter_points" and reading.who.team == "Philadelphia 76ers" and reading.who.players == ()
+    assert (reading.window.order, reading.window.count, reading.window.rank) == ("recent", 10, None)
 
 
 def test_a_players_name_after_vs_is_not_a_team_it_only_clips() -> None:
@@ -265,4 +266,4 @@ def test_the_76ers_are_read_from_their_own_spelling(league: AnswerContext) -> No
     assert found is not None and found.name == "Philadelphia 76ers"
     question = "jayson tatum stats vs 76ers this season"
     route = read_route(names_of(league.con), question, [], "")
-    assert route.scope.cuts.opponent == "Philadelphia 76ers"
+    assert route.cuts.opponent == "Philadelphia 76ers"

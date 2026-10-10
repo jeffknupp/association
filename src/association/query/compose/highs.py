@@ -50,7 +50,7 @@ def _single_game_high_column(q: Query) -> str | None:
     own point - the router's own stat, whitelisted, first among the
     measures, top games first, nothing the question's words added - else
     ``None``."""
-    stat = spelled(q.scope.measure)
+    stat = spelled(q.measure)
     column = THRESHOLD_STAT_COLUMNS.get(stat) if stat is not None else None
     if stat is None or column is None or q.skeleton != "rows" or q.order != "measure" or q.direction != "desc" or q.predicates or q.position or not q.measures or q.measures[0] != column:
         return None
@@ -70,7 +70,7 @@ def read_single_game_high(con: duckdb.DuckDBPyConnection, q: Query) -> Result | 
        its shape's row before asking (``compose.plan.cells_unhonored``,
        Phase 3, step 2's closing slice).
     """
-    scope = q.scope
+    scope = q
     column = _single_game_high_column(q)
     if column is None:
         return None

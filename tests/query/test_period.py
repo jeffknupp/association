@@ -15,6 +15,7 @@ import duckdb
 import pytest
 from routed import staged as settle
 from shapes import asked, stated, unhonored
+from slots import slots_scope
 from test_period_relation import SEASON, con, team_con  # noqa: F401 - the two relation fixtures, imported by name
 
 from association.query.compose.plan import cells_stated
@@ -22,7 +23,7 @@ from association.query.line import read_period_line
 from association.query.period import PERIOD_ASKS, PeriodContext, PeriodRead, read_period, which_period
 from association.query.player_games import Narrowed, rows_sql
 from association.query.player_relation import RELATION_SCOPING, RELATION_SCOPING_EXCLUDED, apply_period
-from association.query.reading import Claim, Line, Period, PointShape, Scope, ScopeError, cell_set, period_narrowing, unhonored_cells
+from association.query.reading import Claim, Filtered, Line, Period, PointShape, Reading, ScopeError, cell_set, period_narrowing, unhonored_cells
 from association.query.team_games import TeamNarrowed
 from association.query.team_games import rows_sql as team_rows_sql
 from association.query.team_relation import TEAM_RELATION_SCOPING, TEAM_RELATION_SCOPING_EXCLUDED, _team_games_apply_period
@@ -85,12 +86,12 @@ def test_which_period_is_the_one_reader_the_condition_reader_and_the_stage_share
 
 def test_the_tagger_claims_the_characters_it_read_once_and_they_ride_the_route() -> None:
     route = settle("period_split", {"player": "Tyrese Maxey"}, "tyrese maxey first half games this season")
-    assert route.scope.period == Period(number=1, half=True)
+    assert route.period == Period(number=1, half=True)
     assert [c for c in route.claims if c.what == "period"] == [Claim(13, 23, "period")]
     assert "tyrese maxey first half games this season"[13:23] == "first half"
     # The window's "last game" and the period's "second half" are two claims, neither inside the other.
     route = settle("period_split", {"player": "Miles Bridges"}, "miles bridges stats vs raptors second half last game")
-    assert route.scope.period == Period(number=2, half=True)
+    assert route.period == Period(number=2, half=True)
     assert {c.what for c in route.claims} >= {"period", "window"}
 
 
@@ -99,9 +100,9 @@ def test_a_model_era_period_slot_is_dropped_at_the_stages_door_and_the_words_rea
     run again) are the words' to read: "Celtics 2nd half scoring" with the
     model's ``period: 2`` is the second HALF, not the second quarter."""
     route = settle("team_quarter_points", {"team": "Boston Celtics", "period": 2}, "Celtics 2nd half scoring this season")
-    assert route.scope.period == Period(number=2, half=True)
+    assert route.period == Period(number=2, half=True)
     route = settle("team_quarter_points", {"team": "Boston Celtics", "period": 2}, "Celtics scoring this season")
-    assert route.scope.period is None
+    assert route.period is None
 
 
 # ---------------- the typed value: door, projection, cells ----------------
@@ -120,43 +121,43 @@ def test_the_value_is_one_quarter_or_one_half_and_says_so_when_it_is_neither() -
 
 @pytest.mark.parametrize("slots", [{"period": 1}, {"period": 4}, {"half": 1}, {"half": 2}, {"period": 5}])
 def test_the_two_slots_round_trip_through_the_period(slots: dict[str, Any]) -> None:
-    scope = Scope.from_slots(slots)
+    scope = slots_scope(slots)
     assert scope.period is not None and scope.period.to_slots() == slots
     assert scope.to_slots() == slots
-    assert Scope.from_slots({"period": scope.period}) == scope
+    assert slots_scope({"period": scope.period}) == scope
 
 
 def test_the_projection_keeps_the_slot_era_shape_in_its_place() -> None:
-    projected = Scope.from_slots({"half": 2, "split": "starter"}).projected()
+    projected = slots_scope({"half": 2, "split": "starter"}).scope_record()
     keys = list(projected)
     assert keys.index("split") < keys.index("period") < keys.index("half") < keys.index("period_condition") < keys.index("venue")
     assert (projected["period"], projected["half"]) == (None, 2)
-    assert Scope.from_slots({"period": 3}).projected()["period"] == 3
-    assert Scope().projected()["period"] is None and Scope().projected()["half"] is None
+    assert slots_scope({"period": 3}).scope_record()["period"] == 3
+    assert Reading().scope_record()["period"] is None and Reading().scope_record()["half"] is None
 
 
 def test_a_typed_period_and_a_slot_at_once_or_both_slots_or_a_bad_value_is_refused_at_the_door() -> None:
     with pytest.raises(ScopeError):
-        Scope.from_slots({"period": Period(number=1), "half": 2})
+        slots_scope({"period": Period(number=1), "half": 2})
     with pytest.raises(ScopeError):
-        Scope.from_slots({"period": 1, "half": 1})
+        slots_scope({"period": 1, "half": 1})
     with pytest.raises(ScopeError):
-        Scope.from_slots({"half": 3})
+        slots_scope({"half": 3})
     with pytest.raises(ScopeError):
-        Scope.from_slots({"period": "first"})
+        slots_scope({"period": "first"})
 
 
 def test_the_cell_its_decline_name_and_what_a_reader_leaves_unhonored() -> None:
     assert {"period"} == Period.CELLS and Period(number=2).cells() == {"period"}
     assert Period(number=2).unhonored(frozenset()) == ["period"] and Period(number=2, half=True).unhonored(frozenset()) == ["half"]
     assert Period(number=2, half=True).unhonored(frozenset({"period"})) == []
-    assert cell_set(Scope.from_slots({"half": 1}), "period") and not cell_set(Scope(), "period")
-    assert unhonored_cells(Scope.from_slots({"half": 1}), frozenset()) == ["half"]
-    assert unhonored_cells(Scope.from_slots({"period": 4}), frozenset()) == ["period"]
-    assert unhonored_cells(Scope.from_slots({"period": 4}), frozenset({"period"})) == []
+    assert cell_set(slots_scope({"half": 1}), "period") and not cell_set(Reading(), "period")
+    assert unhonored_cells(slots_scope({"half": 1}), frozenset()) == ["half"]
+    assert unhonored_cells(slots_scope({"period": 4}), frozenset()) == ["period"]
+    assert unhonored_cells(slots_scope({"period": 4}), frozenset({"period"})) == []
     # A reader whose words never said a quarter steps aside for one, under the slot's name.
-    assert unhonored("game_log", Scope.from_slots({"player": "x", "half": 2})) == ["half"]
-    assert unhonored("period_split", Scope.from_slots({"player": "x", "half": 2})) == []
+    assert unhonored("game_log", slots_scope({"player": "x", "half": 2})) == ["half"]
+    assert unhonored("period_split", slots_scope({"player": "x", "half": 2})) == []
 
 
 def test_the_relation_tables_declare_the_period_once() -> None:
@@ -178,7 +179,7 @@ def test_the_relation_tables_declare_the_period_once() -> None:
 # ---------------- contract 4: applying the cell changes what each relation reads ----------------
 
 
-def _player_points(con: duckdb.DuckDBPyConnection, scope: Scope) -> list[tuple[Any, ...]]:  # noqa: F811 - the fixture
+def _player_points(con: duckdb.DuckDBPyConnection, scope: Filtered) -> list[tuple[Any, ...]]:  # noqa: F811 - the fixture
     narrowed = Narrowed(base=["pgl.athlete_id = ?", "pgl.season = ?"], base_params=["1", SEASON])
     apply_period(con, narrowed, scope)
     sql, params = rows_sql(narrowed, "pgl.event_id, pgl.points", order="g.date")
@@ -186,13 +187,13 @@ def _player_points(con: duckdb.DuckDBPyConnection, scope: Scope) -> list[tuple[A
 
 
 def test_the_period_cell_changes_what_the_player_relation_reads(con: duckdb.DuckDBPyConnection) -> None:  # noqa: F811 - the fixture
-    assert _player_points(con, Scope()) == [("g1", 40), ("g2", 40)], "the whole game's line"
-    assert _player_points(con, Scope(period=Period(number=1))) == [("g1", 4), ("g2", 0)]
-    assert _player_points(con, Scope(period=Period(number=1, half=True))) != _player_points(con, Scope(period=Period(number=1)))
-    assert period_narrowing(Scope(period=Period(number=1, half=True))) == ((1, 2), "1st half")
+    assert _player_points(con, Reading()) == [("g1", 40), ("g2", 40)], "the whole game's line"
+    assert _player_points(con, Reading(period=Period(number=1))) == [("g1", 4), ("g2", 0)]
+    assert _player_points(con, Reading(period=Period(number=1, half=True))) != _player_points(con, Reading(period=Period(number=1)))
+    assert period_narrowing(Reading(period=Period(number=1, half=True))) == ((1, 2), "1st half")
 
 
-def _team_score(team_con: duckdb.DuckDBPyConnection, scope: Scope) -> list[tuple[Any, ...]]:  # noqa: F811 - the fixture
+def _team_score(team_con: duckdb.DuckDBPyConnection, scope: Filtered) -> list[tuple[Any, ...]]:  # noqa: F811 - the fixture
     narrowed = TeamNarrowed(base=["tg.team_id = ?", "tg.season_type = ?", "tg.season = ?"], base_params=["9", 2, SEASON])
     _team_games_apply_period(team_con, narrowed, scope)
     sql, params = team_rows_sql(narrowed, "tg.event_id, tg.team_score", order="tg.eastern_date")
@@ -200,7 +201,7 @@ def _team_score(team_con: duckdb.DuckDBPyConnection, scope: Scope) -> list[tuple
 
 
 def test_the_period_cell_changes_what_the_team_relation_reads(team_con: duckdb.DuckDBPyConnection) -> None:  # noqa: F811 - the fixture
-    whole = _team_score(team_con, Scope())
-    half = _team_score(team_con, Scope(period=Period(number=1, half=True)))
+    whole = _team_score(team_con, Reading())
+    half = _team_score(team_con, Reading(period=Period(number=1, half=True)))
     assert [row[0] for row in whole] == [row[0] for row in half] == ["g1", "g2"], "the same games, each seen as its first half"
     assert half == [("g1", 50), ("g2", 50)] and whole != half

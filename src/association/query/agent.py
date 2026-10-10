@@ -303,7 +303,7 @@ class Agent:
         # intent stood: the key the words ask is the Reading's own.
         path = "the compiler" if reading.asked is not None else "no reader: refused unless a named refusal has its cause"
         kind = reading.subject.kind if reading.subject is not None else None
-        history.log(f"  -> (parser) asked={reading.intent!r} kind={kind!r} slots={reading.scope.to_slots(split_by_presence=reading.asked == PRESENCE_SPLIT)} - {path}")
+        history.log(f"  -> (parser) asked={reading.intent!r} kind={kind!r} slots={reading.to_slots(split_by_presence=reading.asked == PRESENCE_SPLIT)} - {path}")
         self.reading = reading
         # PLAN, once: the point on its relation, or why there is none. The
         # parser read the point; it does not plan it (ROADMAP.md, Phase 1).
@@ -407,7 +407,7 @@ class Agent:
         ``no_reading_of_point``), at the decline's place in this order,
         answered: a refusal that names why is an answer (Phase 3, step 4)."""
         t0 = time.monotonic()
-        intent, scope = reading.intent, reading.scope
+        intent, scope = reading.intent, reading
         declined: list[str] = []
         causes: list[Cause] = []
         composed = self._try_compose(reading, history, declined=declined.append, declined_by=causes.append)
@@ -418,7 +418,7 @@ class Agent:
         # The floor of the point the words named (Planned.shape, declared on
         # every verdict), over the point's own scope; no point, no floor.
         assert self.planned is not None
-        refused = check_coverage(self.planned.shape, reading.point.scope if reading.point is not None else scope)
+        refused = check_coverage(self.planned.shape, reading.point if reading.point is not None else scope)
         if refused is not None:
             history.log(f"  -> (coverage) {refused}")
             return intent, Reply(data={"message": refused, "season": scope.span.season}, answer=refused)
@@ -471,7 +471,7 @@ class Agent:
             _note(composed, name_reading)
         if readings:
             composed.data["name_readings"] = list(readings)
-        note = coverage_caveat(self.planned.shape, reading.point.scope if reading.point is not None else reading.scope, intent=reading.intent)
+        note = coverage_caveat(self.planned.shape, reading.point if reading.point is not None else reading, intent=reading.intent)
         if note:
             composed.answer = f"{composed.answer} {note}"
             _note(composed, note)
@@ -490,7 +490,7 @@ class Agent:
         retired template's order: the floor, then the answer and this note).
         Until Phase 3, step 0 this re-read the question."""
         assert self.planned is not None
-        if reading.left_out is None or check_coverage(self.planned.shape, reading.point.scope if reading.point is not None else reading.scope) is not None:
+        if reading.left_out is None or check_coverage(self.planned.shape, reading.point if reading.point is not None else reading) is not None:
             return
         unmatched_note = say_left_out(reading.left_out)
         composed.answer = f"{composed.answer} {unmatched_note}"

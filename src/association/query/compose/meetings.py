@@ -25,7 +25,7 @@ from association.query import reading
 from association.query.coverage import coverage_refusal
 from association.query.entities import Entity, resolved_team, slot_season
 from association.query.player_relation import ResolvedSpan, span_of, validated_until
-from association.query.reading import Cuts, PointShape, Scope, Unsupported
+from association.query.reading import Cuts, Filtered, PointShape, Unsupported
 from association.query.result import Grouped, MeetingsFacts, Narrowing, Part, Result, Span, Unanswered
 from association.query.team_games import TeamNarrowed
 from association.query.team_relation import team_games
@@ -70,7 +70,7 @@ def _head_to_head_teams(con: duckdb.DuckDBPyConnection, names: list[str], season
     return resolved[0], resolved[1]
 
 
-def _head_to_head_span_slots(scope: Scope, date: str | None) -> tuple[int | None, int | None, bool]:
+def _head_to_head_span_slots(scope: Filtered, date: str | None) -> tuple[int | None, int | None, bool]:
     """The ``since``/``until``/``span`` reading and the conflicts that are
     the meetings' own (a date and a since-bounded or career span at once;
     ``since`` and ``career`` together)."""
@@ -103,14 +103,14 @@ def _head_to_head_narrowed(
     """
     if date:
         span = ResolvedSpan(None, season_type)
-        return team_games(con, a, span, Scope(cuts=Cuts(venue=venue)), opponent=b, date=date), None
+        return team_games(con, a, span, TeamQuery(cuts=Cuts(venue=venue)), opponent=b, date=date), None
     # No season named means the CURRENT one, as everywhere else. "All time" is
     # a defensible reading here, but silently answering a different span than
     # the rest of the system is the substitution this design exists to prevent.
     # The answer names the season, so another one is a follow-up away.
     season = season_slot or current_season()
     span = ResolvedSpan(season, season_type)
-    return team_games(con, a, span, Scope(cuts=Cuts(venue=venue)), opponent=b), season
+    return team_games(con, a, span, TeamQuery(cuts=Cuts(venue=venue)), opponent=b), season
 
 
 def _head_to_head_wins(a: Entity, b: Entity, won: list[bool | None]) -> Grouped:
@@ -135,11 +135,11 @@ def read_head_to_head(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> Result | 
        its shape's row before asking (``compose.plan.cells_unhonored``,
        Phase 3, step 2's closing slice).
     """
-    scope = q.scope
+    scope = q
     refused = coverage_refusal(PointShape("team_games", "comparison", "opponent"), scope)
     if refused is not None:
         return refused
-    names = _head_to_head_names(scope.subject.teams, scope.cuts.opponent)
+    names = _head_to_head_names(scope.who.teams, scope.cuts.opponent)
     teams = _head_to_head_teams(con, names, slot_season(scope))
     if isinstance(teams, Unanswered):
         return teams
@@ -172,7 +172,7 @@ def _head_to_head_over_span(
     it was played in before 1994) - the span's own words beside them
     (``Span.phrase``, :meth:`~association.query.player_relation.ResolvedSpan.during`)."""
     span = span_of(reading.Span(career=career, since=since, until=until), "games", season_type=season_type)
-    narrowed = team_games(con, a, span, Scope(cuts=Cuts(venue=venue)), opponent=b)
+    narrowed = team_games(con, a, span, TeamQuery(cuts=Cuts(venue=venue)), opponent=b)
     if isinstance(narrowed, Unanswered):
         return narrowed
     # The team compiler's rows read: each meeting's result and the season it

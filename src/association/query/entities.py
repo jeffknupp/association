@@ -38,7 +38,7 @@ from association.nba.season import current_season
 from association.query import lexicon, names
 from association.query.connection import latest_season_on_record
 from association.query.notes import decided
-from association.query.reading import Scope, Unsupported
+from association.query.reading import Filtered, Unsupported
 from association.query.result import Clarify, Refusal
 
 MAX_CANDIDATES = 10
@@ -1663,7 +1663,7 @@ def resolved_team(con: duckdb.DuckDBPyConnection, text: Any, season: int | None 
             return Refusal(kind="name_unmatched", facts={"asked": text, "kind": "team"})
 
 
-def slot_season(scope: Scope) -> int | None:
+def slot_season(scope: Filtered) -> int | None:
     """The season a question's team names are read for: the one it named, or
     None for "now" - the same default every template applies."""
     return scope.span.season

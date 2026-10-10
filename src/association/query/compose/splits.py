@@ -25,7 +25,7 @@ from association.query.measure import spelled
 from association.query.notes import Note
 from association.query.player_games import _PLAYER_GAMES, Narrowed, games_subquery
 from association.query.player_relation import condition_scope, narrowed_cells, no_games, no_narrowed_games, span_of
-from association.query.reading import SPLIT_KINDS, Scope, Unsupported
+from association.query.reading import SPLIT_KINDS, Filtered, Unsupported
 from association.query.result import Grouped, Narrowing, Part, Result, Span, SplitsFacts, Unanswered
 from association.query.season_text import MONTH_NAMES
 from association.query.team_relation import condition_team_no_games, team_games, team_span_label
@@ -76,7 +76,7 @@ def _splits_line(stat: str | None, base_line: tuple[tuple[str, str, str], ...], 
     return (*base_line, extra)
 
 
-def _splits_refusals(scope: Scope) -> None:
+def _splits_refusals(scope: Filtered) -> None:
     """What no splits answer honors, refused before any name is resolved: a
     window of recent games (this divides a whole span into groups and has no
     notion of "his last N games"; answering the whole span under that
@@ -181,13 +181,13 @@ def read_player_splits(con: duckdb.DuckDBPyConnection, q: Query) -> Result | Una
     """
     if q.skeleton != "grouped" or q.subject != "player" or q.predicates or q.group not in ("venue", "starter"):
         return None
-    scope = q.scope
+    scope = q
     _splits_refusals(scope)
     try:
         line = _splits_line(spelled(scope.measure), _PLAYER_LINE, alias="p")
     except Unsupported:
         return None
-    team = optional_team(con, scope.subject.team, season=scope.span.season)
+    team = optional_team(con, scope.who.team, season=scope.span.season)
     if isinstance(team, Unanswered):
         return team
     opponent = optional_team(con, scope.cuts.opponent, season=scope.span.season)
@@ -206,7 +206,7 @@ def _player_splits(
     """The groups from the compiled statements, the totals and the unseen
     games over the relation's own steps (``games_subquery``), the label and
     the remarks - :func:`read_player_splits`'s tail."""
-    scope, player, narrowed, span = q.scope, compiled.player, compiled.narrowed, compiled.span
+    scope, player, narrowed, span = q, compiled.player, compiled.narrowed, compiled.span
     assert player is not None
     base, params = games_subquery(narrowed, box_source(con))
     games, first, last = _totals(con, base, params)
@@ -296,13 +296,13 @@ def read_team_splits(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> Result | U
     from association.query.coverage import coverage_refusal
     from association.query.reading import PointShape
 
-    scope = q.scope
+    scope = q
     refused = coverage_refusal(PointShape("team_games", "split", "splits"), scope)
     if refused is not None:
         return refused
     _splits_refusals(scope)
     measures = measure_filters(scope)
-    team = optional_team(con, scope.subject.team, season=scope.span.season)
+    team = optional_team(con, scope.who.team, season=scope.span.season)
     if isinstance(team, Unanswered):
         return team
     opponent = optional_team(con, scope.cuts.opponent, season=scope.span.season)
@@ -331,7 +331,7 @@ def _team_splits(con: duckdb.DuckDBPyConnection, q: TeamQuery, team: Entity, opp
     kind through the team compiler's ``grouped`` shape
     (:func:`~association.query.compose.team.compile_team_over`) - the tail
     of :func:`read_team_splits`."""
-    scope = q.scope
+    scope = q
     line = _splits_line(spelled(scope.measure), _TEAM_LINE, alias="t")
     span = span_of(scope.span, "games")
     narrowed = team_games(con, team, span, scope, opponent=opponent)

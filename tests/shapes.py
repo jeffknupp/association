@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from association.query import reading
 from association.query.compose.plan import cells_stated, cells_unhonored
-from association.query.reading import PointShape, Scope
+from association.query.reading import Filtered, PointShape
 
 KEYS: dict[str, PointShape] = {
     "game_log": PointShape("player_games", "rows", "date"),
@@ -97,7 +97,7 @@ def stated(words: str) -> frozenset[str]:
     return cells_stated(KEYS[words])
 
 
-def unhonored(words: str, scope: Scope) -> list[str]:
+def unhonored(words: str, scope: Filtered) -> list[str]:
     """The slot names ``scope`` sets beyond what the shape named by ``words``
     states (``compose.plan.cells_unhonored``) - where ``reading.unhonored_scoping``
     over that shape's ``STATED_SCOPING`` row stood until Phase 3, step 2's

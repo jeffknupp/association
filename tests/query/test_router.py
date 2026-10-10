@@ -20,7 +20,7 @@ from association.nba.season import current_season
 from association.query.compose.plan import refusal_result
 from association.query.grammar import CODE_ASSIGNED_ASKS
 from association.query.lexicon import ORDER_WORDS
-from association.query.reading import Cause, Companion, Scope, Window
+from association.query.reading import Cause, Companion, Filtered, Reading, Window
 from association.query.reading import Subject as Who
 from association.query.window import ORDER_ASKS
 
@@ -293,7 +293,7 @@ def test_the_side_is_only_added_to_a_fingerprint() -> None:
     assert "side" not in got.slots
 
 
-def _scope_values(field: str, of: type = Scope) -> set[object]:
+def _scope_values(field: str, of: type = Filtered) -> set[object]:
     """The closed set of values the typed Scope's ``field`` holds (or the ``Window``'s)."""
     (literal,) = (arg for arg in get_args(get_type_hints(of)[field]) if arg is not type(None))
     return set(get_args(literal))
@@ -812,7 +812,7 @@ def test_the_stages_take_the_companions_the_subject_found_and_write_none() -> No
     intent by, write none, and run alone - with nobody beside him - name
     nobody: their own readers of "without X" and "with X" are gone."""
     both = _ask("Celtics record without Tatum and Brown", '{"intent":"with_without"}', _absent("Tatum", "Brown"))
-    assert both.intent == "with_without" and "without" not in both.slots and not both.scope.companions
+    assert both.intent == "with_without" and "without" not in both.slots and not both.companions
     assert "without" not in _ask("Podziemski game log without curry", '{"intent":"game_log"}', _absent("curry")).slots
     assert "without" not in _ask("Celtics record without Tatum and Brown", '{"intent":"with_without"}').slots
     assert "without" not in _ask("most games without a turnover", '{"intent":"game_log"}').slots
@@ -824,7 +824,7 @@ def test_with_a_teammate_is_the_splits_name_on_the_split_alone() -> None:
     the typed companion is the same, and the slot it printed under follows
     the shape (``Scope.to_slots(split_by_presence=...)``)."""
     beside = _played("ja morant", "desmond bane")
-    scope = Scope(subject=Who(kind="team", teams=("Memphis Grizzlies",)), companions=beside)
+    scope = Reading(who=Who(kind="team", teams=("Memphis Grizzlies",)), companions=beside)
     assert scope.to_slots(split_by_presence=True)["with_player"] == ["ja morant", "desmond bane"] and "conditions" not in scope.to_slots(split_by_presence=True)
     assert "with_player" not in scope.to_slots() and [c["predicate"] for c in scope.to_slots()["conditions"]] == ["played", "played"]
     assert _ask("jjj stats with ja morant and desmond bane last season", '{"intent":"with_without"}', beside).intent == "with_without"
@@ -1806,7 +1806,7 @@ def test_a_team_metric_named_in_the_question_wins() -> None:
     from association.query.team_metrics import resolve_team_metric
 
     got = _ask("Lowest defensive rating by a team this season", '{"intent":"team_leaderboard","stat":"usage_pct_defense"}')
-    assert got.scope.measure is not None and resolve_team_metric(got.scope.measure) == "defensive_rating"
+    assert got.measure is not None and resolve_team_metric(got.measure) == "defensive_rating"
     assert "team" not in got.slots
 
 

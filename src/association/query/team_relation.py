@@ -21,7 +21,7 @@ import duckdb
 
 from association.query.entities import Entity, resolved_team
 from association.query.player_relation import RELATION_SCOPING_EXCLUDED, ResolvedSpan, apply_situation, has_table, relation_window, span_of
-from association.query.reading import Cuts, Measure, Period, PointShape, Scope, ShapeCells, Span, Unsupported, period_narrowing
+from association.query.reading import Cuts, Filtered, Measure, Period, PointShape, ShapeCells, Span, Unsupported, period_narrowing
 from association.query.result import Refusal, Unanswered
 from association.query.season_text import season_phrase
 from association.query.team_games import TEAM_GAMES_SQL, TeamNarrowed
@@ -281,7 +281,7 @@ what the planner does about a cell it does not state
 """
 
 
-def scoped_team(con: duckdb.DuckDBPyConnection, scope: Scope, missing: str, *, span: Span | None = None) -> tuple[Entity, ResolvedSpan] | Unanswered:
+def scoped_team(con: duckdb.DuckDBPyConnection, scope: Filtered, missing: str, *, span: Span | None = None) -> tuple[Entity, ResolvedSpan] | Unanswered:
     """The team a question is about and the seasons it covers - the team
     counterpart of :func:`scoped_player`. A franchise's name is a fact about a
     season (see :func:`resolved_team`: "Hornets" is New Orleans in 2008 and
@@ -305,14 +305,14 @@ def scoped_team(con: duckdb.DuckDBPyConnection, scope: Scope, missing: str, *, s
     .. versionadded:: 4.4.0
 
     .. versionchanged:: 5.0.0
-       Reads the typed :class:`~association.query.reading.Scope`. A slot dict
-       is still taken, through :meth:`~association.query.reading.Scope.from_slots`,
-       until every caller passes ``reading.scope``.
+       Reads the typed :class:`~association.query.reading.Filtered`. A slot dict
+       is still taken, through the slot door (``tests/slots.py``),
+       until every caller passes ``reading``.
     """
     seasons = span_of(span if span is not None else scope.span, "games")
-    if scope.subject.team is None:
+    if scope.who.team is None:
         raise Unsupported(missing)
-    team = resolved_team(con, scope.subject.team, season=seasons.season)
+    team = resolved_team(con, scope.who.team, season=seasons.season)
     if isinstance(team, Unanswered):
         return team
     return team, seasons
@@ -351,7 +351,7 @@ def team_span_clause(span: ResolvedSpan) -> tuple[str, list[Any]]:
     return span.clause("tg.season")
 
 
-def team_games(con: duckdb.DuckDBPyConnection, team: Entity, span: ResolvedSpan, scope: Scope, *, opponent: Any, date: str | None = None) -> TeamNarrowed | Unanswered:
+def team_games(con: duckdb.DuckDBPyConnection, team: Entity, span: ResolvedSpan, scope: Filtered, *, opponent: Any, date: str | None = None) -> TeamNarrowed | Unanswered:
     """``team``'s games in ``span``, narrowed to an opponent, a venue, one
     Eastern date, one game of each playoff series (``game_n``) and a window of
     the newest or oldest N (``scope.window``) where the question named
@@ -400,9 +400,9 @@ def team_games(con: duckdb.DuckDBPyConnection, team: Entity, span: ResolvedSpan,
        see :func:`apply_situation`.
 
     .. versionchanged:: 5.0.0
-       Reads the typed :class:`~association.query.reading.Scope`. A slot dict
-       is still taken, through :meth:`~association.query.reading.Scope.from_slots`,
-       until every caller passes ``reading.scope``.
+       Reads the typed :class:`~association.query.reading.Filtered`. A slot dict
+       is still taken, through the slot door (``tests/slots.py``),
+       until every caller passes ``reading``.
 
     .. versionchanged:: 5.0.0
        Honors ``period``/``half``: every read then sees that part of each
@@ -441,7 +441,7 @@ def team_games(con: duckdb.DuckDBPyConnection, team: Entity, span: ResolvedSpan,
     return narrowed
 
 
-def _team_games_apply_period(con: duckdb.DuckDBPyConnection, narrowed: TeamNarrowed, scope: Scope) -> None:
+def _team_games_apply_period(con: duckdb.DuckDBPyConnection, narrowed: TeamNarrowed, scope: Filtered) -> None:
     """A quarter or half narrows every read of the team relation to that part
     of each game (:meth:`~association.query.team_games.TeamNarrowed.narrow_periods`)
     - the ``period`` cell of :data:`TEAM_RELATION_SCOPING` (the typed

@@ -20,7 +20,7 @@ from association.query.answer import Answer, Artifact, Reply, Timing
 from association.query.compose.core import Query
 from association.query.compose.plan import plan_point
 from association.query.decisions import Decision
-from association.query.reading import Cause, Cuts, Reading, Scope, Span
+from association.query.reading import Cause, Cuts, Reading, Span
 from association.query.reading import Subject as Who
 from association.query.stages import STAGES, WORDING, Difference, differences, plain, read_stages, snapshot
 from association.query.subject import Subject
@@ -30,10 +30,10 @@ _TIMING = Timing(total_seconds=0.0, model_seconds=0.0, model_calls=0, tool_secon
 
 
 def _reading() -> Reading:
-    scope = Scope(subject=Who(kind="player", players=("Nikola Jokic",)), cuts=Cuts(opponent="Boston Celtics"), span=Span(season=2026))
-    point = Reading(scope=scope, shape="scalar", measures=["points"], aggregate="total", asked=asked("player_stat"))
+    scope = Reading(who=Who(kind="player", players=("Nikola Jokic",)), cuts=Cuts(opponent="Boston Celtics"), span=Span(season=2026))
+    point = Reading(**scope.filters(), shape="scalar", measures=["points"], aggregate="total", asked=asked("player_stat"))
     subject = Subject(kind="player", players=("Nikola Jokic",), opponent="Boston Celtics", evidence=("'jokic' names one player",))
-    return Reading(scope=scope, asked=asked("player_stat"), subject=subject, point=point, decisions=(Decision("subject", "kind", None, "player", ""),))
+    return Reading(**scope.filters(), asked=asked("player_stat"), subject=subject, point=point, decisions=(Decision("subject", "kind", None, "player", ""),))
 
 
 def _answer(**changes: Any) -> Answer:

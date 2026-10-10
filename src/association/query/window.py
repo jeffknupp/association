@@ -171,7 +171,7 @@ def read_window(question: str, context: WindowContext) -> WindowRead:
 def _as_end(order: str | None) -> Literal["recent", "first"] | None:
     """A grammar row's end as the Window's own literal - the rows write one
     of the two, and a row that wrote anything else is a bug said out loud,
-    as the Scope's door says it for a slot dict."""
+    as the slot door says it for a slot dict."""
     if order == "recent":
         return "recent"
     if order == "first":

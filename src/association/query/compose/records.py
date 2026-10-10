@@ -30,7 +30,7 @@ from association.query.measure import spelled
 from association.query.notes import Note
 from association.query.player_games import STAT_LABELS, THRESHOLD_STAT_COLUMNS, games_subquery
 from association.query.player_relation import condition_scope, no_games, span_of, whole_span
-from association.query.reading import PointShape, Scope, Unsupported, cell_slots
+from association.query.reading import Filtered, PointShape, Unsupported, cell_slots
 from association.query.result import Grouped, Line, Narrowing, Part, RecordFacts, Refusal, Result, Span, Unanswered
 from association.query.team_games import TeamNarrowed
 from association.query.team_relation import TEAM_RELATION_SCOPING_EXCLUDED, condition_team_no_games, team_games, team_span_label, team_where_in
@@ -54,7 +54,7 @@ def _own_line(q: Query) -> tuple[str, str, int] | None:
     """The stat, its column and the threshold where ``q`` is ``record_when``'s
     own point - a scalar record on the player relation with that one
     predicate - else None."""
-    scope = q.scope
+    scope = q
     stat = spelled(scope.measure)
     column = THRESHOLD_STAT_COLUMNS.get(stat) if stat is not None else None
     threshold = threshold_of(scope)
@@ -90,7 +90,7 @@ def read_record_when(con: duckdb.DuckDBPyConnection, q: Query) -> Result | Unans
        its shape's row before asking (``compose.plan.cells_unhonored``,
        Phase 3, step 2's closing slice).
     """
-    scope = q.scope
+    scope = q
     line = _own_line(q)
     if line is None:
         return None
@@ -101,7 +101,7 @@ def read_record_when(con: duckdb.DuckDBPyConnection, q: Query) -> Result | Unans
     compiled = compile_query(con, replace(q, skeleton="grouped", group="line", measures=["margin"]))
     if compiled.player is None:
         return None
-    team = optional_team(con, scope.subject.team, season=scope.span.season)
+    team = optional_team(con, scope.who.team, season=scope.span.season)
     if isinstance(team, Unanswered):
         return team
     found = rows_of(con, compiled)
@@ -114,7 +114,7 @@ def read_record_when(con: duckdb.DuckDBPyConnection, q: Query) -> Result | Unans
     return _record_result(con, scope, covered, compiled, stat, threshold, found, names)
 
 
-def _record_result(con: duckdb.DuckDBPyConnection, scope: Scope, covered: Any, compiled: Compiled, stat: str, threshold: int, found: list[dict[str, Any]], names: dict[str, str]) -> Result:
+def _record_result(con: duckdb.DuckDBPyConnection, scope: Filtered, covered: Any, compiled: Compiled, stat: str, threshold: int, found: list[dict[str, Any]], names: dict[str, str]) -> Result:
     """The three rows and the remarks, from the grouped statement's rows -
     :func:`read_record_when`'s tail, split out for the complexity gate."""
     assert compiled.player is not None
@@ -158,7 +158,7 @@ def _record_result(con: duckdb.DuckDBPyConnection, scope: Scope, covered: Any, c
 _TEAM_RECORD_LINE_SHAPE = PointShape("team_games", "split", "line")
 
 
-def _team_record_when_needs_player(scope: Scope) -> None:
+def _team_record_when_needs_player(scope: Filtered) -> None:
     """Refuse the player's cells this shape takes beyond the team relation's
     (its row's ``taken``: a teammate's role, a line on a box-score column, an
     ordinal season) - each a fact about a named PLAYER's game, which a team's
@@ -195,14 +195,14 @@ def read_team_record_when(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> Resul
        its shape's row before asking (``compose.plan.cells_unhonored``,
        Phase 3, step 2's closing slice).
     """
-    scope = q.scope
+    scope = q
     if threshold_of(scope) is None:
         return None
     refused = coverage_refusal(_TEAM_RECORD_LINE_SHAPE, scope)
     if refused is not None:
         return refused
     _team_record_when_needs_player(scope)
-    team = optional_team(con, scope.subject.team, season=scope.span.season)
+    team = optional_team(con, scope.who.team, season=scope.span.season)
     if isinstance(team, Unanswered):
         return team
     if team is None:

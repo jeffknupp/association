@@ -14,13 +14,14 @@ from typing import Any
 
 import pytest
 from shapes import asked, stated
+from slots import slots_scope
 from test_templates import pg_ctx, team_cells_con  # noqa: F401 - the two relation fixtures, imported by name
 
 from association.nba.season import current_season
 from association.query.answer import AnswerContext
 from association.query.compose.core import Query, compile_query, rows_of
 from association.query.player_relation import condition_scope, span_of
-from association.query.reading import Claim, Cuts, Scope, ScopeError, Span, unhonored_cells
+from association.query.reading import Claim, Cuts, Reading, ScopeError, Span, unhonored_cells
 from association.query.reading import Subject as Who
 from association.query.span import SpanContext, claimed, read_span
 from association.query.team_games import TEAM_GAMES_SQL, TeamNarrowed
@@ -156,7 +157,7 @@ def test_a_word_two_readings_share_reads_both_and_raises_nothing() -> None:
     from routed import staged as settle
 
     route = settle("game_log", {"player": "LeBron James"}, "lebron's last game 7")
-    assert route.scope.window.order == "recent" and route.scope.window.count == 1 and route.scope.span.season_type == 3 and route.scope.cuts.game_n == 7
+    assert route.window.order == "recent" and route.window.count == 1 and route.span.season_type == 3 and route.cuts.game_n == 7
     assert [c.what for c in route.claims] == ["window+game_n"]
 
 
@@ -179,14 +180,14 @@ def test_a_word_two_readings_share_reads_both_and_raises_nothing() -> None:
     ],
 )
 def test_the_six_slots_round_trip_through_the_span(slots: dict[str, Any]) -> None:
-    scope = Scope.from_slots(slots)
+    scope = slots_scope(slots)
     assert scope.span.to_slots() == slots
     assert scope.to_slots() == slots
-    assert Scope.from_slots(scope.to_slots()) == scope
+    assert slots_scope(scope.to_slots()) == scope
 
 
 def test_the_projection_keeps_the_slot_era_shape() -> None:
-    projected = Scope(subject=Who(kind="player", players=("X",)), span=Span(since=2020, until=2024, season_type=2)).projected()
+    projected = Reading(who=Who(kind="player", players=("X",)), span=Span(since=2020, until=2024, season_type=2)).scope_record()
     assert {"season", "season_type", "season_type_unstated", "span", "since", "until"} <= set(projected)
     assert (projected["season"], projected["season_type"], projected["season_type_unstated"], projected["span"], projected["since"], projected["until"]) == (None, 2, False, None, 2020, 2024)
     assert "player" in projected and all(not isinstance(v, Span) for v in projected.values())
@@ -194,8 +195,8 @@ def test_the_projection_keeps_the_slot_era_shape() -> None:
 
 def test_a_typed_span_and_a_slot_at_once_is_refused_at_the_door() -> None:
     with pytest.raises(ScopeError, match="typed span"):
-        Scope.from_slots({"span": Span(career=True), "season": 2024})
-    assert Scope.from_slots({"span": Span(career=True)}).span.career
+        slots_scope({"span": Span(career=True), "season": 2024})
+    assert slots_scope({"span": Span(career=True)}).span.career
 
 
 def test_the_cells_and_what_a_reader_leaves_unhonored() -> None:
@@ -204,7 +205,7 @@ def test_the_cells_and_what_a_reader_leaves_unhonored() -> None:
     assert Span(since=2020).unhonored(frozenset()) == ["since"]
     assert Span(since=2020, until=2024).unhonored(frozenset({"career"})) == ["since", "until"]
     assert Span(both=True, career=True).unhonored(frozenset({"both"})) == ["span"]
-    assert unhonored_cells(Scope(cuts=Cuts(opponent="BOS"), span=Span(since=2020, both=True)), frozenset({"opponent", "range"})) == ["season_type_unstated"]
+    assert unhonored_cells(Reading(cuts=Cuts(opponent="BOS"), span=Span(since=2020, both=True)), frozenset({"opponent", "range"})) == ["season_type_unstated"]
     assert Span(season=2024, season_type=3, both=True).stated == {"season", "postseason", "both"}
     assert Span(since=2020).over_career() == Span(career=True, since=2020)
     assert Span(season=2024).as_career() == Span(season=2024, career=True)
@@ -243,7 +244,7 @@ def test_span_of_resolves_each_cell_and_refuses_a_contradiction() -> None:
 
 
 def _player_games(ctx: AnswerContext, span: Span) -> int:
-    rows = rows_of(ctx.con, compile_query(ctx.con, Query(scope=Scope(subject=Who(kind="player", players=("Brandin Podziemski",)), span=span), skeleton="rows", measures=["points"], limit=50)))
+    rows = rows_of(ctx.con, compile_query(ctx.con, Query(**(Reading(who=Who(kind="player", players=("Brandin Podziemski",)), span=span)).filters(), skeleton="rows", measures=["points"], limit=50)))
     return len(rows)
 
 
@@ -261,10 +262,10 @@ def test_each_span_cell_changes_what_the_player_relation_reads(pg_ctx: AnswerCon
 
 
 def _team_games(ctx: AnswerContext, span: Span) -> int:
-    settled = scoped_team(ctx.con, Scope(subject=Who(kind="team", teams=("Celtics",)), span=span), "no team")
+    settled = scoped_team(ctx.con, Reading(who=Who(kind="team", teams=("Celtics",)), span=span), "no team")
     assert isinstance(settled, tuple)
     team, resolved = settled
-    narrowed = team_games(ctx.con, team, resolved, Scope(), opponent=None)
+    narrowed = team_games(ctx.con, team, resolved, Reading(), opponent=None)
     assert isinstance(narrowed, TeamNarrowed)
     where, params = narrowed.clauses(narrowed=False)
     row = ctx.con.execute(f"{TEAM_GAMES_SQL} SELECT COUNT(*) FROM team_games tg WHERE {where}", params).fetchone()

@@ -35,7 +35,7 @@ from __future__ import annotations
 
 import copy
 from collections.abc import Callable
-from dataclasses import dataclass, field, fields, replace
+from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Any
 
 import duckdb
@@ -63,7 +63,21 @@ from association.query.player_relation import (
     span_of,
     team_slot_for_player,
 )
-from association.query.reading import DEFAULT_NAMED_RUNS, Period, Scope, Span, period_narrowing, unhonored_cells
+from association.query.reading import (  # noqa: F401 - the folded filters' field types (reading.Filtered), which the docs build resolves in the module of each query inheriting them
+    DEFAULT_NAMED_RUNS,
+    Companion,
+    Cuts,
+    Filtered,
+    Line,
+    Measure,
+    Period,
+    Span,
+    Split,
+    Subject,
+    Window,
+    period_narrowing,
+    unhonored_cells,
+)
 from association.query.reading import Unsupported as Unsupported
 from association.query.result import Refusal, Unanswered
 from association.query.season_line import Statement, seasons_on_record
@@ -295,8 +309,8 @@ class Refused(Exception):
         self.result = result
 
 
-@dataclass(kw_only=True)
-class Query:
+@dataclass(frozen=True, kw_only=True)
+class Query(Filtered):
     """A point over the player-games relation. ``scope`` is the question's own
     scoping (subject, span, and every scoping slot), handed whole to the
     relation - the same discipline :func:`~association.query.player_relation.scoped_games`
@@ -306,12 +320,17 @@ class Query:
     .. versionadded:: 4.4.0
 
     .. versionchanged:: 5.0.0
-       Holds the typed :class:`~association.query.reading.Scope` as ``scope``
-       in place of the ``slots`` dict, and every field is keyword-only.
+       Holds the typed ``Scope`` as ``scope`` in place of the ``slots``
+       dict, and every field is keyword-only.
+
+    .. versionchanged:: 6.0.0
+       The filters are the query's own fields
+       (:class:`~association.query.reading.Filtered`), forwarded whole to the
+       relation as the query itself, where they stood on ``scope`` until
+       Phase 3, step 4, slice (b); frozen, as the Reading it is planned
+       from.
     """
 
-    #: The question's scoping, forwarded whole to the relation.
-    scope: Scope
     #: ``"rows"``, ``"scalar"`` or ``"grouped"`` - which reader answers the point.
     skeleton: str = "rows"
     #: The box-score columns (or derived measures) the point reads.
@@ -363,10 +382,10 @@ class Query:
 
         .. versionadded:: 6.0.0
         """
-        out = {f.name: getattr(self, f.name) for f in fields(self) if f.name != "subject_span"}
-        # The scope's companions print under the with/without split's slot
-        # where the query divides the games by their presence.
-        out["scope"] = self.scope.projected(split_by_presence=self.group == "presence")
+        # The filters print under ``scope``; its companions under the
+        # with/without split's slot where the query divides the games by
+        # their presence.
+        out = {name: value for name, value in self.scoped_record(split_by_presence=self.group == "presence").items() if name != "subject_span"}
         settled = self.subject_span
         out["span"] = "career" if settled is not None and settled.career else None
         out["season"] = settled.season if settled is not None else None
@@ -448,7 +467,7 @@ def _agg(name: str, aggregate: str, *, rebuilt: bool = False) -> str:
     raise Unsupported(f"aggregate {aggregate!r}")
 
 
-def _check_relation_scoping(scope: Scope, subject: str = "player", honored_extra: frozenset[str] = frozenset()) -> None:
+def _check_relation_scoping(scope: Filtered, subject: str = "player", honored_extra: frozenset[str] = frozenset()) -> None:
     """The retired scope check's rule, for the relation: a scoping slot the relation
     does not narrow by (``situation`` when it names no calendar, ``round``,
     ``rate`` ...) is refused, never dropped - answering "on Tuesdays" for
@@ -463,7 +482,7 @@ def _check_relation_scoping(scope: Scope, subject: str = "player", honored_extra
     settles one type (:func:`_resolve_everyone`) and still refuses it rather
     than answer the regular season alone.
 
-    The cells are the scope's typed values' (:meth:`~association.query.reading.Scope.cells`),
+    The cells are the scope's typed values' (:meth:`~association.query.reading.Filtered.cells`),
     each said by the slot names it was declared under. ``honored_extra`` is
     what the point's shape takes beyond the relation (its row's ``taken``,
     ``compose.plan``): the season line's ranking reads ``rate`` (a season
@@ -516,7 +535,7 @@ def _check_period_measures(q: Query) -> None:
     with it: the period templates say a period, and this compiler's sentence
     has not been measured saying one. A read grouped by ``period`` sees
     each quarter's line the same way, and is held to the same columns."""
-    if period_narrowing(q.scope) is None and q.group != "period":
+    if period_narrowing(q) is None and q.group != "period":
         return
     read = [*q.measures, *(name for name, _, _ in q.predicates)]
     unread = sorted({m for m in read if m not in _PERIOD_READABLE})
@@ -529,7 +548,7 @@ def _check_split_category(q: Query) -> None:
     ``starter_bench`` is a table of both halves, which only a grouped read by
     starter answers - the templates' ``_SPLIT_SIDE_ONLY`` rule. Anything else
     would list every game under a heading that promised the split."""
-    if q.scope.split == "starter_bench" and not (q.skeleton == "grouped" and q.group == "starter"):
+    if q.split == "starter_bench" and not (q.skeleton == "grouped" and q.group == "starter"):
         raise Unsupported("a starter/bench split is a table of both halves, not a filter - a grouped read answers it")
 
 
@@ -547,7 +566,7 @@ def _resolve_everyone(con: duckdb.DuckDBPyConnection, q: Query) -> tuple[Entity 
     2001 (yardstick-v2 F161, #207). ``since`` beside a named season is the
     same contradiction ``span_of`` refuses for a player.
     """
-    scope = q.scope
+    scope = q
     # A named season reads that season whatever else the span says (a
     # career word beside it narrows nothing here); none named is the
     # current one, unless the span is a career or a range.
@@ -558,7 +577,7 @@ def _resolve_everyone(con: duckdb.DuckDBPyConnection, q: Query) -> tuple[Entity 
         span = span_of(replace(scope.span, season=season, career=season is None), "player_game_log")
     except Unsupported as exc:
         raise Unsupported(str(exc)) from exc
-    # The shared steps read the slot dict until they take the Scope.
+    # The shared steps read the slot dict until they take the typed filters.
     narrowed = league_games(con, span, scope, position=q.position)
     if isinstance(narrowed, Unanswered):
         raise Refused(narrowed)
@@ -570,7 +589,7 @@ def _resolve_named(con: duckdb.DuckDBPyConnection, q: Query) -> tuple[Entity | N
     relation templates settle and narrow their own - through
     :func:`~association.query.player_relation.scoped_player` and
     :func:`~association.query.player_relation.scoped_games`."""
-    scope = q.scope
+    scope = q
     # A date names its game outright, so it replaces the season rather than
     # being filtered inside it - the rule game_log and player_stat both
     # state: the name is settled over his career and the date is the scope.
@@ -619,11 +638,11 @@ def _resolve_pair(con: duckdb.DuckDBPyConnection, q: Query) -> tuple[Entity, Ent
 
     .. versionadded:: 5.0.0
     """
-    scope = q.scope
-    texts = list(dict.fromkeys(n.strip() for n in scope.subject.players))
+    scope = q
+    texts = list(dict.fromkeys(n.strip() for n in scope.who.players))
     if len(texts) != 2:
         raise Unsupported(f"player_matchup needs exactly two players, got {texts!r}")
-    first = replace(q, scope=replace(scope, subject=replace(scope.subject, players=(texts[0],)), window=replace(scope.window, order=None, count=None), cuts=replace(scope.cuts, opponent=None)))
+    first = replace(q, **(replace(scope, who=replace(scope.who, players=(texts[0],)), window=replace(scope.window, order=None, count=None), cuts=replace(scope.cuts, opponent=None))).filters())
     a, span, narrowed = _resolve_named(con, first)
     assert a is not None
     b = resolved_player(con, texts[1], available=BOX_SCORES, season=span.season, through=career_end(span.season))
@@ -652,8 +671,8 @@ def _apply_team_slot(con: duckdb.DuckDBPyConnection, q: Query, player: Entity | 
     template ignores it outright, since :func:`~association.query.player_relation.scoped_games`
     itself carries no such narrowing, and treating it as a filter there would
     answer a narrower question than the template does."""
-    scope = q.scope
-    team_text = scope.subject.team
+    scope = q
+    team_text = scope.who.team
     if team_text is None or player is None:
         return narrowed
     if q.skeleton == "rows":
@@ -681,7 +700,7 @@ def _apply_window_rule(q: Query, narrowed: Narrowed) -> None:
     is filler on those skeletons (:func:`~association.query.player_relation.whole_span`;
     ``threshold_count`` reads it as the ranking's size), and only ``rows``
     reads it as a row count."""
-    scope = q.scope
+    scope = q
     if q.skeleton in ("run", "pair"):
         # A run or a pair is read over every game in the span
         # (``whole_span``): a run's ``limit`` is how many runs are listed,
@@ -711,7 +730,7 @@ def _period_read(q: Query) -> bool:
 
     .. versionadded:: 5.0.0
     """
-    return period_narrowing(q.scope) is not None or q.group == "period"
+    return period_narrowing(q) is not None or q.group == "period"
 
 
 def _blanks(q: Query, rebuilt: bool) -> bool:
@@ -892,7 +911,7 @@ def _compile_by_period(con: duckdb.DuckDBPyConnection, q: Query, narrowed: Narro
     params: list[Any] = []
     for quarter in REGULATION_QUARTERS:
         each = copy.deepcopy(narrowed)
-        apply_period(con, each, replace(q.scope, period=Period(number=quarter)))
+        apply_period(con, each, replace(q, period=Period(number=quarter)))
         sql, each_params = aggregate_sql(each, [f'{quarter} AS "group"', *selects], rebuilt=rebuilt)
         parts.append(f"SELECT * FROM ({sql})")
         params += each_params
@@ -962,7 +981,7 @@ def _ranked_games(q: Query, rebuilt: bool) -> str:
     return "COUNT(*)"
 
 
-def run_scope(scope: Scope, *, named: bool) -> Any:
+def run_scope(scope: Filtered, *, named: bool) -> Any:
     """The games a run is read over, as the streak template's own
     :class:`~association.query.conditions._Scope`: a named player's honors
     ``since`` and reads an ordinal season over a career-shaped outer scope
@@ -1010,7 +1029,7 @@ def _compile_run(q: Query, narrowed: Narrowed, box: BoxSource, player: Entity | 
         if name not in COLUMNS or name in DERIVED:
             raise Unsupported(f"no per-game column {name!r} for a run to hold along")
         hit, condition, read = f"x.value {OPS[op]} $threshold", {"threshold": value}, f"p.{name}"
-    covered = run_scope(q.scope, named=player is not None)
+    covered = run_scope(q, named=player is not None)
     # Named parameters: the played subquery is nested twice in the streak
     # rows (once for the games, once for the spells they span) beside
     # ``covered``'s own $season/$first, and the condition binds its own.
@@ -1052,7 +1071,7 @@ def compile_query(con: duckdb.DuckDBPyConnection, q: Query) -> Compiled:
     """
     if q.source != "games":
         raise Unsupported(f"the {q.source} source is read by the templates' own readers, not compiled")
-    _check_relation_scoping(q.scope, q.subject)
+    _check_relation_scoping(q, q.subject)
     _check_split_category(q)
     _check_period_measures(q)
     player: Entity | None

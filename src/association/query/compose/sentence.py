@@ -278,7 +278,7 @@ def team_sentence(q: TeamQuery, result: TeamResult) -> str:
 
     .. versionadded:: 4.4.0
     """
-    label = TEAM_LABELS.get(q.measure, q.measure)
+    label = TEAM_LABELS.get(q.metric, q.metric)
     span = _span_phrase(result.span)
     if q.shape == "run":
         return _team_run_sentence(q, result, span)
@@ -289,9 +289,9 @@ def team_sentence(q: TeamQuery, result: TeamResult) -> str:
         return f"The warehouse has no {label} on record for the {result.team.name} in the {span}."
     if result.from_season_line:
         return f"The {result.team.name} had {result.value:,.0f} {label} over the complete {span} ({result.games} games).{result.note}"
-    value = f"{result.value:+,.0f}" if q.measure == "differential" else f"{result.value:,.0f}"
+    value = f"{result.value:+,.0f}" if q.metric == "differential" else f"{result.value:,.0f}"
     record = f" ({result.wins}-{result.losses})" if result.wins is not None else ""
-    per_game = f" ({result.value / result.games:+.2f} per game)" if q.measure == "differential" and result.games else ""
+    per_game = f" ({result.value / result.games:+.2f} per game)" if q.metric == "differential" and result.games else ""
     # `narrowed_text` already says "over their last N games" when a window
     # narrowed the read (TeamNarrowed.filters()) - saying the count again
     # here would read as "over 10 games over their last 10 games".
@@ -303,7 +303,7 @@ def _team_run_sentence(q: TeamQuery, result: TeamResult, span: str) -> str:
     """The ``run`` shape on the team relation in the compiler's own words: a
     team's, or the league's, longest run of wins or losses."""
     who = f"The {result.team.name}" if result.team is not None else "Every team"
-    what = "won" if won(q.scope.measure) else "lost"
+    what = "won" if won(q.measure) else "lost"
     if not result.runs:
         return f"No run of games {what} for {who[0].lower() + who[1:]}{result.narrowed_text} in the {span}."
     lines = []

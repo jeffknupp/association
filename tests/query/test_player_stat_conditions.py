@@ -30,12 +30,12 @@ from typing import Any
 import duckdb
 import pytest
 from routed import ask_routed, slots_route
+from slots import slots_reading
 from test_templates import player_stat  # the compiler's, player_stat's template retired (compose.COMPILED_INTENTS)
 
 from association.fetch.repairs import real_games
 from association.nba.season import current_season
 from association.query.answer import AnswerContext
-from association.query.reading import Reading
 
 SEASON = current_season()
 
@@ -130,16 +130,16 @@ def test_player_stat_ignores_the_season_line_and_reads_box_scores_when_no_other_
     used to answer the season line (24.0 in 4 games) with Embiid nowhere in
     it. Also pins the unnarrowed season line, so a future change cannot make
     this pass by coincidence (both branches reading the same number)."""
-    season = player_stat(pstat_conditions_ctx, Reading.from_slots({"player": "Tyrese Maxey", "stat": "points"}))
+    season = player_stat(pstat_conditions_ctx, slots_reading({"player": "Tyrese Maxey", "stat": "points"}))
     assert season.answer == f"Tyrese Maxey averaged 24 points per game in 4 games in the {SEASON} regular season. That is 96 in total."
 
-    started = player_stat(pstat_conditions_ctx, Reading.from_slots({"player": "Tyrese Maxey", "stat": "points", "conditions": [_condition("started")]}))
+    started = player_stat(pstat_conditions_ctx, slots_reading({"player": "Tyrese Maxey", "stat": "points", "conditions": [_condition("started")]}))
     assert started.data["stats"] == {"gamesPlayed": 2, "avgPoints": 23.0, "points": 46}
     assert started.answer == f"Tyrese Maxey averaged 23 points per game in 2 games with Joel Embiid starting in the {SEASON} regular season. That is 46 in total."
 
 
 def test_player_stat_honors_a_bench_condition(pstat_conditions_ctx: AnswerContext) -> None:
-    result = player_stat(pstat_conditions_ctx, Reading.from_slots({"player": "Tyrese Maxey", "stat": "points", "conditions": [_condition("bench")]}))
+    result = player_stat(pstat_conditions_ctx, slots_reading({"player": "Tyrese Maxey", "stat": "points", "conditions": [_condition("bench")]}))
     assert result.data["stats"] == {"gamesPlayed": 1, "avgPoints": 20.0, "points": 20}
     assert result.answer == f"Tyrese Maxey averaged 20 points per game in 1 game with Joel Embiid off the bench in the {SEASON} regular season. That is 20 in total."
 
@@ -149,7 +149,7 @@ def test_player_stat_honors_a_reached_condition(pstat_conditions_ctx: AnswerCont
     where he has no box row to read a threshold off at all, so the EXISTS
     clause a "reached" condition compiles to correctly excludes a game he
     did not play rather than crediting it to a threshold of zero."""
-    result = player_stat(pstat_conditions_ctx, Reading.from_slots({"player": "Tyrese Maxey", "stat": "points", "conditions": [_condition("reached", stat="points", threshold=20)]}))
+    result = player_stat(pstat_conditions_ctx, slots_reading({"player": "Tyrese Maxey", "stat": "points", "conditions": [_condition("reached", stat="points", threshold=20)]}))
     assert result.data["stats"] == {"gamesPlayed": 3, "avgPoints": 22.0, "points": 66}
     assert result.answer == f"Tyrese Maxey averaged 22 points per game in 3 games in games Joel Embiid had 20+ points in the {SEASON} regular season. That is 66 in total."
 

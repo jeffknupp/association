@@ -9,11 +9,12 @@ from typing import Any
 
 import pytest
 from routed import default_query, default_reading
+from slots import slots_scope
 
 from association.query.compose.core import Query
 from association.query.compose.plan import plan
 from association.query.compose.team import TeamQuery
-from association.query.reading import GAMES_COUNTED, Reading, Scope, Span, Window
+from association.query.reading import GAMES_COUNTED, Reading, Span, Window
 from association.query.reading import Subject as Who
 
 
@@ -27,7 +28,7 @@ def test_the_default_point_is_a_reading_and_its_plan_is_the_query_it_always_was(
     planned = plan(reading)
     assert isinstance(planned, Query)
     assert planned == default_query("threshold_count", slots)
-    assert planned.scope == Scope.from_slots(slots) and planned.scope.to_slots() == slots
+    assert planned.filters() == slots_scope(slots).filters() and planned.to_slots() == slots
     assert planned.skeleton == "scalar" and planned.aggregate == "count"
 
 
@@ -37,7 +38,7 @@ def test_the_planner_copies_and_never_decides() -> None:
     ``relation`` -> ``subject``), and a field the Reading left unset is
     unset on the Query too."""
     reading = Reading(
-        scope=Scope.from_slots({"player": "X", "season": 2025}),
+        **(slots_scope({"player": "X", "season": 2025})).filters(),
         shape="ranking",
         by="player",
         measures=["points"],
@@ -51,10 +52,10 @@ def test_the_planner_copies_and_never_decides() -> None:
         relation="everyone",
     )
     # The position group a league-wide point honors is its subject's (Phase 3, step 2).
-    reading = replace(reading, scope=replace(reading.scope, subject=replace(reading.scope.subject, position="C")))
+    reading = replace(reading, **(replace(reading, who=replace(reading.who, position="C"))).filters())
     q = plan(reading)
     assert isinstance(q, Query)
-    assert q.scope == reading.scope
+    assert q.filters() == reading.filters()
     assert (q.skeleton, q.measures, q.aggregate, q.group, q.predicates) == ("grouped", ["points"], "per_game", "player", [("won", "=", True)])
     assert (q.order, q.direction, q.limit, q.offset, q.minimum_games, q.subject, q.position, q.source) == ("measure", "asc", 7, 0, 20, "everyone", "C", "games")
     assert q.available is None and q.subject_span is None
@@ -65,7 +66,7 @@ def test_the_planner_copies_and_never_decides() -> None:
     point = {"shape", "by", "on", "measures", "aggregate", "group", "predicates", "order", "direction", "limit", "minimum_games", "available", "subject_span"}
     assert point <= {f.name for f in fields(Reading)}
     # The Query's ``position`` is the point's subject's position group
-    # (``Reading.scope.subject.position``, a field of the point until Phase 3, step 2).
+    # (``Reading.who.position``, a field of the point until Phase 3, step 2).
     assert "position" not in {f.name for f in fields(Reading)} and "position" in {f.name for f in fields(Who)}
     # The Query's ``offset`` is the compiler's own (a pair's newest meetings): the point's was 0 on every reading and went with the window (Phase 3, step 2).
     assert {"skeleton", "measures", "aggregate", "group", "predicates", "order", "direction", "limit", "offset", "minimum_games", "available", "subject_span", "source", "position"} <= {
@@ -74,10 +75,10 @@ def test_the_planner_copies_and_never_decides() -> None:
 
 
 def test_a_team_reading_plans_to_the_team_relation() -> None:
-    reading = Reading(scope=Scope.from_slots({"team": "Orlando Magic", "season": 2026}), shape="scalar", measures=["threePointFieldGoalsMade"], aggregate="total", relation="team")
+    reading = Reading(**(slots_scope({"team": "Orlando Magic", "season": 2026})).filters(), shape="scalar", measures=["threePointFieldGoalsMade"], aggregate="total", relation="team")
     q = plan(reading)
     assert isinstance(q, TeamQuery)
-    assert (q.scope, q.measure, q.aggregate) == (Scope(subject=Who(kind="team", teams=("Orlando Magic",)), span=Span(season=2026)), "threePointFieldGoalsMade", "total")
+    assert (q.filters(), q.metric, q.aggregate) == (Reading(who=Who(kind="team", teams=("Orlando Magic",)), span=Span(season=2026)).filters(), "threePointFieldGoalsMade", "total")
 
 
 def test_the_compilers_points_are_keyword_only() -> None:
@@ -86,16 +87,16 @@ def test_the_compilers_points_are_keyword_only() -> None:
     field sits in that place, and the two records mirror the Reading's
     fields in a different order."""
     with pytest.raises(TypeError):
-        Query(Scope(subject=Who(kind="player", players=("Joel Embiid",))), "rows")  # type: ignore[call-arg]
+        Query(Reading(who=Who(kind="player", players=("Joel Embiid",))), "rows")  # type: ignore[call-arg, arg-type]
     with pytest.raises(TypeError):
-        TeamQuery(Scope(subject=Who(kind="team", teams=("Orlando Magic",))), "points")  # type: ignore[call-arg]
-    assert Query(scope=Scope(subject=Who(kind="player", players=("Joel Embiid",))), skeleton="rows").scope.subject.player == "Joel Embiid"
-    assert TeamQuery(scope=Scope(subject=Who(kind="team", teams=("Orlando Magic",))), measure="points").scope.subject.team == "Orlando Magic"
+        TeamQuery(Reading(who=Who(kind="team", teams=("Orlando Magic",))), "points")  # type: ignore[call-arg, arg-type]
+    assert Query(**(Reading(who=Who(kind="player", players=("Joel Embiid",)))).filters(), skeleton="rows").who.player == "Joel Embiid"
+    assert TeamQuery(**(Reading(who=Who(kind="team", teams=("Orlando Magic",)))).filters(), metric="points").who.team == "Orlando Magic"
 
 
 def test_describe_names_every_deciding_field_and_drops_empty_scope() -> None:
     reading = Reading(
-        scope=Scope.from_slots({"player": "Joel Embiid", "season": 2026, "opponent": None, "without": []}),
+        **(slots_scope({"player": "Joel Embiid", "season": 2026, "opponent": None, "without": []})).filters(),
         shape="scalar",
         measures=[],
         aggregate="count",
@@ -126,8 +127,8 @@ def test_a_slot_dict_round_trips_through_the_scope() -> None:
         "limit": 10,
         "season_type_unstated": True,
     }
-    scope = Scope.from_slots({**slots, "team": None, "players": [], "stat": "", "per_game": False})
-    assert (scope.subject.player, [c.player for c in scope.companions if c.absent], scope.cuts.venue, scope.window.count, scope.span.both) == ("Joel Embiid", ["Tyrese Maxey"], "home", 10, True)
+    scope = slots_scope({**slots, "team": None, "players": [], "stat": "", "per_game": False})
+    assert (scope.who.player, [c.player for c in scope.companions if c.absent], scope.cuts.venue, scope.window.count, scope.span.both) == ("Joel Embiid", ["Tyrese Maxey"], "home", 10, True)
     assert scope.to_slots() == slots
 
 
@@ -153,7 +154,7 @@ def test_a_slot_nothing_types_is_refused_out_loud(slots: dict[str, Any], match: 
     silently leave out - this project's worst failure shape - so a key or a
     value nothing here types raises instead."""
     with pytest.raises(ValueError, match=match):
-        Scope.from_slots(slots)
+        slots_scope(slots)
 
 
 def test_every_scope_field_is_checked_and_every_group_is_the_compilers() -> None:
@@ -163,20 +164,16 @@ def test_every_scope_field_is_checked_and_every_group_is_the_compilers() -> None
     against the Scope's fields."""
     from typing import get_args
 
+    from slots import _CHECKS, _COMPANION_SLOT_NAMES, _CUT_SLOT_KEYS, _LINE_SLOT_NAMES, _PERIOD_SLOT_NAMES, _SPAN_SLOT_NAMES, _WINDOW_SLOT_NAMES
+
     from association.query.compose.core import GROUPS
     from association.query.player_relation import RELATION_SCOPING
     from association.query.reading import (
-        _CHECKS,
-        _COMPANION_SLOT_NAMES,
-        _CUT_SLOT_KEYS,
-        _LINE_SLOT_NAMES,
         _MEASURE_SLOT_NAMES,
-        _PERIOD_SLOT_NAMES,
-        _SPAN_SLOT_NAMES,
         _SUBJECT_SLOT_NAMES,
-        _WINDOW_SLOT_NAMES,
         Companion,
         Cuts,
+        Filtered,
         Group,
         Line,
         Measure,
@@ -184,12 +181,12 @@ def test_every_scope_field_is_checked_and_every_group_is_the_compilers() -> None
     )
     from association.query.team_relation import TEAM_RELATION_SCOPING
 
-    names = {f.name for f in fields(Scope)}
+    names = {f.name for f in fields(Filtered)}
     # The subject's four slot names, the span's six, the window's four, the cuts' eight, the period's two, the lines' four and the
     # companions' three pass the door into the typed values (Phase 3, step 2).
     assert (
         set(_CHECKS)
-        == (names - {"subject", "span", "window", "cuts", "period", "lines", "companions", "measure"})
+        == (names - {"who", "span", "window", "cuts", "period", "lines", "companions", "measure"})
         | set(_SUBJECT_SLOT_NAMES)
         | _MEASURE_SLOT_NAMES
         | _SPAN_SLOT_NAMES
@@ -204,8 +201,8 @@ def test_every_scope_field_is_checked_and_every_group_is_the_compilers() -> None
     # `line` is keyed on the point's own predicate rather than a fixed column (compose.core._line_group).
     assert set(get_args(Group)) == {"none", "presence", "period", "line", *GROUPS}
     # Every cell is a typed value's, but the split's, whose value is a field of its own (Phase 3, step 2; the closing slice named it on Scope.CELLS).
-    assert {"split"} == Scope.CELLS - Span.CELLS - Window.CELLS - Cuts.CELLS - Period.CELLS - Line.CELLS - Companion.CELLS - Measure.CELLS and "split" in names
-    assert RELATION_SCOPING <= Scope.CELLS and TEAM_RELATION_SCOPING <= Scope.CELLS
+    assert {"split"} == Filtered.CELLS - Span.CELLS - Window.CELLS - Cuts.CELLS - Period.CELLS - Line.CELLS - Companion.CELLS - Measure.CELLS and "split" in names
+    assert RELATION_SCOPING <= Filtered.CELLS and TEAM_RELATION_SCOPING <= Filtered.CELLS
     assert Span.CELLS | Window.CELLS | (Cuts.CELLS - {"round"}) <= RELATION_SCOPING and "round" not in RELATION_SCOPING
 
 
@@ -217,7 +214,7 @@ def test_a_scope_reports_every_cell_it_sets_by_the_slots_a_decline_says() -> Non
     declared under, so no decline moves while the planner reads typed cells."""
     from association.query.reading import cell_slots, unhonored_cells
 
-    scope = Scope.from_slots(
+    scope = slots_scope(
         {
             "player": "x",
             "since": 2019,
@@ -238,7 +235,7 @@ def test_a_scope_reports_every_cell_it_sets_by_the_slots_a_decline_says() -> Non
         }
     )
     assert scope.cells() == {"range", "both", "window", "ranked_by", "tenure", "round", "period", "line", "companion", "rate", "split"}
-    assert Scope().cells() == frozenset() and Scope.from_slots({"split": "bench"}).cells() == {"split"}
+    assert Reading().cells() == frozenset() and slots_scope({"split": "bench"}).cells() == {"split"}
     said = {cell: cell_slots(scope, cell) for cell in sorted(scope.cells())}
     assert said == {
         "both": ["season_type_unstated"],
@@ -266,12 +263,12 @@ def test_a_period_condition_round_trips_through_the_slot_door() -> None:
     neither, or a key nothing types, is refused at the door."""
     from association.query.reading import Line, Period, ScopeError
 
-    scope = Scope.from_slots({"period_condition": {"stat": "threePointFieldGoalsMade", "threshold": 1, "period": 1}})
+    scope = slots_scope({"period_condition": {"stat": "threePointFieldGoalsMade", "threshold": 1, "period": 1}})
     assert scope.lines == (Line(measure="threePointFieldGoalsMade", op=">=", value=1, period=Period(number=1)),)
     assert scope.to_slots()["period_condition"] == {"stat": "threePointFieldGoalsMade", "threshold": 1, "op": ">=", "period": 1}
-    exact = Scope.from_slots({"period_condition": {"stat": "points", "threshold": 10, "op": "=", "half": 1}})
+    exact = slots_scope({"period_condition": {"stat": "points", "threshold": 10, "op": "=", "half": 1}})
     assert exact.lines == (Line(measure="points", op="=", value=10, period=Period(number=1, half=True)),)
-    assert Scope.from_slots(exact.to_slots()) == exact
+    assert slots_scope(exact.to_slots()) == exact
     for bad in (
         {"stat": "points", "threshold": 1},
         {"stat": "points", "threshold": 1, "period": 1, "half": 1},
@@ -279,4 +276,4 @@ def test_a_period_condition_round_trips_through_the_slot_door() -> None:
         {"stat": "points", "period": 1},
     ):
         with pytest.raises(ScopeError):
-            Scope.from_slots({"period_condition": bad})
+            slots_scope({"period_condition": bad})

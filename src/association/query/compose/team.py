@@ -52,7 +52,7 @@ narrowed reader is one season type at a time.
 from __future__ import annotations
 
 from collections.abc import Sequence
-from dataclasses import dataclass, field, fields, replace
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 import duckdb
@@ -65,7 +65,20 @@ from association.query.entities import Entity, resolved_team
 from association.query.lines import threshold_of
 from association.query.measure import won
 from association.query.player_relation import ResolvedSpan, span_of, whole_span
-from association.query.reading import DEFAULT_STREAK_LIMIT, Scope, _clamp_limit
+from association.query.reading import (  # noqa: F401 - the folded filters' field types (reading.Filtered), which the docs build resolves in the module of each query inheriting them
+    DEFAULT_STREAK_LIMIT,
+    Companion,
+    Cuts,
+    Filtered,
+    Line,
+    Measure,
+    Period,
+    Span,
+    Split,
+    Subject,
+    Window,
+    _clamp_limit,
+)
 from association.query.result import Refusal, Unanswered
 from association.query.team_games import TeamNarrowed
 from association.query.team_games import aggregate_sql as team_aggregate_sql
@@ -182,8 +195,8 @@ compiler reads it - and FG%).
 """
 
 
-@dataclass(kw_only=True)
-class TeamQuery:
+@dataclass(frozen=True, kw_only=True)
+class TeamQuery(Filtered):
     """A point over the team-games relation, for a team as the subject - the
     team counterpart of :class:`~association.query.compose.core.Query`, kept
     as its own dataclass rather than a third mode of it: the two relations
@@ -192,18 +205,25 @@ class TeamQuery:
     .. versionadded:: 4.4.0
 
     .. versionchanged:: 5.0.0
-       Holds the typed :class:`~association.query.reading.Scope` as ``scope``
+       Holds the typed :class:`~association.query.reading.Filtered` as ``scope``
        in place of the ``slots`` dict, and every field is keyword-only.
 
     .. versionchanged:: 5.0.0
        ``shape``: a ``"rows"`` point is the team's game log (ROADMAP plan
        item 6, step (g)).
+
+    .. versionchanged:: 6.0.0
+       The filters are the query's own fields
+       (:class:`~association.query.reading.Filtered`), where they stood on
+       ``scope`` until Phase 3, step 4, slice (b); the measure the team
+       compiler reads is :attr:`metric` (``measure``, which the filters'
+       typed :class:`~association.query.reading.Measure` names now), and the
+       query is frozen.
     """
 
-    #: The question's scoping, forwarded whole to the relation.
-    scope: Scope
-    #: A key of :data:`GAME_MEASURES` and/or :data:`SEASON_MEASURES`.
-    measure: str = "points"
+    #: A key of :data:`GAME_MEASURES` and/or :data:`SEASON_MEASURES`: what
+    #: the team compiler sums (``measure`` until Phase 3, step 4, slice (b)).
+    metric: str = "points"
     #: ``"total"`` (the only aggregate this module computes today) or
     #: ``"record"`` (wins/losses, over the narrowed or season games).
     aggregate: str = "total"
@@ -232,8 +252,9 @@ class TeamQuery:
 
         .. versionadded:: 6.0.0
         """
-        out = {f.name: getattr(self, f.name) for f in fields(self)}
-        out["scope"] = self.scope.projected(split_by_presence=self.group == "presence")
+        out = self.scoped_record(split_by_presence=self.group == "presence")
+        # The team compiler's measure, recorded as the field it was.
+        out["measure"] = out.pop("metric")
         return out
 
 
@@ -303,7 +324,7 @@ class TeamResult:
     last_season: int | None = None
 
 
-def _team_narrowed(scope: Scope) -> bool:
+def _team_narrowed(scope: Filtered) -> bool:
     """Whether the question narrows the games at all - the team counterpart
     of ``player_stat``'s own ``_player_stat_reads_box_scores``: an opponent,
     a venue, a date, ``since``/``until``, a game of a series, a calendar
@@ -327,9 +348,9 @@ def _team_narrowed(scope: Scope) -> bool:
     return scope.window.order is not None or scope.window.count is not None
 
 
-def _resolved_team_subject(con: duckdb.DuckDBPyConnection, scope: Scope) -> Entity:
+def _resolved_team_subject(con: duckdb.DuckDBPyConnection, scope: Filtered) -> Entity:
     """The team a question names, or the refusal wrapped as :class:`~association.query.compose.core.Refused`."""
-    team_text = scope.subject.team
+    team_text = scope.who.team
     if team_text is None or not team_text.strip():
         raise Unsupported("no team named")
     season: int = scope.span.season if scope.span.season is not None else current_season()
@@ -368,17 +389,17 @@ def _team_season_note(con: duckdb.DuckDBPyConnection, team: Entity, season: int,
 def _compile_team_season(con: duckdb.DuckDBPyConnection, q: TeamQuery, team: Entity) -> TeamResult:
     """The unnarrowed reader: the season's own raw total, straight from
     ``team_season_stats`` - F127's shape."""
-    if q.measure not in SEASON_MEASURES:
-        raise Unsupported(f"no season total on record for {q.measure!r}")
-    season_type = q.scope.span.season_type or 2
-    season: int = q.scope.span.season if q.scope.span.season is not None else current_season()
-    column = SEASON_MEASURES[q.measure]
+    if q.metric not in SEASON_MEASURES:
+        raise Unsupported(f"no season total on record for {q.metric!r}")
+    season_type = q.span.season_type or 2
+    season: int = q.span.season if q.span.season is not None else current_season()
+    column = SEASON_MEASURES[q.metric]
     found = _season_total(con, team, season, season_type, column)
     if found is None:
         raise Refused(Refusal(kind="no_team_totals", facts={"team": team.name, "season": season}, shown={"team": team.name, "season": season}, under=()))
     value, games = found
     note = _team_season_note(con, team, season, column) if season_type == 2 else ""
-    return TeamResult(team=team, span=ResolvedSpan(season, season_type), measure=q.measure, aggregate=q.aggregate, value=value, games=games, from_season_line=True, note=note)
+    return TeamResult(team=team, span=ResolvedSpan(season, season_type), measure=q.metric, aggregate=q.aggregate, value=value, games=games, from_season_line=True, note=note)
 
 
 def _team_games_narrowed(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> tuple[TeamNarrowed, Entity, ResolvedSpan]:
@@ -389,8 +410,8 @@ def _team_games_narrowed(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> tuple[
     :func:`_resolved_team_subject`'s separate lookup), so the name and the
     span it is read against always come from the one call that settles both
     together - the same order every other team template keeps."""
-    scope = q.scope
-    # The shared steps read the slot dict until they take the Scope.
+    scope = q
+    # The shared steps read the slot dict until they take the typed filters.
     settled = scoped_team(con, scope, "no team named")
     if isinstance(settled, Unanswered):
         raise Refused(settled)
@@ -402,7 +423,7 @@ def _team_games_narrowed(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> tuple[
     return narrowed, team, span
 
 
-def _team_mixed(scope: Scope) -> bool:
+def _team_mixed(scope: Filtered) -> bool:
     """Whether a window read spans both season types: "last N games" naming
     no season type (``season_type_unstated``), with no date, career or game
     of a series fixing one - the same test the team log makes."""
@@ -426,7 +447,7 @@ def _compile_team_games_mixed(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> T
     from association.query.compose.say import mixed_where
     from association.query.reading import DEFAULT_GAME_LOG_LIMIT
 
-    scope = q.scope
+    scope = q
     # One season's window over both types: the span less its career (a
     # career has no single season to read both types within, refused below).
     settled = scoped_team(con, scope, "no team named", span=replace(scope.span, career=False))
@@ -444,9 +465,9 @@ def _compile_team_games_mixed(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> T
     value: float | None
     if not scores:
         value = None
-    elif q.measure == "points":
+    elif q.metric == "points":
         value = float(sum(own for own, _, _ in scores))
-    elif q.measure == "points_allowed":
+    elif q.metric == "points_allowed":
         value = float(sum(theirs for _, theirs, _ in scores))
     else:
         value = float(sum(own - theirs for own, theirs, _ in scores))
@@ -454,7 +475,7 @@ def _compile_team_games_mixed(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> T
     return TeamResult(
         team=team,
         span=span,
-        measure=q.measure,
+        measure=q.metric,
         aggregate=q.aggregate,
         value=value,
         games=len(rows),
@@ -475,17 +496,17 @@ def _compile_team_games_total(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> T
        Reads both season types for ``season_type_unstated``; one type alone
        before, so the sum disagreed with the log's own games.
     """
-    if q.measure not in GAME_MEASURES:
-        raise Unsupported(f"{q.measure!r} needs a box-score join the team relation does not have yet for a narrowed read")
-    if _team_mixed(q.scope):
-        if q.scope.span.since or q.scope.span.until or q.scope.cuts.situation or q.scope.period is not None:
+    if q.metric not in GAME_MEASURES:
+        raise Unsupported(f"{q.metric!r} needs a box-score join the team relation does not have yet for a narrowed read")
+    if _team_mixed(q):
+        if q.span.since or q.span.until or q.cuts.situation or q.period is not None:
             # The both-types read is a plain window (an opponent and a venue
             # at most, as the log's is); a range of seasons or a calendar
             # would be dropped from it silently, so it is refused instead.
             raise Unsupported("a window over both season types is read for a plain 'last N games' only")
         return _compile_team_games_mixed(con, q)
     narrowed, team, span = _team_games_narrowed(con, q)
-    column = GAME_MEASURES[q.measure]
+    column = GAME_MEASURES[q.metric]
     selects = [f"SUM({column}) AS total", "COUNT(*) AS games", "SUM(tg.won::INT) AS wins", "SUM((NOT tg.won)::INT) AS losses"]
     sql, params = team_aggregate_sql(narrowed, selects)
     row = con.execute(sql, params).fetchone()
@@ -493,7 +514,7 @@ def _compile_team_games_total(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> T
     return TeamResult(
         team=team,
         span=span,
-        measure=q.measure,
+        measure=q.metric,
         aggregate=q.aggregate,
         value=total,
         games=int(games or 0),
@@ -526,9 +547,9 @@ def compile_team_run(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> TeamCompil
 
     .. versionadded:: 5.0.0
     """
-    scope = q.scope
+    scope = q
     team: Entity | None
-    if scope.subject.team is not None:
+    if scope.who.team is not None:
         narrowed, team, span = _team_games_narrowed(con, q)
         whole_span(narrowed)
         limit, best = 3, False
@@ -570,7 +591,7 @@ def _compile_team_run(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> TeamResul
     return TeamResult(
         team=compiled.team,
         span=compiled.span,
-        measure=q.measure,
+        measure=q.metric,
         aggregate=q.aggregate,
         value=None,
         games=games,
@@ -759,7 +780,7 @@ def _team_coverage_tables(q: TeamQuery) -> tuple[str, ...]:
         # A teammate's presence is read off the box scores (his row, or
         # none), so the split reaches only as far as they do.
         return _PLAYER_GAME_TABLES
-    return ("games",) if _team_narrowed(q.scope) else ("team_season_stats",)
+    return ("games",) if _team_narrowed(q) else ("team_season_stats",)
 
 
 def team_coverage_refusal(q: TeamQuery) -> Refusal | None:
@@ -774,10 +795,10 @@ def team_coverage_refusal(q: TeamQuery) -> Refusal | None:
     """
     # No season named means the current one, which every table covers - the
     # same guard check_coverage applies before charging a floor.
-    season = q.scope.span.season
+    season = q.span.season
     if season is None:
         return None
-    season_type = q.scope.span.season_type or 2
+    season_type = q.span.season_type or 2
     return floor_refusal(_team_coverage_tables(q), season, season_type, shown={"season": season}, under=())
 
 
@@ -826,7 +847,7 @@ def run_team(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> TeamResult:
         # The with/without split is compose.presence's reader; reaching here
         # means a narrowing its words do not state, which no sum answers.
         raise Unsupported("a with/without split narrowed beyond its own words has no reader")
-    if threshold_of(q.scope) is not None:
+    if threshold_of(q) is not None:
         raise Unsupported("a threshold names a record above and below a line, not a total - this module has no reader for one")
     if q.shape in ("rows", "grouped"):
         # The team's games listed, or split, are compose.logs' and
@@ -837,10 +858,10 @@ def run_team(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> TeamResult:
     if refusal is not None:
         raise Refused(refusal)
     try:
-        if _team_narrowed(q.scope):
+        if _team_narrowed(q):
             result = _compile_team_games_total(con, q)
         else:
-            team = _resolved_team_subject(con, q.scope)
+            team = _resolved_team_subject(con, q)
             result = _compile_team_season(con, q, team)
     except Unsupported as exc:
         raise Unsupported(f"relation: {exc}") from exc

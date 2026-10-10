@@ -41,7 +41,18 @@ from association.query.measure import keyed
 from association.query.notes import Note
 from association.query.player_games import Narrowed, games_subquery
 from association.query.player_relation import RELATION_SCOPING, ResolvedSpan, no_narrowed_games, scoped_games, scoped_player, settle_ordinal_season, span_of
-from association.query.reading import Scope, Unsupported, cell_set
+from association.query.reading import (  # noqa: F401 - the folded filters' field types (reading.Filtered), which the docs build resolves in the module of each query inheriting them
+    Companion,
+    Cuts,
+    Filtered,
+    Line,
+    Measure,
+    Period,
+    Split,
+    Subject,
+    Unsupported,
+    cell_set,
+)
 from association.query.result import Chart, Decided, Narrowing, OnDate, Part, Refusal, Result, Scalar, ShotValue, Span, Unanswered, Window
 from association.query.season_line import Statement, season_redirect, seasons_played
 from association.query.season_text import SEASON_TYPE_NAMES, season_phrase
@@ -50,8 +61,8 @@ from association.query.shotchart import DERIVED_SHOT_VALUES, SHOT_VALUE_SQL, UNS
 from .core import values_of
 
 
-@dataclass(frozen=True)
-class ShotQuery:
+@dataclass(frozen=True, kw_only=True)
+class ShotQuery(Filtered):
     """A point on the shot relation: the question's scoping, read whole by
     the relation's reader, and the shape - the shots drawn (``chart``) or
     their average distance (``scalar``). ``subject`` is whose shots they
@@ -61,8 +72,6 @@ class ShotQuery:
     .. versionadded:: 5.0.0
     """
 
-    #: The question's scoping, read whole by the relation's reader.
-    scope: Scope
     shape: Literal["chart", "scalar"] = "chart"
     subject: Literal["player"] = "player"
 
@@ -77,7 +86,7 @@ mean the same shots.
 """
 
 
-def shot_value_of(scope: Scope) -> int | None:
+def shot_value_of(scope: Filtered) -> int | None:
     """Which shots a question meant: the measure's ``shot_value`` (1, 2 or
     3, the Reading's door refuses any other), or the one its key names
     (:data:`SHOT_VALUE_FROM_STAT`), or every shot (``None``).
@@ -103,7 +112,7 @@ def shot_value_of(scope: Scope) -> int | None:
 # (`_shots_narrowed_rows` below). There is no narrowing written here.
 
 
-def _shots_windowed(scope: Scope) -> bool:
+def _shots_windowed(scope: Filtered) -> bool:
     """Whether ``order``/``limit`` narrows this question to a window of
     games - the reading ``scoped_games``'s own window applies inside the
     relation. A ``limit`` alone still means "his last N games": the reader
@@ -112,7 +121,7 @@ def _shots_windowed(scope: Scope) -> bool:
     return scope.window.order is not None or scope.window.count is not None
 
 
-def _shots_other_narrowing(scope: Scope, date: str | None, measures: list[MeasureFilter]) -> bool:
+def _shots_other_narrowing(scope: Filtered, date: str | None, measures: list[MeasureFilter]) -> bool:
     """Whether this question narrows which games a shot read draws from by
     anything BESIDES a window: any cell of the player relation
     (``RELATION_SCOPING``) but the window, the span and the ordinal season
@@ -125,7 +134,7 @@ def _shots_other_narrowing(scope: Scope, date: str | None, measures: list[Measur
     return bool(any(cell_set(scope, cell) for cell in cells) or scope.span.since is not None or scope.span.until is not None or date or measures)
 
 
-def _shots_has_narrowing(scope: Scope, date: str | None, measures: list[MeasureFilter]) -> bool:
+def _shots_has_narrowing(scope: Filtered, date: str | None, measures: list[MeasureFilter]) -> bool:
     """Whether this question needs its games from the relation at all, rather
     than straight off ``shot_chart`` by season alone."""
     return _shots_other_narrowing(scope, date, measures) or _shots_windowed(scope)
@@ -214,7 +223,7 @@ def _shot_distance_unseparable(player: Entity, span: ResolvedSpan, shot_value: i
     return Refusal(kind="shot_distance_unseparable", facts=facts, shown={"player": player.name, "season": season, "shot_value": shot_value})
 
 
-def _shot_distance_games(con: duckdb.DuckDBPyConnection, player: Entity, span: ResolvedSpan, scope: Scope, measures: list[MeasureFilter]) -> tuple[list[str], Narrowing, Window | None] | Unanswered:
+def _shot_distance_games(con: duckdb.DuckDBPyConnection, player: Entity, span: ResolvedSpan, scope: Filtered, measures: list[MeasureFilter]) -> tuple[list[str], Narrowing, Window | None] | Unanswered:
     """The games a narrowed distance read is pinned to, with the narrowing
     as the answer names it: one game a window alone reached keeps its own
     words ("in his most recent game (2026-04-12)") - its day a cell and the
@@ -255,7 +264,7 @@ def read_shot_distance(con: duckdb.DuckDBPyConnection, q: ShotQuery) -> Result |
        its shape's row before asking (``compose.plan.cells_unhonored``,
        Phase 3, step 2's closing slice).
     """
-    scope = q.scope
+    scope = q
     if q.shape != "scalar":
         return None
     measures = measure_filters(scope)
@@ -338,7 +347,7 @@ class _ShotChartGames:
         return self.event_id is not None or self.event_ids is not None
 
 
-def _shot_chart_settle_player(con: duckdb.DuckDBPyConnection, name: str, scope: Scope) -> tuple[Entity, list[str], ResolvedSpan, bool] | Unanswered:
+def _shot_chart_settle_player(con: duckdb.DuckDBPyConnection, name: str, scope: Filtered) -> tuple[Entity, list[str], ResolvedSpan, bool] | Unanswered:
     """The player, the other names that also matched, the span, and whether
     the season was defaulted - ``scoped_player``'s order (the span first,
     since it narrows an ambiguous name; ``season_n`` the same way), with the
@@ -360,7 +369,7 @@ def _shot_chart_settle_player(con: duckdb.DuckDBPyConnection, name: str, scope: 
     return player, ambiguous, settled, seasons.defaulted
 
 
-def _shot_chart_games(con: duckdb.DuckDBPyConnection, player: Entity, span: ResolvedSpan, scope: Scope, measures: list[MeasureFilter]) -> _ShotChartGames | Unanswered:
+def _shot_chart_games(con: duckdb.DuckDBPyConnection, player: Entity, span: ResolvedSpan, scope: Filtered, measures: list[MeasureFilter]) -> _ShotChartGames | Unanswered:
     """The games a chart draws from: none pinned where nothing narrows the
     question, else the relation's own read (``scoped_games``,
     :func:`_shots_narrowed_rows`) - one game, or a set named by the span
@@ -561,10 +570,10 @@ def read_shot_chart(con: duckdb.DuckDBPyConnection, q: ShotQuery) -> Result | Un
        its shape's row before asking (``compose.plan.cells_unhonored``,
        Phase 3, step 2's closing slice).
     """
-    scope = q.scope
+    scope = q
     if q.shape != "chart":
         return None
-    name = scope.subject.player
+    name = scope.who.player
     if name is None or not name.strip():
         raise Unsupported("shot_chart needs a player name")
     measures = measure_filters(scope)

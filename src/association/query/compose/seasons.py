@@ -94,10 +94,10 @@ def player_line_reads(q: Query) -> bool:
     from association.query.point import default_point
 
     try:
-        own = default_point(PLAYER_LINE, q.scope)
+        own = default_point(PLAYER_LINE, q)
     except Unsupported:
         return False
-    named = stat_measure(q.scope.measure)
+    named = stat_measure(q.measure)
     return own.on == "player_seasons" and (q.measures == own.measures or (named is not None and q.measures == [named]))
 
 
@@ -125,7 +125,7 @@ def read_player_line(con: duckdb.DuckDBPyConnection, q: Query) -> Result | Unans
     """
     if not player_line_reads(q):
         return None
-    scope = q.scope
+    scope = q
     stat = spelled(scope.measure)
     if not (stat is not None and (stat in ADVANCED_STATS or stat in SHOOTING_STATS)):
         wanted_stats(scope)
@@ -301,10 +301,10 @@ def player_history_reads(q: Query) -> bool:
        its shape's row before asking (``compose.plan.cells_unhonored``,
        Phase 3, step 2's closing slice).
     """
-    stat = spelled(q.scope.measure)
+    stat = spelled(q.measure)
     if q.source != "seasons" or q.group != "season" or stat is None or stat not in HISTORY_COLUMNS:
         return False
-    return stat_measure(q.scope.measure) in (None, *q.measures[:1])
+    return stat_measure(q.measure) in (None, *q.measures[:1])
 
 
 def read_player_history(con: duckdb.DuckDBPyConnection, q: Query) -> Result | Unanswered | None:
@@ -329,7 +329,7 @@ def read_player_history(con: duckdb.DuckDBPyConnection, q: Query) -> Result | Un
     """
     if not player_history_reads(q):
         return None
-    scope = q.scope
+    scope = q
     player = history_subject(con, scope)
     if isinstance(player, Unanswered):
         return player
@@ -417,10 +417,10 @@ def read_player_compare(con: duckdb.DuckDBPyConnection, q: Query) -> Result | Un
     """
     if not player_compare_reads(q):
         return None
-    scope = q.scope
+    scope = q
     season = scope.span.season or current_season()
     resolved: list[Entity] = []
-    for name in scope.subject.players[:MAX_COMPARED_PLAYERS]:
+    for name in scope.who.players[:MAX_COMPARED_PLAYERS]:
         player = compared_player(con, name, season)
         if isinstance(player, Unanswered):
             return player

@@ -19,13 +19,14 @@ from typing import Any
 import duckdb
 import pytest
 from shapes import asked
+from slots import slots_scope
 
 from association.query.answer import Reply
 from association.query.calendar import parse_alignment, parse_situation
 from association.query.compose.plan import refusal_result
 from association.query.entities import names_of, players_of, teams_of
 from association.query.parse import _reading_from_route_refused, _reading_from_route_unsupported
-from association.query.reading import Reading, Scope
+from association.query.reading import Reading
 from association.query.subject import Subject, read_subject
 
 
@@ -33,7 +34,7 @@ def unanswerable(con: duckdb.DuckDBPyConnection, intent: str, slots: dict[str, A
     """A test's slot dict as a Reading - the typed scope, and the subject
     read from the question - and the first thing its words name that
     nothing reads, as the planner says it (or None)."""
-    reading = Reading(scope=Scope.from_slots(slots), asked=asked(intent), intent=intent, subject=read_subject(names_of(con), question, asked(intent), Scope.from_slots(dict(slots))))
+    reading = Reading(**(slots_scope(slots)).filters(), asked=asked(intent), intent=intent, subject=read_subject(names_of(con), question, asked(intent), slots_scope(dict(slots))))
     causes = _reading_from_route_unsupported(question, reading)
     return refusal_result(causes[0]) if causes else None
 
@@ -169,9 +170,9 @@ def test_a_player_set_against_another_is_the_second_of_two_players(con: duckdb.D
 
     for question in ("lebron vs kawhi head to head", "lebron vs kawhi record"):
         reading = parsed(question, ["lebron", "kawhi"])
-        assert reading.intent == "player_matchup" and reading.scope.subject.players == ("LeBron James", "Kawhi Leonard") and not reading.scope.cuts.opponent, question
+        assert reading.intent == "player_matchup" and reading.who.players == ("LeBron James", "Kawhi Leonard") and not reading.cuts.opponent, question
     team = parsed("lebron vs the hawks", ["lebron", "hawks"])
-    assert team.intent != "player_matchup" and team.scope.subject.player == "LeBron James" and team.scope.cuts.opponent == "Atlanta Hawks"
+    assert team.intent != "player_matchup" and team.who.player == "LeBron James" and team.cuts.opponent == "Atlanta Hawks"
 
 
 def test_a_teams_stat_no_period_splits_is_refused_and_a_rebuilt_one_is_not(con: duckdb.DuckDBPyConnection) -> None:

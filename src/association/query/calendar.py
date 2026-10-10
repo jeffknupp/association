@@ -33,7 +33,7 @@ from association.query import lexicon
 from association.query.season_text import MONTH_NAMES as _MONTH_NAMES
 
 if TYPE_CHECKING:
-    from association.query.reading import Scope
+    from association.query.reading import Filtered
 
 WEEKDAYS: tuple[str, ...] = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
 """ISO order, Monday first - ``EXTRACT(ISODOW ...)`` numbers them 1-7."""
@@ -299,7 +299,7 @@ def alignment_clause(narrowing: AlignmentNarrowing, opponent_team_id: str, seaso
     )
 
 
-def conference_named(scope: Scope) -> str | None:
+def conference_named(scope: Filtered) -> str | None:
     """The team slot (``team``, the cuts' ``opponent`` or one of ``teams``)
     that holds a conference or a division rather than a team
     (:data:`~association.query.lexicon.CONFERENCE_WORDS`: as the team a
@@ -319,5 +319,5 @@ def conference_named(scope: Scope) -> str | None:
     """
     # The one team, the opponent, then a list of two (the typed subject's
     # teams, read in the order the slots were: ``team``, ``opponent``, ``teams``).
-    listed = scope.subject.teams if scope.subject.team is None else ()
-    return next((c for c in (scope.subject.team, scope.cuts.opponent, *listed) if c and lexicon.CONFERENCE_WORDS.search(c)), None)
+    listed = scope.who.teams if scope.who.team is None else ()
+    return next((c for c in (scope.who.team, scope.cuts.opponent, *listed) if c and lexicon.CONFERENCE_WORDS.search(c)), None)

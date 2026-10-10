@@ -131,7 +131,7 @@ def _route(con: duckdb.DuckDBPyConnection, question: str, names: list[str] | Non
     last step went."""
     reading = read_route(names_of(con), question, names, stat)
     parser = tuple(decision for decision in reading.decisions if decision.stage == "parser")
-    return _Read(reading.asked, reading.scope, reading.subject, parser, reading.claims, reading=reading)
+    return _Read(reading.asked, reading, reading.subject, parser, reading.claims, reading=reading)
 
 
 def _read(con: duckdb.DuckDBPyConnection, question: str, names: list[str] | None = None, stat: str = "") -> Reading:
@@ -144,7 +144,7 @@ def test_the_parser_reads_a_question_into_a_reading(con: duckdb.DuckDBPyConnecti
     read, the window and the measure from the words, the child assigned."""
     r = _read(con, "How many 30+ point games did Jokic have this season?", names=["Jokic"], stat="points")
     assert r.intent == "threshold_count" and r.subject is not None and r.subject.kind == "player" and r.subject.players == ("Nikola Jokic",)
-    assert threshold_of(r.scope) == 30 and r.scope.measure is not None and r.scope.measure.as_typed == "points"
+    assert threshold_of(r) == 30 and r.measure is not None and r.measure.as_typed == "points"
     r = _read(con, "Lakers vs Celtics record this season", names=["Lakers", "Celtics"], stat="")
     assert r.intent == "head_to_head" and r.subject is not None and r.subject.kind == "teams"
     # A window over the two teams' meetings is still their meetings when a record is asked for; a log word is one team's games.
@@ -153,7 +153,7 @@ def test_the_parser_reads_a_question_into_a_reading(con: duckdb.DuckDBPyConnecti
     r = _read(con, "lakers game log vs celtics last 10", names=["lakers", "celtics"], stat="")
     assert r.subject is not None and r.subject.kind == "team"
     r = _read(con, "who were the top 10 in defensive netpoints / 100 possessions", names=[], stat="")
-    assert r.subject is not None and r.subject.kind == "everyone" and r.scope.measure is not None and r.scope.measure.as_typed == "netpoints_defense_per_100" and r.scope.window.count == 10
+    assert r.subject is not None and r.subject.kind == "everyone" and r.measure is not None and r.measure.as_typed == "netpoints_defense_per_100" and r.window.count == 10
     # A span no player or team has never becomes a subject.
     r = _read(con, "alperen sengun double-doubles vs southeast division career away", names=["alperen sengun", "southeast division"], stat="")
     assert r.subject is not None and r.subject.kind != "pair"
@@ -163,7 +163,7 @@ def test_the_parser_with_no_names_and_no_stat_still_reads_the_question(con: duck
     r = _read(con, "what was the sixers record when maxey scored 20+ points?")
     assert r.subject is not None and r.subject.kind == "team" and r.subject.teams == ("Philadelphia 76ers",)
     assert r.intent == "record_when"
-    assert threshold_of(r.scope) == 20
+    assert threshold_of(r) == 20
 
 
 def test_a_player_after_a_versus_word_reaches_the_route_as_a_condition(con: duckdb.DuckDBPyConnection) -> None:
@@ -177,18 +177,18 @@ def test_a_player_after_a_versus_word_reaches_the_route_as_a_condition(con: duck
     not a with/without split."""
     against = Companion(player="Jayson Tatum", side="opponent", predicate="played")
     high = _read(con, "most points by tyrese maxey vs tatum", ["tyrese maxey", "tatum"], "points")
-    assert high.intent == "player_stat" and high.scope.subject.player == "Tyrese Maxey" and high.scope.companions == (against,)
+    assert high.intent == "player_stat" and high.who.player == "Tyrese Maxey" and high.companions == (against,)
     assert high.point is not None and high.point.shape == "rows" and high.point.order == "measure" and high.point.direction == "desc"
     fewest = _read(con, "fewest points by tyrese maxey vs tatum", ["tyrese maxey", "tatum"], "points")
     assert fewest.point is not None and fewest.point.order == "measure" and fewest.point.direction == "asc"
     count = _read(con, "how many times did tyrese maxey score 30 vs tatum", ["tyrese maxey", "tatum"], "points")
-    assert count.intent == "threshold_count" and count.scope.companions == (against,) and threshold_of(count.scope) == 30
+    assert count.intent == "threshold_count" and count.companions == (against,) and threshold_of(count) == 30
     log = _read(con, "tyrese maxey game log vs tatum", ["tyrese maxey", "tatum"], "")
-    assert log.intent == "game_log" and log.scope.companions == (against,) and len(log.scope.subject.players) < 2
+    assert log.intent == "game_log" and log.companions == (against,) and len(log.who.players) < 2
     pair = _read(con, "tyrese maxey vs tatum", ["tyrese maxey", "tatum"], "")
-    assert pair.intent == "player_matchup" and pair.scope.companions == () and len(pair.scope.subject.players) == 2
+    assert pair.intent == "player_matchup" and pair.companions == () and len(pair.who.players) == 2
     narrowed = _read(con, "tyrese maxey points vs boston without embiid", ["tyrese maxey", "boston", "embiid"], "points")
-    assert narrowed.intent == "player_stat" and narrowed.scope.cuts.opponent == "Boston Celtics" and narrowed.scope.companions == (Companion(player="Joel Embiid", predicate="absent"),)
+    assert narrowed.intent == "player_stat" and narrowed.cuts.opponent == "Boston Celtics" and narrowed.companions == (Companion(player="Joel Embiid", predicate="absent"),)
 
 
 def test_a_player_against_a_team_is_never_a_matchup(con: duckdb.DuckDBPyConnection) -> None:
@@ -207,7 +207,7 @@ def test_a_player_against_a_team_is_never_a_matchup(con: duckdb.DuckDBPyConnecti
     ):
         r = _read(con, question, names)
         assert r.intent != "player_matchup" and r.subject is not None and r.subject.kind == "player", (question, names, r.intent)
-        assert r.scope.subject.player == "Tyrese Maxey" and r.scope.cuts.opponent == "Boston Celtics", (question, names, r.scope)
+        assert r.who.player == "Tyrese Maxey" and r.cuts.opponent == "Boston Celtics", (question, names, r)
     r = _read(con, "maxey vs embiid", ["maxey", "embiid"])
     assert (r.intent, r.subject.kind if r.subject else None) == ("player_matchup", "pair")
 
@@ -340,7 +340,7 @@ def _settled(con: duckdb.DuckDBPyConnection, question: str, names: list[str], st
     route = _route(con, question, names, stat)
     reading = route.reading
     assert reading is not None
-    return reading.intent, reading.scope.to_slots(split_by_presence=reading.intent == "with_without")
+    return reading.intent, reading.to_slots(split_by_presence=reading.intent == "with_without")
 
 
 def _with_the_warriors(con: duckdb.DuckDBPyConnection) -> None:
@@ -410,7 +410,7 @@ def test_the_subjects_own_split_still_reads_beside_a_teammates_role(con: duckdb.
     assert route.intent == "team_quarter_points" and "split" not in route.slots
     reading = route.reading
     assert reading is not None
-    assert [c.predicate for c in reading.scope.companions] == ["started"]
+    assert [c.predicate for c in reading.companions] == ["started"]
     planned = plan_point(reading)
     assert planned.query is None and planned.declined is not None and "conditions" in planned.declined, planned
 
@@ -576,7 +576,7 @@ def test_a_typographic_apostrophe_reads_as_a_straight_one(con: duckdb.DuckDBPyCo
     assert reading.subject is not None and (reading.subject.kind, reading.subject.players, reading.misread) == ("player", ("D'Angelo Russell",), ())
     # A denial is one: typed with U+2019, "doesn't play" was his games played.
     denied = _read(con, f"maxey points when embiid doesn{apostrophe}t play", ["maxey", "embiid"], "points")
-    assert denied.scope == _read(con, "maxey points when embiid doesn't play", ["maxey", "embiid"], "points").scope
+    assert denied.filters() == _read(con, "maxey points when embiid doesn't play", ["maxey", "embiid"], "points").filters()
     assert denied.subject is not None and [c.predicate for c in denied.subject.conditions] == ["absent"]
 
 
@@ -663,13 +663,13 @@ def test_a_period_used_as_a_condition_is_read_into_the_scope_and_off_the_period_
     from association.query.reading import Line, Period
 
     def in_period(route: Routed) -> Line | None:
-        lines = [line for line in route.scope.lines if line.period is not None]
+        lines = [line for line in route.lines if line.period is not None]
         return lines[0] if lines else None
 
     route = _route(con, "tyrese maxey three points made per game after making one three in first quarter", ["tyrese maxey"], "threePointFieldGoalsMade")
     assert route.intent == "player_stat"
     assert in_period(route) == Line(measure="threePointFieldGoalsMade", op="=", value=1, period=Period(number=1), as_typed="after making one three in first quarter")
-    assert route.scope.period is None and threshold_of(route.scope) is None, "the condition's number and period are the condition's, not the route's"
+    assert route.period is None and threshold_of(route.scope) is None, "the condition's number and period are the condition's, not the route's"
     at_least = _route(con, "tyrese maxey three points made per game after making at least one three in first quarter", ["tyrese maxey"], "threePointFieldGoalsMade")
     assert in_period(at_least) == Line(measure="threePointFieldGoalsMade", op=">=", value=1, period=Period(number=1), as_typed="after making at least one three in first quarter")
     log = _route(con, "tyrese maxey game log in games where he scored 10+ points in the first half", ["tyrese maxey"], "points")
@@ -720,7 +720,7 @@ def test_a_quarters_plus_minus_keeps_its_stat_and_is_refused_for_it(con: duckdb.
     route = _route(con, question, named, "")
     reading = route.reading
     assert reading is not None
-    assert reading.intent == intent and reading.scope.measure is not None and reading.scope.measure.as_typed == "plus_minus"
+    assert reading.intent == intent and reading.measure is not None and reading.measure.as_typed == "plus_minus"
     planned = plan_point(reading)
     if intent == "period_split":
         assert reading.point_refusal is not None and reading.point_refusal.kind == "no_period_stat"

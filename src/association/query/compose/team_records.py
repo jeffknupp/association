@@ -102,7 +102,7 @@ def _team_record_teams(con: duckdb.DuckDBPyConnection, scope: Any) -> tuple[Enti
     """The team a record is for and the opponent it is against, if any - or
     the clarifying question one of the names needs. "celtics vs bulls
     record" can land both teams in ``teams``; the first is the subject."""
-    team_text, listed = scope.subject.teams[0] if scope.subject.teams else None, list(scope.subject.teams[1:])
+    team_text, listed = scope.who.teams[0] if scope.who.teams else None, list(scope.who.teams[1:])
     team = resolved_team(con, team_text, season=slot_season(scope))
     if isinstance(team, Unanswered):
         return team
@@ -142,7 +142,7 @@ def read_team_record(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> Result | U
     """
     from association.query.calendar import conference_named
 
-    scope = q.scope
+    scope = q
     refused = coverage_refusal(PointShape("team_games", "scalar", "record"), scope)
     if refused is not None:
         return refused

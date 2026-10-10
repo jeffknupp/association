@@ -62,7 +62,7 @@ from association.query.player_relation import ResolvedSpan, scoped_player, span_
 # count cannot fetch more. It was a cap of its own, 100, for the retired
 # agent's model-supplied ``limit``; with the agent gone the ranking reader's
 # clamped count (``compose.rankings``) is the only one that reaches here.
-from association.query.reading import MAX_LIMIT, Scope, Unsupported
+from association.query.reading import MAX_LIMIT, Filtered, Unsupported
 from association.query.result import Grouped, Unanswered
 
 SEASON_LINES = Availability("player_season_stats_deduped")
@@ -169,7 +169,7 @@ class Statement:
     params: list[Any]
 
 
-def line_subject(con: duckdb.DuckDBPyConnection, scope: Scope) -> tuple[Entity, ResolvedSpan] | Unanswered:
+def line_subject(con: duckdb.DuckDBPyConnection, scope: Filtered) -> tuple[Entity, ResolvedSpan] | Unanswered:
     """The player and span an unnarrowed ``player_stat`` reads the season
     line over - the span first, since it is what narrows an ambiguous name
     (:func:`~association.query.player_relation.scoped_player`) - or the
@@ -181,7 +181,7 @@ def line_subject(con: duckdb.DuckDBPyConnection, scope: Scope) -> tuple[Entity, 
     return scoped_player(con, scope, "player_stat needs a player name", table="player_season_stats_deduped", available=SEASON_LINES)
 
 
-def history_through(scope: Scope) -> int:
+def history_through(scope: Filtered) -> int:
     """The last season a history reads: the one named, or the current one.
     A named season anchors the range's END rather than replacing it, so
     "3pt% over the 4 seasons through 2024" still spans four rows.
@@ -191,7 +191,7 @@ def history_through(scope: Scope) -> int:
     return scope.span.season or current_season()
 
 
-def history_subject(con: duckdb.DuckDBPyConnection, scope: Scope) -> Entity | Unanswered:
+def history_subject(con: duckdb.DuckDBPyConnection, scope: Filtered) -> Entity | Unanswered:
     """The player a history is about, narrowed over every season the
     history could read, not the last N: the read takes each player's last
     seasons up to :func:`history_through` wherever they fall, so a player
@@ -203,7 +203,7 @@ def history_subject(con: duckdb.DuckDBPyConnection, scope: Scope) -> Entity | Un
     .. versionadded:: 5.0.0
        ``templates.players._player_history_subject`` was this.
     """
-    return resolved_player(con, scope.subject.player, "player_history needs a player name", available=SEASON_LINES, through=history_through(scope))
+    return resolved_player(con, scope.who.player, "player_history needs a player name", available=SEASON_LINES, through=history_through(scope))
 
 
 def compared_player(con: duckdb.DuckDBPyConnection, name: str, season: int) -> Entity | Unanswered:
@@ -327,7 +327,7 @@ def advanced_statement(athlete_id: str, span: ResolvedSpan, spec: AdvancedStat) 
     return Statement(f"SELECT {selects} FROM player_season_advanced_stats WHERE athlete_id = ? AND season_type = ? AND {where}", [athlete_id, span.season_type, *params])
 
 
-def history_seasons(scope: Scope) -> int | None:
+def history_seasons(scope: Filtered) -> int | None:
     """How many seasons a history reads: ``None`` for a career - every
     season, however many: not the default four, and not a count the model
     put in ``limit``, which the router asks it for on this intent whether or
@@ -1264,7 +1264,7 @@ HISTORY_COLUMNS: dict[str, tuple[str, list[tuple[str, str, str]]]] = {
 }
 
 
-def wanted_stats(scope: Scope, default: tuple[str, ...] = STAT_LINE) -> list[str]:
+def wanted_stats(scope: Filtered, default: tuple[str, ...] = STAT_LINE) -> list[str]:
     """The stats to report: the one named, or ``default`` if none was.
 
     A stat that was NAMED but is not supported must not fall back to the

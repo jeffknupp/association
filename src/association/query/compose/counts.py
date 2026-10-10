@@ -52,7 +52,7 @@ def _threshold_count_is_own_point(q: Query, column: str) -> bool:
     that threshold instead, which the count reads as the line), for one
     player or grouped by player over the league - nothing the question's
     words added."""
-    threshold = threshold_of(q.scope)
+    threshold = threshold_of(q)
     counted = [(column, ">=", threshold)] if threshold is not None else []
     if q.predicates not in (counted, []) or q.position:
         return False
@@ -111,7 +111,7 @@ def read_threshold_count(con: duckdb.DuckDBPyConnection, q: Query) -> Result | U
        its shape's row before asking (``compose.plan.cells_unhonored``,
        Phase 3, step 2's closing slice).
     """
-    scope = q.scope
+    scope = q
     try:
         # The count's column and threshold, read the one way its default
         # point reads them: a below/above phrase may be the whole line, with

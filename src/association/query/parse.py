@@ -65,12 +65,13 @@ from association.query.reading import (
     Claim,
     Companion,
     Cuts,
+    Filtered,
     LeftOut,
     Line,
+    Measure,
     PointRefused,
     PointShape,
     Reading,
-    Scope,
     Unsupported,
     Window,
     asked_label,
@@ -368,6 +369,21 @@ def _slots_from_names(index: names.NameIndex, names: list[str], stat: str) -> di
     return slots
 
 
+def _model_reading(slots: dict[str, Any]) -> Reading:
+    """The model's spans as a reading of the words the subject reading
+    starts from (:func:`~association.query.subject.read_subject`): the
+    players and the team it copied (:meth:`~association.query.reading.Subject.from_slots`),
+    a second team as the opponent, its stat as the measure - nothing more,
+    since the model names nothing else."""
+    opponent = slots.get("opponent")
+    stat = slots.get("stat")
+    return Reading(
+        who=ReadSubject.from_slots({key: slots[key] for key in ("player", "players", "team") if key in slots}),
+        cuts=Cuts(opponent=opponent if isinstance(opponent, str) and opponent.strip() else None),
+        measure=Measure.from_slots({"stat": stat}) if isinstance(stat, str) and stat.strip() else None,
+    )
+
+
 def _two_teams(subject: Subject, question: str, slots: dict[str, Any]) -> Subject:
     """Two teams meeting (ISSUES.md #235): a team subject set against a
     second team, no player named, and a meeting word between them - the
@@ -401,7 +417,7 @@ def _read_route_names(subject: Subject, slots: dict[str, Any]) -> tuple[ReadSubj
        words themselves (:mod:`association.query.grammar`).
     """
     if not (subject.players or subject.teams or subject.opponent or subject.own_team or subject.companions):
-        model = Scope.from_slots({key: slots[key] for key in ("player", "players", "team") if key in slots}).subject
+        model = ReadSubject.from_slots({key: slots[key] for key in ("player", "players", "team") if key in slots})
         opponent = slots.get("opponent")
         return replace(model, kind=subject.kind, position=subject.position), opponent if isinstance(opponent, str) and opponent else None
     players = _read_route_players(subject, slots)
@@ -548,7 +564,7 @@ def read_route(index: names.NameIndex, question: str, names: list[str] | None = 
     # THE reading of who the question is about: everything after this
     # settles it (subject.settle_subject), nothing reads the names again -
     # not even to ask which words it read (its claims are its own, below).
-    read = read_subject(index, question, None, Scope.from_slots(slots))
+    read = read_subject(index, question, None, _model_reading(slots))
     subject = _two_teams(read, question, slots)
     # A quarter or half used as a condition on which games count is read
     # here and its words blanked out of the question the grammar and the
@@ -577,7 +593,7 @@ def read_route(index: names.NameIndex, question: str, names: list[str] | None = 
     parent_claims = read_by(question, "intent", lambda probed: parent_asked(probed, _two_teams(read, probed, slots).kind, beside))
     settled_ask, decisions, words, child_claims = _read_route_staged(question, stat or None, parent, read, who, opponent)
     final = settled_ask.asked
-    scope, tagger_claims = _tagged(question, settled_ask, read.conditions, lines=period_lines, model_stat=stat or None) if not settled_ask.coach else (Scope(), ())
+    scope, tagger_claims = _tagged(question, settled_ask, read.conditions, lines=period_lines, model_stat=stat or None) if not settled_ask.coach else (Reading(), ())
     # The one reading, settled under the key the words end with: what the
     # parser's last step and everything after it answer from.
     settled = settle_subject(read, final, parent=parent, words=words)
@@ -649,7 +665,7 @@ def _tagged(
     side: str | None = None,
     shot_value: int | None = None,
     fields: tuple[str, ...] = (),
-) -> tuple[Scope, tuple[Claim, ...]]:
+) -> tuple[Reading, tuple[Claim, ...]]:
     """The taggers, each the one reader of its family, over the key and the
     names the grammar's rules settled (``settled``), in the order each reads
     what the ones before it wrote: the split (the cuts tagger reads it), the
@@ -685,7 +701,7 @@ def _tagged(
     window_context = WindowContext(asked=asked, boolean_stat=measure.measure is not None and measure.measure.key in BOOLEAN_KEYS)
     window = read_window(question, window_context)
     span = read_span(question, _tagged_span_context(settled, question, window=window.window, cuts=cuts))
-    scope = Scope(subject=settled.subject, split=split.split, lines=(*lines, *read.lines), measure=measure.measure, period=period.period, cuts=cuts.cuts, window=window.window, span=span.span)
+    scope = Reading(who=settled.subject, split=split.split, lines=(*lines, *read.lines), measure=measure.measure, period=period.period, cuts=cuts.cuts, window=window.window, span=span.span)
     # Each tagger's claims cut to the words it could not do without, asked
     # of the tagger itself (span.needed), with the context its own words
     # give it read again from the same words (the measure the words name,
@@ -776,7 +792,7 @@ def _reading(
     index: names.NameIndex,
     question: str,
     asked_key: PointShape | None,
-    scope: Scope,
+    scope: Filtered,
     subject: Subject,
     *,
     decisions: tuple[Decision, ...] = (),
@@ -802,7 +818,7 @@ def _reading(
     # where it reads - never found by reading it again.
     found = [*claims, *subject_claims(index.teams, question, applied.scope)]
     reading = Reading(
-        scope=applied.scope,
+        **applied.scope.filters(),
         asked=applied.asked,
         intent=asked_label(applied.asked),
         subject=subject,
@@ -854,7 +870,7 @@ def _reading_from_route_point(reading: Reading) -> tuple[Reading | None, str | N
 _READING_FROM_ROUTE_NAME_KEYS = ("player", "players", "team", "teams", "opponent", "own_team", "with_player", "without")
 
 
-def _reading_from_route_names(scope: Scope, subject: Subject, asked: PointShape | None) -> tuple[str, ...]:
+def _reading_from_route_names(scope: Filtered, subject: Subject, asked: PointShape | None) -> tuple[str, ...]:
     """Every name the reading settled on - the scope's and the subject's, as
     the reading's record holds them (``stages._reading_record``) - whose
     words no reader has to claim (:func:`~association.query.lexicon.content_words`)."""
@@ -943,7 +959,7 @@ def _reading_from_route_refused(players: names.PlayerIndex, teams: names.TeamInd
         return Cause(kind="championship", facts={"intent": reading.intent})
     if reading.asked not in TEAM_ONLY_ASKS:
         return None
-    player = player_named_on_a_team_only_question(players, teams, question, reading.scope.to_slots())
+    player = player_named_on_a_team_only_question(players, teams, question, reading.to_slots())
     return Cause(kind="no_player_reading", facts={"player": player, "intent": reading.intent}) if player is not None else None
 
 
@@ -978,7 +994,7 @@ def _reading_from_route_unsupported(question: str, reading: Reading) -> tuple[Ca
 
 def _unsupported_playoff_round(reading: Reading) -> Cause | None:
     """A named round: the games carry no round or series label (ISSUES #10)."""
-    playoff_round = reading.scope.cuts.round
+    playoff_round = reading.cuts.round
     if not isinstance(playoff_round, str) or not playoff_round.strip():
         return None
     return Cause(kind="playoff_round", facts={"intent": reading.intent, "round": playoff_round})
@@ -993,7 +1009,7 @@ def _unsupported_situation(reading: Reading) -> Cause | None:
     take ("the Central Division these days" - the words are right and only
     the phrasing is not, a different sentence), or anything else the games
     are not read by (``reads_as``: ``age``, ``alignment``, ``other``)."""
-    situation = reading.scope.cuts.situation
+    situation = reading.cuts.situation
     if situation is None or situation.read:
         return None
     reads_as = "age" if lexicon.AGE_WORDS.search(situation.text) else "alignment" if lexicon.CONFERENCE_OR_DIVISION.search(situation.text) else "other"
@@ -1007,7 +1023,7 @@ def _unsupported_period_stat(reading: Reading) -> Cause | None:
     carries no minutes, plus-minus or advanced rate per quarter; a field
     goal, 3-point or free throw percentage IS read (``PERIOD_RATE_STATS``).
     The period and whether it is a half are the sentence's."""
-    scope, intent = reading.scope, reading.intent
+    scope, intent = reading, reading.intent
     asked = reading.asked
     measure = scope.measure
     if asked not in (PERIOD_LOG, PERIOD_RANKING) or measure is None or measure.as_typed is None or measure.as_typed in ("pts", "all"):
@@ -1028,7 +1044,7 @@ def _unsupported_period_as_condition(question: str, reading: Reading) -> Cause |
     it cannot read is kept off the period shapes
     (``lexicon.PERIOD_AS_CONDITION``), and a period read of it would answer
     his first-quarter threes, fluently and wrongly."""
-    if any(line.period is not None for line in reading.scope.lines) or not (lexicon.PERIOD_AS_CONDITION.search(question) and lexicon.PERIOD_WORD.search(question)):
+    if any(line.period is not None for line in reading.lines) or not (lexicon.PERIOD_AS_CONDITION.search(question) and lexicon.PERIOD_WORD.search(question)):
         return None
     return Cause(kind="period_as_condition", facts={"intent": reading.intent})
 
@@ -1038,7 +1054,7 @@ def _unsupported_team_period_stat(reading: Reading) -> Cause | None:
     points) nor the period's rebuilt line
     (:data:`~association.query.measures.TEAM_PERIOD_COLUMNS`) holds:
     minutes, plus-minus, points in the paint."""
-    measure, intent = reading.scope.measure, reading.intent
+    measure, intent = reading.measure, reading.intent
     if reading.asked != TEAM_PERIOD_TOTAL or measure is None or measure.as_typed is None or measure.as_typed in ("points", "pts"):
         return None
     key = measure.key if measure.whose == "own" else None
@@ -1062,7 +1078,7 @@ def _unsupported_team_boolean_count(reading: Reading) -> Cause | None:
     triple_double``, and the ranking's decline would name the wrong cause
     ("no ranking reads triple_double") - one player's triple-doubles ARE
     counted; what is not read is the team's aggregate of them."""
-    scope, subject = reading.scope, reading.subject
+    scope, subject = reading, reading.subject
     measure = scope.measure
     if (
         reading.asked != PLAYER_RANKING
@@ -1070,7 +1086,7 @@ def _unsupported_team_boolean_count(reading: Reading) -> Cause | None:
         or measure.key not in ("triple_double", "double_double")
         or subject is None
         or subject.kind not in ("team", "team_players")
-        or scope.subject.team is None
+        or scope.who.team is None
     ):
         return None
     return Cause(kind="team_boolean_count", facts={"intent": reading.intent, "stat": measure.as_typed})
@@ -1085,8 +1101,8 @@ def _reading_from_route_left_out(players: names.PlayerIndex, question: str, read
     the answering loop re-read the question for it."""
     if reading.asked != NETPOINTS_FINGERPRINT:
         return None
-    scope = reading.scope
-    held = list(scope.subject.players)
+    scope = reading
+    held = list(scope.who.players)
     return compared_but_unmatched(players, question, held)
 
 

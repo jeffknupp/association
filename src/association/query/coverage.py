@@ -32,7 +32,7 @@ from association.query.measure import keyed
 from association.query.measures import resolve_metric
 from association.query.metrics import LEADERBOARD_METRICS
 from association.query.notes import note
-from association.query.reading import PointShape, Scope
+from association.query.reading import Filtered, PointShape
 from association.query.result import Refusal
 from association.query.team_metrics import TEAM_METRICS, resolve_team_metric
 
@@ -56,7 +56,7 @@ _PLAYER_COUNT_SOURCES = ("player_game_log", "player_box_stats", "player_season_s
 _ADVANCED_STAT_NAMES = frozenset({"ts_pct", "efg_pct", "usage_pct", "game_score"})
 
 
-def _player_line_tables(scope: Scope) -> tuple[str, ...]:
+def _player_line_tables(scope: Filtered) -> tuple[str, ...]:
     """One player's unnarrowed line: the season line, or - for a computed
     stat (true shooting, effective FG%, usage, game score) - the advanced
     table alone, which reaches back only to 1994 where the season line
@@ -66,14 +66,14 @@ def _player_line_tables(scope: Scope) -> tuple[str, ...]:
     return ("player_season_advanced_stats",) if keyed(scope.measure) in _ADVANCED_STAT_NAMES else ("player_season_stats_deduped",)
 
 
-def _player_games_line_tables(scope: Scope) -> tuple[str, ...]:
+def _player_games_line_tables(scope: Filtered) -> tuple[str, ...]:
     """One player's line over his narrowed games: the box scores, or the
     advanced table for a computed stat (the same floor year, named for the
     stat)."""
     return ("player_season_advanced_stats",) if keyed(scope.measure) in _ADVANCED_STAT_NAMES else _PLAYER_BOX_SOURCES
 
 
-def _metric_tables(scope: Scope) -> tuple[str, ...]:
+def _metric_tables(scope: Filtered) -> tuple[str, ...]:
     """The table the asked-for leaderboard metric is ranked from; nothing
     for a metric the ranking's reader refuses with a better message than a
     coverage floor could."""
@@ -82,15 +82,15 @@ def _metric_tables(scope: Scope) -> tuple[str, ...]:
     return (spec.table,) if spec else ()
 
 
-def _team_record_tables(scope: Scope) -> tuple[str, ...]:
+def _team_record_tables(scope: Filtered) -> tuple[str, ...]:
     """The standings for a season's record (and its home/road split);
     ``games`` for a tally - a record against one team, or in a postseason,
     can only be tallied from `games`, whose regular seasons start later."""
-    against = bool(scope.cuts.opponent) or len(scope.subject.teams) > 1
+    against = bool(scope.cuts.opponent) or len(scope.who.teams) > 1
     return ("games",) if against or scope.span.season_type == 3 else ("standings",)
 
 
-def _team_ranking_tables(scope: Scope) -> tuple[str, ...]:
+def _team_ranking_tables(scope: Filtered) -> tuple[str, ...]:
     """The record metrics read standings (or ``games`` for a postseason);
     the rest, the team season stats - and opponent points come from
     `games`, so its floor applies too: a rating from a season whose games
@@ -101,7 +101,7 @@ def _team_ranking_tables(scope: Scope) -> tuple[str, ...]:
     return ("team_season_stats", "games")
 
 
-def _team_line_tables(scope: Scope) -> tuple[str, ...]:
+def _team_line_tables(scope: Filtered) -> tuple[str, ...]:
     """One team's own season line or total (``team_seasons.team_lines_statement``,
     ``compose.team``'s unnarrowed read): ESPN's season totals, with the
     games beside them only where the read needs opponent points - the
@@ -121,7 +121,7 @@ def _team_line_tables(scope: Scope) -> tuple[str, ...]:
     return ("team_season_stats",)
 
 
-Tables = tuple[str, ...] | Callable[[Scope], tuple[str, ...]]
+Tables = tuple[str, ...] | Callable[[Filtered], tuple[str, ...]]
 """A shape's declared tables: the tuple itself, or a resolver over the
 scope where the table depends on the measure asked for.
 
@@ -241,20 +241,7 @@ entry in :data:`SOURCES`.
 """
 
 
-def _as_scope(value: Scope | Mapping[str, Any]) -> Scope:
-    """The typed scope a shared step reads: a :class:`Scope` as given, and a
-    slot dict through :meth:`Scope.from_slots` - the one door a slot dict
-    comes in by, so a key or a value nothing types is refused here exactly as
-    it is where the parser builds the Reading.
-
-    Only the three coverage checks take a slot dict still
-    (:func:`check_coverage`, :func:`coverage_caveat` and :func:`sources_for`),
-    and only from the tests: the agent hands them the planned point's own
-    scope. Every other step here takes the Scope alone."""
-    return value if isinstance(value, Scope) else Scope.from_slots(value)
-
-
-def sources_for(shape: PointShape | None, scope: Scope | Mapping[str, Any]) -> tuple[str, ...]:
+def sources_for(shape: PointShape | None, scope: Filtered) -> tuple[str, ...]:
     """The tables the answer to a point of ``shape`` would be built from,
     resolved per question where the table depends on the measure asked for
     (:data:`SOURCES`); the relation's own for a shape no reader takes
@@ -267,14 +254,13 @@ def sources_for(shape: PointShape | None, scope: Scope | Mapping[str, Any]) -> t
     """
     if shape is None:
         return ()
-    scope = _as_scope(scope)
     declared = SOURCES.get(shape)
     if declared is None:
         return RELATION_SOURCES.get(shape.relation, ())
     return declared(scope) if callable(declared) else declared
 
 
-def check_coverage(shape: PointShape | None, scope: Scope | Mapping[str, Any]) -> str | None:
+def check_coverage(shape: PointShape | None, scope: Filtered) -> str | None:
     """Why this question's season is out of reach for a point of ``shape``,
     or None.
 
@@ -288,15 +274,14 @@ def check_coverage(shape: PointShape | None, scope: Scope | Mapping[str, Any]) -
     .. versionadded:: 2.1.0
 
     .. versionchanged:: 5.0.0
-       Reads the typed :class:`~association.query.reading.Scope`. A slot dict
-       is still taken, through :meth:`~association.query.reading.Scope.from_slots`,
-       until every caller passes ``reading.scope``.
+       Reads the typed :class:`~association.query.reading.Filtered`. A slot dict
+       is still taken, through the slot door (``tests/slots.py``),
+       until every caller passes ``reading``.
 
     .. versionchanged:: 6.0.0
        Keyed by the planned point's :class:`~association.query.reading.PointShape`
        (Phase 3, step 1), not an intent.
     """
-    scope = _as_scope(scope)
     if scope.span.season is None or shape is None:
         # No season means the current one, which every table covers; no
         # point means nothing was read.
@@ -322,7 +307,7 @@ def floor_refusal(tables: tuple[str, ...], season: int, season_type: int, *, ran
     return Refusal(kind="season_out_of_reach", facts=facts, shown={"season": season} if shown is None else shown, under=under)
 
 
-def coverage_refusal(shape: PointShape | None, scope: Scope) -> Refusal | None:
+def coverage_refusal(shape: PointShape | None, scope: Filtered) -> Refusal | None:
     """:func:`check_coverage`, typed: the floor this question's season is
     under, as the :class:`~association.query.result.Refusal` a reader
     returns, or None.
@@ -337,7 +322,7 @@ def coverage_refusal(shape: PointShape | None, scope: Scope) -> Refusal | None:
     return floor_refusal(sources_for(shape, scope), scope.span.season, scope.span.season_type or 2, ranking=shape.shape == "ranking")
 
 
-def coverage_caveat(shape: PointShape | None, scope: Scope | Mapping[str, Any], *, intent: str = "") -> str | None:
+def coverage_caveat(shape: PointShape | None, scope: Filtered, *, intent: str = "") -> str | None:
     """A note for a season this question can reach but only partly, or None.
     ``intent`` is the page's label, recorded on the note beside the season
     (``Answer.intent`` stays for the page until Phase 4).
@@ -345,15 +330,14 @@ def coverage_caveat(shape: PointShape | None, scope: Scope | Mapping[str, Any], 
     .. versionadded:: 2.1.0
 
     .. versionchanged:: 5.0.0
-       Reads the typed :class:`~association.query.reading.Scope`. A slot dict
-       is still taken, through :meth:`~association.query.reading.Scope.from_slots`,
-       until every caller passes ``reading.scope``.
+       Reads the typed :class:`~association.query.reading.Filtered`. A slot dict
+       is still taken, through the slot door (``tests/slots.py``),
+       until every caller passes ``reading``.
 
     .. versionchanged:: 6.0.0
        Keyed by the planned point's :class:`~association.query.reading.PointShape`;
        the intent is the note's label only.
     """
-    scope = _as_scope(scope)
     if scope.span.season is None or shape is None:
         return None
     said = caveat(sources_for(shape, scope), scope.span.season, scope.span.season_type or REGULAR_SEASON, ranking=shape.shape == "ranking")

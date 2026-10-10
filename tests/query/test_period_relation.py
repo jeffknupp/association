@@ -15,13 +15,14 @@ from typing import Any
 import duckdb
 import pytest
 from shapes import key
+from slots import slots_reading
 from test_templates import team_quarter_points  # the compiler's since Phase 2's slice (iv) (compose.COMPILED_INTENTS)
 
 from association.fetch.repairs import real_games
 from association.query.answer import AnswerContext
 from association.query.player_games import PERIOD_AGREEMENT, PERIOD_COLUMNS, Narrowed, aggregate_sql, period_line_sql, rows_sql
 from association.query.player_relation import RELATION_SCOPING, RELATION_SCOPING_EXCLUDED
-from association.query.reading import Period, Reading, Scope, Span, period_narrowing
+from association.query.reading import Period, Reading, Span, period_narrowing
 from association.query.reading import Subject as Who
 from association.query.team_games import TEAM_PERIOD_AGREEMENT, TEAM_PERIOD_COLUMNS, TeamNarrowed, team_period_line_sql
 from association.query.team_games import aggregate_sql as team_aggregate_sql
@@ -226,15 +227,15 @@ def test_a_period_condition_sends_a_players_line_to_the_box_scores() -> None:
     opponent or a teammate's role (#212's shape, guarded)."""
     from association.query.reading import Line, Period, scope_reads_box_scores
 
-    assert scope_reads_box_scores(Scope(subject=Who(kind="player", players=("x",)), lines=(Line(measure="points", value=10, period=Period(number=1)),)), [])
-    assert not scope_reads_box_scores(Scope(subject=Who(kind="player", players=("x",))), [])
+    assert scope_reads_box_scores(Reading(who=Who(kind="player", players=("x",)), lines=(Line(measure="points", value=10, period=Period(number=1)),)), [])
+    assert not scope_reads_box_scores(Reading(who=Who(kind="player", players=("x",))), [])
 
 
 def test_the_scope_narrows_to_a_half_or_a_quarter_through_the_typed_period() -> None:
-    assert period_narrowing(Scope(period=Period(number=2, half=True))) == ((3, 4), "2nd half")
-    assert period_narrowing(Scope(period=Period(number=5))) == ((5,), "overtime")
-    assert period_narrowing(Scope(period=Period(number=11))) is None, "no game has an 11th period: the period readers decline it by name"
-    assert period_narrowing(Scope()) is None
+    assert period_narrowing(Reading(period=Period(number=2, half=True))) == ((3, 4), "2nd half")
+    assert period_narrowing(Reading(period=Period(number=5))) == ((5,), "overtime")
+    assert period_narrowing(Reading(period=Period(number=11))) is None, "no game has an 11th period: the period readers decline it by name"
+    assert period_narrowing(Reading()) is None
 
 
 def test_period_is_a_relation_cell_and_every_exclusion_says_why() -> None:
@@ -260,15 +261,15 @@ def test_the_compiler_refuses_a_period_read_of_a_column_no_play_splits() -> None
     from association.query.compose.core import Query, Unsupported, _check_period_measures
 
     with pytest.raises(Unsupported, match="minutes"):
-        _check_period_measures(Query(scope=Scope(subject=Who(kind="player", players=("x",)), period=Period(number=1))))
+        _check_period_measures(Query(**(Reading(who=Who(kind="player", players=("x",)), period=Period(number=1))).filters()))
     with pytest.raises(Unsupported, match="plusMinus"):
-        _check_period_measures(Query(scope=Scope(subject=Who(kind="player", players=("x",)), period=Period(number=2, half=True)), measures=["points"], predicates=[("plusMinus", ">=", 5)]))
-    _check_period_measures(Query(scope=Scope(subject=Who(kind="player", players=("x",)), period=Period(number=1)), measures=["points", "rebounds", "fg_pct"]))
-    _check_period_measures(Query(scope=Scope(subject=Who(kind="player", players=("x",))), measures=["minutes"]))  # no period: nothing to refuse
+        _check_period_measures(Query(**(Reading(who=Who(kind="player", players=("x",)), period=Period(number=2, half=True))).filters(), measures=["points"], predicates=[("plusMinus", ">=", 5)]))
+    _check_period_measures(Query(**(Reading(who=Who(kind="player", players=("x",)), period=Period(number=1))).filters(), measures=["points", "rebounds", "fg_pct"]))
+    _check_period_measures(Query(**(Reading(who=Who(kind="player", players=("x",)))).filters(), measures=["minutes"]))  # no period: nothing to refuse
     # A read grouped by period sees each quarter's line, and is held to the same columns.
     with pytest.raises(Unsupported, match="minutes"):
-        _check_period_measures(Query(scope=Scope(subject=Who(kind="player", players=("x",))), skeleton="grouped", group="period", measures=["minutes"]))
-    _check_period_measures(Query(scope=Scope(subject=Who(kind="player", players=("x",))), skeleton="grouped", group="period", measures=["three_pct"]))
+        _check_period_measures(Query(**(Reading(who=Who(kind="player", players=("x",)))).filters(), skeleton="grouped", group="period", measures=["minutes"]))
+    _check_period_measures(Query(**(Reading(who=Who(kind="player", players=("x",)))).filters(), skeleton="grouped", group="period", measures=["three_pct"]))
 
 
 def test_compiling_a_period_read_of_minutes_refuses_before_the_warehouse_is_read() -> None:
@@ -277,7 +278,7 @@ def test_compiling_a_period_read_of_minutes_refuses_before_the_warehouse_is_read
     from association.query.compose.core import Query, Unsupported, compile_query
 
     with pytest.raises(Unsupported, match="minutes"):
-        compile_query(duckdb.connect(":memory:"), Query(scope=Scope(subject=Who(kind="player", players=("x",)), period=Period(number=1), span=Span(season=SEASON, season_type=2))))
+        compile_query(duckdb.connect(":memory:"), Query(**(Reading(who=Who(kind="player", players=("x",)), period=Period(number=1), span=Span(season=SEASON, season_type=2))).filters()))
 
 
 # ---------------------------------------------------------------------------
@@ -409,7 +410,7 @@ def test_team_quarter_points_answers_a_rebuilt_stat_with_its_seasons_caveat(team
     """ "home team first half turnovers": the relation's rebuilt column, per
     game and averaged, and the season's measured agreement said beside it."""
     ctx = AnswerContext(con=team_con, out_dir=tmp_path)
-    result = team_quarter_points(ctx, Reading.from_slots({"team": "Home Team", "half": 1, "season": SEASON, "season_type": 2, "stat": "turnovers"}))
+    result = team_quarter_points(ctx, slots_reading({"team": "Home Team", "half": 1, "season": SEASON, "season_type": 2, "stat": "turnovers"}))
     assert (result.data["total"], result.data["stat"], [g["turnovers"] for g in result.data["games"]]) == (5, "turnovers", [5, 0])
     assert "averaged 2.5 turnovers in the 1st half" in (result.answer or "")
     listed = TEAM_PERIOD_AGREEMENT["turnovers"].get(SEASON)
@@ -419,7 +420,7 @@ def test_team_quarter_points_answers_a_rebuilt_stat_with_its_seasons_caveat(team
 def test_team_quarter_points_refuses_a_season_the_line_rebuilds_badly(team_con: duckdb.DuckDBPyConnection, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setitem(TEAM_PERIOD_AGREEMENT, "turnovers", {SEASON: 60.6})
     ctx = AnswerContext(con=team_con, out_dir=tmp_path)
-    result = team_quarter_points(ctx, Reading.from_slots({"team": "Home Team", "half": 1, "season": SEASON, "season_type": 2, "stat": "turnovers"}))
+    result = team_quarter_points(ctx, slots_reading({"team": "Home Team", "half": 1, "season": SEASON, "season_type": 2, "stat": "turnovers"}))
     assert "total" not in result.data and f"cannot be answered for {SEASON} (61%)" in (result.answer or "")
 
 
@@ -432,18 +433,18 @@ def test_team_quarter_points_answers_a_shooting_percentage_as_makes_over_attempt
     rebuilds badly refuses the percentage with it."""
     ctx = AnswerContext(con=team_con, out_dir=tmp_path)
     slots: dict[str, Any] = {"team": "Home Team", "half": 1, "season": SEASON, "season_type": 2, "stat": "freeThrowPct"}
-    result = team_quarter_points(ctx, Reading.from_slots(slots))
+    result = team_quarter_points(ctx, slots_reading(slots))
     assert (result.data["stat"], result.data["total"], result.data["attempted"], result.data["average"]) == ("ft_pct", 1, 2, 50.0)
     assert [(g["freeThrowsMade"], g["freeThrowsAttempted"], g["ft_pct"]) for g in result.data["games"]] == [(1, 2, 50.0), (0, 0, None)]
     answer = result.answer or ""
     assert "The Home Team shot 1 of 2 (50.0%) on free throws in the 1st half across 2 2026 regular season games:" in answer and "1-2  50.0%" in answer and "0-0  -" in answer
-    most = team_quarter_points(ctx, Reading.from_slots({**slots, "rank": "most"}))
+    most = team_quarter_points(ctx, slots_reading({**slots, "rank": "most"}))
     assert "extreme" not in most.data and "is not ranked" in (most.answer or "")
 
 
 def test_team_quarter_points_refuses_a_shooting_percentage_where_a_column_it_divides_rebuilds_badly(team_con: duckdb.DuckDBPyConnection, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setitem(TEAM_PERIOD_AGREEMENT, "freeThrowsAttempted", {SEASON: 70.0})
     ctx = AnswerContext(con=team_con, out_dir=tmp_path)
-    result = team_quarter_points(ctx, Reading.from_slots({"team": "Home Team", "half": 1, "season": SEASON, "season_type": 2, "stat": "freeThrowPct"}))
+    result = team_quarter_points(ctx, slots_reading({"team": "Home Team", "half": 1, "season": SEASON, "season_type": 2, "stat": "freeThrowPct"}))
     assert "total" not in result.data
     assert f"1st half free throw percentage cannot be answered for {SEASON} (70%)" in (result.answer or "") and "free throws and free throw attempts match" in (result.answer or "")

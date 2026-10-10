@@ -115,7 +115,7 @@ def _team_point_data(query: TeamQuery, result: TeamResult) -> dict[str, Any]:
         "team": result.team.name if result.team is not None else None,
         "span": _span_phrase(result.span),
         "narrowing": result.narrowed_text,
-        "measure": query.measure,
+        "measure": query.metric,
         "aggregate": query.aggregate,
         "value": result.value,
         "games": result.games,
@@ -307,7 +307,7 @@ def _read(con: duckdb.DuckDBPyConnection, shape: PointShape, query: Query | Team
     route = _ROUTES.get(shape)
     if route is None:
         return None
-    unhonored = cells_unhonored(query.scope, shape)
+    unhonored = cells_unhonored(query, shape)
     found = shape_cells(shape)
     if unhonored and found is not None and found[1].declined == "read":
         raise beyond_words(SHAPE_NAMES[shape], unhonored)
@@ -325,7 +325,7 @@ def _read_drawn(ctx: AnswerContext, shape: PointShape, query: NetPointsQuery | S
     (:func:`~association.query.compose.netpoints.draw_fingerprint`,
     :func:`~association.query.compose.shots.draw_shot_chart`), which names
     the file."""
-    refusal = coverage_refusal(shape, query.scope)
+    refusal = coverage_refusal(shape, query)
     if refusal is not None:
         raise Refused(refusal)
     read = _read(ctx.con, shape, query)
@@ -351,7 +351,7 @@ def _team_season_first(con: duckdb.DuckDBPyConnection, shape: PointShape, query:
     scope on the team-season relation first, as the retired template was
     tried before the compiler - its answer, or its decline's reason, which
     is the one said where every reader declines."""
-    season_query = TeamSeasonQuery(scope=query.scope, relation="team_snapshots" if shape.relation == "team_snapshots" else "team_seasons", shape="grouped" if shape.shape == "ranking" else "scalar")
+    season_query = TeamSeasonQuery(**query.filters(), relation="team_snapshots" if shape.relation == "team_snapshots" else "team_seasons", shape="grouped" if shape.shape == "ranking" else "scalar")
     try:
         return _said(_read(con, shape, season_query)), None
     except Unsupported as exc:
@@ -395,7 +395,7 @@ def _answer_point(
             result = run_team(ctx.con, query)
             return Reply(data=_team_point_data(query, result), answer=_team_sentence(query, result), artifacts=[])
         # The season's coverage floor, before any reader runs.
-        refusal = coverage_refusal(shape, query.scope)
+        refusal = coverage_refusal(shape, query)
         if refusal is not None:
             raise Refused(refusal)
         ported = _said(_read(ctx.con, shape, query)) if shape.relation not in ("team_seasons", "team_snapshots") else None

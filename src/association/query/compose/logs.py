@@ -35,7 +35,7 @@ from association.query.measures import log_extras, stat_measure
 from association.query.notes import Note
 from association.query.player_games import Narrowed, aggregate_sql
 from association.query.player_relation import ResolvedSpan, box_score_notes_read, no_narrowed_games, scoped_games, span_of, whole_span
-from association.query.reading import DEFAULT_GAME_LOG_LIMIT, Cuts, Scope, Unsupported, _clamp_limit
+from association.query.reading import DEFAULT_GAME_LOG_LIMIT, Cuts, Filtered, Unsupported, _clamp_limit
 from association.query.result import LogFacts, Narrowing, Part, Refusal, Result, Rows, Span, Unanswered, Window
 from association.query.team_games import TEAM_GAMES_SQL, TeamNarrowed
 from association.query.team_relation import team_games
@@ -94,7 +94,7 @@ def log_key(header: str) -> str:
     return LOG_PERCENTAGES[header][2] if header in LOG_PERCENTAGES else LOG_COLUMNS[header]
 
 
-def _game_log_lines(scope: Scope) -> list[MeasureFilter]:
+def _game_log_lines(scope: Filtered) -> list[MeasureFilter]:
     """The lines a log keeps games under or over - the lines the relation
     narrows by (:func:`~association.query.lines.measure_filters`). A bare
     threshold line beside them is the retired template's own refusal (it
@@ -256,7 +256,7 @@ def _player_log_mixed(con: duckdb.DuckDBPyConnection, q: Query, compiled: Compil
     (:func:`~association.query.compose.core.compile_over`). The notes are
     read once per type and de-duplicated, since a rebuilt-line note or a
     ``without`` note reads identically whichever type it came from."""
-    player, season, scope = compiled.player, compiled.span.season, q.scope
+    player, season, scope = compiled.player, compiled.span.season, q
     assert player is not None and season is not None
     measures = measure_filters(scope)
     per_type: dict[int, Compiled] = {}
@@ -322,7 +322,7 @@ def read_player_log(con: duckdb.DuckDBPyConnection, q: Query) -> Result | Unansw
     """
     if q.skeleton != "rows" or q.order != "date" or q.subject != "player" or q.predicates or q.group != "none":
         return None
-    scope = q.scope
+    scope = q
     try:
         extras = log_extras(scope.measure)
         _game_log_lines(scope)
@@ -434,10 +434,10 @@ def _team_mixed_rows(con: duckdb.DuckDBPyConnection, team: Any, season: int, *, 
     (``compose.team``), which summed one type alone before it."""
     rows_by_type: dict[int, list[dict[str, Any]]] = {}
     narrowed_text = ""
-    point = TeamQuery(scope=Scope(cuts=Cuts(venue=venue)), shape="rows")
+    point = TeamQuery(cuts=Cuts(venue=venue), shape="rows")
     for season_type in (2, 3):
         type_span = ResolvedSpan(season, season_type)
-        narrowed = team_games(con, team, type_span, Scope(cuts=Cuts(venue=venue)), opponent=opponent)
+        narrowed = team_games(con, team, type_span, point, opponent=opponent)
         if isinstance(narrowed, Unanswered):
             return narrowed
         narrowed_text = narrowed.filters()
@@ -493,7 +493,7 @@ def read_team_log(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> Result | Unan
     from association.query.coverage import coverage_refusal
     from association.query.reading import PointShape
 
-    scope = q.scope
+    scope = q
     refused = coverage_refusal(PointShape("team_games", "rows", "date"), scope)
     if refused is not None:
         return refused
@@ -508,8 +508,8 @@ def read_team_log(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> Result | Unan
     # being filtered inside it.
     asked = scope.span.over_career() if date else scope.span
     mixed = scope.span.both and not date and not asked.career and not game_n
-    team_text = scope.subject.team
-    if not team_text or scope.subject.player:
+    team_text = scope.who.team
+    if not team_text or scope.who.player:
         raise Unsupported("game_log needs a team or a player")
     team = resolved_team(con, team_text, season=slot_season(scope))
     if isinstance(team, Unanswered):
@@ -526,7 +526,7 @@ def read_team_log(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> Result | Unan
             raise Unsupported("a career span has no single season to read both season types within")
         return _team_log_mixed(con, team.name, team, resolved_season, opponent=opponent, venue=venue, limit=limit, stat=spelled(scope.measure))
     seasons = span_of(asked, "games", season_type=season_type)
-    narrowed = team_games(con, team, seasons, Scope(cuts=Cuts(venue=venue)), opponent=opponent, date=date)
+    narrowed = team_games(con, team, seasons, TeamQuery(cuts=Cuts(venue=venue)), opponent=opponent, date=date)
     if isinstance(narrowed, Unanswered):
         return narrowed
     return _team_log(con, q, team, seasons, narrowed, limit=limit, ascending=ascending, stat=spelled(scope.measure))

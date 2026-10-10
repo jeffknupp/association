@@ -15,6 +15,7 @@ from typing import Any
 
 import pytest
 from shapes import asked, stated
+from slots import slots_scope, window_from_slots
 from test_templates import pg_ctx, team_cells_con  # noqa: F401 - the two relation fixtures, imported by name
 
 from association.nba.season import current_season
@@ -22,7 +23,7 @@ from association.query.answer import AnswerContext
 from association.query.compose.core import Query, compile_query, rows_of
 from association.query.compose.plan import cells_stated
 from association.query.player_relation import RELATION_SCOPING, RELATION_SCOPING_EXCLUDED, relation_window
-from association.query.reading import Claim, Cuts, PointShape, Scope, ScopeError, Span, Window, unhonored_cells
+from association.query.reading import Claim, Cuts, PointShape, Reading, ScopeError, Span, Window, unhonored_cells
 from association.query.reading import Subject as Who
 from association.query.season_line import history_seasons
 from association.query.span import SpanContext, claimed, read_span
@@ -194,31 +195,31 @@ def test_the_windows_claims_and_the_spans_fold_and_never_cross(question: str) ->
     ],
 )
 def test_the_four_slots_round_trip_through_the_window(slots: dict[str, Any]) -> None:
-    scope = Scope.from_slots(slots)
+    scope = slots_scope(slots)
     assert scope.window.to_slots() == slots
     assert scope.to_slots() == slots
-    assert Scope.from_slots(scope.to_slots()) == scope
+    assert slots_scope(scope.to_slots()) == scope
 
 
 def test_the_projection_keeps_the_slot_era_shape_and_its_order() -> None:
-    projected = Scope(subject=Who(kind="player", players=("X",)), window=Window(order="recent", count=10, rank="most", by="points")).projected()
+    projected = Reading(who=Who(kind="player", players=("X",)), window=Window(order="recent", count=10, rank="most", by="points")).scope_record()
     keys = list(projected)
     assert (projected["order"], projected["limit"], projected["rank"], projected["ranked_by"]) == ("recent", 10, "most", "points")
     # The four keys sit where the four fields sat: `ranked_by` after `fields`, `rank` after `kind`, `order` and `limit` last.
     assert keys.index("ranked_by") == keys.index("fields") + 1 and keys.index("rank") == keys.index("kind") + 1 and keys[-2:] == ["order", "limit"]
     assert "window" not in projected and all(not isinstance(v, Window) for v in projected.values())
-    assert Scope().projected()["limit"] is None and Scope().projected()["order"] is None
+    assert Reading().scope_record()["limit"] is None and Reading().scope_record()["order"] is None
 
 
 def test_a_typed_window_and_a_slot_at_once_or_a_count_below_one_is_refused_at_the_door() -> None:
     with pytest.raises(ScopeError, match="typed window"):
-        Scope.from_slots({"window": Window(count=5), "limit": 5})
+        slots_scope({"window": Window(count=5), "limit": 5})
     with pytest.raises(ScopeError, match="below 1"):
-        Scope.from_slots({"limit": 0})
+        slots_scope({"limit": 0})
     with pytest.raises(ScopeError, match="below 1"):
         Window(count=0)
-    assert Scope.from_slots({"window": Window(count=5)}).window.count == 5
-    assert Window.from_slots({"limit": 4}).of == "games"
+    assert slots_scope({"window": Window(count=5)}).window.count == 5
+    assert window_from_slots({"limit": 4}).of == "games"
 
 
 def test_the_cells_and_what_a_reader_leaves_unhonored() -> None:
@@ -231,8 +232,8 @@ def test_the_cells_and_what_a_reader_leaves_unhonored() -> None:
         "ranked_by",
     ]
     assert Window(order="first", count=1).unhonored(frozenset({"window"})) == []
-    assert unhonored_cells(Scope(cuts=Cuts(opponent="BOS"), window=Window(order="recent", count=3)), frozenset({"opponent"})) == ["order"]
-    assert unhonored_cells(Scope(window=Window(by="points", count=10)), frozenset({"window"})) == ["ranked_by"]
+    assert unhonored_cells(Reading(cuts=Cuts(opponent="BOS"), window=Window(order="recent", count=3)), frozenset({"opponent"})) == ["order"]
+    assert unhonored_cells(Reading(window=Window(by="points", count=10)), frozenset({"window"})) == ["ranked_by"]
 
 
 def test_the_relation_tables_declare_the_window_cell_once() -> None:
@@ -248,15 +249,15 @@ def test_the_relation_tables_declare_the_window_cell_once() -> None:
 
 
 def test_relation_window_reads_an_end_or_a_bare_count_as_the_newest() -> None:
-    assert relation_window(Scope()) is None
-    assert relation_window(Scope(window=Window(order="recent", count=10))) == ("recent", 10)
-    assert relation_window(Scope(window=Window(order="first", count=3))) == ("first", 3)
+    assert relation_window(Reading()) is None
+    assert relation_window(Reading(window=Window(order="recent", count=10))) == ("recent", 10)
+    assert relation_window(Reading(window=Window(order="first", count=3))) == ("first", 3)
     # A bare count is the newest N on the games relations; an end alone is one game.
-    assert relation_window(Scope(window=Window(count=7))) == ("recent", 7)
-    assert relation_window(Scope(window=Window(order="first"))) == ("first", 1)
-    assert relation_window(Scope(window=Window(count=400))) == ("recent", 50)
-    assert history_seasons(Scope(window=Window(count=6, of="seasons"))) == 6
-    assert history_seasons(Scope()) == 4 and history_seasons(Scope(span=Span(career=True))) is None
+    assert relation_window(Reading(window=Window(count=7))) == ("recent", 7)
+    assert relation_window(Reading(window=Window(order="first"))) == ("first", 1)
+    assert relation_window(Reading(window=Window(count=400))) == ("recent", 50)
+    assert history_seasons(Reading(window=Window(count=6, of="seasons"))) == 6
+    assert history_seasons(Reading()) == 4 and history_seasons(Reading(span=Span(career=True))) is None
 
 
 # ---------------- contract 4: applying the cell changes the result ----------------
@@ -267,7 +268,7 @@ def _player_games(ctx: AnswerContext, window: Window) -> tuple[int, int]:
     ``window`` - an aggregate, since the relation cuts the window before the
     sum (``_windowed``); a rows read takes the point's own limit instead."""
     (row,) = rows_of(
-        ctx.con, compile_query(ctx.con, Query(scope=Scope(subject=Who(kind="player", players=("Brandin Podziemski",)), window=window), skeleton="scalar", measures=["points"], aggregate="total"))
+        ctx.con, compile_query(ctx.con, Query(**(Reading(who=Who(kind="player", players=("Brandin Podziemski",)), window=window)).filters(), skeleton="scalar", measures=["points"], aggregate="total"))
     )
     return int(row["games"]), int(row["points"])
 
@@ -280,10 +281,10 @@ def test_the_window_cell_changes_what_the_player_relation_reads(pg_ctx: AnswerCo
 
 
 def _team_games(ctx: AnswerContext, window: Window) -> list[str]:
-    settled = scoped_team(ctx.con, Scope(subject=Who(kind="team", teams=("Celtics",))), "no team")
+    settled = scoped_team(ctx.con, Reading(who=Who(kind="team", teams=("Celtics",))), "no team")
     assert isinstance(settled, tuple)
     team, resolved = settled
-    narrowed = team_games(ctx.con, team, resolved, Scope(window=window), opponent=None)
+    narrowed = team_games(ctx.con, team, resolved, Reading(window=window), opponent=None)
     assert isinstance(narrowed, TeamNarrowed)
     sql, params = rows_sql(narrowed, "tg.event_id", order="tg.eastern_date")
     return [str(row[0]) for row in ctx.con.execute(sql, params).fetchall()]

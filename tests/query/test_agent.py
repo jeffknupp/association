@@ -8,6 +8,7 @@ from typing import Any
 import ollama
 import pytest
 from routed import ask_routed, slots_route
+from slots import slots_scope
 
 from association.query.agent import Agent
 from association.query.reading import Reading
@@ -103,7 +104,7 @@ def test_the_fast_path_replaces_a_player_the_question_never_named(monkeypatch: p
     seen: list[str] = []
 
     def record(ctx: Any, reading: Reading) -> Reply:
-        seen.extend(reading.scope.subject.players)
+        seen.extend(reading.who.players)
         return Reply(data={}, answer="templated")
 
     # player_compare is the compiler's (compose.COMPILED_INTENTS): the same Reading reaches compose.answer.
@@ -577,7 +578,6 @@ def test_a_compiled_intent_is_read_planned_and_answered_by_the_compiler_alone(mo
     compiler declines, the question is refused naming the compiler's
     reason - there is no template behind it any more."""
     from association.query.answer import Reply
-    from association.query.reading import Scope
 
     calls: list[str] = []
 
@@ -586,7 +586,7 @@ def test_a_compiled_intent_is_read_planned_and_answered_by_the_compiler_alone(mo
         if trace is not None:
             trace(
                 Reading(
-                    scope=Scope.from_slots({"player": "Joel Embiid", "threshold": 30, "stat": "points"}),
+                    **(slots_scope({"player": "Joel Embiid", "threshold": 30, "stat": "points"})).filters(),
                     shape="scalar",
                     measures=[],
                     aggregate="count",
@@ -631,7 +631,7 @@ def test_the_parser_reads_the_question(monkeypatch: pytest.MonkeyPatch, tmp_path
     """The parser (ROADMAP plan item 6, step c): the model only copies the
     names and picks a stat, and the route comes from the words. The model's
     span is the question's own word, and the name the template gets is the
-    index's reading of it - the subject reading, not the model, writes "Joel
+    index's reading of it - the subject reading).filters(), not the model, writes "Joel
     Embiid"."""
     import duckdb
 
@@ -641,7 +641,7 @@ def test_the_parser_reads_the_question(monkeypatch: pytest.MonkeyPatch, tmp_path
     seen: dict[str, Any] = {}
 
     def record(ctx: Any, reading: Reading) -> Reply:
-        seen.update(reading.scope.to_slots())
+        seen.update(reading.to_slots())
         return Reply(data={}, answer="templated")
 
     monkeypatch.setattr("association.query.normalizer.normalize", lambda model, question: Normalized(["embiid"], "points"))

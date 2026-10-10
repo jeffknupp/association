@@ -40,7 +40,7 @@ from association.query.measure import keyed
 from association.query.measures import resolve_metric
 from association.query.metrics import EXTRA_FIELD_COLUMNS, LEADERBOARD_METRICS
 from association.query.notes import Note
-from association.query.reading import Scope, Unsupported, _clamp_limit
+from association.query.reading import Filtered, Unsupported, _clamp_limit
 from association.query.result import Decided, Part, RankingFacts, Refusal, Result, Span, Unanswered
 from association.query.season_line import MIN_SAMPLE_LABELS, CareerLeaderboardResult, LeaderboardError, rank_season_line
 
@@ -80,7 +80,7 @@ def leaderboard_reads(q: Query) -> bool:
     """
     if not _leaderboard_is_own_point(q):
         return False
-    scope = q.scope
+    scope = q
     if keyed(scope.measure) == "shot_distance" or (scope.span.career and scope.span.season is not None):
         return True
     if resolve_metric(scope.measure, career=scope.span.career) is None:
@@ -91,7 +91,7 @@ def leaderboard_reads(q: Query) -> bool:
     return q.position is None
 
 
-def _leaderboard_career(scope: Scope) -> bool:
+def _leaderboard_career(scope: Filtered) -> bool:
     """True for a career ranking, False for a one-season one; raises for a
     career with a year named. The router keeps a year the question named
     alongside "career", so "most points ever in a game in 2024" (that
@@ -106,18 +106,18 @@ def _leaderboard_career(scope: Scope) -> bool:
     return True
 
 
-def _leaderboard_refuse_a_player(scope: Scope) -> None:
+def _leaderboard_refuse_a_player(scope: Filtered) -> None:
     """A refusal for one named player: a leaderboard ranks the league or a
     team, never one person ("Klay Thompson's 3pt percentage over the past 4
     seasons" came back with the league's true-shooting leaders, Klay
     silently dropped). A position group, which the game-level ranking reads
     (F056), is the planner's (:func:`leaderboard_reads`), and was checked
     first, as the template had it."""
-    if scope.subject.player is not None:
-        raise Unsupported(f"a leaderboard cannot answer about one named player ({scope.subject.player!r})")
+    if scope.who.player is not None:
+        raise Unsupported(f"a leaderboard cannot answer about one named player ({scope.who.player!r})")
 
 
-def _leaderboard_fields(scope: Scope, metric: str) -> list[str]:
+def _leaderboard_fields(scope: Filtered, metric: str) -> list[str]:
     """The extra columns a ranking was asked to show beside its metric - a
     box-score average (:data:`~association.query.metrics.EXTRA_FIELD_COLUMNS`)
     or ``"team"`` (F017, ISSUES.md). An unknown field is refused rather than
@@ -132,7 +132,7 @@ def _leaderboard_fields(scope: Scope, metric: str) -> list[str]:
     return [f for f in dict.fromkeys(requested) if metric != f"avg_{f}"]
 
 
-def _leaderboard_metric(scope: Scope, career: bool) -> str | None:
+def _leaderboard_metric(scope: Filtered, career: bool) -> str | None:
     """The metric the ranking reads (a unit it has no form of declined), or ``None`` where no season-line metric reads the stat (the
     game-level ranking reads it instead). A season total asked for ranks the
     total: the key names a category, never which of its two readings ("most
@@ -173,7 +173,7 @@ def read_leaderboard(con: duckdb.DuckDBPyConnection, q: Query) -> Result | Unans
     """
     if not leaderboard_reads(q):
         return None
-    scope = q.scope
+    scope = q
     if keyed(scope.measure) == "shot_distance":
         # The measure tagger's sentinel key, checked before
         # the metric and the named-player refusal so neither names the wrong
@@ -196,7 +196,7 @@ def read_leaderboard(con: duckdb.DuckDBPyConnection, q: Query) -> Result | Unans
             career=career,
             season=scope.span.season,
             season_type=scope.span.season_type or 2,
-            team=scope.subject.team,
+            team=scope.who.team,
             fields=fields,
             limit=_clamp_limit(scope.window.count, default=DEFAULT_LEADERBOARD_LIMIT),
         )
@@ -232,7 +232,7 @@ def read_leaderboard(con: duckdb.DuckDBPyConnection, q: Query) -> Result | Unans
     return Result(subject="every player", relation="everyone", span=span, parts=(Part(body=ranking.body),), notes=notes, decisions=decisions, facts=facts)
 
 
-def _leaderboard_career_refusals(scope: Scope, fields: list[str]) -> None:
+def _leaderboard_career_refusals(scope: Filtered, fields: list[str]) -> None:
     """What a career ranking declines: columns beside the metric, and a
     franchise's list - which sums the per-team rows by team, and where a
     franchise moved, which years are the franchise's is a question of its
@@ -240,5 +240,5 @@ def _leaderboard_career_refusals(scope: Scope, fields: list[str]) -> None:
     league's list under the team's name."""
     if fields:
         raise Unsupported("a career leaderboard cannot add per-game columns")
-    if scope.subject.team is not None:
+    if scope.who.team is not None:
         raise Unsupported("franchise career leaderboards are not supported")

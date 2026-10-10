@@ -46,7 +46,7 @@ from association.query.player_games import (
     scope_without_guard,
     season_type_clause,
 )
-from association.query.reading import Companion, Cuts, Measure, Period, PointShape, Scope, ShapeCells, Situation, Span, Unsupported, Window, _clamp_limit, ordinal_word, period_narrowing
+from association.query.reading import Companion, Cuts, Filtered, Measure, Period, PointShape, ShapeCells, Situation, Span, Unsupported, Window, _clamp_limit, ordinal_word, period_narrowing
 from association.query.reading import Line as ReadLine
 from association.query.result import Cell, GameOfSeries, Line, Refusal, Role, Unanswered
 from association.query.season_text import SEASON_TYPE_NAMES, season_phrase
@@ -723,7 +723,7 @@ def _narrow_player_games(
     return narrowed
 
 
-def player_relation_season_type(scope: Scope) -> int:
+def player_relation_season_type(scope: Filtered) -> int:
     """The ``season_type`` to read the player relation for: ``BOTH_SEASON_TYPES``
     when the question asked for both explicitly ("including the playoffs") or
     named none at all in a "last N games" question
@@ -749,7 +749,7 @@ def player_relation_season_type(scope: Scope) -> int:
 
 def scoped_player(
     con: duckdb.DuckDBPyConnection,
-    scope: Scope,
+    scope: Filtered,
     missing: str,
     *,
     table: str,
@@ -775,14 +775,14 @@ def scoped_player(
     .. versionadded:: 4.4.0
 
     .. versionchanged:: 5.0.0
-       Reads the typed :class:`~association.query.reading.Scope`. A slot dict
-       is still taken, through :meth:`~association.query.reading.Scope.from_slots`,
-       until every caller passes ``reading.scope``.
+       Reads the typed :class:`~association.query.reading.Filtered`. A slot dict
+       is still taken, through the slot door (``tests/slots.py``),
+       until every caller passes ``reading``.
     """
     season_n = scope.cuts.season_n
     asked = span if span is not None else scope.span
     seasons = span_of(asked.over_career() if season_n else asked, table, season_type=player_relation_season_type(scope))
-    player = resolved_player(con, scope.subject.player, missing, available=available, season=seasons.season, through=career_end(seasons.season))
+    player = resolved_player(con, scope.who.player, missing, available=available, season=seasons.season, through=career_end(seasons.season))
     if isinstance(player, Unanswered):
         return player
     settled = settle_ordinal_season(con, player, season_n, seasons)
@@ -832,7 +832,7 @@ def apply_situation[NarrowedT: (Narrowed, TeamNarrowed)](narrowed: NarrowedT, si
     )
 
 
-def relation_window(scope: Scope) -> tuple[str, int] | None:
+def relation_window(scope: Filtered) -> tuple[str, int] | None:
     """The WINDOW :func:`scoped_games` cuts the narrowed games to - the
     newest or oldest N, after every other filter
     (:attr:`association.query.player_games.Narrowed.window`) - or ``None``
@@ -861,7 +861,7 @@ def relation_window(scope: Scope) -> tuple[str, int] | None:
     """
     order: str | None = scope.window.order
     if order is None:
-        # A limit, when set, is 1 or more: the Scope's own range rule.
+        # A limit, when set, is 1 or more: the filters' own range rule.
         if scope.window.count is None:
             return None
         order = "recent"
@@ -899,7 +899,7 @@ def _apply_period_condition(con: duckdb.DuckDBPyConnection, narrowed: Narrowed, 
     return None
 
 
-def period_lines(scope: Scope) -> list[ReadLine]:
+def period_lines(scope: Filtered) -> list[ReadLine]:
     """The lines ``scope`` holds in a quarter or half (the ``period_line``
     cell), in the question's order.
 
@@ -908,7 +908,7 @@ def period_lines(scope: Scope) -> list[ReadLine]:
     return [line for line in scope.lines if line.period is not None]
 
 
-def apply_period(con: duckdb.DuckDBPyConnection, narrowed: Narrowed, scope: Scope) -> None:
+def apply_period(con: duckdb.DuckDBPyConnection, narrowed: Narrowed, scope: Filtered) -> None:
     """A quarter or half narrows every read of the relation to that part of
     each game (:meth:`~association.query.player_games.Narrowed.narrow_periods`)
     - the ``period`` cell of :data:`RELATION_SCOPING` (the typed
@@ -934,7 +934,7 @@ def scoped_games(
     con: duckdb.DuckDBPyConnection,
     player: Entity,
     span: ResolvedSpan,
-    scope: Scope,
+    scope: Filtered,
     *,
     opponent: Any,
     measures: list[MeasureFilter],
@@ -985,9 +985,9 @@ def scoped_games(
        Takes ``team``.
 
     .. versionchanged:: 5.0.0
-       Reads the typed :class:`~association.query.reading.Scope`. A slot dict
-       is still taken, through :meth:`~association.query.reading.Scope.from_slots`,
-       until every caller passes ``reading.scope``.
+       Reads the typed :class:`~association.query.reading.Filtered`. A slot dict
+       is still taken, through the slot door (``tests/slots.py``),
+       until every caller passes ``reading``.
 
     .. versionchanged:: 6.0.0
        Reads the cuts off ``scope.cuts`` (Phase 3, step 2), the tenure
@@ -1043,7 +1043,7 @@ POSITION_CODES: dict[str, list[str]] = {"G": ["G", "PG", "SG", "GF"], "F": ["F",
 """
 
 
-def league_games(con: duckdb.DuckDBPyConnection, span: ResolvedSpan, scope: Scope, *, position: str | None) -> Narrowed | Unanswered:
+def league_games(con: duckdb.DuckDBPyConnection, span: ResolvedSpan, scope: Filtered, *, position: str | None) -> Narrowed | Unanswered:
     """Every player's games in ``span`` - the league-wide read a question with
     no player subject narrows the same way one player's games are: an
     opponent, a venue, a team's roster, lines on box-score columns and the
@@ -1064,9 +1064,9 @@ def league_games(con: duckdb.DuckDBPyConnection, span: ResolvedSpan, scope: Scop
     .. versionadded:: 4.4.0
 
     .. versionchanged:: 5.0.0
-       Reads the typed :class:`~association.query.reading.Scope`. A slot dict
-       is still taken, through :meth:`~association.query.reading.Scope.from_slots`,
-       until every caller passes ``reading.scope``.
+       Reads the typed :class:`~association.query.reading.Filtered`. A slot dict
+       is still taken, through the slot door (``tests/slots.py``),
+       until every caller passes ``reading``.
     """
     season_clause, season_params = span.clause("pgl.season")
     narrowed = league(season_clause, season_params, span.season_type)
@@ -1080,8 +1080,8 @@ def league_games(con: duckdb.DuckDBPyConnection, span: ResolvedSpan, scope: Scop
             return team
         narrowed.opponent = team
         narrowed.narrow("pgl.opponent_team_id = ?", team.id)
-    if scope.subject.team is not None:
-        team = resolved_team(con, scope.subject.team, season=span.season)
+    if scope.who.team is not None:
+        team = resolved_team(con, scope.who.team, season=span.season)
         if isinstance(team, Unanswered):
             return team
         narrowed.team = team
@@ -1118,7 +1118,7 @@ def league_games(con: duckdb.DuckDBPyConnection, span: ResolvedSpan, scope: Scop
 
 def condition_player(
     con: duckdb.DuckDBPyConnection,
-    scope: Scope,
+    scope: Filtered,
     missing: str,
     condition_scope: _Scope,
     *,
@@ -1149,8 +1149,8 @@ def condition_player(
     .. versionadded:: 4.4.0
 
     .. versionchanged:: 5.0.0
-       Reads the typed :class:`~association.query.reading.Scope`, and takes
-       ``opponent``: a Scope holds names, so a team already resolved goes
+       Reads the typed :class:`~association.query.reading.Filtered`, and takes
+       ``opponent``: the filters hold names, so a team already resolved goes
        beside it. The template's own ``_Scope`` is ``condition_scope``.
     """
     # The name is narrowed over the games the condition covers: the one

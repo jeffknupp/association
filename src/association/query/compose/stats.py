@@ -61,13 +61,13 @@ def _player_stat_measures(q: Query) -> list[str] | None:
     default line) where they are the point's own - else ``None``, and the
     compiler's sentence answers. A stat with no per-game column is the
     template's own decline, kept: ``None``, as the presenter returned."""
-    stat = spelled(q.scope.measure)
+    stat = spelled(q.measure)
     if stat is not None and stat in ADVANCED_STATS:
         return None
     if stat is not None and stat in SHOOTING_STATS:
         return [SHOOTING_RATES[stat]]
     try:
-        wanted = wanted_stats(q.scope)
+        wanted = wanted_stats(q)
     except Unsupported:
         return None
     return wanted if sorted(q.measures) == sorted(wanted) else None
@@ -156,7 +156,7 @@ def _player_stat_result(con: duckdb.DuckDBPyConnection, q: Query, compiled: Comp
     player, span, narrowed = compiled.player, compiled.span, compiled.narrowed
     assert player is not None
     games = int(line["games"] or 0)
-    stat = spelled(q.scope.measure)
+    stat = spelled(q.measure)
     facts = LineFacts(stat=stat if stat in SHOOTING_STATS else None, wanted=() if stat in SHOOTING_STATS else tuple(compiled.measures))
     narrowing = Narrowing(
         phrase=narrowed.filters(dated=False),

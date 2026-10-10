@@ -33,7 +33,7 @@ from association.query.fingerprint import (
     skills_for,
 )
 from association.query.radar import PLOT_RADIUS, VALUE_ZERO_FRACTION, Axis, Cell, Series, render_fingerprint_html
-from association.query.reading import Scope, Span
+from association.query.reading import Reading, Span
 from association.query.reading import Subject as Who
 from association.query.result import Result, Unanswered
 
@@ -72,8 +72,8 @@ def _asked(con: duckdb.DuckDBPyConnection, out_dir: Path, names: str, *, season:
     through the reader's resolution (``compose.netpoints.read_fingerprint``),
     as the retired ``fingerprint.render_fingerprint`` took them."""
     split = [name.strip() for name in names.split(" vs ")]
-    scope = Scope(subject=Who(kind="pair", players=tuple(split)), span=Span(season=season)) if len(split) > 1 else Scope(subject=Who(kind="player", players=(split[0],)), span=Span(season=season))
-    return _said(con, out_dir, read_fingerprint(con, NetPointsQuery(scope=scope, shape="chart")))
+    scope = Reading(who=Who(kind="pair", players=tuple(split)), span=Span(season=season)) if len(split) > 1 else Reading(who=Who(kind="player", players=(split[0],)), span=Span(season=season))
+    return _said(con, out_dir, read_fingerprint(con, NetPointsQuery(**scope.filters(), shape="chart")))
 
 
 def _drawn(result: RenderResult) -> Path:

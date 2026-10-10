@@ -20,6 +20,7 @@ from typing import Any, get_args
 import pytest
 from routed import staged as settle
 from shapes import asked
+from slots import slots_reading, slots_scope
 from test_career_spans import season_ctx  # noqa: F401 - the season line's fixture, imported by name
 from test_parser import con  # noqa: F401 - the parser's name fixture, imported by name
 from test_templates import game_log, leaderboard, pg_ctx  # noqa: F401 - the player relation's fixture, imported by name
@@ -46,7 +47,7 @@ from association.query.metrics import LEADERBOARD_METRICS
 from association.query.normalizer import NORMALIZER_STATS
 from association.query.parse import read_route
 from association.query.point import _team_measure
-from association.query.reading import Claim, Measure, PointShape, Reading, Scope, ScopeError, Span, cell_set, unhonored_cells
+from association.query.reading import Claim, Filtered, Measure, PointShape, Reading, ScopeError, Span, cell_set, unhonored_cells
 from association.query.reading import Subject as Who
 from association.query.team_metrics import TEAM_METRICS, resolve_team_metric
 
@@ -180,25 +181,25 @@ def test_the_two_readers_the_intent_stages_ask() -> None:
     ],
 )
 def test_the_seven_slots_round_trip_through_the_measure(slots: dict[str, Any]) -> None:
-    scope = Scope.from_slots(slots)
+    scope = slots_scope(slots)
     assert scope.measure is not None and scope.to_slots() == slots
-    assert Scope(measure=scope.measure).to_slots() == slots
+    assert Reading(measure=scope.measure).to_slots() == slots
 
 
 def test_the_door_resolves_the_spelling_and_keeps_it() -> None:
-    folded = Scope.from_slots({"stat": "netpoints_defense_per_100"}).measure
+    folded = slots_scope({"stat": "netpoints_defense_per_100"}).measure
     assert folded == Measure(key="netpoints", as_typed="netpoints_defense_per_100", how="per_100", side="defense")
-    opponent = Scope.from_slots({"stat": "points_allowed"}).measure
+    opponent = slots_scope({"stat": "points_allowed"}).measure
     assert opponent == Measure(key="points", as_typed="points_allowed", whose="opponent")
-    unknown = Scope.from_slots({"stat": "career_playoffs"}).measure
+    unknown = slots_scope({"stat": "career_playoffs"}).measure
     assert unknown == Measure(key=None, as_typed="career_playoffs")
-    fingerprint = Scope.from_slots({"stat": "assist_o_net_pts"}).measure
+    fingerprint = slots_scope({"stat": "assist_o_net_pts"}).measure
     assert fingerprint == Measure(key="netpoints", as_typed="assist_o_net_pts", side="offense", category="assist")
-    assert Scope.from_slots({"stat": ""}).measure is None and Scope.from_slots({}).measure is None
+    assert slots_scope({"stat": ""}).measure is None and slots_scope({}).measure is None
 
 
 def test_the_projection_keeps_the_slot_era_shape_in_its_place() -> None:
-    projected = Scope.from_slots({"stat": "points", "threshold": 30, "fields": ["rebounds"], "rate": "total", "kind": "win"}).projected()
+    projected = slots_scope({"stat": "points", "threshold": 30, "fields": ["rebounds"], "rate": "total", "kind": "win"}).scope_record()
     keys = list(projected)
     # The seven where the fields stood, the lines' three after `stat`, the window's `ranked_by` after `fields` and its `rank` after `kind`.
     assert keys[keys.index("stat") : keys.index("rank") + 1] == ["stat", "threshold", "above", "below", "fields", "ranked_by", "per_game", "rate", "side", "shot_value", "kind", "rank"]
@@ -212,29 +213,29 @@ def test_the_projection_keeps_the_slot_era_shape_in_its_place() -> None:
         None,
         "win",
     )
-    empty = Scope().projected()
+    empty = Reading().scope_record()
     assert (empty["stat"], empty["fields"], empty["per_game"], empty["rate"], empty["side"], empty["shot_value"], empty["kind"]) == (None, (), False, None, None, None, None)
     # A side or a rate the key folds in is the key's, never a slot of its own.
-    assert Scope.from_slots({"stat": "netpoints_defense_per_100"}).projected()["side"] is None
-    assert Scope.from_slots({"stat": "avg_game_score"}).projected()["per_game"] is False
+    assert slots_scope({"stat": "netpoints_defense_per_100"}).scope_record()["side"] is None
+    assert slots_scope({"stat": "avg_game_score"}).scope_record()["per_game"] is False
 
 
 def test_a_value_no_measure_can_hold_is_refused_at_the_door() -> None:
     with pytest.raises(ScopeError):
-        Scope.from_slots({"side": "middle"})
+        slots_scope({"side": "middle"})
     with pytest.raises(ScopeError):
-        Scope.from_slots({"shot_value": 4})
+        slots_scope({"shot_value": 4})
     with pytest.raises(ScopeError):
         Measure(key="points", as_typed="points", how="per_36")  # type: ignore[arg-type]
     with pytest.raises(ScopeError):
-        Scope.from_slots({"measure": measure_of("points"), "stat": "points"})
+        slots_scope({"measure": measure_of("points"), "stat": "points"})
 
 
 def test_the_cell_its_decline_name_and_what_a_reader_leaves_unhonored() -> None:
-    assert frozenset({"rate"}) == Measure.CELLS and "rate" in Scope.CELLS
-    unit = Scope.from_slots({"stat": "fouls", "rate": "per 100"})
+    assert frozenset({"rate"}) == Measure.CELLS and "rate" in Filtered.CELLS
+    unit = slots_scope({"stat": "fouls", "rate": "per 100"})
     assert cell_set(unit, "rate") and unhonored_cells(unit, frozenset()) == ["rate"] and unhonored_cells(unit, Measure.CELLS) == []
-    assert not cell_set(Scope.from_slots({"stat": "netpoints_per_100"}), "rate")  # the key's own rate is no cell
+    assert not cell_set(slots_scope({"stat": "netpoints_per_100"}), "rate")  # the key's own rate is no cell
     assert cells_stated(PointShape("player_seasons", "ranking", "player")) >= Measure.CELLS
     from association.query import compose
 
@@ -306,11 +307,11 @@ def test_every_spelling_resolves_as_it_did_on_the_facets_its_vocabulary_reached(
 def test_a_metric_named_outright_keeps_its_form_and_a_total_asked_for_ranks_the_total() -> None:
     assert resolve_metric(measure_of("points")) == "avg_points" and resolve_metric(measure_of("points"), career=True) == "total_points"
     assert resolve_metric(measure_of("avg_points"), career=True) == "avg_points"
-    assert resolve_metric(Scope.from_slots({"stat": "points", "rate": "total"}).measure) == "total_points"
+    assert resolve_metric(slots_scope({"stat": "points", "rate": "total"}).measure) == "total_points"
     # A total asked of a metric with no total form keeps the form it has (fouls per game), as the ranking read it.
-    assert resolve_metric(Scope.from_slots({"stat": "fouls", "rate": "total"}).measure) == "avg_fouls"
+    assert resolve_metric(slots_scope({"stat": "fouls", "rate": "total"}).measure) == "avg_fouls"
     assert resolve_metric(measure_of("netpoints_defense")) == "netpoints_defense" and resolve_metric(measure_of("assist_o_net_pts")) == "assist_o_net_pts"
-    assert resolve_metric(Scope.from_slots({"stat": "netpoints_defense", "rate": "/ 90"}).measure) == "netpoints_defense"
+    assert resolve_metric(slots_scope({"stat": "netpoints_defense", "rate": "/ 90"}).measure) == "netpoints_defense"
     assert resolve_team_metric(measure_of("points_allowed")) == "opponent_points" and resolve_team_metric(measure_of("rebounds allowed")) is None
     assert stat_measure(measure_of("wins")) == "won" and stat_measure(measure_of("points_allowed")) is None
 
@@ -324,7 +325,7 @@ def test_a_plus_minus_log_shows_the_column_it_was_asked_for(pg_ctx: AnswerContex
     are refused for a playoff round first); the wording is "<player> plus
     minus game log" and "<player> +/- log"."""
     assert log_extras(measure_of("plus_minus")) == ("+/-",) == log_extras(measure_of("plusMinus"))
-    answer = game_log(pg_ctx, Reading.from_slots({"player": "Brandin Podziemski", "stat": "plus_minus"})).answer or ""
+    answer = game_log(pg_ctx, slots_reading({"player": "Brandin Podziemski", "stat": "plus_minus"})).answer or ""
     assert "+/-" in answer
 
 
@@ -340,17 +341,17 @@ def test_a_team_total_named_by_a_metrics_alias_stays_the_per_game_line() -> None
     never read it and the per-game line answered; the catalog keeps that
     by the spelling's vocabulary, and the key's own spelling reads the total."""
     assert named_by_a_team_metric(measure_of("fgm")) and not named_by_a_team_metric(measure_of("fieldGoalsMade"))
-    assert _team_measure(Scope(subject=Who(kind="team", teams=("Orlando Magic",)), measure=Scope.from_slots({"stat": "fgm", "rate": "total"}).measure), "how many fgm did the magic have") is None
-    assert _team_measure(Scope(subject=Who(kind="team", teams=("Orlando Magic",)), measure=measure_of("fieldGoalsMade")), "how many did the magic have") == "fieldGoalsMade"
-    assert _team_measure(Scope(subject=Who(kind="team", teams=("Orlando Magic",)), measure=measure_of("points_allowed")), "magic total this season") == "points_allowed"
+    assert _team_measure(Reading(who=Who(kind="team", teams=("Orlando Magic",)), measure=slots_scope({"stat": "fgm", "rate": "total"}).measure), "how many fgm did the magic have") is None
+    assert _team_measure(Reading(who=Who(kind="team", teams=("Orlando Magic",)), measure=measure_of("fieldGoalsMade")), "how many did the magic have") == "fieldGoalsMade"
+    assert _team_measure(Reading(who=Who(kind="team", teams=("Orlando Magic",)), measure=measure_of("points_allowed")), "magic total this season") == "points_allowed"
 
 
 # ---------------- contract 4: the cell changes what a relation reads, and the planner declines it elsewhere ----------------
 
 
 def test_the_rate_cell_changes_what_the_season_line_ranking_reads(season_ctx: AnswerContext) -> None:  # noqa: F811 - the fixture
-    assert leaderboard(season_ctx, Reading.from_slots({"stat": "points"})).data["leaders"][0]["display_name"] == "Low Volume"
-    total = leaderboard(season_ctx, Reading.from_slots({"stat": "points", "rate": "total"}))
+    assert leaderboard(season_ctx, slots_reading({"stat": "points"})).data["leaders"][0]["display_name"] == "Low Volume"
+    total = leaderboard(season_ctx, slots_reading({"stat": "points", "rate": "total"}))
     assert total.data["leaders"][0]["display_name"] == "Volume Scorer" and "in total points" in total.answer
 
 
@@ -361,9 +362,9 @@ def test_the_planner_declines_the_rate_cell_where_no_reader_states_it(con: Any) 
     form of by name (the point's ``ranking_unit`` cause)."""
     route = read_route(names_of(con), "centers by pf per 100", [], "fouls")
     reading = route
-    assert reading.scope.measure == Measure(key="fouls", as_typed="fouls", how="per_100", unit="per 100")
+    assert reading.measure == Measure(key="fouls", as_typed="fouls", how="per_100", unit="per 100")
     assert plan_point(reading).declined == "the relation cannot honor ['rate'] - it would answer for a different span than was asked"
     route = read_route(names_of(con), "who were the top 10 in defensive netpoints / 90", [], "netpoints")
     reading = route
     assert reading.point_refusal is not None and reading.point_refusal.kind == "ranking_unit" and reading.point_refusal.facts == {"metric": "netpoints_defense", "rate": "/ 90"}
-    assert reading.scope.span == Span(season_type=2) or reading.scope.span.season_type == 2
+    assert reading.span == Span(season_type=2) or reading.span.season_type == 2

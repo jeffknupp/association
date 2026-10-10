@@ -134,7 +134,7 @@ def plain(value: Any, *, mask: Mapping[str, str] | None = None) -> Any:
 def _plain_record(value: Any, mask: Mapping[str, str] | None) -> dict[str, Any]:
     """A dataclass as a dict of its fields - or, where it has a
     ``projected()``, of the fields it had before a part was typed (Phase 3,
-    step 2: the Scope's six span slots, the Query's span pair), so a record
+    step 2: the filters' six span slots, the Query's span pair), so a record
     made before the part was typed compares identical to one made after;
     the typed value is recorded beside it, by name."""
     projected = getattr(value, "projected", None)
@@ -167,28 +167,28 @@ def _reading_record(reading: Reading, mask: Mapping[str, str] | None) -> dict[st
         settled = reading.point.subject_span
         point["span"] = "career" if settled is not None and settled.career else None
         point["season"] = settled.season if settled is not None else None
-        point["scope"] = plain(reading.point.scope.to_slots(split_by_presence=reading.point.asked == PRESENCE_SPLIT or reading.point.group == "presence"), mask=mask)
+        point["scope"] = plain(reading.point.to_slots(split_by_presence=reading.point.asked == PRESENCE_SPLIT or reading.point.group == "presence"), mask=mask)
         # Whose default the point is, as its label: what the words asked
         # (``Reading.asked``) since Phase 3, step 4, recorded as the
         # retired intent's name it was.
         point["intent"] = reading.point.intent
     return {
         "intent": reading.intent,
-        "scope": plain(reading.scope.to_slots(split_by_presence=reading.asked == PRESENCE_SPLIT), mask=mask),
+        "scope": plain(reading.to_slots(split_by_presence=reading.asked == PRESENCE_SPLIT), mask=mask),
         # Who the read is about, the span, the window, the games' cuts, the
         # period, the lines, the companions and the measure as the reader
         # typed them (Phase 3, step 2), beside the scope's slot-era
-        # projection of them. The typed subject (``Scope.subject``) is
+        # projection of them. The typed subject (``Reading.who``) is
         # ``who``: ``subject`` is the reading's own record of it, the
         # parser's fields beside.
-        "who": plain(reading.scope.subject, mask=mask),
-        "span": plain(reading.scope.span, mask=mask),
-        "window": plain(reading.scope.window, mask=mask),
-        "cuts": plain(reading.scope.cuts, mask=mask),
-        "period": plain(reading.scope.period, mask=mask),
-        "lines": plain(reading.scope.lines, mask=mask),
-        "companions": plain(reading.scope.companions, mask=mask),
-        "measure": plain(reading.scope.measure, mask=mask),
+        "who": plain(reading.who, mask=mask),
+        "span": plain(reading.span, mask=mask),
+        "window": plain(reading.window, mask=mask),
+        "cuts": plain(reading.cuts, mask=mask),
+        "period": plain(reading.period, mask=mask),
+        "lines": plain(reading.lines, mask=mask),
+        "companions": plain(reading.companions, mask=mask),
+        "measure": plain(reading.measure, mask=mask),
         # The content words no claim covers (Phase 3, step 3): what the
         # claims ledger checks from outside, word for word.
         "unread": list(reading.unread),
@@ -234,7 +234,7 @@ def _query_record(reading: Reading, planned: Planned, mask: Mapping[str, str] | 
     # A TeamQuery has no ``subject``: the team IS the relation. Read by
     # shape rather than imported, so this module stays clear of the compiler.
     record: dict[str, Any] = {"relation": getattr(query, "subject", "team"), **plain(query, mask=mask)}
-    record["scope"] = plain(query.scope.to_slots(split_by_presence=getattr(query, "group", None) == "presence"), mask=mask)
+    record["scope"] = plain(query.to_slots(split_by_presence=getattr(query, "group", None) == "presence"), mask=mask)
     return record
 
 

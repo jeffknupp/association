@@ -72,8 +72,8 @@ def read_streak(con: duckdb.DuckDBPyConnection, q: Query) -> Result | Unanswered
     """
     if q.skeleton != "run" or q.source != "games":
         return None
-    scope = q.scope
-    team = optional_team(con, scope.subject.team, season=scope.span.season)
+    scope = q
+    team = optional_team(con, scope.who.team, season=scope.span.season)
     if isinstance(team, Unanswered):
         return team
     covered = run_scope(scope, named=q.subject == "player")
@@ -87,7 +87,7 @@ def read_streak(con: duckdb.DuckDBPyConnection, q: Query) -> Result | Unanswered
 def _streak_runs(q: Query, runs: tuple[Run, ...]) -> Runs:
     """The runs, with what they held along: the stat's line, or a run of
     wins or losses."""
-    scope = q.scope
+    scope = q
     threshold = threshold_of(scope)
     column = streak_column(scope.measure, threshold)
     line = Line(column=column, value=threshold) if column is not None else None
@@ -118,7 +118,7 @@ def _streak_player_result(con: duckdb.DuckDBPyConnection, q: Query, covered: Any
     return Result(
         subject=player.name,
         relation="player",
-        span=Span(season=covered.season, season_type=covered.season_type, career=covered.season is None, first=first, last=last, phrase=condition_span_label(covered, q.scope, first, last)),
+        span=Span(season=covered.season, season_type=covered.season_type, career=covered.season is None, first=first, last=last, phrase=condition_span_label(covered, q, first, last)),
         narrowing=Narrowing(phrase=narrowed.filters()),
         parts=(Part(body=_streak_runs(q, runs)),),
         notes=tuple(notes),
@@ -191,7 +191,7 @@ def read_team_streak(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> Result | U
 
 def _streak_team_runs(q: TeamQuery, runs: tuple[Run, ...]) -> Runs:
     """A team's runs of wins or losses: no stat and no line."""
-    return Runs(runs=runs, won=won(q.scope.measure))
+    return Runs(runs=runs, won=won(q.measure))
 
 
 def _streak_team_result(q: TeamQuery, compiled: TeamCompiled, found: dict[str, Any], rows: list[dict[str, Any]]) -> Result:

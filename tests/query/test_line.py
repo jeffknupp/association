@@ -18,6 +18,7 @@ from typing import Any
 import duckdb
 import pytest
 from shapes import asked
+from slots import companion_from_slot, line_from_period_slot, slots_reading, slots_scope
 from test_conditions import BROWN, TATUM, league, with_without  # noqa: F401 - the league fixture and the split's reader, imported by name
 from test_period_relation import SEASON as PERIOD_SEASON
 from test_period_relation import con as period_con  # noqa: F401 - the plays fixture, imported by name
@@ -36,12 +37,12 @@ from association.query.player_relation import RELATION_SCOPING, RELATION_SCOPING
 from association.query.reading import (
     Claim,
     Companion,
+    Filtered,
     Line,
     Period,
     PointRefused,
     PointShape,
     Reading,
-    Scope,
     ScopeError,
     cell_set,
     cell_slots,
@@ -151,35 +152,35 @@ def test_a_line_in_a_quarter_is_read_by_the_parser_with_its_claim() -> None:
     ],
 )
 def test_the_slots_round_trip_through_the_typed_values(slots: dict[str, Any]) -> None:
-    scope = Scope.from_slots(slots)
+    scope = slots_scope(slots)
     assert scope.to_slots() == slots
-    assert Scope.from_slots(scope.to_slots()) == scope
+    assert slots_scope(scope.to_slots()) == scope
 
 
 def test_the_splits_teammates_project_under_its_own_slot_and_as_conditions_elsewhere() -> None:
-    scope = Scope.from_slots({"with_player": ["Jayson Tatum", "Jaylen Brown"]})
+    scope = slots_scope({"with_player": ["Jayson Tatum", "Jaylen Brown"]})
     assert scope.companions == (Companion(player="Jayson Tatum"), Companion(player="Jaylen Brown"))
     assert scope.to_slots(split_by_presence=True) == {"with_player": ["Jayson Tatum", "Jaylen Brown"]}
     assert scope.to_slots() == {"conditions": [{"player": "Jayson Tatum", "side": "own", "predicate": "played"}, {"player": "Jaylen Brown", "side": "own", "predicate": "played"}]}
     # A teammate who played beside a role the same name holds: both, as the two slots held them (the split divides by the one and narrows by the other).
-    both = Scope.from_slots({"with_player": ["Jayson Tatum"], "conditions": [{"player": "Jayson Tatum", "side": "own", "predicate": "started"}]})
+    both = slots_scope({"with_player": ["Jayson Tatum"], "conditions": [{"player": "Jayson Tatum", "side": "own", "predicate": "started"}]})
     assert len(both.companions) == 2 and both.to_slots(split_by_presence=True) == {"with_player": ["Jayson Tatum"], "conditions": [{"player": "Jayson Tatum", "side": "own", "predicate": "started"}]}
     # Where one is absent the split divides by the absent ones and the teammates who played went unwritten - the slot era's silent drop, kept in the
     # projection and held typed (ISSUES.md, "A teammate who played beside an absent one on the with/without split is dropped").
-    absent = Scope.from_slots({"with_player": ["Jaylen Brown"], "without": ["Jayson Tatum"]})
+    absent = slots_scope({"with_player": ["Jaylen Brown"], "without": ["Jayson Tatum"]})
     assert len(absent.companions) == 2 and absent.to_slots(split_by_presence=True) == {"without": ["Jayson Tatum"]}
     assert absent.to_slots() == {"without": ["Jayson Tatum"], "conditions": [{"player": "Jaylen Brown", "side": "own", "predicate": "played"}]}
     # The Reading projects by its intent; a Query by its group.
-    assert list(Reading(scope=scope, asked=asked("with_without")).projected()["scope"]["with_player"]) == ["Jayson Tatum", "Jaylen Brown"]
-    assert list(Reading(scope=scope, asked=asked("game_log")).projected()["scope"]["with_player"]) == []
+    assert list(Reading(**scope.filters(), asked=asked("with_without")).projected()["scope"]["with_player"]) == ["Jayson Tatum", "Jaylen Brown"]
+    assert list(Reading(**scope.filters(), asked=asked("game_log")).projected()["scope"]["with_player"]) == []
 
 
 def test_the_projection_keeps_the_slot_era_shape() -> None:
-    projected = Scope(
-        subject=Who(kind="player", players=("X",)),
+    projected = Reading(
+        who=Who(kind="player", players=("X",)),
         lines=(Line(measure="points", value=30, as_typed="30 point", keyed=True), phrase_line("under 14 fta", below=True)),
         companions=(Companion(player="Jayson Tatum", predicate="absent"),),
-    ).projected()
+    ).scope_record()
     assert (
         projected["threshold"],
         list(projected["below"]),
@@ -203,9 +204,9 @@ def test_a_line_or_a_companion_the_relation_could_not_read_is_refused_at_the_doo
     with pytest.raises(ScopeError, match="reached"):
         Companion(player="X", predicate="reached")
     with pytest.raises(ScopeError, match="no player"):
-        Companion.from_slot({"predicate": "absent"})
+        companion_from_slot({"predicate": "absent"})
     with pytest.raises(ScopeError, match="exactly one of period and half"):
-        Line.from_period_slot({"stat": "points", "threshold": 1})
+        line_from_period_slot({"stat": "points", "threshold": 1})
     with pytest.raises(ScopeError, match="no predicate"):
         phrase_line("under 25 years old", below=True).as_predicate()
     assert Line(measure="points", value=30).as_predicate() == ("points", ">=", 30)
@@ -213,21 +214,21 @@ def test_a_line_or_a_companion_the_relation_could_not_read_is_refused_at_the_doo
 
 def test_the_cells_and_the_slot_names_a_decline_still_says() -> None:
     assert {"line", "period_line"} == Line.CELLS and {"companion"} == Companion.CELLS
-    keyed = Scope.from_slots({"stat": "points", "threshold": 30})
+    keyed = slots_scope({"stat": "points", "threshold": 30})
     assert keyed.cells() == frozenset() and threshold_of(keyed) == 30 and _shape(threshold_line(keyed) or Line(measure=None))[4]  # the shape's own line sets no cell, as the threshold slot never did
-    below = Scope.from_slots({"below": ["under 14 fta"]})
+    below = slots_scope({"below": ["under 14 fta"]})
     assert below.cells() == {"line"} and cell_set(below, "line") and line_slot_names(below, "line") == ["below"] and unhonored_cells(below, frozenset()) == ["below"]
     assert unhonored_cells(below, frozenset({"line"})) == []
-    above = Scope.from_slots({"above": ["with 25 minutes"], "below": ["under 14 fta"]})
+    above = slots_scope({"above": ["with 25 minutes"], "below": ["under 14 fta"]})
     assert line_slot_names(above, "line") == ["below", "above"] and unhonored_cells(above, frozenset()) == ["above", "below"]
-    quarter = Scope.from_slots({"period_condition": {"stat": "points", "threshold": 10, "period": 1}})
+    quarter = slots_scope({"period_condition": {"stat": "points", "threshold": 10, "period": 1}})
     assert quarter.cells() == {"period_line"} and unhonored_cells(quarter, frozenset()) == ["period_condition"] and period_lines(quarter) == list(quarter.lines)
-    without = Scope.from_slots({"without": ["Jayson Tatum"]})
+    without = slots_scope({"without": ["Jayson Tatum"]})
     assert without.cells() == {"companion"} and companion_slot_names(without) == ["without"] and unhonored_cells(without, frozenset()) == ["without"]
-    started = Scope.from_slots({"conditions": [{"player": "Joel Embiid", "predicate": "started"}], "without": ["Paul George"]})
+    started = slots_scope({"conditions": [{"player": "Joel Embiid", "predicate": "started"}], "without": ["Paul George"]})
     assert companion_slot_names(started) == ["without", "conditions"] and unhonored_cells(started, frozenset({"companion"})) == []
     assert sorted(slot for cell in ("companion", "line", "split") for slot in cell_slots(started, cell)) == ["conditions", "without"]
-    assert sorted(slot for cell in ("companion", "line", "split") for slot in cell_slots(Scope.from_slots({"below": ["under 14 fta"], "split": "home_away"}), cell)) == ["below", "split"]
+    assert sorted(slot for cell in ("companion", "line", "split") for slot in cell_slots(slots_scope({"below": ["under 14 fta"], "split": "home_away"}), cell)) == ["below", "split"]
 
 
 def test_the_relation_tables_declare_the_cells_once_and_by_the_cell_names() -> None:
@@ -250,13 +251,13 @@ def test_the_relation_tables_declare_the_cells_once_and_by_the_cell_names() -> N
 
 
 def test_relation_lines_are_the_narrowing_ones_in_the_slots_order() -> None:
-    scope = Scope.from_slots({"stat": "points", "threshold": 30, "above": ["with 25 minutes"], "below": ["under 14 fta"]})
+    scope = slots_scope({"stat": "points", "threshold": 30, "above": ["with 25 minutes"], "below": ["under 14 fta"]})
     assert [line.as_typed for line in relation_lines(scope)] == ["under 14 fta", "with 25 minutes"]
     assert [(f.column, f.op, f.value, f.label) for f in measure_filters(scope)] == [("freeThrowsAttempted", "<", 14, "under 14 free throw attempts"), ("minutes", ">=", 25, "at least 25 minutes")]
     pairs = read_lines("most 20+ point 5+ assist games", LineContext(asked=asked("threshold_count")))
-    assert [line.as_typed for line in relation_lines(Scope(lines=pairs.lines))] == ["20+ point", "5+ assist"] and threshold_of(Scope(lines=pairs.lines)) == 20
+    assert [line.as_typed for line in relation_lines(Reading(lines=pairs.lines))] == ["20+ point", "5+ assist"] and threshold_of(Reading(lines=pairs.lines)) == 20
     with pytest.raises(PointRefused, match="names no box-score stat"):
-        measure_filters(Scope.from_slots({"below": ["under 25 years old"]}))
+        measure_filters(slots_scope({"below": ["under 25 years old"]}))
 
 
 # ---------------- the companions: one reader, with its claims ----------------
@@ -264,18 +265,18 @@ def test_relation_lines_are_the_narrowing_ones_in_the_slots_order() -> None:
 
 def test_the_subject_reading_reads_the_companions_and_claims_their_phrase(league: AnswerContext) -> None:  # noqa: F811 - the fixture
     question = "jaylen brown game log without jayson tatum this season"
-    subject = read_subject(names_of(league.con), question, asked("game_log"), Scope(subject=Who(kind="player", players=("Jaylen Brown",))))
+    subject = read_subject(names_of(league.con), question, asked("game_log"), Reading(who=Who(kind="player", players=("Jaylen Brown",))))
     assert subject.conditions == (Companion(player="Jayson Tatum", predicate="absent"),)
     # The phrase's claim cut to the words the companion reader needed (Phase 3, step 3,
     # span.needed): either of "jayson" and "tatum" names him alone, so the keyword is the one
     # word it cannot do without; and the season the names are settled in is the reading's too.
     assert [(c.what, question[c.start : c.end]) for c in subject.claims] == [("companion", "without"), ("season", "season")]
-    reached = read_subject(names_of(league.con), "celtics record when jayson tatum scores 20+ points", asked("record_when"), Scope(subject=Who(kind="team", teams=("Boston Celtics",))))
+    reached = read_subject(names_of(league.con), "celtics record when jayson tatum scores 20+ points", asked("record_when"), Reading(who=Who(kind="team", teams=("Boston Celtics",))))
     assert reached.conditions == (Companion(player="Jayson Tatum", predicate="reached", line=Line(measure="points", value=20, as_typed="20+ points")),)
     # The companions reach the Reading typed, through the one writer, and ride the route's claims.
     route = read_route(names_of(league.con), question, ["Jaylen Brown", "Jayson Tatum"], "")
     reading = route
-    assert reading.scope.companions == (Companion(player="Jayson Tatum", predicate="absent"),) and reading.scope.subject.player == "Jaylen Brown"
+    assert reading.companions == (Companion(player="Jayson Tatum", predicate="absent"),) and reading.who.player == "Jaylen Brown"
     assert any(c.what == "companion" for c in reading.claims)
 
 
@@ -289,23 +290,23 @@ def test_a_count_over_several_lines_reads_the_first_as_the_points_not_the_models
     reading = route
     assert reading.intent == "threshold_count" and reading.point is not None
     assert reading.point.predicates[0][:2] == ("points", ">=") and reading.point.predicates[0][2] == 20
-    assert [_shape(line)[:3] for line in reading.scope.lines] == [("points", ">=", 20), ("rebounds", ">=", 10), ("assists", ">=", 5)]
+    assert [_shape(line)[:3] for line in reading.lines] == [("points", ">=", 20), ("rebounds", ">=", 10), ("assists", ">=", 5)]
 
 
 # ---------------- contract 4: applying each cell changes the result ----------------
 
 
-def _games(ctx: AnswerContext, scope: Scope) -> tuple[int, int]:
-    (row,) = rows_of(ctx.con, compile_query(ctx.con, Query(scope=scope, skeleton="scalar", measures=["points"], aggregate="total")))
+def _games(ctx: AnswerContext, scope: Filtered) -> tuple[int, int]:
+    (row,) = rows_of(ctx.con, compile_query(ctx.con, Query(**scope.filters(), skeleton="scalar", measures=["points"], aggregate="total")))
     return int(row["games"]), int(row["points"])
 
 
 def test_the_line_cell_changes_what_the_player_relation_reads(pg_ctx: AnswerContext) -> None:  # noqa: F811 - the fixture
-    assert _games(pg_ctx, Scope(subject=Who(kind="player", players=("Brandin Podziemski",)))) == (3, 45)  # e1 (30 min, 10), e2 (32, 20), e3 (28, 15)
-    assert _games(pg_ctx, Scope(subject=Who(kind="player", players=("Brandin Podziemski",)), lines=(phrase_line("with 30 minutes", below=False),))) == (2, 30)
-    assert _games(pg_ctx, Scope(subject=Who(kind="player", players=("Brandin Podziemski",)), lines=(phrase_line("under 30 minutes", below=True),))) == (1, 15)
+    assert _games(pg_ctx, Reading(who=Who(kind="player", players=("Brandin Podziemski",)))) == (3, 45)  # e1 (30 min, 10), e2 (32, 20), e3 (28, 15)
+    assert _games(pg_ctx, Reading(who=Who(kind="player", players=("Brandin Podziemski",)), lines=(phrase_line("with 30 minutes", below=False),))) == (2, 30)
+    assert _games(pg_ctx, Reading(who=Who(kind="player", players=("Brandin Podziemski",)), lines=(phrase_line("under 30 minutes", below=True),))) == (1, 15)
     pairs = read_lines("20+ point 5+ assist games", LineContext(asked=asked("game_log"))).lines
-    assert _games(pg_ctx, Scope(subject=Who(kind="player", players=("Brandin Podziemski",)), lines=pairs)) == (1, 20)  # e2 alone holds both
+    assert _games(pg_ctx, Reading(who=Who(kind="player", players=("Brandin Podziemski",)), lines=pairs)) == (1, 20)  # e2 alone holds both
 
 
 def test_the_period_line_cell_changes_what_the_player_relation_reads(period_con: duckdb.DuckDBPyConnection) -> None:  # noqa: F811 - the fixture
@@ -325,15 +326,15 @@ def test_the_period_line_cell_changes_what_the_player_relation_reads(period_con:
 
 
 def test_the_companion_cell_changes_what_the_player_relation_reads(league: AnswerContext) -> None:  # noqa: F811 - the fixture
-    every = _games(league, Scope(subject=Who(kind="player", players=("Jaylen Brown",))))
-    without = _games(league, Scope(subject=Who(kind="player", players=("Jaylen Brown",)), companions=(Companion(player="Jayson Tatum", predicate="absent"),)))
-    with_tatum = _games(league, Scope(subject=Who(kind="player", players=("Jaylen Brown",)), companions=(Companion(player="Jayson Tatum"),)))
+    every = _games(league, Reading(who=Who(kind="player", players=("Jaylen Brown",))))
+    without = _games(league, Reading(who=Who(kind="player", players=("Jaylen Brown",)), companions=(Companion(player="Jayson Tatum", predicate="absent"),)))
+    with_tatum = _games(league, Reading(who=Who(kind="player", players=("Jaylen Brown",)), companions=(Companion(player="Jayson Tatum"),)))
     assert every[0] > without[0] > 0 and every[0] > with_tatum[0] > 0 and without[0] + with_tatum[0] <= every[0]
     assert without == (2, 43)  # e2 (Tatum DNP, 25) and e3 (Tatum not in the box score, 18)
 
 
 def test_the_companion_cell_changes_what_the_team_relation_reads(league: AnswerContext) -> None:  # noqa: F811 - the fixture
-    split = with_without(league, Reading.from_slots({"team": "Boston Celtics", "season_type": 2, "with_player": ["Jayson Tatum"]}, asked=asked("with_without")))
+    split = with_without(league, slots_reading({"team": "Boston Celtics", "season_type": 2, "with_player": ["Jayson Tatum"]}, asked=asked("with_without")))
     assert not isinstance(split, str)
     groups = {row["group"]: row for row in split.data["splits"]["presence"]} if "presence" in split.data.get("splits", {}) else None
     assert "with" in split.answer.lower() and "without" in split.answer.lower()

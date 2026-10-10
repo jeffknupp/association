@@ -619,7 +619,7 @@ and refused by value where neither), `game_n`, `season_n` (the player
 relation's alone); `round` is a cut of no relation, refused wherever it
 is set), without, split, below/above, the period's one typed cell
 (`reading.Period.CELLS`, Phase 3, step 2: `period`, a quarter or a half -
-`Period(number, half)` on `Scope.period`, the slots `period` and `half`
+`Period(number, half)` on `Reading.period`, the slots `period` and `half`
 until then - which changes what a read SEES of each game rather than
 which games: the relation rebuilds the period's line of every game from
 the shots and plays, `narrow_periods`), the line family's typed cells
@@ -652,7 +652,7 @@ at one or both ends, `since`/`until`; `both`, both season types in one
 read - the slots `span`, `since`, `until` and `season_type_unstated` until
 then) - applied in the shared steps (`scoped_player`/`scoped_games`,
 `scoped_team`/`team_games`, `condition_player`; the span by `span_of`,
-which takes the typed `Scope.span` and resolves it once for every reader)
+which takes the typed `Reading.span` and resolves it once for every reader)
 and declared once (`RELATION_SCOPING`, with one row per shape a reader
 reads, `RELATION_SCOPING_EXCLUDED`, keyed by the planned point's
 `PointShape` - one `reading.ShapeCells` each, since Phase 3, step 2's
@@ -714,7 +714,7 @@ last step settle that reading under the key the grammar's rules chose
 (`subject.settle_subject`, which reads no name and asks the warehouse
 nothing) - and `subject.apply_subject` writes those names into the scope
 (until 5.0.0 this was `entities.override_invented_players`; since Phase 3,
-step 2 one typed value, `reading.Subject` on `Scope.subject`, where four
+step 2 one typed value, `reading.Subject` on `Reading.who`, where four
 name slots stood) inside the parser's last step (`parse._reading`), whose
 `Reading` - `read_route`'s return since Phase 3, step 4, slice (b), when
 the Route that carried the reading to `parse.reading_from_route` went - is
@@ -938,11 +938,24 @@ grammar name what the words ask, the grammar's rules settle it
 (`query/grammar.py`, `grammar.settle` - the stages of `query/router.py`
 until Phase 3, step 4, slice (b), which settled a route in the shape the
 router's model used to fill, `router.Route`, over a raw slot dict), and the
-taggers, one per family, read the filters into the typed `Scope` in the
+taggers, one per family, read the filters into the Reading's typed fields in the
 order each reads what the ones before it settled (`parse._tagged`: the
 split, the lines, the measure, the period, the cuts, the window, the span
-last). Nothing carries a route between the words and the Reading. Two
-things follow, and both matter when you add a shape:
+last). Nothing carries a route between the words and the Reading, and
+the filters are the Reading's own fields (`reading.Filtered`: `who` - the
+typed subject, `Reading.subject` being the subject reading's record -
+`cuts`, `companions`, `lines`, `measure`, `span`, `split`, `period`,
+`window`), a frozen base every planned query inherits too (`Query`,
+`TeamQuery`, whose compiler measure is `metric`, `NetPointsQuery`,
+`ShotQuery`, `TeamSeasonQuery`), with the cells declared once on it
+(`Filtered.CELLS`, `cells()`): a relation's step narrows by the query
+itself, and `Scope`, the record they stood on until Phase 3, step 4,
+slice (b), is gone - with its slot door, which only the tests still
+called (`tests/slots.py`: `slots_scope`, `slots_reading`, the families'
+doors). `to_slots()` and the `scope` record (`scope_record`,
+`projected()`) keep the shape the populations were recorded in until
+slice (c) deletes the projection. Two things follow, and both matter when
+you add a shape:
 
 - **A slot the router's model used to fill has to be read from the words,**
   or it is silently absent: `fields` ("with their rebounds and
@@ -989,7 +1002,7 @@ things follow, and both matter when you add a shape:
   The subject's own has no tagger: its one reader is the
   subject reading (`subject.read_subject`, once per question, below), and
   its one writer `subject.apply_subject`, which writes ONE typed value,
-  `reading.Subject(kind, players, teams, position)` on `Scope.subject`, in
+  `reading.Subject(kind, players, teams, position)` on `Reading.who`, in
   place of the four slots `player`, `players`, `team`, `teams` and the
   point's `position` (2026-10-10). The kind is the reading's (a team record
   keyed on a companion's line is still the team's question, with the
@@ -1031,8 +1044,7 @@ things follow, and both matter when you add a shape:
   readings and the words win every one; the stages wrote a name after the
   subject reading on 58 (the grammar's subject 30, a team's nickname 27, a
   quarter's player 1) and no other stage fired; `apply_subject` moved the
-  player on 10. The four slots are gone from `Scope`; `Scope.from_slots`
-  still takes them (it builds the `Subject`, one name to `player`, two or
+  player on 10. The four slots are gone from the filters; the tests' slot door (`tests/slots.py`, `Scope.from_slots` until Phase 3, step 4) still takes them (it builds the `Subject`, one name to `player`, two or
   more to `players`, a team the same), `to_slots` and `projected()` give
   the old shape back, the point's `position` is projected from its
   subject where the point is the league's (`Reading.projected`), and the
@@ -1050,7 +1062,7 @@ things follow, and both matter when you add a shape:
   "q4", "4th qtr", "first half", "2h": `WHICH_QUARTER`, `WHICH_HALF`,
   `ORDINAL_PERIODS`; a half is read first and apart, since a half is never
   a quarter) - over what the grammar's rules settled the words to ask (`asked=`, the grammar's key), writes `reading.Period`
-  on `Scope.period` and claims what it read. `which_period(text)` is the
+  on `Reading.period` and claims what it read. `which_period(text)` is the
   ONE reader of which period any words name: the intent stage calls it to
   choose among the three period intents (the stage's choice is step 4's;
   the words it chooses by - `QUARTER_WORDS`, `HALF_WORDS`,
@@ -1073,8 +1085,7 @@ things follow, and both matter when you add a shape:
   it writes nothing. A "by quarter" question reads NO period (the
   breakdown is the point's shape, `Reading.by="period"`), and a period as
   a CONDITION on which games count is the line slice's value
-  (`Scope.period_condition`), untouched. The two slots are gone from
-  `Scope`; `Scope.from_slots` still takes them (it builds the `Period`;
+  (`period_condition`), untouched. The two slots are gone from the filters; the tests' slot door (`tests/slots.py`, `Scope.from_slots` until Phase 3, step 4) still takes them (it builds the `Period`;
   both at once is refused at the door), `to_slots` and `projected()` give
   the old shape back in the old field order, a model-era `period`/`half`
   key is no argument the parser takes, and the typed value is recorded
@@ -1097,7 +1108,7 @@ things follow, and both matter when you add a shape:
   is the split's), and the opponent and absent teammates the subject
   reading read (an opponent that is the `without` list again is dropped;
   the tenure the subject reading writes after the taggers); it writes
-  `reading.Cuts` on `Scope.cuts`, the situation parsed once into
+  `reading.Cuts` on `Reading.cuts`, the situation parsed once into
   `reading.Situation` (`situation_of`: the words, and the
   `CalendarNarrowing` or `AlignmentNarrowing` they name, which the
   relations apply and never re-read), and claims what it read - the
@@ -1110,8 +1121,7 @@ things follow, and both matter when you add a shape:
   two claims over one word, which `span.claimed` joins into one named for
   both (a partial overlap raised until this slice, and "lebron's last game
   7" - the window's "last game" and the postseason's "game 7" - raised out
-  of the reader to the user). The eight slots are gone from `Scope`;
-  `Scope.from_slots` still takes them (it builds the `Cuts`), `to_slots`
+  of the reader to the user). The eight slots are gone from the filters; the tests' slot door (`tests/slots.py`, `Scope.from_slots` until Phase 3, step 4) still takes them (it builds the `Cuts`), `to_slots`
   and `projected()` give the old shape back in the old field order
   (`_CUT_SLOT_POSITIONS`), and the typed value is recorded beside the
   reading (`stages._reading_record`, `cuts`). The tables declare the cuts
@@ -1119,12 +1129,12 @@ things follow, and both matter when you add a shape:
   `tenure` and `season_n` in `TEAM_RELATION_SCOPING`), a reader whose
   words state fewer takes `relation_cuts(intent)` with its exclusions,
   and `reading.cell_set(scope, cell)` is the one reading of a cell name
-  against a Scope for the tables that list cells by name. `query/line.py` is the lines' tagger:
+  against the filters for the tables that list cells by name. `query/line.py` is the lines' tagger:
   `read_lines(question, LineContext)` reads the lines on a stat a question
   keeps the subject's games past - "30+ points", "20+ point 5+ assist
   games", "scores 30", "fouled out" (fouls at six), "under 14 fta", "at
   most 5 turnovers", "with 25 minutes" - over what the words ask (the settled key) alone,
-  writes `reading.Line` values on `Scope.lines` (the measure as the game
+  writes `reading.Line` values on `Reading.lines` (the measure as the game
   column's key, `op`, `value`, `as_typed`, `keyed` for the shape's own
   line, `narrows` for one the relation filters by, and `period` for a line
   in a quarter) and claims each line's characters once; a reader whose
@@ -1160,8 +1170,7 @@ things follow, and both matter when you add a shape:
   `_numbered_stat_lines`, deleted) differed from the words on 1 ("most
   games with 20 pt,s 10 reb, 5 ast": the pattern could not pass the comma
   and fell back to the model's "rebounds" - the one answer this slice
-  moved). The seven slots are gone from `Scope`; `Scope.from_slots` still
-  takes them (it builds the `Line`s and `Companion`s: `threshold` with the
+  moved). The seven slots are gone from the filters; the tests' slot door (`tests/slots.py`, `Scope.from_slots` until Phase 3, step 4) still takes them (it builds the `Line`s and `Companion`s: `threshold` with the
   model's stat as a keyed line, `above`/`below` through
   `lines.phrase_line`, `period_condition` through `Line.from_period_slot`,
   the three companion slots through `Companion.from_slot`), `to_slots` and
@@ -1189,7 +1198,7 @@ things follow, and both matter when you add a shape:
   tagger read beside a line; a run's result; a fingerprint's side; a chart's
   shots; the columns beside a ranking) - into `reading.Measure(key,
   as_typed, how, unit, whose, side, shot_value, category, won, beside)` on
-  `Scope.measure`, and claims what it read. The model's key is CONTEXT
+  `Reading.measure`, and claims what it read. The model's key is CONTEXT
   (`raw["stat"]`, the one REQUIRED key the normalizer fills whether or not
   the question names a stat): the words win where they name a measure, and
   where they name none the key stands as it did, so no answer moves; the
@@ -1221,7 +1230,7 @@ things follow, and both matter when you add a shape:
   the route and the reading; 24 readings carried a key no answer-side
   vocabulary held (`shot_distance`, the ranking's sentinel; `games_played`,
   read by nothing; the grammar's given-up keys, refused by name). The seven
-  slots are gone from `Scope`; `Scope.from_slots` still takes them (it
+  slots are gone from the filters; the tests' slot door (`tests/slots.py`, `Scope.from_slots` until Phase 3, step 4) still takes them (it
   builds the `Measure` through the catalog), `to_slots` and `projected()`
   give the old shape back in the old field order (a side or a rate the key
   folds in, `netpoints_defense_per_100`, is the key's and no slot), and the
@@ -1244,7 +1253,7 @@ things follow, and both matter when you add a shape:
   can still take, a team ranking's end (`rank`), the measure a ranking of
   boolean games is ordered by (`by`) - over what the grammar's rules settled the words to ask
   and whether the stat is a yes/no one, writes `reading.Window` on
-  `Scope.window`, and claims what it read. Measured first
+  `Reading.window`, and claims what it read. Measured first
   (`~/association-research/stages/window_family.py`, the four slots as
   each stage set them on all 2,710 readings): the parser read the grammar
   twice, before the stages and again after, and every stage that DROPPED a
@@ -1253,7 +1262,7 @@ things follow, and both matter when you add a shape:
   source - so those rules were dead, and went rather than being ported; the
   model-era `order`/`limit`/`rank`/`ranked_by` a route still carries are
   dropped at the stages' door with the span's keys. The four slots are gone
-  from `Scope`; `Scope.from_slots` still takes them (it builds the
+  from the filters; the tests' slot door (`tests/slots.py`, `Scope.from_slots` until Phase 3, step 4) still takes them (it builds the
   `Window`), `to_slots` and `projected()` give the old shape back, and the
   typed value is recorded beside the reading (`stages._reading_record`,
   `window`). `query/span.py` is the span's tagger: `read_span(question, SpanContext)` reads
@@ -1263,7 +1272,7 @@ things follow, and both matter when you add a shape:
   slots as each stage set them on all 2,710 readings), from the words and
   the few facts the stages settled before it (what the words ask, a window, a
   player, a dated range), writes one typed value (`reading.Span`, on
-  `Scope.span`) and returns the `Claim`s - `(start, end, what)` - of the
+  `Reading.span`) and returns the `Claim`s - `(start, end, what)` - of the
   characters it consumed, which the parser carries onto `Reading.claims`.
   A claim inside another's characters folds into it (the "playoffs" in
   "including the playoffs"); two claims that overlap without one holding
@@ -1280,9 +1289,9 @@ things follow, and both matter when you add a shape:
   at the stages' door, `router._MODEL_SPAN_KEYS`, until the router went;
   `tests/routed.py`'s `staged_raw` drops it from a test's payload): the
   words are the one source. The
-  six slots are gone from `Scope`; `Scope.from_slots` still takes them
-  (it builds the `Span`), `Scope.to_slots` projects the value back to
-  them, and `Scope.projected()` / `Reading.projected()` /
+  six slots are gone from the filters; the tests' slot door (`tests/slots.py`, `Scope.from_slots` until Phase 3, step 4) still takes them
+  (it builds the `Span`), `Reading.to_slots` projects the value back to
+  them, and `Filtered.scope_record()` / `Reading.projected()` /
   `Query.projected()` keep every recorded shape as it was so the four
   populations compare with no field ignored but the typed value itself,
   recorded beside the scope (`stages._reading_record`, `span`). The point
@@ -1345,9 +1354,9 @@ things follow, and both matter when you add a shape:
   or `opponent`), `predicate` (`played`, `absent`, `started`, `bench`,
   `reached`) and a reached role's `Line` - with a `Claim` on the phrase
   (`Subject.claims`, which the parser carries onto `Reading.claims`), and
-  ONE writer puts them on the Scope: `subject.apply_subject`
+  ONE writer puts them on the Reading: `subject.apply_subject`
   (`_apply_companions`: every companion, the other side's first, the
-  subject himself excluded unless absent; `Scope.companions` since Phase 3,
+  subject himself excluded unless absent; `Reading.companions` since Phase 3,
   step 2, where the slots `without`, `with_player` and `conditions` stood
   - and on the path that refuses an invented name too, so "jay huff game
   log vs Embiid" keeps Embiid beside the refusal). The grammar's rules

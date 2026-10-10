@@ -14,6 +14,7 @@ from typing import Any
 import pytest
 from routed import staged as settle
 from shapes import asked, key, stated
+from slots import cuts_from_slots, slots_scope
 from test_templates import pg_ctx, team_cells_con  # noqa: F401 - the two relation fixtures, imported by name
 
 from association.nba.season import current_season
@@ -23,7 +24,7 @@ from association.query.compose.core import Query, compile_query, rows_of
 from association.query.compose.plan import cells_stated
 from association.query.cuts import CutsContext, CutsRead, read_cuts
 from association.query.player_relation import RELATION_SCOPING, RELATION_SCOPING_EXCLUDED
-from association.query.reading import Claim, Companion, Cuts, PointShape, Scope, ScopeError, Situation, Span, cell_set, situation_of, unhonored_cells
+from association.query.reading import Claim, Companion, Cuts, PointShape, Reading, ScopeError, Situation, Span, cell_set, situation_of, unhonored_cells
 from association.query.reading import Subject as Who
 from association.query.team_games import TeamNarrowed, rows_sql
 from association.query.team_relation import TEAM_CUTS, TEAM_RELATION_SCOPING, TEAM_RELATION_SCOPING_EXCLUDED, scoped_team, team_games
@@ -128,7 +129,7 @@ def test_a_day_and_its_own_month_are_one_claim_named_for_both() -> None:
 
 def test_the_cuts_claims_ride_the_route_with_the_windows_and_the_spans() -> None:
     route = settle("game_log", {"player": "Jayson Tatum"}, "tatum last 5 home games vs the celtics in the 2024 playoffs")
-    assert route.scope.cuts == Cuts(venue="home") and route.scope.window.count == 5 and route.scope.span.season == 2024
+    assert route.cuts == Cuts(venue="home") and route.window.count == 5 and route.span.season == 2024
     # Each tagger's claim is cut to the words it needed (Phase 3, step 3, span.needed): the window
     # needs "last 5" and "games" (without "games", "last 5 home" names no window), not "home",
     # which is the venue's alone.
@@ -156,13 +157,13 @@ def test_the_cuts_claims_ride_the_route_with_the_windows_and_the_spans() -> None
     ],
 )
 def test_the_eight_slots_round_trip_through_the_cuts(slots: dict[str, Any]) -> None:
-    scope = Scope.from_slots(slots)
-    assert scope.to_slots() == slots and Cuts.from_slots(slots).to_slots() == slots
-    assert Scope.from_slots({"cuts": scope.cuts}) == scope
+    scope = slots_scope(slots)
+    assert scope.to_slots() == slots and cuts_from_slots(slots).to_slots() == slots
+    assert slots_scope({"cuts": scope.cuts}) == scope
 
 
 def test_the_projection_keeps_the_slot_era_shape_and_its_order() -> None:
-    scope = Scope.from_slots(
+    scope = slots_scope(
         {
             "player": "LeBron James",
             "team": "LAL",
@@ -197,23 +198,23 @@ def test_the_projection_keeps_the_slot_era_shape_and_its_order() -> None:
         "venue",
         "limit",
     ]
-    projected = scope.projected()
+    projected = scope.scope_record()
     assert projected["opponent"] == "BOS" and projected["own_team"] == "MIA" and projected["situation"] == "in january" and projected["venue"] == "home" and projected["round"] == "finals"
     assert "cuts" not in projected and "tenure" not in projected
-    empty = Scope().projected()
+    empty = Reading().scope_record()
     assert all(empty[slot] is None for slot in ("opponent", "own_team", "venue", "date", "situation", "round", "game_n", "season_n"))
     assert list(empty).index("opponent") == list(empty).index("teams") + 1 and list(empty).index("venue") == list(empty).index("period_condition") + 1
 
 
 def test_a_typed_cuts_and_a_slot_at_once_or_a_bad_value_is_refused_at_the_door() -> None:
     with pytest.raises(ScopeError, match="typed cuts"):
-        Scope.from_slots({"cuts": Cuts(venue="home"), "opponent": "BOS"})
+        slots_scope({"cuts": Cuts(venue="home"), "opponent": "BOS"})
     with pytest.raises(ScopeError, match="calendar day"):
-        Scope.from_slots({"date": "last night"})
+        slots_scope({"date": "last night"})
     with pytest.raises(ScopeError, match="venue"):
-        Scope.from_slots({"venue": "neutral"})
+        slots_scope({"venue": "neutral"})
     # A blank opponent is the slot absent, as every reader took it.
-    assert Scope.from_slots({"opponent": " "}).cuts == Cuts()
+    assert slots_scope({"opponent": " "}).cuts == Cuts()
 
 
 # ---------------- the cells ----------------
@@ -225,9 +226,9 @@ def test_the_cells_and_what_a_reader_leaves_unhonored() -> None:
     assert cuts.cells() == Cuts.CELLS and cuts.named
     assert cuts.unhonored(frozenset()) == ["opponent", "own_team", "date", "situation", "game_n", "season_n", "round", "venue"]
     assert cuts.unhonored(Cuts.CELLS - {"round", "tenure"}) == ["own_team", "round"]
-    assert unhonored_cells(Scope(cuts=Cuts(round="finals", opponent="BOS")), cells_stated(key("game_log"))) == ["round"]
-    assert unhonored_cells(Scope(cuts=Cuts(tenure="MIA")), cells_stated(key("game_log"))) == [] and unhonored_cells(Scope(cuts=Cuts(tenure="MIA")), TEAM_RELATION_SCOPING) == ["own_team"]
-    assert cell_set(Scope(cuts=Cuts(tenure="MIA")), "tenure") and not cell_set(Scope(), "tenure") and cell_set(Scope(companions=(Companion(player="X", predicate="absent"),)), "companion")
+    assert unhonored_cells(Reading(cuts=Cuts(round="finals", opponent="BOS")), cells_stated(key("game_log"))) == ["round"]
+    assert unhonored_cells(Reading(cuts=Cuts(tenure="MIA")), cells_stated(key("game_log"))) == [] and unhonored_cells(Reading(cuts=Cuts(tenure="MIA")), TEAM_RELATION_SCOPING) == ["own_team"]
+    assert cell_set(Reading(cuts=Cuts(tenure="MIA")), "tenure") and not cell_set(Reading(), "tenure") and cell_set(Reading(companions=(Companion(player="X", predicate="absent"),)), "companion")
 
 
 def test_the_relation_tables_declare_the_cuts_once() -> None:
@@ -259,7 +260,7 @@ def _player_games(ctx: AnswerContext, cuts: Cuts, span: Span | None = None) -> t
     (row,) = rows_of(
         ctx.con,
         compile_query(
-            ctx.con, Query(scope=Scope(subject=Who(kind="player", players=("Brandin Podziemski",)), cuts=cuts, span=span or Span()), skeleton="scalar", measures=["points"], aggregate="total")
+            ctx.con, Query(**(Reading(who=Who(kind="player", players=("Brandin Podziemski",)), cuts=cuts, span=span or Span())).filters(), skeleton="scalar", measures=["points"], aggregate="total")
         ),
     )
     return int(row["games"] or 0), int(row["points"] or 0)
@@ -294,10 +295,10 @@ def test_a_series_game_and_an_ordinal_season_change_what_the_player_relation_rea
 
 
 def _team_games(ctx: AnswerContext, cuts: Cuts, span: Span | None = None) -> list[str]:
-    settled = scoped_team(ctx.con, Scope(subject=Who(kind="team", teams=("Celtics",)), span=span or Span()), "no team")
+    settled = scoped_team(ctx.con, Reading(who=Who(kind="team", teams=("Celtics",)), span=span or Span()), "no team")
     assert isinstance(settled, tuple)
     team, resolved = settled
-    narrowed = team_games(ctx.con, team, resolved, Scope(cuts=cuts), opponent=cuts.opponent, date=cuts.date)
+    narrowed = team_games(ctx.con, team, resolved, Reading(cuts=cuts), opponent=cuts.opponent, date=cuts.date)
     assert isinstance(narrowed, TeamNarrowed)
     sql, params = rows_sql(narrowed, "tg.event_id", order="tg.eastern_date")
     return [str(row[0]) for row in ctx.con.execute(sql, params).fetchall()]

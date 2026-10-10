@@ -38,6 +38,7 @@ from unittest import mock
 
 import duckdb
 from shapes import asked
+from slots import slots_scope
 
 from association.query import compose, grammar, parse
 from association.query.agent import Agent
@@ -49,7 +50,7 @@ from association.query.entities import names_of
 from association.query.names import NameIndex
 from association.query.normalizer import Normalized
 from association.query.point import default_point
-from association.query.reading import PRESENCE_SPLIT, Claim, Companion, Line, PointShape, Reading, Scope, Subject, asked_label
+from association.query.reading import PRESENCE_SPLIT, Claim, Companion, Line, PointShape, Reading, Subject, asked_label
 from association.query.span import claimed
 from association.query.subject import Subject as ReadSubject
 from association.query.subject import child_named, read_subject, settle_subject
@@ -70,10 +71,16 @@ class Routed:
     4, slice (b)."""
 
     asked: PointShape | None
-    scope: Scope = field(default_factory=Scope)
+    scope: Reading = field(default_factory=Reading)
     subject: ReadSubject | None = None
     decisions: tuple[Decision, ...] = ()
     claims: tuple[Claim, ...] = ()
+
+    def __getattr__(self, name: str) -> Any:
+        """A filter by its name (``who``, ``cuts``, ...), the reading's own."""
+        if name.startswith("__") or name == "scope":
+            raise AttributeError(name)
+        return getattr(self.scope, name)
 
     @property
     def intent(self) -> str:
@@ -91,7 +98,7 @@ def slots_route(intent: str, slots: Mapping[str, Any] | None = None) -> Routed:
     ask: ``shapes.asked``) and ``slots`` name, through the Scope's one door
     (``Scope.from_slots`` raises ``ScopeError`` for a value no field holds).
     It carries no subject: :func:`with_subject` reads one."""
-    return Routed(asked(intent), Scope.from_slots(slots or {}))
+    return Routed(asked(intent), slots_scope(slots or {}))
 
 
 def with_subject(con: duckdb.DuckDBPyConnection | NameIndex, question: str, route: Routed) -> Routed:
@@ -143,7 +150,7 @@ def default_reading(intent: str, slots: Mapping[str, Any]) -> Reading:
     ``compose.adapt.to_reading`` gave (deleted with the last adapter in
     Phase 2, step 3; tests were its only callers) -
     :func:`~association.query.point.default_point` over the typed scope."""
-    return default_point(asked(intent), Scope.from_slots(dict(slots)))
+    return default_point(asked(intent), slots_scope(dict(slots)))
 
 
 def default_query(intent: str, slots: Mapping[str, Any]) -> Query:
@@ -208,8 +215,14 @@ class Staged:
     slice (b)."""
 
     asked: PointShape | None
-    scope: Scope = field(default_factory=Scope)
+    scope: Reading = field(default_factory=Reading)
     claims: tuple[Claim, ...] = ()
+
+    def __getattr__(self, name: str) -> Any:
+        """A filter by its name (``who``, ``cuts``, ...), the reading's own."""
+        if name.startswith("__") or name == "scope":
+            raise AttributeError(name)
+        return getattr(self.scope, name)
 
     @property
     def intent(self) -> str:

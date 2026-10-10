@@ -36,7 +36,7 @@ from association.query.entities import BOX_SCORES, Entity, optional_team, resolv
 from association.query.notes import Note
 from association.query.player_games import _joined
 from association.query.player_relation import career_end, condition_scope
-from association.query.reading import Scope, Unsupported
+from association.query.reading import Filtered, Unsupported
 from association.query.result import Companions, Grouped, Narrowing, Part, RecordFacts, Refusal, Result, Span, Unanswered
 from association.query.subject import with_without_named
 
@@ -70,15 +70,15 @@ def read_with_without(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> Result | 
     refused = team_coverage_refusal(q)
     if refused is not None:
         return refused
-    return _with_without_read(con, q.scope)
+    return _with_without_read(con, q)
 
 
-def _with_without_read(con: duckdb.DuckDBPyConnection, scope: Scope) -> Result | Unanswered:
+def _with_without_read(con: duckdb.DuckDBPyConnection, scope: Filtered) -> Result | Unanswered:
     """:func:`read_with_without`'s read: who, their time together, and the
     games in it - or the answer the reading gives up with."""
     mate_texts, asked_without, roles = with_without_named(scope)
-    texts = list(dict.fromkeys(n.strip() for n in scope.subject.players))
-    team = optional_team(con, scope.subject.team, season=scope.span.season)
+    texts = list(dict.fromkeys(n.strip() for n in scope.who.players))
+    team = optional_team(con, scope.who.team, season=scope.span.season)
     if isinstance(team, Unanswered):
         return team
     if not mate_texts:

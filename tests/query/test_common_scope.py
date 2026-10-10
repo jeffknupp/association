@@ -1,21 +1,17 @@
-"""The shared scoping steps read the typed Scope (ROADMAP plan item 6, step (d)).
-
-Every shared step takes the :class:`~association.query.reading.Scope`
-alone, except the three coverage checks (``check_coverage``,
-``coverage_caveat`` and ``sources_for``), which still take a route's slot
-dict from the tests: these check that a check gives the same answer, or the
-same refusal, for a Scope and for its slot dict.
+"""The coverage checks read the typed filters (ROADMAP plan item 6, step
+(d)): every shared step takes the Reading's or the query's own filters
+(:class:`~association.query.reading.Filtered`). The three coverage checks
+took a slot dict too until Phase 3, step 4, slice (b), and a test held them
+to answer a scope and its slot dict alike; the slot door is the tests' own
+since (``tests/slots.py``), and that test went with it.
 """
 
 from __future__ import annotations
 
-from collections.abc import Callable
-from typing import Any
+from slots import slots_scope
 
-import pytest
-
-from association.query.coverage import check_coverage, coverage_caveat, sources_for
-from association.query.reading import PointShape, Scope, Unsupported
+from association.query.coverage import sources_for
+from association.query.reading import PointShape
 
 
 def test_a_team_season_line_names_the_games_table_only_where_it_reads_opponent_points() -> None:
@@ -27,80 +23,7 @@ def test_a_team_season_line_names_the_games_table_only_where_it_reads_opponent_p
     ratings and points allowed are dashed where the tally is short) and a
     metric built on them."""
     line = PointShape("team_seasons", "scalar", "line")
-    assert sources_for(line, Scope.from_slots({"team": "Philadelphia 76ers", "stat": "3 pointers made", "season": 2001, "season_type": 3})) == ("team_season_stats",)
-    assert sources_for(line, Scope.from_slots({"team": "Philadelphia 76ers", "stat": "points", "season": 2001, "season_type": 3})) == ("team_season_stats",)
+    assert sources_for(line, slots_scope({"team": "Philadelphia 76ers", "stat": "3 pointers made", "season": 2001, "season_type": 3})) == ("team_season_stats",)
+    assert sources_for(line, slots_scope({"team": "Philadelphia 76ers", "stat": "points", "season": 2001, "season_type": 3})) == ("team_season_stats",)
     for stat in (None, "point differential", "points allowed", "defensive rating"):
-        assert sources_for(line, Scope.from_slots({"team": "Philadelphia 76ers", "stat": stat, "season": 2001, "season_type": 3})) == ("team_season_stats", "games"), stat
-
-
-def _outcome(step: Callable[..., Any], *args: Any) -> Any:
-    """What a step gives: its value, or the refusal it raised."""
-    try:
-        return step(*args)
-    except Unsupported as exc:
-        return ("refused", str(exc))
-
-
-# One slot dict per branch the steps take: nothing at all, a player's and a
-# team's own reads, an advanced stat, a record's tally, a career ranking, a
-# starter/bench category, a window, both season types, a condition, a
-# team's own count, and every other scoping slot at once.
-_SLOTS: list[dict[str, Any]] = [
-    {},
-    {"player": "Jayson Tatum", "season": 1990, "season_type": 3, "stat": "points", "threshold": 30},
-    {"player": "Brandin Podziemski", "opponent": "Detroit Pistons", "venue": "home", "without": ["Stephen Curry", "Jonathan Kuminga"], "season": 2002},
-    {"player": "Kareem Abdul-Jabbar", "stat": "ts_pct", "season": 1980, "season_type": 2},
-    {"team": "Boston Celtics", "teams": ["Boston Celtics", "Los Angeles Lakers"], "season": 1990, "season_type": 2},
-    {"stat": "record", "season": 1990, "season_type": 3},
-    {"stat": "points", "span": "career", "season": 2001, "season_type": 3},
-    {"player": "Joe Ingles", "split": "starter_bench", "order": "recent", "limit": 5},
-    {"player": "Stephen Curry", "limit": 2, "season_type_unstated": True},
-    {"player": "Jaylen Brown", "conditions": [{"player": "Jayson Tatum", "side": "own", "predicate": "absent"}], "situation": "on christmas"},
-    {"team": "Orlando Magic", "stat": "threePointFieldGoalsMade", "season": 2026},
-    {
-        "stat": "triple_double",
-        "ranked_by": "points",
-        "rate": "total",
-        "round": "finals",
-        "game_n": 4,
-        "season_n": 18,
-        "since": 2019,
-        "until": 2024,
-        "date": "2026-01-02",
-        "below": ["under 14 fta"],
-        "above": ["with 25 minutes"],
-    },
-]
-
-# The shapes whose floor resolves per question, the fixed ones, and no
-# point at all (a refusal the reading came to).
-_KEYS: list[PointShape | None] = [
-    PointShape("player_games", "rows", "date"),
-    PointShape("team_games", "rows", "date"),
-    PointShape("player_seasons", "scalar", "line"),
-    PointShape("player_games", "scalar", "line"),
-    PointShape("player_games", "split", "splits"),
-    PointShape("player_games", "runs", "line"),
-    PointShape("team_games", "runs", "won"),
-    PointShape("player_games", "split", "line"),
-    PointShape("team_games", "scalar", "record"),
-    PointShape("team_seasons", "ranking", "team"),
-    PointShape("player_seasons", "ranking", "player"),
-    PointShape("player_games", "ranking", "player"),
-    PointShape("shots", "chart", "shots"),
-    PointShape("player_periods", "rows", "date"),
-    PointShape("player_games", "scalar", "count"),
-    PointShape("team_games", "comparison", "opponent"),
-    PointShape("team_periods", "scalar", "total"),
-    PointShape("player_games", "rows", ""),
-    None,
-]
-
-
-@pytest.mark.parametrize("slots", _SLOTS)
-def test_a_check_reads_a_scope_and_its_slot_dict_alike(slots: dict[str, Any]) -> None:
-    """The scoping and coverage checks over both doors."""
-    scope = Scope.from_slots(slots)
-    for shape in _KEYS:
-        for step in (check_coverage, coverage_caveat, sources_for):
-            assert _outcome(step, shape, scope) == _outcome(step, shape, slots), (step.__name__, shape)
+        assert sources_for(line, slots_scope({"team": "Philadelphia 76ers", "stat": stat, "season": 2001, "season_type": 3})) == ("team_season_stats", "games"), stat

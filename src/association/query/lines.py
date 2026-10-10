@@ -24,7 +24,7 @@ from dataclasses import dataclass
 from association.query import lexicon
 from association.query.measure import spelled
 from association.query.measures import THRESHOLD_STAT_NAMES
-from association.query.reading import GAMES_COUNTED, Cause, Line, LineOp, PointRefused, Scope, asked_label
+from association.query.reading import GAMES_COUNTED, Cause, Filtered, Line, LineOp, PointRefused, asked_label
 
 #: How the answer names each column a game was kept under or over.
 _MEASURE_LABELS: dict[str, str] = {
@@ -92,7 +92,7 @@ def phrase_line(phrase: str, *, below: bool) -> Line:
     return Line(measure=measure_column(words), op=op, value=int(match.group("n")), as_typed=text, narrows=True)
 
 
-def relation_lines(scope: Scope) -> list[Line]:
+def relation_lines(scope: Filtered) -> list[Line]:
     """The subject's lines the RELATION narrows the games by
     (:attr:`~association.query.reading.Line.narrows`), in the order the slots
     applied them: the lines kept under a number, then the floors of minutes
@@ -106,7 +106,7 @@ def relation_lines(scope: Scope) -> list[Line]:
     return [line for line in narrowing if line.below] + [line for line in narrowing if line.op == ">=" and not line.pair] + [line for line in narrowing if line.pair]
 
 
-def measure_filters(scope: Scope) -> list[MeasureFilter]:
+def measure_filters(scope: Filtered) -> list[MeasureFilter]:
     """The lines the relation narrows ``scope``'s games by
     (:func:`relation_lines`) as filters on the ``player_game`` relation,
     each with how the answer says it.
@@ -122,7 +122,7 @@ def measure_filters(scope: Scope) -> list[MeasureFilter]:
        Lives on the reader's side (``query/lines.py``).
 
     .. versionchanged:: 6.0.0
-       Takes the Scope and reads its typed lines; the ``below``/``above``
+       Takes the Reading and reads its typed lines; the ``below``/``above``
        phrases are gone.
     """
     filters: list[MeasureFilter] = []
@@ -136,7 +136,7 @@ def measure_filters(scope: Scope) -> list[MeasureFilter]:
     return filters
 
 
-def threshold_line(scope: Scope) -> Line | None:
+def threshold_line(scope: Filtered) -> Line | None:
     """The one line a count, a record, a streak or a high is keyed on
     (:attr:`~association.query.reading.Line.keyed`: "30+ points", "scores
     30", "fouled out"; the first of two or more pairs, which the count reads
@@ -147,7 +147,7 @@ def threshold_line(scope: Scope) -> Line | None:
     return next((line for line in scope.lines if line.keyed and line.period is None), None)
 
 
-def threshold_of(scope: Scope) -> int | None:
+def threshold_of(scope: Filtered) -> int | None:
     """The number of :func:`threshold_line`, or None.
 
     .. versionadded:: 6.0.0
@@ -156,7 +156,7 @@ def threshold_of(scope: Scope) -> int | None:
     return None if line is None else int(line.value)
 
 
-def threshold_count_line(scope: Scope) -> tuple[str, int | None]:
+def threshold_count_line(scope: Filtered) -> tuple[str, int | None]:
     """The box-score column and the threshold a count of games is over;
     raises (:class:`~association.query.reading.PointRefused`, by the missing fact) for a stat no
     line is kept on or a threshold that counts every game. A below/above
@@ -180,7 +180,7 @@ def threshold_count_line(scope: Scope) -> tuple[str, int | None]:
         if len(lines) == 1:
             return lines[0].column, None
     column = stat if stat is not None and stat in THRESHOLD_STAT_NAMES else None
-    # A threshold is a whole number or absent (the Scope's own type), and
+    # A threshold is a whole number or absent (the filters' own type), and
     # absent is a count only where a below/above phrase carries the line.
     if column is None or (threshold is None and not lined):
         message = f"threshold_count needs a known stat and an integer threshold, got {stat!r}/{threshold!r}"

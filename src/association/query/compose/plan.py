@@ -18,7 +18,7 @@ from association.query.measure import spelled
 from association.query.measures import stat_measure
 from association.query.player_relation import RELATION_SCOPING, RELATION_SCOPING_EXCLUDED
 from association.query.point import TEAM_SEASON_POINTS, team_season_point
-from association.query.reading import SHAPE_NAMES, Cause, Measure, PointShape, Reading, Scope, ShapeCells, ShapeDeclined, _career_scope, cell_set, cell_slots
+from association.query.reading import SHAPE_NAMES, Cause, Filtered, Measure, PointShape, Reading, ShapeCells, ShapeDeclined, _career_scope, cell_set, cell_slots
 from association.query.result import Refusal
 from association.query.team_relation import TEAM_RELATION_SCOPING, TEAM_RELATION_SCOPING_EXCLUDED
 
@@ -110,10 +110,10 @@ def cells_stated(key: PointShape) -> frozenset[str]:
     return (table | row.taken) - set(row.unstated)
 
 
-def cells_unhonored(scope: Scope, key: PointShape) -> list[tuple[str, str, str]]:
+def cells_unhonored(scope: Filtered, key: PointShape) -> list[tuple[str, str, str]]:
     """The planner's one check of a point's cells against its shape's row and
     its relation's table: ``(slot, cell, why)`` for every cell ``scope`` sets
-    (:meth:`~association.query.reading.Scope.cells`) that the shape ``key``'s
+    (:meth:`~association.query.reading.Filtered.cells`) that the shape ``key``'s
     words do not state (:func:`cells_stated`), sorted by the slot name a
     decline says (:func:`~association.query.reading.cell_slots`) - and the
     bare starter/bench category on a shape that honors one named half
@@ -211,12 +211,12 @@ def cells_declined(point: Reading, key: PointShape) -> ShapeDeclined | None:
     if found is None:
         return None
     _table, row = found
-    name, scope = SHAPE_NAMES[key], point.scope
+    name, scope = SHAPE_NAMES[key], point
     if point.relation != "player":
         claimed = sorted(slot for cell in row.named_player for slot in cell_slots(scope, cell))
         if claimed:
             return cannot_honor(name, claimed, "only his own games can be narrowed that way", without="player")
-        claimed = sorted(cell for cell in row.named_subject if cell_set(scope, cell)) if scope.subject.team is None else []
+        claimed = sorted(cell for cell in row.named_subject if cell_set(scope, cell)) if scope.who.team is None else []
         if claimed:
             return cannot_honor(name, claimed, "the league-wide streak has no single subject to narrow", without="team or player")
     refused = [(slot, cell) for cell in row.unstated if cell in row.refused for slot in cell_slots(scope, cell)]
@@ -261,17 +261,17 @@ def plan(reading: Reading) -> Query | TeamQuery | TeamSeasonQuery | NetPointsQue
         key = reading.asked
         if key not in TEAM_SEASON_POINTS:
             raise
-        unhonored = cells_unhonored(reading.scope, key)
+        unhonored = cells_unhonored(reading, key)
         if unhonored:
             raise beyond_words(SHAPE_NAMES[key], unhonored) from exc
-        return _team_season_query(team_season_point(key, reading.scope))
+        return _team_season_query(team_season_point(key, reading))
 
 
 def _team_season_query(point: Reading) -> TeamSeasonQuery:
     """A team's own season's point as the team-season reader's query: its
     relation, and the compiler's skeleton its shape compiles as."""
     assert point.relation in ("team_seasons", "team_snapshots")
-    return TeamSeasonQuery(scope=point.scope, relation=point.relation, shape="grouped" if skeleton_of(point) == "grouped" else "scalar")
+    return TeamSeasonQuery(**point.filters(), relation=point.relation, shape="grouped" if skeleton_of(point) == "grouped" else "scalar")
 
 
 def _plan(reading: Reading) -> Query | TeamQuery | TeamSeasonQuery | NetPointsQuery | ShotQuery:
@@ -305,11 +305,11 @@ def _plan(reading: Reading) -> Query | TeamQuery | TeamSeasonQuery | NetPointsQu
     if reading.relation == "netpoints":
         # A declared relation's point (Phase 2, slice (v)): its reader reads
         # the scope as the retired template read its slots.
-        return NetPointsQuery(scope=reading.scope, shape="chart" if skeleton_of(reading) == "chart" else "scalar")
+        return NetPointsQuery(**reading.filters(), shape="chart" if skeleton_of(reading) == "chart" else "scalar")
     if reading.relation == "shots":
         # A declared chart relation's point: its reader reads the scope
         # whole, held above to what its words state.
-        return ShotQuery(scope=reading.scope, shape="chart" if skeleton_of(reading) == "chart" else "scalar")
+        return ShotQuery(**reading.filters(), shape="chart" if skeleton_of(reading) == "chart" else "scalar")
     if reading.relation in ("team_seasons", "team_snapshots"):
         # A team's own season: its reader holds the question to the
         # narrowings its words state when it is asked (its row's
@@ -319,15 +319,15 @@ def _plan(reading: Reading) -> Query | TeamQuery | TeamSeasonQuery | NetPointsQu
     if reading.relation == "team":
         # Every team shape, the sums included, against the TEAM relation's
         # own cells and what this shape takes beside them.
-        _check_relation_scoping(reading.scope, "team", _cells_taken(key, team=True))
-        return TeamQuery(scope=reading.scope, measure=reading.measures[0], aggregate=reading.aggregate, shape=skeleton_of(reading), group=reading.group)
+        _check_relation_scoping(reading, "team", _cells_taken(key, team=True))
+        return TeamQuery(**reading.filters(), metric=reading.measures[0], aggregate=reading.aggregate, shape=skeleton_of(reading), group=reading.group)
     subject = "everyone" if reading.relation == "everyone" else "player"
     # The season line's ranking (leaderboard's retired reader) takes `rate`
     # - a season total, or a unit refused by name - which no game-level read
     # does; a point its reader declines is refused with it (_game_level).
-    _check_relation_scoping(reading.scope, subject, _cells_taken(key, team=False))
+    _check_relation_scoping(reading, subject, _cells_taken(key, team=False))
     planned = Query(
-        scope=reading.scope,
+        **reading.filters(),
         skeleton=skeleton_of(reading),
         measures=list(reading.measures),
         aggregate=reading.aggregate,
@@ -341,7 +341,7 @@ def _plan(reading: Reading) -> Query | TeamQuery | TeamSeasonQuery | NetPointsQu
         subject_span=reading.subject_span,
         source="seasons" if key.relation == "player_seasons" else "games",
         subject=subject,
-        position=reading.scope.subject.position,
+        position=reading.who.position,
     )
     if planned.source == "seasons" and not _season_line_reads(key, planned):
         return _game_level(key, planned)
@@ -364,7 +364,7 @@ def _season_line_reads(key: PointShape, q: Query) -> bool:
     the relation saying for itself whether it reads a point, and the point
     setting no cell the shape's words do not state (:func:`cells_unhonored`)."""
     reads = _SEASON_LINE_READS.get(key)
-    return reads is not None and not cells_unhonored(q.scope, key) and reads(q)
+    return reads is not None and not cells_unhonored(q, key) and reads(q)
 
 
 def _game_level(key: PointShape, q: Query) -> Query:
@@ -382,18 +382,18 @@ def _game_level(key: PointShape, q: Query) -> Query:
     before it re-planned it (until Phase 2, step 3, ``games_reading``, in
     ``compose.answer``).
     """
-    refusal = coverage_refusal(key, q.scope)
+    refusal = coverage_refusal(key, q)
     if refusal is not None:
         raise Refused(refusal)
     if q.group == "season":
-        return replace(q, scope=_career_scope(q.scope), source="games")
+        return replace(q, **(_career_scope(q)).filters(), source="games")
     if q.group == "player" and q.subject == "everyone":
-        stat = spelled(q.scope.measure)
-        if stat is not None and stat.strip() and stat_measure(q.scope.measure) is None:
+        stat = spelled(q.measure)
+        if stat is not None and stat.strip() and stat_measure(q.measure) is None:
             raise Refused(Refusal(kind="no_ranking_measure", facts={"stat": stat}, shown={"stat": stat}))
-        if cell_set(q.scope, "rate"):
+        if cell_set(q, "rate"):
             raise Unsupported("the relation cannot honor ['rate'] - it would answer for a different span than was asked")
-        if q.scope.measure is not None and q.scope.measure.beside:
+        if q.measure is not None and q.measure.beside:
             raise Unsupported("the game-level ranking shows no columns beside its measure")
         return replace(q, source="games")
     raise Unsupported("an unnarrowed player line the season line's reader did not say")

@@ -23,13 +23,14 @@ import duckdb
 import pytest
 from routed import planned_answer as compose_answer
 from shapes import asked
+from slots import slots_scope
 
 from association.nba.netpoints import FINGERPRINT_CATEGORIES
 from association.query.answer import AnswerContext, Reply
 from association.query.compose.sentence import _FRACTION_COLUMNS
 from association.query.entities import names_of
 from association.query.parse import with_point
-from association.query.reading import SHAPE_NAMES, Reading, Scope
+from association.query.reading import SHAPE_NAMES, Reading
 from association.query.subject import read_subject
 from association.web.app import INDEX_HTML
 
@@ -310,7 +311,7 @@ def _answered(ctx: AnswerContext, intent: str) -> Reply:
     (``compose.COMPILED_INTENTS``), with no question words to move its own
     point."""
     slots = dict(CASES[intent])
-    result = compose_answer(ctx, with_point("", Reading(scope=Scope.from_slots(slots), asked=asked(intent), subject=read_subject(names_of(ctx.con), "", asked(intent), Scope.from_slots(slots)))))
+    result = compose_answer(ctx, with_point("", Reading(**(slots_scope(slots)).filters(), asked=asked(intent), subject=read_subject(names_of(ctx.con), "", asked(intent), slots_scope(slots)))))
     assert result is not None, f"the compiler has no reading of {intent}'s case"
     return result
 

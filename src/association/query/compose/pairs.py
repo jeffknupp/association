@@ -32,7 +32,7 @@ from association.query.conditions import _PLAYER_GAME_TABLES, MEETING_STATS, _ma
 from association.query.entities import Entity
 from association.query.notes import Note
 from association.query.player_relation import condition_scope, no_games
-from association.query.reading import Companion, Scope, Unsupported, _clamp_limit
+from association.query.reading import Companion, Filtered, Unsupported, _clamp_limit
 from association.query.result import Grouped, MatchupFacts, Met, Narrowing, Part, Result, Rows, Span, Unanswered, Window
 
 from .core import Compiled, Query, Refused, compile_query, rows_of
@@ -46,7 +46,7 @@ where the question named no count.
 """
 
 
-def _pair_covered(scope: Scope) -> Any:
+def _pair_covered(scope: Filtered) -> Any:
     """The span both names resolve over: the question's own - or, where a
     date names the game, the career, since a date replaces the season the
     way ``game_log``'s own date does (the season is usually the "current"
@@ -93,7 +93,7 @@ def read_player_matchup(con: duckdb.DuckDBPyConnection, q: Query) -> Result | Un
     """
     if q.skeleton != "pair" or q.source != "games":
         return None
-    scope = q.scope
+    scope = q
     covered = _pair_covered(scope)
     compiled = compile_query(con, q)
     a, b = compiled.player, compiled.other
@@ -109,7 +109,7 @@ def read_player_matchup(con: duckdb.DuckDBPyConnection, q: Query) -> Result | Un
 
 
 def _pair_result(
-    con: duckdb.DuckDBPyConnection, scope: Scope, covered: Any, compiled: Compiled, a: Entity, b: Entity, meetings: list[dict[str, Any]], together: int, notes: tuple[Note, ...]
+    con: duckdb.DuckDBPyConnection, scope: Filtered, covered: Any, compiled: Compiled, a: Entity, b: Entity, meetings: list[dict[str, Any]], together: int, notes: tuple[Note, ...]
 ) -> Result:
     """The two lines and the newest meetings, each team abbreviated as it
     was that season (a 2005 Nets game reads NJ, not BKN)."""
@@ -176,16 +176,16 @@ def _pair_absence(con: duckdb.DuckDBPyConnection, q: Query, compiled: Compiled, 
     absent = compiled.narrowed.without
     if not absent:
         return None
-    unconditioned = replace(q.scope, companions=())
+    unconditioned = replace(q, companions=())
     playing = tuple(Companion(player=mate.name, side="own", predicate="played") for mate in absent)
     try:
-        everywhere = rows_of(con, compile_query(con, replace(q, scope=unconditioned)))
+        everywhere = rows_of(con, compile_query(con, replace(q, **unconditioned.filters())))
     except Refused, Unsupported:
         return None
     if not everywhere:
         return None
     try:
-        beside = len(rows_of(con, compile_query(con, replace(q, scope=replace(unconditioned, companions=playing)))))
+        beside = len(rows_of(con, compile_query(con, replace(q, **(replace(unconditioned, companions=playing)).filters()))))
     except Refused, Unsupported:
         beside = 0
     seasons = [row["season"] for row in everywhere]

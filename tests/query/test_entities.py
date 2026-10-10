@@ -6,6 +6,7 @@ from typing import Any
 import duckdb
 import pytest
 from shapes import asked
+from slots import slots_scope
 
 from association.query import names as name_index
 from association.query.entities import (
@@ -25,7 +26,6 @@ from association.query.entities import (
     suggest_players,
     teams_of,
 )
-from association.query.reading import Scope
 from association.query.subject import compared_but_unmatched, nicknames_in, player_named_on_a_team_only_question, players_named_in
 
 
@@ -472,7 +472,7 @@ def _apply(con: duckdb.DuckDBPyConnection, question: str, slots: dict[str, Any],
     names dropped, the shape these tests were first written against."""
     from association.query.subject import apply_subject, read_subject
 
-    scope = Scope.from_slots(slots)
+    scope = slots_scope(slots)
     applied = apply_subject(read_subject(names_of(con), question, asked(intent), scope), scope, asked=asked(intent))
     # The writers took and mutated this dict until 5.0.0; the cases below
     # still read it afterwards, so the written scope is mirrored back.
@@ -496,7 +496,7 @@ def _scope(con: duckdb.DuckDBPyConnection, question: str, slots: dict[str, Any],
     flags.pop("restore_team_subject", None)
     assert not flags, flags
     intent = intent or ("game_log" if reads_player else "team_record")
-    scope = Scope.from_slots(slots)
+    scope = slots_scope(slots)
     subject = read_subject(names_of(con), question, asked(intent), scope)
     applied = apply_subject(subject, scope, asked=asked(intent))
     # As above: the cases read the dict the writers used to mutate.
@@ -1011,8 +1011,8 @@ def test_a_players_record_against_a_team_is_his_own_games(scope_con: duckdb.Duck
     scope_con.execute("INSERT INTO players VALUES ('20','Joel Embiid')")
     for question, names in (("Embiid career record vs boston", ["embiid", "boston"]), ("Show Embiid's career record against Boston", ["Embiid", "Boston"])):
         reading = _parsed(scope_con, question, names)
-        assert reading.intent == "player_splits" and reading.scope.subject.player == "Joel Embiid" and reading.scope.cuts.opponent == "Boston Celtics", question
-        assert reading.scope.span.career and not any(c.absent for c in reading.scope.companions) and not reading.scope.subject.team, question
+        assert reading.intent == "player_splits" and reading.who.player == "Joel Embiid" and reading.cuts.opponent == "Boston Celtics", question
+        assert reading.span.career and not any(c.absent for c in reading.companions) and not reading.who.team, question
 
 
 def test_a_real_head_to_head_and_a_players_games_against_a_team_stay_what_they_are(scope_con: duckdb.DuckDBPyConnection) -> None:

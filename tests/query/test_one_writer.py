@@ -53,7 +53,7 @@ def ask(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Any:
 
     def record(ctx: Any, reading: Reading) -> Reply:
         del ctx
-        seen.append((reading.intent, reading.scope.subject.player, reading.scope.subject.players if len(reading.scope.subject.players) > 1 else ()))
+        seen.append((reading.intent, reading.who.player, reading.who.players if len(reading.who.players) > 1 else ()))
         return Reply(data={}, answer="answered")
 
     # Every intent is the compiler's (compose.COMPILED_INTENTS): the
@@ -148,7 +148,7 @@ def test_for_me_is_the_asker_not_the_memphis_grizzlies(monkeypatch: pytest.Monke
 
     def record(ctx: Any, reading: Reading) -> Reply:
         del ctx
-        seen.append(reading.scope.cuts.tenure)
+        seen.append(reading.cuts.tenure)
         return Reply(data={}, answer="answered")
 
     monkeypatch.setattr("association.query.compose.answer", lambda ctx, reading, trace=None, declined=None, planned=None, declined_by=None: record(ctx, reading))
@@ -231,5 +231,5 @@ def test_the_parser_files_each_side_where_the_router_scrambled_it(league: duckdb
     from association.query.parse import read_route
 
     reading = read_route(names_of(league), question, names, "")
-    got = {key: tuple(value) if isinstance(value, list) else value for key, value in reading.scope.to_slots().items() if key in _SIDES}
+    got = {key: tuple(value) if isinstance(value, list) else value for key, value in reading.to_slots().items() if key in _SIDES}
     assert (asked_label(reading.asked), got, list(reading.misread)) == (intent, sides, [])

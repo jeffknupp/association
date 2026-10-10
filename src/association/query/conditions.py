@@ -71,7 +71,7 @@ import duckdb
 
 from association.nba.coverage import COVERAGE
 from association.nba.season import eastern_date_sql
-from association.query.reading import Scope, ordinal_word
+from association.query.reading import Filtered, ordinal_word
 
 from .season_text import MONTH_NAMES
 from .team_games import TeamNarrowed, games_subquery, named
@@ -931,7 +931,7 @@ def _matchup_line(lines: Sequence[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
-def condition_span_label(covered: _Scope, scope: Scope, first: Any, last: Any) -> str:
+def condition_span_label(covered: _Scope, scope: Filtered, first: Any, last: Any) -> str:
     """The season(s) a condition answer covers, in words: "since 2022
     (2022-2026 regular seasons)" or "in his 18th season (2021 regular
     season)" when the question named it that way - the same phrasing
