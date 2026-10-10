@@ -1381,3 +1381,21 @@ moves into `data` before the slice that rewords its answer:
     `intent+opponent` 4, `companion+intent` 2, `intent+companion` 1,
     `situation+intent` 1, `refused+measure` 1; the report fails on a new
     kind or a grown count). Step 4 is held to zero joins but #354's four.
+    Measured at step 4's slice (a), which re-keyed the grammar and left
+    every claim where it was (the 43 unchanged): the intent joins come
+    from all three choosers - the parent grammar alone 10 (`intent+opponent`
+    5 by `_PLAYER_LOG`'s "games against", `window+intent` 3,
+    `intent+companion` 1, `situation+intent` 1), a child grammar with the
+    parent 17 (`intent+measure` 11, `intent+line` 6), a child grammar
+    alone or with the stages 2 (`intent+line`), all three 8
+    (`intent+line`), the stages with the parent 5 (`companion+intent` 2,
+    `opponent+intent` 2, `opponent+intent+window` 1), the stages alone 1
+    (`intent+line`) (`~/association-research/stages/intent_joins_src.py`) - and 13 of the
+    17 `intent+line` joins are a line the lines tagger reads only BECAUSE
+    of the key (`line.THRESHOLD_ASKS`: a bare "30 points" is a line on a
+    count, nothing on a log; `intent_joins_dep.py`). A grammar naming the
+    shape from the tagger's typed value cannot come first while the
+    tagger reads by the grammar's key: the key-dependent rules move out of
+    the taggers (to the planner or the point reader) before the grammar can
+    read their values. That is the stages' deletion (slice (b)), where
+    `_settle`'s order is undone anyway.
