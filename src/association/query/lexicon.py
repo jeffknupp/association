@@ -418,7 +418,10 @@ RANK_WORDS: tuple[tuple[Literal["most", "fewest", "best", "worst"], re.Pattern[s
     # "slowest pace" is the fewest possessions, "fastest" the most - without
     # these, "slowest pace" listed the fastest teams first.
     ("fewest", re.compile(r"\b(?:fewest|least|lowest|slowest)\b", re.IGNORECASE)),
-    ("most", re.compile(r"\b(?:most|highest|top|leads?|leaders?|fastest)\b", re.IGNORECASE)),
+    # "most recent" is the window's end, never the ranking's: "the first
+    # quarter scores for the Sixers' most recent 10 games" answered their
+    # highest first quarter of the ten.
+    ("most", re.compile(r"\b(?:most(?!\s+recent\b)|highest|top|leads?|leaders?|fastest)\b", re.IGNORECASE)),
 )
 """Which end of a team ranking was asked for, by name, in the order tried.
 
@@ -2366,6 +2369,11 @@ NOT_A_SUBJECT: frozenset[str] = SUBJECT_WORDS | frozenset(
         # Single: under "X games with" it read "single" as the subject of a
         # single-game high, and asked which Singleton was meant (#260).
         "single", "game", "games", "total", "least", "best", "worst", "highest", "lowest",
+        # A period is never the one who scored in it: "display the first
+        # quarter scores for the Sixers' most recent 10 games" read "first
+        # quarter" as the player who scores, and the 76ers' quarter was
+        # answered "No player found matching 'first quarter'".
+        "quarter", "quarters", "qtr", "half", "halves", "period", "overtime",
     }
 )  # fmt: skip
 """The words the subject-of grammars never read as a name or as its leading word.

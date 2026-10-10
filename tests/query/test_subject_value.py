@@ -197,3 +197,19 @@ def test_two_players_are_the_pair_a_matchup_reads(league: AnswerContext) -> None
     pair = Query(scope=Scope(subject=Who(kind="pair", players=("Jayson Tatum", "LeBron James")), span=Span(season_type=2)), skeleton="pair", measures=["points"])
     a, b, _span, _narrowed = _resolve_pair(league.con, pair)
     assert (a.name, b.name) == ("Jayson Tatum", "LeBron James")
+
+
+def test_a_period_is_never_the_one_who_scored_in_it_and_most_recent_is_no_rank(league: AnswerContext) -> None:  # noqa: F811 - the fixture
+    """ "display the first quarter scores for the Sixers' most recent 10
+    games" read "first quarter" as the player who scores (the grammar's
+    subject), dropped the Sixers for him and answered "No player found
+    matching 'first quarter' - did you mean Tim Quarterman?"; and "most
+    recent" read as the ranking's "most", so a team's quarter answered the
+    highest of the ten. A period is no subject, and "most recent" is the
+    window's end."""
+    question = "display the first quarter scores for the Sixers' most recent 10 games"
+    assert subject_named_in(question) is None
+    route, _subject, _parent = read_route(league.con, question, ["Sixers"], "points")
+    reading = reading_from_route(league.con, question, route)
+    assert reading.intent == "team_quarter_points" and reading.scope.subject.team == "Philadelphia 76ers" and reading.scope.subject.players == ()
+    assert (reading.scope.window.order, reading.scope.window.count, reading.scope.window.rank) == ("recent", 10, None)
