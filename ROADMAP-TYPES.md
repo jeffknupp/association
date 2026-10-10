@@ -853,6 +853,14 @@ otherwise.
     claims ledger identical. A claim is cut to the words the tagger and
     the key's reading need together (`span.needed` probes the two
     composed), so no word is claimed that the key does not read.
+  - **A grammar reads a line and an opponent as the taggers type them**,
+    written over their words by marks that keep every character where it
+    stands (`lexicon.mark_lines`, `mark_opponent`): the child grammars the
+    whole line, the parent grammar and the rules its number (a stat word
+    is also a measure's word they read), the parent grammar the opponent
+    with its versus word. The keys move nowhere: 2,710 of 2,710 readings
+    identical; `intent+line` 17 -> 0 and `intent+opponent` 5 -> 0 joined
+    claims (Still open 17).
 
 ## What must be decided before which phase
 
@@ -1441,3 +1449,18 @@ moves into `data` before the slice that rewords its answer:
     the taggers (to the planner or the point reader) before the grammar can
     read their values. That is the stages' deletion (slice (b)), where
     `_settle`'s order is undone anyway.
+    Measured at slice (b) (`route_family.py`): with the key's readings
+    moved to the point reader the taggers read the words alone, and the
+    grammars read the line and the opponent through their marks - 48
+    joins on the 2,710 became 26: `intent+line` 17 -> 0, `intent+opponent`
+    5 -> 0, the 628's held table 21 -> 5. Left, each named in
+    `claims_ledger.py` with its owner: `intent+measure` 11 (a number no
+    line is read from - "games with 40 field goal percentage" - which the
+    child grammar reads bare), `window+intent` 3 (the window and the log
+    row both need "game" in "last 25 game log"), `opponent+intent` 2 and
+    `opponent+intent+window` 1 (the rules read the opponent's team word),
+    `companion+intent` 2 and `intent+companion` 1 (the rules and the parent
+    row read a companion's phrase), `situation+intent` 1, `refused+measure`
+    1 (both need it), and #354's `situation+date` 4. The companions, the
+    cuts and the rules' opponent take the same marking; that is step 4's
+    after slice (b).

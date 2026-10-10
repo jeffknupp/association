@@ -143,5 +143,7 @@ def test_the_joined_claims_are_held_by_kind_and_count(tmp_path: Path, capsys: py
     held = [what for what, count in ledger.HELD_JOINS.items() for _ in range(count)]
     assert report(held) == 0
     assert report([*held, "window+period"]) == 1 and "NEW: window+period 0 -> 1" in capsys.readouterr().out
-    assert report([*held, "intent+line"]) == 1 and "GREW: intent+line" in capsys.readouterr().out
+    assert report([*held, "companion+intent"]) == 1 and "GREW: companion+intent" in capsys.readouterr().out
+    # The kinds Phase 3, step 4, slice (b) made one reading are gone from the table: one back is new.
+    assert report([*held, "intent+line"]) == 1 and "NEW: intent+line 0 -> 1" in capsys.readouterr().out
     assert report([what for what in held if what != "refused+measure"]) == 1 and "GONE: refused+measure 1 -> 0" in capsys.readouterr().out

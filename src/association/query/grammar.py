@@ -35,7 +35,7 @@ from typing import Any
 
 from association.query import lexicon, reading
 from association.query.lexicon import BY_QUARTER, GAMES_WORDS, HALF_WORDS, ORDER_WORDS, PAST_N_SEASONS, PERIOD_AS_CONDITION, PERIOD_LEADERS, PERIOD_TOP, QUARTER_WORDS, WHO_RANKS
-from association.query.line import threshold_named
+from association.query.line import LinesNamed, lines_named
 from association.query.measure import GAMES_STATS, named, names_a_stat
 from association.query.period import which_period
 from association.query.reading import (
@@ -124,9 +124,23 @@ class _Working:
     stat: Any
     grammar: str | None
     team_words: tuple[str, ...]
+    #: The lines the words state, as the lines tagger typed them
+    #: (:class:`~association.query.line.LinesNamed`): the rules read the
+    #: typed values, never the line's words, which the question they read
+    #: holds marked (``lexicon.mark_lines``).
+    lines: LinesNamed
 
 
-def settle(question: str, asked: PointShape | None, *, subject: reading.Subject | None = None, opponent: str | None = None, companions: tuple[Companion, ...] = (), stat: Any = None) -> Asked:
+def settle(
+    question: str,
+    asked: PointShape | None,
+    *,
+    subject: reading.Subject | None = None,
+    opponent: str | None = None,
+    companions: tuple[Companion, ...] = (),
+    stat: Any = None,
+    lines: LinesNamed | None = None,
+) -> Asked:
     """What the grammar's rules settle ``question`` to, under the key a
     grammar named (``asked``): the subject reading's typed ``subject`` and
     ``opponent`` (nobody, where none is given), the ``companions`` it read
@@ -144,30 +158,31 @@ def settle(question: str, asked: PointShape | None, *, subject: reading.Subject 
        rules, returning a ``router.Route``.
     """
     who = subject if subject is not None else reading.Subject()
-    working = _working(question, asked, who, opponent, stat)
+    typed = lines if lines is not None else lines_named(question)
+    working = _working(question, asked, who, opponent, stat, typed)
     coach = _settle_rules(working, question, companions)
     # What the rules read: the words whose deletion changes the key they
     # settle or a name they write (span.read_by) - the rules are over the
     # whole question ("which team", "as a starter", "log"), so what they
     # read is what their decision turned on (Phase 3, step 3).
-    claims = read_by(question, "intent", lambda probed: _settle_read(probed, asked, who, opponent, companions, stat))
+    claims = read_by(question, "intent", lambda probed: _settle_read(probed, asked, who, opponent, companions, stat, typed))
     return Asked(asked=working.asked, coach=coach, subject=working.subject, opponent=working.opponent, stat=working.stat, claims=claims)
 
 
-def _working(question: str, asked: PointShape | None, subject: reading.Subject, opponent: str | None, stat: Any) -> _Working:
+def _working(question: str, asked: PointShape | None, subject: reading.Subject, opponent: str | None, stat: Any, lines: LinesNamed) -> _Working:
     """The rules' working reading of ``question`` before any rule has run:
     the key and the names as handed, the grammar's subject and the team
     nicknames the words hold (:func:`~association.query.subject.subject_named_in`,
     :func:`~association.query.subject.team_words_in`)."""
-    return _Working(asked=asked, subject=subject, opponent=opponent, stat=stat, grammar=subject_named_in(question), team_words=team_words_in(question))
+    return _Working(asked=asked, subject=subject, opponent=opponent, stat=stat, grammar=subject_named_in(question), team_words=team_words_in(question), lines=lines)
 
 
-def _settle_read(question: str, asked: PointShape | None, subject: reading.Subject, opponent: str | None, companions: tuple[Companion, ...], stat: Any) -> tuple[Any, ...]:
+def _settle_read(question: str, asked: PointShape | None, subject: reading.Subject, opponent: str | None, companions: tuple[Companion, ...], stat: Any, lines: LinesNamed) -> tuple[Any, ...]:
     """What the rules settle over ``question`` - the key, whether it is a
     coach's, the subject and the opponent - as one value, the reading the
     words they read are claimed by (:func:`settle`). The measure key is the
     tagger's context, not the rules' reading."""
-    working = _working(question, asked, subject, opponent, stat)
+    working = _working(question, asked, subject, opponent, stat, lines)
     coach = _settle_rules(working, question, companions)
     return working.asked, coach, working.subject, working.opponent
 
@@ -373,7 +388,7 @@ def _team_and_player(working: _Working, question: str) -> None:
         working.asked = TEAM_RANKING if working.asked == PLAYER_RANKING else None
     if working.asked == GAMES_COUNTED and lexicon.RECORD_WORD.search(question):
         working.asked = LINE_RECORD
-    if working.asked in _WHEN_REACHES_REROUTABLE and lexicon.WHEN_REACHES.search(question) and threshold_named(question) is not None:
+    if working.asked in _WHEN_REACHES_REROUTABLE and lexicon.WHEN_REACHES.search(question) and working.lines.threshold is not None:
         # "stats for sixers when maxey scored 20+ points" (yardstick-v2
         # F087): a team's games divided by a NUMBER a player reached is the
         # record over a line whatever was named first - it was answered as
@@ -478,7 +493,7 @@ def _line_and_record(working: _Working, question: str, companions: tuple[Compani
         # last seven REGULAR-season games where the last seven were the
         # Finals - a log reads both types for "last N".
         working.asked = PLAYER_LOG
-    if working.asked in _PLAYED_TOGETHER_REROUTABLE and lexicon.RECORD_WORD.search(question) and threshold_named(question) is None and (_played(companions) or _absent_by_phrase(question, companions)):
+    if working.asked in _PLAYED_TOGETHER_REROUTABLE and lexicon.RECORD_WORD.search(question) and working.lines.threshold is None and (_played(companions) or _absent_by_phrase(question, companions)):
         # "PHI record when Embiid and Paul George play" arrived as two teams
         # meeting, the Pacers invented as the opponent, after the 5.0.0
         # prompt shrink; with no threshold it is the with/without split
@@ -526,7 +541,7 @@ def _count(working: _Working, question: str, companions: tuple[Companion, ...]) 
     The lines tagger reads every line (:func:`~association.query.line.read_lines`);
     the rule asks only whether the words name one
     (:func:`~association.query.line.threshold_named`)."""
-    line = threshold_named(question)
+    line = working.lines.threshold
     # A record "when X and Y played" is the with/without split - the games
     # they were all in, beside the ones they were not - and not a record
     # over a line, which divides a season by a NUMBER a player reached. With
@@ -543,7 +558,7 @@ def _count(working: _Working, question: str, companions: tuple[Companion, ...]) 
         # dropped Bam here).
         working.asked = PLAYER_LOG
         _grammar_subject(working)
-    if working.asked == GAMES_COUNTED and line is None and not lexicon.BELOW.search(question):
+    if working.asked == GAMES_COUNTED and line is None and not working.lines.below:
         # A count of games needs a threshold. Without one, "who has the most
         # threes" is a season ranking. A ceiling IS the count's line ("Sga
         # games with under 14 fta"), so a count stated as one keeps its key.

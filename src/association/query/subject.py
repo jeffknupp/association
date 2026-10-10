@@ -1184,7 +1184,7 @@ def _read_subject_alone(players: tuple[str, ...], teams: set[str], conditions: t
     return not players and not named_team and len(conditions) == 1 and conditions[0].predicate == "played"
 
 
-def child_named(subject: Subject, parent: PointShape | None, question: str) -> tuple[PointShape, str | None] | None:
+def child_named(subject: Subject, parent: PointShape | None, question: str, *, original: str | None = None) -> tuple[PointShape, str | None] | None:
     """The child of ``parent`` the subject's shape names, with the words
     that name it - or None where the parent stands. Decided from the
     grammar alone; the parser runs the stages ONCE under the child, and
@@ -1226,7 +1226,7 @@ def child_named(subject: Subject, parent: PointShape | None, question: str) -> t
     for child, words, kinds, parents in _CHILD_GRAMMARS:
         match = words.search(question)
         if match is not None and parent in parents and subject.kind in kinds:
-            return child, match.group(0)
+            return child, (original if original is not None else question)[match.start() : match.end()]
     return None
 
 
@@ -2272,6 +2272,21 @@ def subject_claims(teams: names.TeamIndex, question: str, scope: Filtered) -> tu
         if match is not None:
             found.append(Claim(match.start(), match.end(), "position"))
     return tuple(sorted(set(found), key=lambda c: (c.start, c.end, c.what)))
+
+
+def opponent_read(teams: names.TeamIndex, question: str, opponent: str | None) -> tuple[Claim, ...]:
+    """Where the team the subject reading set the subject against was read
+    from, with the versus word before it (``"opponent"`` claims, as
+    :func:`subject_claims` makes them) - read before any season is settled,
+    so a franchise's name is matched over every season. What the parent
+    grammar reads in place of the words (``lexicon.mark_opponent``).
+
+    .. versionadded:: 6.0.0
+    """
+    if opponent is None:
+        return ()
+    tokens = _subject_claims_tokens(question)
+    return tuple(_subject_claims_led(question, lexicon.AGAINST_PHRASE, _subject_claims_team(teams, tokens, opponent, None), "opponent"))
 
 
 def _subject_claims_tokens(question: str) -> list[tuple[str, int, int]]:

@@ -35,7 +35,7 @@ from association.query.decisions import Decision
 from association.query.entities import _edit_budget, _words, find_players, find_teams, suggest_players, team_abbreviations
 from association.query.grammar import Asked, absent, settle
 from association.query.lexicon import COUNT, LOG_OR_WINDOW_WORDS
-from association.query.line import LinesRead, read_lines, read_period_line
+from association.query.line import LinesNamed, LinesRead, lines_named, read_lines, read_period_line
 from association.query.measure import BOOLEAN_KEYS, MeasureContext, named, read_measure
 from association.query.measures import PERIOD_COLUMNS, PERIOD_RATE_STATS, TEAM_PERIOD_COLUMNS
 from association.query.period import read_period
@@ -87,6 +87,7 @@ from association.query.subject import (
     child_named,
     compared_but_unmatched,
     nicknames_in,
+    opponent_read,
     player_named_on_a_team_only_question,
     question_derived_player,
     question_supports,
@@ -99,7 +100,7 @@ from association.query.window import WindowContext, read_window
 
 _PAIR_MEETING = (
     r"(?!.*\b(compare|compared|comparing|contrast|evaluate|who scores more|who is better|who was better)\b)"
-    r"(?=.*\b(head.to.head|matchup|when they play|meet|vs\.?|versus|against)\b)"
+    r"(?=.*(\b(head.to.head|matchup|when they play|meet|vs\.?|versus|against)\b|[\ue005\ue006]))"
 )
 """A pair meeting - "vs", "against", a matchup - unless a compare verb owns the pair."""
 
@@ -112,6 +113,10 @@ _PLAYER_LOG = (
     r"\b(game ?log|gamelog|logs?|last " + _COUNT + r" games|each game|game by game|box scores?|(?<!per )games? (with|where|in which|against|vs)"
     r"|how many (games|times)|highest|most .* in a game|career high|best game|single game"
     r"|first game|last game|(most recent|latest|previous|final) (\d+ )?games?|first \d+ games|game \d|month of|\d+/\d+|march|january|february|april|december|november|october)\b"
+    # A player's games against a team: "games" with the opponent the
+    # subject reading read right after it (lexicon.mark_opponent), its
+    # versus word the opponent's.
+    r"|(?<!per )\bgames? \ue005"
 )
 """A player's games rather than his line: a log word, a window, one game, a date."""
 
@@ -156,7 +161,7 @@ PARENT_GRAMMAR: tuple[tuple[frozenset[str], str, PointShape], ...] = (
     # much as a log - but not over a log word: a game log is its games.
     (
         frozenset({"player"}),
-        r"(?=.*\b(record|rec|w-?l|win.loss|splits?)\b)(?!.*\b\d{1,3}[\s-]*(\+|plus\b|or more\b))(?!.*\b(game ?log|gamelog|logs?|each game|game by game|box scores?)\b)",
+        r"(?=.*\b(record|rec|w-?l|win.loss|splits?)\b)(?!.*(\b\d{1,3}[\s-]*(\+|plus\b|or more\b)|\ue000))(?!.*\b(game ?log|gamelog|logs?|each game|game by game|box scores?)\b)",
         PLAYER_SPLITS,
     ),
     (frozenset({"player"}), _PLAYER_LOG, PLAYER_LOG),
@@ -164,7 +169,7 @@ PARENT_GRAMMAR: tuple[tuple[frozenset[str], str, PointShape], ...] = (
     # a team, where "maxey points vs boston without embiid" is his own games
     # narrowed (ROADMAP step 3: the absence a condition, on whichever side the
     # name resolves to), not a two-sided split.
-    (frozenset({"player+companions"}), r"(?=.*\b(with|without|while|when)\b)(?!.*\b(?:vs\.?|versus|against)\b)", PRESENCE_SPLIT),
+    (frozenset({"player+companions"}), r"(?=.*\b(with|without|while|when)\b)(?!.*(\b(?:vs\.?|versus|against)\b|[\ue005\ue006]))", PRESENCE_SPLIT),
     (frozenset({"player"}), r".", PLAYER_LINE),
     (frozenset({"position"}), r"\b(log|game ?log)\b", PLAYER_LOG),
     (frozenset({"position"}), r".", PLAYER_RANKING),
@@ -583,15 +588,27 @@ def read_route(index: names.NameIndex, question: str, names: list[str] | None = 
     # reading read, typed.
     who, opponent = _read_route_names(subject, slots)
     beside = _read_route_beside(subject, question)
-    parent = parent_asked(question, subject.kind, beside)
+    # The choosers read the lines as the lines tagger types them, never by
+    # their words: each line's number and stat written over by its mark
+    # (lexicon.mark_lines), so a grammar's row reads "a line stands here"
+    # and claims only its own words around it - the line's are the lines
+    # tagger's (Phase 3, step 4, slice (b): until it the grammars read the
+    # numbers themselves, and each claim joined the line's).
+    named_lines = lines_named(question)
+    numbered = named_lines.numbered(question)
+    # The parent grammar reads the opponent as the subject reading typed
+    # it, the same way: "games against boston" is a player's games with a
+    # team set against him, and "against boston" the opponent's words.
+    opposed = lexicon.mark_opponent(numbered, tuple((c.start, c.end) for c in opponent_read(index.teams, question, opponent)))
+    parent = parent_asked(opposed, subject.kind, beside)
     # What the grammar read: the words whose deletion names another parent
     # (span.read_by) - a row's own words ("fingerprint", "record"), a word
     # that rules an earlier row out ("compare" keeps a pair off the matchup
     # row), the meeting word that makes two teams the kind it reads ("how
     # many times did the 76ers play boston"); not the "game" of "game log",
     # which "log" names alone.
-    parent_claims = read_by(question, "intent", lambda probed: parent_asked(probed, _two_teams(read, probed, slots).kind, beside))
-    settled_ask, decisions, words, child_claims = _read_route_staged(question, stat or None, parent, read, who, opponent)
+    parent_claims = read_by(opposed, "intent", lambda probed: parent_asked(probed, _two_teams(read, probed, slots).kind, beside))
+    settled_ask, decisions, words, child_claims = _read_route_staged(question, stat or None, parent, read, who, opponent, lines=named_lines)
     final = settled_ask.asked
     scope, tagger_claims = _tagged(question, settled_ask, read.conditions, lines=period_lines, model_stat=stat or None) if not settled_ask.coach else (Reading(), ())
     # The one reading, settled under the key the words end with: what the
@@ -604,7 +621,7 @@ def read_route(index: names.NameIndex, question: str, names: list[str] | None = 
 
 
 def _read_route_staged(
-    question: str, stat: str | None, parent: PointShape | None, read: Subject, who: ReadSubject, opponent: str | None
+    question: str, stat: str | None, parent: PointShape | None, read: Subject, who: ReadSubject, opponent: str | None, *, lines: LinesNamed | None = None
 ) -> tuple[Asked, tuple[Decision, ...], str | None, tuple[Claim, ...]]:
     """The grammar's rules (:func:`~association.query.grammar.settle`), run
     ONCE: under the child the subject's shape and the question's words name
@@ -623,18 +640,25 @@ def _read_route_staged(
     Returns what the rules settled, the decisions made getting to it (the
     key moving off the parent, and why - :attr:`Reading.decisions
     <association.query.reading.Reading.decisions>`), the words that named
-    the child, if one stands, and the words the child grammars read."""
-    named = child_named(read, parent, question)
+    the child, if one stands, and the words the child grammars read. The
+    child grammars read the question with each line the lines tagger reads
+    written over by its mark, the rules with each line's number marked and
+    the typed ``lines`` beside it (:class:`~association.query.line.LinesNamed`,
+    read here where none is handed); the words that named a child are the
+    question's own, where they stand."""
+    lines = lines if lines is not None else lines_named(question)
+    marked, numbered = lines.marked(question), lines.numbered(question)
+    named = child_named(read, parent, marked, original=question)
     companions = read.conditions
     decisions: list[Decision] = []
     # The words the child grammars read, whether a child stands or the
     # rules decline it (the decision records them either way): the words
     # whose deletion names another child, or its words otherwise (a child's
     # words are said in its reason) - span.read_by.
-    child_claims = read_by(question, "intent", lambda probed: child_named(read, parent, probed))
+    child_claims = read_by(marked, "intent", lambda probed: child_named(read, parent, probed))
     if named is not None:
         child, words = named
-        staged = settle(question, child, subject=who, opponent=opponent, companions=companions, stat=stat)
+        staged = settle(numbered, child, subject=who, opponent=opponent, companions=companions, stat=stat, lines=lines)
         # A team's record under a companion's line names no words, and the
         # rules' own settling of it stands. The decisions record the moves
         # by their labels, as the trace prints them.
@@ -644,7 +668,7 @@ def _read_route_staged(
                 decisions.append(Decision("parser", "intent", asked_label(child), asked_label(staged.asked), "the stages settle it from the question's words"))
             return staged, tuple(decisions), words, child_claims
         decisions.append(Decision("parser", "intent", asked_label(child), asked_label(parent), f"the words {words!r} name {asked_label(child)}, and the stages declined it"))
-    staged = settle(question, parent, subject=who, opponent=opponent, companions=companions, stat=stat)
+    staged = settle(numbered, parent, subject=who, opponent=opponent, companions=companions, stat=stat, lines=lines)
     if staged.asked != parent:
         decisions.append(Decision("parser", "intent", asked_label(parent), asked_label(staged.asked), "the stages settle it from the question's words"))
     return staged, tuple(decisions), None, child_claims

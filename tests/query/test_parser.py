@@ -727,3 +727,43 @@ def test_a_quarters_plus_minus_keeps_its_stat_and_is_refused_for_it(con: duckdb.
         assert planned.refusal is not None and "no per-period 'plus_minus'" in planned.refusal.answer
     else:
         assert [cause.kind for cause in reading.unsupported] == ["period_stat"] and reading.unsupported[0].facts["stat"] == "plus_minus"
+
+
+def test_the_grammars_read_a_line_and_an_opponent_as_the_taggers_type_them(con: duckdb.DuckDBPyConnection) -> None:
+    """Phase 3, step 4, slice (b): the child grammars read each line the
+    lines tagger reads written over by its mark, and the parent grammar the
+    opponent the subject reading read (``lexicon.mark_lines``,
+    ``mark_opponent``), so a grammar claims its own words around them and
+    the line's and the opponent's characters are their readers' alone - no
+    claim is joined from the two (``intent+line``, ``intent+opponent``), and
+    the child's words in its decision are the question's own."""
+    question = "How many games did SGA score 30+ points this season?"
+    r = _read(con, question, names=["SGA"], stat="points")
+    assert r.intent == "threshold_count"
+    read = {question[c.start : c.end]: c.what for c in r.claims}
+    assert read["30+ points"] == "line" and not any("+" in what for what in read.values())
+    assert r.subject is not None and r.subject.intent_reason == "the words 'How many games did SGA score 30+' name threshold_count"
+    question = "show maxey's games against boston in the past two seasons"
+    r = _read(con, question, names=["maxey", "boston"], stat="")
+    assert r.intent == "game_log"
+    read = {question[c.start : c.end]: c.what for c in r.claims}
+    assert read["against boston"] == "opponent" and read["games"] == "intent" and not any("+" in what for what in read.values())
+
+
+def test_a_line_and_an_opponent_are_marked_where_their_words_stand() -> None:
+    """The marks keep every character where it stands: a line's number (with
+    its plus) and stat, the words that lead a line under a number, and an
+    opponent with its versus word, each written over by its own mark."""
+    from association.query import lexicon
+    from association.query.line import lines_named
+
+    question = "games with 20+ points or under 14 fta"
+    lines = lines_named(question)
+    assert lines.threshold == 20 and lines.below
+    marked, numbered = lines.marked(question), lines.numbered(question)
+    assert len(marked) == len(numbered) == len(question)
+    assert (
+        marked == "games with " + lexicon.LINE_MARK_PLUS * 3 + " " + lexicon.LINE_MARK_STAT * 6 + " or " + lexicon.LINE_MARK_LEAD * 5 + " " + lexicon.LINE_MARK * 2 + " " + lexicon.LINE_MARK_STAT * 3
+    )
+    assert numbered == "games with " + lexicon.LINE_MARK_PLUS * 3 + " points or under " + lexicon.LINE_MARK * 2 + " fta"
+    assert lexicon.mark_opponent("games vs boston", ((6, 15),)) == "games " + lexicon.OPPONENT_MARK_AGAINST * 9

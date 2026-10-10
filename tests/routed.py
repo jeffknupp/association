@@ -47,6 +47,7 @@ from association.query.compose.core import Query
 from association.query.compose.plan import plan, plan_point
 from association.query.decisions import Decision
 from association.query.entities import names_of
+from association.query.line import lines_named
 from association.query.names import NameIndex
 from association.query.normalizer import Normalized
 from association.query.point import default_point
@@ -110,7 +111,9 @@ def with_subject(con: duckdb.DuckDBPyConnection | NameIndex, question: str, rout
     if route.subject is not None:
         return route
     read = read_subject(_index(con), question, None, route.scope)
-    named = child_named(read, route.asked, question)
+    # The child grammars read the lines as the lines tagger types them, as
+    # the parser hands them (``parse.read_route``).
+    named = child_named(read, route.asked, lines_named(question).marked(question), original=question)
     chosen, words = named if named is not None else (route.asked, None)
     return replace(route, asked=chosen, subject=settle_subject(read, chosen, parent=route.asked, words=words))
 
@@ -255,7 +258,10 @@ def _staged(key: PointShape | None, given: Mapping[str, Any], question: str, com
     subject, opponent = handed(question, given)
     stat = given.get("stat")
     stat = stat if isinstance(stat, str) and stat.strip() else None
-    settled = grammar.settle(question, key, subject=subject, opponent=opponent, companions=companions, stat=stat)
+    # The rules read the lines as the parser hands them: each number
+    # marked, the typed lines beside it (parse._read_route_staged).
+    named_lines = lines_named(question)
+    settled = grammar.settle(named_lines.numbered(question), key, subject=subject, opponent=opponent, companions=companions, stat=stat, lines=named_lines)
     if settled.coach:
         return Staged(settled.asked, claims=claimed(list(settled.claims)))
     fields = given.get("fields")

@@ -1926,6 +1926,26 @@ you add a shape:
   `threshold_count` and "who lead the league in avg 3 point distance" (no
   player) off `shot_distance`. Measured when the seven left the router's
   prompt: 0 false positives over 261 recorded questions of other intents.
+  **A grammar reads a line or an opponent as its tagger types it, never
+  by its words** (Phase 3, step 4, slice (b)): the child grammars read the
+  question with each line the lines tagger reads written over by its mark
+  (`line.LinesNamed.marked`: the number with its plus, the stat, the
+  words that lead a line under a number - `lexicon.LINE_MARK_*`), the
+  parent grammar and the grammar's rules with each line's NUMBER marked
+  (`numbered`: they read a stat word as a measure's, "most 10 points games"
+  is no team ranking) and the rules the typed values beside it
+  (`LinesNamed.threshold`, `below`), and the parent grammar the opponent
+  the subject reading read, versus word and team, marked
+  (`lexicon.mark_opponent`, `subject.opponent_read`: `_PLAYER_LOG`'s
+  "games against boston" is "games" before an opponent). Every mark keeps
+  each character where it stands, so a row's distances hold and a child's
+  words in its decision are the question's own. A grammar so claims its
+  own words around the value and the value's characters are its tagger's:
+  measured on the 2,710 readings (`route_family.py`), `intent+line` 17 ->
+  0 and `intent+opponent` 5 -> 0 joined claims, every reading, answer and
+  unread word identical. A row that reads a number or a versus word reads
+  the mark beside it (`N_PLUS`, `MARKED_NUMBER`, `MEETING_WORDS`,
+  `_PAIR_MEETING`); a new row does the same.
   The child is named from the grammar alone (`subject.child_named`), and
   the grammar's rules run ONCE, under it (`parse._read_route_staged`); they
   may decline it (a count with no threshold is a ranking), and only then

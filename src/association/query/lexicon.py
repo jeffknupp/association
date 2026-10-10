@@ -2241,8 +2241,35 @@ read (``player_relation.POSITION_CODES``, which a test holds to it).
 # A line at or above a number, however it is written: "30+", "36-plus",
 # "30 or more", "at least 2" (the paraphrases' spellings, parser-greenfield) -
 # a fragment the child grammars below are built from.
-N_PLUS = r"(?:\d{1,3}[\s-]*(?:\+|plus\b|or more\b)|\bat least \d{1,3})"
-"""A line at or above a number, as a fragment with no groups.
+LINE_MARK_PLUS = "\ue000"
+"""The character the choosers read the number of a line stated with a
+plus as ("20+", "20 or more" of "20 or more points"): written over each of
+its characters by :func:`mark_lines`, so the grammars read the number the
+lines tagger typed, where it stands, and never the number's words.
+
+.. versionadded:: 6.0.0
+"""
+LINE_MARK_AT_LEAST = "\ue002"
+"""The character the choosers read the number of a line stated "at least
+N stat" as.
+
+.. versionadded:: 6.0.0
+"""
+LINE_MARK = "\ue001"
+"""The character the choosers read any other line's number as ("30" of "30
+points", "scores 30", "under 14 fta", "with 25 minutes").
+
+.. versionadded:: 6.0.0
+"""
+MARKED_NUMBER = "[\ue001\ue002]+"
+"""A fragment for a line's number the lines tagger read, stated with no
+plus - where a grammar's row reads a bare number (``\\d+``).
+
+.. versionadded:: 6.0.0
+"""
+N_PLUS = r"(?:\d{1,3}[\s-]*(?:\+|plus\b|or more\b)|\bat least (?:\d{1,3}|\ue002+)|\ue000+)"
+"""A line at or above a number, as a fragment with no groups - written out,
+or marked as one the lines tagger read (:data:`LINE_MARK_PLUS`).
 
 .. versionadded:: 6.0.0
    ``subject._N_PLUS`` until Phase 3, step 2.
@@ -2276,7 +2303,7 @@ CHILD_STREAK = re.compile(r"\bstreaks?\b|\bwin ?streak\b|\bstraight (?:games|win
    ``subject._CHILD_GRAMMARS``' own pattern until Phase 3, step 2.
 """
 CHILD_RECORD_WHEN_LINE = re.compile(
-    rf"\brecord\b.*\b(?:when|with)\b.*{N_PLUS}|\brecord\b.*{N_PLUS}|\brecord\b.*\b(?:when|with)\b.*\b(?:scored|scores|had|has)\b.*\d+|{N_PLUS}\s*\w*.*\brecord\b", re.IGNORECASE
+    rf"\brecord\b.*\b(?:when|with)\b.*{N_PLUS}|\brecord\b.*{N_PLUS}|\brecord\b.*\b(?:when|with)\b.*\b(?:scored|scores|had|has)\b.*(?:\d|{MARKED_NUMBER})|{N_PLUS}\s*\w*.*\brecord\b", re.IGNORECASE
 )
 """A record over a line: "record when he scored 30+".
 
@@ -2294,16 +2321,16 @@ CHILD_RECORD_WHEN_GAMES_WON = re.compile(r"\bhow many\b.{0,40}\bgames\b.{0,20}\b
 """
 CHILD_THRESHOLD_COUNT = re.compile(
     rf"\b(?:how many|most|fewest)\b.*\b(?:games?|times)\b.*{N_PLUS}|\b(?:how many|most|fewest)\b.*{N_PLUS}.*\bgames?\b|\bhow many (?:times|occasions)\b"
-    r"|\bgames? (?:with|where|in which)\b.*\b\d+\s+\w+"
-    r"|\b\d{1,3}[\s-]*(?:pts?|points?|rebs?|rebounds?|asts?|assists?|steals?|blocks?|threes|3s)[\s-]+games?\b"
+    rf"|\bgames? (?:with|where|in which)\b.*(?:\b\d+|{MARKED_NUMBER})\s+(?:\w+|\ue003+)"
+    rf"|(?:\b\d{{1,3}}[\s-]*(?:pts?|points?|rebs?|rebounds?|asts?|assists?|steals?|blocks?|threes|3s)|[\ue000-\ue002]+[\s-]*\ue003+)[\s-]+games?\b"
     # The paraphrases' shapes (parser-greenfield, step b): "which games had 15 or more assists", "the highest number of
     # 30+ point games", "how many games did he score 30 points or more in".
-    rf"|\b(?:which|what) games?\b.*{N_PLUS}|\bnumber of\b.*{N_PLUS}.*\bgames?\b|\bhow many\b.*\bgames?\b.*\b\d{{1,3}}\s+\w+\s+or more\b"
+    rf"|\b(?:which|what) games?\b.*{N_PLUS}|\bnumber of\b.*{N_PLUS}.*\bgames?\b|\bhow many\b.*\bgames?\b.*(?:\b\d{{1,3}}|{MARKED_NUMBER})\s+(?:\w+|\ue003+)\s+or more\b"
     # "how many games have players recorded 33 points, 13 rebounds, 10
     # assists, 2 blocks, and 2 steals" (ISSUES.md #290): a count of games
     # over bare lines, as "players with 33 point and 13 rebound ... games" is
     # - until Phase 3, step 3 a rebounds ranking with the five numbers unread.
-    r"|\bhow many\b.{0,20}\bgames?\b.*\b\d{1,3}\s+(?:pts?|points?|rebs?|rebounds?|asts?|assists?|steals?|blocks?|threes|3s)\b",
+    rf"|\bhow many\b.{{0,20}}\bgames?\b.*(?:\b\d{{1,3}}\s+(?:pts?|points?|rebs?|rebounds?|asts?|assists?|steals?|blocks?|threes|3s)\b|{MARKED_NUMBER}\s+\ue003+)",
     re.IGNORECASE,
 )
 """A count of games over a line.
@@ -2475,7 +2502,7 @@ naming the wrong cause.
 # position when a threshold follows it, which is what the lookahead asserts.
 SUBJECT_OF_HIGH = re.compile(
     r"\b(?:([A-Za-z][A-Za-z.'\-]*)\s+)?([A-Za-z][A-Za-z.'\-]{2,})"
-    r"(?:'s\b|\s+(?:scored|scores|score|dropped|put\s+up|hung|shot|foul(?:ed|s|ing)?\s+out)|\s+ha[ds]\s+(?=\d))",
+    r"(?:'s\b|\s+(?:scored|scores|score|dropped|put\s+up|hung|shot|foul(?:ed|s|ing)?\s+out)|\s+ha[ds]\s+(?=[\d\ue000\ue001\ue002]))",
     re.IGNORECASE,
 )
 """A name before a scoring verb, "fouled out" or "had <N>", or with a possessive.
@@ -2499,7 +2526,7 @@ SUBJECT_OF_COUNT = re.compile(
     r"\b(?:([A-Za-z][A-Za-z.'\-]*)\s+)?([A-Za-z][A-Za-z.'\-]{2,})\s+(?:"
     r"games?\s+with\b"
     r"|games?\s+of\b"
-    r"|\d+\+?\s*[- ]?\s*(?:point|pt|rebound|reb|assist|ast|steal|stl|block|blk|three)s?\s+games?\b"
+    r"|(?:(?:\d+\+?|[\ue000\ue001\ue002]+)\s*[- ]?\s*(?:point|pt|rebound|reb|assist|ast|steal|stl|block|blk|three)s?|[\ue000\ue001\ue002]+\s*[- ]?\s*\ue003+)\s+games?\b"
     # "bam adebayo career games in the month of march" (yardstick-v2 F096):
     # the model dropped Bam, and none of the shapes above follows a name
     # with "career games".
@@ -2762,8 +2789,9 @@ grown from what a corpus measurement finds rather than a general dictionary.
 # "played", "head to head", "beat". A window over two teams meeting is still
 # their meetings when a record is asked for ("lakers vs mavs record last 10
 # home games"); a log word never is.
-MEETING_WORDS = re.compile(r"\b(vs\.?|versus|against|play(?:ed|s)?|meet|met|head.to.head|matchup|face[ds]?|beat(?:en)?)\b", re.IGNORECASE)
-"""A word that sets two teams meeting.
+MEETING_WORDS = re.compile(r"\b(vs\.?|versus|against|play(?:ed|s)?|meet|met|head.to.head|matchup|face[ds]?|beat(?:en)?)\b|[\ue005\ue006]", re.IGNORECASE)
+"""A word that sets two teams meeting - or, in the words the parent grammar
+reads, an opponent led by one (:func:`mark_opponent`).
 
 .. versionadded:: 6.0.0
    ``parse._MEETING`` until Phase 3, step 2.
@@ -2946,6 +2974,85 @@ def without_word(question: str, start: int, end: int) -> str:
        ``scripts/claims_ledger.py``'s ``without`` until Phase 3, step 3.
     """
     return CONTENT_SPACES.sub(" ", question[:start] + " " + question[end:]).strip()
+
+
+LINE_MARK_LEAD = "\ue004"
+"""The character the choosers read the words before a line under a number
+as ("under", "fewer than" of "fewer than 14 fta").
+
+.. versionadded:: 6.0.0
+"""
+LINE_MARK_STAT = "\ue003"
+"""The character the choosers read a line's stat words as.
+
+.. versionadded:: 6.0.0
+"""
+
+
+OPPONENT_MARK_AGAINST = "\ue005"
+"""The character the parent grammar reads a team set against the subject
+as, where "against" or "vs" leads it ("against boston", "vs. the bucks").
+
+.. versionadded:: 6.0.0
+"""
+OPPONENT_MARK_VERSUS = "\ue006"
+"""The character it reads an opponent led by "versus" as.
+
+.. versionadded:: 6.0.0
+"""
+OPPONENT_MARK = "\ue007"
+"""The character it reads any other opponent as ("v warriors", a team
+named with no versus word).
+
+.. versionadded:: 6.0.0
+"""
+
+
+def mark_opponent(question: str, claims: tuple[tuple[int, int], ...]) -> str:
+    """``question`` with each stretch the subject reading read the opponent
+    from - the versus word and the team - written over by its mark, by the
+    word that leads it (:data:`OPPONENT_MARK_AGAINST`,
+    :data:`OPPONENT_MARK_VERSUS`, :data:`OPPONENT_MARK`): the parent grammar
+    reads "a team is set against the subject here", the typed opponent, and
+    never the words, which are the subject reading's to claim.
+
+    .. versionadded:: 6.0.0
+    """
+    chars = list(question)
+    for start, end in claims:
+        led = question[start:end].casefold()
+        mark = OPPONENT_MARK_AGAINST if led.startswith(("against", "vs")) else OPPONENT_MARK_VERSUS if led.startswith("versus") else OPPONENT_MARK
+        chars[start:end] = mark * (end - start)
+    return "".join(chars)
+
+
+def mark_lines(question: str, marks: tuple[tuple[int, int, str], ...], stats: tuple[tuple[int, int], ...] = ()) -> str:
+    """``question`` with each line the lines tagger read written over by
+    its mark - ``(start, end, how)``, the line's number and stat, marked
+    :data:`LINE_MARK_PLUS` where it is stated with a plus,
+    :data:`LINE_MARK_AT_LEAST` with "at least" and :data:`LINE_MARK`
+    otherwise - every other character where it stands.
+    What the choosers read: a grammar reads the TYPED line where the tagger
+    read one, and the words around it, never the line's own words, which
+    are the lines tagger's to claim.
+
+    .. versionadded:: 6.0.0
+    """
+    chars = list(question)
+    # A line inside another (a bare "14 fta" inside "under 14 fta") is
+    # marked as the plainer one first and the stated one over it.
+    for start, end, how in sorted(marks, key=lambda mark: mark[2] != "bare"):
+        if how == "lead":
+            # The words before a line under a number, each word marked and
+            # the spaces between them left where they stand.
+            chars[start:end] = [char if char.isspace() else LINE_MARK_LEAD for char in question[start:end]]
+        else:
+            chars[start:end] = {"plus": LINE_MARK_PLUS, "at_least": LINE_MARK_AT_LEAST}.get(how, LINE_MARK) * (end - start)
+    for start, end in stats:
+        # Each stat word marked, the spaces between them left: a row that
+        # reads one word after a number ("\\d+\\s+\\w+") reads the first.
+        chars[start:end] = [char if char.isspace() else LINE_MARK_STAT for char in question[start:end]]
+    return "".join(chars)
 
 
 def unread_words(question: str, claimed: list[tuple[int, int]], names: tuple[str, ...] | list[str], stat: str) -> tuple[str, ...]:

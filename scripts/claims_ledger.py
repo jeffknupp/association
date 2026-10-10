@@ -248,26 +248,40 @@ def _report_disagreements(rows: list[dict[str, Any]]) -> int:
 #: step 3): the join stays, and the joins are held by kind and count, so a
 #: new kind or a grown count fails ``report``, and a kind that vanishes or a
 #: count that falls is lowered here with the change (the ratchets' GONE
-#: rule). Measured at the step's end (`63f1ca0`); on the 2,710 readings 48:
-#: - Step 4's, made one reading when the grammar is re-keyed to name the
-#:   shape from the typed values: a child grammar's words, said in its
-#:   decision and so claimed whole, over a tagger's - the grammar names the
-#:   intent from the line's or the opponent's words and the tagger reads
-#:   their value (``intent+line`` 12, ``intent+opponent`` 4,
-#:   ``companion+intent`` 2, ``intent+companion`` 1, ``situation+intent`` 1;
-#:   on the 2,710: 43 of this kind).
+#: rule). Measured at the step's end (`63f1ca0`); on the 2,710 readings 48.
+#: Phase 3, step 4, slice (b) made two kinds one reading - the grammars
+#: read the line and the opponent as the taggers type them, written over
+#: their words (``lexicon.mark_lines``, ``mark_opponent``), so a grammar
+#: claims its own words around them: ``intent+line`` 12 -> 0 (17 -> 0 on the
+#: 2,710) and ``intent+opponent`` 4 -> 0 (5 -> 0), the 2,710's 48 -> 26.
+#: What is held:
+#: - ``companion+intent`` 2 and ``intent+companion`` 1: the grammar's rules
+#:   and the parent row read a companion's phrase ("when maxey scored",
+#:   "with/without embiid") that the subject reading claims. Step 4's after
+#:   slice (b): the same marking for the companions the subject reading
+#:   types makes them one reading.
+#: - ``situation+intent`` 1: "since 1/26/20," - the parent's log row reads
+#:   a date's words (``\d+/\d+``) the cuts tagger reads as a situation.
+#:   Step 4's after slice (b), marked as the cuts tagger types it.
 #: - ``refused+measure`` 1: "bench points allowed", read by the unsupported
-#:   shape's recognizer and by the measure - both need it.
+#:   shape's recognizer and by the measure - both need it; it goes when
+#:   the recognizers read the typed measure (Phase 3, step 4's refusals).
 #: - #354's double read, ``situation+date`` (4 on the 2,710, none of the
 #:   628): one tagger reading a day's month again as a situation - a word two
 #:   RULES of one tagger read, which is a bug (ISSUES.md, "A month is read
 #:   from the words of a day in it").
+#: On the 2,710 beside them: ``intent+measure`` 11, a number no line is
+#: read from ("games with 40 field goal percentage": the child grammar
+#: reads the bare number itself; the lines tagger reads no percentage
+#: line), ``window+intent`` 3 ("last 25 game log": the window and the log
+#: row both need "game"), ``opponent+intent`` 2 and
+#: ``opponent+intent+window`` 1 (the grammar's rules read the opponent's
+#: team word - "vs raptors second half", "v warriors most recent 5 games" -
+#: which they still read unmarked).
 #: Step 4 is held to zero joins but #354's.
 HELD_JOINS_QUESTIONS = 628
 """The recorded questions :data:`HELD_JOINS` was counted over."""
 HELD_JOINS: dict[str, int] = {
-    "intent+line": 12,
-    "intent+opponent": 4,
     "companion+intent": 2,
     "intent+companion": 1,
     "situation+intent": 1,

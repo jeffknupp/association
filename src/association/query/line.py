@@ -73,6 +73,18 @@ class LineCandidate:
     start: int
     claim: Claim
     how: Literal["fouled", "plus", "at_least", "bare", "scored", "phrase"]
+    #: Where the line's number stands, with its plus where the words state
+    #: one ("20+", "20 or more"), and how the number is stated (``plus``,
+    #: ``at_least`` or ``bare``) - what the choosers read in place of the
+    #: words (:class:`LinesNamed`); None for fouling out, which states none.
+    number: tuple[int, int, Literal["plus", "at_least", "bare"]] | None = None
+    #: Where the line's stat words stand after its number ("points" of
+    #: "20+ points", "fta" of "under 14 fta"), or None where the words
+    #: state none ("scores 30", fouling out).
+    stat: tuple[int, int] | None = None
+    #: Where the words that state a line under a number stand before it
+    #: ("under", "fewer than"), or None.
+    lead: tuple[int, int] | None = None
 
 
 @dataclass(frozen=True)
@@ -106,6 +118,54 @@ class LinesRead:
     lines: tuple[Line, ...]
     claims: tuple[Claim, ...]
     stat: str | None = None
+
+
+@dataclass(frozen=True)
+class LinesNamed:
+    """What the choosers - the grammars and the grammar's rules - read of
+    the lines the words state, as typed values, never as words: the first
+    line's number (:func:`threshold_named`: a count with no line is a
+    ranking), whether a line under a number stands (a count stated as a
+    ceiling keeps its key), and where each line's number and stat stand
+    (``marks``: ``(start, end, how)``, which
+    :func:`~association.query.lexicon.mark_lines` writes over).
+
+    .. versionadded:: 6.0.0
+    """
+
+    threshold: int | None
+    below: bool
+    marks: tuple[tuple[int, int, str], ...]
+    stats: tuple[tuple[int, int], ...] = ()
+
+    def numbered(self, question: str) -> str:
+        """``question`` with each line's number marked - what the parent
+        grammar and the grammar's rules read, which read a stat word as a
+        measure's (a team ranking is no player's points)."""
+        return lexicon.mark_lines(question, tuple(mark for mark in self.marks if mark[2] != "lead"))
+
+    def marked(self, question: str) -> str:
+        """``question`` with each line marked whole - its number, its stat
+        and the words that lead a line under a number - what the child
+        grammars read: a count of "30+ point games" is the count's words
+        around a line, and the line is the lines tagger's."""
+        return lexicon.mark_lines(question, self.marks, self.stats)
+
+
+def lines_named(question: str) -> LinesNamed:
+    """The lines ``question``'s words state, as the choosers read them
+    (:class:`LinesNamed`): the number of each line the tagger reads
+    (:func:`read_lines`), with its plus where the words state one - the
+    stat word and the words before the number ("with", "under", "at
+    least", "scores") stay words a grammar may read, as it reads a measure
+    by them - and fouling out, which states no number, not marked.
+
+    .. versionadded:: 6.0.0
+    """
+    found = read_lines(question).found
+    marks = (*(candidate.number for candidate in found if candidate.number is not None), *((*candidate.lead, "lead") for candidate in found if candidate.lead is not None))
+    stats = tuple(candidate.stat for candidate in found if candidate.stat is not None)
+    return LinesNamed(threshold_named(question), lexicon.BELOW.search(question) is not None, marks, stats)
 
 
 def threshold_named(question: str) -> int | None:
@@ -155,16 +215,50 @@ def read_lines(question: str) -> LineCandidates:
             "plus" if lexicon.THRESHOLD_PAIR.fullmatch(match.group(0)) is not None else "at_least" if (match.start(), match.start() + len(match.group(1))) in at_least else "bare"
         )
         line = Line(measure=lexicon.THRESHOLD_WORDS[match.group(2).casefold()], value=int(match.group(1)), as_typed=match.group(0).casefold())
-        found.append(LineCandidate(line, match.start(), Claim(match.start(), match.end(), "line"), how))
+        # The number with its plus ("20+", "20 or more"): up to the stat word, its separator aside.
+        number_end = len(question[: match.start(2)].rstrip(" \t-")) if how == "plus" else match.end(1)
+        found.append(LineCandidate(line, match.start(), Claim(match.start(), match.end(), "line"), how, (match.start(1), number_end, how), (match.start(2), match.end(2))))
     if not pairs:
         scored = lexicon.scored_threshold(question)
         if scored is not None:
             # "scores 30": the verb names the stat, whatever the model filed.
             line = Line(measure="points", value=int(scored.group(1)), as_typed=scored.group(0).casefold(), keyed=True)
-            found.append(LineCandidate(line, scored.start(), Claim(scored.start(), scored.end(), "line"), "scored"))
+            # "scores 30+": the plus is the number's where the verb's line states one.
+            number: tuple[int, int, Literal["plus", "at_least", "bare"]] = (scored.start(1), scored.end(), "plus") if scored.end() > scored.end(1) else (scored.start(1), scored.end(1), "bare")
+            found.append(LineCandidate(line, scored.start(), Claim(scored.start(), scored.end(), "line"), "scored", number))
     for pattern, below in ((lexicon.ABOVE, False), (lexicon.BELOW, True)):
-        found.extend(LineCandidate(phrase_line(m.group(0), below=below), m.start(), Claim(m.start(), m.end(), "line"), "phrase") for m in pattern.finditer(question))
+        for m in pattern.finditer(question):
+            phrase_number = _phrase_number(question, m.start(), m.end())
+            lead = (m.start(), m.start() + len(question[m.start() : phrase_number[0]].rstrip())) if below and phrase_number is not None and phrase_number[0] > m.start() else None
+            found.append(
+                LineCandidate(phrase_line(m.group(0), below=below), m.start(), Claim(m.start(), m.end(), "line"), "phrase", phrase_number, _phrase_stat(question, phrase_number, m.end()), lead)
+            )
     return LineCandidates(tuple(found))
+
+
+def _phrase_stat(question: str, number: tuple[int, int, Literal["plus", "at_least", "bare"]] | None, end: int) -> tuple[int, int] | None:
+    """Where the words after a phrase's number stand ("fta" of "under 14
+    fta", "minutes" of "with 25 minutes"), or None where none follow it."""
+    if number is None:
+        return None
+    rest = question[number[1] : end]
+    start = number[1] + len(rest) - len(rest.lstrip())
+    return (start, end) if start < end else None
+
+
+def _phrase_number(question: str, start: int, end: int) -> tuple[int, int, Literal["plus", "at_least", "bare"]] | None:
+    """Where the number of a floor of minutes or a line under a number
+    stands in ``question[start:end]`` - its first run of digits, with the
+    "+" after it where one stands ("25+ minutes")."""
+    first = next((at for at in range(start, end) if question[at].isdigit()), None)
+    if first is None:
+        return None
+    last = first
+    while last < end and question[last].isdigit():
+        last += 1
+    if last < end and question[last] == "+":
+        return first, last + 1, "plus"
+    return first, last, "bare"
 
 
 def read_period_line(question: str) -> tuple[Line, Claim] | None:
