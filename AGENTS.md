@@ -250,9 +250,12 @@ this tree:
   `011091f` and 684 once the one reader of companions no longer needed
   the verb in "when Embiid and Paul George play"; 709 after the window
   slice's fix (`d12f899`, Jeff's call to let it grow), 702 after the line
-  slice, and 689 since Phase 3, step 3, where "18-year-old" and the twelve
+  slice, and 690 since Phase 3, step 3, where "18-year-old" and the twelve
   words of "since 2000-01, how many games have players recorded 33 points,
-  13 rebounds, 10 assists, 2 blocks, and 2 steals?" came to be read. Seven
+  13 rebounds, 10 assists, 2 blocks, and 2 steals?" came to be read (689)
+  and the "against" of "evaluate sga against embiid" stopped being read
+  through a spelling the window took from the next name (690, an overcount
+  exposed, as `d12f899`'s was). Seven
   questions have an unread NUMBER since then: five "100"s of "per 100
   possessions" (the rate reads per 100 from "per possessions" alone, so the
   number restates it), the "2" of "in 2 hours", which nothing can read, and
@@ -271,13 +274,11 @@ this tree:
   names every question where the two differ and exits 1 on one: they
   measure one thing two ways, so a disagreement is a finding - a claim
   over a word the reading does not depend on, or a word a stage reads
-  without claiming it. They agree on 624 of the 628 since step 3 (284
-  before its claims); the 4 that differ are the subject reading's, which is
+  without claiming it. They agree on 625 of the 628 since step 3 (284
+  before its claims); the 3 that differ are the subject reading's, which is
   read once and never probed for its claims ("head" in "lebron vs kawhi
   head to head" stops the spelling reader completing "kawhi"; "against"
-  where the second team named is the opponent anyway, twice; "against" in
-  "evaluate sga against embiid", read only through a spelling the window
-  took from the next name). And a disagreement the other way round is the
+  where the second team named is the opponent anyway, twice). And a disagreement the other way round is the
   one that found answers: a word whose presence makes a rule read LESS -
   "2024 and 2025", two seasons read as none - is read by the deletion (take
   one year away and the other is read) and claimed by nothing

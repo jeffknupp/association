@@ -585,7 +585,28 @@ def _spellings(con: duckdb.DuckDBPyConnection, question: str, routed: list[str])
         derived = question_derived_player(players_of(con), question, name)
         if derived is not None and derived.name != name:
             out[name] = derived.name
-    return out
+    return _spellings_owned(out)
+
+
+def _spellings_owned(spelled: dict[str, str]) -> dict[str, str]:
+    """``spelled`` without a spelling one router name took from ANOTHER's
+    words: anchored at "sga" in "compare sga embiid", the window reaches
+    "embiid" and reads Joel Embiid - the player "embiid" itself spells as -
+    so "sga" read as him, and the pair came out in the other order with its
+    evidence saying "question spells 'sga' as 'Joel Embiid'". Where two names
+    spell as one player, the one whose own word is in that player's name
+    keeps it and the other keeps its own spelling, as typed."""
+    by_player: dict[str, list[str]] = {}
+    for name, player in spelled.items():
+        by_player.setdefault(player, []).append(name)
+    kept = dict(spelled)
+    for player, names_ in by_player.items():
+        own = [name for name in names_ if set(_words(name.casefold())) & set(_words(player.casefold()))]
+        if len(names_) > 1 and own:
+            for name in names_:
+                if name not in own:
+                    del kept[name]
+    return kept
 
 
 def _conditions(question: str, players: tuple[str, ...], scope: Scope) -> tuple[Companion, ...]:

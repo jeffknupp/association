@@ -1310,16 +1310,18 @@ moves into `data` before the slice that rewords its answer:
     step 3). Every other rule's claims are cut to what its reading depends
     on by asking it again with each word deleted; the subject reading is
     read once (the read-once rule, `test_the_subject_is_read_once_per_question`)
-    and is not asked again, so its claims are where it reads - and 4 of the
-    628 recorded questions disagree with the ledger for it: "head" in
+    and is not asked again, so its claims are where it reads - and 3 of the
+    628 recorded questions disagree with the ledger for it (4 until the
+    step's last commit): "head" in
     "lebron vs kawhi head to head" (the spelling reader gives up on
     "kawhi" with it there - a suppressor, unclaimed), "against" in "How
     many points did the 76ers score in the 4th quarter against Boston this
     season?" and "This season, how many times did the 76ers play against
     the Celtics?" (claimed with the opponent, which the second team named
-    gives anyway), "against" in "evaluate sga against embiid" (read only
-    through a spelling the window took from the next name, fixed in the
-    step's last commit, which grows the ledger by that word). Measured at
+    gives anyway), and until the step's last commit "against" in
+    "evaluate sga against embiid" (read only through a spelling the window
+    took from the next name, fixed there, which grows the ledger by that
+    word). Measured at
     the step's claims commit: with the subject reading asked again per
     content word (settled under the route's intent, a suppressor left
     unclaimed), the 628 disagreed on 1 question and the 2,710 on 23,

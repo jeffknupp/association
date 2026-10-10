@@ -1013,3 +1013,23 @@ def test_a_misspelled_companion_is_read_as_typed_where_it_is_one_players_near_sp
         # An ordinary word is no typo, however near a name it is: "brow" is one
         # edit from Jaylen Brown, as "season" is from Tari Eason.
         assert _read(con, "de'aaron fox points with brow", "player_stat", player="De'Aaron Fox").conditions == ()
+
+
+def test_a_spelling_one_name_took_from_the_next_names_words_is_not_its_own(con: duckdb.DuckDBPyConnection) -> None:
+    """ "compare sga embiid": the window anchored at "sga" reaches "embiid"
+    and reads Joel Embiid, the player "embiid" itself spells as - so "sga"
+    was spelled as him and the pair came out in the other order ("Joel
+    Embiid vs Shai Gilgeous-Alexander"); "Who scores more: Wemby, Jokic, or
+    Luka?" read "Wemby" as Nikola Jokic the same way. Where two names spell
+    as one player, the one whose own word is in his name keeps it."""
+    from association.query.subject import _spellings_owned
+
+    assert _spellings_owned({"sga": "Joel Embiid", "embiid": "Joel Embiid"}) == {"embiid": "Joel Embiid"}
+    assert _spellings_owned({"Wemby": "Nikola Jokic", "Jokic": "Nikola Jokic"}) == {"Jokic": "Nikola Jokic"}
+    assert _spellings_owned({"Steph Curry": "Stephen Curry", "embiid": "Joel Embiid"}) == {"Steph Curry": "Stephen Curry", "embiid": "Joel Embiid"}
+    # Neither name's word in the player's: nothing to tell them apart by, and both stand as they were.
+    assert _spellings_owned({"seph": "Stephen Curry", "steph": "Stephen Curry"}) == {"seph": "Stephen Curry", "steph": "Stephen Curry"}
+    # Through the reading: the pair in the question's order, "sga" spelled as nobody else.
+    read = _read(con, "compare sga embiid", "player_compare", players=["sga", "embiid"])
+    assert read.players[1] == "Joel Embiid" and read.players[0] != "Joel Embiid"
+    assert not any("spells 'sga' as 'Joel Embiid'" in line for line in read.evidence)
