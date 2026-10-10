@@ -36,7 +36,8 @@ from association.query.metrics import LEADERBOARD_METRICS, PER_GAME_MIN_GAMES, P
 from association.query.parse import with_point
 from association.query.player_games import PERIOD_COLUMNS, PERIOD_RATES, period_distrust
 from association.query.player_relation import scoped_games, scoped_player
-from association.query.reading import SCOPING_SLOTS, Cuts, PointShape, Reading, Scope, Span, Window, unhonored_scoping
+from association.query.reading import SCOPING_SLOTS, Cuts, PointShape, Reading, Scope, Span, SubjectKind, Window, unhonored_scoping
+from association.query.reading import Subject as Who
 from association.query.result import Unanswered
 from association.query.season_text import season_phrase
 from association.query.shotchart import SHOT_AVAILABILITY
@@ -54,11 +55,11 @@ def _compiled(intent: str) -> Callable[[AnswerContext, Reading], Reply]:
 
     def answered(ctx: AnswerContext, reading: Reading) -> Reply:
         scope = reading.scope
-        named = tuple(name for name in (scope.player, *scope.players) if name)
-        kind = "pair" if len(named) > 1 else "player" if named else "team" if scope.team else "everyone"
+        named = scope.subject.players
+        kind: SubjectKind = "pair" if len(named) > 1 else "player" if named else "team" if scope.subject.team else "everyone"
         if kind == "team" and intent == "leaderboard":
             kind = "team_players"  # a ranking within a team: its players, never its own figure
-        subject = reading.subject or Subject(kind, players=named, teams=(scope.team,) if scope.team else ())
+        subject = reading.subject or Subject(kind, players=named, teams=(scope.subject.team,) if scope.subject.team else ())
         why: list[str] = []
         result = compose_answer(ctx, with_point(ctx.con, "", Reading(scope=scope, intent=intent, subject=subject)), declined=why.append)
         if result is None:
@@ -2116,7 +2117,7 @@ def test_a_game_log_reads_rebuilt_lines_only_for_stats_a_rebuild_gets_right(rebu
     assert box.rebuilt
 
     def readable(headers: list[str]) -> bool:
-        return _rebuilt_for(box, Query(scope=Scope(player="x"), skeleton="rows", measures=[LOG_COLUMNS[h] for h in headers]))
+        return _rebuilt_for(box, Query(scope=Scope(subject=Who(kind="player", players=("x",))), skeleton="rows", measures=[LOG_COLUMNS[h] for h in headers]))
 
     assert readable(["MIN", "PTS", "REB", "AST"]) is True
     assert readable(["MIN", "PTS", "STL", "BLK"]) is True
@@ -3681,7 +3682,7 @@ def test_a_leaderboard_refuses_a_position_group_subject_for_the_compiler(lb_con:
     reading = Reading(scope=Scope.from_slots({"stat": "points"}), intent="leaderboard", subject=Subject("position", position="SG"))
     # The compiler's point reads the group over the box scores, not the season line.
     point = read_point(reading, "highest points per game by a shooting guard")
-    assert (point.relation, point.position, point.on) == ("everyone", "SG", "player_games")
+    assert (point.relation, point.scope.subject.position, point.on) == ("everyone", "SG", "player_games")
     # And the season line's reader, handed the group on its own relation, steps aside for it.
     planned = plan(point)
     assert isinstance(planned, Query)
@@ -4978,7 +4979,7 @@ def test_narrowed_player_stat_never_reads_a_shooting_percentage_from_a_rebuilt_l
     measure) as well as through the answer, since the answer alone cannot
     tell this rule apart from the reader's own choice of measures."""
     con = narrowed_rebuilt_ctx.con
-    scope = Scope(player="Anthony Davis", cuts=Cuts(opponent="Los Angeles Lakers"))
+    scope = Scope(subject=Who(kind="player", players=("Anthony Davis",)), cuts=Cuts(opponent="Los Angeles Lakers"))
     assert compile_query(con, Query(scope=scope, skeleton="scalar", aggregate="line", measures=["points"])).rebuilt is True
     assert compile_query(con, Query(scope=scope, skeleton="scalar", aggregate="line", measures=["fg_pct"])).rebuilt is False
     assert compile_query(con, Query(scope=scope, skeleton="scalar", aggregate="line", measures=["points", "fg_pct"])).rebuilt is False

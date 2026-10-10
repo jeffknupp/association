@@ -176,8 +176,9 @@ def _everyone_guard(intent: str, question: str, position: str | None, *, period_
 
 def _everyone_opponent(scope: Scope, question: str) -> Scope:
     """A team beside no player, with "vs"/"against", is the opponent."""
-    if scope.team is not None and scope.team.strip() and not scope.cuts.opponent and _VS.search(question):
-        return replace(scope, cuts=replace(scope.cuts, opponent=scope.team), team=None)
+    team = scope.subject.team
+    if team is not None and not scope.cuts.opponent and _VS.search(question):
+        return replace(scope, cuts=replace(scope.cuts, opponent=team), subject=replace(scope.subject, teams=()))
     return scope
 
 
@@ -198,7 +199,7 @@ def _everyone_threshold_predicates(scope: Scope, measure: str | None, predicates
     return predicates
 
 
-def _everyone_single_game(intent: str, scope: Scope, question: str, measure: str | None, predicates: list[tuple[str, str, Any]], position: str | None) -> Reading | None:
+def _everyone_single_game(intent: str, scope: Scope, question: str, measure: str | None, predicates: list[tuple[str, str, Any]]) -> Reading | None:
     """ "Most ... in a game" over everyone: rows by measure, league-wide.
 
     .. versionchanged:: 5.0.0
@@ -223,7 +224,6 @@ def _everyone_single_game(intent: str, scope: Scope, question: str, measure: str
         direction=_asc_or_desc(question),
         limit=_clamp_limit(scope.window.count, DEFAULT_SINGLE_GAME_LIMIT),
         relation="everyone",
-        position=position,
     )
 
 
@@ -241,7 +241,7 @@ def _boolean_game_measure(question: str) -> str:
     return "points"
 
 
-def _everyone_boolean_game_ranking(intent: str, question: str, scope: Scope, predicates: list[tuple[str, str, Any]], position: str | None) -> Reading | None:
+def _everyone_boolean_game_ranking(intent: str, question: str, scope: Scope, predicates: list[tuple[str, str, Any]]) -> Reading | None:
     """ "players with the highest scoring triple doubles", "biggest triple
     double", "most rebounds in a double double" (#199, F124): a RANKING OF
     THE GAMES that satisfy a boolean measure (:data:`BOOLEAN_MEASURES`) by
@@ -279,7 +279,6 @@ def _everyone_boolean_game_ranking(intent: str, question: str, scope: Scope, pre
         direction=_asc_or_desc(question),
         limit=_clamp_limit(scope.window.count, DEFAULT_SINGLE_GAME_LIMIT),
         relation="everyone",
-        position=position,
     )
 
 
@@ -304,7 +303,7 @@ def _numbered_lines(scope: Scope) -> list[tuple[str, str, Any]]:
     return predicates
 
 
-def _everyone_multi_line_games(intent: str, scope: Scope, question: str, predicates: list[tuple[str, str, Any]], position: str | None) -> Reading | None:
+def _everyone_multi_line_games(intent: str, scope: Scope, question: str, predicates: list[tuple[str, str, Any]]) -> Reading | None:
     """Several "<N> <stat>" lines named in one question at once (F161) are
     all conditions on the SAME game, so the answer is which GAMES cleared
     every line and who had them - rows over everyone, the predicates
@@ -341,7 +340,6 @@ def _everyone_multi_line_games(intent: str, scope: Scope, question: str, predica
         direction="desc",
         limit=_clamp_limit(scope.window.count, 25),
         relation="everyone",
-        position=position,
     )
 
 
@@ -361,11 +359,11 @@ def _everyone_threshold_count_line(scope: Scope) -> list[tuple[str, str, Any]]:
     return [(column, ">=", threshold)]
 
 
-def _everyone_threshold_count(intent: str, scope: Scope, predicates: list[tuple[str, str, Any]], position: str | None) -> Reading | None:
+def _everyone_threshold_count(intent: str, scope: Scope, predicates: list[tuple[str, str, Any]]) -> Reading | None:
     """A league-wide count: who had games clearing the line(s). Without a
     line to count there is nothing to rank - refused, never turned into a
     per-game ranking."""
-    if intent != "threshold_count" and not (predicates and scope.team):
+    if intent != "threshold_count" and not (predicates and scope.subject.team):
         # A TEAM's players' boolean games ("thunder all-time triple doubles",
         # yardstick-v2 F152) is this count too, whatever intent the router
         # filed - the team narrows the league read to its roster's games.
@@ -403,11 +401,10 @@ def _everyone_threshold_count(intent: str, scope: Scope, predicates: list[tuple[
         direction="desc",
         limit=_clamp_limit(scope.window.count, listed),
         relation="everyone",
-        position=position,
     )
 
 
-def _everyone_ranking(intent: str, scope: Scope, question: str, measure: str | None, predicates: list[tuple[str, str, Any]], position: str | None) -> Reading | None:
+def _everyone_ranking(intent: str, scope: Scope, question: str, measure: str | None, predicates: list[tuple[str, str, Any]]) -> Reading | None:
     """A ranking word, or a leaderboard/single-game-high intent: grouped by
     player. A "with at least N games" phrase in the question replaces the
     default minimum sample (:data:`~association.query.metrics.PER_GAME_MIN_GAMES`)
@@ -434,7 +431,7 @@ def _everyone_ranking(intent: str, scope: Scope, question: str, measure: str | N
     """
     if not (_RANKING.search(question) or intent in ("leaderboard", "single_game_high")):
         return None
-    seasons = _leaderboard_season_line(intent, scope, question, measure, predicates, position)
+    seasons = _leaderboard_season_line(intent, scope, question, measure, predicates)
     if seasons is not None:
         return seasons
     if measure is None:
@@ -472,11 +469,10 @@ def _everyone_ranking(intent: str, scope: Scope, question: str, measure: str | N
         limit=_clamp_limit(scope.window.count, 10),
         minimum_games=minimum_games,
         relation="everyone",
-        position=position,
     )
 
 
-def _leaderboard_season_line(intent: str, scope: Scope, question: str, measure: str | None, predicates: list[tuple[str, str, Any]], position: str | None) -> Reading | None:
+def _leaderboard_season_line(intent: str, scope: Scope, question: str, measure: str | None, predicates: list[tuple[str, str, Any]]) -> Reading | None:
     """``leaderboard``'s own point (its template retired, ROADMAP plan item
     6, step (g)): a ranking of the league or a team over the SEASON LINE -
     ``run_leaderboard``'s pool, floors, traded-player dedup and NetPoints
@@ -494,7 +490,7 @@ def _leaderboard_season_line(intent: str, scope: Scope, question: str, measure: 
     # True) is the count the season line keeps; any other line on a column
     # is the game-level ranking's.
     own_boolean = all(scope.measure is not None and name == scope.measure.key and value is True for name, _, value in predicates)
-    if intent != "leaderboard" or not own_boolean or position is not None or _ranking_minimum(question) is not None:
+    if intent != "leaderboard" or not own_boolean or scope.subject.position is not None or _ranking_minimum(question) is not None:
         return None
     metric = resolve_metric(scope.measure, career=scope.span.career)
     if metric is None:
@@ -525,9 +521,9 @@ def _leaderboard_season_line(intent: str, scope: Scope, question: str, measure: 
     )
 
 
-def _everyone_position_log(intent: str, scope: Scope, question: str, position: str | None) -> Reading | None:
+def _everyone_position_log(intent: str, scope: Scope, question: str) -> Reading | None:
     """A log word with a position: rows, over that position group."""
-    if not (position and _LOG.search(question)):
+    if not (scope.subject.position and _LOG.search(question)):
         return None
     return Reading(
         scope=scope,
@@ -541,11 +537,10 @@ def _everyone_position_log(intent: str, scope: Scope, question: str, position: s
         direction="desc",
         limit=_clamp_limit(scope.window.count, 10),
         relation="everyone",
-        position=position,
     )
 
 
-def _everyone_point(intent: str, scope: Scope, question: str, measure: str | None, position: str | None = None) -> Reading:
+def _everyone_point(intent: str, scope: Scope, question: str, measure: str | None) -> Reading:
     """No player named: the league-wide read of the same relation. A ranking
     word makes it grouped by player; a log word with a position makes it
     rows; "most ... in a game" is rows by measure over everyone; a
@@ -559,27 +554,27 @@ def _everyone_point(intent: str, scope: Scope, question: str, measure: str | Non
        and ranking moves, since both are more specific readings of a
        ``threshold_count``/ranking question than either of those.
     """
-    _everyone_guard(intent, question, position, period_is_condition=any(line.period is not None for line in scope.lines))
+    _everyone_guard(intent, question, scope.subject.position, period_is_condition=any(line.period is not None for line in scope.lines))
     scope = _everyone_opponent(scope, question)
     words = _measure_words(question)
     measure, predicates = _measure_and_predicates(words, measure if measure not in BOOLEAN_MEASURES else None)
     predicates = _everyone_threshold_predicates(scope, measure, predicates)
-    single = _everyone_single_game(intent, scope, question, measure, predicates, position)
+    single = _everyone_single_game(intent, scope, question, measure, predicates)
     if single is not None:
         return single
-    boolean_ranked = _everyone_boolean_game_ranking(intent, question, scope, predicates, position)
+    boolean_ranked = _everyone_boolean_game_ranking(intent, question, scope, predicates)
     if boolean_ranked is not None:
         return boolean_ranked
-    multi_line = _everyone_multi_line_games(intent, scope, question, predicates, position)
+    multi_line = _everyone_multi_line_games(intent, scope, question, predicates)
     if multi_line is not None:
         return multi_line
-    counted = _everyone_threshold_count(intent, scope, predicates, position)
+    counted = _everyone_threshold_count(intent, scope, predicates)
     if counted is not None:
         return counted
-    ranked = _everyone_ranking(intent, scope, question, measure, predicates, position)
+    ranked = _everyone_ranking(intent, scope, question, measure, predicates)
     if ranked is not None:
         return ranked
-    logged = _everyone_position_log(intent, scope, question, position)
+    logged = _everyone_position_log(intent, scope, question)
     if logged is not None:
         return logged
     raise Unsupported("no player subject and no ranking or position-group reading of the question")
@@ -695,7 +690,7 @@ def _compare_point(scope: Scope) -> Reading:
 
     .. versionadded:: 5.0.0
     """
-    if len({name for name in scope.players if name.strip()}) < 2:
+    if len(set(scope.subject.players)) < 2:
         raise Unsupported("player_compare needs at least two distinct player names")
     return Reading(scope=scope, shape="comparison", by="subject", on="player_seasons", measures=[], aggregate="per_game", group="player", predicates=[])
 
@@ -973,7 +968,7 @@ def _default_streak(scope: Scope) -> Reading:
             # redirected to his last games.
             subject_span=replace(scope.span, season=season, career=season is None),
         )
-    if scope.team and scope.team.strip():
+    if scope.subject.team is not None:
         if column is not None:
             raise PointRefused(Cause(kind="team_streak_of_stat", facts={"stat": column}))
         return Reading(scope=scope, shape="runs", by="won", on="team_games", measures=["won"], aggregate="count", group="none", predicates=predicates, relation="team")
@@ -995,7 +990,7 @@ def _default_player_matchup(scope: Scope) -> Reading:
     .. versionadded:: 5.0.0
        On the reader's side (``compose.adapt._adapt_player_matchup`` was this).
     """
-    texts = list(dict.fromkeys(n.strip() for n in [*scope.players, scope.player] if n is not None and n.strip()))
+    texts = list(dict.fromkeys(n.strip() for n in scope.subject.players))
     if len(texts) != 2:
         raise PointRefused(Cause(kind="matchup_needs_two", facts={"names": texts}))
     dated = bool(scope.cuts.date)
@@ -1031,8 +1026,8 @@ def _default_with_without(scope: Scope) -> Reading:
     """
     mate_texts, _asked_without, _roles = with_without_named(scope)
     if not mate_texts:
-        texts = list(dict.fromkeys(n.strip() for n in (scope.player, *scope.players) if n is not None and n.strip()))
-        team_named = bool(scope.team and scope.team.strip())
+        texts = list(dict.fromkeys(n.strip() for n in scope.subject.players))
+        team_named = scope.subject.team is not None
         if not ((team_named and len(texts) == 1) or (not team_named and len(texts) == 2)):
             raise Unsupported(f"with_without needs exactly one teammate, got {texts!r}")
     return Reading(scope=scope, shape="split", by="presence", on="team_games", measures=["record"], aggregate="record", group="presence", predicates=[], relation="team")
@@ -1245,6 +1240,14 @@ def _team_measure(scope: Scope, question: str) -> str | None:
     return None
 
 
+def _read_as(scope: Scope, subject: Subject) -> Scope:
+    """``scope`` with the kind the parser read its subject as
+    (``subject.kind``) on its typed subject: what the parser's last step
+    writes (``subject.apply_subject``), for a caller that hands a scope and
+    the subject reading apart."""
+    return scope if scope.subject.kind == subject.kind else replace(scope, subject=replace(scope.subject, kind=subject.kind))
+
+
 def team_log_point(scope: Scope, subject: Subject) -> Reading | None:
     """A ``game_log`` question about a team and no player - "show me the
     Knicks last 5 games" - as the team's own games listed: a ``rows`` point
@@ -1259,15 +1262,18 @@ def team_log_point(scope: Scope, subject: Subject) -> Reading | None:
 
     .. versionadded:: 5.0.0
     """
-    if _named_player_in(scope) or subject.kind in ("player", "pair", "position"):
+    scope = _read_as(scope, subject)
+    if _named_player_in(scope) or scope.subject.kind in ("player", "pair", "position"):
         return None
-    team_text = scope.team if isinstance(scope.team, str) and scope.team.strip() and scope.team != "any_team" else None
+    team_text = scope.subject.team if scope.subject.team != "any_team" else None
     if team_text is None:
-        if subject.kind not in ("team", "team_players") or not subject.teams:
+        # The subject reading's own team, where the scope settled none (a
+        # Reading built by hand: the parser's scope holds the reading's team).
+        if scope.subject.kind not in ("team", "team_players") or not subject.teams:
             return None
         team_text = subject.teams[0]
     return Reading(
-        scope=replace(scope, team=team_text),
+        scope=replace(scope, subject=replace(scope.subject, teams=(team_text,))),
         shape="rows",
         by="date",
         on="team_games",
@@ -1331,19 +1337,20 @@ def team_read_point(scope: Scope, question: str, subject: Subject) -> Reading | 
        index and asked the warehouse nothing here (the ``con`` was carried
        and never used).
     """
+    scope = _read_as(scope, subject)
     if _named_player_in(scope) or lexicon.PERIOD_GUARD.search(question) or _RANKING.search(question) or _LOG.search(question) or _TEAM_NOT_SUBJECT.search(question):
         return None
-    if subject.kind == "team_players":
+    if scope.subject.kind == "team_players":
         # A team's players ("top scorers on the Lakers") are a ranking of
         # players narrowed by team, never the team's own figure.
         return None
-    team_text = scope.team
-    if not (isinstance(team_text, str) and team_text.strip()) or team_text == "any_team":
+    team_text = scope.subject.team
+    if team_text is None or team_text == "any_team":
         # The router dropped the team (F127's shape): the subject reading
         # has it, from the question's own team word.
-        if subject.kind not in ("team", "team_players") or not subject.teams:
+        if scope.subject.kind not in ("team", "team_players") or not subject.teams:
             return None
-        scope = replace(scope, team=subject.teams[0])
+        scope = replace(scope, subject=replace(scope.subject, teams=subject.teams[:1]))
     measure = _team_measure(scope, question)
     if measure is None:
         return None
@@ -1438,8 +1445,13 @@ def read_point(reading: Reading, question: str) -> Reading:
         # with none is a caller's mistake, said here rather than as an
         # AttributeError three moves down.
         raise ValueError("read_point needs the reading's subject - who the question is about, as the parser read it")
+    # Who the question is about as the parser read it - its kind and its
+    # position group - on the typed subject the point reads: the parser's
+    # last step wrote them there (subject.apply_subject), and a Reading
+    # built by hand with a subject of its own gets the same here.
+    scope = replace(reading.scope, subject=replace(reading.scope.subject, kind=subject.kind, position=subject.position))
     try:
-        point = _read_point(reading.intent, reading.scope, question, subject)
+        point = _read_point(reading.intent, scope, question, subject)
     except Unsupported:
         if reading.intent not in TEAM_SEASON_POINTS:
             raise
@@ -1447,7 +1459,7 @@ def read_point(reading: Reading, question: str) -> Reading:
         # question (Phase 2, step 4). Until then this was a decline - "a
         # team's own question is not the player relation's" - which the
         # retired template answered past.
-        point = team_season_point(reading.intent, reading.scope)
+        point = team_season_point(reading.intent, replace(scope, subject=scope.subject.without_position()))
     if reading.intent in TEAM_SEASON_POINTS:
         # Whatever the words moved (a team's own total on the team relation),
         # the point is read and said as the team's own season's shape:
@@ -1460,7 +1472,7 @@ def read_point(reading: Reading, question: str) -> Reading:
 def _leaderboard_declines(scope: Scope, subject: Subject) -> None:
     """What a ``leaderboard`` point is not, declined before any move - split
     out of :func:`_read_point` to keep it inside the complexity gate."""
-    if scope.measure is not None and scope.measure.key in ("triple_double", "double_double") and subject.kind in ("team", "team_players") and not subject.players:
+    if scope.measure is not None and scope.measure.key in ("triple_double", "double_double") and scope.subject.kind in ("team", "team_players") and not subject.players:
         # A TEAM's total of its players' triple-doubles ("oklahoma city
         # thunder all-time triple doubles vs west", leaderboard with the team
         # filed - day5): not a ranking this relation lacks a measure for, but
@@ -1476,12 +1488,17 @@ def _leaderboard_declines(scope: Scope, subject: Subject) -> None:
         # the retired template's own refusal ("Klay Thompson's 3pt percentage
         # over the past 4 seasons" once landed here and came back with the
         # league's true-shooting leaders, Klay silently dropped).
-        raise Unsupported(f"a leaderboard cannot answer about one named player ({scope.player!r})")
+        raise Unsupported(f"a leaderboard cannot answer about one named player ({scope.subject.player!r})")
 
 
 def _read_point(intent: str, scope: Scope, question: str, subject: Subject) -> Reading:
     """:func:`read_point`'s moves, in order; split out so the record carries
-    the intent and the subject whichever move settled it."""
+    the intent and the subject whichever move settled it. A position group
+    narrows the league's own read alone (:func:`_everyone_point`, the
+    ``position`` its moves carried as a field of the point until Phase 3,
+    step 2): every other move reads the scope without it, so the point it
+    builds carries none."""
+    positioned, scope = scope, replace(scope, subject=scope.subject.without_position())
     if intent == "coach":
         # No table here holds a coach: the reading's verdict, said by the
         # planner in the retired template's words (compose.plan).
@@ -1494,7 +1511,7 @@ def _read_point(intent: str, scope: Scope, question: str, subject: Subject) -> R
         return default_point(intent, scope)
     if intent == "leaderboard":
         _leaderboard_declines(scope, subject)
-    if intent == "record_when" and not _named_player_in(scope) and scope.team is not None and scope.team.strip():
+    if intent == "record_when" and not _named_player_in(scope) and scope.subject.team is not None:
         # A team's record above and below its OWN line - "what was the celtics
         # record when they scored 120 points" (ISSUES.md #144) - is neither the
         # season sum nor the window sum the team subject otherwise reads: it is
@@ -1540,5 +1557,7 @@ def _read_point(intent: str, scope: Scope, question: str, subject: Subject) -> R
             # branch above); naming neither, it has nobody to read - the
             # reason record_when's retired template gave.
             raise PointRefused(Cause(kind="needs_subject", facts={"intent": "record_when"}))
-        return _everyone_point(intent, scope, question, stat_measure(scope.measure), subject.position)
+        # The league's read, the one point a position group narrows: the
+        # scope as read, its position with it.
+        return _everyone_point(intent, positioned, question, stat_measure(scope.measure))
     return _move_named(intent, scope, question)

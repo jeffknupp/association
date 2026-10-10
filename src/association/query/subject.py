@@ -34,22 +34,23 @@ from __future__ import annotations
 
 import functools
 import gzip
-import re
 from dataclasses import dataclass, fields, replace
 from importlib import resources
-from typing import Any, NamedTuple
+from typing import TYPE_CHECKING, Any, NamedTuple, get_args
 
 import duckdb
 from rapidfuzz.distance import DamerauLevenshtein
 
-from association.query import lexicon, names
+from association.query import lexicon, names, reading
 from association.query.decisions import Decision
 from association.query.entities import (
+    _ERA_ALIASES,
     _TEAM_NICKNAMES,
     PLAYER_NICKNAMES,
     Entity,
     _edit_budget,
     _exact_name_span,
+    _fold,
     _fuzzy_name_span,
     _initials,
     _run_together,
@@ -65,13 +66,11 @@ from association.query.entities import (
     teams_named_by_word,
     teams_of,
 )
-from association.query.lexicon import N_SEASONS, season_from_text
+from association.query.lexicon import season_from_text
 from association.query.measures import THRESHOLD_STAT_NAMES
 from association.query.reading import (
-    FILLER_PLAYER_WORDS,
     OWN_TEAM_RESTORABLE_INTENTS,
     PLAYER_REQUIRED_INTENTS,
-    POSITIONS,
     SUBJECT_RESTORABLE_INTENTS,
     Claim,
     Companion,
@@ -81,12 +80,17 @@ from association.query.reading import (
     Measure,
     Predicate,
     Scope,
+    SubjectKind,
 )
 
-#: The kinds a subject can be. ``team_players`` is "a Hawks player" - the
-#: team's players as a group, which the compiler's team-where-a-player-
-#: belongs read answers ("thunder all-time triple doubles", by player).
-SUBJECT_KINDS: frozenset[str] = frozenset({"player", "pair", "team", "teams", "position", "everyone", "team_players"})
+if TYPE_CHECKING:
+    import re
+
+#: The kinds a subject can be (:data:`~association.query.reading.SubjectKind`).
+#: ``team_players`` is "a Hawks player" - the team's players as a group,
+#: which the compiler's team-where-a-player-belongs read answers ("thunder
+#: all-time triple doubles", by player).
+SUBJECT_KINDS: frozenset[str] = frozenset(get_args(SubjectKind))
 """Every value :attr:`Subject.kind` takes.
 
 .. versionadded:: 4.4.0
@@ -103,9 +107,6 @@ _RECORD_WHEN_PARENTS: frozenset[str] = frozenset({"player_stat", "player_splits"
 #: decision, and the parser's about the intent.
 _TEAM_RECORD_WHEN = "a team's record in the games a player named beside it reached a line"
 
-# A line at or above a number, however it is written: "30+", "36-plus",
-# "30 or more", "at least 2" (the paraphrases' spellings, parser-greenfield).
-_N_PLUS = r"(?:\d{1,3}[\s-]*(?:\+|plus\b|or more\b)|\bat least \d{1,3})"
 _NOT_A_TEAM: frozenset[str] = SUBJECT_KINDS - {"team", "teams", "team_players"}
 _PLAYER_OR_PAIR: frozenset[str] = frozenset({"player", "pair"})
 _PLAYER_RELATION_PARENTS: frozenset[str] = frozenset({"game_log", "player_stat", "leaderboard", "other"})
@@ -127,30 +128,12 @@ _PLAYER_RELATION_PARENTS: frozenset[str] = frozenset({"game_log", "player_stat",
 #: is a single-game high before it is a count, and "how many 20+ point games
 #: ... in the past two seasons" a count before it is a history.
 _CHILD_GRAMMARS: tuple[tuple[str, re.Pattern[str], frozenset[str], frozenset[str]], ...] = (
-    # "per game" is an average, never one game: "the highest points per game
-    # average" is a season ranking. "single game" is one game with an article
-    # or without: "this season's single game with the most assists" and "most
-    # 3 pointers made in single game 24-25" answered the season's leaders
-    # (ISSUES.md #260) - "single games", a plural, is not one.
-    (
-        "single_game_high",
-        re.compile(r"\bin (?:a|one) (?:single )?(?:game|match|contest|outing)\b|\bsingle[- ]game\b|\bcareer[- ]high\b|\bhighest\b.{0,60}(?<!per )\bgame\b", re.IGNORECASE),
-        _NOT_A_TEAM,
-        _PLAYER_RELATION_PARENTS,
-    ),
-    ("shot_distance", re.compile(r"\bhow far\b|\bdistance\b", re.IGNORECASE), _PLAYER_OR_PAIR, _PLAYER_RELATION_PARENTS | {"shot_chart"}),
-    (
-        "streak",
-        re.compile(r"\bstreaks?\b|\bwin ?streak\b|\bstraight (?:games|wins|losses)\b|\bin a row\b|\bconsecutive\b", re.IGNORECASE),
-        SUBJECT_KINDS,
-        frozenset({"team_record", "team_stat", "team_leaderboard", "team_outlook", "head_to_head"}) | _PLAYER_RELATION_PARENTS,
-    ),
-    (
-        "record_when",
-        re.compile(rf"\brecord\b.*\b(?:when|with)\b.*{_N_PLUS}|\brecord\b.*{_N_PLUS}|\brecord\b.*\b(?:when|with)\b.*\b(?:scored|scores|had|has)\b.*\d+|{_N_PLUS}\s*\w*.*\brecord\b", re.IGNORECASE),
-        SUBJECT_KINDS,
-        frozenset({"team_record", "team_stat", "with_without", "head_to_head"}) | _PLAYER_RELATION_PARENTS,
-    ),
+    # "per game" is an average, never one game; "single game" is one game
+    # with an article or without (the lexicon's CHILD_SINGLE_GAME_HIGH).
+    ("single_game_high", lexicon.CHILD_SINGLE_GAME_HIGH, _NOT_A_TEAM, _PLAYER_RELATION_PARENTS),
+    ("shot_distance", lexicon.CHILD_SHOT_DISTANCE, _PLAYER_OR_PAIR, _PLAYER_RELATION_PARENTS | {"shot_chart"}),
+    ("streak", lexicon.CHILD_STREAK, SUBJECT_KINDS, frozenset({"team_record", "team_stat", "team_leaderboard", "team_outlook", "head_to_head"}) | _PLAYER_RELATION_PARENTS),
+    ("record_when", lexicon.CHILD_RECORD_WHEN_LINE, SUBJECT_KINDS, frozenset({"team_record", "team_stat", "with_without", "head_to_head"}) | _PLAYER_RELATION_PARENTS),
     # A player's games won or lost: his team's record in the games he
     # played, which is record_when's read with no threshold ("how many
     # playoff games has embiid won?" - answered right today only because
@@ -158,37 +141,15 @@ _CHILD_GRAMMARS: tuple[tuple[str, re.Pattern[str], frozenset[str], frozenset[str
     # team_record's own question.
     (
         "record_when",
-        re.compile(r"\bhow many\b.{0,40}\bgames\b.{0,20}\b(?:won|lost|win|lose)\b", re.IGNORECASE),
+        lexicon.CHILD_RECORD_WHEN_GAMES_WON,
         frozenset({"player"}),
         frozenset({"team_record", "team_stat", "team_outlook", "with_without", "head_to_head"}) | _PLAYER_RELATION_PARENTS,
     ),
-    (
-        "threshold_count",
-        re.compile(
-            rf"\b(?:how many|most|fewest)\b.*\b(?:games?|times)\b.*{_N_PLUS}|\b(?:how many|most|fewest)\b.*{_N_PLUS}.*\bgames?\b|\bhow many (?:times|occasions)\b"
-            r"|\bgames? (?:with|where|in which)\b.*\b\d+\s+\w+"
-            r"|\b\d{1,3}[\s-]*(?:pts?|points?|rebs?|rebounds?|asts?|assists?|steals?|blocks?|threes|3s)[\s-]+games?\b"
-            # The paraphrases' shapes (parser-greenfield, step b): "which games had 15 or more assists", "the highest number of
-            # 30+ point games", "how many games did he score 30 points or more in".
-            rf"|\b(?:which|what) games?\b.*{_N_PLUS}|\bnumber of\b.*{_N_PLUS}.*\bgames?\b|\bhow many\b.*\bgames?\b.*\b\d{{1,3}}\s+\w+\s+or more\b",
-            re.IGNORECASE,
-        ),
-        _NOT_A_TEAM,
-        _PLAYER_RELATION_PARENTS,
-    ),
-    (
-        "player_history",
-        re.compile(
-            rf"\b(?:over|for|in|during) the (?:past|last) {N_SEASONS}\b|\b(?:last|past) {N_SEASONS}\b|\bby (?:season|year)\b|\b(?:each|every) (?:season|year)\b"
-            r"|\bseason[- ](?:by|over)[- ]season\b|\byear[- ](?:by|over)[- ]year\b|\bfrom (?:year|season) to (?:year|season)\b",
-            re.IGNORECASE,
-        ),
-        _PLAYER_OR_PAIR,
-        _PLAYER_RELATION_PARENTS,
-    ),
+    ("threshold_count", lexicon.CHILD_THRESHOLD_COUNT, _NOT_A_TEAM, _PLAYER_RELATION_PARENTS),
+    ("player_history", lexicon.CHILD_PLAYER_HISTORY, _PLAYER_OR_PAIR, _PLAYER_RELATION_PARENTS),
     (
         "player_splits",
-        re.compile(r"\bsplits?\b|\bby month\b|\bhome and away\b|\bhome/away\b|\bhome vs\.? away\b|\bmonthly\b", re.IGNORECASE),
+        lexicon.CHILD_PLAYER_SPLITS,
         _PLAYER_OR_PAIR,
         # head_to_head and team_record too: "show me Embiid's splits against
         # boston" arrived as the two teams meeting, Embiid dropped (day5).
@@ -226,8 +187,14 @@ class Applied(NamedTuple):
 
 
 @dataclass(frozen=True)
-class Subject:
-    """Who a question is about.
+class Subject(reading.Subject):
+    """Who a question is about, as the subject reading read it: the typed
+    subject (:class:`~association.query.reading.Subject` - the kind, the
+    players, the teams, the position group) and what only the parser's
+    settling needs beside it - the opponent and the player's own team the
+    cuts tagger takes, the companions, the evidence, the names the model
+    invented or filed as filler, the season named, the intent and why, the
+    characters each finding was read from.
 
     ``kind`` is one of :data:`SUBJECT_KINDS`. ``players`` and ``teams`` are
     the names as the question or the router gave them - resolution to an
@@ -252,12 +219,14 @@ class Subject:
        ``named_season``, ``intent`` and ``intent_reason`` added. ``opponent``
        also reads the router's slot where the question supports it;
        ``own_team`` needs the player named before the "for <team>" phrase.
+
+    .. versionchanged:: 6.0.0
+       A :class:`~association.query.reading.Subject` - the typed value the
+       Scope carries (Phase 3, step 2) - with the parser's fields beside it:
+       ``kind``, ``players``, ``teams`` and ``position`` are the typed
+       subject's, as read.
     """
 
-    kind: str
-    players: tuple[str, ...] = ()
-    teams: tuple[str, ...] = ()
-    position: str | None = None
     opponent: str | None = None
     own_team: str | None = None
     companions: tuple[str, ...] = ()
@@ -323,8 +292,6 @@ class Subject:
     filler: tuple[str, ...] = ()
 
 
-_MONTH_ABBREVIATIONS = frozenset({"jan", "feb", "mar", "apr", "jun", "jul", "aug", "sep", "sept", "oct", "nov", "dec"})
-
 # The companions' words - the phrases a companion is named in ("without X",
 # "with X", "when X", "in games X started", the words after "vs"), what ends
 # a name, the absence, start and bench words, a compare verb's "with" that
@@ -333,46 +300,6 @@ _MONTH_ABBREVIATIONS = frozenset({"jan", "feb", "mar", "apr", "jun", "jul", "aug
 # ABSENCE_WORDS, CONDITION_STARTED, CONDITION_BENCH, CONDITION_ABSENT, the
 # line's THRESHOLD), each with its reason beside it; the companion itself is
 # the reading's typed value (reading.Companion, with a reached one's Line).
-
-
-#: The singular of a team's nickname names the team: "a hawk player", "a
-#: laker". :data:`association.query.entities._TEAM_NICKNAMES` holds the
-#: plural shorthands ("sixers", "mavs"); these are the singulars, plus the
-#: one-word spellings the roster table's split cannot find.
-TEAM_SINGULARS: dict[str, str] = {
-    "hawk": "Atlanta Hawks",
-    "celtic": "Boston Celtics",
-    "net": "Brooklyn Nets",
-    "hornet": "Charlotte Hornets",
-    "bull": "Chicago Bulls",
-    "cavalier": "Cleveland Cavaliers",
-    "maverick": "Dallas Mavericks",
-    "nugget": "Denver Nuggets",
-    "piston": "Detroit Pistons",
-    "warrior": "Golden State Warriors",
-    "rocket": "Houston Rockets",
-    "pacer": "Indiana Pacers",
-    "clipper": "Los Angeles Clippers",
-    "laker": "Los Angeles Lakers",
-    "grizzly": "Memphis Grizzlies",
-    "buck": "Milwaukee Bucks",
-    "timberwolf": "Minnesota Timberwolves",
-    "pelican": "New Orleans Pelicans",
-    "knick": "New York Knicks",
-    "sixer": "Philadelphia 76ers",
-    "sun": "Phoenix Suns",
-    "king": "Sacramento Kings",
-    "spur": "San Antonio Spurs",
-    "raptor": "Toronto Raptors",
-    "wizard": "Washington Wizards",
-    "trailblazers": "Portland Trail Blazers",
-    "blazers": "Portland Trail Blazers",
-    "okc": "Oklahoma City Thunder",
-}
-"""A team's singular nickname, or a one-word spelling, mapped to its name.
-
-.. versionadded:: 4.4.0
-"""
 
 
 @functools.lru_cache(maxsize=1)
@@ -394,7 +321,7 @@ def _dictionary() -> frozenset[str]:
     rather than falling back: a wheel that dropped it would otherwise answer
     differently with no error."""
     words = gzip.decompress(resources.files("association.query").joinpath("words.txt.gz").read_bytes()).decode()
-    return frozenset(words.split()) | _MONTH_ABBREVIATIONS
+    return frozenset(words.split()) | lexicon.MONTH_ABBREVIATIONS
 
 
 def _edit_distance(a: str, b: str) -> int:
@@ -462,8 +389,8 @@ def _team_word(con: duckdb.DuckDBPyConnection, question: str) -> str | None:
     (the roster table by whole word, the plural nicknames), then an
     abbreviation."""
     for w in _words(question.lower()):
-        if w in TEAM_SINGULARS:
-            return TEAM_SINGULARS[w]
+        if w in lexicon.TEAM_SINGULARS:
+            return lexicon.TEAM_SINGULARS[w]
     return team_named_in(teams_of(con), question) or _team_abbreviation(con, question)
 
 
@@ -490,7 +417,7 @@ def _question_players(con: duckdb.DuckDBPyConnection, question: str, routed: lis
         if not matched:
             kept.append(name)  # a nickname key the question used: "kat", "sga"
             continue
-        if teams_here and any(len(w) >= 4 and (TEAM_SINGULARS.get(w) or team_named_in(teams_of(con), w)) in teams_here for w in matched):
+        if teams_here and any(len(w) >= 4 and (lexicon.TEAM_SINGULARS.get(w) or team_named_in(teams_of(con), w)) in teams_here for w in matched):
             continue
         if all(w in dictionary for w in matched) and not any(question_supports(name, p) for p in routed) and not _by_nickname(name, question):
             continue
@@ -539,8 +466,8 @@ def _read_opponent(con: duckdb.DuckDBPyConnection, question: str, scope: Scope, 
     # resolves, and the router read it as a team it filed in `team` - a team
     # the question never holds otherwise, so the router's reading of that
     # word is the one there is.
-    team = _team_named(teams_of(con), scope.team, season) if held_team is None else None
-    if team is not None and _AGAINST.search(question) and not _team_grounded(teams_of(con), question, team):
+    team = _team_named(teams_of(con), scope.subject.team, season) if held_team is None else None
+    if team is not None and lexicon.AGAINST_PHRASE.search(question) and not _team_grounded(teams_of(con), question, team):
         return team.name
     return None
 
@@ -553,7 +480,7 @@ def _named_as_own(con: duckdb.DuckDBPyConnection, question: str, team: Entity, s
     team as its subject. A "for <team>" with no "vs" anywhere is the
     subject's side, never the other one."""
     own = _team_after_for(teams_of(con), question, season)
-    return own is not None and own[0].id == team.id and not _AGAINST.search(question)
+    return own is not None and own[0].id == team.id and not lexicon.AGAINST_PHRASE.search(question)
 
 
 def _opponent_player(con: duckdb.DuckDBPyConnection, scope: Scope) -> str | None:
@@ -593,7 +520,7 @@ def _not_a_name(text: str) -> bool:
     router's filler word ("player" on "Most points in 15th season played",
     F099). Neither is a player to read, replace or report."""
     stripped = text.strip()
-    if _NO_NAME_HAS.search(stripped):
+    if lexicon.NO_NAME_HAS.search(stripped):
         # "most 30+ point games", "most", "Most Player in 15th Season Played"
         # - what the model files as the player once nothing in its prompt
         # shows a count or a ranking with none (the 5.0.0 prompt shrink).
@@ -601,12 +528,7 @@ def _not_a_name(text: str) -> bool:
         # word "player"; a phrase the question literally contains is not a
         # name for holding it.
         return True
-    return stripped.lower() in FILLER_PLAYER_WORDS or any(re.fullmatch(pattern, stripped, re.IGNORECASE) for pattern, _ in POSITIONS)
-
-
-#: Anchored to the START for the rank words, since a real name can end in
-#: one ("Travis Best" - the trap AGENTS.md records) and none begins so.
-_NO_NAME_HAS = re.compile(r"\d|\+|^(?:most|fewest|least|top|best|worst|highest|lowest)\b|\bplayers?\b", re.IGNORECASE)
+    return stripped.lower() in lexicon.FILLER_PLAYER_WORDS or any(pattern.fullmatch(stripped) for pattern, _ in lexicon.POSITION_WORDS)
 
 
 def _team_slot_player(con: duckdb.DuckDBPyConnection, scope: Scope) -> str | None:
@@ -614,8 +536,8 @@ def _team_slot_player(con: duckdb.DuckDBPyConnection, scope: Scope) -> str | Non
     game log without curry" arrived as ``team='Podziemski'``, and "Will
     Riley last 5 game s" as ``team='Riley'`` (a bare fragment, three
     players) - the subject, in the wrong slot."""
-    team = scope.team
-    if not isinstance(team, str) or not team.strip() or _team_named(teams_of(con), team) is not None or not find_players(con, team):
+    team = scope.subject.team
+    if team is None or _team_named(teams_of(con), team) is not None or not find_players(con, team):
         return None
     return team
 
@@ -714,9 +636,6 @@ def _companion_phrases(question: str) -> list[re.Match[str]]:
     return sorted([*phrases, *in_games], key=lambda m: m.start())
 
 
-_MAX_NAME_WORDS = 3
-
-
 def _name_segments(text: str) -> list[str]:
     """The names a companion phrase holds BY POSITION, as typed and in
     order: the words after the keyword up to one that cannot be part of a
@@ -740,7 +659,7 @@ def _name_segments(text: str) -> list[str]:
             names.append(" ".join(words))
             words = []
             continue
-        if not lexicon.NAME_SHAPED.fullmatch(piece) or lowered in lexicon.NAME_STOPWORDS or len(words) >= _MAX_NAME_WORDS:
+        if not lexicon.NAME_SHAPED.fullmatch(piece) or lowered in lexicon.NAME_STOPWORDS or len(words) >= lexicon.MAX_NAME_WORDS:
             break
         words.append(piece)
     if words:
@@ -785,18 +704,16 @@ def _companion_names_segment(segment: str, known: list[str], routed: list[str], 
 # of the subject's games - a condition (ROADMAP step 3: "most points by
 # curry vs lebron", "how many times did lebron score 30 vs kawhi"), never a
 # second subject - wherever the words ask for the subject's GAMES rather
-# than the pair's summary: a high, a count, a record, a log, a streak, a
-# history, splits (the child grammars' words and the log words). A bare
-# "curry vs lebron" or "curry stats vs lebron" stays the pair, whose matchup
-# summary reads both lines.
-_GAMES_NOT_SUMMARY = re.compile(r"\b(?:game ?logs?|gamelogs?|logs?|each game|by game|game by game|box scores?|most|highest|fewest|lowest|best|worst)\b", re.IGNORECASE)
+# than the pair's summary (lexicon.GAMES_NOT_SUMMARY, and the child
+# grammars' words). A bare "curry vs lebron" or "curry stats vs lebron"
+# stays the pair, whose matchup summary reads both lines.
 
 
 def _asks_for_games(question: str) -> bool:
     """Whether the words ask for the subject's games - a log, a high or a
     low, or any child grammar's shape (a count, a streak, a history, splits,
     a record over a line) - rather than the pair's matchup summary."""
-    return _GAMES_NOT_SUMMARY.search(question) is not None or any(words.search(question) for _, words, _, _ in _CHILD_GRAMMARS)
+    return lexicon.GAMES_NOT_SUMMARY.search(question) is not None or any(words.search(question) for _, words, _, _ in _CHILD_GRAMMARS)
 
 
 def _versus_companions(question: str, players: tuple[str, ...], scope: Scope, found: list[Companion]) -> tuple[list[Companion], list[Claim]]:
@@ -884,7 +801,7 @@ def _unrouted_name(con: duckdb.DuckDBPyConnection, words: list[str], absent: boo
         if size > len(words):
             continue
         span = [word.casefold().strip("'.,-").removesuffix("'s") for word in words[:size]]
-        if any(len(word) < 3 or word in lexicon.THRESHOLD_WORDS or word in TEAM_SINGULARS or team_named_in(teams_of(con), word) for word in span):
+        if any(len(word) < 3 or word in lexicon.THRESHOLD_WORDS or word in lexicon.TEAM_SINGULARS or team_named_in(teams_of(con), word) for word in span):
             continue
         ordinary = any(word in dictionary for word in span)
         if ordinary and size < len(words) and not absent:
@@ -998,7 +915,7 @@ def _team_names(con: duckdb.DuckDBPyConnection, question: str, scope: Scope, tea
     names: list[str] = []
     if team_word and team_word not in (opponent, own_team):
         names.append(team_word)
-    routed_team = scope.team
+    routed_team = scope.subject.team
     if (
         isinstance(routed_team, str)
         and routed_team
@@ -1008,7 +925,7 @@ def _team_names(con: duckdb.DuckDBPyConnection, question: str, scope: Scope, tea
         and not any(t and (question_supports(routed_team, t) or question_supports(t, routed_team)) for t in (opponent, own_team))
     ):
         names.append(routed_team)
-    for t in scope.teams or []:
+    for t in _listed_teams(scope):
         if isinstance(t, str) and question_supports(t, question) and _is_a_team(con, t) and t not in names and t != opponent:
             names.append(t)
     return names
@@ -1033,7 +950,7 @@ def read_subject(con: duckdb.DuckDBPyConnection, question: str, intent: str, sco
     season = scope.span.season if scope.span.season is not None else season_from_text(question)
     own = _team_after_for(teams_of(con), question, season)
     team_word = _team_word(con, question)
-    position = next((code for pattern, code in POSITIONS if re.search(pattern, question, re.IGNORECASE)), None)
+    position = next((code for pattern, code in lexicon.POSITION_WORDS if pattern.search(question)), None)
     routed_opponent = _opponent_player(con, scope)
     opponent = _read_opponent(con, question, scope, season) if routed_opponent is None else None
     teams_here = {t for t in (opponent, own[0].name if own is not None else None, team_word) if t}
@@ -1121,7 +1038,7 @@ def _read_subject_alone(players: tuple[str, ...], teams: set[str], conditions: t
     team's question with two companions ("76ers" is no word the team
     reading finds, so the routed ``team`` slot is what says so). Split out
     of :func:`read_subject` for the complexity gate."""
-    named_team = teams or scope.team or scope.teams
+    named_team = teams or scope.subject.teams
     return not players and not named_team and len(conditions) == 1 and conditions[0].predicate == "played"
 
 
@@ -1169,8 +1086,11 @@ def child_named(subject: Subject, parent: str, question: str) -> tuple[str, str 
 def _named_before(question: str, players: tuple[str, ...], at: int) -> bool:
     """Whether a word of a subject player's name (three letters or more)
     appears in the question before position ``at``."""
-    head = question[:at].casefold()
-    return any(re.search(rf"\b{re.escape(word)}\b", head) for p in players for word in _words(p.casefold()) if len(word) >= 3)
+    # A whole word of the head: the runs of word characters the head holds
+    # (a name's words are letters alone, so a word standing whole in the
+    # head is one of its runs).
+    head = {run.group(0) for run in lexicon.WORD_RUN.finditer(question[:at].casefold())}
+    return any(word in head for p in players for word in _words(p.casefold()) if len(word) >= 3)
 
 
 def _evidence(named: list[str], routed: list[str], spellings: dict[str, str], invented: list[str], team_word: str | None, opponent: str | None) -> tuple[str, ...]:
@@ -1200,7 +1120,7 @@ def _decide(
         return Subject("player", players, tuple(teams), position, opponent, own_team, companions, evidence)
     if position:
         return Subject("position", (), tuple(teams), position, opponent, own_team, companions, evidence)
-    if teams and re.search(r"\b(?:player|players)\b", question, re.IGNORECASE) and not re.search(r"\bteam\b", question, re.IGNORECASE):
+    if teams and lexicon.PLAYER_NOUN.search(question) and not lexicon.TEAM_NOUN.search(question):
         return Subject("team_players", (), tuple(teams[:1]), position, opponent, own_team, companions, evidence)
     if len(teams) >= 2:
         return Subject("teams", (), tuple(teams[:2]), position, None, own_team, companions, evidence)
@@ -1258,7 +1178,7 @@ def apply_subject(subject: Subject, scope: Scope, *, intent: str) -> Applied:
         # other side's before Phase 3, step 2 ("jay huff game log vs
         # Embiid", the model's Jokic beside it).
         scope, _ = _apply_companions(subject, scope, intent)
-        return Applied(scope, [], dropped, intent)
+        return Applied(_apply_who(subject, scope), [], dropped, intent)
     decisions = list(players)
     scope, restored = _apply_restored_player(subject, scope, intent)
     decisions.extend(restored)
@@ -1268,7 +1188,15 @@ def apply_subject(subject: Subject, scope: Scope, *, intent: str) -> Applied:
     decisions.extend(conditions)
     scope, rewritten, settled = _apply_intent(subject, scope, intent)
     decisions.extend(rewritten)
-    return Applied(scope, decisions, [], settled)
+    return Applied(_apply_who(subject, scope), decisions, [], settled)
+
+
+def _apply_who(subject: Subject, scope: Scope) -> Scope:
+    """The scope's typed subject as the reading settled it: its names as
+    the steps above wrote them, with the reading's kind and position group
+    (:class:`~association.query.reading.Subject`) - the one value the point
+    reader and the relations read who the question is about from."""
+    return replace(scope, subject=replace(scope.subject, kind=subject.kind, position=subject.position))
 
 
 def _apply_team_record_when(subject: Subject, scope: Scope, intent: str) -> tuple[Scope, list[Decision], str]:
@@ -1279,18 +1207,19 @@ def _apply_team_record_when(subject: Subject, scope: Scope, intent: str) -> tupl
     # question with a companion's line, not a player's "record when he
     # scored 30+" that the child grammar settles from the words.
     condition = next(c for c in subject.conditions if c.predicate == "reached")
-    player = scope.player
+    player = scope.subject.player
     rewritten = Scope(
         span=scope.span,
         # The venue stands; the router filed the subject's own team as the
         # opponent ("sixers" beside its invented Joel Embiid), and the
         # question sets the team against nobody.
         cuts=Cuts(venue=scope.cuts.venue, opponent=scope.cuts.opponent if subject.opponent is not None else None),
-        player=condition.player,
+        # The companion is the player the record is keyed on, beside the
+        # team it is the record of.
+        subject=reading.Subject(kind=subject.kind, players=(condition.player,), teams=subject.teams[:1], position=subject.position),
         measure=Measure.from_slots({"stat": condition.line.measure}) if condition.line is not None else None,
         # The companion's line is the record's own now: the shape is keyed on it.
         lines=(replace(condition.line, keyed=True),) if condition.line is not None else (),
-        team=subject.teams[0] if subject.teams else None,
     )
     if intent != "record_when":
         return rewritten, [Decision("subject", "intent", intent, "record_when", _TEAM_RECORD_WHEN)], "record_when"
@@ -1331,12 +1260,12 @@ def _apply_restored_player(subject: Subject, scope: Scope, intent: str) -> tuple
     slot IS the condition player. "Best true shooting percentage" names
     Travis Best by whole word and nobody to the reading (an ordinary word),
     so nothing is restored there."""
-    if intent not in PLAYER_REQUIRED_INTENTS | SUBJECT_RESTORABLE_INTENTS or scope.player or scope.players:
+    if intent not in PLAYER_REQUIRED_INTENTS | SUBJECT_RESTORABLE_INTENTS or scope.subject.players:
         return scope, []
     named = list(dict.fromkeys((*subject.players, *subject.companions)))
     if len(named) != 1:
         return scope, []
-    return replace(scope, player=named[0]), [Decision("subject", "player", None, named[0], "from the question; the router left it out")]
+    return replace(scope, subject=replace(scope.subject, players=(named[0],))), [Decision("subject", "player", None, named[0], "from the question; the router left it out")]
 
 
 def _apply_own_team(subject: Subject, scope: Scope, intent: str) -> tuple[Scope, list[Decision]]:
@@ -1356,9 +1285,9 @@ def _apply_own_team(subject: Subject, scope: Scope, intent: str) -> tuple[Scope,
     the question (:attr:`Subject.named_season`, never the router's own
     "current season" default), ``span`` becomes "career" - "for Miami"
     fifteen years into a Lakers career is not asking about this season."""
-    if intent not in OWN_TEAM_RESTORABLE_INTENTS or subject.own_team is None or not (scope.player or scope.players):
+    if intent not in OWN_TEAM_RESTORABLE_INTENTS or subject.own_team is None or not scope.subject.players:
         return scope, []
-    if scope.team or scope.cuts.opponent or scope.cuts.tenure:
+    if scope.subject.team or scope.cuts.opponent or scope.cuts.tenure:
         return scope, []
     out = replace(scope, cuts=replace(scope.cuts, tenure=subject.own_team))
     decisions = [Decision("subject", "own_team", None, subject.own_team, "from the question; the router left it out")]
@@ -1380,11 +1309,8 @@ def _apply_filler_players(subject: Subject, scope: Scope) -> tuple[Scope, list[D
     if not any(r in subject.filler for r in routed):
         return scope, [], routed
     kept = [r for r in routed if r not in subject.filler]
-    field = "players" if scope.players else "player"
-    decisions = [Decision("subject", field, r, None, "no player's name - a rank word, a phrase of the question, or a team's word") for r in routed if r in subject.filler]
-    if field == "players":
-        return replace(scope, players=tuple(kept)), decisions, kept
-    return replace(scope, player=None), decisions, kept
+    decisions = [Decision("subject", _players_slot(scope), r, None, "no player's name - a rank word, a phrase of the question, or a team's word") for r in routed if r in subject.filler]
+    return replace(scope, subject=replace(scope.subject, players=tuple(kept))), decisions, kept
 
 
 def _spare_names(subject: Subject, kept: list[str], intent: str) -> list[str]:
@@ -1413,7 +1339,7 @@ def _apply_players(subject: Subject, scope: Scope, intent: str = "") -> tuple[Sc
     spare = _spare_names(subject, kept, intent)
     if dropped and len(spare) != len(dropped):
         return scope, [], dropped
-    field = "players" if scope.players else "player"
+    field = _players_slot(scope)
     replacement = dict(zip(dropped, spare, strict=True)) if dropped else {}  # a spare name with nothing dropped is a player the router omitted: not put back here
     decisions.extend(Decision("subject", field, was, now, "the question never names the router's player; it names this one") for was, now in replacement.items())
     respelled = _respellings(kept, subject.players)
@@ -1422,9 +1348,7 @@ def _apply_players(subject: Subject, scope: Scope, intent: str = "") -> tuple[Sc
     new = [replacement.get(r, r) for r in routed]
     if new == routed:
         return scope, decisions, []
-    if field == "players":
-        return replace(scope, players=tuple(new)), decisions, []
-    return replace(scope, player=new[0]), decisions, []
+    return replace(scope, subject=replace(scope.subject, players=tuple(new))), decisions, []
 
 
 def _apply_companions(subject: Subject, scope: Scope, intent: str) -> tuple[Scope, list[Decision]]:
@@ -1464,7 +1388,7 @@ def _apply_companions_to_write(subject: Subject, scope: Scope) -> list[Companion
     hold: an absence keeps every name, the subject's own included, as the
     ``without`` slot did ("without zzyzx" is refused by name); any other
     role is written once per person and never for the subject himself."""
-    own = [name for name in [scope.player, *scope.players] if isinstance(name, str)]
+    own = list(scope.subject.players)
     held = [c.player for c in scope.companions]
     written: list[Companion] = []
     for each in subject.conditions:
@@ -1485,8 +1409,21 @@ def _apply_companions_decision(ordered: list[Companion], intent: str) -> list[De
 
 
 def _routed_player_slots(scope: Scope) -> list[str]:
-    """The router's player names, from ``player`` or ``players``."""
-    return [p for p in ([scope.player] if scope.player else []) + list(scope.players) if isinstance(p, str) and p.strip()]
+    """The model's player names, as the scope's typed subject carries them."""
+    return list(scope.subject.players)
+
+
+def _players_slot(scope: Scope) -> str:
+    """The slot the scope's players were carried in until Phase 3, step 2
+    - ``players`` for two or more, ``player`` for one - the field a
+    decision about them still names, as the trace has always printed it."""
+    return "players" if len(scope.subject.players) >= 2 else "player"
+
+
+def _listed_teams(scope: Scope) -> tuple[str, ...]:
+    """The teams the scope names as a list (two or more: the router-era
+    ``teams`` slot; the one team a scope names is :attr:`~association.query.reading.Subject.team`)."""
+    return scope.subject.teams if len(scope.subject.teams) >= 2 else ()
 
 
 def _same_person(name: str, others: tuple[str, ...] | list[str]) -> bool:
@@ -1517,13 +1454,9 @@ def _respellings(kept: list[str], players: tuple[str, ...]) -> dict[str, str]:
 # (entities.players_of, entities.teams_of).
 
 
-# "vs", "versus", "against" or "v" and whatever follows. Whether what follows is
-# a team is decided against the teams table, not here: "lebron vs kawhi" is two
-# players and must stay a comparison.
-_AGAINST = re.compile(r"\b(?:vs\.?|versus|against|v\.?)\s+(?:the\s+)?(.+)", re.IGNORECASE)
-
-
-_LETTER_RUN = re.compile(r"[a-zA-Z']+")
+# "vs", "versus", "against" or "v" and whatever follows (lexicon.AGAINST_PHRASE):
+# whether what follows is a team is decided against the teams table, not
+# there - "lebron vs kawhi" is two players and must stay a comparison.
 
 
 def team_named_in(teams: names.TeamIndex, question: str) -> str | None:
@@ -1557,7 +1490,7 @@ def team_named_in(teams: names.TeamIndex, question: str) -> str | None:
        teams' in-memory index (:func:`~association.query.entities.teams_of`)
        in place of a connection: it was ``entities.team_named_in``.
     """
-    for found in _LETTER_RUN.findall(question.lower()):
+    for found in lexicon.LETTER_RUN.findall(question.lower()):
         # "the Sixers' record", "the Knicks' last 5 games": the possessive
         # is the question's, not the name's (ISSUES.md #232 - 11 of 277
         # paraphrases read no team at all).
@@ -1573,14 +1506,118 @@ def team_named_in(teams: names.TeamIndex, question: str) -> str | None:
     return None
 
 
-# Built once: an alternation of every nickname, longest first so "greek freak"
-# wins over a hypothetical "greek". Word boundaries are spelled as lookarounds
-# rather than \b because several keys end in a non-word character ("a.i."),
-# where \b asserts the opposite of what is wanted.
-_NICKNAME_RE = re.compile(
-    r"(?<![\w])(" + "|".join(re.escape(k) for k in sorted(PLAYER_NICKNAMES, key=len, reverse=True)) + r")(?![\w])",
-    re.IGNORECASE,
-)
+def subject_named_in(question: str) -> str | None:
+    """The word (or two) a single-game-high or threshold-count question's
+    grammar makes its subject, or None (:data:`~association.query.lexicon.SUBJECT_OF_HIGH`,
+    ``SUBJECT_OF_COUNT``, ``SUBJECT_OF_HAVE``, tried in that order): a name
+    before a scoring verb or "fouled out", with a possessive, before "games
+    with"/"<N> <stat> games", or between an auxiliary and "have". A word of
+    :data:`~association.query.lexicon.NOT_A_SUBJECT` is never the name, and
+    never its leading word - "most points curry scored" reads "curry", never
+    "points curry"; "kobe bryant's" reads "kobe bryant", where a bare "bryant"
+    is four other players and none of them him.
+
+    Returns the question's own words, not a resolved player: resolution
+    decides whether they name somebody, and asks when it is ambiguous.
+    "curry" then answers "did you mean Seth Curry or Stephen Curry?", which is
+    the question asked - where the league's high is not. Read once, by the
+    parser where it hands the stages who the question is about
+    (``router.Named``); the stages settle it where the intent reads one and
+    nobody else is named.
+
+    .. versionadded:: 6.0.0
+       ``router._subject_named_in`` until Phase 3, step 2: the stages read a
+       name from the words themselves.
+    """
+    for match in lexicon.SUBJECT_OF_HIGH.finditer(question):
+        lead, word = match.group(1), match.group(2)
+        # The richer list for the word itself too: "Total points scored by the
+        # toronto raptors" read "points", "least points scored by the wizards"
+        # the same - a stat's own noun read as a person. Measured over the
+        # 261-question corpus, this loses no real name and drops three pieces
+        # of junk.
+        if word.casefold() in lexicon.NOT_A_SUBJECT:
+            continue
+        if lead is not None and lead.casefold() not in lexicon.NOT_A_SUBJECT:
+            return f"{lead} {word}"
+        return word
+    for pattern in (lexicon.SUBJECT_OF_COUNT, lexicon.SUBJECT_OF_HAVE):
+        for match in pattern.finditer(question):
+            lead, word = match.group(1), match.group(2)
+            if word.casefold() in lexicon.NOT_A_SUBJECT:
+                continue
+            if lead is not None and lead.casefold() not in lexicon.NOT_A_SUBJECT:
+                return f"{lead} {word}"
+            return word
+    return None
+
+
+def team_words_in(question: str) -> tuple[str, ...]:
+    """Every team nickname the question holds as a whole word
+    (:data:`~association.query.lexicon.TEAM_NICKNAME`), as typed and
+    lowercased, in order - what the stages file as a team's quarter or half
+    where nothing else named the team, read here once.
+
+    .. versionadded:: 6.0.0
+    """
+    return tuple(lexicon.TEAM_NICKNAME.findall(question.lower()))
+
+
+def is_team_name(name: str) -> bool:
+    """Whether ``name`` - a span the model or the grammar offered as a name -
+    is a team's. Three tests, narrowing as they get looser:
+
+    - **Its LAST word is a nickname** (:data:`~association.query.lexicon.TEAM_NICKNAME`).
+      Checked against the warehouse: all 30 team names end in one and none
+      of 3,101 player names does, while "Magic Johnson" holds one as his
+      first name - and a match anywhere in the name took him for a team.
+    - **The WHOLE name is a city or an abbreviation** ("det", "Orlando";
+      :data:`~association.query.lexicon.TEAM_CITIES`, ``TEAM_ABBREVIATIONS``).
+      Never the last word, because three players are surnamed Cleveland,
+      Houston and Washington.
+
+    A misspelled team is deliberately NOT matched (the lexicon's note: fuzzy
+    matching turns 16 real player surnames into teams).
+
+    .. versionadded:: 6.0.0
+       ``router._is_team_name`` until Phase 3, step 2.
+    """
+    words = name.lower().split()
+    if not words:
+        return False
+    if lexicon.TEAM_NICKNAME.fullmatch(words[-1]) is not None:
+        return True
+    whole = " ".join(words)
+    return whole in lexicon.TEAM_CITIES or whole in lexicon.TEAM_ABBREVIATIONS
+
+
+def team_named_in_text(question: str, candidate: str | None) -> str | None:
+    """``candidate`` back, but only if the question's own words say it - any
+    one word of four letters or more, whole - the mirror of
+    :func:`is_team_name`, which asks whether a span IS a team at all rather
+    than whether the question named this one.
+
+    ISSUES.md #170: a quarter question with no player slot sometimes filled
+    the team and the opponent with a team the model inferred rather than one
+    the question used - "Jokic ... 3rd quarter against Boston" filled the
+    opponent with 'Denver Nuggets', Jokic's own, a word the question never
+    wrote, while the team held 'Boston Celtics', a word it did.
+
+    .. versionadded:: 6.0.0
+       ``router._team_slot_named_in_text`` until Phase 3, step 2.
+    """
+    if candidate is None:
+        return None
+    words = lexicon.LONG_LETTER_RUN.findall(candidate)
+    if not words:
+        return None
+    held = {run.group(0) for run in lexicon.WORD_RUN.finditer(question.lower())}
+    return candidate if any(word.lower() in held for word in words) else None
+
+
+# Built once, by the lexicon's reader of whole phrases (longest first, "greek
+# freak" before a hypothetical "greek"), over the curated table.
+_NICKNAME_RE = lexicon.whole_phrases(tuple(PLAYER_NICKNAMES))
 
 
 def nicknames_in(question: str) -> list[str]:
@@ -1635,7 +1672,7 @@ def players_named_in(players: names.PlayerIndex, question: str) -> list[str]:
     found: list[str] = []
     index = 0
     while index < len(words):
-        for size in (3, 2, 1):
+        for size in range(lexicon.MAX_NAME_WORDS, 0, -1):
             if index + size > len(words):
                 continue
             span = words[index : index + size]
@@ -1658,11 +1695,6 @@ def players_named_in(players: names.PlayerIndex, question: str) -> list[str]:
         if name not in seen:
             seen.append(name)
     return seen
-
-
-# players_named_in's own cap: a name is never longer than three words once
-# _words has split a hyphenated one into halves.
-_SPAN_MAX_WORDS = 3
 
 
 def _anchor_word_position(q_words: list[str], lowered_q: list[str], word: str) -> int | None:
@@ -1835,7 +1867,7 @@ def _question_derived_player_search(players: names.PlayerIndex, window: list[str
     words before near ones - the shared search both
     :func:`_question_derived_player_multi_anchor_window` and
     :func:`_question_derived_player_single_anchor_window` resolve into."""
-    for size in range(min(_SPAN_MAX_WORDS, len(window)), min_size - 1, -1):
+    for size in range(min(lexicon.MAX_NAME_WORDS, len(window)), min_size - 1, -1):
         found = [resolved for start in range(len(window) - size + 1) if (resolved := _resolve_word_span(players, window[start : start + size])) is not None]
         unique_ids = {c.id for c in found}
         if len(unique_ids) == 1:
@@ -1843,11 +1875,10 @@ def _question_derived_player_search(players: names.PlayerIndex, window: list[str
     return None
 
 
-# "X vs Y", the one structural signal that two SUBJECTS were meant - tighter
-# than a compare word on purpose: "compare Jokic's fingerprint to last season"
-# compares seasons, and a note claiming a player is missing there would be
-# noise. Matched whole so a surname containing "vs" does not count.
-_VERSUS = re.compile(r"\b(?:vs\.?|versus)\b", re.IGNORECASE)
+# "X vs Y" (lexicon.VERSUS_WORD), the one structural signal that two SUBJECTS
+# were meant - tighter than a compare word on purpose: "compare Jokic's
+# fingerprint to last season" compares seasons, and a note claiming a player
+# is missing there would be noise.
 
 
 def compared_but_unmatched(players: names.PlayerIndex, question: str, held: list[str]) -> LeftOut | None:
@@ -1888,7 +1919,7 @@ def compared_but_unmatched(players: names.PlayerIndex, question: str, held: list
        Returns the names as values (a :class:`~association.query.reading.LeftOut`),
        which the parser carries on the Reading; the sentence is the sayer's.
     """
-    if len(held) >= 2 or not _VERSUS.search(question):
+    if len(held) >= 2 or not lexicon.VERSUS_WORD.search(question):
         return None
     dropped = [name for name in players_named_in(players, question) if not any(_shares_word(name, k) for k in held)]
     return LeftOut(held=tuple(held), names=tuple(dropped))
@@ -1966,7 +1997,7 @@ def _team_after_versus(teams: names.TeamIndex, question: str, season: int | None
     """The team a question sets a subject AGAINST ("jaylen brown last 8 games vs
     pistons"), or None. Spans of three words down to one are tried, so "vs new
     york" is the Knicks rather than an ambiguous "new"."""
-    for match in _AGAINST.finditer(question):
+    for match in lexicon.AGAINST_PHRASE.finditer(question):
         words = _words(match.group(1))[:3]
         for size in (3, 2, 1):
             if size <= len(words) and len(" ".join(words[:size])) >= 2:
@@ -1976,17 +2007,9 @@ def _team_after_versus(teams: names.TeamIndex, question: str, season: int | None
     return None
 
 
-# "for", "with the" and whatever follows - a player's OWN team, unlike
-# _AGAINST's opponent. Loose on purpose, the same way _AGAINST is: a false
-# match ("stats for this season") tries "this season" against the teams
-# table and simply fails to find one, which costs nothing - the DB lookup
-# is the real gate, not the regex. "with" alone is not read here: "westbrook
-# stats with the clippers" and "westbrook stats vs the clippers" mean
-# different things, but a bare "with" also introduces `without`'s own
-# teammate phrasing ("stats with steph curry on the floor" names a
-# TEAMMATE, not a team), so only "with the" - which a teammate's name never
-# takes - is read as this shape.
-_FOR_TEAM = re.compile(r"\bfor\s+(?:the\s+)?(.+)|\bwith\s+the\s+(.+)", re.IGNORECASE)
+# "for", "with the" and whatever follows (lexicon.FOR_TEAM_PHRASE) - a
+# player's OWN team, unlike the versus phrase's opponent; the teams table is
+# the gate, not the pattern.
 
 
 def _team_after_for(teams: names.TeamIndex, question: str, season: int | None = None) -> tuple[Entity, int] | None:
@@ -1997,12 +2020,12 @@ def _team_after_for(teams: names.TeamIndex, question: str, season: int | None = 
 
     .. versionadded:: 4.4.0
     """
-    for match in _FOR_TEAM.finditer(question):
+    for match in lexicon.FOR_TEAM_PHRASE.finditer(question):
         span_text = match.group(1) or match.group(2) or ""
         words = _words(span_text)[:3]
         for size in (3, 2, 1):
             if size <= len(words) and len(" ".join(words[:size])) >= 2:
-                if size == 1 and words[0].casefold() in _COMMON_WORDS_THAT_NAME_TEAMS:
+                if size == 1 and words[0].casefold() in lexicon.COMMON_WORDS_THAT_NAME_TEAMS:
                     # "for me" is the asker, not the Memphis Grizzlies.
                     continue
                 team = _team_named(teams, " ".join(words[:size]), season)
@@ -2011,41 +2034,138 @@ def _team_after_for(teams: names.TeamIndex, question: str, season: int | None = 
     return None
 
 
-#: Ordinary English words that collide with a real NBA team abbreviation,
-#: found the same way :data:`_COMMON_WORDS_THAT_NAME_PLAYERS` was - measured
-#: against the full routing corpus.
-#: :func:`~association.query.entities._team_named` matches an abbreviation with no length floor of its
-#: own (`abbreviation ILIKE ?`), so a bare three-letter word run through it
-#: directly can resolve to a team nobody meant: "was" is the Washington
-#: Wizards ("What was the highest scoring game by a player this year?"),
-#: "min" is the Minnesota Timberwolves (a plausible box-score "20+ min"),
-#: and "me" is the Memphis Grizzlies, whose name starts with it ("show kat's
-#: average points for me" read Memphis as his own team, and answered that he
-#: never played for them - plan item 6, step (d), part 3c, where the day10
-#: paraphrases found it once nothing rewrote "kat" to a name the question
-#: does not hold). Unlike the player list, this one is checked against the SPAN actually
-#: tried rather than the team's own name, because a team's matched span is
-#: often not a word of its display name at all (an abbreviation matches
-#: nothing in "Washington Wizards" except by lookup).
-#:
-#: .. versionadded:: 4.4.0
-_COMMON_WORDS_THAT_NAME_TEAMS: frozenset[str] = frozenset({"was", "min", "me"})
+# --- What the subject reading claims ---------------------------------------
+#
+# Contract 2: each word is read once, and the reader rule that read it claims
+# the characters (reading.Claim). The subject reading claims the words of the
+# names it settled - the players and the teams the read is about, the team
+# the subject is set against and the one he played for - and the position
+# group's words (Phase 3, step 2's seventh slice; the companions' phrases it
+# claimed since the line slice). Read off the settled value, so a name the
+# reading read and set aside (a dictionary word that is somebody's surname, a
+# name the model invented) claims nothing.
+
+
+def subject_claims(teams: names.TeamIndex, question: str, scope: Scope) -> tuple[Claim, ...]:
+    """The characters of ``question`` the subject reading read the settled
+    ``scope``'s names and position group from (:class:`~association.query.reading.Claim`):
+    each player's (``"player"``: the question's words of his name, a curated
+    nickname, his initials, or - where no word of it stands as typed - each
+    word's nearest near spelling), each team's (``"team"``: a word of its
+    name, its abbreviation, a nickname, a singular, the name run together, a
+    clipped word), the opponent's and the tenure's with the versus word or
+    the "for" before them (``"opponent"``, ``"tenure"``), and the position
+    group's words (``"position"``). In the question's order, each stretch
+    once; a name the question gives twice is claimed where each stands.
+
+    .. versionadded:: 6.0.0
+    """
+    tokens = _subject_claims_tokens(question)
+    found: list[Claim] = []
+    for player in scope.subject.players:
+        found.extend(_subject_claims_player(question, tokens, player))
+    season = scope.span.season
+    for team in scope.subject.teams:
+        found.extend(Claim(start, end, "team") for start, end in _subject_claims_team(teams, tokens, team, season))
+    for placed, phrase, what in ((scope.cuts.opponent, lexicon.AGAINST_PHRASE, "opponent"), (scope.cuts.tenure, lexicon.FOR_TEAM_PHRASE, "tenure")):
+        if placed is not None:
+            found.extend(_subject_claims_led(question, phrase, _subject_claims_team(teams, tokens, placed, season), what))
+    position = scope.subject.position
+    if position is not None:
+        match = next((m for pattern, code in lexicon.POSITION_WORDS if code == position for m in [pattern.search(question)] if m is not None), None)
+        if match is not None:
+            found.append(Claim(match.start(), match.end(), "position"))
+    return tuple(sorted(set(found), key=lambda c: (c.start, c.end, c.what)))
+
+
+def _subject_claims_tokens(question: str) -> list[tuple[str, int, int]]:
+    """The question's words with where each stands: runs of word
+    characters (:data:`~association.query.lexicon.WORD_RUN`), each folded
+    to its plain lowercase spelling, as a name's words are."""
+    return [(_fold(m.group(0)).casefold(), m.start(), m.end()) for m in lexicon.WORD_RUN.finditer(question)]
+
+
+def _subject_claims_runs(tokens: list[tuple[str, int, int]], held: list[bool]) -> list[tuple[int, int]]:
+    """Each run of consecutive question words ``held`` marks, as one
+    stretch of characters: "joel embiid", "gilgeous-alexander"."""
+    runs: list[tuple[int, int]] = []
+    for (_, start, end), keep in zip(tokens, held, strict=True):
+        if not keep:
+            continue
+        if runs and runs[-1][1] >= start - 1 and _subject_claims_adjacent(tokens, runs[-1][1], start):
+            runs[-1] = (runs[-1][0], end)
+        else:
+            runs.append((start, end))
+    return runs
+
+
+def _subject_claims_adjacent(tokens: list[tuple[str, int, int]], end: int, start: int) -> bool:
+    """Whether the word starting at ``start`` follows the one ending at
+    ``end`` with no word between them."""
+    return not any(end <= t_start and t_end <= start for _, t_start, t_end in tokens)
+
+
+def _subject_claims_player(question: str, tokens: list[tuple[str, int, int]], player: str) -> list[Claim]:
+    """The characters ``player``'s name was read from: its words as the
+    question types them, a curated nickname, its initials - or, where no
+    word of the name stands as typed, each word's nearest near spelling
+    within the entity index's budget (a typo the index read as him)."""
+    words = [_fold(m.group(0)).casefold() for m in lexicon.WORD_RUN.finditer(player)]
+    held = [text in words for text, _, _ in tokens]
+    if not any(held):
+        near = [
+            min(((names.distance(text, word), i) for i, (text, _, _) in enumerate(tokens) if len(text) >= 3 and names.distance(text, word) <= _edit_budget(word)), default=None)
+            for word in words
+            if len(word) >= 3
+        ]
+        for each in near:
+            if each is not None:
+                held[each[1]] = True
+    initials = _initials(player)
+    held = [keep or (bool(initials) and text == initials) for keep, (text, _, _) in zip(held, tokens, strict=True)]
+    claims = [Claim(start, end, "player") for start, end in _subject_claims_runs(tokens, held)]
+    claims += [Claim(m.start(), m.end(), "player") for m in _NICKNAME_RE.finditer(question) if PLAYER_NICKNAMES[m.group(1).casefold()] == player]
+    return claims
+
+
+def _subject_claims_team(teams: names.TeamIndex, tokens: list[tuple[str, int, int]], team: str, season: int | None) -> list[tuple[int, int]]:
+    """The stretches of the question ``team`` was read from: the words
+    :func:`_team_grounded` takes as its trace - a word of its name, its
+    abbreviation, a nickname, the name run together, a clipped word of three
+    letters or more - beside its singular, the name as the scope spells it
+    and a former name's shorthand."""
+    traces = {_fold(m.group(0)).casefold() for m in lexicon.WORD_RUN.finditer(team)}
+    resolved = _team_named(teams, team, season)
+    if resolved is not None:
+        traces |= _team_traces(teams, resolved)
+    traces |= {word for word, name in lexicon.TEAM_SINGULARS.items() if name in (team, resolved.name if resolved is not None else None)}
+    traces |= {alias for alias, name in _ERA_ALIASES.items() if " " not in alias and name.casefold() == team.casefold()}
+    traces -= lexicon.COMMON_WORDS_THAT_NAME_TEAMS
+    held = [text in traces or (len(text) >= 3 and any(trace.startswith(text) for trace in traces if " " not in trace)) for text, _, _ in tokens]
+    return _subject_claims_runs(tokens, held)
+
+
+def _subject_claims_led(question: str, phrase: re.Pattern[str], stretches: list[tuple[int, int]], what: str) -> list[Claim]:
+    """The stretches a team was read from, each with the versus word or the
+    "for" that leads it where one stands right before it (``phrase``:
+    :data:`~association.query.lexicon.AGAINST_PHRASE`, ``FOR_TEAM_PHRASE``,
+    whose group holds the words after the lead), named ``what``."""
+    leads = [(m.start(), m.start(m.lastindex or 1)) for m in phrase.finditer(question)]
+    claims: list[Claim] = []
+    for start, end in stretches:
+        lead = next((lead_start for lead_start, words_start in leads if words_start == start), None)
+        claims.append(Claim(lead if lead is not None else start, end, what))
+    return claims
 
 
 def _team_grounded(teams: names.TeamIndex, question: str, team: Entity) -> bool:
     """Whether the question shows any trace of ``team`` - a word of its name,
     its abbreviation, or a nickname: the team counterpart of the check a
     player's name is held to (:func:`question_supports`)."""
-    row = next(((t["abbreviation"], t["display_name"]) for t in team_columns(teams, "abbreviation", "display_name", "team_id").rows if t["team_id"] == team.id), None)
-    if row is None:
+    carried = _team_traces(teams, team)
+    if not carried:
         return True  # nothing to check it against; leave it alone
     asked = {word.casefold() for word in _words(question)}
-    carried = {word.casefold() for word in _words(row[1])} | {str(row[0]).casefold()}
-    carried |= {nickname for nickname, name in _TEAM_NICKNAMES.items() if name == row[1]}
-    # A name written with a space left out is a trace of the team as plainly as
-    # its own words are: "trailblazers stats last 10 games" was dropped as a
-    # team the question never mentioned, and refused for naming no team at all.
-    carried |= _run_together(row[1])
     if carried & asked:
         return True
     # A clipped word is a trace too: "cav vs celtic last 10games" names both
@@ -2054,28 +2174,26 @@ def _team_grounded(teams: names.TeamIndex, question: str, team: Entity) -> bool:
     return any(len(word) >= 3 and any(name.startswith(word) for name in carried) for word in asked)
 
 
-#: Ordinary English words that also happen to be an NBA player's whole
-#: surname - measured against the full routing corpus
-#: (the routing check's cases, retired in 5.0.0, plus
-#: ``/home/jeff/association-research/statmuse-2026-09/feed_queries.txt``, 380
-#: questions) before :data:`~association.query.reading.SUBJECT_RESTORABLE_INTENTS`
-#: shipped: "Best true shooting percentage last season?" and "Best record
-#: from 2010-11 to 2018-19 nba" both named Travis Best, and "Celtics vs Bulls
-#: head to head record" named Luther Head - three genuine team/league
-#: questions with no player intended at all. The narrowest gate that removes
-#: them, per AGENTS.md's own instruction for this exact trap: not a general
-#: dictionary (environment-dependent, and this project's other word lists -
-#: ``_COUNT_SUBJECT_WORDS``, ``_NAME_STOPWORDS`` - are hand-curated for the
-#: same reason), grown from what a corpus measurement actually finds.
-#:
-#: .. versionadded:: 4.4.0
-_COMMON_WORDS_THAT_NAME_PLAYERS: frozenset[str] = frozenset({"best", "head"})
+def _team_traces(teams: names.TeamIndex, team: Entity) -> set[str]:
+    """Every word a question carries ``team`` by: a word of its name, its
+    abbreviation, a nickname, the name with a space left out - empty where
+    the index holds no row for it."""
+    row = next(((t["abbreviation"], t["display_name"]) for t in team_columns(teams, "abbreviation", "display_name", "team_id").rows if t["team_id"] == team.id), None)
+    if row is None:
+        return set()
+    carried = {word.casefold() for word in _words(row[1])} | {str(row[0]).casefold()}
+    carried |= {nickname for nickname, name in _TEAM_NICKNAMES.items() if name == row[1]}
+    # A name written with a space left out is a trace of the team as plainly as
+    # its own words are: "trailblazers stats last 10 games" was dropped as a
+    # team the question never mentioned, and refused for naming no team at all.
+    carried |= _run_together(row[1])
+    return carried
 
 
 def _named_only_by_a_common_word(question: str, player: str) -> bool:
     """Whether every word of ``player``'s name the question holds is ALSO an
     ordinary English word known to collide with a real surname
-    (:data:`_COMMON_WORDS_THAT_NAME_PLAYERS`) - the same shape
+    (:data:`lexicon.COMMON_WORDS_THAT_NAME_PLAYERS`) - the same shape
     :func:`_named_only_by_a_team_word` checks for a team name, applied to a
     plain word instead of a team's.
 
@@ -2083,7 +2201,7 @@ def _named_only_by_a_common_word(question: str, player: str) -> bool:
     """
     asked = {w.casefold() for w in _words(question)}
     supporting = [w for w in _words(player) if w.casefold() in asked]
-    return bool(supporting) and all(w.casefold() in _COMMON_WORDS_THAT_NAME_PLAYERS for w in supporting)
+    return bool(supporting) and all(w.casefold() in lexicon.COMMON_WORDS_THAT_NAME_PLAYERS for w in supporting)
 
 
 def _named_only_by_a_team_word(teams: names.TeamIndex, question: str, player: str) -> bool:

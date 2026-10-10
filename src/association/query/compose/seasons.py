@@ -395,7 +395,7 @@ def read_player_compare(con: duckdb.DuckDBPyConnection, q: Query, *, stated: fro
     scope = q.scope
     season = scope.span.season or current_season()
     resolved: list[Entity] = []
-    for name in scope.players[:MAX_COMPARED_PLAYERS]:
+    for name in scope.subject.players[:MAX_COMPARED_PLAYERS]:
         player = compared_player(con, name, season)
         if isinstance(player, Unanswered):
             return player

@@ -106,7 +106,7 @@ def _team_season_subject(con: duckdb.DuckDBPyConnection, intent: str, scope: Sco
     conference = conference_refusal(scope)
     if conference is not None:
         return conference
-    return resolved_team(con, scope.team, season=slot_season(scope))
+    return resolved_team(con, scope.subject.team, season=slot_season(scope))
 
 
 # --- the power index (team_outlook) --------------------------------------------
@@ -404,7 +404,7 @@ def read_team_leaderboard(con: duckdb.DuckDBPyConnection, q: TeamSeasonQuery, *,
     season = scope.span.season or current_season()
     season_type = scope.span.season_type or 2
     span = _team_leaderboard_span(scope, season, season_type)
-    named = resolved_team(con, scope.team, season=slot_season(scope)) if scope.team and scope.team.strip() else None
+    named = resolved_team(con, scope.subject.team, season=slot_season(scope)) if scope.subject.team is not None else None
     if isinstance(named, Unanswered):
         return named
     facts = TeamRankingFacts(metric=key, rank=scope.window.rank, descending=descending_for(TEAM_METRICS[key], scope.window.rank))

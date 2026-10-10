@@ -260,9 +260,9 @@ def scoped_team(con: duckdb.DuckDBPyConnection, scope: Scope, missing: str, *, s
        until every caller passes ``reading.scope``.
     """
     seasons = span_of(span if span is not None else scope.span, "games")
-    if not scope.team or not scope.team.strip():
+    if scope.subject.team is None:
         raise Unsupported(missing)
-    team = resolved_team(con, scope.team, season=seasons.season)
+    team = resolved_team(con, scope.subject.team, season=seasons.season)
     if isinstance(team, Unanswered):
         return team
     return team, seasons

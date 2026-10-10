@@ -430,11 +430,11 @@ def _team_quarter_points_team_and_span(con: duckdb.DuckDBPyConnection, scope: Sc
     current-season default finds nothing, so a named date reads every
     season on record instead."""
     if scope.cuts.date:
-        team = resolved_team(con, scope.team, season=slot_season(scope))
+        team = resolved_team(con, scope.subject.team, season=slot_season(scope))
         if isinstance(team, Unanswered):
             return team
         return team, ResolvedSpan(None, scope.span.season_type or 2)
-    scoped = Scope(team=scope.team, span=scope.span)
+    scoped = Scope(subject=reading.Subject(kind="team", teams=(scope.subject.team,)) if scope.subject.team is not None else reading.Subject(), span=scope.span)
     return scoped_team(con, scoped, "team_quarter_points needs a team")
 
 
@@ -575,7 +575,7 @@ def read_team_quarter_points(con: duckdb.DuckDBPyConnection, q: TeamQuery, *, st
         slots = scope.period.to_slots() if scope.period is not None else {}
         raise Unsupported(f"team_quarter_points needs a period 1-10 or a half 1-2, got period={slots.get('period')!r} half={slots.get('half')!r}")
     periods, period_label = asked
-    if scope.player is not None and scope.player.strip():
+    if scope.subject.player is not None:
         # A named player's quarter or half is period_split's.
         raise Unsupported("team_quarter_points cannot answer for a named player")
     measure = _team_quarter_points_measure(scope.measure)

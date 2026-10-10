@@ -203,7 +203,7 @@ def history_subject(con: duckdb.DuckDBPyConnection, scope: Scope) -> Entity | Un
     .. versionadded:: 5.0.0
        ``templates.players._player_history_subject`` was this.
     """
-    return resolved_player(con, scope.player, "player_history needs a player name", available=SEASON_LINES, through=history_through(scope))
+    return resolved_player(con, scope.subject.player, "player_history needs a player name", available=SEASON_LINES, through=history_through(scope))
 
 
 def compared_player(con: duckdb.DuckDBPyConnection, name: str, season: int) -> Entity | Unanswered:

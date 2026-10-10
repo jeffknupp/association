@@ -556,7 +556,7 @@ def read_shot_chart(con: duckdb.DuckDBPyConnection, q: ShotQuery, *, stated: fro
     scope = q.scope
     if q.shape != "chart" or unhonored_scoping("shot_chart", scope, stated):
         return None
-    name = scope.player
+    name = scope.subject.player
     if name is None or not name.strip():
         raise Unsupported("shot_chart needs a player name")
     measures = measure_filters(scope)

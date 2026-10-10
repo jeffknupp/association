@@ -10,7 +10,7 @@ from typing import Any
 
 import duckdb
 import pytest
-from routed import slots_route
+from routed import handed, slots_route
 
 from association.nba.season import current_season
 from association.query import names, subject
@@ -238,7 +238,7 @@ def test_no_reading_puts_a_team_where_a_player_belongs(con: duckdb.DuckDBPyConne
     route, _, _ = read_route(con, question, named, stat)
     reading = reading_from_route(con, question, route)
     assert reading.subject is not None
-    player = reading.scope.player
+    player = reading.scope.subject.player
     team_subject = reading.subject.kind in ("team", "team_players") and not reading.subject.players
     if reading.intent in PLAYER_INTENTS and team_subject and player:
         no_line = reading.intent == "record_when" and not (threshold_of(reading.scope) and reading.scope.measure is not None and reading.scope.measure.named)
@@ -333,7 +333,7 @@ def test_a_typo_of_the_questions_own_is_resolved_from_the_span_the_routers_name_
     s = read_subject(con, "Show a shot chart for 3 point shots by Seph Curry's last season", "shot_chart", Scope.from_slots(slots))
     assert s.players == ("Seth Curry",)
     applied = apply_subject(s, Scope.from_slots(slots), intent="shot_chart")
-    assert applied.scope.player == "Seth Curry" and applied.dropped == [] and [(d.field, d.before, d.after) for d in applied.decisions] == [("player", "Stephen Curry", "Seth Curry")]
+    assert applied.scope.subject.player == "Seth Curry" and applied.dropped == [] and [(d.field, d.before, d.after) for d in applied.decisions] == [("player", "Stephen Curry", "Seth Curry")]
 
     typo: dict[str, Any] = {"player": "Payton Prichard", "opponent": "Philadelphia 76ers", "venue": "home"}
     after = _applied(con, "Payton Prichard stats vs 76ers at home including playoffs game log", "game_log", typo)[0]
@@ -355,7 +355,7 @@ def test_the_routers_spelling_stands_where_a_whole_word_names_somebody_else(con:
     s = read_subject(con, "kareem stats vs bob lanier", "player_matchup", Scope.from_slots(slots))
     assert s.players == ("Kareem Abdul-Jabbar", "Bob Lanier")
     applied = apply_subject(s, Scope.from_slots(slots), intent="player_matchup")
-    assert (applied.decisions, applied.dropped, applied.scope.players) == ([], [], ("Kareem Abdul-Jabbar", "Bob Lanier"))
+    assert (applied.decisions, applied.dropped, applied.scope.subject.players) == ([], [], ("Kareem Abdul-Jabbar", "Bob Lanier"))
 
 
 def test_a_player_filed_as_the_opponent_is_checked_like_the_subject(con: duckdb.DuckDBPyConnection) -> None:
@@ -376,12 +376,12 @@ def test_a_player_filed_as_the_opponent_is_checked_like_the_subject(con: duckdb.
     assert invented.intent == "game_log" and invented.misread == ("Nikola Jokic",)
     assert read_subject(con, "luka vs the lakers", "game_log", Scope.from_slots({"player": "Luka Doncic", "opponent": "Los Angeles Lakers"})).opponent == "Los Angeles Lakers"
     team = _parsed(con, "luka vs the lakers", ["luka", "lakers"])
-    assert team.scope.player == "Luka Doncic" and team.scope.cuts.opponent == "Los Angeles Lakers" and team.misread == ()
+    assert team.scope.subject.player == "Luka Doncic" and team.scope.cuts.opponent == "Los Angeles Lakers" and team.misread == ()
     # A log against a player: his own games, the other on the far side (ROADMAP step 3); the bare pair is still the matchup.
     log = _parsed(con, "luka game log vs embiid", ["luka", "embiid"])
-    assert log.intent == "game_log" and log.scope.player == "Luka Doncic" and [(c.player, c.side) for c in log.scope.companions] == [("Joel Embiid", "opponent")] and log.misread == ()
+    assert log.intent == "game_log" and log.scope.subject.player == "Luka Doncic" and [(c.player, c.side) for c in log.scope.companions] == [("Joel Embiid", "opponent")] and log.misread == ()
     pair = _parsed(con, "luka vs embiid", ["luka", "embiid"])
-    assert pair.intent == "player_matchup" and pair.scope.players == ("Luka Doncic", "Joel Embiid") and not pair.scope.cuts.opponent and pair.misread == ()
+    assert pair.intent == "player_matchup" and pair.scope.subject.players == ("Luka Doncic", "Joel Embiid") and not pair.scope.cuts.opponent and pair.misread == ()
 
 
 def test_a_supported_name_stays_as_the_router_spelled_it(con: duckdb.DuckDBPyConnection) -> None:
@@ -490,7 +490,7 @@ def _assigned(con: duckdb.DuckDBPyConnection, question: str, parent: str, **slot
     # The subject is read once; the stages run once, under the child the
     # words name for it or under the parent; the last step settles nothing.
     who = read_subject(con, question, parent, Scope.from_slots(slots))
-    staged, decisions, words = _read_route_staged(question, dict(slots), parent, who)
+    staged, decisions, words = _read_route_staged(question, {key: value for key, value in slots.items() if key == "stat"}, parent, who, (), handed(question, slots))
     reading = reading_from_route(con, question, Route(staged.intent, staged.scope, decisions, settle_subject(who, staged.intent, parent=parent, words=words)))
     return reading.intent, reading.scope.to_slots()
 
@@ -614,7 +614,13 @@ def test_a_teams_record_when_a_player_reached_a_threshold_is_assigned(con: duckd
     # filed the subject as an outlook's "team" named Joel Embiid (day5), a
     # shape the parser never writes.
     reading = _parsed(con, "how many playoff games has embiid won?", ["embiid"])
-    assert reading.intent == "record_when" and reading.scope.player == "Joel Embiid" and not reading.scope.team and reading.scope.measure is not None and reading.scope.measure.as_typed == "wins"
+    assert (
+        reading.intent == "record_when"
+        and reading.scope.subject.player == "Joel Embiid"
+        and not reading.scope.subject.team
+        and reading.scope.measure is not None
+        and reading.scope.measure.as_typed == "wins"
+    )
     intent, _ = _assigned(con, "how many games have the celtics won this season", "team_record", stat="wins", team="Boston Celtics", season=2026, season_type=2)
     assert intent == "team_record"
 
@@ -754,7 +760,7 @@ def test_a_companion_the_router_named_nobody_for_is_read_from_the_question(con: 
     )
     assert "companions the router named nobody for ['maxey']" in s.evidence
     applied = apply_subject(s, Scope.from_slots(slots), intent="player_stat")
-    assert applied.intent == "record_when" and applied.dropped == [] and (applied.scope.player, applied.scope.team, threshold_of(applied.scope)) == ("maxey", "Philadelphia 76ers", 20)
+    assert applied.intent == "record_when" and applied.dropped == [] and (applied.scope.subject.player, applied.scope.subject.team, threshold_of(applied.scope)) == ("maxey", "Philadelphia 76ers", 20)
     s = _read(con, "thunder record with jalen williams out", "team_record", team="Oklahoma City Thunder")
     assert s.conditions == (Companion(player="jalen williams", predicate="absent"),)
     for question in (

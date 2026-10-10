@@ -74,8 +74,8 @@ def _with_without_read(con: duckdb.DuckDBPyConnection, scope: Scope) -> Result |
     """:func:`read_with_without`'s read: who, their time together, and the
     games in it - or the answer the reading gives up with."""
     mate_texts, asked_without, roles = with_without_named(scope)
-    texts = list(dict.fromkeys(n.strip() for n in (scope.player, *scope.players) if n is not None and n.strip()))
-    team = optional_team(con, scope.team, season=scope.span.season)
+    texts = list(dict.fromkeys(n.strip() for n in scope.subject.players))
+    team = optional_team(con, scope.subject.team, season=scope.span.season)
     if isinstance(team, Unanswered):
         return team
     if not mate_texts:

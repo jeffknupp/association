@@ -39,7 +39,8 @@ from association.query.coverage import check_coverage
 from association.query.measure import measure_of
 from association.query.parse import with_point
 from association.query.player_games import REBUILT_STATS
-from association.query.reading import SPLIT_KINDS, PointShape, Reading, Scope, Span, Unsupported, unhonored_scoping
+from association.query.reading import SPLIT_KINDS, PointShape, Reading, Scope, Span, SubjectKind, Unsupported, unhonored_scoping
+from association.query.reading import Subject as Who
 from association.query.result import Unanswered
 from association.query.subject import Subject
 
@@ -55,9 +56,9 @@ def _compiled(intent: str) -> Callable[[AnswerContext, Reading], Reply]:
 
     def answered(ctx: AnswerContext, reading: Reading) -> Reply:
         scope = reading.scope
-        named = tuple(name for name in (scope.player, *scope.players) if name)
-        kind = "pair" if len(named) > 1 else "player" if named else "team" if scope.team else "everyone"
-        subject = reading.subject or Subject(kind, players=named, teams=(scope.team,) if scope.team else ())
+        named = scope.subject.players
+        kind: SubjectKind = "pair" if len(named) > 1 else "player" if named else "team" if scope.subject.team else "everyone"
+        subject = reading.subject or Subject(kind, players=named, teams=(scope.subject.team,) if scope.subject.team else ())
         why: list[str] = []
         result = compose_answer(ctx, with_point(ctx.con, "", Reading(scope=scope, intent=intent, subject=subject)), declined=why.append)
         if result is None:
@@ -369,7 +370,7 @@ def test_a_named_players_grouped_read_says_the_rebuilt_games_once(rebuilt_league
     """A named player's compiled split already says his rebuilt games
     (``lines_rebuilt``, "shown"); where a measure could not read them, the
     one sentence says both rather than two saying the same games."""
-    query = Query(scope=Scope(player="Jayson Tatum", span=Span(season_type=2)), skeleton="grouped", group="venue", aggregate="per_game", measures=["points", "fg_pct"])
+    query = Query(scope=Scope(subject=Who(kind="player", players=("Jayson Tatum",)), span=Span(season_type=2)), skeleton="grouped", group="venue", aggregate="per_game", measures=["points", "fg_pct"])
     out = run(rebuilt_league.con, query)
     home = next(row for row in out["rows"] if row["group"] == "home")
     assert (home["games"], home["fg_pct_games"]) == (2, 1)

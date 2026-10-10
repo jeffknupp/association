@@ -107,8 +107,8 @@ def _leaderboard_refuse_a_player(scope: Scope) -> None:
     silently dropped). A position group, which the game-level ranking reads
     (F056), is the planner's (:func:`leaderboard_reads`), and was checked
     first, as the template had it."""
-    if scope.player is not None and scope.player.strip():
-        raise Unsupported(f"a leaderboard cannot answer about one named player ({scope.player!r})")
+    if scope.subject.player is not None:
+        raise Unsupported(f"a leaderboard cannot answer about one named player ({scope.subject.player!r})")
 
 
 def _leaderboard_fields(scope: Scope, metric: str) -> list[str]:
@@ -186,7 +186,7 @@ def read_leaderboard(con: duckdb.DuckDBPyConnection, q: Query, *, stated: frozen
             career=career,
             season=scope.span.season,
             season_type=scope.span.season_type or 2,
-            team=scope.team,
+            team=scope.subject.team,
             fields=fields,
             limit=_clamp_limit(scope.window.count, default=DEFAULT_LEADERBOARD_LIMIT),
         )
@@ -230,5 +230,5 @@ def _leaderboard_career_refusals(scope: Scope, fields: list[str]) -> None:
     league's list under the team's name."""
     if fields:
         raise Unsupported("a career leaderboard cannot add per-game columns")
-    if scope.team is not None and scope.team.strip():
+    if scope.subject.team is not None:
         raise Unsupported("franchise career leaderboards are not supported")

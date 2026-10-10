@@ -13,6 +13,7 @@ from typing import Any
 
 import duckdb
 import pytest
+from routed import staged as settle
 from test_period_relation import SEASON, con, team_con  # noqa: F401 - the two relation fixtures, imported by name
 
 from association.query.compose.plan import STATED_SCOPING
@@ -21,7 +22,6 @@ from association.query.period import PERIOD_INTENTS, PeriodContext, PeriodRead, 
 from association.query.player_games import Narrowed, rows_sql
 from association.query.player_relation import RELATION_SCOPING, RELATION_SCOPING_EXCLUDED, apply_period, relation_period, relation_scoping
 from association.query.reading import Claim, Line, Period, PointShape, Scope, ScopeError, cell_set, period_narrowing, unhonored_cells, unhonored_scoping
-from association.query.router import settle
 from association.query.team_games import TeamNarrowed
 from association.query.team_games import rows_sql as team_rows_sql
 from association.query.team_relation import TEAM_RELATION_SCOPING, TEAM_RELATION_SCOPING_EXCLUDED, _team_games_apply_period, team_relation_scoping

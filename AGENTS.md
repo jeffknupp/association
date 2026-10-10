@@ -75,7 +75,7 @@ this tree:
 - **New shapes are frozen** (decision D4). No new intent, template,
   presenter, scoping table or per-intent renderer.
   `tests/query/test_frozen_shapes.py` holds the 25 intents the reader can
-  name, the page's 22 renderers and the 10 scoping declarations left in
+  name, the page's 22 renderers and the 8 scoping declarations left in
   `src` (by module and name, read from the source), each of which retires
   with its slice and none of which is added; and that `templates/`,
   `compose/present.py` and `compose/adapt.py` do not come back as source
@@ -90,10 +90,13 @@ this tree:
   `TEAM_RELATION_SCOPING*` on `query/team_relation.py`), 1 is the
   planner's `STATED_SCOPING` (its `with_without` row, named apart as
   `WITH_WITHOUT_STATED` until step 2's companions, is a row of the table),
-  which Phase 3's cells replace, and 4 are debt,
+  which Phase 3's cells replace, and 3 are debt,
   each naming the step that owes its deletion (`compose.plan`'s
   `_TEAM_READER_REFUSES`, `reading.SCOPING_SLOTS`,
-  `conditions._CONDITION_PLAYER_ONLY_CELLS`, `router._MODEL_SLOTS`; the
+  `conditions._CONDITION_PLAYER_ONLY_CELLS`; the seventh,
+  `router._MODEL_SLOTS`, went with step 2's subject - the stages are handed
+  who the question is about typed, `router.Named`, and take no name as a
+  slot - the
   sixth, `coverage._BOX_SCORE_SCOPING`, went with Phase 3, step 1 - the
   floor follows the planned point's relation - and the fifth,
   `compose.core.COMPILER_SLOTS`, with step 2's window: `ranked_by` is the
@@ -468,7 +471,10 @@ gets turned off.
     `router.py`, the words every tagger reads by in `lexicon.py` - the span,
     window, cuts, period, line and measure families' since Phase 3, step 2,
     the calendar's own patterns and the team metrics' words among them,
-    the subject's as its slice lands - and the six taggers, `span.py`,
+    and the subject's (who a question is about: the team words, cities
+    and abbreviations, the singulars, the position words, the versus and
+    "for" phrases, the grammar a dropped subject is read back from, where a
+    name ends) - and the six taggers, `span.py`,
     `window.py`, `cuts.py`, `period.py`, `line.py` and `measure.py`, which
     also holds the measure catalog;
     `calendar.py` is the situation's parsers and clauses over the lexicon's
@@ -649,7 +655,9 @@ route (`Route.subject`); the parser's child step and its last step settle it
 under the intent the stages chose (`subject.settle_subject`, which reads no
 name and asks the warehouse nothing) - and `subject.apply_subject` writes
 those names into the scope (until 5.0.0 this was
-`entities.override_invented_players`) inside the parser's last step,
+`entities.override_invented_players`; since Phase 3, step 2 one typed
+value, `reading.Subject` on `Scope.subject`, where four name slots stood)
+inside the parser's last step,
 `parse.reading_from_route`, whose `Reading` is all the agent answers from.
 A route with no subject is refused there (`ValueError`), not read for
 again: until 2026-10-02 a recorded route replayed through
@@ -881,8 +889,60 @@ model's. Two things follow, and both matter when you add a shape:
 - **A filter family is read by ONE tagger, from the lexicon, and claims
   the characters it read** (Phase 3, step 2; the span is the first, the
   window the second, the games' cuts the third, the period the fourth, the
-  line and the companions the fifth, the measure the sixth, and the pattern
-  the subject's slice copies).
+  line and the companions the fifth, the measure the sixth, the subject's
+  own the seventh).
+  The subject's own has no tagger in the stages: its one reader is the
+  subject reading (`subject.read_subject`, once per question, below), and
+  its one writer `subject.apply_subject`, which writes ONE typed value,
+  `reading.Subject(kind, players, teams, position)` on `Scope.subject`, in
+  place of the four slots `player`, `players`, `team`, `teams` and the
+  point's `position` (2026-10-10). The kind is the reading's (a team record
+  keyed on a companion's line is still the team's question, with the
+  companion its player); one player is the one a reader reads
+  (`Subject.player`), two or more a comparison or a pair; one team the one
+  the read is about or narrows to (`Subject.team` - the draft's `of_team`
+  where the kind is the league's or a position group's). The stages are
+  HANDED `router.Named` - the typed subject, the opponent, the subject the
+  question's grammar names (`subject.subject_named_in`, moved from the
+  router) and the team nicknames the words hold (`subject.team_words_in`) -
+  and read no name of their own; where they settle one under the intent
+  they choose (a count's or a high's dropped subject from the grammar, a
+  team's quarter from its one nickname, a quarter's player read back) it is
+  the reading's word, written on the typed subject the Route carries.
+  `router.settle` refuses a name passed as a slot (`_MODEL_SLOTS` went; a
+  test hands its names through `tests/routed.py`'s `staged`/`handed`),
+  and four stages that wrote a name the parser never hands - a rank word or
+  a pseudo-team as the team, a team in the players list, one player listed
+  as a comparison - went with it (0 of the 2,710 readings reached them).
+  The subject's words are the lexicon's (`TEAM_NICKNAME`, `TEAM_CITIES`,
+  `TEAM_ABBREVIATIONS`, `TEAM_SINGULARS`, `POSITION_WORDS`,
+  `POSITION_GROUPS`, `AGAINST_PHRASE`, `FOR_TEAM_PHRASE`, `VERSUS_WORD`,
+  `SUBJECT_OF_HIGH`/`COUNT`/`HAVE`, `NOT_A_SUBJECT`, `NO_NAME_HAS`,
+  `MAX_NAME_WORDS`, `NEVER_A_NAME`, `FILLER_PLAYER_WORDS`, the common words
+  that name a team or a player, the child grammars' words, `MEETING_WORDS`):
+  `subject.py` compiles no pattern of its own. The reading claims the
+  characters of the names it settled (`subject.subject_claims`: each
+  player's words, nickname or initials, each team's words, abbreviation or
+  nickname, the opponent and the tenure with the "vs" or "for" before
+  them - `player`, `team`, `opponent`, `tenure`, `position`), which ride
+  `Reading.claims`. Measured first
+  (`~/association-research/stages/subject_family.py`, the four slots at
+  every place they are written on all 2,710 readings, the Subject record,
+  the words, the planner's verdict and the names' resolution in the
+  index): the model's player spans and the words' names differ on 134
+  readings and the words win every one; the stages wrote a name after the
+  subject reading on 58 (the grammar's subject 30, a team's nickname 27, a
+  quarter's player 1) and no other stage fired; `apply_subject` moved the
+  player on 10. The four slots are gone from `Scope`; `Scope.from_slots`
+  still takes them (it builds the `Subject`, one name to `player`, two or
+  more to `players`, a team the same), `to_slots` and `projected()` give
+  the old shape back, the point's `position` is projected from its
+  subject where the point is the league's (`Reading.projected`), and the
+  typed value is recorded beside the reading (`stages._reading_record`,
+  `who`, beside the reading's own record `subject`). No cell: no relation
+  table declares a name, and a position group narrows the league's read
+  through `Query.position`, which the point honors on the league's own
+  moves alone (`point._everyone_point`).
   `query/lexicon.py` holds every pattern the family is read by, named,
   with its reason beside it, and nothing that reads the warehouse or the
   answer side (contract 6: regexes only in the lexicon; it is the lowest

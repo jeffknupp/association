@@ -38,10 +38,10 @@ from association.query.line import read_period_line
 from association.query.measures import PERIOD_COLUMNS, PERIOD_RATE_STATS, TEAM_PERIOD_COLUMNS
 from association.query.point import read_point
 from association.query.reading import TEAM_ONLY_INTENTS, Cause, Claim, LeftOut, Line, PointRefused, Reading, Scope, ScopeError, Split, Unsupported
-from association.query.router import Route, _route_calendar_slots_split, settle
+from association.query.reading import Subject as ReadSubject
+from association.query.router import Named, Route, _route_calendar_slots_split, settle
 from association.query.span import claimed as claimed_once
 from association.query.subject import (
-    TEAM_SINGULARS,
     Subject,
     _companion_phrases,
     _condition_role,
@@ -56,6 +56,7 @@ from association.query.subject import (
     question_supports,
     read_subject,
     settle_subject,
+    subject_claims,
     team_named_in,
 )
 
@@ -155,11 +156,6 @@ under it by the subject reading, as they are on the router's parent today.
 # and the measure tagger's one reading (measure.named) since Phase 3, step
 # 2; the stages take it as their context (router._settle).
 
-# A window over two teams meeting is still their meetings when a record is
-# asked for ("lakers vs mavs record last 10 home games"); a log word never is.
-_TWO_TEAMS_LOG_WORDS = re.compile(r"\b(log|gamelog|game log)\b", re.IGNORECASE)
-_TWO_TEAMS_RECORD_WORDS = re.compile(r"\b(record|rec|w-?l|win.loss)\b", re.IGNORECASE)
-
 
 def _as_split(split: str | None) -> Split | None:
     """A split read off the words as the Scope's own literal - the readers
@@ -170,9 +166,6 @@ def _as_split(split: str | None) -> Split | None:
     if split not in get_args(Split):
         raise ScopeError(f"split {split!r} is not one the Scope holds")
     return cast("Split", split)
-
-
-_MEETING = re.compile(r"\b(vs\.?|versus|against|play(?:ed|s)?|meet|met|head.to.head|matchup|face[ds]?|beat(?:en)?)\b", re.IGNORECASE)
 
 
 # A row written as lookaheads describes the whole question, so it is anchored
@@ -194,24 +187,15 @@ def parent_intent(question: str, kind: str, companions: bool = False) -> str:
     return "other"
 
 
-#: Spans the normalizer may emit that name nobody here: a conference ("vs
-#: west" - David, Delonte, Doug and Mario West are players, so the index alone
-#: reads it as one) and the indefinite pronouns ("someone" is one near
-#: spelling from Simone Fontecchio, and a single near spelling defaults).
-_NEVER_A_NAME: frozenset[str] = frozenset(
-    {"west", "east", "western", "eastern", "someone", "somebody", "anyone", "anybody", "everyone", "everybody", "nobody", "no one", "who", "whoever", "player", "players"}
-)
-
-
 def classify_span(con: duckdb.DuckDBPyConnection, text: str) -> str | None:
     """``"team"``, ``"player"`` or ``None`` for a span the model copied out of
     the question: a team's word, nickname or name first; then a name some
     player holds as whole words; else nothing (a division, a typo, the word
     "team" - none of them a subject, ISSUES.md #236)."""
     low = text.lower().strip().removesuffix("'s").rstrip("'")
-    if low.removeprefix("the ") in _NEVER_A_NAME:
+    if low.removeprefix("the ") in lexicon.NEVER_A_NAME:
         return None
-    if low in TEAM_SINGULARS or team_named_in(teams_of(con), low) is not None or _classify_span_abbreviation(con, low):
+    if low in lexicon.TEAM_SINGULARS or team_named_in(teams_of(con), low) is not None or _classify_span_abbreviation(con, low):
         return "team"
     teams = find_teams(con, text)
     players = find_players(con, text)
@@ -251,8 +235,8 @@ def _as_typed(question: str, name: str) -> str:
     Gilgeous-Alexander, is the nickname reading's to check)."""
     if name.casefold() in question.casefold():
         return name
-    wanted = [w.casefold() for w in _AS_TYPED_WORD.findall(name)]
-    words = _AS_TYPED_WORD.findall(question)
+    wanted = [w.casefold() for w in lexicon.AS_TYPED_WORD.findall(name)]
+    words = lexicon.AS_TYPED_WORD.findall(question)
     runs = _as_typed_runs(words, wanted)
     if not runs and len(wanted) > 1 and wanted[-1] not in {w.casefold() for w in words}:
         # Completed AND corrected: "webanyama" came back "Victor Wembanyama".
@@ -319,9 +303,6 @@ def _as_typed_close(typed: str, wanted: str) -> bool:
     return _edit_distance(typed, wanted) <= budget or (len(typed) > 3 and typed.endswith("s") and _edit_distance(typed[:-1], wanted) <= budget)
 
 
-_AS_TYPED_WORD = re.compile(r"[\w'.-]+")
-
-
 def _slots_from_names(con: duckdb.DuckDBPyConnection, names: list[str], stat: str) -> dict[str, Any]:
     """The names as the slot shape the readers take today: ``player`` /
     ``players``, ``team`` and a second team as ``opponent``, ``stat``."""
@@ -348,42 +329,40 @@ def _two_teams(subject: Subject, question: str, slots: dict[str, Any]) -> Subjec
     if subject.kind != "team" or subject.players or not subject.teams:
         return subject
     other = subject.opponent or (slots.get("opponent") if isinstance(slots.get("opponent"), str) else None)
-    one_teams_games = _TWO_TEAMS_LOG_WORDS.search(question) or (LOG_OR_WINDOW_WORDS.search(question) and not _TWO_TEAMS_RECORD_WORDS.search(question))
-    if not other or other == subject.teams[0] or not _MEETING.search(question) or one_teams_games:
+    one_teams_games = lexicon.TWO_TEAMS_LOG_WORDS.search(question) or (LOG_OR_WINDOW_WORDS.search(question) and not lexicon.TWO_TEAMS_RECORD_WORDS.search(question))
+    if not other or other == subject.teams[0] or not lexicon.MEETING_WORDS.search(question) or one_teams_games:
         return subject
     return replace(subject, kind="teams", teams=(subject.teams[0], other), opponent=None)
 
 
-def _read_route_names(subject: Subject, slots: dict[str, Any]) -> dict[str, Any]:
-    """The name slots as the subject reading read them from the question's
-    own words - its players (never a companion: "without joel embiid" is a
+def _read_route_names(subject: Subject, slots: dict[str, Any], question: str) -> Named:
+    """Who the stages are handed (:class:`~association.query.router.Named`):
+    the names as the subject reading read them from the question's own
+    words - its players (never a companion: "without joel embiid" is a
     narrowing), the team it is about or plays for, the opponent - in place of
     the model's spans, which are only where the reading started. A player
     span the reading did not settle on and that is none of its names is kept
-    as typed ("brown" beside Tatum is ten players; the template asks), so a
+    as typed ("brown" beside Tatum is ten players; the reader asks), so a
     name the model found is never lost; a name the model DROPPED that the
     question holds is the reading's ("Nikola Jokic" with ``names=[]``).
-    A reading that settled on no one leaves the slots as they were."""
+    A reading that settled on no one hands the model's spans as they were.
+    With them, the reading's kind and position group, and the grammar's
+    subject and the team words the stages settle a name from under the
+    intent they choose (``question``, as the stages read it)."""
     if not (subject.players or subject.teams or subject.opponent or subject.own_team or subject.companions):
-        return slots
-    out = {key: value for key, value in slots.items() if key not in ("player", "players", "team", "opponent")}
+        model = Scope.from_slots({key: slots[key] for key in ("player", "players", "team") if key in slots}).subject
+        opponent = slots.get("opponent")
+        return Named.of(question, subject=replace(model, kind=subject.kind, position=subject.position), opponent=opponent if isinstance(opponent, str) else None)
     players = _read_route_players(subject, slots)
-    if len(players) == 1:
-        out["player"] = players[0]
-    elif players:
-        out["players"] = players
     # A player's own team stays the subject stage's to write, as for a routed
-    # question: the templates read it with the span it implies ("lebron as a
+    # question: the readers read it with the span it implies ("lebron as a
     # starter for Miami" is his Heat years, not this season). A team the
     # reading placed nowhere stays as the model filed it.
     placed = subject.opponent or subject.own_team
     team = subject.teams[0] if subject.teams and subject.kind in ("team", "teams", "team_players", "everyone", "position") else (None if placed else slots.get("team"))
-    if team:
-        out["team"] = team
     opponent = subject.teams[1] if subject.kind == "teams" and len(subject.teams) > 1 else subject.opponent
-    if opponent:
-        out["opponent"] = opponent
-    return out
+    who = ReadSubject(kind=subject.kind, players=tuple(players), teams=(team,) if team else (), position=subject.position)
+    return Named.of(question, subject=who, opponent=opponent or None)
 
 
 def _read_route_players(subject: Subject, slots: dict[str, Any]) -> list[str]:
@@ -563,7 +542,6 @@ def read_route(con: duckdb.DuckDBPyConnection, question: str, names: list[str] |
     # settles it (subject.settle_subject), nothing reads the names again.
     read = read_subject(con, question, "other", Scope.from_slots(slots))
     subject = _two_teams(read, question, slots)
-    slots = _read_route_names(subject, slots)
     # A quarter or half used as a condition on which games count is read
     # here and its words blanked out of the question the grammar and the
     # stages see (#275): left in, "after making one three in first quarter"
@@ -577,8 +555,11 @@ def read_route(con: duckdb.DuckDBPyConnection, question: str, names: list[str] |
         claim = in_period[1]
         question = question[: claim.start] + " " * (claim.end - claim.start) + question[claim.end :]
         period_lines, period_claims = (in_period[0],), (claim,)
+    # Who the stages are handed: the names the reading read, typed, and the
+    # words they settle a name from - read over the question they read.
+    named = _read_route_names(subject, slots, question)
     parent = parent_intent(question, subject.kind, _read_route_beside(subject, question))
-    staged, decisions, words = _read_route_staged(question, slots, parent, read, period_lines)
+    staged, decisions, words = _read_route_staged(question, {"stat": stat} if stat else {}, parent, read, period_lines, named)
     final = staged.intent
     # A teammate's start is his, never the subject's own split: the stages
     # read the split from the whole question.
@@ -598,7 +579,7 @@ def read_route(con: duckdb.DuckDBPyConnection, question: str, names: list[str] |
     return Route(final, scope, decisions, subject=settled, claims=claimed_once([*staged.claims, *period_claims, *read.claims])), subject, parent
 
 
-def _read_route_staged(question: str, slots: dict[str, Any], parent: str, read: Subject, lines: tuple[Line, ...] = ()) -> tuple[Route, tuple[Decision, ...], str | None]:
+def _read_route_staged(question: str, slots: dict[str, Any], parent: str, read: Subject, lines: tuple[Line, ...], handed: Named) -> tuple[Route, tuple[Decision, ...], str | None]:
     """The stages, run ONCE: under the child the subject's shape and the
     question's words name for ``parent``
     (:func:`~association.query.subject.child_named` - a count of 30+ point
@@ -617,13 +598,14 @@ def _read_route_staged(question: str, slots: dict[str, Any], parent: str, read: 
     (:attr:`~association.query.router.Route.decisions`: the intent moving
     off the parent, and why) and the words that named the child, if one
     stands. ``lines`` are the lines read before the stages (a line in a
-    quarter, whose words the parser blanked), handed to them whole."""
+    quarter, whose words the parser blanked), handed to them whole; ``handed``
+    who the subject reading names (:class:`~association.query.router.Named`)."""
     named = child_named(read, parent, question)
     companions = read.conditions
     decisions: list[Decision] = []
     if named is not None:
         child, words = named
-        staged = settle(child, slots, question, companions, lines=lines)
+        staged = settle(child, slots, question, companions, lines=lines, handed=handed)
         # A team's record under a companion's line names no words, and the
         # stages' own settling of it stands, as the route's did.
         if staged.intent == child or words is None:
@@ -632,7 +614,7 @@ def _read_route_staged(question: str, slots: dict[str, Any], parent: str, read: 
                 decisions.append(Decision("parser", "intent", child, staged.intent, "the stages settle it from the question's words"))
             return staged, tuple(decisions), words
         decisions.append(Decision("parser", "intent", child, parent, f"the words {words!r} name {child}, and the stages declined it"))
-    staged = settle(parent, slots, question, companions, lines=lines)
+    staged = settle(parent, slots, question, companions, lines=lines, handed=handed)
     if staged.intent != parent:
         decisions.append(Decision("parser", "intent", parent, staged.intent, "the stages settle it from the question's words"))
     return staged, tuple(decisions), None
@@ -690,7 +672,10 @@ def reading_from_route(con: duckdb.DuckDBPyConnection, question: str, route: Rou
         subject=subject,
         decisions=(*_subject_decisions(subject), *route.decisions, *applied.decisions),
         misread=tuple(applied.dropped),
-        claims=route.claims,
+        # The subject reading's claims on the names it settled and their
+        # position group, beside the taggers' and the companions' the route
+        # carries.
+        claims=claimed_once([*route.claims, *subject_claims(teams_of(con), question, applied.scope)]),
     )
     pointed = with_point(con, question, reading)
     # What the words name that nothing reads, read once, here: a refusal
@@ -899,7 +884,14 @@ def _unsupported_team_boolean_count(reading: Reading) -> Cause | None:
     counted; what is not read is the team's aggregate of them."""
     scope, subject = reading.scope, reading.subject
     measure = scope.measure
-    if reading.intent != "leaderboard" or measure is None or measure.key not in ("triple_double", "double_double") or subject is None or subject.kind not in ("team", "team_players") or not scope.team:
+    if (
+        reading.intent != "leaderboard"
+        or measure is None
+        or measure.key not in ("triple_double", "double_double")
+        or subject is None
+        or subject.kind not in ("team", "team_players")
+        or scope.subject.team is None
+    ):
         return None
     return Cause(kind="team_boolean_count", facts={"intent": reading.intent, "stat": measure.as_typed})
 
@@ -914,8 +906,7 @@ def _reading_from_route_left_out(players: names.PlayerIndex, question: str, read
     if reading.intent != "fingerprint":
         return None
     scope = reading.scope
-    raw = list(scope.players) if scope.players else [scope.player]
-    held = [name for name in raw if isinstance(name, str) and name.strip()]
+    held = list(scope.subject.players)
     return compared_but_unmatched(players, question, held)
 
 

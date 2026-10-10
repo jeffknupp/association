@@ -185,7 +185,7 @@ def read_player_netpoints(con: duckdb.DuckDBPyConnection, q: NetPointsQuery, *, 
     season_type = scope.span.season_type or 2
     # A named order ("recent", "first") is one game.
     order = scope.window.order
-    player = resolved_player(con, scope.player, "player_netpoints needs a player name", available=_NETPOINTS_GAMES if order else _NETPOINTS_TABLES, season=season)
+    player = resolved_player(con, scope.subject.player, "player_netpoints needs a player name", available=_NETPOINTS_GAMES if order else _NETPOINTS_TABLES, season=season)
     if isinstance(player, Unanswered):
         return player
     # "NetPoints from his LAST regular season game" was answered with the
@@ -352,7 +352,7 @@ def read_fingerprint(con: duckdb.DuckDBPyConnection, q: NetPointsQuery, *, state
     scope = q.scope
     if q.shape != "chart" or unhonored_scoping("fingerprint", scope, stated):
         return None
-    names = _fingerprint_names(scope.players, scope.player)
+    names = _fingerprint_names(scope.subject.players)
     # A question about one game draws that game, from the long per-game table
     # rather than the season file - see fingerprint.load_game_fingerprints for
     # why its numbers are the game's own net points and not a per-100 rate. A
@@ -383,15 +383,12 @@ def read_fingerprint(con: duckdb.DuckDBPyConnection, q: NetPointsQuery, *, state
     return fingerprint_result(con, players, ambiguous, season, view=side or "total", season_type=season_type, order=order)
 
 
-def _fingerprint_names(players_slot: tuple[str, ...], player_slot: str | None) -> list[str]:
-    """The player name(s) asked for, from the ``players`` slot (a comparison)
-    or the ``player`` slot (one name), no more than one radar draws."""
-    names = [n for n in players_slot if n.strip()]
-    if not names:
-        if player_slot is None or not player_slot.strip():
-            raise Unsupported("fingerprint needs a player name")
-        names = [player_slot]
-    return names[:MAX_FINGERPRINT_PLAYERS]
+def _fingerprint_names(players: tuple[str, ...]) -> list[str]:
+    """The player name(s) asked for - two or more a comparison, one a
+    polygon of his own - no more than one radar draws."""
+    if not players:
+        raise Unsupported("fingerprint needs a player name")
+    return list(players[:MAX_FINGERPRINT_PLAYERS])
 
 
 def _fingerprint_resolve_players(con: duckdb.DuckDBPyConnection, names: list[str], availability: Availability, season: int) -> tuple[list[Entity], list[str]] | Unanswered:

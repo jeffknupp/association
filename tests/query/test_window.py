@@ -21,6 +21,7 @@ from association.query.answer import AnswerContext
 from association.query.compose.core import Query, compile_query, rows_of
 from association.query.player_relation import RELATION_SCOPING, RELATION_SCOPING_EXCLUDED, relation_scoping, relation_window
 from association.query.reading import Claim, Cuts, Scope, ScopeError, Span, Window, unhonored_cells
+from association.query.reading import Subject as Who
 from association.query.season_line import history_seasons
 from association.query.span import SpanContext, claimed, read_span
 from association.query.team_games import TeamNarrowed, rows_sql
@@ -198,7 +199,7 @@ def test_the_four_slots_round_trip_through_the_window(slots: dict[str, Any]) -> 
 
 
 def test_the_projection_keeps_the_slot_era_shape_and_its_order() -> None:
-    projected = Scope(player="X", window=Window(order="recent", count=10, rank="most", by="points")).projected()
+    projected = Scope(subject=Who(kind="player", players=("X",)), window=Window(order="recent", count=10, rank="most", by="points")).projected()
     keys = list(projected)
     assert (projected["order"], projected["limit"], projected["rank"], projected["ranked_by"]) == ("recent", 10, "most", "points")
     # The four keys sit where the four fields sat: `ranked_by` after `fields`, `rank` after `kind`, `order` and `limit` last.
@@ -263,7 +264,9 @@ def _player_games(ctx: AnswerContext, window: Window) -> tuple[int, int]:
     """The games and the points a total over Podziemski's season reads under
     ``window`` - an aggregate, since the relation cuts the window before the
     sum (``_windowed``); a rows read takes the point's own limit instead."""
-    (row,) = rows_of(ctx.con, compile_query(ctx.con, Query(scope=Scope(player="Brandin Podziemski", window=window), skeleton="scalar", measures=["points"], aggregate="total")))
+    (row,) = rows_of(
+        ctx.con, compile_query(ctx.con, Query(scope=Scope(subject=Who(kind="player", players=("Brandin Podziemski",)), window=window), skeleton="scalar", measures=["points"], aggregate="total"))
+    )
     return int(row["games"]), int(row["points"])
 
 
@@ -275,7 +278,7 @@ def test_the_window_cell_changes_what_the_player_relation_reads(pg_ctx: AnswerCo
 
 
 def _team_games(ctx: AnswerContext, window: Window) -> list[str]:
-    settled = scoped_team(ctx.con, Scope(team="Celtics"), "no team")
+    settled = scoped_team(ctx.con, Scope(subject=Who(kind="team", teams=("Celtics",))), "no team")
     assert isinstance(settled, tuple)
     team, resolved = settled
     narrowed = team_games(ctx.con, team, resolved, Scope(window=window), opponent=None)

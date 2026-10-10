@@ -185,7 +185,7 @@ def read_player_splits(con: duckdb.DuckDBPyConnection, q: Query, *, stated: froz
         line = _splits_line(spelled(scope.measure), _PLAYER_LINE, alias="p")
     except Unsupported:
         return None
-    team = optional_team(con, scope.team, season=scope.span.season)
+    team = optional_team(con, scope.subject.team, season=scope.span.season)
     if isinstance(team, Unanswered):
         return team
     opponent = optional_team(con, scope.cuts.opponent, season=scope.span.season)
@@ -299,7 +299,7 @@ def read_team_splits(con: duckdb.DuckDBPyConnection, q: TeamQuery, *, stated: fr
         return refused
     _splits_refusals(scope)
     measures = measure_filters(scope)
-    team = optional_team(con, scope.team, season=scope.span.season)
+    team = optional_team(con, scope.subject.team, season=scope.span.season)
     if isinstance(team, Unanswered):
         return team
     opponent = optional_team(con, scope.cuts.opponent, season=scope.span.season)

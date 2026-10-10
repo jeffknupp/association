@@ -2127,3 +2127,577 @@ WORD = re.compile(r"[a-z]+")
 
 .. versionadded:: 6.0.0
 """
+
+
+# --- The subject's own: who a question is about (Phase 3, step 2's seventh slice) ---------
+#
+# The words the subject reading reads WHO by - a position group, a team's
+# word, a city or an abbreviation, a singular nickname, the versus and "for"
+# phrases a team is read after, the grammar a dropped subject is read back
+# from, and where a name ends - each with its reason beside it. Read by
+# ONE reader, :func:`association.query.subject.read_subject` (and the
+# helpers it calls), which claims the characters it read; until this slice
+# they lived in :mod:`association.query.subject`, :mod:`association.query.router`
+# and :mod:`association.query.reading`.
+
+POSITION_WORDS: tuple[tuple[re.Pattern[str], str], ...] = tuple(
+    (re.compile(pattern, re.IGNORECASE), code)
+    for pattern, code in (
+        (r"\bcenters?\b", "C"),
+        (r"\bpoint guards?\b", "PG"),
+        (r"\bshooting guards?\b", "SG"),
+        (r"\bpower forwards?\b", "PF"),
+        (r"\bsmall forwards?\b", "SF"),
+        (r"\bforwards?\b", "F"),
+        (r"\bguards?\b", "G"),
+    )
+)
+"""``(pattern, position group)`` - the words a position-group question uses,
+in the order they are tried: the first that matches names the group, so
+"shooting guard" is ``SG`` before it is ``G`` (the longer phrase is listed
+first wherever two overlap).
+
+.. versionadded:: 4.4.0
+
+.. versionchanged:: 6.0.0
+   In the lexicon, compiled (``reading.POSITIONS`` until Phase 3, step 2,
+   as pattern strings; ``query/point.py`` and ``compose/move.py`` before).
+"""
+
+POSITION_GROUPS: frozenset[str] = frozenset(code for _pattern, code in POSITION_WORDS)
+"""Every position group a subject's position words read as - ESPN's own
+letters, each the key of the roster positions it reaches on the league's
+read (``player_relation.POSITION_CODES``, which a test holds to it).
+
+.. versionadded:: 6.0.0
+"""
+
+# A line at or above a number, however it is written: "30+", "36-plus",
+# "30 or more", "at least 2" (the paraphrases' spellings, parser-greenfield) -
+# a fragment the child grammars below are built from.
+N_PLUS = r"(?:\d{1,3}[\s-]*(?:\+|plus\b|or more\b)|\bat least \d{1,3})"
+"""A line at or above a number, as a fragment with no groups.
+
+.. versionadded:: 6.0.0
+   ``subject._N_PLUS`` until Phase 3, step 2.
+"""
+
+# The child intents the question's own words assign, gated on the subject's
+# kind (``subject._CHILD_GRAMMARS`` holds the table: which kinds and which
+# parents each applies under, in precedence order). The words only, here.
+#
+# "per game" is an average, never one game: "the highest points per game
+# average" is a season ranking. "single game" is one game with an article or
+# without: "this season's single game with the most assists" and "most 3
+# pointers made in single game 24-25" answered the season's leaders (ISSUES.md
+# #260) - "single games", a plural, is not one.
+CHILD_SINGLE_GAME_HIGH = re.compile(r"\bin (?:a|one) (?:single )?(?:game|match|contest|outing)\b|\bsingle[- ]game\b|\bcareer[- ]high\b|\bhighest\b.{0,60}(?<!per )\bgame\b", re.IGNORECASE)
+"""The words that name a single game's high.
+
+.. versionadded:: 6.0.0
+   ``subject._CHILD_GRAMMARS``' own pattern until Phase 3, step 2.
+"""
+CHILD_SHOT_DISTANCE = re.compile(r"\bhow far\b|\bdistance\b", re.IGNORECASE)
+"""The words that name a shot distance.
+
+.. versionadded:: 6.0.0
+   ``subject._CHILD_GRAMMARS``' own pattern until Phase 3, step 2.
+"""
+CHILD_STREAK = re.compile(r"\bstreaks?\b|\bwin ?streak\b|\bstraight (?:games|wins|losses)\b|\bin a row\b|\bconsecutive\b", re.IGNORECASE)
+"""The words that name a run of games.
+
+.. versionadded:: 6.0.0
+   ``subject._CHILD_GRAMMARS``' own pattern until Phase 3, step 2.
+"""
+CHILD_RECORD_WHEN_LINE = re.compile(
+    rf"\brecord\b.*\b(?:when|with)\b.*{N_PLUS}|\brecord\b.*{N_PLUS}|\brecord\b.*\b(?:when|with)\b.*\b(?:scored|scores|had|has)\b.*\d+|{N_PLUS}\s*\w*.*\brecord\b", re.IGNORECASE
+)
+"""A record over a line: "record when he scored 30+".
+
+.. versionadded:: 6.0.0
+   ``subject._CHILD_GRAMMARS``' own pattern until Phase 3, step 2.
+"""
+# A player's games won or lost: his team's record in the games he played,
+# which is record_when's read with no threshold ("how many playoff games has
+# embiid won?").
+CHILD_RECORD_WHEN_GAMES_WON = re.compile(r"\bhow many\b.{0,40}\bgames\b.{0,20}\b(?:won|lost|win|lose)\b", re.IGNORECASE)
+"""A player's games won or lost, asked as a count.
+
+.. versionadded:: 6.0.0
+   ``subject._CHILD_GRAMMARS``' own pattern until Phase 3, step 2.
+"""
+CHILD_THRESHOLD_COUNT = re.compile(
+    rf"\b(?:how many|most|fewest)\b.*\b(?:games?|times)\b.*{N_PLUS}|\b(?:how many|most|fewest)\b.*{N_PLUS}.*\bgames?\b|\bhow many (?:times|occasions)\b"
+    r"|\bgames? (?:with|where|in which)\b.*\b\d+\s+\w+"
+    r"|\b\d{1,3}[\s-]*(?:pts?|points?|rebs?|rebounds?|asts?|assists?|steals?|blocks?|threes|3s)[\s-]+games?\b"
+    # The paraphrases' shapes (parser-greenfield, step b): "which games had 15 or more assists", "the highest number of
+    # 30+ point games", "how many games did he score 30 points or more in".
+    rf"|\b(?:which|what) games?\b.*{N_PLUS}|\bnumber of\b.*{N_PLUS}.*\bgames?\b|\bhow many\b.*\bgames?\b.*\b\d{{1,3}}\s+\w+\s+or more\b",
+    re.IGNORECASE,
+)
+"""A count of games over a line.
+
+.. versionadded:: 6.0.0
+   ``subject._CHILD_GRAMMARS``' own pattern until Phase 3, step 2.
+"""
+CHILD_PLAYER_HISTORY = re.compile(
+    rf"\b(?:over|for|in|during) the (?:past|last) {N_SEASONS}\b|\b(?:last|past) {N_SEASONS}\b|\bby (?:season|year)\b|\b(?:each|every) (?:season|year)\b"
+    r"|\bseason[- ](?:by|over)[- ]season\b|\byear[- ](?:by|over)[- ]year\b|\bfrom (?:year|season) to (?:year|season)\b",
+    re.IGNORECASE,
+)
+"""A player's line season by season.
+
+.. versionadded:: 6.0.0
+   ``subject._CHILD_GRAMMARS``' own pattern until Phase 3, step 2.
+"""
+CHILD_PLAYER_SPLITS = re.compile(r"\bsplits?\b|\bby month\b|\bhome and away\b|\bhome/away\b|\bhome vs\.? away\b|\bmonthly\b", re.IGNORECASE)
+"""A player's splits.
+
+.. versionadded:: 6.0.0
+   ``subject._CHILD_GRAMMARS``' own pattern until Phase 3, step 2.
+"""
+
+# The thirty team nicknames, and the shorthand a question uses for some. Only to
+# tell a team from a player in a slot the model filled: "zach lavine vs nuggets"
+# came back as player_matchup with players ['Zach LaVine', 'Denver Nuggets'].
+TEAM_NICKNAME = re.compile(
+    r"\b(?:hawks|celtics|nets|hornets|bulls|cavaliers|cavs|mavericks|mavs|nuggets|pistons|warriors|rockets|pacers|clippers|lakers|"
+    r"grizzlies|heat|bucks|timberwolves|wolves|pelicans|knicks|thunder|magic|76ers|sixers|suns|blazers|kings|spurs|raptors|jazz|wizards)\b",
+    re.IGNORECASE,
+)
+"""A team's nickname (or its shorthand: "cavs", "mavs", "wolves", "sixers") as a whole word.
+
+.. versionadded:: 6.0.0
+   ``router._TEAM_WORD`` until Phase 3, step 2.
+"""
+
+# A team named by its city or its abbreviation, which is how a question names
+# one when it does not use the nickname: "mathurin v det", "sam hauser v mil",
+# "pascal vs orlando". These are matched against the WHOLE name and never as a
+# last word, and the distinction is load-bearing rather than fussy: three real
+# players are surnamed Cleveland, Houston and Washington, so a last-word rule
+# over cities turns PJ Washington and Allan Houston into teams. Measured
+# against the warehouse, no player name equals a city or an abbreviation, and
+# exactly one player name is a single word at all ("Nene"), which matches none
+# of these.
+#
+# Two-letter forms are left out on purpose. ESPN's own table abbreviates four
+# teams "no", "ny", "sa" and "gs", and "no" is an English word; questions use
+# the three-letter forms, so those are what is listed.
+#
+# A near spelling is NOT matched, and that was measured rather than assumed.
+# The feed misspells three teams inside a `players` slot - "taptors",
+# "warriners", "blakers" - and `difflib` at cutoff 0.8 reaches the right team
+# for all three. It also reaches a team for **16 real player surnames**: Burks
+# -> Bucks, Hawkins -> Hawks, Thornton -> Toronto, Gooden -> Golden, Wheat ->
+# Heat, Houstan -> Houston, and ten more. Three queries is not worth sixteen,
+# and the cutoff cannot separate them - "houstan"/"houston" and
+# "taptors"/"raptors" are both one edit in seven characters, ratio 0.857.
+TEAM_CITIES: frozenset[str] = frozenset(
+    {
+        "atlanta", "boston", "brooklyn", "charlotte", "chicago", "cleveland", "dallas", "denver", "detroit",
+        "golden state", "houston", "indiana", "los angeles", "memphis", "miami", "milwaukee", "minnesota",
+        "new orleans", "new york", "oklahoma city", "orlando", "philadelphia", "phoenix", "portland",
+        "sacramento", "san antonio", "toronto", "utah", "washington",
+    }
+)  # fmt: skip
+"""A team's city, matched as a whole name only.
+
+.. versionadded:: 6.0.0
+   ``router._TEAM_CITY`` until Phase 3, step 2.
+"""
+TEAM_ABBREVIATIONS: frozenset[str] = frozenset(
+    {
+        "atl", "bkn", "bos", "cha", "chi", "cle", "dal", "den", "det", "gsw", "hou", "ind", "lac", "lal",
+        "mem", "mia", "mil", "min", "nop", "nyk", "okc", "orl", "phi", "phx", "por", "sac", "sas", "tor",
+        "uta", "wsh", "was",
+    }
+)  # fmt: skip
+"""A team's three-letter abbreviation, matched as a whole name only.
+
+.. versionadded:: 6.0.0
+   ``router._TEAM_ABBREVIATION`` until Phase 3, step 2.
+"""
+
+# The subject of a single-game high or a threshold count, when the model
+# drops it. Measured live: "most points curry scored in a game this season"
+# comes back as single_game_high with NO player slot, and the answer is the
+# league's high - Bam Adebayo's - to a question about one man; "how many times
+# has embiid fouled out?" comes back as threshold_count with no player slot
+# either, and the answer is the league's leader in 6+-foul games - Karl-
+# Anthony Towns - to a question about Joel Embiid (#138). Both slots are
+# optional (an empty one means "the league"), so nothing downstream restores
+# either, and players_named_in cannot: "curry" is six players and it refuses
+# to guess.
+#
+# So the subject is read from the GRAMMAR rather than from a word list. A word
+# scan cannot work here: "best" is Travis Best, "game" is Jaron Blossomgame,
+# "high" is Haywood Highsmith and "single" is four players, so scanning would
+# hijack "the highest scoring game by a player this year". A name before a
+# scoring verb or "fouled out", or carrying a possessive, is a subject; the
+# question words are excluded because "who scored the most" names nobody.
+SUBJECT_WORDS: frozenset[str] = frozenset({"who", "what", "which", "that", "he", "she", "they", "it", "player", "anyone", "someone", "nobody", "team", "one", "the", "and", "any"})
+"""The words a subject-of grammar never reads as a name: the question words and pronouns.
+
+.. versionadded:: 6.0.0
+   ``router._SUBJECT_WORDS`` until Phase 3, step 2.
+"""
+NOT_A_SUBJECT: frozenset[str] = SUBJECT_WORDS | frozenset(
+    {
+        # A stat's own name sits before "10+ rebound games" in "the most 30+
+        # point 10+ rebound games", where it is the first line's noun, not a
+        # subject: read as one, "point" resolved to Sir'Dominic Pointer.
+        "point", "points", "pt", "pts", "rebound", "rebounds", "reb", "rebs", "assist", "assists", "ast",
+        "steal", "steals", "stl", "block", "blocks", "blk", "three", "threes", "double", "triple", "players",
+        "has", "have", "having", "his", "her", "their", "its", "these", "those", "some", "many", "how", "much",
+        "several", "few", "most", "all", "career", "season", "postseason", "playoff", "playoffs", "regular",
+        "such", "no", "every", "each",
+        # Function words that can sit directly before a name and are not part
+        # of it. These matter for the LEADING word SUBJECT_OF_HIGH captures:
+        # "sixers record when maxey had 10+ rebounds" read "when maxey" as the
+        # name. Rejecting them as a name in their own right is right too -
+        # "with" is the word AGENTS.md records reading as Jeff Withey - and it
+        # can only make the count grammars more conservative, which is the
+        # safe direction for a guess about a person.
+        "when", "while", "if", "with", "without", "vs", "versus", "against", "did", "does", "do", "was", "were",
+        "is", "are", "for", "by", "from", "in", "on", "at", "to", "of", "after", "before", "during", "than",
+        "then", "but", "or", "per",
+        # "single game with the most assists" is one game, not a player named
+        # Single: under "X games with" it read "single" as the subject of a
+        # single-game high, and asked which Singleton was meant (#260).
+        "single", "game", "games", "total", "least", "best", "worst", "highest", "lowest",
+    }
+)  # fmt: skip
+"""The words the subject-of grammars never read as a name or as its leading word.
+
+Measured against the full routing corpus
+(``~/association-research/statmuse-2026-09/feed_queries.txt``): the count
+grammar matches exactly the two real cases it was written for and nothing
+else - "last 10 games of scottie barnes" does not match because the word
+before "games" is "10", and "bam adebayo career games in the month of march"
+reads "career" as no name. Without the stat and function words, "bam
+adebayo career games" would read "career" as the player and "how many 40+
+points games does lebron james have" would read "many" - each a refusal
+naming the wrong cause.
+
+.. versionadded:: 6.0.0
+   ``router._COUNT_SUBJECT_WORDS`` until Phase 3, step 2.
+"""
+# The leading word is optional and captured, the way the count grammars below
+# capture one, because a one-word subject is a clarifying question where the
+# question wrote the name out: measured over all 261 corpus questions, three
+# possessives ("kobe bryant's", "Jaden mcdaniel's", "steve adam's") gave a
+# bare surname matching four players each, and "bryant" does not even include
+# Kobe. Which word may lead is decided by the reader
+# (``subject.subject_named_in``) against NOT_A_SUBJECT.
+#
+# "had"/"has" is a subject position too, and a bare one - SUBJECT_OF_HAVE
+# requires a leading "does/did/has/have", so "sixers record when maxey had 10+
+# rebounds" named nobody while the same question with "scored" answered. It is
+# deliberately NOT in the alternation: the words there are all scoring verbs
+# and a possessive, where "had" is ordinary enough that it is only a subject
+# position when a threshold follows it, which is what the lookahead asserts.
+SUBJECT_OF_HIGH = re.compile(
+    r"\b(?:([A-Za-z][A-Za-z.'\-]*)\s+)?([A-Za-z][A-Za-z.'\-]{2,})"
+    r"(?:'s\b|\s+(?:scored|scores|score|dropped|put\s+up|hung|shot|foul(?:ed|s|ing)?\s+out)|\s+ha[ds]\s+(?=\d))",
+    re.IGNORECASE,
+)
+"""A name before a scoring verb, "fouled out" or "had <N>", or with a possessive.
+
+.. versionadded:: 6.0.0
+   ``router._SUBJECT_OF_HIGH`` until Phase 3, step 2.
+"""
+# None of SUBJECT_OF_HIGH covers a threshold_count named with no verb at all
+# (#148): "jamal murray games with 2 threes including playoffs" fell through
+# unrestored, the same shape as "Sga games with under 14 fta in his whole
+# career", and (by number instead of "with") a form like "murray 30 point
+# games" - none of which puts a scoring verb or a possessive anywhere near the
+# name. So a second grammar is tried after the first, anchored on "games"
+# itself: a name directly before "games with"/"games of", or before "<N>[+]
+# <stat> games", with ONE more word before it for a first name ("jamal murray
+# games with" reaches Jamal where a bare "murray" is five players). Kept apart
+# from SUBJECT_OF_HIGH: a shared pattern let a trailing possessive ("murray's
+# games of...") be swallowed whole into the captured word before the "games
+# of" alternative applied.
+SUBJECT_OF_COUNT = re.compile(
+    r"\b(?:([A-Za-z][A-Za-z.'\-]*)\s+)?([A-Za-z][A-Za-z.'\-]{2,})\s+(?:"
+    r"games?\s+with\b"
+    r"|games?\s+of\b"
+    r"|\d+\+?\s*[- ]?\s*(?:point|pt|rebound|reb|assist|ast|steal|stl|block|blk|three)s?\s+games?\b"
+    # "bam adebayo career games in the month of march" (yardstick-v2 F096):
+    # the model dropped Bam, and none of the shapes above follows a name
+    # with "career games".
+    r"|career\s+games?\b"
+    r")",
+    re.IGNORECASE,
+)
+"""A name before "games with", "games of", "<N> <stat> games" or "career games".
+
+.. versionadded:: 6.0.0
+   ``router._SUBJECT_OF_COUNT`` until Phase 3, step 2.
+"""
+# "how many 40+ point games does lebron james have": the subject sits between
+# an auxiliary and "have", nowhere near the count. The model dropped LeBron
+# from exactly this question (#148's shape, in a third grammar).
+SUBJECT_OF_HAVE = re.compile(r"\b(?:does|did|has|have)\s+(?:([A-Za-z][A-Za-z.'\-]*)\s+)?([A-Za-z][A-Za-z.'\-]{2,})\s+(?:have|had|got|gotten|recorded|posted)\b", re.IGNORECASE)
+"""A name between an auxiliary and "have"/"had".
+
+.. versionadded:: 6.0.0
+   ``router._SUBJECT_OF_HAVE`` until Phase 3, step 2.
+"""
+
+# A router ``player`` that is no name at all: what the model files as the
+# player once nothing in its prompt shows a count or a ranking with none ("most
+# 30+ point games", "most", "Most Player in 15th Season Played"). No player's
+# name holds a digit, a plus sign, a rank word or the word "player"; anchored
+# to the START for the rank words, since a real name can end in one ("Travis
+# Best" - the trap AGENTS.md records) and none begins so.
+NO_NAME_HAS = re.compile(r"\d|\+|^(?:most|fewest|least|top|best|worst|highest|lowest)\b|\bplayers?\b", re.IGNORECASE)
+"""What a span holds that no player's name does.
+
+.. versionadded:: 6.0.0
+   ``subject._NO_NAME_HAS`` until Phase 3, step 2.
+"""
+# A player after a versus word is on the OTHER side of the subject's games -
+# a condition ("most points by curry vs lebron"), never a second subject -
+# wherever the words ask for the subject's GAMES rather than the pair's
+# summary: a high, a count, a record, a log, a streak, a history, splits. A
+# bare "curry vs lebron" or "curry stats vs lebron" stays the pair.
+GAMES_NOT_SUMMARY = re.compile(r"\b(?:game ?logs?|gamelogs?|logs?|each game|by game|game by game|box scores?|most|highest|fewest|lowest|best|worst)\b", re.IGNORECASE)
+"""The words that ask for the subject's games - a log, a high, a low - rather than a pair's summary.
+
+.. versionadded:: 6.0.0
+   ``subject._GAMES_NOT_SUMMARY`` until Phase 3, step 2.
+"""
+# "vs", "versus", "against" or "v" and whatever follows. Whether what follows
+# is a team is decided against the teams table, not here: "lebron vs kawhi" is
+# two players and must stay a comparison.
+AGAINST_PHRASE = re.compile(r"\b(?:vs\.?|versus|against|v\.?)\s+(?:the\s+)?(.+)", re.IGNORECASE)
+"""A versus word and everything after it, a team set against the subject is read from.
+
+.. versionadded:: 6.0.0
+   ``subject._AGAINST`` until Phase 3, step 2.
+"""
+# "for", "with the" and whatever follows - a player's OWN team, unlike
+# AGAINST_PHRASE's opponent. Loose on purpose: a false match ("stats for this
+# season") tries "this season" against the teams table and simply fails to
+# find one, which costs nothing - the lookup is the real gate. "with" alone is
+# not read here: "westbrook stats with the clippers" and "westbrook stats vs
+# the clippers" mean different things, but a bare "with" also introduces a
+# teammate ("stats with steph curry on the floor"), so only "with the" - which
+# a teammate's name never takes - is read as this shape.
+FOR_TEAM_PHRASE = re.compile(r"\bfor\s+(?:the\s+)?(.+)|\bwith\s+the\s+(.+)", re.IGNORECASE)
+"""A "for"/"with the" and everything after it, a player's own team is read from.
+
+.. versionadded:: 6.0.0
+   ``subject._FOR_TEAM`` until Phase 3, step 2.
+"""
+# "X vs Y", the one structural signal that two SUBJECTS were meant - tighter
+# than a compare word on purpose: "compare Jokic's fingerprint to last season"
+# compares seasons. Matched whole so a surname containing "vs" does not count.
+VERSUS_WORD = re.compile(r"\b(?:vs\.?|versus)\b", re.IGNORECASE)
+"""A versus word, whole.
+
+.. versionadded:: 6.0.0
+   ``subject._VERSUS`` until Phase 3, step 2.
+"""
+LETTER_RUN = re.compile(r"[a-zA-Z']+")
+"""A run of letters and apostrophes - the words a team's name is read from.
+
+.. versionadded:: 6.0.0
+   ``subject._LETTER_RUN`` until Phase 3, step 2.
+"""
+WORD_RUN = re.compile(r"\w+")
+"""A run of word characters: where a whole word starts and ends (the
+boundaries ``\\b`` reads), for a reader that asks whether a word stands whole.
+
+.. versionadded:: 6.0.0
+"""
+LONG_LETTER_RUN = re.compile(r"[A-Za-z]{4,}")
+"""A run of four letters or more: the words of a team's name worth looking for in a question.
+
+.. versionadded:: 6.0.0
+   ``router._team_slot_named_in_text``'s pattern until Phase 3, step 2.
+"""
+PLAYER_NOUN = re.compile(r"\b(?:player|players)\b", re.IGNORECASE)
+"""The word "player(s)": a team named beside it is its players as a group ("a Hawks player").
+
+.. versionadded:: 6.0.0
+   ``subject._decide``'s pattern until Phase 3, step 2.
+"""
+TEAM_NOUN = re.compile(r"\bteam\b", re.IGNORECASE)
+"""The word "team": beside "player", the team is the subject after all.
+
+.. versionadded:: 6.0.0
+   ``subject._decide``'s pattern until Phase 3, step 2.
+"""
+
+
+def whole_phrases(phrases: list[str] | tuple[str, ...]) -> re.Pattern[str]:
+    """One pattern finding any of ``phrases`` as a whole phrase, longest
+    first so "greek freak" wins over a hypothetical "greek", ignoring case.
+    Word boundaries are spelled as lookarounds rather than ``\\b`` because
+    several nicknames end in a non-word character ("a.i."), where ``\\b``
+    asserts the opposite of what is wanted. The nicknames' reader builds its
+    pattern with it (``subject.nicknames_in``), over the curated table the
+    names module keeps.
+
+    .. versionadded:: 6.0.0
+       ``subject._NICKNAME_RE``'s construction until Phase 3, step 2.
+    """
+    return re.compile(r"(?<![\w])(" + "|".join(re.escape(k) for k in sorted(phrases, key=len, reverse=True)) + r")(?![\w])", re.IGNORECASE)
+
+
+MAX_NAME_WORDS = 3
+"""A name is never longer than three words once a hyphenated one is split
+into its halves ("karl anthony towns"): the longest span the readers of a
+player's name try (``subject.players_named_in``, the anchored span a model's
+name is read back from) and the most words a companion's name read by
+position holds ("Tatum, Brown and Holiday this season" ends each at a
+joiner, "a turnover" at a word no name holds).
+
+.. versionadded:: 6.0.0
+   ``subject._SPAN_MAX_WORDS`` and ``subject._MAX_NAME_WORDS`` until Phase
+   3, step 2: two names for one cap.
+"""
+
+#: The singular of a team's nickname names the team: "a hawk player", "a
+#: laker". ``entities._TEAM_NICKNAMES`` holds the plural shorthands
+#: ("sixers", "mavs"); these are the singulars, plus the one-word spellings
+#: the roster table's split cannot find.
+TEAM_SINGULARS: dict[str, str] = {
+    "hawk": "Atlanta Hawks",
+    "celtic": "Boston Celtics",
+    "net": "Brooklyn Nets",
+    "hornet": "Charlotte Hornets",
+    "bull": "Chicago Bulls",
+    "cavalier": "Cleveland Cavaliers",
+    "maverick": "Dallas Mavericks",
+    "nugget": "Denver Nuggets",
+    "piston": "Detroit Pistons",
+    "warrior": "Golden State Warriors",
+    "rocket": "Houston Rockets",
+    "pacer": "Indiana Pacers",
+    "clipper": "Los Angeles Clippers",
+    "laker": "Los Angeles Lakers",
+    "grizzly": "Memphis Grizzlies",
+    "buck": "Milwaukee Bucks",
+    "timberwolf": "Minnesota Timberwolves",
+    "pelican": "New Orleans Pelicans",
+    "knick": "New York Knicks",
+    "sixer": "Philadelphia 76ers",
+    "sun": "Phoenix Suns",
+    "king": "Sacramento Kings",
+    "spur": "San Antonio Spurs",
+    "raptor": "Toronto Raptors",
+    "wizard": "Washington Wizards",
+    "trailblazers": "Portland Trail Blazers",
+    "blazers": "Portland Trail Blazers",
+    "okc": "Oklahoma City Thunder",
+}
+"""A team's singular nickname, or a one-word spelling, mapped to its name.
+
+.. versionadded:: 4.4.0
+
+.. versionchanged:: 6.0.0
+   In the lexicon (``subject.TEAM_SINGULARS`` until Phase 3, step 2).
+"""
+
+MONTH_ABBREVIATIONS: frozenset[str] = frozenset({"jan", "feb", "mar", "apr", "jun", "jul", "aug", "sep", "sept", "oct", "nov", "dec"})
+"""The month abbreviations, ordinary words beside the shipped word list's
+(``subject._dictionary``): "jan" is no player however many are named Jan.
+
+.. versionadded:: 6.0.0
+   ``subject._MONTH_ABBREVIATIONS`` until Phase 3, step 2.
+"""
+
+FILLER_PLAYER_WORDS: frozenset[str] = frozenset({"player", "players", "a player", "any player"})
+"""What the model writes as the player when the question names nobody -
+filler, not a name ("Most points in 15th season played" arrived as
+``player: "player"``, yardstick-v2 F099). The subject reading reads none of
+them as a player.
+
+.. versionadded:: 5.0.0
+
+.. versionchanged:: 6.0.0
+   In the lexicon (``reading.FILLER_PLAYER_WORDS`` until Phase 3, step 2).
+"""
+
+NEVER_A_NAME: frozenset[str] = frozenset(
+    {"west", "east", "western", "eastern", "someone", "somebody", "anyone", "anybody", "everyone", "everybody", "nobody", "no one", "who", "whoever", "player", "players"}
+)
+"""Spans the normalizer may emit that name nobody here: a conference ("vs
+west" - David, Delonte, Doug and Mario West are players, so the index alone
+reads it as one) and the indefinite pronouns ("someone" is one near
+spelling from Simone Fontecchio, and a single near spelling defaults).
+
+.. versionadded:: 6.0.0
+   ``parse._NEVER_A_NAME`` until Phase 3, step 2.
+"""
+
+COMMON_WORDS_THAT_NAME_TEAMS: frozenset[str] = frozenset({"was", "min", "me"})
+"""Ordinary English words that collide with a real team's abbreviation,
+found the way :data:`COMMON_WORDS_THAT_NAME_PLAYERS` was - measured against
+the full routing corpus. A team is matched by its abbreviation with no
+length floor (``abbreviation ILIKE ?``), so a bare three-letter word run
+through it can resolve to a team nobody meant: "was" is the Washington
+Wizards ("What was the highest scoring game by a player this year?"), "min"
+the Minnesota Timberwolves (a box-score "20+ min"), and "me" the Memphis
+Grizzlies ("show kat's average points for me" read Memphis as his own team,
+and answered that he never played for them - plan item 6, step (d), part
+3c). Unlike the player list, this one is checked against the SPAN tried
+rather than the team's own name, because a team's matched span is often not
+a word of its display name at all.
+
+.. versionadded:: 4.4.0
+
+.. versionchanged:: 6.0.0
+   In the lexicon (``subject._COMMON_WORDS_THAT_NAME_TEAMS`` until Phase 3, step 2).
+"""
+
+COMMON_WORDS_THAT_NAME_PLAYERS: frozenset[str] = frozenset({"best", "head"})
+"""Ordinary English words that are also a player's whole surname - measured
+against the full routing corpus (the routing check's cases, retired in
+5.0.0, plus ``~/association-research/statmuse-2026-09/feed_queries.txt``,
+380 questions): "Best true shooting percentage last season?" and "Best
+record from 2010-11 to 2018-19 nba" both named Travis Best, and "Celtics vs
+Bulls head to head record" named Luther Head - three team or league
+questions with no player intended. The narrowest gate that removes them,
+grown from what a corpus measurement finds rather than a general dictionary.
+
+.. versionadded:: 4.4.0
+
+.. versionchanged:: 6.0.0
+   In the lexicon (``subject._COMMON_WORDS_THAT_NAME_PLAYERS`` until Phase 3, step 2).
+"""
+
+# Two teams meeting (the parser's ``_two_teams``, ISSUES.md #235): a team
+# subject set against a second team, with a meeting word between them - "vs",
+# "played", "head to head", "beat". A window over two teams meeting is still
+# their meetings when a record is asked for ("lakers vs mavs record last 10
+# home games"); a log word never is.
+MEETING_WORDS = re.compile(r"\b(vs\.?|versus|against|play(?:ed|s)?|meet|met|head.to.head|matchup|face[ds]?|beat(?:en)?)\b", re.IGNORECASE)
+"""A word that sets two teams meeting.
+
+.. versionadded:: 6.0.0
+   ``parse._MEETING`` until Phase 3, step 2.
+"""
+TWO_TEAMS_LOG_WORDS = re.compile(r"\b(log|gamelog|game log)\b", re.IGNORECASE)
+"""A log word: one team's games, never two teams' meetings.
+
+.. versionadded:: 6.0.0
+   ``parse._TWO_TEAMS_LOG_WORDS`` until Phase 3, step 2.
+"""
+TWO_TEAMS_RECORD_WORDS = re.compile(r"\b(record|rec|w-?l|win.loss)\b", re.IGNORECASE)
+"""A record word: over a window, still the two teams' meetings.
+
+.. versionadded:: 6.0.0
+   ``parse._TWO_TEAMS_RECORD_WORDS`` until Phase 3, step 2.
+"""
+AS_TYPED_WORD = re.compile(r"[\w'.-]+")
+"""A word as the question types it - apostrophes, dots and hyphens kept - a
+name the model copied is matched back to (``parse._as_typed``).
+
+.. versionadded:: 6.0.0
+   ``parse._AS_TYPED_WORD`` until Phase 3, step 2.
+"""

@@ -692,7 +692,7 @@ def scoped_player(
     season_n = scope.cuts.season_n
     asked = span if span is not None else scope.span
     seasons = span_of(asked.over_career() if season_n else asked, table, season_type=player_relation_season_type(scope))
-    player = resolved_player(con, scope.player, missing, available=available, season=seasons.season, through=career_end(seasons.season))
+    player = resolved_player(con, scope.subject.player, missing, available=available, season=seasons.season, through=career_end(seasons.season))
     if isinstance(player, Unanswered):
         return player
     settled = settle_ordinal_season(con, player, season_n, seasons)
@@ -990,8 +990,8 @@ def league_games(con: duckdb.DuckDBPyConnection, span: ResolvedSpan, scope: Scop
             return team
         narrowed.opponent = team
         narrowed.narrow("pgl.opponent_team_id = ?", team.id)
-    if scope.team and scope.team.strip():
-        team = resolved_team(con, scope.team, season=span.season)
+    if scope.subject.team is not None:
+        team = resolved_team(con, scope.subject.team, season=span.season)
         if isinstance(team, Unanswered):
             return team
         narrowed.team = team

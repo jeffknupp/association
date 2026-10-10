@@ -15,6 +15,7 @@ from __future__ import annotations
 import json
 import re
 from collections.abc import Callable
+from dataclasses import replace
 from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
@@ -39,6 +40,7 @@ from association.query.line import LineContext, read_lines
 from association.query.parse import with_point
 from association.query.point import _asc_or_desc, _ranking_minimum, read_point, team_read_point
 from association.query.reading import Cause, PointRefused, Reading, Scope, Span, _career_scope
+from association.query.reading import Subject as Who
 from association.query.result import Refusal
 from association.query.subject import Subject, read_subject
 
@@ -457,10 +459,10 @@ def test_a_boolean_measure_on_a_per_game_intent_is_counted_never_averaged(cx_ctx
 def test_career_scope_forces_a_career_span_only_when_nothing_else_scoped_it() -> None:
     """The helper ``_move_how_many_won``/``_move_boolean_count`` share: no
     season, span or since means "his career"; any of the three left alone."""
-    assert _career_scope(Scope(player="X")) == Scope(player="X", span=Span(career=True))
-    assert _career_scope(Scope(player="X", span=Span(season=2024))) == Scope(player="X", span=Span(season=2024))
-    assert _career_scope(Scope(player="X", span=Span(career=True))) == Scope(player="X", span=Span(career=True))
-    assert _career_scope(Scope(player="X", span=Span(since=2020))) == Scope(player="X", span=Span(since=2020))
+    assert _career_scope(Scope(subject=Who(kind="player", players=("X",)))) == Scope(subject=Who(kind="player", players=("X",)), span=Span(career=True))
+    assert _career_scope(Scope(subject=Who(kind="player", players=("X",)), span=Span(season=2024))) == Scope(subject=Who(kind="player", players=("X",)), span=Span(season=2024))
+    assert _career_scope(Scope(subject=Who(kind="player", players=("X",)), span=Span(career=True))) == Scope(subject=Who(kind="player", players=("X",)), span=Span(career=True))
+    assert _career_scope(Scope(subject=Who(kind="player", players=("X",)), span=Span(since=2020))) == Scope(subject=Who(kind="player", players=("X",)), span=Span(since=2020))
 
 
 def test_a_ranking_word_with_no_player_groups_by_player_league_wide(cx_ctx: AnswerContext) -> None:
@@ -746,7 +748,7 @@ def test_team_move_point_finds_a_team_the_router_dropped(team_cx_ctx: AnswerCont
     makes for a dropped PLAYER."""
     q = team_move_point(team_cx_ctx.con, {"stat": "threePointFieldGoalsMade"}, "how many 3 pointers have the magic made so far this season")
     assert isinstance(q, TeamQuery)
-    assert q.scope.team == "Orlando Magic"
+    assert q.scope.subject.team == "Orlando Magic"
 
 
 def test_team_move_point_is_not_fooled_by_magic_johnson(team_cx_ctx: AnswerContext) -> None:
@@ -757,7 +759,7 @@ def test_team_move_point_is_not_fooled_by_magic_johnson(team_cx_ctx: AnswerConte
     function's)."""
     q = move_point(team_cx_ctx.con, "leaderboard", {"stat": "threePointFieldGoalsMade", "season_type": 2}, "how many 3 pointers have the magic made so far this season")
     assert isinstance(q, TeamQuery)
-    assert q.scope.player is None
+    assert q.scope.subject.player is None
 
 
 def test_team_move_point_reads_a_narrowed_total(team_cx_ctx: AnswerContext) -> None:
@@ -825,8 +827,11 @@ def test_team_move_point_ignores_the_routers_any_team_placeholder(team_cx_ctx: A
     # Under team_stat the question is the team's own season (Phase 2, step 4):
     # its reader resolves the team and refuses the placeholder, as the
     # retired template did.
+    # The point reads the subject's kind as the parser read it (Phase 3,
+    # step 2): "any_team" is no team the words name, so the league.
+    named = Scope.from_slots({"stat": "rebounds", "team": "any_team", "season_type": 2})
     assert move_point(team_cx_ctx.con, "team_stat", {"stat": "rebounds", "team": "any_team", "season_type": 2}, "rebounds allowed per team") == TeamSeasonQuery(
-        scope=Scope.from_slots({"stat": "rebounds", "team": "any_team", "season_type": 2}), relation="team_seasons", shape="scalar"
+        scope=replace(named, subject=replace(named.subject, kind="everyone")), relation="team_seasons", shape="scalar"
     )
 
 

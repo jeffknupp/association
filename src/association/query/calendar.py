@@ -317,4 +317,7 @@ def conference_named(scope: Scope) -> str | None:
        words as an opponent narrowing: it was ``refusals.conference_named``,
        and ``refusals`` is gone (Phase 3, step 0).
     """
-    return next((c for c in (scope.team, scope.cuts.opponent, *scope.teams) if c and lexicon.CONFERENCE_WORDS.search(c)), None)
+    # The one team, the opponent, then a list of two (the typed subject's
+    # teams, read in the order the slots were: ``team``, ``opponent``, ``teams``).
+    listed = scope.subject.teams if scope.subject.team is None else ()
+    return next((c for c in (scope.subject.team, scope.cuts.opponent, *listed) if c and lexicon.CONFERENCE_WORDS.search(c)), None)

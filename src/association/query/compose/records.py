@@ -100,7 +100,7 @@ def read_record_when(con: duckdb.DuckDBPyConnection, q: Query, *, stated: frozen
     compiled = compile_query(con, replace(q, skeleton="grouped", group="line", measures=["margin"]))
     if compiled.player is None:
         return None
-    team = optional_team(con, scope.team, season=scope.span.season)
+    team = optional_team(con, scope.subject.team, season=scope.span.season)
     if isinstance(team, Unanswered):
         return team
     found = rows_of(con, compiled)
@@ -179,7 +179,7 @@ def read_team_record_when(con: duckdb.DuckDBPyConnection, q: TeamQuery, *, state
     if refused is not None:
         return refused
     condition_needs_player_refusal("record_when", scope)
-    team = optional_team(con, scope.team, season=scope.span.season)
+    team = optional_team(con, scope.subject.team, season=scope.span.season)
     if isinstance(team, Unanswered):
         return team
     if team is None:

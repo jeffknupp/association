@@ -20,6 +20,7 @@ from association.query.answer import AnswerContext
 from association.query.compose.core import Query, compile_query, rows_of
 from association.query.player_relation import condition_scope, relation_scoping, relation_span, span_of
 from association.query.reading import Claim, Cuts, Scope, ScopeError, Span, unhonored_cells
+from association.query.reading import Subject as Who
 from association.query.span import SpanContext, claimed, read_span
 from association.query.team_games import TEAM_GAMES_SQL, TeamNarrowed
 from association.query.team_relation import scoped_team, team_games, team_relation_scoping, team_relation_span
@@ -142,7 +143,7 @@ def test_a_word_two_readings_share_reads_both_and_raises_nothing() -> None:
     """ "lebron's last game 7": one game at the end of his span (the window)
     and the seventh game of a series (the postseason's word and the series
     game), both read, the shared "game" claimed once for both."""
-    from association.query.router import settle
+    from routed import staged as settle
 
     route = settle("game_log", {"player": "LeBron James"}, "lebron's last game 7")
     assert route.scope.window.order == "recent" and route.scope.window.count == 1 and route.scope.span.season_type == 3 and route.scope.cuts.game_n == 7
@@ -175,7 +176,7 @@ def test_the_six_slots_round_trip_through_the_span(slots: dict[str, Any]) -> Non
 
 
 def test_the_projection_keeps_the_slot_era_shape() -> None:
-    projected = Scope(player="X", span=Span(since=2020, until=2024, season_type=2)).projected()
+    projected = Scope(subject=Who(kind="player", players=("X",)), span=Span(since=2020, until=2024, season_type=2)).projected()
     assert {"season", "season_type", "season_type_unstated", "span", "since", "until"} <= set(projected)
     assert (projected["season"], projected["season_type"], projected["season_type_unstated"], projected["span"], projected["since"], projected["until"]) == (None, 2, False, None, 2020, 2024)
     assert "player" in projected and all(not isinstance(v, Span) for v in projected.values())
@@ -232,7 +233,7 @@ def test_span_of_resolves_each_cell_and_refuses_a_contradiction() -> None:
 
 
 def _player_games(ctx: AnswerContext, span: Span) -> int:
-    rows = rows_of(ctx.con, compile_query(ctx.con, Query(scope=Scope(player="Brandin Podziemski", span=span), skeleton="rows", measures=["points"], limit=50)))
+    rows = rows_of(ctx.con, compile_query(ctx.con, Query(scope=Scope(subject=Who(kind="player", players=("Brandin Podziemski",)), span=span), skeleton="rows", measures=["points"], limit=50)))
     return len(rows)
 
 
@@ -250,7 +251,7 @@ def test_each_span_cell_changes_what_the_player_relation_reads(pg_ctx: AnswerCon
 
 
 def _team_games(ctx: AnswerContext, span: Span) -> int:
-    settled = scoped_team(ctx.con, Scope(team="Celtics", span=span), "no team")
+    settled = scoped_team(ctx.con, Scope(subject=Who(kind="team", teams=("Celtics",)), span=span), "no team")
     assert isinstance(settled, tuple)
     team, resolved = settled
     narrowed = team_games(ctx.con, team, resolved, Scope(), opponent=None)

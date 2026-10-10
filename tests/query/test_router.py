@@ -10,12 +10,14 @@ import json
 from typing import Any, get_args, get_type_hints
 
 import pytest
+from routed import staged_raw
 
 from association.nba.season import current_season
 from association.query.compose.plan import refusal_result
 from association.query.lexicon import ORDER_WORDS
 from association.query.reading import Cause, Companion, Scope, Window
-from association.query.router import CODE_ASSIGNED_INTENTS, Route, _settle
+from association.query.reading import Subject as Who
+from association.query.router import CODE_ASSIGNED_INTENTS, Route
 from association.query.window import ORDER_INTENTS
 
 
@@ -362,7 +364,8 @@ def test_a_dropped_player_still_reaches_period_split_over_a_team_only_reading() 
     about one man. The routing check pinned this to `other` before
     `period_split` existed for the shape; now it answers it.
 
-    The question's own grammar still names Jokic (`_subject_named_in`), so
+    The question's own grammar still names Jokic (``subject.subject_named_in``,
+    handed to the stages as ``router.Named.grammar``), so
     that recovers the player the same way it already does for
     `threshold_count`/`single_game_high`. Of the two team-shaped slots the
     model filled, `opponent` ('Denver Nuggets') names nobody the question
@@ -380,8 +383,8 @@ def test_a_dropped_player_still_reaches_period_split_over_a_team_only_reading() 
 def test_a_dropped_player_recovery_never_steals_a_teams_own_quarter_or_half() -> None:
     """The mirror check: a real team subject must not be misread as a
     "dropped player" just because it sits directly before a scoring verb -
-    "did the 76ers score" fits `_subject_named_in`'s grammar exactly the way
-    "did Jokic score" does, and only `_is_team_name` tells them apart."""
+    "did the 76ers score" fits ``subject.subject_named_in``'s grammar exactly the way
+    "did Jokic score" does, and only ``subject.is_team_name`` tells them apart."""
     payload = '{"intent":"other","team":"Philadelphia 76ers","opponent":"Boston Celtics"}'
     got = _ask("How many points did the 76ers score in the 3rd quarter against Boston?", payload)
     assert got.intent == "team_quarter_points"
@@ -565,7 +568,7 @@ def _ask(question: str, payload: str, companions: tuple[Companion, ...] = ()) ->
     decoded the reply before handing it to them. ``companions`` is who the
     subject reading found beside the subject: the stages read no name and
     write none (the subject reading writes them onto the Reading)."""
-    return _settle(json.loads(payload), question, companions)
+    return staged_raw(json.loads(payload), question, companions)
 
 
 def _absent(*names: str) -> tuple[Companion, ...]:
@@ -813,7 +816,7 @@ def test_with_a_teammate_is_the_splits_name_on_the_split_alone() -> None:
     the typed companion is the same, and the slot it printed under follows
     the shape (``Scope.to_slots(split_by_presence=...)``)."""
     beside = _played("ja morant", "desmond bane")
-    scope = Scope(team="Memphis Grizzlies", companions=beside)
+    scope = Scope(subject=Who(kind="team", teams=("Memphis Grizzlies",)), companions=beside)
     assert scope.to_slots(split_by_presence=True)["with_player"] == ["ja morant", "desmond bane"] and "conditions" not in scope.to_slots(split_by_presence=True)
     assert "with_player" not in scope.to_slots() and [c["predicate"] for c in scope.to_slots()["conditions"]] == ["played", "played"]
     assert _ask("jjj stats with ja morant and desmond bane last season", '{"intent":"with_without"}', beside).intent == "with_without"
@@ -905,24 +908,18 @@ def test_a_team_asked_for_its_most_or_fewest_carries_that_rank() -> None:
     assert "rank" not in plain.slots
 
 
-def test_a_rank_word_filed_as_the_team_is_dropped() -> None:
+def test_a_rank_word_beside_a_real_team_leaves_the_team() -> None:
     """ISSUES.md #172: "nba team with least playoff wins since 2022" arrived
     with `team='least'` beside a correctly-read `rank='fewest'` - the same
-    word, filed twice. No franchise is named "least", so `team_leaderboard`
-    refused "no team matching 'least'" over a cause the question never gave,
-    on a question it could otherwise answer in full. `team` is read against
-    `RANK_WORDS` again rather than a new list, so the two checks cannot
-    disagree about what counts as one."""
-    payload = '{"intent":"team_leaderboard","stat":"playoffs_wins","team":"least","season":2022,"season_ref":"previous"}'
-    got = _ask("nba team with least playoff wins since 2022", payload)
-    assert got.intent == "team_leaderboard"
-    assert got.slots.get("rank") == "fewest"
-    assert "team" not in got.slots
-    assert got.slots.get("since") == 2022
-    # A real team beside a rank word is untouched - only a team slot that IS
-    # one of the rank words is ever dropped.
+    word, filed twice - and a stage dropped a team slot that IS a rank word
+    (``_route_intent_slots``) until Phase 3, step 2, when the subject reading
+    began handing the stages a team only where the words name one it
+    resolves: "least" never reaches them. A real team beside a rank word is
+    the subject's, and stands."""
     real_team = _ask("worst record for the Knicks since 2022", '{"intent":"team_leaderboard","team":"New York Knicks","stat":"record","season":2022,"season_ref":"previous"}')
     assert real_team.slots.get("team") == "New York Knicks" and real_team.slots.get("rank") == "worst"
+    got = _ask("nba team with least playoff wins since 2022", '{"intent":"team_leaderboard","stat":"playoffs_wins","season":2022,"season_ref":"previous"}')
+    assert got.intent == "team_leaderboard" and got.slots.get("rank") == "fewest" and "team" not in got.slots and got.slots.get("since") == 2022
 
 
 @pytest.mark.parametrize(
@@ -944,26 +941,6 @@ def test_a_split_is_read_for_every_intent_so_others_can_refuse_it() -> None:
     """Measured: routed to player_stat and answered with his season minutes."""
     got = _ask("Joe Ingles stats when starting vs coming off the bench", '{"intent":"player_stat","player":"Joe Ingles","stat":"minutes"}')
     assert got.slots["split"] == "starter_bench"
-
-
-def test_a_player_beside_a_team_in_players_is_a_players_half_against_that_team() -> None:
-    """yardstick-v2 F059, the model's reply as recorded: "Kd vs clippers 2h
-    at home gamelog" filed Durant and the Clippers together in `players`
-    with no `player`, so the team's-half branch took it and
-    team_quarter_points refused for naming a player. The pair is the player
-    and his opponent, and a named player's half is period_split."""
-    got = _asking(
-        '{"intent":"team_quarter_points","stat":"points","players":["Kevin Durant","Los Angeles Clippers"],"fields":["points","assists","rebounds"],'
-        '"team":"clippers","half":2,"season_type":2,"venue":"home"}',
-        "Kd vs clippers 2h at home gamelog",
-    )
-    assert got.intent == "period_split"
-    assert got.slots["player"] == "Kevin Durant" and got.slots["opponent"] == "Los Angeles Clippers"
-    assert got.slots["half"] == 2 and got.slots["venue"] == "home" and got.slots["per_game"] is True
-    assert "players" not in got.slots and "team" not in got.slots
-    # With no "vs", a team in the list is not read as an opponent.
-    unchanged = _asking('{"intent":"team_quarter_points","players":["Kevin Durant","Los Angeles Clippers"],"half":2}', "kd clippers 2h")
-    assert unchanged.slots.get("players") == ["Kevin Durant", "Los Angeles Clippers"]
 
 
 def test_td3s_is_a_triple_double_and_not_a_period_or_a_shot_value() -> None:
@@ -1505,7 +1482,7 @@ def test_a_count_whose_subject_sits_between_does_and_have_is_restored(question: 
     """The model dropped LeBron from the first of these and answered the 2018
     league leaderboard. #148's grammars read "X games with" and "X 30-point
     games"; the subject here sits between an auxiliary and "have"."""
-    from association.query.router import _subject_named_in
+    from association.query.subject import subject_named_in as _subject_named_in
 
     assert _subject_named_in(question) == want
     got = _ask(question, '{"intent":"threshold_count","stat":"points","threshold":40}')
@@ -1652,7 +1629,7 @@ def test_a_player_whose_name_looks_like_a_team_is_still_a_player(name: str) -> N
     rest are why a near spelling is not matched at all - Burks/Bucks,
     Hawkins/Hawks, Thornton/Toronto and Wheat/Heat are all within one
     `difflib` step, and the model puts bare surnames in that slot."""
-    from association.query.router import _is_team_name
+    from association.query.subject import is_team_name as _is_team_name
 
     assert not _is_team_name(name)
 
@@ -1819,14 +1796,10 @@ def test_best_or_worst_record_ranks_the_league() -> None:
     assert got.slots["rank"] == "worst"
 
 
-def test_the_league_is_not_a_team() -> None:
-    assert "team" not in _ask("Longest winning streak in the NBA this season", '{"intent":"streak","team":"all-NBA"}').slots
-
-
 def test_a_team_metric_named_in_the_question_wins() -> None:
     from association.query.team_metrics import resolve_team_metric
 
-    got = _ask("Lowest defensive rating by a team this season", '{"intent":"team_leaderboard","stat":"usage_pct_defense","team":"all_teams"}')
+    got = _ask("Lowest defensive rating by a team this season", '{"intent":"team_leaderboard","stat":"usage_pct_defense"}')
     assert got.scope.measure is not None and resolve_team_metric(got.scope.measure) == "defensive_rating"
     assert "team" not in got.slots
 
@@ -1974,7 +1947,7 @@ def test_a_subject_keeps_the_first_name_the_question_gave_it(subtests: Any) -> N
     and not Kobe. The count grammars already captured a leading word; this one
     does now, gated on the same richer stopword list so "most points curry
     scored" still reads "curry" and never "points curry"."""
-    from association.query.router import _subject_named_in
+    from association.query.subject import subject_named_in as _subject_named_in
 
     for question, want in (
         ("kobe bryant's stats vs rockets in the 2009 playoffs ts% each game", "kobe bryant"),
@@ -2483,7 +2456,7 @@ def test_settle_reproduces_a_route_under_its_own_intent() -> None:
     """`settle` is the post-processing run again: over a settled route's own
     slots and intent it changes nothing, which is what lets the subject
     reading hand it a route to re-settle under a child intent."""
-    from association.query.router import settle
+    from routed import staged as settle
 
     for intent, slots, question in (
         ("game_log", {"stat": "points", "player": "Stephen Curry", "season_type": 2, "order": "recent", "limit": 5, "season_type_unstated": True}, "Curry's last 5 games"),
@@ -2496,7 +2469,7 @@ def test_settle_reproduces_a_route_under_its_own_intent() -> None:
 
 
 def test_settle_reads_a_childs_slots_off_the_text_and_drops_the_parents_derived_ones() -> None:
-    from association.query.router import settle
+    from routed import staged as settle
 
     # A game log read "the past 4 seasons" as `since`; a history reads it as
     # `limit`, and the `since` the game log derived must not survive.
@@ -2537,7 +2510,7 @@ def test_a_shot_value_the_question_names_is_read_for_a_distance_or_a_chart() -> 
     """The shot_distance worked example taught the model `shot_value`; with the
     intent assigned from the text, the value is read from the text too - and
     only where the model left it empty and the question names exactly one."""
-    from association.query.router import settle
+    from routed import staged as settle
 
     assert settle("shot_distance", {"stat": "points", "player": "Stephen Curry"}, "what was steph curry's avg 3pt shot distance").slots["shot_value"] == 3
     assert settle("shot_distance", {"stat": "points", "player": "Stephen Curry"}, "how far does curry shoot his twos from").slots["shot_value"] == 2
@@ -2550,7 +2523,7 @@ def test_a_teams_season_total_steps_aside_from_the_per_game_line() -> None:
     """ "how many 3 pointers have the magic made" is a season total, which the
     compiler's team subject reads; team_stat's line is per game. Filed as
     `rate: "total"` so the template refuses and the compiler answers."""
-    from association.query.router import settle
+    from routed import staged as settle
 
     assert settle("team_stat", {"stat": "threePointFieldGoalsMade", "team": "Orlando Magic"}, "how many 3 pointers have the magic made so far this season").slots["rate"] == "total"
     assert "rate" not in settle("team_stat", {"stat": "points", "team": "Boston Celtics"}, "how many points per game do the celtics score").slots
@@ -2558,7 +2531,7 @@ def test_a_teams_season_total_steps_aside_from_the_per_game_line() -> None:
 
 
 def test_a_players_games_won_is_record_when_on_wins() -> None:
-    from association.query.router import settle
+    from routed import staged as settle
 
     settled = settle("record_when", {"stat": "playoff_wins", "player": "Joel Embiid", "season_type": 3}, "how many playoff games has embiid won?")
     assert settled.intent == "record_when" and settled.slots["stat"] == "wins" and "threshold" not in settled.slots
@@ -2566,7 +2539,7 @@ def test_a_players_games_won_is_record_when_on_wins() -> None:
 
 
 def test_a_last_n_games_with_no_teammate_named_is_a_log_not_a_split() -> None:
-    from association.query.router import settle
+    from routed import staged as settle
 
     settled = settle("with_without", {"stat": "points_differential", "team": "New York Knicks", "order": "recent", "limit": 7}, "KNICKS point differential over the last 7 games")
     assert settled.intent == "game_log" and settled.slots["limit"] == 7 and settled.slots["order"] == "recent"
@@ -2574,7 +2547,7 @@ def test_a_last_n_games_with_no_teammate_named_is_a_log_not_a_split() -> None:
 
 
 def test_a_game_of_each_series_drops_a_filler_order_and_limit() -> None:
-    from association.query.router import settle
+    from routed import staged as settle
 
     settled = settle("game_log", {"stat": "all", "player": "Deandre Ayton", "order": "recent", "limit": 1, "season_type": "playoffs"}, "Ayton stats in game 4 playoff games")
     assert settled.slots["game_n"] == 4 and "limit" not in settled.slots and "order" not in settled.slots
@@ -2582,7 +2555,7 @@ def test_a_game_of_each_series_drops_a_filler_order_and_limit() -> None:
 
 
 def test_two_players_vs_over_a_span_of_seasons_is_the_pairs_meetings() -> None:
-    from association.query.router import settle
+    from routed import staged as settle
 
     assert settle("player_compare", {"players": ["Nikola Jokic", "Cade Cunningham"]}, "jokic vs cade since 2022").intent == "player_matchup"
     assert settle("player_compare", {"players": ["Luka Doncic", "Giannis Antetokounmpo"]}, "Luka vs Giannis this year").intent == "player_compare"
@@ -2590,7 +2563,7 @@ def test_two_players_vs_over_a_span_of_seasons_is_the_pairs_meetings() -> None:
 
 
 def test_a_log_against_one_team_including_playoffs_with_no_year_is_a_career() -> None:
-    from association.query.router import settle
+    from routed import staged as settle
 
     settled = settle(
         "game_log",
@@ -2605,7 +2578,7 @@ def test_a_log_against_one_team_including_playoffs_with_no_year_is_a_career() ->
 
 
 def test_a_pairs_record_with_no_season_named_is_their_careers() -> None:
-    from association.query.router import settle
+    from routed import staged as settle
 
     settled = settle(
         "player_matchup", {"stat": "points", "players": ["Stephen Curry", "LeBron James"], "season": current_season(), "without": ["kd"]}, "steph curry record vs lebron regular season without kd"

@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any, get_args
 
 import pytest
+from routed import staged as settle
 from test_career_spans import season_ctx  # noqa: F401 - the season line's fixture, imported by name
 from test_parser import con  # noqa: F401 - the parser's name fixture, imported by name
 from test_templates import game_log, leaderboard, pg_ctx  # noqa: F401 - the player relation's fixture, imported by name
@@ -44,7 +45,7 @@ from association.query.normalizer import NORMALIZER_STATS
 from association.query.parse import read_route, reading_from_route
 from association.query.point import _team_measure
 from association.query.reading import SCOPING_SLOTS, Claim, Measure, PointShape, Reading, Scope, ScopeError, Span, cell_set, unhonored_cells
-from association.query.router import settle
+from association.query.reading import Subject as Who
 from association.query.team_metrics import TEAM_METRICS, resolve_team_metric
 
 # ---------------- the tagger: words to a Measure ----------------
@@ -332,9 +333,9 @@ def test_a_team_total_named_by_a_metrics_alias_stays_the_per_game_line() -> None
     never read it and the per-game line answered; the catalog keeps that
     by the spelling's vocabulary, and the key's own spelling reads the total."""
     assert named_by_a_team_metric(measure_of("fgm")) and not named_by_a_team_metric(measure_of("fieldGoalsMade"))
-    assert _team_measure(Scope(team="Orlando Magic", measure=Scope.from_slots({"stat": "fgm", "rate": "total"}).measure), "how many fgm did the magic have") is None
-    assert _team_measure(Scope(team="Orlando Magic", measure=measure_of("fieldGoalsMade")), "how many did the magic have") == "fieldGoalsMade"
-    assert _team_measure(Scope(team="Orlando Magic", measure=measure_of("points_allowed")), "magic total this season") == "points_allowed"
+    assert _team_measure(Scope(subject=Who(kind="team", teams=("Orlando Magic",)), measure=Scope.from_slots({"stat": "fgm", "rate": "total"}).measure), "how many fgm did the magic have") is None
+    assert _team_measure(Scope(subject=Who(kind="team", teams=("Orlando Magic",)), measure=measure_of("fieldGoalsMade")), "how many did the magic have") == "fieldGoalsMade"
+    assert _team_measure(Scope(subject=Who(kind="team", teams=("Orlando Magic",)), measure=measure_of("points_allowed")), "magic total this season") == "points_allowed"
 
 
 # ---------------- contract 4: the cell changes what a relation reads, and the planner declines it elsewhere ----------------

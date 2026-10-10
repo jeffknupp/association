@@ -172,9 +172,13 @@ def _reading_record(reading: Reading, mask: Mapping[str, str] | None) -> dict[st
     return {
         "intent": reading.intent,
         "scope": plain(reading.scope.to_slots(split_by_presence=reading.intent == "with_without"), mask=mask),
-        # The span, the window, the games' cuts, the period, the lines, the
-        # companions and the measure as the reader typed them (Phase 3,
-        # step 2), beside the scope's slot-era projection of them.
+        # Who the read is about, the span, the window, the games' cuts, the
+        # period, the lines, the companions and the measure as the reader
+        # typed them (Phase 3, step 2), beside the scope's slot-era
+        # projection of them. The typed subject (``Scope.subject``) is
+        # ``who``: ``subject`` is the reading's own record of it, the
+        # parser's fields beside.
+        "who": plain(reading.scope.subject, mask=mask),
         "span": plain(reading.scope.span, mask=mask),
         "window": plain(reading.scope.window, mask=mask),
         "cuts": plain(reading.scope.cuts, mask=mask),

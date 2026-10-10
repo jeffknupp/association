@@ -47,6 +47,7 @@ from association.query.reading import (
     slot_names_set,
     unhonored_cells,
 )
+from association.query.reading import Subject as Who
 from association.query.subject import read_subject
 from association.query.team_relation import TEAM_RELATION_SCOPING, TEAM_RELATION_SCOPING_EXCLUDED
 
@@ -168,7 +169,7 @@ def test_the_splits_teammates_project_under_its_own_slot_and_as_conditions_elsew
 
 def test_the_projection_keeps_the_slot_era_shape() -> None:
     projected = Scope(
-        player="X",
+        subject=Who(kind="player", players=("X",)),
         lines=(Line(measure="points", value=30, as_typed="30 point", keyed=True), phrase_line("under 14 fta", below=True)),
         companions=(Companion(player="Jayson Tatum", predicate="absent"),),
     ).projected()
@@ -252,15 +253,15 @@ def test_relation_lines_are_the_narrowing_ones_in_the_slots_order() -> None:
 
 def test_the_subject_reading_reads_the_companions_and_claims_their_phrase(league: AnswerContext) -> None:  # noqa: F811 - the fixture
     question = "jaylen brown game log without jayson tatum this season"
-    subject = read_subject(league.con, question, "game_log", Scope(player="Jaylen Brown"))
+    subject = read_subject(league.con, question, "game_log", Scope(subject=Who(kind="player", players=("Jaylen Brown",))))
     assert subject.conditions == (Companion(player="Jayson Tatum", predicate="absent"),)
     assert len(subject.claims) == 1 and subject.claims[0].what == "companion" and question[subject.claims[0].start : subject.claims[0].end] == "without jayson tatum"
-    reached = read_subject(league.con, "celtics record when jayson tatum scores 20+ points", "record_when", Scope(team="Boston Celtics"))
+    reached = read_subject(league.con, "celtics record when jayson tatum scores 20+ points", "record_when", Scope(subject=Who(kind="team", teams=("Boston Celtics",))))
     assert reached.conditions == (Companion(player="Jayson Tatum", predicate="reached", line=Line(measure="points", value=20, as_typed="20+ points")),)
     # The companions reach the Reading typed, through the one writer, and ride the route's claims.
     route, _, _ = read_route(league.con, question, ["Jaylen Brown", "Jayson Tatum"], "")
     reading = reading_from_route(league.con, question, route)
-    assert reading.scope.companions == (Companion(player="Jayson Tatum", predicate="absent"),) and reading.scope.player == "Jaylen Brown"
+    assert reading.scope.companions == (Companion(player="Jayson Tatum", predicate="absent"),) and reading.scope.subject.player == "Jaylen Brown"
     assert any(c.what == "companion" for c in reading.claims)
 
 
@@ -286,11 +287,11 @@ def _games(ctx: AnswerContext, scope: Scope) -> tuple[int, int]:
 
 
 def test_the_line_cell_changes_what_the_player_relation_reads(pg_ctx: AnswerContext) -> None:  # noqa: F811 - the fixture
-    assert _games(pg_ctx, Scope(player="Brandin Podziemski")) == (3, 45)  # e1 (30 min, 10), e2 (32, 20), e3 (28, 15)
-    assert _games(pg_ctx, Scope(player="Brandin Podziemski", lines=(phrase_line("with 30 minutes", below=False),))) == (2, 30)
-    assert _games(pg_ctx, Scope(player="Brandin Podziemski", lines=(phrase_line("under 30 minutes", below=True),))) == (1, 15)
+    assert _games(pg_ctx, Scope(subject=Who(kind="player", players=("Brandin Podziemski",)))) == (3, 45)  # e1 (30 min, 10), e2 (32, 20), e3 (28, 15)
+    assert _games(pg_ctx, Scope(subject=Who(kind="player", players=("Brandin Podziemski",)), lines=(phrase_line("with 30 minutes", below=False),))) == (2, 30)
+    assert _games(pg_ctx, Scope(subject=Who(kind="player", players=("Brandin Podziemski",)), lines=(phrase_line("under 30 minutes", below=True),))) == (1, 15)
     pairs = read_lines("20+ point 5+ assist games", LineContext(intent="game_log")).lines
-    assert _games(pg_ctx, Scope(player="Brandin Podziemski", lines=pairs)) == (1, 20)  # e2 alone holds both
+    assert _games(pg_ctx, Scope(subject=Who(kind="player", players=("Brandin Podziemski",)), lines=pairs)) == (1, 20)  # e2 alone holds both
 
 
 def test_the_period_line_cell_changes_what_the_player_relation_reads(period_con: duckdb.DuckDBPyConnection) -> None:  # noqa: F811 - the fixture
@@ -310,9 +311,9 @@ def test_the_period_line_cell_changes_what_the_player_relation_reads(period_con:
 
 
 def test_the_companion_cell_changes_what_the_player_relation_reads(league: AnswerContext) -> None:  # noqa: F811 - the fixture
-    every = _games(league, Scope(player="Jaylen Brown"))
-    without = _games(league, Scope(player="Jaylen Brown", companions=(Companion(player="Jayson Tatum", predicate="absent"),)))
-    with_tatum = _games(league, Scope(player="Jaylen Brown", companions=(Companion(player="Jayson Tatum"),)))
+    every = _games(league, Scope(subject=Who(kind="player", players=("Jaylen Brown",))))
+    without = _games(league, Scope(subject=Who(kind="player", players=("Jaylen Brown",)), companions=(Companion(player="Jayson Tatum", predicate="absent"),)))
+    with_tatum = _games(league, Scope(subject=Who(kind="player", players=("Jaylen Brown",)), companions=(Companion(player="Jayson Tatum"),)))
     assert every[0] > without[0] > 0 and every[0] > with_tatum[0] > 0 and without[0] + with_tatum[0] <= every[0]
     assert without == (2, 43)  # e2 (Tatum DNP, 25) and e3 (Tatum not in the box score, 18)
 

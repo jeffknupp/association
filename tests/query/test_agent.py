@@ -103,7 +103,7 @@ def test_the_fast_path_replaces_a_player_the_question_never_named(monkeypatch: p
     seen: list[str] = []
 
     def record(ctx: Any, reading: Reading) -> Reply:
-        seen.extend(reading.scope.players)
+        seen.extend(reading.scope.subject.players)
         return Reply(data={}, answer="templated")
 
     # player_compare is the compiler's (compose.COMPILED_INTENTS): the same Reading reaches compose.answer.

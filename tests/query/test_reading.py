@@ -4,7 +4,7 @@ the question again - ROADMAP plan item 6, step (a)."""
 
 from __future__ import annotations
 
-from dataclasses import fields
+from dataclasses import fields, replace
 from typing import Any
 
 import pytest
@@ -14,6 +14,7 @@ from association.query.compose.core import Query
 from association.query.compose.plan import plan
 from association.query.compose.team import TeamQuery
 from association.query.reading import Reading, Scope, Span, Window
+from association.query.reading import Subject as Who
 
 
 def test_the_default_point_is_a_reading_and_its_plan_is_the_query_it_always_was() -> None:
@@ -48,8 +49,9 @@ def test_the_planner_copies_and_never_decides() -> None:
         limit=7,
         minimum_games=20,
         relation="everyone",
-        position="C",
     )
+    # The position group a league-wide point honors is its subject's (Phase 3, step 2).
+    reading = replace(reading, scope=replace(reading.scope, subject=replace(reading.scope.subject, position="C")))
     q = plan(reading)
     assert isinstance(q, Query)
     assert q.scope == reading.scope
@@ -60,8 +62,11 @@ def test_the_planner_copies_and_never_decides() -> None:
     # one and not the other is a decision the planner would be making alone.
     # The point's shape, by and on are the target's vocabulary, from which
     # the planner derives the compiler's skeleton and source (plan.skeleton_of).
-    point = {"shape", "by", "on", "measures", "aggregate", "group", "predicates", "order", "direction", "limit", "minimum_games", "available", "subject_span", "position"}
+    point = {"shape", "by", "on", "measures", "aggregate", "group", "predicates", "order", "direction", "limit", "minimum_games", "available", "subject_span"}
     assert point <= {f.name for f in fields(Reading)}
+    # The Query's ``position`` is the point's subject's position group
+    # (``Reading.scope.subject.position``, a field of the point until Phase 3, step 2).
+    assert "position" not in {f.name for f in fields(Reading)} and "position" in {f.name for f in fields(Who)}
     # The Query's ``offset`` is the compiler's own (a pair's newest meetings): the point's was 0 on every reading and went with the window (Phase 3, step 2).
     assert {"skeleton", "measures", "aggregate", "group", "predicates", "order", "direction", "limit", "offset", "minimum_games", "available", "subject_span", "source", "position"} <= {
         f.name for f in fields(Query)
@@ -72,7 +77,7 @@ def test_a_team_reading_plans_to_the_team_relation() -> None:
     reading = Reading(scope=Scope.from_slots({"team": "Orlando Magic", "season": 2026}), shape="scalar", measures=["threePointFieldGoalsMade"], aggregate="total", relation="team")
     q = plan(reading)
     assert isinstance(q, TeamQuery)
-    assert (q.scope, q.measure, q.aggregate) == (Scope(team="Orlando Magic", span=Span(season=2026)), "threePointFieldGoalsMade", "total")
+    assert (q.scope, q.measure, q.aggregate) == (Scope(subject=Who(kind="team", teams=("Orlando Magic",)), span=Span(season=2026)), "threePointFieldGoalsMade", "total")
 
 
 def test_the_compilers_points_are_keyword_only() -> None:
@@ -81,11 +86,11 @@ def test_the_compilers_points_are_keyword_only() -> None:
     field sits in that place, and the two records mirror the Reading's
     fields in a different order."""
     with pytest.raises(TypeError):
-        Query(Scope(player="Joel Embiid"), "rows")  # type: ignore[call-arg]
+        Query(Scope(subject=Who(kind="player", players=("Joel Embiid",))), "rows")  # type: ignore[call-arg]
     with pytest.raises(TypeError):
-        TeamQuery(Scope(team="Orlando Magic"), "points")  # type: ignore[call-arg]
-    assert Query(scope=Scope(player="Joel Embiid"), skeleton="rows").scope.player == "Joel Embiid"
-    assert TeamQuery(scope=Scope(team="Orlando Magic"), measure="points").scope.team == "Orlando Magic"
+        TeamQuery(Scope(subject=Who(kind="team", teams=("Orlando Magic",))), "points")  # type: ignore[call-arg]
+    assert Query(scope=Scope(subject=Who(kind="player", players=("Joel Embiid",))), skeleton="rows").scope.subject.player == "Joel Embiid"
+    assert TeamQuery(scope=Scope(subject=Who(kind="team", teams=("Orlando Magic",))), measure="points").scope.subject.team == "Orlando Magic"
 
 
 def test_describe_names_every_deciding_field_and_drops_empty_scope() -> None:
@@ -122,7 +127,7 @@ def test_a_slot_dict_round_trips_through_the_scope() -> None:
         "season_type_unstated": True,
     }
     scope = Scope.from_slots({**slots, "team": None, "players": [], "stat": "", "per_game": False})
-    assert (scope.player, [c.player for c in scope.companions if c.absent], scope.cuts.venue, scope.window.count, scope.span.both) == ("Joel Embiid", ["Tyrese Maxey"], "home", 10, True)
+    assert (scope.subject.player, [c.player for c in scope.companions if c.absent], scope.cuts.venue, scope.window.count, scope.span.both) == ("Joel Embiid", ["Tyrese Maxey"], "home", 10, True)
     assert scope.to_slots() == slots
 
 
@@ -168,6 +173,7 @@ def test_every_scope_field_is_checked_and_every_group_is_the_compilers() -> None
         _MEASURE_SLOT_NAMES,
         _PERIOD_SLOT_NAMES,
         _SPAN_SLOT_NAMES,
+        _SUBJECT_SLOT_NAMES,
         _WINDOW_SLOT_NAMES,
         SCOPING_SLOTS,
         Companion,
@@ -177,10 +183,12 @@ def test_every_scope_field_is_checked_and_every_group_is_the_compilers() -> None
     )
 
     names = {f.name for f in fields(Scope)}
-    # The span's six slot names, the window's four, the cuts' eight, the period's two, the lines' four and the companions' three pass the door into the typed values (Phase 3, step 2).
+    # The subject's four slot names, the span's six, the window's four, the cuts' eight, the period's two, the lines' four and the
+    # companions' three pass the door into the typed values (Phase 3, step 2).
     assert (
         set(_CHECKS)
-        == (names - {"span", "window", "cuts", "period", "lines", "companions", "measure"})
+        == (names - {"subject", "span", "window", "cuts", "period", "lines", "companions", "measure"})
+        | set(_SUBJECT_SLOT_NAMES)
         | _MEASURE_SLOT_NAMES
         | _SPAN_SLOT_NAMES
         | _WINDOW_SLOT_NAMES

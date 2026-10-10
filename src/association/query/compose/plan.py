@@ -346,7 +346,7 @@ def _shape_declines(point: Reading) -> str | None:
         # 2026-10-03 (the Phase 1 review found them still in the adapter).
         try:
             condition_needs_player_refusal(intent, scope, "game_n")
-            if not (scope.team and scope.team.strip()):
+            if scope.subject.team is None:
                 # The league's run (a win streak reads the team relation
                 # with no team named; a stat's run reads everyone).
                 _streak_league_cells(scope)
@@ -481,7 +481,7 @@ def _plan(reading: Reading) -> Query | TeamQuery | TeamSeasonQuery | NetPointsQu
         subject_span=reading.subject_span,
         source="seasons" if key.relation == "player_seasons" else "games",
         subject=subject,
-        position=reading.position,
+        position=reading.scope.subject.position,
     )
     if planned.source == "seasons" and not _season_line_reads(key, planned):
         return _game_level(key, planned)

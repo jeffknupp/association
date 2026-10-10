@@ -86,7 +86,7 @@ def _team_record_tables(scope: Scope) -> tuple[str, ...]:
     """The standings for a season's record (and its home/road split);
     ``games`` for a tally - a record against one team, or in a postseason,
     can only be tallied from `games`, whose regular seasons start later."""
-    against = bool(scope.cuts.opponent) or len(scope.teams) > 1
+    against = bool(scope.cuts.opponent) or len(scope.subject.teams) > 1
     return ("games",) if against or scope.span.season_type == 3 else ("standings",)
 
 

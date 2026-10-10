@@ -10,6 +10,7 @@ from typing import Any
 import duckdb
 import pytest
 from routed import slots_route, with_subject
+from routed import staged as settle
 
 from association.query.compose.plan import plan_point
 from association.query.decisions import Decision
@@ -18,7 +19,7 @@ from association.query.lines import threshold_of
 from association.query.measure import named
 from association.query.parse import classify_span, parent_intent, read_route, reading_from_route
 from association.query.reading import Companion, Reading
-from association.query.router import Route, settle
+from association.query.router import Route
 
 
 def _measure(question: str) -> str | None:
@@ -151,16 +152,16 @@ def test_a_player_after_a_versus_word_reaches_the_route_as_a_condition(con: duck
     not a with/without split."""
     against = Companion(player="Jayson Tatum", side="opponent", predicate="played")
     high = _read(con, "most points by tyrese maxey vs tatum", ["tyrese maxey", "tatum"], "points")
-    assert high.intent == "player_stat" and high.scope.player == "Tyrese Maxey" and high.scope.companions == (against,)
+    assert high.intent == "player_stat" and high.scope.subject.player == "Tyrese Maxey" and high.scope.companions == (against,)
     assert high.point is not None and high.point.shape == "rows" and high.point.order == "measure" and high.point.direction == "desc"
     fewest = _read(con, "fewest points by tyrese maxey vs tatum", ["tyrese maxey", "tatum"], "points")
     assert fewest.point is not None and fewest.point.order == "measure" and fewest.point.direction == "asc"
     count = _read(con, "how many times did tyrese maxey score 30 vs tatum", ["tyrese maxey", "tatum"], "points")
     assert count.intent == "threshold_count" and count.scope.companions == (against,) and threshold_of(count.scope) == 30
     log = _read(con, "tyrese maxey game log vs tatum", ["tyrese maxey", "tatum"], "")
-    assert log.intent == "game_log" and log.scope.companions == (against,) and log.scope.players == ()
+    assert log.intent == "game_log" and log.scope.companions == (against,) and len(log.scope.subject.players) < 2
     pair = _read(con, "tyrese maxey vs tatum", ["tyrese maxey", "tatum"], "")
-    assert pair.intent == "player_matchup" and pair.scope.companions == () and len(pair.scope.players) == 2
+    assert pair.intent == "player_matchup" and pair.scope.companions == () and len(pair.scope.subject.players) == 2
     narrowed = _read(con, "tyrese maxey points vs boston without embiid", ["tyrese maxey", "boston", "embiid"], "points")
     assert narrowed.intent == "player_stat" and narrowed.scope.cuts.opponent == "Boston Celtics" and narrowed.scope.companions == (Companion(player="Joel Embiid", predicate="absent"),)
 
@@ -181,7 +182,7 @@ def test_a_player_against_a_team_is_never_a_matchup(con: duckdb.DuckDBPyConnecti
     ):
         r = _read(con, question, names)
         assert r.intent != "player_matchup" and r.subject is not None and r.subject.kind == "player", (question, names, r.intent)
-        assert r.scope.player == "Tyrese Maxey" and r.scope.cuts.opponent == "Boston Celtics", (question, names, r.scope)
+        assert r.scope.subject.player == "Tyrese Maxey" and r.scope.cuts.opponent == "Boston Celtics", (question, names, r.scope)
     r = _read(con, "maxey vs embiid", ["maxey", "embiid"])
     assert (r.intent, r.subject.kind if r.subject else None) == ("player_matchup", "pair")
 

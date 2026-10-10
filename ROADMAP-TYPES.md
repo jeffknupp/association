@@ -606,6 +606,81 @@ otherwise.
     13 below); the subject's own slots (`player`, `players`, `team`,
     `teams`, `position`) are the next slice's.
 
+- **Declared in code by Phase 3, step 2, the subject's own** (2026-10-10,
+  the lead's brief; no answer, result, remark, planned query or reading
+  moved on the four populations - every reading compared through the
+  projection, the typed value recorded beside it; 14 unit-test calls in 7
+  tests moved, each a test handing a router-era slot shape the count now
+  projects):
+  - The draft's `Subject(kind, names, position, of_team)` as
+    `reading.Subject(kind, players, teams, position)` on `Scope.subject`,
+    in place of the four slots `player`, `players`, `team`, `teams` and the
+    point's `Reading.position`. **The names are two fields beside the kind,
+    not the draft's one `names` tuple, and the kind is the reading's, not
+    what the names say**, because the readings hold them apart: measured on
+    the 2,710 readings (`subject_family.py`), players and a team together on
+    43 (22 team records keyed on a companion's line, 21 a team named beside
+    a player that nothing placed), a player under a `team` kind on 23, a
+    player under `everyone` on 11 (the grammar's subject a count or a high
+    settles where the reading named nobody), a team beside a position group
+    on 9 (the draft's `of_team`, which is `teams` here). One player is never
+    carried in the plural slot and two never in the singular, and a list of
+    teams never at all, so the COUNT says which slot each projects to
+    (`player` for one, `players` for two or more; `team`, `teams` the same)
+    - a slot dict that listed one name in a plural slot or split two teams
+    between `team` and `teams` comes back as the count says (the 7 tests).
+    The draft's `players`/`teams` kinds are `pair`/`teams`, and it had no
+    `position` or `team_players` kind; both are the reading's
+    (`subject.SUBJECT_KINDS`, `reading.SubjectKind`). `Subject.player` and
+    `Subject.team` are the one player and the one team a reader reads.
+  - **One reader, one writer, no tagger.** The subject reading
+    (`subject.read_subject`, once per question) is the family's reader and
+    `subject.apply_subject` its one writer of the typed value (the kind and
+    the position group the reading's, the names as the stages and the
+    reading's settling left them). `subject.Subject`, the reading's record,
+    IS a `reading.Subject` - the typed value as read - with the fields only
+    the parser's settling needs beside it (the opponent and the player's own
+    team the cuts tagger takes, the companions, the evidence, the names the
+    model invented or filed as filler, the season named, the intent and why,
+    the claims). The stages are handed `router.Named` (the typed subject,
+    the opponent, the grammar's subject and the team words the reading read)
+    and read no name of their own; the three name moves they still make
+    under the intent they settle (a count's or a high's subject from the
+    grammar, 30 readings; a team's quarter from its one nickname, 27; a
+    quarter's player read back, 1) are the reading's words written on the
+    typed subject. `router._MODEL_SLOTS` went (the freeze 9 -> 8, the debt 4
+    -> 3), and `settle` refuses a name passed as a slot.
+  - The point reader takes the kind, the names and the position from the
+    typed value (`read_point` writes the reading's kind and position onto
+    it, as the parser's last step did, for a Reading built by hand), and a
+    position group narrows the league's own moves alone
+    (`point._everyone_point`; every other move reads the scope without it):
+    the planner's `Query.position` is the point's subject's position, and
+    `Reading.projected` emits the old `position` field from it where the
+    point is the league's.
+  - **No cell.** No relation table declares, honors or refuses a name: a
+    reader narrows to whom it is about and a name nothing resolves is the
+    relation's own refusal (`name_unmatched`, a clarification).
+    `Subject.CELLS` is empty; a behavioral test per relation shows the typed
+    subject changes what each reads (one player's games against
+    another's, the league's read narrowed to a team's players and to a
+    position group, the team relation's team, a pair's two players).
+  - The family's words are the lexicon's (team nicknames, cities,
+    abbreviations, singulars, positions, the versus and "for" phrases, the
+    subject-of grammars and the words that are never a subject, where a name
+    ends, the words that are never a name, the child grammars' words, two
+    teams meeting); the subject reading claims the names, the teams, the
+    opponent, the tenure and the position group it settled
+    (`subject.subject_claims`; `player`, `team`, `opponent`, `tenure`,
+    `position`).
+  - The record keeps its old shape through the projection
+    (`Subject.to_slots`, `slot_record`, `Scope.to_slots`, `Scope.projected`,
+    `Reading.projected`'s `position`), and the typed value is recorded
+    beside the reading as `who` (the reading's record keeps the key
+    `subject`).
+  - Not this slice's, on purpose: the intent and why it is not the route's
+    stay on the reading's record (step 4); `split` is the role family's.
+
 ## What must be decided before which phase
 
 | Phase | Needs from this document |
@@ -1096,3 +1171,18 @@ moves into `data` before the slice that rewords its answer:
     `compose.team`, 1,345 and 846 lines) reads `Measure` values. Proposed:
     with step 4, when the point reader is re-keyed on the grammar and the
     `by` tables go.
+14. **A position group beside a named player is read and then dropped.**
+    "centers vs gobert gamelog with 34 minutes 2024" reads a `player`
+    subject (Gobert) carrying the position group C, and the point reader
+    honors a position on the league's moves alone, so the answer is
+    Gobert's own log - the question is the centers' games against him (1 of
+    the 2,710 readings). The typed design reads it as the position group's
+    games with Gobert an opponent-side companion; the planner refusing a
+    position on a point that takes none is the decline-to-Cause shape.
+    ISSUES.md.
+15. **The stages still settle three names.** The grammar's subject of a
+    count or a high, a team's quarter from its one nickname and a quarter's
+    player read back are written on the typed subject by the stages, under
+    the intent they choose, from the reading's own words (`router.Named`).
+    Step 4, which keys the readers on the grammar and deletes the stages,
+    moves the three to the subject reading's settling under the intent.

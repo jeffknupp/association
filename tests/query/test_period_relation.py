@@ -21,6 +21,7 @@ from association.query.answer import AnswerContext
 from association.query.player_games import PERIOD_AGREEMENT, PERIOD_COLUMNS, Narrowed, aggregate_sql, period_line_sql, rows_sql
 from association.query.player_relation import RELATION_SCOPING, RELATION_SCOPING_EXCLUDED
 from association.query.reading import Period, Reading, Scope, Span, period_narrowing
+from association.query.reading import Subject as Who
 from association.query.team_games import TEAM_PERIOD_AGREEMENT, TEAM_PERIOD_COLUMNS, TeamNarrowed, team_period_line_sql
 from association.query.team_games import aggregate_sql as team_aggregate_sql
 from association.query.team_games import rows_sql as team_rows_sql
@@ -224,8 +225,8 @@ def test_a_period_condition_sends_a_players_line_to_the_box_scores() -> None:
     opponent or a teammate's role (#212's shape, guarded)."""
     from association.query.reading import Line, Period, scope_reads_box_scores
 
-    assert scope_reads_box_scores(Scope(player="x", lines=(Line(measure="points", value=10, period=Period(number=1)),)), [])
-    assert not scope_reads_box_scores(Scope(player="x"), [])
+    assert scope_reads_box_scores(Scope(subject=Who(kind="player", players=("x",)), lines=(Line(measure="points", value=10, period=Period(number=1)),)), [])
+    assert not scope_reads_box_scores(Scope(subject=Who(kind="player", players=("x",))), [])
 
 
 def test_the_scope_narrows_to_a_half_or_a_quarter_through_the_typed_period() -> None:
@@ -258,15 +259,15 @@ def test_the_compiler_refuses_a_period_read_of_a_column_no_play_splits() -> None
     from association.query.compose.core import Query, Unsupported, _check_period_measures
 
     with pytest.raises(Unsupported, match="minutes"):
-        _check_period_measures(Query(scope=Scope(player="x", period=Period(number=1))))
+        _check_period_measures(Query(scope=Scope(subject=Who(kind="player", players=("x",)), period=Period(number=1))))
     with pytest.raises(Unsupported, match="plusMinus"):
-        _check_period_measures(Query(scope=Scope(player="x", period=Period(number=2, half=True)), measures=["points"], predicates=[("plusMinus", ">=", 5)]))
-    _check_period_measures(Query(scope=Scope(player="x", period=Period(number=1)), measures=["points", "rebounds", "fg_pct"]))
-    _check_period_measures(Query(scope=Scope(player="x"), measures=["minutes"]))  # no period: nothing to refuse
+        _check_period_measures(Query(scope=Scope(subject=Who(kind="player", players=("x",)), period=Period(number=2, half=True)), measures=["points"], predicates=[("plusMinus", ">=", 5)]))
+    _check_period_measures(Query(scope=Scope(subject=Who(kind="player", players=("x",)), period=Period(number=1)), measures=["points", "rebounds", "fg_pct"]))
+    _check_period_measures(Query(scope=Scope(subject=Who(kind="player", players=("x",))), measures=["minutes"]))  # no period: nothing to refuse
     # A read grouped by period sees each quarter's line, and is held to the same columns.
     with pytest.raises(Unsupported, match="minutes"):
-        _check_period_measures(Query(scope=Scope(player="x"), skeleton="grouped", group="period", measures=["minutes"]))
-    _check_period_measures(Query(scope=Scope(player="x"), skeleton="grouped", group="period", measures=["three_pct"]))
+        _check_period_measures(Query(scope=Scope(subject=Who(kind="player", players=("x",))), skeleton="grouped", group="period", measures=["minutes"]))
+    _check_period_measures(Query(scope=Scope(subject=Who(kind="player", players=("x",))), skeleton="grouped", group="period", measures=["three_pct"]))
 
 
 def test_compiling_a_period_read_of_minutes_refuses_before_the_warehouse_is_read() -> None:
@@ -275,7 +276,7 @@ def test_compiling_a_period_read_of_minutes_refuses_before_the_warehouse_is_read
     from association.query.compose.core import Query, Unsupported, compile_query
 
     with pytest.raises(Unsupported, match="minutes"):
-        compile_query(duckdb.connect(":memory:"), Query(scope=Scope(player="x", period=Period(number=1), span=Span(season=SEASON, season_type=2))))
+        compile_query(duckdb.connect(":memory:"), Query(scope=Scope(subject=Who(kind="player", players=("x",)), period=Period(number=1), span=Span(season=SEASON, season_type=2))))
 
 
 # ---------------------------------------------------------------------------

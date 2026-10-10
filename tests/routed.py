@@ -38,8 +38,8 @@ from association.query.compose.core import Query
 from association.query.compose.plan import plan, plan_point
 from association.query.normalizer import Normalized
 from association.query.point import default_point
-from association.query.reading import Reading, Scope
-from association.query.router import Route
+from association.query.reading import Companion, Line, Reading, Scope, Subject
+from association.query.router import Named, Route, _settle, settle
 from association.query.subject import child_named, read_subject, settle_subject
 
 
@@ -100,3 +100,32 @@ def default_query(intent: str, slots: Mapping[str, Any]) -> Query:
     query = plan(default_reading(intent, slots))
     assert isinstance(query, Query)
     return query
+
+
+#: The slot names a test's payload still carries names under (the router
+#: model's schema): the stages take them typed since Phase 3, step 2.
+_NAME_SLOTS = ("player", "players", "team", "teams", "opponent")
+
+
+def handed(question: str, slots: Mapping[str, Any]) -> Named:
+    """What the subject reading hands the stages for ``question``
+    (``router.Named``), from the names a test's slot dict carries: the
+    typed subject they name (``reading.Subject.from_slots``), the opponent,
+    and the grammar's subject and the team words read from the words."""
+    names = {key: slots[key] for key in ("player", "players", "team", "teams") if key in slots}
+    opponent = slots.get("opponent")
+    return Named.of(question, subject=Subject.from_slots(names), opponent=opponent if isinstance(opponent, str) and opponent.strip() else None)
+
+
+def staged(intent: str, slots: Mapping[str, Any], question: str, companions: tuple[Companion, ...] = (), *, lines: tuple[Line, ...] = ()) -> Route:
+    """The stages (``router.settle``) over a test's slot dict, its names
+    handed typed (:func:`handed`) and the rest - the model's stat, a test's
+    side, shot value and columns - as the slots."""
+    return settle(intent, {key: value for key, value in slots.items() if key not in _NAME_SLOTS}, question, companions, lines=lines, handed=handed(question, slots))
+
+
+def staged_raw(raw: Mapping[str, Any], question: str, companions: tuple[Companion, ...] = ()) -> Route:
+    """The stages (``router._settle``) over a raw route a test spells as the
+    router's model reply did (the intent and its slots), its names handed
+    typed (:func:`handed`)."""
+    return _settle({key: value for key, value in raw.items() if key not in _NAME_SLOTS}, question, companions, handed=handed(question, raw))

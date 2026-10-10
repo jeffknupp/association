@@ -329,7 +329,7 @@ def _team_narrowed(scope: Scope) -> bool:
 
 def _resolved_team_subject(con: duckdb.DuckDBPyConnection, scope: Scope) -> Entity:
     """The team a question names, or the refusal wrapped as :class:`~association.query.compose.core.Refused`."""
-    team_text = scope.team
+    team_text = scope.subject.team
     if team_text is None or not team_text.strip():
         raise Unsupported("no team named")
     season: int = scope.span.season if scope.span.season is not None else current_season()
@@ -528,7 +528,7 @@ def compile_team_run(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> TeamCompil
     """
     scope = q.scope
     team: Entity | None
-    if scope.team and scope.team.strip():
+    if scope.subject.team is not None:
         narrowed, team, span = _team_games_narrowed(con, q)
         whole_span(narrowed)
         limit, best = 3, False

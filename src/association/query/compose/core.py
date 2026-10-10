@@ -611,10 +611,10 @@ def _resolve_pair(con: duckdb.DuckDBPyConnection, q: Query) -> tuple[Entity, Ent
     .. versionadded:: 5.0.0
     """
     scope = q.scope
-    texts = list(dict.fromkeys(n.strip() for n in [*scope.players, scope.player] if n is not None and n.strip()))
+    texts = list(dict.fromkeys(n.strip() for n in scope.subject.players))
     if len(texts) != 2:
         raise Unsupported(f"player_matchup needs exactly two players, got {texts!r}")
-    first = replace(q, scope=replace(scope, player=texts[0], window=replace(scope.window, order=None, count=None), cuts=replace(scope.cuts, opponent=None)))
+    first = replace(q, scope=replace(scope, subject=replace(scope.subject, players=(texts[0],)), window=replace(scope.window, order=None, count=None), cuts=replace(scope.cuts, opponent=None)))
     a, span, narrowed = _resolve_named(con, first)
     assert a is not None
     b = resolved_player(con, texts[1], available=BOX_SCORES, season=span.season, through=career_end(span.season))
@@ -644,8 +644,8 @@ def _apply_team_slot(con: duckdb.DuckDBPyConnection, q: Query, player: Entity | 
     itself carries no such narrowing, and treating it as a filter there would
     answer a narrower question than the template does."""
     scope = q.scope
-    team_text = scope.team
-    if team_text is None or not team_text.strip() or player is None:
+    team_text = scope.subject.team
+    if team_text is None or player is None:
         return narrowed
     if q.skeleton == "rows":
         resolved_opponent = team_slot_for_player(con, player, team_text, season=scope.span.season, opponent=scope.cuts.opponent)

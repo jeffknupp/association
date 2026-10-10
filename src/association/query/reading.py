@@ -26,15 +26,15 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field, fields, replace
 from datetime import date
-from typing import TYPE_CHECKING, Any, ClassVar, Literal
+from typing import TYPE_CHECKING, Any, ClassVar, Literal, get_args
 
 from association.query import lexicon
 from association.query.calendar import AlignmentNarrowing, CalendarNarrowing, parse_alignment, parse_situation
 
 if TYPE_CHECKING:
+    from association.query import subject as subject_reading
     from association.query.decisions import Decision
     from association.query.entities import Availability
-    from association.query.subject import Subject
 
 Shape = Literal["scalar", "rows", "ranking", "comparison", "split", "runs", "chart"]
 """The form of the point's one body, in the target's vocabulary
@@ -118,6 +118,19 @@ game's, the declared relation of the same draft).
    a declared relation with its own reader (``compose.shots``), not ported
    onto the player-games relation (``ROADMAP.md``, "Charts are declared
    shapes").
+"""
+
+SubjectKind = Literal["player", "pair", "team", "teams", "position", "everyone", "team_players"]
+"""Who a question is about, as one word (:attr:`Subject.kind`): one named
+player, two or more (``pair``), a team, two teams meeting, a position group,
+the league (``everyone``), or a team's players as a group
+(``team_players``: "a Hawks player"). The subject reading decides it
+(:func:`~association.query.subject.read_subject`); the point reader reads
+the relation a point is on off it and the names beside it.
+
+.. versionadded:: 6.0.0
+   ``subject.SUBJECT_KINDS`` was the set; the literal is the typed
+   subject's (Phase 3, step 2).
 """
 
 SeasonType = Literal[2, 3]
@@ -1158,6 +1171,171 @@ def _how_of_unit(unit: str) -> MeasureHow | None:
 _MEASURE_SLOT_NAMES = frozenset({"stat", "fields", "per_game", "rate", "side", "shot_value", "kind"})
 
 
+#: The four slot names the subject was carried as until Phase 3, step 2,
+#: in the order they stood among the Scope's fields - the names the
+#: subject's door still takes (:meth:`Subject.from_slots`).
+_SUBJECT_SLOT_NAMES = ("player", "players", "team", "teams")
+
+
+@dataclass(frozen=True)
+class Subject:
+    """Who a read is about - ``ROADMAP-TYPES.md``'s ``Subject(kind, names,
+    position, of_team)``, the seventh family typed (Phase 3, step 2): one
+    value in place of the four slots that carried the names (``player``,
+    ``players``, ``team``, ``teams``) and the point's ``position``. Written
+    by the subject reading alone (:func:`~association.query.subject.apply_subject`,
+    over what the stages settled from it), and read by the point reader and
+    the relations' readers - who the read narrows to; resolving a name
+    against the warehouse stays where each is read.
+
+    ``kind`` is the reading's (:data:`SubjectKind`). ``players`` are the
+    players the read is about, as the reading settled them - the question's
+    own spelling of a name the model completed, a span the model copied and
+    nothing placed, the player a count's grammar names where the model
+    dropped him, the companion whose line a team's record is keyed on - in
+    the question's order: ONE is the player a reader reads (:attr:`player`;
+    the ``player`` slot), two or more a comparison or a pair (the
+    ``players`` slot). ``teams`` the same for teams: one is the team the
+    read is about, or whose players it ranks (the draft's ``of_team``: "most
+    points by a 76ers power forward"), or a team named beside a player that
+    the reading placed nowhere (:attr:`team`; the ``team`` slot); two or
+    more are teams a slot dict named as a list (the router-era ``teams``
+    slot - the parser never writes one: 0 of the 2,710 readings), and two
+    teams meeting are the first team and the games' opponent
+    (:attr:`Cuts.opponent`), as the relations apply them. ``position`` is
+    the position group the words name ("centers", "a shooting guard";
+    :data:`~association.query.lexicon.POSITION_WORDS`' codes), which the
+    league's own reads narrow to - on a point, only the moves that honor
+    one carry it (``point._everyone_point``).
+
+    The names are fields beside the kind rather than the draft's one
+    ``names`` tuple, and the kind is the reading's rather than what the
+    names say, because the readings hold them apart: measured on the 2,710
+    readings of 2026-10-10 (``~/association-research/stages/subject_family.py``),
+    players and a team together on 43 (22 team records keyed on a
+    companion's line, 21 a team named beside a player that nothing placed),
+    a player under a ``team`` kind on 23, a player under ``everyone`` on 11
+    (the grammar's subject a count or a high settles where the reading named
+    nobody), a team beside a position group on 9, a position group under a
+    ``player`` kind on 1. One player is never carried in the plural slot,
+    two never in the singular, and a list of teams never at all (players:
+    1,439 one, 122 two, 1 three; teams: 382 one), so the count says which
+    slot a name was carried in (:meth:`to_slots`). No cell: no relation table
+    declares, honors or refuses a name - a reader narrows to whom it is
+    about, and a name nothing resolves is the relation's refusal
+    (:attr:`CELLS`).
+
+    .. versionadded:: 6.0.0
+    """
+
+    kind: SubjectKind = "everyone"
+    players: tuple[str, ...] = ()
+    teams: tuple[str, ...] = ()
+    position: str | None = None
+
+    #: The family's cells: none. Who a read is about is what the relation
+    #: reads, not a narrowing its cell table could honor or refuse; a
+    #: position group narrows the league's own read (``league_games``'s
+    #: ``position``) and is honored or not by the point reader, by shape.
+    CELLS: ClassVar[frozenset[str]] = frozenset()
+
+    def __post_init__(self) -> None:
+        """Hold the kind to :data:`SubjectKind`, each name to non-blank text
+        and the position to a group :data:`~association.query.lexicon.POSITION_GROUPS`
+        holds."""
+        if self.kind not in _SUBJECT_KINDS:
+            raise ScopeError(f"subject kind {self.kind!r} is not one of {sorted(_SUBJECT_KINDS)}")
+        for name, names in (("players", self.players), ("teams", self.teams)):
+            if not isinstance(names, tuple) or not all(isinstance(each, str) and each.strip() for each in names):
+                raise ScopeError(f"subject {name}={names!r} is not a tuple of names")
+        if self.position is not None and self.position not in lexicon.POSITION_GROUPS:
+            raise ScopeError(f"subject position {self.position!r} is not one of {sorted(lexicon.POSITION_GROUPS)}")
+
+    @property
+    def player(self) -> str | None:
+        """The one player the read is about - None where it names none, or
+        two or more (a comparison, a pair)."""
+        return self.players[0] if len(self.players) == 1 else None
+
+    @property
+    def team(self) -> str | None:
+        """The one team the read is about or narrows to - None where it
+        names none, or two or more."""
+        return self.teams[0] if len(self.teams) == 1 else None
+
+    @property
+    def named(self) -> bool:
+        """Whether a player or a team is named at all."""
+        return bool(self.players or self.teams)
+
+    @classmethod
+    def from_slots(cls, slots: Mapping[str, Any]) -> Subject:
+        """The subject four slot values name (:meth:`Scope.from_slots` reads
+        them off a slot dict): ``player`` then ``players`` as the players,
+        ``team`` then ``teams`` as the teams, each name once, the kind
+        what they hold - two or more players a ``pair``, one a ``player``,
+        then two or more teams ``teams``, one a ``team``, else
+        ``everyone``. A position is no slot: a reading writes it."""
+        players = tuple(dict.fromkeys(_slot_names(slots.get("player")) + _slot_names(slots.get("players"))))
+        teams = tuple(dict.fromkeys(_slot_names(slots.get("team")) + _slot_names(slots.get("teams"))))
+        return cls(kind=_kind_named(players, teams), players=players, teams=teams)
+
+    def to_slots(self) -> dict[str, Any]:
+        """The four slots this value was recorded as until Phase 3, step 2,
+        each only where set: one player as ``player`` and two or more as
+        ``players``, one team as ``team`` and two or more as ``teams`` (the
+        parser filled them so; a slot dict that listed ONE name in a
+        plural slot, or split two teams between ``team`` and ``teams``,
+        comes back as the count says)."""
+        out: dict[str, Any] = {}
+        if len(self.players) == 1:
+            out["player"] = self.players[0]
+        elif self.players:
+            out["players"] = list(self.players)
+        if len(self.teams) == 1:
+            out["team"] = self.teams[0]
+        elif self.teams:
+            out["teams"] = list(self.teams)
+        return out
+
+    def slot_record(self) -> dict[str, Any]:
+        """Every one of the four slots, at its default or not, in field
+        order (:meth:`Scope.projected`)."""
+        slots = self.to_slots()
+        return {"player": slots.get("player"), "players": tuple(slots.get("players", ())), "team": slots.get("team"), "teams": tuple(slots.get("teams", ()))}
+
+    def without_position(self) -> Subject:
+        """This subject with no position group: what a point that honors
+        none reads (``point._read_point``)."""
+        return replace(self, position=None) if self.position is not None else self
+
+
+_SUBJECT_KINDS: frozenset[str] = frozenset(get_args(SubjectKind))
+
+
+def _slot_names(raw: Any) -> tuple[str, ...]:
+    """The names one slot value holds - a name, or a list of names - each
+    stripped of nothing, blanks left out (a blank is the slot absent)."""
+    if raw is None:
+        return ()
+    names = [raw] if isinstance(raw, str) else list(raw)
+    return tuple(name for name in names if isinstance(name, str) and name.strip())
+
+
+def _kind_named(players: tuple[str, ...], teams: tuple[str, ...]) -> SubjectKind:
+    """The kind a slot dict's names say, a player before a team (the
+    reading's own precedence: a named subject is the narrower claim)."""
+    if len(players) >= 2:
+        return "pair"
+    if players:
+        return "player"
+    if len(teams) >= 2:
+        return "teams"
+    if teams:
+        return "team"
+    return "everyone"
+
+
 @dataclass(frozen=True)
 class Claim:
     """The characters of the question one reader rule consumed - ``start``
@@ -1187,11 +1365,12 @@ class Scope:
     .. versionadded:: 5.0.0
     """
 
-    #: The subject and the players and teams beside it.
-    player: str | None = None
-    players: tuple[str, ...] = ()
-    team: str | None = None
-    teams: tuple[str, ...] = ()
+    #: Who the read is about: one typed value (:class:`Subject` - the kind,
+    #: the players, the teams, the position group; the four slots
+    #: ``player``, ``players``, ``team`` and ``teams`` and the point's
+    #: ``position`` until Phase 3, step 2), written by the subject reading
+    #: alone.
+    subject: Subject = field(default_factory=Subject)
     #: Which games of the span: one typed value (:class:`Cuts`; the eight
     #: slots ``opponent``, ``own_team``, ``venue``, ``date``, ``situation``,
     #: ``round``, ``game_n`` and ``season_n`` until Phase 3, step 2).
@@ -1233,11 +1412,22 @@ class Scope:
 
         .. versionadded:: 5.0.0
         """
-        unknown = sorted(set(slots) - _SCOPE_FIELDS - _SPAN_SLOT_NAMES - _WINDOW_SLOT_NAMES - _CUT_SLOT_KEYS - _PERIOD_SLOT_NAMES - _LINE_SLOT_NAMES - _COMPANION_SLOT_NAMES - _MEASURE_SLOT_NAMES)
+        unknown = sorted(
+            set(slots)
+            - _SCOPE_FIELDS
+            - frozenset(_SUBJECT_SLOT_NAMES)
+            - _SPAN_SLOT_NAMES
+            - _WINDOW_SLOT_NAMES
+            - _CUT_SLOT_KEYS
+            - _PERIOD_SLOT_NAMES
+            - _LINE_SLOT_NAMES
+            - _COMPANION_SLOT_NAMES
+            - _MEASURE_SLOT_NAMES
+        )
         if unknown:
             raise ScopeError(f"no scope field for slot(s) {unknown}")
         values: dict[str, Any] = {}
-        typed_slots: dict[str, dict[str, Any]] = {"span": {}, "window": {}, "cuts": {}, "period": {}, "lines": {}, "companions": {}, "measure": {}}
+        typed_slots: dict[str, dict[str, Any]] = {"subject": {}, "span": {}, "window": {}, "cuts": {}, "period": {}, "lines": {}, "companions": {}, "measure": {}}
         for name, raw in slots.items():
             # A blank string is the slot absent too: the model files " " for
             # an opponent it has none of, and every template read it as
@@ -1253,6 +1443,7 @@ class Scope:
             else:
                 typed_slots[family][name] = _CHECKS[name](name, raw)
         for family, door in (
+            ("subject", Subject.from_slots),
             ("measure", Measure.from_slots),
             ("span", Span.from_slots),
             ("window", Window.from_slots),
@@ -1296,7 +1487,11 @@ class Scope:
             value = getattr(self, f.name)
             if f.name in ("cuts", "lines", "companions"):
                 continue
-            if not (value is None or value is False or value == ()):
+            if f.name == "subject":
+                # The four slots where the fields stood, the cuts' and the
+                # companions' attached after them.
+                out.update(value.to_slots())
+            elif not (value is None or value is False or value == ()):
                 if f.name in ("span", "window", "period"):
                     out.update(value.to_slots())
                 elif f.name == "measure":
@@ -1395,7 +1590,9 @@ class Scope:
             value = getattr(self, f.name)
             if f.name in ("lines", "companions"):
                 continue
-            if f.name == "span":
+            if f.name == "subject":
+                out.update(value.slot_record())
+            elif f.name == "span":
                 slots = value.to_slots()
                 out["season"] = slots.get("season")
                 out["season_type"] = slots.get("season_type")
@@ -1550,21 +1747,16 @@ def _typed_family(name: str, raw: Any) -> tuple[str | None, bool]:
     return None, False
 
 
-#: Where each cut's slot stood among the Scope's fields until Phase 3, step
-#: 2: the slots emitted after the named field, in order. The opponent and
-#: the tenure followed ``teams``; the date and the situation followed the
-#: span; a game of a series, an ordinal season and a round followed the
-#: split; the venue followed the period condition.
 #: Where each typed family's slot stood among the Scope's fields until Phase
 #: 3, step 2 - ``(family, slot)`` emitted after the named field, in order.
-#: The opponent and the tenure followed ``teams``, then the companions'
-#: three; the lines' ``threshold``, ``above`` and ``below`` followed
+#: The opponent and the tenure followed ``teams`` (the subject's last slot,
+#: so they follow the typed subject), then the companions' three; the lines' ``threshold``, ``above`` and ``below`` followed
 #: ``stat`` (the measure's first slot, emitted by the measure's own branch);
 #: the date and the situation followed the span; a game of a
 #: series, an ordinal season and a round followed the split; the line in a
 #: quarter followed the period, and the venue it.
 _ATTACHED_SLOT_POSITIONS: dict[str, tuple[tuple[str, str], ...]] = {
-    "teams": (("cuts", "opponent"), ("cuts", "own_team"), ("companions", "with_player"), ("companions", "without"), ("companions", "conditions")),
+    "subject": (("cuts", "opponent"), ("cuts", "own_team"), ("companions", "with_player"), ("companions", "without"), ("companions", "conditions")),
     "span": (("cuts", "date"), ("cuts", "situation")),
     "split": (("cuts", "game_n"), ("cuts", "season_n"), ("cuts", "round")),
     "period": (("lines", "period_condition"), ("cuts", "venue")),
@@ -1716,9 +1908,10 @@ _LINE_SLOT_NAMES = frozenset({"threshold", "above", "below", "period_condition"}
 _COMPANION_SLOT_NAMES = frozenset({"with_player", "without", "conditions"})
 
 #: Each typed value's field, and the type a whole value under it has.
-_WHOLE_VALUES: dict[str, type] = {"span": Span, "window": Window, "cuts": Cuts, "period": Period, "measure": Measure}
+_WHOLE_VALUES: dict[str, type] = {"subject": Subject, "span": Span, "window": Window, "cuts": Cuts, "period": Period, "measure": Measure}
 #: Each family's slot names, and the family they pass the door into.
 _FAMILY_SLOT_NAMES: tuple[tuple[frozenset[str], str], ...] = (
+    (frozenset(_SUBJECT_SLOT_NAMES), "subject"),
     (_SPAN_SLOT_NAMES, "span"),
     (_WINDOW_SLOT_NAMES, "window"),
     (_CUT_SLOT_KEYS, "cuts"),
@@ -1938,12 +2131,10 @@ class Reading:
     #: .. versionadded:: 6.0.0
     subject_span: Span | None = None
     relation: Relation = "player"
-    #: A position code, honored on the ``"everyone"`` relation.
-    position: str | None = None
     #: The intent label the trace and the presenters use.
     intent: str = ""
     #: Who the question is about, as the subject reading read it.
-    subject: Subject | None = None
+    subject: subject_reading.Subject | None = None
     #: One line per finding, for the trace.
     evidence: tuple[str, ...] = ()
     #: What the parser decided on the way, as values - who the question is
@@ -2008,7 +2199,7 @@ class Reading:
     left_out: LeftOut | None = None
 
     @classmethod
-    def from_slots(cls, slots: Mapping[str, Any], *, intent: str = "", subject: Subject | None = None) -> Reading:
+    def from_slots(cls, slots: Mapping[str, Any], *, intent: str = "", subject: subject_reading.Subject | None = None) -> Reading:
         """A Reading holding nothing but the scope ``slots`` names (through
         :meth:`Scope.from_slots`), for the readers that still build one from a
         slot dict: the agent's dispatch of a routed question to its template,
@@ -2022,12 +2213,19 @@ class Reading:
         """Every field as a Reading was recorded until Phase 3, step 2
         (:func:`~association.query.stages.plain`): ``subject_span`` as the
         ``span`` and ``season`` pair it replaced, the point's ``offset`` as
-        the 0 it always was, every other field as it is - ``claims``
-        included, the one field the record gained.
+        the 0 it always was, its ``position`` as the position group its
+        subject carries where it is the league's (the field it was), every
+        other field as it is - ``claims`` included, the one field the
+        record gained.
 
         .. versionadded:: 6.0.0
         """
         out = {f.name: getattr(self, f.name) for f in fields(self) if f.name != "subject_span"}
+        # The point's position group, a field of its own until Phase 3,
+        # step 2: the league's read honors it, and only the point reader's
+        # moves that do carry one on the point's subject
+        # (``point._everyone_point``); every other Reading held None.
+        out["position"] = self.scope.subject.position if self.relation == "everyone" else None
         # The scope's companions print under the with/without split's slot
         # where the point divides the games by their presence.
         out["scope"] = self.scope.projected(split_by_presence=self.intent == "with_without" or self.group == "presence")
@@ -2157,36 +2355,6 @@ the two readings would leave one of them silently wrong; filed in
 .. versionadded:: 4.4.0
 """
 
-#: A question's position word, mapped to :data:`POSITION_CODES`' own letter.
-POSITIONS: list[tuple[str, str]] = [
-    (r"\bcenters?\b", "C"),
-    (r"\bpoint guards?\b", "PG"),
-    (r"\bshooting guards?\b", "SG"),
-    (r"\bpower forwards?\b", "PF"),
-    (r"\bsmall forwards?\b", "SF"),
-    (r"\bforwards?\b", "F"),
-    (r"\bguards?\b", "G"),
-]
-"""``(pattern, position code)`` - the words a position-group question uses.
-
-.. versionadded:: 4.4.0
-
-.. versionchanged:: 5.0.0
-   Moved here from the point reader (``query/point.py`` since 2026-10-03,
-   ``compose/move.py`` before), so the subject reading and the compiler
-   share one list without importing each other.
-"""
-
-FILLER_PLAYER_WORDS: frozenset[str] = frozenset({"player", "players", "a player", "any player"})
-"""What the router writes in ``player`` when the question names nobody -
-filler, not a name ("Most points in 15th season played" arrived as
-``player: "player"``, yardstick-v2 F099). The subject reading reads none of
-them as a player, and the compiler clears the slot.
-
-.. versionadded:: 5.0.0
-"""
-
-
 TEAM_ONLY_INTENTS: frozenset[str] = frozenset({"team_record", "team_leaderboard", "team_stat", "team_outlook"})
 """Intents with no player-shaped reading at all - absent from
 ``reading.PLAYER_INTENTS``, and so never checked by
@@ -2301,11 +2469,15 @@ def _career_scope(scope: Scope) -> Scope:
 
 
 def named_player_in(scope: Scope) -> bool:
-    """Whether ``scope`` names a player at all.
+    """Whether ``scope`` names one player (:attr:`Subject.player`): the
+    player a reader on his games reads - not a pair or a comparison.
 
     .. versionadded:: 5.0.0
+
+    .. versionchanged:: 6.0.0
+       Reads the typed subject (the ``player`` slot until Phase 3, step 2).
     """
-    return scope.player is not None and bool(scope.player.strip())
+    return scope.subject.player is not None
 
 
 class Unsupported(Exception):

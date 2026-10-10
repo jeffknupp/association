@@ -507,8 +507,8 @@ def read_team_log(con: duckdb.DuckDBPyConnection, q: TeamQuery, *, stated: froze
     # being filtered inside it.
     asked = scope.span.over_career() if date else scope.span
     mixed = scope.span.both and not date and not asked.career and not game_n
-    team_text = scope.team
-    if not team_text or scope.player:
+    team_text = scope.subject.team
+    if not team_text or scope.subject.player:
         raise Unsupported("game_log needs a team or a player")
     team = resolved_team(con, team_text, season=slot_season(scope))
     if isinstance(team, Unanswered):

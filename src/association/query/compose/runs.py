@@ -73,7 +73,7 @@ def read_streak(con: duckdb.DuckDBPyConnection, q: Query, *, stated: frozenset[s
     scope = q.scope
     if unhonored_scoping("streak", scope, stated):
         return None
-    team = optional_team(con, scope.team, season=scope.span.season)
+    team = optional_team(con, scope.subject.team, season=scope.span.season)
     if isinstance(team, Unanswered):
         return team
     covered = run_scope(scope, named=q.subject == "player")

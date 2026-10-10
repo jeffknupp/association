@@ -73,7 +73,8 @@ def test_no_intent_is_added_and_a_retired_one_leaves_the_list() -> None:
 # Every module-level declaration of which scoping slots a read honors,
 # states, excludes or refuses, by module and name, as it stood after Phase 2
 # (restored 2026-10-05, #330: step 6 deleted this freeze while 12 of its 14
-# entries were still in src; 11 since Phase 3, step 1). Each is labeled with
+# entries were still in src; 11 since Phase 3, step 1, and 8 since its step 2's
+# slices, the subject's taking ``router._MODEL_SLOTS``). Each is labeled with
 # why it is still here:
 CELL_TABLE = "a per-relation cell table: stays through Phase 4"
 STATED = "STATED_SCOPING: Phase 3's cells (the planner's checks over the Reading's typed filters) replace it"
@@ -93,7 +94,6 @@ FROZEN_SCOPING_TABLES: dict[tuple[str, str], str] = {
     ("conditions", "_CONDITION_PLAYER_ONLY_CELLS"): (
         "debt, owed by Phase 3: the complement of TEAM_RELATION_SCOPING restated, which the planner's cell check over the team relation refuses by itself"
     ),
-    ("router", "_MODEL_SLOTS"): "debt, owed by Phase 3, whose exit deletes router.py and Route",
 }
 _LABELS = (CELL_TABLE, STATED, "debt, owed by ")
 

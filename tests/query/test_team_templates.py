@@ -26,7 +26,7 @@ from association.query.answer import AnswerContext, Reply
 from association.query.coverage import check_coverage
 from association.query.measure import measure_of
 from association.query.parse import with_point
-from association.query.reading import Reading, Scope, Unsupported, unhonored_scoping
+from association.query.reading import Reading, Scope, SubjectKind, Unsupported, unhonored_scoping
 from association.query.subject import Subject
 from association.query.team_metrics import TEAM_METRICS, descending_for, resolve_team_metric
 
@@ -42,9 +42,9 @@ def _compiled(intent: str) -> Callable[[AnswerContext, Reading], Reply]:
 
     def answered(ctx: AnswerContext, reading: Reading) -> Reply:
         scope = reading.scope
-        named = tuple(name for name in (scope.player, *scope.players) if name)
-        kind = "pair" if len(named) > 1 else "player" if named else "team" if scope.team else "everyone"
-        subject = reading.subject or Subject(kind, players=named, teams=(scope.team,) if scope.team else ())
+        named = scope.subject.players
+        kind: SubjectKind = "pair" if len(named) > 1 else "player" if named else "team" if scope.subject.team else "everyone"
+        subject = reading.subject or Subject(kind, players=named, teams=(scope.subject.team,) if scope.subject.team else ())
         why: list[str] = []
         result = compose_answer(ctx, with_point(ctx.con, "", Reading(scope=scope, intent=intent, subject=subject)), declined=why.append)
         if result is None:

@@ -12,6 +12,7 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
+from routed import staged as settle
 from test_templates import pg_ctx, team_cells_con  # noqa: F401 - the two relation fixtures, imported by name
 
 from association.nba.season import current_season
@@ -22,7 +23,7 @@ from association.query.compose.plan import STATED_SCOPING
 from association.query.cuts import CutsContext, CutsRead, read_cuts
 from association.query.player_relation import RELATION_SCOPING, RELATION_SCOPING_EXCLUDED, relation_cuts, relation_scoping
 from association.query.reading import Claim, Companion, Cuts, PointShape, Scope, ScopeError, Situation, Span, cell_set, situation_of, unhonored_cells
-from association.query.router import settle
+from association.query.reading import Subject as Who
 from association.query.team_games import TeamNarrowed, rows_sql
 from association.query.team_relation import TEAM_CUTS, TEAM_RELATION_SCOPING, TEAM_RELATION_SCOPING_EXCLUDED, scoped_team, team_games, team_relation_cuts
 
@@ -248,7 +249,12 @@ def test_the_relation_tables_declare_the_cuts_once() -> None:
 
 def _player_games(ctx: AnswerContext, cuts: Cuts, span: Span | None = None) -> tuple[int, int]:
     """The games and the points a total over Podziemski's season reads under ``cuts``."""
-    (row,) = rows_of(ctx.con, compile_query(ctx.con, Query(scope=Scope(player="Brandin Podziemski", cuts=cuts, span=span or Span()), skeleton="scalar", measures=["points"], aggregate="total")))
+    (row,) = rows_of(
+        ctx.con,
+        compile_query(
+            ctx.con, Query(scope=Scope(subject=Who(kind="player", players=("Brandin Podziemski",)), cuts=cuts, span=span or Span()), skeleton="scalar", measures=["points"], aggregate="total")
+        ),
+    )
     return int(row["games"] or 0), int(row["points"] or 0)
 
 
@@ -281,7 +287,7 @@ def test_a_series_game_and_an_ordinal_season_change_what_the_player_relation_rea
 
 
 def _team_games(ctx: AnswerContext, cuts: Cuts, span: Span | None = None) -> list[str]:
-    settled = scoped_team(ctx.con, Scope(team="Celtics", span=span or Span()), "no team")
+    settled = scoped_team(ctx.con, Scope(subject=Who(kind="team", teams=("Celtics",)), span=span or Span()), "no team")
     assert isinstance(settled, tuple)
     team, resolved = settled
     narrowed = team_games(ctx.con, team, resolved, Scope(cuts=cuts), opponent=cuts.opponent, date=cuts.date)

@@ -34,19 +34,17 @@ from .core import rows_of
 from .team import TeamQuery, compile_team_over
 
 
-def _head_to_head_names(teams_slot: tuple[str, ...], team_slot: str | None, opponent_slot: str | None) -> list[str]:
-    """The team names asked for, merged from `teams`, `team` and `opponent`.
+def _head_to_head_names(teams: tuple[str, ...], opponent_slot: str | None) -> list[str]:
+    """The team names asked for: the subject's teams (one, or a list of
+    two) and the opponent the games are against.
 
-    A city name rather than a nickname ("...play Boston?") makes the router
-    split the two teams across `team` and `teams` instead of putting both in
-    `teams`. Name resolution is fine either way, so treating `team` as a third
-    candidate absorbs the split rather than rejecting an answerable question.
-    The router also writes the other side as `opponent` ("Celtics vs Bulls
-    head to head" arrives as team + opponent): it is one of the two teams.
+    The parser names two teams meeting as the first team and the games'
+    opponent ("Celtics vs Bulls head to head" reads as the Celtics against
+    the Bulls): the opponent is one of the two teams. A slot dict that
+    listed both, or split them across ``team`` and ``teams``, holds them
+    in the typed subject's ``teams`` (:class:`~association.query.reading.Subject`).
     """
-    names = [n for n in teams_slot if n.strip()]
-    if team_slot is not None and team_slot.strip() and team_slot not in names:
-        names = [team_slot, *names]
+    names = list(dict.fromkeys(teams))
     if opponent_slot is not None and opponent_slot.strip() and opponent_slot not in names:
         names = [*names, opponent_slot]
     if len(set(names)) < 2:
@@ -140,7 +138,7 @@ def read_head_to_head(con: duckdb.DuckDBPyConnection, q: TeamQuery, *, stated: f
     refused = coverage_refusal(PointShape("team_games", "comparison", "opponent"), scope)
     if refused is not None:
         return refused
-    names = _head_to_head_names(scope.teams, scope.team, scope.cuts.opponent)
+    names = _head_to_head_names(scope.subject.teams, scope.cuts.opponent)
     teams = _head_to_head_teams(con, names, slot_season(scope))
     if isinstance(teams, Unanswered):
         return teams

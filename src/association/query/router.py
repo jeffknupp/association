@@ -25,23 +25,24 @@ from __future__ import annotations
 
 import re
 from collections.abc import Mapping
-from dataclasses import dataclass, field, fields
+from dataclasses import dataclass, field, fields, replace
 from typing import TYPE_CHECKING, Any
 
-from . import lexicon
+from . import lexicon, reading
 from .cuts import CutsContext, CutsRead, read_cuts
 from .decisions import Decision
-from .lexicon import BY_QUARTER, GAMES_WORDS, HALF_WORDS, ORDER_WORDS, PAST_N_SEASONS, PERIOD_AS_CONDITION, PERIOD_LEADERS, PERIOD_TOP, QUARTER_WORDS, RANK_WORDS, WHO_RANKS
+from .lexicon import BY_QUARTER, GAMES_WORDS, HALF_WORDS, ORDER_WORDS, PAST_N_SEASONS, PERIOD_AS_CONDITION, PERIOD_LEADERS, PERIOD_TOP, QUARTER_WORDS, WHO_RANKS
 from .line import LineContext, LinesRead, read_lines, threshold_named
 from .measure import BOOLEAN_KEYS, GAMES_STATS, MeasureContext, named, names_a_stat, read_measure
 from .period import PeriodContext, read_period, which_period
 from .reading import Claim, Companion, Line, Period, Scope, Window
 from .span import SpanContext, range_named, read_span
 from .span import claimed as claimed_once
+from .subject import is_team_name, subject_named_in, team_named_in_text, team_words_in
 from .window import WindowContext, read_window
 
 if TYPE_CHECKING:
-    from .subject import Subject
+    from . import subject as subject_reading
 
 # Questions no template can answer, recognized from the text rather than left
 # to the model. Deliberately tiny: not a rules engine, just subjects that read
@@ -72,10 +73,17 @@ _DRAW_WORDS = re.compile(r"\b(?:plot|chart|draw|render|visuali[sz]e|graph|show m
 # fragile plays-table derivation this comment used to warn was needed - and the
 # override below sends it there instead of forcing it to the agent.
 def _is_team_quarter_points(raw: dict[str, Any]) -> bool:
-    return raw.get("intent") == "team_quarter_points" and not (isinstance(raw.get("player"), str) and raw["player"].strip())
+    return raw.get("intent") == "team_quarter_points" and _subject_of(raw).player is None
 
 
-def _names_a_period_subject(question: str) -> bool:
+def _subject_of(raw: dict[str, Any]) -> reading.Subject:
+    """Who the stages' working route is about: the typed subject the
+    subject reading handed them (:class:`Named`), as a stage has settled it."""
+    who = raw.get("subject")
+    return who if isinstance(who, reading.Subject) else reading.Subject()
+
+
+def _names_a_period_subject(handed: Named) -> bool:
     """Whether the question's own grammar names a PLAYER as the scorer ("did
     Jokic score in the 3rd quarter") - the #170 shape, which the model files
     as the team's quarter with no player at all, and which the exemption for
@@ -85,8 +93,7 @@ def _names_a_period_subject(question: str) -> bool:
     exemption kept it there. The same reader and the same team guard as
     :func:`_recover_period_subject`, so "did the 76ers score" stays the
     team's."""
-    candidate = _subject_named_in(question)
-    return candidate is not None and not _is_team_name(candidate)
+    return handed.grammar is not None and not is_team_name(handed.grammar)
 
 
 # A coach question, which has no answer here and is refused rather than left to
@@ -173,7 +180,7 @@ class Route:
     #: the stages hand back (:func:`settle`), before the parser attaches it.
     #:
     #: .. versionadded:: 5.0.0
-    subject: Subject | None = None
+    subject: subject_reading.Subject | None = None
     #: The characters of the question the taggers consumed
     #: (:class:`~association.query.reading.Claim`): the span's
     #: (:func:`~association.query.span.read_span`), carried onto the Reading.
@@ -202,6 +209,42 @@ class Route:
         return out
 
 
+@dataclass(frozen=True)
+class Named:
+    """Who the subject reading hands the stages (:func:`settle`): the typed
+    subject as it stands before them (:class:`~association.query.reading.Subject`
+    - the names the reading settled, a span the model copied that nothing
+    placed, the kind and the position group), the team it read the subject
+    set against (the cuts tagger takes it), and the two readings of the words
+    the stages settle a name from under the intent they choose: the subject
+    the question's grammar names (``grammar``: "maxey" in "the sixers record
+    when maxey scored 15+", ``subject.subject_named_in``) and the team
+    nicknames the words hold (``team_words``, ``subject.team_words_in``).
+    The stages read these and no word for a name of their own; a name they
+    settle is the reading's.
+
+    Until Phase 3, step 2 the stages took the names as slots
+    (``_MODEL_SLOTS``: ``player``, ``players``, ``team``, ``teams``,
+    ``opponent``) and read the grammar's subject and the team words from the
+    question themselves.
+
+    .. versionadded:: 6.0.0
+    """
+
+    subject: reading.Subject = field(default_factory=reading.Subject)
+    opponent: str | None = None
+    grammar: str | None = None
+    team_words: tuple[str, ...] = ()
+
+    @classmethod
+    def of(cls, question: str, *, subject: reading.Subject | None = None, opponent: str | None = None) -> Named:
+        """What the stages are handed for ``question``: ``subject`` and
+        ``opponent`` as given (nobody, where none is), with the grammar's
+        subject and the team words read from the question's words by the
+        subject reading's own readers."""
+        return cls(subject=subject if subject is not None else reading.Subject(), opponent=opponent, grammar=subject_named_in(question), team_words=team_words_in(question))
+
+
 # The side of the ball, the rate, the team's total, the stat words, a team
 # metric's alias, the advanced metrics, game score, a 2-point percentage, a
 # ranking by shot distance, the shots and the attempts beside a make are the
@@ -216,246 +259,10 @@ class Route:
 _RECORD = re.compile(r"\brecord\b", re.IGNORECASE)
 
 
-# The subject of a single-game high or a threshold count, when the model
-# drops it. Measured live: "most points curry scored in a game this season"
-# comes back as single_game_high with NO player slot, and the answer is the
-# league's high - Bam Adebayo's - to a question about one man; "how many times
-# has embiid fouled out?" comes back as threshold_count with no player slot
-# either, and the answer is the league's leader in 6+-foul games - Karl-
-# Anthony Towns - to a question about Joel Embiid (#138). Both slots are
-# optional (an empty one means "the league"), so nothing downstream restores
-# either, and players_named_in cannot: "curry" is six players and it refuses
-# to guess.
-#
-# So the subject is read from the GRAMMAR rather than from a word list. A word
-# scan cannot work here: "best" is Travis Best, "game" is Jaron Blossomgame,
-# "high" is Haywood Highsmith and "single" is four players, so scanning would
-# hijack "the highest scoring game by a player this year". A name before a
-# scoring verb or "fouled out", or carrying a possessive, is a subject; the
-# question words are excluded because "who scored the most" names nobody.
-_SUBJECT_WORDS = frozenset({"who", "what", "which", "that", "he", "she", "they", "it", "player", "anyone", "someone", "nobody", "team", "one", "the", "and", "any"})
-#
-# The leading word is optional and captured, the way the count grammars below
-# capture one, because a one-word subject is a clarifying question where the
-# question wrote the name out: measured over all 261 corpus questions, three
-# possessives ("kobe bryant's", "Jaden mcdaniel's", "steve adam's") gave a
-# bare surname matching four players each, and "bryant" does not even include
-# Kobe. Which word may lead is decided in `_subject_named_in` rather than here,
-# against `_COUNT_SUBJECT_WORDS` - the richer list, and the one that matters:
-# without it "most points curry scored" would read "points curry" as the name.
-#
-# "had"/"has" is a subject position too, and a bare one - `_SUBJECT_OF_HAVE`
-# below requires a leading "does/did/has/have", so "sixers record when maxey
-# had 10+ rebounds" named nobody while the same question with "scored"
-# answered. It is deliberately NOT in the alternation above: the words there
-# are all scoring verbs and a possessive, where "had" is ordinary enough that
-# it is only a subject position when a threshold follows it, which is what the
-# lookahead asserts.
-_SUBJECT_OF_HIGH = re.compile(
-    r"\b(?:([A-Za-z][A-Za-z.'\-]*)\s+)?([A-Za-z][A-Za-z.'\-]{2,})"
-    r"(?:'s\b|\s+(?:scored|scores|score|dropped|put\s+up|hung|shot|foul(?:ed|s|ing)?\s+out)|\s+ha[ds]\s+(?=\d))",
-    re.IGNORECASE,
-)
-
-# None of the above covers a threshold_count named with no verb at all (#148):
-# "jamal murray games with 2 threes including playoffs" fell through
-# unrestored, the same shape as "Sga games with under 14 fta in his whole
-# career", and (by number instead of "with") a form like "murray 30 point
-# games" or "murray games of 20+ rebounds" - none of which puts a scoring verb
-# or a possessive anywhere near the name. So a second grammar is tried after
-# the first, anchored on "games" itself rather than a verb: a name directly
-# before "games with"/"games of", or before "<N>[+] <stat> games". It also
-# captures ONE more word immediately before that name, to catch a first name -
-# "jamal murray games with" resolves uniquely where a bare "murray" is five
-# players (Collin Murray-Boyles, Dejounte, Jamal, Keegan, Kris all have a 2026
-# box score) and would only trade the league-ranking bug for an unnecessary
-# clarifying question. The extra word is kept only when it is not itself one
-# of the stopwords below - "which players have games with 30+ points" must not
-# read "players have" as a name.
-#
-# Measured against the full routing corpus
-# (`/home/jeff/association-research/statmuse-2026-09/feed_queries.txt`), this
-# grammar matches exactly the two real cases above and nothing else -
-# "last 10 games of scottie barnes" does not match because the word before
-# "games" there is "10", not a letter, and "bam adebayo career games in the
-# month of march" does not match because "career" sits directly before
-# "games" and is a stopword, not a name (there is no verb-based grammar this
-# shape fits either, so it is left unrestored rather than guessed at). The
-# extra stopwords below ("career", "has", "many", "postseason", ...) are what
-# make that refusal-by-omission work: without them, "bam adebayo career games"
-# would read "career" as the player and "how many 40+ points games does
-# lebron james have" would read "many" - both a refusal naming the wrong
-# cause (AGENTS.md, "the same bug has a mirror image"), not a name the
-# question ever offered as the subject. This grammar is kept separate from
-# `_SUBJECT_OF_HIGH` rather than folded into it: a shared pattern let a
-# trailing possessive ("murray's games of...") get swallowed whole into the
-# captured word before the new "games of" alternative even got a chance to
-# apply, since the possessive's own `'s\b` branch was no longer the only way
-# to succeed. Kept apart, `_SUBJECT_OF_HIGH` matches "murray" via its own
-# `'s\b` branch exactly as it always did, and this grammar is never reached
-# for that question at all.
-_COUNT_SUBJECT_WORDS = _SUBJECT_WORDS | frozenset(
-    {
-        # A stat's own name sits before "10+ rebound games" in "the most 30+
-        # point 10+ rebound games", where it is the first line's noun, not a
-        # subject: read as one, "point" resolved to Sir'Dominic Pointer.
-        "point",
-        "points",
-        "pt",
-        "pts",
-        "rebound",
-        "rebounds",
-        "reb",
-        "rebs",
-        "assist",
-        "assists",
-        "ast",
-        "steal",
-        "steals",
-        "stl",
-        "block",
-        "blocks",
-        "blk",
-        "three",
-        "threes",
-        "double",
-        "triple",
-        "players",
-        "has",
-        "have",
-        "having",
-        "his",
-        "her",
-        "their",
-        "its",
-        "these",
-        "those",
-        "some",
-        "many",
-        "how",
-        "much",
-        "several",
-        "few",
-        "most",
-        "all",
-        "career",
-        "season",
-        "postseason",
-        "playoff",
-        "playoffs",
-        "regular",
-        "such",
-        "no",
-        "every",
-        "each",
-        # Function words that can sit directly before a name and are not part
-        # of it. These matter for the LEADING word `_SUBJECT_OF_HIGH` now
-        # captures: "sixers record when maxey had 10+ rebounds" read "when
-        # maxey" as the name. Rejecting them as a name in their own right is
-        # right too - "with" is the word AGENTS.md records reading as Jeff
-        # Withey - and it can only make the count grammars more conservative,
-        # which is the safe direction for a guess about a person.
-        "when",
-        "while",
-        "if",
-        "with",
-        "without",
-        "vs",
-        "versus",
-        "against",
-        "did",
-        "does",
-        "do",
-        "was",
-        "were",
-        "is",
-        "are",
-        "for",
-        "by",
-        "from",
-        "in",
-        "on",
-        "at",
-        "to",
-        "of",
-        "after",
-        "before",
-        "during",
-        "than",
-        "then",
-        "but",
-        "or",
-        "per",
-        # "single game with the most assists" is one game, not a player named
-        # Single: under "X games with" it read "single" as the subject of a
-        # single-game high, and asked which Singleton was meant (#260).
-        "single",
-        "game",
-        "games",
-        "total",
-        "least",
-        "best",
-        "worst",
-        "highest",
-        "lowest",
-    }
-)
-_COUNT_STAT_WORD = r"(?:point|pt|rebound|reb|assist|ast|steal|stl|block|blk|three)"
-_SUBJECT_OF_COUNT = re.compile(
-    r"\b(?:([A-Za-z][A-Za-z.'\-]*)\s+)?([A-Za-z][A-Za-z.'\-]{2,})\s+(?:"
-    r"games?\s+with\b"
-    r"|games?\s+of\b"
-    r"|\d+\+?\s*[- ]?\s*" + _COUNT_STAT_WORD + r"s?\s+games?\b"
-    # "bam adebayo career games in the month of march" (yardstick-v2 F096):
-    # the model dropped Bam, and none of the shapes above follows a name
-    # with "career games".
-    r"|career\s+games?\b"
-    r")",
-    re.IGNORECASE,
-)
-
-
-# "how many 40+ point games does lebron james have": the subject sits between
-# an auxiliary and "have", nowhere near the count. The model dropped LeBron
-# from exactly this question (#148's shape, in a third grammar).
-_SUBJECT_OF_HAVE = re.compile(r"\b(?:does|did|has|have)\s+(?:([A-Za-z][A-Za-z.'\-]*)\s+)?([A-Za-z][A-Za-z.'\-]{2,})\s+(?:have|had|got|gotten|recorded|posted)\b", re.IGNORECASE)
-
-
-def _subject_named_in(question: str) -> str | None:
-    """The word (or two) a single-game-high or threshold-count question makes
-    its subject, or None.
-
-    Returns the question's own words, not a resolved player: resolution
-    decides whether they name somebody, and asks when it is ambiguous.
-    "curry" then answers "did you mean Seth Curry or Stephen Curry?", which is
-    the question asked - where the league's high is not.
-    """
-    for match in _SUBJECT_OF_HIGH.finditer(question):
-        lead, word = match.group(1), match.group(2)
-        # The richer list here too, not just for the lead. On the narrow one,
-        # "Total points scored by the toronto raptors" returned the subject
-        # "points" and "least points scored by the wizards" the same - a stat's
-        # own noun read as a person, which is the trap `_COUNT_SUBJECT_WORDS`
-        # was written for. Measured over the 261-question corpus, this loses no
-        # real name and drops three pieces of junk.
-        if word.casefold() in _COUNT_SUBJECT_WORDS:
-            continue
-        # A first name where the question gave one: "kobe bryant's" reaches
-        # Kobe, where a bare "bryant" is four other players and none of them
-        # him. Gated on the richer stopword list, so "most points curry
-        # scored" still reads "curry" and never "points curry".
-        if lead is not None and lead.casefold() not in _COUNT_SUBJECT_WORDS:
-            return f"{lead} {word}"
-        return word
-    for pattern in (_SUBJECT_OF_COUNT, _SUBJECT_OF_HAVE):
-        for match in pattern.finditer(question):
-            lead, word = match.group(1), match.group(2)
-            if word.casefold() in _COUNT_SUBJECT_WORDS:
-                continue
-            if lead is not None and lead.casefold() not in _COUNT_SUBJECT_WORDS:
-                return f"{lead} {word}"
-            return word
-    return None
+# The subject a single-game high's or a threshold count's grammar names, when
+# the model drops it, is the subject reading's (``subject.subject_named_in``,
+# over the lexicon's SUBJECT_OF_HIGH, SUBJECT_OF_COUNT and SUBJECT_OF_HAVE),
+# read once and handed to the stages (:class:`Named`) since Phase 3, step 2.
 
 
 # Which split a player_splits question asks for. Exactly one or nothing.
@@ -546,120 +353,19 @@ def _route_shot_distance_subject(intent: str, slots: dict[str, Any], question: s
     """
     if intent != "leaderboard" or not lexicon.SHOT_DISTANCE_RANKED.search(question):
         return
-    slots.pop("player", None)
+    who = _subject_of(slots)
+    if who.player is not None:
+        slots["subject"] = replace(who, players=())
 
 
 # A game log asked for by name. Measured: "luka ft log" routed to player_stat
 # and was answered with a season average.
 _LOG_WORDS = lexicon.LOG_WORDS
 
-# The thirty team nicknames, and the shorthand a question uses for some. Only to
-# tell a team from a player in a slot the model filled: "zach lavine vs nuggets"
-# came back as player_matchup with players ['Zach LaVine', 'Denver Nuggets'].
-_TEAM_WORD = re.compile(
-    r"\b(?:hawks|celtics|nets|hornets|bulls|cavaliers|cavs|mavericks|mavs|nuggets|pistons|warriors|rockets|pacers|clippers|lakers|"
-    r"grizzlies|heat|bucks|timberwolves|wolves|pelicans|knicks|thunder|magic|76ers|sixers|suns|blazers|kings|spurs|raptors|jazz|wizards)\b",
-    re.IGNORECASE,
-)
-
-
-# A team named by its city or its abbreviation, which is how a question names
-# one when it does not use the nickname: "mathurin v det", "sam hauser v mil",
-# "pascal vs orlando". These are matched against the WHOLE name and never as a
-# last word, and the distinction is load-bearing rather than fussy: three real
-# players are surnamed Cleveland, Houston and Washington, so a last-word rule
-# over cities turns PJ Washington and Allan Houston into teams. Measured
-# against the warehouse, no player name equals a city or an abbreviation, and
-# exactly one player name is a single word at all ("Nene"), which matches none
-# of these.
-#
-# Two-letter forms are left out on purpose. ESPN's own table abbreviates four
-# teams "no", "ny", "sa" and "gs", and "no" is an English word; questions use
-# the three-letter forms, so those are what is listed.
-_TEAM_CITY = frozenset(
-    {
-        "atlanta", "boston", "brooklyn", "charlotte", "chicago", "cleveland", "dallas", "denver", "detroit",
-        "golden state", "houston", "indiana", "los angeles", "memphis", "miami", "milwaukee", "minnesota",
-        "new orleans", "new york", "oklahoma city", "orlando", "philadelphia", "phoenix", "portland",
-        "sacramento", "san antonio", "toronto", "utah", "washington",
-    }
-)  # fmt: skip
-_TEAM_ABBREVIATION = frozenset(
-    {
-        "atl", "bkn", "bos", "cha", "chi", "cle", "dal", "den", "det", "gsw", "hou", "ind", "lac", "lal",
-        "mem", "mia", "mil", "min", "nop", "nyk", "okc", "orl", "phi", "phx", "por", "sac", "sas", "tor",
-        "uta", "wsh", "was",
-    }
-)  # fmt: skip
-
-# A near spelling is NOT matched here, and that was measured rather than
-# assumed. The feed misspells three teams inside a `players` slot - "taptors",
-# "warriners", "blakers" - and `difflib` at cutoff 0.8 reaches the right team
-# for all three. It also reaches a team for **16 real player surnames**:
-# Burks -> Bucks, Hawkins -> Hawks, Thornton -> Toronto, Gooden -> Golden,
-# Wheat -> Heat, Houstan -> Houston, and ten more. The model puts bare
-# surnames in that slot routinely (["Mathurin", "Detroit"], ["Pascal",
-# "Orlando"]), so those collisions are live, and turning a player into a team
-# is the same fluent wrong answer in the other direction. Three queries is not
-# worth sixteen, and the cutoff cannot separate them - "houstan"/"houston" and
-# "taptors"/"raptors" are both one edit in seven characters, ratio 0.857. Same
-# conclusion `find_players` reached for player names, for the same reason.
-
-
-def _is_team_name(name: str) -> bool:
-    """Whether a name the model put in ``players`` is a team's.
-
-    Three tests, narrowing as they get looser:
-
-    - **Its LAST word is a nickname.** Checked against the warehouse: all 30
-      team names end in one and none of 3,101 player names does, while "Magic
-      Johnson" holds one as his first name - and a match anywhere in the name
-      took him for a team.
-    - **The WHOLE name is a city or an abbreviation** ("det", "Orlando"). Never
-      the last word, because three players are surnamed Cleveland, Houston and
-      Washington.
-    A misspelled team is deliberately NOT matched - see the note above
-    ``_TEAM_CITY``, where fuzzy matching was measured and rejected because it
-    turns 16 real player surnames into teams.
-
-    .. versionchanged:: 2.2.0
-       Recognizes a city and an abbreviation. Before this, a team the question
-       named any way but by nickname read as a player, and "mathurin v det"
-       was routed as a matchup between two players.
-    """
-    words = name.lower().split()
-    if not words:
-        return False
-    if _TEAM_WORD.fullmatch(words[-1]) is not None:
-        return True
-    whole = " ".join(words)
-    return whole in _TEAM_CITY or whole in _TEAM_ABBREVIATION
-
-
-def _team_slot_named_in_text(question: str, candidate: Any) -> str | None:
-    """``candidate`` back, but only if the question's own words actually say
-    it - the mirror of :func:`_is_team_name`, which asks whether a slot IS a
-    team at all rather than whether the question named this one.
-
-    ISSUES.md #170: a quarter question with no `player` slot (see
-    :func:`_route_period_intents`) sometimes fills `team`/`opponent` with a
-    team the model inferred rather than one the question used - "Jokic ...
-    3rd quarter against Boston" filled `opponent` with 'Denver Nuggets', a
-    real team and Jokic's own, but a word the question never wrote, while
-    `team` held 'Boston Celtics', a word it did. Checked against the text the
-    same way :func:`association.query.subject.question_supports`
-    checks an invented player name - any one word is enough, since half a
-    name is how a question normally carries one.
-    """
-    if not isinstance(candidate, str):
-        return None
-    words = re.findall(r"[A-Za-z]{4,}", candidate)
-    if not words:
-        return None
-    low = question.lower()
-    if any(re.search(rf"\b{re.escape(word.lower())}\b", low) for word in words):
-        return candidate
-    return None
+# A team's nickname, city and abbreviation (lexicon.TEAM_NICKNAME, TEAM_CITIES,
+# TEAM_ABBREVIATIONS) and the readers that tell a team's name from a player's
+# (``subject.is_team_name``) and find it in the words (``subject.team_named_in_text``)
+# are the subject reading's since Phase 3, step 2.
 
 
 # "best record" and "worst record" rank the league; with no team named they are
@@ -668,11 +374,6 @@ def _team_slot_named_in_text(question: str, candidate: Any) -> str | None:
 # is the same ranking: "Best NBA record since January 31st 201" (yardstick-v2
 # F104) came back as team_record with no team and fell through.
 _BEST_WORST_RECORD = re.compile(r"\b(?:best|worst)\s+(?:nba\s+|league\s+)?records?\b", re.IGNORECASE)
-
-# A `team` slot that names the league rather than a team - "all-NBA",
-# "all_teams", "worst" - measured on three questions, each of which then
-# refused as an unknown team.
-_PSEUDO_TEAM = re.compile(r"(?:the\s+)?(?:all[-_ ]?nba|nba|league|all[-_ ]?teams?|teams?|every\s+team|worst|best)", re.IGNORECASE)
 
 
 def _route_coach_intent(raw: dict[str, Any], question: str) -> bool:
@@ -689,7 +390,7 @@ def _route_coach_intent(raw: dict[str, Any], question: str) -> bool:
     return True
 
 
-def _recover_period_subject(raw: dict[str, Any], question: str, asked: tuple[Period, Claim] | None, named_player: bool, ranks_players: bool) -> str | None:
+def _recover_period_subject(raw: dict[str, Any], handed: Named, asked: tuple[Period, Claim] | None, named_player: bool, ranks_players: bool) -> str | None:
     """The player a quarter or half question names when the model's reply
     dropped `player` entirely - split out of :func:`_route_period_intents` to
     keep it inside the complexity gate.
@@ -700,19 +401,20 @@ def _recover_period_subject(raw: dict[str, Any], question: str, asked: tuple[Per
     Nuggets'`, neither one asked for by name), which reads exactly like the
     "team's own half" shape `_route_period_intents` handles next and answered
     Boston's quarter to a question about Jokic. The question's own grammar
-    still names him (`_subject_named_in`, the same reader `threshold_count`
-    and `single_game_high` use for their own dropped subject), so it gets a
-    turn before the team branch does - but only where nothing ranks players
-    (that wins over a recovered subject the same way it wins over the
-    model's own `player` slot, and has to) and the recovered "subject" is not
+    still names him (``subject.subject_named_in``, read once and handed to
+    the stages as :attr:`Named.grammar` - the same reading ``threshold_count``
+    and ``single_game_high`` settle their own dropped subject from), so it
+    gets a turn before the team branch does - but only where nothing ranks
+    players (that wins over a recovered subject the same way it wins over the
+    model's own player, and has to) and the recovered "subject" is not
     itself a team's name, since "did the 76ers score" fits the identical
     grammar and must stay the team's own question.
     """
     if asked is None or named_player or ranks_players:
         return None
-    candidate = _subject_named_in(question)
-    if candidate is not None and not _is_team_name(candidate):
-        raw["player"] = candidate
+    candidate = handed.grammar
+    if candidate is not None and not is_team_name(candidate):
+        raw["subject"] = replace(_subject_of(raw), players=(candidate,))
         return candidate
     return None
 
@@ -731,22 +433,22 @@ def _route_period_split_slots(raw: dict[str, Any], question: str, subject: str |
         # same "may be fiction" check `subject.read_subject`
         # runs for a name): "Boston Celtics" is a word the Jokic
         # question used, "Denver Nuggets" is a word it never wrote.
-        opponent = _team_slot_named_in_text(question, raw.get("team")) or _team_slot_named_in_text(question, raw.get("opponent"))
-        raw.pop("team", None)
+        opponent = team_named_in_text(question, _subject_of(raw).team) or team_named_in_text(question, raw.get("opponent"))
+        raw["subject"] = replace(_subject_of(raw), teams=())
         raw.pop("opponent", None)
         if opponent is not None:
             raw["opponent"] = opponent
 
 
-def _route_period_intents(raw: dict[str, Any], question: str) -> None:
+def _route_period_intents(raw: dict[str, Any], question: str, handed: Named) -> None:
     """Fouling out, and a quarter or half: intents code assigns from the question's own words."""
     low = question.lower()
     if lexicon.FOULED_OUT.search(low):
         # The count of a player's foul-outs: the line itself (fouls at six)
         # is the lines tagger's (``line.read_lines``), the stat the measure tagger's.
         raw["intent"] = "threshold_count"
-    ranks_players = PERIOD_LEADERS.search(low) is not None or (PERIOD_TOP.search(low) is not None and not _team_slot_or_word(raw, low))
-    if (QUARTER_WORDS.search(low) and (ranks_players or not _is_team_quarter_points(raw) or _names_a_period_subject(question))) or HALF_WORDS.search(low):
+    ranks_players = PERIOD_LEADERS.search(low) is not None or (PERIOD_TOP.search(low) is not None and not _team_slot_or_word(raw, handed))
+    if (QUARTER_WORDS.search(low) and (ranks_players or not _is_team_quarter_points(raw) or _names_a_period_subject(handed))) or HALF_WORDS.search(low):
         # A named player's quarter or half now HAS a template, so the override
         # sends it there instead of to the agent - but only when the question
         # names one and the period is legible, since `period_split` answers
@@ -757,17 +459,15 @@ def _route_period_intents(raw: dict[str, Any], question: str) -> None:
         if asked is not None and PERIOD_AS_CONDITION.search(low):
             raw["intent"] = "other"
             return
-        if asked is not None:
-            _route_period_intents_player_beside_team(raw, question)
         # No second `_is_team_quarter_points` check: it means "this intent, and
         # NO player", so it can never be true here where a player is named. The
         # team's own quarter is already exempted by the outer condition.
-        named_player = isinstance(raw.get("player"), str) and raw["player"].strip()
-        subject = _recover_period_subject(raw, question, asked, named_player, ranks_players)
-        _route_period_intents_choose(raw, question, asked, bool(named_player) or subject is not None, ranks_players, subject)
+        named_player = _subject_of(raw).player is not None
+        subject = _recover_period_subject(raw, handed, asked, named_player, ranks_players)
+        _route_period_intents_choose(raw, question, handed, asked, named_player or subject is not None, ranks_players, subject)
 
 
-def _route_period_intents_choose(raw: dict[str, Any], question: str, asked: tuple[Period, Claim] | None, named_player: bool, ranks_players: bool, subject: str | None) -> None:
+def _route_period_intents_choose(raw: dict[str, Any], question: str, handed: Named, asked: tuple[Period, Claim] | None, named_player: bool, ranks_players: bool, subject: str | None) -> None:
     """Which period intent a quarter or half question is, once its period, its
     player and whether it ranks are known - split out of
     :func:`_route_period_intents` to keep it inside the complexity gate.
@@ -780,7 +480,7 @@ def _route_period_intents_choose(raw: dict[str, Any], question: str, asked: tupl
         # quarter scoring leaders"), where it narrows the ranking to that
         # team's players rather than becoming the subject.
         raw["intent"] = "period_leaderboard"
-    elif asked is not None and not named_player and (_team_slot_or_word(raw, low)):
+    elif asked is not None and not named_player and (_team_slot_or_word(raw, handed)):
         # A TEAM's half. A team's QUARTER never reaches here - the
         # exemption above keeps it on its own template - but a half always
         # does, because the model maps "first half" onto period 1 and that
@@ -790,7 +490,7 @@ def _route_period_intents_choose(raw: dict[str, Any], question: str, asked: tupl
         # none for "Celtics 2nd half scoring this season" (the one
         # check_routing.py gap after step 3) and "least points scored by
         # the wizards in the first half" (yardstick-v2 F064) - the one
-        # nickname the question itself holds, which _TEAM_WORD reads.
+        # nickname the question itself holds (:attr:`Named.team_words`).
         raw["intent"] = "team_quarter_points"
     elif asked is not None and named_player:
         raw["intent"] = "period_split"
@@ -801,46 +501,13 @@ def _route_period_intents_choose(raw: dict[str, Any], question: str, asked: tupl
         # (point._default_period_split).
         raw["intent"] = "period_split"
         _route_period_split_slots(raw, question, subject)
-    elif asked is None and not named_player and BY_QUARTER.search(low) and not _team_slot_or_word(raw, low):
+    elif asked is None and not named_player and BY_QUARTER.search(low) and not _team_slot_or_word(raw, handed):
         # Every player's four quarters side by side - the league's; a
         # team's players' breakdown ("knicks points by quarter") reads
         # as the TEAM's by quarter, which is not built, and stays `other`.
         raw["intent"] = "period_leaderboard"
     else:
         raw["intent"] = "other"
-
-
-def _route_period_intents_player_beside_team(raw: dict[str, Any], question: str) -> None:
-    """A player and a team in ``players``, on a "vs" question, are the
-    player and his opponent.
-
-    yardstick-v2 F059: "Kd vs clippers 2h at home gamelog" arrived with
-    ``players: ['Kevin Durant', 'Los Angeles Clippers']``, no ``player`` and
-    ``team: 'clippers'``, so :func:`_route_period_intents` saw no named
-    player and took the team's-half branch - team_quarter_points, which
-    refused for naming a player. A named player's half is ``period_split``;
-    the team beside him in the list is who he played. Only an exact pair
-    (one player, one team, per :func:`_is_team_name`) on a question that
-    says "vs"/"against", and only where the model filed no ``player`` - so a
-    real two-player list, or a team with no versus word, is left alone. A
-    ``team`` slot naming that same opponent goes too: it is the opponent
-    filed twice, not the player's own team."""
-    if isinstance(raw.get("player"), str) and raw["player"].strip():
-        return
-    listed = raw.get("players")
-    if not isinstance(listed, list) or len(listed) != 2 or not all(isinstance(name, str) and name.strip() for name in listed) or not _VERSUS_WORDS.search(question):
-        return
-    teams = [name for name in listed if _is_team_name(name)]
-    if len(teams) != 1:
-        return
-    opponent = teams[0]
-    raw["player"] = next(name for name in listed if name != opponent)
-    raw.pop("players", None)
-    team_slot = raw.get("team")
-    if isinstance(team_slot, str) and set(team_slot.lower().split()) & set(opponent.lower().split()):
-        raw.pop("team", None)
-    if not (isinstance(raw.get("opponent"), str) and raw["opponent"].strip()):
-        raw["opponent"] = opponent
 
 
 def _route_triple_double_abbreviation(raw: dict[str, Any], question: str) -> None:
@@ -859,20 +526,20 @@ def _route_triple_double_abbreviation(raw: dict[str, Any], question: str) -> Non
     # shot to the model ("luka td3s home" arrived as a chart of his twos),
     # and a count of triple-doubles is never a chart unless the question
     # asks for one to be drawn.
-    if raw["intent"] in ("other", "shot_chart") and isinstance(raw.get("player"), str) and raw["player"].strip() and not _DRAW_WORDS.search(question):
+    if raw["intent"] in ("other", "shot_chart") and _subject_of(raw).player is not None and not _DRAW_WORDS.search(question):
         raw["intent"] = "player_stat"
 
 
-def _team_slot_or_word(raw: dict[str, Any], low: str) -> bool:
-    """Whether a team is named - by the model's ``team`` slot, or failing
-    that by exactly one nickname in the question, which is then filed as the
-    slot. Two nicknames name a matchup, not a subject, and file nothing."""
-    if isinstance(raw.get("team"), str) and raw["team"].strip():
+def _team_slot_or_word(raw: dict[str, Any], handed: Named) -> bool:
+    """Whether a team is named - the one team the subject reading handed the
+    stages, or failing that exactly one nickname the question holds
+    (:attr:`Named.team_words`), which is then the subject's team, as typed.
+    Two nicknames name a matchup, not a subject, and file nothing."""
+    if _subject_of(raw).team is not None:
         return True
-    nicknames = _TEAM_WORD.findall(low)
-    if len(set(nicknames)) != 1:
+    if len(set(handed.team_words)) != 1:
         return False
-    raw["team"] = nicknames[0]
+    raw["subject"] = replace(_subject_of(raw), teams=handed.team_words[:1])
     return True
 
 
@@ -902,8 +569,8 @@ def _route_team_and_player_intents(raw: dict[str, Any], question: str) -> None:
         # table of averages is not the radar the word asks for. The word
         # is as unmistakable as "coach"; nothing else here is named it.
         raw["intent"] = "fingerprint"
-    listed = [name for name in raw.get("players") or [] if isinstance(name, str)]
-    if raw["intent"] == "player_compare" and sum(map(_is_team_name, listed)) == 1 and len(listed) == 2:
+    listed = _listed(raw)
+    if raw["intent"] == "player_compare" and sum(map(is_team_name, listed)) == 1 and len(listed) == 2:
         # One player compared with a team is his games against it. Measured:
         # "compare curry vs the celtics this season" arrived as player_compare
         # with the Celtics in `players`; subject.apply_subject made them the
@@ -927,17 +594,14 @@ def _route_pair_over_seasons(raw: dict[str, Any], question: str, listed: list[st
 
 
 def _route_one_player_intents(raw: dict[str, Any], question: str, listed: list[str]) -> None:
-    """A comparison of one player, a line that is a log, and a line with no
-    player that ranks the league - split out of
-    :func:`_route_team_and_player_intents` for the complexity gate."""
-    if raw["intent"] == "player_compare" and len(listed) == 1 and not raw.get("player"):
-        # One player "compared" with nobody is his own line (or log):
-        # "alperen sengun double-doubles vs southeast division career away"
-        # arrived so after the 5.0.0 prompt shrink, and player_compare needs
-        # two. The name moves to the slot the line reads.
-        raw["intent"] = "game_log" if _LOG_WORDS.search(question) or GAMES_WORDS.search(question) else "player_stat"
-        raw["player"] = listed[0]
-        raw.pop("players", None)
+    """A line that is a log, and a line with no player that ranks the
+    league - split out of :func:`_route_team_and_player_intents` for the
+    complexity gate. (A comparison of ONE player, which the model filed as a
+    one-name list - "alperen sengun double-doubles vs southeast division
+    career away" - moved its name to the line's slot here until Phase 3,
+    step 2: the subject reading hands one player as the one player, so a
+    comparison of one is the parent grammar's line, and the move read
+    nothing on the 2,710 readings.)"""
     if raw["intent"] == "player_stat" and _LOG_WORDS.search(question):
         raw["intent"] = "game_log"
     _route_pair_over_seasons(raw, question, listed)
@@ -959,17 +623,24 @@ _COMPARE_WORDS = re.compile(r"\bcompar(?:e[ds]?|ing|ison)\b|\bbetter\b|\bwho sco
 
 
 def _named_player(raw: dict[str, Any]) -> bool:
-    """Whether the model filed a player, in either slot shape."""
-    return bool((isinstance(raw.get("player"), str) and raw["player"].strip()) or raw.get("players"))
+    """Whether the subject reading handed the stages a player, one or more."""
+    return bool(_subject_of(raw).players)
+
+
+def _listed(raw: dict[str, Any]) -> list[str]:
+    """The players handed as a list - two or more, a comparison or a pair
+    (the ``players`` slot until Phase 3, step 2); none for one player."""
+    players = _subject_of(raw).players
+    return list(players) if len(players) >= 2 else []
 
 
 def _route_matchup_against_team(raw: dict[str, Any], question: str, listed: list[str]) -> None:
     """A ``player_matchup`` whose second "player" is a team."""
-    if raw["intent"] == "player_matchup" and any(map(_is_team_name, listed)):
+    if raw["intent"] == "player_matchup" and any(map(is_team_name, listed)):
         # One of the "two players" is a team: this is a player's games against
         # it. subject.apply_subject moves the team to `opponent`.
         raw["intent"] = "game_log" if _LOG_WORDS.search(question) or GAMES_WORDS.search(question) else "player_stat"
-    if raw["intent"] == "player_matchup" and len(listed) < 2 and isinstance(raw.get("player"), str):
+    if raw["intent"] == "player_matchup" and len(listed) < 2 and _subject_of(raw).player is not None:
         # The same question, arriving in the other shape. The rule above reads
         # `players`, and the model routinely fills the SINGULAR `player` and an
         # `opponent` instead - "keon ellis stats vs trailblazers", "Kd games vs
@@ -981,17 +652,18 @@ def _route_matchup_against_team(raw: dict[str, Any], question: str, listed: list
         # An opponent that is NOT a team is left alone: "jay huff game log vs
         # Embiid" really is a matchup between two players, and the model put
         # the second one in `opponent`.
-        against = raw.get("opponent") or next(iter(raw.get("teams") or []), None)
-        if isinstance(against, str) and _is_team_name(against):
+        teams = _subject_of(raw).teams
+        against = raw.get("opponent") or next(iter(teams if len(teams) >= 2 else ()), None)
+        if isinstance(against, str) and is_team_name(against):
             raw["intent"] = "game_log" if _LOG_WORDS.search(question) or GAMES_WORDS.search(question) else "player_stat"
 
 
 _PLAYED_TOGETHER_REROUTABLE = frozenset({"head_to_head", "team_record", "team_stat", "game_log", "other"})
 
 
-def _route_line_and_record_intents(raw: dict[str, Any], question: str, companions: tuple[Companion, ...]) -> None:
+def _route_line_and_record_intents(raw: dict[str, Any], question: str, companions: tuple[Companion, ...], handed: Named) -> None:
     """A history that is really a line, a record ranking, and a career high."""
-    if raw["intent"] == "player_history" and (not names_a_stat(question) or (_VERSUS_WORDS.search(question) and _TEAM_WORD.search(question))):
+    if raw["intent"] == "player_history" and (not names_a_stat(question) or (_VERSUS_WORDS.search(question) and handed.team_words)):
         # A season-by-season history of one stat is neither "career averages"
         # (no stat named - the whole line) nor a career against one team.
         # Measured: "Jokic career averages" answered with points by season,
@@ -1011,11 +683,12 @@ def _route_line_and_record_intents(raw: dict[str, Any], question: str, companion
         # (#156's reading, which `_route_threshold` makes for record_when).
         # "record with Embiid out" is the same split, from the other side.
         raw["intent"] = "with_without"
-    if raw["intent"] == "team_record" and _BEST_WORST_RECORD.search(question) and not _TEAM_WORD.search(question):
+    if raw["intent"] == "team_record" and _BEST_WORST_RECORD.search(question) and not handed.team_words:
         # The ranking's metric, the record, is the measure tagger's reading
-        # of the same words (the team metric's alias "record").
+        # of the same words (the team metric's alias "record"); a ranking of
+        # every team is about no one team.
         raw["intent"] = "team_leaderboard"
-        raw.pop("team", None)
+        raw["subject"] = replace(_subject_of(raw), teams=())
     if raw["intent"] == "player_stat" and lexicon.CAREER_HIGH.search(question):
         # A career high is one game's total, which player_stat never reports.
         # Measured: "Diabate career high assists" was answered with his assists
@@ -1101,7 +774,7 @@ def _absent_by_phrase(question: str, companions: tuple[Companion, ...]) -> bool:
     return bool(_absent(companions)) and lexicon.ABSENT_NAMED.search(question) is not None
 
 
-def _route_count_intents(raw: dict[str, Any], slots: dict[str, Any], question: str, companions: tuple[Companion, ...]) -> None:
+def _route_count_intents(raw: dict[str, Any], slots: dict[str, Any], question: str, companions: tuple[Companion, ...], handed: Named) -> None:
     """A count or a record whose words carry no line: what each becomes.
     Until Phase 3, step 2 this stage also wrote the ``threshold`` slot off
     the words (and ``stat`` for "scores 30"); the lines tagger reads every
@@ -1126,12 +799,10 @@ def _route_count_intents(raw: dict[str, Any], slots: dict[str, Any], question: s
         # which states how many there were and his line in them. Measured
         # over the replayed corpus: this question is the only one routed so.
         raw["intent"] = "game_log"
-        # The count's subject, restored as a count's would be
+        # The count's subject, settled as a count's would be
         # (_route_subject_slots) - game_log is not one of the intents that
-        # step restores for, and the model dropped Bam here.
-        subject = None if slots.get("player") or slots.get("players") else _subject_named_in(question)
-        if subject is not None:
-            slots["player"] = subject
+        # step settles it for, and the model dropped Bam here.
+        _settle_grammar_subject(slots, handed)
     if raw["intent"] == "threshold_count" and named is None and not lexicon.BELOW.search(question):
         # A count of games needs a threshold. Without one, "who has the most
         # threes" is a season ranking - measured, it arrived here with none and
@@ -1164,36 +835,11 @@ def _route_calendar_slots_split(question: str) -> str | None:
     return _split_side(splits[0], question) if len(splits) == 1 else None
 
 
-def _route_intent_slots(intent: str, slots: dict[str, Any], question: str) -> None:
-    """Slots only one template reads. (The with/without split's teammates
-    were this stage's until Phase 3, step 2: the subject reading writes
-    every companion, and the split reads the ones who played.)"""
-    # Intent-specific: each means nothing to any other template, so each is
-    # only added where one reads it - the same rule `side` follows below.
-    if intent in ("team_leaderboard", "team_quarter_points"):
-        # ISSUES.md #172: "nba team with least playoff wins since 2022" filed
-        # the same word twice - correctly into the ranking's end (the window
-        # tagger's `rank`), and again into `team`, where no franchise is
-        # named "least" and the template refused the whole question ("no
-        # team matching 'least'") over a cause the question never gave. The
-        # same shape as `subject.apply_subject`: a slot the question does
-        # not support. Read against the lexicon's `RANK_WORDS` - the tagger's
-        # own table - rather than a new word list, so the two checks cannot
-        # drift apart (AGENTS.md, "one concept, one definition").
-        team_slot = slots.get("team")
-        if isinstance(team_slot, str) and any(pattern.fullmatch(team_slot.strip()) for _, pattern in RANK_WORDS):
-            slots.pop("team", None)
-
-
-def _route_team_slots(slots: dict[str, Any]) -> None:
-    """A pseudo-team dropped: a `team` slot that names the league rather
-    than a team ("all-NBA", "all_teams", "worst"), measured on three
-    questions, each of which then refused as an unknown team. (A team's or
-    a streak's ``stat``, kept only where the question names one, and a
-    team metric's alias are the measure tagger's since Phase 3, step 2.)"""
-    team_slot = slots.get("team")
-    if isinstance(team_slot, str) and _PSEUDO_TEAM.fullmatch(team_slot.strip()):
-        slots.pop("team", None)
+# A ``team`` the words name no franchise by - a rank word ("least", #172),
+# "all-NBA", "the league" - was dropped by two stages here until Phase 3,
+# step 2 (``_route_intent_slots``, ``_route_team_slots``): the subject
+# reading hands the stages a team only where the words name one it resolves,
+# so neither ever fired on the 2,710 readings, and both went.
 
 
 # A count asked of one player with no season in sight: "how many times has
@@ -1220,45 +866,35 @@ _HOW_MANY = re.compile(r"\bhow\s+many\b", re.IGNORECASE)
 _SUBJECT_RESTORED_INTENTS = ("single_game_high", "threshold_count", "record_when")
 
 
-def _route_subject_slots(intent: str, slots: dict[str, Any], question: str) -> None:
+def _route_subject_slots(intent: str, slots: dict[str, Any], handed: Named) -> None:
     """A single-game high's or a threshold count's missing subject. (A
     log's last meetings with an opponent across seasons, and a count's
     career, are the span tagger's: :func:`~association.query.span.read_span`.)"""
-    if intent in _SUBJECT_RESTORED_INTENTS and not slots.get("player") and not slots.get("players"):
-        # An optional slot the model dropped, restored from the question's own
-        # grammar - see _subject_named_in. Only where the template reads one
-        # player: a leaderboard with no player IS the league's ranking, and so
-        # is a threshold_count with no player - restoring the subject only
-        # where the question's own grammar names one (#138) never turns a
-        # genuine league question into one about somebody it only appears to
-        # name.
-        subject = _subject_named_in(question)
-        if subject is not None:
-            slots["player"] = subject
+    if intent in _SUBJECT_RESTORED_INTENTS:
+        # An optional name the model dropped, settled from the question's own
+        # grammar (``subject.subject_named_in``, :attr:`Named.grammar`). Only
+        # where the reader reads one player: a leaderboard with no player IS
+        # the league's ranking, and so is a threshold_count with no player -
+        # settling the subject only where the question's own grammar names
+        # one (#138) never turns a genuine league question into one about
+        # somebody it only appears to name.
+        _settle_grammar_subject(slots, handed)
 
 
-#: The slot keys a raw route carries into the stages: the router model's
-#: schema properties less the intent, which is the shape the parser writes
-#: its names, stat and window in now that the model classification is gone
-#: (5.0.0). What :func:`settle` keeps of a settled route before running the
-#: stages again, since every other key is one the stages themselves read off
-#: the question for the intent they were run under (``since`` for a
-#: ``game_log``), and would
-#: otherwise survive into an intent whose template refuses it. The span's
-#: six slots, the window's four, the cuts' seven, the period's two and the
-#: measure's seven read from the words are not among them: the taggers read
-#: every one from the words again (Phase 3, step 2); the ``opponent`` is,
-#: since it is the subject reading's word, which the cuts tagger takes as
-#: settled. The subject's names alone, then - the model's ``stat`` enters
-#: beside them as the measure tagger's context (:func:`settle`).
-_MODEL_SLOTS: frozenset[str] = frozenset({"player", "players", "team", "teams", "opponent"})
+def _settle_grammar_subject(slots: dict[str, Any], handed: Named) -> None:
+    """The player the question's grammar names (:attr:`Named.grammar`), as
+    the one player the working route is about - where nobody is named yet."""
+    who = _subject_of(slots)
+    if not who.players and handed.grammar is not None:
+        slots["subject"] = replace(who, players=(handed.grammar,))
+
 
 #: The measure's model-era slots a raw route may carry (a test's payload):
 #: read as the tagger's context, never passed to the Scope.
 _MEASURE_CONTEXT_KEYS: tuple[str, ...] = ("stat", "side", "shot_value", "fields")
 
 
-def settle(intent: str, slots: Mapping[str, Any] | Scope, question: str, companions: tuple[Companion, ...] = (), *, lines: tuple[Line, ...] = ()) -> Route:
+def settle(intent: str, slots: Mapping[str, Any] | Scope, question: str, companions: tuple[Companion, ...] = (), *, lines: tuple[Line, ...] = (), handed: Named | None = None) -> Route:
     """The route the stages settle on for ``intent`` over ``slots``: the
     parser's raw route (:func:`association.query.parse.read_route` runs them
     under the parent its grammar names), or a settled route run again under
@@ -1273,16 +909,22 @@ def settle(intent: str, slots: Mapping[str, Any] | Scope, question: str, compani
     text, and the window tagger reads a history's count of seasons under
     it - so re-running them under the child is the whole recovery, and
     one definition of each slot rather than a second reader per child.
-    ``slots`` may be a settled route's, so the keys the stages derive are
-    dropped first (:data:`_MODEL_SLOTS`). The stages may settle on a DIFFERENT intent than
+    The stages may settle on a DIFFERENT intent than
     asked - a count with no threshold is a ranking, a "when X and Y played"
     record is ``with_without`` - and the caller reads the returned intent
     rather than assuming its own.
 
-    ``slots`` is the model's slot dict - the names and the stat - or a settled route's typed
-    :class:`~association.query.reading.Scope`, run again under a child; the
-    stages' own working dict never leaves this module, and the Route they
-    return carries the Scope.
+    ``slots`` is the model's stat (a test's side, shot value and columns
+    beside it: the measure tagger's context) - or a settled route's typed
+    :class:`~association.query.reading.Scope`, run again under a child, whose
+    subject and opponent are what is handed then; the stages' own working
+    dict never leaves this module, and the Route they return carries the
+    Scope. ``handed`` is who the subject reading hands the stages
+    (:class:`Named`: the typed subject, the opponent, and the grammar's
+    subject and the team words the stages settle a name from): the stages
+    read it and settle the subject the Route carries from it, and read no
+    name from the words themselves. Left out, nobody is named. A slot dict
+    holding a name is refused: names are handed typed.
 
     ``companions`` is who the subject reading found beside the subject
     (:class:`~association.query.reading.Companion`): the stages decide a
@@ -1306,16 +948,38 @@ def settle(intent: str, slots: Mapping[str, Any] | Scope, question: str, compani
     .. versionchanged:: 6.0.0
        Takes the typed ``companions`` (``router.Beside`` is gone) and the
        ``lines`` read before the stages (Phase 3, step 2).
+
+    .. versionchanged:: 6.0.0
+       Takes the typed ``handed`` (Phase 3, step 2, the subject): a slot
+       dict carries no name, and ``_MODEL_SLOTS`` is gone.
     """
     if isinstance(slots, Scope):
+        if handed is None:
+            handed = Named.of(question, subject=slots.subject, opponent=slots.cuts.opponent)
         slots = slots.to_slots()
-    raw: dict[str, Any] = {key: value for key, value in slots.items() if key in _MODEL_SLOTS or key in _MEASURE_CONTEXT_KEYS}
+    elif any(key in slots for key in _NAME_KEYS):
+        raise ValueError(f"settle takes the names typed (router.Named), not as slots {sorted(key for key in _NAME_KEYS if key in slots)}")
+    raw: dict[str, Any] = {key: value for key, value in slots.items() if key in _MEASURE_CONTEXT_KEYS}
     raw["intent"] = intent
-    return _settle(raw, question, companions, lines=lines)
+    return _settle(raw, question, companions, lines=lines, handed=handed if handed is not None else Named.of(question))
 
 
-def _settle(raw: dict[str, Any], question: str, companions: tuple[Companion, ...] = (), *, lines: tuple[Line, ...] = ()) -> Route:
+#: The slot names a name was carried under until Phase 3, step 2 - the four
+#: of the subject and the opponent - which :func:`settle` refuses in a slot
+#: dict: the subject reading hands the stages who the question is about,
+#: typed (:class:`Named`).
+_NAME_KEYS: tuple[str, ...] = ("player", "players", "team", "teams", "opponent")
+
+
+def _settle(raw: dict[str, Any], question: str, companions: tuple[Companion, ...] = (), *, lines: tuple[Line, ...] = (), handed: Named | None = None) -> Route:
     """The stages, over a raw route or a reassigned one (:func:`settle`)."""
+    handed = handed if handed is not None else Named.of(question)
+    # Who the question is about, as the subject reading handed it: the
+    # stages' working subject, which a stage settles a name of (the
+    # grammar's subject, a team's nickname) and which the Scope carries.
+    raw["subject"] = handed.subject
+    if handed.opponent is not None:
+        raw["opponent"] = handed.opponent
     # A coach question is refused whatever the model said, and carries no
     # slots, so it short-circuits before any of the stages below run.
     if _route_coach_intent(raw, question):
@@ -1330,17 +994,15 @@ def _settle(raw: dict[str, Any], question: str, companions: tuple[Companion, ...
     # rewrote: the intents code assigns decide which slots are read, and a
     # count whose words carry no line turns back into a ranking before any
     # intent-specific slot is chosen.
-    _route_period_intents(raw, question)
+    _route_period_intents(raw, question, handed)
     _route_triple_double_abbreviation(raw, question)
     _route_team_and_player_intents(raw, question)
-    _route_line_and_record_intents(raw, question, companions)
+    _route_line_and_record_intents(raw, question, companions, handed)
     slots = _route_blank_slots(raw)
-    _route_count_intents(raw, slots, question, companions)
+    _route_count_intents(raw, slots, question, companions, handed)
     _route_split_slot(slots, question)
-    _route_intent_slots(raw["intent"], slots, question)
     _route_shot_distance_subject(raw["intent"], slots, question)
-    _route_team_slots(slots)
-    _route_subject_slots(raw["intent"], slots, question)
+    _route_subject_slots(raw["intent"], slots, handed)
     # The lines, at the position of the last stage that wrote one
     # (``_route_record_when_threshold``, the pair's stat and number), over
     # the settled intent.
@@ -1404,7 +1066,7 @@ def _span_context(intent: str, slots: dict[str, Any], question: str, *, window: 
     their slices move them to the lexicon."""
     return SpanContext(
         intent=intent,
-        player_named=bool(slots.get("player")),
+        player_named=_subject_of(slots).player is not None,
         window_named=window.count is not None,
         versus=_VERSUS_WORDS.search(question) is not None,
         how_many=_HOW_MANY.search(question) is not None,

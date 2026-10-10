@@ -52,7 +52,7 @@ def ask(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Any:
 
     def record(ctx: Any, reading: Reading) -> Reply:
         del ctx
-        seen.append((reading.intent, reading.scope.player, reading.scope.players))
+        seen.append((reading.intent, reading.scope.subject.player, reading.scope.subject.players if len(reading.scope.subject.players) > 1 else ()))
         return Reply(data={}, answer="answered")
 
     # Every intent is the compiler's (compose.COMPILED_INTENTS): the
