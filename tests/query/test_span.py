@@ -60,6 +60,15 @@ def _read(question: str, intent: str = "player_stat", **context: Any) -> Span:
         ("games between 2020 and 2024", Span(season_type=2, since=2020, until=2024)),
         ("sga 20+ point games 2024-2026", Span(season_type=2, since=2024, until=2026)),
         ("knicks record by month 2024 2025", Span(season_type=2, since=2024, until=2025)),
+        # Two bare years joined by "to"/"through", or two adjacent ones by "and" (ISSUES.md #345,
+        # #289): each was read as no season until Phase 3, step 3, and the current one answered.
+        ("most three pointers from 2002 to 2004", Span(season_type=2, since=2002, until=2004)),
+        ("how many games did miami heat play 2009 through 2023", Span(season_type=2, since=2009, until=2023)),
+        ("2024 and 2025 Knicks record by month", Span(season_type=2, since=2024, until=2025)),
+        # Two seasons apart are no range: neither is read, rather than the three between them.
+        ("knicks record in 2020 and 2024", Span(season_type=2)),
+        # A second year that opens a season span is the span's ("2001-02" is 2002).
+        ("tmac 2001 to 2001-02", Span(season=2002, season_type=2)),
         ("players with 33 point games since 2000-01", Span(season_type=2, since=2001)),
         ("maxey games vs boston in the past two seasons", Span(season_type=2, since=S - 1)),
         # A range beside a named season: the range wins (the season is dropped).

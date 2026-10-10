@@ -256,6 +256,30 @@ RANGE_BARE_YEARS = re.compile(r"\b((?:19|20)\d\d)\s+((?:19|20)\d\d)\b")
 
 .. versionadded:: 6.0.0
 """
+# "from 2002 to 2004", "2009 through 2023": two bare years joined by "to" or
+# "through" are the closed range between them, both ends season numbers - the
+# reading "between 2013 and 2018" and "2013-2018" already get. Until Phase 3,
+# step 3 neither year was read (ISSUES.md #345): the question's subject
+# reading took two years as no season named, the span read no range, and "most
+# three pointers from 2002 to 2004" answered the 2026 leaders. Found by the
+# Reading's own unread words disagreeing with the claims ledger: deleting
+# either year left the other read as the season, so the ledger counted both
+# as read while nothing read either. A second year that opens a season span
+# ("tmac 2001 to 2001-02") is that span's, not a bare year.
+RANGE_YEARS_TO = re.compile(r"\b(?:from\s+)?((?:19|20)\d\d)\s+(?:to|through|thru)\s+((?:19|20)\d\d)\b(?![-/]\d)", re.IGNORECASE)
+"""A closed range written as two bare years joined by "to" or "through".
+
+.. versionadded:: 6.0.0
+"""
+# "2024 and 2025 Knicks record by month" (ISSUES.md #289): two ADJACENT bare
+# years joined by "and" are both seasons - the range of the two, as "2024
+# 2025" is - while "2020 and 2024" names two seasons that are no range, and
+# stays unread rather than read as the three between them.
+RANGE_YEARS_AND = re.compile(r"\b((?:19|20)\d\d)\s+and\s+((?:19|20)\d\d)\b", re.IGNORECASE)
+"""Two bare years joined by "and" (a range only where they are adjacent).
+
+.. versionadded:: 6.0.0
+"""
 
 # "past two seasons", "last 3 years": a relative window counted back from NOW,
 # not a games count and not a season named outright. Read as a range's first

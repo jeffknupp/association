@@ -111,13 +111,6 @@ before that commit needs re-checking against the current warehouse.
 - **Next step:** a `head_to_head` with a box-score stat is the meetings' totals (the team compiler's rows read sums them), or a refusal naming the stat.
 - **GitHub:** #326
 
-### Two seasons named before the team are dropped: "2024 and 2025 Knicks record by month" answers 2026
-- **Found:** 2026-09-30, the review of `ROADMAP-TYPES.md` (an Opus agent over the stage snapshot of the 628 recorded questions at `7f6425b`); the answers quoted were re-read from the snapshot.
-- **Evidence:** the reading's scope holds no `season`, `since` or `until` (`{'season_type': 2, 'split': 'month', 'team': 'New York Knicks'}`) and the answer is "The New York Knicks, record by month, the 2026 regular season". The same words in another order ("knicks record by month 2024 2025") read `since: 2024, until: 2025` and answer both seasons.
-- **User sees:** a by-month record for a season he did not ask about; the season is printed.
-- **Next step:** the season reader takes "N and M" before the subject as it does after it (`season_text`); a case in `tests/query/test_parser.py`.
-- **GitHub:** #289
-
 ### A number the question states is dropped and a broader question answered: three paraphrases the unread-words ledger found
 - **Found:** 2026-09-30, `scripts/claims_ledger.py` over the 628 recorded
   questions at `011091f` (the first run of the instrument: 11 questions
@@ -337,11 +330,12 @@ those were found.
 - **Source:** ours.
 - **GitHub:** #323
 
-### A season range worded "from X to Y" or "from X through Y" is not read, and the current season is answered: "most 40 point games from 2013 to 2018" answers 2026
-- **Found:** 2026-10-09, probing league-wide counts for #303 (`~/association-research/stages/ask_unnamed.py`, no model, the feed's way, on `24ade83`)
-- **Evidence:** "most 40 point games from 2013 to 2018" and "... from 2013 through 2018" answer "Luka Doncic had the most games with 40+ points in the 2026 regular season, with 16"; "who scored 40 points the most times from 2013 to 2018" answers the 2026 scoring leaders. The same range worded "2013-2018", "between 2013 and 2018" or "since 2013" is read (the reading carries `since`/`until`, and the answer is headed "regular season career (2013-2018)"). The claims ledger would count "from", "2013", "to" and "2018" as unread words, and "2013"/"2018" are unread NUMBERS (AGENTS.md: "a number among them is a bug").
-- **User sees:** a fluent answer to a different question - this season's leaders where a six-season span was asked.
-- **Next step:** Phase 3, step 2's span family (in flight 2026-10-09): the span tagger reads "from X to Y" and "from X through Y" as the range `X..Y` beside "X-Y" and "between X and Y"; a test per wording; measure on the 2,710 readings how many carry an unread four-digit year.
+### A range of calendar dates with their years is not read, and the current season is answered: "james harden ts playoffs from january 1 2015 to june 2 2021" lists his 2026 playoff games since January 1
+- **Found:** 2026-10-09 for bare years (#345: "most 40 point games from 2013 to 2018" answered 2026), fixed for bare years in Phase 3, step 3 (`span._validate_range` reads "from X to Y", "X through Y" and two adjacent years joined by "and", `lexicon.RANGE_YEARS_TO`/`RANGE_YEARS_AND`); the dated form re-measured 2026-10-10 on the same step's tree, where the Reading's own unread words disagreed with the claims ledger on every one of them (`~/association-research/stages/unread_family.py`: each year read only in that deleting it lets the other be read as THE season).
+- **Evidence:** 10 of the 2,082 feed questions write a range as two calendar dates with years - "curry playoff stats from may 10th 2019 to april 30th 2023 including record and ts% ...", "Curry stats from december 1st 2020 to november 28th 2021 in the reg season ...", "james harden ts playoffs from january 1 2015 to june 2 2021", "Sacramento kings record between October 10 2016 and february 19 2017", four "which player averaged the most ppg from ... to ..." - and none is read as a range: the cuts tagger reads the first day as a `since_day` within each season ("from january 1"), the span reads neither year (two years named are no season) and nothing reads the end day. "james harden ts playoffs from january 1 2015 to june 2 2021" lists "James Harden since January 1, last 10 of 18 games of the 2026 postseason"; "Sacramento kings record between October 10 2016 and february 19 2017" is refused "team_record cannot honor ['date']"; "curry playoff stats from may 10th 2019 to ..." reads "may" as Sean May. None of the 628.
+- **User sees:** a fluent answer over the current season under the question's own dates, or a refusal naming the wrong cell.
+- **Next step:** the cuts tagger reads a `DateRange(from, to)` of two calendar dates with years (the draft's `DateRange`, across seasons; `CALENDAR_DATE` already reads each date) and hands the span both years, as `NUMERIC_DATE_RANGE` hands one (`CutsRead.dated_since`); together with #353 (a worded since-date with a year). Every moved feed answer named in its commit.
+- **Priority:** P1 - a different question answered fluently.
 - **Source:** ours.
 - **GitHub:** #345
 

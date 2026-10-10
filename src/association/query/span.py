@@ -185,11 +185,12 @@ def _range(question: str, context: SpanContext, career: bool) -> tuple[int | Non
 
 def _validate_range(question: str) -> tuple[int, int | None, list[Claim]] | None:
     """The first and last season a range covers - (first, None) for an open
-    one - with the characters that named it. Four CLOSED forms beside the
+    one - with the characters that named it. Six CLOSED forms beside the
     open "since 2020": a season-hyphenated span joined by "to"/"through",
-    "between YYYY and YYYY", a bare "YYYY-YYYY" (or "2015-18", "00-02") and
-    two adjacent season numbers with nothing joining them; then "since
-    2000-01", "since 2020", and a decade. Each closed form fills the last
+    "between YYYY and YYYY", two bare years joined by "to"/"through", two
+    adjacent ones joined by "and", a bare "YYYY-YYYY" (or "2015-18",
+    "00-02") and two adjacent season numbers with nothing joining them;
+    then "since 2000-01", "since 2020", and a decade. Each closed form fills the last
     season as well as the first - see AGENTS.md, "a season range", for why
     an unfilled ``until`` is this project's worst failure shape rather than
     a missing nicety.
@@ -200,10 +201,13 @@ def _validate_range(question: str) -> tuple[int, int | None, list[Claim]] | None
     to_spans = _validate_range_to(question)
     if to_spans is not None:
         return to_spans
-    between = lexicon.RANGE_BETWEEN.search(question)
+    between = lexicon.RANGE_BETWEEN.search(question) or lexicon.RANGE_YEARS_TO.search(question)
     if between is not None:
         first, last = int(between.group(1)), int(between.group(2))
         return *((first, last) if first <= last else (last, first)), [Claim(between.start(), between.end(), "range")]
+    adjacent = lexicon.RANGE_YEARS_AND.search(question)
+    if adjacent is not None and int(adjacent.group(2)) == int(adjacent.group(1)) + 1:
+        return int(adjacent.group(1)), int(adjacent.group(2)), [Claim(adjacent.start(), adjacent.end(), "range")]
     for span in lexicon.season_spans(question):
         if span.is_range:
             return span.first, span.season, [Claim(span.start, span.end, "range")]
