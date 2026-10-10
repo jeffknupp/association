@@ -749,6 +749,51 @@ otherwise.
     game, a teammate, a split, a tenure, a window), which it dropped - 62
     feed answers move from a broader question answered to a refusal.
 
+- **Declared in code by Phase 3, step 3, the unread words** (2026-10-10,
+  the lead's brief; no answer, result, remark, planned query or reading
+  moved on the four populations but the field the step adds and the
+  enumerated fixes it found):
+  - The draft's `Reading.unread: tuple[str, ...]`, as drafted: the content
+    words of the question no claim covers, in the question's order, spelled
+    as the claims ledger spells a word (lowercased, its edge punctuation
+    dropped) - by the ledger's own rule, moved to the lexicon so both read
+    it (`content_tokens`, `CONTENT_STOPWORDS`, `without_possessive`,
+    `MODEL_STAT_WORDS`, `read_by_the_model`, `content_words`,
+    `unread_words`, `without_word`). A word the model's reply accounts for
+    - a word of a name it copied or the reading settled on, a word of the
+    stat it picked - is no content word, as the ledger counts: measured,
+    the claims do not make that exclusion redundant (194 of the 1,201 such
+    words on the 628 are claimed by no rule, a tagger reading the same
+    value from the model's key without them), so the Route carries the
+    model's reply (`Route.model_names`, `model_stat`). Recorded beside the
+    reading (`unread`); never a refusal ("Unclaimed words go to the trace,
+    are measured, and only then considered").
+  - **A claim says what a rule's reading depends on, measured by the rule
+    itself** - the property `Reading.unread` needs to agree with the
+    ledger's deletion. Step 2's claims were the characters each rule
+    consumed, and disagreed with the deletion on 485 content words of the
+    628 (76 claimed and not read, 409 read and not claimed). A tagger's
+    claims are cut to the words it could not do without (`span.needed`:
+    each word deleted, the ledger's own probe, and the tagger asked again
+    over the context its own words give it), with the words outside them
+    its reading turns on claimed under the family's name (`outside=`), but
+    never a word whose presence made it read LESS (`gives_up=`, a suppressed
+    reading's words stay unread: "2024 and 2025" read as no season). A rule
+    over the whole question - the parent grammar, the child grammars, the
+    stages before the taggers, the point reader's word tables, the
+    refusals' recognizers - claims the words its decision turned on
+    (`span.read_by`; `what` `intent`, `point`, `refused`), since a row
+    written as lookaheads consumes no stretch of characters. The subject
+    reading is read once and never probed: it declares its claims where it
+    reads. Agreement with the ledger on the 628: 284 before, 624 after.
+  - `Claim.what` gains `intent`, `point`, `refused`, `subject`, and each
+    family's name for a word claimed outside its own claims (`window`,
+    `span`, `measure`, `line`, `cuts`, `period`, `companion`).
+  - The ledger is the check from outside, as the roadmap's step 3 row
+    says: its deletion probe stays the measure, `run` records the Reading's
+    list beside its own, `report` names every question they differ on and
+    exits 1.
+
 ## What must be decided before which phase
 
 | Phase | Needs from this document |
@@ -1260,3 +1305,45 @@ moves into `data` before the slice that rewords its answer:
     the intent they choose, from the reading's own words (`router.Named`).
     Step 4, which keys the readers on the grammar and deletes the stages,
     moves the three to the subject reading's settling under the intent.
+
+16. **The subject reading's claims are declared, not measured** (Phase 3,
+    step 3). Every other rule's claims are cut to what its reading depends
+    on by asking it again with each word deleted; the subject reading is
+    read once (the read-once rule, `test_the_subject_is_read_once_per_question`)
+    and is not asked again, so its claims are where it reads - and 4 of the
+    628 recorded questions disagree with the ledger for it: "head" in
+    "lebron vs kawhi head to head" (the spelling reader gives up on
+    "kawhi" with it there - a suppressor, unclaimed), "against" in "How
+    many points did the 76ers score in the 4th quarter against Boston this
+    season?" and "This season, how many times did the 76ers play against
+    the Celtics?" (claimed with the opponent, which the second team named
+    gives anyway), "against" in "evaluate sga against embiid" (read only
+    through a spelling the window took from the next name, fixed in the
+    step's last commit, which grows the ledger by that word). Measured at
+    the step's claims commit: with the subject reading asked again per
+    content word (settled under the route's intent, a suppressor left
+    unclaimed), the 628 disagreed on 1 question and the 2,710 on 23,
+    against 5 and 100 with its claims declared, at about 2.5 ms a question
+    more - and a second reading of the subject per word is what the
+    read-once rule forbids. Jeff's: keep the rule and the residue, or allow the
+    subject reading to be asked again for its claims alone.
+17. **A partial overlap of two claims joins them, named for both** (since
+    `a29c7fd`; the span slice's decision was that it fails the reader).
+    Measured on the 2,710 at the step's end: 48 joined claims, where step 2
+    closed with 4. 43 are a child grammar's words (claimed whole, since
+    the decision says them) over a tagger's - `intent+line` 17 ("how many
+    games did luka have with 20+ points and 5+ assists"),
+    `intent+measure` 11, `intent+opponent` 5, `window+intent` 3,
+    `companion+intent` 2, `opponent+intent` 2, `intent+companion` 1,
+    `situation+intent` 1, `opponent+intent+window` 1: two readings that
+    both need the word - the grammar names the intent from the line's
+    words and the tagger reads its value - which step 4's grammar, naming
+    the shape from the typed values, is to make one. 1 is a recognizer
+    beside the measure (`refused+measure`, "bench points allowed"): both
+    need it. 4 are two rules of ONE tagger reading one word
+    (`situation+date`, "in march 24 2018": the cuts tagger reads the day
+    and the month in it again as a situation, applied twice - ISSUES.md,
+    "A month is read from the words of a day in it", P4) - the double read
+    the join hides.
+    Jeff's ruling on the join stands open; failing the reader on a partial
+    overlap would now fail 48 readings, 44 of them two readings each right.

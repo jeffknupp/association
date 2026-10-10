@@ -248,12 +248,20 @@ this tree:
   run had moved; with the stages run once there is no second run to
   list, and the reading and the query are the same without them. On the old box's replies it was 679 of 2,415 at
   `011091f` and 684 once the one reader of companions no longer needed
-  the verb in "when Embiid and Paul George play". Nine questions have an unread NUMBER, and three of
-  those were fluent answers to a broader question (`ISSUES.md`). After a
-  reader change, run it and read the unread numbers first; the count may
-  not grow. It is blind to a word only the model could have dropped, and
-  it overcounts a word a rule matched and did not need ("games" in "last
-  10 games"). Since Phase 3, step 3 the Reading states the same list
+  the verb in "when Embiid and Paul George play"; 709 after the window
+  slice's fix (`d12f899`, Jeff's call to let it grow), 702 after the line
+  slice, and 689 since Phase 3, step 3, where "18-year-old" and the twelve
+  words of "since 2000-01, how many games have players recorded 33 points,
+  13 rebounds, 10 assists, 2 blocks, and 2 steals?" came to be read. Seven
+  questions have an unread NUMBER since then: five "100"s of "per 100
+  possessions" (the rate reads per 100 from "per possessions" alone, so the
+  number restates it), the "2" of "in 2 hours", which nothing can read, and
+  the "2" of "2 threes in games Jamal Murray played" (`ISSUES.md` #357).
+  After a reader change, run it and read the unread numbers first; the
+  count may not grow. It is blind to a word only the model could have
+  dropped, and a word a rule matched and did not need ("games" in "last 10
+  games") is unread in both measures, since the claims are cut to the
+  words each rule needed. Since Phase 3, step 3 the Reading states the same list
   itself: `Reading.unread`, the content words no claim covers, counted by
   the ledger's own rule moved to the lexicon (`lexicon.content_words`,
   `CONTENT_STOPWORDS`, `MODEL_STAT_WORDS`; the model's names and stat ride
@@ -263,7 +271,18 @@ this tree:
   names every question where the two differ and exits 1 on one: they
   measure one thing two ways, so a disagreement is a finding - a claim
   over a word the reading does not depend on, or a word a stage reads
-  without claiming it.
+  without claiming it. They agree on 624 of the 628 since step 3 (284
+  before its claims); the 4 that differ are the subject reading's, which is
+  read once and never probed for its claims ("head" in "lebron vs kawhi
+  head to head" stops the spelling reader completing "kawhi"; "against"
+  where the second team named is the opponent anyway, twice; "against" in
+  "evaluate sga against embiid", read only through a spelling the window
+  took from the next name). And a disagreement the other way round is the
+  one that found answers: a word whose presence makes a rule read LESS -
+  "2024 and 2025", two seasons read as none - is read by the deletion (take
+  one year away and the other is read) and claimed by nothing
+  (`span.needed`'s `gives_up`), and the step fixed the readers it named
+  (`CHANGES.md`).
 - **A caveat, a stated default or a definition is written through
   `query/notes.py`.** `note(kind, text, **facts)` for something about the
   data or a term the answer uses, `decided(kind, text, field=, chose=, ...)`

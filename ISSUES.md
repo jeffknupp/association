@@ -378,6 +378,22 @@ those were found.
 - **Next step:** keep the end on the typed `Window` for every intent (the tagger reads it; the drop is the model-era "an intent that cannot honor it" rule) and let the planner's cell check refuse it by name where the reader's table excludes it - a decline-to-Cause commit under Jeff's rule, with the 4 moved answers (3 head_to_head, 1 player_matchup) enumerated; or build the window into `head_to_head`'s tally and widen its span the way `game_log`'s "last N vs" is widened. Either way the first 9 (`leaderboard`, unrecognized names) move only in their reading.
 - **GitHub:** #352
 
+### A window whose "games" is misspelled is no window: "Lamelo ball stats last 5 gMes" answers his season average, "Draymond green vs mavs last 6 gamew" his 3 games this season
+- **Found:** 2026-10-10, Phase 3, step 3: the Reading's own unread words disagreeing with the claims ledger on 5 of the 2,082 feed questions, each the misspelled word ("gmes", "gamew", "gane", "gamess", "match"), which the deletion counts as read (take it away and "last 5" alone is read as the window) while no rule claims it - a word whose presence makes the reader read less.
+- **Evidence:** the parent grammar's log row (`parse._PLAYER_LOG`, "last N games"), the window grammar (`lexicon.WINDOW_GRAMMAR`) and the span's both-types rule for a log's "last N games" all need the word "games"; a misspelling of it after "last N" stops all three, where a bare "last 5" reads the window. Answered on `9dffcd2` (`ask_unnamed.py`, no model): "Lamelo ball stats last 5 gMes" -> "LaMelo Ball averaged 20.1 points, 4.8 rebounds and 7.1 assists per game in 72 games in the 2026 regular season." ("... last 5 games" lists them); "Draymond green vs mavs last 6 gamew" -> "Draymond Green averaged 7.3 points ... in 3 games vs the Dallas Mavericks in the 2026 regular season." ("... last 6 games": his last 6 of 42 career games against them). The 5 feed questions: "anthony davis vs orlando last 5 match", "Draymond green vs mavs last 6 gamew", "gary trent jr. vs orlando magic last nine gane", "Giannas last 10 gamess", "Lamelo ball stats last 5 gMes"; none of the 628.
+- **User sees:** a season line or this season's meetings where the last N games were asked; nothing says the window was set aside.
+- **Next step:** read a word after "last/past N" that is one edit from "game(s)" (the entity index's edit budget, rapidfuzz's Damerau-Levenshtein) as "games" in the lexicon's one place the three readers take it from, so the grammar, the window and the span read it alike; "match(es)" beside it as a synonym. A test per wording; the 5 feed answers enumerated before and after.
+- **Priority:** P1 - a different question answered fluently; 5 of the 2,082.
+- **Source:** ours.
+
+### "who scored 40 points the most times" is a ranking by points per game, not a count of 40-point games
+- **Found:** 2026-10-10, Phase 3, step 3, re-measuring #345's examples once a range of bare years was read.
+- **Evidence:** "who scored 40 points the most times from 2013 through 2018" now reads the range (2013-2018) and answers "every player, regular season career (2013-2018), by player (points per game, minimum 20 games): ..." - the count's child grammar (`lexicon.CHILD_THRESHOLD_COUNT`) names a count for "most ... N+ stat", "how many ... games ... N stat" and "N stat games", and not for "scored N points the most times" with a bare number after the verb, so the question stays the league's scoring ranking with "40" unread. "most 40 point games from 2013 to 2018" is the count. 0 of the 2,710 readings; a wording of #345's own evidence.
+- **User sees:** the scoring leaders where the most 40-point games were asked.
+- **Next step:** the count's grammar reads "scored N <stat> the most times" (and "N-point games the most") as a count over that line; a test per wording.
+- **Priority:** P1 - a different question answered fluently; 0 of the 2,710.
+- **Source:** ours.
+
 ## P2: misleading or incomplete
 
 ### A matchup of two players who did not play this season answers "<player> has no games in the 2026 regular season"
