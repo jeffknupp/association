@@ -51,9 +51,9 @@ from dataclasses import dataclass
 from association.query import lexicon
 from association.query.lines import phrase_line
 from association.query.period import which_period
-from association.query.reading import Claim, Line, LineOp
+from association.query.reading import GAME_HIGHS, GAMES_COUNTED, LINE_RECORD, LINE_RUNS, PLAYER_LOG, PLAYER_SPLITS, Claim, Line, LineOp, PointShape
 
-THRESHOLD_INTENTS: frozenset[str] = frozenset({"threshold_count", "record_when", "streak", "single_game_high"})
+THRESHOLD_ASKS: frozenset[PointShape] = frozenset({GAMES_COUNTED, LINE_RECORD, LINE_RUNS, GAME_HIGHS})
 """The readers whose shape is a line on a stat: a count of games over it, a
 record above and below it, a run of games holding it, a high ranked by its
 stat. On these a bare "30 point games" reads as a line; on every other
@@ -63,14 +63,14 @@ as the stages read them (the measurement above: a single "20+ points" on a
 log is read by nothing, and stays so until the measure slice).
 
 .. versionadded:: 6.0.0
-   ``router._THRESHOLD_INTENTS`` until Phase 3, step 2.
+   ``router._THRESHOLD_ASKS`` until Phase 3, step 2.
 """
 
 #: The readers under which exactly one "N+ stat" pair rewrites the model's
 #: ``stat`` to the pair's own word (``router._route_record_when_threshold``
 #: until Phase 3, step 2): the count, assigned from the words under a parent
 #: whose stat the model filed, and the record.
-_PAIR_NAMES_THE_STAT: frozenset[str] = frozenset({"record_when", "threshold_count"})
+_PAIR_NAMES_THE_STAT: frozenset[PointShape] = frozenset({LINE_RECORD, GAMES_COUNTED})
 
 #: The readers of a player's games that narrow by ONE line stated outright -
 #: "N+ stat", "N or more stat", "at least N stat" - as they narrow by two:
@@ -80,19 +80,20 @@ _PAIR_NAMES_THE_STAT: frozenset[str] = frozenset({"record_when", "threshold_coun
 #: unread there ("harden 61 points" can as well name one game), and a
 #: player's line is not among them ("lebron 20+ points this season" can ask
 #: whether he averages it).
-_ONE_LINE_NARROWS: frozenset[str] = frozenset({"game_log", "player_splits"})
+_ONE_LINE_NARROWS: frozenset[PointShape] = frozenset({PLAYER_LOG, PLAYER_SPLITS})
 
 
 @dataclass(frozen=True, kw_only=True)
 class LineContext:
-    """What was settled before the lines are read: the intent the stages
+    """What was settled before the lines are read: what the words ask
+    (``asked``, the grammar's key - an intent's name until Phase 3, step 4), as the stages
     settled on, and whether a companion beside the subject reached a line
     (``beside_line``: the line the words state is his, not the subject's).
 
     .. versionadded:: 6.0.0
     """
 
-    intent: str
+    asked: PointShape | None
     beside_line: bool = False
 
 
@@ -137,19 +138,19 @@ def read_lines(question: str, context: LineContext) -> LinesRead:
     """The subject's lines ``question``'s words name, under ``context``, in
     the question's order, with the claims: the "N+ stat" pairs on every
     reader, a bare "N stat", "scores N" and fouling out on a reader whose
-    shape is a line (:data:`THRESHOLD_INTENTS`), a floor of minutes and a
+    shape is a line (:data:`THRESHOLD_ASKS`), a floor of minutes and a
     line under a number on every reader.
 
     .. versionadded:: 6.0.0
     """
     found: list[tuple[int, Line, Claim]] = []
     fouled = lexicon.FOULED_OUT.search(question)
-    if fouled is not None and context.intent == "threshold_count":
+    if fouled is not None and context.asked == GAMES_COUNTED:
         # Fouling out is the count's own line (fouls at six), whatever else
         # the words number - the intent stage chose the count by it.
         found.append((-1, Line(measure="fouls", value=lexicon.FOUL_OUT_THRESHOLD, as_typed=fouled.group(0).casefold(), keyed=True), Claim(fouled.start(), fouled.end(), "line")))
     pairs = lexicon.threshold_pairs(question)
-    lined = context.intent in THRESHOLD_INTENTS
+    lined = context.asked in THRESHOLD_ASKS
     plus_pairs = [match for match in pairs if lexicon.THRESHOLD_PAIR.fullmatch(match.group(0)) is not None]
     found.extend(_read_lines_pairs(question, context, pairs, plus_pairs))
     stat: str | None = None
@@ -161,7 +162,7 @@ def read_lines(question: str, context: LineContext) -> LinesRead:
             stat = "points"
     for pattern, below in ((lexicon.ABOVE, False), (lexicon.BELOW, True)):
         found.extend((m.start(), phrase_line(m.group(0), below=below), Claim(m.start(), m.end(), "line")) for m in pattern.finditer(question))
-    if context.intent in _PAIR_NAMES_THE_STAT and len(plus_pairs) == 1:
+    if context.asked in _PAIR_NAMES_THE_STAT and len(plus_pairs) == 1:
         stat = lexicon.THRESHOLD_WORDS[plus_pairs[0].group(2).casefold()]
     found.sort(key=lambda each: each[0])
     return LinesRead(tuple(line for _, line, _ in found), tuple(claim for _, _, claim in found), stat)
@@ -180,10 +181,10 @@ def _read_lines_pairs(question: str, context: LineContext, pairs: list[re.Match[
     games narrows them (:data:`_ONE_LINE_NARROWS`), as two do everywhere;
     never a line a companion beside him reached ("splits when tatum scores
     30+ points" is Tatum's line)."""
-    lined = context.intent in THRESHOLD_INTENTS
+    lined = context.asked in THRESHOLD_ASKS
     at_least = [m.span(1) for m in lexicon.AT_LEAST_PAIR.finditer(question)]
     stated = [match for match in pairs if match in plus_pairs or (match.start(), match.start() + len(match.group(1))) in at_least]
-    one = context.intent in _ONE_LINE_NARROWS and not context.beside_line and len(pairs) == 1 and len(stated) == 1
+    one = context.asked in _ONE_LINE_NARROWS and not context.beside_line and len(pairs) == 1 and len(stated) == 1
     narrowing = stated if one else plus_pairs
     return [
         (

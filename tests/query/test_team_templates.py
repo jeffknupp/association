@@ -17,7 +17,7 @@ from typing import Any
 import duckdb
 import pytest
 from routed import planned_answer as compose_answer
-from shapes import key, unhonored
+from shapes import asked, key, unhonored
 from test_templates import streak  # the compiler's, the template retired (compose.COMPILED_INTENTS)
 
 from association.fetch.repairs import real_games
@@ -46,7 +46,7 @@ def _compiled(intent: str) -> Callable[[AnswerContext, Reading], Reply]:
         kind: SubjectKind = "pair" if len(named) > 1 else "player" if named else "team" if scope.subject.team else "everyone"
         subject = reading.subject or Subject(kind, players=named, teams=(scope.subject.team,) if scope.subject.team else ())
         why: list[str] = []
-        result = compose_answer(ctx, with_point(ctx.con, "", Reading(scope=scope, intent=intent, subject=subject)), declined=why.append)
+        result = compose_answer(ctx, with_point(ctx.con, "", Reading(scope=scope, asked=asked(intent), subject=subject)), declined=why.append)
         if result is None:
             raise Unsupported(why[0] if why else f"the compiler has no reading of this {intent} point")
         return result

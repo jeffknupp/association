@@ -37,10 +37,25 @@ from dataclasses import dataclass
 from typing import Literal
 
 from association.query import lexicon
-from association.query.reading import Claim, ScopeError, Window
+from association.query.reading import (
+    NETPOINTS_FINGERPRINT,
+    NETPOINTS_RATINGS,
+    PERIOD_LOG,
+    PLAYER_LINE,
+    PLAYER_LOG,
+    PLAYER_RANKING,
+    SHOT_CHART,
+    SHOT_DISTANCE,
+    TEAM_PERIOD_TOTAL,
+    TEAM_RANKING,
+    Claim,
+    PointShape,
+    ScopeError,
+    Window,
+)
 from association.query.span import LIMIT_COUNTS_SEASONS, claimed, range_named, relative_seasons
 
-ORDER_INTENTS: frozenset[str] = frozenset({"fingerprint", "game_log", "period_split", "player_netpoints", "shot_chart", "shot_distance", "team_quarter_points"})
+ORDER_ASKS: frozenset[PointShape] = frozenset({NETPOINTS_FINGERPRINT, PLAYER_LOG, PERIOD_LOG, NETPOINTS_RATINGS, SHOT_CHART, SHOT_DISTANCE, TEAM_PERIOD_TOTAL})
 """Intents whose reader honors ``order``, so filling it from the question can
 only make the answer match what was asked: on these the end of the span is
 read from :data:`~association.query.lexicon.ORDER_WORDS` where the grammar
@@ -57,7 +72,7 @@ the planner's stated scoping.
    relation, which honors a window.
 
 .. versionchanged:: 6.0.0
-   In the window tagger (``router.ORDER_INTENTS`` until Phase 3, step 2).
+   In the window tagger (``router.ORDER_ASKS`` until Phase 3, step 2).
 """
 
 #: Intents that honor an end of the span only beside a real count - one
@@ -65,7 +80,7 @@ the planner's stated scoping.
 #: last game" to a log of his last ten. Read with
 #: :data:`~association.query.lexicon.SINGLE_GAME`; the pair is what makes
 #: "last game" one game.
-_ORDER_ON_A_SINGLE_GAME: frozenset[str] = frozenset({"player_stat"})
+_ORDER_ON_A_SINGLE_GAME: frozenset[PointShape] = frozenset({PLAYER_LINE})
 
 #: Intents where an end of the span narrows to ONE game rather than ordering
 #: a list: shot_chart, shot_distance, player_netpoints and fingerprint each
@@ -74,7 +89,7 @@ _ORDER_ON_A_SINGLE_GAME: frozenset[str] = frozenset({"player_stat"})
 #: chart of steph curry's 2025 season for 3 point shots" drew one game, 7 of
 #: 12, where 2025 held hundreds (#153) - and the question has to name a game
 #: at one end of the span for it to stand.
-_ORDER_IS_ONE_GAME: frozenset[str] = frozenset({"shot_chart", "shot_distance", "player_netpoints", "fingerprint"})
+_ORDER_IS_ONE_GAME: frozenset[PointShape] = frozenset({SHOT_CHART, SHOT_DISTANCE, NETPOINTS_RATINGS, NETPOINTS_FINGERPRINT})
 
 #: The readers that honor an end and read one game named as the subject's
 #: own ("his last home game") where the grammar's rows miss it: the two
@@ -82,26 +97,27 @@ _ORDER_IS_ONE_GAME: frozenset[str] = frozenset({"shot_chart", "shot_distance", "
 #: exactly where SINGLE_GAME allows two words ("his first quarter stats per
 #: game" would read as his first game), and a question naming a quarter or
 #: half is theirs before the tagger runs.
-_ONE_GAME_NAMED_INTENTS: frozenset[str] = ORDER_INTENTS - {"period_split", "team_quarter_points"}
+_ONE_GAME_NAMED_ASKS: frozenset[PointShape] = ORDER_ASKS - {PERIOD_LOG, TEAM_PERIOD_TOTAL}
 
 #: The intents whose ranking has an end the question names ("most", "fewest",
 #: "best", "worst"): a team ranking, and a team's single best quarter or
 #: half, where the rank word is what makes "most points in a first half" one
 #: game rather than the season's average.
-_RANKED_INTENTS: frozenset[str] = frozenset({"team_leaderboard", "team_quarter_points"})
+_RANKED_ASKS: frozenset[PointShape] = frozenset({TEAM_RANKING, TEAM_PERIOD_TOTAL})
 
 
 @dataclass(frozen=True, kw_only=True)
 class WindowContext:
     """What the stages settled before the window is read, and the tagger's
-    rules read beside the words: the intent they settled on, and whether
+    rules read beside the words: what they settled the words to ask
+    (``asked``, the grammar's key - an intent's name until Phase 3, step 4), and whether
     the stat read is a yes/no one (a triple-double, a double-double, fouling
     out), over whose games a ranking by another measure is read.
 
     .. versionadded:: 6.0.0
     """
 
-    intent: str
+    asked: PointShape | None
     boolean_stat: bool = False
 
 
@@ -185,7 +201,7 @@ def _seasons_counted(question: str, context: WindowContext) -> tuple[int, Claim]
     """How many seasons "past/last N seasons" names, for an intent whose
     count is of seasons (``LIMIT_COUNTS_SEASONS``), with the characters
     that said so - unless the words name a range outright, which wins."""
-    if context.intent not in LIMIT_COUNTS_SEASONS or range_named(question) is not None:
+    if context.asked not in LIMIT_COUNTS_SEASONS or range_named(question) is not None:
         return None
     seasons = relative_seasons(question)
     if seasons is None:
@@ -201,7 +217,7 @@ def _order(question: str, context: WindowContext, order: str | None, count: int 
     last game", "steph curry's last regular season game") is that game,
     the end and a count of one together, which the line answers by handing
     the question to the log; on an intent whose reader honors an end
-    (:data:`ORDER_INTENTS`) one the grammar missed is read from the
+    (:data:`ORDER_ASKS`) one the grammar missed is read from the
     looser :data:`~association.query.lexicon.ORDER_WORDS` where exactly one
     matches - after one game named as his, which the grammar's rows miss
     between "last" and "game" ("his last home game") - and on the four where an end means ONE game
@@ -211,14 +227,14 @@ def _order(question: str, context: WindowContext, order: str | None, count: int 
     the count stands ("lakers vs mavs record last 10 home games" is their
     last ten meetings). Returns the end, its claim, and whether one game of
     a line was named."""
-    if context.intent in _ORDER_ON_A_SINGLE_GAME:
+    if context.asked in _ORDER_ON_A_SINGLE_GAME:
         single = lexicon.SINGLE_GAME.search(question)
         if single is not None:
             return _single_game_end(single), Claim(single.start(), single.end(), "window"), True
         return *_order_elsewhere(question, order, count), False
-    if context.intent in ORDER_INTENTS:
+    if context.asked in ORDER_ASKS:
         claim = None
-        if order is None and count is None and context.intent in _ONE_GAME_NAMED_INTENTS:
+        if order is None and count is None and context.asked in _ONE_GAME_NAMED_ASKS:
             # One game named as his, in a phrasing the grammar misses ("his
             # last home game", "her first road game"): the end and a count
             # of one, as a player's line reads it. Until 2026-10-09 the four
@@ -233,7 +249,7 @@ def _order(question: str, context: WindowContext, order: str | None, count: int 
             if len(named) == 1:
                 order = named[0][0]
                 claim = Claim(named[0][1].start(), named[0][1].end(), "window")
-        if order is not None and context.intent in _ORDER_IS_ONE_GAME and not _names_one_game(question):
+        if order is not None and context.asked in _ORDER_IS_ONE_GAME and not _names_one_game(question):
             return None, None, False
         return order, claim, False
     return *_order_elsewhere(question, order, count), False
@@ -258,9 +274,9 @@ def _order_elsewhere(question: str, order: str | None, count: int | None) -> tup
 
 def _rank(question: str, context: WindowContext) -> tuple[Literal["most", "fewest", "best", "worst"] | None, Claim | None]:
     """Which end of a team ranking was asked for, on the intents that rank
-    (:data:`_RANKED_INTENTS`): the first of :data:`~association.query.lexicon.RANK_WORDS`
+    (:data:`_RANKED_ASKS`): the first of :data:`~association.query.lexicon.RANK_WORDS`
     that matches, in the table's order."""
-    if context.intent not in _RANKED_INTENTS:
+    if context.asked not in _RANKED_ASKS:
         return None, None
     for name, pattern in lexicon.RANK_WORDS:
         match = pattern.search(question)
@@ -276,7 +292,7 @@ def _ranked_by(question: str, context: WindowContext) -> tuple[str | None, list[
     player answers rightly, so the word that tells the two apart is the
     window's - the measure word where one is named, points otherwise. A
     bare "most triple doubles" reads nothing here and keeps its count."""
-    if context.intent != "leaderboard" or not context.boolean_stat:
+    if context.asked != PLAYER_RANKING or not context.boolean_stat:
         return None, []
     ranked = lexicon.RANKED_BOOLEAN_GAMES.search(question)
     if ranked is None:

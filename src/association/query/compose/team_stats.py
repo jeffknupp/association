@@ -21,8 +21,7 @@ from association.query.entities import Entity, resolved_team, slot_season
 from association.query.measure import spelled
 from association.query.notes import Note
 from association.query.player_relation import validated_until
-from association.query.point import TEAM_SEASON_POINTS
-from association.query.reading import Scope, Unsupported, _clamp_limit
+from association.query.reading import TEAM_LINE, TEAM_OUTLOOK, TEAM_RANKING, PointShape, Scope, Unsupported, _clamp_limit
 from association.query.result import Grouped, Narrowing, OutlookFacts, Part, Refusal, Result, Scalar, Span, TeamRankingFacts, TeamStatFacts, Unanswered
 from association.query.team_metrics import DEFAULT_TEAM_LINE, TEAM_METRICS, TeamLine, TeamMetric, descending_for, ranked, resolve_team_metric
 from association.query.team_seasons import (
@@ -77,14 +76,14 @@ def conference_refusal(scope: Scope) -> Unanswered | None:
     return Refusal(kind="conference_named", facts={"named": named}, shown={"unanswerable": named}) if named is not None else None
 
 
-def _team_season_subject(con: duckdb.DuckDBPyConnection, intent: str, scope: Scope) -> Entity | Unanswered:
+def _team_season_subject(con: duckdb.DuckDBPyConnection, shape: PointShape, scope: Scope) -> Entity | Unanswered:
     """The team a one-team team-season read is about, after the checks the
     answering loop and the retired template made first, in their order: a
     narrowing the words do not state (a decline, the answer side's before
     the reader is asked), the coverage floor, a conference or division in a
     team slot, then the team itself (a clarifying question, or a decline
     where none matches)."""
-    refused = coverage_refusal(TEAM_SEASON_POINTS[intent], scope)
+    refused = coverage_refusal(shape, scope)
     if refused is not None:
         raise Refused(refused)
     conference = conference_refusal(scope)
@@ -125,7 +124,7 @@ def read_team_outlook(con: duckdb.DuckDBPyConnection, q: TeamSeasonQuery) -> Res
        do not state before asking (``compose.plan.cells_unhonored``, its
        shape's row's ``declined="read"``; Phase 3, step 2's closing slice).
     """
-    team = _team_season_subject(con, "team_outlook", q.scope)
+    team = _team_season_subject(con, TEAM_OUTLOOK, q.scope)
     if isinstance(team, Unanswered):
         return team
     season = q.scope.span.season or current_season()
@@ -248,7 +247,7 @@ def read_team_stat(con: duckdb.DuckDBPyConnection, q: TeamSeasonQuery) -> Result
        shape's row's ``declined="read"``; Phase 3, step 2's closing slice).
     """
     scope = q.scope
-    team = _team_season_subject(con, "team_stat", scope)
+    team = _team_season_subject(con, TEAM_LINE, scope)
     if isinstance(team, Unanswered):
         return team
     key = _team_stat_metric(scope)
@@ -343,7 +342,7 @@ def _team_leaderboard_checks(scope: Scope) -> Unanswered | None:
     reading, in their order: a narrowing the words do not state (a
     decline, the answer side's before the reader is asked), the coverage
     floor, a conference or division in a team slot."""
-    refused = coverage_refusal(TEAM_SEASON_POINTS["team_leaderboard"], scope)
+    refused = coverage_refusal(TEAM_RANKING, scope)
     if refused is not None:
         raise Refused(refused)
     return conference_refusal(scope)

@@ -17,6 +17,7 @@ from typing import Any
 
 import duckdb
 import pytest
+from shapes import asked
 from test_conditions import BROWN, TATUM, league, with_without  # noqa: F401 - the league fixture and the split's reader, imported by name
 from test_period_relation import SEASON as PERIOD_SEASON
 from test_period_relation import con as period_con  # noqa: F401 - the plays fixture, imported by name
@@ -26,7 +27,7 @@ from association.query import lexicon
 from association.query.answer import AnswerContext
 from association.query.compose.core import Query, compile_query, rows_of
 from association.query.compose.plan import cells_stated
-from association.query.line import THRESHOLD_INTENTS, LineContext, LinesRead, read_lines, read_period_line, threshold_named
+from association.query.line import THRESHOLD_ASKS, LineContext, LinesRead, read_lines, read_period_line, threshold_named
 from association.query.lines import measure_filters, phrase_line, relation_lines, threshold_line, threshold_of
 from association.query.parse import read_route, reading_from_route
 from association.query.player_games import Narrowed, aggregate_sql
@@ -99,7 +100,7 @@ def _shape(line: Line) -> tuple[str | None, str, int | bool, str, bool, bool]:
     ],
 )
 def test_the_words_read_as_lines(question: str, intent: str, expected: list[tuple[Any, ...]], stat: str | None) -> None:
-    read = read_lines(question, LineContext(intent=intent))
+    read = read_lines(question, LineContext(asked=asked(intent)))
     assert isinstance(read, LinesRead)
     assert [_shape(line) for line in read.lines] == expected
     assert read.stat == stat
@@ -107,7 +108,7 @@ def test_the_words_read_as_lines(question: str, intent: str, expected: list[tupl
 
 def test_the_tagger_claims_the_characters_of_each_line_once() -> None:
     question = "most 20+ point 5+ assist games with under 14 fta"
-    read = read_lines(question, LineContext(intent="threshold_count"))
+    read = read_lines(question, LineContext(asked=asked("threshold_count")))
     assert len(read.claims) == len(read.lines) == 3
     assert all(claim.what == "line" and question[claim.start : claim.end].casefold() == line.as_typed for claim, line in zip(read.claims, read.lines, strict=True))
     assert [c.start for c in read.claims] == sorted(c.start for c in read.claims)
@@ -118,7 +119,7 @@ def test_threshold_named_is_what_the_intent_stages_ask() -> None:
     assert threshold_named("76ers record when maxey scores 30") == 30
     assert threshold_named("how many times has embiid fouled out") == lexicon.FOUL_OUT_THRESHOLD == 6
     assert threshold_named("jokic stats") is None
-    assert {"threshold_count", "record_when", "streak", "single_game_high"} == THRESHOLD_INTENTS
+    assert {asked(name) for name in ("threshold_count", "record_when", "streak", "single_game_high")} == THRESHOLD_ASKS
 
 
 def test_a_line_in_a_quarter_is_read_by_the_parser_with_its_claim() -> None:
@@ -168,8 +169,8 @@ def test_the_splits_teammates_project_under_its_own_slot_and_as_conditions_elsew
     assert len(absent.companions) == 2 and absent.to_slots(split_by_presence=True) == {"without": ["Jayson Tatum"]}
     assert absent.to_slots() == {"without": ["Jayson Tatum"], "conditions": [{"player": "Jaylen Brown", "side": "own", "predicate": "played"}]}
     # The Reading projects by its intent; a Query by its group.
-    assert list(Reading(scope=scope, intent="with_without").projected()["scope"]["with_player"]) == ["Jayson Tatum", "Jaylen Brown"]
-    assert list(Reading(scope=scope, intent="game_log").projected()["scope"]["with_player"]) == []
+    assert list(Reading(scope=scope, asked=asked("with_without")).projected()["scope"]["with_player"]) == ["Jayson Tatum", "Jaylen Brown"]
+    assert list(Reading(scope=scope, asked=asked("game_log")).projected()["scope"]["with_player"]) == []
 
 
 def test_the_projection_keeps_the_slot_era_shape() -> None:
@@ -251,7 +252,7 @@ def test_relation_lines_are_the_narrowing_ones_in_the_slots_order() -> None:
     scope = Scope.from_slots({"stat": "points", "threshold": 30, "above": ["with 25 minutes"], "below": ["under 14 fta"]})
     assert [line.as_typed for line in relation_lines(scope)] == ["under 14 fta", "with 25 minutes"]
     assert [(f.column, f.op, f.value, f.label) for f in measure_filters(scope)] == [("freeThrowsAttempted", "<", 14, "under 14 free throw attempts"), ("minutes", ">=", 25, "at least 25 minutes")]
-    pairs = read_lines("most 20+ point 5+ assist games", LineContext(intent="threshold_count"))
+    pairs = read_lines("most 20+ point 5+ assist games", LineContext(asked=asked("threshold_count")))
     assert [line.as_typed for line in relation_lines(Scope(lines=pairs.lines))] == ["20+ point", "5+ assist"] and threshold_of(Scope(lines=pairs.lines)) == 20
     with pytest.raises(PointRefused, match="names no box-score stat"):
         measure_filters(Scope.from_slots({"below": ["under 25 years old"]}))
@@ -262,13 +263,13 @@ def test_relation_lines_are_the_narrowing_ones_in_the_slots_order() -> None:
 
 def test_the_subject_reading_reads_the_companions_and_claims_their_phrase(league: AnswerContext) -> None:  # noqa: F811 - the fixture
     question = "jaylen brown game log without jayson tatum this season"
-    subject = read_subject(league.con, question, "game_log", Scope(subject=Who(kind="player", players=("Jaylen Brown",))))
+    subject = read_subject(league.con, question, asked("game_log"), Scope(subject=Who(kind="player", players=("Jaylen Brown",))))
     assert subject.conditions == (Companion(player="Jayson Tatum", predicate="absent"),)
     # The phrase's claim cut to the words the companion reader needed (Phase 3, step 3,
     # span.needed): either of "jayson" and "tatum" names him alone, so the keyword is the one
     # word it cannot do without; and the season the names are settled in is the reading's too.
     assert [(c.what, question[c.start : c.end]) for c in subject.claims] == [("companion", "without"), ("season", "season")]
-    reached = read_subject(league.con, "celtics record when jayson tatum scores 20+ points", "record_when", Scope(subject=Who(kind="team", teams=("Boston Celtics",))))
+    reached = read_subject(league.con, "celtics record when jayson tatum scores 20+ points", asked("record_when"), Scope(subject=Who(kind="team", teams=("Boston Celtics",))))
     assert reached.conditions == (Companion(player="Jayson Tatum", predicate="reached", line=Line(measure="points", value=20, as_typed="20+ points")),)
     # The companions reach the Reading typed, through the one writer, and ride the route's claims.
     route, _, _ = read_route(league.con, question, ["Jaylen Brown", "Jayson Tatum"], "")
@@ -302,7 +303,7 @@ def test_the_line_cell_changes_what_the_player_relation_reads(pg_ctx: AnswerCont
     assert _games(pg_ctx, Scope(subject=Who(kind="player", players=("Brandin Podziemski",)))) == (3, 45)  # e1 (30 min, 10), e2 (32, 20), e3 (28, 15)
     assert _games(pg_ctx, Scope(subject=Who(kind="player", players=("Brandin Podziemski",)), lines=(phrase_line("with 30 minutes", below=False),))) == (2, 30)
     assert _games(pg_ctx, Scope(subject=Who(kind="player", players=("Brandin Podziemski",)), lines=(phrase_line("under 30 minutes", below=True),))) == (1, 15)
-    pairs = read_lines("20+ point 5+ assist games", LineContext(intent="game_log")).lines
+    pairs = read_lines("20+ point 5+ assist games", LineContext(asked=asked("game_log"))).lines
     assert _games(pg_ctx, Scope(subject=Who(kind="player", players=("Brandin Podziemski",)), lines=pairs)) == (1, 20)  # e2 alone holds both
 
 
@@ -331,7 +332,7 @@ def test_the_companion_cell_changes_what_the_player_relation_reads(league: Answe
 
 
 def test_the_companion_cell_changes_what_the_team_relation_reads(league: AnswerContext) -> None:  # noqa: F811 - the fixture
-    split = with_without(league, Reading.from_slots({"team": "Boston Celtics", "season_type": 2, "with_player": ["Jayson Tatum"]}, intent="with_without"))
+    split = with_without(league, Reading.from_slots({"team": "Boston Celtics", "season_type": 2, "with_player": ["Jayson Tatum"]}, asked=asked("with_without")))
     assert not isinstance(split, str)
     groups = {row["group"]: row for row in split.data["splits"]["presence"]} if "presence" in split.data.get("splits", {}) else None
     assert "with" in split.answer.lower() and "without" in split.answer.lower()

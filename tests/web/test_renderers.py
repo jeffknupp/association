@@ -22,13 +22,13 @@ from typing import Any
 import duckdb
 import pytest
 from routed import planned_answer as compose_answer
+from shapes import asked
 
 from association.nba.netpoints import FINGERPRINT_CATEGORIES
 from association.query.answer import AnswerContext, Reply
-from association.query.compose import COMPILED_INTENTS
 from association.query.compose.sentence import _FRACTION_COLUMNS
 from association.query.parse import with_point
-from association.query.reading import Reading, Scope
+from association.query.reading import SHAPE_NAMES, Reading, Scope
 from association.query.subject import read_subject
 from association.web.app import INDEX_HTML
 
@@ -116,7 +116,7 @@ def test_the_pages_fraction_set_matches_the_compilers() -> None:
 def test_every_renderer_names_an_intent_that_actually_exists() -> None:
     """A renderer keyed 'leaderboards' would never fire, and nothing else would
     ever say so."""
-    unknown = sorted(set(_renderers()) - COMPILED_INTENTS)
+    unknown = sorted(set(_renderers()) - set(SHAPE_NAMES.values()))
     assert unknown == [], f"renderers for intents that do not exist: {unknown}"
 
 
@@ -309,7 +309,7 @@ def _answered(ctx: AnswerContext, intent: str) -> Reply:
     (``compose.COMPILED_INTENTS``), with no question words to move its own
     point."""
     slots = dict(CASES[intent])
-    result = compose_answer(ctx, with_point(ctx.con, "", Reading(scope=Scope.from_slots(slots), intent=intent, subject=read_subject(ctx.con, "", intent, Scope.from_slots(slots)))))
+    result = compose_answer(ctx, with_point(ctx.con, "", Reading(scope=Scope.from_slots(slots), asked=asked(intent), subject=read_subject(ctx.con, "", asked(intent), Scope.from_slots(slots)))))
     assert result is not None, f"the compiler has no reading of {intent}'s case"
     return result
 

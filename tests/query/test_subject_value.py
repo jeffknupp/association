@@ -16,6 +16,7 @@ from dataclasses import replace
 from typing import Any
 
 import pytest
+from shapes import asked
 from test_compose import cx_ctx  # noqa: F401 - the fixture with positions, imported by name
 from test_conditions import league  # noqa: F401 - the league fixture, imported by name
 
@@ -94,8 +95,8 @@ def test_the_points_position_is_its_subjects_where_the_league_is_read() -> None:
 
 def test_the_stages_take_the_names_typed_and_refuse_one_passed_as_a_slot() -> None:
     with pytest.raises(ValueError, match="typed"):
-        settle("player_stat", {"player": "Joel Embiid"}, "embiid stats")
-    route = settle("player_stat", {}, "embiid stats", handed=Named.of("embiid stats", subject=Who(kind="player", players=("Joel Embiid",))))
+        settle(asked("player_stat"), {"player": "Joel Embiid"}, "embiid stats")
+    route = settle(asked("player_stat"), {}, "embiid stats", handed=Named.of("embiid stats", subject=Who(kind="player", players=("Joel Embiid",))))
     assert route.scope.subject.players == ("Joel Embiid",)
 
 
@@ -106,9 +107,9 @@ def test_the_stages_settle_a_dropped_subject_from_the_grammar_the_reading_read()
     question = "most points curry scored in a game this season"
     handed = Named.of(question)
     assert handed.grammar == "curry"
-    assert settle("single_game_high", {}, question, handed=handed).scope.subject.player == "curry"
+    assert settle(asked("single_game_high"), {}, question, handed=handed).scope.subject.player == "curry"
     # With nobody in the hand-off's grammar, nobody is settled.
-    assert settle("single_game_high", {}, question, handed=replace(handed, grammar=None)).scope.subject.players == ()
+    assert settle(asked("single_game_high"), {}, question, handed=replace(handed, grammar=None)).scope.subject.players == ()
 
 
 def test_the_words_the_reading_reads_a_team_and_a_dropped_subject_by() -> None:

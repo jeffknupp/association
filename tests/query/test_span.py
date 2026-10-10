@@ -13,7 +13,7 @@ import itertools
 from typing import Any
 
 import pytest
-from shapes import stated
+from shapes import asked, stated
 from test_templates import pg_ctx, team_cells_con  # noqa: F401 - the two relation fixtures, imported by name
 
 from association.nba.season import current_season
@@ -30,7 +30,7 @@ S = current_season()
 
 
 def _read(question: str, intent: str = "player_stat", **context: Any) -> Span:
-    return read_span(question, SpanContext(intent=intent, **context)).span
+    return read_span(question, SpanContext(asked=asked(intent), **context)).span
 
 
 # ---------------- the tagger: words to a Span ----------------
@@ -113,12 +113,12 @@ def test_a_bare_last_n_games_log_reads_both_types() -> None:
 
 def test_the_tagger_claims_the_characters_it_read_once() -> None:
     question = "Payton Pritchard stats vs 76ers at home including playoffs game log"
-    read = read_span(question, SpanContext(intent="game_log", versus=True))
+    read = read_span(question, SpanContext(asked=asked("game_log"), versus=True))
     assert read.claims == (Claim(40, 58, "both"),) and question[40:58] == "including playoffs"  # the "playoffs" inside it folds in
     question = "kobe playoff stats from 02-03 to 06-07"
-    read = read_span(question, SpanContext(intent="player_stat"))
+    read = read_span(question, SpanContext(asked=asked("player_stat")))
     assert [(c.what, question[c.start : c.end]) for c in read.claims] == [("season_type", "playoff"), ("range", "02-03 to 06-07")]
-    read = read_span("jokic career averages in 2023", SpanContext(intent="player_stat"))
+    read = read_span("jokic career averages in 2023", SpanContext(asked=asked("player_stat")))
     assert [c.what for c in read.claims] == ["career", "season"]
     assert ["jokic career averages in 2023"[c.start : c.end] for c in read.claims] == ["career", "2023"]
 
@@ -135,7 +135,7 @@ def test_the_tagger_claims_the_characters_it_read_once() -> None:
     ],
 )
 def test_no_two_claims_overlap(question: str) -> None:
-    claims = read_span(question, SpanContext(intent="player_stat")).claims
+    claims = read_span(question, SpanContext(asked=asked("player_stat"))).claims
     assert all(a.end <= b.start for a, b in itertools.pairwise(claims))
 
 

@@ -23,6 +23,7 @@ from typing import Any
 import duckdb
 import pytest
 from routed import default_query, slots_route, with_subject
+from shapes import asked
 
 from association.fetch.repairs import real_games
 from association.nba.season import current_season
@@ -50,7 +51,7 @@ def _reading(con: duckdb.DuckDBPyConnection, intent: str, slots: dict[str, Any],
     the package takes the Reading alone): the typed scope, and the subject
     read from the question the way ``point`` read it for a caller
     with none - never applied to the slots, so a case says what it did."""
-    return Reading(scope=_scope(intent, slots, question), intent=intent, subject=subject or read_subject(con, question, intent, Scope.from_slots(dict(slots))))
+    return Reading(scope=_scope(intent, slots, question), asked=asked(intent), subject=subject or read_subject(con, question, asked(intent), Scope.from_slots(dict(slots))))
 
 
 def _scope(intent: str, slots: dict[str, Any], question: str) -> Scope:
@@ -60,7 +61,7 @@ def _scope(intent: str, slots: dict[str, Any], question: str) -> Scope:
     unless the case hands a line of its own as a slot, which the door builds."""
     if any(key in slots for key in ("above", "below", "period_condition", "lines")):
         return Scope.from_slots(slots)
-    read = read_lines(question, LineContext(intent=intent))
+    read = read_lines(question, LineContext(asked=asked(intent)))
     if not any(line.keyed for line in read.lines):
         return Scope.from_slots(slots)  # a line the case hands as a slot, where the words carry none
     return Scope.from_slots({**{k: v for k, v in slots.items() if k != "threshold"}, "lines": read.lines})
@@ -83,7 +84,7 @@ def team_move_point(con: duckdb.DuckDBPyConnection, slots: dict[str, Any], quest
     from the question, planned - the team's point as the team compiler runs
     it, or ``None`` where the team is not the subject."""
     scope = Scope.from_slots(slots)
-    reading = team_read_point(scope, question, read_subject(con, question, "", Scope.from_slots(dict(slots))))
+    reading = team_read_point(scope, question, read_subject(con, question, None, Scope.from_slots(dict(slots))))
     if reading is None:
         return None
     query = plan(reading)
@@ -919,7 +920,7 @@ def test_a_league_point_refuses_a_cell_the_league_read_has_no_subject_for() -> N
     from association.query.subject import Subject
 
     def league_ranking(slots: dict[str, Any], intent: str = "leaderboard", question: str = "who led the league in points") -> Any:
-        reading = Reading(scope=Scope.from_slots(slots), intent=intent, subject=Subject("everyone"))
+        reading = Reading(scope=Scope.from_slots(slots), asked=asked(intent), subject=Subject("everyone"))
         return plan(read_point(reading, question))
 
     refused: list[tuple[dict[str, Any], str]] = [
@@ -1728,15 +1729,15 @@ def test_a_single_game_high_with_no_stat_is_declined_for_the_stat_not_the_player
     from association.query.point import default_point
 
     with pytest.raises(PointRefused) as no_stat:
-        default_point("single_game_high", Scope.from_slots({"player": "Brice Sensabaugh", "span": "career"}))
+        default_point(asked("single_game_high"), Scope.from_slots({"player": "Brice Sensabaugh", "span": "career"}))
     assert no_stat.value.cause == Cause(kind="needs_stat", facts={"intent": "single_game_high"})
     assert refusal_result(no_stat.value.cause).answer == "A single-game high needs a stat to rank games by, and none was read."
     with pytest.raises(PointRefused) as unknown:
-        default_point("single_game_high", Scope.from_slots({"player": "Brice Sensabaugh", "stat": "asistss"}))
+        default_point(asked("single_game_high"), Scope.from_slots({"player": "Brice Sensabaugh", "stat": "asistss"}))
     assert unknown.value.cause == Cause(kind="unknown_stat", facts={"intent": "single_game_high", "stat": "asistss"})
     assert refusal_result(unknown.value.cause).answer == "A single-game high cannot rank games by 'asistss' - only by a box-score stat each game has a number for."
     with pytest.raises(Unsupported, match="needs a named player"):
-        default_point("single_game_high", Scope.from_slots({"stat": "points"}))
+        default_point(asked("single_game_high"), Scope.from_slots({"stat": "points"}))
 
 
 def test_a_league_count_in_an_ordinal_season_is_declined_not_narrowed_silently(cx_ctx: AnswerContext) -> None:
@@ -1898,10 +1899,11 @@ def test_a_presenter_steps_aside_for_a_narrowing_its_words_do_not_state(cx_ctx: 
     from shapes import key
 
     from association.query import compose
-    from association.query.compose.plan import SHAPE_NAMES
+    from association.query.reading import SHAPE_NAMES
 
     # Every shape's words are the sayer's (compose.say) since slice (iv); the
-    # name a decline gives each shape (SHAPE_NAMES) still names every one.
+    # name a decline gives each shape (SHAPE_NAMES) still names every one,
+    # and the coach's, which no reader takes (the page's label alone).
     ported = {
         "game_log",
         "record_when",
@@ -1927,7 +1929,7 @@ def test_a_presenter_steps_aside_for_a_narrowing_its_words_do_not_state(cx_ctx: 
     # And the NetPoints relation's (compose.netpoints, Phase 2, step 5), and the shot relation's (compose.shots).
     netpoints = {"player_netpoints", "fingerprint"}
     shots = {"shot_chart", "shot_distance"}
-    assert set(SHAPE_NAMES.values()) == ported | team_seasons | netpoints | shots
+    assert set(SHAPE_NAMES.values()) == ported | team_seasons | netpoints | shots | {"coach"}
     narrowed = default_query("single_game_high", {"player": "Brandin Podziemski", "stat": "points", "opponent": "Boston Celtics"})
     assert compose._read(cx_ctx.con, key("single_game_high"), narrowed) is None
     assert compose._read(cx_ctx.con, key("single_game_high"), replace(narrowed, scope=replace(narrowed.scope, cuts=replace(narrowed.scope.cuts, opponent=None)))) is not None
@@ -2001,6 +2003,6 @@ def test_a_ranking_in_a_unit_its_metric_has_no_form_of_is_the_readings_cause(cx_
     ranking's refusal, a sentence the ranking reader wrote until the point
     reader carried its cause (``ranking_unit``) - said by the planner, word
     for word as before."""
-    reading = with_point(cx_ctx.con, "top 10 in points / 90", Reading(scope=Scope.from_slots({"stat": "points", "rate": "/ 90"}), intent="leaderboard", subject=Subject("everyone")))
+    reading = with_point(cx_ctx.con, "top 10 in points / 90", Reading(scope=Scope.from_slots({"stat": "points", "rate": "/ 90"}), asked=asked("leaderboard"), subject=Subject("everyone")))
     assert reading.point is None and reading.point_refusal == Cause(kind="ranking_unit", facts={"metric": "avg_points", "rate": "/ 90"})
     assert refusal_result(reading.point_refusal).answer == "No leaderboard ranks avg points per 90 minutes - the warehouse stores it only per game or as a season total."

@@ -19,6 +19,7 @@ from typing import Any, get_args
 
 import pytest
 from routed import staged as settle
+from shapes import asked
 from test_career_spans import season_ctx  # noqa: F401 - the season line's fixture, imported by name
 from test_parser import con  # noqa: F401 - the parser's name fixture, imported by name
 from test_templates import game_log, leaderboard, pg_ctx  # noqa: F401 - the player relation's fixture, imported by name
@@ -52,7 +53,7 @@ from association.query.team_metrics import TEAM_METRICS, resolve_team_metric
 
 
 def _read(question: str, intent: str, key: str | None = None, **context: Any) -> Measure | None:
-    return read_measure(question, MeasureContext(intent=intent, key=key, **context)).measure
+    return read_measure(question, MeasureContext(asked=asked(intent), key=key, **context)).measure
 
 
 @pytest.mark.parametrize(
@@ -123,7 +124,7 @@ def test_the_models_key_is_context_the_words_confirm_and_never_the_source_where_
 
 def test_the_tagger_claims_the_characters_it_read_once_and_they_ride_the_route() -> None:
     question = "who were the top 10 in defensive netpoints / 100 possessions"
-    read = read_measure(question, MeasureContext(intent="leaderboard"))
+    read = read_measure(question, MeasureContext(asked=asked("leaderboard")))
     assert read.measure is not None and read.measure.as_typed == "netpoints_defense_per_100"
     assert [question[c.start : c.end] for c in read.claims] == ["defensive netpoints / 100", "/ 100"]
     route = settle("leaderboard", {}, question)

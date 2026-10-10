@@ -572,7 +572,7 @@ def test_an_answer_names_the_history_file_it_was_recorded_to(monkeypatch: pytest
 
 def test_a_compiled_intent_is_read_planned_and_answered_by_the_compiler_alone(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """ROADMAP plan item 6, step (d), part 4: the four intents the compiler
-    reproduced exactly (compose.COMPILED_INTENTS) are answered from the
+    reproduced exactly (every shape the words ask, since Phase 3, step 4) are answered from the
     Reading; the trace carries the record ("-> (reading) ..."). Where the
     compiler declines, the question is refused naming the compiler's
     reason - there is no template behind it any more."""
@@ -592,7 +592,7 @@ def test_a_compiled_intent_is_read_planned_and_answered_by_the_compiler_alone(mo
                     aggregate="count",
                     group="none",
                     predicates=[("points", ">=", 30)],
-                    intent=reading.intent,
+                    asked=reading.asked,
                 )
             )
         return Reply(data={"count": 9}, answer="Joel Embiid had 9 games with 30+ points.")

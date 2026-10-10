@@ -13,7 +13,7 @@ from routed import default_query, default_reading
 from association.query.compose.core import Query
 from association.query.compose.plan import plan
 from association.query.compose.team import TeamQuery
-from association.query.reading import Reading, Scope, Span, Window
+from association.query.reading import GAMES_COUNTED, Reading, Scope, Span, Window
 from association.query.reading import Subject as Who
 
 
@@ -104,7 +104,7 @@ def test_describe_names_every_deciding_field_and_drops_empty_scope() -> None:
         order="date",
         direction="desc",
         limit=None,
-        intent="threshold_count",
+        asked=GAMES_COUNTED,
     )
     line = reading.describe()
     assert line.startswith("relation=player subject=? shape=scalar by= on=player_games measures=[] aggregate=count group=none predicates=[('points', '>=', 30)] window=date/desc")

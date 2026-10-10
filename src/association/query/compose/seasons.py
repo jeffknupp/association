@@ -32,7 +32,7 @@ from association.query.measure import spelled
 from association.query.measures import stat_measure
 from association.query.notes import Note
 from association.query.player_relation import ResolvedSpan, empty_box_scores
-from association.query.reading import Unsupported
+from association.query.reading import PLAYER_LINE, Unsupported
 from association.query.result import Decided, Grouped, LineFacts, Part, Refusal, Result, Scalar, Span, Unanswered
 from association.query.season_line import (
     ADVANCED_STATS,
@@ -94,7 +94,7 @@ def player_line_reads(q: Query) -> bool:
     from association.query.point import default_point
 
     try:
-        own = default_point("player_stat", q.scope)
+        own = default_point(PLAYER_LINE, q.scope)
     except Unsupported:
         return False
     named = stat_measure(q.scope.measure)

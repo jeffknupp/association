@@ -18,6 +18,7 @@ from typing import Any
 
 import duckdb
 import pytest
+from shapes import asked
 
 from association.query.answer import Reply
 from association.query.calendar import parse_alignment, parse_situation
@@ -32,7 +33,7 @@ def unanswerable(con: duckdb.DuckDBPyConnection, intent: str, slots: dict[str, A
     """A test's slot dict as a Reading - the typed scope, and the subject
     read from the question - and the first thing its words name that
     nothing reads, as the planner says it (or None)."""
-    reading = Reading(scope=Scope.from_slots(slots), intent=intent, subject=read_subject(con, question, intent, Scope.from_slots(dict(slots))))
+    reading = Reading(scope=Scope.from_slots(slots), asked=asked(intent), intent=intent, subject=read_subject(con, question, asked(intent), Scope.from_slots(dict(slots))))
     causes = _reading_from_route_unsupported(question, reading)
     return refusal_result(causes[0]) if causes else None
 
@@ -40,7 +41,7 @@ def unanswerable(con: duckdb.DuckDBPyConnection, intent: str, slots: dict[str, A
 def by_question(question: str, intent: str, con: duckdb.DuckDBPyConnection) -> Reply | None:
     """The refusal the words come to before any reader runs, as the planner
     says it (or None)."""
-    cause = _reading_from_route_refused(players_of(con), teams_of(con), question, Reading(intent=intent, subject=Subject("everyone")))
+    cause = _reading_from_route_refused(players_of(con), teams_of(con), question, Reading(asked=asked(intent), intent=intent, subject=Subject("everyone")))
     return refusal_result(cause) if cause is not None else None
 
 
@@ -85,7 +86,7 @@ def test_an_age_is_refused_because_no_birth_date_is_on_record(con: duckdb.DuckDB
     # age, where until Phase 3, step 3 nothing read it and his 2026 line was answered.
     from association.query.cuts import CutsContext, read_cuts
 
-    situation = read_cuts("18-year-old Lebron's ppg total", CutsContext(intent="player_stat")).cuts.situation
+    situation = read_cuts("18-year-old Lebron's ppg total", CutsContext(asked=asked("player_stat"))).cuts.situation
     assert situation is not None and situation.text == "18-year-old" and not situation.read
     hyphenated = unanswerable(con, "player_stat", {"player": "LeBron James", "stat": "points", "situation": "18-year-old"}, "18-year-old Lebron's ppg total")
     assert hyphenated is not None and "birth date" in hyphenated.answer and "'18-year-old'" in hyphenated.answer

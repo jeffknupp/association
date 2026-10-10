@@ -12,6 +12,7 @@ and a test about the team's names its key outright.
 
 from __future__ import annotations
 
+from association.query import reading
 from association.query.compose.plan import cells_stated, cells_unhonored
 from association.query.reading import PointShape, Scope
 
@@ -41,6 +42,49 @@ KEYS: dict[str, PointShape] = {
     "shot_chart": PointShape("shots", "chart", "shots"),
     "shot_distance": PointShape("shots", "scalar", "distance"),
 }
+
+
+#: What the words ask, by the retired intent's name (Phase 3, step 4: the
+#: grammar names a :class:`~association.query.reading.PointShape`, and the
+#: tests that still speak in the retired names translate here, the one
+#: test-side table, until slice (c) re-seats them).
+ASKED: dict[str, PointShape | None] = {
+    "game_log": reading.PLAYER_LOG,
+    "player_stat": reading.PLAYER_LINE,
+    "player_splits": reading.PLAYER_SPLITS,
+    "record_when": reading.LINE_RECORD,
+    "period_split": reading.PERIOD_LOG,
+    "threshold_count": reading.GAMES_COUNTED,
+    "single_game_high": reading.GAME_HIGHS,
+    "streak": reading.LINE_RUNS,
+    "player_matchup": reading.PLAYER_MEETINGS,
+    "with_without": reading.PRESENCE_SPLIT,
+    "head_to_head": reading.TEAM_MEETINGS,
+    "team_quarter_points": reading.TEAM_PERIOD_TOTAL,
+    "period_leaderboard": reading.PERIOD_RANKING,
+    "team_record": reading.TEAM_RECORD,
+    "player_netpoints": reading.NETPOINTS_RATINGS,
+    "fingerprint": reading.NETPOINTS_FINGERPRINT,
+    "shot_chart": reading.SHOT_CHART,
+    "shot_distance": reading.SHOT_DISTANCE,
+    "leaderboard": reading.PLAYER_RANKING,
+    "player_compare": reading.PLAYER_COMPARISON,
+    "player_history": reading.SEASON_HISTORY,
+    "team_stat": reading.TEAM_LINE,
+    "team_leaderboard": reading.TEAM_RANKING,
+    "team_outlook": reading.TEAM_OUTLOOK,
+    "coach": reading.TEAM_COACH,
+    "other": None,
+}
+
+
+def asked(words: str) -> PointShape | None:
+    """What the words ask, by the retired intent's name: the grammar's key
+    (``None`` for ``other``), which the label table names back
+    (``reading.asked_label``)."""
+    found = ASKED[words]
+    assert reading.asked_label(found) == words, f"{words!r} names {found}, which the table labels {reading.asked_label(found)!r}"
+    return found
 
 
 def key(words: str) -> PointShape:

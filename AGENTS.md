@@ -72,12 +72,14 @@ this tree:
   Silence about a fix is as bad as silence about a bug: the next decision
   is made on the report.
 
-- **New shapes are frozen** (decision D4). No new intent, template,
-  presenter, scoping table or per-intent renderer.
-  `tests/query/test_frozen_shapes.py` holds the 25 intents the reader can
-  name, the page's 22 renderers and the 4 scoping declarations left in
-  `src` (by module and name, read from the source), none of which is
-  added; and that `templates/`,
+- **New shapes are frozen** (decision D4). No new shape the words can ask,
+  template, presenter, scoping table or per-intent renderer.
+  `tests/query/test_frozen_shapes.py` holds the 25 shapes the grammar can
+  name (the grammar's keys, `reading.PointShape` as relation, shape and
+  `by`, since Phase 3, step 4 - the 25 intents' names until then, a freeze
+  retired with the intent), the page's 22 renderers and the 4 scoping
+  declarations left in `src` (by module and name, read from the source),
+  none of which is added; and that `templates/`,
   `compose/present.py` and `compose/adapt.py` do not come back as source
   files. Phase 2 (2026-10-03 to 2026-10-05) removed the twelve templates
   (the registry stood empty after the shot chart, and step 6 deleted it
@@ -769,7 +771,7 @@ about what happens next, and the third is the one that was got wrong first:
   (5.0.0). Without it the difference is between a refusal that names the
   player and the plain refusal for want of a reading, which names only the
   slot. Refuse only where the answer would actually be about
-  that player (`reading.PLAYER_INTENTS`; it was checked against the
+  that player (`reading.PLAYER_ASKS`, the shapes whose reader reads one; it was checked against the
   templates' own source while they existed): a
   stray name on a `head_to_head` question changes no answer, and refusing over
   it would break a question that works.
@@ -1030,7 +1032,7 @@ model's. Two things follow, and both matter when you add a shape:
   game - one quarter or one half, by ordinal or by number ("1st quarter",
   "q4", "4th qtr", "first half", "2h": `WHICH_QUARTER`, `WHICH_HALF`,
   `ORDINAL_PERIODS`; a half is read first and apart, since a half is never
-  a quarter) - over the intent the stages settled, writes `reading.Period`
+  a quarter) - over what the stages settled the words to ask (`asked=`, the grammar's key), writes `reading.Period`
   on `Scope.period` and claims what it read. `which_period(text)` is the
   ONE reader of which period any words name: the intent stage calls it to
   choose among the three period intents (the stage's choice is step 4's;
@@ -1050,7 +1052,7 @@ model's. Two things follow, and both matter when you add a shape:
   inside another tagger's claim, and the value was written ONLY under the
   three period intents - six readings name a quarter and carry none (a
   subject nothing resolved, the point reader declining them by its guard);
-  the tagger keeps that (`period.PERIOD_INTENTS`) and claims nothing where
+  the tagger keeps that (`period.PERIOD_ASKS`, the three keys since Phase 3, step 4) and claims nothing where
   it writes nothing. A "by quarter" question reads NO period (the
   breakdown is the point's shape, `Reading.by="period"`), and a period as
   a CONDITION on which games count is the line slice's value
@@ -1074,7 +1076,7 @@ model's. Two things follow, and both matter when you add a shape:
   on a career question; a date that opens a range or stands on a career
   question is a situation, and the year it wrote is handed to the span
   tagger), a playoff round, a game of a series, an ordinal season - over
-  the intent the stages settled, the split (a venue beside a venue split
+  what the stages settled the words to ask (the grammar's key), the split (a venue beside a venue split
   is the split's), and the opponent and absent teammates the subject
   reading read (an opponent that is the `without` list again is dropped;
   the tenure the subject reading writes after the stages); it writes
@@ -1104,12 +1106,12 @@ model's. Two things follow, and both matter when you add a shape:
   `read_lines(question, LineContext)` reads the lines on a stat a question
   keeps the subject's games past - "30+ points", "20+ point 5+ assist
   games", "scores 30", "fouled out" (fouls at six), "under 14 fta", "at
-  most 5 turnovers", "with 25 minutes" - over the settled intent alone,
+  most 5 turnovers", "with 25 minutes" - over what the words ask (the settled key) alone,
   writes `reading.Line` values on `Scope.lines` (the measure as the game
   column's key, `op`, `value`, `as_typed`, `keyed` for the shape's own
   line, `narrows` for one the relation filters by, and `period` for a line
   in a quarter) and claims each line's characters once; a reader whose
-  shape is a line (`line.THRESHOLD_INTENTS`: the count, the record, the
+  shape is a line (`line.THRESHOLD_ASKS`: the count, the record, the
   streak, the high) reads a bare "N stat" as its own, every other reader
   only what the words say outright - a floor of minutes, a line under a
   number, two or more "N+ stat" pairs - as the stages read them (a single
@@ -1223,7 +1225,7 @@ model's. Two things follow, and both matter when you add a shape:
   game"), an end filled from the looser `ORDER_WORDS` on a reader that
   honors one and dropped on a reader that refuses one beside a count it
   can still take, a team ranking's end (`rank`), the measure a ranking of
-  boolean games is ordered by (`by`) - over the intent the stages settled
+  boolean games is ordered by (`by`) - over what the stages settled the words to ask
   and whether the stat is a yes/no one, writes `reading.Window` on
   `Scope.window`, and claims what it read. Measured first
   (`~/association-research/stages/window_family.py`, the four slots as
@@ -1242,7 +1244,7 @@ model's. Two things follow, and both matter when you add a shape:
   postseason, both types - in the order the retired stages read them
   (measured first, `~/association-research/stages/span_family.py`: the six
   slots as each stage set them on all 2,710 readings), from the words and
-  the few facts the stages settled before it (the intent, a window, a
+  the few facts the stages settled before it (what the words ask, a window, a
   player, a dated range), writes one typed value (`reading.Span`, on
   `Scope.span`) and returns the `Claim`s - `(start, end, what)` - of the
   characters it consumed, which the Route carries onto `Reading.claims`.
@@ -1312,7 +1314,7 @@ model's. Two things follow, and both matter when you add a shape:
   step 2, where the slots `without`, `with_player` and `conditions` stood
   - and on the path that refuses an invented name too, so "jay huff game
   log vs Embiid" keeps Embiid beside the refusal). The stages are HANDED
-  the typed companions (`router.settle(intent, slots, question,
+  the typed companions (`router.settle(asked, slots, question,
   companions)`) and read no name themselves: they decide a with/without
   split from them (`subject.with_without_named`) and cut the opponent
   against the absent ones (`router._absent`), and a model-era `without`,
@@ -1387,10 +1389,11 @@ model's. Two things follow, and both matter when you add a shape:
     `player_games`, `player_periods`, `player_seasons`, `team_games`,
     `team_periods`, `team_seasons`, `team_snapshots`, `netpoints`,
     `shots`). Every `Reading(...)` in `query/point.py` names the three; a
-    shared move read under several intents' words says `by` from the words
-    (`point._ROWS_BY`, `_COUNT_SHAPES`), and a team-season intent's point
-    on the team relation is stamped its season's shape
-    (`point.TEAM_SEASON_POINTS`, a `PointShape` per intent). The planner
+    shared move read under several shapes' words says `by` from what the
+    words asked (`point._ROWS_BY`, `_COUNT_SHAPES`, keyed by the grammar's
+    key since step 4), and a team-season shape's point on the team
+    relation is stamped its season's shape (`point.TEAM_SEASON_POINTS`,
+    the three keys, each the point's shape). The planner
     builds `reading.PointShape(relation, shape, by)` from them
     (`plan.point_shape`; its one move: a season-line point re-planned at
     the game level is on `player_games`) on every verdict, and derives the
@@ -1403,20 +1406,23 @@ model's. Two things follow, and both matter when you add a shape:
     `_ROUTES` by that key alone; the shapes' rows of the two relation
     tables are keyed by it (`RELATION_SCOPING_EXCLUDED`,
     `TEAM_RELATION_SCOPING_EXCLUDED`, one row per route since step 2's
-    closing slice); `SHAPE_NAMES` keeps a retired template's name for ONE
-    job, the decline sentence ("game_log has no reading of this point",
-    the ported shapes' "cannot honor"), until step 2's typed causes reword
-    those declines as an enumerated commit; `coverage.SOURCES` is keyed by
-    it (below). `shape_of`, `SHAPE_WORDS`, `words_stated`, `Planned.floor`
+    closing slice); `reading.SHAPE_NAMES` keeps a retired template's name
+    for the page's label and the decline sentence ("game_log has no reading
+    of this point", the ported shapes' "cannot honor") alone, ONE table
+    keyed by the shape - the asked key for the label, the planned key for a
+    decline - which Phase 4 deletes with the renderers; `coverage.SOURCES`
+    is keyed by it (below). `shape_of`, `SHAPE_WORDS`, `words_stated`, `Planned.floor`
     and the three `# Phase 3: needs ...` markers are gone. `say()` chooses the
     sayer from the headline body's type and the one field that says what
     it is (`Scalar.how`, `Grouped.by`, `Rows.by`, `Chart.kind`) - never
     `Span.source`, the relation or a facts key; a sayer reached so may
     still tell its subject's kind or a cell it says (a quarter's
-    `Period`, a matchup's `Met`). What still reads the intent: the point
-    reader itself (`DEFAULT_POINTS`, the `by` tables - step 4 re-keys them
-    on the grammar), `Answer.intent` for the page
-    (Phase 4). Proved on the four populations: 628 of 628, 2,082 of 2,082
+    `Period`, a matchup's `Met`). The intent itself is gone from the
+    reader since Phase 3, step 4: the grammar names what the words ask as
+    a `PointShape` (`Reading.asked`, below, "An intent comes from the
+    question's own words"), the point reader and the taggers key on it,
+    and `Reading.intent` is the page's label alone (`Answer.intent`,
+    written from `SHAPE_NAMES`, Phase 4's to delete). Proved on the four populations: 628 of 628, 2,082 of 2,082
     and the 2,710 readings identical with the point's `by`, `on`, `shape`
     and `source` left out (`compare --ignore`, `reader_cmp.py --ignore`:
     each lists the field's values by count), 2,608 of 2,608 unit-test
@@ -1559,7 +1565,7 @@ model's. Two things follow, and both matter when you add a shape:
   it, and with the teammate playing, to say how often they met. The games
   the two shared as teammates are the pair relation's own read
   (`conditions._teammate_games`), which no compiled shape expresses.
-- **Every intent is the compiler's, and the answering loop asks it once.**
+- **Every shape the words ask is the compiler's, and the answering loop asks it once.**
   `agent.py`'s `_run_compiled` hands `compose.answer(ctx, reading)` the
   point the parser read from the question's words once (`Reading.point`,
   `parse.reading_from_route`) and the planner's verdict on it, planned once
@@ -1604,15 +1610,20 @@ model's. Two things follow, and both matter when you add a shape:
   Nothing in the package may reach ollama - it is a compiler, not a
   model - and it narrows the relation only through the shared steps
   (`query/player_relation.py`, `query/team_relation.py`; see "A reader on
-  a relation does not declare, or apply, scoping of its own" above). The
-  twenty-five intents are `compose.COMPILED_INTENTS` (`threshold_count`,
-  `single_game_high`, `record_when`, `player_history`, `game_log`,
-  `player_stat`, `player_splits`, `leaderboard`, `period_split`,
-  `player_compare`, `streak`, `player_matchup`, `with_without`,
-  `head_to_head`, `team_quarter_points`, `period_leaderboard`,
-  `team_record`, `team_stat`, `team_leaderboard`, `team_outlook`, `coach`,
-  `player_netpoints`, `fingerprint`, `shot_distance`, `shot_chart`). The
-  NetPoints relation's two (`reading.CHART_INTENTS`, read as their default
+  a relation does not declare, or apply, scoping of its own" above). Every
+  key the grammar names is the compiler's (`Reading.asked` set; "no
+  shape", `None`, is refused with the reason "has no reader"): the 25 the
+  intents were, whose names `compose.COMPILED_INTENTS` listed until Phase
+  3, step 4 and the label table names back (`reading.SHAPE_NAMES`:
+  `threshold_count`, `single_game_high`, `record_when`, `player_history`,
+  `game_log`, `player_stat`, `player_splits`, `leaderboard`,
+  `period_split`, `player_compare`, `streak`, `player_matchup`,
+  `with_without`, `head_to_head`, `team_quarter_points`,
+  `period_leaderboard`, `team_record`, `team_stat`, `team_leaderboard`,
+  `team_outlook`, `coach`, `player_netpoints`, `fingerprint`,
+  `shot_distance`, `shot_chart`). The NetPoints relation's two (on a
+  declared relation, `reading.on_a_declared_relation` over
+  `DECLARED_RELATIONS`, read as their default
   points on the declared `netpoints` relation and planned as
   `compose.netpoints.NetPointsQuery`) keep their own readers and renderer,
   per the decision "Charts are declared shapes": `read_player_netpoints`
@@ -1708,10 +1719,10 @@ model's. Two things follow, and both matter when you add a shape:
   enum, and every comparison routed to `player_stat`.
   `test_the_prompt_and_the_schema_agree` (`tests/query/test_normalizer.py`)
   holds the normalizer's examples to its enum; the other half of what the
-  router's pair of tests guarded - that every intent is reachable - is
+  router's pair of tests guarded - that every shape is reachable - is
   `test_every_intent_is_reachable_from_the_reader`
   (`tests/query/test_router.py`): the parser's `PARENT_GRAMMAR`, the stages'
-  `CODE_ASSIGNED_INTENTS` or the subject reading's `KIND_ASSIGNED_INTENTS`.
+  `CODE_ASSIGNED_ASKS` or the subject reading's `KIND_ASSIGNED_ASKS`.
 - **A prompt has a token budget, and ollama enforces none.** ollama
   truncates an over-length prompt *silently and head-first*: the retired
   agent's original bug was a 10,295-token preamble against `NUM_CTX = 8192`,
@@ -1775,11 +1786,37 @@ model's. Two things follow, and both matter when you add a shape:
   and make a live run the record - and assert in a case only what changes the
   *answer* (both those strings resolve to team_id 13 and produce an identical
   sentence), never the encoding the model happened to pick.
-- **An intent comes from the question's own words, never from the model.**
+- **What the words ask comes from the question's own words, never from the model.**
+  Since Phase 3, step 4 the grammar names no intent: it names a
+  `reading.PointShape` - the relation, the shape and the `by` of the point
+  the words ask for bare (`Reading.asked`, `Route.asked`, `Subject.asked`;
+  `None` for no shape, the retired `other`), one key per retired intent
+  (`reading.PLAYER_LOG`, `PLAYER_LINE`, `PLAYER_RANKING`, ... `TEAM_COACH`),
+  each the label table's (`reading.SHAPE_NAMES`, which names it back as
+  the page's `Answer.intent`: `Reading.intent` is that label, filled from
+  the key and held to it, read only for the page, the trace and the
+  records). The kind is no part of the key: it is the subject reading's,
+  read before the grammar, which the grammar is keyed BY. Measured first
+  (`~/association-research/stages/intent_family.py`, the 2,710
+  readings): an intent maps to up to four planned keys (`player_stat`:
+  the season line 405, the games 262, rows by date 15 - the relation and
+  sometimes the shape follow the typed filters), and two planned keys are
+  reached by more than one intent (a player's games by date from
+  `game_log` 297 and `player_stat` 15; the game-level ranking from
+  `leaderboard` 367, `game_log` 3, `other` 1) - so the key is what the
+  words ASK and the planned `PointShape` what the point IS, and the label
+  is keyed by the asked one. Every intent set and intent-keyed table is a
+  set of those keys or a predicate on one (`reading.PLAYER_ASKS`,
+  `TEAM_ONLY_ASKS`, `PLAYER_REQUIRED_ASKS`, `SUBJECT_RESTORABLE_ASKS`,
+  `OWN_TEAM_RESTORABLE_ASKS`, `on_a_declared_relation` where
+  `CHART_INTENTS` stood, `point.DEFAULT_POINTS`, `TEAM_SEASON_POINTS`,
+  `_ROWS_BY`, `_COUNT_SHAPES`, the taggers' `asked=` contexts and their
+  sets - `line.THRESHOLD_ASKS`, `period.PERIOD_ASKS`, `window.ORDER_ASKS`,
+  ...); `compose.COMPILED_INTENTS` is gone (every key is the compiler's).
   The parser's `PARENT_GRAMMAR` names the parent by the subject's kind, and
-  the stages assign `CODE_ASSIGNED_INTENTS` (`period_split`, `coach`) from
-  the text, so a new intent is a grammar row or a stage, with no prompt edit
-  and nothing to move on another question. A refusal especially: a question
+  the stages assign `CODE_ASSIGNED_ASKS` (a player's quarter, players
+  ranked by one, a coach) from the text, so a new shape is a grammar row
+  or a stage, with no prompt edit and nothing to move on another question. A refusal especially: a question
   nothing can answer needs the model's help least. `coach` is the worked
   example - the word is unmistakable, nothing else in the warehouse is named
   it, and a bare surname is deliberately not matched ("nurse" and "rivers"
@@ -1794,7 +1831,7 @@ model's. Two things follow, and both matter when you add a shape:
   name a second, wrong cause.
 
   The children come one step later, where the subject's KIND is known:
-  `subject.KIND_ASSIGNED_INTENTS` (`_CHILD_GRAMMARS`). A child of a parent
+  `subject.KIND_ASSIGNED_ASKS` (`_CHILD_GRAMMARS`). A child of a parent
   the grammar names - a count of 30+ point games under `game_log`, a history
   over the past 4 seasons under `player_stat`, a streak under `team_record` -
   is named by its words AND gated on the kind the reading settled, which is
@@ -1810,8 +1847,8 @@ model's. Two things follow, and both matter when you add a shape:
   again under each child to see whether it held, and once more under the
   one that did (1.7 runs a question, up to four), and the subject reading
   ran them too, under "other", before the parser ran them at all.
-  `subject.read_subject` reads and decides nothing; `subject.settle_subject`
-  writes the intent and why with no stage run; the Route carries the
+  `subject.read_subject` reads and decides nothing (under no shape,
+  `None`); `subject.settle_subject` writes the key and why with no stage run; the Route carries the
   SETTLED subject, and `parse.reading_from_route` settles nothing. Add a
   case to `port_check.py`'s corpus (`~/association-research/intent-shrink/`)
   and to `tests/query/test_subject.py` for each wording a grammar gains.

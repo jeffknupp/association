@@ -23,7 +23,7 @@ question"). The tagger keeps that: it reads which period the words name
 wherever they name one (:func:`which_period`, which the intent stage and
 the line slice's condition reader call too, so no second copy of "first |
 second | 1st | 2nd" is written), and keeps the value under a reader that
-takes one (:data:`PERIOD_INTENTS`).
+takes one (:data:`PERIOD_ASKS`).
 
 A "by quarter" question reads NO period: the breakdown across all four is
 the point's shape (``point._default_period_split``, ``Reading.by="period"``),
@@ -40,9 +40,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from association.query import lexicon
-from association.query.reading import Claim, Period
+from association.query.reading import PERIOD_LOG, PERIOD_RANKING, TEAM_PERIOD_TOTAL, Claim, Period, PointShape
 
-PERIOD_INTENTS: frozenset[str] = frozenset({"period_split", "period_leaderboard", "team_quarter_points"})
+PERIOD_ASKS: frozenset[PointShape] = frozenset({PERIOD_LOG, PERIOD_RANKING, TEAM_PERIOD_TOTAL})
 """The readers that take a quarter or half: a named player's figure in one,
 the league's ranking by one, a team's own. The value is kept under these
 alone, as the stages wrote it (the measurement above); on any other
@@ -55,12 +55,13 @@ is dropped as it was.
 
 @dataclass(frozen=True, kw_only=True)
 class PeriodContext:
-    """What the stages settled before the period is read: the intent.
+    """What the stages settled before the period is read: what the words ask
+    (``asked``, the grammar's key - an intent's name until Phase 3, step 4).
 
     .. versionadded:: 6.0.0
     """
 
-    intent: str
+    asked: PointShape | None
 
 
 @dataclass(frozen=True)
@@ -101,12 +102,12 @@ def which_period(text: str) -> tuple[Period, Claim] | None:
 
 def read_period(question: str, context: PeriodContext) -> PeriodRead:
     """The period ``question``'s words name, kept under a reader that takes
-    one (:data:`PERIOD_INTENTS`), with the claim; the whole game and no
+    one (:data:`PERIOD_ASKS`), with the claim; the whole game and no
     claim otherwise.
 
     .. versionadded:: 6.0.0
     """
-    if context.intent not in PERIOD_INTENTS:
+    if context.asked not in PERIOD_ASKS:
         return PeriodRead(None, ())
     named = which_period(question)
     if named is None:

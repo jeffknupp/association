@@ -14,6 +14,7 @@ from pathlib import Path
 
 import duckdb
 import pytest
+from shapes import asked
 from test_templates import player_stat  # the compiler's, player_stat's template retired (compose.COMPILED_INTENTS)
 
 from association.nba.season import current_season
@@ -152,7 +153,7 @@ def test_a_narrowed_set_of_games_is_never_answered_with_the_season(advanced_ctx:
     reading = with_point(
         advanced_ctx.con,
         "",
-        Reading(scope=Scope.from_slots({"player": "Klay Thompson", "stat": "ts_pct", "opponent": "Boston Celtics"}), intent="player_stat", subject=Subject("player", players=("Klay Thompson",))),
+        Reading(scope=Scope.from_slots({"player": "Klay Thompson", "stat": "ts_pct", "opponent": "Boston Celtics"}), asked=asked("player_stat"), subject=Subject("player", players=("Klay Thompson",))),
     )
     assert reading.point is not None and reading.point.on == "player_games" and reading.point.measures == ["ts_pct"]
 

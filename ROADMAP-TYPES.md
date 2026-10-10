@@ -794,6 +794,33 @@ otherwise.
     list beside its own, `report` names every question they differ on and
     exits 1.
 
+- **Declared in code by Phase 3, step 4, slice (a), the intent leaves the
+  reader** (2026-10-10):
+  - What the words ask is a `PointShape` (`Reading.asked`), named by the
+    three choosers - the parent grammar by the subject's kind, the child
+    grammars, the stages before the taggers - one key per retired intent,
+    the intent's own default point (`reading.PLAYER_LOG`, `PLAYER_LINE`,
+    ... `TEAM_COACH`; `None` is no shape, the retired `other`). Not the
+    planned key: measured on the 2,710 readings (`intent_family.py`), an
+    intent maps to up to four planned keys, the relation and sometimes
+    the shape following the typed filters (`player_stat` 405 on the
+    season line, 262 on the games, 15 as rows by date), and two planned
+    keys are reached by two or three intents. So the grammar's key says
+    what is ASKED and the point reader moves it to what the point IS.
+  - The subject's kind is not in the key. The grammar is keyed BY the kind
+    (the subject reading reads it first); a key with the kind in it would
+    make a player's log and a team's two keys for one row of the grammar,
+    and every consumer reads the kind from the subject already.
+  - The page's label is ONE table, keyed by the shape (`reading.SHAPE_NAMES`,
+    the asked key for the label and the planned key for a decline's
+    name), read through `asked_label`; `Reading.intent` is the label,
+    filled from the key and held to it. Keyed by the PLANNED key it could
+    not reproduce `Answer.intent` (the 19 readings above, and the 118
+    with no planned key), so the label is keyed by what was asked.
+  - The coach is the key `(team_seasons, scalar, coach)`: a coach is a fact
+    of a team's season, and the warehouse holds no column for it - the
+    point reader refuses the key by that cause (`no_coach_table`).
+
 ## What must be decided before which phase
 
 | Phase | Needs from this document |

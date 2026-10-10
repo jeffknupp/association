@@ -2102,6 +2102,235 @@ class PointShape:
     by: str = ""
 
 
+# What a question's words ask for (Phase 3, step 4): the shape the grammar
+# names - the parent grammar by the subject's kind
+# (``parse.PARENT_GRAMMAR``), the child grammars (``subject._CHILD_GRAMMARS``)
+# and the stages before the taggers (``router._settle_stages``) - as the
+# point it means before any typed filter moves it, in the target's own
+# vocabulary: the relation its reader reads first, the shape and what it is
+# ``by``. One key per retired intent, the intent's own default point's (a
+# player's, where a team's reads another relation: the point reader moves a
+# team's log to ``team_games``, an unnarrowed line stays on the season line
+# and a narrowed one moves to the games), so the page's label is one lookup
+# (:data:`SHAPE_NAMES`). Measured first (``~/association-research/stages/
+# intent_family.py``, the 2,710 readings): an intent maps to up to four
+# planned keys, since ``on`` and sometimes the shape follow the typed
+# filters, and two planned keys are reached by more than one intent - so
+# the key is what the words ASK, and the planned key what the point IS.
+# ``None`` is the grammar's "no shape": the words name nothing a reader
+# reads (``other``).
+
+PLAYER_LOG = PointShape("player_games", "rows", "date")
+"""A player's games, newest first (``game_log``): a team's log moves to
+``team_games``, the league's or a position group's stays here.
+
+.. versionadded:: 6.0.0
+"""
+PLAYER_LINE = PointShape("player_seasons", "scalar", "line")
+"""A player's line (``player_stat``): the season line unnarrowed, his games
+narrowed or windowed.
+
+.. versionadded:: 6.0.0
+"""
+PLAYER_SPLITS = PointShape("player_games", "split", "splits")
+"""A player's (or a team's) four splits (``player_splits``).
+
+.. versionadded:: 6.0.0
+"""
+LINE_RECORD = PointShape("player_games", "split", "line")
+"""A record above and below a line (``record_when``).
+
+.. versionadded:: 6.0.0
+"""
+PERIOD_LOG = PointShape("player_periods", "rows", "date")
+"""A player's quarter or half (``period_split``).
+
+.. versionadded:: 6.0.0
+"""
+GAMES_COUNTED = PointShape("player_games", "scalar", "count")
+"""A count of games over a line (``threshold_count``).
+
+.. versionadded:: 6.0.0
+"""
+GAME_HIGHS = PointShape("player_games", "rows", "measure")
+"""Single games ranked by a measure (``single_game_high``).
+
+.. versionadded:: 6.0.0
+"""
+LINE_RUNS = PointShape("player_games", "runs", "line")
+"""The longest runs of games a predicate holds along (``streak``).
+
+.. versionadded:: 6.0.0
+"""
+PLAYER_MEETINGS = PointShape("player_games", "comparison", "met")
+"""Two players' meetings (``player_matchup``).
+
+.. versionadded:: 6.0.0
+"""
+PRESENCE_SPLIT = PointShape("team_games", "split", "presence")
+"""A team's record with and without named teammates (``with_without``).
+
+.. versionadded:: 6.0.0
+"""
+TEAM_MEETINGS = PointShape("team_games", "comparison", "opponent")
+"""Two teams' meetings (``head_to_head``).
+
+.. versionadded:: 6.0.0
+"""
+TEAM_PERIOD_TOTAL = PointShape("team_periods", "scalar", "total")
+"""A team's quarter or half (``team_quarter_points``).
+
+.. versionadded:: 6.0.0
+"""
+PERIOD_RANKING = PointShape("player_periods", "ranking", "player")
+"""Players ranked by a quarter or half (``period_leaderboard``).
+
+.. versionadded:: 6.0.0
+"""
+TEAM_RECORD = PointShape("team_games", "scalar", "record")
+"""A team's record (``team_record``).
+
+.. versionadded:: 6.0.0
+"""
+NETPOINTS_RATINGS = PointShape("netpoints", "scalar", "ratings")
+"""A player's NetPoints (``player_netpoints``).
+
+.. versionadded:: 6.0.0
+"""
+NETPOINTS_FINGERPRINT = PointShape("netpoints", "chart", "fingerprint")
+"""A player's fingerprint, drawn (``fingerprint``).
+
+.. versionadded:: 6.0.0
+"""
+SHOT_CHART = PointShape("shots", "chart", "shots")
+"""A player's shot chart, drawn (``shot_chart``).
+
+.. versionadded:: 6.0.0
+"""
+SHOT_DISTANCE = PointShape("shots", "scalar", "distance")
+"""A player's average shot distance (``shot_distance``).
+
+.. versionadded:: 6.0.0
+"""
+PLAYER_RANKING = PointShape("player_seasons", "ranking", "player")
+"""Players ranked by a measure (``leaderboard``): the season line, or the
+games where the line does not read it.
+
+.. versionadded:: 6.0.0
+"""
+PLAYER_COMPARISON = PointShape("player_seasons", "comparison", "subject")
+"""Two or more players' lines side by side (``player_compare``).
+
+.. versionadded:: 6.0.0
+"""
+SEASON_HISTORY = PointShape("player_seasons", "split", "season")
+"""A player's stat season by season (``player_history``).
+
+.. versionadded:: 6.0.0
+"""
+TEAM_LINE = PointShape("team_seasons", "scalar", "line")
+"""A team's own season line (``team_stat``).
+
+.. versionadded:: 6.0.0
+"""
+TEAM_RANKING = PointShape("team_seasons", "ranking", "team")
+"""Teams ranked by a season metric or the standings (``team_leaderboard``).
+
+.. versionadded:: 6.0.0
+"""
+TEAM_OUTLOOK = PointShape("team_snapshots", "scalar", "projection")
+"""A team's place in ESPN's power index (``team_outlook``).
+
+.. versionadded:: 6.0.0
+"""
+TEAM_COACH = PointShape("team_seasons", "scalar", "coach")
+"""A team's coach (``coach``): a fact of a team's season the warehouse holds
+no column for, so its point is refused by that cause (``no_coach_table``)
+and no reader takes it.
+
+.. versionadded:: 6.0.0
+"""
+
+SHAPE_NAMES: dict[PointShape, str] = {
+    PLAYER_LOG: "game_log",
+    PointShape("player_games", "scalar", "line"): "player_stat",
+    LINE_RECORD: "record_when",
+    PLAYER_SPLITS: "player_splits",
+    GAMES_COUNTED: "threshold_count",
+    PointShape("player_games", "ranking", "count"): "threshold_count",
+    PointShape("player_games", "rows", "count"): "threshold_count",
+    GAME_HIGHS: "single_game_high",
+    LINE_RUNS: "streak",
+    PLAYER_MEETINGS: "player_matchup",
+    PERIOD_LOG: "period_split",
+    PointShape("player_periods", "split", "period"): "period_split",
+    PERIOD_RANKING: "period_leaderboard",
+    PLAYER_RANKING: "leaderboard",
+    PLAYER_LINE: "player_stat",
+    SEASON_HISTORY: "player_history",
+    PLAYER_COMPARISON: "player_compare",
+    PointShape("team_games", "rows", "date"): "game_log",
+    PointShape("team_games", "split", "splits"): "player_splits",
+    PointShape("team_games", "runs", "won"): "streak",
+    PRESENCE_SPLIT: "with_without",
+    PointShape("team_games", "split", "line"): "record_when",
+    TEAM_MEETINGS: "head_to_head",
+    TEAM_PERIOD_TOTAL: "team_quarter_points",
+    TEAM_RECORD: "team_record",
+    TEAM_LINE: "team_stat",
+    TEAM_RANKING: "team_leaderboard",
+    TEAM_OUTLOOK: "team_outlook",
+    NETPOINTS_RATINGS: "player_netpoints",
+    NETPOINTS_FINGERPRINT: "fingerprint",
+    SHOT_CHART: "shot_chart",
+    SHOT_DISTANCE: "shot_distance",
+    TEAM_COACH: "coach",
+}
+"""The retired intent's name for a shape, and nothing else: ONE table,
+keyed by the shape (:class:`PointShape`), for the two things that still
+say a retired template's name - the page's label (``Answer.intent``,
+through :attr:`Reading.intent`, written from the key the words asked for:
+:func:`asked_label`), and a decline's sentence ("game_log has no reading of
+this point", "head_to_head cannot honor [...]", keyed by the PLANNED
+shape). Every shape a reader takes, and the coach's, which none does.
+Phase 4 deletes it with the page's renderers (decision D3: the page renders
+by shape).
+
+.. versionadded:: 6.0.0
+   In ``reading``, keyed by the asked shape as well as the planned one;
+   ``compose.plan``'s, the decline's name alone, until Phase 3, step 4.
+"""
+
+
+def asked_label(asked: PointShape | None) -> str:
+    """The retired intent's name for what the words ask
+    (:data:`SHAPE_NAMES`), ``"other"`` where they name no shape - the page's
+    label (``Answer.intent``) and the trace's, read nowhere on the
+    answering path.
+
+    .. versionadded:: 6.0.0
+    """
+    return "other" if asked is None else SHAPE_NAMES[asked]
+
+
+def labeled(asked: PointShape | None, label: str) -> str:
+    """``label`` checked against the key it names (:func:`asked_label`), or
+    filled from it where it is empty: a label is the table's, never a second
+    choice beside the key. Empty stays empty only where nothing was asked -
+    a record built by hand, never read from words.
+
+    .. versionadded:: 6.0.0
+    """
+    if asked is None:
+        if label not in ("", "other"):
+            raise ValueError(f"the label {label!r} names a shape, and nothing was asked")
+        return label
+    expected = asked_label(asked)
+    if label not in ("", expected):
+        raise ValueError(f"the label {label!r} is not the one {asked} is named by ({expected!r})")
+    return expected
+
+
 @dataclass(frozen=True, kw_only=True)
 class ShapeCells:
     """One shape's row of its relation's cell table
@@ -2216,7 +2445,23 @@ class Reading:
     #: .. versionadded:: 6.0.0
     subject_span: Span | None = None
     relation: Relation = "player"
-    #: The intent label the trace and the presenters use.
+    #: What the question's words ask for (:class:`PointShape`, one of the
+    #: grammar's keys - :data:`PLAYER_LOG`, :data:`PLAYER_LINE`, ...), named
+    #: by the parent grammar, the child grammars or the stages, and read by
+    #: the point reader, the subject reading's sets and the answering loop;
+    #: ``None`` where the words name no shape. Since Phase 3, step 4 - an
+    #: intent string until then.
+    #:
+    #: .. versionadded:: 6.0.0
+    asked: PointShape | None = None
+    #: The page's label for :attr:`asked` - the retired intent's name, from
+    #: the one table (:data:`SHAPE_NAMES`, :func:`asked_label`), filled from
+    #: the key and held to it (:func:`labeled`); read only for
+    #: ``Answer.intent``, the trace and the records, never to decide. Empty
+    #: on a Reading built by hand with nothing asked.
+    #:
+    #: .. versionchanged:: 6.0.0
+    #:    The label alone: the readers key on :attr:`asked`.
     intent: str = ""
     #: Who the question is about, as the subject reading read it.
     subject: subject_reading.Subject | None = None
@@ -2300,16 +2545,23 @@ class Reading:
     #: .. versionadded:: 6.0.0
     left_out: LeftOut | None = None
 
+    def __post_init__(self) -> None:
+        """Hold :attr:`intent` to the label :attr:`asked` is named by."""
+        object.__setattr__(self, "intent", labeled(self.asked, self.intent))
+
     @classmethod
-    def from_slots(cls, slots: Mapping[str, Any], *, intent: str = "", subject: subject_reading.Subject | None = None) -> Reading:
+    def from_slots(cls, slots: Mapping[str, Any], *, asked: PointShape | None = None, subject: subject_reading.Subject | None = None) -> Reading:
         """A Reading holding nothing but the scope ``slots`` names (through
         :meth:`Scope.from_slots`), for the readers that still build one from a
         slot dict: the agent's dispatch of a routed question to its template,
         a template handing a question to another, and the tests.
 
         .. versionadded:: 5.0.0
+
+        .. versionchanged:: 6.0.0
+           Takes ``asked`` (a :class:`PointShape`) where it took ``intent``.
         """
-        return cls(scope=Scope.from_slots(slots), intent=intent, subject=subject)
+        return cls(scope=Scope.from_slots(slots), asked=asked, subject=subject)
 
     def projected(self) -> dict[str, Any]:
         """Every field as a Reading was recorded until Phase 3, step 2
@@ -2318,11 +2570,13 @@ class Reading:
         the 0 it always was, its ``position`` as the position group its
         subject carries where it is the league's (the field it was), every
         other field as it is - ``claims`` and ``unread`` included, the two
-        fields the record gained (Phase 3, steps 2 and 3).
+        fields the record gained (Phase 3, steps 2 and 3) - but the key the
+        words asked (``asked``, Phase 3, step 4), which the record holds as
+        its label (``intent``), as it did.
 
         .. versionadded:: 6.0.0
         """
-        out = {f.name: getattr(self, f.name) for f in fields(self) if f.name != "subject_span"}
+        out = {f.name: getattr(self, f.name) for f in fields(self) if f.name not in ("subject_span", "asked")}
         # The point's position group, a field of its own until Phase 3,
         # step 2: the league's read honors it, and only the point reader's
         # moves that do carry one on the point's subject
@@ -2330,7 +2584,7 @@ class Reading:
         out["position"] = self.scope.subject.position if self.relation == "everyone" else None
         # The scope's companions print under the with/without split's slot
         # where the point divides the games by their presence.
-        out["scope"] = self.scope.projected(split_by_presence=self.intent == "with_without" or self.group == "presence")
+        out["scope"] = self.scope.projected(split_by_presence=self.asked == PRESENCE_SPLIT or self.group == "presence")
         settled = self.subject_span
         out["span"] = "career" if settled is not None and settled.career else None
         out["season"] = settled.season if settled is not None else None
@@ -2345,20 +2599,21 @@ class Reading:
         who = self.subject.kind if self.subject is not None else "?"
         return (
             f"relation={self.relation} subject={who} shape={self.shape} by={self.by} on={self.on} measures={self.measures} aggregate={self.aggregate} "
-            f"group={self.group} predicates={self.predicates} window={window} scope={self.scope.to_slots(split_by_presence=self.intent == 'with_without')}"
+            f"group={self.group} predicates={self.predicates} window={window} scope={self.scope.to_slots(split_by_presence=self.asked == PRESENCE_SPLIT)}"
         )
 
 
-# What the subject reading needs to know about the intents and the question's
-# words - moved here from templates/common.py on 2026-10-02 so the reader does
-# not import the answer side for them (ROADMAP.md, Phase 1: the reader's
-# imports of the answer side); templates.common re-exported each under its
-# old name until Phase 2, step 6. Intent goes from the reader in Phase 3, and
-# these sets with it.
+# What the subject reading needs to know about what the words ask - moved
+# here from templates/common.py on 2026-10-02 so the reader does not import
+# the answer side for them (ROADMAP.md, Phase 1: the reader's imports of the
+# answer side); templates.common re-exported each under its old name until
+# Phase 2, step 6. Sets of intent names until Phase 3, step 4: sets of the
+# grammar's keys (:class:`PointShape`) since.
 
-PLAYER_REQUIRED_INTENTS: frozenset[str] = frozenset({"record_when", "period_split", "shot_distance", "player_history"})
-"""Intents whose template cannot answer at all without a player, so a player the
-router left out is worth restoring from the question.
+PLAYER_REQUIRED_ASKS: frozenset[PointShape] = frozenset({LINE_RECORD, PERIOD_LOG, SHOT_DISTANCE, SEASON_HISTORY})
+"""What the words ask that no reader answers at all without a player
+(``record_when``, ``period_split``, ``shot_distance``, ``player_history``),
+so a player the router left out is worth restoring from the question.
 
 Deliberately not every intent that reads one: where the player is optional -
 ``threshold_count``, ``single_game_high`` - an empty slot means "the league", and
@@ -2377,12 +2632,16 @@ and never a stray name found elsewhere in the question.
    ``shot_distance`` and ``player_history`` added: each refuses outright
    without a player ("shot_distance needs a player name"), and each is now
    assigned from the question's words under a parent whose own stages may
-   have dropped the player (``subject.KIND_ASSIGNED_INTENTS``: a
+   have dropped the player (``subject.KIND_ASSIGNED_ASKS``: a
    ``leaderboard`` drops the filler player a distance question arrives with).
+
+.. versionchanged:: 6.0.0
+   ``PLAYER_REQUIRED_INTENTS`` until Phase 3, step 4: the grammar's keys.
 """
 
-SUBJECT_RESTORABLE_INTENTS: frozenset[str] = frozenset({"single_game_high", "threshold_count", "player_splits"})
-"""Intents where a player left out changes the answer, but is not required -
+SUBJECT_RESTORABLE_ASKS: frozenset[PointShape] = frozenset({GAME_HIGHS, GAMES_COUNTED, PLAYER_SPLITS})
+"""What the words ask where a player left out changes the answer
+(``single_game_high``, ``threshold_count``, ``player_splits``), but is not required -
 an empty slot means "the league" (or, for ``player_splits``, the team's own
 splits: "show me Embiid's splits against boston" arrived as the 76ers and
 the Celtics meeting with Embiid dropped, once the intent left the router's
@@ -2391,7 +2650,7 @@ question's own words name exactly one player and that naming survives
 :func:`~association.query.subject._named_only_by_a_team_word` and
 :func:`~association.query.subject._named_only_by_a_common_word`.
 
-Separate from :data:`PLAYER_REQUIRED_INTENTS` on purpose: those templates
+Separate from :data:`PLAYER_REQUIRED_ASKS` on purpose: those templates
 cannot answer at all without a player, while these two have a real,
 different answer with none (the league's leaders) - "kawhi most threes in a
 game" (yardstick-v2 F093) used to answer that league ranking, Kawhi Leonard's
@@ -2423,11 +2682,14 @@ reads a single near spelling as that player and says so, and asks about two
 or more).
 
 .. versionadded:: 4.4.0
+
+.. versionchanged:: 6.0.0
+   ``SUBJECT_RESTORABLE_INTENTS`` until Phase 3, step 4: the grammar's keys.
 """
 
-OWN_TEAM_RESTORABLE_INTENTS: frozenset[str] = frozenset({"player_stat"})
-"""Intents where a player's OWN team, named beside him and left out by the
-router, is worth restoring - narrower than :data:`PLAYER_INTENTS` on
+OWN_TEAM_RESTORABLE_ASKS: frozenset[PointShape] = frozenset({PLAYER_LINE})
+"""What the words ask where a player's OWN team, named beside him and left
+out by the router, is worth restoring (``player_stat``) - narrower than :data:`PLAYER_ASKS` on
 purpose, since honoring the restored ``own_team`` slot needs the relation to
 narrow by it (``player_relation._narrow_player_games``'s ``team`` param,
 threaded through ``scoped_games`` only where a caller passes it), which only
@@ -2455,11 +2717,15 @@ the two readings would leave one of them silently wrong; filed in
 ``ISSUES.md`` rather than done here.
 
 .. versionadded:: 4.4.0
+
+.. versionchanged:: 6.0.0
+   ``OWN_TEAM_RESTORABLE_INTENTS`` until Phase 3, step 4: the grammar's keys.
 """
 
-TEAM_ONLY_INTENTS: frozenset[str] = frozenset({"team_record", "team_leaderboard", "team_stat", "team_outlook"})
-"""Intents with no player-shaped reading at all - absent from
-``reading.PLAYER_INTENTS``, and so never checked by
+TEAM_ONLY_ASKS: frozenset[PointShape] = frozenset({TEAM_RECORD, TEAM_RANKING, TEAM_LINE, TEAM_OUTLOOK})
+"""What the words ask with no player-shaped reading at all (``team_record``,
+``team_leaderboard``, ``team_stat``, ``team_outlook``) - absent from
+:data:`PLAYER_ASKS`, and so never checked by
 ``subject.apply_subject`` or the answering loop against a stray player name.
 
 A question naming exactly one real player and no team, routed to one of
@@ -2484,22 +2750,36 @@ the first.
 
 .. versionchanged:: 5.0.0
    Lives on the reader's side (``templates.common`` re-exported it until Phase 2, step 6).
+
+.. versionchanged:: 6.0.0
+   ``TEAM_ONLY_INTENTS`` until Phase 3, step 4: the grammar's keys.
 """
 
-CHART_INTENTS: frozenset[str] = frozenset({"fingerprint", "player_netpoints", "shot_chart", "shot_distance"})
-"""The intents whose point is a declared relation's own, read from the
-reader's own set rather than declined "no adapter for" (``ROADMAP.md``,
-Phase 2, step 5, and the decision "Charts are declared shapes"): a
-player's NetPoints (``player_netpoints``, a scalar and a split by category)
-and his fingerprint (``fingerprint``, a chart), each on the ``netpoints``
-relation; a player's shot chart (``shot_chart``, a chart) and his average
-shot distance (``shot_distance``, a scalar), each on the ``shots`` relation. No word of the question moves their point - the retired
-templates read their slots alone - so it is the intent's default
-(:data:`~association.query.point.DEFAULT_POINTS`), before any move that
-reads a player's games.
+DECLARED_RELATIONS: frozenset[PointRelation] = frozenset({"netpoints", "shots"})
+"""The declared relations (``ROADMAP.md``, Phase 2, step 5, and the decision
+"Charts are declared shapes"): what the words ask on one of them is read
+from its own default point rather than declined "no adapter for" - a
+player's NetPoints (a scalar and a split by category) and his fingerprint
+(a chart), each on ``netpoints``; a player's shot chart (a chart) and his
+average shot distance (a scalar), each on ``shots``. No word of the question
+moves their point - the retired templates read their slots alone - so it is
+the asked shape's default (:data:`~association.query.point.DEFAULT_POINTS`),
+before any move that reads a player's games (:func:`on_a_declared_relation`).
 
-.. versionadded:: 5.0.0
+.. versionadded:: 6.0.0
+   ``CHART_INTENTS``, the four intents' names, until Phase 3, step 4.
 """
+
+
+def on_a_declared_relation(asked: PointShape | None) -> bool:
+    """Whether the words ask for a shape on a declared relation
+    (:data:`DECLARED_RELATIONS`): ``player_netpoints``, ``fingerprint``,
+    ``shot_chart``, ``shot_distance``.
+
+    .. versionadded:: 6.0.0
+    """
+    return asked is not None and asked.relation in DECLARED_RELATIONS
+
 
 DEFAULT_LIMIT = 5
 """How many rows a shape lists where the question named no count.
@@ -2744,29 +3024,32 @@ def unhonored_cells(scope: Scope, honored: frozenset[str]) -> list[str]:
 # `team_record` and `head_to_head` the slot is not read, so a stray one changes
 # nothing. Guarded by test_no_template_outside_player_intents_reads_a_player,
 # which reads the source rather than trusting this list.
-PLAYER_INTENTS: frozenset[str] = frozenset(
+PLAYER_ASKS: frozenset[PointShape] = frozenset(
     {
-        "fingerprint",
-        "game_log",
-        "leaderboard",
-        "player_compare",
-        "player_history",
-        "player_matchup",
-        "player_netpoints",
-        "player_splits",
-        "period_split",
-        "player_stat",
-        "record_when",
-        "shot_chart",
-        "shot_distance",
-        "single_game_high",
-        "streak",
-        "team_quarter_points",
-        "threshold_count",
-        "with_without",
+        NETPOINTS_FINGERPRINT,
+        PLAYER_LOG,
+        PLAYER_RANKING,
+        PLAYER_COMPARISON,
+        SEASON_HISTORY,
+        PLAYER_MEETINGS,
+        NETPOINTS_RATINGS,
+        PLAYER_SPLITS,
+        PERIOD_LOG,
+        PLAYER_LINE,
+        LINE_RECORD,
+        SHOT_CHART,
+        SHOT_DISTANCE,
+        GAME_HIGHS,
+        LINE_RUNS,
+        TEAM_PERIOD_TOTAL,
+        GAMES_COUNTED,
+        PRESENCE_SPLIT,
     }
 )
-"""Intents whose template reads a ``player`` or ``players`` slot.
+"""What the words ask whose reader reads a ``player`` or ``players`` slot.
 
 .. versionadded:: 2.1.0
+
+.. versionchanged:: 6.0.0
+   ``PLAYER_INTENTS`` until Phase 3, step 4: the grammar's keys.
 """

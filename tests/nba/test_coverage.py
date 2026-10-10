@@ -11,7 +11,7 @@ ranked a league of seven players.
 
 from __future__ import annotations
 
-from shapes import key
+from shapes import asked, key
 
 from association.nba.coverage import COVERAGE, KNOWN_TABLES, POSTSEASON, REGULAR_SEASON, caveat, unavailable
 from association.query.coverage import RELATION_SOURCES, SOURCES, check_coverage, coverage_caveat, sources_for
@@ -119,11 +119,11 @@ def test_the_floor_follows_the_relation_the_point_reader_named() -> None:
     from association.query.point import default_point
 
     for narrowing in ({"situation": "on tuesdays"}, {"since": 1989}, {"game_n": 3}):
-        point = default_point("player_stat", Scope.from_slots({"player": "Michael Jordan", "stat": "points", "season": 1990, "season_type": REGULAR_SEASON, **narrowing}))
+        point = default_point(asked("player_stat"), Scope.from_slots({"player": "Michael Jordan", "stat": "points", "season": 1990, "season_type": REGULAR_SEASON, **narrowing}))
         assert point.on == "player_games", narrowing
         refused = check_coverage(point_shape(point), point.scope)
         assert refused is not None and refused.startswith("Player game logs only go back to 1994"), narrowing
-    unnarrowed = default_point("player_stat", Scope.from_slots({"player": "Michael Jordan", "stat": "points", "season": 1990, "season_type": REGULAR_SEASON}))
+    unnarrowed = default_point(asked("player_stat"), Scope.from_slots({"player": "Michael Jordan", "stat": "points", "season": 1990, "season_type": REGULAR_SEASON}))
     assert unnarrowed.on == "player_seasons" and check_coverage(point_shape(unnarrowed), unnarrowed.scope) is None
 
 

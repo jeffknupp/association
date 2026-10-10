@@ -10,7 +10,7 @@ import duckdb
 import pytest
 from routed import default_query, default_reading
 from routed import planned_answer as compose_answer
-from shapes import key, stated, unhonored
+from shapes import asked, key, stated, unhonored
 
 from association.fetch.repairs import real_games
 from association.nba.season import current_season
@@ -61,7 +61,7 @@ def _compiled(intent: str) -> Callable[[AnswerContext, Reading], Reply]:
             kind = "team_players"  # a ranking within a team: its players, never its own figure
         subject = reading.subject or Subject(kind, players=named, teams=(scope.subject.team,) if scope.subject.team else ())
         why: list[str] = []
-        result = compose_answer(ctx, with_point(ctx.con, "", Reading(scope=scope, intent=intent, subject=subject)), declined=why.append)
+        result = compose_answer(ctx, with_point(ctx.con, "", Reading(scope=scope, asked=asked(intent), subject=subject)), declined=why.append)
         if result is None:
             raise Unsupported(why[0] if why else f"the compiler has no reading of this {intent} point")
         return result
@@ -3677,7 +3677,7 @@ def test_a_leaderboard_refuses_a_position_group_subject_for_the_compiler(lb_con:
     from association.query.point import read_point
     from association.query.reading import Scope
 
-    reading = Reading(scope=Scope.from_slots({"stat": "points"}), intent="leaderboard", subject=Subject("position", position="SG"))
+    reading = Reading(scope=Scope.from_slots({"stat": "points"}), asked=asked("leaderboard"), subject=Subject("position", position="SG"))
     # The compiler's point reads the group over the box scores, not the season line.
     point = read_point(reading, "highest points per game by a shooting guard")
     assert (point.relation, point.scope.subject.position, point.on) == ("everyone", "SG", "player_games")
@@ -3700,7 +3700,7 @@ def test_a_ranking_names_the_season_line_as_its_relation(lb_con: AnswerContext) 
     from association.query.point import read_point
     from association.query.result import Result
 
-    reading = Reading(scope=Scope.from_slots({"stat": "points", "season": 2024}), intent="leaderboard", subject=Subject("everyone"))
+    reading = Reading(scope=Scope.from_slots({"stat": "points", "season": 2024}), asked=asked("leaderboard"), subject=Subject("everyone"))
     planned = plan(read_point(reading, "who led the league in points in 2024"))
     assert isinstance(planned, Query) and planned.source == "seasons"
     result = read_leaderboard(lb_con.con, planned)
@@ -4111,7 +4111,9 @@ def test_a_players_log_is_read_into_a_result_and_said_from_it_alone(pg_ctx: Answ
     from association.query.result import Result
 
     reading = with_point(
-        pg_ctx.con, "", Reading(scope=Scope.from_slots({"player": "Brandin Podziemski", "opponent": "Detroit Pistons"}), intent="game_log", subject=Subject("player", players=("Brandin Podziemski",)))
+        pg_ctx.con,
+        "",
+        Reading(scope=Scope.from_slots({"player": "Brandin Podziemski", "opponent": "Detroit Pistons"}), asked=asked("game_log"), subject=Subject("player", players=("Brandin Podziemski",))),
     )
     planned = plan_point(reading)
     assert isinstance(planned.query, Query)

@@ -15,7 +15,7 @@ from typing import Any
 import duckdb
 import pytest
 from routed import planned_answer as compose_answer
-from shapes import unhonored
+from shapes import asked, unhonored
 from test_templates import leaderboard  # the compiler's, leaderboard's template retired (compose.COMPILED_INTENTS)
 
 from association.nba.season import current_season
@@ -44,7 +44,7 @@ def _compiled(intent: str) -> Callable[[AnswerContext, Reading], Reply]:
         kind: SubjectKind = "pair" if len(named) > 1 else "player" if named else "team" if scope.subject.team else "everyone"
         subject = reading.subject or Subject(kind, players=named, teams=(scope.subject.team,) if scope.subject.team else ())
         why: list[str] = []
-        result = compose_answer(ctx, with_point(ctx.con, "", Reading(scope=scope, intent=intent, subject=subject)), declined=why.append)
+        result = compose_answer(ctx, with_point(ctx.con, "", Reading(scope=scope, asked=asked(intent), subject=subject)), declined=why.append)
         if result is None:
             raise Unsupported(why[0] if why else f"the compiler has no reading of this {intent} point")
         return result

@@ -35,7 +35,38 @@ from .lexicon import BY_QUARTER, GAMES_WORDS, HALF_WORDS, ORDER_WORDS, PAST_N_SE
 from .line import LineContext, LinesRead, read_lines, threshold_named
 from .measure import BOOLEAN_KEYS, GAMES_STATS, MeasureContext, named, names_a_stat, read_measure
 from .period import PeriodContext, read_period, which_period
-from .reading import Claim, Companion, Cuts, Line, Period, Scope, Window
+from .reading import (
+    GAME_HIGHS,
+    GAMES_COUNTED,
+    LINE_RECORD,
+    NETPOINTS_FINGERPRINT,
+    NETPOINTS_RATINGS,
+    PERIOD_LOG,
+    PERIOD_RANKING,
+    PLAYER_COMPARISON,
+    PLAYER_LINE,
+    PLAYER_LOG,
+    PLAYER_MEETINGS,
+    PLAYER_RANKING,
+    PRESENCE_SPLIT,
+    SEASON_HISTORY,
+    SHOT_CHART,
+    TEAM_COACH,
+    TEAM_LINE,
+    TEAM_MEETINGS,
+    TEAM_PERIOD_TOTAL,
+    TEAM_RANKING,
+    TEAM_RECORD,
+    Claim,
+    Companion,
+    Cuts,
+    Line,
+    Period,
+    PointShape,
+    Scope,
+    Window,
+    asked_label,
+)
 from .span import SpanContext, needed, range_named, read_by, read_span
 from .span import claimed as claimed_once
 from .subject import is_team_name, subject_named_in, team_named_in_text, team_words_in
@@ -73,7 +104,7 @@ _DRAW_WORDS = re.compile(r"\b(?:plot|chart|draw|render|visuali[sz]e|graph|show m
 # fragile plays-table derivation this comment used to warn was needed - and the
 # override below sends it there instead of forcing it to the agent.
 def _is_team_quarter_points(raw: dict[str, Any]) -> bool:
-    return raw.get("intent") == "team_quarter_points" and _subject_of(raw).player is None
+    return raw.get("asked") == TEAM_PERIOD_TOTAL and _subject_of(raw).player is None
 
 
 def _subject_of(raw: dict[str, Any]) -> reading.Subject:
@@ -111,9 +142,10 @@ def _names_a_period_subject(handed: Named) -> bool:
 # the word cannot collide with a subject.
 _COACH_WORDS = re.compile(r"\bcoach(?:es|ed|ing|es'|'s)?\b|\bhead\s+coach\b", re.IGNORECASE)
 
-CODE_ASSIGNED_INTENTS: frozenset[str] = frozenset({"coach", "period_split", "period_leaderboard"})
-"""Intents no model can emit, because :func:`route` assigns them from the
-question's own text.
+CODE_ASSIGNED_ASKS: frozenset[PointShape] = frozenset({TEAM_COACH, PERIOD_LOG, PERIOD_RANKING})
+"""What the words ask that no model could emit (a coach, a player's quarter,
+players ranked by one), because the stages assign it from the question's own
+text.
 
 Kept out of ``ROUTER_SCHEMA``'s enum and out of ``ROUTER_PROMPT`` on purpose.
 Both are load-bearing on every other question: a new enum value changes the
@@ -129,6 +161,9 @@ a template that is unreachable by BOTH routes is dead, and the two lists have
 to disagree deliberately rather than by drift.
 
 .. versionadded:: 2.2.0
+
+.. versionchanged:: 6.0.0
+   ``CODE_ASSIGNED_INTENTS``, the three intents' names, until Phase 3, step 4.
 """
 
 
@@ -150,7 +185,7 @@ class RouterUnavailable(RuntimeError):
 
 @dataclass
 class Route:
-    """The stages' settled reading of a question: the intent, and the typed
+    """The stages' settled reading of a question: what the words ask, and the typed
     :class:`~association.query.reading.Scope` a template or the compiler
     reads - every slot that survived validation, a dropped one the field at
     its default (never a sentinel), so a template's own default applies
@@ -168,9 +203,15 @@ class Route:
        :attr:`slots` is the Scope projected to a slot dict - the trace's and
        a test's shape, read nowhere on the answering path. ``decisions``
        added.
+
+    .. versionchanged:: 6.0.0
+       ``asked`` (the grammar's key, a
+       :class:`~association.query.reading.PointShape`, or ``None`` for no
+       shape) replaces ``intent``, which is its label
+       (:func:`~association.query.reading.asked_label`), the trace's alone.
     """
 
-    intent: str
+    asked: PointShape | None
     scope: Scope = field(default_factory=Scope)
     decisions: tuple[Decision, ...] = ()
     #: Who the question was read to be about, where the parser read the
@@ -203,23 +244,35 @@ class Route:
     model_stat: str = ""
 
     @property
+    def intent(self) -> str:
+        """The page's and the trace's label for :attr:`asked`
+        (:func:`~association.query.reading.asked_label`), read nowhere on
+        the answering path.
+
+        .. versionadded:: 6.0.0
+        """
+        return asked_label(self.asked)
+
+    @property
     def slots(self) -> dict[str, Any]:
         """The scope as a slot dict (:meth:`~association.query.reading.Scope.to_slots`).
 
         .. versionchanged:: 5.0.0
            A projection of :attr:`scope`, no longer the field itself.
         """
-        return self.scope.to_slots(split_by_presence=self.intent == "with_without")
+        return self.scope.to_slots(split_by_presence=self.asked == PRESENCE_SPLIT)
 
     def projected(self) -> dict[str, Any]:
         """Every field as a Route was recorded until Phase 3, step 2
         (:func:`~association.query.stages.plain`): the scope's companions
-        under the with/without split's slot where the route is the split's.
+        under the with/without split's slot where the route is the split's,
+        and the key the words asked as its label (``intent``), the field it
+        was until Phase 3, step 4.
 
         .. versionadded:: 6.0.0
         """
-        out = {f.name: getattr(self, f.name) for f in fields(self)}
-        out["scope"] = self.scope.projected(split_by_presence=self.intent == "with_without")
+        out = {"intent": self.intent, **{f.name: getattr(self, f.name) for f in fields(self) if f.name != "asked"}}
+        out["scope"] = self.scope.projected(split_by_presence=self.asked == PRESENCE_SPLIT)
         return out
 
 
@@ -334,11 +387,11 @@ _TEAM_SUBJECT = re.compile(
     r"\b(?:which|what)\s+teams?\b|\bby\s+(?:a\s+)?teams?\b|\bper\s+team\b|\bteams?\s+(?:with\s+the|that|leaders|rankings?)\b",
     re.IGNORECASE,
 )
-_PLAYER_RANKING_INTENTS = frozenset({"leaderboard", "single_game_high", "threshold_count"})
-#: Intents the model files for a "<team> when <player> reaches N" question,
+_PLAYER_RANKING_ASKS = frozenset({PLAYER_RANKING, GAME_HIGHS, GAMES_COUNTED})
+#: What the model files a "<team> when <player> reaches N" question as,
 #: each of which would answer the player's own line instead of the team's
 #: record under the condition.
-_WHEN_REACHES_REROUTABLE = frozenset({"player_stat", "threshold_count", "game_log", "team_stat", "team_record", "other"})
+_WHEN_REACHES_REROUTABLE = frozenset({PLAYER_LINE, GAMES_COUNTED, PLAYER_LOG, TEAM_LINE, TEAM_RECORD, None})
 
 # A fingerprint is one named artifact, and a question that never names it is not
 # asking for one. Measured: "Plot Curry's threes from last season" came back as
@@ -347,12 +400,12 @@ _WHEN_REACHES_REROUTABLE = frozenset({"player_stat", "threshold_count", "game_lo
 #: The fingerprint itself, by name - not the looser words above ("netpoints"
 #: is also a leaderboard's metric and player_netpoints' whole subject).
 _FINGERPRINT_NAMED = re.compile(r"\bfinger\s?prints?\b|\bradar\b", re.IGNORECASE)
-_FINGERPRINT_REROUTABLE = frozenset({"player_compare", "player_stat", "player_netpoints", "other", "game_log"})
+_FINGERPRINT_REROUTABLE = frozenset({PLAYER_COMPARISON, PLAYER_LINE, NETPOINTS_RATINGS, None, PLAYER_LOG})
 _FINGERPRINT_WORDS = re.compile(r"\bfinger\s?prints?\b|\bradar\b|\bnet\s?points?\b|\bplay[- ]types?\b", re.IGNORECASE)
 _SHOT_WORDS = re.compile(r"\bshots?\b|\bthrees\b|\b3s\b|\b(?:3|three)[- ]?pointers?\b|\bjumpers?\b|\blayups?\b|\bdunks?\b|\bchart\b", re.IGNORECASE)
 
 
-def _route_shot_distance_subject(intent: str, slots: dict[str, Any], question: str) -> None:
+def _route_shot_distance_subject(asked: PointShape | None, slots: dict[str, Any], question: str) -> None:
     """A ranking by shot distance names no player: any `player` the model
     filled, filler or real, is dropped - `leaderboard` never reads one for
     real (a named player is refused separately), and a filler value here
@@ -365,7 +418,7 @@ def _route_shot_distance_subject(intent: str, slots: dict[str, Any], question: s
     .. versionadded:: 4.4.0
        ``_route_leaderboard_shot_distance``, which wrote the sentinel too, until Phase 3, step 2.
     """
-    if intent != "leaderboard" or not lexicon.SHOT_DISTANCE_RANKED.search(question):
+    if asked != PLAYER_RANKING or not lexicon.SHOT_DISTANCE_RANKED.search(question):
         return
     who = _subject_of(slots)
     if who.player is not None:
@@ -400,7 +453,7 @@ def _route_coach_intent(raw: dict[str, Any], question: str) -> bool:
     """
     if not _COACH_WORDS.search(question):
         return False
-    raw["intent"] = "coach"
+    raw["asked"] = TEAM_COACH
     return True
 
 
@@ -460,7 +513,7 @@ def _route_period_intents(raw: dict[str, Any], question: str, handed: Named) -> 
     if lexicon.FOULED_OUT.search(low):
         # The count of a player's foul-outs: the line itself (fouls at six)
         # is the lines tagger's (``line.read_lines``), the stat the measure tagger's.
-        raw["intent"] = "threshold_count"
+        raw["asked"] = GAMES_COUNTED
     ranks_players = PERIOD_LEADERS.search(low) is not None or (PERIOD_TOP.search(low) is not None and not _team_slot_or_word(raw, handed))
     if (QUARTER_WORDS.search(low) and (ranks_players or not _is_team_quarter_points(raw) or _names_a_period_subject(handed))) or HALF_WORDS.search(low):
         # A named player's quarter or half now HAS a template, so the override
@@ -471,7 +524,7 @@ def _route_period_intents(raw: dict[str, Any], question: str, handed: Named) -> 
         # rather than the Route, and the log line shows what the model thought.
         asked = which_period(question)
         if asked is not None and PERIOD_AS_CONDITION.search(low):
-            raw["intent"] = "other"
+            raw["asked"] = None
             return
         # No second `_is_team_quarter_points` check: it means "this intent, and
         # NO player", so it can never be true here where a player is named. The
@@ -493,7 +546,7 @@ def _route_period_intents_choose(raw: dict[str, Any], question: str, handed: Nam
         # .period_leaderboard. A team may still be named ("knicks 1st
         # quarter scoring leaders"), where it narrows the ranking to that
         # team's players rather than becoming the subject.
-        raw["intent"] = "period_leaderboard"
+        raw["asked"] = PERIOD_RANKING
     elif asked is not None and not named_player and (_team_slot_or_word(raw, handed)):
         # A TEAM's half. A team's QUARTER never reaches here - the
         # exemption above keeps it on its own template - but a half always
@@ -505,23 +558,23 @@ def _route_period_intents_choose(raw: dict[str, Any], question: str, handed: Nam
         # check_routing.py gap after step 3) and "least points scored by
         # the wizards in the first half" (yardstick-v2 F064) - the one
         # nickname the question itself holds (:attr:`Named.team_words`).
-        raw["intent"] = "team_quarter_points"
+        raw["asked"] = TEAM_PERIOD_TOTAL
     elif asked is not None and named_player:
-        raw["intent"] = "period_split"
+        raw["asked"] = PERIOD_LOG
         _route_period_split_slots(raw, question, subject)
     elif asked is None and named_player and BY_QUARTER.search(low):
         # A named player's four quarters side by side (#162): period_split
         # with no period, which its point reads as the breakdown
         # (point._default_period_split).
-        raw["intent"] = "period_split"
+        raw["asked"] = PERIOD_LOG
         _route_period_split_slots(raw, question, subject)
     elif asked is None and not named_player and BY_QUARTER.search(low) and not _team_slot_or_word(raw, handed):
         # Every player's four quarters side by side - the league's; a
         # team's players' breakdown ("knicks points by quarter") reads
         # as the TEAM's by quarter, which is not built, and stays `other`.
-        raw["intent"] = "period_leaderboard"
+        raw["asked"] = PERIOD_RANKING
     else:
-        raw["intent"] = "other"
+        raw["asked"] = None
 
 
 def _route_triple_double_abbreviation(raw: dict[str, Any], question: str) -> None:
@@ -540,8 +593,8 @@ def _route_triple_double_abbreviation(raw: dict[str, Any], question: str) -> Non
     # shot to the model ("luka td3s home" arrived as a chart of his twos),
     # and a count of triple-doubles is never a chart unless the question
     # asks for one to be drawn.
-    if raw["intent"] in ("other", "shot_chart") and _subject_of(raw).player is not None and not _DRAW_WORDS.search(question):
-        raw["intent"] = "player_stat"
+    if raw["asked"] in (None, SHOT_CHART) and _subject_of(raw).player is not None and not _DRAW_WORDS.search(question):
+        raw["asked"] = PLAYER_LINE
 
 
 def _team_slot_or_word(raw: dict[str, Any], handed: Named) -> bool:
@@ -560,38 +613,38 @@ def _team_slot_or_word(raw: dict[str, Any], handed: Named) -> bool:
 def _route_team_and_player_intents(raw: dict[str, Any], question: str) -> None:
     """A team where a player ranking was asked for, a record, a fingerprint with
     no fingerprint words, and a player measured against a team."""
-    if raw["intent"] in _PLAYER_RANKING_INTENTS and _TEAM_SUBJECT.search(question):
+    if raw["asked"] in _PLAYER_RANKING_ASKS and _TEAM_SUBJECT.search(question):
         # A team ranking has a template; a team's single-game record and a
         # count of team games do not, and answering either with players is the
         # substitution this exists to stop.
-        raw["intent"] = "team_leaderboard" if raw["intent"] == "leaderboard" else "other"
-    if raw["intent"] == "threshold_count" and _RECORD.search(question):
-        raw["intent"] = "record_when"
-    if raw["intent"] in _WHEN_REACHES_REROUTABLE and lexicon.WHEN_REACHES.search(question) and threshold_named(question) is not None:
+        raw["asked"] = TEAM_RANKING if raw["asked"] == PLAYER_RANKING else None
+    if raw["asked"] == GAMES_COUNTED and _RECORD.search(question):
+        raw["asked"] = LINE_RECORD
+    if raw["asked"] in _WHEN_REACHES_REROUTABLE and lexicon.WHEN_REACHES.search(question) and threshold_named(question) is not None:
         # "stats for sixers when maxey scored 20+ points" (yardstick-v2 F087):
         # a team's games divided by a NUMBER a player reached is record_when
         # whatever the model filed - it chose player_stat and answered Maxey's
         # own average, then (after "for <team>" became his tenure) his career
         # average with the 76ers. Two readers agree before it moves: the
         # "when <someone> scores/has/gets" clause and a threshold in the text.
-        raw["intent"] = "record_when"
-    if raw["intent"] == "fingerprint" and not _FINGERPRINT_WORDS.search(question):
-        raw["intent"] = "shot_chart" if _SHOT_WORDS.search(question) else "other"
-    if raw["intent"] in _FINGERPRINT_REROUTABLE and _FINGERPRINT_NAMED.search(question):
+        raw["asked"] = LINE_RECORD
+    if raw["asked"] == NETPOINTS_FINGERPRINT and not _FINGERPRINT_WORDS.search(question):
+        raw["asked"] = SHOT_CHART if _SHOT_WORDS.search(question) else None
+    if raw["asked"] in _FINGERPRINT_REROUTABLE and _FINGERPRINT_NAMED.search(question):
         # The reverse: "compare fingerprints for embiid vs jokic in 2026"
         # arrived as player_compare after the 5.0.0 prompt shrink, and a
         # table of averages is not the radar the word asks for. The word
         # is as unmistakable as "coach"; nothing else here is named it.
-        raw["intent"] = "fingerprint"
+        raw["asked"] = NETPOINTS_FINGERPRINT
     listed = _listed(raw)
-    if raw["intent"] == "player_compare" and sum(map(is_team_name, listed)) == 1 and len(listed) == 2:
+    if raw["asked"] == PLAYER_COMPARISON and sum(map(is_team_name, listed)) == 1 and len(listed) == 2:
         # One player compared with a team is his games against it. Measured:
         # "compare curry vs the celtics this season" arrived as player_compare
         # with the Celtics in `players`; subject.apply_subject made them the
         # opponent, which player_compare cannot honor, so the question fell
         # through to the agent while player_stat answers it exactly. Two
         # players and a team stay a comparison, and refuse the opponent.
-        raw["intent"] = "player_stat"
+        raw["asked"] = PLAYER_LINE
     _route_one_player_intents(raw, question, listed)
     _route_matchup_against_team(raw, question, listed)
 
@@ -601,10 +654,10 @@ def _route_pair_over_seasons(raw: dict[str, Any], question: str, listed: list[st
     with no compare word, is the pair relation's meetings (player_matchup
     honors ``since``; a comparison does not, and fell through - day5).
     "Luka vs Giannis this year" stays a comparison."""
-    if raw["intent"] != "player_compare" or len(listed) != 2 or not _VERSUS_WORDS.search(question) or _COMPARE_WORDS.search(question):
+    if raw["asked"] != PLAYER_COMPARISON or len(listed) != 2 or not _VERSUS_WORDS.search(question) or _COMPARE_WORDS.search(question):
         return
     if range_named(question) is not None or PAST_N_SEASONS.search(question):
-        raw["intent"] = "player_matchup"
+        raw["asked"] = PLAYER_MEETINGS
 
 
 def _route_one_player_intents(raw: dict[str, Any], question: str, listed: list[str]) -> None:
@@ -616,21 +669,21 @@ def _route_one_player_intents(raw: dict[str, Any], question: str, listed: list[s
     step 2: the subject reading hands one player as the one player, so a
     comparison of one is the parent grammar's line, and the move read
     nothing on the 2,710 readings.)"""
-    if raw["intent"] == "player_stat" and _LOG_WORDS.search(question):
-        raw["intent"] = "game_log"
+    if raw["asked"] == PLAYER_LINE and _LOG_WORDS.search(question):
+        raw["asked"] = PLAYER_LOG
     _route_pair_over_seasons(raw, question, listed)
-    if raw["intent"] == "game_log" and _HOW_MANY.search(question) and raw.get("stat") in GAMES_STATS and not any(p.search(question) for p in ORDER_WORDS.values()):
+    if raw["asked"] == PLAYER_LOG and _HOW_MANY.search(question) and raw.get("stat") in GAMES_STATS and not any(p.search(question) for p in ORDER_WORDS.values()):
         # "how many games did embid play" arrived as a log of his most
         # recent game (order recent, limit 1) after the 5.0.0 prompt shrink;
         # the count is the line's ("... in 38 games"), which player_stat
         # states, and a log of one game states nothing of the kind. The
         # games key is no measure: the measure tagger drops it.
-        raw["intent"] = "player_stat"
-    if raw["intent"] == "player_stat" and not _named_player(raw) and WHO_RANKS.search(question):
+        raw["asked"] = PLAYER_LINE
+    if raw["asked"] == PLAYER_LINE and not _named_player(raw) and WHO_RANKS.search(question):
         # No player named and "who ... the most": the league's ranking, not
         # one player's line - "who attempted the most three pointers this
         # season?" arrived as player_stat after the 5.0.0 prompt shrink.
-        raw["intent"] = "leaderboard"
+        raw["asked"] = PLAYER_RANKING
 
 
 _COMPARE_WORDS = re.compile(r"\bcompar(?:e[ds]?|ing|ison)\b|\bbetter\b|\bwho scores more\b|\bside by side\b", re.IGNORECASE)
@@ -650,11 +703,11 @@ def _listed(raw: dict[str, Any]) -> list[str]:
 
 def _route_matchup_against_team(raw: dict[str, Any], question: str, listed: list[str]) -> None:
     """A ``player_matchup`` whose second "player" is a team."""
-    if raw["intent"] == "player_matchup" and any(map(is_team_name, listed)):
+    if raw["asked"] == PLAYER_MEETINGS and any(map(is_team_name, listed)):
         # One of the "two players" is a team: this is a player's games against
         # it. subject.apply_subject moves the team to `opponent`.
-        raw["intent"] = "game_log" if _LOG_WORDS.search(question) or GAMES_WORDS.search(question) else "player_stat"
-    if raw["intent"] == "player_matchup" and len(listed) < 2 and _subject_of(raw).player is not None:
+        raw["asked"] = PLAYER_LOG if _LOG_WORDS.search(question) or GAMES_WORDS.search(question) else PLAYER_LINE
+    if raw["asked"] == PLAYER_MEETINGS and len(listed) < 2 and _subject_of(raw).player is not None:
         # The same question, arriving in the other shape. The rule above reads
         # `players`, and the model routinely fills the SINGULAR `player` and an
         # `opponent` instead - "keon ellis stats vs trailblazers", "Kd games vs
@@ -669,45 +722,45 @@ def _route_matchup_against_team(raw: dict[str, Any], question: str, listed: list
         teams = _subject_of(raw).teams
         against = raw.get("opponent") or next(iter(teams if len(teams) >= 2 else ()), None)
         if isinstance(against, str) and is_team_name(against):
-            raw["intent"] = "game_log" if _LOG_WORDS.search(question) or GAMES_WORDS.search(question) else "player_stat"
+            raw["asked"] = PLAYER_LOG if _LOG_WORDS.search(question) or GAMES_WORDS.search(question) else PLAYER_LINE
 
 
-_PLAYED_TOGETHER_REROUTABLE = frozenset({"head_to_head", "team_record", "team_stat", "game_log", "other"})
+_PLAYED_TOGETHER_REROUTABLE = frozenset({TEAM_MEETINGS, TEAM_RECORD, TEAM_LINE, PLAYER_LOG, None})
 
 
 def _route_line_and_record_intents(raw: dict[str, Any], question: str, companions: tuple[Companion, ...], handed: Named) -> None:
     """A history that is really a line, a record ranking, and a career high."""
-    if raw["intent"] == "player_history" and (not names_a_stat(question) or (_VERSUS_WORDS.search(question) and handed.team_words)):
+    if raw["asked"] == SEASON_HISTORY and (not names_a_stat(question) or (_VERSUS_WORDS.search(question) and handed.team_words)):
         # A season-by-season history of one stat is neither "career averages"
         # (no stat named - the whole line) nor a career against one team.
         # Measured: "Jokic career averages" answered with points by season,
         # "derozan career points vs knicks" refused on its opponent.
-        raw["intent"] = "player_stat"
-    if raw["intent"] == "with_without" and not _absent(companions) and not _played(companions) and any(pattern.search(question) for pattern in ORDER_WORDS.values()):
+        raw["asked"] = PLAYER_LINE
+    if raw["asked"] == PRESENCE_SPLIT and not _absent(companions) and not _played(companions) and any(pattern.search(question) for pattern in ORDER_WORDS.values()):
         # No teammate named, and "the last 7 games": a team's log, not a
         # split. "KNICKS point differential over the last 7 games" arrived
         # as with_without after the 5.0.0 prompt shrink (day5) and answered
         # the last seven REGULAR-season games where the last seven were the
         # Finals - game_log reads both types for "last N" (_route_game_log_recent_span).
-        raw["intent"] = "game_log"
-    if raw["intent"] in _PLAYED_TOGETHER_REROUTABLE and _RECORD.search(question) and threshold_named(question) is None and (_played(companions) or _absent_by_phrase(question, companions)):
+        raw["asked"] = PLAYER_LOG
+    if raw["asked"] in _PLAYED_TOGETHER_REROUTABLE and _RECORD.search(question) and threshold_named(question) is None and (_played(companions) or _absent_by_phrase(question, companions)):
         # "PHI record when Embiid and Paul George play" arrived as
         # head_to_head, the Pacers invented as the opponent, after the 5.0.0
         # prompt shrink; with no threshold it is the with/without split
         # (#156's reading, which `_route_threshold` makes for record_when).
         # "record with Embiid out" is the same split, from the other side.
-        raw["intent"] = "with_without"
-    if raw["intent"] == "team_record" and _BEST_WORST_RECORD.search(question) and not handed.team_words:
+        raw["asked"] = PRESENCE_SPLIT
+    if raw["asked"] == TEAM_RECORD and _BEST_WORST_RECORD.search(question) and not handed.team_words:
         # The ranking's metric, the record, is the measure tagger's reading
         # of the same words (the team metric's alias "record"); a ranking of
         # every team is about no one team.
-        raw["intent"] = "team_leaderboard"
+        raw["asked"] = TEAM_RANKING
         raw["subject"] = replace(_subject_of(raw), teams=())
-    if raw["intent"] == "player_stat" and lexicon.CAREER_HIGH.search(question):
+    if raw["asked"] == PLAYER_LINE and lexicon.CAREER_HIGH.search(question):
         # A career high is one game's total, which player_stat never reports.
         # Measured: "Diabate career high assists" was answered with his assists
         # per game.
-        raw["intent"] = "single_game_high"
+        raw["asked"] = GAME_HIGHS
 
 
 #: The model-era keys of the span, window, cuts, period, line and companion
@@ -766,7 +819,7 @@ def _route_blank_slots(raw: dict[str, Any]) -> dict[str, Any]:
     # A blank string is how the model says "no value" for a required slot;
     # dropping it here keeps every template's `slots.get(...) or default`
     # working and keeps the logged Route readable.
-    return {k: v for k, v in raw.items() if k != "intent" and k not in _MODEL_SPAN_KEYS and not (isinstance(v, str) and not v.strip())}
+    return {k: v for k, v in raw.items() if k != "asked" and k not in _MODEL_SPAN_KEYS and not (isinstance(v, str) and not v.strip())}
 
 
 def _played(companions: tuple[Companion, ...]) -> tuple[str, ...]:
@@ -803,27 +856,27 @@ def _route_count_intents(raw: dict[str, Any], slots: dict[str, Any], question: s
     # a threshold keeps its intent, so "Sixers record when Embiid scores 30
     # points" is untouched. "When Embiid is out" is the same split from the
     # other side: an absent companion, which the subject reading writes.
-    if raw["intent"] == "record_when" and named is None and (_played(companions) or _absent_by_phrase(question, companions)):
-        raw["intent"] = "with_without"
-    if raw["intent"] == "threshold_count" and slots.get("stat") in ("games", "game") and named is None:
+    if raw["asked"] == LINE_RECORD and named is None and (_played(companions) or _absent_by_phrase(question, companions)):
+        raw["asked"] = PRESENCE_SPLIT
+    if raw["asked"] == GAMES_COUNTED and slots.get("stat") in ("games", "game") and named is None:
         # "bam adebayo career games in the month of march" (yardstick-v2 F096)
         # arrived as a count of games over the line 0 on the stat "games" -
         # no line at all, and no template or compiler reads it, so it fell
         # through. A player's games with no line on them are his game log,
         # which states how many there were and his line in them. Measured
         # over the replayed corpus: this question is the only one routed so.
-        raw["intent"] = "game_log"
+        raw["asked"] = PLAYER_LOG
         # The count's subject, settled as a count's would be
         # (_route_subject_slots) - game_log is not one of the intents that
         # step settles it for, and the model dropped Bam here.
         _settle_grammar_subject(slots, handed)
-    if raw["intent"] == "threshold_count" and named is None and not lexicon.BELOW.search(question):
+    if raw["asked"] == GAMES_COUNTED and named is None and not lexicon.BELOW.search(question):
         # A count of games needs a threshold. Without one, "who has the most
         # threes" is a season ranking - measured, it arrived here with none and
         # fell through. A ceiling IS the count's line ("Sga games with under
         # 14 fta": compose.counts reads the phrase as the count), so
         # a count stated as one keeps its intent with no threshold at all.
-        raw["intent"] = "leaderboard"
+        raw["asked"] = PLAYER_RANKING
 
 
 def _route_split_slot(slots: dict[str, Any], question: str) -> None:
@@ -874,17 +927,17 @@ _HOW_MANY = re.compile(r"\bhow\s+many\b", re.IGNORECASE)
 #
 # Nothing about this widens what counts as a subject. Note the difference from
 # the other two: a `record_when` with no player is not a league question but an
-# unanswerable one (it is in `PLAYER_REQUIRED_INTENTS`), so restoring the
+# unanswerable one (it is in `PLAYER_REQUIRED_ASKS`), so restoring the
 # subject can only turn a refusal into an answer, never a league ranking into
 # one man's.
-_SUBJECT_RESTORED_INTENTS = ("single_game_high", "threshold_count", "record_when")
+_SUBJECT_RESTORED_ASKS = (GAME_HIGHS, GAMES_COUNTED, LINE_RECORD)
 
 
-def _route_subject_slots(intent: str, slots: dict[str, Any], handed: Named) -> None:
+def _route_subject_slots(asked: PointShape | None, slots: dict[str, Any], handed: Named) -> None:
     """A single-game high's or a threshold count's missing subject. (A
     log's last meetings with an opponent across seasons, and a count's
     career, are the span tagger's: :func:`~association.query.span.read_span`.)"""
-    if intent in _SUBJECT_RESTORED_INTENTS:
+    if asked in _SUBJECT_RESTORED_ASKS:
         # An optional name the model dropped, settled from the question's own
         # grammar (``subject.subject_named_in``, :attr:`Named.grammar`). Only
         # where the reader reads one player: a leaderboard with no player IS
@@ -908,15 +961,15 @@ def _settle_grammar_subject(slots: dict[str, Any], handed: Named) -> None:
 _MEASURE_CONTEXT_KEYS: tuple[str, ...] = ("stat", "side", "shot_value", "fields")
 
 
-def settle(intent: str, slots: Mapping[str, Any] | Scope, question: str, companions: tuple[Companion, ...] = (), *, lines: tuple[Line, ...] = (), handed: Named | None = None) -> Route:
-    """The route the stages settle on for ``intent`` over ``slots``: the
+def settle(asked: PointShape | None, slots: Mapping[str, Any] | Scope, question: str, companions: tuple[Companion, ...] = (), *, lines: tuple[Line, ...] = (), handed: Named | None = None) -> Route:
+    """The route the stages settle on for what the words ask (``asked``) over ``slots``: the
     parser's raw route (:func:`association.query.parse.read_route` runs them
     under the parent its grammar names), or a settled route run again under
     an intent assigned after it settled.
 
     That is how :mod:`association.query.subject` assigns a child intent
     (``threshold_count`` under a ``game_log``, ``player_history`` under a
-    ``player_stat``: its ``KIND_ASSIGNED_INTENTS``): the question's words
+    ``player_stat``: its ``KIND_ASSIGNED_ASKS``): the question's words
     name the intent, and the child's own slots (``threshold`` from "30+",
     ``limit`` as a count of seasons from "the past 4 seasons", ``kind`` of a
     streak, a ``split``) are the ones these stages already read off the
@@ -974,7 +1027,7 @@ def settle(intent: str, slots: Mapping[str, Any] | Scope, question: str, compani
     elif any(key in slots for key in _NAME_KEYS):
         raise ValueError(f"settle takes the names typed (router.Named), not as slots {sorted(key for key in _NAME_KEYS if key in slots)}")
     raw: dict[str, Any] = {key: value for key, value in slots.items() if key in _MEASURE_CONTEXT_KEYS}
-    raw["intent"] = intent
+    raw["asked"] = asked
     return _settle(raw, question, companions, lines=lines, handed=handed if handed is not None else Named.of(question))
 
 
@@ -1005,11 +1058,11 @@ def _settle(raw: dict[str, Any], question: str, companions: tuple[Companion, ...
     # A coach question is refused whatever the model said, and carries no
     # slots, so it short-circuits before any of the taggers below run.
     if coach:
-        return Route(intent=raw["intent"], claims=claimed_once(list(stage_claims)))
+        return Route(asked=raw["asked"], claims=claimed_once(list(stage_claims)))
     # The lines, at the position of the last stage that wrote one
     # (``_route_record_when_threshold``, the pair's stat and number), over
     # the settled intent.
-    line_context = LineContext(intent=raw["intent"], beside_line=any(c.line is not None for c in companions))
+    line_context = LineContext(asked=raw["asked"], beside_line=any(c.line is not None for c in companions))
     read = read_lines(question, line_context)
     slots["lines"] = (*lines, *read.lines)
     # The measure, at the position of the last stage that wrote one of its
@@ -1028,17 +1081,17 @@ def _settle(raw: dict[str, Any], question: str, companions: tuple[Companion, ...
     # that wrote one (an opponent that was the without list again,
     # dropped), the span over the window and the cuts, since its rules
     # read both.
-    period_context = PeriodContext(intent=raw["intent"])
+    period_context = PeriodContext(asked=raw["asked"])
     period = read_period(question, period_context)
     slots["period"] = period.period
-    cuts_context = CutsContext(intent=raw["intent"], split=slots.get("split"), opponent=slots.get("opponent"), without=_absent(companions))
+    cuts_context = CutsContext(asked=raw["asked"], split=slots.get("split"), opponent=slots.get("opponent"), without=_absent(companions))
     cuts = read_cuts(question, cuts_context)
     slots.pop("opponent", None)
     slots["cuts"] = cuts.cuts
-    window_context = WindowContext(intent=raw["intent"], boolean_stat=measure.measure is not None and measure.measure.key in BOOLEAN_KEYS)
+    window_context = WindowContext(asked=raw["asked"], boolean_stat=measure.measure is not None and measure.measure.key in BOOLEAN_KEYS)
     window = read_window(question, window_context)
     slots["window"] = window.window
-    span_context = _span_context(raw["intent"], slots, question, window=window.window, cuts=cuts)
+    span_context = _span_context(raw["asked"], slots, question, window=window.window, cuts=cuts)
     span = read_span(question, span_context)
     slots["span"] = span.span
     # Each tagger's claims cut to the words it could not do without, asked
@@ -1053,17 +1106,17 @@ def _settle(raw: dict[str, Any], question: str, companions: tuple[Companion, ...
         *needed(question, window.claims, lambda q: read_window(q, window_context).window, outside="window", gives_up=True),
         *needed(question, read.claims, lambda q: _settle_lines_read(read_lines(q, line_context)), outside="line", gives_up=True),
         *needed(question, measure.claims, lambda q: read_measure(q, _measure_context({**raw, "stat": _settle_worded_key(q, model_key)}, q, read)).measure, outside="measure", gives_up=True),
-        *needed(question, span.claims, lambda q: read_span(q, _span_context(raw["intent"], slots, q, window=window.window, cuts=cuts)).span, outside="span", gives_up=True),
+        *needed(question, span.claims, lambda q: read_span(q, _span_context(raw["asked"], slots, q, window=window.window, cuts=cuts)).span, outside="span", gives_up=True),
     ]
     # The stages' working dict crosses into the typed Scope here, once: a
     # value no field holds raises ScopeError to the parser.
-    return Route(intent=raw["intent"], scope=Scope.from_slots(slots), claims=claimed_once([*stage_claims, *claims]))
+    return Route(asked=raw["asked"], scope=Scope.from_slots(slots), claims=claimed_once([*stage_claims, *claims]))
 
 
 def _settle_stages(raw: dict[str, Any], question: str, companions: tuple[Companion, ...], handed: Named) -> tuple[bool, dict[str, Any]]:
     """The stages before the taggers, over ``raw`` (rewritten in place):
     whether the question is a coach's (refused whatever the model said; no
-    slot is read) and the slots the stages settled, with ``raw["intent"]``
+    slot is read) and the slots the stages settled, with ``raw["asked"]``
     the intent they settled on."""
     # A coach question is refused whatever the model said, and carries no
     # slots, so it short-circuits before any of the stages below run.
@@ -1086,8 +1139,8 @@ def _settle_stages(raw: dict[str, Any], question: str, companions: tuple[Compani
     slots = _route_blank_slots(raw)
     _route_count_intents(raw, slots, question, companions, handed)
     _route_split_slot(slots, question)
-    _route_shot_distance_subject(raw["intent"], slots, question)
-    _route_subject_slots(raw["intent"], slots, handed)
+    _route_shot_distance_subject(raw["asked"], slots, question)
+    _route_subject_slots(raw["asked"], slots, handed)
     return False, slots
 
 
@@ -1100,7 +1153,7 @@ def _settle_stages_read(raw: dict[str, Any], question: str, companions: tuple[Co
     coach, slots = _settle_stages(probed, question, companions, handed)
     # The measure's keys are the stages' context alone: the measure tagger
     # reads the family itself, so they leave the slots before the Scope.
-    return probed["intent"], coach, {key: value for key, value in slots.items() if key not in _MEASURE_CONTEXT_KEYS}
+    return probed["asked"], coach, {key: value for key, value in slots.items() if key not in _MEASURE_CONTEXT_KEYS}
 
 
 def _settle_worded_key(question: str, model_key: Any) -> Any:
@@ -1131,7 +1184,7 @@ def _measure_context(raw: dict[str, Any], question: str, read: LinesRead) -> Mea
     stat = raw.get("stat")
     shot_value = raw.get("shot_value")
     return MeasureContext(
-        intent=raw["intent"],
+        asked=raw["asked"],
         key=stat if isinstance(stat, str) and stat.strip() else None,
         side=raw.get("side") if isinstance(raw.get("side"), str) else None,
         shot_value=shot_value if isinstance(shot_value, int) and not isinstance(shot_value, bool) else None,
@@ -1142,7 +1195,7 @@ def _measure_context(raw: dict[str, Any], question: str, read: LinesRead) -> Mea
     )
 
 
-def _span_context(intent: str, slots: dict[str, Any], question: str, *, window: Window, cuts: CutsRead) -> SpanContext:
+def _span_context(asked: PointShape | None, slots: dict[str, Any], question: str, *, window: Window, cuts: CutsRead) -> SpanContext:
     """What the span tagger reads beside the words
     (:class:`~association.query.span.SpanContext`): the stages' settled
     intent, the typed window, the typed cuts (a date, a game of a series,
@@ -1150,7 +1203,7 @@ def _span_context(intent: str, slots: dict[str, Any], question: str, *, window: 
     the seasons at), and the guard words of other families it keeps until
     their slices move them to the lexicon."""
     return SpanContext(
-        intent=intent,
+        asked=asked,
         player_named=_subject_of(slots).player is not None,
         window_named=window.count is not None,
         versus=_VERSUS_WORDS.search(question) is not None,

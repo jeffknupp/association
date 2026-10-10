@@ -1,6 +1,8 @@
 """One compiler over the player-games and team-games relations: the only
-answer the intents in :data:`COMPILED_INTENTS` have, the step after a
-live template's refusal, and the last one before a refusal naming why.
+answer a shape the words ask for has (every key the grammar names,
+:data:`~association.query.reading.SHAPE_NAMES`; ``compose.COMPILED_INTENTS``
+listed the 25 intents' names until Phase 3, step 4), and the last step
+before a refusal naming why.
 
 The pipeline is parser -> template or compiler -> refusal. :func:`answer`
 is handed the point the parser read from the question's words
@@ -44,7 +46,7 @@ import duckdb
 
 from association.query.answer import AnswerContext, Reply
 from association.query.coverage import coverage_refusal
-from association.query.reading import PointShape
+from association.query.reading import SHAPE_NAMES, PointShape
 from association.query.result import Result, Unanswered
 
 from .core import Query, Refused, Unsupported, run
@@ -55,7 +57,7 @@ from .meetings import read_head_to_head
 from .netpoints import NetPointsQuery, draw_fingerprint, read_fingerprint, read_player_netpoints
 from .pairs import read_player_matchup
 from .periods import read_period_leaderboard, read_period_split, read_team_quarter_points
-from .plan import SHAPE_NAMES, Planned, beyond_words, cells_unhonored, shape_cells
+from .plan import Planned, beyond_words, cells_unhonored, shape_cells
 from .presence import read_with_without
 from .rankings import read_leaderboard
 from .records import read_record_when, read_team_record_when
@@ -121,64 +123,6 @@ def _team_point_data(query: TeamQuery, result: TeamResult) -> dict[str, Any]:
         "losses": result.losses,
         "from_season_line": result.from_season_line,
     }
-
-
-COMPILED_INTENTS: frozenset[str] = frozenset(
-    {
-        "threshold_count",
-        "single_game_high",
-        "record_when",
-        "player_history",
-        "game_log",
-        "player_stat",
-        "player_splits",
-        "leaderboard",
-        "period_split",
-        "player_compare",
-        "streak",
-        "player_matchup",
-        "with_without",
-        "coach",
-        "team_outlook",
-        "team_stat",
-        "team_leaderboard",
-        "head_to_head",
-        "team_quarter_points",
-        "period_leaderboard",
-        "team_record",
-        "player_netpoints",
-        "fingerprint",
-        "shot_distance",
-        "shot_chart",
-    }
-)
-"""The intents the compiler alone answers - the four whose templates it
-reproduced exactly (``~/association-research/intent-shrink/parity.py``:
-18/18, 10/10, 10/10, 20/20 on the recorded corpus) and then replaced
-(ROADMAP plan item 6, step (d), part 4), and ``game_log``, ``player_stat``,
-``player_splits``, ``leaderboard``, ``period_split``, ``player_compare``,
-``streak``, ``player_matchup`` and ``with_without`` (step (g):
-``intent-shrink/g/``, every unit-test call and recorded question answered
-both ways; ``streak`` is the ``run`` shape, ``player_matchup`` the ``pair``
-shape and ``with_without`` the team relation's ``presence`` group, skeletons
-the compiler gained for them), and the team shapes of Phase 2's slice
-(iv): ``head_to_head`` (:mod:`~association.query.compose.meetings`),
-``team_quarter_points`` and ``period_leaderboard``
-(:mod:`~association.query.compose.periods`) and ``team_record``
-(:mod:`~association.query.compose.team_records`), the NetPoints
-relation's ``player_netpoints`` and ``fingerprint``
-(:mod:`~association.query.compose.netpoints`, slice (v): the fingerprint's
-chart drawn between its reader and the sayer), and ``shot_distance`` and
-``shot_chart`` (:mod:`~association.query.compose.shots`, slice (v): the
-shot relation, a declared relation with its own reader, the chart drawn
-between it and the sayer). Each is read by its reader and said in its
-retired template's own words by the sayer
-(:mod:`~association.query.compose.say`); where the compiler has no
-reading of a point, the question is refused with the reason
-(``agent._run_compiled``).
-
-.. versionadded:: 5.0.0
-"""
 
 
 def answer(

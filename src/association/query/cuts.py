@@ -37,14 +37,15 @@ from typing import Literal
 
 from association.nba.season import current_season
 from association.query import lexicon
-from association.query.reading import Claim, Cuts, situation_of
+from association.query.reading import PLAYER_SPLITS, Claim, Cuts, PointShape, situation_of
 from association.query.span import career_named, claimed
 
 
 @dataclass(frozen=True, kw_only=True)
 class CutsContext:
     """What the stages settled before the cuts are read, and the tagger's
-    rules read beside the words: the intent they settled on; the split the
+    rules read beside the words: what they settled the words to ask (``asked``,
+    the grammar's key - an intent's name until Phase 3, step 4); the split the
     words name (a venue beside a venue split is the split's, not a cut);
     the opponent as the subject reading read it; and the teammates it read
     as absent (an "opponent" that is the ``without`` list again is no team).
@@ -52,7 +53,7 @@ class CutsContext:
     .. versionadded:: 6.0.0
     """
 
-    intent: str
+    asked: PointShape | None
     split: str | None = None
     opponent: str | None = None
     without: tuple[str, ...] = ()
@@ -128,7 +129,7 @@ def _venue(question: str, context: CutsContext) -> tuple[Literal["home", "away"]
     home, away = lexicon.VENUE_HOME.search(question), lexicon.VENUE_AWAY.search(question)
     if (home is None) == (away is None):
         return None, None
-    if context.intent == "player_splits" and context.split == "home_away":
+    if context.asked == PLAYER_SPLITS and context.split == "home_away":
         return None, None
     match = home if home is not None else away
     assert match is not None

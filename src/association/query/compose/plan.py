@@ -18,7 +18,7 @@ from association.query.measure import spelled
 from association.query.measures import stat_measure
 from association.query.player_relation import RELATION_SCOPING, RELATION_SCOPING_EXCLUDED
 from association.query.point import TEAM_SEASON_POINTS, team_season_point
-from association.query.reading import Cause, Measure, PointShape, Reading, Scope, ShapeCells, _career_scope, cell_set, cell_slots
+from association.query.reading import SHAPE_NAMES, Cause, Measure, PointShape, Reading, Scope, ShapeCells, _career_scope, cell_set, cell_slots
 from association.query.result import Refusal
 from association.query.team_relation import TEAM_RELATION_SCOPING, TEAM_RELATION_SCOPING_EXCLUDED
 
@@ -30,52 +30,6 @@ from .seasons import player_compare_reads, player_history_reads, player_line_rea
 from .shots import ShotQuery
 from .team import TeamQuery
 from .team_stats import TeamSeasonQuery
-
-SHAPE_NAMES: dict[PointShape, str] = {
-    PointShape("player_games", "rows", "date"): "game_log",
-    PointShape("player_games", "scalar", "line"): "player_stat",
-    PointShape("player_games", "split", "line"): "record_when",
-    PointShape("player_games", "split", "splits"): "player_splits",
-    PointShape("player_games", "scalar", "count"): "threshold_count",
-    PointShape("player_games", "ranking", "count"): "threshold_count",
-    PointShape("player_games", "rows", "count"): "threshold_count",
-    PointShape("player_games", "rows", "measure"): "single_game_high",
-    PointShape("player_games", "runs", "line"): "streak",
-    PointShape("player_games", "comparison", "met"): "player_matchup",
-    PointShape("player_periods", "rows", "date"): "period_split",
-    PointShape("player_periods", "split", "period"): "period_split",
-    PointShape("player_periods", "ranking", "player"): "period_leaderboard",
-    PointShape("player_seasons", "ranking", "player"): "leaderboard",
-    PointShape("player_seasons", "scalar", "line"): "player_stat",
-    PointShape("player_seasons", "split", "season"): "player_history",
-    PointShape("player_seasons", "comparison", "subject"): "player_compare",
-    PointShape("team_games", "rows", "date"): "game_log",
-    PointShape("team_games", "split", "splits"): "player_splits",
-    PointShape("team_games", "runs", "won"): "streak",
-    PointShape("team_games", "split", "presence"): "with_without",
-    PointShape("team_games", "split", "line"): "record_when",
-    PointShape("team_games", "comparison", "opponent"): "head_to_head",
-    PointShape("team_periods", "scalar", "total"): "team_quarter_points",
-    PointShape("team_games", "scalar", "record"): "team_record",
-    PointShape("team_seasons", "scalar", "line"): "team_stat",
-    PointShape("team_seasons", "ranking", "team"): "team_leaderboard",
-    PointShape("team_snapshots", "scalar", "projection"): "team_outlook",
-    PointShape("netpoints", "scalar", "ratings"): "player_netpoints",
-    PointShape("netpoints", "chart", "fingerprint"): "fingerprint",
-    PointShape("shots", "chart", "shots"): "shot_chart",
-    PointShape("shots", "scalar", "distance"): "shot_distance",
-}
-"""The name a decline gives a reader's shape, and nothing else: the one
-user-visible sentence that still says a retired template's words -
-"game_log has no reading of this point" (``compose._read_only``) and a
-cell the shape does not state, "head_to_head cannot honor [...]"
-(:func:`cells_declined`) - keyed by the shape it names. Kept, with that
-one job, so no answer moves with Phase 3; a decline-to-Cause commit, which
-refuses by a typed cause, rewords those declines (Jeff's rule, AGENTS.md
-"Identical means identical") and deletes this.
-
-.. versionadded:: 6.0.0
-"""
 
 
 def skeleton_of(point: Reading) -> str:
@@ -275,13 +229,13 @@ def plan(reading: Reading) -> Query | TeamQuery | TeamSeasonQuery | NetPointsQue
     try:
         return _plan(reading)
     except Unsupported as exc:
-        if reading.intent not in TEAM_SEASON_POINTS:
+        key = reading.asked
+        if key not in TEAM_SEASON_POINTS:
             raise
-        key = TEAM_SEASON_POINTS[reading.intent]
         unhonored = cells_unhonored(reading.scope, key)
         if unhonored:
             raise Unsupported(beyond_words(SHAPE_NAMES[key], unhonored)) from exc
-        return _team_season_query(team_season_point(reading.intent, reading.scope))
+        return _team_season_query(team_season_point(key, reading.scope))
 
 
 def _team_season_query(point: Reading) -> TeamSeasonQuery:

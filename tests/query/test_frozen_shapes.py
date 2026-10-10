@@ -1,7 +1,12 @@
 """Decision D4 of ``ROADMAP.md``: new shapes are frozen while the pipeline
-is rebuilt. An intent or a per-intent renderer retires with its slice; none
-is added. The other directions the roadmap set are held by
-``scripts/check_ratchets.py``.
+is rebuilt. A shape the words can ask, or a per-intent renderer, retires
+with its slice; none is added. The other directions the roadmap set are
+held by ``scripts/check_ratchets.py``.
+
+Phase 3, step 4 retired the freeze of the 25 intents' names with the
+intent itself: the grammar names a :class:`~association.query.reading.PointShape`
+(the relation, the shape and ``by`` the words ask for), and the freeze holds
+those keys - the same 25, in the target's vocabulary.
 
 Phase 2 (2026-10-03 to 2026-10-05) removed what the rest of this file froze:
 the twelve templates, the presenters and ``compose/present.py``, the ten
@@ -25,52 +30,57 @@ from __future__ import annotations
 
 from typing import Any
 
-from association.query.compose import COMPILED_INTENTS
 from association.query.parse import PARENT_GRAMMAR
-from association.query.router import CODE_ASSIGNED_INTENTS
-from association.query.subject import KIND_ASSIGNED_INTENTS
+from association.query.reading import SHAPE_NAMES, PointShape
+from association.query.router import CODE_ASSIGNED_ASKS
+from association.query.subject import KIND_ASSIGNED_ASKS
 
-# Every intent the reader could name on 2026-09-30. Remove a name when its
-# slice deletes it; adding one is a decision the roadmap has to change for.
+# Every shape the words could ask on 2026-09-30 - the 25 intents the reader
+# named then, keyed since Phase 3, step 4 as (relation, shape, by): the
+# grammar's keys (each the label table's, ``reading.SHAPE_NAMES``, which
+# names it back to the page). Remove one when its slice deletes it; adding
+# one is a decision the roadmap has to change for.
 FROZEN = frozenset(
     {
-        "coach",
-        "fingerprint",
-        "game_log",
-        "head_to_head",
-        "leaderboard",
-        "period_leaderboard",
-        "period_split",
-        "player_compare",
-        "player_history",
-        "player_matchup",
-        "player_netpoints",
-        "player_splits",
-        "player_stat",
-        "record_when",
-        "shot_chart",
-        "shot_distance",
-        "single_game_high",
-        "streak",
-        "team_leaderboard",
-        "team_outlook",
-        "team_quarter_points",
-        "team_record",
-        "team_stat",
-        "threshold_count",
-        "with_without",
+        ("team_seasons", "scalar", "coach"),
+        ("netpoints", "chart", "fingerprint"),
+        ("player_games", "rows", "date"),
+        ("team_games", "comparison", "opponent"),
+        ("player_seasons", "ranking", "player"),
+        ("player_periods", "ranking", "player"),
+        ("player_periods", "rows", "date"),
+        ("player_seasons", "comparison", "subject"),
+        ("player_seasons", "split", "season"),
+        ("player_games", "comparison", "met"),
+        ("netpoints", "scalar", "ratings"),
+        ("player_games", "split", "splits"),
+        ("player_seasons", "scalar", "line"),
+        ("player_games", "split", "line"),
+        ("shots", "chart", "shots"),
+        ("shots", "scalar", "distance"),
+        ("player_games", "rows", "measure"),
+        ("player_games", "runs", "line"),
+        ("team_seasons", "ranking", "team"),
+        ("team_snapshots", "scalar", "projection"),
+        ("team_periods", "scalar", "total"),
+        ("team_games", "scalar", "record"),
+        ("team_seasons", "scalar", "line"),
+        ("player_games", "scalar", "count"),
+        ("team_games", "split", "presence"),
     }
 )
 
 
-def _named_today() -> set[str]:
-    return set(COMPILED_INTENTS) | set(CODE_ASSIGNED_INTENTS) | set(KIND_ASSIGNED_INTENTS) | {row[-1] for row in PARENT_GRAMMAR}
+def _named_today() -> set[tuple[str, str, str]]:
+    asked: set[PointShape] = set(CODE_ASSIGNED_ASKS) | set(KIND_ASSIGNED_ASKS) | {row[-1] for row in PARENT_GRAMMAR}
+    assert asked <= set(SHAPE_NAMES), "a key the grammar names that the label table cannot name back to the page"
+    return {(shape.relation, shape.shape, shape.by) for shape in asked}
 
 
-def test_no_intent_is_added_and_a_retired_one_leaves_the_list() -> None:
+def test_no_shape_is_added_to_what_the_words_ask_and_a_retired_one_leaves_the_list() -> None:
     named = _named_today()
-    assert named - FROZEN == set(), "a new intent: ROADMAP.md decision D4 freezes new shapes until the pipeline is rebuilt"
-    assert FROZEN - named == set(), "an intent retired: remove it from FROZEN so it cannot come back"
+    assert named - FROZEN == set(), "a new shape the words ask: ROADMAP.md decision D4 freezes new shapes until the pipeline is rebuilt"
+    assert FROZEN - named == set(), "a shape retired: remove it from FROZEN so it cannot come back"
 
 
 # Every module-level declaration of which scoping slots a read honors,

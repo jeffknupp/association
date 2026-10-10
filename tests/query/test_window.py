@@ -14,7 +14,7 @@ import itertools
 from typing import Any
 
 import pytest
-from shapes import stated
+from shapes import asked, stated
 from test_templates import pg_ctx, team_cells_con  # noqa: F401 - the two relation fixtures, imported by name
 
 from association.nba.season import current_season
@@ -28,13 +28,13 @@ from association.query.season_line import history_seasons
 from association.query.span import SpanContext, claimed, read_span
 from association.query.team_games import TeamNarrowed, rows_sql
 from association.query.team_relation import TEAM_RELATION_SCOPING, TEAM_RELATION_SCOPING_EXCLUDED, scoped_team, team_games
-from association.query.window import ORDER_INTENTS, WindowContext, WindowRead, read_window
+from association.query.window import ORDER_ASKS, WindowContext, WindowRead, read_window
 
 S = current_season()
 
 
 def _read(question: str, intent: str = "game_log", **context: Any) -> Window:
-    return read_window(question, WindowContext(intent=intent, **context)).window
+    return read_window(question, WindowContext(asked=asked(intent), **context)).window
 
 
 # ---------------- the tagger: words to a Window ----------------
@@ -92,7 +92,7 @@ def test_one_game_of_a_players_line_is_the_end_and_a_count_of_one() -> None:
 
 
 def test_an_end_the_grammar_missed_is_read_on_a_reader_that_honors_one() -> None:
-    """On an intent whose reader honors an end (ORDER_INTENTS) the looser
+    """On an intent whose reader honors an end (ORDER_ASKS) the looser
     ORDER_WORDS fill one the grammar read none for; on the four where an
     end means ONE game it stands only beside a game the words name."""
     assert _read("curry's latest games", "game_log") == Window(order="recent")
@@ -145,14 +145,14 @@ def test_a_team_rankings_end_and_a_boolean_rankings_measure() -> None:
 
 def test_the_tagger_claims_the_characters_it_read_once() -> None:
     question = "jokic stats in his last 5 playoff games"
-    read = read_window(question, WindowContext(intent="game_log"))
+    read = read_window(question, WindowContext(asked=asked("game_log")))
     assert read.claims == (Claim(19, 39, "window"),)
     assert question[19:39] == "last 5 playoff games"
-    ranked = read_window("players with the highest scoring triple doubles", WindowContext(intent="leaderboard", boolean_stat=True))
+    ranked = read_window("players with the highest scoring triple doubles", WindowContext(asked=asked("leaderboard"), boolean_stat=True))
     assert [c.what for c in ranked.claims] == ["ranked_by"] and ranked.claims[0].start == 17
-    history = read_window("sga's 2pt percentage for the past 5 years", WindowContext(intent="player_history"))
+    history = read_window("sga's 2pt percentage for the past 5 years", WindowContext(asked=asked("player_history")))
     assert history.claims == (Claim(29, 41, "window"),)
-    rank = read_window("nba team with least playoff wins", WindowContext(intent="team_leaderboard"))
+    rank = read_window("nba team with least playoff wins", WindowContext(asked=asked("team_leaderboard")))
     assert rank.claims == (Claim(14, 19, "rank"),)
 
 
@@ -172,8 +172,8 @@ def test_the_windows_claims_and_the_spans_fold_and_never_cross(question: str) ->
     claim ("playoff" in "last 5 playoff games") folds, and a partial overlap
     would be two rules reading one word, which fails the reader."""
     intent = "player_history" if "past" in question else "game_log"
-    window = read_window(question, WindowContext(intent=intent))
-    span = read_span(question, SpanContext(intent=intent, window_named=window.window.count is not None, order=window.window.order, limit=window.window.count))
+    window = read_window(question, WindowContext(asked=asked(intent)))
+    span = read_span(question, SpanContext(asked=asked(intent), window_named=window.window.count is not None, order=window.window.order, limit=window.window.count))
     merged = claimed([*window.claims, *span.claims])
     assert all(a.end <= b.start for a, b in itertools.pairwise(merged))
 
@@ -241,7 +241,7 @@ def test_the_relation_tables_declare_the_window_cell_once() -> None:
     assert "window" not in stated("team_record") and "window" in cells_stated(PointShape("team_games", "rows", "date"))
     for table in (RELATION_SCOPING_EXCLUDED, TEAM_RELATION_SCOPING_EXCLUDED):
         assert all("order" not in row.unstated and "limit" not in row.unstated for row in table.values())
-    assert {"fingerprint", "game_log", "period_split", "player_netpoints", "shot_chart", "shot_distance", "team_quarter_points"} >= ORDER_INTENTS
+    assert {asked(name) for name in ("fingerprint", "game_log", "period_split", "player_netpoints", "shot_chart", "shot_distance", "team_quarter_points")} >= ORDER_ASKS
 
 
 # ---------------- the relation's one resolution ----------------
@@ -297,5 +297,5 @@ def test_the_window_cell_changes_what_the_team_relation_reads(team_cells_con: An
 
 
 def test_read_window_returns_the_window_and_its_claims() -> None:
-    read = read_window("curry last 3 games", WindowContext(intent="game_log"))
+    read = read_window("curry last 3 games", WindowContext(asked=asked("game_log")))
     assert isinstance(read, WindowRead) and read.window == Window(order="recent", count=3) and len(read.claims) == 1

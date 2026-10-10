@@ -17,8 +17,8 @@ from association.query.decisions import Decision
 from association.query.line import threshold_named as _threshold_from_text
 from association.query.lines import threshold_of
 from association.query.measure import named
-from association.query.parse import classify_span, parent_intent, read_route, reading_from_route
-from association.query.reading import Companion, Reading
+from association.query.parse import classify_span, parent_asked, read_route, reading_from_route
+from association.query.reading import Companion, Reading, asked_label
 from association.query.router import Route
 
 
@@ -79,31 +79,31 @@ def test_the_measure_grammar_reads_the_words_before_the_models_key() -> None:
 
 
 def test_the_parent_grammar_by_kind_and_words() -> None:
-    assert parent_intent("show sga fingerprint for this season", "player") == "fingerprint"
+    assert asked_label(parent_asked("show sga fingerprint for this season", "player")) == "fingerprint"
     # A player's own record is his games' W-L (F088, "Embiid's record against Boston this year"): player_splits, never
     # the team's with/without split; a line in it is record_when, which player_stat's reading assigns.
-    assert parent_intent("Embiid's record against Boston this year", "player") == "player_splits"
-    assert parent_intent("Sga record 36 plus points", "player") == "player_stat"
-    assert parent_intent("36-plus points SGA record", "player") == "player_stat"
-    assert parent_intent("In his most recent game, what did Nikola Jokic accomplish?", "player") == "game_log"
-    assert parent_intent("Last season's threes by Plot Curry", "everyone") == "shot_chart"
-    assert parent_intent("25-26 Knicks playoff stats compared to other historical teams", "team") == "team_outlook"
+    assert asked_label(parent_asked("Embiid's record against Boston this year", "player")) == "player_splits"
+    assert asked_label(parent_asked("Sga record 36 plus points", "player")) == "player_stat"
+    assert asked_label(parent_asked("36-plus points SGA record", "player")) == "player_stat"
+    assert asked_label(parent_asked("In his most recent game, what did Nikola Jokic accomplish?", "player")) == "game_log"
+    assert asked_label(parent_asked("Last season's threes by Plot Curry", "everyone")) == "shot_chart"
+    assert asked_label(parent_asked("25-26 Knicks playoff stats compared to other historical teams", "team")) == "team_outlook"
     # A team's triple-doubles are its players'.
-    assert parent_intent("oklahoma city thunder all-time triple doubles vs west", "team") == "leaderboard"
-    assert parent_intent("how many points does embiid average", "player") == "player_stat"
-    assert parent_intent("what did Nikola Jokic do in his last 5 games?", "player") == "game_log"
-    assert parent_intent("lebron vs kawhi 2015", "pair") == "player_matchup"
-    assert parent_intent("evaluate sga against embiid", "pair") == "player_compare"
-    assert parent_intent("Lakers vs Celtics record this season", "teams") == "head_to_head"
-    assert parent_intent("What was the Lakers record last season?", "team") == "team_record"
-    assert parent_intent("Display the Knicks' previous 5 games", "team") == "game_log"
+    assert asked_label(parent_asked("oklahoma city thunder all-time triple doubles vs west", "team")) == "leaderboard"
+    assert asked_label(parent_asked("how many points does embiid average", "player")) == "player_stat"
+    assert asked_label(parent_asked("what did Nikola Jokic do in his last 5 games?", "player")) == "game_log"
+    assert asked_label(parent_asked("lebron vs kawhi 2015", "pair")) == "player_matchup"
+    assert asked_label(parent_asked("evaluate sga against embiid", "pair")) == "player_compare"
+    assert asked_label(parent_asked("Lakers vs Celtics record this season", "teams")) == "head_to_head"
+    assert asked_label(parent_asked("What was the Lakers record last season?", "team")) == "team_record"
+    assert asked_label(parent_asked("Display the Knicks' previous 5 games", "team")) == "game_log"
     # with_without needs a companion the reading found: "when playing away" names nobody.
-    assert parent_intent("Record of the 76ers when playing away", "team") == "team_record"
-    assert parent_intent("PHI's record when Embiid and Paul George are both in the game", "team", companions=True) == "with_without"
-    assert parent_intent("westbrook's stats when he started for the kings", "player") == "player_stat"
-    assert parent_intent("Best record from 2010-11 to 2018-19 nba", "everyone") == "team_leaderboard"
-    assert parent_intent("who led the league in assists in 2019", "everyone") == "leaderboard"
-    assert parent_intent("show sixers first quarter scoring for their last 10 games", "team") == "team_quarter_points"
+    assert asked_label(parent_asked("Record of the 76ers when playing away", "team")) == "team_record"
+    assert asked_label(parent_asked("PHI's record when Embiid and Paul George are both in the game", "team", companions=True)) == "with_without"
+    assert asked_label(parent_asked("westbrook's stats when he started for the kings", "player")) == "player_stat"
+    assert asked_label(parent_asked("Best record from 2010-11 to 2018-19 nba", "everyone")) == "team_leaderboard"
+    assert asked_label(parent_asked("who led the league in assists in 2019", "everyone")) == "leaderboard"
+    assert asked_label(parent_asked("show sixers first quarter scoring for their last 10 games", "team")) == "team_quarter_points"
 
 
 def _read(con: duckdb.DuckDBPyConnection, question: str, names: list[str] | None = None, stat: str = "") -> Reading:
@@ -233,11 +233,11 @@ def test_a_players_record_reads_his_splits_through_a_window_but_not_over_a_log_w
     """ "rec" is a record, and a record narrowed by a date or a window is still
     his record (yardstick-v2 F110, "towns home rec including playoffs since
     1/26/20 vs spurs" read as a game log); a game log asked for is a log."""
-    assert parent_intent("towns home rec including playoffs since 1/26/20 vs spurs", "player") == "player_splits"
-    assert parent_intent("embiid's record in his last 10 games", "player") == "player_splits"
-    assert parent_intent("embiid game log since 1/26/20", "player") == "game_log"
-    assert parent_intent("embiid's game log and record vs boston since 1/26/20", "player") == "game_log"
-    assert parent_intent("Sga record 36 plus points", "player") != "player_splits"
+    assert asked_label(parent_asked("towns home rec including playoffs since 1/26/20 vs spurs", "player")) == "player_splits"
+    assert asked_label(parent_asked("embiid's record in his last 10 games", "player")) == "player_splits"
+    assert asked_label(parent_asked("embiid game log since 1/26/20", "player")) == "game_log"
+    assert asked_label(parent_asked("embiid's game log and record vs boston since 1/26/20", "player")) == "game_log"
+    assert asked_label(parent_asked("Sga record 36 plus points", "player")) != "player_splits"
 
 
 def test_the_hold_out_rows_the_router_answered_and_the_parser_did_not(con: duckdb.DuckDBPyConnection) -> None:
@@ -250,12 +250,12 @@ def test_the_hold_out_rows_the_router_answered_and_the_parser_did_not(con: duckd
     assert _measure("show embiid's 3pt attempts and 3pts mad for his career") == "threePointFieldGoalsMade"
     assert _measure("embiid 3pt attempts per game") == "threePointFieldGoalsAttempted"
     # A team's opener is one game of its log, not its season line.
-    assert parent_intent("Lakers opening game of the season", "team") == "game_log"
+    assert asked_label(parent_asked("Lakers opening game of the season", "team")) == "game_log"
     # A team's odds are its outlook, not its postseason stats.
-    assert parent_intent("what are the sixers playoff odds?", "team") == "team_outlook"
+    assert asked_label(parent_asked("what are the sixers playoff odds?", "team")) == "team_outlook"
     # A record with nobody named is the teams', not the league's scorers.
-    assert parent_intent("worst record 2025-26", "everyone") == "team_leaderboard"
-    assert parent_intent("who scored the most points this season", "everyone") == "leaderboard"
+    assert asked_label(parent_asked("worst record 2025-26", "everyone")) == "team_leaderboard"
+    assert asked_label(parent_asked("who scored the most points this season", "everyone")) == "leaderboard"
 
 
 def test_read_route_reads_the_columns_a_ranking_asks_to_see(con: duckdb.DuckDBPyConnection) -> None:

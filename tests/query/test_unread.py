@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import duckdb
 import pytest
+from shapes import asked
 
 from association.query.lexicon import content_tokens, content_words, read_by_the_model, unread_words, without_possessive
 from association.query.parse import read_route, reading_from_route
@@ -107,7 +108,7 @@ def test_a_claim_stops_short_of_a_word_its_rule_did_not_need() -> None:
     from association.query.window import WindowContext, read_window
 
     question = "tatum last 10 games"
-    context = WindowContext(intent="game_log")
+    context = WindowContext(asked=asked("game_log"))
     read = read_window(question, context)
     assert [question[c.start : c.end] for c in read.claims] == ["last 10 games"]
     assert [question[c.start : c.end] for c in needed(question, read.claims, lambda q: read_window(q, context).window)] == ["last 10"]
@@ -124,7 +125,7 @@ def test_a_word_outside_every_claim_the_rule_turns_on_is_claimed_beside_them() -
     from association.query.window import WindowContext, read_window
 
     question = "create a shot chart of steph curry's last regular season game"
-    context = WindowContext(intent="shot_chart")
+    context = WindowContext(asked=asked("shot_chart"))
     read = read_window(question, context)
     trimmed = needed(question, read.claims, lambda q: read_window(q, context).window, outside="window")
     assert sorted(question[c.start : c.end] for c in trimmed) == ["curry's", "game", "last"]
@@ -149,14 +150,15 @@ def test_a_grammar_over_the_whole_question_claims_the_words_its_decision_turned_
     """``read_by``: a row written as lookaheads reads the words it wants and
     the words that rule it out anywhere in the question - "compare" keeps a
     pair off the matchup row, and is read."""
-    from association.query.parse import parent_intent
+    from association.query.parse import parent_asked
+    from association.query.reading import asked_label
     from association.query.span import read_by
 
     question = "compare curry and lebron vs the celtics"
-    assert parent_intent(question, "pair") == "player_compare"
-    assert [question[c.start : c.end] for c in read_by(question, "intent", lambda q: parent_intent(q, "pair"))] == ["compare"]
+    assert asked_label(parent_asked(question, "pair")) == "player_compare"
+    assert [question[c.start : c.end] for c in read_by(question, "intent", lambda q: asked_label(parent_asked(q, "pair")))] == ["compare"]
     question = "show sga fingerprint for this season"
-    assert [question[c.start : c.end] for c in read_by(question, "intent", lambda q: parent_intent(q, "player"))] == ["fingerprint"]
+    assert [question[c.start : c.end] for c in read_by(question, "intent", lambda q: asked_label(parent_asked(q, "player")))] == ["fingerprint"]
 
 
 def test_the_reading_claims_what_the_grammar_the_stages_and_the_point_read(con: duckdb.DuckDBPyConnection) -> None:

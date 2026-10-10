@@ -1326,7 +1326,7 @@ THRESHOLD_PAIR = re.compile(rf"\b(\d{{1,3}})[\s-]*(?:\+|plus|or\s+more)[\s-]*({_
 """
 # The same spellings with the "+" optional - a line stated as a bare number
 # ("30 pt games", "15 reb"), read only under the readers whose shape is a
-# line (a count, a record, a streak, a high: ``line.THRESHOLD_INTENTS``),
+# line (a count, a record, a streak, a high: ``line.THRESHOLD_ASKS``),
 # where a bare "30 pt games" is a line and not a ranking. Built from the one
 # list, so "30 pt games" reads the 30 the way "30+ pt games" does. A "3
 # point" or "3 pt" names the shot, not a line of three

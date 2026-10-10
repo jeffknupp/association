@@ -25,7 +25,7 @@ from typing import Any
 import duckdb
 import pytest
 from routed import planned_answer as compose_answer
-from shapes import key, unhonored
+from shapes import asked, key, unhonored
 from test_templates import player_matchup, player_splits, streak, with_without  # the compiler's, the templates retired (compose.COMPILED_INTENTS)
 
 from association.fetch.repairs import real_games
@@ -60,7 +60,7 @@ def _compiled(intent: str) -> Callable[[AnswerContext, Reading], Reply]:
         kind: SubjectKind = "pair" if len(named) > 1 else "player" if named else "team" if scope.subject.team else "everyone"
         subject = reading.subject or Subject(kind, players=named, teams=(scope.subject.team,) if scope.subject.team else ())
         why: list[str] = []
-        result = compose_answer(ctx, with_point(ctx.con, "", Reading(scope=scope, intent=intent, subject=subject)), declined=why.append)
+        result = compose_answer(ctx, with_point(ctx.con, "", Reading(scope=scope, asked=asked(intent), subject=subject)), declined=why.append)
         if result is None:
             raise Unsupported(why[0] if why else f"the compiler has no reading of this {intent} point")
         return result
@@ -1122,7 +1122,7 @@ def test_a_named_player_beats_the_team_branch_end_to_end(league: AnswerContext) 
 
     def answered(question: str, **slots: Any) -> str:
         given = Scope.from_slots(_slots(**slots))
-        applied = apply_subject(read_subject(league.con, question, "record_when", given), given, intent="record_when")
+        applied = apply_subject(read_subject(league.con, question, asked("record_when"), given), given, asked=asked("record_when"))
         return (record_when(league, Reading(scope=applied.scope)).answer or "").splitlines()[0]
 
     named = answered("celtics record with 20+ points from jayson tatum", stat="points", threshold=20, team="Boston Celtics")
@@ -1132,7 +1132,7 @@ def test_a_named_player_beats_the_team_branch_end_to_end(league: AnswerContext) 
 
 
 def test_record_when_still_restores_a_player_the_question_names() -> None:
-    """`record_when` stays in PLAYER_REQUIRED_INTENTS even with a team branch,
+    """`record_when` stays in PLAYER_REQUIRED_ASKS even with a team branch,
     and the team branch is why it is safe rather than why it should leave.
 
     Dropping it was measured and reverted. `subject._apply_restored_player`
@@ -1144,9 +1144,9 @@ def test_record_when_still_restores_a_player_the_question_names() -> None:
     answered "Philadelphia 76ers record when THEY had 20+ points" - a fluent
     answer to a different question, which is the failure shape this project
     keeps producing."""
-    from association.query.reading import PLAYER_REQUIRED_INTENTS
+    from association.query.reading import PLAYER_REQUIRED_ASKS
 
-    assert "record_when" in PLAYER_REQUIRED_INTENTS
+    assert asked("record_when") in PLAYER_REQUIRED_ASKS
 
 
 # ---------------- player_matchup ----------------

@@ -6,7 +6,7 @@ the names it copied out of the question and the stat key it chose
 (:func:`read_route` takes them as arguments, from
 :func:`~association.query.normalizer.normalize`) - and everything else is
 read from the words here, in grammar
-tables: the kind and the parent intent (:data:`PARENT_GRAMMAR`), then the
+tables: the kind and the parent shape the words ask (:data:`PARENT_GRAMMAR`), then the
 scope and the point through the readers the pipeline already
 has (:func:`~association.query.subject.read_subject`,
 :func:`~association.query.router.settle` - whose last two steps are the
@@ -37,7 +37,40 @@ from association.query.lexicon import COUNT, LOG_OR_WINDOW_WORDS
 from association.query.line import read_period_line
 from association.query.measures import PERIOD_COLUMNS, PERIOD_RATE_STATS, TEAM_PERIOD_COLUMNS
 from association.query.point import read_point
-from association.query.reading import TEAM_ONLY_INTENTS, Cause, Claim, LeftOut, Line, PointRefused, Reading, Scope, ScopeError, Split, Unsupported
+from association.query.reading import (
+    NETPOINTS_FINGERPRINT,
+    NETPOINTS_RATINGS,
+    PERIOD_LOG,
+    PERIOD_RANKING,
+    PLAYER_COMPARISON,
+    PLAYER_LINE,
+    PLAYER_LOG,
+    PLAYER_MEETINGS,
+    PLAYER_RANKING,
+    PLAYER_SPLITS,
+    PRESENCE_SPLIT,
+    SHOT_CHART,
+    TEAM_COACH,
+    TEAM_LINE,
+    TEAM_MEETINGS,
+    TEAM_ONLY_ASKS,
+    TEAM_OUTLOOK,
+    TEAM_PERIOD_TOTAL,
+    TEAM_RANKING,
+    TEAM_RECORD,
+    Cause,
+    Claim,
+    LeftOut,
+    Line,
+    PointRefused,
+    PointShape,
+    Reading,
+    Scope,
+    ScopeError,
+    Split,
+    Unsupported,
+    asked_label,
+)
 from association.query.reading import Subject as ReadSubject
 from association.query.router import Named, Route, _route_calendar_slots_split, settle
 from association.query.span import claimed as claimed_once
@@ -82,35 +115,35 @@ _PLAYER_LOG = (
 ANY = frozenset({"player", "pair", "team", "teams", "team_players", "position", "everyone", "player+companions", "team+companions"})
 """Every subject kind, for a grammar row that applies whatever the kind."""
 
-PARENT_GRAMMAR: tuple[tuple[frozenset[str], str, str], ...] = (
-    # (kinds the row applies to, the words, the parent intent) - first match wins.
-    (ANY, r"\bfingerprint", "fingerprint"),
+PARENT_GRAMMAR: tuple[tuple[frozenset[str], str, PointShape], ...] = (
+    # (kinds the row applies to, the words, the parent shape) - first match wins.
+    (ANY, r"\bfingerprint", NETPOINTS_FINGERPRINT),
     # "plot" and the shots in either order: "threes by Plot Curry" is "plot curry's threes" reworded.
-    (ANY, r"\bshot (chart|map|plot)|\bplot\b.*\b(shots?|threes)\b|\b(shots?|threes)\b.*\bplot\b|\bshots?\b.*\b(chart|plot|map)\b|\bwhere .* shoot", "shot_chart"),
-    (frozenset({"team", "teams"}), lexicon.PERIOD_INTENT_WORDS, "team_quarter_points"),
-    (frozenset({"everyone"}), lexicon.PERIOD_INTENT_WORDS, "period_leaderboard"),
-    (ANY, lexicon.PERIOD_INTENT_WORDS, "period_split"),
-    (ANY, r"\bcoach", "coach"),
-    (frozenset({"pair"}), _PAIR_MEETING, "player_matchup"),
-    (frozenset({"pair"}), r".", "player_compare"),
-    (frozenset({"teams"}), r".", "head_to_head"),
-    (frozenset({"team_players"}), r".", "leaderboard"),
-    (frozenset({"team"}), r"(?=.*\b(top \d+|scorers?|rebounders?|passers?|leaders?|players?)\b)(?=.*\b(top|most|best|leaders?)\b)", "leaderboard"),
-    (frozenset({"team+companions"}), r"\b(with|without|when|while)\b", "with_without"),
+    (ANY, r"\bshot (chart|map|plot)|\bplot\b.*\b(shots?|threes)\b|\b(shots?|threes)\b.*\bplot\b|\bshots?\b.*\b(chart|plot|map)\b|\bwhere .* shoot", SHOT_CHART),
+    (frozenset({"team", "teams"}), lexicon.PERIOD_INTENT_WORDS, TEAM_PERIOD_TOTAL),
+    (frozenset({"everyone"}), lexicon.PERIOD_INTENT_WORDS, PERIOD_RANKING),
+    (ANY, lexicon.PERIOD_INTENT_WORDS, PERIOD_LOG),
+    (ANY, r"\bcoach", TEAM_COACH),
+    (frozenset({"pair"}), _PAIR_MEETING, PLAYER_MEETINGS),
+    (frozenset({"pair"}), r".", PLAYER_COMPARISON),
+    (frozenset({"teams"}), r".", TEAM_MEETINGS),
+    (frozenset({"team_players"}), r".", PLAYER_RANKING),
+    (frozenset({"team"}), r"(?=.*\b(top \d+|scorers?|rebounders?|passers?|leaders?|players?)\b)(?=.*\b(top|most|best|leaders?)\b)", PLAYER_RANKING),
+    (frozenset({"team+companions"}), r"\b(with|without|when|while)\b", PRESENCE_SPLIT),
     (
         frozenset({"team"}),
         r"\b(game ?log|(last|past|previous|most recent) " + _COUNT + r"\b|first \d+ games|each game|game by game|differential"
         r"|(first|opening|last|latest|most recent|final) game|(season )?opener)",
-        "game_log",
+        PLAYER_LOG,
     ),
-    (frozenset({"team"}), r"\bstreak", "team_record"),
-    (frozenset({"team"}), r"(?=.*\b(record|standings?|wins?|losses|w-?l|win.loss|won|lost|rec)\b)(?!.*\b(most|fewest|least|best|worst|top|rank)\b)", "team_record"),
-    (frozenset({"team"}), r"\b(outlook|projections?|projected|on pace|schedule|odds|chances|(vs\.?|versus|against|compared (to|with)) other)\b", "team_outlook"),
+    (frozenset({"team"}), r"\bstreak", TEAM_RECORD),
+    (frozenset({"team"}), r"(?=.*\b(record|standings?|wins?|losses|w-?l|win.loss|won|lost|rec)\b)(?!.*\b(most|fewest|least|best|worst|top|rank)\b)", TEAM_RECORD),
+    (frozenset({"team"}), r"\b(outlook|projections?|projected|on pace|schedule|odds|chances|(vs\.?|versus|against|compared (to|with)) other)\b", TEAM_OUTLOOK),
     # A team's triple-doubles are its PLAYERS' (a boolean player line), which
     # the players' ranking reads under the team - not a team box-score total.
-    (frozenset({"team"}), r"\b(triple|double)[ -]?doubles?\b", "leaderboard"),
-    (frozenset({"team"}), r".", "team_stat"),
-    (frozenset({"player"}), r"\bnet ?po?i?nts?\b|\bnetpts\b", "player_netpoints"),
+    (frozenset({"team"}), r"\b(triple|double)[ -]?doubles?\b", PLAYER_RANKING),
+    (frozenset({"team"}), r".", TEAM_LINE),
+    (frozenset({"player"}), r"\bnet ?po?i?nts?\b|\bnetpts\b", NETPOINTS_RATINGS),
     # A player's own record is the W-L of HIS games, which player_splits
     # answers (F088, "Embiid's record against Boston this year"; ISSUES.md
     # #231) - never the team's with/without split, which needs a companion.
@@ -121,35 +154,41 @@ PARENT_GRAMMAR: tuple[tuple[frozenset[str], str, str], ...] = (
     (
         frozenset({"player"}),
         r"(?=.*\b(record|rec|w-?l|win.loss|splits?)\b)(?!.*\b\d{1,3}[\s-]*(\+|plus\b|or more\b))(?!.*\b(game ?log|gamelog|logs?|each game|game by game|box scores?)\b)",
-        "player_splits",
+        PLAYER_SPLITS,
     ),
-    (frozenset({"player"}), _PLAYER_LOG, "game_log"),
+    (frozenset({"player"}), _PLAYER_LOG, PLAYER_LOG),
     # A player's split by a companion - unless a versus word sets him against
     # a team, where "maxey points vs boston without embiid" is his own games
     # narrowed (ROADMAP step 3: the absence a condition, on whichever side the
     # name resolves to), not a two-sided split.
-    (frozenset({"player+companions"}), r"(?=.*\b(with|without|while|when)\b)(?!.*\b(?:vs\.?|versus|against)\b)", "with_without"),
-    (frozenset({"player"}), r".", "player_stat"),
-    (frozenset({"position"}), r"\b(log|game ?log)\b", "game_log"),
-    (frozenset({"position"}), r".", "leaderboard"),
+    (frozenset({"player+companions"}), r"(?=.*\b(with|without|while|when)\b)(?!.*\b(?:vs\.?|versus|against)\b)", PRESENCE_SPLIT),
+    (frozenset({"player"}), r".", PLAYER_LINE),
+    (frozenset({"position"}), r"\b(log|game ?log)\b", PLAYER_LOG),
+    (frozenset({"position"}), r".", PLAYER_RANKING),
     (
         frozenset({"everyone"}),
         r"(?=.*\b(team|teams|franchise|nba)\b)(?!.*\bplayers?\b)(?=.*\b(record|wins|best|worst|most|fewest|per team|allowed)\b)(?!.*\b(leaders?|points|assists|rebounds|netpoints|netpts)\b)",
-        "team_leaderboard",
+        TEAM_RANKING,
     ),
     # A record with no player in it is a team's: "worst record 2025-26" read
     # as the league's scorers, the everyone row below.
-    (frozenset({"everyone"}), r"(?=.*\b(record|standings?|w-?l)\b)(?!.*\b(players?|who scored|scorers?)\b)", "team_leaderboard"),
-    (frozenset({"everyone"}), r"\bstreak", "team_record"),
-    (frozenset({"everyone"}), r"\b(finals|game ?log)\b", "game_log"),
-    (frozenset({"everyone"}), r".", "leaderboard"),
+    (frozenset({"everyone"}), r"(?=.*\b(record|standings?|w-?l)\b)(?!.*\b(players?|who scored|scorers?)\b)", TEAM_RANKING),
+    (frozenset({"everyone"}), r"\bstreak", TEAM_RECORD),
+    (frozenset({"everyone"}), r"\b(finals|game ?log)\b", PLAYER_LOG),
+    (frozenset({"everyone"}), r".", PLAYER_RANKING),
 )
-"""The parent-intent grammar: the first row whose kinds hold the subject's
-kind and whose words the question matches names the parent. The children
-(:data:`~association.query.subject.KIND_ASSIGNED_INTENTS`) are assigned
-under it by the subject reading, as they are on the router's parent today.
+"""The parent grammar: the first row whose kinds hold the subject's kind
+and whose words the question matches names the parent - what the words ask,
+as the point it means bare (:class:`~association.query.reading.PointShape`:
+its relation, shape and ``by``). The children
+(:data:`~association.query.subject.KIND_ASSIGNED_ASKS`) are assigned under
+it by the subject reading, as they are on the router's parent today.
 
 .. versionadded:: 5.0.0
+
+.. versionchanged:: 6.0.0
+   Each row names a :class:`~association.query.reading.PointShape` (the
+   grammar's key), where it named an intent (Phase 3, step 4).
 """
 
 # The measure grammar - the stat a question names in its own words, read
@@ -172,24 +211,30 @@ def _as_split(split: str | None) -> Split | None:
 # A row written as lookaheads describes the whole question, so it is anchored
 # at its start: searched from every position, "(?!.*evaluate)" would simply
 # skip past the word it excludes.
-_PARENT_ROWS: tuple[tuple[frozenset[str], re.Pattern[str], str], ...] = tuple(
+_PARENT_ROWS: tuple[tuple[frozenset[str], re.Pattern[str], PointShape], ...] = tuple(
     (kinds, re.compile((r"\A" if pattern.startswith("(?") else "") + pattern, re.IGNORECASE | re.DOTALL), parent) for kinds, pattern, parent in PARENT_GRAMMAR
 )
 
 
-def parent_intent(question: str, kind: str, companions: bool = False) -> str:
-    """The parent intent :data:`PARENT_GRAMMAR` names for ``question`` read
-    as a subject of ``kind``; ``companions`` says the reading found a player
+def parent_asked(question: str, kind: str, companions: bool = False) -> PointShape | None:
+    """The parent :data:`PARENT_GRAMMAR` names for ``question`` read as a
+    subject of ``kind`` - what the words ask, or ``None`` where no row names
+    a shape (every kind's rows end in one that matches any words, so only a
+    kind no row holds); ``companions`` says the reading found a player
     named beside the subject with a role, which the ``<kind>+companions``
     rows require ("when playing away" and "when he started" name nobody).
     What the grammar read is claimed by its decision
     (:func:`~association.query.span.read_by`, in :func:`read_route`): a row
     written as lookaheads reads the whole question for the words it wants
-    and the words that rule it out."""
+    and the words that rule it out.
+
+    .. versionadded:: 6.0.0
+       ``parent_intent``, which returned an intent's name, until Phase 3, step 4.
+    """
     for kinds, pattern, parent in _PARENT_ROWS:
         if (kind in kinds or (companions and f"{kind}+companions" in kinds)) and pattern.search(question):
             return parent
-    return "other"
+    return None
 
 
 def classify_span(con: duckdb.DuckDBPyConnection, text: str) -> str | None:
@@ -434,7 +479,7 @@ def _read_route_beside(subject: Subject, question: str) -> bool:
     return any(_DENIED_ROLE.search(match.group(2)) for match, _ in _read_route_role_phrases(subject, question))
 
 
-def _read_route_split(subject: Subject, question: str, intent: str, scope: Scope) -> Scope:
+def _read_route_split(subject: Subject, question: str, asked: PointShape | None, scope: Scope) -> Scope:
     """``scope`` with the split read again from ``question`` with every
     teammate's start or bench phrase blanked out: "maxey points when embiid
     starts" filed Embiid's start as Maxey's own starter split, which
@@ -460,7 +505,7 @@ def _read_route_split(subject: Subject, question: str, intent: str, scope: Scope
         blanked = blanked[: match.start()] + " " * (end - match.start()) + blanked[end:]
     split = _route_calendar_slots_split(blanked)
     out = replace(scope, split=_as_split(split))
-    if split == "home_away" and intent == "player_splits":
+    if split == "home_away" and asked == PLAYER_SPLITS:
         out = replace(out, cuts=replace(out.cuts, venue=None))  # a split over venues is not a filter to one (the cuts tagger drops it the same way)
     return out
 
@@ -527,9 +572,10 @@ def _read_route_folded(text: str) -> str:
 
 
 def read_route(con: duckdb.DuckDBPyConnection, question: str, names: list[str] | None = None, stat: str = "") -> tuple[Route, Subject, str]:
-    """The route the parser settles on for ``question`` - the intent and the
-    slots a template reads, in the router's own shape - beside the subject
-    it was read about and the parent the words named. ``names`` are the
+    """The route the parser settles on for ``question`` - what the words ask
+    and the slots a reader reads, in the router's own shape - beside the
+    subject it was read about and the parent the words named, as the
+    trace's label (:func:`~association.query.reading.asked_label`). ``names`` are the
     spans the normalizer copied out of the question and ``stat`` its stat
     key, both checked here, never trusted. This is what the agent answers
     from when the parser reads the question in place of the router (step c):
@@ -539,6 +585,10 @@ def read_route(con: duckdb.DuckDBPyConnection, question: str, names: list[str] |
     "D'Angelo Russell" a player.
 
     .. versionadded:: 5.0.0
+
+    .. versionchanged:: 6.0.0
+       The Route carries the grammar's key (``Route.asked``); the parent is
+       returned as its label, the trace's alone.
     """
     # The model's reply as given, beside the route: the words it accounts
     # for are no unread words (Reading.unread, by the claims ledger's rule).
@@ -549,7 +599,7 @@ def read_route(con: duckdb.DuckDBPyConnection, question: str, names: list[str] |
     # THE reading of who the question is about: everything after this
     # settles it (subject.settle_subject), nothing reads the names again -
     # not even to ask which words it read (its claims are its own, below).
-    read = read_subject(con, question, "other", Scope.from_slots(slots))
+    read = read_subject(con, question, None, Scope.from_slots(slots))
     subject = _two_teams(read, question, slots)
     # A quarter or half used as a condition on which games count is read
     # here and its words blanked out of the question the grammar and the
@@ -568,16 +618,16 @@ def read_route(con: duckdb.DuckDBPyConnection, question: str, names: list[str] |
     # words they settle a name from - read over the question they read.
     named = _read_route_names(subject, slots, question)
     beside = _read_route_beside(subject, question)
-    parent = parent_intent(question, subject.kind, beside)
+    parent = parent_asked(question, subject.kind, beside)
     # What the grammar read: the words whose deletion names another parent
     # (span.read_by) - a row's own words ("fingerprint", "record"), a word
     # that rules an earlier row out ("compare" keeps a pair off the matchup
     # row), the meeting word that makes two teams the kind it reads ("how
     # many times did the 76ers play boston"); not the "game" of "game log",
     # which "log" names alone.
-    parent_claims = read_by(question, "intent", lambda probed: parent_intent(probed, _two_teams(read, probed, slots).kind, beside))
+    parent_claims = read_by(question, "intent", lambda probed: parent_asked(probed, _two_teams(read, probed, slots).kind, beside))
     staged, decisions, words = _read_route_staged(question, {"stat": stat} if stat else {}, parent, read, period_lines, named)
-    final = staged.intent
+    final = staged.asked
     # A teammate's start is his, never the subject's own split: the stages
     # read the split from the whole question.
     scope = _read_route_split(subject, question, final, staged.scope)
@@ -586,7 +636,8 @@ def read_route(con: duckdb.DuckDBPyConnection, question: str, names: list[str] |
     settled = settle_subject(read, final, parent=parent, words=words)
     subject = replace(
         subject,
-        intent=final,
+        asked=final,
+        intent=settled.intent,
         intent_reason=settled.intent_reason,
         teams=subject.teams if subject.kind == "teams" else settled.teams,
         opponent=subject.opponent if subject.kind == "teams" else settled.opponent,
@@ -594,10 +645,10 @@ def read_route(con: duckdb.DuckDBPyConnection, question: str, names: list[str] |
     # The companions' phrases are the subject reading's claims, the line in
     # a quarter the parser's; the taggers' ride the staged route.
     claims = claimed_once([*staged.claims, *period_claims, *read.claims, *parent_claims])
-    return Route(final, scope, decisions, subject=settled, claims=claims, model_names=given, model_stat=stat), subject, parent
+    return Route(final, scope, decisions, subject=settled, claims=claims, model_names=given, model_stat=stat), subject, asked_label(parent)
 
 
-def _read_route_staged(question: str, slots: dict[str, Any], parent: str, read: Subject, lines: tuple[Line, ...], handed: Named) -> tuple[Route, tuple[Decision, ...], str | None]:
+def _read_route_staged(question: str, slots: dict[str, Any], parent: PointShape | None, read: Subject, lines: tuple[Line, ...], handed: Named) -> tuple[Route, tuple[Decision, ...], str | None]:
     """The stages, run ONCE: under the child the subject's shape and the
     question's words name for ``parent``
     (:func:`~association.query.subject.child_named` - a count of 30+ point
@@ -630,22 +681,23 @@ def _read_route_staged(question: str, slots: dict[str, Any], parent: str, read: 
         child, words = named
         staged = settle(child, slots, question, companions, lines=lines, handed=handed)
         # A team's record under a companion's line names no words, and the
-        # stages' own settling of it stands, as the route's did.
-        if staged.intent == child or words is None:
-            decisions.append(Decision("parser", "intent", parent, child, _why_named(child, words)))
-            if staged.intent != child:
-                decisions.append(Decision("parser", "intent", child, staged.intent, "the stages settle it from the question's words"))
+        # stages' own settling of it stands, as the route's did. The
+        # decisions record the moves by their labels, as the trace prints them.
+        if staged.asked == child or words is None:
+            decisions.append(Decision("parser", "intent", asked_label(parent), asked_label(child), _why_named(child, words)))
+            if staged.asked != child:
+                decisions.append(Decision("parser", "intent", asked_label(child), staged.intent, "the stages settle it from the question's words"))
             return replace(staged, claims=(*staged.claims, *child_claims)), tuple(decisions), words
-        decisions.append(Decision("parser", "intent", child, parent, f"the words {words!r} name {child}, and the stages declined it"))
+        decisions.append(Decision("parser", "intent", asked_label(child), asked_label(parent), f"the words {words!r} name {asked_label(child)}, and the stages declined it"))
     staged = settle(parent, slots, question, companions, lines=lines, handed=handed)
-    if staged.intent != parent:
-        decisions.append(Decision("parser", "intent", parent, staged.intent, "the stages settle it from the question's words"))
+    if staged.asked != parent:
+        decisions.append(Decision("parser", "intent", asked_label(parent), staged.intent, "the stages settle it from the question's words"))
     return replace(staged, claims=(*staged.claims, *child_claims)), tuple(decisions), None
 
 
-def _why_named(child: str, words: str | None) -> str:
+def _why_named(child: PointShape, words: str | None) -> str:
     """The reason a child stands, as :attr:`~association.query.subject.Subject.intent_reason` says it."""
-    return f"the words {words!r} name {child}" if words is not None else "a team's record in the games a player named beside it reached a line"
+    return f"the words {words!r} name {asked_label(child)}" if words is not None else "a team's record in the games a player named beside it reached a line"
 
 
 def reading_from_route(con: duckdb.DuckDBPyConnection, question: str, route: Route) -> Reading:
@@ -688,7 +740,7 @@ def reading_from_route(con: duckdb.DuckDBPyConnection, question: str, route: Rou
     if route.subject is None:
         raise ValueError("reading_from_route needs the route's subject - who the question is about, as read_route read it")
     subject = route.subject
-    applied = apply_subject(subject, scope, intent=route.intent)
+    applied = apply_subject(subject, scope, asked=route.asked)
     # The subject reading's claims on the names it settled and their
     # position group, beside the taggers' and the companions' the route
     # carries. The subject is read once (read_route), so its claims are the
@@ -696,7 +748,8 @@ def reading_from_route(con: duckdb.DuckDBPyConnection, question: str, route: Rou
     claims = [*route.claims, *subject_claims(teams_of(con), question, applied.scope)]
     reading = Reading(
         scope=applied.scope,
-        intent=applied.intent,
+        asked=applied.asked,
+        intent=asked_label(applied.asked),
         subject=subject,
         decisions=(*_subject_decisions(subject), *route.decisions, *applied.decisions),
         misread=tuple(applied.dropped),
@@ -730,7 +783,7 @@ def reading_from_route(con: duckdb.DuckDBPyConnection, question: str, route: Rou
         claims=tuple(claims),
         # The words nothing claimed, by the claims ledger's rule, over the
         # question as it was asked (the fold keeps every position).
-        unread=lexicon.unread_words(asked, [(c.start, c.end) for c in claims], (*route.model_names, *_reading_from_route_names(applied.scope, subject, applied.intent)), route.model_stat),
+        unread=lexicon.unread_words(asked, [(c.start, c.end) for c in claims], (*route.model_names, *_reading_from_route_names(applied.scope, subject, applied.asked)), route.model_stat),
     )
 
 
@@ -746,12 +799,12 @@ def _reading_from_route_point(reading: Reading) -> tuple[Reading | None, str | N
 _READING_FROM_ROUTE_NAME_KEYS = ("player", "players", "team", "teams", "opponent", "own_team", "with_player", "without")
 
 
-def _reading_from_route_names(scope: Scope, subject: Subject, intent: str) -> tuple[str, ...]:
+def _reading_from_route_names(scope: Scope, subject: Subject, asked: PointShape | None) -> tuple[str, ...]:
     """Every name the reading settled on - the scope's and the subject's, as
     the reading's record holds them (``stages._reading_record``) - whose
     words no reader has to claim (:func:`~association.query.lexicon.content_words`)."""
     found: list[str] = []
-    for holder in (scope.to_slots(split_by_presence=intent == "with_without"), subject.projected()):
+    for holder in (scope.to_slots(split_by_presence=asked == PRESENCE_SPLIT), subject.projected()):
         for slot in _READING_FROM_ROUTE_NAME_KEYS:
             value = holder.get(slot)
             found.extend(value if isinstance(value, (list, tuple)) else [value] if isinstance(value, str) else [])
@@ -820,7 +873,7 @@ def _reading_from_route_refused(players: names.PlayerIndex, teams: names.TeamInd
       nothing derives it yet. "Title odds" is ``team_outlook``'s projection
       and is left alone. Was ``refusals.by_question``.
     - a player named on a question whose intent has no reading for one
-      (``no_player_reading``, :data:`~association.query.reading.TEAM_ONLY_INTENTS`):
+      (``no_player_reading``, :data:`~association.query.reading.TEAM_ONLY_ASKS`):
       "alperen şengün alltime record" read as ``team_leaderboard`` and
       answered the league standings, Sengun never read (yardstick-v2 F111) -
       the one player the words name and no real team
@@ -830,7 +883,7 @@ def _reading_from_route_refused(players: names.PlayerIndex, teams: names.TeamInd
     The championship first, as the answering loop asked them."""
     if _CHAMPIONSHIP.search(question) and not _TITLE_ODDS.search(question):
         return Cause(kind="championship", facts={"intent": reading.intent})
-    if reading.intent not in TEAM_ONLY_INTENTS:
+    if reading.asked not in TEAM_ONLY_ASKS:
         return None
     player = player_named_on_a_team_only_question(players, teams, question, reading.scope.to_slots())
     return Cause(kind="no_player_reading", facts={"player": player, "intent": reading.intent}) if player is not None else None
@@ -897,8 +950,9 @@ def _unsupported_period_stat(reading: Reading) -> Cause | None:
     goal, 3-point or free throw percentage IS read (``PERIOD_RATE_STATS``).
     The period and whether it is a half are the sentence's."""
     scope, intent = reading.scope, reading.intent
+    asked = reading.asked
     measure = scope.measure
-    if intent not in ("period_split", "period_leaderboard") or measure is None or measure.as_typed is None or measure.as_typed in ("pts", "all"):
+    if asked not in (PERIOD_LOG, PERIOD_RANKING) or measure is None or measure.as_typed is None or measure.as_typed in ("pts", "all"):
         return None
     key = measure.key if measure.whose == "own" else None
     if key in PERIOD_COLUMNS or key in PERIOD_RATE_STATS:
@@ -927,7 +981,7 @@ def _unsupported_team_period_stat(reading: Reading) -> Cause | None:
     (:data:`~association.query.measures.TEAM_PERIOD_COLUMNS`) holds:
     minutes, plus-minus, points in the paint."""
     measure, intent = reading.scope.measure, reading.intent
-    if intent != "team_quarter_points" or measure is None or measure.as_typed is None or measure.as_typed in ("points", "pts"):
+    if reading.asked != TEAM_PERIOD_TOTAL or measure is None or measure.as_typed is None or measure.as_typed in ("points", "pts"):
         return None
     key = measure.key if measure.whose == "own" else None
     if key in TEAM_PERIOD_COLUMNS or key in PERIOD_RATE_STATS:
@@ -953,7 +1007,7 @@ def _unsupported_team_boolean_count(reading: Reading) -> Cause | None:
     scope, subject = reading.scope, reading.subject
     measure = scope.measure
     if (
-        reading.intent != "leaderboard"
+        reading.asked != PLAYER_RANKING
         or measure is None
         or measure.key not in ("triple_double", "double_double")
         or subject is None
@@ -971,7 +1025,7 @@ def _reading_from_route_left_out(players: names.PlayerIndex, question: str, read
     (:func:`~association.query.subject.compared_but_unmatched`). Read for a
     fingerprint alone, the one shape that says it; until Phase 3, step 0
     the answering loop re-read the question for it."""
-    if reading.intent != "fingerprint":
+    if reading.asked != NETPOINTS_FINGERPRINT:
         return None
     scope = reading.scope
     held = list(scope.subject.players)

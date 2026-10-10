@@ -34,10 +34,9 @@ import duckdb
 from association.nba.season import calendar_season, season_on_record
 from association.query.answer import AnswerContext, Reply
 from association.query.coverage import check_coverage, coverage_caveat
-from association.query.reading import PLAYER_INTENTS
+from association.query.reading import PLAYER_ASKS, PRESENCE_SPLIT
 
 from .answer import Answer, AnsweredBy, Artifact, Timing
-from .compose import COMPILED_INTENTS
 from .compose.plan import Planned, plan_point, refusal_result
 from .compose.say import say_left_out
 from .connection import connect_read_only, latest_season_on_record
@@ -283,22 +282,22 @@ class Agent:
         # "Ronaldo Lopes", a player who does not exist, percentages included.
         # Only where the answer would actually be about that player - a
         # stray name on a team question changes no answer.
-        if reading.misread and reading.intent in PLAYER_INTENTS:
+        if reading.misread and reading.asked in PLAYER_ASKS:
             misread = misread_players(list(reading.misread))
             history.log(f"  -> (player) {misread}")
             return reading.intent, Reply(data={"message": misread, "misread": list(reading.misread)}, answer=misread)
         # What answers goes with the intent the Reading settled - where the
         # route's cannot be about the subject, or where the question's own
-        # words name a child of it (subject.KIND_ASSIGNED_INTENTS: a count of
+        # words name a child of it (subject.KIND_ASSIGNED_ASKS: a count of
         # 30+ point games under a game log). Resolving them apart is how a
         # reroute shipped broken once: the intent said with_without, the trace
         # said with_without, and head_to_head ran.
-        if reading.intent != routed.intent:
-            history.log(f"  -> (subject) intent={reading.intent!r} slots={reading.scope.to_slots(split_by_presence=reading.intent == 'with_without')}")
+        if reading.asked != routed.asked:
+            history.log(f"  -> (subject) intent={reading.intent!r} slots={reading.scope.to_slots(split_by_presence=reading.asked == PRESENCE_SPLIT)}")
         settled = self._settled_before_reading(reading, history)
         if settled is not None:
             return settled
-        if reading.intent in COMPILED_INTENTS:
+        if reading.asked is not None:
             return self._run_compiled(reading, history)
         return None
 
@@ -313,7 +312,7 @@ class Agent:
         # What will answer, said beside the route: until 5.0.0 every intent
         # outside TEMPLATES printed "not ported yet" here - on 206 of 277
         # yardstick answers, all of them the compiler's (ISSUES.md #284).
-        path = "the compiler" if routed.intent in COMPILED_INTENTS else "no reader: refused unless a named refusal has its cause"
+        path = "the compiler" if routed.asked is not None else "no reader: refused unless a named refusal has its cause"
         history.log(f"  -> (router) intent={routed.intent!r} slots={routed.slots} - {path}")
         # One reading of WHO the question is about, from its own words, written
         # into the Scope - the parser's last step, and the only writer: nothing
@@ -397,7 +396,7 @@ class Agent:
             said = copy.deepcopy(self.planned.refusal)
             history.log(f"  -> (refusal) {reading.refused.kind}: {said.answer}")
             return reading.intent, said
-        if reading.intent in COMPILED_INTENTS:
+        if reading.asked is not None:
             return None
         if reading.unsupported:
             refusal = refusal_result(reading.unsupported[0])
@@ -407,8 +406,9 @@ class Agent:
         return None
 
     def _run_compiled(self, reading: Reading, history: RunHistory) -> tuple[str, Reply] | None:
-        """An intent the compiler alone answers (``compose.COMPILED_INTENTS``:
-        every intent since Phase 2 retired the templates). Where the
+        """A shape the words ask, which the compiler alone answers (every
+        one since Phase 2 retired the templates; ``compose.COMPILED_INTENTS``
+        listed their names until Phase 3, step 4). Where the
         compiler has no reading of the point, in this order: the
         compiler's own reason - the planner refusing a narrowing the relation
         cannot honor (``Planned.declined``) - names

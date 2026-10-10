@@ -652,7 +652,7 @@ def _narrow_player_games(
     .. versionchanged:: 4.4.0
        Takes ``team`` - the player's OWN team, as opposed to ``opponent`` -
        for the shape ``player_stat`` alone opts into
-       (``reading.OWN_TEAM_RESTORABLE_INTENTS``): "lebron stats as a
+       (``reading.OWN_TEAM_RESTORABLE_ASKS``): "lebron stats as a
        starter for Miami" (yardstick-v2 F166) keeps only the games he played
        for that team, unlike ``game_log``'s own ``team``/``opponent`` dance
        (``games._team_slot_for_player``), which still drops a team the

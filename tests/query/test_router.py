@@ -11,14 +11,15 @@ from typing import Any, get_args, get_type_hints
 
 import pytest
 from routed import staged_raw
+from shapes import asked
 
 from association.nba.season import current_season
 from association.query.compose.plan import refusal_result
 from association.query.lexicon import ORDER_WORDS
 from association.query.reading import Cause, Companion, Scope, Window
 from association.query.reading import Subject as Who
-from association.query.router import CODE_ASSIGNED_INTENTS, Route
-from association.query.window import ORDER_INTENTS
+from association.query.router import CODE_ASSIGNED_ASKS, Route
+from association.query.window import ORDER_ASKS
 
 
 def _route(payload: str) -> Route:
@@ -174,23 +175,27 @@ def test_explicit_year_still_wins_over_a_required_season_ref() -> None:
 
 
 def test_every_intent_is_reachable_from_the_reader() -> None:
-    """Every intent the compiler answers must be REACHABLE, by one of exactly three routes: the
-    parser's grammar names it as a parent (``parse.PARENT_GRAMMAR``), the
-    stages assign it from the question text (``CODE_ASSIGNED_INTENTS``), or
-    the subject reading assigns it from the text gated on the subject's kind
-    (``subject.KIND_ASSIGNED_INTENTS``). An intent in none of the lists is
-    dead code that no question can ever reach. Until Phase 2, step 6 this
-    read ``test_every_template_is_reachable_from_the_reader``, over the
-    templates.
+    """Every shape the words can ask must be REACHABLE, by one of exactly
+    three routes: the parser's grammar names it as a parent
+    (``parse.PARENT_GRAMMAR``), the stages assign it from the question text
+    (``CODE_ASSIGNED_ASKS``), or the subject reading assigns it from the
+    text gated on the subject's kind (``subject.KIND_ASSIGNED_ASKS``). A
+    key in none of the lists is dead code that no question can ever reach.
+    Until Phase 2, step 6 this read
+    ``test_every_template_is_reachable_from_the_reader``, over the
+    templates; until Phase 3, step 4 it held the intents' names
+    (``compose.COMPILED_INTENTS``) - the asked keys now, each the label
+    table's (``tests/shapes.ASKED``).
 
     Until 5.0.0 the first route was the router's schema enum, and this read
     ``test_every_ported_template_has_an_intent_in_the_schema``."""
-    from association.query.compose import COMPILED_INTENTS
+    from shapes import ASKED
+
     from association.query.parse import PARENT_GRAMMAR
-    from association.query.subject import KIND_ASSIGNED_INTENTS
+    from association.query.subject import KIND_ASSIGNED_ASKS
 
     parents = {parent for _, _, parent in PARENT_GRAMMAR}
-    assert parents | CODE_ASSIGNED_INTENTS | KIND_ASSIGNED_INTENTS >= COMPILED_INTENTS
+    assert parents | CODE_ASSIGNED_ASKS | KIND_ASSIGNED_ASKS == {shape for shape in ASKED.values() if shape is not None}
 
 
 def test_question_text_beats_a_dropped_season_slot() -> None:
@@ -543,7 +548,7 @@ def test_the_order_intents_are_the_ones_that_honor_order() -> None:
     into a fall-through."""
     from shapes import stated
 
-    from association.query.compose.plan import SHAPE_NAMES
+    from association.query.reading import SHAPE_NAMES, asked_label
     from association.query.window import _ORDER_ON_A_SINGLE_GAME
 
     # player_stat honors an order only beside a limit of one (a single game
@@ -551,7 +556,7 @@ def test_the_order_intents_are_the_ones_that_honor_order() -> None:
     # than filling order alone - see _ORDER_ON_A_SINGLE_GAME. A retired
     # template's list is what its reader's words state (STATED_SCOPING); the
     # cell is the window's (Window.CELLS, "window") since Phase 3, step 2.
-    assert frozenset(intent for intent in set(SHAPE_NAMES.values()) if "window" in stated(intent)) == ORDER_INTENTS | _ORDER_ON_A_SINGLE_GAME
+    assert frozenset(name for name in set(SHAPE_NAMES.values()) - {"coach"} if "window" in stated(name)) == {asked_label(shape) for shape in ORDER_ASKS | _ORDER_ON_A_SINGLE_GAME}
 
 
 # ---------------- scoping read from the question text ----------------
@@ -636,15 +641,15 @@ def test_a_last_n_games_signal_requires_a_real_limit_and_the_recent_order() -> N
 
     # No `order` at all: an ordinary game_log question with a limit, not "last
     # N games" - e.g. "top 5" is `order` absent, `limit` present.
-    assert not read_span("Knicks top 5 wins this season", SpanContext(intent="game_log", limit=5)).span.both
+    assert not read_span("Knicks top 5 wins this season", SpanContext(asked=asked("game_log"), limit=5)).span.both
     # `order="first"` is "his first N games", the opposite end of the season -
     # a real question, but not the one this signal is for.
-    assert not read_span("Knicks first 5 games", SpanContext(intent="game_log", order="first", limit=5)).span.both
+    assert not read_span("Knicks first 5 games", SpanContext(asked=asked("game_log"), order="first", limit=5)).span.both
     # No real limit at all.
-    assert not read_span("Knicks last games", SpanContext(intent="game_log", order="recent")).span.both
+    assert not read_span("Knicks last games", SpanContext(asked=asked("game_log"), order="recent")).span.both
     # A non-game_log intent never sees it, whatever else is set.
-    assert not read_span("Knicks last 5 games", SpanContext(intent="player_stat", order="recent", limit=5)).span.both
-    assert read_span("Knicks last 5 games", SpanContext(intent="game_log", order="recent", limit=5)).span.both
+    assert not read_span("Knicks last 5 games", SpanContext(asked=asked("player_stat"), order="recent", limit=5)).span.both
+    assert read_span("Knicks last 5 games", SpanContext(asked=asked("game_log"), order="recent", limit=5)).span.both
 
 
 @pytest.mark.parametrize(
@@ -661,7 +666,7 @@ def test_a_last_n_games_signal_defers_to_a_narrower_slot_already_set(question: s
     "last N" does, so none of them widen to both season types."""
     from association.query.span import SpanContext, read_span
 
-    assert not read_span(question, SpanContext(intent="game_log", order="recent", limit=5, **context)).span.both
+    assert not read_span(question, SpanContext(asked=asked("game_log"), order="recent", limit=5, **context)).span.both
 
 
 @pytest.mark.parametrize(
@@ -2483,14 +2488,14 @@ def test_settle_reads_a_childs_slots_off_the_text_and_drops_the_parents_derived_
 
 
 def test_the_kind_assigned_intents_all_have_readers() -> None:
-    """A child the reading assigns is one the compiler answers
-    (``compose.COMPILED_INTENTS``) - the same reachability test the schema's
-    enum and CODE_ASSIGNED_INTENTS get."""
-    from association.query.compose import COMPILED_INTENTS
-    from association.query.subject import KIND_ASSIGNED_INTENTS
+    """A child the reading assigns is a shape a reader takes - a key of the
+    one label table, which every reader's shape is
+    (``reading.SHAPE_NAMES``) - and the stages assign none of them."""
+    from association.query.reading import SHAPE_NAMES
+    from association.query.subject import KIND_ASSIGNED_ASKS
 
-    assert COMPILED_INTENTS >= KIND_ASSIGNED_INTENTS
-    assert KIND_ASSIGNED_INTENTS.isdisjoint(CODE_ASSIGNED_INTENTS)
+    assert set(SHAPE_NAMES) >= KIND_ASSIGNED_ASKS
+    assert KIND_ASSIGNED_ASKS.isdisjoint(CODE_ASSIGNED_ASKS)
 
 
 def test_a_threshold_without_a_plus_reads_every_spelling_the_pair_grammar_does() -> None:

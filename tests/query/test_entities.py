@@ -5,6 +5,7 @@ from typing import Any
 
 import duckdb
 import pytest
+from shapes import asked
 
 from association.query.entities import (
     Ambiguous,
@@ -465,7 +466,7 @@ def _apply(con: duckdb.DuckDBPyConnection, question: str, slots: dict[str, Any],
     from association.query.subject import apply_subject, read_subject
 
     scope = Scope.from_slots(slots)
-    applied = apply_subject(read_subject(con, question, intent, scope), scope, intent=intent)
+    applied = apply_subject(read_subject(con, question, asked(intent), scope), scope, asked=asked(intent))
     # The writers took and mutated this dict until 5.0.0; the cases below
     # still read it afterwards, so the written scope is mirrored back.
     slots.clear()
@@ -489,8 +490,8 @@ def _scope(con: duckdb.DuckDBPyConnection, question: str, slots: dict[str, Any],
     assert not flags, flags
     intent = intent or ("game_log" if reads_player else "team_record")
     scope = Scope.from_slots(slots)
-    subject = read_subject(con, question, intent, scope)
-    applied = apply_subject(subject, scope, intent=intent)
+    subject = read_subject(con, question, asked(intent), scope)
+    applied = apply_subject(subject, scope, asked=asked(intent))
     # As above: the cases read the dict the writers used to mutate.
     slots.clear()
     slots.update(applied.scope.to_slots())

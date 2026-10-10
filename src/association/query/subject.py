@@ -69,18 +69,39 @@ from association.query.entities import (
 from association.query.lexicon import season_from_text, season_named
 from association.query.measures import THRESHOLD_STAT_NAMES
 from association.query.reading import (
-    OWN_TEAM_RESTORABLE_INTENTS,
-    PLAYER_REQUIRED_INTENTS,
-    SUBJECT_RESTORABLE_INTENTS,
+    GAME_HIGHS,
+    GAMES_COUNTED,
+    LINE_RECORD,
+    LINE_RUNS,
+    OWN_TEAM_RESTORABLE_ASKS,
+    PLAYER_COMPARISON,
+    PLAYER_LINE,
+    PLAYER_LOG,
+    PLAYER_RANKING,
+    PLAYER_REQUIRED_ASKS,
+    PLAYER_SPLITS,
+    PRESENCE_SPLIT,
+    SEASON_HISTORY,
+    SHOT_CHART,
+    SHOT_DISTANCE,
+    SUBJECT_RESTORABLE_ASKS,
+    TEAM_LINE,
+    TEAM_MEETINGS,
+    TEAM_OUTLOOK,
+    TEAM_RANKING,
+    TEAM_RECORD,
     Claim,
     Companion,
     Cuts,
     LeftOut,
     Line,
     Measure,
+    PointShape,
     Predicate,
     Scope,
     SubjectKind,
+    asked_label,
+    labeled,
 )
 from association.query.span import needed
 
@@ -97,11 +118,12 @@ SUBJECT_KINDS: frozenset[str] = frozenset(get_args(SubjectKind))
 .. versionadded:: 4.4.0
 """
 
-#: The intents a "<team> when <player> reaches N" question arrives under
+#: What the words ask a "<team> when <player> reaches N" question under
 #: (the router's own `_WHEN_REACHES_REROUTABLE`, plus the splits the model
-#: files it as) - each would answer the player's or the team's own line
-#: instead of the team's record under the condition.
-_RECORD_WHEN_PARENTS: frozenset[str] = frozenset({"player_stat", "player_splits", "game_log", "team_stat", "team_record", "with_without", "other"})
+#: files it as; ``None`` the grammar's "no shape") - each would answer the
+#: player's or the team's own line instead of the team's record under the
+#: condition.
+_RECORD_WHEN_PARENTS: frozenset[PointShape | None] = frozenset({PLAYER_LINE, PLAYER_SPLITS, PLAYER_LOG, TEAM_LINE, TEAM_RECORD, PRESENCE_SPLIT, None})
 
 #: Why a team's question with a companion's line is ``record_when``
 #: (:func:`child_named`), wherever that is said: the reading's own
@@ -110,11 +132,12 @@ _TEAM_RECORD_WHEN = "a team's record in the games a player named beside it reach
 
 _NOT_A_TEAM: frozenset[str] = SUBJECT_KINDS - {"team", "teams", "team_players"}
 _PLAYER_OR_PAIR: frozenset[str] = frozenset({"player", "pair"})
-_PLAYER_RELATION_PARENTS: frozenset[str] = frozenset({"game_log", "player_stat", "leaderboard", "other"})
+_PLAYER_RELATION_PARENTS: frozenset[PointShape | None] = frozenset({PLAYER_LOG, PLAYER_LINE, PLAYER_RANKING, None})
 
-#: The child intents the question's own words assign, gated on the subject's
-#: kind - in precedence order, first match wins: (child, the words that name
-#: it, the kinds it can be about, the router intents it is assigned under).
+#: The children the question's own words assign, gated on the subject's
+#: kind - in precedence order, first match wins: (the child's key, the
+#: words that name it, the kinds it can be about, the parents' keys it is
+#: assigned under). Intent names until Phase 3, step 4.
 #:
 #: Each child is a fixed point on a relation whose parent (``game_log``,
 #: ``player_stat``, ``leaderboard``, ``team_record``) the router still
@@ -128,46 +151,49 @@ _PLAYER_RELATION_PARENTS: frozenset[str] = frozenset({"game_log", "player_stat",
 #: precedence settles the two that overlap: "career most points in a game"
 #: is a single-game high before it is a count, and "how many 20+ point games
 #: ... in the past two seasons" a count before it is a history.
-_CHILD_GRAMMARS: tuple[tuple[str, re.Pattern[str], frozenset[str], frozenset[str]], ...] = (
+_CHILD_GRAMMARS: tuple[tuple[PointShape, re.Pattern[str], frozenset[str], frozenset[PointShape | None]], ...] = (
     # "per game" is an average, never one game; "single game" is one game
     # with an article or without (the lexicon's CHILD_SINGLE_GAME_HIGH).
-    ("single_game_high", lexicon.CHILD_SINGLE_GAME_HIGH, _NOT_A_TEAM, _PLAYER_RELATION_PARENTS),
-    ("shot_distance", lexicon.CHILD_SHOT_DISTANCE, _PLAYER_OR_PAIR, _PLAYER_RELATION_PARENTS | {"shot_chart"}),
-    ("streak", lexicon.CHILD_STREAK, SUBJECT_KINDS, frozenset({"team_record", "team_stat", "team_leaderboard", "team_outlook", "head_to_head"}) | _PLAYER_RELATION_PARENTS),
-    ("record_when", lexicon.CHILD_RECORD_WHEN_LINE, SUBJECT_KINDS, frozenset({"team_record", "team_stat", "with_without", "head_to_head"}) | _PLAYER_RELATION_PARENTS),
+    (GAME_HIGHS, lexicon.CHILD_SINGLE_GAME_HIGH, _NOT_A_TEAM, _PLAYER_RELATION_PARENTS),
+    (SHOT_DISTANCE, lexicon.CHILD_SHOT_DISTANCE, _PLAYER_OR_PAIR, _PLAYER_RELATION_PARENTS | {SHOT_CHART}),
+    (LINE_RUNS, lexicon.CHILD_STREAK, SUBJECT_KINDS, frozenset({TEAM_RECORD, TEAM_LINE, TEAM_RANKING, TEAM_OUTLOOK, TEAM_MEETINGS}) | _PLAYER_RELATION_PARENTS),
+    (LINE_RECORD, lexicon.CHILD_RECORD_WHEN_LINE, SUBJECT_KINDS, frozenset({TEAM_RECORD, TEAM_LINE, PRESENCE_SPLIT, TEAM_MEETINGS}) | _PLAYER_RELATION_PARENTS),
     # A player's games won or lost: his team's record in the games he
     # played, which is record_when's read with no threshold ("how many
     # playoff games has embiid won?" - answered right today only because
     # the router misfiles it there). A player only: a TEAM's games won are
     # team_record's own question.
     (
-        "record_when",
+        LINE_RECORD,
         lexicon.CHILD_RECORD_WHEN_GAMES_WON,
         frozenset({"player"}),
-        frozenset({"team_record", "team_stat", "team_outlook", "with_without", "head_to_head"}) | _PLAYER_RELATION_PARENTS,
+        frozenset({TEAM_RECORD, TEAM_LINE, TEAM_OUTLOOK, PRESENCE_SPLIT, TEAM_MEETINGS}) | _PLAYER_RELATION_PARENTS,
     ),
-    ("threshold_count", lexicon.CHILD_THRESHOLD_COUNT, _NOT_A_TEAM, _PLAYER_RELATION_PARENTS),
-    ("player_history", lexicon.CHILD_PLAYER_HISTORY, _PLAYER_OR_PAIR, _PLAYER_RELATION_PARENTS),
+    (GAMES_COUNTED, lexicon.CHILD_THRESHOLD_COUNT, _NOT_A_TEAM, _PLAYER_RELATION_PARENTS),
+    (SEASON_HISTORY, lexicon.CHILD_PLAYER_HISTORY, _PLAYER_OR_PAIR, _PLAYER_RELATION_PARENTS),
     (
-        "player_splits",
+        PLAYER_SPLITS,
         lexicon.CHILD_PLAYER_SPLITS,
         _PLAYER_OR_PAIR,
         # head_to_head and team_record too: "show me Embiid's splits against
         # boston" arrived as the two teams meeting, Embiid dropped (day5).
-        frozenset({"with_without", "player_compare", "head_to_head", "team_record"}) | _PLAYER_RELATION_PARENTS,
+        frozenset({PRESENCE_SPLIT, PLAYER_COMPARISON, TEAM_MEETINGS, TEAM_RECORD}) | _PLAYER_RELATION_PARENTS,
     ),
 )
 
-KIND_ASSIGNED_INTENTS: frozenset[str] = frozenset(child for child, _, _, _ in _CHILD_GRAMMARS)
-"""The intents :func:`read_subject` assigns from the question's words, gated
-on the subject's kind (:data:`_CHILD_GRAMMARS`), under a parent intent the
-router chose - the same route ``router.CODE_ASSIGNED_INTENTS`` takes for
-``coach`` and ``period_split``, one step later, where the subject's kind is
-known. Their slots come from :func:`association.query.router.settle`, run
-under the child: the router's own text readers recover the threshold, the
+KIND_ASSIGNED_ASKS: frozenset[PointShape] = frozenset(child for child, _, _, _ in _CHILD_GRAMMARS)
+"""The shapes :func:`child_named` assigns from the question's words, gated
+on the subject's kind (:data:`_CHILD_GRAMMARS`), under a parent the
+grammar named - the same route ``router.CODE_ASSIGNED_ASKS`` takes for a
+coach and a quarter, one step later, where the subject's kind is known.
+Their slots come from :func:`association.query.router.settle`, run under
+the child: the router's own text readers recover the threshold, the
 seasons count, a streak's kind and a split.
 
 .. versionadded:: 5.0.0
+
+.. versionchanged:: 6.0.0
+   ``KIND_ASSIGNED_INTENTS``, the children's names, until Phase 3, step 4.
 """
 
 
@@ -184,7 +210,7 @@ class Applied(NamedTuple):
     scope: Scope
     decisions: list[Decision]
     dropped: list[str]
-    intent: str
+    asked: PointShape | None
 
 
 @dataclass(frozen=True)
@@ -242,13 +268,17 @@ class Subject(reading.Subject):
     #: reads ("for Miami" with no season is a career, not this season), and
     #: never the router's own "current season" default.
     named_season: int | None = None
-    #: The intent the subject's shape settles: a team's record in the games
-    #: a companion reached a line (``record_when``), or a child the
+    #: What the subject's shape settles the words to ask: a team's record in
+    #: the games a companion reached a line (``record_when``), or a child the
     #: question's own words name for this kind of subject
-    #: (:data:`KIND_ASSIGNED_INTENTS`); the route's own intent everywhere
-    #: else.
+    #: (:data:`KIND_ASSIGNED_ASKS`); the route's own everywhere else.
+    #:
+    #: .. versionadded:: 6.0.0
+    asked: PointShape | None = None
+    #: The page's label for :attr:`asked` (:func:`~association.query.reading.asked_label`),
+    #: filled from the key and held to it - the record's, never read to decide.
     intent: str = ""
-    #: Why ``intent`` is not the route's, in a sentence - the words that name
+    #: Why ``asked`` is not the route's, in a sentence - the words that name
     #: a child ("the words 'in a single game' name single_game_high"), or a
     #: team's record in the games a companion reached a line - and ``None``
     #: where it is the route's own. What the parser's decision about the
@@ -267,6 +297,12 @@ class Subject(reading.Subject):
     #: .. versionadded:: 6.0.0
     claims: tuple[Claim, ...] = ()
 
+    def __post_init__(self) -> None:
+        """The typed subject's checks, and :attr:`intent` held to the label
+        :attr:`asked` is named by (:func:`~association.query.reading.labeled`)."""
+        super().__post_init__()
+        object.__setattr__(self, "intent", labeled(self.asked, self.intent))
+
     def projected(self) -> dict[str, Any]:
         """Every field as a Subject was recorded until Phase 3, step 2
         (:func:`~association.query.stages.plain`): each companion as the
@@ -275,11 +311,12 @@ class Subject(reading.Subject):
         are - left out, so a reading recorded before the companions were
         typed compares identical to one recorded after. The typed
         companions are recorded beside the reading (``stages._reading_record``,
-        ``companions``), never here.
+        ``companions``), never here; the key the words asked (``asked``) is
+        recorded as its label (``intent``), as it was.
 
         .. versionadded:: 6.0.0
         """
-        out = {f.name: getattr(self, f.name) for f in fields(self) if f.name != "claims"}
+        out = {f.name: getattr(self, f.name) for f in fields(self) if f.name not in ("claims", "asked")}
         out["conditions"] = [[c.player, c.predicate, c.line.measure if c.line is not None else None, c.line.value if c.line is not None else None, c.side] for c in self.conditions]
         return out
 
@@ -983,15 +1020,19 @@ def _team_names(con: duckdb.DuckDBPyConnection, question: str, scope: Scope, tea
     return names
 
 
-def read_subject(con: duckdb.DuckDBPyConnection, question: str, intent: str, scope: Scope) -> Subject:
+def read_subject(con: duckdb.DuckDBPyConnection, question: str, asked: PointShape | None, scope: Scope) -> Subject:
     """One reading of the subject. The question's spans decide; a slot the
     router filled (``scope``, the typed Scope a route carries) counts only
     where the question's own words support it
     (:func:`question_supports`), and never to invent a subject the question
-    does not name. ``intent`` is read only to tell two teams meeting
+    does not name. ``asked`` is read only to tell two teams meeting
     (``head_to_head``) from a team set against another.
 
     .. versionadded:: 4.4.0
+
+    .. versionchanged:: 6.0.0
+       Takes what the words ask (``asked``, a
+       :class:`~association.query.reading.PointShape`) where it took an intent.
     """
     # The season a team's name is read in. The parser reads the subject
     # BEFORE the stages settle the season (they are handed its companions),
@@ -1032,14 +1073,22 @@ def read_subject(con: duckdb.DuckDBPyConnection, question: str, intent: str, sco
     evidence = _evidence(named, routed, spellings, invented, team_word, opponent)
     if unrouted:
         evidence = (*evidence, f"companions the router named nobody for {list(unrouted)}")
-    decided = _decide(players, teams, position, opponent, own_team, companions, evidence, intent, question)
+    decided = _decide(players, teams, position, opponent, own_team, companions, evidence, asked, question)
     subject = replace(decided, conditions=conditions, claims=(*claims, *_decide_claims(decided, question)))
-    # Read, not decided: the intent the subject's shape settles is the
-    # parser's step (:func:`child_named`, with the stages run once under
-    # it), and :func:`settle_subject` writes it here. Until 5.0.0's last
-    # change this ran the stages under each child the words named, before
-    # the parser ran them at all.
-    return replace(subject, invented=tuple(invented), named_season=season_from_text(question), intent=intent, filler=filler, claims=(*subject.claims, *_read_subject_season_claims(question)))
+    # Read, not decided: what the subject's shape settles the words to ask
+    # is the parser's step (:func:`child_named`, with the stages run once
+    # under it), and :func:`settle_subject` writes it here. Until 5.0.0's
+    # last change this ran the stages under each child the words named,
+    # before the parser ran them at all.
+    return replace(
+        subject,
+        invented=tuple(invented),
+        named_season=season_from_text(question),
+        asked=asked,
+        intent=asked_label(asked),
+        filler=filler,
+        claims=(*subject.claims, *_read_subject_season_claims(question)),
+    )
 
 
 def _read_subject_conditions(question: str, beside: tuple[str, ...], scope: Scope) -> tuple[tuple[Companion, ...], tuple[Claim, ...]]:
@@ -1061,13 +1110,21 @@ def _read_subject_season_claims(question: str) -> tuple[Claim, ...]:
     return () if named_season is None else needed(question, [Claim(start, end, "season") for start, end in named_season[1]], season_from_text)
 
 
-def settle_subject(subject: Subject, intent: str, *, parent: str | None = None, words: str | None = None) -> Subject:
-    """``subject``, already read, under the ``intent`` the stages settled -
-    no name is read again, the warehouse is not asked and the stages do not
-    run (``ROADMAP.md``, Phase 1: the subject is read once, the stages run
-    once). What depends on the intent is written here: two teams meeting
-    are the ``teams`` kind under ``head_to_head``, and the intent itself
-    with why it is not ``parent``'s - the ``words`` that named a child
+class _NoParent:
+    """No parent handed to :func:`settle_subject` - apart from a parent of
+    "no shape" (``None``), which is one."""
+
+
+_NO_PARENT = _NoParent()
+
+
+def settle_subject(subject: Subject, asked: PointShape | None, *, parent: PointShape | _NoParent | None = _NO_PARENT, words: str | None = None) -> Subject:
+    """``subject``, already read, under what the stages settled the words to
+    ask (``asked``) - no name is read again, the warehouse is not asked and
+    the stages do not run (``ROADMAP.md``, Phase 1: the subject is read
+    once, the stages run once). What depends on it is written here: two
+    teams meeting are the ``teams`` kind under ``head_to_head``, and the
+    key itself with why it is not ``parent``'s - the ``words`` that named a child
     (:func:`child_named`), or the one move that names no words, a team's
     record in the games a companion reached a line. Who stands beside the
     subject is the reading's too, and the stages take it from there
@@ -1079,22 +1136,29 @@ def settle_subject(subject: Subject, intent: str, *, parent: str | None = None, 
        Takes the child the parser decided (``parent``, ``words``) and runs
        no stage of its own: until then it ran the stages under each child
        the words named, a speculative run beside the parser's.
+
+    .. versionchanged:: 6.0.0
+       Takes the grammar's keys (``asked``, ``parent``) where it took
+       intents; ``None`` is the parent "no shape", and leaving ``parent``
+       out is no parent at all.
     """
     who = subject
-    if who.kind == "team" and who.teams and who.opponent and intent == "head_to_head":
+    if who.kind == "team" and who.teams and who.opponent and asked == TEAM_MEETINGS:
         who = replace(who, kind="teams", teams=(who.teams[0], who.opponent), opponent=None)
     evidence = tuple(line for line in who.evidence if not line.startswith("the words "))
-    moved = parent is not None and intent != parent
+    label = asked_label(asked)
+    moved = not isinstance(parent, _NoParent) and asked != parent
     return replace(
         who,
-        intent=intent,
-        intent_reason=_intent_reason(parent or intent, intent, words) if moved else None,
-        evidence=(*evidence, f"the words {words!r} name {intent}") if words else evidence,
+        asked=asked,
+        intent=label,
+        intent_reason=_intent_reason(asked_label(parent), label, words) if moved and not isinstance(parent, _NoParent) else None,
+        evidence=(*evidence, f"the words {words!r} name {label}") if words else evidence,
     )
 
 
 def _intent_reason(intent: str, settled: str, words: str | None) -> str | None:
-    """Why ``settled`` is not the route's ``intent``
+    """Why ``settled`` (a label) is not the route's ``intent``
     (:attr:`Subject.intent_reason`): the words that name a child, or -
     the one other way :func:`child_named` moves it, and the only one that
     names no words - a team's record in the games a companion reached a
@@ -1117,7 +1181,7 @@ def _read_subject_alone(players: tuple[str, ...], teams: set[str], conditions: t
     return not players and not named_team and len(conditions) == 1 and conditions[0].predicate == "played"
 
 
-def child_named(subject: Subject, parent: str, question: str) -> tuple[str, str | None] | None:
+def child_named(subject: Subject, parent: PointShape | None, question: str) -> tuple[PointShape, str | None] | None:
     """The child of ``parent`` the subject's shape names, with the words
     that name it - or None where the parent stands. Decided from the
     grammar alone; the parser runs the stages ONCE under the child, and
@@ -1131,7 +1195,7 @@ def child_named(subject: Subject, parent: str, question: str) -> tuple[str, str 
       team's record in the games he reached it, which ``record_when``
       answers with HIM as its player.
     - The question's own words name a child of the route's intent
-      (:data:`_CHILD_GRAMMARS`, :data:`KIND_ASSIGNED_INTENTS`) - and only
+      (:data:`_CHILD_GRAMMARS`, :data:`KIND_ASSIGNED_ASKS`) - and only
       where the stages, run under that child
       (:func:`~association.query.router.settle`), leave it there: a count of
       games with no threshold in the text is a ranking, and stays the
@@ -1146,10 +1210,15 @@ def child_named(subject: Subject, parent: str, question: str) -> tuple[str, str 
     by the subject's kind (ROADMAP plan item 6, step (d), part 3).
 
     .. versionadded:: 5.0.0
+
+    .. versionchanged:: 6.0.0
+       Takes and returns the grammar's keys (a
+       :class:`~association.query.reading.PointShape`) where it took and
+       returned intents.
     """
     if subject.kind in ("team", "team_players") and parent in _RECORD_WHEN_PARENTS and any(c.predicate == "reached" for c in subject.conditions):
-        return "record_when", None
-    if parent in KIND_ASSIGNED_INTENTS:
+        return LINE_RECORD, None
+    if parent in KIND_ASSIGNED_ASKS:
         return None
     for child, words, kinds, parents in _CHILD_GRAMMARS:
         match = words.search(question)
@@ -1185,7 +1254,15 @@ def _evidence(named: list[str], routed: list[str], spellings: dict[str, str], in
 
 
 def _decide(
-    players: tuple[str, ...], teams: list[str], position: str | None, opponent: str | None, own_team: str | None, companions: tuple[str, ...], evidence: tuple[str, ...], intent: str, question: str
+    players: tuple[str, ...],
+    teams: list[str],
+    position: str | None,
+    opponent: str | None,
+    own_team: str | None,
+    companions: tuple[str, ...],
+    evidence: tuple[str, ...],
+    asked: PointShape | None,
+    question: str,
 ) -> Subject:
     """The kind, from what was found - a player before a team, a team before
     the league, the way a named subject is always the narrower claim."""
@@ -1199,7 +1276,7 @@ def _decide(
         return Subject("team_players", (), tuple(teams[:1]), position, opponent, own_team, companions, evidence)
     if len(teams) >= 2:
         return Subject("teams", (), tuple(teams[:2]), position, None, own_team, companions, evidence)
-    if teams and opponent and intent == "head_to_head":
+    if teams and opponent and asked == TEAM_MEETINGS:
         return Subject("teams", (), (teams[0], opponent), position, None, own_team, companions, evidence)
     if teams:
         return Subject("team", (), tuple(teams), position, opponent, own_team, companions, evidence)
@@ -1214,7 +1291,7 @@ def _decide_claims(subject: Subject, question: str) -> tuple[Claim, ...]:
     return () if noun is None else (Claim(noun.start(), noun.end(), "subject"),)
 
 
-def apply_subject(subject: Subject, scope: Scope, *, intent: str) -> Applied:
+def apply_subject(subject: Subject, scope: Scope, *, asked: PointShape | None) -> Applied:
     """Write what the subject reading settled into the typed scope a template
     reads - the parser's last step
     (:func:`~association.query.parse.reading_from_route`): the players the
@@ -1227,8 +1304,8 @@ def apply_subject(subject: Subject, scope: Scope, *, intent: str) -> Applied:
     the caller refuses by name rather than answering about it (AGENTS.md:
     "when it cannot be repaired, say so - do not hand it to the agent").
     Returns the scope with the reading written in (``scope`` itself is
-    never changed), the decisions made, the names dropped, and the intent
-    the subject settled on (:attr:`Subject.intent`), with the scope
+    never changed), the decisions made, the names dropped, and what the
+    subject settled the words to ask (:attr:`Subject.asked`), with the scope
     rewritten for it where it differs.
 
     A kept name is respelled as the question's own span spells it
@@ -1253,23 +1330,27 @@ def apply_subject(subject: Subject, scope: Scope, *, intent: str) -> Applied:
        the reading settled on it. Takes and returns the typed
        :class:`~association.query.reading.Scope` (ROADMAP plan item 6, step
        (f)) in place of a slot dict it mutated.
+
+    .. versionchanged:: 6.0.0
+       Takes ``asked`` (the grammar's key) where it took ``intent``;
+       :class:`Applied` carries the key.
     """
-    scope, players, dropped = _apply_players(subject, scope, intent)
+    scope, players, dropped = _apply_players(subject, scope, asked)
     if dropped:
         # A name the question never held is refused by it; the companions
         # the words DO hold are still written, as the parser wrote the
         # other side's before Phase 3, step 2 ("jay huff game log vs
         # Embiid", the model's Jokic beside it).
-        scope, _ = _apply_companions(subject, scope, intent)
-        return Applied(_apply_who(subject, scope), [], dropped, intent)
+        scope, _ = _apply_companions(subject, scope, asked)
+        return Applied(_apply_who(subject, scope), [], dropped, asked)
     decisions = list(players)
-    scope, restored = _apply_restored_player(subject, scope, intent)
+    scope, restored = _apply_restored_player(subject, scope, asked)
     decisions.extend(restored)
-    scope, own = _apply_own_team(subject, scope, intent)
+    scope, own = _apply_own_team(subject, scope, asked)
     decisions.extend(own)
-    scope, conditions = _apply_companions(subject, scope, intent)
+    scope, conditions = _apply_companions(subject, scope, asked)
     decisions.extend(conditions)
-    scope, rewritten, settled = _apply_intent(subject, scope, intent)
+    scope, rewritten, settled = _apply_intent(subject, scope, asked)
     decisions.extend(rewritten)
     return Applied(_apply_who(subject, scope), decisions, [], settled)
 
@@ -1282,7 +1363,7 @@ def _apply_who(subject: Subject, scope: Scope) -> Scope:
     return replace(scope, subject=replace(scope.subject, kind=subject.kind, position=subject.position))
 
 
-def _apply_team_record_when(subject: Subject, scope: Scope, intent: str) -> tuple[Scope, list[Decision], str]:
+def _apply_team_record_when(subject: Subject, scope: Scope, asked: PointShape | None) -> tuple[Scope, list[Decision], PointShape]:
     """The scope for the TEAM's record in the games a companion reached a
     line - split out of :func:`_apply_intent` for the complexity gate; see
     :func:`child_named`'s record_when rule for the shape."""
@@ -1304,35 +1385,35 @@ def _apply_team_record_when(subject: Subject, scope: Scope, intent: str) -> tupl
         # The companion's line is the record's own now: the shape is keyed on it.
         lines=(replace(condition.line, keyed=True),) if condition.line is not None else (),
     )
-    if intent != "record_when":
-        return rewritten, [Decision("subject", "intent", intent, "record_when", _TEAM_RECORD_WHEN)], "record_when"
+    if asked != LINE_RECORD:
+        return rewritten, [Decision("subject", "intent", asked_label(asked), asked_label(LINE_RECORD), _TEAM_RECORD_WHEN)], LINE_RECORD
     # Already the team's record (the parser settles it, _decide_intent): a
     # decision only where the companion is not the player the route held -
     # the player read BEFORE the scope was rewritten, since after it is his
     # by construction.
-    return rewritten, ([Decision("subject", "player", player, condition.player, _TEAM_RECORD_WHEN)] if player != condition.player else []), "record_when"
+    return rewritten, ([Decision("subject", "player", player, condition.player, _TEAM_RECORD_WHEN)] if player != condition.player else []), LINE_RECORD
 
 
-def _apply_intent(subject: Subject, scope: Scope, intent: str) -> tuple[Scope, list[Decision], str]:
+def _apply_intent(subject: Subject, scope: Scope, asked: PointShape | None) -> tuple[Scope, list[Decision], PointShape | None]:
     """Rewrite the scope for the team's record in the games a companion
     reached a line, where the reading settled on it
-    (:func:`child_named`); returns the scope, the decisions and the
-    intent the scope is now for. A child the question's words name is the
+    (:func:`child_named`); returns the scope, the decisions and what the
+    words ask the scope for now. A child the question's words name is the
     parser's own step (:func:`~association.query.parse.read_route` settles
-    the route under it), so it arrives here as the route's intent and
+    the route under it), so it arrives here as the route's key and
     nothing moves."""
-    if subject.intent == "record_when" and subject.kind in ("team", "team_players") and any(c.predicate == "reached" for c in subject.conditions):
-        return _apply_team_record_when(subject, scope, intent)
-    return scope, [], intent
+    if subject.asked == LINE_RECORD and subject.kind in ("team", "team_players") and any(c.predicate == "reached" for c in subject.conditions):
+        return _apply_team_record_when(subject, scope, asked)
+    return scope, [], asked
 
 
-def _apply_restored_player(subject: Subject, scope: Scope, intent: str) -> tuple[Scope, list[Decision]]:
+def _apply_restored_player(subject: Subject, scope: Scope, asked: PointShape | None) -> tuple[Scope, list[Decision]]:
     """Put back the one player the question names where the router left the
     player out - only for a template that cannot answer without one
-    (:data:`~association.query.reading.PLAYER_REQUIRED_INTENTS`:
+    (:data:`~association.query.reading.PLAYER_REQUIRED_ASKS`:
     "Sga record 36 plus points" came back with no player at all) or where an
     empty slot has a real, different answer, the league
-    (:data:`~association.query.reading.SUBJECT_RESTORABLE_INTENTS`:
+    (:data:`~association.query.reading.SUBJECT_RESTORABLE_ASKS`:
     "kawhi most threes in a game" answered the league's single-game leaders,
     Kawhi Leonard's own 7 never mentioned - yardstick-v2 F093). Anywhere
     else an empty player slot means the league, and filling it would turn a
@@ -1343,7 +1424,7 @@ def _apply_restored_player(subject: Subject, scope: Scope, intent: str) -> tuple
     slot IS the condition player. "Best true shooting percentage" names
     Travis Best by whole word and nobody to the reading (an ordinary word),
     so nothing is restored there."""
-    if intent not in PLAYER_REQUIRED_INTENTS | SUBJECT_RESTORABLE_INTENTS or scope.subject.players:
+    if asked not in PLAYER_REQUIRED_ASKS | SUBJECT_RESTORABLE_ASKS or scope.subject.players:
         return scope, []
     named = list(dict.fromkeys((*subject.players, *subject.companions)))
     if len(named) != 1:
@@ -1351,7 +1432,7 @@ def _apply_restored_player(subject: Subject, scope: Scope, intent: str) -> tuple
     return replace(scope, subject=replace(scope.subject, players=(named[0],))), [Decision("subject", "player", None, named[0], "from the question; the router left it out")]
 
 
-def _apply_own_team(subject: Subject, scope: Scope, intent: str) -> tuple[Scope, list[Decision]]:
+def _apply_own_team(subject: Subject, scope: Scope, asked: PointShape | None) -> tuple[Scope, list[Decision]]:
     """Put back a player's OWN team, where "for <team>" / "with the <team>"
     names one beside him and the router filed neither ``team`` nor
     ``opponent`` - yardstick-v2 F166, "lebron stats as a starter for Miami".
@@ -1362,13 +1443,13 @@ def _apply_own_team(subject: Subject, scope: Scope, intent: str) -> tuple[Scope,
     vs jazz on tuesdays" carries ``team='Los Angeles Lakers'`` beside a real
     ``opponent='Utah Jazz'``, and silently narrowed 9 meetings to 4 before
     ``own_team`` existed. Only for the templates whose relation narrows by
-    it (:data:`~association.query.reading.OWN_TEAM_RESTORABLE_INTENTS`).
+    it (:data:`~association.query.reading.OWN_TEAM_RESTORABLE_ASKS`).
 
     A historical team names a TENURE, not "now": with no season named in
     the question (:attr:`Subject.named_season`, never the router's own
     "current season" default), ``span`` becomes "career" - "for Miami"
     fifteen years into a Lakers career is not asking about this season."""
-    if intent not in OWN_TEAM_RESTORABLE_INTENTS or subject.own_team is None or not scope.subject.players:
+    if asked not in OWN_TEAM_RESTORABLE_ASKS or subject.own_team is None or not scope.subject.players:
         return scope, []
     if scope.subject.team or scope.cuts.opponent or scope.cuts.tenure:
         return scope, []
@@ -1396,19 +1477,19 @@ def _apply_filler_players(subject: Subject, scope: Scope) -> tuple[Scope, list[D
     return replace(scope, subject=replace(scope.subject, players=tuple(kept))), decisions, kept
 
 
-def _spare_names(subject: Subject, kept: list[str], intent: str) -> list[str]:
+def _spare_names(subject: Subject, kept: list[str], asked: PointShape | None) -> list[str]:
     """The question's own names not yet in the slots, which replace a router
     invention one for one: the subject's players, and for ``record_when`` -
     whose player IS the condition's - a reached companion too, whether the
     router chose ``record_when`` or the reading settled it (the team's
     question with a companion's line, under an invented player)."""
     spare = [p for p in subject.players if not _same_person(p, kept)]
-    if "record_when" in (intent, subject.intent):
+    if LINE_RECORD in (asked, subject.asked):
         spare += [c.player for c in subject.conditions if c.predicate == "reached" and not _same_person(c.player, [*kept, *spare])]
     return spare
 
 
-def _apply_players(subject: Subject, scope: Scope, intent: str = "") -> tuple[Scope, list[Decision], list[str]]:
+def _apply_players(subject: Subject, scope: Scope, asked: PointShape | None = None) -> tuple[Scope, list[Decision], list[str]]:
     """The ``player``/``players`` half of :func:`apply_subject`. For
     ``record_when``, whose player IS the condition's ("sixers record when
     maxey scored 20+"), a reached companion is a spare name the way the
@@ -1419,7 +1500,7 @@ def _apply_players(subject: Subject, scope: Scope, intent: str = "") -> tuple[Sc
         return scope, decisions, []
     dropped = [r for r in routed if r in subject.invented]
     kept = [r for r in routed if r not in dropped]
-    spare = _spare_names(subject, kept, intent)
+    spare = _spare_names(subject, kept, asked)
     if dropped and len(spare) != len(dropped):
         return scope, [], dropped
     field = _players_slot(scope)
@@ -1434,7 +1515,7 @@ def _apply_players(subject: Subject, scope: Scope, intent: str = "") -> tuple[Sc
     return replace(scope, subject=replace(scope.subject, players=tuple(new))), decisions, []
 
 
-def _apply_companions(subject: Subject, scope: Scope, intent: str) -> tuple[Scope, list[Decision]]:
+def _apply_companions(subject: Subject, scope: Scope, asked: PointShape | None) -> tuple[Scope, list[Decision]]:
     """Write every companion the reading found - an absence, a start, the
     bench, a line reached, a teammate who played, a player on the other
     side ("without KD", "when Embiid starts", "in games Maxey had 20+
@@ -1463,7 +1544,7 @@ def _apply_companions(subject: Subject, scope: Scope, intent: str) -> tuple[Scop
     # The scope holds every companion typed, the other side first, as the
     # parser wrote them before the stages.
     ordered = [*(c for c in written if c.side == "opponent"), *(c for c in written if c.side == "own")]
-    return replace(scope, companions=(*scope.companions, *ordered)), _apply_companions_decision(ordered, intent)
+    return replace(scope, companions=(*scope.companions, *ordered)), _apply_companions_decision(ordered, asked)
 
 
 def _apply_companions_to_write(subject: Subject, scope: Scope) -> list[Companion]:
@@ -1482,12 +1563,12 @@ def _apply_companions_to_write(subject: Subject, scope: Scope) -> list[Companion
     return written
 
 
-def _apply_companions_decision(ordered: list[Companion], intent: str) -> list[Decision]:
+def _apply_companions_decision(ordered: list[Companion], asked: PointShape | None) -> list[Decision]:
     """The decision that records the own-side roles in the slot shape the
     trace has always printed (the other side's players the parser wrote
     without one until Phase 3, step 2, and a teammate the with/without
     split divides by was never a condition)."""
-    recorded = [c.to_slot() for c in ordered if c.side == "own" and not c.absent and (c.predicate != "played" or intent != "with_without")]
+    recorded = [c.to_slot() for c in ordered if c.side == "own" and not c.absent and (c.predicate != "played" or asked != PRESENCE_SPLIT)]
     return [Decision("subject", "conditions", None, recorded, "the role the question gives each player named beside the subject")] if recorded else []
 
 
@@ -2057,9 +2138,9 @@ def player_named_on_a_team_only_question(players: names.PlayerIndex, teams: name
     franchise - measured live, a second run of this exact question) counts
     as no team at all rather than stopping this check.
 
-    Caller-gated to :data:`~association.query.reading.TEAM_ONLY_INTENTS`
-    (this function does not check the intent itself, the same shape the
-    subject reading's intent sets take in
+    Caller-gated to :data:`~association.query.reading.TEAM_ONLY_ASKS`
+    (this function does not check what the words ask itself, the same shape the
+    subject reading's sets take in
     :func:`apply_subject`): a REAL team already named there is the
     real subject, and a player coincidentally named beside it changes no
     answer - the same reasoning that keeps a stray name on ``head_to_head``

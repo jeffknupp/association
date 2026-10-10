@@ -28,9 +28,9 @@ from dataclasses import dataclass, fields, is_dataclass
 
 from association.nba.season import current_season
 from association.query import lexicon
-from association.query.reading import Claim, SeasonType, Span
+from association.query.reading import GAMES_COUNTED, PLAYER_LOG, PLAYER_MEETINGS, SEASON_HISTORY, Claim, PointShape, SeasonType, Span
 
-LIMIT_COUNTS_SEASONS: frozenset[str] = frozenset({"player_history"})
+LIMIT_COUNTS_SEASONS: frozenset[PointShape] = frozenset({SEASON_HISTORY})
 """Intents whose ``limit`` counts SEASONS rather than games, so a relative
 span ("the past 5 years") is that count (``router._route_relative_window``)
 and not a range of seasons.
@@ -42,8 +42,9 @@ and not a range of seasons.
 @dataclass(frozen=True, kw_only=True)
 class SpanContext:
     """What the stages settled before the span is read, and the tagger's
-    rules read beside the words: the intent they settled on; whether the
-    words name a player (a count of his games with no season is his career),
+    rules read beside the words: what they settled the words to ask
+    (``asked``, the grammar's key - an intent's name until Phase 3, step 4);
+    whether the words name a player (a count of his games with no season is his career),
     a window (a log's "last N vs the Pistons" with no season is every
     meeting), "vs", "how many" and "record"; the window as settled
     (``order``, ``limit``: a bare "last N games" log reads both season
@@ -55,7 +56,7 @@ class SpanContext:
     .. versionadded:: 6.0.0
     """
 
-    intent: str
+    asked: PointShape | None
     player_named: bool = False
     window_named: bool = False
     versus: bool = False
@@ -178,7 +179,7 @@ def _range(question: str, context: SpanContext, career: bool) -> tuple[int | Non
     relative = _relative_since(question)
     if relative is None:
         return since, None, [], ranged
-    if context.intent in LIMIT_COUNTS_SEASONS:
+    if context.asked in LIMIT_COUNTS_SEASONS:
         return since, None, [relative[1]], True
     return relative[0], None, [relative[1]], True
 
@@ -296,11 +297,11 @@ def _implied_career(question: str, context: SpanContext, career: bool) -> bool:
     2026-09-19). A season the question names, this one included, still wins."""
     if lexicon.season_from_text(question) is not None or lexicon.SEASON_WORDS.search(question):
         return False
-    if context.intent == "player_matchup" and context.record:
+    if context.asked == PLAYER_MEETINGS and context.record:
         return True
-    if context.intent == "game_log" and context.versus and (context.window_named or lexicon.LAST_WORD.search(question) or lexicon.BOTH_SEASON_TYPES_WORDS.search(question)):
+    if context.asked == PLAYER_LOG and context.versus and (context.window_named or lexicon.LAST_WORD.search(question) or lexicon.BOTH_SEASON_TYPES_WORDS.search(question)):
         return True
-    return context.intent == "threshold_count" and context.player_named and context.how_many and not career and not context.season_n
+    return context.asked == GAMES_COUNTED and context.player_named and context.how_many and not career and not context.season_n
 
 
 def _reads_both_types(question: str, context: SpanContext, career: bool, since: int | None) -> bool:
@@ -312,7 +313,7 @@ def _reads_both_types(question: str, context: SpanContext, career: bool, since: 
     fixing which games are meant - a game of a KNOWN playoff series, a
     career (no single year to mix two types within), a range of seasons,
     one calendar day - and no type named either way."""
-    if context.intent != "game_log" or context.order != "recent":
+    if context.asked != PLAYER_LOG or context.order != "recent":
         return False
     if not isinstance(context.limit, int) or context.limit < 1:
         return False

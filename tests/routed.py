@@ -30,6 +30,7 @@ from typing import Any
 from unittest import mock
 
 import duckdb
+from shapes import asked
 
 from association.query import compose
 from association.query.agent import Agent
@@ -44,10 +45,11 @@ from association.query.subject import child_named, read_subject, settle_subject
 
 
 def slots_route(intent: str, slots: Mapping[str, Any] | None = None) -> Route:
-    """The route ``intent`` and ``slots`` name, through the Scope's one door
+    """The route ``intent`` (a retired name, translated to what the words
+    ask: ``shapes.asked``) and ``slots`` name, through the Scope's one door
     (``Scope.from_slots`` raises ``ScopeError`` for a value no field holds).
     It carries no subject: :func:`with_subject` reads one."""
-    return Route(intent, Scope.from_slots(slots or {}))
+    return Route(asked(intent), Scope.from_slots(slots or {}))
 
 
 def with_subject(con: duckdb.DuckDBPyConnection, question: str, route: Route) -> Route:
@@ -58,10 +60,10 @@ def with_subject(con: duckdb.DuckDBPyConnection, question: str, route: Route) ->
     stages do not run here: a child the stages would decline stands."""
     if route.subject is not None:
         return route
-    read = read_subject(con, question, "other", route.scope)
-    named = child_named(read, route.intent, question)
-    intent, words = named if named is not None else (route.intent, None)
-    return replace(route, intent=intent, subject=settle_subject(read, intent, parent=route.intent, words=words))
+    read = read_subject(con, question, None, route.scope)
+    named = child_named(read, route.asked, question)
+    chosen, words = named if named is not None else (route.asked, None)
+    return replace(route, asked=chosen, subject=settle_subject(read, chosen, parent=route.asked, words=words))
 
 
 def ask_routed(agent: Agent, question: str, route: Route, *, label: str = "") -> Answer:
@@ -90,7 +92,7 @@ def default_reading(intent: str, slots: Mapping[str, Any]) -> Reading:
     ``compose.adapt.to_reading`` gave (deleted with the last adapter in
     Phase 2, step 3; tests were its only callers) -
     :func:`~association.query.point.default_point` over the typed scope."""
-    return default_point(intent, Scope.from_slots(dict(slots)))
+    return default_point(asked(intent), Scope.from_slots(dict(slots)))
 
 
 def default_query(intent: str, slots: Mapping[str, Any]) -> Query:
@@ -121,11 +123,12 @@ def staged(intent: str, slots: Mapping[str, Any], question: str, companions: tup
     """The stages (``router.settle``) over a test's slot dict, its names
     handed typed (:func:`handed`) and the rest - the model's stat, a test's
     side, shot value and columns - as the slots."""
-    return settle(intent, {key: value for key, value in slots.items() if key not in _NAME_SLOTS}, question, companions, lines=lines, handed=handed(question, slots))
+    return settle(asked(intent), {key: value for key, value in slots.items() if key not in _NAME_SLOTS}, question, companions, lines=lines, handed=handed(question, slots))
 
 
 def staged_raw(raw: Mapping[str, Any], question: str, companions: tuple[Companion, ...] = ()) -> Route:
     """The stages (``router._settle``) over a raw route a test spells as the
     router's model reply did (the intent and its slots), its names handed
     typed (:func:`handed`)."""
-    return _settle({key: value for key, value in raw.items() if key not in _NAME_SLOTS}, question, companions, handed=handed(question, raw))
+    given = {key: value for key, value in raw.items() if key not in _NAME_SLOTS and key != "intent"}
+    return _settle({**given, "asked": asked(raw["intent"])}, question, companions, handed=handed(question, raw))

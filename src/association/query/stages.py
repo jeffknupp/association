@@ -41,6 +41,8 @@ from decimal import Decimal
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from association.query.reading import PRESENCE_SPLIT
+
 if TYPE_CHECKING:
     from association.query.answer import Answer
     from association.query.compose.plan import Planned
@@ -165,13 +167,14 @@ def _reading_record(reading: Reading, mask: Mapping[str, str] | None) -> dict[st
         settled = reading.point.subject_span
         point["span"] = "career" if settled is not None and settled.career else None
         point["season"] = settled.season if settled is not None else None
-        point["scope"] = plain(reading.point.scope.to_slots(split_by_presence=reading.point.intent == "with_without" or reading.point.group == "presence"), mask=mask)
-        # Whose default the point is: the planner declines by it until
-        # intent leaves the reader (Phase 3).
+        point["scope"] = plain(reading.point.scope.to_slots(split_by_presence=reading.point.asked == PRESENCE_SPLIT or reading.point.group == "presence"), mask=mask)
+        # Whose default the point is, as its label: what the words asked
+        # (``Reading.asked``) since Phase 3, step 4, recorded as the
+        # retired intent's name it was.
         point["intent"] = reading.point.intent
     return {
         "intent": reading.intent,
-        "scope": plain(reading.scope.to_slots(split_by_presence=reading.intent == "with_without"), mask=mask),
+        "scope": plain(reading.scope.to_slots(split_by_presence=reading.asked == PRESENCE_SPLIT), mask=mask),
         # Who the read is about, the span, the window, the games' cuts, the
         # period, the lines, the companions and the measure as the reader
         # typed them (Phase 3, step 2), beside the scope's slot-era
