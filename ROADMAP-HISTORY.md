@@ -1065,6 +1065,36 @@ agents' reports named here are in `~/association-research/stages/`.
     six commits (one conflict, the changelog) and a fresh four-population
     run on both trees.
 
+27. **Phase 3, step 2, the period (2026-10-09).** The fourth family, the
+    smallest, on the pattern of the three before it: one Fable agent at
+    medium effort measured the two period slots on all 2,710 readings
+    first - which stage set each, by which words, which intent the words
+    chose, and what the relation resolved them to (a quarter on 79, a half
+    on 41; no stage moved a slot) - and found that the words name a period
+    on 128 readings while 120 carry one: the two period conditions, whose
+    words the parser cuts before the stages see them, and six readings on
+    a subject nothing resolved, which the point's guard declines. What
+    moved: `reading.Period(number, half)` on `Scope.period`, one cell in
+    both relation tables where the slots had two (the 22 paired exclusion
+    rows are 11), `query/period.py` the one tagger with `which_period` the
+    one reader of which period any words name - the intent stage and the
+    condition's reader both read through it - and thirteen named patterns
+    in the lexicon, three of them copies collapsed (the point's guard, the
+    parser's three grammar rows, the condition's pattern); `router.py` 95
+    lines shorter. Proved identical on all four populations through the
+    projection, the relation's resolution re-held on 2,710 of 2,710, the
+    ledger identical at 709, no claim joined with another tagger's. What
+    it taught: the six unread-subject readings are the first measured case
+    of the target's rule that the planner, not the stage, should refuse a
+    cell on a reader that takes none - ported as the stages wrote them and
+    recorded as a decline-to-Cause commit (open item 3); an overtime
+    period is words nothing reads today, and "an overtime game" is a
+    games' cut, not a period, so it is filed and not read; and the parser's
+    cut of a condition's words leaves a latent offset for every claim
+    after them, which the line slice closes by blanking instead of
+    cutting. Cost: no rebase (master had not moved) and a fresh
+    four-population run on both trees.
+
 ## The plan items, as written
 
 In order of lift per unit of structural change, each measured on the

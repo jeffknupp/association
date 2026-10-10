@@ -2207,6 +2207,7 @@ those were found.
 - **Next step:** two shapes to tell apart from the words: an overtime PERIOD's figures ("points in overtime", "in ot", "3rd overtime") as `Period(number=5+)`, which the relations already apply; and a game that went to overtime as a games' cut (the draft's `Calendar`-like circumstance, over `games`' period count). Each a decline-to-Cause commit with the 4 feed answers enumerated.
 - **Priority:** P3 - a refusal where an answer exists; 4 feed readings, none of the 628.
 - **Source:** ours.
+- **GitHub:** #355
 
 ### A condition read's covered scope reads a range's first season and not its last: a split, a run or a matchup "from 2019-20 to 2023-24" with nothing to show is refused "since 2019"
 - **Found:** 2026-10-09, Phase 3, step 2 (the span typed): `player_relation.condition_scope` takes the typed `Span` now and its docstring says so - the retired bodies it serves (`compose.splits`, `compose.runs` through `core.run_scope`, `compose.pairs`) passed `since` alone, never `until`, and still do.
@@ -2839,6 +2840,7 @@ those were found.
 - **Next step:** the line slice, which claims the condition's span, keeps the question's length - blank the condition's characters to spaces of the same length rather than cutting them (measured on the four populations: a run of spaces in place of the words must move no reading), or keep the original offsets by adding the cut's length back to every claim after it.
 - **Priority:** P4 - no recorded claim is wrong; a latent offset for the line slice to close.
 - **Source:** ours.
+- **GitHub:** #356
 
 ### A month is read from the words of a day in it: "in march 24 2018" narrows by the month and the day, and the answer says both
 - **Found:** 2026-10-09, Phase 3, step 2, the games' cuts (the cuts tagger's claims: the situation's "in march" and the day's "march 24 2018" overlap on one word).
