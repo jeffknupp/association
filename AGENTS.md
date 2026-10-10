@@ -1600,11 +1600,14 @@ model's. Two things follow, and both matter when you add a shape:
   until Phase 3, step 2). Note why the word list can be
   loose there and could not be anywhere else: for a comparison, a missed word
   widens the answer to a line that still holds the stat asked about, while
-  `leaderboard` with no stat has nothing to rank by. The same drop takes a
-  measure the WORDS named where the list misses its word ("grayson allen 3s
-  made last season": "3s" is a box-score word and no `STAT_WORDS` word, so
-  the 3-pointers the grammar read are dropped and his points line answers) -
-  filed, since a fix moves answers (ISSUES.md).
+  `leaderboard` with no stat has nothing to rank by. The drop is the
+  MODEL's key's alone: until the measure slice it took a measure the WORDS
+  named where the list missed its word ("grayson allen 3s made last
+  season": "3s" is a box-score word and no `STAT_WORDS` word, so the
+  3-pointers the grammar read went with the key and his points line
+  answered; 6 feed answers moved when the rule was narrowed, each named in
+  the commit). The comparison keeps dropping the words' key too - its whole
+  line holds the stat, and its reader refuses a named one.
 
   Two ways out, and prefer the second. Making a slot *required* works (that
   is why `stat` is) but was measured and reverted for the router's

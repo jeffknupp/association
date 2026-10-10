@@ -624,7 +624,7 @@ def read_measure(question: str, context: MeasureContext) -> MeasureRead:
     if worded is not None:
         key = worded[0]
         claims.append(worded[1])
-    key = _key_by_intent(question, context, key, claims)
+    key = _key_by_intent(question, context, key, from_words=worded is not None)
     key = _key_by_words(question, context, key, claims)
     key, unit = _rate(question, context, key, claims)
     how: MeasureHow | None = None
@@ -662,13 +662,18 @@ def read_measure(question: str, context: MeasureContext) -> MeasureRead:
     return MeasureRead(measure, distinct)
 
 
-def _key_by_intent(question: str, context: MeasureContext, key: str | None, claims: list[Claim]) -> str | None:
+def _key_by_intent(question: str, context: MeasureContext, key: str | None, *, from_words: bool) -> str | None:
     """The key the intent stages wrote or dropped as they chose the intent:
     fouling out is the count's own stat; a games count on a line's reader
     is no measure (a log of his games, a line's "how many games did he
     play"); a quarter's or a half's stat is kept only where the words name
     one (the model fills the required key whether or not they do); a
-    comparison's, a line's, a team's and a run's likewise."""
+    comparison's, a line's, a team's and a run's likewise. The drop is the
+    MODEL's key's alone (``from_words`` False): a measure the words named
+    stands whether or not the stat-word list knows its word - "grayson
+    allen 3s made last season" answered his points line while the drop took
+    the grammar's 3-pointers with the model's key (ISSUES.md, closed with
+    this rule; 3 feed answers moved, each named in the commit)."""
     intent = context.intent
     fouled = lexicon.FOULED_OUT.search(question)
     if fouled is not None and intent == "threshold_count":
@@ -677,10 +682,17 @@ def _key_by_intent(question: str, context: MeasureContext, key: str | None, clai
         key = None
     if intent == "player_stat" and key in GAMES_STATS and lexicon.HOW_MANY_GAMES.search(question) and not context.order_named:
         key = None
-    if intent in ("period_split", "period_leaderboard", "player_compare", "player_stat", "streak") and not names_a_stat(question):
+    if intent == "player_compare" and not names_a_stat(question):
+        # The comparison's whole line holds the stat asked about, and its
+        # reader refuses a named one outright - the words' key too ("compare
+        # luka and sga in netpts" answered the line with NetPoints in it, and
+        # kept it would be refused).
         key = None
-    if intent == "team_stat" and not (names_a_stat(question) or lexicon.TEAM_STAT_WORDS.search(question)):
-        key = None
+    if not from_words:
+        if intent in ("period_split", "period_leaderboard", "player_stat", "streak") and not names_a_stat(question):
+            key = None
+        if intent == "team_stat" and not (names_a_stat(question) or lexicon.TEAM_STAT_WORDS.search(question)):
+            key = None
     if lexicon.TRIPLE_DOUBLE_ABBREVIATION.search(question):
         key = "triple_double"
     return key

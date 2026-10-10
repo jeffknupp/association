@@ -91,6 +91,13 @@ def _read(question: str, intent: str, key: str | None = None, **context: Any) ->
         ("Show me Wembanyama's defensive fingerprint chart", "fingerprint", None, Measure(side="defense")),
         ("what was steph curry's avg 3pt shot distance", "shot_distance", None, Measure(shot_value=3)),
         ("Top 5 scorers with their rebounds and assists", "leaderboard", "points", Measure(key="points", as_typed="points", beside=("rebounds", "assists"))),
+        # A measure the WORDS name stands on a whole-line reader whether or not the stat-word list knows its word (the drop is the model's key's alone):
+        # "3s", "3pm" and "rebs" are box-score words and no STAT_WORDS word, and each answered the default line until this slice (ISSUES.md, closed).
+        ("grayson allen 3s made last season", "player_stat", None, measure_of("threePointFieldGoalsMade")),
+        ("klay 3pm each HOME game LAST season", "player_stat", None, measure_of("threePointFieldGoalsMade")),
+        ("Michael porter Rebs 2h vs mavericks game log", "period_split", None, Measure(key="rebounds", as_typed="rebounds", how="per_game")),
+        # The comparison's whole line holds the stat asked about, and its reader refuses a named one: the words' key is dropped there too.
+        ("compare luka and sga in netpts", "player_compare", None, None),
         # Fouling out is the count's own stat; a games count is no measure; "td3s" is a triple-double and never a shot.
         ("how many times has embiid fouled out", "threshold_count", "fouls", measure_of("fouls")),
         ("how many games did embiid play", "player_stat", "games_played", None),
