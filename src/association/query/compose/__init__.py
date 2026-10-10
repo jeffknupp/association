@@ -46,7 +46,7 @@ import duckdb
 
 from association.query.answer import AnswerContext, Reply
 from association.query.coverage import coverage_refusal
-from association.query.reading import SHAPE_NAMES, PointShape
+from association.query.reading import SHAPE_NAMES, Cause, PointShape, ShapeDeclined
 from association.query.result import Result, Unanswered
 
 from .core import Query, Refused, Unsupported, run
@@ -132,6 +132,7 @@ def answer(
     planned: Planned,
     trace: Callable[[Reading], None] | None = None,
     declined: Callable[[str], None] | None = None,
+    declined_by: Callable[[Cause], None] | None = None,
 ) -> Reply | None:
     """The point the parser read for a question (:attr:`Reading.point`,
     :func:`~association.query.parse.reading_from_route`), answered - run,
@@ -143,7 +144,11 @@ def answer(
     (:attr:`~association.query.compose.plan.Planned.refusal`), and a decline
     is ``None`` - the question is not a point on this relation, or carries a
     narrowing the relation cannot honor, and the caller refuses it - with
-    the reason given to ``declined``.
+    the reason given to ``declined``, and - where the decline is a shape's,
+    by a cause the planner says (:class:`~association.query.reading.ShapeDeclined`:
+    a narrowing the shape cannot honor, a point its only reader reads
+    nothing of) - that cause to ``declined_by``, which puts the page's
+    label on it.
 
     ``Refused`` (the relation itself refusing - no such player, an ambiguous
     name, a coverage floor) is returned as the answer: a handled outcome
@@ -193,6 +198,9 @@ def answer(
        (:class:`~association.query.reading.PointShape`), where it read
        the reading's intent (the Phase 2 review's cleanup (b)6); a reader's
        refusal or question is typed and said by the sayer.
+
+    .. versionchanged:: 6.0.0
+       Takes ``declined_by``: a shape's decline is a cause (Phase 3, step 4).
     """
     verdict = planned
     if verdict.refusal is not None:
@@ -201,8 +209,10 @@ def answer(
     if verdict.query is None or reading.point is None:
         if declined is not None:
             declined(verdict.declined or "the compiler has no reading of this point")
+        if declined_by is not None and verdict.cause is not None:
+            declined_by(verdict.cause)
         return None
-    return _answer_point(ctx, reading.point, verdict, trace, declined)
+    return _answer_point(ctx, reading.point, verdict, trace, declined, declined_by)
 
 
 def _read_log(read: Callable[[], Result | Unanswered | None]) -> Reply | None:
@@ -222,13 +232,14 @@ def _read_only(read: Callable[[], Result | Unanswered | None], name: str) -> Res
     template was: a cell the reader refuses while reading is the compiler's
     decline with the reader's own reason (no prefix), and a point it does
     not read is declined too, named by its words (``name``), never handed
-    to the compiler's sentence."""
+    to the compiler's sentence - by a cause the planner says
+    (``no_reading_of_point``, :class:`~association.query.reading.ShapeDeclined`)."""
     try:
         found = read()
     except Unsupported as exc:
         raise Unsupported(str(exc)) from exc
     if found is None:
-        raise Unsupported(f"{name} has no reading of this point")
+        raise ShapeDeclined("no_reading_of_point", {"name": name}, f"{name} has no reading of this point")
     return found
 
 
@@ -299,7 +310,7 @@ def _read(con: duckdb.DuckDBPyConnection, shape: PointShape, query: Query | Team
     unhonored = cells_unhonored(query.scope, shape)
     found = shape_cells(shape)
     if unhonored and found is not None and found[1].declined == "read":
-        raise Unsupported(beyond_words(SHAPE_NAMES[shape], unhonored))
+        raise beyond_words(SHAPE_NAMES[shape], unhonored)
     if route.only:
         return _read_only(lambda: None if unhonored else route.reader(con, query), SHAPE_NAMES[shape])
     return None if unhonored else _read_log(lambda: route.reader(con, query))
@@ -334,7 +345,7 @@ def _said(read: Result | Unanswered | Reply | None) -> Reply | None:
     return say(read)
 
 
-def _team_season_first(con: duckdb.DuckDBPyConnection, shape: PointShape, query: Query | TeamQuery) -> tuple[Reply | None, str | None]:
+def _team_season_first(con: duckdb.DuckDBPyConnection, shape: PointShape, query: Query | TeamQuery) -> tuple[Reply | None, Unsupported | None]:
     """A team's own season read for a point planned on another relation (a
     team's own total, "how many 3-pointers have the Magic made"): the same
     scope on the team-season relation first, as the retired template was
@@ -344,7 +355,7 @@ def _team_season_first(con: duckdb.DuckDBPyConnection, shape: PointShape, query:
     try:
         return _said(_read(con, shape, season_query)), None
     except Unsupported as exc:
-        return None, str(exc)
+        return None, exc
 
 
 def _answer_point(
@@ -353,6 +364,7 @@ def _answer_point(
     planned: Planned,
     trace: Callable[[Reading], None] | None,
     declined: Callable[[str], None] | None,
+    declined_by: Callable[[Cause], None] | None = None,
 ) -> Reply | None:
     """``point``'s planned query, run by its shape (``planned.shape``): a
     declared relation's reader, a team's own season (and, for a point
@@ -364,7 +376,7 @@ def _answer_point(
     assert query is not None and shape is not None
     # The team-season reader's decline is the one said where every reader
     # declines: the retired template's reason was, since it ran first.
-    season_declined: str | None = None
+    season_declined: Unsupported | None = None
     try:
         if trace is not None:
             trace(point)
@@ -391,8 +403,11 @@ def _answer_point(
             return ported
         out = run(ctx.con, query)
     except Unsupported as exc:
+        reason = season_declined or exc
         if declined is not None:
-            declined(season_declined or str(exc))
+            declined(str(reason))
+        if declined_by is not None and isinstance(reason, ShapeDeclined):
+            declined_by(reason.cause)
         return None
     except Refused as exc:
         return say(exc.result)

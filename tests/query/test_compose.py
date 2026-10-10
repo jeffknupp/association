@@ -1964,6 +1964,8 @@ _CAUSE_EXAMPLES: dict[str, dict[str, Any]] = {
     "team_period_stat": {"intent": "team_quarter_points", "stat": "plusMinus"},
     "bench_points": {"intent": "team_leaderboard"},
     "team_boolean_count": {"intent": "leaderboard", "stat": "triple_double"},
+    "cannot_honor": {"intent": "with_without", "name": "with_without", "slots": ["since", "until"], "without": None, "why": "it would answer for a different span than was asked"},
+    "no_reading_of_point": {"intent": "team_record", "name": "team_record"},
 }
 
 #: The kinds whose ``intent`` fact is the page's, shown beside the sentence
@@ -1993,6 +1995,13 @@ def test_every_cause_a_reading_refuses_by_is_said_naming_its_fact() -> None:
             ):
                 assert value in said, (kind, value, said)
     assert refusal_result(Cause(kind="matchup_needs_two", facts={"names": []})).answer == "A matchup needs two players, and none was read."
+    # A shape's decline, said word for word as the decline it was (Phase 3, step 4).
+    assert refusal_result(Cause(kind="cannot_honor", facts=_CAUSE_EXAMPLES["cannot_honor"])).answer == (
+        "Nothing here answers this question: with_without: with_without cannot honor ['since', 'until'] - it would answer for a different span than was asked."
+    )
+    assert refusal_result(
+        Cause(kind="cannot_honor", facts={"intent": "streak", "name": "streak", "slots": ["situation"], "without": "team or player", "why": "the league-wide streak has no single subject to narrow"})
+    ).answer == ("Nothing here answers this question: streak: streak cannot honor ['situation'] without a named team or player - the league-wide streak has no single subject to narrow.")
     assert refusal_result(Cause(kind="needs_threshold", facts={"intent": "streak", "stat": "threePointFieldGoalsMade"})).answer == (
         "A streak needs the number of 3-pointers each game has to reach, and none was read."
     )

@@ -34,7 +34,7 @@ import duckdb
 from association.nba.season import calendar_season, season_on_record
 from association.query.answer import AnswerContext, Reply
 from association.query.coverage import check_coverage, coverage_caveat
-from association.query.reading import PLAYER_ASKS, PRESENCE_SPLIT
+from association.query.reading import PLAYER_ASKS, PRESENCE_SPLIT, Cause, ShapeDeclined
 
 from .answer import Answer, AnsweredBy, Artifact, Timing
 from .compose.plan import Planned, plan_point, refusal_result
@@ -416,11 +416,16 @@ class Agent:
         refused, never answered from nothing; and a shape nothing here reads
         is refused by name - the first thing the words name that nothing
         reads (:attr:`Reading.unsupported <association.query.reading.Reading.unsupported>`),
-        said by the planner."""
+        said by the planner. A shape's own decline - a narrowing it cannot
+        honor, a point its only reader reads nothing of - is a cause the
+        planner says in the decline's own sentence (``cannot_honor``,
+        ``no_reading_of_point``), at the decline's place in this order,
+        answered: a refusal that names why is an answer (Phase 3, step 4)."""
         t0 = time.monotonic()
         intent, scope = reading.intent, reading.scope
         declined: list[str] = []
-        composed = self._try_compose(reading, history, declined=declined.append)
+        causes: list[Cause] = []
+        composed = self._try_compose(reading, history, declined=declined.append, declined_by=causes.append)
         if composed is not None:
             history.record_tool_call(f"compose {intent}", time.monotonic() - t0)
             return intent, composed
@@ -439,11 +444,16 @@ class Agent:
             refusal = refusal_result(reading.unsupported[0])
             history.log(f"  -> (compose) {why} - refused ({reading.unsupported[0].kind}): nothing here reads that shape")
             return intent, refusal
+        if causes:
+            # The shape's decline, by its cause, said by the planner where
+            # the plain decline was - the same sentence.
+            history.log(f"  -> (compose) {why} - refused ({causes[0].kind})")
+            return intent, refusal_result(ShapeDeclined.labeled(causes[0], intent))
         history.log(f"  -> (compose) {why}: refused")
         self.unanswered = f"{intent}: {why}"
         return None
 
-    def _try_compose(self, reading: Reading, history: RunHistory, declined: Callable[[str], None] | None = None) -> Reply | None:
+    def _try_compose(self, reading: Reading, history: RunHistory, declined: Callable[[str], None] | None = None, declined_by: Callable[[Cause], None] | None = None) -> Reply | None:
         """The compiler's answer to the point the parser read
         (``association.query.compose.answer``): the compiled intents' only
         answer. The name readings the reader noted and the coverage caveat
@@ -465,6 +475,7 @@ class Agent:
                 reading,
                 trace=lambda point: history.log(f"  -> (reading) {point.describe()}"),
                 declined=declined,
+                declined_by=declined_by,
                 planned=self.planned,
             )
         if composed is None:

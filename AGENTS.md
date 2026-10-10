@@ -1407,10 +1407,11 @@ model's. Two things follow, and both matter when you add a shape:
     tables are keyed by it (`RELATION_SCOPING_EXCLUDED`,
     `TEAM_RELATION_SCOPING_EXCLUDED`, one row per route since step 2's
     closing slice); `reading.SHAPE_NAMES` keeps a retired template's name
-    for the page's label and the decline sentence ("game_log has no reading
-    of this point", the ported shapes' "cannot honor") alone, ONE table
-    keyed by the shape - the asked key for the label, the planned key for a
-    decline - which Phase 4 deletes with the renderers; `coverage.SOURCES`
+    for the page's label and the name a shape's decline cause carries
+    alone (`cannot_honor`: "player_compare cannot honor ['since'] - ...";
+    `no_reading_of_point`: "game_log has no reading of this point"), ONE
+    table keyed by the shape - the asked key for the label, the planned key
+    for a decline - which Phase 4 deletes with the renderers; `coverage.SOURCES`
     is keyed by it (below). `shape_of`, `SHAPE_WORDS`, `words_stated`, `Planned.floor`
     and the three `# Phase 3: needs ...` markers are gone. `say()` chooses the
     sayer from the headline body's type and the one field that says what
@@ -1595,7 +1596,16 @@ model's. Two things follow, and both matter when you add a shape:
   is answered `answered_by="fast"`, the intent kept, with the name
   readings and the coverage caveat attached - including when it is itself
   a refusal (a clarification, a "no match"): looking at the question and
-  having something to say about it is an answer. `None` is refused with
+  having something to say about it is an answer. A shape's own decline -
+  a narrowing its words do not state, a point its only reader reads
+  nothing of - is a cause since Phase 3, step 4
+  (`reading.ShapeDeclined`, raised by `compose.plan.cells_declined` and
+  `compose._read`, its cause on `Planned.cause` or handed to
+  `compose.answer`'s `declined_by`; `cannot_honor`,
+  `no_reading_of_point`), said by the planner in the decline's own
+  sentence, word for word, at the decline's place - after the floor and
+  the reading's causes - and answered `"fast"`: 6 of the 628 and 63 of
+  the 2,082 moved so, nothing else. `None` is refused with
   the compiler's reason (`Planned.declined`), after the coverage floor
   and the reading's own causes have had their look: a refusal the words
   come to before any point (`Reading.refused` - a championship, a player

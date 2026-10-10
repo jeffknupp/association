@@ -18,7 +18,7 @@ from association.query.measure import spelled
 from association.query.measures import stat_measure
 from association.query.player_relation import RELATION_SCOPING, RELATION_SCOPING_EXCLUDED
 from association.query.point import TEAM_SEASON_POINTS, team_season_point
-from association.query.reading import SHAPE_NAMES, Cause, Measure, PointShape, Reading, Scope, ShapeCells, _career_scope, cell_set, cell_slots
+from association.query.reading import SHAPE_NAMES, Cause, Measure, PointShape, Reading, Scope, ShapeCells, ShapeDeclined, _career_scope, cell_set, cell_slots
 from association.query.result import Refusal
 from association.query.team_relation import TEAM_RELATION_SCOPING, TEAM_RELATION_SCOPING_EXCLUDED
 
@@ -148,18 +148,42 @@ _NOT_THE_RELATIONS = "the relation carries no such cell"
 _BOTH_HALVES = "the bare starter/bench category is a table of both halves; this reader honors one named half"
 
 
-def beyond_words(name: str, unhonored: list[tuple[str, str, str]]) -> str:
-    """The sentence a shape's reader is declined in, where it is the point's
-    only answer and the point sets ``unhonored`` (:func:`cells_unhonored`):
-    "<name> cannot honor [...] - it would answer for a different span than
-    was asked", the slots as the retired scope check listed them.
+#: Why a shape's reader is declined for a cell its words do not state,
+#: where it is the point's only answer (:func:`beyond_words`).
+_BEYOND_WORDS = "it would answer for a different span than was asked"
+
+
+def cannot_honor(name: str, slots: list[str], why: str, *, without: str | None = None) -> ShapeDeclined:
+    """The decline of a narrowing the shape ``name`` cannot honor - the
+    ``cannot_honor`` :class:`~association.query.reading.Cause` the planner
+    says, its facts the shape's retired name, the ``slots`` the point sets,
+    the subject a cell needs and the point has none of (``without``) and
+    the row's reason (``why``) - with the decline's sentence, "<name> cannot
+    honor [...] - <why>", as its message.
 
     .. versionadded:: 6.0.0
     """
-    return f"{name} cannot honor {[slot for slot, _, _ in unhonored]} - it would answer for a different span than was asked"
+    message = f"{name} cannot honor {slots}" + (f" without a named {without}" if without else "") + f" - {why}"
+    return ShapeDeclined("cannot_honor", {"name": name, "slots": list(slots), "without": without, "why": why}, message)
 
 
-def cells_declined(point: Reading, key: PointShape) -> str | None:
+def beyond_words(name: str, unhonored: list[tuple[str, str, str]]) -> ShapeDeclined:
+    """The decline a shape's reader is declined in, where it is the point's
+    only answer and the point sets ``unhonored`` (:func:`cells_unhonored`):
+    "<name> cannot honor [...] - it would answer for a different span than
+    was asked", the slots as the retired scope check listed them
+    (:func:`cannot_honor`).
+
+    .. versionadded:: 6.0.0
+
+    .. versionchanged:: 6.0.0
+       The typed decline (:class:`~association.query.reading.ShapeDeclined`),
+       its sentence the message; the sentence alone until Phase 3, step 4.
+    """
+    return cannot_honor(name, [slot for slot, _, _ in unhonored], _BEYOND_WORDS)
+
+
+def cells_declined(point: Reading, key: PointShape) -> ShapeDeclined | None:
     """The planner's refusal of a cell the point's shape (``key``) cannot
     honor beyond its relation's cells - why it declines the point, or None.
     In the order the slot-era checks ran, each a field of the shape's row
@@ -177,6 +201,11 @@ def cells_declined(point: Reading, key: PointShape) -> str | None:
     ``_excluded_cells_set``.
 
     .. versionadded:: 6.0.0
+
+    .. versionchanged:: 6.0.0
+       Returns the typed decline (:class:`~association.query.reading.ShapeDeclined`,
+       the ``cannot_honor`` cause the planner says), its sentence the
+       message; the sentence alone until Phase 3, step 4.
     """
     found = shape_cells(key)
     if found is None:
@@ -186,13 +215,13 @@ def cells_declined(point: Reading, key: PointShape) -> str | None:
     if point.relation != "player":
         claimed = sorted(slot for cell in row.named_player for slot in cell_slots(scope, cell))
         if claimed:
-            return f"{name} cannot honor {claimed} without a named player - only his own games can be narrowed that way"
+            return cannot_honor(name, claimed, "only his own games can be narrowed that way", without="player")
         claimed = sorted(cell for cell in row.named_subject if cell_set(scope, cell)) if scope.subject.team is None else []
         if claimed:
-            return f"{name} cannot honor {claimed} without a named team or player - the league-wide streak has no single subject to narrow"
+            return cannot_honor(name, claimed, "the league-wide streak has no single subject to narrow", without="team or player")
     refused = [(slot, cell) for cell in row.unstated if cell in row.refused for slot in cell_slots(scope, cell)]
     if refused:
-        return f"{name} cannot honor {[slot for slot, _ in refused]} - {row.unstated[refused[0][1]]}"
+        return cannot_honor(name, [slot for slot, _ in refused], row.unstated[refused[0][1]])
     if row.declined == "plan":
         unhonored = cells_unhonored(scope, key)
         if unhonored:
@@ -234,7 +263,7 @@ def plan(reading: Reading) -> Query | TeamQuery | TeamSeasonQuery | NetPointsQue
             raise
         unhonored = cells_unhonored(reading.scope, key)
         if unhonored:
-            raise Unsupported(beyond_words(SHAPE_NAMES[key], unhonored)) from exc
+            raise beyond_words(SHAPE_NAMES[key], unhonored) from exc
         return _team_season_query(team_season_point(key, reading.scope))
 
 
@@ -272,7 +301,7 @@ def _plan(reading: Reading) -> Query | TeamQuery | TeamSeasonQuery | NetPointsQu
     key = point_shape(reading)
     declined = cells_declined(reading, key)
     if declined is not None:
-        raise Unsupported(declined)
+        raise declined
     if reading.relation == "netpoints":
         # A declared relation's point (Phase 2, slice (v)): its reader reads
         # the scope as the retired template read its slots.
@@ -395,6 +424,14 @@ class Planned:
     #: refusal alike - so the answering loop's declined path checks the
     #: floor of the point the words named.
     shape: PointShape | None = None
+    #: The cause a decline is said by, where the planner declined by one
+    #: (:class:`~association.query.reading.ShapeDeclined`: a narrowing the
+    #: point's shape cannot honor) - said by the answering loop where the
+    #: decline was, after the floor and the reading's own causes
+    #: (:func:`refusal_result`); ``declined`` keeps its sentence, the record's.
+    #:
+    #: .. versionadded:: 6.0.0
+    cause: Cause | None = None
 
 
 #: The reading's causes whose page names the shape refused (``refused``)
@@ -470,6 +507,10 @@ def plan_point(reading: Reading) -> Planned:
     shape = point_shape(reading.point)
     try:
         query = plan(reading.point)
+    except ShapeDeclined as exc:
+        # A decline the planner says by its cause (the answering loop puts
+        # the page's label on it, ShapeDeclined.labeled).
+        return Planned(declined=str(exc), shape=shape, cause=exc.cause)
     except Unsupported as exc:
         return Planned(declined=str(exc), shape=shape)
     except Refused as exc:

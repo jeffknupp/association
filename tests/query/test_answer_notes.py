@@ -91,7 +91,7 @@ def _agent(tmp_path: Path) -> Agent:
 
 
 def test_the_answer_carries_what_was_written_for_it_and_the_agent_names_what_was_dropped(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    def answered(ctx: object, reading: object, trace: object = None, declined: object = None, planned: object = None, ran: object = None) -> Reply:
+    def answered(ctx: object, reading: object, trace: object = None, declined: object = None, planned: object = None, ran: object = None, declined_by: object = None) -> Reply:
         said = note("games_unseen", " 5 of these games have no box score.", games=5, why="empty_box_score")
         note("floor", "Box scores start with 1994.", table="box_scores", first=1994)  # computed, never attached
         text = "53 points" + decided("minimum", ", minimum 20 games", field="minimum", chose=20, of="games") + "." + said
@@ -104,7 +104,7 @@ def test_the_answer_carries_what_was_written_for_it_and_the_agent_names_what_was
     assert [(d.kind, d.after, d.facts) for d in answer.decisions if d.kind] == [("minimum", 20, {"of": "games"})]
     assert agent.unsaid == ["floor"]
     # The next question starts clean.
-    monkeypatch.setattr("association.query.compose.answer", lambda ctx, reading, trace=None, declined=None, planned=None: Reply(data={}, answer="plain"))
+    monkeypatch.setattr("association.query.compose.answer", lambda ctx, reading, trace=None, declined=None, planned=None, declined_by=None: Reply(data={}, answer="plain"))
     plain = ask_routed(agent, "who scored the most points", slots_route("leaderboard", {"stat": "points"}))
     assert plain.notes == () and agent.unsaid == [] and not [d for d in plain.decisions if d.kind]
 

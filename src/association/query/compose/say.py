@@ -4216,7 +4216,24 @@ _WORDS_PHRASES: dict[str, Callable[[Mapping[str, Any]], str]] = {
         "Ask for a named player's points, or a team's points, instead."
     ),
     "team_boolean_count": _say_team_boolean_count,
+    "cannot_honor": lambda facts: _shape_declined(facts, f"{facts['name']} cannot honor {list(facts['slots'])}{_without_named(facts)} - {facts['why']}"),
+    "no_reading_of_point": lambda facts: _shape_declined(facts, f"{facts['name']} has no reading of this point"),
 }
+
+
+def _shape_declined(facts: Mapping[str, Any], decline: str) -> str:
+    """A shape's decline as the user has always read it - the answering
+    loop's sentence for a question nothing answered
+    (``agent.refusal_text``), under the page's label, word for word: Phase
+    3, step 4 made each a cause the planner says (``cannot_honor``,
+    ``no_reading_of_point``), and the sentence did not move."""
+    return f"Nothing here answers this question: {facts['intent']}: {decline}."
+
+
+def _without_named(facts: Mapping[str, Any]) -> str:
+    """The subject a ``cannot_honor`` cell needs and the point has none of
+    ("without a named player"), or nothing."""
+    return f" without a named {facts['without']}" if facts.get("without") else ""
 
 
 #: A reading's causes said by a phrase of their own rather than the shape

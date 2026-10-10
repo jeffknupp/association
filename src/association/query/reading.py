@@ -1979,6 +1979,8 @@ CAUSES: frozenset[str] = frozenset(
         "team_period_stat",
         "bench_points",
         "team_boolean_count",
+        "cannot_honor",
+        "no_reading_of_point",
     }
 )
 """The closed set of causes a point reading refuses by (:class:`Cause.kind`),
@@ -2030,7 +2032,17 @@ missing thing, never only the slot"):
   triple-doubles (``team_boolean_count``: ``intent``, ``stat``). Each was
   ``refusals.unanswerable``'s check, asked by the answering loop with the
   question until Phase 3, step 0; their ``intent`` is what the page shows
-  beside the sentence (``refused`` and ``intent``, as it did).
+  beside the sentence (``refused`` and ``intent``, as it did);
+- a narrowing the point's shape cannot honor beyond its relation's cells
+  (``cannot_honor``: ``intent``, the shape's retired ``name``, the
+  ``slots`` it sets, ``without`` - ``player`` or ``team or player`` where
+  the cell needs a named subject the point has none of - and ``why``, the
+  reason its shape's row gives, as the row words it), and a point a
+  shape's only reader reads nothing of (``no_reading_of_point``:
+  ``intent``, ``name``). Declines the user saw as "Nothing here answers
+  this question: ..." until Phase 3, step 4; said in that sentence, word
+  for word, and only where the floor and the reading's own causes did
+  not speak first, as the decline was (:class:`ShapeDeclined`).
 
 The planner says each (``compose.plan.refusal_result``); a new cause is an
 entry here and a sentence there.
@@ -2897,6 +2909,34 @@ class PointRefused(Unsupported):
         catches it as a decline says (the kind where none is given)."""
         super().__init__(message or cause.kind)
         self.cause = cause
+
+
+class ShapeDeclined(Unsupported):
+    """A shape's decline by a :class:`Cause` the planner says: a narrowing
+    the point's shape cannot honor (``cannot_honor``), or a point its only
+    reader reads nothing of (``no_reading_of_point``) - raised by the
+    planner (``compose.plan.cells_declined``) and by the answer side where
+    the shape's reader is asked (``compose._read``), with the decline's
+    sentence as its message, so every caller that catches
+    :class:`Unsupported` reads what it always read. The cause's facts lack
+    the page's label (``intent``) its sentence begins with, which the
+    answering loop, the label's one reader, adds (:meth:`labeled`).
+
+    .. versionadded:: 6.0.0
+    """
+
+    def __init__(self, kind: str, facts: Mapping[str, Any], message: str) -> None:
+        """The cause's ``kind`` and ``facts`` but the label, and the decline's sentence."""
+        super().__init__(message)
+        #: The decline's cause, without the page's label.
+        self.cause: Cause = Cause(kind=kind, facts=dict(facts))
+
+    @staticmethod
+    def labeled(cause: Cause, intent: str) -> Cause:
+        """``cause`` under the page's label ``intent`` - the retired name the
+        sentence begins with (``"Nothing here answers this question:
+        <intent>: ..."``)."""
+        return Cause(kind=cause.kind, facts={"intent": intent, **cause.facts})
 
 
 _HALF_PERIODS: dict[int, tuple[int, ...]] = {1: (1, 2), 2: (3, 4)}

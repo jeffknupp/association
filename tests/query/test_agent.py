@@ -25,7 +25,7 @@ def test_ask_writes_history_file_even_without_verbose(monkeypatch: pytest.Monkey
     agent = _agent_with_players(tmp_path, "Joel Embiid")
     agent.history_dir = history_dir
     monkeypatch.setattr("association.query.normalizer.normalize", lambda model, question: Normalized(["embiid"], "points"))
-    monkeypatch.setattr("association.query.compose.answer", lambda ctx, reading, trace=None, declined=None, planned=None: Reply(data={}, answer="Final answer."))
+    monkeypatch.setattr("association.query.compose.answer", lambda ctx, reading, trace=None, declined=None, planned=None, declined_by=None: Reply(data={}, answer="Final answer."))
     result = agent.ask("how many points does embiid average").text
 
     assert result == "Final answer."
@@ -107,7 +107,7 @@ def test_the_fast_path_replaces_a_player_the_question_never_named(monkeypatch: p
         return Reply(data={}, answer="templated")
 
     # player_compare is the compiler's (compose.COMPILED_INTENTS): the same Reading reaches compose.answer.
-    monkeypatch.setattr("association.query.compose.answer", lambda ctx, reading, trace=None, declined=None, planned=None: record(ctx, reading))
+    monkeypatch.setattr("association.query.compose.answer", lambda ctx, reading, trace=None, declined=None, planned=None, declined_by=None: record(ctx, reading))
     ask_routed(_agent_with_players(tmp_path, "Joel Embiid", "Jusuf Nurkic"), "compare sga and embiid", slots_route("player_compare", {"players": ["Shai Gilgeous-Alexander", "Jusuf Nurkic"]}))
     assert seen == ["Shai Gilgeous-Alexander", "Joel Embiid"]
 
@@ -119,7 +119,7 @@ def test_the_fast_path_records_who_the_question_was_read_to_be_about(monkeypatch
     writes the slots. It writes none itself yet."""
     from association.query.answer import Reply
 
-    monkeypatch.setattr("association.query.compose.answer", lambda ctx, reading, trace=None, declined=None, planned=None: Reply(data={}, answer="templated"))
+    monkeypatch.setattr("association.query.compose.answer", lambda ctx, reading, trace=None, declined=None, planned=None, declined_by=None: Reply(data={}, answer="templated"))
     agent = _agent_with_players(tmp_path, "Joel Embiid", "Jusuf Nurkic")
     answer = ask_routed(agent, "compare sga and embiid", slots_route("player_compare", {"players": ["Shai Gilgeous-Alexander", "Jusuf Nurkic"]}))
     stages = [(d.stage, d.field, d.after) for d in answer.decisions]
@@ -217,7 +217,7 @@ def test_a_rerouted_intent_runs_the_path_it_was_rerouted_to(monkeypatch: pytest.
 
     paths: list[str] = []
 
-    def composed(ctx: Any, reading: Reading, trace: Any = None, declined: Any = None, planned: Any = None, ran: Any = None) -> Reply:
+    def composed(ctx: Any, reading: Reading, trace: Any = None, declined: Any = None, planned: Any = None, ran: Any = None, declined_by: Any = None) -> Reply:
         del ran  # the agent's own callback, not this test's record of the paths taken
         paths.append(f"compose {reading.intent}")
         return Reply(data={}, answer="composed")
@@ -248,7 +248,7 @@ def test_a_player_the_question_cannot_account_for_is_refused_not_passed_on(monke
     reading."""
     from association.query.answer import Reply
 
-    monkeypatch.setattr("association.query.compose.answer", lambda ctx, reading, trace=None, declined=None, planned=None: Reply(data={}, answer="templated"))
+    monkeypatch.setattr("association.query.compose.answer", lambda ctx, reading, trace=None, declined=None, planned=None, declined_by=None: Reply(data={}, answer="templated"))
     answer = ask_routed(_agent_with_players(tmp_path, "Joel Embiid", "Jusuf Nurkic"), "compare the two best centers", slots_route("player_compare", {"players": ["Jusuf Nurkic", "Joel Embiid"]}))
     assert "was not answered" in answer.text and "Jusuf Nurkic" in answer.text
     assert answer.answered_by == "fast" and "templated" not in answer.text
@@ -262,7 +262,7 @@ def test_a_stray_name_on_a_question_no_template_reads_one_for_changes_nothing(mo
 
     # head_to_head is the compiler's (Phase 2, slice (iv)): the stray name
     # changes nothing on the way to its answer either.
-    monkeypatch.setattr("association.query.compose.answer", lambda ctx, reading, trace=None, declined=None, planned=None, ran=None: Reply(data={}, answer="templated"))
+    monkeypatch.setattr("association.query.compose.answer", lambda ctx, reading, trace=None, declined=None, planned=None, ran=None, declined_by=None: Reply(data={}, answer="templated"))
     assert ask_routed(_agent_with_players(tmp_path, "Joel Embiid", "Jusuf Nurkic"), "Lakers vs Celtics record", slots_route("head_to_head", {"player": "Jusuf Nurkic"})).text == "templated"
 
 
@@ -275,7 +275,7 @@ def test_a_fingerprint_that_lost_a_player_to_a_typo_says_so(monkeypatch: pytest.
 
     # The fingerprint is the compiler's (Phase 2, slice (v)): the note is
     # attached to what compose.answer hands back (agent._unmatched_fingerprint).
-    monkeypatch.setattr("association.query.compose.answer", lambda ctx, reading, trace=None, declined=None, planned=None: Reply(data={}, answer="Rendered."))
+    monkeypatch.setattr("association.query.compose.answer", lambda ctx, reading, trace=None, declined=None, planned=None, declined_by=None: Reply(data={}, answer="Rendered."))
     answer = ask_routed(_agent_with_players(tmp_path, "Joel Embiid"), "generate fingerprints for embiid vs jolic in 2026", slots_route("fingerprint", {"player": "Joel Embiid"})).text
     assert answer.startswith("Rendered.") and "only one of them matches" in answer
 
@@ -296,7 +296,7 @@ def test_the_fast_path_says_how_it_read_a_name_the_question_left_open(monkeypatc
 
     # player_stat is the compiler's (compose.COMPILED_INTENTS): the reading
     # travels the same way through agent._try_compose.
-    monkeypatch.setattr("association.query.compose.answer", lambda ctx, reading, trace=None, declined=None, planned=None: reads_a_name(ctx, reading))
+    monkeypatch.setattr("association.query.compose.answer", lambda ctx, reading, trace=None, declined=None, planned=None, declined_by=None: reads_a_name(ctx, reading))
     answer = ask_routed(_agent_with_players(tmp_path, "Marlon Maxey", "Tyrese Maxey"), "how many points does maxey average?", slots_route("player_stat", {"player": "maxey"}))
     reading = "('maxey' was read as Tyrese Maxey, the only match who played in 2025-26. Marlon Maxey also matches - use the full name, or name a season he played, to ask about him.)"
     assert answer.text == f"Tyrese Maxey averaged 28.0 points. {reading}"
@@ -349,7 +349,7 @@ def test_a_question_nothing_reads_is_refused_naming_why(monkeypatch: pytest.Monk
     assert answer.answered_by == "refused" and "no usable reply" in answer.text
 
     # A question its reader answers is unaffected.
-    monkeypatch.setattr("association.query.compose.answer", lambda ctx, reading, trace=None, declined=None, planned=None: Reply(data={}, answer="answered"))
+    monkeypatch.setattr("association.query.compose.answer", lambda ctx, reading, trace=None, declined=None, planned=None, declined_by=None: Reply(data={}, answer="answered"))
     answer = ask_routed(agent, "a question nothing reads", slots_route("fingerprint", {}))
     assert (answer.text, answer.answered_by, agent.unanswered) == ("answered", "fast", None)
 
@@ -363,7 +363,7 @@ def test_a_composed_answer_is_returned_as_fast_with_the_trace_line(monkeypatch: 
     "-> (router) intent=..." names what was routed."""
     from association.query.answer import Reply
 
-    def composed_answer(ctx: Any, reading: Reading, trace: Any = None, declined: Any = None, planned: Any = None, ran: Any = None) -> Reply:
+    def composed_answer(ctx: Any, reading: Reading, trace: Any = None, declined: Any = None, planned: Any = None, ran: Any = None, declined_by: Any = None) -> Reply:
         return Reply(data={"skeleton": "aggregate", "measures": ["points"], "rows": [{"points": 30.0}]}, answer="Joel Embiid has averaged 30.0 points since 2024.")
 
     monkeypatch.setattr("association.query.compose.answer", composed_answer)
@@ -392,7 +392,7 @@ def test_a_compose_refusal_is_returned_as_the_answer_not_a_fall_through(monkeypa
     something to say."""
     from association.query.answer import Reply
 
-    def composed_refusal(ctx: Any, reading: Reading, trace: Any = None, declined: Any = None, planned: Any = None, ran: Any = None) -> Reply:
+    def composed_refusal(ctx: Any, reading: Reading, trace: Any = None, declined: Any = None, planned: Any = None, ran: Any = None, declined_by: Any = None) -> Reply:
         return Reply(data={"ambiguous": "since"}, answer="I can't tell which span 'the last few' means - a number of games, or a number of seasons?")
 
     monkeypatch.setattr("association.query.compose.answer", composed_refusal)
@@ -410,7 +410,7 @@ def test_a_composed_answer_carries_the_name_reading_it_noted(monkeypatch: pytest
     from association.query.answer import Reply
     from association.query.entities import Entity, _note_name_reading
 
-    def composed_with_reading(ctx: Any, reading: Reading, trace: Any = None, declined: Any = None, planned: Any = None, ran: Any = None) -> Reply:
+    def composed_with_reading(ctx: Any, reading: Reading, trace: Any = None, declined: Any = None, planned: Any = None, ran: Any = None, declined_by: Any = None) -> Reply:
         _note_name_reading("maxey", Entity("1", "Tyrese Maxey"), [Entity("0", "Marlon Maxey")], 2026, named_in_full=False)
         return Reply(data={}, answer="Tyrese Maxey has averaged 28.0 points since 2024.")
 
@@ -443,7 +443,7 @@ def test_the_fast_path_carries_out_the_intent_and_data_it_used_to_discard(monkey
     from association.query.answer import Reply
 
     # leaderboard is the compiler's (compose.COMPILED_INTENTS): the same Reading reaches compose.answer.
-    monkeypatch.setattr("association.query.compose.answer", lambda ctx, reading, trace=None, declined=None, planned=None: Reply(data={"leaders": ["Jokic"]}, answer="Jokic."))
+    monkeypatch.setattr("association.query.compose.answer", lambda ctx, reading, trace=None, declined=None, planned=None, declined_by=None: Reply(data={"leaders": ["Jokic"]}, answer="Jokic."))
     answer = ask_routed(_agent_with_players(tmp_path), "who leads the league in scoring?", slots_route("leaderboard", {"stat": "points"}))
 
     assert answer.text == "Jokic."
@@ -581,7 +581,7 @@ def test_a_compiled_intent_is_read_planned_and_answered_by_the_compiler_alone(mo
 
     calls: list[str] = []
 
-    def composed_first(ctx: Any, reading: Reading, trace: Any = None, declined: Any = None, planned: Any = None, ran: Any = None) -> Reply:
+    def composed_first(ctx: Any, reading: Reading, trace: Any = None, declined: Any = None, planned: Any = None, ran: Any = None, declined_by: Any = None) -> Reply:
         calls.append("compose")
         if trace is not None:
             trace(
@@ -645,7 +645,7 @@ def test_the_parser_reads_the_question(monkeypatch: pytest.MonkeyPatch, tmp_path
         return Reply(data={}, answer="templated")
 
     monkeypatch.setattr("association.query.normalizer.normalize", lambda model, question: Normalized(["embiid"], "points"))
-    monkeypatch.setattr("association.query.compose.answer", lambda ctx, reading, trace=None, declined=None, planned=None: record(ctx, reading))
+    monkeypatch.setattr("association.query.compose.answer", lambda ctx, reading, trace=None, declined=None, planned=None, declined_by=None: record(ctx, reading))
     db_path = tmp_path / "test.duckdb"
     con = duckdb.connect(str(db_path))
     con.execute("CREATE TABLE players (athlete_id VARCHAR, display_name VARCHAR)")
