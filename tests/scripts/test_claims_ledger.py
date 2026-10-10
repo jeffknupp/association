@@ -124,3 +124,24 @@ def test_the_held_disagreements_pass_and_one_that_clears_fails_until_it_is_remov
     path.write_text("".join(json.dumps(row) + "\n" for row in cleared))
     assert ledger.report(argparse.Namespace(ledger=path, top=5, show=0)) == 1
     assert f"GONE: {held[0]!r}" in capsys.readouterr().out
+
+
+def test_the_joined_claims_are_held_by_kind_and_count(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """Jeff's ruling (2026-10-10): a partial overlap joins into one claim
+    named for both readings, and the joins are held by kind and count
+    (``HELD_JOINS``): a new kind or a grown count fails the report, and so
+    does one that fell or vanished, on a run of every recorded question,
+    until the table is lowered with it."""
+    import argparse
+
+    def report(joins: list[str]) -> int:
+        rows = [{"question": f"q{n}", "content_words": [], "unread": [], "reading_unread": [], "joined": joins if n == 0 else []} for n in range(ledger.HELD_JOINS_QUESTIONS)]
+        path = tmp_path / "ledger.jsonl"
+        path.write_text("".join(json.dumps(row) + "\n" for row in rows))
+        return int(ledger.report(argparse.Namespace(ledger=path, top=5, show=0)))
+
+    held = [what for what, count in ledger.HELD_JOINS.items() for _ in range(count)]
+    assert report(held) == 0
+    assert report([*held, "window+period"]) == 1 and "NEW: window+period 0 -> 1" in capsys.readouterr().out
+    assert report([*held, "intent+line"]) == 1 and "GREW: intent+line" in capsys.readouterr().out
+    assert report([what for what in held if what != "refused+measure"]) == 1 and "GONE: refused+measure 1 -> 0" in capsys.readouterr().out

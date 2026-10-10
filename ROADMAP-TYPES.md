@@ -1347,5 +1347,10 @@ moves into `data` before the slice that rewords its answer:
     and the month in it again as a situation, applied twice - ISSUES.md,
     "A month is read from the words of a day in it", P4) - the double read
     the join hides.
-    Jeff's ruling on the join stands open; failing the reader on a partial
-    overlap would now fail 48 readings, 44 of them two readings each right.
+    Failing the reader on a partial overlap would now fail 48 readings, 44
+    of them two readings each right. **Jeff's ruling (2026-10-10): the
+    join stays**, and the joins are held by kind and count
+    (`claims_ledger.py`'s `HELD_JOINS`, the 628's: `intent+line` 12,
+    `intent+opponent` 4, `companion+intent` 2, `intent+companion` 1,
+    `situation+intent` 1, `refused+measure` 1; the report fails on a new
+    kind or a grown count). Step 4 is held to zero joins but #354's four.

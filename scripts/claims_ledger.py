@@ -127,13 +127,17 @@ def _reader(db_path: Path) -> Any:
     con.execute("SET threads = 1")
     on_record = latest_season_on_record(con)
 
-    def read(question: str, names: list[str], stat: str) -> dict[str, Any]:
+    def read(question: str, names: list[str], stat: str, joined: list[str] | None = None) -> dict[str, Any]:
         # As Agent.ask reads: inside the season on record, and with the
-        # players' and teams' names loaded once for the question.
+        # players' and teams' names loaded once for the question. ``joined``
+        # collects the ``what`` of each claim the reading joined from two
+        # (``span.claimed``), for the held count (:data:`HELD_JOINS`).
         with season_on_record(on_record), loaded():
             try:
                 routed, _subject, _parent = read_route(con, question, names, stat)
                 reading = reading_from_route(con, question, routed)
+                if joined is not None:
+                    joined.extend(claim.what for claim in reading.claims if "+" in claim.what)
                 return read_stages(reading, planned=plan_point(reading))
             except ScopeError as exc:
                 return {"refused": str(exc)}
@@ -161,7 +165,8 @@ def run(args: argparse.Namespace) -> int:
                 continue
             names = [name.strip() for name in reply.get("names") or [] if isinstance(name, str) and name.strip()]
             stat = reply.get("stat") if reply.get("stat") in NORMALIZER_STATS else ""
-            whole = read(question, names, stat)
+            joined: list[str] = []
+            whole = read(question, names, stat, joined)
             words = content_words(question, [*names, *names_read(whole)], stat)
             probed = _probed(whole)
             unread = [word for start, end, word in words if _probed(read(without(question, start, end), names, stat)) == probed]
@@ -169,6 +174,7 @@ def run(args: argparse.Namespace) -> int:
             stated = stated_unread(whole)
             if stated is not None:
                 row["reading_unread"] = stated
+                row["joined"] = joined
             out.write(json.dumps(row) + "\n")
             if index % 100 == 0:
                 print(f"{index}/{len(replies)} {time.monotonic() - started:.0f}s", flush=True)
@@ -187,7 +193,9 @@ def report(args: argparse.Namespace) -> int:
     for row in rows[: args.show] if args.show else []:
         if row["unread"]:
             print(f"  {row['question']}  ->  {' '.join(row['unread'])}")
-    return _report_disagreements(rows)
+    disagreements = _report_disagreements(rows)
+    joins = _report_joins(rows)
+    return 1 if disagreements or joins else 0
 
 
 #: The questions whose Reading states other unread words than the deletion
@@ -232,6 +240,64 @@ def _report_disagreements(rows: list[dict[str, Any]]) -> int:
         print(f"  GONE: {question!r} agrees now - remove it from HELD_DISAGREEMENTS with the change that cleared it")
     new = [row for row in differ if row["question"] not in HELD_DISAGREEMENTS]
     return 1 if new or cleared else 0
+
+
+#: Every claim the 628's readings join from two that overlap without one
+#: holding the other (``span.claimed``: one claim named for both readings),
+#: by its ``what``, held as a count - Jeff's ruling (2026-10-10, Phase 3,
+#: step 3): the join stays, and the joins are held by kind and count, so a
+#: new kind or a grown count fails ``report``, and a kind that vanishes or a
+#: count that falls is lowered here with the change (the ratchets' GONE
+#: rule). Measured at the step's end (`63f1ca0`); on the 2,710 readings 48:
+#: - Step 4's, made one reading when the grammar is re-keyed to name the
+#:   shape from the typed values: a child grammar's words, said in its
+#:   decision and so claimed whole, over a tagger's - the grammar names the
+#:   intent from the line's or the opponent's words and the tagger reads
+#:   their value (``intent+line`` 12, ``intent+opponent`` 4,
+#:   ``companion+intent`` 2, ``intent+companion`` 1, ``situation+intent`` 1;
+#:   on the 2,710: 43 of this kind).
+#: - ``refused+measure`` 1: "bench points allowed", read by the unsupported
+#:   shape's recognizer and by the measure - both need it.
+#: - #354's double read, ``situation+date`` (4 on the 2,710, none of the
+#:   628): one tagger reading a day's month again as a situation - a word two
+#:   RULES of one tagger read, which is a bug (ISSUES.md, "A month is read
+#:   from the words of a day in it").
+#: Step 4 is held to zero joins but #354's.
+HELD_JOINS_QUESTIONS = 628
+"""The recorded questions :data:`HELD_JOINS` was counted over."""
+HELD_JOINS: dict[str, int] = {
+    "intent+line": 12,
+    "intent+opponent": 4,
+    "companion+intent": 2,
+    "intent+companion": 1,
+    "situation+intent": 1,
+    "refused+measure": 1,
+}
+
+
+def _report_joins(rows: list[dict[str, Any]]) -> int:
+    """The joined claims by kind against :data:`HELD_JOINS`, and 1 on a new
+    kind, a grown count, or - on a run of every recorded question - a count
+    that fell or a kind gone (lowered or removed here with the change); 0
+    where the ledger was run on a tree that records none."""
+    if not any("joined" in row for row in rows):
+        return 0
+    # A run of part of the corpus (``--match``, a test's) can grow a count
+    # and cannot vouch for one that fell: only a run of every recorded
+    # question is held to the table's falls.
+    whole = len(rows) >= HELD_JOINS_QUESTIONS
+    found = Counter(what for row in rows for what in row.get("joined", []))
+    print("joined claims: " + (", ".join(f"{what} {count}" for what, count in found.most_common()) or "none"))
+    failed = 0
+    for what in sorted(set(found) | set(HELD_JOINS)):
+        held, now = HELD_JOINS.get(what, 0), found.get(what, 0)
+        if now > held:
+            print(f"  {'NEW' if not held else 'GREW'}: {what} {held} -> {now}")
+            failed = 1
+        elif now < held and whole:
+            print(f"  {'GONE' if not now else 'FELL'}: {what} {held} -> {now} - lower HELD_JOINS with the change")
+            failed = 1
+    return failed
 
 
 def main() -> int:

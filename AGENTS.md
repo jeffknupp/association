@@ -958,7 +958,18 @@ model's. Two things follow, and both matter when you add a shape:
   its claims where it reads (the names, the companions' phrases, the
   kind's "player", a compare verb's "with", the season the names are
   settled in). The content words no claim covers are `Reading.unread`
-  ("A word the reading does not depend on is counted").
+  ("A word the reading does not depend on is counted"). Two claims that
+  overlap without one holding the other join into one named for both
+  (`span.claimed`), and the joins are HELD by kind and count (Jeff's
+  ruling, 2026-10-10): `claims_ledger.py report` lists the 628's by `what`
+  against `HELD_JOINS` and exits 1 on a new kind or a grown count, and -
+  on a run of every recorded question - on one that fell or vanished until
+  the table is lowered with the change.
+  The ones held are a child grammar's words over a tagger's (`intent+line`
+  12, `intent+opponent` 4, ... - step 4's, which re-keys the grammar and
+  is held to zero joins but #354's) and one recognizer beside the measure
+  (`refused+measure`); a word two RULES of one tagger read is still a bug
+  (#354's `situation+date`, the cuts tagger reading a day's month again).
   The subject's own has no tagger in the stages: its one reader is the
   subject reading (`subject.read_subject`, once per question, below), and
   its one writer `subject.apply_subject`, which writes ONE typed value,
