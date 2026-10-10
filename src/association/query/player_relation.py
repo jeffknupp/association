@@ -46,7 +46,7 @@ from association.query.player_games import (
     scope_without_guard,
     season_type_clause,
 )
-from association.query.reading import Companion, Cuts, Period, Scope, Situation, Span, Unsupported, Window, _clamp_limit, ordinal_word, period_narrowing
+from association.query.reading import Companion, Cuts, Measure, Period, PointShape, Scope, ShapeCells, Situation, Span, Unsupported, Window, _clamp_limit, ordinal_word, period_narrowing
 from association.query.reading import Line as ReadLine
 from association.query.result import Cell, GameOfSeries, Line, Refusal, Role, Unanswered
 from association.query.season_text import SEASON_TYPE_NAMES, season_phrase
@@ -127,145 +127,270 @@ refuses it, by :data:`RELATION_SCOPING_EXCLUDED`.
 """
 
 
-# The cells a template on the relation does NOT honor, each with why. A reason
-# has to be about the template's answer, not its code: a slot that merely was
-# not wired is not excluded, it is wired.
-RELATION_SCOPING_EXCLUDED: dict[str, dict[str, str]] = {
-    # The two retired templates' WORDS (compose.plan.STATED_SCOPING) never
-    # said a quarter: their presenters step aside for one, and the compiler's
-    # own sentence, which names the period through Narrowed.filters, answers.
-    "game_log": {"period": "the log's retired sentence heads whole games and never names a quarter or half"},
-    "player_stat": {"period": "the season line's retired sentence heads whole games and never names a quarter or half"},
-    # A single date is one game, and one game is not a streak.
-    "streak": {
-        "date": "one game is not a run",
-        "window": "a run is read over every game in the span, not the last N",
-        "period": "a run is a run of whole games; a quarter or half of each is a different streak nobody has defined",
-    },
-    # A split is a division of a span into groups; "the last N" is a window
-    # that game_log answers.
-    "player_splits": {
-        "date": "one game has nothing to split",
-        "window": "a limited number of recent games is game_log's question",
-        "period": "the splits table is headed as whole games; a quarter's or half's split would print under the same heading",
-    },
-    "record_when": {
-        "date": "one game has no record",
-        "window": "a record over the last N games is game_log's question",
-        "period": "a record is won and lost over whole games; its sentence would not say the condition was read in one quarter or half",
-    },
-    # A period question's accuracy caveat (PERIOD_RECONCILIATION) is measured
-    # per SEASON against ESPN's own linescores - summing across several would
-    # mix seasons of different reliability under one caveat, or none, and the
-    # header names ONE season regardless (`season_phrase`), which would be wrong for
-    # a range too: measured, `since=2023` (honored before this exclusion,
-    # since scoped_player reads it directly off the full slots dict) pulled
-    # the correct 257 games back to 2023 but still headed them "the 2026
-    # regular season". `date` is no longer here: it narrows to one game (and
-    # so one season) through `scoped_games`, the same as every other template
-    # on the relation.
-    "player_matchup": {
-        "opponent": "two players' meetings are the games they played against each other - there is no third team to narrow them to",
-        "window": "the newest meetings are shown beneath averages over all of them - a window would cut the averages the matchup exists to give",
-        "season_n": "an ordinal season is one player's - a matchup names two, and the question does not say whose fifth season is meant",
-        "period": "a meeting's line is both players' whole game; only one side of the pair would be read for the quarter or half",
-    },
-    # A shot read draws every shot of the games the relation narrows to; a
-    # quarter narrows the LINE of each game, not which of its shots are drawn,
-    # so the chart would be the whole game under a quarter's heading.
-    "shot_chart": {"period": "the chart draws every shot of each game, not the quarter's or half's"},
-    "shot_distance": {"period": "the average reads every shot of each game, not the quarter's or half's"},
-    "period_split": {
-        "career": "the accuracy caveat is measured per season, not across a career",
-        "range": "the accuracy caveat is measured per season, and the header names one season - both wrong for a range",
-        "both": "the accuracy caveat is measured per season and per season type; a read over both types would carry one caveat for games of two reliabilities",
-        # Excluded from the presenter's WORDS, not from the point: its point
-        # keeps the cell and the compiler's own sentence, which names both
-        # the quarter measured and the quarter conditioning the games,
-        # answers (point._default_period_split, the game_log rule).
-        "period_line": "a period answer says the one period it measures, never a second one conditioning which games count",
-    },
-}
-RELATION_SCOPING_EXCLUDED["player_matchup"]["period_line"] = "a meeting is both players' whole game; a quarter's line conditioning it would be read on one side of the pair only"
+# Each shape's row on the relation: the cells its reader's words do NOT
+# state, each with why, and what the planner does about one
+# (`reading.ShapeCells`). A reason has to be about the shape's answer, not its
+# code: a cell that merely was not wired is not excluded, it is wired. Keyed
+# by the planned point's shape (`reading.PointShape`, the answer side's one
+# key since Phase 3, step 1): one row per reader on this relation or one
+# settling its player and span through this relation's steps - the season
+# line's, the NetPoints relation's and the shot relation's (`compose._ROUTES`,
+# whose keys a test holds equal to the two tables'). Until Phase 3, step 2's
+# closing slice these rows were keyed by the retired templates' names, and
+# what each shape's words stated was the planner's own table built from them
+# (`compose.plan.STATED_SCOPING`), beside four more declarations of how a cell
+# a shape does not state is refused (`plan._shape_declines`' branches).
+#
 # The span's `both` cell (both season types in one read) is stated by a
 # log, a line and a count - their words said "including the playoffs", or
 # named no type on "last N games" - and by nothing else on the relation: a
 # reader whose answer is one season type's steps aside, and the compiler's
 # own sentence, which reads both and says so, answers. The reason is the
-# answer's in each case, as the rule above this dict asks.
+# answer's in each case, as the rule above asks.
 _BOTH_TYPES_ASIDE = "the answer is one season type's; read over both at once its sentence would not say which games were the postseason's"
-for _reader in ("streak", "player_splits", "record_when", "player_matchup", "shot_chart", "shot_distance", "single_game_high"):
-    RELATION_SCOPING_EXCLUDED.setdefault(_reader, {})["both"] = _BOTH_TYPES_ASIDE
-# The season line's and the NetPoints relation's readers settle their
-# player and span through this relation's steps (`scoped_player`), so what
-# their words do not state of the span is declared here with the rest, per
-# reader: a ranking of season lines and a comparison of them are one
-# season or a career, never a range (the game-level ranking reads one); a
-# history is every season or the last N; a count's and a high's words
-# state a career and not a range; NetPoints has one season per rating.
-RELATION_SCOPING_EXCLUDED.update(
-    {
-        "leaderboard": {
+# The relation's cells beyond the span and the cuts - the line family, the
+# companions, a split, a window, the ranked measure, a quarter - are the
+# narrowings a shape that reads one row per player per season or per game,
+# or one season's rating, has no game to narrow by. Until the closing slice
+# those shapes' rows named none of them and their words' table simply left
+# them out (`STATED_SCOPING`); each is said here with its reason, as every
+# cut and span cell such a shape steps aside for is.
+
+
+def _excluded_rows(cells: frozenset[str], why: str) -> dict[str, str]:
+    """``cells``, in name order, each with the one reason a shape gives for all of them."""
+    return dict.fromkeys(sorted(cells), why)
+
+
+_SEASON_LINE_CUTS_ASIDE = "a season line is one row per player per season, with no game to cut; the game-level read, whose sentence says the cut it applied, answers"
+_SEASON_LINE_NARROWINGS_ASIDE = "a season line has no game a line, a teammate, a split, a window or a quarter could narrow; the game-level read, whose sentence says the narrowing, answers"
+_HIGH_CUTS_ASIDE = "a high's words state a career, and the compiler's own ranking of games, which says the cut it applied, answers one"
+_COUNT_CUTS_ASIDE = "a count's words state a career and an ordinal season, and the compiler's own count, which says the cut it applied, answers one"
+_QUARTER_RANKING_CUTS = (
+    "a ranking by a quarter pools one season's players, against an opponent or at a venue; one date ranks nothing per game, and a tenure, a series game or an ordinal season is one player's"
+)
+_NETPOINTS_NARROWINGS = "a NetPoints rating is one season's row, or one game's chosen as a first or last game; no line, teammate, split, ranked measure or quarter of the games has a rating"
+_FINGERPRINT_NARROWINGS = (
+    "a fingerprint is drawn from one season's play types, or one game's chosen as a first or last game; no line, teammate, split, ranked measure or quarter of the games has a fingerprint"
+)
+RELATION_SCOPING_EXCLUDED: dict[PointShape, ShapeCells] = {
+    # A log's and a line's retired sentences head whole games and never name
+    # a quarter or half: their readers step aside for one, and the
+    # compiler's own sentence, which names the period through
+    # Narrowed.filters, answers. Each honors one named half of the
+    # starter/bench split, never the bare category.
+    PointShape("player_games", "rows", "date"): ShapeCells(unstated={"period": "the log's retired sentence heads whole games and never names a quarter or half"}, sides=True),
+    PointShape("player_games", "scalar", "line"): ShapeCells(unstated={"period": "the season line's retired sentence heads whole games and never names a quarter or half"}, sides=True),
+    PointShape("player_seasons", "scalar", "line"): ShapeCells(unstated={"period": "the season line's retired sentence heads whole games and never names a quarter or half"}, sides=True),
+    # A run, a split and a record are read over every game in the span: one date
+    # is no run and has nothing to split, and the last N games are game_log's
+    # question. A quarter or half narrows what a read SEES of each game, which a
+    # sentence headed as whole games would not say.
+    PointShape("player_games", "split", "splits"): ShapeCells(
+        unstated={
+            "date": "one game has nothing to split",
+            "window": "a limited number of recent games is game_log's question",
+            "period": "the splits table is headed as whole games; a quarter's or half's split would print under the same heading",
+            "both": _BOTH_TYPES_ASIDE,
+        }
+    ),
+    PointShape("player_games", "split", "line"): ShapeCells(
+        unstated={
+            "date": "one game has no record",
+            "window": "a record over the last N games is game_log's question",
+            "period": "a record is won and lost over whole games; its sentence would not say the condition was read in one quarter or half",
+            "both": _BOTH_TYPES_ASIDE,
+        }
+    ),
+    # A run's games are ONE player's, or a team's: a teammate's role, a starter
+    # half, an ordinal season or a line is a fact about a named player's game,
+    # and the games "game 4 of each series" picks out are not consecutive to
+    # each other; the league's run has no single subject for an opponent or a
+    # venue to narrow against. The retired template's two refusals
+    # (`conditions.condition_needs_player_refusal` and the planner's
+    # `_streak_league_cells` until the closing slice).
+    PointShape("player_games", "runs", "line"): ShapeCells(
+        unstated={
+            "date": "one game is not a run",
+            "window": "a run is read over every game in the span, not the last N",
+            "period": "a run is a run of whole games; a quarter or half of each is a different streak nobody has defined",
+            "both": _BOTH_TYPES_ASIDE,
+        },
+        refused=frozenset({"date", "window", "period"}),
+        named_player=frozenset({"companion", "split", "season_n", "line", "game_n"}),
+        named_subject=frozenset({"opponent", "venue"}),
+    ),
+    # A quarter's or half's accuracy caveat (PERIOD_RECONCILIATION) is measured
+    # per SEASON against ESPN's own linescores - summing across several would mix
+    # seasons of different reliability under one caveat, or none, and the header
+    # names ONE season regardless (`season_phrase`), which would be wrong for a
+    # range too: measured, `since=2023` (honored before this exclusion, since
+    # scoped_player read it directly off the full slots dict) pulled the correct
+    # 257 games back to 2023 but still headed them "the 2026 regular season".
+    # `date` is not here: it narrows to one game (and so one season) through
+    # `scoped_games`, the same as every other reader on the relation. The period
+    # CONDITION (a quarter conditioning which games count, beside the quarter
+    # measured) is excluded from the reader's WORDS, not from the point: it steps
+    # aside and the compiler's own sentence, which names both quarters, answers.
+    **dict.fromkeys(
+        (PointShape("player_periods", "rows", "date"), PointShape("player_periods", "split", "period")),
+        ShapeCells(
+            unstated={
+                "career": "the accuracy caveat is measured per season, not across a career",
+                "range": "the accuracy caveat is measured per season, and the header names one season - both wrong for a range",
+                "both": "the accuracy caveat is measured per season and per season type; a read over both types would carry one caveat for games of two reliabilities",
+                "period_line": "a period answer says the one period it measures, never a second one conditioning which games count",
+            },
+            refused=frozenset({"career", "range"}),
+            sides=True,
+        ),
+    ),
+    # Two players' meetings, refused outright where a narrowing would cut
+    # the pair the matchup exists to compare.
+    PointShape("player_games", "comparison", "met"): ShapeCells(
+        unstated={
+            "opponent": "two players' meetings are the games they played against each other - there is no third team to narrow them to",
+            "window": "the newest meetings are shown beneath averages over all of them - a window would cut the averages the matchup exists to give",
+            "season_n": "an ordinal season is one player's - a matchup names two, and the question does not say whose fifth season is meant",
+            "period": "a meeting's line is both players' whole game; only one side of the pair would be read for the quarter or half",
+            "period_line": "a meeting is both players' whole game; a quarter's line conditioning it would be read on one side of the pair only",
+            "both": _BOTH_TYPES_ASIDE,
+        },
+        refused=frozenset({"opponent", "window", "season_n", "period", "period_line"}),
+    ),
+    # A high's words state a career; the compiler's own ranking of games,
+    # which says the narrowing it applied, answers the rest.
+    PointShape("player_games", "rows", "measure"): ShapeCells(
+        unstated={
+            "both": _BOTH_TYPES_ASIDE,
+            "range": "a high's words state a career, and the compiler's own ranking of games, which says the range it read, answers one",
+            **_excluded_rows(Cuts.CELLS - {"round"}, _HIGH_CUTS_ASIDE),
+            **_excluded_rows((RELATION_SCOPING - Span.CELLS - Cuts.CELLS), "a high's words state a career, and the compiler's own ranking of games, which says the narrowing it applied, answers one"),
+        }
+    ),
+    # A count is already a line on a column: the `line` cell is the same line
+    # the other way ("games with under 14 fta"), and a phrase carrying the
+    # count's own number IS the count, misread - compose.counts reads it so.
+    # The span's `both` cell is stated the way `scoped_player` reads it - one
+    # combined `season_type IN (2, 3)` read (player_relation_season_type); the
+    # one cut its words state is an ordinal season.
+    **dict.fromkeys(
+        (PointShape("player_games", "scalar", "count"), PointShape("player_games", "ranking", "count"), PointShape("player_games", "rows", "count")),
+        ShapeCells(
+            unstated={
+                "range": "a count's words state a career, and the compiler's own count, which says the range it read, answers one",
+                **_excluded_rows(Cuts.CELLS - {"round", "season_n"}, _COUNT_CUTS_ASIDE),
+                **_excluded_rows(
+                    RELATION_SCOPING - Span.CELLS - Cuts.CELLS - {"line"},
+                    "a count's words state a career, an ordinal season and its own line, and the compiler's own count, which says the narrowing it applied, answers one",
+                ),
+            }
+        ),
+    ),
+    # The season line's readers settle their player and span through this
+    # relation's steps (`scoped_player`): a ranking of season lines pools one
+    # season or a career, never a range (the game-level ranking reads one), and
+    # takes a unit beyond the relation (a season total, a NetPoints metric's
+    # per-100 form; a unit the metric has no form of is the point's own
+    # `ranking_unit` refusal); a history is every season or the last N.
+    PointShape("player_seasons", "ranking", "player"): ShapeCells(
+        unstated={
             "range": "a ranking of season lines pools one season or a career; a range of seasons is the game-level ranking's, which reads it",
             "both": "a season line is one season type's row; a ranking over both at once would rank two rows per player",
+            **_excluded_rows(Cuts.CELLS - {"round"}, _SEASON_LINE_CUTS_ASIDE),
+            **_excluded_rows((RELATION_SCOPING - Span.CELLS - Cuts.CELLS), _SEASON_LINE_NARROWINGS_ASIDE),
         },
-        "player_history": {
+        taken=Measure.CELLS,
+    ),
+    PointShape("player_seasons", "split", "season"): ShapeCells(
+        unstated={
             "range": "a history is every season or the last N of them, newest first; a range bounded by years is not how its rows are chosen",
             "both": "a history lists one season type's rows; both at once would interleave two rows per season",
-        },
-        "player_compare": {
+            **_excluded_rows(Cuts.CELLS - {"round"}, _SEASON_LINE_CUTS_ASIDE),
+            **_excluded_rows((RELATION_SCOPING - Span.CELLS - Cuts.CELLS), _SEASON_LINE_NARROWINGS_ASIDE),
+        }
+    ),
+    # Two or more players' lines side by side state no narrowing at all:
+    # "compare curry and lebron vs the celtics" answered for the whole season
+    # would be the substitution the cells exist to stop.
+    PointShape("player_seasons", "comparison", "subject"): ShapeCells(
+        unstated={
             "career": "a comparison of two lines is one season's; the retired words state no span",
             "range": "a comparison of two lines is one season's; the retired words state no span",
             "both": "a comparison of two lines is one season's; the retired words state no span",
+            **_excluded_rows(Cuts.CELLS - {"round"}, _SEASON_LINE_CUTS_ASIDE),
+            **_excluded_rows((RELATION_SCOPING - Span.CELLS - Cuts.CELLS), "a comparison of two lines is one season's row each; the retired words state no line, teammate, split, window or quarter"),
         },
-        "threshold_count": {"range": "a count's words state a career, and the compiler's own count, which says the range it read, answers one"},
-        "player_netpoints": {
-            "career": "a NetPoints rating is one season's; there is no career rating to read",
-            "range": "a NetPoints rating is one season's; there is no range of seasons to sum",
-            "both": "a NetPoints rating is one season type's row",
-        },
-        "fingerprint": {
-            "career": "a fingerprint is drawn from one season's play types",
-            "range": "a fingerprint is drawn from one season's play types",
-            "both": "a fingerprint is drawn from one season type's play types",
-        },
-        "period_leaderboard": {
+        declined="plan",
+    ),
+    # A ranking by a quarter is one season's pool: the rebuilt figures'
+    # accuracy is measured per season and type.
+    PointShape("player_periods", "ranking", "player"): ShapeCells(
+        unstated={
             "career": "a ranking by a quarter is one season's: the rebuilt figures' accuracy is measured per season",
             "range": "a ranking by a quarter is one season's: the rebuilt figures' accuracy is measured per season",
             "both": "a ranking by a quarter is one season's and one type's: the rebuilt figures' accuracy is measured per season and type",
+            **_excluded_rows(Cuts.CELLS - {"round", "opponent", "venue"}, _QUARTER_RANKING_CUTS),
+            **_excluded_rows(
+                (RELATION_SCOPING - Span.CELLS - Cuts.CELLS) - {"period"},
+                "a ranking by a quarter pools one season's players over the quarter itself; a line, a teammate, a split or a window is one player's",
+            ),
         },
-    }
-)
-RELATION_SCOPING_EXCLUDED["single_game_high"]["range"] = "a high's words state a career, and the compiler's own ranking of games, which says the range it read, answers one"
-# The games' cuts (Phase 3, step 2's third slice), per reader whose words
-# state fewer than the relation's seven: each row names the cut and the
-# answer's reason, as the rule above this dict asks. A season line's reader
-# (a ranking, a history, a comparison) pools one row per player per season
-# and has no game to cut, so it steps aside for every cut and the
-# game-level read, whose sentence says the cut it applied, answers; a count
-# and a high state a career and (the count) an ordinal season, and the
-# compiler's own count or ranking answers the rest; a NetPoints rating is
-# one season's row, read per game for a first or last game alone, and no
-# cut of the games has a rating (a fingerprint's date is refused in its
-# reader's own words); a ranking by a quarter pools one season's players
-# against an opponent or at a venue and nothing cuts it further.
-_SEASON_LINE_CUTS_ASIDE = "a season line is one row per player per season, with no game to cut; the game-level read, whose sentence says the cut it applied, answers"
-for _reader in ("leaderboard", "player_history", "player_compare"):
-    for _cut in Cuts.CELLS - {"round"}:
-        RELATION_SCOPING_EXCLUDED[_reader][_cut] = _SEASON_LINE_CUTS_ASIDE
-for _cut in Cuts.CELLS - {"round"}:
-    RELATION_SCOPING_EXCLUDED["single_game_high"][_cut] = "a high's words state a career, and the compiler's own ranking of games, which says the cut it applied, answers one"
-for _cut in Cuts.CELLS - {"round", "season_n"}:
-    RELATION_SCOPING_EXCLUDED["threshold_count"][_cut] = "a count's words state a career and an ordinal season, and the compiler's own count, which says the cut it applied, answers one"
-for _cut in Cuts.CELLS - {"round"}:
-    RELATION_SCOPING_EXCLUDED["player_netpoints"][_cut] = "a NetPoints rating is one season's row; the per-game tables are read for a first or last game alone, and no cut of the games has a rating"
-for _cut in Cuts.CELLS - {"round", "date"}:
-    RELATION_SCOPING_EXCLUDED["fingerprint"][_cut] = "a fingerprint is drawn from one season's play types, or one game's chosen as a first or last game; no cut of the games has a fingerprint"
-for _cut in Cuts.CELLS - {"round", "opponent", "venue"}:
-    RELATION_SCOPING_EXCLUDED["period_leaderboard"][_cut] = (
-        "a ranking by a quarter pools one season's players, against an opponent or at a venue; one date ranks nothing per game, and a tenure, a series game or an ordinal season is one player's"
-    )
-"""Per reader, the relation's cells it refuses or steps aside for, and why.
+        declined="plan",
+    ),
+    # The NetPoints relation's two: one season's rating or fingerprint, or one
+    # game's chosen as a first or last game (the window); a calendar date on a
+    # fingerprint is honored by refusing it in the reader's own words - the
+    # loader picks a player's first or last game, which is a different
+    # question from a date (``compose.netpoints``).
+    PointShape("netpoints", "scalar", "ratings"): ShapeCells(
+        unstated={
+            "career": "a NetPoints rating is one season's; there is no career rating to read",
+            "range": "a NetPoints rating is one season's; there is no range of seasons to sum",
+            "both": "a NetPoints rating is one season type's row",
+            **_excluded_rows(
+                Cuts.CELLS - {"round"},
+                "a NetPoints rating is one season's row; the per-game tables are read for a first or last game alone, and no cut of the games has a rating",
+            ),
+            **_excluded_rows((RELATION_SCOPING - Span.CELLS - Cuts.CELLS) - {"window"}, _NETPOINTS_NARROWINGS),
+        },
+        declined="plan",
+    ),
+    PointShape("netpoints", "chart", "fingerprint"): ShapeCells(
+        unstated={
+            "career": "a fingerprint is drawn from one season's play types",
+            "range": "a fingerprint is drawn from one season's play types",
+            "both": "a fingerprint is drawn from one season type's play types",
+            **_excluded_rows(
+                Cuts.CELLS - {"round", "date"},
+                "a fingerprint is drawn from one season's play types, or one game's chosen as a first or last game; no cut of the games has a fingerprint",
+            ),
+            **_excluded_rows((RELATION_SCOPING - Span.CELLS - Cuts.CELLS) - {"window"}, _FINGERPRINT_NARROWINGS),
+        },
+        declined="plan",
+    ),
+    # A shot read draws every shot of the games the relation narrows to; a
+    # quarter narrows the LINE of each game, not which of its shots are drawn,
+    # so the chart would be the whole game under a quarter's heading.
+    PointShape("shots", "chart", "shots"): ShapeCells(
+        unstated={"period": "the chart draws every shot of each game, not the quarter's or half's", "both": _BOTH_TYPES_ASIDE},
+        declined="plan",
+        sides=True,
+    ),
+    PointShape("shots", "scalar", "distance"): ShapeCells(
+        unstated={"period": "the average reads every shot of each game, not the quarter's or half's", "both": _BOTH_TYPES_ASIDE},
+        declined="plan",
+        sides=True,
+    ),
+}
+"""Per shape, what its reader's words do not state of the relation's cells
+(:data:`RELATION_SCOPING`), why, and what the planner does about one
+(:class:`~association.query.reading.ShapeCells`): the reader steps aside and
+the compiler's own sentence answers; or the planner refuses it outright,
+saying why (a run, a quarter's split, two players' meetings), or declines it
+where the reader is the point's only answer (a comparison, a ranking by a
+quarter, the NetPoints and shot relations' readers). Read by the planner's
+one check (:func:`~association.query.compose.plan.cells_unhonored`).
 
 .. versionadded:: 4.4.0
 
@@ -274,52 +399,16 @@ for _cut in Cuts.CELLS - {"round", "opponent", "venue"}:
    season line's and the NetPoints relation's readers included, since they
    settle their span through this relation's steps (Phase 3, step 2); the
    games' cuts per reader whose words state fewer than the relation's.
+
+.. versionchanged:: 6.0.0
+   Keyed by :class:`~association.query.reading.PointShape`, one
+   :class:`~association.query.reading.ShapeCells` per shape a reader on
+   this relation reads (Phase 3, step 2's closing slice): by the retired
+   templates' names until then, with a reason per cell and nothing else -
+   what a shape's words stated was ``compose.plan.STATED_SCOPING``, built
+   from these rows by ``relation_scoping``, ``relation_span``,
+   ``relation_cuts`` and ``relation_period``, all deleted.
 """
-
-
-def relation_span(intent: str) -> frozenset[str]:
-    """The span's cells ``intent`` states (:attr:`~association.query.reading.Span.CELLS`
-    less :data:`RELATION_SCOPING_EXCLUDED`'s), for a reader whose other
-    cells are its own list rather than the relation's (the season line's
-    ranking, which states a career and a rate and nothing else).
-
-    .. versionadded:: 6.0.0
-    """
-    return Span.CELLS - set(RELATION_SCOPING_EXCLUDED.get(intent, {}))
-
-
-def relation_period(intent: str) -> frozenset[str]:
-    """The period's cell ``intent`` states (:attr:`~association.query.reading.Period.CELLS`
-    less :data:`RELATION_SCOPING_EXCLUDED`'s), for a reader whose other
-    cells are its own list rather than the relation's (the ranking by a
-    quarter, which states the period, a season and the two cuts it pools
-    over).
-
-    .. versionadded:: 6.0.0
-    """
-    return Period.CELLS - set(RELATION_SCOPING_EXCLUDED.get(intent, {}))
-
-
-def relation_cuts(intent: str) -> frozenset[str]:
-    """The games' cuts ``intent`` states (:attr:`~association.query.reading.Cuts.CELLS`
-    less ``round``, which no relation carries, less
-    :data:`RELATION_SCOPING_EXCLUDED`'s), for a reader whose other cells
-    are its own list rather than the relation's.
-
-    .. versionadded:: 6.0.0
-    """
-    return (Cuts.CELLS - {"round"}) - set(RELATION_SCOPING_EXCLUDED.get(intent, {}))
-
-
-def relation_scoping(intent: str, *extra: str) -> frozenset[str]:
-    """The player relation's cells ``intent`` honors: :data:`RELATION_SCOPING`
-    plus ``extra``, less the cells :data:`RELATION_SCOPING_EXCLUDED` names
-    for it.
-
-    .. versionadded:: 5.0.0
-       Public, as the relation's shared step.
-    """
-    return frozenset((RELATION_SCOPING | set(extra)) - set(RELATION_SCOPING_EXCLUDED.get(intent, {})))
 
 
 def narrow_measures(narrowed: Narrowed, filters: list[MeasureFilter]) -> None:
@@ -606,8 +695,9 @@ def _narrow_player_games(
         narrowed.extra_params.append(narrowed.venue == "home")
     if split in STARTER_SIDES:
         # Only a NAMED half filters. `starter_bench` reaches here unchanged
-        # when the question named both, and is refused by the planner for the
-        # readers that cannot show a split table (``unhonored_scoping``).
+        # when the question named both, and is stepped aside for or declined
+        # by the planner for the readers that cannot show a split table
+        # (``ShapeCells.sides``, ``compose.plan.cells_unhonored``).
         narrowed.started = STARTER_SIDES[split]
         narrowed.extra.append("pgl.starter = ?")
         narrowed.extra_params.append(narrowed.started)

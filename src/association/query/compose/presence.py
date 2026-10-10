@@ -36,7 +36,7 @@ from association.query.entities import BOX_SCORES, Entity, optional_team, resolv
 from association.query.notes import Note
 from association.query.player_games import _joined
 from association.query.player_relation import career_end, condition_scope
-from association.query.reading import Scope, Unsupported, unhonored_scoping
+from association.query.reading import Scope, Unsupported
 from association.query.result import Companions, Grouped, Narrowing, Part, RecordFacts, Refusal, Result, Span, Unanswered
 from association.query.subject import with_without_named
 
@@ -44,7 +44,7 @@ from .core import rows_of
 from .team import TeamQuery, compile_team_presence, team_coverage_refusal
 
 
-def read_with_without(con: duckdb.DuckDBPyConnection, q: TeamQuery, *, stated: frozenset[str]) -> Result | Unanswered | None:
+def read_with_without(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> Result | Unanswered | None:
     """``with_without``'s point - the team relation's ``presence`` group -
     read: the teammates (``without``, ``with_player``, a ``conditions``
     role, or the one name beside a team), the subject where a player is
@@ -53,16 +53,19 @@ def read_with_without(con: duckdb.DuckDBPyConnection, q: TeamQuery, *, stated: f
     played inside it, marked with HOW MANY of the named teammates held
     their condition, narrowed to the opponent the question named, since
     both rows narrow together (#163). ``None`` where the point is not the
-    split, or carries a narrowing its words do not state (``stated``); a
+    split; a
     :class:`~association.query.result.Refusal` or :class:`~association.query.result.Clarify` back is an
     answer the reading gives up with: the coverage floor, which player was
     meant, a teammate with no box score, a time together outside the span.
 
     .. versionadded:: 5.0.0
+
+    .. versionchanged:: 6.0.0
+       Takes no ``stated``: the answer side checks the point's cells against
+       its shape's row before asking (``compose.plan.cells_unhonored``,
+       Phase 3, step 2's closing slice).
     """
     if q.shape != "grouped" or q.group != "presence":
-        return None
-    if unhonored_scoping("with_without", q.scope, stated):
         return None
     refused = team_coverage_refusal(q)
     if refused is not None:

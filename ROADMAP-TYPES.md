@@ -681,6 +681,72 @@ otherwise.
   - Not this slice's, on purpose: the intent and why it is not the route's
     stay on the reading's record (step 4); `split` is the role family's.
 
+- **Declared in code by Phase 3, step 2's closing slice, the planner's cell
+  checks** (2026-10-10, the lead's brief; no answer, result, remark,
+  planned query or reading moved on the four populations, compared with
+  nothing ignored - no record field was added):
+  - **One table of cells per relation, and one row per shape on it**
+    (contract 4). `RELATION_SCOPING` and `TEAM_RELATION_SCOPING` keep the
+    cells each relation applies; `RELATION_SCOPING_EXCLUDED` and
+    `TEAM_RELATION_SCOPING_EXCLUDED` are keyed by the planned point's
+    `PointShape` (by the retired templates' names until now), one row per
+    route in `compose._ROUTES` (a test holds the keys equal, beside
+    `SHAPE_NAMES` and `coverage.SOURCES`), each a
+    `reading.ShapeCells`: `unstated` (the cells its words do not state,
+    each with its reason, word for word where the row existed),
+    `refused` (of those, what the planner refuses outright, saying the
+    first one's reason: a run, a quarter's split, two players' meetings),
+    `taken` (beyond the relation's table: the ranking's unit, a team
+    record's month, the player's cells a team's log, splits and record
+    over a line refuse in their own words, the team compiler's unit on a
+    team's own season), `declined` (`"plan"` where the shape's reader is
+    the point's only answer and the planner declines what its words do not
+    state - a comparison, the declared relations, the team shapes Phase 2
+    ported; `"read"` for a team's own season, whose reader declines when
+    asked and whose point the team compiler's sum may still answer),
+    `sides` (one named half of the starter/bench split, never the bare
+    category - `unhonored_scoping`'s special case), `named_player` and
+    `named_subject` (a run's cells only a named player's, or a named team's
+    or player's, games carry). **A record per shape, not per cell**,
+    because three of its facts are the shape's and not a cell's (where a
+    decline is said, the split's half, the subject a run needs), and the
+    measurement held every one: 68,794 (template, cell) verdicts by
+    construction and 2,710 answered questions identical on both trees
+    (`~/association-research/stages/cells_family.py`, `--matrix`).
+  - **One check** (`compose.plan.cells_unhonored(scope, key)`, the
+    `(slot, cell, why)` of every cell a scope sets beyond what the shape's
+    words state, `cells_stated(key)`; and `cells_declined(point, key)`, what
+    the planner refuses before any reader runs), read by the planner, the
+    season line's readers' check and the answer side, which steps aside
+    before asking a reader: no reader takes a list of its own. It replaces
+    `STATED_SCOPING`, the four branches of `_shape_declines` (by the
+    reading's intent), `reading.unhonored_scoping` with `_SPLIT_SIDE_ONLY`,
+    `_excluded_cells_set`, `_team_shape_cells` with `_TEAM_READER_REFUSES`,
+    `_streak_league_cells`, `conditions.condition_needs_player_refusal` with
+    `_CONDITION_PLAYER_ONLY_CELLS`, `team_stats.team_season_declines`, the
+    readers' `stated=` and `relation_scoping`/`relation_span`/
+    `relation_cuts`/`relation_period` and their team kin. The relation's own
+    check stays the compiler's (`compose.core._check_relation_scoping`, the
+    relation's table and what the shape takes), over `Scope.cells()`.
+  - **Every cell a scope sets is `Scope.cells()`** - each family's and the
+    split's, the role family's one cell (`Scope.CELLS` names it: `Split`
+    is a closed set of names, not a type, so the cell is named on the
+    Scope rather than on `reading.Split`); `reading.cell_slots` says each
+    by the slot names it was declared under, so every decline is word for
+    word; `SCOPING_SLOTS` is gone.
+  - **Keyed by the shape, not the intent**: measured on the 2,597 readings
+    with a point, the slot-era branches' intent and the planned shape agree
+    on 2,596 (the other is refused before it is planned), so the re-key
+    moves no verdict on the populations; a hand-built point naming no
+    intent is judged by its shape now.
+  - Not this slice's, on purpose: `Scope` folds into `Reading` with step 4,
+    where `router.Route` (which carries a Scope) is deleted - folding it
+    now would touch every `scope.` site twice (the lead's bound); the
+    declines' sentences still say the retired names and slots
+    (`SHAPE_NAMES`, `cell_slots`) until a decline-to-Cause commit rewords
+    them; the league's own read refuses no cell its subject cannot settle
+    (Still open 16).
+
 ## What must be decided before which phase
 
 | Phase | Needs from this document |
@@ -1143,17 +1209,23 @@ moves into `data` before the slice that rewords its answer:
     decision which the words mean is open (ISSUES.md, "A worded since-date
     with a year...").
 11. **The team relation declares no `companion` cell, and the companions it
-    honors are declared by other rows.** Three readers on `team_games`
-    read companions - the with/without split (its own row of
-    `STATED_SCOPING` names `companion`), a team's record over a companion's
-    line and a team's log (declared through the PLAYER relation's rows,
-    `relation_scoping("record_when")`, `relation_scoping("game_log")`) -
-    while `TEAM_RELATION_SCOPING` holds no `companion` and the team
-    compiler refuses every one by name (`compose.plan._TEAM_READER_REFUSES`,
-    debt). The typed design has the cell on the team relation's table with
-    a reasoned exclusion per team reader; adding it now would need six
-    rows and move no answer, and the lines slice left it for the step that
-    deletes `_TEAM_READER_REFUSES`.
+    honors are its shapes' rows'.** Four readers on `team_games` take a
+    companion beyond the team relation's table (`ShapeCells.taken`, since
+    step 2's closing slice): the with/without split divides by them, and
+    a team's log, splits and record over a line refuse them in their own
+    words (a teammate's absence is with_without's question; a role is a
+    named player's) - where the PLAYER relation's rows declared them and
+    `compose.plan._TEAM_READER_REFUSES` let them through until then. The
+    typed design has the cell on the team relation's table with a reasoned
+    exclusion per team reader; that moves no answer either, and is left
+    for the decline-to-Cause commit that rewords the team readers' own
+    refusals. Measured on the way: a teammate who PLAYED and an ordinal
+    season the planner lets through to a team's log are not read
+    (`compose.logs.read_team_log` refuses an absence, a line and a series
+    game, and narrows by the venue, the opponent and the date alone, so a
+    situation is dropped too) - 0 of the 2,710 readings carry one, and the
+    wordings tried ("celtics game log when jayson tatum plays") read the
+    with/without split (ISSUES.md #322).
 12. **`Won` and `Met` are not filters.** The draft lists both under
     `Filter`; in the code a team's run of wins is the point's `won`
     predicate, and two players' meetings are the pair shape itself
@@ -1186,3 +1258,19 @@ moves into `data` before the slice that rewords its answer:
     the intent they choose, from the reading's own words (`router.Named`).
     Step 4, which keys the readers on the grammar and deletes the stages,
     moves the three to the subject reading's settling under the intent.
+16. **The league's own read applies no cell its subject cannot settle, and
+    nothing refuses one.** `player_relation.league_games` (the `everyone`
+    subject's games) reads an opponent, a team's roster, a venue, the
+    lines, an ordinal season, a situation, a position and the period, and
+    leaves a date, a series game, a teammate, a starter half and a tenure
+    out ("whose teammate would 'without' name?"), while the planner holds
+    the `everyone` subject to the player relation's whole table less
+    `both` - so "most points by a player on nov 22 since 2015-2024" ranks
+    the range with the date dropped, and "most blocks in a game 7" the
+    postseason with the series game dropped. Measured on the 2,710
+    answered questions: 39 league reads (all in the feed) carry one of the
+    five and are answered without it - 22 rankings over a date, 8 over a
+    teammate, 4 over a split, 4 single-game highs over a series game, 1
+    over a date (ISSUES.md). The typed design is the `everyone` subject's
+    own cells, the five refused, as `both` is; a bug fix with every moved
+    answer named.

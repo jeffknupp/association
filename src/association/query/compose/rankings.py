@@ -40,7 +40,7 @@ from association.query.measure import keyed
 from association.query.measures import resolve_metric
 from association.query.metrics import EXTRA_FIELD_COLUMNS, LEADERBOARD_METRICS
 from association.query.notes import Note
-from association.query.reading import Scope, Unsupported, _clamp_limit, unhonored_scoping
+from association.query.reading import Scope, Unsupported, _clamp_limit
 from association.query.result import Decided, Part, RankingFacts, Refusal, Result, Span, Unanswered
 from association.query.season_line import MIN_SAMPLE_LABELS, CareerLeaderboardResult, LeaderboardError, rank_season_line
 
@@ -60,19 +60,25 @@ def _leaderboard_is_own_point(q: Query) -> bool:
     return q.subject == "everyone" and q.source == "seasons" and q.skeleton == "grouped" and q.group == "player" and not q.predicates
 
 
-def leaderboard_reads(q: Query, stated: frozenset[str]) -> bool:
+def leaderboard_reads(q: Query) -> bool:
     """Whether :func:`read_leaderboard` reads ``q`` (or refuses it with a
     sentence or a decline of its own) rather than stepping aside for the
-    game-level ranking: the league's ranking on the season line, narrowed
-    only by what its words state, and - unless a shot-distance ranking, a
-    career with a year named or a unit the metric has no form of, which it
-    says itself - a stat a season-line metric reads, over no position group.
-    Read from the point alone, so the planner plans the rest as the
-    game-level ranking (``compose.plan.plan``) before anything runs.
+    game-level ranking: the league's ranking on the season line, and -
+    unless a shot-distance ranking, a career with a year named or a unit the
+    metric has no form of, which it says itself - a stat a season-line
+    metric reads, over no position group. Read from the point alone, so the
+    planner plans the rest as the game-level ranking (``compose.plan.plan``)
+    before anything runs; a narrowing beyond what its words state is the
+    planner's check beside it (``compose.plan.cells_unhonored``).
 
     .. versionadded:: 5.0.0
+
+    .. versionchanged:: 6.0.0
+       Takes no ``stated``: the answer side checks the point's cells against
+       its shape's row before asking (``compose.plan.cells_unhonored``,
+       Phase 3, step 2's closing slice).
     """
-    if not _leaderboard_is_own_point(q) or unhonored_scoping("leaderboard", q.scope, stated):
+    if not _leaderboard_is_own_point(q):
         return False
     scope = q.scope
     if keyed(scope.measure) == "shot_distance" or (scope.span.career and scope.span.season is not None):
@@ -145,14 +151,13 @@ def _leaderboard_metric(scope: Scope, career: bool) -> str | None:
     return metric
 
 
-def read_leaderboard(con: duckdb.DuckDBPyConnection, q: Query, *, stated: frozenset[str]) -> Result | Unanswered | None:
+def read_leaderboard(con: duckdb.DuckDBPyConnection, q: Query) -> Result | Unanswered | None:
     """``leaderboard``'s own point - the league's (or a team's players')
     leaders by one season-line metric, over a season or a career - read into
     a Result through the season line's door
     (:func:`~association.query.season_line.rank_season_line`). ``None`` where
-    the point is not that, carries a narrowing the ranking's words do not
-    state (``stated``: ``compose.plan.STATED_SCOPING``'s set), names a stat
-    no season-line metric reads, or ranks a position group: the game-level
+    the point is not that, names a stat no season-line metric reads, or
+    ranks a position group: the game-level
     ranking answers those, as it did behind the retired template's refusal
     (planned so: :func:`leaderboard_reads`). A :class:`~association.query.result.Refusal` back is the ranking's own
     refusal (a shot-distance ranking); a
@@ -160,8 +165,13 @@ def read_leaderboard(con: duckdb.DuckDBPyConnection, q: Query, *, stated: frozen
     ambiguous team, a career list with columns or a franchise's).
 
     .. versionadded:: 5.0.0
+
+    .. versionchanged:: 6.0.0
+       Takes no ``stated``: the answer side checks the point's cells against
+       its shape's row before asking (``compose.plan.cells_unhonored``,
+       Phase 3, step 2's closing slice).
     """
-    if not leaderboard_reads(q, stated):
+    if not leaderboard_reads(q):
         return None
     scope = q.scope
     if keyed(scope.measure) == "shot_distance":

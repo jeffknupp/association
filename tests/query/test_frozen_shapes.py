@@ -7,16 +7,19 @@ Phase 2 (2026-10-03 to 2026-10-05) removed what the rest of this file froze:
 the twelve templates, the presenters and ``compose/present.py``, the ten
 adapters and ``compose/adapt.py``, and - with step 6 - ``HONORED_SCOPING``,
 ``check_scope`` and the ``templates`` package itself. Their freezes went with
-them. Nine scoping declarations remain, and are frozen by module and name
-(:data:`FROZEN_SCOPING_TABLES`): the four per-relation cell tables the
-roadmap keeps, the planner's ``STATED_SCOPING``, which Phase 3's cells
-replace, and four that are debt, each labeled with the step that owes its
-deletion (the sixth, ``coverage._BOX_SCORE_SCOPING``, went with Phase 3,
-step 1: the floor follows the planned point's relation; the fifth,
-``compose.core.COMPILER_SLOTS``, with step 2's window: ``ranked_by`` is the
-typed window's ``by``, a cell the player relation declares; the
-``with_without`` row named apart, ``compose.plan.WITH_WITHOUT_STATED``,
-became a row of the table with step 2's companions)."""
+them. Four scoping declarations remain, and are frozen by module and name
+(:data:`FROZEN_SCOPING_TABLES`): the per-relation cell tables the roadmap
+keeps, one table and one table of shapes' rows per relation. Phase 3, step
+2 deleted the rest one slice at a time - ``coverage._BOX_SCORE_SCOPING``
+with step 1 (the floor follows the planned point's relation),
+``compose.core.COMPILER_SLOTS`` with the window (``ranked_by`` is the typed
+window's ``by``), ``compose.plan.WITH_WITHOUT_STATED`` with the companions
+(a row of the table), ``router._MODEL_SLOTS`` with the subject's own, and
+with the closing slice (the planner's one check of the typed cells against
+the tables, ``compose.plan.cells_unhonored``) the planner's
+``STATED_SCOPING``, ``compose.plan._TEAM_READER_REFUSES``,
+``reading.SCOPING_SLOTS`` and ``conditions._CONDITION_PLAYER_ONLY_CELLS``,
+each now a field of a shape's row (``reading.ShapeCells``)."""
 
 from __future__ import annotations
 
@@ -73,29 +76,17 @@ def test_no_intent_is_added_and_a_retired_one_leaves_the_list() -> None:
 # Every module-level declaration of which scoping slots a read honors,
 # states, excludes or refuses, by module and name, as it stood after Phase 2
 # (restored 2026-10-05, #330: step 6 deleted this freeze while 12 of its 14
-# entries were still in src; 11 since Phase 3, step 1, and 8 since its step 2's
-# slices, the subject's taking ``router._MODEL_SLOTS``). Each is labeled with
-# why it is still here:
+# entries were still in src; 11 since Phase 3, step 1, 8 after its step 2's
+# family slices, and the four cell tables alone since its closing slice -
+# the debt at 0). Each is labeled with why it is still here:
 CELL_TABLE = "a per-relation cell table: stays through Phase 4"
-STATED = "STATED_SCOPING: Phase 3's cells (the planner's checks over the Reading's typed filters) replace it"
 FROZEN_SCOPING_TABLES: dict[tuple[str, str], str] = {
     ("player_relation", "RELATION_SCOPING"): CELL_TABLE,
     ("player_relation", "RELATION_SCOPING_EXCLUDED"): CELL_TABLE,
     ("team_relation", "TEAM_RELATION_SCOPING"): CELL_TABLE,
     ("team_relation", "TEAM_RELATION_SCOPING_EXCLUDED"): CELL_TABLE,
-    ("compose.plan", "STATED_SCOPING"): STATED,
-    ("compose.plan", "_TEAM_READER_REFUSES"): (
-        "debt, owed by a decline-to-Cause commit after 'the Result is typed' (2026-10-05): the cells a team's log, splits and run"
-        " refuse at RUN with a sentence of their own, let through the planner; RUN's refusals are typed now, but these are"
-        " declines (Unsupported), and making them the planner's Causes moves answered_by on the unit tests' team calls"
-        " (0 of 628 recorded, 0 of 2,082 feed answers reach them) - Jeff's enumerated-move rule, its own commit"
-    ),
-    ("reading", "SCOPING_SLOTS"): "debt, owed by Phase 3: the Reading's typed filters replace the scope's list of slot names",
-    ("conditions", "_CONDITION_PLAYER_ONLY_CELLS"): (
-        "debt, owed by Phase 3: the complement of TEAM_RELATION_SCOPING restated, which the planner's cell check over the team relation refuses by itself"
-    ),
 }
-_LABELS = (CELL_TABLE, STATED, "debt, owed by ")
+_LABELS = (CELL_TABLE, "debt, owed by ")
 
 
 def _scoping_tables_today() -> set[tuple[str, str]]:
@@ -129,7 +120,7 @@ def _scoping_tables_today() -> set[tuple[str, str]]:
 def test_no_scoping_declaration_is_added_and_each_says_why_it_is_here() -> None:
     _frozen("scoping declaration", _scoping_tables_today(), frozenset(FROZEN_SCOPING_TABLES))
     unlabeled = {key for key, why in FROZEN_SCOPING_TABLES.items() if not why.startswith(_LABELS)}
-    assert unlabeled == set(), "each scoping declaration is a cell table, STATED_SCOPING, or debt naming the step that owes it"
+    assert unlabeled == set(), "each scoping declaration is a cell table, or debt naming the step that owes it"
 
 
 # D4 names more than the intents: no new per-intent renderer either (Phase

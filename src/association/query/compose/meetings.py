@@ -25,7 +25,7 @@ from association.query import reading
 from association.query.coverage import coverage_refusal
 from association.query.entities import Entity, resolved_team, slot_season
 from association.query.player_relation import ResolvedSpan, span_of, validated_until
-from association.query.reading import Cuts, PointShape, Scope, Unsupported, unhonored_scoping
+from association.query.reading import Cuts, PointShape, Scope, Unsupported
 from association.query.result import Grouped, MeetingsFacts, Narrowing, Part, Result, Span, Unanswered
 from association.query.team_games import TeamNarrowed
 from association.query.team_relation import team_games
@@ -119,22 +119,23 @@ def _head_to_head_wins(a: Entity, b: Entity, won: list[bool | None]) -> Grouped:
     return Grouped(by="team", rows=({"key": a.name, "wins": sum(1 for w in won if w)}, {"key": b.name, "wins": sum(1 for w in won if w is False)}))
 
 
-def read_head_to_head(con: duckdb.DuckDBPyConnection, q: TeamQuery, *, stated: frozenset[str]) -> Result | Unanswered | None:
+def read_head_to_head(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> Result | Unanswered | None:
     """``head_to_head``'s point - two teams' meetings - read: the two teams
     from the scope's ``teams``, ``team`` and ``opponent``, every meeting in
     the season (the current one where none is named), on one date, or over a
-    since-bounded or whole-career span, from the first team's side. ``None``
-    where the scope carries a narrowing the meetings' words do not state
-    (``stated``; the planner declines it first); a
+    since-bounded or whole-career span, from the first team's side. A
     :class:`~association.query.result.Refusal` or :class:`~association.query.result.Clarify` back is the
     relation's own refusal (an ambiguous team, a coverage floor).
 
     .. versionadded:: 5.0.0
        ``templates.games.head_to_head`` was this, with its sentences.
+
+    .. versionchanged:: 6.0.0
+       Takes no ``stated``: the answer side checks the point's cells against
+       its shape's row before asking (``compose.plan.cells_unhonored``,
+       Phase 3, step 2's closing slice).
     """
     scope = q.scope
-    if unhonored_scoping("head_to_head", scope, stated):
-        return None
     refused = coverage_refusal(PointShape("team_games", "comparison", "opponent"), scope)
     if refused is not None:
         return refused

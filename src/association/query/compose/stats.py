@@ -30,7 +30,7 @@ from association.nba.season import eastern_date
 from association.query.measure import spelled
 from association.query.notes import Note
 from association.query.player_relation import box_score_notes_read, narrowed_cells, no_narrowed_games
-from association.query.reading import Unsupported, unhonored_scoping
+from association.query.reading import Unsupported
 from association.query.result import LineFacts, Narrowing, Part, Result, Rows, Scalar, Span, Unanswered
 from association.query.season_line import ADVANCED_STATS, MADE_STAT_ATTEMPTS, SHOOTING_STATS, wanted_stats
 
@@ -73,7 +73,7 @@ def _player_stat_measures(q: Query) -> list[str] | None:
     return wanted if sorted(q.measures) == sorted(wanted) else None
 
 
-def read_player_stat(con: duckdb.DuckDBPyConnection, q: Query, *, stated: frozenset[str]) -> Result | Unanswered | None:
+def read_player_stat(con: duckdb.DuckDBPyConnection, q: Query) -> Result | Unanswered | None:
     """``player_stat``'s narrowed point - a per-game scalar over a named
     player's box scores, where an opponent, a venue, a date, a starter half
     or a condition sent the read there - read as one line: each stat's
@@ -84,16 +84,18 @@ def read_player_stat(con: duckdb.DuckDBPyConnection, q: Query, *, stated: frozen
     compiler's (the point compiled with the ``line`` aggregate), and the
     meetings its ``rows`` read over the same narrowed games and the same
     rebuilt-line rule, so the games listed are games the average is over.
-    ``None`` where the point is not that, or carries a narrowing the
-    template's words did not state (``stated``); a
+    ``None`` where the point is not that; a
     :class:`~association.query.result.Refusal` or :class:`~association.query.result.Clarify` back is
     the relation's refusal.
 
     .. versionadded:: 5.0.0
+
+    .. versionchanged:: 6.0.0
+       Takes no ``stated``: the answer side checks the point's cells against
+       its shape's row before asking (``compose.plan.cells_unhonored``,
+       Phase 3, step 2's closing slice).
     """
     if q.skeleton != "scalar" or q.aggregate != "per_game" or q.subject != "player" or q.source != "games" or q.predicates:
-        return None
-    if unhonored_scoping("player_stat", q.scope, stated):
         return None
     measures = _player_stat_measures(q)
     if measures is None:

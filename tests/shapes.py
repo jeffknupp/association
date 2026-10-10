@@ -1,9 +1,9 @@
 """The answer side's keys, by the retired words the tests still name a shape
 with. Since Phase 3, step 1 the planner and the answer side key a reader,
-its stated scoping and its coverage floor by the point's own
+the cells its words state and its coverage floor by the point's own
 :class:`~association.query.reading.PointShape`, and nothing in ``src``
 looks one up by a template's name; the tests that assert what a shape's
-words state (``STATED_SCOPING``) and what floor it is held to still speak
+words state (``compose.plan.cells_stated``) and what floor it is held to still speak
 in those names until step 4 re-seats them as question-to-Reading cases,
 and this is the one table that translates. Where several shapes share the
 words (a player's log and a team's), ``key`` gives the player relation's,
@@ -12,8 +12,8 @@ and a test about the team's names its key outright.
 
 from __future__ import annotations
 
-from association.query.compose.plan import STATED_SCOPING
-from association.query.reading import PointShape
+from association.query.compose.plan import cells_stated, cells_unhonored
+from association.query.reading import PointShape, Scope
 
 KEYS: dict[str, PointShape] = {
     "game_log": PointShape("player_games", "rows", "date"),
@@ -49,5 +49,13 @@ def key(words: str) -> PointShape:
 
 
 def stated(words: str) -> frozenset[str]:
-    """What the shape named by ``words`` states (``compose.plan.STATED_SCOPING``)."""
-    return STATED_SCOPING[KEYS[words]]
+    """What the shape named by ``words`` states (``compose.plan.cells_stated``)."""
+    return cells_stated(KEYS[words])
+
+
+def unhonored(words: str, scope: Scope) -> list[str]:
+    """The slot names ``scope`` sets beyond what the shape named by ``words``
+    states (``compose.plan.cells_unhonored``) - where ``reading.unhonored_scoping``
+    over that shape's ``STATED_SCOPING`` row stood until Phase 3, step 2's
+    closing slice."""
+    return [slot for slot, _, _ in cells_unhonored(scope, KEYS[words])]

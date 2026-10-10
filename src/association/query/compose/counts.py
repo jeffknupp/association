@@ -39,7 +39,7 @@ from association.query.measure import spelled
 from association.query.notes import Note
 from association.query.player_games import REBUILT_STATS, STAT_LABELS
 from association.query.player_relation import empty_box_scores, player_relation_season_type, rebuilt_in_scope
-from association.query.reading import Unsupported, unhonored_scoping
+from association.query.reading import Unsupported
 from association.query.result import CountFacts, Grouped, Line, Narrowing, Part, Result, Scalar, Span, Unanswered
 from association.query.season_line import seasons_on_record
 
@@ -96,21 +96,22 @@ def _threshold_count_rows(q: Query, player: Entity | None, rows: list[dict[str, 
     return [(r["group"], int(r["games"]), int(r.get("rebuilt_shown") or 0)) for r in rows]
 
 
-def read_threshold_count(con: duckdb.DuckDBPyConnection, q: Query, *, stated: frozenset[str]) -> Result | Unanswered | None:
+def read_threshold_count(con: duckdb.DuckDBPyConnection, q: Query) -> Result | Unanswered | None:
     """``threshold_count``'s own point - a named player's games clearing a
     line, counted, or the league's count by player - read into a Result
     over the compiled statement. ``None`` where the point is not that (a
     line the question's words added, another skeleton, a stat no line is
-    kept on, a below/above phrase naming no column) or carries a narrowing
-    the count's words do not state (``stated``:
-    ``compose.plan.STATED_SCOPING``'s set), and the compiler's own
+    kept on, a below/above phrase naming no column), and the compiler's own
     sentence answers.
 
     .. versionadded:: 5.0.0
+
+    .. versionchanged:: 6.0.0
+       Takes no ``stated``: the answer side checks the point's cells against
+       its shape's row before asking (``compose.plan.cells_unhonored``,
+       Phase 3, step 2's closing slice).
     """
     scope = q.scope
-    if unhonored_scoping("threshold_count", scope, stated):
-        return None
     try:
         # The count's column and threshold, read the one way its default
         # point reads them: a below/above phrase may be the whole line, with

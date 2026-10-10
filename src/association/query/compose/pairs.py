@@ -32,7 +32,7 @@ from association.query.conditions import _PLAYER_GAME_TABLES, MEETING_STATS, _ma
 from association.query.entities import Entity
 from association.query.notes import Note
 from association.query.player_relation import condition_scope, no_games
-from association.query.reading import Companion, Scope, Unsupported, _clamp_limit, unhonored_scoping
+from association.query.reading import Companion, Scope, Unsupported, _clamp_limit
 from association.query.result import Grouped, MatchupFacts, Met, Narrowing, Part, Result, Rows, Span, Unanswered, Window
 
 from .core import Compiled, Query, Refused, compile_query, rows_of
@@ -74,25 +74,26 @@ def _pair_meeting(row: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def read_player_matchup(con: duckdb.DuckDBPyConnection, q: Query, *, stated: frozenset[str]) -> Result | Unanswered | None:
+def read_player_matchup(con: duckdb.DuckDBPyConnection, q: Query) -> Result | Unanswered | None:
     """``player_matchup``'s own point - the ``pair`` shape - read as the two
     players' lines over the meetings the compiled statement finds, the
     head-to-head record, and the newest meetings, with the games between
     their teams that have no box score as a note. A game in which they were
     teammates is not a meeting, and when every shared game was one, the
-    Result says how many. ``None`` where the point is not a pair, or carries
-    a narrowing the retired template's words did not state (``stated``:
-    ``compose.plan.STATED_SCOPING``'s set), and the compiler's sentence
-    answers; a :class:`~association.query.result.Refusal` or
+    Result says how many. ``None`` where the point is not a pair, and the
+    compiler's sentence answers; a :class:`~association.query.result.Refusal` or
     :class:`~association.query.result.Clarify` back is the relation's refusal (a player with no games in the span).
 
     .. versionadded:: 5.0.0
+
+    .. versionchanged:: 6.0.0
+       Takes no ``stated``: the answer side checks the point's cells against
+       its shape's row before asking (``compose.plan.cells_unhonored``,
+       Phase 3, step 2's closing slice).
     """
     if q.skeleton != "pair" or q.source != "games":
         return None
     scope = q.scope
-    if unhonored_scoping("player_matchup", scope, stated):
-        return None
     covered = _pair_covered(scope)
     compiled = compile_query(con, q)
     a, b = compiled.player, compiled.other

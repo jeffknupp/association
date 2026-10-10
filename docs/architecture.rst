@@ -305,13 +305,16 @@ that:
 
 * Templates refuse a named stat they cannot provide rather than falling back to
   a default (a default is only safe where the user named nothing).
-* Readers declare which scope slots their words state
-  (:data:`association.query.compose.plan.STATED_SCOPING`, checked by
-  :func:`association.query.reading.unhonored_scoping`) - the ones on a
-  relation through the relation's single declaration - and a reader steps
+* Each shape's row of its relation's cell table says which of the
+  relation's cells its reader's words do not state
+  (:data:`association.query.player_relation.RELATION_SCOPING_EXCLUDED`,
+  :data:`association.query.team_relation.TEAM_RELATION_SCOPING_EXCLUDED`),
+  and the planner's one check reads the point's typed cells against it
+  (:func:`association.query.compose.plan.cells_unhonored`): a reader steps
   aside for a narrowing beyond them so the compiler's own sentence answers,
   rather than answering for a season. A narrowing the relation cannot honor
-  at all is refused by the planner, with its reason.
+  at all, or one the shape refuses outright, is refused by the planner,
+  with its reason.
 * A question about a season a table cannot reach is refused, with the reason
   (:func:`association.query.coverage.check_coverage`). The refusal is returned
   as the answer rather than raised, because a season under the floor is empty

@@ -25,7 +25,7 @@ from typing import Any
 import duckdb
 import pytest
 from routed import planned_answer as compose_answer
-from shapes import key, stated
+from shapes import key, unhonored
 from test_templates import player_matchup, player_splits, streak, with_without  # the compiler's, the templates retired (compose.COMPILED_INTENTS)
 
 from association.fetch.repairs import real_games
@@ -39,7 +39,7 @@ from association.query.coverage import check_coverage
 from association.query.measure import measure_of
 from association.query.parse import with_point
 from association.query.player_games import REBUILT_STATS
-from association.query.reading import SPLIT_KINDS, PointShape, Reading, Scope, Span, SubjectKind, Unsupported, unhonored_scoping
+from association.query.reading import SPLIT_KINDS, PointShape, Reading, Scope, Span, SubjectKind, Unsupported
 from association.query.reading import Subject as Who
 from association.query.result import Unanswered
 from association.query.subject import Subject
@@ -1075,7 +1075,7 @@ def test_a_streaks_opponent_and_venue_narrow_a_teams_own_run_too(league: AnswerC
 def test_a_league_wide_streak_still_refuses_venue_and_opponent(league: AnswerContext) -> None:
     """Unlike a named team (just above), the league-wide streak (nobody
     named at all) has no single team's rival or home/road split to read -
-    `compose.plan._streak_league_cells` refuses by name rather than
+    the planner refuses by name (its row's ``named_subject``) rather than
     silently narrowing nothing or picking one team to mean."""
     with pytest.raises(Unsupported, match=r"streak cannot honor \['venue'\] without a named team or player"):
         streak(league, Reading.from_slots(_slots(kind="win", venue="home")))
@@ -1893,9 +1893,9 @@ def test_a_condition_the_relation_cannot_read_refuses(league: AnswerContext) -> 
         _brown_games(league, {"player": "Jayson Tatum", "side": "own", "predicate": "dunked"})
     with pytest.raises(Unsupported, match="reached condition"):
         _brown_games(league, {"player": "Jayson Tatum", "side": "own", "predicate": "reached", "stat": "vibes", "threshold": 3})
-    # A history's words state no condition (compose.plan.STATED_SCOPING):
+    # A history's words state no condition (its shape's row, compose.plan.cells_unhonored):
     # its presenter steps aside, and the compiler's sentence says what it read.
-    assert unhonored_scoping("player_history", Scope.from_slots({"player": "Jaylen Brown", "stat": "points", "conditions": [{"player": "Jayson Tatum"}]}), stated("player_history")) == ["conditions"]
+    assert unhonored("player_history", Scope.from_slots({"player": "Jaylen Brown", "stat": "points", "conditions": [{"player": "Jayson Tatum"}]})) == ["conditions"]
 
 
 def test_a_matchup_emptied_by_an_absence_says_what_it_counted(league: AnswerContext) -> None:

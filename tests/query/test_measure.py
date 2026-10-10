@@ -25,7 +25,7 @@ from test_templates import game_log, leaderboard, pg_ctx  # noqa: F401 - the pla
 
 from association.query import lexicon
 from association.query.answer import AnswerContext
-from association.query.compose.plan import STATED_SCOPING, plan_point
+from association.query.compose.plan import cells_stated, plan_point
 from association.query.measure import (
     ALIASES,
     CATALOG,
@@ -44,7 +44,7 @@ from association.query.metrics import LEADERBOARD_METRICS
 from association.query.normalizer import NORMALIZER_STATS
 from association.query.parse import read_route, reading_from_route
 from association.query.point import _team_measure
-from association.query.reading import SCOPING_SLOTS, Claim, Measure, PointShape, Reading, Scope, ScopeError, Span, cell_set, unhonored_cells
+from association.query.reading import Claim, Measure, PointShape, Reading, Scope, ScopeError, Span, cell_set, unhonored_cells
 from association.query.reading import Subject as Who
 from association.query.team_metrics import TEAM_METRICS, resolve_team_metric
 
@@ -226,12 +226,14 @@ def test_a_value_no_measure_can_hold_is_refused_at_the_door() -> None:
 
 
 def test_the_cell_its_decline_name_and_what_a_reader_leaves_unhonored() -> None:
-    assert frozenset({"rate"}) == Measure.CELLS and frozenset({"split"}) == SCOPING_SLOTS
+    assert frozenset({"rate"}) == Measure.CELLS and "rate" in Scope.CELLS
     unit = Scope.from_slots({"stat": "fouls", "rate": "per 100"})
     assert cell_set(unit, "rate") and unhonored_cells(unit, frozenset()) == ["rate"] and unhonored_cells(unit, Measure.CELLS) == []
     assert not cell_set(Scope.from_slots({"stat": "netpoints_per_100"}), "rate")  # the key's own rate is no cell
-    assert STATED_SCOPING[PointShape("player_seasons", "ranking", "player")] >= Measure.CELLS
-    assert not any(Measure.CELLS & stated for shape, stated in STATED_SCOPING.items() if shape.relation == "player_games")
+    assert cells_stated(PointShape("player_seasons", "ranking", "player")) >= Measure.CELLS
+    from association.query import compose
+
+    assert not any(Measure.CELLS & cells_stated(shape) for shape in compose._ROUTES if shape.relation == "player_games")
 
 
 # ---------------- the catalog: one closed set of keys, six vocabularies as lookups into it ----------------

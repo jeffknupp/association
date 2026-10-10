@@ -1435,14 +1435,12 @@ def test_a_rate_no_metric_holds_is_refused_rather_than_ranked_by_the_wrong_unit(
     half. What belongs here is that the router still states the unit rather
     than dropping it, because a dropped `rate` is a per-90 question answered
     per game with nothing saying so."""
-    from shapes import stated
-
-    from association.query.reading import unhonored_scoping
+    from shapes import unhonored
 
     per_90 = _ask("who were the top 10 in defensive netpoints / 90", '{"intent":"leaderboard","stat":"netpoints_defense","limit":10}')
     assert per_90.slots["stat"] == "netpoints_defense" and per_90.slots["rate"] == "/ 90"
     # Reaches the ranking's reader now (the compiler's presenter), which refuses by name.
-    assert unhonored_scoping("leaderboard", per_90.scope, stated("leaderboard")) == []
+    assert unhonored("leaderboard", per_90.scope) == []
     points = _ask("points per 100 possessions leaders", '{"intent":"leaderboard","stat":"points"}')
     assert points.slots["stat"] == "points" and points.slots["rate"] == "per 100 possessions"
     plain = _ask("who led the league in defensive netpoints", '{"intent":"leaderboard","stat":"netpoints_defense"}')

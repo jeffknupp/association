@@ -17,7 +17,6 @@ from pathlib import Path
 
 import duckdb
 import pytest
-from shapes import stated
 
 from association.nba.netpoints import FINGERPRINT_CATEGORIES
 from association.query.answer import RenderResult
@@ -74,7 +73,7 @@ def _asked(con: duckdb.DuckDBPyConnection, out_dir: Path, names: str, *, season:
     as the retired ``fingerprint.render_fingerprint`` took them."""
     split = [name.strip() for name in names.split(" vs ")]
     scope = Scope(subject=Who(kind="pair", players=tuple(split)), span=Span(season=season)) if len(split) > 1 else Scope(subject=Who(kind="player", players=(split[0],)), span=Span(season=season))
-    return _said(con, out_dir, read_fingerprint(con, NetPointsQuery(scope=scope, shape="chart"), stated=stated("fingerprint")))
+    return _said(con, out_dir, read_fingerprint(con, NetPointsQuery(scope=scope, shape="chart")))
 
 
 def _drawn(result: RenderResult) -> Path:

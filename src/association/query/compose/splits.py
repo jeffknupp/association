@@ -25,7 +25,7 @@ from association.query.measure import spelled
 from association.query.notes import Note
 from association.query.player_games import _PLAYER_GAMES, Narrowed, games_subquery
 from association.query.player_relation import condition_scope, narrowed_cells, no_games, no_narrowed_games, span_of
-from association.query.reading import SPLIT_KINDS, Scope, Unsupported, unhonored_scoping
+from association.query.reading import SPLIT_KINDS, Scope, Unsupported
 from association.query.result import Grouped, Narrowing, Part, Result, Span, SplitsFacts, Unanswered
 from association.query.season_text import MONTH_NAMES
 from association.query.team_relation import condition_team_no_games, team_games, team_span_label
@@ -162,24 +162,26 @@ def _narrowing_emptied(con: duckdb.DuckDBPyConnection, narrowed: Narrowed) -> bo
     return bool(row and row[0])
 
 
-def read_player_splits(con: duckdb.DuckDBPyConnection, q: Query, *, stated: frozenset[str]) -> Result | Unanswered | None:
+def read_player_splits(con: duckdb.DuckDBPyConnection, q: Query) -> Result | Unanswered | None:
     """A player's splits - one or all four, side by side - over the
     compiler's settled player and narrowing (#228). ``None`` where the point
     is not the splits' own (a grouped record by venue or by starter on the
-    player relation with no predicate), carries a narrowing the words did not
-    state (``stated``), or names a stat the line has no column for (the
+    player relation with no predicate), or names a stat the line has no column for (the
     compiler's own point, said by its sentence); the template's own early
     refusals stand (a window, a home/away split beside a venue). A
     :class:`~association.query.result.Refusal` or :class:`~association.query.result.Clarify` back is the
     relation's refusal.
 
     .. versionadded:: 5.0.0
+
+    .. versionchanged:: 6.0.0
+       Takes no ``stated``: the answer side checks the point's cells against
+       its shape's row before asking (``compose.plan.cells_unhonored``,
+       Phase 3, step 2's closing slice).
     """
     if q.skeleton != "grouped" or q.subject != "player" or q.predicates or q.group not in ("venue", "starter"):
         return None
     scope = q.scope
-    if unhonored_scoping("player_splits", scope, stated):
-        return None
     _splits_refusals(scope)
     try:
         line = _splits_line(spelled(scope.measure), _PLAYER_LINE, alias="p")
@@ -276,24 +278,25 @@ def _player_facts(team: Entity | None, line: tuple[tuple[str, str, str], ...], s
     )
 
 
-def read_team_splits(con: duckdb.DuckDBPyConnection, q: TeamQuery, *, stated: frozenset[str]) -> Result | Unanswered | None:
+def read_team_splits(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> Result | Unanswered | None:
     """A team's own splits ("76ers wins vs losses"): the team's per-game line
     by venue, by result or by month, over the team-games relation. A team has
     no starter/bench split of its own, and the narrowings only a settled
     player's games take (a line on a box-score column, a game of a series, an
     ordinal season, a teammate's absence or role) are refused by name rather
-    than silently ignored. ``None`` where the words do not state a narrowing
-    the scope carries (``stated``), so the team compiler's own sentence
-    answers.
+    than silently ignored.
 
     .. versionadded:: 5.0.0
+
+    .. versionchanged:: 6.0.0
+       Takes no ``stated``: the answer side checks the point's cells against
+       its shape's row before asking (``compose.plan.cells_unhonored``,
+       Phase 3, step 2's closing slice).
     """
     from association.query.coverage import coverage_refusal
     from association.query.reading import PointShape
 
     scope = q.scope
-    if unhonored_scoping("player_splits", scope, stated):
-        return None
     refused = coverage_refusal(PointShape("team_games", "split", "splits"), scope)
     if refused is not None:
         return refused

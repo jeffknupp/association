@@ -463,12 +463,12 @@ def _check_relation_scoping(scope: Scope, subject: str = "player", honored_extra
     settles one type (:func:`_resolve_everyone`) and still refuses it rather
     than answer the regular season alone.
 
-    Every name in ``SCOPING_SLOTS`` is a :class:`~association.query.reading.Scope`
-    field (``tests/query/test_reading.py`` holds the two to it), and a field
-    at its default - None, an empty tuple, False - is the slot absent.
-    ``honored_extra`` is what the point's own reader honors beyond the
-    relation: the season line's ranking reads ``rate`` (a season total, or a
-    unit it refuses by name), where the game-level relation cannot."""
+    The cells are the scope's typed values' (:meth:`~association.query.reading.Scope.cells`),
+    each said by the slot names it was declared under. ``honored_extra`` is
+    what the point's shape takes beyond the relation (its row's ``taken``,
+    ``compose.plan``): the season line's ranking reads ``rate`` (a season
+    total, or a unit it refuses by name), where the game-level relation
+    cannot; a team's log refuses a teammate in its own words."""
     # A team's point is held to the TEAM relation's own cells: checked
     # against the player relation's, a cell only a player's games carry (a
     # teammate's role, a starter half, a line on a box-score column, a

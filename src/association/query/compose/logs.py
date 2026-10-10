@@ -35,7 +35,7 @@ from association.query.measures import log_extras, stat_measure
 from association.query.notes import Note
 from association.query.player_games import Narrowed, aggregate_sql
 from association.query.player_relation import ResolvedSpan, box_score_notes_read, no_narrowed_games, scoped_games, span_of, whole_span
-from association.query.reading import DEFAULT_GAME_LOG_LIMIT, Cuts, Scope, Unsupported, _clamp_limit, unhonored_scoping
+from association.query.reading import DEFAULT_GAME_LOG_LIMIT, Cuts, Scope, Unsupported, _clamp_limit
 from association.query.result import LogFacts, Narrowing, Part, Refusal, Result, Rows, Span, Unanswered, Window
 from association.query.team_games import TEAM_GAMES_SQL, TeamNarrowed
 from association.query.team_relation import team_games
@@ -295,7 +295,7 @@ def _player_log_mixed(con: duckdb.DuckDBPyConnection, q: Query, compiled: Compil
     return Result(subject=player.name, relation="player", span=about, narrowing=narrowing, window=window, parts=(Part(body=body),), notes=tuple(notes), facts=LogFacts(mixed=True))
 
 
-def read_player_log(con: duckdb.DuckDBPyConnection, q: Query, *, stated: frozenset[str]) -> Result | Unanswered | None:
+def read_player_log(con: duckdb.DuckDBPyConnection, q: Query) -> Result | Unanswered | None:
     """A named player's log: the compiled statement of the planned point,
     its measures the log's columns (the four of the line and the named
     stat's own), executed over the compiler's settled player, span and
@@ -304,10 +304,8 @@ def read_player_log(con: duckdb.DuckDBPyConnection, q: Query, *, stated: frozens
     in date order with no predicate, a stat the log has no column for
     (:func:`~association.query.measures.log_extras`), a bare
     threshold, or a measure the question's words moved in beyond the log's
-    own columns, or a narrowing beyond what the log's words state
-    (``stated``: ``compose.plan.STATED_SCOPING``'s set for the intent -
-    the log's own, or the season line's for a ``player_stat`` window the
-    retired template handed to the log). A
+    own columns. A narrowing beyond what the log's words state never
+    reaches it: the answer side steps aside first. A
     :class:`~association.query.result.Refusal` or :class:`~association.query.result.Clarify` back is the
     relation's own refusal (an ambiguous name), as before.
 
@@ -317,10 +315,12 @@ def read_player_log(con: duckdb.DuckDBPyConnection, q: Query, *, stated: frozens
        Executes the compiled statement (Phase 2, step 1's merge) where it
        read the rows through its own ``rows_sql`` call beside it; measured
        equal on every recorded player log first.
+    .. versionchanged:: 6.0.0
+       Takes no ``stated``: the answer side checks the point's cells against
+       its shape's row before asking (``compose.plan.cells_unhonored``,
+       Phase 3, step 2's closing slice).
     """
     if q.skeleton != "rows" or q.order != "date" or q.subject != "player" or q.predicates or q.group != "none":
-        return None
-    if unhonored_scoping("game_log", q.scope, stated):
         return None
     scope = q.scope
     try:
@@ -475,24 +475,25 @@ def _team_log_mixed(con: duckdb.DuckDBPyConnection, team_name: str, team: Any, s
     return Result(subject=team_name, relation="team", span=about, narrowing=narrowing, window=window, parts=(Part(body=body),), facts=LogFacts(stat=stat, mixed=True))
 
 
-def read_team_log(con: duckdb.DuckDBPyConnection, q: TeamQuery, *, stated: frozenset[str]) -> Result | Unanswered | None:
+def read_team_log(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> Result | Unanswered | None:
     """A team's games listed, over the team relation the team compiler
-    planned. ``None`` where the log's words do not state a narrowing the
-    scope carries (``stated``, the log's set in
-    ``compose.plan.STATED_SCOPING``), so the team compiler's own
-    sentence answers; a :class:`~association.query.result.Refusal` or
+    planned (a narrowing the log's words do not state is stepped aside for
+    before it is asked, so the team compiler's own sentence answers); a
+    :class:`~association.query.result.Refusal` or
     :class:`~association.query.result.Clarify` back is the relation's own refusal (no such team, a coverage floor).
     Both orderings are explicit: "first game" and "last game" differ only
     by ORDER BY direction, and LIMIT 1 without one returns an arbitrary row.
 
     .. versionadded:: 5.0.0
+    .. versionchanged:: 6.0.0
+       Takes no ``stated``: the answer side checks the point's cells against
+       its shape's row before asking (``compose.plan.cells_unhonored``,
+       Phase 3, step 2's closing slice).
     """
     from association.query.coverage import coverage_refusal
     from association.query.reading import PointShape
 
     scope = q.scope
-    if unhonored_scoping("game_log", scope, stated):
-        return None
     refused = coverage_refusal(PointShape("team_games", "rows", "date"), scope)
     if refused is not None:
         return refused

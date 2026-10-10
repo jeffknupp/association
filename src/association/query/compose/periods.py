@@ -68,7 +68,7 @@ from association.query.player_games import (
     period_rate,
 )
 from association.query.player_relation import ResolvedSpan, league_games, relation_window, scoped_games, span_of
-from association.query.reading import DEFAULT_GAME_LOG_LIMIT, STARTER_SIDES, Cuts, Measure, PointShape, Scope, Unsupported, _clamp_limit, period_narrowing, unhonored_scoping
+from association.query.reading import DEFAULT_GAME_LOG_LIMIT, STARTER_SIDES, Cuts, Measure, PointShape, Scope, Unsupported, _clamp_limit, period_narrowing
 from association.query.result import (
     Cell,
     Decided,
@@ -103,21 +103,24 @@ from .team import TeamQuery
 _PERIOD_LOG_MEASURES: list[str] = [*PERIOD_COLUMNS, "opponent_name"]
 
 
-def read_period_split(con: duckdb.DuckDBPyConnection, q: Query, *, stated: frozenset[str]) -> Result | Unanswered | None:
+def read_period_split(con: duckdb.DuckDBPyConnection, q: Query) -> Result | Unanswered | None:
     """``period_split``'s own point - a named player's games read as one
     quarter's or half's line, or his four quarters side by side - read into
     a Result over the compiled statement. ``None`` where the point is not
-    that (a predicate, another skeleton, a measure the point did not plan)
-    or carries a narrowing the template's words did not state (``stated``:
-    ``compose.plan.STATED_SCOPING``'s set), and the compiler's own
-    sentence answers; a
+    that (a predicate, another skeleton, a measure the point did not plan),
+    and the compiler's own sentence answers; a
     :class:`~association.query.result.Refusal` or :class:`~association.query.result.Clarify` back is a
     refusal - a season whose figures cannot be trusted, a column this
     warehouse cannot rebuild, the relation's own.
 
     .. versionadded:: 5.0.0
+
+    .. versionchanged:: 6.0.0
+       Takes no ``stated``: the answer side checks the point's cells against
+       its shape's row before asking (``compose.plan.cells_unhonored``,
+       Phase 3, step 2's closing slice).
     """
-    if q.subject != "player" or q.predicates or unhonored_scoping("period_split", q.scope, stated):
+    if q.subject != "player" or q.predicates:
         return None
     if q.skeleton == "grouped" and q.group == "period":
         return _period_by_quarter(con, q) if q.aggregate == "per_game" else None
@@ -547,7 +550,7 @@ def _team_quarter_points_line(games: list[dict[str, Any]], measure: str) -> Scal
     return Scalar(games=len(played), values={measure: round(total / len(played), 2), "most": max(g[measure] for g in played), "fewest": min(g[measure] for g in played)}, sums={measure: total})
 
 
-def read_team_quarter_points(con: duckdb.DuckDBPyConnection, q: TeamQuery, *, stated: frozenset[str]) -> Result | Unanswered | None:
+def read_team_quarter_points(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> Result | Unanswered | None:
     """``team_quarter_points``' point - a team's figure in ONE quarter or
     half, game by game and over them all, narrowed by any of the team
     relation's cells - read into a Result: the line over the games that
@@ -555,18 +558,20 @@ def read_team_quarter_points(con: duckdb.DuckDBPyConnection, q: TeamQuery, *, st
     games beneath it (a detail :class:`~association.query.result.Rows`).
     Points are the linescore's; any other column of the period's line is
     rebuilt from the plays, each season caveated or refused by its measured
-    agreement. ``None`` where the scope carries a narrowing the shape's words
-    do not state (the planner declines it first); a
+    agreement. A
     :class:`~association.query.result.Refusal` or :class:`~association.query.result.Clarify` back is a
     refusal - a stat nothing splits by period, no play-by-play, a season
     rebuilt too seldom right, the relation's own.
 
     .. versionadded:: 5.0.0
        ``templates.games.team_quarter_points`` was this, with its sentences.
+
+    .. versionchanged:: 6.0.0
+       Takes no ``stated``: the answer side checks the point's cells against
+       its shape's row before asking (``compose.plan.cells_unhonored``,
+       Phase 3, step 2's closing slice).
     """
     scope = q.scope
-    if unhonored_scoping("team_quarter_points", scope, stated):
-        return None
     refused = coverage_refusal(PointShape("team_periods", "scalar", "total"), scope)
     if refused is not None:
         return refused
@@ -649,7 +654,7 @@ def _period_leaderboard_narrowing(narrowed: Narrowed, period: str | None) -> Nar
     return Narrowing(opponent=narrowed.opponent.name if narrowed.opponent is not None else None, venue=narrowed.venue, cells=(Period(label=period),) if period is not None else ())
 
 
-def read_period_leaderboard(con: duckdb.DuckDBPyConnection, q: Query, *, stated: frozenset[str]) -> Result | Unanswered | None:
+def read_period_leaderboard(con: duckdb.DuckDBPyConnection, q: Query) -> Result | Unanswered | None:
     """``period_leaderboard``'s point - players ranked by a stat in ONE
     quarter or half, per game, or with no period named by their points in
     each of the four quarters at once - read over every player's games in
@@ -658,18 +663,19 @@ def read_period_leaderboard(con: duckdb.DuckDBPyConnection, q: Query, *, stated:
     the relation itself. The denominator is games PLAYED; a per-game
     average needs a minimum (the season's per-game qualifier, or half of
     the most anyone played in a pool narrowed to an opponent or a venue);
-    the season's measured accuracy caveats or refuses it. ``None`` where the
-    scope carries a narrowing the ranking's words do not state (the planner
-    declines it first); a
+    the season's measured accuracy caveats or refuses it. A
     :class:`~association.query.result.Refusal` or :class:`~association.query.result.Clarify` back is a
     refusal.
 
     .. versionadded:: 5.0.0
        ``templates.games.period_leaderboard`` was this, with its sentences.
+
+    .. versionchanged:: 6.0.0
+       Takes no ``stated``: the answer side checks the point's cells against
+       its shape's row before asking (``compose.plan.cells_unhonored``,
+       Phase 3, step 2's closing slice).
     """
     scope = q.scope
-    if unhonored_scoping("period_leaderboard", scope, stated):
-        return None
     try:
         measure = period_split_measure(scope.measure)
     except Unsupported as exc:

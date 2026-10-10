@@ -20,8 +20,8 @@ from typing import Any
 import duckdb
 
 from association.query.entities import Entity, resolved_team
-from association.query.player_relation import ResolvedSpan, apply_situation, has_table, relation_window, span_of
-from association.query.reading import Cuts, Period, Scope, Span, Unsupported, period_narrowing
+from association.query.player_relation import RELATION_SCOPING_EXCLUDED, ResolvedSpan, apply_situation, has_table, relation_window, span_of
+from association.query.reading import Cuts, Measure, Period, PointShape, Scope, ShapeCells, Span, Unsupported, period_narrowing
 from association.query.result import Refusal, Unanswered
 from association.query.season_text import season_phrase
 from association.query.team_games import TEAM_GAMES_SQL, TeamNarrowed
@@ -103,91 +103,162 @@ refuses it, by :data:`TEAM_RELATION_SCOPING_EXCLUDED`.
 """
 
 
-# The cells a template on the team relation does NOT honor, each with why. A
-# reason has to be about the template's answer, not its code - the same rule
-# RELATION_SCOPING_EXCLUDED follows.
-TEAM_RELATION_SCOPING_EXCLUDED: dict[str, dict[str, str]] = {
-    # A leaderboard ranks one season's (or one since-bounded span's) teams
-    # against each other; none of these four narrow that pool to a single
-    # game or a single opponent, and a career total across every season on
-    # record is not built.
-    "team_leaderboard": {
-        "opponent": "a leaderboard ranks every team; it has no reading for one named opponent",
-        "date": "a leaderboard ranks a season, not one day's games",
-        "career": "a leaderboard ranks one season's teams; a career total across every season is not built",
-        "both": "a leaderboard ranks one season type's lines; the standings hold no row for both at once",
-        "window": "a leaderboard ranks a season, not a window of games",
-        "game_n": "a leaderboard ranks a season, not one game of a series",
-        # step 3, K1: a leaderboard ranks a season or a since/until-bounded
-        # span of them; narrowing that pool to one weekday, month or holiday
-        # within it is a different question from ranking the span itself.
-        "situation": "a leaderboard ranks a season, not the games in one weekday, month or holiday within it",
-        "period": "a leaderboard ranks teams' season lines, and no season line is split by quarter or half",
-    },
-    # A record for one game is a single result, which game_log already answers
-    # directly, and a record over a limited number of recent games is the same
-    # substitution the player relation refuses for the same two cells. `since`
-    # and `game_n` used to be excluded here too ("not built yet" - a reason
-    # about the code, which the rule above this dict forbids) - step 3, team
-    # cells, reads both: `since` the same since-bounded `ResolvedSpan` a career
-    # already reads (`_record_narrowed`), `game_n` the relation's own
+# Each shape's row on the team relation - the team counterpart of
+# RELATION_SCOPING_EXCLUDED, keyed the same way (`reading.PointShape`) and
+# read by the same one check (`compose.plan.cells_unhonored`): the cells a
+# shape's words do not state, each with why, and what the planner does about
+# one. A reason has to be about the shape's answer, not its code - the same
+# rule RELATION_SCOPING_EXCLUDED follows.
+#
+# A team's log, splits and record over a line take a player's cells beyond
+# the team relation's (`taken`): a teammate's absence or role, a line on a
+# box-score column, an ordinal season - refused in the reader's own words,
+# which say where the question belongs (`compose.logs._team_log_refusals`,
+# `compose.splits`, `compose.records.read_team_record_when`); anything else a
+# team's games do not carry is the planner's refusal ("a team's games cannot
+# be narrowed by [...]"). The three said what their words state through the
+# PLAYER relation's rows until Phase 3, step 2's closing slice
+# (`relation_scoping("game_log")` and its kin) beside the planner's
+# `_TEAM_READER_REFUSES`; the reasons are those rows', read from them.
+_TEAM_SEASON_ROW = "a team's line is one season's row of the standings, with no game to cut"
+_PROJECTION = "a projection is one season's snapshot, with no game to cut"
+TEAM_RELATION_SCOPING_EXCLUDED: dict[PointShape, ShapeCells] = {
+    PointShape("team_games", "rows", "date"): ShapeCells(
+        unstated=RELATION_SCOPING_EXCLUDED[PointShape("player_games", "rows", "date")].unstated,
+        taken=frozenset({"companion", "line", "season_n"}),
+    ),
+    PointShape("team_games", "split", "splits"): ShapeCells(
+        unstated=RELATION_SCOPING_EXCLUDED[PointShape("player_games", "split", "splits")].unstated,
+        taken=frozenset({"companion", "line", "season_n", "split"}),
+    ),
+    PointShape("team_games", "split", "line"): ShapeCells(
+        unstated=RELATION_SCOPING_EXCLUDED[PointShape("player_games", "split", "line")].unstated,
+        taken=frozenset({"companion", "line", "season_n"}),
+    ),
+    # A team's or the league's run of wins: the player relation's run, and its
+    # two refusals for a run no named player's games make (a team's, the
+    # league's).
+    PointShape("team_games", "runs", "won"): RELATION_SCOPING_EXCLUDED[PointShape("player_games", "runs", "line")],
+    # The with/without split's words: a career or one season, the companions
+    # it divides by and holds to their roles, and one opponent (both rows
+    # narrow together, #163); nothing else that would narrow the teammates'
+    # games without its sentence saying so. Its reader is the point's only
+    # answer: the team compiler has no reading of a split narrowed beyond it.
+    PointShape("team_games", "split", "presence"): ShapeCells(
+        unstated={
+            "range": "the split's words state a career or one season; a range of seasons would cut the teammates' stints without saying so",
+            "both": "the split reads one season type's games; both at once would join a teammate's regular-season and playoff absences as one",
+            **dict.fromkeys(sorted(TEAM_CUTS - {"opponent"}), "the split's words state one opponent; another cut would narrow the teammates' games without the sentence saying so"),
+            "window": "the split divides every game in the span by the teammates' presence; the last N games would cut both sides without the sentence saying so",
+            "period": "a record is won and lost over whole games; a quarter or half of each has no winner the split could count",
+        },
+        taken=frozenset({"companion"}),
+        declined="plan",
+    ),
+    # The shapes Phase 2's slice (iv) ported from templates the reader gave no
+    # point, each the point's only answer: every meeting in a season, on a
+    # date, at a venue, or over a since-bounded or whole-career span (a window
+    # and `game_n` pick out a subset of the tally); a team's quarter or half
+    # over the relation's whole set, the quarter the relation's own
+    # narrowing; a team's record, by month as well ("including the playoffs"
+    # both season types together).
+    PointShape("team_games", "comparison", "opponent"): ShapeCells(
+        unstated={
+            "window": "head_to_head counts every meeting in the span; picking the last N of them is not built",
+            "game_n": "head_to_head counts every meeting; one numbered game of a series is not read here",
+            # step 3, K1 wires the calendar narrowing into team_quarter_points
+            # and team_record; head_to_head's own since/career span result
+            # (_head_to_head_span_result) does not read it yet - a weekday or
+            # holiday cut of an all-time series is a real question, just not
+            # this step's.
+            "situation": "head_to_head tallies every meeting in the span; narrowing that tally to one weekday, month or holiday within it is not built",
+            "period": "a series is won and lost in whole games; a quarter or half of each meeting has no winner to tally",
+            "both": "a series is tallied in one season type; both at once would count regular-season and playoff meetings as one series",
+        },
+        declined="plan",
+    ),
+    PointShape("team_periods", "scalar", "total"): ShapeCells(
+        unstated={"both": "a quarter's figures are reconciled per season and per type; one read over both types would carry one caveat for two"},
+        declined="plan",
+    ),
+    # A record for one game is a single result, which game_log already
+    # answers directly, and a record over a limited number of recent games is
+    # the same substitution the player relation refuses for the same two
+    # cells. `since` and `game_n` used to be excluded here too ("not built
+    # yet" - a reason about the code, which the rule above forbids) - step 3,
+    # team cells, reads both: `since` the same since-bounded `ResolvedSpan` a
+    # career already reads (`_record_narrowed`), `game_n` the relation's own
     # `narrow_series_game` check (`_games_record_games`).
-    "team_record": {
-        "date": "a record for one calendar date is a single game, which game_log already answers directly",
-        "window": "a record over a limited set of games is a game_log question",
-        "period": "a record is won and lost over whole games; a quarter or half has no winner the record could count",
-    },
-    # head_to_head tallies every meeting in the span; `order` and `game_n`
-    # pick out a subset of that tally, and neither is built. `since` and
-    # `span` used to be excluded too ("not built yet") - step 3, team cells,
-    # reads both the same since-bounded or whole-career `ResolvedSpan` team_record's
-    # own `since`/`span` now read, over every meeting in it rather than one
-    # season.
-    "head_to_head": {
-        "window": "head_to_head counts every meeting in the span; picking the last N of them is not built",
-        "game_n": "head_to_head counts every meeting; one numbered game of a series is not read here",
-        # step 3, K1 wires the calendar narrowing into team_quarter_points and
-        # team_record; head_to_head's own since/career span result
-        # (_head_to_head_span_result) does not read it yet - a weekday or
-        # holiday cut of an all-time series is a real question, just not this
-        # step's.
-        "situation": "head_to_head tallies every meeting in the span; narrowing that tally to one weekday, month or holiday within it is not built",
-        "period": "a series is won and lost in whole games; a quarter or half of each meeting has no winner to tally",
-        "both": "a series is tallied in one season type; both at once would count regular-season and playoff meetings as one series",
-    },
-    "team_quarter_points": {"both": "a quarter's figures are reconciled per season and per type; one read over both types would carry one caveat for two"},
+    PointShape("team_games", "scalar", "record"): ShapeCells(
+        unstated={
+            "date": "a record for one calendar date is a single game, which game_log already answers directly",
+            "window": "a record over a limited set of games is a game_log question",
+            "period": "a record is won and lost over whole games; a quarter or half has no winner the record could count",
+        },
+        taken=frozenset({"split"}),
+        declined="plan",
+    ),
     # The team-season readers (compose.team_stats, over the standings and the
-    # power index) and the with/without split settle no span of their own:
-    # one season's line, one season's projection, or the teammates' games
-    # over a career; what their words do not state is declared here with
-    # the rest.
-    "team_stat": {
-        "career": "a team's line is one season's row of the standings; there is no career row to read",
-        "range": "a team's line is one season's row of the standings; a range of seasons is not summed",
-        "both": "a team's line is one season type's row of the standings",
-    },
-    "team_outlook": {
-        "career": "a projection is one season's snapshot",
-        "range": "a projection is one season's snapshot",
-        "both": "a projection is one season type's snapshot",
-    },
-    "with_without": {
-        "range": "the split's words state a career or one season; a range of seasons would cut the teammates' stints without saying so",
-        "both": "the split reads one season type's games; both at once would join a teammate's regular-season and playoff absences as one",
-    },
+    # power index) settle no span of their own: one season's line, one
+    # season's projection, or a ranking of one season's (or one since-bounded
+    # span's) teams. Each declines what its words do not state when it is
+    # asked (`declined="read"`): a team's own total the words read on the
+    # team relation is said as this shape (`point.TEAM_SEASON_POINTS`), and
+    # the team compiler's sum - which reads a unit, `taken` - answers where
+    # the season reader declines.
+    PointShape("team_seasons", "scalar", "line"): ShapeCells(
+        unstated={
+            "career": "a team's line is one season's row of the standings; there is no career row to read",
+            "range": "a team's line is one season's row of the standings; a range of seasons is not summed",
+            "both": "a team's line is one season type's row of the standings",
+            **dict.fromkeys(sorted(TEAM_CUTS), _TEAM_SEASON_ROW),
+            "window": "a team's line is one season's row of the standings, with no game to window",
+            "period": "a team's line is one season's row of the standings, and no row of the standings is split by quarter or half",
+            "rate": "a team's line is its season's row of the standings, per game; a total or another unit is the team compiler's sum, which reads one",
+        },
+        taken=Measure.CELLS,
+        declined="read",
+    ),
+    PointShape("team_snapshots", "scalar", "projection"): ShapeCells(
+        unstated={
+            "career": "a projection is one season's snapshot",
+            "range": "a projection is one season's snapshot",
+            "both": "a projection is one season type's snapshot",
+            **dict.fromkeys(sorted(TEAM_CUTS), _PROJECTION),
+            "window": "a projection is one season's snapshot, with no game to window",
+            "period": "a projection is one season's snapshot, with no quarter or half",
+            "rate": "a projection is one season's snapshot, in the power index's own units",
+        },
+        taken=Measure.CELLS,
+        declined="read",
+    ),
+    # A leaderboard ranks one season's (or one since-bounded span's) teams
+    # against each other; none of these narrow that pool to a single game or
+    # a single opponent, and a career total across every season on record is
+    # not built.
+    PointShape("team_seasons", "ranking", "team"): ShapeCells(
+        unstated={
+            "opponent": "a leaderboard ranks every team; it has no reading for one named opponent",
+            "date": "a leaderboard ranks a season, not one day's games",
+            "career": "a leaderboard ranks one season's teams; a career total across every season is not built",
+            "both": "a leaderboard ranks one season type's lines; the standings hold no row for both at once",
+            "window": "a leaderboard ranks a season, not a window of games",
+            "game_n": "a leaderboard ranks a season, not one game of a series",
+            # step 3, K1: a leaderboard ranks a season or a since/until-bounded
+            # span of them; narrowing that pool to one weekday, month or holiday
+            # within it is a different question from ranking the span itself.
+            "situation": "a leaderboard ranks a season, not the games in one weekday, month or holiday within it",
+            "period": "a leaderboard ranks teams' season lines, and no season line is split by quarter or half",
+            "rate": "a leaderboard ranks teams' season lines in the metric's own unit; a total or another unit is the team compiler's sum",
+        },
+        taken=Measure.CELLS,
+        declined="read",
+    ),
 }
-# The games' cuts (Phase 3, step 2's third slice), per reader whose words
-# state fewer than the relation's five: the team-season readers read one
-# row of the standings or one snapshot and have no game to cut; the
-# with/without split states one opponent (both rows narrow together, #163)
-# and nothing else that would narrow the teammates' games without its
-# sentence saying so.
-for _cut in TEAM_CUTS:
-    TEAM_RELATION_SCOPING_EXCLUDED["team_stat"][_cut] = "a team's line is one season's row of the standings, with no game to cut"
-    TEAM_RELATION_SCOPING_EXCLUDED["team_outlook"][_cut] = "a projection is one season's snapshot, with no game to cut"
-for _cut in TEAM_CUTS - {"opponent"}:
-    TEAM_RELATION_SCOPING_EXCLUDED["with_without"][_cut] = "the split's words state one opponent; another cut would narrow the teammates' games without the sentence saying so"
-"""Per reader, the team relation's cells it refuses or steps aside for, and why.
+"""Per shape, what its reader's words do not state of the team relation's
+cells (:data:`TEAM_RELATION_SCOPING`), why, what it takes beyond them, and
+what the planner does about a cell it does not state
+(:class:`~association.query.reading.ShapeCells`).
 
 .. versionadded:: 4.4.0
 
@@ -196,39 +267,18 @@ for _cut in TEAM_CUTS - {"opponent"}:
    team-season readers' and the with/without split's included (Phase 3,
    step 2); the games' cuts per reader whose words state fewer than the
    relation's.
+
+.. versionchanged:: 6.0.0
+   Keyed by :class:`~association.query.reading.PointShape`, one
+   :class:`~association.query.reading.ShapeCells` per shape a reader on the
+   team relation reads, a team's log, splits, record over a line and run
+   among them (Phase 3, step 2's closing slice): by the retired templates'
+   names until then, the three team readers above said through the PLAYER
+   relation's rows, the cells they refuse in their own words through
+   ``compose.plan._TEAM_READER_REFUSES``, and the rest through
+   ``team_relation_scoping``, ``team_relation_span`` and
+   ``team_relation_cuts``, all deleted.
 """
-
-
-def team_relation_span(intent: str) -> frozenset[str]:
-    """The span's cells ``intent`` states on the team relation
-    (:attr:`~association.query.reading.Span.CELLS` less
-    :data:`TEAM_RELATION_SCOPING_EXCLUDED`'s), for a reader whose other
-    cells are its own list (the with/without split, a team's own line).
-
-    .. versionadded:: 6.0.0
-    """
-    return Span.CELLS - set(TEAM_RELATION_SCOPING_EXCLUDED.get(intent, {}))
-
-
-def team_relation_cuts(intent: str) -> frozenset[str]:
-    """The games' cuts ``intent`` states on the team relation
-    (:data:`TEAM_CUTS` less :data:`TEAM_RELATION_SCOPING_EXCLUDED`'s), for a
-    reader whose other cells are its own list.
-
-    .. versionadded:: 6.0.0
-    """
-    return TEAM_CUTS - set(TEAM_RELATION_SCOPING_EXCLUDED.get(intent, {}))
-
-
-def team_relation_scoping(intent: str, *extra: str) -> frozenset[str]:
-    """The team relation's cells ``intent`` honors: the whole set and
-    ``extra``, less the cells it excludes (:data:`TEAM_RELATION_SCOPING_EXCLUDED`).
-
-    .. versionadded:: 5.0.0
-       Public, for the team-season readers' declaration
-       (``compose.present.STATED_SCOPING``); ``team_relation_scoping`` until then.
-    """
-    return frozenset((TEAM_RELATION_SCOPING | set(extra)) - set(TEAM_RELATION_SCOPING_EXCLUDED.get(intent, {})))
 
 
 def scoped_team(con: duckdb.DuckDBPyConnection, scope: Scope, missing: str, *, span: Span | None = None) -> tuple[Entity, ResolvedSpan] | Unanswered:

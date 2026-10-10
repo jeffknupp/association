@@ -22,7 +22,7 @@ from association.query.measure import spelled
 from association.query.notes import Note
 from association.query.player_relation import validated_until
 from association.query.point import TEAM_SEASON_POINTS
-from association.query.reading import Scope, Unsupported, _clamp_limit, unhonored_scoping
+from association.query.reading import Scope, Unsupported, _clamp_limit
 from association.query.result import Grouped, Narrowing, OutlookFacts, Part, Refusal, Result, Scalar, Span, TeamRankingFacts, TeamStatFacts, Unanswered
 from association.query.team_metrics import DEFAULT_TEAM_LINE, TEAM_METRICS, TeamLine, TeamMetric, descending_for, ranked, resolve_team_metric
 from association.query.team_seasons import (
@@ -77,29 +77,13 @@ def conference_refusal(scope: Scope) -> Unanswered | None:
     return Refusal(kind="conference_named", facts={"named": named}, shown={"unanswerable": named}) if named is not None else None
 
 
-def team_season_declines(intent: str, scope: Scope, stated: frozenset[str]) -> str | None:
-    """Why a team-season intent's reader cannot answer ``scope`` as asked - a
-    narrowing its words do not state (``stated``,
-    ``compose.plan.STATED_SCOPING``), in the retired template's sentence
-    (the scope check's, gone with Phase 2's step 6) - or None. The first
-    thing each reader checks, before the coverage floor, as the scope check
-    ran before the template.
-
-    .. versionadded:: 5.0.0
-    """
-    ignored = unhonored_scoping(intent, scope, stated)
-    return f"{intent} cannot honor {ignored} - it would answer for a different span than was asked" if ignored else None
-
-
-def _team_season_subject(con: duckdb.DuckDBPyConnection, intent: str, scope: Scope, stated: frozenset[str]) -> Entity | Unanswered:
+def _team_season_subject(con: duckdb.DuckDBPyConnection, intent: str, scope: Scope) -> Entity | Unanswered:
     """The team a one-team team-season read is about, after the checks the
     answering loop and the retired template made first, in their order: a
-    narrowing the words do not state (a decline), the coverage floor, a
-    conference or division in a team slot, then the team itself (a
-    clarifying question, or a decline where none matches)."""
-    declined = team_season_declines(intent, scope, stated)
-    if declined is not None:
-        raise Unsupported(declined)
+    narrowing the words do not state (a decline, the answer side's before
+    the reader is asked), the coverage floor, a conference or division in a
+    team slot, then the team itself (a clarifying question, or a decline
+    where none matches)."""
     refused = coverage_refusal(TEAM_SEASON_POINTS[intent], scope)
     if refused is not None:
         raise Refused(refused)
@@ -112,7 +96,7 @@ def _team_season_subject(con: duckdb.DuckDBPyConnection, intent: str, scope: Sco
 # --- the power index (team_outlook) --------------------------------------------
 
 
-def read_team_outlook(con: duckdb.DuckDBPyConnection, q: TeamSeasonQuery, *, stated: frozenset[str]) -> Result | Unanswered:
+def read_team_outlook(con: duckdb.DuckDBPyConnection, q: TeamSeasonQuery) -> Result | Unanswered:
     """A team's ESPN Basketball Power Index - its rating and where it sits,
     its record and projection, its playoff and title chances, and its
     strength of schedule - from one snapshot of ``team_power_index``, as a
@@ -135,8 +119,13 @@ def read_team_outlook(con: duckdb.DuckDBPyConnection, q: TeamSeasonQuery, *, sta
     statements are the relation's (:mod:`association.query.team_seasons`).
 
     .. versionadded:: 5.0.0
+
+    .. versionchanged:: 6.0.0
+       Takes no ``stated``: the answer side declines a narrowing its words
+       do not state before asking (``compose.plan.cells_unhonored``, its
+       shape's row's ``declined="read"``; Phase 3, step 2's closing slice).
     """
-    team = _team_season_subject(con, "team_outlook", q.scope, stated)
+    team = _team_season_subject(con, "team_outlook", q.scope)
     if isinstance(team, Unanswered):
         return team
     season = q.scope.span.season or current_season()
@@ -230,7 +219,7 @@ def _team_stat_metric(scope: Scope) -> str | None:
     return key
 
 
-def read_team_stat(con: duckdb.DuckDBPyConnection, q: TeamSeasonQuery, *, stated: frozenset[str]) -> Result | Unanswered:
+def read_team_stat(con: duckdb.DuckDBPyConnection, q: TeamSeasonQuery) -> Result | Unanswered:
     """One team's season numbers, each with its rank in the league, from the
     team-season relation (:mod:`association.query.team_seasons`), as a
     :class:`~association.query.result.Result` on a span whose ``source`` is
@@ -252,9 +241,14 @@ def read_team_stat(con: duckdb.DuckDBPyConnection, q: TeamSeasonQuery, *, stated
     moved whole).
 
     .. versionadded:: 5.0.0
+
+    .. versionchanged:: 6.0.0
+       Takes no ``stated``: the answer side declines a narrowing its words
+       do not state before asking (``compose.plan.cells_unhonored``, its
+       shape's row's ``declined="read"``; Phase 3, step 2's closing slice).
     """
     scope = q.scope
-    team = _team_season_subject(con, "team_stat", scope, stated)
+    team = _team_season_subject(con, "team_stat", scope)
     if isinstance(team, Unanswered):
         return team
     key = _team_stat_metric(scope)
@@ -344,13 +338,11 @@ DEFAULT_TEAM_LEADERBOARD_LIMIT = 10
 """
 
 
-def _team_leaderboard_checks(scope: Scope, stated: frozenset[str]) -> Unanswered | None:
+def _team_leaderboard_checks(scope: Scope) -> Unanswered | None:
     """What the answering loop and the retired template checked before
     reading, in their order: a narrowing the words do not state (a
-    decline), the coverage floor, a conference or division in a team slot."""
-    declined = team_season_declines("team_leaderboard", scope, stated)
-    if declined is not None:
-        raise Unsupported(declined)
+    decline, the answer side's before the reader is asked), the coverage
+    floor, a conference or division in a team slot."""
     refused = coverage_refusal(TEAM_SEASON_POINTS["team_leaderboard"], scope)
     if refused is not None:
         raise Refused(refused)
@@ -368,7 +360,7 @@ def _team_leaderboard_span(scope: Scope, season: int, season_type: int) -> Span:
     return Span(season=season, season_type=season_type, first=since, last=until, source="team_seasons")
 
 
-def read_team_leaderboard(con: duckdb.DuckDBPyConnection, q: TeamSeasonQuery, *, stated: frozenset[str]) -> Result | Unanswered:
+def read_team_leaderboard(con: duckdb.DuckDBPyConnection, q: TeamSeasonQuery) -> Result | Unanswered:
     """Every team ranked by one metric - of the season line
     (``team_metrics.TEAM_METRICS``) or of the standings (a record, home or
     road, or across the seasons from ``since`` on) - as a
@@ -390,9 +382,14 @@ def read_team_leaderboard(con: duckdb.DuckDBPyConnection, q: TeamSeasonQuery, *,
     statements are the relation's (:mod:`association.query.team_seasons`).
 
     .. versionadded:: 5.0.0
+
+    .. versionchanged:: 6.0.0
+       Takes no ``stated``: the answer side declines a narrowing its words
+       do not state before asking (``compose.plan.cells_unhonored``, its
+       shape's row's ``declined="read"``; Phase 3, step 2's closing slice).
     """
     scope = q.scope
-    conference = _team_leaderboard_checks(scope, stated)
+    conference = _team_leaderboard_checks(scope)
     if conference is not None:
         return conference
     key = resolve_team_metric(scope.measure)

@@ -25,12 +25,12 @@ from test_templates import pg_ctx  # noqa: F401 - the player relation's fixture,
 from association.query import lexicon
 from association.query.answer import AnswerContext
 from association.query.compose.core import Query, compile_query, rows_of
-from association.query.compose.plan import STATED_SCOPING
+from association.query.compose.plan import cells_stated
 from association.query.line import THRESHOLD_INTENTS, LineContext, LinesRead, read_lines, read_period_line, threshold_named
 from association.query.lines import measure_filters, phrase_line, relation_lines, threshold_line, threshold_of
 from association.query.parse import read_route, reading_from_route
 from association.query.player_games import Narrowed, aggregate_sql
-from association.query.player_relation import RELATION_SCOPING, RELATION_SCOPING_EXCLUDED, _apply_period_condition, period_lines, relation_scoping
+from association.query.player_relation import RELATION_SCOPING, RELATION_SCOPING_EXCLUDED, _apply_period_condition, period_lines
 from association.query.reading import (
     Claim,
     Companion,
@@ -42,9 +42,9 @@ from association.query.reading import (
     Scope,
     ScopeError,
     cell_set,
+    cell_slots,
     companion_slot_names,
     line_slot_names,
-    slot_names_set,
     unhonored_cells,
 )
 from association.query.reading import Subject as Who
@@ -219,19 +219,23 @@ def test_the_cells_and_the_slot_names_a_decline_still_says() -> None:
     assert without.cells() == {"companion"} and companion_slot_names(without) == ["without"] and unhonored_cells(without, frozenset()) == ["without"]
     started = Scope.from_slots({"conditions": [{"player": "Joel Embiid", "predicate": "started"}], "without": ["Paul George"]})
     assert companion_slot_names(started) == ["without", "conditions"] and unhonored_cells(started, frozenset({"companion"})) == []
-    assert slot_names_set(started, ("companion", "line", "split")) == ["conditions", "without"]
-    assert slot_names_set(Scope.from_slots({"below": ["under 14 fta"], "split": "home_away"}), ("companion", "line", "split")) == ["below", "split"]
+    assert sorted(slot for cell in ("companion", "line", "split") for slot in cell_slots(started, cell)) == ["conditions", "without"]
+    assert sorted(slot for cell in ("companion", "line", "split") for slot in cell_slots(Scope.from_slots({"below": ["under 14 fta"], "split": "home_away"}), cell)) == ["below", "split"]
 
 
 def test_the_relation_tables_declare_the_cells_once_and_by_the_cell_names() -> None:
     assert Line.CELLS | Companion.CELLS <= RELATION_SCOPING
-    assert relation_scoping("game_log") >= Line.CELLS | Companion.CELLS
-    assert "companion" in STATED_SCOPING[PointShape("team_games", "split", "presence")]  # the with/without split: the team relation's one cell its words state
-    # The team compiler refuses every companion and line by name (`compose.plan._TEAM_READER_REFUSES`), so the team relation's table declares neither.
+    assert cells_stated(PointShape("player_games", "rows", "date")) >= Line.CELLS | Companion.CELLS
+    assert "companion" in cells_stated(PointShape("team_games", "split", "presence"))  # the with/without split: the team relation's one cell its words state
+    # A team's log, splits and record over a line take a companion and a line beyond the team relation's table
+    # (their rows' `taken`), to refuse them by name; the team relation's table declares neither.
     assert not (Line.CELLS | Companion.CELLS) & TEAM_RELATION_SCOPING
+    assert {"companion", "line"} <= TEAM_RELATION_SCOPING_EXCLUDED[PointShape("team_games", "rows", "date")].taken
     for table in (RELATION_SCOPING_EXCLUDED, TEAM_RELATION_SCOPING_EXCLUDED):
-        assert all(not set(_SLOT_ERA) & set(row) for row in table.values()), "an exclusion names a slot-era name"
-    assert all(not set(_SLOT_ERA) & cells for cells in STATED_SCOPING.values())
+        assert all(not set(_SLOT_ERA) & (set(row.unstated) | row.taken | row.refused) for row in table.values()), "an exclusion names a slot-era name"
+    from association.query import compose
+
+    assert all(not set(_SLOT_ERA) & cells_stated(shape) for shape in compose._ROUTES)
     assert not set(_SLOT_ERA) & (RELATION_SCOPING | TEAM_RELATION_SCOPING)
 
 

@@ -857,17 +857,27 @@ def test_a_team_point_refuses_a_cell_only_a_players_games_carry() -> None:
     cell built on one relation is refused on the other until it is built
     there. The cells a team's reader refuses with its own sentence (a
     teammate's absence is with_without's question) still reach that
-    reader, and the team relation's own cells pass."""
+    reader (its shape's row's ``taken``), and the team relation's own cells
+    pass.
+
+    The points are the team shapes the point reader writes (a log by date,
+    the team compiler's sum, a run of wins, the splits); until Phase 3, step
+    2's closing slice they were hand-built with the compiler's skeletons for
+    shapes, which the planner read the team readers' cells off - its check
+    reads each shape's row now."""
     from association.query.reading import Line, Period, Reading
 
     def team_point(shape: str, **cells: Any) -> Reading:
-        aggregate = "none" if shape in ("rows", "run") else ("record" if shape == "grouped" else "total")
+        by, skeleton = {"rows": ("date", "rows"), "scalar": ("", "scalar"), "runs": ("won", "runs"), "split": ("splits", "split")}[shape]
+        aggregate = "none" if shape in ("rows", "runs") else ("record" if shape == "split" else "total")
         return Reading(
             relation="team",
-            shape=shape,  # type: ignore[arg-type]
+            shape=skeleton,  # type: ignore[arg-type]
+            by=by,
+            on="team_games",
             measures=["points"],
             aggregate=aggregate,  # type: ignore[arg-type]
-            group="venue" if shape == "grouped" else "none",
+            group="venue" if shape == "split" else "none",
             scope=Scope.from_slots({"team": "Orlando Magic", **cells}),
         )
 
@@ -879,7 +889,7 @@ def test_a_team_point_refuses_a_cell_only_a_players_games_carry() -> None:
         ("scalar", {"without": ("Paolo Banchero",)}, "without"),
         ("scalar", {"below": ("14 fta",)}, "below"),
         ("scalar", {"season_n": 3}, "season_n"),
-        ("run", {"period_condition": line}, "period_condition"),
+        ("runs", {"period_condition": line}, "period_condition"),
     ]
     for shape, cells, named in refused:
         with pytest.raises(Unsupported, match=rf"a team's games cannot be narrowed by .*{named}"):
@@ -887,7 +897,7 @@ def test_a_team_point_refuses_a_cell_only_a_players_games_carry() -> None:
     passes: list[tuple[str, dict[str, Any]]] = [
         ("scalar", {"opponent": "Boston", "venue": "home", "order": "recent", "limit": 10}),
         ("rows", {"span": Span(since=2022, until=2024)}),
-        ("grouped", {"split": "home_away"}),
+        ("split", {"split": "home_away"}),
         ("rows", {"without": ("Paolo Banchero",)}),  # the log's own reader says where that question belongs
     ]
     for shape, cells in passes:
@@ -1842,14 +1852,15 @@ def test_the_planner_refuses_after_the_parser_has_read_and_only_once(cx_ctx: Ans
 
 def test_a_presenter_steps_aside_for_a_narrowing_its_words_do_not_state(cx_ctx: AnswerContext) -> None:
     """A retired template's words name the narrowings it honored and no
-    other (``compose.plan.STATED_SCOPING``): an opponent on a single-game
-    high is the relation's to narrow by and the compiler's sentence's to
-    state, so the presenter answers nothing and every presenter declares."""
+    other (its shape's row, ``compose.plan.cells_unhonored``): an opponent
+    on a single-game high is the relation's to narrow by and the compiler's
+    sentence's to state, so the shape's read answers nothing and every
+    shape declares."""
     from dataclasses import replace
 
-    from shapes import stated
+    from shapes import key
 
-    from association.query.compose.highs import read_single_game_high
+    from association.query import compose
     from association.query.compose.plan import SHAPE_NAMES
 
     # Every shape's words are the sayer's (compose.say) since slice (iv); the
@@ -1868,7 +1879,7 @@ def test_a_presenter_steps_aside_for_a_narrowing_its_words_do_not_state(cx_ctx: 
         "player_history",
         "player_compare",
         "with_without",
-        # The team shapes slice (iv) ported (compose.plan.PORTED_SHAPES).
+        # The team shapes slice (iv) ported, each its point's only answer (their rows' declined="plan").
         "head_to_head",
         "team_quarter_points",
         "period_leaderboard",
@@ -1881,8 +1892,8 @@ def test_a_presenter_steps_aside_for_a_narrowing_its_words_do_not_state(cx_ctx: 
     shots = {"shot_chart", "shot_distance"}
     assert set(SHAPE_NAMES.values()) == ported | team_seasons | netpoints | shots
     narrowed = default_query("single_game_high", {"player": "Brandin Podziemski", "stat": "points", "opponent": "Boston Celtics"})
-    assert read_single_game_high(cx_ctx.con, narrowed, stated=stated("single_game_high")) is None
-    assert read_single_game_high(cx_ctx.con, replace(narrowed, scope=replace(narrowed.scope, cuts=replace(narrowed.scope.cuts, opponent=None))), stated=stated("single_game_high")) is not None
+    assert compose._read(cx_ctx.con, key("single_game_high"), narrowed) is None
+    assert compose._read(cx_ctx.con, key("single_game_high"), replace(narrowed, scope=replace(narrowed.scope, cuts=replace(narrowed.scope.cuts, opponent=None)))) is not None
 
 
 #: One example of each cause's facts, for the sentence check below.

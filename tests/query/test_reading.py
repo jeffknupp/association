@@ -175,12 +175,14 @@ def test_every_scope_field_is_checked_and_every_group_is_the_compilers() -> None
         _SPAN_SLOT_NAMES,
         _SUBJECT_SLOT_NAMES,
         _WINDOW_SLOT_NAMES,
-        SCOPING_SLOTS,
         Companion,
         Cuts,
         Group,
         Line,
+        Measure,
+        Period,
     )
+    from association.query.team_relation import TEAM_RELATION_SCOPING
 
     names = {f.name for f in fields(Scope)}
     # The subject's four slot names, the span's six, the window's four, the cuts' eight, the period's two, the lines' four and the
@@ -201,9 +203,58 @@ def test_every_scope_field_is_checked_and_every_group_is_the_compilers() -> None
     # `period` is the player relation's own, four reads of the same games rather than a GROUP BY (compose.core._compile_by_period).
     # `line` is keyed on the point's own predicate rather than a fixed column (compose.core._line_group).
     assert set(get_args(Group)) == {"none", "presence", "period", "line", *GROUPS}
-    # The span's three cells, the window's two, the cuts' seven, the lines' two and the companions' one are the typed values', not fields of their own (Phase 3, step 2).
-    assert names >= SCOPING_SLOTS and names >= RELATION_SCOPING - Span.CELLS - Window.CELLS - Cuts.CELLS - Line.CELLS - Companion.CELLS
+    # Every cell is a typed value's, but the split's, whose value is a field of its own (Phase 3, step 2; the closing slice named it on Scope.CELLS).
+    assert {"split"} == Scope.CELLS - Span.CELLS - Window.CELLS - Cuts.CELLS - Period.CELLS - Line.CELLS - Companion.CELLS - Measure.CELLS and "split" in names
+    assert RELATION_SCOPING <= Scope.CELLS and TEAM_RELATION_SCOPING <= Scope.CELLS
     assert Span.CELLS | Window.CELLS | (Cuts.CELLS - {"round"}) <= RELATION_SCOPING and "round" not in RELATION_SCOPING
+
+
+def test_a_scope_reports_every_cell_it_sets_by_the_slots_a_decline_says() -> None:
+    """``Scope.cells`` is every cell a scope sets, each family's and the
+    split's (Phase 3, step 2's closing slice: the line family's alone until
+    then, the rest read family by family beside ``SCOPING_SLOTS``), and
+    ``cell_slots`` the names a decline says each by - the slots it was
+    declared under, so no decline moves while the planner reads typed cells."""
+    from association.query.reading import cell_slots, unhonored_cells
+
+    scope = Scope.from_slots(
+        {
+            "player": "x",
+            "since": 2019,
+            "until": 2021,
+            "season_type_unstated": True,
+            "order": "recent",
+            "limit": 5,
+            "ranked_by": "points",
+            "own_team": "MIA",
+            "round": "finals",
+            "half": 2,
+            "below": ["under 14 fta"],
+            "without": ["y"],
+            "conditions": [{"player": "z", "predicate": "started"}],
+            "stat": "points",
+            "rate": "per 100 possessions",
+            "split": "starter_bench",
+        }
+    )
+    assert scope.cells() == {"range", "both", "window", "ranked_by", "tenure", "round", "period", "line", "companion", "rate", "split"}
+    assert Scope().cells() == frozenset() and Scope.from_slots({"split": "bench"}).cells() == {"split"}
+    said = {cell: cell_slots(scope, cell) for cell in sorted(scope.cells())}
+    assert said == {
+        "both": ["season_type_unstated"],
+        "companion": ["without", "conditions"],
+        "line": ["below"],
+        "period": ["half"],
+        "range": ["since", "until"],
+        "ranked_by": ["ranked_by"],
+        "rate": ["rate"],
+        "round": ["round"],
+        "split": ["split"],
+        "tenure": ["own_team"],
+        "window": ["order"],
+    }
+    assert cell_slots(scope, "career") == [] and cell_slots(scope, "opponent") == []
+    assert unhonored_cells(scope, frozenset({"range", "companion", "split"})) == sorted(slot for cell in scope.cells() - {"range", "companion", "split"} for slot in said[cell])
 
 
 def test_a_period_condition_round_trips_through_the_slot_door() -> None:

@@ -14,17 +14,18 @@ from typing import Any
 import duckdb
 import pytest
 from routed import staged as settle
+from shapes import stated, unhonored
 from test_period_relation import SEASON, con, team_con  # noqa: F401 - the two relation fixtures, imported by name
 
-from association.query.compose.plan import STATED_SCOPING
+from association.query.compose.plan import cells_stated
 from association.query.line import read_period_line
 from association.query.period import PERIOD_INTENTS, PeriodContext, PeriodRead, read_period, which_period
 from association.query.player_games import Narrowed, rows_sql
-from association.query.player_relation import RELATION_SCOPING, RELATION_SCOPING_EXCLUDED, apply_period, relation_period, relation_scoping
-from association.query.reading import Claim, Line, Period, PointShape, Scope, ScopeError, cell_set, period_narrowing, unhonored_cells, unhonored_scoping
+from association.query.player_relation import RELATION_SCOPING, RELATION_SCOPING_EXCLUDED, apply_period
+from association.query.reading import Claim, Line, Period, PointShape, Scope, ScopeError, cell_set, period_narrowing, unhonored_cells
 from association.query.team_games import TeamNarrowed
 from association.query.team_games import rows_sql as team_rows_sql
-from association.query.team_relation import TEAM_RELATION_SCOPING, TEAM_RELATION_SCOPING_EXCLUDED, _team_games_apply_period, team_relation_scoping
+from association.query.team_relation import TEAM_RELATION_SCOPING, TEAM_RELATION_SCOPING_EXCLUDED, _team_games_apply_period
 
 
 def _read(question: str, intent: str = "period_split") -> Period | None:
@@ -154,23 +155,24 @@ def test_the_cell_its_decline_name_and_what_a_reader_leaves_unhonored() -> None:
     assert unhonored_cells(Scope.from_slots({"period": 4}), frozenset()) == ["period"]
     assert unhonored_cells(Scope.from_slots({"period": 4}), frozenset({"period"})) == []
     # A reader whose words never said a quarter steps aside for one, under the slot's name.
-    assert unhonored_scoping("game_log", Scope.from_slots({"player": "x", "half": 2}), relation_scoping("game_log")) == ["half"]
-    assert unhonored_scoping("period_split", Scope.from_slots({"player": "x", "half": 2}), relation_scoping("period_split")) == []
+    assert unhonored("game_log", Scope.from_slots({"player": "x", "half": 2})) == ["half"]
+    assert unhonored("period_split", Scope.from_slots({"player": "x", "half": 2})) == []
 
 
 def test_the_relation_tables_declare_the_period_once() -> None:
     assert Period.CELLS <= RELATION_SCOPING and Period.CELLS <= TEAM_RELATION_SCOPING
     for table in (RELATION_SCOPING_EXCLUDED, TEAM_RELATION_SCOPING_EXCLUDED):
-        for intent, cells in table.items():
-            assert "half" not in cells, intent
-            if "period" in cells:
-                assert cells["period"].strip(), intent
-    assert relation_period("period_leaderboard") == {"period"} and relation_period("game_log") == set()
-    assert STATED_SCOPING[PointShape("player_periods", "ranking", "player")] & Period.CELLS == {"period"}
-    assert STATED_SCOPING[PointShape("team_periods", "scalar", "total")] & Period.CELLS == {"period"}
-    assert "period" in team_relation_scoping("team_quarter_points")
-    for shape, stated in STATED_SCOPING.items():
-        assert "half" not in stated, shape
+        for shape, row in table.items():
+            assert "half" not in row.unstated, shape
+            if "period" in row.unstated:
+                assert row.unstated["period"].strip(), shape
+    assert stated("period_leaderboard") & Period.CELLS == {"period"} and stated("game_log") & Period.CELLS == set()
+    assert cells_stated(PointShape("player_periods", "ranking", "player")) & Period.CELLS == {"period"}
+    assert cells_stated(PointShape("team_periods", "scalar", "total")) & Period.CELLS == {"period"}
+    from association.query import compose
+
+    for shape in compose._ROUTES:
+        assert "half" not in cells_stated(shape), shape
 
 
 # ---------------- contract 4: applying the cell changes what each relation reads ----------------

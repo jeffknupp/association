@@ -13,17 +13,18 @@ import itertools
 from typing import Any
 
 import pytest
+from shapes import stated
 from test_templates import pg_ctx, team_cells_con  # noqa: F401 - the two relation fixtures, imported by name
 
 from association.nba.season import current_season
 from association.query.answer import AnswerContext
 from association.query.compose.core import Query, compile_query, rows_of
-from association.query.player_relation import condition_scope, relation_scoping, relation_span, span_of
+from association.query.player_relation import condition_scope, span_of
 from association.query.reading import Claim, Cuts, Scope, ScopeError, Span, unhonored_cells
 from association.query.reading import Subject as Who
 from association.query.span import SpanContext, claimed, read_span
 from association.query.team_games import TEAM_GAMES_SQL, TeamNarrowed
-from association.query.team_relation import scoped_team, team_games, team_relation_scoping, team_relation_span
+from association.query.team_relation import scoped_team, team_games
 
 S = current_season()
 
@@ -202,9 +203,9 @@ def test_the_cells_and_what_a_reader_leaves_unhonored() -> None:
 
 
 def test_the_relation_tables_declare_the_three_cells_once() -> None:
-    assert relation_scoping("game_log") >= Span.CELLS and team_relation_scoping("team_record") >= Span.CELLS
-    assert relation_span("leaderboard") == {"career"} and relation_span("player_compare") == frozenset()
-    assert team_relation_span("team_leaderboard") == {"range"} and team_relation_span("with_without") == {"career"}
+    assert stated("game_log") >= Span.CELLS and stated("team_record") >= Span.CELLS
+    assert stated("leaderboard") & Span.CELLS == {"career"} and stated("player_compare") & Span.CELLS == frozenset()
+    assert stated("team_leaderboard") & Span.CELLS == {"range"} and stated("with_without") & Span.CELLS == {"career"}
 
 
 # ---------------- the relation's one resolution ----------------

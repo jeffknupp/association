@@ -75,9 +75,9 @@ this tree:
 - **New shapes are frozen** (decision D4). No new intent, template,
   presenter, scoping table or per-intent renderer.
   `tests/query/test_frozen_shapes.py` holds the 25 intents the reader can
-  name, the page's 22 renderers and the 8 scoping declarations left in
-  `src` (by module and name, read from the source), each of which retires
-  with its slice and none of which is added; and that `templates/`,
+  name, the page's 22 renderers and the 4 scoping declarations left in
+  `src` (by module and name, read from the source), none of which is
+  added; and that `templates/`,
   `compose/present.py` and `compose/adapt.py` do not come back as source
   files. Phase 2 (2026-10-03 to 2026-10-05) removed the twelve templates
   (the registry stood empty after the shot chart, and step 6 deleted it
@@ -85,29 +85,28 @@ this tree:
   presenters and `compose/present.py`, and the ten adapters and
   `compose/adapt.py`. Step 6 deleted the scoping freeze too while 12 of its
   14 declarations were still there; restored 2026-10-05, it labels each
-  one: 4 are the per-relation cell tables the roadmap keeps
-  (`RELATION_SCOPING*` on `query/player_relation.py`,
-  `TEAM_RELATION_SCOPING*` on `query/team_relation.py`), 1 is the
-  planner's `STATED_SCOPING` (its `with_without` row, named apart as
-  `WITH_WITHOUT_STATED` until step 2's companions, is a row of the table),
-  which Phase 3's cells replace, and 3 are debt,
-  each naming the step that owes its deletion (`compose.plan`'s
-  `_TEAM_READER_REFUSES`, `reading.SCOPING_SLOTS`,
-  `conditions._CONDITION_PLAYER_ONLY_CELLS`; the seventh,
-  `router._MODEL_SLOTS`, went with step 2's subject - the stages are handed
-  who the question is about typed, `router.Named`, and take no name as a
-  slot - the
-  sixth, `coverage._BOX_SCORE_SCOPING`, went with Phase 3, step 1 - the
-  floor follows the planned point's relation - and the fifth,
-  `compose.core.COMPILER_SLOTS`, with step 2's window: `ranked_by` is the
-  typed window's `by`, a cell the player relation declares; step 2 took
-  the span's, the window's, the cuts', the period's, the lines' and the
-  companions' names out of `SCOPING_SLOTS`, `_MODEL_SLOTS` and every
-  `STATED_SCOPING` row, and the measure's took `rate` (`Measure.CELLS`) -
-  `SCOPING_SLOTS` is `split` alone now - and
-  the relation tables carry the span's three cells, the window's, the
-  cuts', the period's one, the lines' two and the companions' one by
-  name). A P1 wrong answer is
+  one, and since Phase 3, step 2's closing slice it holds the 4 the
+  roadmap keeps and nothing else - the per-relation cell tables, one table
+  of cells and one table of shapes' rows per relation
+  (`RELATION_SCOPING` and `RELATION_SCOPING_EXCLUDED` on
+  `query/player_relation.py`, `TEAM_RELATION_SCOPING` and
+  `TEAM_RELATION_SCOPING_EXCLUDED` on `query/team_relation.py`), the debt
+  at 0. Step 2 retired the rest slice by slice: the window took
+  `compose.core.COMPILER_SLOTS` (`ranked_by` is the typed window's `by`),
+  the companions `WITH_WITHOUT_STATED` (a row of the planner's table), the
+  subject's own `router._MODEL_SLOTS` (the stages are handed who the
+  question is about typed, `router.Named`), and step 1 had taken
+  `coverage._BOX_SCORE_SCOPING` (the floor follows the planned point's
+  relation); the closing slice made the planner's check one function over
+  the typed cells and the tables (`compose.plan.cells_unhonored`,
+  `cells_declined`), each shape's row a `reading.ShapeCells` keyed by the
+  planned point's `PointShape`, and deleted the planner's `STATED_SCOPING`,
+  `compose.plan._TEAM_READER_REFUSES`, `reading.SCOPING_SLOTS` and
+  `conditions._CONDITION_PLAYER_ONLY_CELLS` - each a field of a shape's
+  row now (what the words do not state, what is refused outright, what is
+  taken beyond the relation, where a decline is said, whether one named
+  half of the starter/bench split is all it honors, what needs a named
+  player). A P1 wrong answer is
   still fixed, in the code that exists. The sections below describe the
   readers and the sayer, because they are what runs; they are not an
   invitation to add a shape.
@@ -549,14 +548,19 @@ template covered the real one and something adjacent matched instead.
 
 The consequence for how you work: **an answer that looks right is not
 evidence.** Check that the shape you added is the shape being exercised. This
-is why the readers refuse rather than approximate: each intent declares the
-scoping slots its words state (`STATED_SCOPING` in `query/compose/plan.py`,
-checked by `reading.unhonored_scoping`), a reader steps aside for one it does
-not state so the compiler's own sentence answers, and the planner refuses a
-slot the relation cannot honor at all - instead of silently ignoring `order`
-or `date` and returning a whole-season answer to a single-game question.
-Until Phase 2, step 6 the templates did the same through `check_scope()` and
-`HONORED_SCOPING`; both went with the last template.
+is why the readers refuse rather than approximate: each shape's row of its
+relation's cell table says which of the relation's cells its words do not
+state (`RELATION_SCOPING_EXCLUDED`, `TEAM_RELATION_SCOPING_EXCLUDED`, keyed
+by the planned point's `PointShape`), the planner's one check reads the
+point's typed cells against it (`compose.plan.cells_unhonored`), a reader
+steps aside for one its words do not state so the compiler's own sentence
+answers, and the planner refuses a cell the relation cannot honor at all,
+or the shape refuses outright (`cells_declined`) - instead of silently
+ignoring `order` or `date` and returning a whole-season answer to a
+single-game question. Until Phase 2, step 6 the templates did the same
+through `check_scope()` and `HONORED_SCOPING`; until Phase 3, step 2's
+closing slice the planner did through `STATED_SCOPING` and
+`reading.unhonored_scoping`, by the reading's intent.
 
 **A reader on a relation does not declare, or apply, scoping of its own.**
 The player-games relation (`query/player_games.py`, its shared steps in
@@ -590,7 +594,7 @@ player beside the subject with his role, `played`, `absent`, `started`,
 then, one cell because no table ever honored or refused one without the
 others, applied by `_narrow_player_games`/`condition_player`, and the
 with/without split's names; a decline still says the slot names
-(`reading.companion_slot_names`, `line_slot_names`, `slot_names_set`)
+(`reading.cell_slots`, over `companion_slot_names` and `line_slot_names`)
 until the decline-to-Cause commit rewords it), the window's typed cell
 (`reading.Window.CELLS`, Phase 3, step 2: `window`, an end of the span
 with its count - the slots `order` and `limit` until then - cut after
@@ -604,19 +608,29 @@ read - the slots `span`, `since`, `until` and `season_type_unstated` until
 then) - applied in the shared steps (`scoped_player`/`scoped_games`,
 `scoped_team`/`team_games`, `condition_player`; the span by `span_of`,
 which takes the typed `Scope.span` and resolves it once for every reader)
-and declared once (`RELATION_SCOPING`, with a reasoned per-cell
-`RELATION_SCOPING_EXCLUDED`; a reader on the relation states
-`relation_scoping(intent)` in `STATED_SCOPING`, and a reader whose other
-cells are its own list - the season line's ranking, the NetPoints
-relation's - states the span's through `relation_span(intent)` /
-`team_relation_span(intent)` and the cuts' through `relation_cuts(intent)`
-/ `team_relation_cuts(intent)`, so no row of `STATED_SCOPING` names a span
-cell or a cut itself: the exclusions per reader, each with a reason about
-the answer, are the one declaration, and `unhonored_scoping` reads the
-typed values' cells against them). Two source-reading tests in
+and declared once (`RELATION_SCOPING`, with one row per shape a reader
+reads, `RELATION_SCOPING_EXCLUDED`, keyed by the planned point's
+`PointShape` - one `reading.ShapeCells` each, since Phase 3, step 2's
+closing slice: the cells its words do not state, each with a reason about
+the answer; of those, the ones the planner refuses outright, saying the
+reason (a run's one date, two players' meetings against a third team);
+what it takes beyond the relation's table (a season-line ranking's unit, a
+team log's teammate it refuses in its own words); where a cell its words
+do not state is declined when its reader is the point's only answer
+(`declined`: by the planner, or by a team's own season's reader when
+asked); whether it honors one named half of the starter/bench split only;
+what only a named player's games carry. A shape states its relation's
+table and what it takes, less its row's exclusions
+(`compose.plan.cells_stated`), and the planner's one check reads the
+typed values' cells against that (`cells_unhonored`) - for the planner,
+for the season line's readers and for the answer side, which steps aside
+before it asks a reader: no reader takes a list of its own (`stated=`,
+gone with the planner's `STATED_SCOPING`), and `team_relation.py` keeps
+the team relation's rows the same way). Two source-reading tests in
 `tests/query/test_templates.py` enforce it, and they were watched to fail: a
-reader on the relation whose declaration is not the relation's less its
-exclusions, or that writes `pgl.opponent_team_id = ?` or
+shape a reader reads with no row, a row excluding a cell its relation does
+not carry or without a reason, a reader taking a list of its own, or a
+reader that writes `pgl.opponent_team_id = ?` or
 `g.date >= ? AND g.date < ?` anywhere it reaches, fails the suite. So a new
 scoping dimension is one clause on `Narrowed` plus a warehouse-verified test
 per reader it turns on - never a slot taught to one reader at a time, which is
@@ -1130,8 +1144,9 @@ model's. Two things follow, and both matter when you add a shape:
   typed value is recorded beside the reading (`stages._reading_record`,
   `measure`). ONE cell, `rate` (`Measure.CELLS`): honored by the
   season-line ranking and the team compiler's total, declined by every
-  other reader in the sentence it had, named in `STATED_SCOPING` and the
-  planner's team-scalar cells through `Measure.CELLS`, declared in no
+  other reader in the sentence it had, taken beyond the relation by the
+  ranking's and the team-season shapes' rows (`ShapeCells.taken`, through
+  `Measure.CELLS`) and by the team compiler's own sum, declared in no
   relation table (a unit narrows no games). The point's `measures` and
   `aggregate` are still the compiler's names, derived from the `Measure`
   through the catalog (`stat_measure`): retyping them is the `Query`'s, the
@@ -1320,8 +1335,10 @@ model's. Two things follow, and both matter when you add a shape:
     split, a team's total under its season's shape is the team compiler's
     scalar; `Query.source` is `"seasons"` for `on="player_seasons"` -
     `Reading.source` is gone). `compose.answer` picks the reader from
-    `_ROUTES` by that key alone; `STATED_SCOPING` is one literal table
-    keyed by it; `SHAPE_NAMES` keeps a retired template's name for ONE
+    `_ROUTES` by that key alone; the shapes' rows of the two relation
+    tables are keyed by it (`RELATION_SCOPING_EXCLUDED`,
+    `TEAM_RELATION_SCOPING_EXCLUDED`, one row per route since step 2's
+    closing slice); `SHAPE_NAMES` keeps a retired template's name for ONE
     job, the decline sentence ("game_log has no reading of this point",
     the ported shapes' "cannot honor"), until step 2's typed causes reword
     those declines as an enumerated commit; `coverage.SOURCES` is keyed by
@@ -1333,8 +1350,7 @@ model's. Two things follow, and both matter when you add a shape:
     still tell its subject's kind or a cell it says (a quarter's
     `Period`, a matchup's `Met`). What still reads the intent: the point
     reader itself (`DEFAULT_POINTS`, the `by` tables - step 4 re-keys them
-    on the grammar), the planner's declines by a shape's words
-    (`_shape_declines`, step 2's cells), `Answer.intent` for the page
+    on the grammar), `Answer.intent` for the page
     (Phase 4). Proved on the four populations: 628 of 628, 2,082 of 2,082
     and the 2,710 readings identical with the point's `by`, `on`, `shape`
     and `source` left out (`compare --ignore`, `reader_cmp.py --ignore`:
@@ -1549,7 +1565,8 @@ model's. Two things follow, and both matter when you add a shape:
   caveat (`agent._unmatched_fingerprint`), reading the Reading and nothing
   else. The shot relation's
   (`compose.shots.ShotQuery` on the declared `shots` relation, declined
-  beyond what its retired template's words state, `compose.plan.STATED_SCOPING`)
+  beyond what its retired template's words state, its shape's row of
+  `RELATION_SCOPING_EXCLUDED`)
   is read the same way: `read_shot_chart` and `read_shot_distance` are the
   retired templates' statements moved whole (`shotchart.render_for_player`'s
   with them), executed through `core.values_of`, and said by the sayer - a
@@ -1559,9 +1576,9 @@ model's. Two things follow, and both matter when you add a shape:
   fingerprint is. A shape Phase 2's slice (iv) ported from a template the
   reader gave no point has a default point of its own
   (`point.DEFAULT_POINTS`: its readings gained one when it moved), is
-  declined beyond the scoping its retired words state
-  (`compose.plan.STATED_SCOPING`, under the point's own key) by the planner, in the sentence the
-  retired scope check refused it with (`compose.plan.PORTED_SHAPES`), and
+  declined beyond the scoping its retired words state (its shape's row,
+  `declined="plan"`) by the planner, in the sentence the retired scope
+  check refused it with (`compose.plan.cells_declined`), and
   is read and said with nothing after it: a decline is refused, never
   handed to the compilers' own sentences (`compose._read_only`, a route
   marked `only`).
@@ -1575,8 +1592,9 @@ model's. Two things follow, and both matter when you add a shape:
   emptied with step 5, and step 6 deleted `check_scope`,
   `HONORED_SCOPING`, `TEMPLATES`, the answering loop's template branch and
   `templates/` itself. A reader says what its retired template's words
-  state (`STATED_SCOPING`, the one declaration left until Phase 3's cells)
-  and steps aside for a narrowing beyond them, so the compiler's own
+  state (its shape's row of its relation's cell table since Phase 3, step
+  2's closing slice; `STATED_SCOPING` until then) and steps aside for a
+  narrowing beyond them, so the compiler's own
   sentence, which states every narrowing the relation applied, answers; a
   narrowing the relation cannot honor at all is refused by the planner,
   and the refusal names the planner's reason. Retiring a template was

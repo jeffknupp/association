@@ -22,7 +22,7 @@ from typing import Any
 import duckdb
 
 from association.nba.franchises import season_name
-from association.query.conditions import _PLAYER_GAME_TABLES, _names, _unseen, box_source, condition_needs_player_refusal, condition_span_label
+from association.query.conditions import _PLAYER_GAME_TABLES, _names, _unseen, box_source, condition_span_label
 from association.query.coverage import coverage_refusal
 from association.query.entities import optional_team
 from association.query.lines import threshold_of
@@ -30,10 +30,10 @@ from association.query.measure import spelled
 from association.query.notes import Note
 from association.query.player_games import STAT_LABELS, THRESHOLD_STAT_COLUMNS, games_subquery
 from association.query.player_relation import condition_scope, no_games, span_of, whole_span
-from association.query.reading import PointShape, Scope, Unsupported, unhonored_scoping
+from association.query.reading import PointShape, Scope, Unsupported, cell_slots
 from association.query.result import Grouped, Line, Narrowing, Part, RecordFacts, Refusal, Result, Span, Unanswered
 from association.query.team_games import TeamNarrowed
-from association.query.team_relation import condition_team_no_games, team_games, team_span_label, team_where_in
+from association.query.team_relation import TEAM_RELATION_SCOPING_EXCLUDED, condition_team_no_games, team_games, team_span_label, team_where_in
 
 from .core import Compiled, Query, compile_query, rows_of
 from .team import TEAM_BOX_COLUMNS, TeamQuery, compile_team_count, compile_team_line
@@ -50,13 +50,11 @@ def _group(by_hit: dict[str, dict[str, Any]], *keys: str) -> dict[str, Any]:
     return {"games": games, "wins": wins, "losses": games - wins, "avg_margin": margin}
 
 
-def _own_line(q: Query, stated: frozenset[str]) -> tuple[str, str, int] | None:
+def _own_line(q: Query) -> tuple[str, str, int] | None:
     """The stat, its column and the threshold where ``q`` is ``record_when``'s
     own point - a scalar record on the player relation with that one
-    predicate, narrowed only by what the template's words state - else None."""
+    predicate - else None."""
     scope = q.scope
-    if unhonored_scoping("record_when", scope, stated):
-        return None
     stat = spelled(scope.measure)
     column = THRESHOLD_STAT_COLUMNS.get(stat) if stat is not None else None
     threshold = threshold_of(scope)
@@ -67,7 +65,7 @@ def _own_line(q: Query, stated: frozenset[str]) -> tuple[str, str, int] | None:
     return stat, column, threshold
 
 
-def read_record_when(con: duckdb.DuckDBPyConnection, q: Query, *, stated: frozenset[str]) -> Result | Unanswered | None:
+def read_record_when(con: duckdb.DuckDBPyConnection, q: Query) -> Result | Unanswered | None:
     """``record_when``'s own point - a scalar record on the player relation
     with the one predicate ``column >= threshold`` - read as the three-row
     record (reached, fell short, all his games) with the teams' names, the
@@ -77,9 +75,7 @@ def read_record_when(con: duckdb.DuckDBPyConnection, q: Query, *, stated: frozen
     read by the ``line`` (:func:`~association.query.compose.core._line_group`
     - the predicate as the key the games are divided by, the margin as the
     measure), one statement over the relation's narrowed games. ``None``
-    where the point is not that, or carries a narrowing the template's
-    words did not state (``stated``: ``compose.plan.STATED_SCOPING``'s
-    set), and the compiler's sentence answers; a
+    where the point is not that, and the compiler's sentence answers; a
     :class:`~association.query.result.Refusal` or :class:`~association.query.result.Clarify` back is the
     relation's refusal (no games in scope, an ambiguous team).
 
@@ -88,9 +84,14 @@ def read_record_when(con: duckdb.DuckDBPyConnection, q: Query, *, stated: frozen
     .. versionchanged:: 5.0.0
        Executes the compiled statement (Phase 2, step 1's merge); until
        then it ran the retired template's own grouped statement beside it.
+
+    .. versionchanged:: 6.0.0
+       Takes no ``stated``: the answer side checks the point's cells against
+       its shape's row before asking (``compose.plan.cells_unhonored``,
+       Phase 3, step 2's closing slice).
     """
     scope = q.scope
-    line = _own_line(q, stated)
+    line = _own_line(q)
     if line is None:
         return None
     stat, _column, threshold = line
@@ -153,7 +154,24 @@ def _record_result(con: duckdb.DuckDBPyConnection, scope: Scope, covered: Any, c
     )
 
 
-def read_team_record_when(con: duckdb.DuckDBPyConnection, q: TeamQuery, *, stated: frozenset[str]) -> Result | Unanswered | None:
+#: The shape a team's record over its own line is read as.
+_TEAM_RECORD_LINE_SHAPE = PointShape("team_games", "split", "line")
+
+
+def _team_record_when_needs_player(scope: Scope) -> None:
+    """Refuse the player's cells this shape takes beyond the team relation's
+    (its row's ``taken``: a teammate's role, a line on a box-score column, an
+    ordinal season) - each a fact about a named PLAYER's game, which a team's
+    record has no player settled to check it against. Let through by the
+    planner so this sentence, naming the missing player, is the refusal
+    (``conditions.condition_needs_player_refusal`` until Phase 3, step 2's
+    closing slice)."""
+    claimed = sorted(slot for cell in TEAM_RELATION_SCOPING_EXCLUDED[_TEAM_RECORD_LINE_SHAPE].taken for slot in cell_slots(scope, cell))
+    if claimed:
+        raise Unsupported(f"record_when cannot honor {claimed} without a named player - only his own games can be narrowed that way")
+
+
+def read_team_record_when(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> Result | Unanswered | None:
     """``record_when``'s team half: a team's record when its OWN figure for
     a stat reached a line, fell short of it, and over every game with a
     result, reached when the question names no player at all ("what was the
@@ -161,24 +179,29 @@ def read_team_record_when(con: duckdb.DuckDBPyConnection, q: TeamQuery, *, state
     games narrowed through the shared steps, over every game in the span;
     the record the team compiler's ``line`` statement
     (:func:`~association.query.compose.team.compile_team_line`). ``None``
-    where the point carries no line or a narrowing the words do not state
-    (``stated``); a
+    where the point carries no line; a
     :class:`~association.query.result.Refusal` or :class:`~association.query.result.Clarify` back is the
     relation's refusal (the coverage floor, no such team, no games in the
     span or none matching its narrowing, none with a figure for the stat).
-    A player-only cell, an unknown stat or one a team has no figure for is
-    declined by name (``Unsupported``), never answered as another
+    A player-only cell (one its shape takes beyond the team relation's,
+    ``ShapeCells.taken``), an unknown stat or one a team has no figure for
+    is declined by name (``Unsupported``), never answered as another
     question.
 
     .. versionadded:: 5.0.0
+
+    .. versionchanged:: 6.0.0
+       Takes no ``stated``: the answer side checks the point's cells against
+       its shape's row before asking (``compose.plan.cells_unhonored``,
+       Phase 3, step 2's closing slice).
     """
     scope = q.scope
-    if threshold_of(scope) is None or unhonored_scoping("record_when", scope, stated):
+    if threshold_of(scope) is None:
         return None
-    refused = coverage_refusal(PointShape("team_games", "split", "line"), scope)
+    refused = coverage_refusal(_TEAM_RECORD_LINE_SHAPE, scope)
     if refused is not None:
         return refused
-    condition_needs_player_refusal("record_when", scope)
+    _team_record_when_needs_player(scope)
     team = optional_team(con, scope.subject.team, season=scope.span.season)
     if isinstance(team, Unanswered):
         return team

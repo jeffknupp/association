@@ -14,6 +14,7 @@ from typing import Any
 
 import duckdb
 import pytest
+from shapes import key
 from test_templates import team_quarter_points  # the compiler's since Phase 2's slice (iv) (compose.COMPILED_INTENTS)
 
 from association.fetch.repairs import real_games
@@ -238,10 +239,10 @@ def test_the_scope_narrows_to_a_half_or_a_quarter_through_the_typed_period() -> 
 
 def test_period_is_a_relation_cell_and_every_exclusion_says_why() -> None:
     assert Period.CELLS <= RELATION_SCOPING
-    for intent, cells in RELATION_SCOPING_EXCLUDED.items():
-        assert "half" not in cells, f"{intent}: a half is the period cell since Phase 3, step 2"
-        if "period" in cells:
-            assert cells["period"].strip(), f"{intent} excludes period without a reason"
+    for shape, row in RELATION_SCOPING_EXCLUDED.items():
+        assert "half" not in row.unstated, f"{shape}: a half is the period cell since Phase 3, step 2"
+        if "period" in row.unstated:
+            assert row.unstated["period"].strip(), f"{shape} excludes period without a reason"
 
 
 def test_the_agreement_table_names_only_period_columns_and_real_percentages() -> None:
@@ -392,9 +393,9 @@ def test_a_team_read_without_shots_knows_only_the_linescore(team_con: duckdb.Duc
 
 def test_period_is_a_team_relation_cell_and_every_exclusion_says_why() -> None:
     assert Period.CELLS <= TEAM_RELATION_SCOPING
-    for intent in ("team_record", "head_to_head", "team_leaderboard"):
-        assert TEAM_RELATION_SCOPING_EXCLUDED[intent]["period"].strip(), f"{intent} excludes period without a reason"
-        assert "half" not in TEAM_RELATION_SCOPING_EXCLUDED[intent], f"{intent}: a half is the period cell since Phase 3, step 2"
+    for words in ("team_record", "head_to_head", "team_leaderboard"):
+        assert TEAM_RELATION_SCOPING_EXCLUDED[key(words)].unstated["period"].strip(), f"{words} excludes period without a reason"
+        assert "half" not in TEAM_RELATION_SCOPING_EXCLUDED[key(words)].unstated, f"{words}: a half is the period cell since Phase 3, step 2"
 
 
 def test_the_team_agreement_table_names_only_period_columns_and_real_percentages() -> None:

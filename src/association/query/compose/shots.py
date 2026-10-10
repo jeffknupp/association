@@ -41,7 +41,7 @@ from association.query.measure import keyed
 from association.query.notes import Note
 from association.query.player_games import Narrowed, games_subquery
 from association.query.player_relation import RELATION_SCOPING, ResolvedSpan, no_narrowed_games, scoped_games, scoped_player, settle_ordinal_season, span_of
-from association.query.reading import Scope, Unsupported, cell_set, unhonored_scoping
+from association.query.reading import Scope, Unsupported, cell_set
 from association.query.result import Chart, Decided, Narrowing, OnDate, Part, Refusal, Result, Scalar, ShotValue, Span, Unanswered, Window
 from association.query.season_line import Statement, season_redirect, seasons_played
 from association.query.season_text import SEASON_TYPE_NAMES, season_phrase
@@ -234,15 +234,14 @@ def _shot_distance_games(con: duckdb.DuckDBPyConnection, player: Entity, span: R
     return ids, Narrowing(phrase=f" {_shots_span_prefix(span)}{narrowed.filters(windowed=True)}", opponent=opponent, venue=narrowed.venue), None
 
 
-def read_shot_distance(con: duckdb.DuckDBPyConnection, q: ShotQuery, *, stated: frozenset[str]) -> Result | Unanswered | None:
+def read_shot_distance(con: duckdb.DuckDBPyConnection, q: ShotQuery) -> Result | Unanswered | None:
     """``shot_distance``'s point - one player's average shot distance from
     the rim, optionally of one shot value, over a season, a career or the
     games a narrowing or a window sends the read to - read into a
     :class:`~association.query.result.Result` whose one part is a
     :class:`~association.query.result.Scalar` (the average under
     ``avg_feet``, the shots under ``attempts``, ``games`` the games they
-    came from). ``None`` where the point is not that or carries a narrowing
-    the retired template's words did not state (``stated``); a
+    came from). ``None`` where the point is not that; a
     :class:`~association.query.result.Refusal` or :class:`~association.query.result.Clarify` back is the
     relation's refusal (a name, a season, no games, an unseparable season),
     and ``Unsupported`` what the template refused outright: a
@@ -250,9 +249,14 @@ def read_shot_distance(con: duckdb.DuckDBPyConnection, q: ShotQuery, *, stated: 
 
     .. versionadded:: 5.0.0
        ``templates.shots.shot_distance`` was this, the read moved whole.
+
+    .. versionchanged:: 6.0.0
+       Takes no ``stated``: the answer side checks the point's cells against
+       its shape's row before asking (``compose.plan.cells_unhonored``,
+       Phase 3, step 2's closing slice).
     """
     scope = q.scope
-    if q.shape != "scalar" or unhonored_scoping("shot_distance", scope, stated):
+    if q.shape != "scalar":
         return None
     measures = measure_filters(scope)
     subject = scoped_player(con, scope, "shot_distance needs a player name", table="player_game_log", available=SHOT_AVAILABILITY)
@@ -533,14 +537,13 @@ def _shot_chart_drawn(con: duckdb.DuckDBPyConnection, player: Entity, span: Reso
     return chart, notes, where, None
 
 
-def read_shot_chart(con: duckdb.DuckDBPyConnection, q: ShotQuery, *, stated: frozenset[str]) -> Result | Unanswered | None:
+def read_shot_chart(con: duckdb.DuckDBPyConnection, q: ShotQuery) -> Result | Unanswered | None:
     """``shot_chart``'s point - one player's located shots over a season, a
     career or the games a narrowing or a window sends the read to, made and
     missed - read into a :class:`~association.query.result.Result` whose one
     part is a :class:`~association.query.result.Chart` (the marks, the
     counts, the caption and the file name; :func:`draw_shot_chart` writes
-    it). ``None`` where the point is not that or carries a narrowing the
-    retired template's words did not state (``stated``); a
+    it). ``None`` where the point is not that; a
     :class:`~association.query.result.Refusal` or :class:`~association.query.result.Clarify` back is the
     relation's refusal (no such player, which one, no games), and
     ``Unsupported`` what the template refused outright: no name, a
@@ -552,9 +555,14 @@ def read_shot_chart(con: duckdb.DuckDBPyConnection, q: ShotQuery, *, stated: fro
     .. versionadded:: 5.0.0
        ``templates.shots.shot_chart`` and ``shotchart.render_for_player``
        were this, the read moved whole.
+
+    .. versionchanged:: 6.0.0
+       Takes no ``stated``: the answer side checks the point's cells against
+       its shape's row before asking (``compose.plan.cells_unhonored``,
+       Phase 3, step 2's closing slice).
     """
     scope = q.scope
-    if q.shape != "chart" or unhonored_scoping("shot_chart", scope, stated):
+    if q.shape != "chart":
         return None
     name = scope.subject.player
     if name is None or not name.strip():

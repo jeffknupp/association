@@ -55,7 +55,7 @@ from .meetings import read_head_to_head
 from .netpoints import NetPointsQuery, draw_fingerprint, read_fingerprint, read_player_netpoints
 from .pairs import read_player_matchup
 from .periods import read_period_leaderboard, read_period_split, read_team_quarter_points
-from .plan import SHAPE_NAMES, STATED_SCOPING, Planned
+from .plan import SHAPE_NAMES, Planned, beyond_words, cells_unhonored, shape_cells
 from .presence import read_with_without
 from .rankings import read_leaderboard
 from .records import read_record_when, read_team_record_when
@@ -338,19 +338,27 @@ _ROUTES: dict[PointShape, _Route] = {
 
 
 def _read(con: duckdb.DuckDBPyConnection, shape: PointShape, query: Query | TeamQuery | TeamSeasonQuery | NetPointsQuery | ShotQuery) -> Result | Unanswered | Reply | None:
-    """``query`` read by its shape's reader, held to the scoping the shape's
-    words state (``STATED_SCOPING``): a Result or the relation's refusal,
-    or ``None`` where the reader steps aside (or no reader takes the shape)
-    for the compiler's own sentence. A reader that is the point's only
-    answer declines rather than step aside (:func:`_read_only`); one that
-    steps aside has a cell it refuses said with ``relation:`` before it."""
+    """``query`` read by its shape's reader, held to the cells the shape's
+    words state (:func:`~association.query.compose.plan.cells_unhonored`,
+    over the shape's row of its relation's table): a Result or the
+    relation's refusal, or ``None`` where the reader steps aside (or no
+    reader takes the shape) for the compiler's own sentence. A reader that
+    is the point's only answer declines rather than step aside
+    (:func:`_read_only`) - in its shape's sentence where its row declines a
+    cell its words do not state when it is asked (a team's own season,
+    ``declined="read"``); one that steps aside has a cell it refuses said
+    with ``relation:`` before it. Until Phase 3, step 2's closing slice each
+    reader made the check itself, over the ``stated=`` set it was handed."""
     route = _ROUTES.get(shape)
     if route is None:
         return None
-    stated = STATED_SCOPING[shape]
+    unhonored = cells_unhonored(query.scope, shape)
+    found = shape_cells(shape)
+    if unhonored and found is not None and found[1].declined == "read":
+        raise Unsupported(beyond_words(SHAPE_NAMES[shape], unhonored))
     if route.only:
-        return _read_only(lambda: route.reader(con, query, stated=stated), SHAPE_NAMES[shape])
-    return _read_log(lambda: route.reader(con, query, stated=stated))
+        return _read_only(lambda: None if unhonored else route.reader(con, query), SHAPE_NAMES[shape])
+    return None if unhonored else _read_log(lambda: route.reader(con, query))
 
 
 def _read_drawn(ctx: AnswerContext, shape: PointShape, query: NetPointsQuery | ShotQuery) -> Reply:

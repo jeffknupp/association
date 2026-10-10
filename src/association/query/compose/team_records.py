@@ -46,7 +46,7 @@ from association.query.coverage import coverage_refusal, floor_refusal
 from association.query.entities import Entity, resolved_team, slot_season
 from association.query.notes import Note
 from association.query.player_relation import ResolvedSpan, span_of, validated_until
-from association.query.reading import PointShape, Situation, Unsupported, unhonored_scoping
+from association.query.reading import PointShape, Situation, Unsupported
 from association.query.result import Calendar, Cell, GameOfSeries, Grouped, Narrowing, Part, Refusal, Result, Rows, Scalar, Span, TeamRecordFacts, Unanswered
 from association.query.season_line import Statement
 from association.query.season_text import MONTH_NAMES
@@ -123,24 +123,26 @@ def _team_record_teams(con: duckdb.DuckDBPyConnection, scope: Any) -> tuple[Enti
     return team, None
 
 
-def read_team_record(con: duckdb.DuckDBPyConnection, q: TeamQuery, *, stated: frozenset[str]) -> Result | Unanswered | None:
+def read_team_record(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> Result | Unanswered | None:
     """``team_record``'s point read: which of its shapes the settled slots
     pick out - a standings season or career, a tally of the team's games, a
     table by month, or both season types together - with the refusals that
-    are the record's own. ``None`` where the scope carries a narrowing its
-    words do not state (the planner declines it first); a
+    are the record's own. A
     :class:`~association.query.result.Refusal` or :class:`~association.query.result.Clarify` back is a
     refusal (a conference named as a team, a season under the game list's
     floor, the relation's own).
 
     .. versionadded:: 5.0.0
        ``templates.teams.team_record`` was this, with its sentences.
+
+    .. versionchanged:: 6.0.0
+       Takes no ``stated``: the answer side checks the point's cells against
+       its shape's row before asking (``compose.plan.cells_unhonored``,
+       Phase 3, step 2's closing slice).
     """
     from association.query.calendar import conference_named
 
     scope = q.scope
-    if unhonored_scoping("team_record", scope, stated):
-        return None
     refused = coverage_refusal(PointShape("team_games", "scalar", "record"), scope)
     if refused is not None:
         return refused

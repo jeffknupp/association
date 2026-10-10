@@ -33,7 +33,6 @@ from association.query.measures import streak_column
 from association.query.notes import Note
 from association.query.player_games import Narrowed, games_subquery, named
 from association.query.player_relation import no_games
-from association.query.reading import unhonored_scoping
 from association.query.result import Line, Narrowing, Part, Result, Run, Runs, Span, Unanswered, run_of
 from association.query.team_relation import condition_team_no_games, team_span_label
 
@@ -52,7 +51,7 @@ def _settled_open(runs: tuple[Run, ...]) -> tuple[Run, ...]:
     return tuple(replace(run, still_open=run.still_open and run.last_season == now) for run in runs)
 
 
-def read_streak(con: duckdb.DuckDBPyConnection, q: Query, *, stated: frozenset[str]) -> Result | Unanswered | None:
+def read_streak(con: duckdb.DuckDBPyConnection, q: Query) -> Result | Unanswered | None:
     """``streak``'s own point on the player relation - the ``run`` shape -
     read as the longest runs the compiled statement finds: a named
     player's longest and any that tie it, over the games the relation
@@ -60,19 +59,20 @@ def read_streak(con: duckdb.DuckDBPyConnection, q: Query, *, stated: frozenset[s
     his Boston games only), or the league's longest, one per player. The
     span, the rule ("only games he played count") and the games with no
     box score are read off the same relation the runs were. ``None`` where
-    the point is not a run, or carries a narrowing the retired template's
-    words did not state (``stated``: ``compose.plan.STATED_SCOPING``'s
-    set), and the compiler's sentence answers; a
+    the point is not a run, and the compiler's sentence answers; a
     :class:`~association.query.result.Refusal` or :class:`~association.query.result.Clarify` back is the
     relation's refusal (no games in scope, an ambiguous team).
 
     .. versionadded:: 5.0.0
+
+    .. versionchanged:: 6.0.0
+       Takes no ``stated``: the answer side checks the point's cells against
+       its shape's row before asking (``compose.plan.cells_unhonored``,
+       Phase 3, step 2's closing slice).
     """
     if q.skeleton != "run" or q.source != "games":
         return None
     scope = q.scope
-    if unhonored_scoping("streak", scope, stated):
-        return None
     team = optional_team(con, scope.subject.team, season=scope.span.season)
     if isinstance(team, Unanswered):
         return team
@@ -149,7 +149,7 @@ def _streak_league_result(con: duckdb.DuckDBPyConnection, q: Query, covered: Any
     )
 
 
-def read_team_streak(con: duckdb.DuckDBPyConnection, q: TeamQuery, *, stated: frozenset[str]) -> Result | Unanswered | None:
+def read_team_streak(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> Result | Unanswered | None:
     """``streak``'s point on the team relation - the ``run`` shape - read
     as the runs the team compiler's statement finds
     (:func:`~association.query.compose.team.compile_team_run`): a named
@@ -158,18 +158,20 @@ def read_team_streak(con: duckdb.DuckDBPyConnection, q: TeamQuery, *, stated: fr
     question named them, or the league's longest, one per team-season, each
     under the team as it was named that season. The span is the seasons the
     games came from (:func:`~association.query.compose.team.compile_team_range`).
-    ``None`` where the point is not a run or carries a narrowing the retired
-    template's words did not state (``stated``), and the compiler's
-    sentence answers; a
+    ``None`` where the point is not a run, and the compiler's sentence
+    answers; a
     :class:`~association.query.result.Refusal` or :class:`~association.query.result.Clarify` back is the
     relation's refusal (a coverage floor, a named team with no games in the
     span or none matching its narrowing).
 
     .. versionadded:: 5.0.0
+
+    .. versionchanged:: 6.0.0
+       Takes no ``stated``: the answer side checks the point's cells against
+       its shape's row before asking (``compose.plan.cells_unhonored``,
+       Phase 3, step 2's closing slice).
     """
     if q.shape != "run":
-        return None
-    if unhonored_scoping("streak", q.scope, stated):
         return None
     refused = team_coverage_refusal(q)
     if refused is not None:

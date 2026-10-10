@@ -1358,8 +1358,8 @@ class Claim:
 class Scope:
     """What narrows the answer, one typed field per scoping slot. A field at
     its default (None, empty, False) is the slot absent - the reading every
-    reader already takes of a falsy slot (``compose.plan.unhonored_scoping``
-    asks whether the field is truthy). The names are here too, as the question gave them;
+    reader already takes of a falsy slot (:meth:`cells` asks whether each
+    typed value sets its cells, and the split whether it is truthy). The names are here too, as the question gave them;
     resolving them against the warehouse happens where each is read.
 
     .. versionadded:: 5.0.0
@@ -1402,6 +1402,15 @@ class Scope:
     #: (:class:`Window`; the four slots ``order``, ``limit``, ``rank`` and
     #: ``ranked_by`` until Phase 3, step 2).
     window: Window = field(default_factory=Window)
+
+    #: Every cell a scope can set, by name: each typed family's
+    #: (:attr:`Span.CELLS`, :attr:`Window.CELLS`, :attr:`Cuts.CELLS`,
+    #: :attr:`Period.CELLS`, :attr:`Line.CELLS`, :attr:`Companion.CELLS`,
+    #: :attr:`Measure.CELLS`) and the split's one, ``split`` - the role
+    #: family's, whose value (:data:`Split`, a closed set of names) is not
+    #: typed yet; a subject is no cell (:attr:`Subject.CELLS`). What the two
+    #: relation tables and each shape's row speak of, and nothing else.
+    CELLS: ClassVar[frozenset[str]] = Span.CELLS | Window.CELLS | Cuts.CELLS | Period.CELLS | Line.CELLS | Companion.CELLS | Measure.CELLS | {"split"}
 
     @classmethod
     def from_slots(cls, slots: Mapping[str, Any]) -> Scope:
@@ -1629,9 +1638,28 @@ class Scope:
         return out
 
     def cells(self) -> frozenset[str]:
+        """Every cell this scope sets (:attr:`CELLS`): what the shape a point
+        is planned as must state, or its relation's table carry, or the
+        planner refuse or the reader step aside for
+        (:func:`~association.query.compose.plan.cells_unhonored`).
+
+        .. versionchanged:: 6.0.0
+           Every family's cells and the split's (Phase 3, step 2's closing
+           slice); the line family's alone until then, the rest read beside
+           it by ``unhonored_cells`` and ``cell_set`` family by family.
+        """
+        held = set(self.span.cells()) | self.window.cells() | self.cuts.cells() | self._line_cells()
+        if self.period is not None:
+            held |= self.period.cells()
+        if self.measure is not None:
+            held |= self.measure.cells()
+        if self.split:
+            held.add("split")
+        return frozenset(held)
+
+    def _line_cells(self) -> frozenset[str]:
         """The line family's cells this scope sets (:attr:`Line.CELLS`,
-        :attr:`Companion.CELLS`): what a relation's table must honor, or
-        step aside or refuse for."""
+        :attr:`Companion.CELLS`), read off the slots they were recorded as."""
         held = set()
         slots = self.line_slots()
         if "above" in slots or "below" in slots:
@@ -1664,23 +1692,33 @@ def line_slot_names(scope: Scope, cell: str) -> list[str]:
     return [name for name in _LINE_CELL_SLOT_NAMES[cell] if name in slots]
 
 
-def slot_names_set(scope: Scope, cells: frozenset[str] | tuple[str, ...]) -> list[str]:
-    """The slot-era names ``scope`` sets among ``cells``, sorted - each cell
-    by its own name but the line family's by the slot names they were
-    declared under (:func:`companion_slot_names`, :func:`line_slot_names`),
-    so a refusal built from a list of cells says what it said.
+def cell_slots(scope: Scope, cell: str) -> list[str]:
+    """The slot names ``cell`` is set under on ``scope`` - the names a
+    decline says ("cannot honor ['since', 'until']"), each cell by the slots
+    it was declared under until Phase 3, step 2 (:meth:`Span.unhonored`,
+    :meth:`Window.unhonored`, :meth:`Cuts.unhonored`, :meth:`Period.unhonored`,
+    :func:`line_slot_names`, :func:`companion_slot_names`; the unit and the
+    split by their own names), in the order the slot list said them; none
+    where the cell is not set. Until the decline-to-Cause commit rewords the
+    declines, this is how a typed cell is said.
 
     .. versionadded:: 6.0.0
     """
-    named: list[str] = []
-    for cell in cells:
-        if cell in Companion.CELLS:
-            named += companion_slot_names(scope)
-        elif cell in Line.CELLS:
-            named += line_slot_names(scope, cell)
-        elif cell_set(scope, cell):
-            named.append(cell)
-    return sorted(named)
+    if cell not in scope.cells():
+        return []
+    if cell in Span.CELLS:
+        return scope.span.unhonored(Span.CELLS - {cell})
+    if cell in Window.CELLS:
+        return scope.window.unhonored(Window.CELLS - {cell})
+    if cell in Cuts.CELLS:
+        return scope.cuts.unhonored(Cuts.CELLS - {cell})
+    if cell in Period.CELLS and scope.period is not None:
+        return scope.period.unhonored(frozenset())
+    if cell in Line.CELLS:
+        return line_slot_names(scope, cell)
+    if cell in Companion.CELLS:
+        return companion_slot_names(scope)
+    return [cell]
 
 
 def _lines_from_slots(slots: Mapping[str, Any]) -> tuple[Line, ...]:
@@ -1793,28 +1831,16 @@ def _projected_slot(scope: Scope, family: str, slot: str, cut_slots: dict[str, A
 
 
 def cell_set(scope: Scope, cell: str) -> bool:
-    """Whether ``scope`` sets ``cell`` - a cut by its cell name
-    (:attr:`Cuts.CELLS`: ``tenure``, not ``own_team``), a span, window,
-    line or companion cell by its name, or any other field by its truth - the one reading of
-    a cell name against a Scope for the tables that list cells by name
-    (``conditions._CONDITION_PLAYER_ONLY_CELLS``, the planner's
-    per-reader exclusions, the shot readers' narrowing check).
+    """Whether ``scope`` sets ``cell`` (:meth:`Scope.cells`) - a cut by its
+    cell name (:attr:`Cuts.CELLS`: ``tenure``, not ``own_team``), every other
+    cell by its name: the one reading of a cell name against a Scope, for a
+    reader that lists the relation's cells it reads apart (the shot
+    readers' narrowing check) and the planner's one check
+    (:func:`~association.query.compose.plan.cells_unhonored`).
 
     .. versionadded:: 6.0.0
     """
-    if cell in Cuts.CELLS:
-        return cell in scope.cuts.cells()
-    if cell in Span.CELLS:
-        return cell in scope.span.cells()
-    if cell in Window.CELLS:
-        return cell in scope.window.cells()
-    if cell in Period.CELLS:
-        return scope.period is not None
-    if cell in Line.CELLS or cell in Companion.CELLS:
-        return cell in scope.cells()
-    if cell in Measure.CELLS:
-        return scope.measure is not None and cell in scope.measure.cells()
-    return bool(getattr(scope, cell))
+    return cell in scope.cells()
 
 
 def _text(name: str, raw: Any) -> str:
@@ -2072,6 +2098,63 @@ class PointShape:
     relation: PointRelation
     shape: Shape
     by: str = ""
+
+
+@dataclass(frozen=True, kw_only=True)
+class ShapeCells:
+    """One shape's row of its relation's cell table
+    (``player_relation.RELATION_SCOPING_EXCLUDED``,
+    ``team_relation.TEAM_RELATION_SCOPING_EXCLUDED``, keyed by the
+    :class:`PointShape` a planned point is read and said as): what its
+    reader's words state of the relation's cells, and what the planner does
+    with a cell they do not. The shape states its relation's table, and
+    :attr:`taken` beside it, less :attr:`unstated`
+    (:func:`~association.query.compose.plan.cells_stated`); the planner's
+    one check reads a point's cells against that
+    (:func:`~association.query.compose.plan.cells_unhonored`), in the order
+    the slot-era checks it replaced read them.
+
+    .. versionadded:: 6.0.0
+       Phase 3, step 2's closing slice: one record per shape, where the
+       planner's ``STATED_SCOPING``, ``_TEAM_READER_REFUSES``, the four
+       branches of ``_shape_declines``, ``unhonored_scoping``'s split rule
+       and ``conditions._CONDITION_PLAYER_ONLY_CELLS`` stood.
+    """
+
+    #: The cells this shape's words do not state, each with why - a reason
+    #: about the answer, never about the code - in the order a refusal lists
+    #: them. Where the relation's table carries the cell and the shape
+    #: neither refuses nor declines it, the reader steps aside and the
+    #: compiler's own sentence, which states every narrowing the relation
+    #: applied, answers.
+    unstated: Mapping[str, str] = field(default_factory=dict)
+    #: Of :attr:`unstated`, the cells nothing answers: the planner refuses
+    #: them outright, saying the first one's why ("streak cannot honor
+    #: ['date'] - one game is not a run").
+    refused: frozenset[str] = frozenset()
+    #: Cells beyond the relation's table the planner lets through to this
+    #: shape: ones its reader reads (a season-line ranking's unit, a team
+    #: record's month), or refuses in its own words, which say where the
+    #: question belongs (a teammate on a team's log).
+    taken: frozenset[str] = frozenset()
+    #: Where a cell the words do not state is declined in the sentence
+    #: "<shape> cannot honor [...] - it would answer for a different span than
+    #: was asked", when this shape's reader is the point's only answer: by
+    #: the planner, before any reader runs (``"plan"``), or by the reader
+    #: when it is asked (``"read"``: a team's own season, whose point the team
+    #: compiler's sum may still answer). None where the reader steps aside.
+    declined: Literal["plan", "read"] | None = None
+    #: Whether the reader honors one named half of the starter/bench split
+    #: and not the bare category, a table of both halves it does not produce.
+    sides: bool = False
+    #: Cells only a named player's games can be narrowed by: refused where the
+    #: point's subject is no named player ("... without a named player -
+    #: only his own games can be narrowed that way").
+    named_player: frozenset[str] = frozenset()
+    #: Cells a run's games can be narrowed by only for a named team or
+    #: player: refused for the league's own run ("... without a named team
+    #: or player - the league-wide streak has no single subject to narrow").
+    named_subject: frozenset[str] = frozenset()
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -2592,103 +2675,48 @@ def scope_reads_box_scores(scope: Scope, measures: list[Any]) -> bool:
     )
 
 
-# Slots that narrow WHICH games an answer covers. A template that ignores one
-# gives a different answer, not a broader one, and says nothing - confirmed
-# three times ("his last game" charting a whole season, and so on). The router
-# extracts these CORRECTLY in each case, so check_routing cannot catch a
-# template dropping them; only this can.
+# The cells that narrow WHICH games an answer covers, every one a typed
+# value's since Phase 3, step 2 (:attr:`Scope.CELLS`). A reader that ignores
+# one gives a different answer, not a broader one, and says nothing -
+# confirmed three times ("his last game" charting a whole season, and so
+# on). The reader reads these CORRECTLY in each case, so nothing upstream
+# can catch a reader dropping them; only the planner's check of each cell
+# against the relation's table and the shape's row can
+# (``compose.plan.cells_unhonored``, over ``player_relation.RELATION_SCOPING``
+# and ``team_relation.TEAM_RELATION_SCOPING`` with their per-shape rows).
 #
-# Those read from the question text by the router and by
-# subject.apply_subject, never asked of the model, exist for the same
-# reason. Measured against real StatMuse queries before they did: "jaylen brown
-# last 8 games vs pistons" answered with the Celtics' last 8 games, "Knicks
-# home record" with their overall record, "career points leaders" with this
-# season's, and "Podziemski game log without curry" with his whole log. Each
-# was fast, fluent and about something else. `split`
-# and `since` (a range of seasons) are read for every intent for the same reason:
-# a template that is not about splits or ranges answered them with one season.
-# `below` ("under 14 FTA") and `above` ("with 25 minutes") are lines a game's
-# box score is kept under or over - `measure_filters` reads them onto the
-# relation for the templates listed with them.
-# `rate` - a unit asked of a measure ("points per 100 possessions",
-# "netpoints / 90", a season total) - is the typed `Measure`'s one cell since
-# Phase 3, step 2 (`Measure.CELLS`), read beside this list by
-# `unhonored_cells`: honored by the season-line ranking and the team
-# compiler's total, refused by every other reader as the slot was.
-# `order` and `ranked_by` are the typed window's cells since Phase 3, step 2
-# (`Window.CELLS`: `window`, `ranked_by`), read beside this list by
-# `unhonored_cells`: a `leaderboard` question ranking the GAMES that satisfy
-# a boolean stat by another measure ("highest scoring triple doubles" -
-# yardstick-v2 F124) carries the same slots as the count "most triple
-# doubles" but for the window's `by`, which the leaderboard's reader does
-# not state, so it steps aside and the compiler's boolean-game ranking answers.
-# The games' cuts - the opponent, the tenure, a venue, one date, a situation
-# (a weekday, a month, a holiday, "since <day>", or the conference or
-# division the opponent is in, applied by `apply_situation`; anything else
-# it could name - back-to-backs, overtime, an age, "since returning" - is
-# refused by value, since nothing narrows to it), a playoff round (honored
-# by nothing: no game is labeled by one), a game of each series and an
-# ordinal season - are the typed `Cuts`' cells since Phase 3, step 2
-# (`Cuts.CELLS`), read beside this list the same way.
-# A quarter or half - what a read SEES of each game - is the typed
-# `Period`'s one cell since Phase 3, step 2 (`Period.CELLS`: `period`), read
-# beside this list the same way.
-# The subject's lines - a phrase kept under or over a number, two or more
-# "N+ stat" pairs on one game, a line in a quarter - and the companions
-# beside him are the typed `Line`s' and `Companion`s' cells since Phase 3,
-# step 2 (`Line.CELLS`: `line`, `period_line`; `Companion.CELLS`:
-# `companion`), read beside this list the same way; a decline still says the
-# slot names they were declared under (`below`, `above`, `period_condition`,
-# `without`, `conditions`: `line_slot_names`, `companion_slot_names`).
-SCOPING_SLOTS = frozenset({"split"})
+# They are read from the question's words, never asked of the model, for
+# the same reason. Measured against real StatMuse queries before they were:
+# "jaylen brown last 8 games vs pistons" answered with the Celtics' last 8
+# games, "Knicks home record" with their overall record, "career points
+# leaders" with this season's, and "Podziemski game log without curry" with
+# his whole log. Each was fast, fluent and about something else. The split
+# and a range of seasons are read for every intent for the same reason: a
+# reader that is not about splits or ranges answered them with one season.
+# A line kept under or over a number ("under 14 FTA", "with 25 minutes") is
+# read onto the relation by `measure_filters`; a unit asked of a measure
+# ("points per 100 possessions", a season total) is the `Measure`'s one
+# cell, `rate`, which no relation table declares (a unit narrows no games)
+# and two shapes take beyond their relation's (the season line's ranking,
+# the team compiler's total). The split - the role family's one cell, whose
+# value is not typed yet (:data:`Split`) - is set by any split asked for;
+# the bare starter/bench category is a table of both halves, which a shape
+# that honors one named half (``ShapeCells.sides``) does not state.
 
 
 def unhonored_cells(scope: Scope, honored: frozenset[str]) -> list[str]:
-    """The slot names ``scope`` sets that ``honored`` does not hold, sorted:
-    every slot of :data:`SCOPING_SLOTS` that is truthy, and the span's, the
-    window's, the cuts', the period's, the lines', the companions' and the
-    measure's cells
-    (:attr:`Span.CELLS`, :attr:`Window.CELLS`, :attr:`Cuts.CELLS`,
-    :attr:`Period.CELLS`, :attr:`Line.CELLS`, :attr:`Companion.CELLS`, :attr:`Measure.CELLS`, by
-    the slot names they were refused under - :meth:`Span.unhonored`,
-    :meth:`Window.unhonored`, :meth:`Cuts.unhonored`, :meth:`Period.unhonored`,
-    :func:`line_slot_names`, :func:`companion_slot_names`).
-    One reading of "what is set beyond what is honored", for the planner's
-    relation check and for a reader's own words (:func:`unhonored_scoping`).
+    """The slot names of the cells ``scope`` sets that ``honored`` does not
+    hold, sorted (:meth:`Scope.cells`, each by :func:`cell_slots`): the
+    relation's own check of a cell set against its table
+    (``compose.core._check_relation_scoping``).
+
+    Over :meth:`Scope.cells`, every family's and the split's; it read the
+    untyped slots' list (``SCOPING_SLOTS``) beside the typed families until
+    Phase 3, step 2's closing slice.
 
     .. versionadded:: 6.0.0
     """
-    period = scope.period.unhonored(honored) if scope.period is not None else []
-    measure = scope.measure.unhonored(honored) if scope.measure is not None else []
-    slots = [name for name in SCOPING_SLOTS if getattr(scope, name) and name not in honored] + measure
-    lines = [slot for cell in Line.CELLS if cell in scope.cells() and cell not in honored for slot in line_slot_names(scope, cell)]
-    companions = companion_slot_names(scope) if "companion" in scope.cells() and "companion" not in honored else []
-    return sorted(slots + scope.span.unhonored(honored) + scope.window.unhonored(honored) + scope.cuts.unhonored(honored) + period + lines + companions)
-
-
-#: Templates that honor one NAMED half of the starter/bench split and refuse
-#: the bare category, which asks for a table they do not produce.
-_SPLIT_SIDE_ONLY = frozenset({"game_log", "player_stat", "period_split", "shot_chart", "shot_distance"})
-
-
-def unhonored_scoping(intent: str, scope: Scope, honored: frozenset[str]) -> list[str]:
-    """The scoping slots ``scope`` sets that ``honored`` does not hold, for
-    ``intent``: a reader steps aside for one its retired words do not state
-    (:data:`~association.query.compose.plan.STATED_SCOPING`), leaving the
-    compiler's own sentence to answer, and the planner refuses one the
-    relation cannot honor at all. A slot is set when its field is truthy:
-    a field at its default (None, an empty tuple, False) is the slot absent.
-
-    .. versionadded:: 5.0.0
-    """
-    ignored = unhonored_cells(scope, honored)
-    # `split` is honored by the filtering templates only for a NAMED half. The
-    # bare category means "show me both groups", which is player_splits' whole
-    # answer and something they cannot do - so it is refused here rather than
-    # quietly filtered to one side or quietly ignored.
-    if scope.split == "starter_bench" and intent in _SPLIT_SIDE_ONLY:
-        ignored = sorted({*ignored, "split"})
-    return ignored
+    return sorted(slot for cell in scope.cells() - honored for slot in cell_slots(scope, cell))
 
 
 # Templates that read a player name at all - resolving it, filtering on it, or

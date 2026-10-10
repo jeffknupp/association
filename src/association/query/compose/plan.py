@@ -13,15 +13,14 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 
 from association.query.answer import Reply
-from association.query.conditions import condition_needs_player_refusal
 from association.query.coverage import coverage_refusal
 from association.query.measure import spelled
 from association.query.measures import stat_measure
-from association.query.player_relation import RELATION_SCOPING_EXCLUDED, relation_cuts, relation_period, relation_scoping, relation_span
+from association.query.player_relation import RELATION_SCOPING, RELATION_SCOPING_EXCLUDED
 from association.query.point import TEAM_SEASON_POINTS, team_season_point
-from association.query.reading import CHART_INTENTS, Cause, Companion, Cuts, Line, Measure, Period, PointShape, Reading, Scope, Span, Window, _career_scope, cell_set, slot_names_set, unhonored_scoping
+from association.query.reading import Cause, Measure, PointShape, Reading, Scope, ShapeCells, _career_scope, cell_set, cell_slots
 from association.query.result import Refusal
-from association.query.team_relation import team_relation_cuts, team_relation_scoping, team_relation_span
+from association.query.team_relation import TEAM_RELATION_SCOPING, TEAM_RELATION_SCOPING_EXCLUDED
 
 from .core import Query, Refused, Unsupported, _check_relation_scoping
 from .netpoints import NetPointsQuery
@@ -30,149 +29,7 @@ from .say import say, say_refusal
 from .seasons import player_compare_reads, player_history_reads, player_line_reads
 from .shots import ShotQuery
 from .team import TeamQuery
-from .team_stats import TeamSeasonQuery, team_season_declines
-
-STATED_SCOPING: dict[PointShape, frozenset[str]] = {
-    # game_log and player_stat retired stating the relation's whole set,
-    # the span's `both` cell included: read over both season types merged
-    # by date for a log (compose.logs, which takes this set since Phase 2's
-    # first slice), and from box scores as one combined read for an average
-    # (`_player_stat_reads_box_scores`, `player_relation_season_type`).
-    # Every span cell a shape states comes from the relation's own table
-    # (Phase 3, step 2): a row here names none of them.
-    PointShape("player_games", "rows", "date"): relation_scoping("game_log"),
-    PointShape("team_games", "rows", "date"): relation_scoping("game_log"),
-    PointShape("player_games", "scalar", "line"): relation_scoping("player_stat"),
-    PointShape("player_seasons", "scalar", "line"): relation_scoping("player_stat"),
-    # player_splits' words: the relation's set less a date and a window
-    # (RELATION_SCOPING_EXCLUDED: one game has nothing to split).
-    PointShape("player_games", "split", "splits"): relation_scoping("player_splits"),
-    PointShape("team_games", "split", "splits"): relation_scoping("player_splits"),
-    # The retired templates' words, as they stated their narrowings when they
-    # retired (ROADMAP plan item 6, step (d), part 4).
-    PointShape("player_games", "split", "line"): relation_scoping("record_when"),
-    PointShape("team_games", "split", "line"): relation_scoping("record_when"),
-    # Every games' cut a shape states comes from the relation's own table
-    # too (the third slice): a season line's reader states none
-    # (RELATION_SCOPING_EXCLUDED, the game-level read answers), a count an
-    # ordinal season, a ranking by a quarter an opponent and a venue, a
-    # fingerprint a date.
-    PointShape("player_seasons", "split", "season"): relation_span("player_history") | relation_cuts("player_history"),
-    # leaderboard's words: a career pool, and a season total or a unit it
-    # refuses by name (the template's own HONORED_SCOPING when it retired).
-    PointShape("player_seasons", "ranking", "player"): Measure.CELLS | relation_span("leaderboard") | relation_cuts("leaderboard"),
-    # period_split's words: the relation's set less a career and a since/until
-    # range (RELATION_SCOPING_EXCLUDED: the accuracy caveat is per season),
-    # which its point refuses outright (compose.adapt._adapt_period_split).
-    # A period CONDITION (a quarter conditioning which games count, beside
-    # the quarter measured - "first quarter points in games he made a
-    # fourth-quarter three") is not among those words either
-    # (RELATION_SCOPING_EXCLUDED): the presenter steps aside and the
-    # compiler's sentence, which names both, answers.
-    PointShape("player_periods", "rows", "date"): relation_scoping("period_split"),
-    PointShape("player_periods", "split", "period"): relation_scoping("period_split"),
-    # player_compare's words state no narrowing at all; its point refuses
-    # one outright (query/point.py._compare_point), as the retired scope check did.
-    PointShape("player_seasons", "comparison", "subject"): relation_span("player_compare") | relation_cuts("player_compare"),
-    # streak's words: the relation's set less one date, a window and a
-    # quarter (RELATION_SCOPING_EXCLUDED: a run is a run of whole games over
-    # every game in the span), which the planner refuses outright
-    # (compose.plan._shape_declines), and the cells only a named player's
-    # games settle on a team's or the league's run, by name, there too.
-    PointShape("player_games", "runs", "line"): relation_scoping("streak"),
-    PointShape("team_games", "runs", "won"): relation_scoping("streak"),
-    # player_matchup's words: the relation's set less a third team, a window,
-    # an ordinal season and a quarter (RELATION_SCOPING_EXCLUDED), which the
-    # planner refuses outright (compose.plan._shape_declines).
-    PointShape("player_games", "comparison", "met"): relation_scoping("player_matchup"),
-    # with_without's words: a career, the companions it divides by and holds
-    # to their roles, and one opponent (both rows narrow together, #163: the
-    # team relation's one cut its words state, TEAM_RELATION_SCOPING_EXCLUDED
-    # naming the rest) - the retired template's own declaration, one row of
-    # this table since Phase 3, step 2 (``WITH_WITHOUT_STATED``, named apart, until then).
-    PointShape("team_games", "split", "presence"): frozenset({"companion"}) | team_relation_span("with_without") | team_relation_cuts("with_without"),
-    PointShape("player_games", "rows", "measure"): relation_span("single_game_high") | relation_cuts("single_game_high"),
-    # A count is already a line on a column; the `line` cell is the same line
-    # the other way ("games with under 14 fta"), and a phrase carrying the
-    # count's own number IS the count, misread - compose.counts reads it so. The
-    # span's `both` cell is stated the way `scoped_player` reads it - one
-    # combined `season_type IN (2, 3)` read (player_relation_season_type);
-    # the one cut its words state is an ordinal season.
-    PointShape("player_games", "scalar", "count"): frozenset({"line"}) | relation_span("threshold_count") | relation_cuts("threshold_count"),
-    PointShape("player_games", "ranking", "count"): frozenset({"line"}) | relation_span("threshold_count") | relation_cuts("threshold_count"),
-    PointShape("player_games", "rows", "count"): frozenset({"line"}) | relation_span("threshold_count") | relation_cuts("threshold_count"),
-    # The team-season readers' words (compose.team_stats), as the retired
-    # templates honored them: one team's line and its power index state no
-    # narrowing at all; a ranking states the team relation's cells less the
-    # ones TEAM_RELATION_SCOPING_EXCLUDED["team_leaderboard"] gives a reason
-    # for - and refuses, by name, a venue or a span its metric has no
-    # reading over (compose.team_stats).
-    PointShape("team_seasons", "scalar", "line"): team_relation_span("team_stat") | team_relation_cuts("team_stat"),
-    PointShape("team_snapshots", "scalar", "projection"): team_relation_span("team_outlook") | team_relation_cuts("team_outlook"),
-    PointShape("team_seasons", "ranking", "team"): team_relation_scoping("team_leaderboard"),
-    # The shapes Phase 2's slice (iv) ported from templates (PORTED_SHAPES):
-    # each retired template's HONORED_SCOPING row, moved with it. Every
-    # meeting in a season, on a date, at a venue, or over a since-bounded or
-    # whole-career span; a window and `game_n` pick out a subset of the tally
-    # (TEAM_RELATION_SCOPING_EXCLUDED says why).
-    PointShape("team_games", "comparison", "opponent"): team_relation_scoping("head_to_head"),
-    # A team's quarter or half: the team relation's whole set (its games
-    # from `team_games`, its team and span from `scoped_team`), the quarter
-    # or half the relation's own narrowing.
-    PointShape("team_periods", "scalar", "total"): team_relation_scoping("team_quarter_points"),
-    # The league's ranking by a quarter or half reads one season's pool,
-    # narrowed by an opponent or a venue; a range of seasons and one date are
-    # refused (the accuracy is measured per season, and one game ranks
-    # nothing per game).
-    PointShape("player_periods", "ranking", "player"): relation_period("period_leaderboard") | relation_span("period_leaderboard") | relation_cuts("period_leaderboard"),
-    # A team's record: the team relation's cells less a date and a window
-    # (TEAM_RELATION_SCOPING_EXCLUDED says why), a split by month, and both
-    # season types together ("including the playoffs").
-    PointShape("team_games", "scalar", "record"): team_relation_scoping("team_record", "split"),
-    # The NetPoints relation's two (Phase 2, slice (v)), as the retired
-    # templates honored them: a first or last game, one game's NetPoints or
-    # its fingerprint drawn from the per-game tables; and a calendar date on
-    # a fingerprint, honored by refusing it in the reader's own words - the
-    # loader picks a player's first or last game, which is a different
-    # question from a date (``compose.netpoints``).
-    PointShape("netpoints", "scalar", "ratings"): frozenset({"window"}) | relation_span("player_netpoints") | relation_cuts("player_netpoints"),
-    PointShape("netpoints", "chart", "fingerprint"): frozenset({"window"}) | relation_span("fingerprint") | relation_cuts("fingerprint"),
-    # The shot relation's readers (compose.shots, Phase 2, step 5): every
-    # cell of the player relation they take their games from, less a quarter
-    # and a half (RELATION_SCOPING_EXCLUDED: a shot read draws every shot of
-    # each game) - the retired templates' HONORED_SCOPING rows, moved.
-    PointShape("shots", "chart", "shots"): relation_scoping("shot_chart"),
-    PointShape("shots", "scalar", "distance"): relation_scoping("shot_distance"),
-}
-"""A reader's shape -> the scoping its retired WORDS state: asked a point
-narrowed beyond them, the reader steps aside and the compiler's own
-sentence, which states every narrowing the relation applied, answers; a
-narrowing the relation cannot honor at all is the planner's refusal
-(:func:`plan`), before any reader runs. One literal table, keyed by the
-:class:`~association.query.reading.PointShape` the point declares - never
-by a template's name - and read by the answer side under the planned
-point's key (``compose.answer``) and by the planner where it declines by
-a shape's words (:func:`_shape_declines`, :func:`_team_shape_cells`,
-:func:`_season_line_reads`). It stays until Phase 3's cells, the planner's
-checks over the Reading's typed filters, replace it row by row. Until 5.0.0
-these lists lived in ``HONORED_SCOPING`` under the retired templates'
-names.
-
-.. versionadded:: 5.0.0
-
-.. versionchanged:: 5.0.0
-   In the planner, its one reader, since ``compose/present.py`` was deleted
-   (Phase 2, slice (iv)).
-
-.. versionchanged:: 5.0.0
-   Keyed by :class:`~association.query.reading.PointShape` (2026-10-05); by intent until then.
-
-.. versionchanged:: 6.0.0
-   A literal per shape (Phase 3, step 1): until then built from a table by
-   the retired words through ``SHAPE_WORDS`` and looked up by a template's
-   name (``words_stated``), both deleted.
-"""
-
+from .team_stats import TeamSeasonQuery
 
 SHAPE_NAMES: dict[PointShape, str] = {
     PointShape("player_games", "rows", "date"): "game_log",
@@ -210,12 +67,12 @@ SHAPE_NAMES: dict[PointShape, str] = {
 }
 """The name a decline gives a reader's shape, and nothing else: the one
 user-visible sentence that still says a retired template's words -
-"game_log has no reading of this point" (``compose._read_only``) and the
-``PORTED_SHAPES`` declines' "head_to_head cannot honor [...]"
-(:func:`_shape_declines`) - keyed by the shape it names. Kept, with that
-one job, so no answer moves with Phase 3's step 1; Phase 3's cells, which
-refuse by a typed cause, reword those declines as one enumerated commit
-(Jeff's rule, AGENTS.md "Identical means identical") and delete this.
+"game_log has no reading of this point" (``compose._read_only``) and a
+cell the shape does not state, "head_to_head cannot honor [...]"
+(:func:`cells_declined`) - keyed by the shape it names. Kept, with that
+one job, so no answer moves with Phase 3; a decline-to-Cause commit, which
+refuses by a typed cause, rewords those declines (Jeff's rule, AGENTS.md
+"Identical means identical") and deletes this.
 
 .. versionadded:: 6.0.0
 """
@@ -265,128 +122,138 @@ def point_shape(point: Reading, query: Query | TeamQuery | TeamSeasonQuery | Net
     return PointShape(relation, point.shape, point.by)
 
 
-PORTED_SHAPES: frozenset[str] = frozenset({"head_to_head", "team_quarter_points", "period_leaderboard", "team_record"})
-"""The shapes Phase 2's slice (iv) ported from templates the reader gave
-no point: each is declined beyond the scoping its retired template's words
-state (:data:`STATED_SCOPING`, where that template's ``HONORED_SCOPING``
-row moved) by name, in the sentence the retired scope check refused it with
-(:func:`_shape_declines`), before the relation's own cells are checked.
+def shape_cells(key: PointShape) -> tuple[frozenset[str], ShapeCells] | None:
+    """The relation's table a shape is read on and the shape's row of it
+    (:class:`~association.query.reading.ShapeCells`): the player relation's
+    (:data:`~association.query.player_relation.RELATION_SCOPING`, with
+    :data:`~association.query.player_relation.RELATION_SCOPING_EXCLUDED`)
+    or the team relation's (:data:`~association.query.team_relation.TEAM_RELATION_SCOPING`,
+    :data:`~association.query.team_relation.TEAM_RELATION_SCOPING_EXCLUDED`);
+    None for a point no reader takes, which its relation's compiler reads
+    whole.
 
-.. versionadded:: 5.0.0
-"""
-
-
-#: The player-relation cells a team's log, splits and run refuse by name
-#: with a sentence of their own (``templates.games._team_game_log_refusals``,
-#: ``templates.splits.team_splits``, ``point._default_streak``): let
-#: through here so that sentence, which says where the question belongs, is
-#: the refusal. Anything else a team's games do not carry is refused here.
-_TEAM_READER_REFUSES: frozenset[str] = frozenset({"companion", "line", "season_n"})
-
-
-def _team_shape_cells(reading: Reading) -> frozenset[str]:
-    """What a team point's reader takes beyond the team relation's own
-    cells: the with/without split reads the teammates it divides by, a
-    splits table its category, a sum the unit it is asked in (which its
-    mover refuses or reads), and the log, the splits and the run refuse a
-    handful of player cells with their own sentence."""
-    if reading.intent in PORTED_SHAPES:
-        # Declined beyond these first, in the shape's own words.
-        return STATED_SCOPING[point_shape(reading)]
-    if reading.group == "presence":
-        return frozenset({"companion"})
-    skeleton = skeleton_of(reading)
-    if skeleton == "grouped":
-        return _TEAM_READER_REFUSES | {"split"}
-    if skeleton in ("rows", "run") or reading.aggregate == "record":
-        # The log, the run and a record over a line (record_when's team
-        # reader) each refuse these by name.
-        return _TEAM_READER_REFUSES
-    return Measure.CELLS
-
-
-def _streak_league_cells(scope: Scope) -> None:
-    """Raise if a league-wide streak (nobody named at all) set ``opponent`` or
-    ``venue`` - cells only a named team's or player's games can be narrowed by.
-    A league-wide streak has no single subject for either to narrow against,
-    unlike a team's run (on the team relation) or a player's (the relation
-    reads both). ``templates.splits._streak_league_needs_named_subject`` was
-    this, the retired template's refusal."""
-    claimed = sorted(cell for cell in ("opponent", "venue") if cell_set(scope, cell))
-    if claimed:
-        raise Unsupported(f"streak cannot honor {claimed} without a named team or player - the league-wide streak has no single subject to narrow")
-
-
-def _shape_declines(point: Reading) -> str | None:
-    """A cell the point's own reader cannot honor beyond the relation's
-    cells - why the planner declines the point, or None. The comparison
-    over the season line honors no narrowing at all ("compare curry and
-    lebron vs the celtics" answered for the whole season would be the
-    substitution the scoping cells exist to stop); the with/without split
-    only what its words state; a quarter's split, a run and two players'
-    meetings each refuse the cells their retired template excluded, with
-    that template's reason. Until 5.0.0's last change the point reader
-    raised these itself while reading, so what was read depended on what
-    would answer (``ROADMAP.md``, Phase 1, the ``read_point`` move, step 3).
+    .. versionadded:: 6.0.0
     """
-
-    intent, scope = point.intent, point.scope
-    if intent == "player_compare":
-        ignored = unhonored_scoping(intent, scope, frozenset())
-        return f"player_compare cannot honor {ignored} - it would answer for a different span than was asked" if ignored else None
-    if intent == "with_without" or intent in PORTED_SHAPES or intent in CHART_INTENTS:
-        ignored = unhonored_scoping(intent, scope, STATED_SCOPING[point_shape(point)])
-        return f"{intent} cannot honor {ignored} - it would answer for a different span than was asked" if ignored else None
-    if intent == "streak" and point.relation != "player":
-        # A team's or the league's run: the cells only a named player's
-        # games can be narrowed by, and game_n (one numbered game of each
-        # series is not a run of CONSECUTIVE games); a league-wide run has
-        # no single subject for an opponent or a venue to narrow against.
-        # The retired template's two refusals, in the planner since
-        # 2026-10-03 (the Phase 1 review found them still in the adapter).
-        try:
-            condition_needs_player_refusal(intent, scope, "game_n")
-            if scope.subject.team is None:
-                # The league's run (a win streak reads the team relation
-                # with no team named; a stat's run reads everyone).
-                _streak_league_cells(scope)
-        except Unsupported as exc:
-            return str(exc)
-    if intent in ("period_split", "streak", "player_matchup"):
-        excluded = RELATION_SCOPING_EXCLUDED[intent]
-        refused = _excluded_cells_set(intent, scope, excluded)
-        return f"{intent} cannot honor {[slot for slot, _ in refused]} - {excluded[refused[0][1]]}" if refused else None
+    if key in RELATION_SCOPING_EXCLUDED:
+        return RELATION_SCOPING, RELATION_SCOPING_EXCLUDED[key]
+    if key in TEAM_RELATION_SCOPING_EXCLUDED:
+        return TEAM_RELATION_SCOPING, TEAM_RELATION_SCOPING_EXCLUDED[key]
     return None
 
 
-def _excluded_cells_set(intent: str, scope: Scope, excluded: dict[str, str]) -> list[tuple[str, str]]:
-    """The cells ``scope`` sets that ``excluded`` refuses for ``intent``, as
-    ``(slot name, cell)`` in the table's order. A period condition is
-    excluded from period_split's presenter's WORDS only: the point keeps
-    it, and the compiler's own sentence names both quarters - as both
-    season types are excluded from each of the three readers' words only,
-    the reader stepping aside for the compiler's sentence, which reads
-    both. A span cell, a window cell, a cut and the period are refused by
-    the slot names they were declared under (``reading._CELL_SLOT_NAMES``,
-    ``_WINDOW_CELL_SLOT_NAMES``, ``_CUT_SLOT_NAMES``; ``period`` or ``half``
-    for the typed :class:`~association.query.reading.Period`)."""
-    refused: list[tuple[str, str]] = []
-    for cell in excluded:
-        if cell == "both" or (intent == "period_split" and cell == "period_line"):
-            continue
-        if cell in Span.CELLS:
-            refused += [(slot, cell) for slot in scope.span.unhonored(Span.CELLS - {cell})]
-        elif cell in Window.CELLS:
-            refused += [(slot, cell) for slot in scope.window.unhonored(Window.CELLS - {cell})]
-        elif cell in Cuts.CELLS:
-            refused += [(slot, cell) for slot in scope.cuts.unhonored(Cuts.CELLS - {cell})]
-        elif cell in Period.CELLS:
-            refused += [(slot, cell) for slot in (scope.period.unhonored(frozenset()) if scope.period is not None else [])]
-        elif cell in Line.CELLS or cell in Companion.CELLS:
-            refused += [(slot, cell) for slot in slot_names_set(scope, (cell,))]
-        elif cell_set(scope, cell):
-            refused.append((cell, cell))
-    return refused
+def cells_stated(key: PointShape) -> frozenset[str]:
+    """The cells the shape ``key``'s words state: its relation's table and
+    what the shape takes beyond it, less what its row says the words do not
+    state - where the planner's ``STATED_SCOPING`` row stood until Phase 3,
+    step 2's closing slice. Empty for a point no reader takes.
+
+    .. versionadded:: 6.0.0
+    """
+    found = shape_cells(key)
+    if found is None:
+        return frozenset()
+    table, row = found
+    return (table | row.taken) - set(row.unstated)
+
+
+def cells_unhonored(scope: Scope, key: PointShape) -> list[tuple[str, str, str]]:
+    """The planner's one check of a point's cells against its shape's row and
+    its relation's table: ``(slot, cell, why)`` for every cell ``scope`` sets
+    (:meth:`~association.query.reading.Scope.cells`) that the shape ``key``'s
+    words do not state (:func:`cells_stated`), sorted by the slot name a
+    decline says (:func:`~association.query.reading.cell_slots`) - and the
+    bare starter/bench category on a shape that honors one named half
+    (``ShapeCells.sides``). ``why`` is the row's reason, or the relation's
+    where its table carries no such cell. A reader steps aside for these, or
+    declines them where its shape is the point's only answer
+    (``ShapeCells.declined``); what the planner refuses before any reader
+    runs is :func:`cells_declined`'s.
+
+    Replaces ``reading.unhonored_scoping`` (over ``STATED_SCOPING``'s row,
+    by an intent) and the readers' own ``stated=`` parameter.
+
+    .. versionadded:: 6.0.0
+    """
+    found = shape_cells(key)
+    if found is None:
+        return []
+    table, row = found
+    stated = (table | row.taken) - set(row.unstated)
+    unhonored = [(slot, cell, row.unstated.get(cell, _NOT_THE_RELATIONS)) for cell in scope.cells() - stated for slot in cell_slots(scope, cell)]
+    if row.sides and scope.split == "starter_bench" and not any(slot == "split" for slot, _, _ in unhonored):
+        # The bare category is "show me both groups", the splits' whole
+        # answer: a reader of one named half would quietly filter to one
+        # side or ignore it, so it is refused rather than either.
+        unhonored.append(("split", "split", _BOTH_HALVES))
+    return sorted(unhonored)
+
+
+#: Why a cell its relation's table does not carry is not stated, and why the
+#: bare starter/bench category is not stated by a reader of one named half.
+_NOT_THE_RELATIONS = "the relation carries no such cell"
+_BOTH_HALVES = "the bare starter/bench category is a table of both halves; this reader honors one named half"
+
+
+def beyond_words(name: str, unhonored: list[tuple[str, str, str]]) -> str:
+    """The sentence a shape's reader is declined in, where it is the point's
+    only answer and the point sets ``unhonored`` (:func:`cells_unhonored`):
+    "<name> cannot honor [...] - it would answer for a different span than
+    was asked", the slots as the retired scope check listed them.
+
+    .. versionadded:: 6.0.0
+    """
+    return f"{name} cannot honor {[slot for slot, _, _ in unhonored]} - it would answer for a different span than was asked"
+
+
+def cells_declined(point: Reading, key: PointShape) -> str | None:
+    """The planner's refusal of a cell the point's shape (``key``) cannot
+    honor beyond its relation's cells - why it declines the point, or None.
+    In the order the slot-era checks ran, each a field of the shape's row
+    (:class:`~association.query.reading.ShapeCells`): a cell only a named
+    player's games can be narrowed by, where no player is named (a team's or
+    the league's run); one only a named team's or player's, where neither
+    is (the league's run); a cell the shape refuses outright, said with the
+    first one's why (a run's one date, a quarter's split over a range, two
+    players' meetings against a third team); and, where the shape's reader
+    is the point's only answer and the planner says so before any reader
+    runs, anything its words do not state (a comparison, the declared
+    relations' readers, the team shapes Phase 2 ported). Until Phase 3,
+    step 2's closing slice these were ``_shape_declines``' four branches by
+    the reading's intent, ``conditions.condition_needs_player_refusal`` and
+    ``_excluded_cells_set``.
+
+    .. versionadded:: 6.0.0
+    """
+    found = shape_cells(key)
+    if found is None:
+        return None
+    _table, row = found
+    name, scope = SHAPE_NAMES[key], point.scope
+    if point.relation != "player":
+        claimed = sorted(slot for cell in row.named_player for slot in cell_slots(scope, cell))
+        if claimed:
+            return f"{name} cannot honor {claimed} without a named player - only his own games can be narrowed that way"
+        claimed = sorted(cell for cell in row.named_subject if cell_set(scope, cell)) if scope.subject.team is None else []
+        if claimed:
+            return f"{name} cannot honor {claimed} without a named team or player - the league-wide streak has no single subject to narrow"
+    refused = [(slot, cell) for cell in row.unstated if cell in row.refused for slot in cell_slots(scope, cell)]
+    if refused:
+        return f"{name} cannot honor {[slot for slot, _ in refused]} - {row.unstated[refused[0][1]]}"
+    if row.declined == "plan":
+        unhonored = cells_unhonored(scope, key)
+        if unhonored:
+            return beyond_words(name, unhonored)
+    return None
+
+
+def _cells_taken(key: PointShape, team: bool) -> frozenset[str]:
+    """What the shape ``key`` takes beyond its relation's table (``ShapeCells.taken``)
+    - for a team's point no reader takes, the unit the team compiler's own
+    total reads (:attr:`~association.query.reading.Measure.CELLS`)."""
+    found = shape_cells(key)
+    if found is not None:
+        return found[1].taken
+    return Measure.CELLS if team else frozenset()
 
 
 def plan(reading: Reading) -> Query | TeamQuery | TeamSeasonQuery | NetPointsQuery | ShotQuery:
@@ -394,10 +261,10 @@ def plan(reading: Reading) -> Query | TeamQuery | TeamSeasonQuery | NetPointsQue
     :func:`_plan`. A team-season intent's point on another relation (a
     team's own total, "how many 3-pointers have the Magic made") that the
     relation declines is that intent's own team-season point instead, or
-    the team-season reader's refusal of the narrowing
-    (:func:`~association.query.compose.team_stats.team_season_declines`): the retired
-    template was tried before the compiler, so the compiler declining
-    never decided such a question (Phase 2, step 4).
+    the team-season reader's refusal of the narrowing (:func:`beyond_words`
+    over :func:`cells_unhonored`, its shape's row): the retired template was
+    tried before the compiler, so the compiler declining never decided such
+    a question (Phase 2, step 4).
 
     .. versionadded:: 5.0.0
 
@@ -410,9 +277,10 @@ def plan(reading: Reading) -> Query | TeamQuery | TeamSeasonQuery | NetPointsQue
     except Unsupported as exc:
         if reading.intent not in TEAM_SEASON_POINTS:
             raise
-        declined = team_season_declines(reading.intent, reading.scope, STATED_SCOPING[TEAM_SEASON_POINTS[reading.intent]])
-        if declined is not None:
-            raise Unsupported(declined) from exc
+        key = TEAM_SEASON_POINTS[reading.intent]
+        unhonored = cells_unhonored(reading.scope, key)
+        if unhonored:
+            raise Unsupported(beyond_words(SHAPE_NAMES[key], unhonored)) from exc
         return _team_season_query(team_season_point(reading.intent, reading.scope))
 
 
@@ -429,17 +297,26 @@ def _plan(reading: Reading) -> Query | TeamQuery | TeamSeasonQuery | NetPointsQu
     cannot honor a narrowing the scope carries (``round``, ``rate``, a
     ``situation`` naming no calendar): the planner's own refusal, the rule
     the retired templates' scope check applied, applied for the relation
-    (:func:`~association.query.compose.core._check_relation_scoping`).
-    The answering loop plans a question's point once, through
-    :func:`plan_point`.
+    (:func:`~association.query.compose.core._check_relation_scoping`) -
+    after what the point's shape refuses beyond its relation's cells
+    (:func:`cells_declined`), each read off the shape's row of its
+    relation's table. The answering loop plans a question's point once,
+    through :func:`plan_point`.
 
     .. versionadded:: 5.0.0
 
     .. versionchanged:: 5.0.0
        Refuses a narrowing the relation cannot honor (ROADMAP plan item 6,
        step (f)); the compiler's own compile step had, one call later.
+
+    .. versionchanged:: 6.0.0
+       Checks the point's typed cells against its shape's row and its
+       relation's table (Phase 3, step 2's closing slice), by the planned
+       shape; by the reading's intent, through ``STATED_SCOPING`` and
+       ``_shape_declines``, until then.
     """
-    declined = _shape_declines(reading)
+    key = point_shape(reading)
+    declined = cells_declined(reading, key)
     if declined is not None:
         raise Unsupported(declined)
     if reading.relation == "netpoints":
@@ -452,20 +329,20 @@ def _plan(reading: Reading) -> Query | TeamQuery | TeamSeasonQuery | NetPointsQu
         return ShotQuery(scope=reading.scope, shape="chart" if skeleton_of(reading) == "chart" else "scalar")
     if reading.relation in ("team_seasons", "team_snapshots"):
         # A team's own season: its reader holds the question to the
-        # narrowings its words state (team_season_declines), in the retired
-        # template's order - before the coverage floor.
+        # narrowings its words state when it is asked (its row's
+        # `declined="read"`), in the retired template's order - before the
+        # coverage floor.
         return _team_season_query(reading)
     if reading.relation == "team":
         # Every team shape, the sums included, against the TEAM relation's
-        # own cells and what this shape's reader takes beside them.
-        _check_relation_scoping(reading.scope, "team", _team_shape_cells(reading))
+        # own cells and what this shape takes beside them.
+        _check_relation_scoping(reading.scope, "team", _cells_taken(key, team=True))
         return TeamQuery(scope=reading.scope, measure=reading.measures[0], aggregate=reading.aggregate, shape=skeleton_of(reading), group=reading.group)
     subject = "everyone" if reading.relation == "everyone" else "player"
-    # The season line's ranking (leaderboard's retired reader) honors `rate`
+    # The season line's ranking (leaderboard's retired reader) takes `rate`
     # - a season total, or a unit refused by name - which no game-level read
     # does; a point its reader declines is refused with it (_game_level).
-    key = point_shape(reading)
-    _check_relation_scoping(reading.scope, subject, Measure.CELLS if key.relation == "player_seasons" and subject == "everyone" else frozenset())
+    _check_relation_scoping(reading.scope, subject, _cells_taken(key, team=False))
     planned = Query(
         scope=reading.scope,
         skeleton=skeleton_of(reading),
@@ -501,10 +378,10 @@ _SEASON_LINE_READS = {
 
 def _season_line_reads(key: PointShape, q: Query) -> bool:
     """Whether the season line's reader for the shape ``key`` reads ``q`` -
-    the relation saying for itself whether it reads a point, with the
-    scoping its words state (:data:`STATED_SCOPING`)."""
+    the relation saying for itself whether it reads a point, and the point
+    setting no cell the shape's words do not state (:func:`cells_unhonored`)."""
     reads = _SEASON_LINE_READS.get(key)
-    return reads is not None and reads(q, STATED_SCOPING[key])
+    return reads is not None and not cells_unhonored(q.scope, key) and reads(q)
 
 
 def _game_level(key: PointShape, q: Query) -> Query:

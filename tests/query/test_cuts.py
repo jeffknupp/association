@@ -13,19 +13,20 @@ from typing import Any
 
 import pytest
 from routed import staged as settle
+from shapes import key, stated
 from test_templates import pg_ctx, team_cells_con  # noqa: F401 - the two relation fixtures, imported by name
 
 from association.nba.season import current_season
 from association.query.answer import AnswerContext
 from association.query.calendar import AlignmentNarrowing, CalendarNarrowing
 from association.query.compose.core import Query, compile_query, rows_of
-from association.query.compose.plan import STATED_SCOPING
+from association.query.compose.plan import cells_stated
 from association.query.cuts import CutsContext, CutsRead, read_cuts
-from association.query.player_relation import RELATION_SCOPING, RELATION_SCOPING_EXCLUDED, relation_cuts, relation_scoping
+from association.query.player_relation import RELATION_SCOPING, RELATION_SCOPING_EXCLUDED
 from association.query.reading import Claim, Companion, Cuts, PointShape, Scope, ScopeError, Situation, Span, cell_set, situation_of, unhonored_cells
 from association.query.reading import Subject as Who
 from association.query.team_games import TeamNarrowed, rows_sql
-from association.query.team_relation import TEAM_CUTS, TEAM_RELATION_SCOPING, TEAM_RELATION_SCOPING_EXCLUDED, scoped_team, team_games, team_relation_cuts
+from association.query.team_relation import TEAM_CUTS, TEAM_RELATION_SCOPING, TEAM_RELATION_SCOPING_EXCLUDED, scoped_team, team_games
 
 S = current_season()
 
@@ -221,8 +222,8 @@ def test_the_cells_and_what_a_reader_leaves_unhonored() -> None:
     assert cuts.cells() == Cuts.CELLS and cuts.named
     assert cuts.unhonored(frozenset()) == ["opponent", "own_team", "date", "situation", "game_n", "season_n", "round", "venue"]
     assert cuts.unhonored(Cuts.CELLS - {"round", "tenure"}) == ["own_team", "round"]
-    assert unhonored_cells(Scope(cuts=Cuts(round="finals", opponent="BOS")), relation_scoping("game_log")) == ["round"]
-    assert unhonored_cells(Scope(cuts=Cuts(tenure="MIA")), relation_scoping("game_log")) == [] and unhonored_cells(Scope(cuts=Cuts(tenure="MIA")), TEAM_RELATION_SCOPING) == ["own_team"]
+    assert unhonored_cells(Scope(cuts=Cuts(round="finals", opponent="BOS")), cells_stated(key("game_log"))) == ["round"]
+    assert unhonored_cells(Scope(cuts=Cuts(tenure="MIA")), cells_stated(key("game_log"))) == [] and unhonored_cells(Scope(cuts=Cuts(tenure="MIA")), TEAM_RELATION_SCOPING) == ["own_team"]
     assert cell_set(Scope(cuts=Cuts(tenure="MIA")), "tenure") and not cell_set(Scope(), "tenure") and cell_set(Scope(companions=(Companion(player="X", predicate="absent"),)), "companion")
 
 
@@ -230,18 +231,21 @@ def test_the_relation_tables_declare_the_cuts_once() -> None:
     assert Cuts.CELLS - {"round"} <= RELATION_SCOPING and "round" not in RELATION_SCOPING
     assert Cuts.CELLS - {"round", "tenure", "season_n"} == TEAM_CUTS and TEAM_CUTS <= TEAM_RELATION_SCOPING and not ({"round", "tenure", "season_n"} & TEAM_RELATION_SCOPING)
     for table in (RELATION_SCOPING_EXCLUDED, TEAM_RELATION_SCOPING_EXCLUDED):
-        assert all("own_team" not in row and "round" not in row for row in table.values())
-    # A reader whose words state fewer cuts than the relation's takes them through relation_cuts, with a reason per row.
-    assert relation_cuts("leaderboard") == frozenset() and relation_cuts("player_history") == frozenset() and relation_cuts("player_compare") == frozenset()
-    assert relation_cuts("threshold_count") == {"season_n"} and relation_cuts("fingerprint") == {"date"} and relation_cuts("period_leaderboard") == {"opponent", "venue"}
-    assert relation_cuts("player_netpoints") == frozenset() and relation_cuts("single_game_high") == frozenset() and relation_cuts("game_log") == Cuts.CELLS - {"round"}
-    assert team_relation_cuts("with_without") == {"opponent"} and team_relation_cuts("team_stat") == frozenset() and team_relation_cuts("team_record") == TEAM_CUTS - {"date"}
-    assert all(RELATION_SCOPING_EXCLUDED["leaderboard"][cut] for cut in Cuts.CELLS - {"round"})
-    # No row of STATED_SCOPING names a cut itself: every cut a shape states is a relation table's, less that reader's exclusions.
-    for shape, stated in STATED_SCOPING.items():
-        assert stated & Cuts.CELLS <= Cuts.CELLS - {"round"}, shape
-    assert STATED_SCOPING[PointShape("netpoints", "chart", "fingerprint")] & Cuts.CELLS == {"date"}
-    assert STATED_SCOPING[PointShape("team_games", "split", "presence")] & Cuts.CELLS == {"opponent"}
+        assert all("own_team" not in row.unstated and "round" not in row.unstated for row in table.values())
+    # A reader whose words state fewer cuts than the relation's says so in its shape's row, with a reason per cut.
+    for words in ("leaderboard", "player_history", "player_compare", "player_netpoints", "single_game_high"):
+        assert stated(words) & Cuts.CELLS == frozenset(), words
+    assert stated("threshold_count") & Cuts.CELLS == {"season_n"} and stated("fingerprint") & Cuts.CELLS == {"date"} and stated("period_leaderboard") & Cuts.CELLS == {"opponent", "venue"}
+    assert stated("game_log") & Cuts.CELLS == Cuts.CELLS - {"round"}
+    assert stated("with_without") & Cuts.CELLS == {"opponent"} and stated("team_stat") & Cuts.CELLS == frozenset() and stated("team_record") & Cuts.CELLS == TEAM_CUTS - {"date"}
+    assert all(RELATION_SCOPING_EXCLUDED[key("leaderboard")].unstated[cut] for cut in Cuts.CELLS - {"round"})
+    # No shape states a cut its relation does not carry: every cut a shape states is a relation table's, less its row's exclusions.
+    from association.query import compose
+
+    for shape in compose._ROUTES:
+        assert cells_stated(shape) & Cuts.CELLS <= Cuts.CELLS - {"round"}, shape
+    assert cells_stated(PointShape("netpoints", "chart", "fingerprint")) & Cuts.CELLS == {"date"}
+    assert cells_stated(PointShape("team_games", "split", "presence")) & Cuts.CELLS == {"opponent"}
 
 
 # ---------------- contract 4: applying each cut changes the result ----------------

@@ -3,8 +3,8 @@
 The team counterpart of the two C3 gates in ``test_templates.py``
 (``test_templates_on_the_relation_declare_no_scoping_of_their_own`` and
 ``test_templates_on_the_relation_do_not_narrow_it_themselves``), over
-``TEAM_RELATION_SCOPING``/``TEAM_RELATION_SCOPING_EXCLUDED``/``team_relation_scoping``
-instead of the player relation's own three. Kept in its own file rather than
+``TEAM_RELATION_SCOPING``/``TEAM_RELATION_SCOPING_EXCLUDED`` instead of the
+player relation's own two. Kept in its own file rather than
 added to ``test_templates.py``, which another agent owns this round.
 """
 
@@ -14,49 +14,41 @@ import inspect
 import re
 from typing import Any
 
-from shapes import stated
+from shapes import key, stated
 
 from association.query.compose.meetings import read_head_to_head
 from association.query.compose.periods import read_team_quarter_points
-from association.query.team_relation import TEAM_RELATION_SCOPING, TEAM_RELATION_SCOPING_EXCLUDED, team_relation_scoping
+from association.query.team_relation import TEAM_RELATION_SCOPING, TEAM_RELATION_SCOPING_EXCLUDED
 
 
-def test_team_templates_declare_scoping_through_the_shared_helper() -> None:
-    """Every template on the team-games relation honors exactly
-    ``TEAM_RELATION_SCOPING``, plus whatever it names as ``extra`` (a cell
-    that is its own, not the relation's - ``situation``/``split`` for
-    ``team_record``'s calendar-month reading), less its own exclusions - and
-    every exclusion in ``TEAM_RELATION_SCOPING_EXCLUDED`` names a real cell
-    with a written reason. A template that listed its own frozenset instead
-    of going through ``team_relation_scoping`` would fail this the same way
-    a player-relation template would fail the C3 gate: the two declarations
-    would silently drift out of step with the code.
+def test_team_templates_declare_scoping_through_the_shared_table() -> None:
+    """Every reader on the team-games relation honors exactly
+    ``TEAM_RELATION_SCOPING``, plus what its shape's row takes beyond it (a
+    cell that is its own, not the relation's - ``split`` for ``team_record``'s
+    calendar-month reading), less its row's exclusions - and every exclusion
+    names a team-relation cell with a written reason. A reader that listed
+    its own frozenset would fail this the same way a player-relation reader
+    fails the C3 gate: the two declarations would silently drift out of step
+    with the code.
+
+    .. versionchanged:: 6.0.0
+       Over the shapes' rows (Phase 3, step 2's closing slice), where
+       ``team_relation_scoping`` built each reader's ``STATED_SCOPING`` row
+       from the intent-keyed exclusions until then.
     """
-    # (intent, extra cells that are the template's own rather than the
-    # relation's - see each HONORED_SCOPING entry's own comment for why).
-    # `situation` moved from `team_record`'s own extra into `TEAM_RELATION_SCOPING`
-    # itself (step 3, K1): every team template now honors it through the base
-    # set, `team_record` included, so it is no longer listed as its own here.
-    # The team shapes' readers declare in compose.plan.STATED_SCOPING (Phase 2, slice (iv)).
-    on_the_relation = {"team_record": {"split"}, "head_to_head": set(), "team_quarter_points": set()}
-    for intent, extra in on_the_relation.items():
-        excluded = TEAM_RELATION_SCOPING_EXCLUDED.get(intent, {})
-        for slot, reason in excluded.items():
-            assert slot in TEAM_RELATION_SCOPING, f"{intent} excludes {slot!r}, which is not a team-relation cell at all"
-            assert reason.strip(), f"{intent} excludes {slot!r} without a reason"
-        assert stated(intent) == (TEAM_RELATION_SCOPING | extra) - set(excluded), f"{intent} declares scoping of its own rather than through team_relation_scoping"
-
-
-def test_team_relation_scoping_helper_matches_the_declared_dict() -> None:
-    """``team_relation_scoping`` is the only thing that may build a
-    HONORED_SCOPING entry for a template on this relation - proven by
-    reconstructing each one from the helper directly, the way the test above
-    checks the dict but this checks the FUNCTION agrees with itself."""
-    assert team_relation_scoping("team_record", "split") == stated("team_record")
-    # team_leaderboard's reader (compose.team_stats, Phase 2, step 4) declares through the same helper.
-    assert team_relation_scoping("team_leaderboard") == stated("team_leaderboard")
-    assert team_relation_scoping("head_to_head") == stated("head_to_head")
-    assert team_relation_scoping("team_quarter_points") == stated("team_quarter_points")
+    on_the_relation = {"team_record": {"split"}, "head_to_head": set(), "team_quarter_points": set(), "team_leaderboard": {"rate"}}
+    for words, extra in on_the_relation.items():
+        row = TEAM_RELATION_SCOPING_EXCLUDED[key(words)]
+        assert row.taken == extra, words
+        for cell, reason in row.unstated.items():
+            assert cell in TEAM_RELATION_SCOPING | row.taken, f"{words} excludes {cell!r}, which is not a team-relation cell at all"
+            assert reason.strip(), f"{words} excludes {cell!r} without a reason"
+        assert stated(words) == (TEAM_RELATION_SCOPING | extra) - set(row.unstated), f"{words} declares scoping of its own rather than through its row"
+    # What the readers' words state, as their retired declarations had it.
+    assert stated("team_record") == (TEAM_RELATION_SCOPING | {"split"}) - {"date", "window", "period"}
+    assert stated("team_leaderboard") == {"venue", "range"}
+    assert stated("head_to_head") == TEAM_RELATION_SCOPING - {"window", "game_n", "situation", "period", "both"}
+    assert stated("team_quarter_points") == TEAM_RELATION_SCOPING - {"both"}
 
 
 def _source_with_private_steps(handler: Any) -> str:

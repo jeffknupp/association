@@ -10,7 +10,7 @@ import duckdb
 import pytest
 from routed import default_query, default_reading
 from routed import planned_answer as compose_answer
-from shapes import key, stated
+from shapes import key, stated, unhonored
 
 from association.fetch.repairs import real_games
 from association.nba.season import current_season
@@ -21,7 +21,7 @@ from association.query.compose.core import Query, Unsupported, _compile_pair, _c
 from association.query.compose.logs import _player_log, _player_log_mixed, _team_log, _team_log_mixed, read_player_log, read_team_log
 from association.query.compose.pairs import _pair_absence, _pair_no_meetings, _pair_result, read_player_matchup
 from association.query.compose.periods import _period_by_quarter, _period_log, _period_redirect, read_period_split
-from association.query.compose.plan import STATED_SCOPING, plan, plan_point
+from association.query.compose.plan import cells_stated, plan, plan_point
 from association.query.compose.records import _record_when_team_result, read_record_when, read_team_record_when
 from association.query.compose.runs import _streak_league_result, _streak_league_teams_result, _streak_player_result, _streak_team_result, read_streak, read_team_streak
 from association.query.compose.say import refusal_phrase
@@ -36,7 +36,7 @@ from association.query.metrics import LEADERBOARD_METRICS, PER_GAME_MIN_GAMES, P
 from association.query.parse import with_point
 from association.query.player_games import PERIOD_COLUMNS, PERIOD_RATES, period_distrust
 from association.query.player_relation import scoped_games, scoped_player
-from association.query.reading import SCOPING_SLOTS, Cuts, PointShape, Reading, Scope, Span, SubjectKind, Window, unhonored_scoping
+from association.query.reading import Cuts, PointShape, Reading, Scope, Span, SubjectKind
 from association.query.reading import Subject as Who
 from association.query.result import Unanswered
 from association.query.season_text import season_phrase
@@ -595,7 +595,7 @@ def test_leaderboard_refuses_a_unit_the_metric_has_no_form_of(lb_con: AnswerCont
     # (check_scope; the template retired into the compiler): calling the
     # reader directly would pass whether or not `rate` is declared stated.
     slots = {"stat": "points", "rate": "/ 90"}
-    assert unhonored_scoping("leaderboard", Scope.from_slots(slots), stated("leaderboard")) == []
+    assert unhonored("leaderboard", Scope.from_slots(slots)) == []
     result = leaderboard(lb_con, Reading.from_slots(slots))
     assert "per 90 minutes" in (result.answer or "")
     assert "per game" in (result.answer or "") and "season total" in (result.answer or "")
@@ -610,7 +610,7 @@ def test_leaderboard_reads_a_season_total_now_that_rate_reaches_it(lb_con: Answe
     run, so "most points this season" as a TOTAL was unreachable through the
     pipeline."""
     slots = {"stat": "points", "rate": "total"}
-    assert unhonored_scoping("leaderboard", Scope.from_slots(slots), stated("leaderboard")) == []
+    assert unhonored("leaderboard", Scope.from_slots(slots)) == []
     result = leaderboard(lb_con, Reading.from_slots(slots))
     assert "total points" in (result.answer or "")
     assert result.data["leaders"][0]["display_name"] == "Luka Doncic"
@@ -3380,16 +3380,16 @@ def test_scope_guard_blocks_a_template_that_would_ignore_a_game_scope() -> None:
     ]:
         # Each reader's retired words state none of these: it steps aside,
         # and the planner refuses what the relation cannot honor.
-        assert unhonored_scoping(intent, Scope.from_slots(slots), stated(intent)), intent
+        assert unhonored(intent, Scope.from_slots(slots)), intent
 
 
 def test_scope_guard_allows_templates_that_honor_the_slot() -> None:
     # game_log is the compiler's (compose.COMPILED_INTENTS): its retired words state the slots.
-    assert unhonored_scoping("game_log", Scope.from_slots({"order": "recent", "date": "2026-04-12"}), stated("game_log")) == []
+    assert unhonored("game_log", Scope.from_slots({"order": "recent", "date": "2026-04-12"})) == []
     # shot_chart is the compiler's (the shot relation's reader): its retired words state the slot.
-    assert unhonored_scoping("shot_chart", Scope.from_slots({"order": "recent"}), stated("shot_chart")) == []
+    assert unhonored("shot_chart", Scope.from_slots({"order": "recent"})) == []
     # shot_distance is the compiler's (the shot relation's reader): its retired words state the slot.
-    assert unhonored_scoping("shot_distance", Scope.from_slots({"order": "first"}), stated("shot_distance")) == []
+    assert unhonored("shot_distance", Scope.from_slots({"order": "first"})) == []
 
 
 def test_scope_guard_lets_only_the_templates_that_read_it_honor_season_type_unstated() -> None:
@@ -3403,21 +3403,21 @@ def test_scope_guard_lets_only_the_templates_that_read_it_honor_season_type_unst
     since an aggregate has no rows to interleave); the discipline for every
     other intent is the same as any other scoping slot - refuse rather than
     silently ignore."""
-    assert unhonored_scoping("game_log", Scope.from_slots({"order": "recent", "limit": 5, "season_type_unstated": True}), stated("game_log")) == []
-    assert unhonored_scoping("player_stat", Scope.from_slots({"season_type_unstated": True}), stated("player_stat")) == []
+    assert unhonored("game_log", Scope.from_slots({"order": "recent", "limit": 5, "season_type_unstated": True})) == []
+    assert unhonored("player_stat", Scope.from_slots({"season_type_unstated": True})) == []
     # threshold_count is the compiler's (compose.COMPILED_INTENTS): the
     # relation honors the slot for a named player, and the count's own words
     # state it (compose.plan.STATED_SCOPING).
-    assert unhonored_scoping("threshold_count", Scope.from_slots({"season_type_unstated": True}), stated("threshold_count")) == []
-    assert unhonored_scoping("leaderboard", Scope.from_slots({"season_type_unstated": True}), stated("leaderboard")) == ["season_type_unstated"]
+    assert unhonored("threshold_count", Scope.from_slots({"season_type_unstated": True})) == []
+    assert unhonored("leaderboard", Scope.from_slots({"season_type_unstated": True})) == ["season_type_unstated"]
     # single_game_high's words do not state it: its presenter steps aside and
     # the compiler's sentence, which does, answers.
-    assert unhonored_scoping("single_game_high", Scope.from_slots({"season_type_unstated": True}), stated("single_game_high")) == ["season_type_unstated"]
+    assert unhonored("single_game_high", Scope.from_slots({"season_type_unstated": True})) == ["season_type_unstated"]
 
 
 def test_scope_guard_ignores_absent_or_empty_slots() -> None:
-    assert unhonored_scoping("leaderboard", Scope.from_slots({}), stated("leaderboard")) == []
-    assert unhonored_scoping("leaderboard", Scope.from_slots({"order": None, "date": ""}), stated("leaderboard")) == []
+    assert unhonored("leaderboard", Scope.from_slots({})) == []
+    assert unhonored("leaderboard", Scope.from_slots({"order": None, "date": ""})) == []
 
 
 def test_shot_distance_scopes_to_one_game(sc_ctx: AnswerContext) -> None:
@@ -3542,10 +3542,11 @@ def test_a_fingerprint_for_a_particular_date_still_says_it_cannot(fp_ctx: Answer
 def test_fingerprint_declares_the_game_scoping_it_handles(fp_ctx: AnswerContext) -> None:
     # It handles them by refusing; the planner must therefore NOT decline the
     # request out from under it, for a refusal naming only the slot.
-    assert unhonored_scoping("fingerprint", Scope.from_slots({"player": "Shai", "order": "recent", "date": "2026-01-02"}), stated("fingerprint")) == []
-    # The game-scoping pair specifically - SCOPING_SLOTS also holds opponent,
-    # venue, span and without, none of which a fingerprint can narrow to.
-    assert {"window", "date"} <= stated("fingerprint") <= SCOPING_SLOTS | Window.CELLS | Cuts.CELLS
+    assert unhonored("fingerprint", Scope.from_slots({"player": "Shai", "order": "recent", "date": "2026-01-02"})) == []
+    # The game-scoping pair specifically - the relation also carries an
+    # opponent, a venue, a career and a teammate, none of which a
+    # fingerprint can narrow to.
+    assert stated("fingerprint") == {"window", "date"}
 
 
 def test_fingerprint_without_a_player_falls_through(fp_ctx: AnswerContext) -> None:
@@ -3621,19 +3622,14 @@ def test_templates_that_write_nothing_report_no_artifacts(lb_con: AnswerContext)
 def test_scope_guard_refuses_what_the_question_text_narrowed_to(intent: str, slots: dict[str, Any]) -> None:
     """The real StatMuse queries behind these slots were each answered for
     every opponent, every venue, one season, or every game respectively."""
-    assert unhonored_scoping(intent, Scope.from_slots(slots), stated(intent))
+    assert unhonored(intent, Scope.from_slots(slots))
 
 
 def test_scope_guard_lets_through_what_the_player_templates_now_honor() -> None:
-    assert (
-        unhonored_scoping(
-            "game_log", Scope.from_slots({"player": "Jaylen Brown", "opponent": "Detroit Pistons", "venue": "home", "span": "career", "without": "x", "order": "recent"}), stated("game_log")
-        )
-        == []
-    )
-    assert unhonored_scoping("player_stat", Scope.from_slots({"player": "Evan Mobley", "opponent": "Milwaukee Bucks", "venue": "away", "span": "career", "without": "x"}), stated("player_stat")) == []
-    assert unhonored_scoping("player_history", Scope.from_slots({"player": "Nikola Jokic", "span": "career"}), stated("player_history")) == []
-    assert unhonored_scoping("shot_distance", Scope.from_slots({"player": "Jaylen Brown", "opponent": "Detroit Pistons"}), stated("shot_distance")) == []
+    assert unhonored("game_log", Scope.from_slots({"player": "Jaylen Brown", "opponent": "Detroit Pistons", "venue": "home", "span": "career", "without": "x", "order": "recent"})) == []
+    assert unhonored("player_stat", Scope.from_slots({"player": "Evan Mobley", "opponent": "Milwaukee Bucks", "venue": "away", "span": "career", "without": "x"})) == []
+    assert unhonored("player_history", Scope.from_slots({"player": "Nikola Jokic", "span": "career"})) == []
+    assert unhonored("shot_distance", Scope.from_slots({"player": "Jaylen Brown", "opponent": "Detroit Pistons"})) == []
 
 
 def test_shot_distance_narrows_by_opponent_and_names_it_in_the_answer(sc_ctx: AnswerContext) -> None:
@@ -3657,14 +3653,16 @@ def test_shot_distance_narrows_by_opponent_and_names_it_in_the_answer(sc_ctx: An
 
 def test_team_quarter_points_still_honors_the_opponent_it_always_read() -> None:
     # The compiler's since Phase 2's slice (iv): its words state the opponent and the period.
-    assert unhonored_scoping("team_quarter_points", Scope.from_slots({"team": "Philadelphia 76ers", "period": 4, "opponent": "Boston Celtics"}), stated("team_quarter_points")) == []
+    assert unhonored("team_quarter_points", Scope.from_slots({"team": "Philadelphia 76ers", "period": 4, "opponent": "Boston Celtics"})) == []
 
 
 def test_no_template_narrows_to_a_playoff_round() -> None:
     """Nothing in the warehouse records a round or a series game number."""
-    assert not any("round" in stated for stated in STATED_SCOPING.values())
-    assert unhonored_scoping("player_compare", Scope.from_slots({"players": ["Jayson Tatum", "Jaylen Brown"], "round": "finals"}), stated("player_compare")) == ["round"]
-    assert unhonored_scoping("player_stat", Scope.from_slots({"player": "Jayson Tatum", "round": "finals"}), stated("player_stat")) == ["round"]
+    from association.query import compose
+
+    assert not any("round" in cells_stated(shape) for shape in compose._ROUTES)
+    assert unhonored("player_compare", Scope.from_slots({"players": ["Jayson Tatum", "Jaylen Brown"], "round": "finals"})) == ["round"]
+    assert unhonored("player_stat", Scope.from_slots({"player": "Jayson Tatum", "round": "finals"})) == ["round"]
 
 
 def test_a_leaderboard_refuses_a_position_group_subject_for_the_compiler(lb_con: AnswerContext) -> None:
@@ -3688,7 +3686,7 @@ def test_a_leaderboard_refuses_a_position_group_subject_for_the_compiler(lb_con:
     assert isinstance(planned, Query)
     on_the_season_line = replace(planned, source="seasons")
     assert on_the_season_line.position == "SG"
-    assert read_leaderboard(lb_con.con, on_the_season_line, stated=stated("leaderboard")) is None
+    assert read_leaderboard(lb_con.con, on_the_season_line) is None
 
 
 def test_a_ranking_names_the_season_line_as_its_relation(lb_con: AnswerContext) -> None:
@@ -3705,7 +3703,7 @@ def test_a_ranking_names_the_season_line_as_its_relation(lb_con: AnswerContext) 
     reading = Reading(scope=Scope.from_slots({"stat": "points", "season": 2024}), intent="leaderboard", subject=Subject("everyone"))
     planned = plan(read_point(reading, "who led the league in points in 2024"))
     assert isinstance(planned, Query) and planned.source == "seasons"
-    result = read_leaderboard(lb_con.con, planned, stated=stated("leaderboard"))
+    result = read_leaderboard(lb_con.con, planned)
     assert isinstance(result, Result) and result.span.source == "seasons"
     assert say(result).answer == say_leaderboard(result).answer
 
@@ -3717,7 +3715,7 @@ def test_a_zero_threshold_is_refused_rather_than_counting_every_game(con: Answer
 
 @pytest.mark.parametrize(("intent", "slots"), [("player_stat", {"player": "Joe Ingles", "split": "starter_bench"}), ("leaderboard", {"stat": "points", "since": 2020})])
 def test_a_split_or_a_range_is_refused_where_nothing_honors_it(intent: str, slots: dict[str, Any]) -> None:
-    assert unhonored_scoping(intent, Scope.from_slots(slots), stated(intent))
+    assert unhonored(intent, Scope.from_slots(slots))
 
 
 # ---------------- one player's games: game_log and player_stat, narrowed ----------------
@@ -4117,7 +4115,7 @@ def test_a_players_log_is_read_into_a_result_and_said_from_it_alone(pg_ctx: Answ
     )
     planned = plan_point(reading)
     assert isinstance(planned.query, Query)
-    read = read_player_log(pg_ctx.con, planned.query, stated=stated("game_log"))
+    read = read_player_log(pg_ctx.con, planned.query)
     assert isinstance(read, Result)
     assert read.subject == "Brandin Podziemski" and read.relation == "player" and read.narrowing.opponent == "Detroit Pistons"
     body = read.rows
@@ -4540,8 +4538,8 @@ def test_player_stat_over_the_last_n_games_is_the_log_with_its_averages(pg_ctx: 
 
 def test_player_stat_honors_since_and_order(pg_ctx: AnswerContext) -> None:
 
-    assert unhonored_scoping("player_stat", Scope.from_slots({"player": "Brandin Podziemski", "since": 2024}), stated("player_stat")) == []
-    assert unhonored_scoping("player_stat", Scope.from_slots({"player": "Brandin Podziemski", "order": "recent", "limit": 3}), stated("player_stat")) == []
+    assert unhonored("player_stat", Scope.from_slots({"player": "Brandin Podziemski", "since": 2024})) == []
+    assert unhonored("player_stat", Scope.from_slots({"player": "Brandin Podziemski", "order": "recent", "limit": 3})) == []
 
 
 def test_until_closes_a_since_bounded_range_rather_than_reading_through_now(pg_ctx: AnswerContext) -> None:
@@ -4616,11 +4614,11 @@ def test_player_matchup_needs_two_players(pg_ctx: AnswerContext) -> None:
 def test_the_matchup_point_refuses_a_team_opponent(pg_ctx: AnswerContext) -> None:
     """Two players' meetings are the games they played against each other, so
     there is no third team to narrow them to - refused by declaration
-    (``RELATION_SCOPING_EXCLUDED``, read by the planner,
-    ``compose.plan._shape_declines``), with or without a teammate
-    named absent, rather than answering the whole matchup as though no team
-    was named. The template is retired (compose.COMPILED_INTENTS); what its
-    presenter's words state is ``STATED_SCOPING``'s."""
+    (its shape's row of ``RELATION_SCOPING_EXCLUDED``, ``refused``, read by
+    the planner's ``compose.plan.cells_declined``), with or without a
+    teammate named absent, rather than answering the whole matchup as
+    though no team was named. The template is retired
+    (compose.COMPILED_INTENTS); what its words state is its row's."""
     with pytest.raises(Unsupported, match="opponent"):
         plan(default_reading("player_matchup", {"players": ["Brandin Podziemski", "Stephen Curry"], "opponent": "Detroit Pistons"}))
     with pytest.raises(Unsupported, match="opponent"):
@@ -4633,7 +4631,7 @@ def test_the_matchup_point_honors_without_too(pg_ctx: AnswerContext) -> None:
     two-player matchup, as it does on every reader of the relation."""
     scope = Scope.from_slots({"players": ["Brandin Podziemski", "Stephen Curry"], "without": ["Jaylen Brown"]})
     assert default_reading("player_matchup", scope.to_slots()).shape == "comparison"
-    assert unhonored_scoping("player_matchup", scope, stated("player_matchup")) == []
+    assert unhonored("player_matchup", scope) == []
 
 
 def test_the_matchup_point_still_refuses_an_unhonored_slot(pg_ctx: AnswerContext) -> None:
@@ -4654,9 +4652,10 @@ def test_player_matchup_honors_without_on_a_real_two_player_matchup(pg_ctx: Answ
     the relation), so a teammate's absence is honored and stated rather than
     refused. Jaylen Brown is nobody's teammate in this fixture, so the
     answer either finds no meetings or says the narrowing; it never raises.
-    The template is retired: its presenter's words state the relation's set
-    (STATED_SCOPING), and its point refuses a window outright."""
-    assert unhonored_scoping("player_matchup", Scope.from_slots({"players": ["Brandin Podziemski", "Stephen Curry"], "without": ["Jaylen Brown"]}), stated("player_matchup")) == []
+    The template is retired: its words state the relation's set less its
+    row's exclusions (``compose.plan.cells_stated``), and its point refuses a
+    window outright."""
+    assert unhonored("player_matchup", Scope.from_slots({"players": ["Brandin Podziemski", "Stephen Curry"], "without": ["Jaylen Brown"]})) == []
     assert "companion" in stated("player_matchup") and "venue" in stated("player_matchup")
     assert "order" not in stated("player_matchup")
     # The behavior itself is pinned on the league fixture in
@@ -5476,13 +5475,13 @@ def test_the_scoping_slots_this_template_filters_on_are_declared_honored() -> No
     """
     # A value each slot can hold: the scope is typed at the door, and "home"
     # is no order (Scope.from_slots refuses it before the presenter reads it).
-    # Through the presenter's own declaration (STATED_SCOPING; the template
+    # Through its shape's row (``compose.plan.cells_unhonored``; the template
     # retired into the compiler), which is what check_scope read before.
     for slot, given in (("opponent", "Boston Celtics"), ("venue", "home"), ("without", "Klay Thompson"), ("order", "recent"), ("date", "2026-01-02")):
-        assert unhonored_scoping("period_split", Scope.from_slots({"player": "Stephen Curry", "period": 1, slot: given}), stated("period_split")) == []
+        assert unhonored("period_split", Scope.from_slots({"player": "Stephen Curry", "period": 1, slot: given})) == []
     # Two slots it still does not filter on, for the same reason: the accuracy
     # caveat (PERIOD_RECONCILIATION) is measured per season, and this reads
-    # only one - see RELATION_SCOPING_EXCLUDED["period_split"]. The point
+    # only one - see its row in RELATION_SCOPING_EXCLUDED. The point
     # itself refuses them (point._default_period_split), naming why.
     for slot, value in (("span", "career"), ("since", 2023)):
         with pytest.raises(Unsupported, match="accuracy caveat is measured per season"):
@@ -5554,10 +5553,10 @@ def test_a_career_span_is_refused_for_the_reconciliation_caveat_it_cannot_apply(
     the SQL fix below) to explicitly excluded: `PERIOD_RECONCILIATION` is
     measured per season, and summing points across a career would need to
     apply it once per season summed in, which this does not do. The refusal
-    is in the reader's words (`STATED_SCOPING`, via `RELATION_SCOPING_EXCLUDED`),
+    is in the reader's words (its shape's row of `RELATION_SCOPING_EXCLUDED`),
     the same as every other excluded cell here.
     """
-    assert unhonored_scoping("period_split", Scope.from_slots({"player": "Stephen Curry", "period": 1, "span": "career"}), stated("period_split")) == ["span"]
+    assert unhonored("period_split", Scope.from_slots({"player": "Stephen Curry", "period": 1, "span": "career"})) == ["span"]
 
 
 def test_a_career_read_sums_every_season_now_the_shot_join_needs_no_season_param(period_ctx: AnswerContext) -> None:
@@ -5924,52 +5923,52 @@ def test_a_tied_extreme_names_every_game_that_reached_it() -> None:
 # ---------------- step 3, C3: the scoping matrix cannot grow back ----------------
 
 
-def _declared_scoping(intent: str) -> frozenset[str]:
-    """What ``intent`` declares it honors: what its reader's retired words
-    state (``compose.plan.STATED_SCOPING``), which the relation discipline
-    binds."""
-    return stated(intent)
-
-
 def test_templates_on_the_relation_declare_no_scoping_of_their_own() -> None:
-    """Step 3, C3. Six templates settle their player and narrow his games
-    through the shared steps, and what they honor is declared ONCE
-    (RELATION_SCOPING), less an exclusion with a written reason. A template
-    that declared its own list would be the first cell of the matrix growing
-    back - so its HONORED_SCOPING entry has to be exactly the relation's minus
-    its exclusions, and every exclusion has to carry a reason.
+    """Step 3, C3. The readers settle their player or team and narrow the
+    games through the shared steps, and what each honors is declared ONCE:
+    its relation's table (RELATION_SCOPING, TEAM_RELATION_SCOPING) less its
+    shape's row of exclusions, each with a written reason, and what the row
+    takes beyond the table. A reader that declared its own list would be the
+    first cell of the matrix growing back - so every shape a reader reads has
+    exactly one row, in one of the two tables; every cell a row says its
+    words do not state is a cell its relation carries or the row takes, with
+    a reason; what it refuses outright is among those; and no reader takes a
+    list of its own (``stated=``, until Phase 3, step 2's closing slice).
 
     .. versionchanged:: 4.4.0
-       Covers ``shot_chart``/``shot_distance`` (step 3, C5) once the parallel
-       "shots" branch that ports them has merged - see :func:`_c5_shots_ported`.
-       ``extra=set()`` matches what that branch's own README commits to
-       (``HONORED_SCOPING["shot_chart"] = _relation_scoping("shot_chart")``),
-       and ``RELATION_SCOPING_EXCLUDED`` is read live below, so this does not
-       need to guess which cells that branch ends up excluding or why - only
-       that the two facts still balance the same equation every other
-       relation template does.
+       Covers ``shot_chart``/``shot_distance`` (step 3, C5).
 
     .. versionchanged:: 6.0.0
        The span's cells are the relation's own (``career``, ``range``,
        ``both``; Phase 3, step 2): ``game_log`` and ``player_stat`` state
        ``both`` as every other cell, through the table, not as an extra.
-    """
-    from association.query.player_relation import RELATION_SCOPING, RELATION_SCOPING_EXCLUDED
 
-    on_the_relation: dict[str, set[str]] = {
-        "game_log": set(),
-        "player_stat": set(),
-        "period_split": set(),
-        "player_splits": set(),
-        "record_when": set(),
-        "streak": set(),
-    }
-    on_the_relation |= {"shot_chart": set(), "shot_distance": set()}
-    for intent, extra in on_the_relation.items():
-        excluded = RELATION_SCOPING_EXCLUDED.get(intent, {})
-        for slot, reason in excluded.items():
-            assert slot in RELATION_SCOPING and reason.strip(), f"{intent} excludes {slot!r} without a reason"
-        assert _declared_scoping(intent) == (RELATION_SCOPING | extra) - set(excluded), f"{intent} declares scoping of its own"
+    .. versionchanged:: 6.0.0
+       Over the shapes' rows (Phase 3, step 2's closing slice): until then
+       each retired template's ``STATED_SCOPING`` row had to equal the
+       relation's set less its exclusions by intent.
+    """
+    import inspect
+
+    from association.query import compose
+    from association.query.player_relation import RELATION_SCOPING, RELATION_SCOPING_EXCLUDED
+    from association.query.team_relation import TEAM_RELATION_SCOPING, TEAM_RELATION_SCOPING_EXCLUDED
+
+    assert not set(RELATION_SCOPING_EXCLUDED) & set(TEAM_RELATION_SCOPING_EXCLUDED)
+    assert set(RELATION_SCOPING_EXCLUDED) | set(TEAM_RELATION_SCOPING_EXCLUDED) == set(compose._ROUTES)
+    for table, rows in ((RELATION_SCOPING, RELATION_SCOPING_EXCLUDED), (TEAM_RELATION_SCOPING, TEAM_RELATION_SCOPING_EXCLUDED)):
+        assert table <= Scope.CELLS
+        for shape, row in rows.items():
+            for cell, reason in row.unstated.items():
+                assert cell in table | row.taken and reason.strip(), f"{shape} excludes {cell!r} without a reason, or a cell its relation does not carry"
+            assert row.refused <= set(row.unstated) and not row.taken & table and row.taken <= Scope.CELLS
+            assert cells_stated(shape) == (table | row.taken) - set(row.unstated)
+    # The player relation's own readers take nothing beyond its table: what
+    # their words state is the relation's set less their exclusions.
+    for words in ("game_log", "player_stat", "period_split", "player_splits", "record_when", "streak", "shot_chart", "shot_distance"):
+        assert not RELATION_SCOPING_EXCLUDED[key(words)].taken, words
+    for shape, route in compose._ROUTES.items():
+        assert "stated" not in inspect.signature(route.reader).parameters, f"{shape}'s reader takes a list of its own"
 
 
 def test_templates_on_the_relation_do_not_narrow_it_themselves() -> None:
@@ -6134,5 +6133,5 @@ def test_a_leaderboard_ranked_by_another_measure_refuses_to_the_compiler() -> No
     scoring triple doubles"; the leaderboard's words do not state it, so its
     reader steps aside and the compiler's boolean-game ranking answers. The
     bare count - the same slots without it - is untouched."""
-    assert unhonored_scoping("leaderboard", Scope.from_slots({"stat": "triple_double", "limit": 10, "ranked_by": "points"}), stated("leaderboard")) == ["ranked_by"]
-    assert unhonored_scoping("leaderboard", Scope.from_slots({"stat": "triple_double", "limit": 10}), stated("leaderboard")) == []
+    assert unhonored("leaderboard", Scope.from_slots({"stat": "triple_double", "limit": 10, "ranked_by": "points"})) == ["ranked_by"]
+    assert unhonored("leaderboard", Scope.from_slots({"stat": "triple_double", "limit": 10})) == []

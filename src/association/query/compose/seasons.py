@@ -32,7 +32,7 @@ from association.query.measure import spelled
 from association.query.measures import stat_measure
 from association.query.notes import Note
 from association.query.player_relation import ResolvedSpan, empty_box_scores
-from association.query.reading import Unsupported, unhonored_scoping
+from association.query.reading import Unsupported
 from association.query.result import Decided, Grouped, LineFacts, Part, Refusal, Result, Scalar, Span, Unanswered
 from association.query.season_line import (
     ADVANCED_STATS,
@@ -71,20 +71,23 @@ def _first(rows: list[tuple[Any, ...]]) -> tuple[Any, ...] | None:
 # --- a player's line -----------------------------------------------------------
 
 
-def player_line_reads(q: Query, stated: frozenset[str]) -> bool:
+def player_line_reads(q: Query) -> bool:
     """Whether ``q`` is ``player_stat``'s own unnarrowed point on the season
-    line: a per-game scalar for one named player, narrowed only by what the
-    retired template's words state, and the router's own stat - the
-    default point's measures, or the question's word for that same stat
-    ("3pt percentage" is three_pct, which the router filed
+    line: a per-game scalar for one named player and the router's own stat
+    - the default point's measures, or the question's word for that same
+    stat ("3pt percentage" is three_pct, which the router filed
     threePointFieldGoalPct). A measure the words moved in is a point the
-    season line does not say.
+    season line does not say; a narrowing beyond what its words state is
+    the planner's check beside it (``compose.plan.cells_unhonored``).
 
     .. versionadded:: 5.0.0
+
+    .. versionchanged:: 6.0.0
+       Takes no ``stated``: the answer side checks the point's cells against
+       its shape's row before asking (``compose.plan.cells_unhonored``,
+       Phase 3, step 2's closing slice).
     """
     if q.skeleton != "scalar" or q.aggregate != "per_game" or q.subject != "player" or q.predicates or q.source != "seasons":
-        return False
-    if unhonored_scoping("player_stat", q.scope, stated):
         return False
     # At call time: the point reader imports this package for the adapter
     # still here, so a module-level import would cycle.
@@ -98,7 +101,7 @@ def player_line_reads(q: Query, stated: frozenset[str]) -> bool:
     return own.on == "player_seasons" and (q.measures == own.measures or (named is not None and q.measures == [named]))
 
 
-def read_player_line(con: duckdb.DuckDBPyConnection, q: Query, *, stated: frozenset[str]) -> Result | Unanswered | None:
+def read_player_line(con: duckdb.DuckDBPyConnection, q: Query) -> Result | Unanswered | None:
     """``player_stat``'s unnarrowed point - one season's line or a career,
     from the season line, or a computed advanced stat from
     ``player_season_advanced_stats`` - as a
@@ -114,8 +117,13 @@ def read_player_line(con: duckdb.DuckDBPyConnection, q: Query, *, stated: frozen
     either), and for an advanced stat with no career figure.
 
     .. versionadded:: 5.0.0
+
+    .. versionchanged:: 6.0.0
+       Takes no ``stated``: the answer side checks the point's cells against
+       its shape's row before asking (``compose.plan.cells_unhonored``,
+       Phase 3, step 2's closing slice).
     """
-    if not player_line_reads(q, stated):
+    if not player_line_reads(q):
         return None
     scope = q.scope
     stat = spelled(scope.measure)
@@ -279,24 +287,27 @@ def _advanced_empty(con: duckdb.DuckDBPyConnection, player: Entity, span: Resolv
 # --- a stat season by season ----------------------------------------------------------
 
 
-def player_history_reads(q: Query, stated: frozenset[str]) -> bool:
+def player_history_reads(q: Query) -> bool:
     """Whether ``q`` is ``player_history``'s own point on the season line:
     a history by season of the router's own stat, one with a per-season
-    column, narrowed only by what the retired template's words state. A
-    stat with no per-season column or a measure the question's words moved
-    in is the game-level reading's.
+    column. A stat with no per-season column or a measure the question's
+    words moved in is the game-level reading's, and so is a narrowing
+    beyond what its words state (``compose.plan.cells_unhonored``).
 
     .. versionadded:: 5.0.0
+
+    .. versionchanged:: 6.0.0
+       Takes no ``stated``: the answer side checks the point's cells against
+       its shape's row before asking (``compose.plan.cells_unhonored``,
+       Phase 3, step 2's closing slice).
     """
     stat = spelled(q.scope.measure)
     if q.source != "seasons" or q.group != "season" or stat is None or stat not in HISTORY_COLUMNS:
         return False
-    if stat_measure(q.scope.measure) not in (None, *q.measures[:1]):
-        return False
-    return not unhonored_scoping("player_history", q.scope, stated)
+    return stat_measure(q.scope.measure) in (None, *q.measures[:1])
 
 
-def read_player_history(con: duckdb.DuckDBPyConnection, q: Query, *, stated: frozenset[str]) -> Result | Unanswered | None:
+def read_player_history(con: duckdb.DuckDBPyConnection, q: Query) -> Result | Unanswered | None:
     """``player_history``'s own point - the stat season by season from the
     season line, newest first, the default four or the count asked for, and
     under a career every season with the career line beneath - as a
@@ -310,8 +321,13 @@ def read_player_history(con: duckdb.DuckDBPyConnection, q: Query, *, stated: fro
     relation's refusal.
 
     .. versionadded:: 5.0.0
+
+    .. versionchanged:: 6.0.0
+       Takes no ``stated``: the answer side checks the point's cells against
+       its shape's row before asking (``compose.plan.cells_unhonored``,
+       Phase 3, step 2's closing slice).
     """
-    if not player_history_reads(q, stated):
+    if not player_history_reads(q):
         return None
     scope = q.scope
     player = history_subject(con, scope)
@@ -360,19 +376,23 @@ def _player_history_career(con: duckdb.DuckDBPyConnection, player: Entity, stat:
 # --- two or more players' lines -------------------------------------------------------
 
 
-def player_compare_reads(q: Query, stated: frozenset[str]) -> bool:
+def player_compare_reads(q: Query) -> bool:
     """Whether ``q`` is ``player_compare``'s own point: a pair's lines on
-    the season line, grouped by player, no line on a column, no measure of
-    the words' own and no narrowing its words do not state.
+    the season line, grouped by player, no line on a column and no measure
+    of the words' own (a narrowing its words do not state is the planner's
+    decline before it, ``compose.plan.cells_declined``).
 
     .. versionadded:: 5.0.0
+
+    .. versionchanged:: 6.0.0
+       Takes no ``stated``: the answer side checks the point's cells against
+       its shape's row before asking (``compose.plan.cells_unhonored``,
+       Phase 3, step 2's closing slice).
     """
-    if q.subject != "player" or q.source != "seasons" or q.skeleton != "grouped" or q.group != "player" or q.predicates or q.measures:
-        return False
-    return not unhonored_scoping("player_compare", q.scope, stated)
+    return q.subject == "player" and q.source == "seasons" and q.skeleton == "grouped" and q.group == "player" and not q.predicates and not q.measures
 
 
-def read_player_compare(con: duckdb.DuckDBPyConnection, q: Query, *, stated: frozenset[str]) -> Result | Unanswered | None:
+def read_player_compare(con: duckdb.DuckDBPyConnection, q: Query) -> Result | Unanswered | None:
     """``player_compare``'s own point - two or more named players' season
     lines side by side - as a :class:`~association.query.result.Grouped` by
     ``subject`` (one row per player in the question's order: ``key`` his
@@ -389,8 +409,13 @@ def read_player_compare(con: duckdb.DuckDBPyConnection, q: Query, *, stated: fro
     a stat with no per-game column.
 
     .. versionadded:: 5.0.0
+
+    .. versionchanged:: 6.0.0
+       Takes no ``stated``: the answer side checks the point's cells against
+       its shape's row before asking (``compose.plan.cells_unhonored``,
+       Phase 3, step 2's closing slice).
     """
-    if not player_compare_reads(q, stated):
+    if not player_compare_reads(q):
         return None
     scope = q.scope
     season = scope.span.season or current_season()

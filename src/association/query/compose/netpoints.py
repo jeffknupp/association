@@ -61,7 +61,7 @@ from association.query.fingerprint import (
 )
 from association.query.metrics import SEASON_TYPE_LABELS
 from association.query.notes import Note
-from association.query.reading import Scope, Unsupported, unhonored_scoping
+from association.query.reading import Scope, Unsupported
 from association.query.result import Chart, ChartFacts, Clarify, Decided, Grouped, NetPointsFacts, Part, Refusal, Result, Scalar, Span, Unanswered, Window
 from association.query.season_line import Statement, season_redirect
 from association.query.season_text import SEASON_TYPE_NAMES, season_phrase
@@ -154,15 +154,15 @@ def _first(rows: list[tuple[Any, ...]]) -> tuple[Any, ...] | None:
     return rows[0] if rows else None
 
 
-def read_player_netpoints(con: duckdb.DuckDBPyConnection, q: NetPointsQuery, *, stated: frozenset[str]) -> Result | Unanswered | None:
+def read_player_netpoints(con: duckdb.DuckDBPyConnection, q: NetPointsQuery) -> Result | Unanswered | None:
     """One player's NetPoints (``player_netpoints``' point): a season's line
     and the play-type split behind it, in the units the scope asks for (per
     100 possessions, or season totals where no possession count is on
     record), or one
     game's NetPoints where ``order`` names his first or most recent. A
     :class:`~association.query.result.Refusal` or :class:`~association.query.result.Clarify` back is the
-    relation's refusal (an ambiguous name); ``None`` where the scope sets a
-    narrowing the retired template's words do not state.
+    relation's refusal (an ambiguous name); ``None`` where the point is not
+    a scalar.
 
     NetPoints existed only as leaderboard metrics - ways to rank the league -
     so a question about one player had nowhere to land until the retired
@@ -174,9 +174,14 @@ def read_player_netpoints(con: duckdb.DuckDBPyConnection, q: NetPointsQuery, *, 
 
     .. versionadded:: 5.0.0
        ``templates.netpoints.player_netpoints``, moved whole.
+
+    .. versionchanged:: 6.0.0
+       Takes no ``stated``: the answer side checks the point's cells against
+       its shape's row before asking (``compose.plan.cells_unhonored``,
+       Phase 3, step 2's closing slice).
     """
     scope = q.scope
-    if q.shape != "scalar" or unhonored_scoping("player_netpoints", scope, stated):
+    if q.shape != "scalar":
         return None
     # Settled before the name is resolved: the season is what narrows an
     # ambiguous name to the players with NetPoints in it.
@@ -327,7 +332,7 @@ series colors for the same reason.
 """
 
 
-def read_fingerprint(con: duckdb.DuckDBPyConnection, q: NetPointsQuery, *, stated: frozenset[str]) -> Result | Unanswered | None:
+def read_fingerprint(con: duckdb.DuckDBPyConnection, q: NetPointsQuery) -> Result | Unanswered | None:
     """One or more players' fingerprints (``fingerprint``'s point), read for
     one radar: a :class:`~association.query.result.Chart` whose marks are
     the polygons. "compare their fingerprints" arrives as ``players``, one
@@ -335,8 +340,8 @@ def read_fingerprint(con: duckdb.DuckDBPyConnection, q: NetPointsQuery, *, state
     axes IS the comparison. A
     :class:`~association.query.result.Refusal` or :class:`~association.query.result.Clarify` back is the
     relation's own refusal - a name nobody matches, an ambiguous one, a
-    date, or nothing on record to draw; ``None`` where the scope sets a
-    narrowing the retired template's words do not state.
+    date, or nothing on record to draw; ``None`` where the point is not a
+    chart.
 
     Names are resolved best-match, as a shot chart's are
     (:func:`~association.query.shotchart.resolve_chart_player`): a plot
@@ -348,9 +353,14 @@ def read_fingerprint(con: duckdb.DuckDBPyConnection, q: NetPointsQuery, *, state
     .. versionadded:: 5.0.0
        ``templates.netpoints.fingerprint``, moved whole; its drawing is
        :func:`draw_fingerprint` and its words the sayer's.
+
+    .. versionchanged:: 6.0.0
+       Takes no ``stated``: the answer side checks the point's cells against
+       its shape's row before asking (``compose.plan.cells_unhonored``,
+       Phase 3, step 2's closing slice).
     """
     scope = q.scope
-    if q.shape != "chart" or unhonored_scoping("fingerprint", scope, stated):
+    if q.shape != "chart":
         return None
     names = _fingerprint_names(scope.subject.players)
     # A question about one game draws that game, from the long per-game table

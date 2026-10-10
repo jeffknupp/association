@@ -17,7 +17,7 @@ from typing import Any
 import duckdb
 import pytest
 from routed import planned_answer as compose_answer
-from shapes import key, stated
+from shapes import key, unhonored
 from test_templates import streak  # the compiler's, the template retired (compose.COMPILED_INTENTS)
 
 from association.fetch.repairs import real_games
@@ -26,7 +26,7 @@ from association.query.answer import AnswerContext, Reply
 from association.query.coverage import check_coverage
 from association.query.measure import measure_of
 from association.query.parse import with_point
-from association.query.reading import Reading, Scope, SubjectKind, Unsupported, unhonored_scoping
+from association.query.reading import Reading, Scope, SubjectKind, Unsupported
 from association.query.subject import Subject
 from association.query.team_metrics import TEAM_METRICS, descending_for, resolve_team_metric
 
@@ -406,17 +406,15 @@ def test_the_team_as_its_own_opponent_falls_through(team_ctx: AnswerContext) -> 
 
 def test_team_record_honors_venue_opponent_and_span_but_not_order() -> None:
     # The compiler's since Phase 2's slice (iv): its words state these, and the planner declines `order`.
-    declared = stated("team_record")
-    assert unhonored_scoping("team_record", Scope.from_slots({"venue": "home", "opponent": "Boston Celtics", "span": "career"}), declared) == []
-    assert unhonored_scoping("team_record", Scope.from_slots({"order": "recent"}), declared) == ["order"]
+    assert unhonored("team_record", Scope.from_slots({"venue": "home", "opponent": "Boston Celtics", "span": "career"})) == []
+    assert unhonored("team_record", Scope.from_slots({"order": "recent"})) == ["order"]
 
 
 def test_team_record_honors_situation_and_split_at_the_declaration_level() -> None:
     """The declaration only says the slot is stated - the reader itself
     still refuses a `situation` that names no month and a `split` that is not
     "month" (see the tests above), the same way it always refused `order`."""
-    declared = stated("team_record")
-    assert unhonored_scoping("team_record", Scope.from_slots({"situation": "in october", "split": "month"}), declared) == []
+    assert unhonored("team_record", Scope.from_slots({"situation": "in october", "split": "month"})) == []
 
 
 # ---------------- team_stat ----------------

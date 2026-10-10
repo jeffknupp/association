@@ -71,7 +71,7 @@ import duckdb
 
 from association.nba.coverage import COVERAGE
 from association.nba.season import eastern_date_sql
-from association.query.reading import Scope, Unsupported, ordinal_word, slot_names_set
+from association.query.reading import Scope, ordinal_word
 
 from .season_text import MONTH_NAMES
 from .team_games import TeamNarrowed, games_subquery, named
@@ -963,68 +963,3 @@ def condition_span_label(covered: _Scope, scope: Scope, first: Any, last: Any) -
     if scope.cuts.season_n:
         return f"in his {ordinal_word(scope.cuts.season_n)} season ({label})"
     return label
-
-
-# The relation's cells record_when's team branch and streak's team/league
-# branches cannot honor: each needs a named PLAYER to settle a teammate's
-# absence, a starter/bench half, or a line on a box-score column against -
-# `condition_player` is what reads all of them, and neither branch calls it.
-# `STATED_SCOPING` claims the whole relation for both intents regardless of
-# branch (the same declaration the player branch needs), so a team-only or
-# league-wide question setting one of these would otherwise be silently
-# answered as though it had been applied. Refusing here, by name, is the same
-# discipline `_player_splits_team` already applies to a bare `starter_bench`
-# split.
-#
-# `opponent` and `venue` are NOT here (step 3, C4): both branches now read the
-# team-games relation through `common.team_games`, the same shared narrowing
-# `team_record` reads, so a team's own opponent/venue narrowing is a real,
-# implemented shape rather than a refusal. `since` is NOT here either (step 3,
-# C4b): `span_of`'s own `since` branch already exists and both team branches
-# call it for the ordinary span, so honoring it needed no new mechanism (see
-# ISSUES.md, "record_when's team branch and streak's team/league branches
-# still refuse ..." - rewritten to match). `streak`'s LEAGUE branch (no team
-# named either) still cannot narrow to a single opponent or venue - a
-# league-wide streak has no one team's home/road split or rival to read - so
-# the planner refuses those two there specifically (`compose.plan._streak_league_cells`).
-#
-# `game_n` is honored for `record_when`'s team branch (a threshold record can
-# meaningfully be narrowed to one game of each series - "Celtics record when
-# they scored 120+, game 4 of the series") but stays refused for `streak`'s
-# team and league branches, passed as `extra` at each of those two call sites:
-# a streak is a run of CONSECUTIVE games, and the games "game 4 of each
-# series" picks out are not consecutive to each other - a streak over them
-# would silently answer a run over a scattered, non-adjacent subset rather
-# than the real games in between.
-#
-# A companion (added 5.0.0 as `conditions`, ISSUES.md) is here for the same
-# reason as an absence, the split and a line: his role - he sat out, started,
-# came off the bench, or reached a line - is a fact about a named PLAYER's
-# game, and a team or league branch has no such player settled to check it
-# against. Silently dropping it answered a team's or the league's whole span
-# as though "76ers record when they score 120 when embiid starts" had named
-# no condition at all.
-#
-# `season_n` is a cut of the typed `reading.Cuts` since Phase 3, step 2, the
-# companions and the lines the typed `Companion`'s and `Line`'s cells
-# (`companion`, `line`; read here by cell name, said under the slot names
-# they were declared under: `reading.slot_names_set`); `season_n` stays
-# listed because the planner lets it through to these branches
-# (`plan._TEAM_READER_REFUSES`) for this sentence, which names the missing
-# player, to be the refusal.
-_CONDITION_PLAYER_ONLY_CELLS: tuple[str, ...] = ("companion", "split", "season_n", "line")
-
-
-def condition_needs_player_refusal(intent: str, scope: Scope, *extra: str) -> None:
-    """Raise if a team-only or league-wide question set a relation cell that
-    needs a named player to honor - see :data:`_CONDITION_PLAYER_ONLY_CELLS`.
-    ``extra`` adds cells refused for this call site only (see ``streak``'s own
-    call, which passes ``"game_n"``).
-
-    .. versionchanged:: 4.4.0
-       Takes ``*extra`` (step 3, C4b), so the two intents' team branches no
-       longer have to agree on exactly the same refused set.
-    """
-    claimed = slot_names_set(scope, (*_CONDITION_PLAYER_ONLY_CELLS, *extra))
-    if claimed:
-        raise Unsupported(f"{intent} cannot honor {claimed} without a named player - only his own games can be narrowed that way")

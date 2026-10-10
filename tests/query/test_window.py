@@ -14,18 +14,20 @@ import itertools
 from typing import Any
 
 import pytest
+from shapes import stated
 from test_templates import pg_ctx, team_cells_con  # noqa: F401 - the two relation fixtures, imported by name
 
 from association.nba.season import current_season
 from association.query.answer import AnswerContext
 from association.query.compose.core import Query, compile_query, rows_of
-from association.query.player_relation import RELATION_SCOPING, RELATION_SCOPING_EXCLUDED, relation_scoping, relation_window
-from association.query.reading import Claim, Cuts, Scope, ScopeError, Span, Window, unhonored_cells
+from association.query.compose.plan import cells_stated
+from association.query.player_relation import RELATION_SCOPING, RELATION_SCOPING_EXCLUDED, relation_window
+from association.query.reading import Claim, Cuts, PointShape, Scope, ScopeError, Span, Window, unhonored_cells
 from association.query.reading import Subject as Who
 from association.query.season_line import history_seasons
 from association.query.span import SpanContext, claimed, read_span
 from association.query.team_games import TeamNarrowed, rows_sql
-from association.query.team_relation import TEAM_RELATION_SCOPING, TEAM_RELATION_SCOPING_EXCLUDED, scoped_team, team_games, team_relation_scoping
+from association.query.team_relation import TEAM_RELATION_SCOPING, TEAM_RELATION_SCOPING_EXCLUDED, scoped_team, team_games
 from association.query.window import ORDER_INTENTS, WindowContext, WindowRead, read_window
 
 S = current_season()
@@ -235,10 +237,10 @@ def test_the_cells_and_what_a_reader_leaves_unhonored() -> None:
 
 def test_the_relation_tables_declare_the_window_cell_once() -> None:
     assert Window.CELLS <= RELATION_SCOPING and "window" in TEAM_RELATION_SCOPING
-    assert relation_scoping("game_log") >= Window.CELLS and "window" not in relation_scoping("streak")
-    assert "window" not in team_relation_scoping("team_record") and "window" in team_relation_scoping("game_log")
+    assert stated("game_log") >= Window.CELLS and "window" not in stated("streak")
+    assert "window" not in stated("team_record") and "window" in cells_stated(PointShape("team_games", "rows", "date"))
     for table in (RELATION_SCOPING_EXCLUDED, TEAM_RELATION_SCOPING_EXCLUDED):
-        assert all("order" not in row and "limit" not in row for row in table.values())
+        assert all("order" not in row.unstated and "limit" not in row.unstated for row in table.values())
     assert {"fingerprint", "game_log", "period_split", "player_netpoints", "shot_chart", "shot_distance", "team_quarter_points"} >= ORDER_INTENTS
 
 

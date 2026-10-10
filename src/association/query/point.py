@@ -686,7 +686,7 @@ def _compare_point(scope: Scope) -> Reading:
     ``compose.seasons.read_player_compare`` and said by the sayer. The template's own
     refusal is the point's: fewer than two distinct names. A narrowing -
     it honors none - is the planner's to decline
-    (:func:`~association.query.compose.plan._shape_declines`).
+    (:func:`~association.query.compose.plan.cells_declined`).
 
     .. versionadded:: 5.0.0
     """
@@ -942,7 +942,7 @@ def _default_streak(scope: Scope) -> Reading:
     A stat with no threshold or a threshold with no stat is declined
     (:func:`~association.query.measures.streak_column`), and so is a team's
     run of a stat; the narrowings a run cannot take are the planner's
-    (:func:`~association.query.compose.plan._shape_declines`).
+    (:func:`~association.query.compose.plan.cells_declined`).
 
     .. versionadded:: 5.0.0
        On the reader's side (``compose.adapt._adapt_streak`` was this).
@@ -1018,8 +1018,8 @@ def _default_with_without(scope: Scope) -> Reading:
     (:func:`~association.query.subject.with_without_named`), or failing those
     the one name beside a team or the second of two; more than that is
     "record when A and B and C play", which nobody has defined. A narrowing
-    its words do not state is the planner's to decline (its row of
-    ``compose.plan.STATED_SCOPING``).
+    its words do not state is the planner's to decline (its shape's row,
+    ``team_relation.TEAM_RELATION_SCOPING_EXCLUDED``).
 
     .. versionadded:: 5.0.0
        On the reader's side (``compose.adapt._adapt_with_without`` was this).

@@ -10,15 +10,12 @@ same refusal, for a Scope and for its slot dict.
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import fields
 from typing import Any
 
 import pytest
 
 from association.query.coverage import check_coverage, coverage_caveat, sources_for
-from association.query.reading import SCOPING_SLOTS, PointShape, Scope, Unsupported
-
-_FIELDS = {field.name for field in fields(Scope)}
+from association.query.reading import PointShape, Scope, Unsupported
 
 
 def test_a_team_season_line_names_the_games_table_only_where_it_reads_opponent_points() -> None:
@@ -34,13 +31,6 @@ def test_a_team_season_line_names_the_games_table_only_where_it_reads_opponent_p
     assert sources_for(line, Scope.from_slots({"team": "Philadelphia 76ers", "stat": "points", "season": 2001, "season_type": 3})) == ("team_season_stats",)
     for stat in (None, "point differential", "points allowed", "defensive rating"):
         assert sources_for(line, Scope.from_slots({"team": "Philadelphia 76ers", "stat": stat, "season": 2001, "season_type": 3})) == ("team_season_stats", "games"), stat
-
-
-def test_every_scoping_slot_is_a_field_of_the_typed_scope() -> None:
-    """``unhonored_scoping`` reads each name in ``SCOPING_SLOTS`` as a Scope
-    field: a name that is no field would raise AttributeError on every
-    question rather than refuse the one that set it."""
-    assert SCOPING_SLOTS <= _FIELDS, sorted(SCOPING_SLOTS - _FIELDS)
 
 
 def _outcome(step: Callable[..., Any], *args: Any) -> Any:
