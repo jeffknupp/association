@@ -368,6 +368,7 @@ those were found.
 - **Next step:** decide what a worded since-date with a year means (the numeric form's reading, every game from that date on, is the natural one) and read both forms the same way: the cuts tagger prefers the `CALENDAR_DATE` range match where it carries a year (the situation's words whole, `dated_since` the year), `SITUATION_SINCE_DAY` takes an optional year as a `since_date` and the abbreviated months `CALENDAR_DATE` already takes, and the span does not read the range's year as the one season. One feed answer moves ("Nick Richards stats after Dec 11 2023", a refusal becoming his line since that date) - an enumerated commit with a test on both wordings.
 - **Priority:** P2 - a narrower question answered under the question's own words; the typed `Situation` records what was read (`ROADMAP-TYPES.md`, "Still open" 10).
 - **Source:** ours.
+- **GitHub:** #353
 
 ### "Stephen Curry free throw chart" (no "shot") answers his season averages
 - **Found:** 2026-10-05, the Phase 2 review
@@ -2830,6 +2831,7 @@ those were found.
 - **Next step:** the situation's month alternative stops at a month followed by a day number (a lookahead for `\s+\d{1,2}\b`), with the 4 feed answers enumerated before and after - a rewording commit.
 - **Priority:** P4 - the numbers are right; one redundant phrase.
 - **Source:** ours.
+- **GitHub:** #354
 
 ### The sayer's import contract is checked on direct imports only: `compose.say` reaches duckdb through four modules' constants
 - **Found:** 2026-10-05, Phase 2 step 6, when the last phrase helpers left `templates/` (the condition `pyproject.toml` named for checking the contract on chains).

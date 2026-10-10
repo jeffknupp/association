@@ -1029,6 +1029,42 @@ agents' reports named here are in `~/association-research/stages/`.
     over sixteen isolated fixes and a fresh four-population run on both
     trees.
 
+26. **Phase 3, step 2, the games' cuts (2026-10-09).** The third family,
+    on the span's and the window's pattern: one Fable agent at medium
+    effort measured the eight cut slots on all 2,710 readings first -
+    which stage set each, by which words, what the planner declined by
+    them and what the relation resolved them to (an opponent on 503, a
+    round on 119, a situation on 96, a venue on 88, a date on 47, a tenure
+    on 14, a series game on 12, an ordinal season on 4; of the 96
+    situations 42 parse to a calendar, 21 to an alignment and 33 to words
+    nothing reads) - and typed them from what the readings said. What
+    moved: `reading.Cuts` on `Scope.cuts`, eight fields rather than the
+    draft's nine types, because the readings hold them together (an
+    opponent beside a venue 32 times) and a relation applies each as one
+    more clause over the same rows; `query/cuts.py`, the one tagger, run
+    before the window's and the span's, taking the opponent and the tenure
+    from the subject reading, the one reader of who stands against or
+    beside the subject; the lexicon grown by the calendar's whole
+    vocabulary and one month table, so `calendar.py` holds no pattern and
+    the regex ratchet fell 4 -> 3; the cells in both relation tables with
+    66 reasoned exclusion rows; `router.py` 205 lines shorter. Proved
+    identical on all four populations through the projection, the
+    relation's resolution re-held on 2,710 of 2,710, the ledger identical
+    at 709. What it taught: a situation is one cell holding three readings
+    (a calendar, an alignment, words nothing reads), and splitting it
+    moves 33 unread situations from RUN to PLAN with a different sentence
+    - a decline-to-Cause commit of its own, not this slice's (open item
+    10); a reader that states no cut carries seven near-identical
+    exclusion rows, which the planner's cell checks should replace with a
+    per-reader shorthand; and the claims gate had caught nothing in its
+    one day but one wording - "lebron's last game 7", where the window's
+    "last game" and the series' "game 7" are both right and the reader
+    raised a traceback to the user - so a partial overlap is now one claim
+    named for both readings (`a29c7fd`), a revision of the span slice's
+    decision, for Jeff to keep or reverse. Cost: the lead's rebase over
+    six commits (one conflict, the changelog) and a fresh four-population
+    run on both trees.
+
 ## The plan items, as written
 
 In order of lift per unit of structural change, each measured on the
