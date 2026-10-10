@@ -52,6 +52,7 @@ before that commit needs re-checking against the current warehouse.
 - **User sees:** a fluent log of every game where the games over a line were asked - the failure shape at the top of `AGENTS.md`.
 - **Next step:** the measure slice (Phase 3, step 2's next): once a `Line`'s measure is the typed `Measure`, one "N+ stat" on a log, a line or a split is a `line` cell the relation narrows by (`narrows=True`), and the four readers that key on it keep `keyed`. Enumerate the moved answers from the feed first (`run --feed`), since a single pair on a non-line reader is common wording outside the corpus.
 - **Priority:** P1 - a broader question answered fluently; 0 of the 2,710 readings today, the wording common.
+- **GitHub:** #357
 
 ### A count's second and later bare lines are dropped: "most games with 20 pts, 10 reb, 5 ast last season" answers the most 20+ point games
 - **Found:** 2026-10-09, Phase 3 step 2's line slice (`line_family.py`: the multi-line questions)
@@ -59,6 +60,7 @@ before that commit needs re-checking against the current warehouse.
 - **User sees:** a fluent leader for a one-line question where a three-line one was asked.
 - **Next step:** `compose/counts.py`'s ranking takes every predicate (the games clearing all of them, counted per player) and says them all ("the most games with 20+ points, 10+ rebounds and 5+ assists"); `_everyone_threshold_predicates` then reads every bare whole-game line of `Scope.lines`. Enumerate the 6 before and after.
 - **Priority:** P1 - 6 of the 2,710 readings.
+- **GitHub:** #358
 
 ### A companion's line is read as the subject's too: "maxey record when embiid scores 20+ points" keys the record on Maxey's 20+ points as well
 - **Found:** 2026-10-09, Phase 3 step 2's line slice, choosing whether the lines tagger reads inside a companion's phrase
@@ -66,6 +68,7 @@ before that commit needs re-checking against the current warehouse.
 - **User sees:** a record table split by the wrong player's line - the question asked for the 76ers' record in Embiid's 20+ games, with Maxey beside him.
 - **Next step:** when the subject reading's companion claim holds the line's claim (the two fold into one, `Reading.claims`), the subject has no line of its own: `router._settle` can read that from the claims once the subject's claims reach the stages (they are on the Route today), and a `record_when` with a companion's line and none of the subject's is the team's record (the team form already answers it) or a refusal naming the missing line. Watch the LeBron wording when it changes.
 - **Priority:** P1 - a wrong table fluently; 0 of the 2,710 readings.
+- **GitHub:** #359
 
 ### "warriors' record last season when committing 10 or fewer turnovers" answers the whole season
 - **Found:** 2026-10-05, the Phase 2 review (`~/association-research/reviews/phase2-2026-10-05/REVIEW.md`)
@@ -2860,15 +2863,7 @@ those were found.
 - **User sees:** nothing today; a wording that reached the split would answer the team's record with and without one player where the games the other played were asked.
 - **Next step:** when the split's reader (`compose/presence.py`) takes the typed companions directly, narrow the games by the companions who played before dividing by the absent ones, and say so; and read the grammar for a team's record with one teammate and without another, which no row names today.
 - **Priority:** P4 - no wording reaches it.
-
-### A period condition's words are cut out of the question the stages read, so every claim after them is offset
-- **Found:** 2026-10-09, Phase 3, step 2, the period (writing the period tagger's claims beside the line slice's condition reader).
-- **Evidence:** `parse.read_route` reads a quarter or half used as a condition (`read_period_condition`, over `lexicon.PERIOD_CONDITION`) and then hands the stages the question with those words REMOVED - `f"{question[:start]} {question[end:]}"` - so a `reading.Claim` any tagger makes on characters after the condition is indexed into the shortened text, not the question the Reading is of; `Reading.claims` is documented as "a slice of the question". On the 2,710 readings the two condition questions ("vj edgecombe three points made per game after making one three in first quarter", "... after hitting one three in the first quarter") carry no claim at all, since nothing else in them is read, so no recorded claim is wrong today; the condition reader itself claims nothing yet (the line slice's).
-- **User sees:** nothing; step 3's unread words, read off the claims, would name the wrong characters on such a question.
-- **Next step:** the line slice, which claims the condition's span, keeps the question's length - blank the condition's characters to spaces of the same length rather than cutting them (measured on the four populations: a run of spaces in place of the words must move no reading), or keep the original offsets by adding the cut's length back to every claim after it.
-- **Priority:** P4 - no recorded claim is wrong; a latent offset for the line slice to close.
-- **Source:** ours.
-- **GitHub:** #356
+- **GitHub:** #360
 
 ### A month is read from the words of a day in it: "in march 24 2018" narrows by the month and the day, and the answer says both
 - **Found:** 2026-10-09, Phase 3, step 2, the games' cuts (the cuts tagger's claims: the situation's "in march" and the day's "march 24 2018" overlap on one word).

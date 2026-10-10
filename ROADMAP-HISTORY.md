@@ -1095,6 +1095,42 @@ agents' reports named here are in `~/association-research/stages/`.
     cutting. Cost: no rebase (master had not moved) and a fresh
     four-population run on both trees.
 
+28. **Phase 3, step 2, the line and the companions (2026-10-09).** The
+    fifth family and the largest, the one the types draft calls "the one
+    that matters": one Fable agent at medium effort measured the five
+    carriers of a line and the three of a companion on all 2,710 readings
+    first - a threshold on 120, a floor or under-line on 39, two or more
+    "N+ stat" pairs on 11 (and in all 11 the slot pair contradicted the
+    words, as the draft predicted, while the relation had narrowed by the
+    words already), a period line on 2, a companion's line on 23, 185
+    companions beside a subject - and built the `Line` from the words,
+    never from the pair. What moved: `reading.Line` on `Scope.lines` and
+    `reading.Companion` on `Scope.companions`, seven slots and two record
+    types gone (`ConditionSpec`, `PeriodCondition`), the point reader's
+    own re-read of the number's words deleted, `router.Beside` deleted
+    with the stages handed typed companions, `query/line.py` the one
+    tagger with the period line's words blanked rather than cut,
+    `WITH_WITHOUT_STATED` folded into the one table; `router.py` 214 lines
+    shorter. Proved on all four populations through the projection with
+    ONE enumerated move, the slice's fix: "most games with 20 pt,s 10 reb,
+    5 ast" read its first line as 20 rebounds because the retired re-read
+    could not pass the comma; it reads 20 points from the words now. The
+    ledger FELL for the first time, 709 -> 702: "points" in the seven
+    team-record wordings "when Maxey scores 20+ points", which the typed
+    companion line reads without the word. What it taught: the companions
+    could be typed with no second reader of a name, since the subject
+    reading already read every phrase and only lacked the claims; `Won`
+    and `Met` are not filters the words carry but the point's predicate
+    and the pair shape's key, so the draft's rows for them are the
+    shape's (open items 11, 12); step 1's floor harness had been reading a
+    field dead since the period slice and reporting "identical" on errors
+    - a harness that fails on both trees compares nothing, and is mended
+    in the research repo; and three wrong answers sit on the seam the
+    measure slice and the count shape own (a single "20+ points" on a log
+    reads nothing; a count's later lines are dropped; a companion's line
+    is read as the subject's), filed as P1s. Cost: no rebase (master had
+    not moved) and a fresh four-population run on both trees.
+
 ## The plan items, as written
 
 In order of lift per unit of structural change, each measured on the
