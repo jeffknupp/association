@@ -478,13 +478,22 @@ def _check_relation_scoping(scope: Scope, subject: str = "player", honored_extra
     # 2026-09-30). An allow list, so a cell added to one relation is refused
     # on the other until it is built there.
     relation = TEAM_RELATION_SCOPING if subject == "team" else RELATION_SCOPING
-    # The span's `both` cell (both season types in one read) is a named
-    # player's or a team's: the league-wide read settles one type
-    # (`_resolve_everyone`) and refuses it rather than answer the regular
-    # season alone.
     honored = relation | honored_extra
     if subject == "everyone":
-        honored -= {"both"}
+        # The league-wide read (`_resolve_everyone`, over
+        # `player_relation.league_games`) narrows by an opponent, a team's
+        # roster, a venue, the lines, an ordinal season, a situation, a
+        # position and the period, and by nothing else. The span's `both`
+        # cell is a named player's or a team's: the league read settles one
+        # season type and refuses both rather than answer the regular season
+        # alone. A date, a game of each series, a teammate, a starter half
+        # (or any split) and a tenure are a named player's cells it has no
+        # subject for ("whose teammate would 'without' name?"), and a window
+        # an end of one subject's games: until 2026-10-10 the planner let
+        # them through and the read dropped them, so "most points by a player
+        # on nov 22 since 2015-2024" ranked the range and "most blocks in a
+        # game 7" the postseason - refused now, by name.
+        honored -= {"both", "date", "game_n", "companion", "split", "tenure", "window"}
     unhonored = unhonored_cells(scope, honored)
     if unhonored:
         whose = "a team's games cannot be narrowed by" if subject == "team" else "the relation cannot honor"

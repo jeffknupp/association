@@ -744,8 +744,10 @@ otherwise.
     now would touch every `scope.` site twice (the lead's bound); the
     declines' sentences still say the retired names and slots
     (`SHAPE_NAMES`, `cell_slots`) until a decline-to-Cause commit rewords
-    them; the league's own read refuses no cell its subject cannot settle
-    (Still open 16).
+    them. A fix it made in passing, its own enumerated commit: the league's
+    own read refuses the cells its subject cannot settle (a date, a series
+    game, a teammate, a split, a tenure, a window), which it dropped - 62
+    feed answers move from a broader question answered to a refusal.
 
 ## What must be decided before which phase
 
@@ -1258,19 +1260,3 @@ moves into `data` before the slice that rewords its answer:
     the intent they choose, from the reading's own words (`router.Named`).
     Step 4, which keys the readers on the grammar and deletes the stages,
     moves the three to the subject reading's settling under the intent.
-16. **The league's own read applies no cell its subject cannot settle, and
-    nothing refuses one.** `player_relation.league_games` (the `everyone`
-    subject's games) reads an opponent, a team's roster, a venue, the
-    lines, an ordinal season, a situation, a position and the period, and
-    leaves a date, a series game, a teammate, a starter half and a tenure
-    out ("whose teammate would 'without' name?"), while the planner holds
-    the `everyone` subject to the player relation's whole table less
-    `both` - so "most points by a player on nov 22 since 2015-2024" ranks
-    the range with the date dropped, and "most blocks in a game 7" the
-    postseason with the series game dropped. Measured on the 2,710
-    answered questions: 39 league reads (all in the feed) carry one of the
-    five and are answered without it - 22 rankings over a date, 8 over a
-    teammate, 4 over a split, 4 single-game highs over a series game, 1
-    over a date (ISSUES.md). The typed design is the `everyone` subject's
-    own cells, the five refused, as `both` is; a bug fix with every moved
-    answer named.

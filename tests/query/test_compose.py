@@ -904,6 +904,43 @@ def test_a_team_point_refuses_a_cell_only_a_players_games_carry() -> None:
         assert isinstance(plan(team_point(shape, **cells)), TeamQuery), (shape, cells)
 
 
+def test_a_league_point_refuses_a_cell_the_league_read_has_no_subject_for() -> None:
+    """The league-wide read (``player_relation.league_games``) narrows by an
+    opponent, a team's roster, a venue, the lines, an ordinal season, a
+    situation and the period - and has no subject for a date, a game of each
+    series, a teammate, a starter half (any split), a tenure or a window of
+    one subject's games. Until 2026-10-10 the planner held the league to the
+    player relation's whole table and the read dropped those: "most points
+    by a player on nov 22 since 2015-2024" ranked the range, "most blocks in
+    a game 7" listed the postseason's highs, "aaron gorodn last 5 games"
+    (the name unread) ranked the season - 62 of the 2,082 feed answers. They
+    are refused now, by name, as both season types at once always was."""
+    from association.query.point import read_point
+    from association.query.subject import Subject
+
+    def league_ranking(slots: dict[str, Any], intent: str = "leaderboard", question: str = "who led the league in points") -> Any:
+        reading = Reading(scope=Scope.from_slots(slots), intent=intent, subject=Subject("everyone"))
+        return plan(read_point(reading, question))
+
+    refused: list[tuple[dict[str, Any], str]] = [
+        ({"stat": "points", "date": "2024-11-22"}, "date"),
+        ({"stat": "points", "without": ["Jaylen Brown"]}, "without"),
+        ({"stat": "points", "split": "bench"}, "split"),
+        ({"stat": "points", "own_team": "Miami Heat"}, "own_team"),
+        ({"stat": "points", "order": "recent", "limit": 5}, "order"),
+    ]
+    for slots, named in refused:
+        with pytest.raises(Unsupported, match=rf"the relation cannot honor \['{named}'\]"):
+            league_ranking(slots)
+    for slots, named in (({"stat": "blocks", "game_n": 7, "season_type": 3}, "game_n"), ({"stat": "points", "date": "2001-02-02"}, "date")):
+        with pytest.raises(Unsupported, match=rf"the relation cannot honor \['{named}'\]"):
+            league_ranking(slots, "single_game_high", "most blocks in a game")
+    # What the league read does narrow by still plans.
+    for slots in ({"stat": "points", "opponent": "Boston Celtics"}, {"stat": "points", "venue": "home"}, {"stat": "points", "season_n": 15}):
+        assert isinstance(league_ranking(slots), Query), slots
+        assert isinstance(league_ranking(slots, "single_game_high", "most points in a game"), Query), slots
+
+
 def test_answer_composes_a_team_subject_sentence(team_cx_ctx: AnswerContext) -> None:
     """``answer()``'s dispatch to the team subject, end to end - the same
     surface :func:`association.query.agent.Agent._try_compose` calls."""
