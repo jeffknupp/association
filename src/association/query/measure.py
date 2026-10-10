@@ -50,33 +50,18 @@ the abbreviations only the line readers.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Literal
 
 from association.nba.netpoints import FINGERPRINT_CATEGORIES, FINGERPRINT_SIDE_LABELS
 from association.query import lexicon
 from association.query.reading import (
-    GAMES_COUNTED,
-    LINE_RECORD,
-    LINE_RUNS,
-    NETPOINTS_FINGERPRINT,
-    PERIOD_LOG,
-    PERIOD_RANKING,
-    PLAYER_COMPARISON,
-    PLAYER_LINE,
-    PLAYER_LOG,
-    PLAYER_RANKING,
-    SEASON_HISTORY,
-    SHOT_CHART,
-    SHOT_DISTANCE,
-    TEAM_LINE,
-    TEAM_RANKING,
     Claim,
     Measure,
     MeasureHow,
     MeasureSide,
     MeasureWhose,
-    PointShape,
 )
 
 # --- The catalog ---------------------------------------------------------------------------
@@ -552,17 +537,10 @@ def team_metric_named(question: str) -> tuple[str, Claim] | None:
 # --- The tagger ----------------------------------------------------------------------------------
 
 #: The readers that look an advanced metric up by its words.
-_ADVANCED_STAT_ASKS: frozenset[PointShape] = frozenset({PLAYER_LINE, PLAYER_COMPARISON, SEASON_HISTORY, PLAYER_RANKING, PLAYER_LOG})
-#: Game score's spelling, by the reader: the ranking reads it through the
-#: leaderboard metrics, keyed `avg_game_score` like every other per-game
-#: average; a player's line through the advanced stats, keyed `game_score`.
-_GAME_SCORE_BY_ASK: dict[PointShape, str] = {PLAYER_RANKING: "avg_game_score", PLAYER_LINE: "game_score"}
-_TWO_POINT_PCT_ASKS: frozenset[PointShape] = frozenset({SEASON_HISTORY, PLAYER_LINE})
-_SHOT_VALUE_ASKS: frozenset[PointShape] = frozenset({SHOT_DISTANCE, SHOT_CHART})
 #: A made column to its attempted sibling ("who attempted the most three pointers" filed the made column).
-_MADE_TO_ATTEMPTED: dict[str, str] = {"threePointFieldGoalsMade": "threePointFieldGoalsAttempted", "fieldGoalsMade": "fieldGoalsAttempted", "freeThrowsMade": "freeThrowsAttempted"}
+MADE_TO_ATTEMPTED: dict[str, str] = {"threePointFieldGoalsMade": "threePointFieldGoalsAttempted", "fieldGoalsMade": "fieldGoalsAttempted", "freeThrowsMade": "freeThrowsAttempted"}
 #: A NetPoints name to its per-100 form, for a rate word beside it.
-_NETPOINTS_PER_100: dict[str, str] = {
+NETPOINTS_PER_100: dict[str, str] = {
     "netpoints": "netpoints_per_100",
     "netpoints_total": "netpoints_per_100",
     "netpoints_offense": "netpoints_offense_per_100",
@@ -587,9 +565,9 @@ BOOLEAN_KEYS: frozenset[str] = frozenset({"triple_double", "double_double", "fou
 
 @dataclass(frozen=True, kw_only=True)
 class MeasureContext:
-    """What the stages settled before the measure is read, and the tagger's
-    rules read beside the words: what they settled the words to ask
-    (``asked``, the grammar's key - an intent's name until Phase 3, step 4); the model's
+    """What the key's reading of the measure reads beside the words
+    (:func:`~association.query.point.measure_under`; the key itself is its
+    argument since Phase 3, step 4, slice (b)): the model's
     key (``key``), CONTEXT the words may confirm and never the value's
     source where the words name one - and where they name none, the key
     stands as it did, so no answer moves; the model's ``side`` and
@@ -604,7 +582,6 @@ class MeasureContext:
     .. versionadded:: 6.0.0
     """
 
-    asked: PointShape | None
     key: str | None = None
     side: str | None = None
     shot_value: int | None = None
@@ -627,184 +604,117 @@ class MeasureRead:
     claims: tuple[Claim, ...]
 
 
-def read_measure(question: str, context: MeasureContext) -> MeasureRead:
-    """The measure ``question``'s words name, under ``context``, with the
-    claims: the words' own reading over the model's key (:func:`named`),
-    then each rule the stages read in order - the intent-chosen keys
-    (fouling out, a games count under a line's reader, a quarter's stat
-    kept only where named), the model's key dropped where the words name
-    no stat on a whole-line reader, an advanced metric, game score, a
-    2-point percentage, a ranking by shot distance, the shots, the
-    attempts beside a make, a team metric's alias, a NetPoints rate, a
-    team's total, the stat beside a line, a run's result, the side, and
-    the columns beside a ranking.
+@dataclass(frozen=True)
+class MeasureWords:
+    """Every word the measure is read by, found with no key: the measure the
+    words name (:func:`named`) and each pattern a rule of the key's reading
+    turns on (:func:`~association.query.point.measure_under`) - fouling out,
+    "how many" and a stat word, a team stat word, "td3", an advanced
+    metric, game score, a 2-point percentage, a ranking by shot distance,
+    "attempted" and "made", a team metric's alias, games won or lost, the
+    sides of the ball, per 90 and the rate words, a team's total and "per
+    game", a log's and a quarter's games words, a losing streak, the shot
+    values, and the columns asked for beside a ranking.
 
     .. versionadded:: 6.0.0
     """
-    claims: list[Claim] = []
-    key = context.key
-    worded = named(question)
-    if worded is not None:
-        key = worded[0]
-        claims.append(worded[1])
-    key = _key_by_ask(question, context, key, from_words=worded is not None)
-    key = _key_by_words(question, context, key, claims)
-    key, unit = _rate(question, context, key, claims)
-    how: MeasureHow | None = None
-    if unit is not None:
-        how = _how_of(unit)
-    elif context.asked == PERIOD_LOG and _per_game_log(question, key):
-        how = "per_game"
-    of_wins = None
-    if context.asked == LINE_RUNS:
-        losing = lexicon.LOSING_STREAK.search(question)
-        of_wins = losing is None
-        if losing is not None:
-            claims.append(Claim(losing.start(), losing.end(), "measure"))
-    side = _side(question, context, claims)
-    shot_value = _shot_value(question, context, claims)
-    beside = _beside(question, context, claims)
-    # One claim per stretch read: the grammar and a stage may read the same
-    # words ("ts%" is the grammar's key and the advanced metric's word).
-    distinct = tuple(dict.fromkeys(claim for claim in claims if claim.end > claim.start))
-    if key is None and unit is None and how is None and of_wins is None and side is None and shot_value is None and not beside:
-        return MeasureRead(None, distinct)
-    catalog_key, whose, keyed_side, keyed_how, category = key_of(key)
-    measure = Measure(
-        key=catalog_key,
-        as_typed=key,
-        how=how if how is not None else keyed_how,
-        unit=unit,
-        whose=whose,
-        side=side if side is not None else keyed_side,
-        shot_value=shot_value,
-        category=category,
-        won=of_wins,
-        beside=beside,
+
+    worded: tuple[str, Claim] | None
+    fouled: bool
+    how_many: bool
+    names_a_stat: bool
+    team_stat: bool
+    td3: bool
+    advanced: tuple[str, re.Match[str]] | None
+    game_score: re.Match[str] | None
+    two_point: re.Match[str] | None
+    shot_distance: re.Match[str] | None
+    attempted: re.Match[str] | None
+    made: bool
+    team_alias: tuple[str, Claim] | None
+    games_won: re.Match[str] | None
+    sides: tuple[tuple[str, re.Match[str]], ...]
+    per_90: re.Match[str] | None
+    rate: re.Match[str] | None
+    team_total: re.Match[str] | None
+    per_game: bool
+    log: bool
+    period_games: bool
+    losing: re.Match[str] | None
+    shot_values: tuple[tuple[int, re.Match[str]], ...]
+    beside: tuple[tuple[str, ...], tuple[Claim, ...]]
+
+
+def read_measure(question: str) -> MeasureWords:
+    """Every word ``question`` names its measure by, with no key
+    (:class:`MeasureWords`); the measure under the key the words ask is
+    :func:`~association.query.point.measure_under`'s.
+
+    .. versionadded:: 6.0.0
+
+    .. versionchanged:: 6.0.0
+       Reads no key (Phase 3, step 4, slice (b)): it took a
+       ``MeasureContext`` holding what the stages settled the words to ask
+       and read the measure under it; the rules that read the key are
+       :func:`~association.query.point.measure_under`'s, over these words.
+    """
+    advanced = next(((metric, found) for metric, pattern in lexicon.ADVANCED_STAT_WORDS if (found := pattern.search(question)) is not None), None)
+    return MeasureWords(
+        worded=named(question),
+        fouled=lexicon.FOULED_OUT.search(question) is not None,
+        how_many=lexicon.HOW_MANY_GAMES.search(question) is not None,
+        names_a_stat=names_a_stat(question),
+        team_stat=lexicon.TEAM_STAT_WORDS.search(question) is not None,
+        td3=lexicon.TRIPLE_DOUBLE_ABBREVIATION.search(question) is not None,
+        advanced=advanced,
+        game_score=lexicon.GAME_SCORE.search(question),
+        two_point=lexicon.TWO_POINT_PCT.search(question),
+        shot_distance=lexicon.SHOT_DISTANCE_RANKED.search(question),
+        attempted=lexicon.ATTEMPTED.search(question),
+        made=lexicon.MADE.search(question) is not None,
+        team_alias=team_metric_named(question),
+        games_won=lexicon.GAMES_WON.search(question),
+        sides=tuple((name, found) for name, pattern in lexicon.SIDE_WORDS.items() if (found := pattern.search(question)) is not None),
+        per_90=lexicon.PER_90.search(question),
+        rate=lexicon.RATE_WORDS.search(question),
+        team_total=lexicon.TEAM_TOTAL.search(question),
+        per_game=lexicon.PER_GAME_WORDS.search(question) is not None,
+        log=lexicon.LOG_WORDS.search(question) is not None,
+        period_games=lexicon.PERIOD_GAMES_WORDS.search(question) is not None,
+        losing=lexicon.LOSING_STREAK.search(question),
+        shot_values=tuple((value, found) for value, pattern in lexicon.SHOT_VALUE_WORDS if (found := pattern.search(question)) is not None),
+        beside=_beside_words(question),
     )
-    return MeasureRead(measure, distinct)
 
 
-def _key_by_ask(question: str, context: MeasureContext, key: str | None, *, from_words: bool) -> str | None:
-    """The key the intent stages wrote or dropped as they chose the intent:
-    fouling out is the count's own stat; a games count on a line's reader
-    is no measure (a log of his games, a line's "how many games did he
-    play"); a quarter's or a half's stat is kept only where the words name
-    one (the model fills the required key whether or not they do); a
-    comparison's, a line's, a team's and a run's likewise. The drop is the
-    MODEL's key's alone (``from_words`` False): a measure the words named
-    stands whether or not the stat-word list knows its word - "grayson
-    allen 3s made last season" answered his points line while the drop took
-    the grammar's 3-pointers with the model's key (ISSUES.md, closed with
-    this rule; 3 feed answers moved, each named in the commit)."""
-    asked = context.asked
-    fouled = lexicon.FOULED_OUT.search(question)
-    if fouled is not None and asked == GAMES_COUNTED:
-        key = "fouls"
-    if asked == PLAYER_LOG and key in ("games", "game"):
-        key = None
-    if asked == PLAYER_LINE and key in GAMES_STATS and lexicon.HOW_MANY_GAMES.search(question) and not context.order_named:
-        key = None
-    if asked == PLAYER_COMPARISON and not names_a_stat(question):
-        # The comparison's whole line holds the stat asked about, and its
-        # reader refuses a named one outright - the words' key too ("compare
-        # luka and sga in netpts" answered the line with NetPoints in it, and
-        # kept it would be refused).
-        key = None
-    if not from_words:
-        if asked in (PERIOD_LOG, PERIOD_RANKING, PLAYER_LINE, LINE_RUNS) and not names_a_stat(question):
-            key = None
-        if asked == TEAM_LINE and not (names_a_stat(question) or lexicon.TEAM_STAT_WORDS.search(question)):
-            key = None
-    if lexicon.TRIPLE_DOUBLE_ABBREVIATION.search(question):
-        key = "triple_double"
-    return key
+def _beside_words(question: str) -> tuple[tuple[str, ...], tuple[Claim, ...]]:
+    """The columns the words ask to see beside a ranking's measure: each
+    stat word after "with their" / "alongside their" that a ranking shows
+    (:data:`BESIDE_KEYS`, by its box-score word), and "team" for the team
+    each player plays for, with the characters read - kept on a ranking
+    alone (the key's reading); a word it cannot show is left out."""
+    fields: list[str] = []
+    claims: list[Claim] = []
+    after = lexicon.FIELDS_AFTER.search(question)
+    if after is not None:
+        for word in lexicon.WORD.findall(after.group("rest").lower()):
+            key = lexicon.MEASURE_WORDS.get(word)
+            if key in BESIDE_KEYS and key not in fields:
+                fields.append(key)
+        if fields:
+            claims.append(Claim(after.start(), after.end(), "measure"))
+    team = lexicon.TEAM_FIELD_WORDS.search(question)
+    if team is not None:
+        fields.append("team")
+        claims.append(Claim(team.start(), team.end(), "measure"))
+    return tuple(fields), tuple(claims)
 
 
-def _key_by_words(question: str, context: MeasureContext, key: str | None, claims: list[Claim]) -> str | None:
-    """The key the words name beyond the grammar, each where a reader looks
-    it up: an advanced metric, game score (by the reader's own spelling), a
-    2-point percentage, a ranking by shot distance (the sentinel the ranking
-    refuses by name), the attempts beside a make, a team metric's alias, and
-    the stat read beside a line."""
-    asked = context.asked
-    if asked in _ADVANCED_STAT_ASKS:
-        for metric, pattern in lexicon.ADVANCED_STAT_WORDS:
-            found = pattern.search(question)
-            if found is not None:
-                key = metric
-                claims.append(Claim(found.start(), found.end(), "measure"))
-                break
-    if asked in _GAME_SCORE_BY_ASK:
-        found = lexicon.GAME_SCORE.search(question)
-        if found is not None:
-            key = _GAME_SCORE_BY_ASK[asked]
-            claims.append(Claim(found.start(), found.end(), "measure"))
-    if asked in _TWO_POINT_PCT_ASKS:
-        found = lexicon.TWO_POINT_PCT.search(question)
-        if found is not None:
-            key = "twoPointFieldGoalPct"
-            claims.append(Claim(found.start(), found.end(), "measure"))
-    if asked == PLAYER_RANKING:
-        found = lexicon.SHOT_DISTANCE_RANKED.search(question)
-        if found is not None:
-            key = "shot_distance"
-            claims.append(Claim(found.start(), found.end(), "measure"))
-    if key in _MADE_TO_ATTEMPTED:
-        attempted = lexicon.ATTEMPTED.search(question)
-        if attempted is not None and lexicon.MADE.search(question) is None:
-            key = _MADE_TO_ATTEMPTED[key]
-            claims.append(Claim(attempted.start(), attempted.end(), "measure"))
-    if asked in (TEAM_LINE, TEAM_RANKING):
-        alias = team_metric_named(question)
-        if alias is not None:
-            key = alias[0]
-            claims.append(alias[1])
-    if asked == LINE_RECORD and not context.keyed_line:
-        games_won = lexicon.GAMES_WON.search(question)
-        if games_won is not None:
-            return "losses" if games_won.group(1).lower().startswith("los") else "wins"
-    if context.line_stat is not None:
-        key = context.line_stat
-    return key
+def how_of(unit: str) -> MeasureHow | None:
+    """The reading of a unit's words: a total, per 90, per 100 in any spelling.
 
-
-def _rate(question: str, context: MeasureContext, key: str | None, claims: list[Claim]) -> tuple[str | None, str | None]:
-    """A unit asked for: a NetPoints rate folded into its key (the one
-    adjusted form it has), a per-90 or a per-100 rate of anything else
-    kept as the cell the ranking refuses by name, a team's season total."""
-    unit: str | None = None
-    if context.asked == PLAYER_RANKING:
-        if key in ("netpoints", "netpoints_per_100", "netpoints_total"):
-            # "who are the top 10 in adjusted offensive netpoints" arrived as
-            # the total after the 5.0.0 prompt shrink; the side word decides.
-            sides = [(name, pattern.search(question)) for name, pattern in lexicon.SIDE_WORDS.items()]
-            named_sides = [(name, found) for name, found in sides if found is not None]
-            if len(named_sides) == 1:
-                name, found = named_sides[0]
-                key = f"netpoints_{name}" + ("_per_100" if key.endswith("_per_100") else "")
-                claims.append(Claim(found.start(), found.end(), "measure"))
-        per_90 = lexicon.PER_90.search(question)
-        if per_90 is not None:
-            claims.append(Claim(per_90.start(), per_90.end(), "measure"))
-            return key, per_90.group(0).casefold()
-        rate = lexicon.RATE_WORDS.search(question)
-        if rate is not None:
-            claims.append(Claim(rate.start(), rate.end(), "measure"))
-            if key in _NETPOINTS_PER_100:
-                key = _NETPOINTS_PER_100[key]
-            elif not (key is not None and key.endswith("_per_100")):
-                unit = rate.group(0).casefold()
-    if context.asked == TEAM_LINE and unit is None:
-        total = lexicon.TEAM_TOTAL.search(question)
-        if total is not None and lexicon.PER_GAME_WORDS.search(question) is None:
-            unit = "total"
-            claims.append(Claim(total.start(), total.end(), "measure"))
-    return key, unit
-
-
-def _how_of(unit: str) -> MeasureHow | None:
-    """The reading of a unit's words: a total, per 90, per 100 in any spelling."""
+    .. versionadded:: 6.0.0
+    """
     low = unit.casefold()
     if low == "total":
         return "total"
@@ -813,77 +723,12 @@ def _how_of(unit: str) -> MeasureHow | None:
     return "per_100"
 
 
-def _per_game_log(question: str, key: str | None) -> bool:
-    """A quarter's or half's figure asked game by game: a log, or "games"
-    with no stat named (measured, 7 of the 11 questions the retired reader
-    answered first said "log", "by game" or "each game" and got a total)."""
-    return lexicon.LOG_WORDS.search(question) is not None or (lexicon.PERIOD_GAMES_WORDS.search(question) is not None and key is None)
+BESIDE_KEYS: frozenset[str] = frozenset({"points", "rebounds", "assists", "steals", "blocks", "minutes"})
+"""The box-score averages a ranking can show beside its metric, by key
+(``metrics.EXTRA_FIELD_COLUMNS``'s keys, declared here on the reader's side).
 
-
-def _side(question: str, context: MeasureContext, claims: list[Claim]) -> MeasureSide | None:
-    """The side of the ball a fingerprint asked for: the words first
-    (exactly one side named; both is the whole radar), the model's where
-    the words say nothing. Dropped often enough by a model that defers to
-    its required key ("Show me Wembanyama's defensive fingerprint chart"
-    spent the adjective on ``stat="defensive"``, 6/6 at temperature 0)."""
-    if context.asked != NETPOINTS_FINGERPRINT:
-        return None
-    found = [(name, pattern.search(question)) for name, pattern in lexicon.SIDE_WORDS.items()]
-    named_sides = [(name, match) for name, match in found if match is not None]
-    if len(named_sides) == 1:
-        name, match = named_sides[0]
-        claims.append(Claim(match.start(), match.end(), "measure"))
-        return name  # type: ignore[return-value]
-    return context.side if context.side in ("offense", "defense", "total") else None  # type: ignore[return-value]
-
-
-def _shot_value(question: str, context: MeasureContext, claims: list[Claim]) -> Literal[1, 2, 3] | None:
-    """Which shots a distance or a chart is about: the model's value where
-    it filed one, else exactly one value named ("twos and threes" is
-    neither); never beside "td3s", a triple-double the model read as a three."""
-    if context.asked not in _SHOT_VALUE_ASKS or lexicon.TRIPLE_DOUBLE_ABBREVIATION.search(question):
-        return None
-    if isinstance(context.shot_value, int) and not isinstance(context.shot_value, bool):
-        return context.shot_value  # type: ignore[return-value]
-    found = [(value, pattern.search(question)) for value, pattern in lexicon.SHOT_VALUE_WORDS]
-    named_values = [(value, match) for value, match in found if match is not None]
-    if len(named_values) != 1:
-        return None
-    value, match = named_values[0]
-    claims.append(Claim(match.start(), match.end(), "measure"))
-    return value  # type: ignore[return-value]
-
-
-def _beside(question: str, context: MeasureContext, claims: list[Claim]) -> tuple[str, ...]:
-    """The columns a ranking asks to see beside its measure: each stat word
-    after "with their" / "alongside their" that the ranking shows
-    (:data:`~association.query.metrics.EXTRA_FIELD_COLUMNS`'s six, by their
-    box-score word), and "team" for the team each player plays for. Only
-    for the ranking, the one reader that shows them; a word it cannot show
-    is left out, and the answer is the ranking the question also asked for."""
-    if context.fields:
-        return tuple(context.fields)
-    if context.asked != PLAYER_RANKING:
-        return ()
-    fields: list[str] = []
-    after = lexicon.FIELDS_AFTER.search(question)
-    if after is not None:
-        for word in lexicon.WORD.findall(after.group("rest").lower()):
-            key = lexicon.MEASURE_WORDS.get(word)
-            if key in _BESIDE_KEYS and key not in fields:
-                fields.append(key)
-        if fields:
-            claims.append(Claim(after.start(), after.end(), "measure"))
-    team = lexicon.TEAM_FIELD_WORDS.search(question)
-    if team is not None:
-        fields.append("team")
-        claims.append(Claim(team.start(), team.end(), "measure"))
-    return tuple(fields)
-
-
-#: The box-score averages a ranking can show beside its metric
-#: (``metrics.EXTRA_FIELD_COLUMNS``'s keys, declared here on the reader's side).
-_BESIDE_KEYS: frozenset[str] = frozenset({"points", "rebounds", "assists", "steals", "blocks", "minutes"})
+.. versionadded:: 6.0.0
+"""
 
 
 def spelled(measure: Measure | None) -> str | None:

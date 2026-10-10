@@ -339,7 +339,7 @@ class Window:
     count: int | None = None
     #: What ``count`` counts: ``"games"``, or ``"seasons"`` where a history
     #: reads "the past 5 years" as its count of seasons
-    #: (:data:`~association.query.span.LIMIT_COUNTS_SEASONS`).
+    #: (:data:`~association.query.point.LIMIT_COUNTS_SEASONS`).
     of: Literal["games", "seasons"] = "games"
     #: Which end of a team ranking was asked for ("most", "fewest", "best",
     #: "worst"; :data:`~association.query.lexicon.RANK_WORDS`), which the

@@ -1,8 +1,8 @@
 """The period tagger: the one reader of what a read SEES of each game
 (:class:`~association.query.reading.Period`) - one quarter ("1st quarter",
 "q1", "4th qtr") or one half ("first half", "2h") - from the lexicon's words
-(:mod:`association.query.lexicon`) and the one fact of the question the
-stages settled before it: the intent. It claims the characters it read
+(:mod:`association.query.lexicon`) alone - whether the reader takes it is
+the key's reading (:func:`~association.query.point.period_under`). It claims the characters it read
 (:class:`~association.query.reading.Claim`), once.
 
 Phase 3, step 2's fourth slice: until it, ``router._period_asked`` read
@@ -23,7 +23,8 @@ question"). The tagger keeps that: it reads which period the words name
 wherever they name one (:func:`which_period`, which the intent stage and
 the line slice's condition reader call too, so no second copy of "first |
 second | 1st | 2nd" is written), and keeps the value under a reader that
-takes one (:data:`PERIOD_ASKS`).
+takes one (:data:`~association.query.point.PERIOD_ASKS`, the key's reading,
+:func:`~association.query.point.period_under`).
 
 A "by quarter" question reads NO period: the breakdown across all four is
 the point's shape (``point._default_period_split``, ``Reading.by="period"``),
@@ -40,28 +41,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from association.query import lexicon
-from association.query.reading import PERIOD_LOG, PERIOD_RANKING, TEAM_PERIOD_TOTAL, Claim, Period, PointShape
-
-PERIOD_ASKS: frozenset[PointShape] = frozenset({PERIOD_LOG, PERIOD_RANKING, TEAM_PERIOD_TOTAL})
-"""The readers that take a quarter or half: a named player's figure in one,
-the league's ranking by one, a team's own. The value is kept under these
-alone, as the stages wrote it (the measurement above); on any other
-intent the words are declined by the point reader's guard, and the value
-is dropped as it was.
-
-.. versionadded:: 6.0.0
-"""
-
-
-@dataclass(frozen=True, kw_only=True)
-class PeriodContext:
-    """What the stages settled before the period is read: what the words ask
-    (``asked``, the grammar's key - an intent's name until Phase 3, step 4).
-
-    .. versionadded:: 6.0.0
-    """
-
-    asked: PointShape | None
+from association.query.reading import Claim, Period
 
 
 @dataclass(frozen=True)
@@ -100,15 +80,19 @@ def which_period(text: str) -> tuple[Period, Claim] | None:
     return Period(number=number), Claim(quarter.start(), quarter.end(), "period")
 
 
-def read_period(question: str, context: PeriodContext) -> PeriodRead:
-    """The period ``question``'s words name, kept under a reader that takes
-    one (:data:`PERIOD_ASKS`), with the claim; the whole game and no
-    claim otherwise.
+def read_period(question: str) -> PeriodRead:
+    """The period ``question``'s words name, with the claim; the whole game
+    and no claim where they name none. Whether the reader takes it is the
+    key the words ask, decided where the parser writes the Reading
+    (:func:`~association.query.point.period_under`).
 
     .. versionadded:: 6.0.0
+
+    .. versionchanged:: 6.0.0
+       Reads no key (Phase 3, step 4, slice (b)): it took a ``PeriodContext``
+       and kept the period under ``PERIOD_ASKS`` alone, which
+       :func:`~association.query.point.period_under` does now.
     """
-    if context.asked not in PERIOD_ASKS:
-        return PeriodRead(None, ())
     named = which_period(question)
     if named is None:
         return PeriodRead(None, ())

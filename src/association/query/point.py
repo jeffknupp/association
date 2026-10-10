@@ -28,9 +28,11 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from association.nba.season import current_season
 from association.query import lexicon
+from association.query.cuts import CutsRead
 from association.query.entities import BOX_SCORES, SHOT_AVAILABILITY
+from association.query.line import LineCandidate, LineCandidates, LinesRead
 from association.query.lines import measure_filters, relation_lines, threshold_count_line, threshold_line, threshold_of
-from association.query.measure import named_by_a_team_metric
+from association.query.measure import GAMES_STATS, MADE_TO_ATTEMPTED, NETPOINTS_PER_100, MeasureContext, MeasureRead, MeasureWords, how_of, key_of, named_by_a_team_metric
 from association.query.measures import (
     BOOLEAN_MEASURES,
     DERIVED_LINES,
@@ -48,6 +50,7 @@ from association.query.measures import (
     streak_column,
 )
 from association.query.metrics import PER_GAME_MIN_GAMES
+from association.query.period import PeriodRead
 from association.query.reading import (
     DEFAULT_GAME_LOG_LIMIT,
     DEFAULT_LIMIT,
@@ -82,13 +85,20 @@ from association.query.reading import (
     TEAM_RECORD,
     Aggregate,
     Cause,
+    Claim,
     Filtered,
     Group,
+    Line,
+    Measure,
+    MeasureHow,
+    MeasureSide,
     PointRefused,
     PointShape,
     Reading,
     Shape,
+    Span,
     Unsupported,
+    Window,
     _career_scope,
     _clamp_limit,
     asked_label,
@@ -97,7 +107,9 @@ from association.query.reading import (
     scope_reads_box_scores,
 )
 from association.query.reading import named_player_in as _named_player_in
+from association.query.span import SpanCandidates, SpanRead, claimed
 from association.query.subject import with_without_named
+from association.query.window import WindowCandidates, WindowRead, window_end
 
 if TYPE_CHECKING:
     from association.query.subject import Subject
@@ -1596,3 +1608,480 @@ def _read_point(asked: PointShape | None, scope: Filtered, question: str, subjec
         # scope as read, its position with it.
         return _everyone_point(asked, positioned, question, stat_measure(scope.measure))
     return _move_named(asked, scope, question)
+
+
+# --- The key's reading of what the taggers read ----------------------------------
+#
+# Phase 3, step 4, slice (b): the taggers read the words alone - every line,
+# window, span, period, cut and measure word the question holds, with no key
+# - and the key the words ask (``Reading.asked``) decides here which of them
+# stand, one function per family, where the parser writes the Reading
+# (``parse._tagged``). They change what the Reading SAYS - a bare "30 points"
+# is the count's own line and nothing on a log, a quarter is kept on a
+# period shape alone - which is the point reader's to read; the planner's
+# check is whether a relation honors a cell (``compose.plan.cells_unhonored``),
+# and moving these there would move every recorded reading. Measured before
+# the move on the 2,710 readings (``~/association-research/stages/route_family.py``):
+# the key moved the lines on 124 readings, the measure on 176, the period on
+# 120, the window on 150, the span on 219, the cuts on none.
+
+PERIOD_ASKS: frozenset[PointShape] = frozenset({PERIOD_LOG, PERIOD_RANKING, TEAM_PERIOD_TOTAL})
+"""The keys that take a quarter or half: a named player's figure in one,
+the league's ranking by one, a team's own. A period the words name is kept
+under these alone (:func:`period_under`); on any other key the words are
+declined by the point reader's guard.
+
+.. versionadded:: 6.0.0
+   The period tagger's (``period.PERIOD_ASKS``) until Phase 3, step 4,
+   slice (b).
+"""
+
+THRESHOLD_ASKS: frozenset[PointShape] = frozenset({GAMES_COUNTED, LINE_RECORD, LINE_RUNS, GAME_HIGHS})
+"""The keys whose shape is a line on a stat: a count of games over it, a
+record above and below it, a run of games holding it, a high ranked by its
+stat. Under these a bare "30 point games" is a line and the first line the
+words state is the shape's own (keyed); under any other a line stands only
+where the words say so outright - a floor of minutes, a line under a
+number, two or more "N+ stat" pairs on one game (:func:`lines_under`).
+
+.. versionadded:: 6.0.0
+   The lines tagger's (``line.THRESHOLD_ASKS``, ``router._THRESHOLD_ASKS``
+   before it) until Phase 3, step 4, slice (b).
+"""
+
+#: The keys under which exactly one "N+ stat" pair names the measure: the
+#: count, assigned from the words under a parent whose stat the model
+#: filed, and the record.
+_LINES_PAIR_NAMES_THE_STAT: frozenset[PointShape] = frozenset({LINE_RECORD, GAMES_COUNTED})
+
+#: The keys of a player's games that narrow by ONE line stated outright -
+#: "N+ stat", "N or more stat", "at least N stat" - as they narrow by two:
+#: "lebron game log with 20+ points" is his 20-point games (ISSUES.md #357).
+#: A bare "N stat" stays unread there ("harden 61 points" can as well name
+#: one game), and a player's line is not among them.
+_LINES_ONE_NARROWS: frozenset[PointShape] = frozenset({PLAYER_LOG, PLAYER_SPLITS})
+
+ORDER_ASKS: frozenset[PointShape] = frozenset({NETPOINTS_FINGERPRINT, PLAYER_LOG, PERIOD_LOG, NETPOINTS_RATINGS, SHOT_CHART, SHOT_DISTANCE, TEAM_PERIOD_TOTAL})
+"""Keys whose reader honors ``order``, so filling it from the question can
+only make the answer match what was asked: on these the end of the span is
+read from :data:`~association.query.lexicon.ORDER_WORDS` where the grammar
+read none, and on every other key an end the grammar read beside a count of
+more than one is dropped, since the reader would refuse the question for it
+(:func:`window_under`).
+
+.. versionadded:: 2.1.0
+
+.. versionchanged:: 4.4.0
+   Added ``team_quarter_points``: it reads its games through the team-games
+   relation, which honors a window.
+
+.. versionchanged:: 6.0.0
+   The point reader's (the window tagger's until Phase 3, step 4, slice
+   (b), ``router.ORDER_ASKS`` before it).
+"""
+
+#: Keys that honor an end of the span only beside a real count - one game
+#: at one end of it - because filling the end alone would hand "his last
+#: game" to a log of his last ten.
+_WINDOW_ORDER_ON_A_SINGLE_GAME: frozenset[PointShape] = frozenset({PLAYER_LINE})
+
+#: Keys where an end of the span narrows to ONE game rather than ordering a
+#: list (each resolves it to a single event id): an end read beside a count
+#: of two or more costs a whole season here (#153), so the question has to
+#: name a game at one end of the span for it to stand.
+_WINDOW_ORDER_IS_ONE_GAME: frozenset[PointShape] = frozenset({SHOT_CHART, SHOT_DISTANCE, NETPOINTS_RATINGS, NETPOINTS_FINGERPRINT})
+
+#: The keys that honor an end and read one game named as the subject's own
+#: ("his last home game") where the grammar's rows miss it - not the two
+#: period readers, whose quarter's ordinal sits where SINGLE_GAME allows two
+#: words.
+_WINDOW_ONE_GAME_NAMED: frozenset[PointShape] = ORDER_ASKS - {PERIOD_LOG, TEAM_PERIOD_TOTAL}
+
+#: The keys whose ranking has an end the question names ("most", "fewest",
+#: "best", "worst"): a team ranking, and a team's single best quarter or half.
+_WINDOW_RANKED: frozenset[PointShape] = frozenset({TEAM_RANKING, TEAM_PERIOD_TOTAL})
+
+LIMIT_COUNTS_SEASONS: frozenset[PointShape] = frozenset({SEASON_HISTORY})
+"""Keys whose count is of SEASONS rather than games, so a relative span
+("the past 5 years") is that count (:func:`window_under`) and not a range
+of seasons (:func:`span_under`).
+
+.. versionadded:: 6.0.0
+   The span tagger's (``span.LIMIT_COUNTS_SEASONS``) until Phase 3, step 4,
+   slice (b).
+"""
+
+_MEASURE_ADVANCED: frozenset[PointShape] = frozenset({PLAYER_LINE, PLAYER_COMPARISON, SEASON_HISTORY, PLAYER_RANKING, PLAYER_LOG})
+#: Game score's spelling, by the reader: the ranking reads it through the
+#: leaderboard metrics (`avg_game_score`), a player's line through the
+#: advanced stats (`game_score`).
+_MEASURE_GAME_SCORE: dict[PointShape, str] = {PLAYER_RANKING: "avg_game_score", PLAYER_LINE: "game_score"}
+_MEASURE_TWO_POINT_PCT: frozenset[PointShape] = frozenset({SEASON_HISTORY, PLAYER_LINE})
+_MEASURE_SHOT_VALUE: frozenset[PointShape] = frozenset({SHOT_DISTANCE, SHOT_CHART})
+
+
+def period_under(asked: PointShape | None, read: PeriodRead) -> PeriodRead:
+    """The period the words name, kept under a key that takes one
+    (:data:`PERIOD_ASKS`); the whole game and no claim otherwise.
+
+    .. versionadded:: 6.0.0
+    """
+    return read if asked in PERIOD_ASKS else PeriodRead(None, ())
+
+
+def cuts_under(asked: PointShape | None, read: CutsRead, *, split: str | None) -> CutsRead:
+    """The cuts under the key: a venue beside the splits reader's venue
+    split is the split's half, not a cut, and is dropped there; the
+    characters read joined once (:func:`~association.query.span.claimed`).
+
+    .. versionadded:: 6.0.0
+    """
+    venue_split = asked == PLAYER_SPLITS and split == "home_away"
+    cuts = replace(read.cuts, venue=None) if venue_split else read.cuts
+    kept = () if venue_split or read.venue_claim is None else (read.venue_claim,)
+    return CutsRead(cuts, claimed([*kept, *read.claims]), read.dated_since)
+
+
+def lines_under(asked: PointShape | None, read: LineCandidates, *, beside_line: bool = False) -> LinesRead:
+    """The subject's lines under the key, in the question's order, with
+    their claims: fouling out on a count; under a shape that is a line
+    (:data:`THRESHOLD_ASKS`) every "N stat" pair, the first the shape's own
+    (keyed), and "scores N" where no pair stands; elsewhere two or more "N+
+    stat" pairs on one game, which narrow the games together, or the one
+    stated outright on a player's log or splits (never a line a companion
+    beside him reached, ``beside_line``); a floor of minutes and a line
+    under a number on every key; and the measure one "N+ stat" pair names
+    under a count or a record.
+
+    .. versionadded:: 6.0.0
+       ``line.read_lines``' choice until Phase 3, step 4, slice (b).
+    """
+    found: list[tuple[int, Line, Claim]] = []
+    if asked == GAMES_COUNTED:
+        # Fouling out is the count's own line (fouls at six), whatever else
+        # the words number - the grammar's rules chose the count by it.
+        found.extend((candidate.start, candidate.line, candidate.claim) for candidate in read.of("fouled"))
+    pairs = read.of("plus", "at_least", "bare")
+    found.extend(_lines_pairs(asked, pairs, beside_line=beside_line))
+    stat: str | None = None
+    scored = read.of("scored")
+    if asked in THRESHOLD_ASKS and scored:
+        # "scores 30": the verb names the stat, whatever the model filed.
+        found.append((scored[0].start, scored[0].line, scored[0].claim))
+        stat = "points"
+    found.extend((candidate.start, candidate.line, candidate.claim) for candidate in read.of("phrase"))
+    plus = [candidate for candidate in pairs if candidate.how == "plus"]
+    if asked in _LINES_PAIR_NAMES_THE_STAT and len(plus) == 1:
+        stat = plus[0].line.measure
+    found.sort(key=lambda each: each[0])
+    return LinesRead(tuple(line for _, line, _ in found), tuple(claim for _, _, claim in found), stat)
+
+
+def _lines_pairs(asked: PointShape | None, pairs: list[LineCandidate], *, beside_line: bool) -> list[tuple[int, Line, Claim]]:
+    """The "N stat" pairs :func:`lines_under` keeps, each with where it
+    stands and its claim. Under a shape that is a line, every pair, the
+    first the shape's own (keyed); elsewhere two or more "N+ stat" pairs on
+    one game, which the relation narrows by together - one alone is read by
+    nothing there - or ONE stated outright ("N+ stat", "at least N stat")
+    on a player's log or splits (:data:`_LINES_ONE_NARROWS`), never a line a
+    companion beside him reached ("splits when tatum scores 30+ points" is
+    Tatum's line)."""
+    lined = asked in THRESHOLD_ASKS
+    plus = [candidate for candidate in pairs if candidate.how == "plus"]
+    stated = [candidate for candidate in pairs if candidate.how in ("plus", "at_least")]
+    one = asked in _LINES_ONE_NARROWS and not beside_line and len(pairs) == 1 and len(stated) == 1
+    narrowing = stated if one else plus
+    kept: list[tuple[int, Line, Claim]] = []
+    for candidate in pairs:
+        narrows = candidate in narrowing and (len(narrowing) > 1 or one)
+        if lined or narrows:
+            kept.append((candidate.start, replace(candidate.line, keyed=lined and candidate is pairs[0], narrows=narrows), candidate.claim))
+    return kept
+
+
+def window_under(asked: PointShape | None, read: WindowCandidates) -> WindowRead:
+    """The window under the key: the grammar's end and count; a count of
+    seasons where the key counts seasons (:data:`LIMIT_COUNTS_SEASONS`);
+    the end settled against the key (:func:`_window_order`); a ranking's end
+    on the keys that rank by one; the measure a players' ranking of yes/no
+    games is ordered by.
+
+    .. versionadded:: 6.0.0
+       ``window.read_window``'s reading of its intent until Phase 3, step 4,
+       slice (b).
+    """
+    order, count, grammar_claim = read.grammar
+    claims: list[Claim] = [grammar_claim] if grammar_claim is not None else []
+    of: Literal["games", "seasons"] = "games"
+    if asked in LIMIT_COUNTS_SEASONS and read.seasons is not None:
+        # A history's count is of SEASONS: "the past 5 years" IS that count
+        # and needs no range (#140, #114); the span claims the same words as
+        # a range.
+        count, of = read.seasons[0], "seasons"
+        claims.append(read.seasons[1])
+    order, order_claim, single = _window_order(asked, read, order, count)
+    if order_claim is not None:
+        claims.append(order_claim)
+    if single:
+        # One game of a player's line: the end and a count of one together.
+        count, of = 1, "games"
+    rank = None
+    if asked in _WINDOW_RANKED and read.rank is not None:
+        rank = read.rank[0]
+        claims.append(read.rank[1])
+    by = None
+    if asked == PLAYER_RANKING and read.ranked_by is not None:
+        by = read.ranked_by[0]
+        claims.extend(read.ranked_by[1])
+    window = Window(order=window_end(order), count=count, of=of, rank=rank, by=by)
+    return WindowRead(window, claimed(claims))
+
+
+def _window_order(asked: PointShape | None, read: WindowCandidates, order: str | None, count: int | None) -> tuple[str | None, Claim | None, bool]:
+    """Which end of the span the rows are taken from, settled against the
+    key - three rules, each measured: one game of a player's line ("his
+    last game") is that game, the end and a count of one together; on a key
+    whose reader honors an end (:data:`ORDER_ASKS`) one the grammar missed
+    is read from the looser end words where exactly one matches - after one
+    game named as his ("his last home game") - and on the four where an end
+    means ONE game it stands only where the words name a game at one end;
+    on any other key an end read beside a count of two or more is dropped
+    (:func:`_window_order_elsewhere`). Returns the end, its claim, and
+    whether one game of a line was named."""
+    if asked in _WINDOW_ORDER_ON_A_SINGLE_GAME:
+        if read.single is not None:
+            return read.single[0], read.single[1], True
+        return *_window_order_elsewhere(read, order, count), False
+    if asked in ORDER_ASKS:
+        claim = None
+        if order is None and count is None and asked in _WINDOW_ONE_GAME_NAMED and read.single is not None:
+            return read.single[0], read.single[1], True
+        if order is None and len(read.order_words) == 1:
+            order, claim = read.order_words[0]
+        if order is not None and asked in _WINDOW_ORDER_IS_ONE_GAME and read.single is None and not read.order_words:
+            return None, None, False
+        return order, claim, False
+    return *_window_order_elsewhere(read, order, count), False
+
+
+def _window_order_elsewhere(read: WindowCandidates, order: str | None, count: int | None) -> tuple[str | None, Claim | None]:
+    """An end on a key whose reader honors none: kept beside a count of one
+    (one game is what was asked, and the reader refuses or hands it on by
+    name) or where the words say it with "games" outright, dropped beside a
+    larger count the reader can still take."""
+    if order is not None and count not in (None, 1) and not read.order_words:
+        return None, None
+    return order, None
+
+
+#: The career a key implies, by the words' rule it reads under
+#: (``span.SpanCandidates.implied``): a pair's record, a log's meetings with
+#: an opponent, a count asked of one player.
+_SPAN_IMPLIED: dict[PointShape, str] = {PLAYER_MEETINGS: "meetings", PLAYER_LOG: "log", GAMES_COUNTED: "count"}
+
+
+def span_under(asked: PointShape | None, read: SpanCandidates) -> SpanRead:
+    """The span under the key: a relative "past N seasons" a range of
+    seasons, except where the key counts seasons (a history's window counts
+    them, :data:`LIMIT_COUNTS_SEASONS`); the career a pair's record, a log's
+    meetings with an opponent and a count asked of one player imply, each
+    under its own key; and both season types on a log of the newest N
+    games where no career or range stands.
+
+    .. versionadded:: 6.0.0
+       ``span.read_span``'s reading of its intent until Phase 3, step 4,
+       slice (b).
+    """
+    since = read.since if read.relative is None or asked in LIMIT_COUNTS_SEASONS else read.relative
+    season, career = read.season, read.career
+    implied = _SPAN_IMPLIED.get(asked) if asked is not None else None
+    if implied is not None and implied in read.implied:
+        career, season = True, None
+    both = read.both or (asked == PLAYER_LOG and read.both_on_log and not career and since is None)
+    return SpanRead(Span(season=season, season_type=read.season_type, both=both, career=career, since=since, until=read.until), read.claims)
+
+
+def measure_under(asked: PointShape | None, words: MeasureWords, context: MeasureContext) -> MeasureRead:
+    """The measure under the key, with the claims: the words' own reading
+    over the model's key (:func:`~association.query.measure.named`), then
+    each rule in order - the keys' own measures (fouling out, a games count
+    under a line's reader, a stat kept only where named), an advanced
+    metric, game score, a 2-point percentage, a ranking by shot distance,
+    the attempts beside a make, a team metric's alias, games won or lost,
+    the stat beside a line, a NetPoints rate, a team's total, a quarter's
+    figure game by game, a run's result, the side, the shots, and the
+    columns beside a ranking.
+
+    .. versionadded:: 6.0.0
+       ``measure.read_measure``'s reading of its intent until Phase 3, step
+       4, slice (b).
+    """
+    claims: list[Claim] = []
+    key = context.key
+    if words.worded is not None:
+        key = words.worded[0]
+        claims.append(words.worded[1])
+    key = _measure_key_by_ask(asked, words, context, key, from_words=words.worded is not None)
+    key = _measure_key_by_words(asked, words, context, key, claims)
+    key, unit = _measure_rate(asked, words, key, claims)
+    how: MeasureHow | None = None
+    if unit is not None:
+        how = how_of(unit)
+    elif asked == PERIOD_LOG and (words.log or (words.period_games and key is None)):
+        # A quarter's or half's figure asked game by game: a log, or "games"
+        # with no stat named.
+        how = "per_game"
+    of_wins = None
+    if asked == LINE_RUNS:
+        of_wins = words.losing is None
+        if words.losing is not None:
+            claims.append(Claim(words.losing.start(), words.losing.end(), "measure"))
+    side = _measure_side(asked, words, context, claims)
+    shot_value = _measure_shot_value(asked, words, context, claims)
+    beside = _measure_beside(asked, words, context, claims)
+    # One claim per stretch read: the grammar and a rule may read the same
+    # words ("ts%" is the grammar's key and the advanced metric's word).
+    distinct = tuple(dict.fromkeys(claim for claim in claims if claim.end > claim.start))
+    if key is None and unit is None and how is None and of_wins is None and side is None and shot_value is None and not beside:
+        return MeasureRead(None, distinct)
+    catalog_key, whose, keyed_side, keyed_how, category = key_of(key)
+    measure = Measure(
+        key=catalog_key,
+        as_typed=key,
+        how=how if how is not None else keyed_how,
+        unit=unit,
+        whose=whose,
+        side=side if side is not None else keyed_side,
+        shot_value=shot_value,
+        category=category,
+        won=of_wins,
+        beside=beside,
+    )
+    return MeasureRead(measure, distinct)
+
+
+def _measure_key_by_ask(asked: PointShape | None, words: MeasureWords, context: MeasureContext, key: str | None, *, from_words: bool) -> str | None:
+    """The key the key's own reading writes or drops: fouling out is the
+    count's own stat; a games count on a line's reader is no measure; a
+    quarter's or a half's stat is kept only where the words name one (the
+    model fills the required key whether or not they do); a comparison's,
+    a line's, a team's and a run's likewise. The drop is the MODEL's key's
+    alone (``from_words`` False): a measure the words named stands
+    ("grayson allen 3s made last season", ISSUES.md, closed)."""
+    if words.fouled and asked == GAMES_COUNTED:
+        key = "fouls"
+    if asked == PLAYER_LOG and key in ("games", "game"):
+        key = None
+    if asked == PLAYER_LINE and key in GAMES_STATS and words.how_many and not context.order_named:
+        key = None
+    if asked == PLAYER_COMPARISON and not words.names_a_stat:
+        # The comparison's whole line holds the stat asked about, and its
+        # reader refuses a named one outright - the words' key too.
+        key = None
+    if not from_words:
+        if asked in (PERIOD_LOG, PERIOD_RANKING, PLAYER_LINE, LINE_RUNS) and not words.names_a_stat:
+            key = None
+        if asked == TEAM_LINE and not (words.names_a_stat or words.team_stat):
+            key = None
+    if words.td3:
+        key = "triple_double"
+    return key
+
+
+def _measure_key_by_words(asked: PointShape | None, words: MeasureWords, context: MeasureContext, key: str | None, claims: list[Claim]) -> str | None:
+    """The key the words name beyond the grammar, each where a reader looks
+    it up: an advanced metric, game score (by the reader's own spelling), a
+    2-point percentage, a ranking by shot distance (the sentinel the ranking
+    refuses by name), the attempts beside a make, a team metric's alias,
+    games won or lost under a record over no keyed line, and the stat read
+    beside a line."""
+    if asked in _MEASURE_ADVANCED and words.advanced is not None:
+        key = words.advanced[0]
+        claims.append(Claim(words.advanced[1].start(), words.advanced[1].end(), "measure"))
+    if asked in _MEASURE_GAME_SCORE and words.game_score is not None:
+        key = _MEASURE_GAME_SCORE[asked]
+        claims.append(Claim(words.game_score.start(), words.game_score.end(), "measure"))
+    if asked in _MEASURE_TWO_POINT_PCT and words.two_point is not None:
+        key = "twoPointFieldGoalPct"
+        claims.append(Claim(words.two_point.start(), words.two_point.end(), "measure"))
+    if asked == PLAYER_RANKING and words.shot_distance is not None:
+        key = "shot_distance"
+        claims.append(Claim(words.shot_distance.start(), words.shot_distance.end(), "measure"))
+    if key in MADE_TO_ATTEMPTED and words.attempted is not None and not words.made:
+        key = MADE_TO_ATTEMPTED[key]
+        claims.append(Claim(words.attempted.start(), words.attempted.end(), "measure"))
+    if asked in (TEAM_LINE, TEAM_RANKING) and words.team_alias is not None:
+        key = words.team_alias[0]
+        claims.append(words.team_alias[1])
+    if asked == LINE_RECORD and not context.keyed_line and words.games_won is not None:
+        return "losses" if words.games_won.group(1).lower().startswith("los") else "wins"
+    if context.line_stat is not None:
+        key = context.line_stat
+    return key
+
+
+def _measure_rate(asked: PointShape | None, words: MeasureWords, key: str | None, claims: list[Claim]) -> tuple[str | None, str | None]:
+    """A unit asked for: a NetPoints rate folded into its key (the one
+    adjusted form it has), a per-90 or a per-100 rate of anything else kept
+    as the cell the ranking refuses by name, a team's season total."""
+    unit: str | None = None
+    if asked == PLAYER_RANKING:
+        if key in ("netpoints", "netpoints_per_100", "netpoints_total") and len(words.sides) == 1:
+            # "who are the top 10 in adjusted offensive netpoints" arrived as
+            # the total after the 5.0.0 prompt shrink; the side word decides.
+            name, found = words.sides[0]
+            key = f"netpoints_{name}" + ("_per_100" if key.endswith("_per_100") else "")
+            claims.append(Claim(found.start(), found.end(), "measure"))
+        if words.per_90 is not None:
+            claims.append(Claim(words.per_90.start(), words.per_90.end(), "measure"))
+            return key, words.per_90.group(0).casefold()
+        if words.rate is not None:
+            claims.append(Claim(words.rate.start(), words.rate.end(), "measure"))
+            if key in NETPOINTS_PER_100:
+                key = NETPOINTS_PER_100[key]
+            elif not (key is not None and key.endswith("_per_100")):
+                unit = words.rate.group(0).casefold()
+    if asked == TEAM_LINE and unit is None and words.team_total is not None and not words.per_game:
+        unit = "total"
+        claims.append(Claim(words.team_total.start(), words.team_total.end(), "measure"))
+    return key, unit
+
+
+def _measure_side(asked: PointShape | None, words: MeasureWords, context: MeasureContext, claims: list[Claim]) -> MeasureSide | None:
+    """The side of the ball a fingerprint asked for: the words first
+    (exactly one side named; both is the whole radar), the model's where
+    the words say nothing."""
+    if asked != NETPOINTS_FINGERPRINT:
+        return None
+    if len(words.sides) == 1:
+        name, match = words.sides[0]
+        claims.append(Claim(match.start(), match.end(), "measure"))
+        return name  # type: ignore[return-value]
+    return context.side if context.side in ("offense", "defense", "total") else None  # type: ignore[return-value]
+
+
+def _measure_shot_value(asked: PointShape | None, words: MeasureWords, context: MeasureContext, claims: list[Claim]) -> Literal[1, 2, 3] | None:
+    """Which shots a distance or a chart is about: the model's value where
+    it filed one, else exactly one value named ("twos and threes" is
+    neither); never beside "td3s", a triple-double the model read as a three."""
+    if asked not in _MEASURE_SHOT_VALUE or words.td3:
+        return None
+    if isinstance(context.shot_value, int) and not isinstance(context.shot_value, bool):
+        return context.shot_value  # type: ignore[return-value]
+    if len(words.shot_values) != 1:
+        return None
+    value, match = words.shot_values[0]
+    claims.append(Claim(match.start(), match.end(), "measure"))
+    return value  # type: ignore[return-value]
+
+
+def _measure_beside(asked: PointShape | None, words: MeasureWords, context: MeasureContext, claims: list[Claim]) -> tuple[str, ...]:
+    """The columns a ranking asks to see beside its measure - a test's own
+    where it hands them, on any key - and the words' on a ranking alone."""
+    if context.fields:
+        return tuple(context.fields)
+    if asked != PLAYER_RANKING:
+        return ()
+    fields, read = words.beside
+    claims.extend(read)
+    return fields

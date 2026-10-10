@@ -28,22 +28,15 @@ from dataclasses import dataclass, fields, is_dataclass
 
 from association.nba.season import current_season
 from association.query import lexicon
-from association.query.reading import GAMES_COUNTED, PLAYER_LOG, PLAYER_MEETINGS, SEASON_HISTORY, Claim, PointShape, SeasonType, Span
-
-LIMIT_COUNTS_SEASONS: frozenset[PointShape] = frozenset({SEASON_HISTORY})
-"""Intents whose ``limit`` counts SEASONS rather than games, so a relative
-span ("the past 5 years") is that count (``router._route_relative_window``)
-and not a range of seasons.
-
-.. versionadded:: 6.0.0
-"""
+from association.query.reading import Claim, SeasonType, Span
 
 
 @dataclass(frozen=True, kw_only=True)
 class SpanContext:
-    """What the stages settled before the span is read, and the tagger's
-    rules read beside the words: what they settled the words to ask
-    (``asked``, the grammar's key - an intent's name until Phase 3, step 4);
+    """What was settled before the span is read, and the tagger's rules
+    read beside the words (the key the words ask is no context since Phase
+    3, step 4, slice (b): :func:`~association.query.point.span_under` reads
+    the span under it):
     whether the words name a player (a count of his games with no season is his career),
     a window (a log's "last N vs the Pistons" with no season is every
     meeting), "vs", "how many" and "record"; the window as settled
@@ -56,7 +49,6 @@ class SpanContext:
     .. versionadded:: 6.0.0
     """
 
-    asked: PointShape | None
     player_named: bool = False
     window_named: bool = False
     versus: bool = False
@@ -82,10 +74,47 @@ class SpanRead:
     claims: tuple[Claim, ...]
 
 
-def read_span(question: str, context: SpanContext) -> SpanRead:
-    """The span ``question``'s words name, under ``context``.
+@dataclass(frozen=True)
+class SpanCandidates:
+    """The span the words name, read with no key: the season, the type and
+    both at once, a career, the range (its first and last season, and the
+    first a relative "past N seasons" reaches, which a history reads as its
+    count of seasons instead), and the words three implied careers and a
+    log's both types turn on - which of them stand is the key the words
+    ask (:func:`~association.query.point.span_under`).
 
     .. versionadded:: 6.0.0
+    """
+
+    season: int | None
+    season_type: SeasonType
+    both: bool
+    career: bool
+    since: int | None
+    until: int | None
+    relative: int | None
+    claims: tuple[Claim, ...]
+    #: The implied careers the words hold, by the key each is read under:
+    #: ``meetings`` (a pair's record), ``log`` (a log's meetings with an
+    #: opponent), ``count`` (a count asked of one player with no season).
+    implied: frozenset[str]
+    #: A newest-N window with a real count naming no type, no series game
+    #: and no day: a log reads both types there, where no career or range
+    #: stands.
+    both_on_log: bool
+
+
+def read_span(question: str, context: SpanContext) -> SpanCandidates:
+    """The span ``question``'s words name, under ``context``, with no key
+    (:class:`SpanCandidates`).
+
+    .. versionadded:: 6.0.0
+
+    .. versionchanged:: 6.0.0
+       Reads no key (Phase 3, step 4, slice (b)): the rules that read the
+       stages' intent - a history's relative seasons, the three implied
+       careers, a log's both types - are
+       :func:`~association.query.point.span_under`'s.
     """
     claims: list[Claim] = []
     season, season_words = _season(question)
@@ -95,17 +124,25 @@ def read_span(question: str, context: SpanContext) -> SpanRead:
     career, career_claim = career_named(question)
     if career_claim is not None:
         claims.append(career_claim)
-    since, until, range_claims, ranged = _range(question, context, career)
+    since, until, range_claims, ranged, relative = _range(question, context, career)
     claims.extend(range_claims)
     if ranged:
         # A range the words name replaces the season: "most 3 pointers made
         # since 2020" became season=2020 before this, and was answered as the
         # 2020 regular season's games alone.
         season = None
-    if _implied_career(question, context, career):
-        career, season = True, None
-    span = Span(season=season, season_type=season_type, both=both or _reads_both_types(question, context, career, since), career=career, since=since, until=until)
-    return SpanRead(span, claimed(claims))
+    return SpanCandidates(
+        season=season,
+        season_type=season_type,
+        both=both,
+        career=career,
+        since=since,
+        until=until,
+        relative=relative,
+        claims=claimed(claims),
+        implied=_implied_career(question, context, career),
+        both_on_log=_reads_both_types(question, context),
+    )
 
 
 def _season(question: str) -> tuple[int | None, list[Claim]]:
@@ -160,7 +197,7 @@ def career_named(question: str) -> tuple[bool, Claim | None]:
     return False, None
 
 
-def _range(question: str, context: SpanContext, career: bool) -> tuple[int | None, int | None, list[Claim], bool]:
+def _range(question: str, context: SpanContext, career: bool) -> tuple[int | None, int | None, list[Claim], bool, int | None]:
     """The first and last season of the range the words name, the
     characters that named it, and whether a range was read at all (which
     drops a named season) - in the order the stages read them: a range
@@ -169,19 +206,18 @@ def _range(question: str, context: SpanContext, career: bool) -> tuple[int | Non
     closed and open forms, which replace it, then a relative "past N
     seasons" (which a history reads as its count of seasons instead, since
     its window counts seasons rather than games, and which drops the
-    season either way)."""
+    season either way) - the first season that reaches returned apart, for
+    the key's reading (:func:`~association.query.point.span_under`)."""
     since: int | None = None if career else context.dated_since
     ranged = since is not None
     found = _validate_range(question)
     if found is not None:
         first, last, range_claims = found
-        return first, last, range_claims, True
+        return first, last, range_claims, True, None
     relative = _relative_since(question)
     if relative is None:
-        return since, None, [], ranged
-    if context.asked in LIMIT_COUNTS_SEASONS:
-        return since, None, [relative[1]], True
-    return relative[0], None, [relative[1]], True
+        return since, None, [], ranged, None
+    return since, None, [relative[1]], True, relative[0]
 
 
 def _validate_range(question: str) -> tuple[int, int | None, list[Claim]] | None:
@@ -283,7 +319,7 @@ def relative_seasons(question: str) -> int | None:
     return None if found is None else current_season() - found[0] + 1
 
 
-def _implied_career(question: str, context: SpanContext, career: bool) -> bool:
+def _implied_career(question: str, context: SpanContext, career: bool) -> frozenset[str]:
     """A career the question implies without a career word, each a measured
     rule: a pair's record with no season named is their meetings across
     their careers ("steph curry record vs lebron regular season without kd",
@@ -294,17 +330,22 @@ def _implied_career(question: str, context: SpanContext, career: bool) -> bool:
     and a count asked of one player with no season in sight is his career
     ("how many times has embiid fouled out?" is 0 this season and 9 in his
     career, and only the second is the question - product decision,
-    2026-09-19). A season the question names, this one included, still wins."""
+    2026-09-19). A season the question names, this one included, still wins.
+    Returns the rules whose words hold, by the key each reads under; which
+    stands is the key's (:func:`~association.query.point.span_under`)."""
     if lexicon.season_from_text(question) is not None or lexicon.SEASON_WORDS.search(question):
-        return False
-    if context.asked == PLAYER_MEETINGS and context.record:
-        return True
-    if context.asked == PLAYER_LOG and context.versus and (context.window_named or lexicon.LAST_WORD.search(question) or lexicon.BOTH_SEASON_TYPES_WORDS.search(question)):
-        return True
-    return context.asked == GAMES_COUNTED and context.player_named and context.how_many and not career and not context.season_n
+        return frozenset()
+    held: set[str] = set()
+    if context.record:
+        held.add("meetings")
+    if context.versus and (context.window_named or lexicon.LAST_WORD.search(question) or lexicon.BOTH_SEASON_TYPES_WORDS.search(question)):
+        held.add("log")
+    if context.player_named and context.how_many and not career and not context.season_n:
+        held.add("count")
+    return frozenset(held)
 
 
-def _reads_both_types(question: str, context: SpanContext, career: bool, since: int | None) -> bool:
+def _reads_both_types(question: str, context: SpanContext) -> bool:
     """A "last N games" log naming no season type reads both and takes the
     newest N by date, rather than silently defaulting to the regular season
     ("Show me the Knicks last 5 games" used to list games through
@@ -312,12 +353,14 @@ def _reads_both_types(question: str, context: SpanContext, career: bool, since: 
     the shape: a newest-first window with a real count, and nothing already
     fixing which games are meant - a game of a KNOWN playoff series, a
     career (no single year to mix two types within), a range of seasons,
-    one calendar day - and no type named either way."""
-    if context.asked != PLAYER_LOG or context.order != "recent":
+    one calendar day - and no type named either way. A log's alone, and
+    only where no career or range stands: the key's reading
+    (:func:`~association.query.point.span_under`)."""
+    if context.order != "recent":
         return False
     if not isinstance(context.limit, int) or context.limit < 1:
         return False
-    if context.game_n or career or since is not None or context.date:
+    if context.game_n or context.date:
         return False
     return not (lexicon.PLAYOFF_WORDS.search(question) or lexicon.REGULAR_SEASON_WORDS.search(question))
 

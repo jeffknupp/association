@@ -23,19 +23,20 @@ from association.query.answer import AnswerContext
 from association.query.compose.core import Query, compile_query, rows_of
 from association.query.compose.plan import cells_stated
 from association.query.player_relation import RELATION_SCOPING, RELATION_SCOPING_EXCLUDED, relation_window
+from association.query.point import ORDER_ASKS, span_under, window_under
 from association.query.reading import Claim, Cuts, PointShape, Reading, ScopeError, Span, Window, unhonored_cells
 from association.query.reading import Subject as Who
 from association.query.season_line import history_seasons
 from association.query.span import SpanContext, claimed, read_span
 from association.query.team_games import TeamNarrowed, rows_sql
 from association.query.team_relation import TEAM_RELATION_SCOPING, TEAM_RELATION_SCOPING_EXCLUDED, scoped_team, team_games
-from association.query.window import ORDER_ASKS, WindowContext, WindowRead, read_window
+from association.query.window import WindowContext, WindowRead, read_window
 
 S = current_season()
 
 
 def _read(question: str, intent: str = "game_log", **context: Any) -> Window:
-    return read_window(question, WindowContext(asked=asked(intent), **context)).window
+    return window_under(asked(intent), read_window(question, WindowContext(**context))).window
 
 
 # ---------------- the tagger: words to a Window ----------------
@@ -146,14 +147,14 @@ def test_a_team_rankings_end_and_a_boolean_rankings_measure() -> None:
 
 def test_the_tagger_claims_the_characters_it_read_once() -> None:
     question = "jokic stats in his last 5 playoff games"
-    read = read_window(question, WindowContext(asked=asked("game_log")))
+    read = window_under(asked("game_log"), read_window(question, WindowContext()))
     assert read.claims == (Claim(19, 39, "window"),)
     assert question[19:39] == "last 5 playoff games"
-    ranked = read_window("players with the highest scoring triple doubles", WindowContext(asked=asked("leaderboard"), boolean_stat=True))
+    ranked = window_under(asked("leaderboard"), read_window("players with the highest scoring triple doubles", WindowContext(boolean_stat=True)))
     assert [c.what for c in ranked.claims] == ["ranked_by"] and ranked.claims[0].start == 17
-    history = read_window("sga's 2pt percentage for the past 5 years", WindowContext(asked=asked("player_history")))
+    history = window_under(asked("player_history"), read_window("sga's 2pt percentage for the past 5 years", WindowContext()))
     assert history.claims == (Claim(29, 41, "window"),)
-    rank = read_window("nba team with least playoff wins", WindowContext(asked=asked("team_leaderboard")))
+    rank = window_under(asked("team_leaderboard"), read_window("nba team with least playoff wins", WindowContext()))
     assert rank.claims == (Claim(14, 19, "rank"),)
 
 
@@ -173,8 +174,8 @@ def test_the_windows_claims_and_the_spans_fold_and_never_cross(question: str) ->
     claim ("playoff" in "last 5 playoff games") folds, and a partial overlap
     would be two rules reading one word, which fails the reader."""
     intent = "player_history" if "past" in question else "game_log"
-    window = read_window(question, WindowContext(asked=asked(intent)))
-    span = read_span(question, SpanContext(asked=asked(intent), window_named=window.window.count is not None, order=window.window.order, limit=window.window.count))
+    window = window_under(asked(intent), read_window(question, WindowContext()))
+    span = span_under(asked(intent), read_span(question, SpanContext(window_named=window.window.count is not None, order=window.window.order, limit=window.window.count)))
     merged = claimed([*window.claims, *span.claims])
     assert all(a.end <= b.start for a, b in itertools.pairwise(merged))
 
@@ -298,5 +299,5 @@ def test_the_window_cell_changes_what_the_team_relation_reads(team_cells_con: An
 
 
 def test_read_window_returns_the_window_and_its_claims() -> None:
-    read = read_window("curry last 3 games", WindowContext(asked=asked("game_log")))
+    read = window_under(asked("game_log"), read_window("curry last 3 games", WindowContext()))
     assert isinstance(read, WindowRead) and read.window == Window(order="recent", count=3) and len(read.claims) == 1

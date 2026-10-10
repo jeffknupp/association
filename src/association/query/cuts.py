@@ -37,24 +37,23 @@ from typing import Literal
 
 from association.nba.season import current_season
 from association.query import lexicon
-from association.query.reading import PLAYER_SPLITS, Claim, Cuts, PointShape, situation_of
-from association.query.span import career_named, claimed
+from association.query.reading import Claim, Cuts, situation_of
+from association.query.span import career_named
 
 
 @dataclass(frozen=True, kw_only=True)
 class CutsContext:
     """What the stages settled before the cuts are read, and the tagger's
-    rules read beside the words: what they settled the words to ask (``asked``,
-    the grammar's key - an intent's name until Phase 3, step 4); the split the
-    words name (a venue beside a venue split is the split's, not a cut);
-    the opponent as the subject reading read it; and the teammates it read
-    as absent (an "opponent" that is the ``without`` list again is no team).
+    rules read beside the words: the opponent as the subject reading read
+    it, and the teammates it read as absent (an "opponent" that is the
+    ``without`` list again is no team). What the words ask is no context
+    since Phase 3, step 4, slice (b): a venue beside the splits reader's
+    venue split is dropped by the key's reading
+    (:func:`~association.query.point.cuts_under`).
 
     .. versionadded:: 6.0.0
     """
 
-    asked: PointShape | None
-    split: str | None = None
     opponent: str | None = None
     without: tuple[str, ...] = ()
 
@@ -71,6 +70,9 @@ class CutsRead:
     cuts: Cuts
     claims: tuple[Claim, ...]
     dated_since: int | None = None
+    #: The venue's characters, apart from :attr:`claims` until the key's
+    #: reading keeps the venue or drops it (:func:`~association.query.point.cuts_under`).
+    venue_claim: Claim | None = None
 
 
 def read_cuts(question: str, context: CutsContext) -> CutsRead:
@@ -79,9 +81,7 @@ def read_cuts(question: str, context: CutsContext) -> CutsRead:
     .. versionadded:: 6.0.0
     """
     claims: list[Claim] = []
-    venue, venue_claim = _venue(question, context)
-    if venue_claim is not None:
-        claims.append(venue_claim)
+    venue, venue_claim = _venue(question)
     situation, situation_claim = _situation(question)
     day, day_claim = _day(question)
     dated_since = None
@@ -114,22 +114,20 @@ def read_cuts(question: str, context: CutsContext) -> CutsRead:
         game_n=game_n,
         season_n=season_n,
     )
-    return CutsRead(cuts, claimed(claims), dated_since)
+    return CutsRead(cuts, tuple(claims), dated_since, venue_claim)
 
 
-def _venue(question: str, context: CutsContext) -> tuple[Literal["home", "away"] | None, Claim | None]:
+def _venue(question: str) -> tuple[Literal["home", "away"] | None, Claim | None]:
     """ "home" or "away" when the question restricts itself to one of them,
     with the characters that said so. Both at once is a SPLIT ("home and
     away splits"), not a cut, so it sets nothing; and beside a venue split
-    on the splits reader the one side is the split's half, not a cut, so
-    it is dropped there (``router._route_intent_slots`` until Phase 3, step
-    2). A reader that cannot restrict to a venue refuses one rather than
+    on the splits reader the one side is the split's half, not a cut, which
+    the key's reading drops (:func:`~association.query.point.cuts_under`;
+    ``router._route_intent_slots`` until Phase 3, step 2). A reader that cannot restrict to a venue refuses one rather than
     answering the whole season: "Knicks home record this season" was
     answered 53-29, their overall record."""
     home, away = lexicon.VENUE_HOME.search(question), lexicon.VENUE_AWAY.search(question)
     if (home is None) == (away is None):
-        return None, None
-    if context.asked == PLAYER_SPLITS and context.split == "home_away":
         return None, None
     match = home if home is not None else away
     assert match is not None

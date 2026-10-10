@@ -46,7 +46,7 @@ from association.query.measures import DERIVED_MEASURES, GAME_COLUMNS, log_extra
 from association.query.metrics import LEADERBOARD_METRICS
 from association.query.normalizer import NORMALIZER_STATS
 from association.query.parse import read_route
-from association.query.point import _team_measure
+from association.query.point import _team_measure, measure_under
 from association.query.reading import Claim, Filtered, Measure, PointShape, Reading, ScopeError, Span, cell_set, unhonored_cells
 from association.query.reading import Subject as Who
 from association.query.team_metrics import TEAM_METRICS, resolve_team_metric
@@ -55,7 +55,7 @@ from association.query.team_metrics import TEAM_METRICS, resolve_team_metric
 
 
 def _read(question: str, intent: str, key: str | None = None, **context: Any) -> Measure | None:
-    return read_measure(question, MeasureContext(asked=asked(intent), key=key, **context)).measure
+    return measure_under(asked(intent), read_measure(question), MeasureContext(key=key, **context)).measure
 
 
 @pytest.mark.parametrize(
@@ -126,7 +126,7 @@ def test_the_models_key_is_context_the_words_confirm_and_never_the_source_where_
 
 def test_the_tagger_claims_the_characters_it_read_once_and_they_ride_the_route() -> None:
     question = "who were the top 10 in defensive netpoints / 100 possessions"
-    read = read_measure(question, MeasureContext(asked=asked("leaderboard")))
+    read = measure_under(asked("leaderboard"), read_measure(question), MeasureContext())
     assert read.measure is not None and read.measure.as_typed == "netpoints_defense_per_100"
     assert [question[c.start : c.end] for c in read.claims] == ["defensive netpoints / 100", "/ 100"]
     route = settle("leaderboard", {}, question)

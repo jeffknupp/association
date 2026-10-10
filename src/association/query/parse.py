@@ -35,11 +35,11 @@ from association.query.decisions import Decision
 from association.query.entities import _edit_budget, _words, find_players, find_teams, suggest_players, team_abbreviations
 from association.query.grammar import Asked, absent, settle
 from association.query.lexicon import COUNT, LOG_OR_WINDOW_WORDS
-from association.query.line import LineContext, LinesRead, read_lines, read_period_line
+from association.query.line import LinesRead, read_lines, read_period_line
 from association.query.measure import BOOLEAN_KEYS, MeasureContext, named, read_measure
 from association.query.measures import PERIOD_COLUMNS, PERIOD_RATE_STATS, TEAM_PERIOD_COLUMNS
-from association.query.period import PeriodContext, read_period
-from association.query.point import read_point
+from association.query.period import read_period
+from association.query.point import cuts_under, lines_under, measure_under, period_under, read_point, span_under, window_under
 from association.query.reading import (
     NETPOINTS_FINGERPRINT,
     NETPOINTS_RATINGS,
@@ -689,39 +689,47 @@ def _tagged(
        after the stages over their slot dict.
     """
     asked = settled.asked
+    # Each family is read twice over: the tagger reads the words alone, and
+    # the key the words ask decides what of it stands (point.*_under) - the
+    # point reader's reading of the words under its key, written here where
+    # the parser writes the Reading, never a tagger's own.
     split = read_split(question, companions)
-    line_context = LineContext(asked=asked, beside_line=any(c.line is not None for c in companions))
-    read = read_lines(question, line_context)
+    beside_line = any(c.line is not None for c in companions)
+    read = lines_under(asked, read_lines(question), beside_line=beside_line)
     measure_context = _tagged_measure_context(settled, question, read, side=side, shot_value=shot_value, fields=fields)
-    measure = read_measure(question, measure_context)
-    period_context = PeriodContext(asked=asked)
-    period = read_period(question, period_context)
-    cuts_context = CutsContext(asked=asked, split=split.split, opponent=settled.opponent, without=absent(companions))
-    cuts = read_cuts(question, cuts_context)
-    window_context = WindowContext(asked=asked, boolean_stat=measure.measure is not None and measure.measure.key in BOOLEAN_KEYS)
-    window = read_window(question, window_context)
-    span = read_span(question, _tagged_span_context(settled, question, window=window.window, cuts=cuts))
+    measure = measure_under(asked, read_measure(question), measure_context)
+    period = period_under(asked, read_period(question))
+    cuts_context = CutsContext(opponent=settled.opponent, without=absent(companions))
+    cuts = cuts_under(asked, read_cuts(question, cuts_context), split=split.split)
+    window_context = WindowContext(boolean_stat=measure.measure is not None and measure.measure.key in BOOLEAN_KEYS)
+    window = window_under(asked, read_window(question, window_context))
+    span = span_under(asked, read_span(question, _tagged_span_context(settled, question, window=window.window, cuts=cuts)))
     scope = Reading(who=settled.subject, split=split.split, lines=(*lines, *read.lines), measure=measure.measure, period=period.period, cuts=cuts.cuts, window=window.window, span=span.span)
-    # Each tagger's claims cut to the words it could not do without, asked
-    # of the tagger itself (span.needed), with the context its own words
-    # give it read again from the same words (the measure the words name,
-    # an order word, the span's guard words); and every other word its
-    # reading turns on claimed beside them, under the family's name - the
-    # possessive of "curry's last game", the "record" of a matchup's career.
+    # Each family's claims cut to the words it could not do without, asked
+    # of the tagger and the key's reading together (span.needed), with the
+    # context its own words give it read again from the same words (the
+    # measure the words name, an order word, the span's guard words); and
+    # every other word its reading turns on claimed beside them, under the
+    # family's name - the possessive of "curry's last game", the "record"
+    # of a matchup's career.
     claims = (
         *needed(question, split.claims, lambda q: read_split(q, companions).split, outside="split", gives_up=True),
-        *needed(question, period.claims, lambda q: read_period(q, period_context).period, outside="period", gives_up=True),
-        *needed(question, cuts.claims, lambda q: _tagged_cuts(read_cuts(q, cuts_context)), outside="cuts", gives_up=True),
-        *needed(question, window.claims, lambda q: read_window(q, window_context).window, outside="window", gives_up=True),
-        *needed(question, read.claims, lambda q: _tagged_lines(read_lines(q, line_context)), outside="line", gives_up=True),
+        *needed(question, period.claims, lambda q: period_under(asked, read_period(q)).period, outside="period", gives_up=True),
+        *needed(question, cuts.claims, lambda q: _tagged_cuts(cuts_under(asked, read_cuts(q, cuts_context), split=split.split)), outside="cuts", gives_up=True),
+        *needed(question, window.claims, lambda q: window_under(asked, read_window(q, window_context)).window, outside="window", gives_up=True),
+        *needed(question, read.claims, lambda q: _tagged_lines(lines_under(asked, read_lines(q), beside_line=beside_line)), outside="line", gives_up=True),
         *needed(
             question,
             measure.claims,
-            lambda q: read_measure(q, _tagged_measure_context(replace(settled, stat=_tagged_worded_key(q, model_stat)), q, read, side=side, shot_value=shot_value, fields=fields)).measure,
+            lambda q: (
+                measure_under(
+                    asked, read_measure(q), _tagged_measure_context(replace(settled, stat=_tagged_worded_key(q, model_stat)), q, read, side=side, shot_value=shot_value, fields=fields)
+                ).measure
+            ),
             outside="measure",
             gives_up=True,
         ),
-        *needed(question, span.claims, lambda q: read_span(q, _tagged_span_context(settled, q, window=window.window, cuts=cuts)).span, outside="span", gives_up=True),
+        *needed(question, span.claims, lambda q: span_under(asked, read_span(q, _tagged_span_context(settled, q, window=window.window, cuts=cuts))).span, outside="span", gives_up=True),
     )
     return scope, claims
 
@@ -754,7 +762,6 @@ def _tagged_measure_context(settled: Asked, question: str, read: LinesRead, *, s
     ordering was named."""
     stat = settled.stat
     return MeasureContext(
-        asked=settled.asked,
         key=stat if isinstance(stat, str) and stat.strip() else None,
         side=side,
         shot_value=shot_value if isinstance(shot_value, int) and not isinstance(shot_value, bool) else None,
@@ -773,7 +780,6 @@ def _tagged_span_context(settled: Asked, question: str, *, window: Window, cuts:
     at), and the guard words of other families it keeps until their slices
     move them to the lexicon."""
     return SpanContext(
-        asked=settled.asked,
         player_named=settled.subject.player is not None,
         window_named=window.count is not None,
         versus=lexicon.VERSUS_OR_AGAINST.search(question) is not None,

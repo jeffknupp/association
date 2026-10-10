@@ -29,11 +29,12 @@ from association.query.answer import AnswerContext
 from association.query.compose.core import Query, compile_query, rows_of
 from association.query.compose.plan import cells_stated
 from association.query.entities import names_of
-from association.query.line import THRESHOLD_ASKS, LineContext, LinesRead, read_lines, read_period_line, threshold_named
+from association.query.line import LinesRead, read_lines, read_period_line, threshold_named
 from association.query.lines import measure_filters, phrase_line, relation_lines, threshold_line, threshold_of
 from association.query.parse import read_route
 from association.query.player_games import Narrowed, aggregate_sql
 from association.query.player_relation import RELATION_SCOPING, RELATION_SCOPING_EXCLUDED, _apply_period_condition, period_lines
+from association.query.point import THRESHOLD_ASKS, lines_under
 from association.query.reading import (
     Claim,
     Companion,
@@ -102,7 +103,7 @@ def _shape(line: Line) -> tuple[str | None, str, int | bool, str, bool, bool]:
     ],
 )
 def test_the_words_read_as_lines(question: str, intent: str, expected: list[tuple[Any, ...]], stat: str | None) -> None:
-    read = read_lines(question, LineContext(asked=asked(intent)))
+    read = lines_under(asked(intent), read_lines(question))
     assert isinstance(read, LinesRead)
     assert [_shape(line) for line in read.lines] == expected
     assert read.stat == stat
@@ -110,7 +111,7 @@ def test_the_words_read_as_lines(question: str, intent: str, expected: list[tupl
 
 def test_the_tagger_claims_the_characters_of_each_line_once() -> None:
     question = "most 20+ point 5+ assist games with under 14 fta"
-    read = read_lines(question, LineContext(asked=asked("threshold_count")))
+    read = lines_under(asked("threshold_count"), read_lines(question))
     assert len(read.claims) == len(read.lines) == 3
     assert all(claim.what == "line" and question[claim.start : claim.end].casefold() == line.as_typed for claim, line in zip(read.claims, read.lines, strict=True))
     assert [c.start for c in read.claims] == sorted(c.start for c in read.claims)
@@ -254,7 +255,7 @@ def test_relation_lines_are_the_narrowing_ones_in_the_slots_order() -> None:
     scope = slots_scope({"stat": "points", "threshold": 30, "above": ["with 25 minutes"], "below": ["under 14 fta"]})
     assert [line.as_typed for line in relation_lines(scope)] == ["under 14 fta", "with 25 minutes"]
     assert [(f.column, f.op, f.value, f.label) for f in measure_filters(scope)] == [("freeThrowsAttempted", "<", 14, "under 14 free throw attempts"), ("minutes", ">=", 25, "at least 25 minutes")]
-    pairs = read_lines("most 20+ point 5+ assist games", LineContext(asked=asked("threshold_count")))
+    pairs = lines_under(asked("threshold_count"), read_lines("most 20+ point 5+ assist games"))
     assert [line.as_typed for line in relation_lines(Reading(lines=pairs.lines))] == ["20+ point", "5+ assist"] and threshold_of(Reading(lines=pairs.lines)) == 20
     with pytest.raises(PointRefused, match="names no box-score stat"):
         measure_filters(slots_scope({"below": ["under 25 years old"]}))
@@ -305,7 +306,7 @@ def test_the_line_cell_changes_what_the_player_relation_reads(pg_ctx: AnswerCont
     assert _games(pg_ctx, Reading(who=Who(kind="player", players=("Brandin Podziemski",)))) == (3, 45)  # e1 (30 min, 10), e2 (32, 20), e3 (28, 15)
     assert _games(pg_ctx, Reading(who=Who(kind="player", players=("Brandin Podziemski",)), lines=(phrase_line("with 30 minutes", below=False),))) == (2, 30)
     assert _games(pg_ctx, Reading(who=Who(kind="player", players=("Brandin Podziemski",)), lines=(phrase_line("under 30 minutes", below=True),))) == (1, 15)
-    pairs = read_lines("20+ point 5+ assist games", LineContext(asked=asked("game_log"))).lines
+    pairs = lines_under(asked("game_log"), read_lines("20+ point 5+ assist games")).lines
     assert _games(pg_ctx, Reading(who=Who(kind="player", players=("Brandin Podziemski",)), lines=pairs)) == (1, 20)  # e2 alone holds both
 
 

@@ -103,15 +103,16 @@ def test_a_claim_stops_short_of_a_word_its_rule_did_not_need() -> None:
     tagger read: ten games either way without "games" in "last 10 games";
     "per" reads the rate with "100" or "possessions" gone, so neither is
     claimed, and the claims ledger counts both unread."""
+    from association.query.point import window_under
     from association.query.reading import Claim
     from association.query.span import needed
     from association.query.window import WindowContext, read_window
 
     question = "tatum last 10 games"
-    context = WindowContext(asked=asked("game_log"))
-    read = read_window(question, context)
+    key = asked("game_log")
+    read = window_under(key, read_window(question, WindowContext()))
     assert [question[c.start : c.end] for c in read.claims] == ["last 10 games"]
-    assert [question[c.start : c.end] for c in needed(question, read.claims, lambda q: read_window(q, context).window)] == ["last 10"]
+    assert [question[c.start : c.end] for c in needed(question, read.claims, lambda q: window_under(key, read_window(q, WindowContext())).window)] == ["last 10"]
     # A word between two kept ones that the rule did not need splits the claim; a function word between them stays.
     assert needed("ab cd ef", [Claim(0, 8, "x")], lambda q: ("ab" in q.split(), "ef" in q.split())) == (Claim(0, 2, "x"), Claim(6, 8, "x"))
     assert needed("ab of ef", [Claim(0, 8, "x")], lambda q: ("ab" in q.split(), "ef" in q.split())) == (Claim(0, 8, "x"),)
@@ -121,13 +122,14 @@ def test_a_word_outside_every_claim_the_rule_turns_on_is_claimed_beside_them() -
     """With ``outside``, the rule is asked about every other word too: the
     possessive that makes "curry's last regular season game" one game of
     his is read by the window, though its claim starts at "last"."""
+    from association.query.point import window_under
     from association.query.span import needed
     from association.query.window import WindowContext, read_window
 
     question = "create a shot chart of steph curry's last regular season game"
-    context = WindowContext(asked=asked("shot_chart"))
-    read = read_window(question, context)
-    trimmed = needed(question, read.claims, lambda q: read_window(q, context).window, outside="window")
+    key = asked("shot_chart")
+    read = window_under(key, read_window(question, WindowContext()))
+    trimmed = needed(question, read.claims, lambda q: window_under(key, read_window(q, WindowContext())).window, outside="window")
     assert sorted(question[c.start : c.end] for c in trimmed) == ["curry's", "game", "last"]
 
 

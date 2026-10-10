@@ -1056,12 +1056,34 @@ you add a shape:
   `query/lexicon.py` holds every pattern the family is read by, named,
   with its reason beside it, and nothing that reads the warehouse or the
   answer side (contract 6: regexes only in the lexicon; it is the lowest
-  layer of the reader). `query/period.py` is the period's tagger:
-  `read_period(question, PeriodContext)` reads what a read SEES of each
+  layer of the reader). **A tagger reads the words alone, never the key
+  the words ask** (Phase 3, step 4, slice (b)): each family is read twice
+  over in `parse._tagged` - the tagger reads every candidate the words
+  hold (`line.LineCandidates`, `window.WindowCandidates`,
+  `span.SpanCandidates`, `measure.MeasureWords`, the period and the cuts
+  as read), and ONE function per family in `query/point.py` applies the
+  key (`lines_under`, `measure_under`, `period_under`, `cuts_under`,
+  `window_under`, `span_under`, with the key sets that were the taggers' -
+  `THRESHOLD_ASKS`, `PERIOD_ASKS`, `ORDER_ASKS`, `LIMIT_COUNTS_SEASONS`
+  and the private ones beside them). They are the point reader's because
+  they change what the Reading SAYS (a bare "30 points" is a count's own
+  line and nothing on a log; a quarter stands on a period shape alone);
+  the planner's check is a different one, whether a relation honors a
+  cell (`plan.cells_unhonored`). Measured before the move and after
+  (`~/association-research/stages/route_family.py`, each key's reading
+  ablated to no key and each rule switched off alone on all 2,710
+  readings): the key moved the lines on 124 readings, the measure on 176,
+  the period on 120, the window on 150, the span on 219 and the cuts on
+  none, by the same rules row for row on both trees, and the four
+  populations and the claims ledger held identical. A claim is cut to the
+  words the tagger AND the key's reading need together
+  (`span.needed` probes the composition), so no word is claimed that the
+  key's reading does not read. `query/period.py` is the period's tagger:
+  `read_period(question)` reads what a read SEES of each
   game - one quarter or one half, by ordinal or by number ("1st quarter",
   "q4", "4th qtr", "first half", "2h": `WHICH_QUARTER`, `WHICH_HALF`,
   `ORDINAL_PERIODS`; a half is read first and apart, since a half is never
-  a quarter) - over what the grammar's rules settled the words to ask (`asked=`, the grammar's key), writes `reading.Period`
+  a quarter) - from the words alone, writes `reading.Period`
   on `Reading.period` and claims what it read. `which_period(text)` is the
   ONE reader of which period any words name: the intent stage calls it to
   choose among the three period intents (the stage's choice is step 4's;
@@ -1081,7 +1103,7 @@ you add a shape:
   inside another tagger's claim, and the value was written ONLY under the
   three period intents - six readings name a quarter and carry none (a
   subject nothing resolved, the point reader declining them by its guard);
-  the tagger keeps that (`period.PERIOD_ASKS`, the three keys since Phase 3, step 4) and claims nothing where
+  the key's reading keeps that (`point.PERIOD_ASKS`, the three keys, `point.period_under`) and claims nothing where
   it writes nothing. A "by quarter" question reads NO period (the
   breakdown is the point's shape, `Reading.by="period"`), and a period as
   a CONDITION on which games count is the line slice's value
@@ -1104,10 +1126,11 @@ you add a shape:
   on a career question; a date that opens a range or stands on a career
   question is a situation, and the year it wrote is handed to the span
   tagger), a playoff round, a game of a series, an ordinal season - over
-  what the grammar's rules settled the words to ask (the grammar's key), the split (a venue beside a venue split
-  is the split's), and the opponent and absent teammates the subject
+  the opponent and absent teammates the subject
   reading read (an opponent that is the `without` list again is dropped;
-  the tenure the subject reading writes after the taggers); it writes
+  the tenure the subject reading writes after the taggers; a venue beside
+  the splits reader's venue split is the split's, dropped by
+  `point.cuts_under`); it writes
   `reading.Cuts` on `Reading.cuts`, the situation parsed once into
   `reading.Situation` (`situation_of`: the words, and the
   `CalendarNarrowing` or `AlignmentNarrowing` they name, which the
@@ -1130,15 +1153,16 @@ you add a shape:
   words state fewer takes `relation_cuts(intent)` with its exclusions,
   and `reading.cell_set(scope, cell)` is the one reading of a cell name
   against the filters for the tables that list cells by name. `query/line.py` is the lines' tagger:
-  `read_lines(question, LineContext)` reads the lines on a stat a question
+  `read_lines(question)` reads the lines on a stat a question
   keeps the subject's games past - "30+ points", "20+ point 5+ assist
   games", "scores 30", "fouled out" (fouls at six), "under 14 fta", "at
-  most 5 turnovers", "with 25 minutes" - over what the words ask (the settled key) alone,
-  writes `reading.Line` values on `Reading.lines` (the measure as the game
+  most 5 turnovers", "with 25 minutes" - from the words alone, each with
+  how the words state it (`LineCandidate.how`), and `point.lines_under`
+  writes the subject's `reading.Line` values on `Reading.lines` (the measure as the game
   column's key, `op`, `value`, `as_typed`, `keyed` for the shape's own
   line, `narrows` for one the relation filters by, and `period` for a line
   in a quarter) and claims each line's characters once; a reader whose
-  shape is a line (`line.THRESHOLD_ASKS`: the count, the record, the
+  shape is a line (`point.THRESHOLD_ASKS`: the count, the record, the
   streak, the high) reads a bare "N stat" as its own, every other reader
   only what the words say outright - a floor of minutes, a line under a
   number, two or more "N+ stat" pairs - as the router's stages read them (a single
@@ -1182,8 +1206,10 @@ you add a shape:
   any other point, as the slot era wrote him) - and the typed values are
   recorded beside the reading (`stages._reading_record`, `lines`,
   `companions`). `query/measure.py` is the measure's tagger AND the one
-  catalog of what a question can ask about: `read_measure(question,
-  MeasureContext)` reads the measure - the words' own reading over the
+  catalog of what a question can ask about: `read_measure(question)`
+  reads every word the measure is read by (`MeasureWords`), and
+  `point.measure_under(asked, words, MeasureContext)` reads the measure
+  from them - the words' own reading over the
   normalizer's key (`measure.named`: the grammar first, `MEASURE_GRAMMAR`,
   then the longest box-score word, `MEASURE_WORDS`), then every rule the
   stages wrote by, in their order (fouling out is the count's stat; a
@@ -1244,15 +1270,17 @@ you add a shape:
   `aggregate` are still the compiler's names, derived from the `Measure`
   through the catalog (`stat_measure`): retyping them is the `Query`'s, the
   RUN stage's input. `query/window.py` is the window's tagger:
-  `read_window(question, WindowContext)` reads which rows a question keeps
+  `read_window(question, WindowContext)` reads, and `point.window_under`
+  keeps under the key, which rows a question keeps
   and from which end - the grammar's count and end ("last 10 games", "his
   first game", "top 5"), a history's "past 5 years" as its count of
   SEASONS (`Window.of`), one game of a player's line ("his last home
   game"), an end filled from the looser `ORDER_WORDS` on a reader that
   honors one and dropped on a reader that refuses one beside a count it
   can still take, a team ranking's end (`rank`), the measure a ranking of
-  boolean games is ordered by (`by`) - over what the grammar's rules settled the words to ask
-  and whether the stat is a yes/no one, writes `reading.Window` on
+  boolean games is ordered by (`by`) - the tagger over the words and
+  whether the stat is a yes/no one, the key's reading over what the words
+  ask (`point.ORDER_ASKS`, `LIMIT_COUNTS_SEASONS`) - writes `reading.Window` on
   `Reading.window`, and claims what it read. Measured first
   (`~/association-research/stages/window_family.py`, the four slots as
   each stage set them on all 2,710 readings): the parser read the grammar
@@ -1265,13 +1293,14 @@ you add a shape:
   from the filters; the tests' slot door (`tests/slots.py`, `Scope.from_slots` until Phase 3, step 4) still takes them (it builds the
   `Window`), `to_slots` and `projected()` give the old shape back, and the
   typed value is recorded beside the reading (`stages._reading_record`,
-  `window`). `query/span.py` is the span's tagger: `read_span(question, SpanContext)` reads
+  `window`). `query/span.py` is the span's tagger: `read_span(question, SpanContext)` (and `point.span_under` over its `SpanCandidates`) reads
   the seasons and the season type - a season named, a career, a range, the
   postseason, both types - in the order the retired stages read them
   (measured first, `~/association-research/stages/span_family.py`: the six
   slots as each stage set them on all 2,710 readings), from the words and
-  the few facts the stages settled before it (what the words ask, a window, a
-  player, a dated range), writes one typed value (`reading.Span`, on
+  the few facts read before it (a window, a player, a dated range; what the
+  words ask is the key's reading - a history's relative seasons, the three
+  implied careers, a log's both types), writes one typed value (`reading.Span`, on
   `Reading.span`) and returns the `Claim`s - `(start, end, what)` - of the
   characters it consumed, which the parser carries onto `Reading.claims`.
   A claim inside another's characters folds into it (the "playoffs" in
@@ -1867,8 +1896,8 @@ you add a shape:
   `TEAM_ONLY_ASKS`, `PLAYER_REQUIRED_ASKS`, `SUBJECT_RESTORABLE_ASKS`,
   `OWN_TEAM_RESTORABLE_ASKS`, `on_a_declared_relation` where
   `CHART_INTENTS` stood, `point.DEFAULT_POINTS`, `TEAM_SEASON_POINTS`,
-  `_ROWS_BY`, `_COUNT_SHAPES`, the taggers' `asked=` contexts and their
-  sets - `line.THRESHOLD_ASKS`, `period.PERIOD_ASKS`, `window.ORDER_ASKS`,
+  `_ROWS_BY`, `_COUNT_SHAPES`, the key's readings of the taggers' families
+  and their sets - `point.THRESHOLD_ASKS`, `PERIOD_ASKS`, `ORDER_ASKS`,
   ...); `compose.COMPILED_INTENTS` is gone (every key is the compiler's).
   The parser's `PARENT_GRAMMAR` names the parent by the subject's kind, and
   the grammar's rules assign `grammar.CODE_ASSIGNED_ASKS` (a player's

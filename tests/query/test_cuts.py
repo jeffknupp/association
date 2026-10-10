@@ -24,6 +24,7 @@ from association.query.compose.core import Query, compile_query, rows_of
 from association.query.compose.plan import cells_stated
 from association.query.cuts import CutsContext, CutsRead, read_cuts
 from association.query.player_relation import RELATION_SCOPING, RELATION_SCOPING_EXCLUDED
+from association.query.point import cuts_under
 from association.query.reading import Claim, Companion, Cuts, PointShape, Reading, ScopeError, Situation, Span, cell_set, situation_of, unhonored_cells
 from association.query.reading import Subject as Who
 from association.query.team_games import TeamNarrowed, rows_sql
@@ -33,7 +34,8 @@ S = current_season()
 
 
 def _read(question: str, intent: str = "game_log", **context: Any) -> Cuts:
-    return read_cuts(question, CutsContext(asked=asked(intent), **context)).cuts
+    split = context.pop("split", None)
+    return cuts_under(asked(intent), read_cuts(question, CutsContext(**context)), split=split).cuts
 
 
 def _situation(text: str) -> Situation:
@@ -93,13 +95,13 @@ def test_the_opponent_is_the_subjects_word_unless_it_is_the_absent_teammates_aga
 
 
 def test_a_dated_range_hands_its_year_to_the_span_and_a_worded_one_without_a_year_hands_none() -> None:
-    read = read_cuts("towns home rec since 1/26/20 vs spurs", CutsContext(asked=asked("player_stat")))
+    read = cuts_under(asked("player_stat"), read_cuts("towns home rec since 1/26/20 vs spurs", CutsContext()), split=None)
     assert isinstance(read, CutsRead) and read.dated_since == 2020 and read.cuts.situation is not None and read.cuts.situation.calendar is not None
     assert read.cuts.situation.calendar.kind == "since_date" and read.cuts.situation.calendar.value == "2020-01-26"
-    assert read_cuts("lebron stats since january 31st", CutsContext(asked=asked("player_stat"))).dated_since is None
-    assert read_cuts("lebron stats since 12/13", CutsContext(asked=asked("player_stat"))).dated_since is None
+    assert cuts_under(asked("player_stat"), read_cuts("lebron stats since january 31st", CutsContext()), split=None).dated_since is None
+    assert cuts_under(asked("player_stat"), read_cuts("lebron stats since 12/13", CutsContext()), split=None).dated_since is None
     # Two digits the way strptime reads them: 69-99 are the 1900s.
-    assert read_cuts("jordan stats since 3/1/96", CutsContext(asked=asked("player_stat"))).dated_since == 1996
+    assert cuts_under(asked("player_stat"), read_cuts("jordan stats since 3/1/96", CutsContext()), split=None).dated_since == 1996
 
 
 def test_a_situation_is_parsed_once_into_what_the_relation_applies() -> None:
@@ -116,14 +118,14 @@ def test_a_situation_is_parsed_once_into_what_the_relation_applies() -> None:
 
 def test_the_tagger_claims_the_characters_it_read_once() -> None:
     question = "tatum home stats in game 4 of the 2024 finals in his 7th season on christmas"
-    read = read_cuts(question, CutsContext(asked=asked("player_stat")))
+    read = cuts_under(asked("player_stat"), read_cuts(question, CutsContext()), split=None)
     assert read.cuts == Cuts(venue="home", situation=_situation("christmas"), round="finals", game_n=4, season_n=7)
     assert [(question[c.start : c.end], c.what) for c in read.claims] == [("home", "venue"), ("game 4", "game_n"), ("finals", "round"), ("7th season", "season_n"), ("christmas", "situation")]
 
 
 def test_a_day_and_its_own_month_are_one_claim_named_for_both() -> None:
     question = "nba Anthony Davis most offensive rebound in march 24 2018"
-    read = read_cuts(question, CutsContext(asked=asked("single_game_high")))
+    read = cuts_under(asked("single_game_high"), read_cuts(question, CutsContext()), split=None)
     assert [(question[c.start : c.end], c.what) for c in read.claims] == [("in march 24 2018", "situation+date")]
 
 
@@ -334,5 +336,5 @@ def test_a_situation_nothing_reads_is_refused_by_value_with_its_words(pg_ctx: An
 
 
 def test_read_cuts_returns_the_cuts_and_its_claims() -> None:
-    read = read_cuts("curry home games vs the lakers", CutsContext(asked=asked("game_log"), opponent="Los Angeles Lakers"))
+    read = cuts_under(asked("game_log"), read_cuts("curry home games vs the lakers", CutsContext(opponent="Los Angeles Lakers")), split=None)
     assert isinstance(read, CutsRead) and read.cuts == Cuts(opponent="Los Angeles Lakers", venue="home") and read.claims == (Claim(6, 10, "venue"),) and read.dated_since is None

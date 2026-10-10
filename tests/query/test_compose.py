@@ -39,9 +39,9 @@ from association.query.compose.shots import ShotQuery
 from association.query.compose.team import TeamQuery, run_team
 from association.query.compose.team_stats import TeamSeasonQuery
 from association.query.entities import names_of
-from association.query.line import LineContext, read_lines
+from association.query.line import read_lines
 from association.query.parse import with_point
-from association.query.point import _asc_or_desc, _ranking_minimum, read_point, team_read_point
+from association.query.point import _asc_or_desc, _ranking_minimum, lines_under, read_point, team_read_point
 from association.query.reading import Cause, Filtered, PointRefused, Reading, Span, _career_scope
 from association.query.reading import Subject as Who
 from association.query.result import Refusal
@@ -63,7 +63,7 @@ def _scope(intent: str, slots: dict[str, Any], question: str) -> Filtered:
     unless the case hands a line of its own as a slot, which the door builds."""
     if any(key in slots for key in ("above", "below", "period_condition", "lines")):
         return slots_scope(slots)
-    read = read_lines(question, LineContext(asked=asked(intent)))
+    read = lines_under(asked(intent), read_lines(question))
     if not any(line.keyed for line in read.lines):
         return slots_scope(slots)  # a line the case hands as a slot, where the words carry none
     return slots_scope({**{k: v for k, v in slots.items() if k != "threshold"}, "lines": read.lines})

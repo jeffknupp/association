@@ -20,9 +20,10 @@ from test_period_relation import SEASON, con, team_con  # noqa: F401 - the two r
 
 from association.query.compose.plan import cells_stated
 from association.query.line import read_period_line
-from association.query.period import PERIOD_ASKS, PeriodContext, PeriodRead, read_period, which_period
+from association.query.period import PeriodRead, read_period, which_period
 from association.query.player_games import Narrowed, rows_sql
 from association.query.player_relation import RELATION_SCOPING, RELATION_SCOPING_EXCLUDED, apply_period
+from association.query.point import PERIOD_ASKS, period_under
 from association.query.reading import Claim, Filtered, Line, Period, PointShape, Reading, ScopeError, cell_set, period_narrowing, unhonored_cells
 from association.query.team_games import TeamNarrowed
 from association.query.team_games import rows_sql as team_rows_sql
@@ -30,7 +31,7 @@ from association.query.team_relation import TEAM_RELATION_SCOPING, TEAM_RELATION
 
 
 def _read(question: str, intent: str = "period_split") -> Period | None:
-    return read_period(question, PeriodContext(asked=asked(intent))).period
+    return period_under(asked(intent), read_period(question)).period
 
 
 # ---------------- the tagger: words to a Period ----------------
@@ -67,9 +68,9 @@ def test_the_value_is_kept_under_a_reader_that_takes_one_and_dropped_elsewhere()
     keeps that, and claims nothing where it writes nothing."""
     assert {asked(name) for name in ("period_split", "period_leaderboard", "team_quarter_points")} == PERIOD_ASKS
     for shape in PERIOD_ASKS:
-        assert read_period("Damian Lillard first quarter game log", PeriodContext(asked=shape)) == PeriodRead(Period(number=1), (Claim(15, 28, "period"),))
-    assert read_period("Damian L first quarter game log", PeriodContext(asked=asked("other"))) == PeriodRead(None, ())
-    assert read_period("jokic game log", PeriodContext(asked=asked("period_split"))) == PeriodRead(None, ())
+        assert period_under(shape, read_period("Damian Lillard first quarter game log")) == PeriodRead(Period(number=1), (Claim(15, 28, "period"),))
+    assert period_under(asked("other"), read_period("Damian L first quarter game log")) == PeriodRead(None, ())
+    assert period_under(asked("period_split"), read_period("jokic game log")) == PeriodRead(None, ())
 
 
 def test_which_period_is_the_one_reader_the_condition_reader_and_the_stage_share() -> None:

@@ -820,6 +820,39 @@ otherwise.
   - The coach is the key `(team_seasons, scalar, coach)`: a coach is a fact
     of a team's season, and the warehouse holds no column for it - the
     point reader refuses the key by that cause (`no_coach_table`).
+- **Declared in code by Phase 3, step 4, slice (b), the stages leave the
+  reader** (2026-10-10):
+  - The reader takes the names' index (`names.NameIndex`: the players, the
+    teams, and the active set read on first use), never a connection; the
+    stages' writes are the grammar's rules (`grammar.settle`, over the
+    key and the names) and the taggers' (`parse._tagged`), and
+    `router.py`, `Route` and its slot dict are gone - `parse.read_route`
+    returns the Reading.
+  - The Scope folds into the Reading and the queries: `reading.Filtered`,
+    the frozen base with the typed filters (who, cuts, companions, lines,
+    measure, span, split, period, window), which `Reading`, `Query` and
+    `TeamQuery` inherit, so a cell is declared once (`CELLS`) and the
+    planner reads it off the Reading and the Query alike.
+  - **A tagger reads the words alone; the key the words ask is applied by
+    ONE function per family in `query/point.py`, where the parser writes
+    the Reading** (`lines_under`, `measure_under`, `period_under`,
+    `cuts_under`, `window_under`, `span_under`). Not in the planner: these
+    rules change what the Reading SAYS - a bare "30 points" is the count's
+    own line and nothing on a log, a quarter stands on a period shape
+    alone, "the past 5 years" is a history's count of seasons and every
+    other reader's range - which is the point reader's reading of the
+    words under its key; the planner's check is a different question,
+    whether a relation honors a cell the Reading holds
+    (`plan.cells_unhonored`), and moved there every one of these readings
+    would read differently before the planner ran. Measured on the 2,710
+    readings (`route_family.py`, each family ablated to no key and each
+    rule switched off alone, before and after): the key moves the lines on
+    124, the measure on 176, the period on 120, the window on 150, the
+    span on 219, the cuts on none - by the same rules, row for row, in the
+    taggers before and in point.py after; the four populations and the
+    claims ledger identical. A claim is cut to the words the tagger and
+    the key's reading need together (`span.needed` probes the two
+    composed), so no word is claimed that the key does not read.
 
 ## What must be decided before which phase
 

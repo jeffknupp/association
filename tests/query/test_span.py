@@ -21,6 +21,7 @@ from association.nba.season import current_season
 from association.query.answer import AnswerContext
 from association.query.compose.core import Query, compile_query, rows_of
 from association.query.player_relation import condition_scope, span_of
+from association.query.point import span_under
 from association.query.reading import Claim, Cuts, Reading, ScopeError, Span, unhonored_cells
 from association.query.reading import Subject as Who
 from association.query.span import SpanContext, claimed, read_span
@@ -31,7 +32,7 @@ S = current_season()
 
 
 def _read(question: str, intent: str = "player_stat", **context: Any) -> Span:
-    return read_span(question, SpanContext(asked=asked(intent), **context)).span
+    return span_under(asked(intent), read_span(question, SpanContext(**context))).span
 
 
 # ---------------- the tagger: words to a Span ----------------
@@ -114,12 +115,12 @@ def test_a_bare_last_n_games_log_reads_both_types() -> None:
 
 def test_the_tagger_claims_the_characters_it_read_once() -> None:
     question = "Payton Pritchard stats vs 76ers at home including playoffs game log"
-    read = read_span(question, SpanContext(asked=asked("game_log"), versus=True))
+    read = span_under(asked("game_log"), read_span(question, SpanContext(versus=True)))
     assert read.claims == (Claim(40, 58, "both"),) and question[40:58] == "including playoffs"  # the "playoffs" inside it folds in
     question = "kobe playoff stats from 02-03 to 06-07"
-    read = read_span(question, SpanContext(asked=asked("player_stat")))
+    read = span_under(asked("player_stat"), read_span(question, SpanContext()))
     assert [(c.what, question[c.start : c.end]) for c in read.claims] == [("season_type", "playoff"), ("range", "02-03 to 06-07")]
-    read = read_span("jokic career averages in 2023", SpanContext(asked=asked("player_stat")))
+    read = span_under(asked("player_stat"), read_span("jokic career averages in 2023", SpanContext()))
     assert [c.what for c in read.claims] == ["career", "season"]
     assert ["jokic career averages in 2023"[c.start : c.end] for c in read.claims] == ["career", "2023"]
 
@@ -136,7 +137,7 @@ def test_the_tagger_claims_the_characters_it_read_once() -> None:
     ],
 )
 def test_no_two_claims_overlap(question: str) -> None:
-    claims = read_span(question, SpanContext(asked=asked("player_stat"))).claims
+    claims = span_under(asked("player_stat"), read_span(question, SpanContext())).claims
     assert all(a.end <= b.start for a, b in itertools.pairwise(claims))
 
 

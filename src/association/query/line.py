@@ -47,64 +47,58 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from typing import Literal
 
 from association.query import lexicon
 from association.query.lines import phrase_line
 from association.query.period import which_period
-from association.query.reading import GAME_HIGHS, GAMES_COUNTED, LINE_RECORD, LINE_RUNS, PLAYER_LOG, PLAYER_SPLITS, Claim, Line, LineOp, PointShape
-
-THRESHOLD_ASKS: frozenset[PointShape] = frozenset({GAMES_COUNTED, LINE_RECORD, LINE_RUNS, GAME_HIGHS})
-"""The readers whose shape is a line on a stat: a count of games over it, a
-record above and below it, a run of games holding it, a high ranked by its
-stat. On these a bare "30 point games" reads as a line; on every other
-reader a line is read only where the words say so outright - a floor of
-minutes, a line under a number, two or more "N+ stat" pairs on one game -
-as the stages read them (the measurement above: a single "20+ points" on a
-log is read by nothing, and stays so until the measure slice).
-
-.. versionadded:: 6.0.0
-   ``router._THRESHOLD_ASKS`` until Phase 3, step 2.
-"""
-
-#: The readers under which exactly one "N+ stat" pair rewrites the model's
-#: ``stat`` to the pair's own word (``router._route_record_when_threshold``
-#: until Phase 3, step 2): the count, assigned from the words under a parent
-#: whose stat the model filed, and the record.
-_PAIR_NAMES_THE_STAT: frozenset[PointShape] = frozenset({LINE_RECORD, GAMES_COUNTED})
-
-#: The readers of a player's games that narrow by ONE line stated outright -
-#: "N+ stat", "N or more stat", "at least N stat" - as they narrow by two:
-#: "lebron game log with 20+ points" is his 20-point games, where until Phase
-#: 3, step 3 the line was read by nothing and every game listed (ISSUES.md
-#: #357; the Reading's unread words named its number). A bare "N stat" stays
-#: unread there ("harden 61 points" can as well name one game), and a
-#: player's line is not among them ("lebron 20+ points this season" can ask
-#: whether he averages it).
-_ONE_LINE_NARROWS: frozenset[PointShape] = frozenset({PLAYER_LOG, PLAYER_SPLITS})
+from association.query.reading import Claim, Line, LineOp
 
 
-@dataclass(frozen=True, kw_only=True)
-class LineContext:
-    """What was settled before the lines are read: what the words ask
-    (``asked``, the grammar's key - an intent's name until Phase 3, step 4), as the stages
-    settled on, and whether a companion beside the subject reached a line
-    (``beside_line``: the line the words state is his, not the subject's).
+@dataclass(frozen=True)
+class LineCandidate:
+    """One line the words state, read with no key: the line (a pair's
+    ``keyed`` and ``narrows`` unset - which the key the words ask decides,
+    :func:`~association.query.point.lines_under`), where it stands, its
+    claim, and how the words state it: ``fouled`` (fouling out: fouls at
+    six), ``plus`` ("N+ stat", "N plus stat", "N or more stat"), ``at_least``
+    ("at least N stat"), ``bare`` ("N stat"), ``scored`` ("scores N", a
+    line on points), ``phrase`` (a floor of minutes or a line under a
+    number, :func:`~association.query.lines.phrase_line`).
 
     .. versionadded:: 6.0.0
     """
 
-    asked: PointShape | None
-    beside_line: bool = False
+    line: Line
+    start: int
+    claim: Claim
+    how: Literal["fouled", "plus", "at_least", "bare", "scored", "phrase"]
+
+
+@dataclass(frozen=True)
+class LineCandidates:
+    """Every line the words state (:class:`LineCandidate`), in the
+    question's order, before the key the words ask decides which are the
+    subject's lines (:func:`~association.query.point.lines_under`).
+
+    .. versionadded:: 6.0.0
+    """
+
+    found: tuple[LineCandidate, ...]
+
+    def of(self, *how: str) -> list[LineCandidate]:
+        """The candidates stated each of the ways ``how`` names, in order."""
+        return [candidate for candidate in self.found if candidate.how in how]
 
 
 @dataclass(frozen=True)
 class LinesRead:
-    """What the tagger read: the subject's :class:`~association.query.reading.Line`
-    values in the question's order, the characters it claimed, and the
-    measure the stages wrote beside a threshold where the words name one
-    ("scores 30" is points; one "N+ stat" pair under a count or a record is
-    that word's column) - ``None`` where the model's stat stands, until the
-    measure slice types the stat itself.
+    """The lines the subject's games are kept past, under the key the words
+    ask: the :class:`~association.query.reading.Line` values in the
+    question's order, the characters read, and the measure a line names
+    beside a threshold where the words name one ("scores 30" is points; one
+    "N+ stat" pair under a count or a record is that word's column) -
+    ``None`` where the model's stat stands.
 
     .. versionadded:: 6.0.0
     """
@@ -118,7 +112,7 @@ def threshold_named(question: str) -> int | None:
     """The first line the threshold grammar reads in ``question``'s words -
     fouling out (six fouls), else a number with its stat word ("30+ points",
     "15 reb"), else a number after a scoring verb ("scores 30") - or None.
-    What the intent stages ask before the lines are read: a count with no
+    What the grammar's rules ask before the lines are read: a count with no
     line is a ranking, a record with none is the with/without split.
 
     .. versionadded:: 6.0.0
@@ -134,73 +128,43 @@ def threshold_named(question: str) -> int | None:
     return int(scored.group(1)) if scored is not None else None
 
 
-def read_lines(question: str, context: LineContext) -> LinesRead:
-    """The subject's lines ``question``'s words name, under ``context``, in
-    the question's order, with the claims: the "N+ stat" pairs on every
-    reader, a bare "N stat", "scores N" and fouling out on a reader whose
-    shape is a line (:data:`THRESHOLD_ASKS`), a floor of minutes and a
-    line under a number on every reader.
+def read_lines(question: str) -> LineCandidates:
+    """Every line ``question``'s words state, read from the words alone:
+    fouling out, each "N stat" pair (stated with a plus, an "at least", or
+    bare), a number after a scoring verb where the words hold no pair, and
+    a floor of minutes or a line under a number. Which of them are the
+    subject's - and which is the shape's own line, and which narrow its
+    games - is the key the words ask, decided where the parser writes the
+    Reading (:func:`~association.query.point.lines_under`).
 
-    .. versionadded:: 6.0.0
+    .. versionchanged:: 6.0.0
+       Reads no key (Phase 3, step 4, slice (b)): it took a ``LineContext``
+       holding what the stages settled the words to ask, and chose the lines
+       by it (``THRESHOLD_ASKS``, the count's fouling out, the pair that
+       names the stat, the one stated line on a log), which
+       :func:`~association.query.point.lines_under` does now.
     """
-    found: list[tuple[int, Line, Claim]] = []
+    found: list[LineCandidate] = []
     fouled = lexicon.FOULED_OUT.search(question)
-    if fouled is not None and context.asked == GAMES_COUNTED:
-        # Fouling out is the count's own line (fouls at six), whatever else
-        # the words number - the intent stage chose the count by it.
-        found.append((-1, Line(measure="fouls", value=lexicon.FOUL_OUT_THRESHOLD, as_typed=fouled.group(0).casefold(), keyed=True), Claim(fouled.start(), fouled.end(), "line")))
+    if fouled is not None:
+        found.append(LineCandidate(Line(measure="fouls", value=lexicon.FOUL_OUT_THRESHOLD, as_typed=fouled.group(0).casefold(), keyed=True), -1, Claim(fouled.start(), fouled.end(), "line"), "fouled"))
     pairs = lexicon.threshold_pairs(question)
-    lined = context.asked in THRESHOLD_ASKS
-    plus_pairs = [match for match in pairs if lexicon.THRESHOLD_PAIR.fullmatch(match.group(0)) is not None]
-    found.extend(_read_lines_pairs(question, context, pairs, plus_pairs))
-    stat: str | None = None
-    if lined and not pairs:
+    at_least = [m.span(1) for m in lexicon.AT_LEAST_PAIR.finditer(question)]
+    for match in pairs:
+        how: Literal["plus", "at_least", "bare"] = (
+            "plus" if lexicon.THRESHOLD_PAIR.fullmatch(match.group(0)) is not None else "at_least" if (match.start(), match.start() + len(match.group(1))) in at_least else "bare"
+        )
+        line = Line(measure=lexicon.THRESHOLD_WORDS[match.group(2).casefold()], value=int(match.group(1)), as_typed=match.group(0).casefold())
+        found.append(LineCandidate(line, match.start(), Claim(match.start(), match.end(), "line"), how))
+    if not pairs:
         scored = lexicon.scored_threshold(question)
         if scored is not None:
             # "scores 30": the verb names the stat, whatever the model filed.
-            found.append((scored.start(), Line(measure="points", value=int(scored.group(1)), as_typed=scored.group(0).casefold(), keyed=True), Claim(scored.start(), scored.end(), "line")))
-            stat = "points"
+            line = Line(measure="points", value=int(scored.group(1)), as_typed=scored.group(0).casefold(), keyed=True)
+            found.append(LineCandidate(line, scored.start(), Claim(scored.start(), scored.end(), "line"), "scored"))
     for pattern, below in ((lexicon.ABOVE, False), (lexicon.BELOW, True)):
-        found.extend((m.start(), phrase_line(m.group(0), below=below), Claim(m.start(), m.end(), "line")) for m in pattern.finditer(question))
-    if context.asked in _PAIR_NAMES_THE_STAT and len(plus_pairs) == 1:
-        stat = lexicon.THRESHOLD_WORDS[plus_pairs[0].group(2).casefold()]
-    found.sort(key=lambda each: each[0])
-    return LinesRead(tuple(line for _, line, _ in found), tuple(claim for _, _, claim in found), stat)
-
-
-def _read_lines_pairs(question: str, context: LineContext, pairs: list[re.Match[str]], plus_pairs: list[re.Match[str]]) -> list[tuple[int, Line, Claim]]:
-    """The "N stat" pairs :func:`read_lines` reads as lines, each with where
-    it stands and its claim. On a reader whose shape is a line, every line;
-    elsewhere two or more "N+ stat" pairs on one game, which the relation
-    narrows by together - one alone was read by nothing there (the stages'
-    two rules, measured on the 2,710: a single "10+ point leads" on a team's
-    line carried no threshold) - and on a reader whose shape is a line the
-    first line of the words is the shape's own (keyed), the pairs among them
-    filters as well, and a second bare "N stat" neither. One line stated
-    outright - "N+ stat", or "at least N stat" - on a reader of a player's
-    games narrows them (:data:`_ONE_LINE_NARROWS`), as two do everywhere;
-    never a line a companion beside him reached ("splits when tatum scores
-    30+ points" is Tatum's line)."""
-    lined = context.asked in THRESHOLD_ASKS
-    at_least = [m.span(1) for m in lexicon.AT_LEAST_PAIR.finditer(question)]
-    stated = [match for match in pairs if match in plus_pairs or (match.start(), match.start() + len(match.group(1))) in at_least]
-    one = context.asked in _ONE_LINE_NARROWS and not context.beside_line and len(pairs) == 1 and len(stated) == 1
-    narrowing = stated if one else plus_pairs
-    return [
-        (
-            match.start(),
-            Line(
-                measure=lexicon.THRESHOLD_WORDS[match.group(2).casefold()],
-                value=int(match.group(1)),
-                as_typed=match.group(0).casefold(),
-                keyed=lined and match is pairs[0],
-                narrows=match in narrowing and (len(narrowing) > 1 or one),
-            ),
-            Claim(match.start(), match.end(), "line"),
-        )
-        for match in pairs
-        if lined or (match in narrowing and (len(narrowing) > 1 or one))
-    ]
+        found.extend(LineCandidate(phrase_line(m.group(0), below=below), m.start(), Claim(m.start(), m.end(), "line"), "phrase") for m in pattern.finditer(question))
+    return LineCandidates(tuple(found))
 
 
 def read_period_line(question: str) -> tuple[Line, Claim] | None:

@@ -20,9 +20,9 @@ from association.nba.season import current_season
 from association.query.compose.plan import refusal_result
 from association.query.grammar import CODE_ASSIGNED_ASKS
 from association.query.lexicon import ORDER_WORDS
+from association.query.point import ORDER_ASKS
 from association.query.reading import Cause, Companion, Filtered, Reading, Window
 from association.query.reading import Subject as Who
-from association.query.window import ORDER_ASKS
 
 
 def _route(payload: str) -> Staged:
@@ -551,8 +551,8 @@ def test_the_order_intents_are_the_ones_that_honor_order() -> None:
     into a fall-through."""
     from shapes import stated
 
+    from association.query.point import _WINDOW_ORDER_ON_A_SINGLE_GAME as _ORDER_ON_A_SINGLE_GAME
     from association.query.reading import SHAPE_NAMES, asked_label
-    from association.query.window import _ORDER_ON_A_SINGLE_GAME
 
     # player_stat honors an order only beside a limit of one (a single game
     # handed to game_log), so the tagger sets the pair together for it rather
@@ -640,19 +640,20 @@ def test_a_last_n_games_question_naming_its_season_type_is_not_widened(question:
 
 
 def test_a_last_n_games_signal_requires_a_real_limit_and_the_recent_order() -> None:
+    from association.query.point import span_under
     from association.query.span import SpanContext, read_span
 
     # No `order` at all: an ordinary game_log question with a limit, not "last
     # N games" - e.g. "top 5" is `order` absent, `limit` present.
-    assert not read_span("Knicks top 5 wins this season", SpanContext(asked=asked("game_log"), limit=5)).span.both
+    assert not span_under(asked("game_log"), read_span("Knicks top 5 wins this season", SpanContext(limit=5))).span.both
     # `order="first"` is "his first N games", the opposite end of the season -
     # a real question, but not the one this signal is for.
-    assert not read_span("Knicks first 5 games", SpanContext(asked=asked("game_log"), order="first", limit=5)).span.both
+    assert not span_under(asked("game_log"), read_span("Knicks first 5 games", SpanContext(order="first", limit=5))).span.both
     # No real limit at all.
-    assert not read_span("Knicks last games", SpanContext(asked=asked("game_log"), order="recent")).span.both
+    assert not span_under(asked("game_log"), read_span("Knicks last games", SpanContext(order="recent"))).span.both
     # A non-game_log intent never sees it, whatever else is set.
-    assert not read_span("Knicks last 5 games", SpanContext(asked=asked("player_stat"), order="recent", limit=5)).span.both
-    assert read_span("Knicks last 5 games", SpanContext(asked=asked("game_log"), order="recent", limit=5)).span.both
+    assert not span_under(asked("player_stat"), read_span("Knicks last 5 games", SpanContext(order="recent", limit=5))).span.both
+    assert span_under(asked("game_log"), read_span("Knicks last 5 games", SpanContext(order="recent", limit=5))).span.both
 
 
 @pytest.mark.parametrize(
@@ -667,9 +668,10 @@ def test_a_last_n_games_signal_requires_a_real_limit_and_the_recent_order() -> N
 def test_a_last_n_games_signal_defers_to_a_narrower_slot_already_set(question: str, context: dict[str, Any]) -> None:
     """Each of these already fixes which games are meant more precisely than
     "last N" does, so none of them widen to both season types."""
+    from association.query.point import span_under
     from association.query.span import SpanContext, read_span
 
-    assert not read_span(question, SpanContext(asked=asked("game_log"), order="recent", limit=5, **context)).span.both
+    assert not span_under(asked("game_log"), read_span(question, SpanContext(order="recent", limit=5, **context))).span.both
 
 
 @pytest.mark.parametrize(
