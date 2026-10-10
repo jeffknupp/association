@@ -1227,6 +1227,36 @@ agents' reports named here are in `~/association-research/stages/`.
     projection of the typed part back to the record it replaced. Cost:
     no rebase and a fresh four-population run on both trees.
 
+32. **Phase 3, step 3 (2026-10-10).** The Reading states the words
+    nothing read. One Opus agent measured every content word of the 2,710
+    readings two ways first - is it claimed, and does deleting it change
+    the reading or the planned query - and found the two measures
+    disagreeing on 344 of the 628: 76 words a pattern matched and did not
+    need, 409 a rule read without claiming (293 of them the intent's own
+    choice). So a claim became what a rule's reading DEPENDS on, measured
+    by the rule itself (`span.needed` trims a tagger's claim by deleting
+    each word and asking it again; `span.read_by` claims what a
+    whole-question decision turned on), with the subject reading read
+    once and never probed, and `Reading.unread` is the content words no
+    claim covers, by one counting rule the ledger now reads too. The
+    ledger reports every question where the two lists differ: 344 -> 3,
+    all the subject reading's, and Jeff ruled 625 of 628 the exit with
+    the three allowlisted by name. The count fell 702 -> 690, five fixes
+    riding with the step and enumerated (a year range, a hyphenated age,
+    a count over five bare lines - the yardstick's own answer - a stated
+    line on a log, a spelling bug whose fix exposed one overcounted word,
+    "against", kept by Jeff's call). What it taught: the deletion probe
+    cannot see a word that suppresses a reading, so both years of "2024
+    and 2025" counted as read while nothing read them, and leaving such
+    words unclaimed is what surfaced #289 and #345 - agreement with the
+    ledger is the check, not the goal; "a number among them is a bug" has
+    its exception in the "100" that restates a rate; and the claim join
+    hides a double read, so it is held by kind and count (48 today, 43 of
+    them the intent's words over a tagger's, which step 4 makes one
+    reading) rather than reverted, since the raise would fail 44 correct
+    readings. Cost: about one millisecond more a reading, no rebase, and
+    a fresh four-population run on both trees.
+
 ## The plan items, as written
 
 In order of lift per unit of structural change, each measured on the

@@ -385,6 +385,7 @@ those were found.
 - **Next step:** read a word after "last/past N" that is one edit from "game(s)" (the entity index's edit budget, rapidfuzz's Damerau-Levenshtein) as "games" in the lexicon's one place the three readers take it from, so the grammar, the window and the span read it alike; "match(es)" beside it as a synonym. A test per wording; the 5 feed answers enumerated before and after.
 - **Priority:** P1 - a different question answered fluently; 5 of the 2,082.
 - **Source:** ours.
+- **GitHub:** #369
 
 ### "who scored 40 points the most times" is a ranking by points per game, not a count of 40-point games
 - **Found:** 2026-10-10, Phase 3, step 3, re-measuring #345's examples once a range of bare years was read.
@@ -393,6 +394,7 @@ those were found.
 - **Next step:** the count's grammar reads "scored N <stat> the most times" (and "N-point games the most") as a count over that line; a test per wording.
 - **Priority:** P1 - a different question answered fluently; 0 of the 2,710.
 - **Source:** ours.
+- **GitHub:** #370
 
 ## P2: misleading or incomplete
 
