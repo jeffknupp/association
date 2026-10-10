@@ -1257,6 +1257,30 @@ agents' reports named here are in `~/association-research/stages/`.
     readings. Cost: about one millisecond more a reading, no rebase, and
     a fresh four-population run on both trees.
 
+33. **Phase 3, step 4, slice (a) (2026-10-10).** The intent leaves the
+    reader. One Opus agent measured the intent against the planned point's
+    key on all 2,710 readings first and found the map many-to-many in both
+    directions - `player_stat` plans four different keys, the player log's
+    key is reached by two intents, and 118 readings plan no key at all -
+    so the key the grammar names is what the words ASK, a `PointShape`
+    on `Reading.asked`, and the planned point stays what the point IS.
+    Every intent set became a predicate or a lookup on the key, the
+    answering loop asks whether anything was asked rather than whether an
+    intent is compiled, and the intent string survives only as the page's
+    label from one table, held to the key by a test; intent-related sites
+    in the query package fell from 558 to 159. The one enumerated commit
+    made every shape's decline a cause the planner says in the identical
+    sentence: 69 answers moved from "refused" to "fast" with their text
+    unchanged, the class Jeff's rule permits. What it taught: the joins
+    the ledger holds did not shrink, because 13 of the 17 intent-and-line
+    joins are a line the lines tagger reads only because of the key - the
+    grammar cannot name a shape from a typed line while the tagger waits
+    on the grammar - so the key-dependent tagger rules move to the planner
+    first, which is slice (b)'s work where the settle order is undone
+    anyway; and the freeze that held 25 intent names now holds 25 keys,
+    the names gone. Cost: no rebase and a fresh four-population run on
+    both trees.
+
 ## The plan items, as written
 
 In order of lift per unit of structural change, each measured on the
