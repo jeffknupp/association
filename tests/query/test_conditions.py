@@ -1439,7 +1439,7 @@ def test_a_team_streak_refuses_a_condition(league: AnswerContext) -> None:
 def test_the_split_kinds_are_the_ones_the_router_reads() -> None:
     """Two hand-maintained lists of the same names - the shape that produced
     the player_compare bug."""
-    from association.query.router import SPLIT_WORDS
+    from association.query.lexicon import SPLIT_WORDS
 
     assert tuple(SPLIT_WORDS) == SPLIT_KINDS
 

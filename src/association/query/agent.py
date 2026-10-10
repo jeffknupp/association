@@ -48,12 +48,11 @@ from .notes import collect as collect_remarks
 from .notes import unsaid
 from .parse import MIN_QUESTION_WORDS, too_short
 from .reading import Reading, ScopeError
-from .router import Route, RouterUnavailable
 
 # The subset of Reply.data a compose.answer() carries that describes
 # WHAT was answered - the point on the relation - rather than the rows
 # themselves. Traced so a refusal that becomes a composed answer says what it
-# composed, the same way "-> (router) intent=..." says what was routed. See
+# composed, the same way "-> (parser) asked=..." says what the words ask. See
 # association.query.compose's module docstring for the full shape.
 _COMPOSE_POINT_KEYS = ("skeleton", "measures", "aggregate", "group", "predicates", "window", "span", "narrowing", "player")
 
@@ -256,7 +255,7 @@ class Agent:
         )
 
     def _try_fast_path(self, question: str, history: RunHistory) -> tuple[str, Reply] | None:
-        """Route -> Reading -> plan -> reader and sayer -> answer, returning
+        """Reading -> plan -> reader and sayer -> answer, returning
         the intent alongside the whole :class:`~association.query.answer.Reply`.
         Returns None, with :attr:`unanswered` naming why, where nothing here
         reads the question: an intent nothing reads, slots that fail
@@ -268,10 +267,10 @@ class Agent:
         produced - see Reply.data, which nothing could reach before
         2.0."""
         self.unanswered = None
-        routed = self._read_or_refuse(question, history)
-        if routed is None:
+        read = self._read_or_refuse(question, history)
+        if read is None:
             return None
-        reading = self._reading(question, routed, history)
+        reading = self._reading(read, history)
         # A name the model supplied that the question never held, and that
         # nothing in the question can replace, is refused by name rather than
         # answered: the router invented whole names, not only nicknames -
@@ -286,14 +285,6 @@ class Agent:
             misread = misread_players(list(reading.misread))
             history.log(f"  -> (player) {misread}")
             return reading.intent, Reply(data={"message": misread, "misread": list(reading.misread)}, answer=misread)
-        # What answers goes with the intent the Reading settled - where the
-        # route's cannot be about the subject, or where the question's own
-        # words name a child of it (subject.KIND_ASSIGNED_ASKS: a count of
-        # 30+ point games under a game log). Resolving them apart is how a
-        # reroute shipped broken once: the intent said with_without, the trace
-        # said with_without, and head_to_head ran.
-        if reading.asked != routed.asked:
-            history.log(f"  -> (subject) intent={reading.intent!r} slots={reading.scope.to_slots(split_by_presence=reading.asked == PRESENCE_SPLIT)}")
         settled = self._settled_before_reading(reading, history)
         if settled is not None:
             return settled
@@ -301,23 +292,18 @@ class Agent:
             return self._run_compiled(reading, history)
         return None
 
-    def _reading(self, question: str, routed: Route, history: RunHistory) -> Reading:
-        """The Reading ``routed`` settles into (:func:`~association.query.parse.reading_from_route`),
-        with every decision it made recorded. Split out of
-        :meth:`_try_fast_path` for the complexity gate. The route carries the
-        typed Scope already: a slot nothing can hold stopped the parser at the
-        Scope's door (:meth:`_read_or_refuse`)."""
-        from association.query.parse import reading_from_route
-
-        # What will answer, said beside the route: until 5.0.0 every intent
-        # outside TEMPLATES printed "not ported yet" here - on 206 of 277
-        # yardstick answers, all of them the compiler's (ISSUES.md #284).
-        path = "the compiler" if routed.asked is not None else "no reader: refused unless a named refusal has its cause"
-        history.log(f"  -> (router) intent={routed.intent!r} slots={routed.slots} - {path}")
-        # One reading of WHO the question is about, from its own words, written
-        # into the Scope - the parser's last step, and the only writer: nothing
-        # after this changes a slot (query/subject.py, ROADMAP plan item 6).
-        reading = reading_from_route(names_of(self.con), question, routed)
+    def _reading(self, reading: Reading, history: RunHistory) -> Reading:
+        """``reading`` kept, planned and its decisions recorded. Split out of
+        :meth:`_try_fast_path` for the complexity gate."""
+        # What the words ask and what will answer, said beside the reading:
+        # until 5.0.0 every intent outside TEMPLATES printed "not ported yet"
+        # here - on 206 of 277 yardstick answers, all of them the compiler's
+        # (ISSUES.md #284). One line since Phase 3, step 4, slice (b), where
+        # the router's line, the parser's parent and the subject's settled
+        # intent stood: the key the words ask is the Reading's own.
+        path = "the compiler" if reading.asked is not None else "no reader: refused unless a named refusal has its cause"
+        kind = reading.subject.kind if reading.subject is not None else None
+        history.log(f"  -> (parser) asked={reading.intent!r} kind={kind!r} slots={reading.scope.to_slots(split_by_presence=reading.asked == PRESENCE_SPLIT)} - {path}")
         self.reading = reading
         # PLAN, once: the point on its relation, or why there is none. The
         # parser read the point; it does not plan it (ROADMAP.md, Phase 1).
@@ -326,13 +312,15 @@ class Agent:
             history.record_decision(decision)
         return reading
 
-    def _read_or_refuse(self, question: str, history: RunHistory) -> Route | None:
-        """The route the parser reads for ``question``, or None with the
+    def _read_or_refuse(self, question: str, history: RunHistory) -> Reading | None:
+        """The Reading the parser reads for ``question``, or None with the
         reason the question is being refused recorded. Split out of
         :meth:`_try_fast_path` for the complexity gate."""
+        from association.query.normalizer import RouterUnavailable
+
         t0 = time.monotonic()
         try:
-            routed = self._read_question(question, history)
+            read = self._read_question(question, history)
         except RouterUnavailable as exc:
             # The reason has to name the server rather than the question: a
             # normalizer that could not be reached read nothing of it.
@@ -342,28 +330,27 @@ class Agent:
             return None
         except ScopeError as exc:
             # A slot nothing can hold - "stephen curry last 0 games" reads as a
-            # window of 0 - stops the parser at the Scope's door (the stages'
-            # own, router.settle): refused here, the way a reader's refusal
-            # is, rather than crashing.
+            # window of 0 - stops the parser at the typed value's door (the
+            # window tagger's): refused here, the way a reader's refusal is,
+            # rather than crashing.
             history.record_model_call(time.monotonic() - t0)
             history.log(f"  -> (scope) {exc}: refused")
             self.unanswered = f"a slot the Reading cannot hold: {exc}"
             return None
         history.record_model_call(time.monotonic() - t0)
-        if routed is None:
+        if read is None:
             history.log("  -> (normalizer) no usable reply: refused")
             self.unanswered = "the normalizer returned no usable reply"
-        return routed
+        return read
 
-    def _read_question(self, question: str, history: RunHistory) -> Route | None:
-        """The route the parser reads (ROADMAP plan item 6, step c): the model
-        copies the names out of the question and picks a stat key
+    def _read_question(self, question: str, history: RunHistory) -> Reading | None:
+        """The Reading the parser reads (ROADMAP plan item 6, step c): the
+        model copies the names out of the question and picks a stat key
         (:func:`~association.query.normalizer.normalize`), and
-        :func:`~association.query.parse.read_route` checks both and reads the
-        intent and every other slot from the words. None when the model's
-        reply is unusable. What follows is the path every route takes: the
-        parser's last step (:func:`~association.query.parse.reading_from_route`)
-        and the compiler."""
+        :func:`~association.query.parse.read_route` checks both and reads
+        what the words ask and every filter from the words, over the name
+        index read here, before it runs (:func:`~association.query.entities.names_of`).
+        None when the model's reply is unusable."""
         from association.query.normalizer import normalize
         from association.query.parse import read_route
 
@@ -371,9 +358,7 @@ class Agent:
         if normalized is None:
             return None
         history.log(f"  -> (normalizer) names={normalized.names} stat={normalized.stat!r}")
-        routed, subject, parent = read_route(names_of(self.con), question, normalized.names, normalized.stat)
-        history.log(f"  -> (parser) parent={parent!r} kind={subject.kind!r} intent={routed.intent!r}")
-        return routed
+        return read_route(names_of(self.con), question, normalized.names, normalized.stat)
 
     def _settled_before_reading(self, reading: Reading, history: RunHistory) -> tuple[str, Reply] | None:
         """What is decided before any reader runs, from the Reading alone:

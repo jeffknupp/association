@@ -162,11 +162,10 @@ def test_a_player_set_against_another_is_the_second_of_two_players(con: duckdb.D
     kind - two players - so the reroute went with the router (ROADMAP plan
     item 6, step (d), part 3). A team opponent stays a narrowing of the one
     player's games."""
-    from association.query.parse import read_route, reading_from_route
+    from association.query.parse import read_route
 
     def parsed(question: str, names: list[str]) -> Reading:
-        route, _, _ = read_route(names_of(con), question, names, "")
-        return reading_from_route(names_of(con), question, route)
+        return read_route(names_of(con), question, names, "")
 
     for question in ("lebron vs kawhi head to head", "lebron vs kawhi record"):
         reading = parsed(question, ["lebron", "kawhi"])

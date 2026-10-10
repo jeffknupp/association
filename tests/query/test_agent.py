@@ -184,7 +184,7 @@ def test_a_model_that_could_not_be_asked_is_refused_saying_why(monkeypatch: pyte
     "the router returned no usable classification" and nothing pointed at
     ollama. The normalizer raises the same error the router did."""
     from association.query.history import RunHistory
-    from association.query.router import RouterUnavailable
+    from association.query.normalizer import RouterUnavailable
 
     agent = _agent(tmp_path)
 

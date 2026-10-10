@@ -17,8 +17,8 @@ measure a ranking of games is ordered by - :data:`WINDOW_GRAMMAR`,
 :data:`ORDER_WORDS`, :data:`SINGLE_GAME`, :data:`RANK_WORDS`, :data:`RANKED_BOOLEAN_GAMES`, and the family's intent
 guards). The other families' words follow, one slice each (``ROADMAP.md``,
 "Phase 3, the expected steps", step 2): the games' cuts, the period, the
-line and the companions, the subject's own. Until each moves, its patterns
-stay in :mod:`association.query.router` and :mod:`association.query.subject`.
+line and the companions, the subject's own - and, with Phase 3, step 4,
+slice (b), the grammar's rules' (``router.py``'s stages until then).
 
 .. versionadded:: 6.0.0
 """
@@ -2203,8 +2203,8 @@ WORD = re.compile(r"[a-z]+")
 # from, and where a name ends - each with its reason beside it. Read by
 # ONE reader, :func:`association.query.subject.read_subject` (and the
 # helpers it calls), which claims the characters it read; until this slice
-# they lived in :mod:`association.query.subject`, :mod:`association.query.router`
-# and :mod:`association.query.reading`.
+# they lived in :mod:`association.query.subject`, ``router.py`` and
+# :mod:`association.query.reading`.
 
 POSITION_WORDS: tuple[tuple[re.Pattern[str], str], ...] = tuple(
     (re.compile(pattern, re.IGNORECASE), code)
@@ -2956,3 +2956,158 @@ def unread_words(question: str, claimed: list[tuple[int, int]], names: tuple[str
     .. versionadded:: 6.0.0
     """
     return tuple(word for start, end, word in content_words(question, names, stat) if not any(first < end and last > start for first, last in claimed))
+
+
+# --- The grammar's words: what moves the key the words ask --------------------
+#
+# Phase 3, step 4, slice (b): the rules that move what the words ask on the
+# question's own words after the parent and child grammars name it
+# (:mod:`association.query.grammar`) were ``router.py``'s stages until the
+# slice, which kept their patterns beside them; every one is here now, as
+# written there, with its reason.
+
+DRAW_WORDS = re.compile(r"\b(?:plot|chart|draw|render|visuali[sz]e|graph|show me a)\b", re.IGNORECASE)
+"""A chart asked to be drawn: "luka td3s home" is a count of his
+triple-doubles, never a chart of his twos, unless the words ask for one to
+be drawn ("td3" reads as a shot value to the model).
+
+.. versionadded:: 6.0.0
+   ``router._DRAW_WORDS`` until Phase 3, step 4.
+"""
+
+COACH_WORDS = re.compile(r"\bcoach(?:es|ed|ing|es'|'s)?\b|\bhead\s+coach\b", re.IGNORECASE)
+"""A coach question, which has no answer here and is refused by its cause
+(``no_coach_table``) whatever else the words ask. Deliberately only the word
+and its inflections: no coach is named without it in practice ("nick nurse
+coaching record all-time"), and a bare surname is the substring trap the
+names' reader is written against - "nurse" and "rivers" are ordinary words,
+and Doc Rivers, Nick Nurse and Quin Snyder are real people a player question
+could name. No player or team has "coach" anywhere in its name.
+
+.. versionadded:: 6.0.0
+   ``router._COACH_WORDS`` until Phase 3, step 4.
+"""
+
+RECORD_WORD = re.compile(r"\brecord\b", re.IGNORECASE)
+""""record" asked with a counting shape means wins and losses, not a count of
+games: "Sixers record when Embiid scores 30 points this season" came back as
+a count and was answered with the league's 30-point games, Embiid dropped.
+
+.. versionadded:: 6.0.0
+   ``router._RECORD`` until Phase 3, step 4.
+"""
+
+SPLIT_WORDS: dict[str, re.Pattern[str]] = {
+    "home_away": re.compile(r"\bhome\b.{0,15}\b(?:away|road)\b|\b(?:away|road)\b.{0,15}\bhome\b", re.IGNORECASE),
+    "starter_bench": re.compile(r"\b(?:starter|starting|starts|bench|reserve)\b", re.IGNORECASE),
+    "wins_losses": re.compile(r"\bin\s+(?:wins|losses)\b|\bwins\s+(?:vs\.?|versus|and|or)\s+losses\b", re.IGNORECASE),
+    "month": re.compile(r"\b(?:by|each|per)\s+month\b|\bmonthly\b", re.IGNORECASE),
+}
+"""Which split the words name - exactly one, or none is read
+(:func:`~association.query.split.read_split`).
+
+.. versionadded:: 6.0.0
+   ``router.SPLIT_WORDS`` until Phase 3, step 4.
+"""
+
+STARTER_WORDS = re.compile(r"\b(?:starter|starting|starts|started)\b", re.IGNORECASE)
+"""One half of the starter/bench split named: a start. ``SPLIT_WORDS``'
+``starter_bench`` records only the CATEGORY, right for a splits question -
+both groups side by side - and useless to a reader that has to filter: "Jrue
+holiday last 50 games as a starter" is a log of his starts. A question that
+names both halves ("starting vs coming off the bench") keeps the category.
+
+.. versionadded:: 6.0.0
+   ``router._STARTER_WORDS`` until Phase 3, step 4.
+"""
+
+BENCH_WORDS = re.compile(r"\b(?:bench|reserve|reserves)\b", re.IGNORECASE)
+"""The other half of the starter/bench split named: off the bench.
+
+.. versionadded:: 6.0.0
+   ``router._BENCH_WORDS`` until Phase 3, step 4.
+"""
+
+VERSUS_OR_AGAINST = re.compile(r"\b(?:vs\.?|versus|against)\s", re.IGNORECASE)
+""""vs"/"against" before what follows it: a log's last N meetings with an
+opponent, two players set against each other, a career against one team.
+
+.. versionadded:: 6.0.0
+   ``router._VERSUS_WORDS`` until Phase 3, step 4.
+"""
+
+TEAM_SUBJECT = re.compile(
+    r"\b(?:which|what)\s+teams?\b|\bby\s+(?:a\s+)?teams?\b|\bper\s+team\b|\bteams?\s+(?:with\s+the|that|leaders|rankings?)\b",
+    re.IGNORECASE,
+)
+"""A ranking of TEAMS asked where the grammar named a player ranking: "which
+team scores the most points per game" was answered with the players'
+scoring leaders - real, correct numbers about the wrong kind of thing.
+
+.. versionadded:: 6.0.0
+   ``router._TEAM_SUBJECT`` until Phase 3, step 4.
+"""
+
+FINGERPRINT_NAMED = re.compile(r"\bfinger\s?prints?\b|\bradar\b", re.IGNORECASE)
+"""The fingerprint itself, by name - not the looser words below
+("netpoints" is also a leaderboard's metric and the NetPoints ratings' whole
+subject): "compare fingerprints for embiid vs jokic in 2026" is the radar,
+never a table of averages.
+
+.. versionadded:: 6.0.0
+   ``router._FINGERPRINT_NAMED`` until Phase 3, step 4.
+"""
+
+FINGERPRINT_WORDS = re.compile(r"\bfinger\s?prints?\b|\bradar\b|\bnet\s?points?\b|\bplay[- ]types?\b", re.IGNORECASE)
+"""A question that names the fingerprint or what it is drawn from: one that
+names none of it is not asking for one ("Plot Curry's threes from last
+season" came back as a fingerprint under two prompt revisions).
+
+.. versionadded:: 6.0.0
+   ``router._FINGERPRINT_WORDS`` until Phase 3, step 4.
+"""
+
+SHOT_WORDS = re.compile(r"\bshots?\b|\bthrees\b|\b3s\b|\b(?:3|three)[- ]?pointers?\b|\bjumpers?\b|\blayups?\b|\bdunks?\b|\bchart\b", re.IGNORECASE)
+"""Shots named, where a fingerprint was asked for with none of its words: a
+shot chart, not the radar.
+
+.. versionadded:: 6.0.0
+   ``router._SHOT_WORDS`` until Phase 3, step 4.
+"""
+
+BEST_WORST_RECORD = re.compile(r"\b(?:best|worst)\s+(?:nba\s+|league\s+)?records?\b", re.IGNORECASE)
+""""best record" and "worst record" rank the league: with no team named they
+are a team ranking. "worst record 2025-26" came back as a team's record with
+team='worst'; "the league" or "NBA" between the two words is the same
+ranking ("Best NBA record since January 31st 201", yardstick-v2 F104).
+
+.. versionadded:: 6.0.0
+   ``router._BEST_WORST_RECORD`` until Phase 3, step 4.
+"""
+
+COMPARE_WORDS = re.compile(r"\bcompar(?:e[ds]?|ing|ison)\b|\bbetter\b|\bwho scores more\b|\bside by side\b", re.IGNORECASE)
+"""A comparison asked in words: "jokic vs cade since 2022" with none of
+these is the two players' meetings over the seasons, never a comparison.
+
+.. versionadded:: 6.0.0
+   ``router._COMPARE_WORDS`` until Phase 3, step 4.
+"""
+
+DENIED_ROLE = re.compile(r"(?:\bnot|n'?t|\bnever)\s+(?:be\s+|been\s+|get\s+|gets\s+)?(?:start|come|came|coming)", re.IGNORECASE)
+"""A start or a bench role the phrase denies - "when embiid doesn't start" -
+which reads as ``started`` to the role reader, with no predicate for "did
+not": as a condition that would narrow to the very games the question
+excludes, so the with/without split, which shows both halves, keeps it.
+
+.. versionadded:: 6.0.0
+   ``parse._DENIED_ROLE`` until Phase 3, step 4.
+"""
+
+ROLE_TAIL = re.compile(r"\s*the\s+(?:bench|pine)\b", re.IGNORECASE)
+""""off" ends a companion phrase before "the bench" ("the" stops it), so a
+role's words run past the phrase by that much - blanked with it where the
+split is read (:func:`~association.query.split.read_split`).
+
+.. versionadded:: 6.0.0
+   ``parse._ROLE_TAIL`` until Phase 3, step 4.
+"""

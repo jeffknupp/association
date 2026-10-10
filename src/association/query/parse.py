@@ -7,13 +7,14 @@ the names it copied out of the question and the stat key it chose
 :func:`~association.query.normalizer.normalize`) - and everything else is
 read from the words here, in grammar
 tables: the kind and the parent shape the words ask (:data:`PARENT_GRAMMAR`), then the
-scope and the point through the readers the pipeline already
-has (:func:`~association.query.subject.read_subject`,
-:func:`~association.query.router.settle` - whose last two steps are the
-window and span taggers - and :func:`~association.query.point.read_point`). Those readers are the
-source material the tables absorb one at a time; each table is measured on
-the day10 wordings and the held-out paraphrases before the next
-(``~/association-research/parser-greenfield/measure.py``).
+grammar's rules (:func:`~association.query.grammar.settle`), the taggers,
+one per family (:func:`_tagged`) and the point
+(:func:`~association.query.point.read_point`), with who the question is
+about read once (:func:`~association.query.subject.read_subject`) -
+into the Reading :func:`read_route` returns. Since Phase 3, step 4,
+slice (b) there is no router: its stages are the grammar's rules and the
+split's tagger, and nothing carries a route between the words and the
+Reading.
 
 Nothing here reaches a model, and nothing here trusts a name it was given:
 a span that is no player's and no team's is dropped, never made a subject
@@ -26,14 +27,18 @@ from __future__ import annotations
 
 import re
 from dataclasses import replace
-from typing import Any, cast, get_args
+from typing import Any
 
 from association.query import lexicon, names
+from association.query.cuts import CutsContext, CutsRead, read_cuts
 from association.query.decisions import Decision
 from association.query.entities import _edit_budget, _words, find_players, find_teams, suggest_players, team_abbreviations
+from association.query.grammar import Asked, absent, settle
 from association.query.lexicon import COUNT, LOG_OR_WINDOW_WORDS
-from association.query.line import read_period_line
+from association.query.line import LineContext, LinesRead, read_lines, read_period_line
+from association.query.measure import BOOLEAN_KEYS, MeasureContext, named, read_measure
 from association.query.measures import PERIOD_COLUMNS, PERIOD_RATE_STATS, TEAM_PERIOD_COLUMNS
+from association.query.period import PeriodContext, read_period
 from association.query.point import read_point
 from association.query.reading import (
     NETPOINTS_FINGERPRINT,
@@ -58,27 +63,25 @@ from association.query.reading import (
     TEAM_RECORD,
     Cause,
     Claim,
+    Companion,
+    Cuts,
     LeftOut,
     Line,
     PointRefused,
     PointShape,
     Reading,
     Scope,
-    ScopeError,
-    Split,
     Unsupported,
+    Window,
     asked_label,
 )
 from association.query.reading import Subject as ReadSubject
-from association.query.router import Named, Route, _route_calendar_slots_split, settle
+from association.query.span import SpanContext, needed, read_by, read_span
 from association.query.span import claimed as claimed_once
-from association.query.span import read_by
+from association.query.split import OWN_READ_ROLES, read_split, role_phrases
 from association.query.subject import (
     Subject,
-    _companion_phrases,
-    _condition_role,
     _edit_distance,
-    _near,
     apply_subject,
     child_named,
     compared_but_unmatched,
@@ -91,6 +94,7 @@ from association.query.subject import (
     subject_claims,
     team_named_in,
 )
+from association.query.window import WindowContext, read_window
 
 _PAIR_MEETING = (
     r"(?!.*\b(compare|compared|comparing|contrast|evaluate|who scores more|who is better|who was better)\b)"
@@ -192,18 +196,7 @@ it by the subject reading, as they are on the router's parent today.
 # The measure grammar - the stat a question names in its own words, read
 # before the normalizer's key - is the lexicon's (lexicon.MEASURE_GRAMMAR)
 # and the measure tagger's one reading (measure.named) since Phase 3, step
-# 2; the stages take it as their context (router._settle).
-
-
-def _as_split(split: str | None) -> Split | None:
-    """A split read off the words as the Scope's own literal - the readers
-    write one of the set, and one that wrote anything else is a bug said out
-    loud, as the Scope's door says it for a slot dict."""
-    if split is None:
-        return None
-    if split not in get_args(Split):
-        raise ScopeError(f"split {split!r} is not one the Scope holds")
-    return cast("Split", split)
+# 2; the grammar's rules take it as their context (grammar.settle).
 
 
 # A row written as lookaheads describes the whole question, so it is anchored
@@ -388,24 +381,29 @@ def _two_teams(subject: Subject, question: str, slots: dict[str, Any]) -> Subjec
     return replace(subject, kind="teams", teams=(subject.teams[0], other), opponent=None)
 
 
-def _read_route_names(subject: Subject, slots: dict[str, Any], question: str) -> Named:
-    """Who the stages are handed (:class:`~association.query.router.Named`):
-    the names as the subject reading read them from the question's own
-    words - its players (never a companion: "without joel embiid" is a
-    narrowing), the team it is about or plays for, the opponent - in place of
-    the model's spans, which are only where the reading started. A player
+def _read_route_names(subject: Subject, slots: dict[str, Any]) -> tuple[ReadSubject, str | None]:
+    """Who the grammar's rules and the taggers are handed: the typed subject
+    as the subject reading read it from the question's own words - its
+    players (never a companion: "without joel embiid" is a narrowing), the
+    team it is about or plays for - and the team it is set against, in place
+    of the model's spans, which are only where the reading started. A player
     span the reading did not settle on and that is none of its names is kept
     as typed ("brown" beside Tatum is ten players; the reader asks), so a
     name the model found is never lost; a name the model DROPPED that the
-    question holds is the reading's ("Nikola Jokic" with ``names=[]``).
-    A reading that settled on no one hands the model's spans as they were.
-    With them, the reading's kind and position group, and the grammar's
-    subject and the team words the stages settle a name from under the
-    intent they choose (``question``, as the stages read it)."""
+    question holds is the reading's ("Nikola Jokic" with ``names=[]``). A
+    reading that settled on no one hands the model's spans as they were,
+    with the reading's kind and position group.
+
+    .. versionchanged:: 6.0.0
+       Returns the typed subject and the opponent; it built a
+       ``router.Named`` until Phase 3, step 4, slice (b), which also carried
+       the grammar's subject and the team words the rules now read from the
+       words themselves (:mod:`association.query.grammar`).
+    """
     if not (subject.players or subject.teams or subject.opponent or subject.own_team or subject.companions):
         model = Scope.from_slots({key: slots[key] for key in ("player", "players", "team") if key in slots}).subject
         opponent = slots.get("opponent")
-        return Named.of(question, subject=replace(model, kind=subject.kind, position=subject.position), opponent=opponent if isinstance(opponent, str) else None)
+        return replace(model, kind=subject.kind, position=subject.position), opponent if isinstance(opponent, str) and opponent else None
     players = _read_route_players(subject, slots)
     # A player's own team stays the subject stage's to write, as for a routed
     # question: the readers read it with the span it implies ("lebron as a
@@ -415,7 +413,7 @@ def _read_route_names(subject: Subject, slots: dict[str, Any], question: str) ->
     team = subject.teams[0] if subject.teams and subject.kind in ("team", "teams", "team_players", "everyone", "position") else (None if placed else slots.get("team"))
     opponent = subject.teams[1] if subject.kind == "teams" and len(subject.teams) > 1 else subject.opponent
     who = ReadSubject(kind=subject.kind, players=tuple(players), teams=(team,) if team else (), position=subject.position)
-    return Named.of(question, subject=who, opponent=opponent or None)
+    return who, opponent or None
 
 
 def _read_route_players(subject: Subject, slots: dict[str, Any]) -> list[str]:
@@ -432,38 +430,8 @@ def _read_route_players(subject: Subject, slots: dict[str, Any]) -> list[str]:
 # (``Measure.beside``, over lexicon.FIELDS_AFTER and TEAM_FIELD_WORDS).
 
 # A quarter or half used as a CONDITION on which games count is the lines
-# tagger's reading (``line.read_period_line``), made here before the stages
-# so its words are blanked out of the question they read.
-
-
-#: The roles a companion can have that narrow the subject's OWN games as a
-#: condition (``subject._apply_conditions``) rather than divide them into a
-#: with/without split: "maxey points when embiid starts" is Maxey's line in
-#: Embiid's starts.
-_OWN_READ_ROLES = frozenset({"started", "bench"})
-
-# A start or a bench role the phrase denies - "when embiid doesn't start" -
-# reads as `started` to the role reader, which has no predicate for "did not":
-# as a condition that would narrow to the very games the question excludes.
-# The with/without split shows both halves, so a denied role stays there.
-_DENIED_ROLE = re.compile(r"(?:\bnot|n'?t|\bnever)\s+(?:be\s+|been\s+|get\s+|gets\s+)?(?:start|come|came|coming)", re.IGNORECASE)
-
-# "off" ends a companion phrase before "the bench" ("the" stops it), so the
-# role's words run past the phrase by that much.
-_ROLE_TAIL = re.compile(r"\s*the\s+(?:bench|pine)\b", re.IGNORECASE)
-
-
-def _read_route_role_phrases(subject: Subject, question: str) -> list[tuple[re.Match[str], str]]:
-    """Each companion phrase of ``question`` (``subject._companion_phrases``)
-    that names one of the reading's companions, with the role it gives him
-    (``subject._condition_role``) - the reading's own phrases, never a second
-    reader of them."""
-    phrases: list[tuple[re.Match[str], str]] = []
-    for match in _companion_phrases(question):
-        predicate = _condition_role(match.group(1).lower(), match.group(2))[0]
-        if any(c.predicate == predicate and _near(c.player, match.group(2)) for c in subject.conditions):
-            phrases.append((match, predicate))
-    return phrases
+# tagger's reading (``line.read_period_line``), made here before the
+# grammar's rules so its words are blanked out of the question they read.
 
 
 def _read_route_beside(subject: Subject, question: str) -> bool:
@@ -471,46 +439,15 @@ def _read_route_beside(subject: Subject, question: str) -> bool:
     rows of :data:`PARENT_GRAMMAR` - the with/without split. Not a player's
     teammate whose only role is a start or the bench: that narrows the
     player's own games ("maxey points when embiid starts", "in games embiid
-    started"), so the player's own row names the parent (``player_stat``,
-    ``game_log``, a shot template) and the role is a ``conditions`` entry on
-    it - where the split's ``when`` row sent it to ``with_without``, and a
-    missing "when" to a pair of players compared."""
+    started"), so the player's own row names the parent (his line, his log,
+    a shot chart) and the role is a ``conditions`` entry on it - where the
+    split's ``when`` row sent it to the with/without split, and a missing
+    "when" to a pair of players compared."""
     if not subject.conditions:
         return False
-    if subject.kind != "player" or any(c.predicate not in _OWN_READ_ROLES for c in subject.conditions):
+    if subject.kind != "player" or any(c.predicate not in OWN_READ_ROLES for c in subject.conditions):
         return True
-    return any(_DENIED_ROLE.search(match.group(2)) for match, _ in _read_route_role_phrases(subject, question))
-
-
-def _read_route_split(subject: Subject, question: str, asked: PointShape | None, scope: Scope) -> Scope:
-    """``scope`` with the split read again from ``question`` with every
-    teammate's start or bench phrase blanked out: "maxey points when embiid
-    starts" filed Embiid's start as Maxey's own starter split, which
-    ``with_without`` refused, and "stephen curry shot chart when draymond
-    green starts" drew Curry's starts. The subject's own split still reads
-    ("maxey points as a starter when embiid comes off the bench").
-
-    The teammate's role is written in its place, as a condition, whatever
-    the intent (``subject._apply_conditions``): until 5.0.0's last change
-    this and that were gated on whether the answering template honored
-    conditions, so "sixers first quarter points when embiid starts" kept
-    the misread split, and the split is what refused it - a reader that
-    read differently for what would answer (``ROADMAP.md``, Phase 1). Now
-    the condition is written, and the planner or the template refuses it
-    by name."""
-    phrases = [match for match, predicate in _read_route_role_phrases(subject, question) if predicate in _OWN_READ_ROLES]
-    if not phrases:
-        return scope
-    blanked = question
-    for match in phrases:
-        tail = _ROLE_TAIL.match(question, match.end(2))
-        end = tail.end() if tail is not None else match.end(2)
-        blanked = blanked[: match.start()] + " " * (end - match.start()) + blanked[end:]
-    split = _route_calendar_slots_split(blanked)
-    out = replace(scope, split=_as_split(split))
-    if split == "home_away" and asked == PLAYER_SPLITS:
-        out = replace(out, cuts=replace(out.cuts, venue=None))  # a split over venues is not a filter to one (the cuts tagger drops it the same way)
-    return out
+    return any(lexicon.DENIED_ROLE.search(match.group(2)) for match, _ in role_phrases(subject.conditions, question))
 
 
 # The apostrophe a phone keyboard types (U+2019, and U+2018, its opening
@@ -574,15 +511,16 @@ def _read_route_folded(text: str) -> str:
     return text.translate(_READ_ROUTE_APOSTROPHES)
 
 
-def read_route(index: names.NameIndex, question: str, names: list[str] | None = None, stat: str = "") -> tuple[Route, Subject, str]:
-    """The route the parser settles on for ``question`` - what the words ask
-    and the slots a reader reads, in the router's own shape - beside the
-    subject it was read about and the parent the words named, as the
-    trace's label (:func:`~association.query.reading.asked_label`). ``names`` are the
-    spans the normalizer copied out of the question and ``stat`` its stat
-    key, both checked here, never trusted. This is what the agent answers
-    from when the parser reads the question in place of the router (step c):
-    the typed Scope the stages settled, exactly as a routed question's. A
+def read_route(index: names.NameIndex, question: str, names: list[str] | None = None, stat: str = "") -> Reading:
+    """The :class:`~association.query.reading.Reading` of ``question``:
+    everything after the parser answers from it. ``names`` are the spans the
+    normalizer copied out of the question and ``stat`` its stat key, both
+    checked here, never trusted; the subject is read once from the words
+    (:func:`~association.query.subject.read_subject`), the parent grammar and
+    a child grammar name what the words ask, the grammar's rules settle it
+    (:func:`~association.query.grammar.settle`), the taggers read the
+    filters in the order each reads what the ones before it settled
+    (:func:`_tagged`), and the parser's last step writes the Reading. A
     typographic apostrophe (U+2019, U+2018) in the question or in a name is
     read as a straight one, so "the 2010's" typed with one is a decade, and
     "D'Angelo Russell" a player.
@@ -590,17 +528,20 @@ def read_route(index: names.NameIndex, question: str, names: list[str] | None = 
     .. versionadded:: 5.0.0
 
     .. versionchanged:: 6.0.0
-       The Route carries the grammar's key (``Route.asked``); the parent is
-       returned as its label, the trace's alone.
-
-    .. versionchanged:: 6.0.0
        Takes the name index (:class:`~association.query.names.NameIndex`,
        :func:`~association.query.entities.names_of`) in place of a
        connection: the reader runs no statement.
+
+    .. versionchanged:: 6.0.0
+       Returns the Reading (Phase 3, step 4, slice (b)): it returned a
+       ``router.Route`` beside the subject and the parent's label until
+       then, and ``reading_from_route`` - folded in here - wrote the Reading
+       from the Route.
     """
-    # The model's reply as given, beside the route: the words it accounts
-    # for are no unread words (Reading.unread, by the claims ledger's rule).
+    # The model's reply as given: the words it accounts for are no unread
+    # words (Reading.unread, by the claims ledger's rule).
     given = tuple(names or ())
+    asked = question
     question = _read_route_folded(question)
     names = [_read_route_folded(name) for name in names or []]
     slots = _slots_from_names(index, [_as_typed_part(index.players, question, _as_typed(question, name)) for name in names], stat)
@@ -611,7 +552,7 @@ def read_route(index: names.NameIndex, question: str, names: list[str] | None = 
     subject = _two_teams(read, question, slots)
     # A quarter or half used as a condition on which games count is read
     # here and its words blanked out of the question the grammar and the
-    # stages see (#275): left in, "after making one three in first quarter"
+    # taggers see (#275): left in, "after making one three in first quarter"
     # is the period relation's question and "one three" a line on nothing.
     # Blanked to spaces of equal length, not cut, so every claim after it
     # is where the real question holds it (the period slice's P4).
@@ -622,9 +563,9 @@ def read_route(index: names.NameIndex, question: str, names: list[str] | None = 
         claim = in_period[1]
         question = question[: claim.start] + " " * (claim.end - claim.start) + question[claim.end :]
         period_lines, period_claims = (in_period[0],), (claim,)
-    # Who the stages are handed: the names the reading read, typed, and the
-    # words they settle a name from - read over the question they read.
-    named = _read_route_names(subject, slots, question)
+    # Who the grammar's rules and the taggers are handed: the names the
+    # reading read, typed.
+    who, opponent = _read_route_names(subject, slots)
     beside = _read_route_beside(subject, question)
     parent = parent_asked(question, subject.kind, beside)
     # What the grammar read: the words whose deletion names another parent
@@ -634,73 +575,63 @@ def read_route(index: names.NameIndex, question: str, names: list[str] | None = 
     # many times did the 76ers play boston"); not the "game" of "game log",
     # which "log" names alone.
     parent_claims = read_by(question, "intent", lambda probed: parent_asked(probed, _two_teams(read, probed, slots).kind, beside))
-    staged, decisions, words = _read_route_staged(question, {"stat": stat} if stat else {}, parent, read, period_lines, named)
-    final = staged.asked
-    # A teammate's start is his, never the subject's own split: the stages
-    # read the split from the whole question.
-    scope = _read_route_split(subject, question, final, staged.scope)
-    # The one reading, settled under the intent the route ends with: what
-    # the parser's last step and everything after it answer from.
+    settled_ask, decisions, words, child_claims = _read_route_staged(question, stat or None, parent, read, who, opponent)
+    final = settled_ask.asked
+    scope, tagger_claims = _tagged(question, settled_ask, read.conditions, lines=period_lines, model_stat=stat or None) if not settled_ask.coach else (Scope(), ())
+    # The one reading, settled under the key the words end with: what the
+    # parser's last step and everything after it answer from.
     settled = settle_subject(read, final, parent=parent, words=words)
-    subject = replace(
-        subject,
-        asked=final,
-        intent=settled.intent,
-        intent_reason=settled.intent_reason,
-        teams=subject.teams if subject.kind == "teams" else settled.teams,
-        opponent=subject.opponent if subject.kind == "teams" else settled.opponent,
-    )
     # The companions' phrases are the subject reading's claims, the line in
-    # a quarter the parser's; the taggers' ride the staged route.
-    claims = claimed_once([*staged.claims, *period_claims, *read.claims, *parent_claims])
-    return Route(final, scope, decisions, subject=settled, claims=claims, model_names=given, model_stat=stat), subject, asked_label(parent)
+    # a quarter the parser's; the rules' and the taggers' read first.
+    claims = claimed_once([*claimed_once([*settled_ask.claims, *tagger_claims]), *child_claims, *period_claims, *read.claims, *parent_claims])
+    return _reading(index, asked, final, scope, settled, decisions=decisions, claims=claims, model_names=given, model_stat=stat)
 
 
-def _read_route_staged(question: str, slots: dict[str, Any], parent: PointShape | None, read: Subject, lines: tuple[Line, ...], handed: Named) -> tuple[Route, tuple[Decision, ...], str | None]:
-    """The stages, run ONCE: under the child the subject's shape and the
-    question's words name for ``parent``
-    (:func:`~association.query.subject.child_named` - a count of 30+ point
-    games under a game log, a history over the past 4 seasons under a
-    player's line, a team's record under a companion's line), or under the
-    parent itself. The stages may decline a child (a count with no
+def _read_route_staged(
+    question: str, stat: str | None, parent: PointShape | None, read: Subject, who: ReadSubject, opponent: str | None
+) -> tuple[Asked, tuple[Decision, ...], str | None, tuple[Claim, ...]]:
+    """The grammar's rules (:func:`~association.query.grammar.settle`), run
+    ONCE: under the child the subject's shape and the question's words name
+    for ``parent`` (:func:`~association.query.subject.child_named` - a count
+    of 30+ point games under a game log, a history over the past 4 seasons
+    under a player's line, a team's record under a companion's line), or
+    under the parent itself. The rules may decline a child (a count with no
     threshold in the text is a ranking), and then run again under the
     parent - the one case of a second run, measured at 4 of 628 recorded
-    questions, every one a history the stages read as a line (and 59 of
-    2,082 wordings outside the corpus). Until
-    5.0.0's last change they ran under the parent first and again under
-    each child to see whether it held, and once more under the one that
-    did: 1.7 runs a question on average, up to four.
+    questions, every one a history the rules read as a line (and 59 of
+    2,082 wordings outside the corpus). Until 5.0.0's last change they ran
+    under the parent first and again under each child to see whether it
+    held, and once more under the one that did: 1.7 runs a question on
+    average, up to four.
 
-    Returns the route, the decisions made getting to it
-    (:attr:`~association.query.router.Route.decisions`: the intent moving
-    off the parent, and why) and the words that named the child, if one
-    stands. ``lines`` are the lines read before the stages (a line in a
-    quarter, whose words the parser blanked), handed to them whole; ``handed``
-    who the subject reading names (:class:`~association.query.router.Named`)."""
+    Returns what the rules settled, the decisions made getting to it (the
+    key moving off the parent, and why - :attr:`Reading.decisions
+    <association.query.reading.Reading.decisions>`), the words that named
+    the child, if one stands, and the words the child grammars read."""
     named = child_named(read, parent, question)
     companions = read.conditions
     decisions: list[Decision] = []
     # The words the child grammars read, whether a child stands or the
-    # stages decline it (the decision records them either way): the words
+    # rules decline it (the decision records them either way): the words
     # whose deletion names another child, or its words otherwise (a child's
     # words are said in its reason) - span.read_by.
     child_claims = read_by(question, "intent", lambda probed: child_named(read, parent, probed))
     if named is not None:
         child, words = named
-        staged = settle(child, slots, question, companions, lines=lines, handed=handed)
+        staged = settle(question, child, subject=who, opponent=opponent, companions=companions, stat=stat)
         # A team's record under a companion's line names no words, and the
-        # stages' own settling of it stands, as the route's did. The
-        # decisions record the moves by their labels, as the trace prints them.
+        # rules' own settling of it stands. The decisions record the moves
+        # by their labels, as the trace prints them.
         if staged.asked == child or words is None:
             decisions.append(Decision("parser", "intent", asked_label(parent), asked_label(child), _why_named(child, words)))
             if staged.asked != child:
-                decisions.append(Decision("parser", "intent", asked_label(child), staged.intent, "the stages settle it from the question's words"))
-            return replace(staged, claims=(*staged.claims, *child_claims)), tuple(decisions), words
+                decisions.append(Decision("parser", "intent", asked_label(child), asked_label(staged.asked), "the stages settle it from the question's words"))
+            return staged, tuple(decisions), words, child_claims
         decisions.append(Decision("parser", "intent", asked_label(child), asked_label(parent), f"the words {words!r} name {asked_label(child)}, and the stages declined it"))
-    staged = settle(parent, slots, question, companions, lines=lines, handed=handed)
+    staged = settle(question, parent, subject=who, opponent=opponent, companions=companions, stat=stat)
     if staged.asked != parent:
-        decisions.append(Decision("parser", "intent", asked_label(parent), staged.intent, "the stages settle it from the question's words"))
-    return replace(staged, claims=(*staged.claims, *child_claims)), tuple(decisions), None
+        decisions.append(Decision("parser", "intent", asked_label(parent), asked_label(staged.asked), "the stages settle it from the question's words"))
+    return staged, tuple(decisions), None, child_claims
 
 
 def _why_named(child: PointShape, words: str | None) -> str:
@@ -708,46 +639,137 @@ def _why_named(child: PointShape, words: str | None) -> str:
     return f"the words {words!r} name {asked_label(child)}" if words is not None else "a team's record in the games a player named beside it reached a line"
 
 
-def reading_from_route(index: names.NameIndex, question: str, route: Route) -> Reading:
-    """The parser's last step: the :class:`~association.query.reading.Reading`
-    everything after the parser answers from. ``route`` is what
-    :func:`read_route` settled, carrying the one reading of who the question
-    is about (:attr:`~association.query.router.Route.subject`); that
-    reading is settled under the route's intent
-    (:func:`~association.query.subject.settle_subject`) and written into the
-    typed scope - the players it names, in the route's own shape, the one
-    player a template that needs one was left without, a player's own team
-    and the tenure it implies, a position group, the companions' roles
-    (:func:`~association.query.subject.apply_subject`). Nothing after this
-    writes a slot: the agent consumes the Reading (ROADMAP plan item 6, step
-    (d), part 3 - one writer).
+def _tagged(
+    question: str,
+    settled: Asked,
+    companions: tuple[Companion, ...],
+    *,
+    lines: tuple[Line, ...] = (),
+    model_stat: Any = None,
+    side: str | None = None,
+    shot_value: int | None = None,
+    fields: tuple[str, ...] = (),
+) -> tuple[Scope, tuple[Claim, ...]]:
+    """The taggers, each the one reader of its family, over the key and the
+    names the grammar's rules settled (``settled``), in the order each reads
+    what the ones before it wrote: the split (the cuts tagger reads it), the
+    lines (the measure tagger reads the stat a line names), the measure (the
+    window tagger reads whether the stat is a yes/no one), the period, the
+    cuts (the span tagger reads a date, a series game, an ordinal season and
+    a dated range's year), the window (the span tagger reads it), the span
+    last. ``companions`` are who the subject reading found beside the
+    subject (an absent teammate is no opponent; a companion's line is his);
+    ``lines`` the lines read before the rules (a line in a quarter, whose
+    words the parser blanks), which join the tagger's; ``model_stat`` the
+    model's stat key (the measure tagger's claims are cut against it, the
+    words' key read again from each probe); ``side``,
+    ``shot_value`` and ``fields`` a test's model-era context for the measure
+    (the normalizer files none). Returns the typed scope and each tagger's
+    claims, cut to the words its reading depends on
+    (:func:`~association.query.span.needed`).
 
-    The Reading carries what the reading decided, as values
-    (:attr:`~association.query.reading.Reading.decisions`) - who the question
-    is about, then the parser's own moves of the intent that ``route``
-    carries, then what the subject wrote into the scope - and the model's
-    names the question never held that nothing in it could replace
-    (:attr:`~association.query.reading.Reading.misread`), which the agent
-    refuses by name rather than answer about somebody the question never
-    mentioned. The route's scope is the typed
-    Scope already (:class:`~association.query.router.Route`), its names and
-    phrases folded by :func:`read_route`; a typographic apostrophe in the
-    question is read as a straight one here too.
-
-    .. versionadded:: 5.0.0
-
-    .. versionchanged:: 6.0.0
-       Takes the name index in place of a connection.
+    .. versionadded:: 6.0.0
+       ``router._settle``'s taggers until Phase 3, step 4, slice (b), run
+       after the stages over their slot dict.
     """
-    # The subject is read once, by read_route, settled there under the
-    # intent the route ends with, and rides on the route. A route with none
-    # is a caller's mistake, said here: until 5.0.0's last change the
-    # subject was read again for one, a second reading that ran on a
-    # different scope than the first and disagreed with it (a team's old
-    # name read without the season; ROADMAP.md, Phase 1).
-    if route.subject is None:
-        raise ValueError("reading_from_route needs the route's subject - who the question is about, as read_route read it")
-    return _reading(index, question, route.asked, route.scope, route.subject, decisions=route.decisions, claims=route.claims, model_names=route.model_names, model_stat=route.model_stat)
+    asked = settled.asked
+    split = read_split(question, companions)
+    line_context = LineContext(asked=asked, beside_line=any(c.line is not None for c in companions))
+    read = read_lines(question, line_context)
+    measure_context = _tagged_measure_context(settled, question, read, side=side, shot_value=shot_value, fields=fields)
+    measure = read_measure(question, measure_context)
+    period_context = PeriodContext(asked=asked)
+    period = read_period(question, period_context)
+    cuts_context = CutsContext(asked=asked, split=split.split, opponent=settled.opponent, without=absent(companions))
+    cuts = read_cuts(question, cuts_context)
+    window_context = WindowContext(asked=asked, boolean_stat=measure.measure is not None and measure.measure.key in BOOLEAN_KEYS)
+    window = read_window(question, window_context)
+    span = read_span(question, _tagged_span_context(settled, question, window=window.window, cuts=cuts))
+    scope = Scope(subject=settled.subject, split=split.split, lines=(*lines, *read.lines), measure=measure.measure, period=period.period, cuts=cuts.cuts, window=window.window, span=span.span)
+    # Each tagger's claims cut to the words it could not do without, asked
+    # of the tagger itself (span.needed), with the context its own words
+    # give it read again from the same words (the measure the words name,
+    # an order word, the span's guard words); and every other word its
+    # reading turns on claimed beside them, under the family's name - the
+    # possessive of "curry's last game", the "record" of a matchup's career.
+    claims = (
+        *needed(question, split.claims, lambda q: read_split(q, companions).split, outside="split", gives_up=True),
+        *needed(question, period.claims, lambda q: read_period(q, period_context).period, outside="period", gives_up=True),
+        *needed(question, cuts.claims, lambda q: _tagged_cuts(read_cuts(q, cuts_context)), outside="cuts", gives_up=True),
+        *needed(question, window.claims, lambda q: read_window(q, window_context).window, outside="window", gives_up=True),
+        *needed(question, read.claims, lambda q: _tagged_lines(read_lines(q, line_context)), outside="line", gives_up=True),
+        *needed(
+            question,
+            measure.claims,
+            lambda q: read_measure(q, _tagged_measure_context(replace(settled, stat=_tagged_worded_key(q, model_stat)), q, read, side=side, shot_value=shot_value, fields=fields)).measure,
+            outside="measure",
+            gives_up=True,
+        ),
+        *needed(question, span.claims, lambda q: read_span(q, _tagged_span_context(settled, q, window=window.window, cuts=cuts)).span, outside="span", gives_up=True),
+    )
+    return scope, claims
+
+
+def _tagged_worded_key(question: str, model_key: Any) -> Any:
+    """The measure key the taggers read beside the words: the one the words
+    name (:func:`~association.query.measure.named`), else the model's."""
+    worded = named(question)
+    return worded[0] if worded is not None else model_key
+
+
+def _tagged_cuts(read: CutsRead) -> tuple[Cuts, int | None]:
+    """What the cuts tagger writes into the reading: the cuts, and the year
+    a dated range opened at, which the span tagger reads."""
+    return read.cuts, read.dated_since
+
+
+def _tagged_lines(read: LinesRead) -> tuple[tuple[Line, ...], str | None]:
+    """What the lines tagger writes into the reading: the lines, and the
+    stat it read beside a threshold, which the measure tagger reads."""
+    return read.lines, read.stat
+
+
+def _tagged_measure_context(settled: Asked, question: str, read: LinesRead, *, side: str | None, shot_value: int | None, fields: tuple[str, ...]) -> MeasureContext:
+    """What the measure tagger reads beside the words
+    (:class:`~association.query.measure.MeasureContext`): the settled key,
+    the measure key the rules read (the words' over the model's; a test's
+    side, shot value and columns beside it), the stat the lines tagger read
+    beside a line and whether a line is keyed, and whether a game of
+    ordering was named."""
+    stat = settled.stat
+    return MeasureContext(
+        asked=settled.asked,
+        key=stat if isinstance(stat, str) and stat.strip() else None,
+        side=side,
+        shot_value=shot_value if isinstance(shot_value, int) and not isinstance(shot_value, bool) else None,
+        fields=tuple(fields),
+        line_stat=read.stat,
+        keyed_line=any(line.keyed for line in read.lines),
+        order_named=any(pattern.search(question) for pattern in lexicon.ORDER_WORDS.values()),
+    )
+
+
+def _tagged_span_context(settled: Asked, question: str, *, window: Window, cuts: CutsRead) -> SpanContext:
+    """What the span tagger reads beside the words
+    (:class:`~association.query.span.SpanContext`): the settled key, the
+    typed window, the typed cuts (a date, a game of a series, an ordinal
+    season, and the year a range opened on a dated day starts the seasons
+    at), and the guard words of other families it keeps until their slices
+    move them to the lexicon."""
+    return SpanContext(
+        asked=settled.asked,
+        player_named=settled.subject.player is not None,
+        window_named=window.count is not None,
+        versus=lexicon.VERSUS_OR_AGAINST.search(question) is not None,
+        how_many=lexicon.HOW_MANY_GAMES.search(question) is not None,
+        record=lexicon.RECORD_WORD.search(question) is not None,
+        order=window.order,
+        limit=window.count,
+        date=cuts.cuts.date,
+        game_n=cuts.cuts.game_n,
+        season_n=cuts.cuts.season_n,
+        dated_since=cuts.dated_since,
+    )
 
 
 def _reading(

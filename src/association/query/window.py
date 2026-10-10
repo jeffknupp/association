@@ -10,7 +10,7 @@ one. It claims the characters it read
 
 Phase 3, step 2's second slice: until it, the parser read the window's
 grammar before the stages (``parse.window``) and again after them
-(``parse.window_scope``), and five stages of :mod:`association.query.router`
+(``parse.window_scope``), and five stages of ``router.py``
 wrote or dropped the four slots this replaces with their own regexes
 (``_route_relative_window``, the window half of ``_route_side_and_order``
 with ``_drop_filler_limit`` and ``_drop_filler_order_on_a_series_game``,

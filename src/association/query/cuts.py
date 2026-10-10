@@ -13,7 +13,7 @@ nothing for either. It claims the characters it read
 (:class:`~association.query.reading.Claim`), each once.
 
 Phase 3, step 2's third slice: until it, the filter stage of
-:mod:`association.query.router` wrote the venue and the situation
+``router.py`` wrote the venue and the situation
 (``_route_filter_slots``), the calendar stage the date, the round, the
 series game and the ordinal season (``_route_calendar_slots``, with
 ``_validate_date``), the intent stage dropped a venue beside a venue split,

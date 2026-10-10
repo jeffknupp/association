@@ -132,7 +132,7 @@ def test_sql_is_counted_per_module_and_a_count_may_only_fall() -> None:
 
 
 def test_a_regex_outside_the_reader_is_found() -> None:
-    modules = _modules(router="import re", refusals="import re", entities="from re import compile", metrics="import json")
+    modules = _modules(grammar="import re", refusals="import re", entities="from re import compile", metrics="import json")
     assert ratchets.regex_outside_the_reader(modules) == {"refusals", "entities"}
 
 

@@ -12,7 +12,7 @@ from shapes import asked
 
 from association.query.entities import names_of
 from association.query.lexicon import content_tokens, content_words, read_by_the_model, unread_words, without_possessive
-from association.query.parse import read_route, reading_from_route
+from association.query.parse import read_route
 from association.query.reading import Reading
 
 
@@ -28,8 +28,7 @@ def con() -> duckdb.DuckDBPyConnection:
 
 def _read(con: duckdb.DuckDBPyConnection, question: str, names: list[str] | None = None, stat: str = "") -> Reading:
     """The parser's whole path, as the agent takes it."""
-    route, _, _ = read_route(names_of(con), question, names, stat)
-    return reading_from_route(names_of(con), question, route)
+    return read_route(names_of(con), question, names, stat)
 
 
 def test_a_word_is_the_text_between_spaces_lowercased_without_its_edge_punctuation() -> None:
@@ -88,12 +87,12 @@ def test_the_reading_states_the_words_nothing_claimed(con: duckdb.DuckDBPyConnec
 
 
 def test_a_word_the_model_copied_is_read_though_no_claim_holds_it(con: duckdb.DuckDBPyConnection) -> None:
-    """The model's names and stat ride the route (``Route.model_names``,
-    ``model_stat``): a word of them is the model's reading, as the ledger
-    counts it, whatever a rule claimed."""
-    route, _, _ = read_route(names_of(con), "how many points does embiid average", ["embiid"], "points")
-    assert route.model_names == ("embiid",) and route.model_stat == "points"
-    assert reading_from_route(names_of(con), "how many points does embiid average", route).unread == ("average",)
+    """The model's names and stat ride into the parser's last step
+    (``parse._reading``'s ``model_names`` and ``model_stat``; the Route
+    carried them until Phase 3, step 4, slice (b)): a word of them is the
+    model's reading, as the ledger counts it, whatever a rule claimed."""
+    reading = read_route(names_of(con), "how many points does embiid average", ["embiid"], "points")
+    assert reading.unread == ("average",)
 
 
 # ---------------- the claims cut to what each rule read (span.needed, span.read_by) ----------------

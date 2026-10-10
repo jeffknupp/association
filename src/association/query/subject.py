@@ -182,11 +182,11 @@ _CHILD_GRAMMARS: tuple[tuple[PointShape, re.Pattern[str], frozenset[str], frozen
 KIND_ASSIGNED_ASKS: frozenset[PointShape] = frozenset(child for child, _, _, _ in _CHILD_GRAMMARS)
 """The shapes :func:`child_named` assigns from the question's words, gated
 on the subject's kind (:data:`_CHILD_GRAMMARS`), under a parent the
-grammar named - the same route ``router.CODE_ASSIGNED_ASKS`` takes for a
+grammar named - the same route ``grammar.CODE_ASSIGNED_ASKS`` takes for a
 coach and a quarter, one step later, where the subject's kind is known.
-Their slots come from :func:`association.query.router.settle`, run under
-the child: the router's own text readers recover the threshold, the
-seasons count, a streak's kind and a split.
+The grammar's rules (:func:`association.query.grammar.settle`) run under
+the child and may decline it, and the taggers read its filters from the
+words after them.
 
 .. versionadded:: 5.0.0
 
@@ -1198,8 +1198,8 @@ def child_named(subject: Subject, parent: PointShape | None, question: str) -> t
       answers with HIM as its player.
     - The question's own words name a child of the route's intent
       (:data:`_CHILD_GRAMMARS`, :data:`KIND_ASSIGNED_ASKS`) - and only
-      where the stages, run under that child
-      (:func:`~association.query.router.settle`), leave it there: a count of
+      where the grammar's rules, run under that child
+      (:func:`~association.query.grammar.settle`), leave it there: a count of
       games with no threshold in the text is a ranking, and stays the
       route's question.
 
@@ -1694,9 +1694,8 @@ def subject_named_in(question: str) -> str | None:
     decides whether they name somebody, and asks when it is ambiguous.
     "curry" then answers "did you mean Seth Curry or Stephen Curry?", which is
     the question asked - where the league's high is not. Read once, by the
-    parser where it hands the stages who the question is about
-    (``router.Named``); the stages settle it where the intent reads one and
-    nobody else is named.
+    grammar's rules (:mod:`association.query.grammar`), which settle it where
+    the key they settle reads one and nobody else is named.
 
     .. versionadded:: 6.0.0
        ``router._subject_named_in`` until Phase 3, step 2: the stages read a

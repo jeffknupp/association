@@ -1326,12 +1326,21 @@ moves into `data` before the slice that rewords its answer:
     games with Gobert an opponent-side companion; the planner refusing a
     position on a point that takes none is the decline-to-Cause shape.
     ISSUES.md.
-15. **The stages still settle three names.** The grammar's subject of a
-    count or a high, a team's quarter from its one nickname and a quarter's
-    player read back are written on the typed subject by the stages, under
-    the intent they choose, from the reading's own words (`router.Named`).
-    Step 4, which keys the readers on the grammar and deletes the stages,
-    moves the three to the subject reading's settling under the intent.
+15. **The grammar's rules settle three names** (the stages' until Phase 3,
+    step 4, slice (b), which deleted them with `router.py`). The grammar's
+    subject of a count, a high or a line record (30 of the 2,710 readings),
+    a team's quarter from its one nickname (24) and a quarter's player read
+    back (1) are written on the typed subject by the grammar's rules
+    (`grammar.settle`), under the key they choose, from the subject
+    reading's own readers of the words (`subject.subject_named_in`,
+    `team_words_in`). They stay the rules' writes and not
+    `subject.settle_subject`'s, measured: the period rules read the names
+    they write as they go - the nickname's team turns the next rule's "a
+    team named" true, the quarter's player turns the key to the period log
+    and drops the team the model filed - so a writer after the rules would
+    have to replay them. One writer of the Reading's subject still holds
+    (`subject.apply_subject`, over the scope the taggers write); the rules
+    write their working reading of it.
 
 16. **The subject reading's claims are declared, not measured** (Phase 3,
     step 3). Every other rule's claims are cut to what its reading depends

@@ -2117,7 +2117,7 @@ class PointShape:
 # What a question's words ask for (Phase 3, step 4): the shape the grammar
 # names - the parent grammar by the subject's kind
 # (``parse.PARENT_GRAMMAR``), the child grammars (``subject._CHILD_GRAMMARS``)
-# and the stages before the taggers (``router._settle_stages``) - as the
+# and the grammar's rules before the taggers (``grammar.settle``) - as the
 # point it means before any typed filter moves it, in the target's own
 # vocabulary: the relation its reader reads first, the shape and what it is
 # ``by``. One key per retired intent, the intent's own default point's (a

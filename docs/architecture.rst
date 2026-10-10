@@ -107,9 +107,11 @@ two-field JSON schema passed as ollama's ``format``, so decoding is
 carries no schema and no SQL - one model call of about a second.
 :func:`association.query.parse.read_route` checks both (every span against the
 entity index, which reads a single near spelling as that player and says so;
-the stat against the question's own words) and reads the intent and every
-other slot from grammar tables keyed on the subject's kind, then settles the
-slots through the stages in :mod:`association.query.router`. It replaced a
+the stat against the question's own words) and reads what the words ask
+from grammar tables keyed on the subject's kind and the grammar's rules
+(:mod:`association.query.grammar`), and every filter through one tagger per
+family, into the Reading it returns (the stages of a ``router`` module did
+the last of that until Phase 3, step 4 of ``ROADMAP.md``). It replaced a
 router whose model classified the whole question into an intent and its slots:
 measured on yardstick-v2's live runs over the same 277 wordings, the parser
 scored 162/175 against the router's 160, with fewer wrong answers, in half the

@@ -1,6 +1,9 @@
 """Tests for the router's stages - the part that decides what a raw route's
 slots are and are not trusted to have gotten right, read against the
-question's own words.
+question's own words - which are the grammar's rules and the taggers since
+Phase 3, step 4, slice (b) (``association.query.grammar``,
+``parse._tagged``), run here through ``tests/routed.py``'s ``staged_raw``;
+slice (c) re-seats these as question-to-Reading snapshots.
 
 Most cases hand the stages a reply the router's model gave, recorded; the
 model call that decoded it is gone (5.0.0), so they run the stages directly
@@ -10,19 +13,19 @@ import json
 from typing import Any, get_args, get_type_hints
 
 import pytest
-from routed import staged_raw
+from routed import Staged, staged_raw
 from shapes import asked
 
 from association.nba.season import current_season
 from association.query.compose.plan import refusal_result
+from association.query.grammar import CODE_ASSIGNED_ASKS
 from association.query.lexicon import ORDER_WORDS
 from association.query.reading import Cause, Companion, Scope, Window
 from association.query.reading import Subject as Who
-from association.query.router import CODE_ASSIGNED_ASKS, Route
 from association.query.window import ORDER_ASKS
 
 
-def _route(payload: str) -> Route:
+def _route(payload: str) -> Staged:
     """The stages over a model reply ``payload``, for a question they do not
     read ("q") - see :func:`_ask`."""
     return _ask("q", payload)
@@ -224,7 +227,7 @@ def test_the_model_slot_no_longer_applies_when_the_text_names_no_season() -> Non
     assert got is not None and "season" not in got.slots
 
 
-def _fingerprint(payload: str, question: str) -> Route:
+def _fingerprint(payload: str, question: str) -> Staged:
     return _ask(question, payload)
 
 
@@ -428,7 +431,7 @@ def test_an_ordinary_foul_question_is_not_rewritten() -> None:
     assert got is not None and got.intent == "leaderboard" and "threshold" not in got.slots
 
 
-def _compare(question: str, payload: str = '{"intent":"player_compare","stat":"points","players":["Shai Gilgeous-Alexander","Joel Embiid"]}') -> Route:
+def _compare(question: str, payload: str = '{"intent":"player_compare","stat":"points","players":["Shai Gilgeous-Alexander","Joel Embiid"]}') -> Staged:
     return _ask(question, payload)
 
 
@@ -454,7 +457,7 @@ def test_only_a_comparison_drops_an_unasked_stat() -> None:
     assert got.slots["stat"] == "points"
 
 
-def _asking(payload: str, question: str, companions: tuple[Companion, ...] = ()) -> Route:
+def _asking(payload: str, question: str, companions: tuple[Companion, ...] = ()) -> Staged:
     """_route, but for the checks that read the question text rather than only
     the payload."""
     return _ask(question, payload, companions)
@@ -567,7 +570,7 @@ def test_the_order_intents_are_the_ones_that_honor_order() -> None:
 # consulted.
 
 
-def _ask(question: str, payload: str, companions: tuple[Companion, ...] = ()) -> Route:
+def _ask(question: str, payload: str, companions: tuple[Companion, ...] = ()) -> Staged:
     """The stages on a real question, over a fixed model reply: what the
     router returned for it, since its model call (deleted in 5.0.0) only
     decoded the reply before handing it to them. ``companions`` is who the

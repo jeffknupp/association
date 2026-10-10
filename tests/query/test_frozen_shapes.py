@@ -30,9 +30,9 @@ from __future__ import annotations
 
 from typing import Any
 
+from association.query.grammar import CODE_ASSIGNED_ASKS
 from association.query.parse import PARENT_GRAMMAR
 from association.query.reading import SHAPE_NAMES, PointShape
-from association.query.router import CODE_ASSIGNED_ASKS
 from association.query.subject import KIND_ASSIGNED_ASKS
 
 # Every shape the words could ask on 2026-09-30 - the 25 intents the reader

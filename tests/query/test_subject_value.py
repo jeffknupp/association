@@ -2,8 +2,8 @@
 typed subject on the Scope (:class:`association.query.reading.Subject` - the
 kind, the players, the teams, the position group) in place of the four name
 slots and the point's ``position``, its door and its projection; what the
-subject reading hands the stages (:class:`association.query.router.Named`)
-and the stages' refusal of a name passed as a slot; the words the reading
+subject reading hands the grammar's rules (:func:`association.query.grammar.settle`,
+the typed subject); the words the reading
 reads them by, in the lexicon; the characters it claims for the names it
 settled (:func:`association.query.subject.subject_claims`); and the
 behavioral check contract 4 asks for - the typed subject on each relation
@@ -24,11 +24,11 @@ from association.query import lexicon
 from association.query.answer import AnswerContext
 from association.query.compose.core import Query, compile_query, rows_of
 from association.query.entities import names_of
-from association.query.parse import read_route, reading_from_route
+from association.query.grammar import settle
+from association.query.parse import read_route
 from association.query.player_relation import POSITION_CODES
 from association.query.reading import Reading, Scope, ScopeError, Span
 from association.query.reading import Subject as Who
-from association.query.router import Named, settle
 from association.query.subject import is_team_name, subject_claims, subject_named_in, team_named_in_text, team_words_in
 from association.query.team_relation import scoped_team
 
@@ -91,26 +91,27 @@ def test_the_points_position_is_its_subjects_where_the_league_is_read() -> None:
     assert Reading(scope=scope).projected()["position"] is None
 
 
-# ---------------- what the stages are handed ----------------
+# ---------------- what the grammar's rules are handed ----------------
 
 
-def test_the_stages_take_the_names_typed_and_refuse_one_passed_as_a_slot() -> None:
-    with pytest.raises(ValueError, match="typed"):
-        settle(asked("player_stat"), {"player": "Joel Embiid"}, "embiid stats")
-    route = settle(asked("player_stat"), {}, "embiid stats", handed=Named.of("embiid stats", subject=Who(kind="player", players=("Joel Embiid",))))
-    assert route.scope.subject.players == ("Joel Embiid",)
+def test_the_grammars_rules_take_the_names_typed() -> None:
+    """The rules read the subject the reading hands them, typed - a name is
+    never a slot (``router.settle`` refused one passed as a slot until Phase
+    3, step 4, slice (b), when its slot dict went)."""
+    settled = settle("embiid stats", asked("player_stat"), subject=Who(kind="player", players=("Joel Embiid",)))
+    assert settled.subject.players == ("Joel Embiid",)
 
 
-def test_the_stages_settle_a_dropped_subject_from_the_grammar_the_reading_read() -> None:
+def test_the_rules_settle_a_dropped_subject_from_the_grammar_the_reading_read() -> None:
     """ "most points curry scored in a game" with nobody handed: the grammar's
     subject, which the subject reading reads (``subject_named_in``), is the
-    single game's player - the stages read it from the hand-off, not the words."""
+    single game's player."""
     question = "most points curry scored in a game this season"
-    handed = Named.of(question)
-    assert handed.grammar == "curry"
-    assert settle(asked("single_game_high"), {}, question, handed=handed).scope.subject.player == "curry"
-    # With nobody in the hand-off's grammar, nobody is settled.
-    assert settle(asked("single_game_high"), {}, question, handed=replace(handed, grammar=None)).scope.subject.players == ()
+    assert subject_named_in(question) == "curry"
+    assert settle(question, asked("single_game_high")).subject.player == "curry"
+    # With nobody in the question's grammar, nobody is settled.
+    assert subject_named_in("most points scored in a game this season") is None
+    assert settle("most points scored in a game this season", asked("single_game_high")).subject.players == ()
 
 
 def test_the_words_the_reading_reads_a_team_and_a_dropped_subject_by() -> None:
@@ -151,8 +152,8 @@ def test_the_subject_reading_claims_the_names_and_the_position_it_settled(league
 
 def test_the_claims_ride_the_reading(league: AnswerContext) -> None:  # noqa: F811 - the fixture
     question = "jayson tatum points vs the lakers"
-    route, _subject, _parent = read_route(names_of(league.con), question, ["jayson tatum", "lakers"], "points")
-    reading = reading_from_route(names_of(league.con), question, route)
+    route = read_route(names_of(league.con), question, ["jayson tatum", "lakers"], "points")
+    reading = route
     claimed = {question[c.start : c.end]: c.what for c in reading.claims}
     assert claimed["jayson tatum"] == "player" and claimed["vs the lakers"] == "opponent"
 
@@ -211,8 +212,8 @@ def test_a_period_is_never_the_one_who_scored_in_it_and_most_recent_is_no_rank(l
     window's end."""
     question = "display the first quarter scores for the Sixers' most recent 10 games"
     assert subject_named_in(question) is None
-    route, _subject, _parent = read_route(names_of(league.con), question, ["Sixers"], "points")
-    reading = reading_from_route(names_of(league.con), question, route)
+    route = read_route(names_of(league.con), question, ["Sixers"], "points")
+    reading = route
     assert reading.intent == "team_quarter_points" and reading.scope.subject.team == "Philadelphia 76ers" and reading.scope.subject.players == ()
     assert (reading.scope.window.order, reading.scope.window.count, reading.scope.window.rank) == ("recent", 10, None)
 
@@ -263,5 +264,5 @@ def test_the_76ers_are_read_from_their_own_spelling(league: AnswerContext) -> No
     found = _team_after_versus(teams, "jayson tatum stats vs 76ers this season")
     assert found is not None and found.name == "Philadelphia 76ers"
     question = "jayson tatum stats vs 76ers this season"
-    route, _subject, _parent = read_route(names_of(league.con), question, [], "")
-    assert reading_from_route(names_of(league.con), question, route).scope.cuts.opponent == "Philadelphia 76ers"
+    route = read_route(names_of(league.con), question, [], "")
+    assert route.scope.cuts.opponent == "Philadelphia 76ers"

@@ -229,9 +229,7 @@ def test_the_parser_files_each_side_where_the_router_scrambled_it(league: duckdb
     needed one (ROADMAP plan item 6, step (d), part 3c), because it files
     each side from its own reading; these are those questions, read here."""
     from association.query.parse import read_route
-    from association.query.subject import apply_subject, read_subject
 
-    route, _, _ = read_route(names_of(league), question, names, "")
-    applied = apply_subject(read_subject(names_of(league), question, route.asked, route.scope), route.scope, asked=route.asked)
-    got = {key: tuple(value) if isinstance(value, list) else value for key, value in applied.scope.to_slots().items() if key in _SIDES}
-    assert (asked_label(applied.asked), got, applied.dropped) == (intent, sides, [])
+    reading = read_route(names_of(league), question, names, "")
+    got = {key: tuple(value) if isinstance(value, list) else value for key, value in reading.scope.to_slots().items() if key in _SIDES}
+    assert (asked_label(reading.asked), got, list(reading.misread)) == (intent, sides, [])

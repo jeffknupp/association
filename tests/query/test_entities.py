@@ -995,10 +995,9 @@ def _parsed(con: duckdb.DuckDBPyConnection, question: str, names: list[str]) -> 
     """The Reading the parser settles for ``question``, the normalizer's
     names stubbed as ``names``: its route (``parse.read_route``), then its
     last step (``parse.reading_from_route``)."""
-    from association.query.parse import read_route, reading_from_route
+    from association.query.parse import read_route
 
-    route, _, _ = read_route(names_of(con), question, names, "")
-    return reading_from_route(names_of(con), question, route)
+    return read_route(names_of(con), question, names, "")
 
 
 def test_a_players_record_against_a_team_is_his_own_games(scope_con: duckdb.DuckDBPyConnection) -> None:

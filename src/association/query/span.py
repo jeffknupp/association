@@ -7,7 +7,7 @@ opened on a dated day. It claims the characters it read
 (:class:`~association.query.reading.Claim`), each once.
 
 Phase 3, step 2's first slice: until it, six stages of
-:mod:`association.query.router` wrote the six slots this replaces, each
+``router.py`` wrote the six slots this replaces, each
 with its own regexes (``_route_season_slots``, the span half of
 ``_route_filter_slots``, ``_route_season_range`` and ``_route_since_dated``
 inside the calendar stage, a pair's career in ``_route_relation_intent_slots``,

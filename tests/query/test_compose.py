@@ -22,7 +22,7 @@ from typing import Any
 
 import duckdb
 import pytest
-from routed import default_query, slots_route, with_subject
+from routed import default_query, reading_of, slots_route, with_subject
 from shapes import asked
 
 from association.fetch.repairs import real_games
@@ -1781,12 +1781,9 @@ def test_the_parser_reads_the_point_and_the_compiler_answers_it_unread(cx_ctx: A
     runs it without the question: with the point reader disabled outright,
     the answer is the one the same point gives read the test's own way
     (``compose_answer`` above, the subject and the point built by hand)."""
-    from association.query.parse import reading_from_route
 
     question = "how many 15+ point games did podziemski have"
-    reading = reading_from_route(
-        names_of(cx_ctx.con), question, with_subject(cx_ctx.con, question, slots_route("threshold_count", {"player": "Brandin Podziemski", "stat": "points", "threshold": 15}))
-    )
+    reading = reading_of(cx_ctx.con, question, with_subject(cx_ctx.con, question, slots_route("threshold_count", {"player": "Brandin Podziemski", "stat": "points", "threshold": 15})))
     assert reading.point is not None and (reading.point.shape, reading.point.aggregate) == ("scalar", "count")
     by_hand = compose_answer(cx_ctx, "threshold_count", reading.scope.to_slots(), question, reading.subject)
 
@@ -1804,15 +1801,14 @@ def test_a_point_the_compiler_declines_or_refuses_travels_on_the_reading(cx_ctx:
     gives: a decline's reason (a league count with no line to count), and a
     refusal as the answer - a copy, since the agent appends its notes to the
     answer it is handed."""
-    from association.query.parse import reading_from_route
 
-    declined = reading_from_route(names_of(cx_ctx.con), "Embiid's game log", with_subject(cx_ctx.con, "Embiid's game log", slots_route("game_log", {})))
+    declined = reading_of(cx_ctx.con, "Embiid's game log", with_subject(cx_ctx.con, "Embiid's game log", slots_route("game_log", {})))
     assert declined.point is None and declined.point_declined == "no player subject and no ranking or position-group reading of the question"
     why: list[str] = []
     assert compose.answer(cx_ctx, declined, planned=plan_point(declined), declined=why.append) is None
     assert why == [declined.point_declined]
 
-    refused = reading_from_route(names_of(cx_ctx.con), "most gizmos in a single game", with_subject(cx_ctx.con, "most gizmos in a single game", slots_route("single_game_high", {"stat": "gizmos"})))
+    refused = reading_of(cx_ctx.con, "most gizmos in a single game", with_subject(cx_ctx.con, "most gizmos in a single game", slots_route("single_game_high", {"stat": "gizmos"})))
     assert refused.point is None and refused.point_refusal == Cause(kind="no_ranking_measure", facts={"stat": "gizmos"})
     planned = plan_point(refused)
     answered = compose.answer(cx_ctx, refused, planned=planned)
@@ -1858,10 +1854,9 @@ def test_the_planner_refuses_after_the_parser_has_read_and_only_once(cx_ctx: Ans
     template's list read after the fact - and the compiler answers from the
     planning it is handed without planning again."""
     from association.query.compose import plan as plan_module
-    from association.query.parse import reading_from_route
 
-    reading = reading_from_route(
-        names_of(cx_ctx.con),
+    reading = reading_of(
+        cx_ctx.con,
         "podziemski 30 point games per 36",
         with_subject(cx_ctx.con, "podziemski 30 point games per 36", slots_route("threshold_count", {"player": "Brandin Podziemski", "stat": "points", "threshold": 30, "rate": "per_36"})),
     )
@@ -1872,8 +1867,8 @@ def test_the_planner_refuses_after_the_parser_has_read_and_only_once(cx_ctx: Ans
     why: list[str] = []
     assert compose.answer(cx_ctx, reading, declined=why.append, planned=planned) is None and why == [planned.declined]
 
-    answerable = reading_from_route(
-        names_of(cx_ctx.con),
+    answerable = reading_of(
+        cx_ctx.con,
         "podziemski 30 point games",
         with_subject(cx_ctx.con, "podziemski 30 point games", slots_route("threshold_count", {"player": "Brandin Podziemski", "stat": "points", "threshold": 30})),
     )

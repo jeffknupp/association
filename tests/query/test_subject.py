@@ -10,7 +10,7 @@ from typing import Any
 
 import duckdb
 import pytest
-from routed import handed, slots_route
+from routed import Routed, handed, reading_of
 from shapes import asked
 
 from association.nba.season import current_season
@@ -234,11 +234,11 @@ def test_no_reading_puts_a_team_where_a_player_belongs(con: duckdb.DuckDBPyConne
     written for with the team as the subject - never a team where a
     player belongs, never a companion's record with no line. Held here,
     on the reader, by the deleted check's own predicate."""
-    from association.query.parse import read_route, reading_from_route
+    from association.query.parse import read_route
     from association.query.reading import PLAYER_ASKS
 
-    route, _, _ = read_route(names_of(con), question, named, stat)
-    reading = reading_from_route(names_of(con), question, route)
+    route = read_route(names_of(con), question, named, stat)
+    reading = route
     assert reading.subject is not None
     player = reading.scope.subject.player
     team_subject = reading.subject.kind in ("team", "team_players") and not reading.subject.players
@@ -443,10 +443,9 @@ def _parsed(con: duckdb.DuckDBPyConnection, question: str, names: list[str], sta
     """The Reading the parser settles for ``question``, the normalizer's
     reply stubbed as ``names`` and ``stat``: its route
     (``parse.read_route``), then its last step (``parse.reading_from_route``)."""
-    from association.query.parse import read_route, reading_from_route
+    from association.query.parse import read_route
 
-    route, _, _ = read_route(names_of(con), question, names, stat)
-    return reading_from_route(names_of(con), question, route)
+    return read_route(names_of(con), question, names, stat)
 
 
 @pytest.fixture
@@ -483,17 +482,20 @@ def test_a_team_is_read_in_the_season_the_question_names(franchises: duckdb.Duck
 
 def _assigned(con: duckdb.DuckDBPyConnection, question: str, parent: str, **slots: Any) -> tuple[str, dict[str, Any]]:
     """The intent and slots the agent hands the template for a question
-    whose route arrives under ``parent``: the one subject reading, the
-    parser's child step (``parse._read_route_child``), then its last
-    (``parse.reading_from_route``) - the Reading, as slots."""
-    from association.query.parse import _read_route_staged, reading_from_route
-    from association.query.router import Route
+    whose reading arrives under ``parent``: the one subject reading, the
+    parser's child step and the grammar's rules (``parse._read_route_staged``),
+    the taggers (``parse._tagged``), then its last step (``parse._reading``)
+    - the Reading, as slots."""
+    from association.query.parse import _read_route_staged, _tagged
 
-    # The subject is read once; the stages run once, under the child the
+    # The subject is read once; the rules run once, under the child the
     # words name for it or under the parent; the last step settles nothing.
     who = read_subject(names_of(con), question, asked(parent), Scope.from_slots(slots))
-    staged, decisions, words = _read_route_staged(question, {key: value for key, value in slots.items() if key == "stat"}, asked(parent), who, (), handed(question, slots))
-    reading = reading_from_route(names_of(con), question, Route(staged.asked, staged.scope, decisions, settle_subject(who, staged.asked, parent=asked(parent), words=words)))
+    subject, opponent = handed(question, slots)
+    stat = slots.get("stat") if isinstance(slots.get("stat"), str) else None
+    settled, decisions, words, _claims = _read_route_staged(question, stat, asked(parent), who, subject, opponent)
+    scope = _tagged(question, settled, who.conditions, model_stat=stat)[0] if not settled.coach else Scope()
+    reading = reading_of(con, question, Routed(settled.asked, scope, settle_subject(who, settled.asked, parent=asked(parent), words=words), decisions))
     return reading.intent, reading.scope.to_slots()
 
 
@@ -889,10 +891,9 @@ def test_the_one_player_named_in_games_he_played_is_the_subject(con: duckdb.Duck
 
 def test_the_subject_is_read_once_per_question(con: duckdb.DuckDBPyConnection, monkeypatch: pytest.MonkeyPatch) -> None:
     """``ROADMAP.md``, Phase 1: the parser reads who the question is about
-    once (``read_route``), carries that reading on the route, and its child
-    step and last step settle it (``settle_subject``) - three readings
-    until 5.0.0, each asking the warehouse for the same names. A route
-    with no subject is refused at the last step, not read for again."""
+    once (``read_route``), and its child step and last step settle that
+    reading (``settle_subject``) - three readings until 5.0.0, each asking
+    the warehouse for the same names."""
     import association.query.parse as parse
 
     seen: list[Any] = []
@@ -904,13 +905,11 @@ def test_the_subject_is_read_once_per_question(con: duckdb.DuckDBPyConnection, m
 
     monkeypatch.setattr(parse, "read_subject", counting)
     question = "How many 30+ point games did Jokic have this season?"
-    route, subject, _ = parse.read_route(names_of(con), question, ["Jokic"], "points")
-    assert route.subject is not None and route.subject.players == subject.players == ("Nikola Jokic",)
-    reading = parse.reading_from_route(names_of(con), question, route)
+    route = parse.read_route(names_of(con), question, ["Jokic"], "points")
+    reading = route
+    assert reading.subject is not None and reading.subject.players == ("Nikola Jokic",)
     assert seen == [None]  # read under no shape: the grammar has not named one yet
-    assert reading.intent == "threshold_count" and reading.subject is not None and reading.subject.intent == "threshold_count"
-    with pytest.raises(ValueError, match="needs the route's subject"):
-        parse.reading_from_route(names_of(con), question, slots_route(route.intent, route.slots))
+    assert reading.intent == "threshold_count" and reading.subject.intent == "threshold_count"
 
 
 def test_a_subject_is_settled_under_the_intent_without_reading_a_name_again() -> None:

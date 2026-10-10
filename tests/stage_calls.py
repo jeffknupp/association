@@ -14,8 +14,8 @@ test that made it and its position among that test's calls, holding the
 boundary's name, the arguments that are values (a question, a Reading - not
 a connection or a callback) and what came back, or what was raised.
 
-The boundaries are the ones the stages meet at today: the parser's two
-steps, the planner (``compose.plan:plan_point``, and the sentence it says a
+The boundaries are the ones the stages meet at today: the parser
+(``read_route``, which returns the Reading, and its last step ``_reading``), the planner (``compose.plan:plan_point``, and the sentence it says a
 reader's refusal in, ``refusal_result``), the compiler's entry point and
 ``Agent.ask``. The planner joined on 2026-10-05 (ISSUES.md #331): the
 refusals that were template calls until Phase 2 are said in ``compose.plan``
@@ -58,12 +58,12 @@ from typing import Any
 #: only record of the sentence it asserts.
 #: ``parse:_reading``, the parser's last step over what the words were read
 #: as, joined on 2026-10-10 (Phase 3, step 4, slice (b)) before
-#: ``reading_from_route`` folded into ``read_route``: both trees record the
-#: Reading it builds from the same arguments, the tree with the Route and
-#: the one without it.
+#: ``reading_from_route`` folded into ``read_route`` and left the
+#: boundaries: both trees record the Reading it builds from the same
+#: arguments, the tree with the Route and the one without it, and
+#: ``read_route`` returns that Reading since.
 BOUNDARIES: tuple[str, ...] = (
     "association.query.parse:read_route",
-    "association.query.parse:reading_from_route",
     "association.query.parse:_reading",
     "association.query.compose.plan:plan_point",
     "association.query.compose.plan:refusal_result",

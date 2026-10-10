@@ -96,8 +96,9 @@ this tree:
   at 0. Step 2 retired the rest slice by slice: the window took
   `compose.core.COMPILER_SLOTS` (`ranked_by` is the typed window's `by`),
   the companions `WITH_WITHOUT_STATED` (a row of the planner's table), the
-  subject's own `router._MODEL_SLOTS` (the stages are handed who the
-  question is about typed, `router.Named`), and step 1 had taken
+  subject's own `router._MODEL_SLOTS` (the stages were handed who the
+  question is about typed, `router.Named`, until step 4 deleted the
+  router), and step 1 had taken
   `coverage._BOX_SCORE_SCOPING` (the floor follows the planned point's
   relation); the closing slice made the planner's check one function over
   the typed cells and the tables (`compose.plan.cells_unhonored`,
@@ -275,8 +276,9 @@ this tree:
   itself: `Reading.unread`, the content words no claim covers, counted by
   the ledger's own rule moved to the lexicon (`lexicon.content_words`,
   `CONTENT_STOPWORDS`, `MODEL_STAT_WORDS`; the model's names and stat ride
-  the Route, `model_names`/`model_stat`, so a word the model accounts for
-  is left out as the ledger leaves it out), recorded beside the reading
+  into the parser's last step, `parse._reading`'s `model_names`/`model_stat`,
+  so a word the model accounts for is left out as the ledger leaves it
+  out), recorded beside the reading
   (`unread`). `run` records it beside the deletion's list and `report`
   names every question where the two differ and exits 1 on one: they
   measure one thing two ways, so a disagreement is a finding - a claim
@@ -508,16 +510,17 @@ gets turned off.
     warehouse build; `fetch/repairs/` - load-time repairs of ESPN's faults and
     the tables built beside them.
   - `check/` - the coverage report. `query/` - the reader (`parse.py`, with
-    what the model sees in `normalizer.py`, the stages it runs in
-    `router.py`, the words every tagger reads by in `lexicon.py` - the span,
+    what the model sees in `normalizer.py`, the grammar's rules that settle
+    what the words ask in `grammar.py` - `router.py`'s stages until Phase 3,
+    step 4, slice (b) - the words every tagger reads by in `lexicon.py` - the span,
     window, cuts, period, line and measure families' since Phase 3, step 2,
     the calendar's own patterns and the team metrics' words among them,
     and the subject's (who a question is about: the team words, cities
     and abbreviations, the singulars, the position words, the versus and
     "for" phrases, the grammar a dropped subject is read back from, where a
-    name ends) - and the six taggers, `span.py`,
-    `window.py`, `cuts.py`, `period.py`, `line.py` and `measure.py`, which
-    also holds the measure catalog;
+    name ends) - and the seven taggers, `span.py`,
+    `window.py`, `cuts.py`, `period.py`, `line.py`, `split.py` and
+    `measure.py`, which also holds the measure catalog;
     `calendar.py` is the situation's parsers and clauses over the lexicon's
     words),
     entities, the relations (`player_games.py` and its
@@ -706,23 +709,24 @@ supplies may be fiction - the router's then, the normalizer's now.
 
 So a name is checked against the question before a reader reads it:
 `subject.read_subject` reads who the question is about from its own spans -
-ONCE per question, in `parse.read_route`, which carries that reading on the
-route (`Route.subject`); the parser's child step and its last step settle it
-under the intent the stages chose (`subject.settle_subject`, which reads no
-name and asks the warehouse nothing) - and `subject.apply_subject` writes
-those names into the scope (until 5.0.0 this was
-`entities.override_invented_players`; since Phase 3, step 2 one typed
-value, `reading.Subject` on `Scope.subject`, where four name slots stood)
-inside the parser's last step,
-`parse.reading_from_route`, whose `Reading` is all the agent answers from.
-A route with no subject is refused there (`ValueError`), not read for
-again: until 2026-10-02 a recorded route replayed through
-`Agent.ask(route=...)` had its subject read in that last step, on the
-settled scope instead of the one `read_route` reads from, and the two paths
-disagreed on 9 of 12 wordings naming a franchise's old name. `Agent.ask`
-takes a question and nothing else; a test that needs a particular route
-stands in for `read_route` (`tests/routed.py`: `ask_routed`,
-`with_subject`), and a harness answers recorded QUESTIONS with their
+ONCE per question, in `parse.read_route`; the parser's child step and its
+last step settle that reading under the key the grammar's rules chose
+(`subject.settle_subject`, which reads no name and asks the warehouse
+nothing) - and `subject.apply_subject` writes those names into the scope
+(until 5.0.0 this was `entities.override_invented_players`; since Phase 3,
+step 2 one typed value, `reading.Subject` on `Scope.subject`, where four
+name slots stood) inside the parser's last step (`parse._reading`), whose
+`Reading` - `read_route`'s return since Phase 3, step 4, slice (b), when
+the Route that carried the reading to `parse.reading_from_route` went - is
+all the agent answers from. Until 2026-10-02 a recorded route replayed
+through `Agent.ask(route=...)` had its subject read in that last step, on
+the settled scope instead of the one `read_route` reads from, and the two
+paths disagreed on 9 of 12 wordings naming a franchise's old name.
+`Agent.ask` takes a question and nothing else; a test that needs a
+particular reading of the words stands in for `read_route`
+(`tests/routed.py`: `ask_routed`, `with_subject`, `reading_of`, which hand
+a test's own key and scope to the parser's last step), and a harness
+answers recorded QUESTIONS with their
 recorded normalizer replies, as `scripts/stage_snapshots.py` and
 `scripts/preview_answers.py` do. Do not
 add a second `read_subject` call to the live path: three readings of one
@@ -929,16 +933,22 @@ yardstick grades as "fell through" is one of these refusals now.
 **The reader is the parser** (ROADMAP plan item 6; the router's model
 classification went in step (d)). The model only copies names verbatim and
 picks a stat (`query/normalizer.py`); `parse.read_route` reads everything else
-from the words and hands the rest of the path a route in the shape the
-router's model used to fill (`router.Route`), and the stages in
-`query/router.py` settle its slots into the typed `Scope` the Route carries (`router.settle`), as they settled the
-model's. Two things follow, and both matter when you add a shape:
+from the words into the Reading it returns: the parent grammar and a child
+grammar name what the words ask, the grammar's rules settle it
+(`query/grammar.py`, `grammar.settle` - the stages of `query/router.py`
+until Phase 3, step 4, slice (b), which settled a route in the shape the
+router's model used to fill, `router.Route`, over a raw slot dict), and the
+taggers, one per family, read the filters into the typed `Scope` in the
+order each reads what the ones before it settled (`parse._tagged`: the
+split, the lines, the measure, the period, the cuts, the window, the span
+last). Nothing carries a route between the words and the Reading. Two
+things follow, and both matter when you add a shape:
 
 - **A slot the router's model used to fill has to be read from the words,**
   or it is silently absent: `fields` ("with their rebounds and
   assists"), a team's quarter, the window ("last 10 games" - the window
-  tagger's, run in the stages just before the span's, which reads the
-  season type beside it). The hold-out comparison
+  tagger's, run just before the span's, which reads the season type
+  beside it). The hold-out comparison
   that found those (`~/association-research/yardstick-v2/holdout_compare.py`:
   the recorded corpus's questions outside day10, both readers, no model) is
   the check to rerun after a table change, beside the yardstick.
@@ -956,8 +966,8 @@ model's. Two things follow, and both matter when you add a shape:
   claimed beside them under the family's name (the possessive that makes
   "curry's last game" one game of his), except a word whose presence made
   it read LESS (`gives_up`: "2024 and 2025" read as no season is two
-  unread years, never the span's). The grammars, the stages and the point
-  reader, rules over the whole question with lookaheads and blockers,
+  unread years, never the span's). The grammars, the grammar's rules and
+  the point reader, rules over the whole question with lookaheads and blockers,
   claim the words their decisions turned on (`span.read_by`, `what`
   `intent`, `point`, `refused`: "compare" keeps a pair off the matchup
   row). The subject reading is read once and is never probed: it declares
@@ -976,7 +986,7 @@ model's. Two things follow, and both matter when you add a shape:
   is held to zero joins but #354's) and one recognizer beside the measure
   (`refused+measure`); a word two RULES of one tagger read is still a bug
   (#354's `situation+date`, the cuts tagger reading a day's month again).
-  The subject's own has no tagger in the stages: its one reader is the
+  The subject's own has no tagger: its one reader is the
   subject reading (`subject.read_subject`, once per question, below), and
   its one writer `subject.apply_subject`, which writes ONE typed value,
   `reading.Subject(kind, players, teams, position)` on `Scope.subject`, in
@@ -986,19 +996,22 @@ model's. Two things follow, and both matter when you add a shape:
   companion its player); one player is the one a reader reads
   (`Subject.player`), two or more a comparison or a pair; one team the one
   the read is about or narrows to (`Subject.team` - the draft's `of_team`
-  where the kind is the league's or a position group's). The stages are
-  HANDED `router.Named` - the typed subject, the opponent, the subject the
-  question's grammar names (`subject.subject_named_in`, moved from the
-  router) and the team nicknames the words hold (`subject.team_words_in`) -
-  and read no name of their own; where they settle one under the intent
-  they choose (a count's or a high's dropped subject from the grammar, a
-  team's quarter from its one nickname, a quarter's player read back) it is
-  the reading's word, written on the typed subject the Route carries.
-  `router.settle` refuses a name passed as a slot (`_MODEL_SLOTS` went; a
-  test hands its names through `tests/routed.py`'s `staged`/`handed`),
-  and four stages that wrote a name the parser never hands - a rank word or
-  a pseudo-team as the team, a team in the players list, one player listed
-  as a comparison - went with it (0 of the 2,710 readings reached them).
+  where the kind is the league's or a position group's). The grammar's
+  rules are HANDED the typed subject and the opponent the reading read
+  (`grammar.settle(question, asked, subject=, opponent=)`) and read the
+  subject the question's grammar names and the team nicknames the words
+  hold through the subject reading's own readers
+  (`subject.subject_named_in`, `subject.team_words_in`); where they settle
+  a name under the key they choose (a count's, a high's or a line record's
+  dropped subject from the grammar, 30 of the 2,710 readings; a team's
+  quarter from its one nickname, 24; a quarter's player read back, 1) it is
+  the reading's word, written on the typed subject the taggers and the
+  last step read - the grammar's writes (`ROADMAP-TYPES.md`, Still open
+  15). A test hands its names through `tests/routed.py`'s
+  `staged`/`handed`. Four stages that wrote a name the parser never hands
+  - a rank word or a pseudo-team as the team, a team in the players list,
+  one player listed as a comparison - went with the subject's slice (0 of
+  the 2,710 readings reached them).
   The subject's words are the lexicon's (`TEAM_NICKNAME`, `TEAM_CITIES`,
   `TEAM_ABBREVIATIONS`, `TEAM_SINGULARS`, `POSITION_WORDS`,
   `POSITION_GROUPS`, `AGAINST_PHRASE`, `FOR_TEAM_PHRASE`, `VERSUS_WORD`,
@@ -1036,7 +1049,7 @@ model's. Two things follow, and both matter when you add a shape:
   game - one quarter or one half, by ordinal or by number ("1st quarter",
   "q4", "4th qtr", "first half", "2h": `WHICH_QUARTER`, `WHICH_HALF`,
   `ORDINAL_PERIODS`; a half is read first and apart, since a half is never
-  a quarter) - over what the stages settled the words to ask (`asked=`, the grammar's key), writes `reading.Period`
+  a quarter) - over what the grammar's rules settled the words to ask (`asked=`, the grammar's key), writes `reading.Period`
   on `Scope.period` and claims what it read. `which_period(text)` is the
   ONE reader of which period any words name: the intent stage calls it to
   choose among the three period intents (the stage's choice is step 4's;
@@ -1064,8 +1077,8 @@ model's. Two things follow, and both matter when you add a shape:
   `Scope`; `Scope.from_slots` still takes them (it builds the `Period`;
   both at once is refused at the door), `to_slots` and `projected()` give
   the old shape back in the old field order, a model-era `period`/`half`
-  key a route still carries is dropped at the stages' door with the
-  span's, and the typed value is recorded beside the reading
+  key is no argument the parser takes, and the typed value is recorded
+  beside the reading
   (`stages._reading_record`, `period`). ONE cell, `period`, in both
   relation tables (the exclusion rows paired the two slots under one
   reason in two wordings; rewritten as one), a decline still saying the
@@ -1080,10 +1093,10 @@ model's. Two things follow, and both matter when you add a shape:
   on a career question; a date that opens a range or stands on a career
   question is a situation, and the year it wrote is handed to the span
   tagger), a playoff round, a game of a series, an ordinal season - over
-  what the stages settled the words to ask (the grammar's key), the split (a venue beside a venue split
+  what the grammar's rules settled the words to ask (the grammar's key), the split (a venue beside a venue split
   is the split's), and the opponent and absent teammates the subject
   reading read (an opponent that is the `without` list again is dropped;
-  the tenure the subject reading writes after the stages); it writes
+  the tenure the subject reading writes after the taggers); it writes
   `reading.Cuts` on `Scope.cuts`, the situation parsed once into
   `reading.Situation` (`situation_of`: the words, and the
   `CalendarNarrowing` or `AlignmentNarrowing` they name, which the
@@ -1118,19 +1131,19 @@ model's. Two things follow, and both matter when you add a shape:
   shape is a line (`line.THRESHOLD_ASKS`: the count, the record, the
   streak, the high) reads a bare "N stat" as its own, every other reader
   only what the words say outright - a floor of minutes, a line under a
-  number, two or more "N+ stat" pairs - as the stages read them (a single
+  number, two or more "N+ stat" pairs - as the router's stages read them (a single
   "20+ points" on a log is read by nothing, ISSUES.md). `threshold_named`
-  is what the intent stages ask before the lines are read (a count with no
+  is what the grammar's rules ask before the lines are read (a count with no
   line is a ranking). `read_period_line(question)` is the parser's reader
   of a line in a quarter or half ("after making one three in the first
-  quarter"), run before the stages, which BLANK its words to spaces - not
+  quarter"), run before the grammar and the taggers, which BLANK its words to spaces - not
   cut - so the period is not read as the one measured and every later
   claim keeps its offset; `period.which_period` reads its period. The lines
   are read from the WHOLE question, a companion's phrase included:
   measured, leaving a companion's line to the companion moved one recorded
   reading ("In his 18th season, how many games with 40+ points did Lebron
   James have?": the phrase reads as a companion's, the subject is LeBron
-  himself, restored after the stages, and a count with no line became a
+  himself, restored by the grammar's rules, and a count with no line became a
   ranking), and the two claims fold into one. Measured first
   (`~/association-research/stages/line_family.py`, the FIVE carriers of a
   line - the `stat`/`threshold` pair, `above`/`below`, the point's
@@ -1229,7 +1242,7 @@ model's. Two things follow, and both matter when you add a shape:
   game"), an end filled from the looser `ORDER_WORDS` on a reader that
   honors one and dropped on a reader that refuses one beside a count it
   can still take, a team ranking's end (`rank`), the measure a ranking of
-  boolean games is ordered by (`by`) - over what the stages settled the words to ask
+  boolean games is ordered by (`by`) - over what the grammar's rules settled the words to ask
   and whether the stat is a yes/no one, writes `reading.Window` on
   `Scope.window`, and claims what it read. Measured first
   (`~/association-research/stages/window_family.py`, the four slots as
@@ -1251,19 +1264,22 @@ model's. Two things follow, and both matter when you add a shape:
   the few facts the stages settled before it (what the words ask, a window, a
   player, a dated range), writes one typed value (`reading.Span`, on
   `Scope.span`) and returns the `Claim`s - `(start, end, what)` - of the
-  characters it consumed, which the Route carries onto `Reading.claims`.
+  characters it consumed, which the parser carries onto `Reading.claims`.
   A claim inside another's characters folds into it (the "playoffs" in
   "including the playoffs"); two claims that overlap without one holding
   the other are joined into one claim named for both (`span.claimed`,
-  since a29c7fd). The span tagger runs LAST in `router._settle`, after
+  since a29c7fd). The span tagger runs LAST among the taggers
+  (`parse._tagged`, `router._settle` until Phase 3, step 4), after
   the subject is settled and the period, cuts and window taggers have run, because three of
   its rules read the typed window (a bare "last N games" log reads both
   types; a count's "how many" with a player named is his career; a log's
   "last N vs the Pistons" is every meeting - `SpanContext.window_named`,
   `order`, `limit` come from the `Window`), and a model-era span or window
   key a route still carries (`season`, `season_ref`, `season_type`,
-  `order`, `limit`, ...) is dropped at the stages' door
-  (`router._MODEL_SPAN_KEYS`): the words are the one source. The
+  `order`, `limit`, ...) is no argument the parser takes (it was dropped
+  at the stages' door, `router._MODEL_SPAN_KEYS`, until the router went;
+  `tests/routed.py`'s `staged_raw` drops it from a test's payload): the
+  words are the one source. The
   six slots are gone from `Scope`; `Scope.from_slots` still takes them
   (it builds the `Span`), `Scope.to_slots` projects the value back to
   them, and `Scope.projected()` / `Reading.projected()` /
@@ -1298,8 +1314,8 @@ model's. Two things follow, and both matter when you add a shape:
   `names_of(con)`. Do not write `FROM players` or `FROM teams` on the
   reader's path again. The reader of the question's words holds no
   connection at all (Phase 3, step 4, slice (b); `con_in_the_reader` 23 ->
-  0): `parse.read_route`, `reading_from_route`, `classify_span` and
-  `subject.read_subject` take a `names.NameIndex` - the players' and the
+  0): `parse.read_route`, its last step `parse._reading`, `classify_span`
+  and `subject.read_subject` take a `names.NameIndex` - the players' and the
   teams' indexes and `names.ActivePlayers`, the players with a box score
   in the latest season on record, which a typo near more than five
   players is narrowed by (`entities.suggest_players`; measured, the one
@@ -1318,19 +1334,19 @@ model's. Two things follow, and both matter when you add a shape:
   `reading.Companion` - `player` as the question spells him, `side` (`own`
   or `opponent`), `predicate` (`played`, `absent`, `started`, `bench`,
   `reached`) and a reached role's `Line` - with a `Claim` on the phrase
-  (`Subject.claims`, which the Route carries onto `Reading.claims`), and
+  (`Subject.claims`, which the parser carries onto `Reading.claims`), and
   ONE writer puts them on the Scope: `subject.apply_subject`
   (`_apply_companions`: every companion, the other side's first, the
   subject himself excluded unless absent; `Scope.companions` since Phase 3,
   step 2, where the slots `without`, `with_player` and `conditions` stood
   - and on the path that refuses an invented name too, so "jay huff game
-  log vs Embiid" keeps Embiid beside the refusal). The stages are HANDED
-  the typed companions (`router.settle(asked, slots, question,
-  companions)`) and read no name themselves: they decide a with/without
-  split from them (`subject.with_without_named`) and cut the opponent
-  against the absent ones (`router._absent`), and a model-era `without`,
-  `with_player` or `conditions` key a route still carries is dropped at
-  the stages' door with the span's. Until Phase 3, step 2 the stages took
+  log vs Embiid" keeps Embiid beside the refusal). The grammar's rules
+  and the taggers are HANDED the typed companions
+  (`grammar.settle(..., companions=)`, `parse._tagged`) and read no name
+  themselves: the rules decide a with/without split from them and the
+  cuts tagger cuts the opponent against the absent ones
+  (`grammar.absent`), and a model-era `without`, `with_player` or
+  `conditions` key is no argument the parser takes. Until Phase 3, step 2 the stages took
   a `router.Beside` built by `subject.beside` and wrote the two slots from
   it; until 5.0.0 they had readers of their own for the same phrases; the
   two disagreed on seven of the 628 recorded questions, and "When Embiid
@@ -1580,7 +1596,7 @@ model's. Two things follow, and both matter when you add a shape:
 - **Every shape the words ask is the compiler's, and the answering loop asks it once.**
   `agent.py`'s `_run_compiled` hands `compose.answer(ctx, reading)` the
   point the parser read from the question's words once (`Reading.point`,
-  `parse.reading_from_route`) and the planner's verdict on it, planned once
+  `parse.read_route`'s last step) and the planner's verdict on it, planned once
   per question AFTER the parser has read the point
   (`compose.plan.plan_point`, kept on `Agent.planned`; the parser reads
   and does not plan), so the compiler plans and runs it and never reads
@@ -1625,7 +1641,7 @@ model's. Two things follow, and both matter when you add a shape:
   nothing reads (`Reading.unsupported` - a playoff round, an age, a
   quarter's stat nothing rebuilds, bench points, ...), said by the planner
   only where the answer side declined, so a question the compiler answers
-  is answered. Both are read by the parser (`parse.reading_from_route`)
+  is answered. Both are read by the parser (`parse.read_route`'s last step)
   and said through `refusal_phrase`; until Phase 3, step 0 the answering
   loop re-read the question for them (`refusals.py`, deleted).
   Nothing in the package may reach ollama - it is a compiler, not a
@@ -1729,8 +1745,9 @@ model's. Two things follow, and both matter when you add a shape:
 - **What the model sees lives in `query/normalizer.py`'s constants, alone.**
   `NORMALIZER_PROMPT`, `NORMALIZER_SCHEMA` (its stat enum is
   `NORMALIZER_STATS`) and `NORMALIZER_NUM_CTX` are the model's whole input;
-  `normalize()` only decodes the reply, and the parser and the stages read
-  everything after it. So a diff to `parse.py` or `router.py` cannot change
+  `normalize()` only decodes the reply, and the parser, the grammar's rules
+  and the taggers read everything after it. So a diff to `parse.py` or
+  `grammar.py` cannot change
   what the model returns for an unrelated question, and a diff to those
   constants always can.
 - **A prompt and its constrained schema must agree.** A value a prompt
@@ -1742,8 +1759,8 @@ model's. Two things follow, and both matter when you add a shape:
   holds the normalizer's examples to its enum; the other half of what the
   router's pair of tests guarded - that every shape is reachable - is
   `test_every_intent_is_reachable_from_the_reader`
-  (`tests/query/test_router.py`): the parser's `PARENT_GRAMMAR`, the stages'
-  `CODE_ASSIGNED_ASKS` or the subject reading's `KIND_ASSIGNED_ASKS`.
+  (`tests/query/test_router.py`): the parser's `PARENT_GRAMMAR`, the
+  grammar's `CODE_ASSIGNED_ASKS` or the subject reading's `KIND_ASSIGNED_ASKS`.
 - **A prompt has a token budget, and ollama enforces none.** ollama
   truncates an over-length prompt *silently and head-first*: the retired
   agent's original bug was a 10,295-token preamble against `NUM_CTX = 8192`,
@@ -1810,7 +1827,7 @@ model's. Two things follow, and both matter when you add a shape:
 - **What the words ask comes from the question's own words, never from the model.**
   Since Phase 3, step 4 the grammar names no intent: it names a
   `reading.PointShape` - the relation, the shape and the `by` of the point
-  the words ask for bare (`Reading.asked`, `Route.asked`, `Subject.asked`;
+  the words ask for bare (`Reading.asked`, `Subject.asked`;
   `None` for no shape, the retired `other`), one key per retired intent
   (`reading.PLAYER_LOG`, `PLAYER_LINE`, `PLAYER_RANKING`, ... `TEAM_COACH`),
   each the label table's (`reading.SHAPE_NAMES`, which names it back as
@@ -1835,9 +1852,10 @@ model's. Two things follow, and both matter when you add a shape:
   sets - `line.THRESHOLD_ASKS`, `period.PERIOD_ASKS`, `window.ORDER_ASKS`,
   ...); `compose.COMPILED_INTENTS` is gone (every key is the compiler's).
   The parser's `PARENT_GRAMMAR` names the parent by the subject's kind, and
-  the stages assign `CODE_ASSIGNED_ASKS` (a player's quarter, players
-  ranked by one, a coach) from the text, so a new shape is a grammar row
-  or a stage, with no prompt edit and nothing to move on another question. A refusal especially: a question
+  the grammar's rules assign `grammar.CODE_ASSIGNED_ASKS` (a player's
+  quarter, players ranked by one, a coach) from the text, so a new shape is
+  a grammar row or a rule, with no prompt edit and nothing to move on
+  another question. A refusal especially: a question
   nothing can answer needs the model's help least. `coach` is the worked
   example - the word is unmistakable, nothing else in the warehouse is named
   it, and a bare surname is deliberately not matched ("nurse" and "rivers"
@@ -1861,16 +1879,18 @@ model's. Two things follow, and both matter when you add a shape:
   player) off `shot_distance`. Measured when the seven left the router's
   prompt: 0 false positives over 261 recorded questions of other intents.
   The child is named from the grammar alone (`subject.child_named`), and
-  the stages run ONCE, under it (`parse._read_route_staged`); they may
-  decline it (a count with no threshold is a ranking), and only then run
-  again under the parent - 4 of the 628 recorded questions, every one a
-  history read as a line. Until 2026-10-02 they ran under the parent,
+  the grammar's rules run ONCE, under it (`parse._read_route_staged`); they
+  may decline it (a count with no threshold is a ranking), and only then
+  run again under the parent - 4 of the 628 recorded questions, every one a
+  history read as a line - before the taggers run once, under the key that
+  stands. Until 2026-10-02 the stages ran under the parent,
   again under each child to see whether it held, and once more under the
   one that did (1.7 runs a question, up to four), and the subject reading
   ran them too, under "other", before the parser ran them at all.
   `subject.read_subject` reads and decides nothing (under no shape,
-  `None`); `subject.settle_subject` writes the key and why with no stage run; the Route carries the
-  SETTLED subject, and `parse.reading_from_route` settles nothing. Add a
+  `None`); `subject.settle_subject` writes the key and why with no rule
+  run, and the parser's last step reads the SETTLED subject and settles
+  nothing. Add a
   case to `port_check.py`'s corpus (`~/association-research/intent-shrink/`)
   and to `tests/query/test_subject.py` for each wording a grammar gains.
 - **A refusal names the missing thing, never only the slot.**
@@ -2320,8 +2340,9 @@ a season.
 The habits that caught real bugs here, in rough order of how often they paid:
 
 - **A refactor is proven by a golden comparison, not by the suite alone.** The
-  complexity refactor that split the router's `route()` (its stages are
-  `router._settle`'s now), `parse_game_summary` and the
+  complexity refactor that split the router's `route()` (its stages became
+  `router._settle`'s, and the grammar's rules and the taggers in Phase 3,
+  step 4), `parse_game_summary` and the
   templates into steps was checked by calling each function with many inputs
   - the routing corpus's slots, the tests' own cases, one per branch - against
   the original code and again after, and diffing the full results (answer text,

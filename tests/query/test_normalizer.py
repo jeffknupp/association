@@ -11,8 +11,7 @@ import ollama
 import pytest
 from ollama import ChatResponse, Message
 
-from association.query.normalizer import NORMALIZER_NUM_CTX, NORMALIZER_PROMPT, NORMALIZER_SCHEMA, NORMALIZER_STATS, Normalized, estimate_tokens, normalize
-from association.query.router import RouterUnavailable
+from association.query.normalizer import NORMALIZER_NUM_CTX, NORMALIZER_PROMPT, NORMALIZER_SCHEMA, NORMALIZER_STATS, Normalized, RouterUnavailable, estimate_tokens, normalize
 
 
 def _normalize(payload: str) -> Normalized | None:

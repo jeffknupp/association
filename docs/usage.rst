@@ -171,9 +171,9 @@ One-shot:
 
 Add ``--verbose`` to watch the reading and every tool call as they happen:
 what the model copied out of the question (``normalizer``), what the parser
-read from the words (``parser``), the settled route (``router``, the stages'
-module) and the point the answer was read from (``reading``), each with its
-timing. The same trace is always written to ``.history/`` regardless, so a
+read from the words - what they ask, who it is about and the filters as
+slots (``parser``) - and the point the answer was read from (``reading``),
+each with its timing. The same trace is always written to ``.history/`` regardless, so a
 surprising answer can be diagnosed after the fact (timing lines left out
 here):
 
@@ -181,8 +181,7 @@ here):
 
    $ association query --verbose "most games with 20+ rebounds this season?"
      -> (normalizer) names=[] stat='rebounds'
-     -> (parser) parent='leaderboard' kind='everyone' intent='threshold_count'
-     -> (router) intent='threshold_count' slots={'stat': 'rebounds', 'season': 2026, 'season_type': 2, 'threshold': 20}
+     -> (parser) asked='threshold_count' kind='everyone' slots={'stat': 'rebounds', 'threshold': 20, 'season': 2026, 'season_type': 2} - the compiler
      -> (decision) subject kind: 'everyone'
      -> (reading) relation=everyone subject=everyone shape=grouped measures=[] aggregate=count group=player predicates=[('rebounds', '>=', 20)] window=measure/desc/5 source=games scope={'stat': 'rebounds', 'threshold': 20, 'season': 2026, 'season_type': 2}
      -> (compose) intent='threshold_count' point={'span': None}

@@ -4,7 +4,8 @@ step c).
 
 The router's prompt asked a 3B model for an intent and every slot, and a
 growing chain of code corrected what it returned (its model call went in
-5.0.0; the stages in ``router.py`` settle the parser's route now). Measured
+5.0.0, and its stages went in Phase 3, step 4: the grammar's rules and the
+taggers read the words now). Measured
 with the router withheld, what that chain could not replace is two things: the stat
 vocabulary ("fta" is ``freeThrowsAttempted``) and the spans that are names. So
 this is the whole job left to the model, and :func:`association.query.parse.read_route`
@@ -30,7 +31,27 @@ from typing import Any
 import ollama
 
 from .keepalive import KEEP_ALIVE
-from .router import RouterUnavailable
+
+
+class RouterUnavailable(RuntimeError):
+    """The model could not be asked at all - ollama is down, or cannot serve
+    that model. Raised by :func:`normalize`.
+
+    Distinct from ``normalize`` returning None, which means the model
+    answered with something unusable. Both are refused, and neither is
+    fatal; what differs is the sentence a person gets, which is the entire
+    answer.
+
+    .. versionadded:: 4.4.0
+
+    .. versionchanged:: 5.0.0
+       Raised by the normalizer: the router's own model call is gone.
+
+    .. versionchanged:: 6.0.0
+       Lives here, beside the one call that raises it:
+       ``association.query.router`` is gone (Phase 3, step 4, slice (b)).
+    """
+
 
 NORMALIZER_STATS: tuple[str, ...] = (
     "points",
@@ -135,7 +156,7 @@ class Normalized:
 def normalize(model: str, question: str) -> Normalized | None:
     """The names and stat ``model`` reads in ``question``, or None when it
     replies with something that is not the schema's object. Raises
-    :class:`~association.query.router.RouterUnavailable` when the model could
+    :class:`RouterUnavailable` when the model could
     not be asked at all - the same two sentences the router gave, since the
     reader has to be sent to the server rather than to their question.
 

@@ -253,7 +253,8 @@ source_modules = [
     "association.query.normalizer",
     "association.query.parse",
     "association.query.point",
-    "association.query.router",
+    "association.query.grammar",
+    "association.query.split",
     "association.query.subject",
     "association.query.season_text",
 ]

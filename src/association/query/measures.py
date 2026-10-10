@@ -1,9 +1,9 @@
 """The words a question uses for a box-score column.
 
-One definition, read by two stages that may not import each other:
+One definition, read by two readers that may not import each other:
 ``query/lines.py`` turns a phrase into a line on a column
-("under 14 fta"), and ``query/router.py`` reads the stat beside a threshold
-("20+ points"). `router.py` imports nothing from the answer side on purpose -
+("under 14 fta"), and the lines tagger reads the stat beside a threshold
+("20+ points"). The reader imports nothing from the answer side on purpose -
 the stage before it must not be made to depend on it - so before this
 module existed the router kept its own copy, and nothing checked that the two
 agreed (`ISSUES.md` #164).
