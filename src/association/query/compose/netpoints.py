@@ -43,7 +43,7 @@ import duckdb
 
 from association.nba.netpoints import FINGERPRINT_CATEGORIES, FINGERPRINT_PARTITION
 from association.nba.season import current_season, eastern_date
-from association.query.entities import Ambiguous, Availability, Entity, resolved_player, unmatched
+from association.query.entities import Ambiguous, Availability, Entity, names_of, resolved_player, unmatched
 from association.query.fingerprint import (
     FINGERPRINT_AVAILABILITY,
     FINGERPRINT_MIN_GAME_POSSESSIONS,
@@ -411,7 +411,7 @@ def _fingerprint_resolve_players(con: duckdb.DuckDBPyConnection, names: list[str
     for name in names:
         found = resolve_chart_player(con, name, availability, season)
         if found is None:
-            return unmatched(con, name)
+            return unmatched(names_of(con), name)
         if isinstance(found, Ambiguous):
             # The question back, in the sentence every chart and template asks it with.
             return Clarify(asked=name, candidates=tuple(found.candidates), active=found.active)

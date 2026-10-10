@@ -36,6 +36,7 @@ from association.query.compose.core import Query, run
 from association.query.compose.sentence import sentence
 from association.query.conditions import RAW_BOX, UNGATED_ON_REBUILD, box_source
 from association.query.coverage import check_coverage
+from association.query.entities import names_of
 from association.query.measure import measure_of
 from association.query.parse import with_point
 from association.query.player_games import REBUILT_STATS
@@ -60,7 +61,7 @@ def _compiled(intent: str) -> Callable[[AnswerContext, Reading], Reply]:
         kind: SubjectKind = "pair" if len(named) > 1 else "player" if named else "team" if scope.subject.team else "everyone"
         subject = reading.subject or Subject(kind, players=named, teams=(scope.subject.team,) if scope.subject.team else ())
         why: list[str] = []
-        result = compose_answer(ctx, with_point(ctx.con, "", Reading(scope=scope, asked=asked(intent), subject=subject)), declined=why.append)
+        result = compose_answer(ctx, with_point("", Reading(scope=scope, asked=asked(intent), subject=subject)), declined=why.append)
         if result is None:
             raise Unsupported(why[0] if why else f"the compiler has no reading of this {intent} point")
         return result
@@ -1122,7 +1123,7 @@ def test_a_named_player_beats_the_team_branch_end_to_end(league: AnswerContext) 
 
     def answered(question: str, **slots: Any) -> str:
         given = Scope.from_slots(_slots(**slots))
-        applied = apply_subject(read_subject(league.con, question, asked("record_when"), given), given, asked=asked("record_when"))
+        applied = apply_subject(read_subject(names_of(league.con), question, asked("record_when"), given), given, asked=asked("record_when"))
         return (record_when(league, Reading(scope=applied.scope)).answer or "").splitlines()[0]
 
     named = answered("celtics record with 20+ points from jayson tatum", stat="points", threshold=20, team="Boston Celtics")

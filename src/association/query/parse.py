@@ -28,11 +28,9 @@ import re
 from dataclasses import replace
 from typing import Any, cast, get_args
 
-import duckdb
-
 from association.query import lexicon, names
 from association.query.decisions import Decision
-from association.query.entities import _edit_budget, _words, find_players, find_teams, players_of, suggest_players, team_abbreviations, teams_of
+from association.query.entities import _edit_budget, _words, find_players, find_teams, suggest_players, team_abbreviations
 from association.query.lexicon import COUNT, LOG_OR_WINDOW_WORDS
 from association.query.line import read_period_line
 from association.query.measures import PERIOD_COLUMNS, PERIOD_RATE_STATS, TEAM_PERIOD_COLUMNS
@@ -237,18 +235,23 @@ def parent_asked(question: str, kind: str, companions: bool = False) -> PointSha
     return None
 
 
-def classify_span(con: duckdb.DuckDBPyConnection, text: str) -> str | None:
+def classify_span(index: names.NameIndex, text: str) -> str | None:
     """``"team"``, ``"player"`` or ``None`` for a span the model copied out of
     the question: a team's word, nickname or name first; then a name some
     player holds as whole words; else nothing (a division, a typo, the word
-    "team" - none of them a subject, ISSUES.md #236)."""
+    "team" - none of them a subject, ISSUES.md #236).
+
+    .. versionchanged:: 6.0.0
+       Takes the name index (:func:`~association.query.entities.names_of`)
+       in place of a connection.
+    """
     low = text.lower().strip().removesuffix("'s").rstrip("'")
     if low.removeprefix("the ") in lexicon.NEVER_A_NAME:
         return None
-    if low in lexicon.TEAM_SINGULARS or team_named_in(teams_of(con), low) is not None or _classify_span_abbreviation(con, low):
+    if low in lexicon.TEAM_SINGULARS or team_named_in(index.teams, low) is not None or _classify_span_abbreviation(index.teams, low):
         return "team"
-    teams = find_teams(con, text)
-    players = find_players(con, text)
+    teams = find_teams(index.teams, text)
+    players = find_players(index.players, text)
     if teams and not players:
         return "team"
     if players:
@@ -258,18 +261,18 @@ def classify_span(con: duckdb.DuckDBPyConnection, text: str) -> str | None:
     # within the edit budget; two or more ask, as they always did. "Embid"
     # is Joel Embiid; "jolic" (Jokic or Jovic) is nobody's here.
     for spelling in dict.fromkeys((text, text.removesuffix("s"), text.removesuffix("'s"))):
-        if spelling and len(suggest_players(con, spelling)) == 1:
+        if spelling and len(suggest_players(index, spelling)) == 1:
             return "player"
     return None
 
 
-def _classify_span_abbreviation(con: duckdb.DuckDBPyConnection, low: str) -> bool:
+def _classify_span_abbreviation(teams: names.TeamIndex, low: str) -> bool:
     """Whether ``low`` is a team's abbreviation exactly ("phi", "gsw"): "PHI"
     is also inside Phil Handy's name, and a span that IS a team's code names
     the team."""
     if not 2 <= len(low) <= 4 or not low.isalpha():
         return False
-    return low in team_abbreviations(con)
+    return low in team_abbreviations(teams)
 
 
 def _as_typed(question: str, name: str) -> str:
@@ -297,7 +300,7 @@ def _as_typed(question: str, name: str) -> str:
     return " ".join(runs[0]) if wanted and len(runs) == 1 else name
 
 
-def _as_typed_part(con: duckdb.DuckDBPyConnection, question: str, name: str) -> str:
+def _as_typed_part(players: names.PlayerIndex, question: str, name: str) -> str:
     """``name`` cut back to the part the question holds, where the model
     COMPLETED a name the question gives only part of and that part names
     more than one player. "who is better, tatum or brown" came back with
@@ -325,11 +328,11 @@ def _as_typed_part(con: duckdb.DuckDBPyConnection, question: str, name: str) -> 
     held = [word for word in words if word.casefold() in asked]
     if not held or len(held) == len(words) or name in nicknames_in(question):
         return name
-    derived = question_derived_player(players_of(con), question, name)
+    derived = question_derived_player(players, question, name)
     if derived is not None and derived.name.casefold() == name.casefold():
         return name
     part = " ".join(held)
-    return part if len(find_players(con, part)) > 1 or not find_players(con, name) else name
+    return part if len(find_players(players, part)) > 1 or not find_players(players, name) else name
 
 
 def _as_typed_runs(words: list[str], wanted: list[str]) -> list[list[str]]:
@@ -353,11 +356,11 @@ def _as_typed_close(typed: str, wanted: str) -> bool:
     return _edit_distance(typed, wanted) <= budget or (len(typed) > 3 and typed.endswith("s") and _edit_distance(typed[:-1], wanted) <= budget)
 
 
-def _slots_from_names(con: duckdb.DuckDBPyConnection, names: list[str], stat: str) -> dict[str, Any]:
+def _slots_from_names(index: names.NameIndex, names: list[str], stat: str) -> dict[str, Any]:
     """The names as the slot shape the readers take today: ``player`` /
     ``players``, ``team`` and a second team as ``opponent``, ``stat``."""
-    teams = [n for n in names if classify_span(con, n) == "team"]
-    players = [n for n in names if n not in teams and classify_span(con, n) == "player"]
+    teams = [n for n in names if classify_span(index, n) == "team"]
+    players = [n for n in names if n not in teams and classify_span(index, n) == "player"]
     slots: dict[str, Any] = {}
     if len(players) == 1:
         slots["player"] = players[0]
@@ -571,7 +574,7 @@ def _read_route_folded(text: str) -> str:
     return text.translate(_READ_ROUTE_APOSTROPHES)
 
 
-def read_route(con: duckdb.DuckDBPyConnection, question: str, names: list[str] | None = None, stat: str = "") -> tuple[Route, Subject, str]:
+def read_route(index: names.NameIndex, question: str, names: list[str] | None = None, stat: str = "") -> tuple[Route, Subject, str]:
     """The route the parser settles on for ``question`` - what the words ask
     and the slots a reader reads, in the router's own shape - beside the
     subject it was read about and the parent the words named, as the
@@ -589,17 +592,22 @@ def read_route(con: duckdb.DuckDBPyConnection, question: str, names: list[str] |
     .. versionchanged:: 6.0.0
        The Route carries the grammar's key (``Route.asked``); the parent is
        returned as its label, the trace's alone.
+
+    .. versionchanged:: 6.0.0
+       Takes the name index (:class:`~association.query.names.NameIndex`,
+       :func:`~association.query.entities.names_of`) in place of a
+       connection: the reader runs no statement.
     """
     # The model's reply as given, beside the route: the words it accounts
     # for are no unread words (Reading.unread, by the claims ledger's rule).
     given = tuple(names or ())
     question = _read_route_folded(question)
     names = [_read_route_folded(name) for name in names or []]
-    slots = _slots_from_names(con, [_as_typed_part(con, question, _as_typed(question, name)) for name in names], stat)
+    slots = _slots_from_names(index, [_as_typed_part(index.players, question, _as_typed(question, name)) for name in names], stat)
     # THE reading of who the question is about: everything after this
     # settles it (subject.settle_subject), nothing reads the names again -
     # not even to ask which words it read (its claims are its own, below).
-    read = read_subject(con, question, None, Scope.from_slots(slots))
+    read = read_subject(index, question, None, Scope.from_slots(slots))
     subject = _two_teams(read, question, slots)
     # A quarter or half used as a condition on which games count is read
     # here and its words blanked out of the question the grammar and the
@@ -700,7 +708,7 @@ def _why_named(child: PointShape, words: str | None) -> str:
     return f"the words {words!r} name {asked_label(child)}" if words is not None else "a team's record in the games a player named beside it reached a line"
 
 
-def reading_from_route(con: duckdb.DuckDBPyConnection, question: str, route: Route) -> Reading:
+def reading_from_route(index: names.NameIndex, question: str, route: Route) -> Reading:
     """The parser's last step: the :class:`~association.query.reading.Reading`
     everything after the parser answers from. ``route`` is what
     :func:`read_route` settled, carrying the one reading of who the question
@@ -727,6 +735,9 @@ def reading_from_route(con: duckdb.DuckDBPyConnection, question: str, route: Rou
     question is read as a straight one here too.
 
     .. versionadded:: 5.0.0
+
+    .. versionchanged:: 6.0.0
+       Takes the name index in place of a connection.
     """
     scope = route.scope
     asked = question
@@ -745,7 +756,7 @@ def reading_from_route(con: duckdb.DuckDBPyConnection, question: str, route: Rou
     # position group, beside the taggers' and the companions' the route
     # carries. The subject is read once (read_route), so its claims are the
     # ones it makes where it reads - never found by reading it again.
-    claims = [*route.claims, *subject_claims(teams_of(con), question, applied.scope)]
+    claims = [*route.claims, *subject_claims(index.teams, question, applied.scope)]
     reading = Reading(
         scope=applied.scope,
         asked=applied.asked,
@@ -755,12 +766,12 @@ def reading_from_route(con: duckdb.DuckDBPyConnection, question: str, route: Rou
         misread=tuple(applied.dropped),
         claims=claimed_once(claims),
     )
-    pointed = with_point(con, question, reading)
+    pointed = with_point(question, reading)
     # What the words name that nothing reads, read once, here: a refusal
     # said before any reader runs, and the shapes recognized and read by
     # nothing, said where the answer side declines (the question as it was
     # asked, unfolded, as the answering loop read it until Phase 3, step 0).
-    players, teams = players_of(con), teams_of(con)
+    players, teams = index.players, index.teams
     refused = _reading_from_route_refused(players, teams, asked, pointed)
     unsupported = _reading_from_route_unsupported(asked, pointed)
     left_out = _reading_from_route_left_out(players, asked, pointed)
@@ -768,7 +779,7 @@ def reading_from_route(con: duckdb.DuckDBPyConnection, question: str, route: Rou
     # decisions (span.read_by): "most", "at least 400 attempts", "per game",
     # a championship. The point reader reads its tables over the whole
     # question, as the grammars do.
-    claims += read_by(question, "point", lambda probed: _reading_from_route_point(with_point(con, probed, reading)))
+    claims += read_by(question, "point", lambda probed: _reading_from_route_point(with_point(probed, reading)))
     claims += read_by(
         asked,
         "refused",
@@ -811,7 +822,7 @@ def _reading_from_route_names(scope: Scope, subject: Subject, asked: PointShape 
     return tuple(found)
 
 
-def with_point(con: duckdb.DuckDBPyConnection, question: str, reading: Reading) -> Reading:
+def with_point(question: str, reading: Reading) -> Reading:
     """``reading`` with the compiler's point read from the question's words
     (:func:`~association.query.point.read_point`) - or with why
     there is none: no reading of the point (``point_declined``), or a
@@ -830,6 +841,9 @@ def with_point(con: duckdb.DuckDBPyConnection, question: str, reading: Reading) 
     .. versionchanged:: 5.0.0
        Reads the point and no longer plans it (``ROADMAP.md``, Phase 1: the
        planner runs once, outside the parser).
+
+    .. versionchanged:: 6.0.0
+       Takes no connection: the point reader reads the Reading and the words.
     """
     try:
         point = read_point(reading, question)

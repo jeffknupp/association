@@ -17,7 +17,7 @@ from __future__ import annotations
 import duckdb
 
 from .court import BEYOND_THE_ARC_SQL, HAS_POSITION_SQL
-from .entities import MAX_CANDIDATES, Ambiguous, Availability, Entity, find_players, narrow_to_available, read_near_spelling
+from .entities import MAX_CANDIDATES, Ambiguous, Availability, Entity, find_players, names_of, narrow_to_available, players_of, read_near_spelling
 from .entities import SHOT_AVAILABILITY as SHOT_AVAILABILITY
 
 UNSEPARABLE_SHOT_VALUES: dict[int, str] = {
@@ -152,13 +152,13 @@ def resolve_chart_player(con: duckdb.DuckDBPyConnection, player_name: str, avail
     # alphabetically chooses by name rather than eliminating: Anthony Davis was
     # the only "Davis" on the first page with 2026 shots, and the three more
     # who had them sorted past it.
-    candidates = find_players(con, player_name, limit=None)
+    candidates = find_players(players_of(con), player_name, limit=None)
     if not candidates:
         # One near spelling is that player, and the reading is said in the
         # answer - the same default resolve_player takes. Not narrowed to who
         # has chart rows: a single candidate has nobody to be eliminated in
         # favor of, and the renderer's own message says what he lacks.
-        near = read_near_spelling(con, player_name)
+        near = read_near_spelling(names_of(con), player_name)
         return None if near is None else (near, [])
     if len(candidates) > 1:
         narrowed = narrow_to_available(con, candidates, available, season)

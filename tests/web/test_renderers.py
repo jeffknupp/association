@@ -27,6 +27,7 @@ from shapes import asked
 from association.nba.netpoints import FINGERPRINT_CATEGORIES
 from association.query.answer import AnswerContext, Reply
 from association.query.compose.sentence import _FRACTION_COLUMNS
+from association.query.entities import names_of
 from association.query.parse import with_point
 from association.query.reading import SHAPE_NAMES, Reading, Scope
 from association.query.subject import read_subject
@@ -309,7 +310,7 @@ def _answered(ctx: AnswerContext, intent: str) -> Reply:
     (``compose.COMPILED_INTENTS``), with no question words to move its own
     point."""
     slots = dict(CASES[intent])
-    result = compose_answer(ctx, with_point(ctx.con, "", Reading(scope=Scope.from_slots(slots), asked=asked(intent), subject=read_subject(ctx.con, "", asked(intent), Scope.from_slots(slots)))))
+    result = compose_answer(ctx, with_point("", Reading(scope=Scope.from_slots(slots), asked=asked(intent), subject=read_subject(names_of(ctx.con), "", asked(intent), Scope.from_slots(slots)))))
     assert result is not None, f"the compiler has no reading of {intent}'s case"
     return result
 

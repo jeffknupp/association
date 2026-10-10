@@ -25,11 +25,39 @@ stay in :mod:`association.query.router` and :mod:`association.query.subject`.
 
 from __future__ import annotations
 
+import functools
 import re
 from dataclasses import dataclass
 from typing import Literal
 
 from association.nba.season import current_season
+
+WORD_START = "(^|[^A-Za-z])"
+"""Where a name's word starts: the start, or after any character that is
+not a letter - not a space alone, so the halves of a hyphenated or
+apostrophed name each start a word ("Alexander" starts one in Shai
+Gilgeous-Alexander and in Nickeil Alexander-Walker, "Neal" in Shaquille
+O'Neal). The name index matches a token strongly where it starts one
+(``entities._starts_a_word``, DuckDB's reading of this pattern), and a
+surname a typo backs off to is kept only where it does (:func:`word_start`).
+
+.. versionadded:: 6.0.0
+   ``entities._WORD_START`` until Phase 3, step 4: the last pattern outside
+   the lexicon.
+"""
+
+
+@functools.lru_cache(maxsize=1024)
+def word_start(token: str) -> re.Pattern[str]:
+    """``token`` where it starts a word of a name (:data:`WORD_START`),
+    ignoring case - what a multi-word name backed off to its surname keeps a
+    candidate by (``entities._suggest_players_by_surname``): "Nobody At All"
+    backed off to "All" matches Bo Wall inside a word, and is no suggestion.
+
+    .. versionadded:: 6.0.0
+    """
+    return re.compile(WORD_START + re.escape(token), re.IGNORECASE)
+
 
 MIN_SEASON = 1947
 """The earliest year read as a season: the league's first (1946-47).

@@ -67,6 +67,18 @@ def test_the_bypasses_the_phase_1_review_found_are_caught() -> None:
     assert ratchets.con_in_the_reader(modules) == {"point:read"}
 
 
+def test_a_connection_under_another_name_is_a_connection_in_the_reader() -> None:
+    """``con_in_the_reader`` read a parameter's name alone until 2026-10-10,
+    when the list reached zero: a reader function handed the warehouse as
+    ``warehouse: duckdb.DuckDBPyConnection`` passed it. The annotation
+    counts now; the name index the reader takes does not."""
+    modules = _modules(
+        parse="import duckdb\ndef read(warehouse: duckdb.DuckDBPyConnection, question): ...\ndef words(index: names.NameIndex, question): ...",
+        subject="def read_subject(index, question, *, con=None): ...",
+    )
+    assert ratchets.con_in_the_reader(modules) == {"parse:read", "subject:read_subject"}
+
+
 def test_a_hand_built_statement_through_the_compilers_door_counts_and_a_compiled_one_does_not() -> None:
     """The bypass the Phase 2 review found (2026-10-05): 35 hand-written
     statements moved whole behind ``core.rows_of``/``core.values_of``, which
@@ -141,7 +153,7 @@ def test_the_list_on_disk_is_this_trees_and_shrink_never_adds(monkeypatch: pytes
     assert set(listed) == set(ratchets.CHECKS) and ratchets.compare(listed, found) == []
     # --shrink over a list holding one stale entry and missing one real one
     # drops the stale entry and does not add the missing one.
-    name = "con_in_the_reader"
+    name = "question_outside_the_reader"
     doctored = {**listed, name: [*listed[name][1:], "a_name_that_is_gone"]}
     copy = tmp_path / "ratchets.json"
     copy.write_text(json.dumps(doctored))

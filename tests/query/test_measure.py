@@ -27,6 +27,7 @@ from test_templates import game_log, leaderboard, pg_ctx  # noqa: F401 - the pla
 from association.query import lexicon
 from association.query.answer import AnswerContext
 from association.query.compose.plan import cells_stated, plan_point
+from association.query.entities import names_of
 from association.query.measure import (
     ALIASES,
     CATALOG,
@@ -358,11 +359,11 @@ def test_the_planner_declines_the_rate_cell_where_no_reader_states_it(con: Any) 
     cannot honor a unit, and says so in the sentence the relation check
     always gave; the season line's ranking refuses a unit its metric has no
     form of by name (the point's ``ranking_unit`` cause)."""
-    route, _, _ = read_route(con, "centers by pf per 100", [], "fouls")
-    reading = reading_from_route(con, "centers by pf per 100", route)
+    route, _, _ = read_route(names_of(con), "centers by pf per 100", [], "fouls")
+    reading = reading_from_route(names_of(con), "centers by pf per 100", route)
     assert reading.scope.measure == Measure(key="fouls", as_typed="fouls", how="per_100", unit="per 100")
     assert plan_point(reading).declined == "the relation cannot honor ['rate'] - it would answer for a different span than was asked"
-    route, _, _ = read_route(con, "who were the top 10 in defensive netpoints / 90", [], "netpoints")
-    reading = reading_from_route(con, "who were the top 10 in defensive netpoints / 90", route)
+    route, _, _ = read_route(names_of(con), "who were the top 10 in defensive netpoints / 90", [], "netpoints")
+    reading = reading_from_route(names_of(con), "who were the top 10 in defensive netpoints / 90", route)
     assert reading.point_refusal is not None and reading.point_refusal.kind == "ranking_unit" and reading.point_refusal.facts == {"metric": "netpoints_defense", "rate": "/ 90"}
     assert reading.scope.span == Span(season_type=2) or reading.scope.span.season_type == 2

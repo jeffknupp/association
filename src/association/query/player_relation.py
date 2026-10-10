@@ -27,7 +27,7 @@ import duckdb
 from association.nba.coverage import COVERAGE, REGULAR_SEASON
 from association.nba.season import current_season, eastern_day_utc_range
 from association.query.conditions import _game_scope, _Scope, box_source
-from association.query.entities import BOX_SCORES, Ambiguous, Availability, Entity, clarify, find_players, resolve_player, resolve_team, resolved_player, resolved_team, teammate_names
+from association.query.entities import BOX_SCORES, Ambiguous, Availability, Entity, clarify, find_players, players_of, resolve_player, resolve_team, resolved_player, resolved_team, teammate_names
 from association.query.lines import MeasureFilter, measure_filters
 from association.query.notes import Note
 from association.query.player_games import (
@@ -1308,7 +1308,7 @@ def _resolved_teammate(con: duckdb.DuckDBPyConnection, text: Any, player: Entity
         # Every match, not find_players' first page of ten: "without williams"
         # is 62 players by name, and a teammate who sorted past the tenth was
         # reported as nobody's teammate at all.
-        candidates = find_players(con, text, limit=None)
+        candidates = find_players(players_of(con), text, limit=None)
         shared = _teammates_among(con, candidates, player, span)
         if len(shared) > 1:
             # Each of them shared his team in the span, so none is counted away.

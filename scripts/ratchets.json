@@ -24,32 +24,6 @@
   "season_line": 7,
   "team_relation": 2
  },
- "regex_outside_the_reader": [
-  "entities"
- ],
- "con_in_the_reader": [
-  "parse:_as_typed_part",
-  "parse:_classify_span_abbreviation",
-  "parse:_slots_from_names",
-  "parse:classify_span",
-  "parse:read_route",
-  "parse:reading_from_route",
-  "parse:with_point",
-  "subject:_filler_names",
-  "subject:_is_a_team",
-  "subject:_named_as_own",
-  "subject:_opponent_player",
-  "subject:_question_players",
-  "subject:_read_opponent",
-  "subject:_routed_names",
-  "subject:_spellings",
-  "subject:_team_abbreviation",
-  "subject:_team_names",
-  "subject:_team_slot_player",
-  "subject:_team_word",
-  "subject:_unrouted_companions",
-  "subject:_unrouted_name",
-  "subject:_unrouted_near_spelling",
-  "subject:read_subject"
- ]
+ "regex_outside_the_reader": [],
+ "con_in_the_reader": []
 }

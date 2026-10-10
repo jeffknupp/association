@@ -44,7 +44,14 @@ target"):
     Jeff's say-so).
 ``regex_outside_the_reader``
     A module that imports ``re`` outside the reader. Contract 6: regexes
-    live in the lexicon.
+    live in the lexicon. 6 when it was written; 0 since Phase 3, step 4,
+    slice (b) (2026-10-10: ``entities``' last pattern moved to the lexicon,
+    ``lexicon.word_start``, and its LIKE reading needs none), the list held
+    empty so a new one fails.
+``con_in_the_reader``
+    A reader function that takes a DuckDB connection. Contract 3: names are
+    recognized from an in-memory index, not by query. 23 when it was
+    written; 0 since the same slice, held empty.
 A fifth, ``private_template_imports`` (a private name the compiler took from
 ``templates/``), went to zero and was deleted with ``templates/`` itself
 (Phase 2, step 6, 2026-10-05): with no template module left there is no
@@ -284,17 +291,29 @@ def sql_outside_the_relations(modules: dict[str, ast.Module]) -> dict[str, int]:
     return {name: count for name, count in counts.items() if count}
 
 
+def _takes_a_connection(function: Function) -> bool:
+    """Whether ``function`` takes a DuckDB connection: a parameter named
+    ``con``, or one of any name annotated ``DuckDBPyConnection`` (a
+    renamed parameter passed the name check alone until 2026-10-10)."""
+    arguments = function.args
+    every = (*arguments.posonlyargs, *arguments.args, *arguments.kwonlyargs)
+    return any(arg.arg == "con" or (arg.annotation is not None and "DuckDBPyConnection" in ast.unparse(arg.annotation)) for arg in every)
+
+
 def con_in_the_reader(modules: dict[str, ast.Module]) -> set[str]:
     """``module:function`` for each reader function that takes a DuckDB
-    connection (a parameter named ``con``): the reader reads names from
-    the in-memory index and should need none. Listed so it only shrinks;
-    the point reader's ``con`` was carried and never used."""
+    connection (:func:`_takes_a_connection`): the reader reads names from
+    the in-memory index (``names.NameIndex``, which the answering loop reads
+    before the parser runs) and needs none. Listed so it only shrinks; the
+    point reader's ``con`` was carried and never used. 23 when it was
+    written; 0 since Phase 3, step 4, slice (b) (2026-10-10), the list
+    held empty so a new one fails."""
     found: set[str] = set()
     for name, tree in modules.items():
         if name not in READER:
             continue
         for qualified, function in _functions(tree):
-            if "con" in _parameters(function):
+            if _takes_a_connection(function):
                 found.add(f"{name}:{qualified}")
     return found
 

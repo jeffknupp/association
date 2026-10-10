@@ -132,9 +132,13 @@ this tree:
   argument's tracing is `_origin`'s docstring), a module outside the
   reader that imports `re` by any route or takes a reader's private
   pattern (6, then 4 since `refusals.py` went, 3 since `calendar.py`'s
-  patterns moved to the lexicon with the games' cuts), and a reader function that
-  takes a DuckDB connection (23; a reader of the question's words takes
-  the names' in-memory index instead, `entities.players_of`/`teams_of`). A
+  patterns moved to the lexicon with the games' cuts, 0 since Phase 3,
+  step 4, slice (b): `entities`' last pattern is `lexicon.word_start`, and
+  its LIKE reading needs none), and a reader function that takes a DuckDB
+  connection, by its name or its annotation (23, 0 since the same slice:
+  the reader takes the names' in-memory index, `names.NameIndex`, which
+  the answering loop reads before the parser runs, `entities.names_of`).
+  The two at zero are held as empty lists, so a new one fails. A
   fifth ratchet, a private name `compose/` took from `templates/`, reached
   0 and was deleted with `templates/` (step 6). It fails
   on a NEW one or a count that grew, and on a listed one that is GONE or a
@@ -1285,21 +1289,28 @@ model's. Two things follow, and both matter when you add a shape:
   DuckDB's own semantics reproduced and checked against it: its `lower`,
   its split on every non-ASCII-lowercase letter, Damerau-Levenshtein over
   UTF-8 bytes, RE2's case folding, ILIKE that lowers ASCII only on an
-  all-ASCII column, table order where the SQL had no `ORDER BY`. A new name
-  lookup goes through `entities._player_index` / `_team_index`; do not
-  write `FROM players` or `FROM teams` on the reader's path again. A
-  reader of the question's words takes the index itself, never a
-  connection (`entities.players_of` / `teams_of`, checked where a lookup
-  needs the rows by `checked_players` / `team_columns`): since Phase 3's
-  first step the readers that lived in `entities.py` - `players_named_in`,
-  `team_named_in`, `nicknames_in`, `question_derived_player`, the team
-  after "vs" or "for", a team's grounding in the words - are
-  `subject.py`'s, and the `con_in_the_reader` ratchet held at 23 while they
-  moved. The
-  reader issued 38.5 statements a question before this and issues the two
-  loads now. One thing is not reproduced: the order of two players who
-  share a `display_name` (21 names), which DuckDB's sort left unspecified;
-  the index uses table order.
+  all-ASCII column, table order where the SQL had no `ORDER BY`. A name
+  lookup takes the index (`find_players(players, ...)`,
+  `find_teams(teams, ...)`, `team_abbreviations(teams)`,
+  `suggest_players(index, ...)`, checked where it needs the rows by
+  `checked_players` / `team_columns`), never a connection; a caller on
+  the answer side hands it `entities.players_of(con)`, `teams_of(con)` or
+  `names_of(con)`. Do not write `FROM players` or `FROM teams` on the
+  reader's path again. The reader of the question's words holds no
+  connection at all (Phase 3, step 4, slice (b); `con_in_the_reader` 23 ->
+  0): `parse.read_route`, `reading_from_route`, `classify_span` and
+  `subject.read_subject` take a `names.NameIndex` - the players' and the
+  teams' indexes and `names.ActivePlayers`, the players with a box score
+  in the latest season on record, which a typo near more than five
+  players is narrowed by (`entities.suggest_players`; measured, the one
+  warehouse fact the reader read beyond the two tables, through
+  `classify_span` on 2 of the 2,710 readings) - all three read by
+  `Agent.ask` (`entities.names_of`) before the parser runs, so the reader
+  issues no statement: it issued 38.5 a question before the index, the two
+  table loads (inside its first lookups) until the slice, and none now.
+  One thing is not reproduced: the order of two players who share a
+  `display_name` (21 names), which DuckDB's sort left unspecified; the
+  index uses table order.
 - **Who stands beside the subject has one reader: the subject reading.**
   "without X", "with X out", "when X and Y play", "in games X missed",
   "when X scores 20+ points", "vs X" are read by `subject._conditions_read`

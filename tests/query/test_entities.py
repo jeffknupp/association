@@ -7,6 +7,7 @@ import duckdb
 import pytest
 from shapes import asked
 
+from association.query import names as name_index
 from association.query.entities import (
     Ambiguous,
     Availability,
@@ -16,6 +17,7 @@ from association.query.entities import (
     find_players,
     find_teams,
     misread_players,
+    names_of,
     players_of,
     read_near_spelling,
     resolve_player,
@@ -84,7 +86,7 @@ def league_teams() -> duckdb.DuckDBPyConnection:
 def test_the_abbreviations_people_use_resolve(league_teams: duckdb.DuckDBPyConnection, text: str, want: str) -> None:
     """Measured live before this existed: every one of these returned NOTHING,
     so "Lauri Markkan vs GSW last 5 games" lost the team entirely."""
-    assert [e.name for e in find_teams(league_teams, text)] == [want]
+    assert [e.name for e in find_teams(teams_of(league_teams), text)] == [want]
 
 
 def test_an_abbreviation_outranks_a_team_whose_name_merely_contains_it(league_teams: duckdb.DuckDBPyConnection) -> None:
@@ -92,14 +94,14 @@ def test_an_abbreviation_outranks_a_team_whose_name_merely_contains_it(league_te
     and both used to come back - an ambiguity offered to the user over a
     question that names exactly one team, and a chance to answer about the
     other one."""
-    assert [e.name for e in find_teams(league_teams, "ORL")] == ["Orlando Magic"]
+    assert [e.name for e in find_teams(teams_of(league_teams), "ORL")] == ["Orlando Magic"]
 
 
 def test_two_teams_in_one_city_stay_ambiguous(league_teams: duckdb.DuckDBPyConnection) -> None:
     """The ranking settles an abbreviation against a name, and must not settle
     a real ambiguity: no team is abbreviated "LA", so both Los Angeles teams
     sit in the same tier and the caller still has to ask."""
-    assert [e.name for e in find_teams(league_teams, "LA")] == ["LA Clippers", "Los Angeles Lakers"]
+    assert [e.name for e in find_teams(teams_of(league_teams), "LA")] == ["LA Clippers", "Los Angeles Lakers"]
 
 
 def test_resolve_player_refuses_to_guess_between_two_real_players(con: duckdb.DuckDBPyConnection) -> None:
@@ -124,7 +126,7 @@ def test_resolve_player_reports_not_found(con: duckdb.DuckDBPyConnection) -> Non
 
 
 def test_empty_text_is_not_found_rather_than_everyone(con: duckdb.DuckDBPyConnection) -> None:
-    assert find_players(con, "   ") == []
+    assert find_players(players_of(con), "   ") == []
     assert isinstance(resolve_player(con, "   "), NotFound)
 
 
@@ -136,9 +138,9 @@ def test_a_typo_inside_a_hyphenated_surname_reaches_its_player(con: duckdb.DuckD
     from association.query.entities import read_near_spelling, suggest_players
 
     con.execute("INSERT INTO players VALUES ('41', 'Trayce Jackson-Davis')")
-    assert [e.name for e in suggest_players(con, "Jackson-Davs")] == ["Trayce Jackson-Davis"]
-    assert (read_near_spelling(con, "Jackson-Davs") or Entity("", "")).name == "Trayce Jackson-Davis"
-    assert suggest_players(con, "Jackson-Smith") == []  # every piece must be near a word of ONE name
+    assert [e.name for e in suggest_players(names_of(con), "Jackson-Davs")] == ["Trayce Jackson-Davis"]
+    assert (read_near_spelling(names_of(con), "Jackson-Davs") or Entity("", "")).name == "Trayce Jackson-Davis"
+    assert suggest_players(names_of(con), "Jackson-Smith") == []  # every piece must be near a word of ONE name
 
 
 def test_a_typo_near_too_many_players_is_narrowed_to_the_latest_seasons_before_it_is_dropped(con: duckdb.DuckDBPyConnection) -> None:
@@ -151,15 +153,20 @@ def test_a_typo_near_too_many_players_is_narrowed_to_the_latest_seasons_before_i
     from association.query.entities import read_near_spelling, suggest_players
 
     con.execute("INSERT INTO players VALUES ('51', 'Dell Curry'), ('52', 'Eddy Curry'), ('53', 'JamesOn Curry'), ('54', 'Michael Curry')")
-    assert suggest_players(con, "crry") == []  # six near, no latest season to narrow by
+    assert suggest_players(names_of(con), "crry") == []  # six near, no latest season to narrow by
     con.execute("CREATE TABLE games (event_id VARCHAR, season INTEGER, season_type INTEGER, winner_team_id VARCHAR)")
     con.execute("INSERT INTO games VALUES ('g1', 2026, 2, '9')")
     con.execute("CREATE TABLE player_box_stats (event_id VARCHAR, season INTEGER, athlete_id VARCHAR)")
     con.execute("INSERT INTO player_box_stats VALUES ('g1', 2026, '1'), ('g1', 2026, '2'), ('g1', 2025, '51')")
-    assert [e.name for e in suggest_players(con, "crry")] == ["Seth Curry", "Stephen Curry"]
-    assert read_near_spelling(con, "crry") is None  # two survivors: asked, not defaulted
+    # The players active now are read once a question, with the names
+    # (names.ActivePlayers): the next question - the next block - sees the
+    # box scores added.
+    with name_index.loaded():
+        assert [e.name for e in suggest_players(names_of(con), "crry")] == ["Seth Curry", "Stephen Curry"]
+        assert read_near_spelling(names_of(con), "crry") is None  # two survivors: asked, not defaulted
     con.execute("DELETE FROM player_box_stats WHERE athlete_id = '2'")
-    assert (read_near_spelling(con, "crry") or Entity("", "")).name == "Stephen Curry"  # one survivor: the default, said
+    with name_index.loaded():
+        assert (read_near_spelling(names_of(con), "crry") or Entity("", "")).name == "Stephen Curry"  # one survivor: the default, said
 
 
 def test_a_like_wildcard_in_a_name_is_a_literal_character(con: duckdb.DuckDBPyConnection) -> None:
@@ -169,19 +176,19 @@ def test_a_like_wildcard_in_a_name_is_a_literal_character(con: duckdb.DuckDBPyCo
     character now - and nobody is named with one."""
     from association.query.entities import find_teams
 
-    assert find_players(con, "_") == []
-    assert find_players(con, "%") == []
-    assert find_players(con, "Cur%") == []
-    assert find_teams(con, "%") == []
-    assert find_teams(con, "_") == []
-    assert [c.name for c in find_players(con, "Curry")] == ["Seth Curry", "Stephen Curry"]
+    assert find_players(players_of(con), "_") == []
+    assert find_players(players_of(con), "%") == []
+    assert find_players(players_of(con), "Cur%") == []
+    assert find_teams(teams_of(con), "%") == []
+    assert find_teams(teams_of(con), "_") == []
+    assert [c.name for c in find_players(players_of(con), "Curry")] == ["Seth Curry", "Stephen Curry"]
 
 
 def test_find_players_returns_all_candidates_best_first(con: duckdb.DuckDBPyConnection) -> None:
     # The chart path relies on this ordering: it narrows these candidates to
     # the ones with data for the season asked about, and falls back to the
     # first when that leaves nobody.
-    assert [c.name for c in find_players(con, "Curry")] == ["Seth Curry", "Stephen Curry"]
+    assert [c.name for c in find_players(players_of(con), "Curry")] == ["Seth Curry", "Stephen Curry"]
 
 
 @pytest.fixture
@@ -209,8 +216,8 @@ def test_narrowing_sees_every_match_rather_than_the_first_ten(johnsons: duckdb.D
     from association.query.shotchart import resolve_chart_player
 
     shots = Availability("shot_chart")
-    assert len(find_players(johnsons, "Johnson")) == 10
-    assert len(find_players(johnsons, "Johnson", limit=None)) == 11
+    assert len(find_players(players_of(johnsons), "Johnson")) == 10
+    assert len(find_players(players_of(johnsons), "Johnson", limit=None)) == 11
     assert resolve_player(johnsons, "Johnson", shots, 2026) == Ambiguous(query="Johnson", candidates=["Aaron Johnson", "Keldon Johnson"], active=2)
     assert resolve_chart_player(johnsons, "Johnson", shots, 2026) == Ambiguous(query="Johnson", candidates=["Aaron Johnson", "Keldon Johnson"], active=2)
 
@@ -245,7 +252,7 @@ def test_narrowing_against_several_tables_keeps_a_row_in_any_of_them(johnsons: d
 
     johnsons.execute("CREATE TABLE player_game_log (athlete_id VARCHAR, season INTEGER)")
     johnsons.execute("INSERT INTO player_game_log VALUES ('3', 2026)")
-    everyone = find_players(johnsons, "Johnson", limit=None)
+    everyone = find_players(players_of(johnsons), "Johnson", limit=None)
     kept = narrow_to_available(johnsons, everyone, (Availability("shot_chart"), Availability("player_game_log")), 2026)
     assert [c.name for c in kept] == ["Aaron Johnson", "Dakari Johnson", "Keldon Johnson"]
 
@@ -253,7 +260,7 @@ def test_narrowing_against_several_tables_keeps_a_row_in_any_of_them(johnsons: d
 def test_a_span_keeps_anybody_with_a_row_up_to_its_last_season(johnsons: duckdb.DuckDBPyConnection) -> None:
     from association.query.entities import Availability, narrow_to_available
 
-    everyone = find_players(johnsons, "Johnson", limit=None)
+    everyone = find_players(players_of(johnsons), "Johnson", limit=None)
     assert [c.name for c in narrow_to_available(johnsons, everyone, Availability("shot_chart"), through=2012)] == ["Frank Johnson"]
 
 
@@ -271,7 +278,7 @@ def test_a_name_that_starts_a_word_beats_one_it_only_lands_inside(con: duckdb.Du
     and Cedric Ceballos, which is not a question anybody would ask. Measured
     against the warehouse, this changed 46 surnames' best match and every one
     of them was an improvement: "Bey" was Mike Tobey, "Ford" was Al Horford."""
-    assert [c.name for c in find_players(con, "Ball")] == ["LaMelo Ball"]
+    assert [c.name for c in find_players(players_of(con), "Ball")] == ["LaMelo Ball"]
     assert resolve_player(con, "Ball") == Entity(id="7", name="LaMelo Ball")
 
 
@@ -285,11 +292,11 @@ def test_a_curated_first_name_beats_an_unrelated_alphabetical_tie() -> None:
     con = duckdb.connect(":memory:")
     con.execute("CREATE TABLE players (athlete_id VARCHAR, display_name VARCHAR)")
     con.execute("INSERT INTO players VALUES ('1','Rui Betancourt'),('2','Rui Hachimura')")
-    assert [c.name for c in find_players(con, "Rui")] == ["Rui Hachimura"]
+    assert [c.name for c in find_players(players_of(con), "Rui")] == ["Rui Hachimura"]
     assert resolve_player(con, "Rui") == Entity(id="2", name="Rui Hachimura")
     # Naming Betancourt in full still reaches him - the curated table only
     # intercepts the bare shorthand, never a name spelled out.
-    assert [c.name for c in find_players(con, "Rui Betancourt")] == ["Rui Betancourt"]
+    assert [c.name for c in find_players(players_of(con), "Rui Betancourt")] == ["Rui Betancourt"]
 
 
 def test_both_halves_of_a_hyphenated_name_start_a_word(con: duckdb.DuckDBPyConnection) -> None:
@@ -297,7 +304,7 @@ def test_both_halves_of_a_hyphenated_name_start_a_word(con: duckdb.DuckDBPyConne
     reaches Nickeil Alexander-Walker and Shai Gilgeous-Alexander. Requiring a
     space would have demoted both below Kyle Alexander and then dropped them
     entirely."""
-    assert {c.name for c in find_players(con, "Alexander")} == {"Kyle Alexander", "Nickeil Alexander-Walker"}
+    assert {c.name for c in find_players(players_of(con), "Alexander")} == {"Kyle Alexander", "Nickeil Alexander-Walker"}
     assert isinstance(resolve_player(con, "Alexander"), Ambiguous)
 
 
@@ -337,7 +344,7 @@ def test_an_interior_match_still_counts_when_nothing_starts_a_word(con: duckdb.D
     """Ranking, not filtering. A fragment that matches nobody at a word
     boundary still finds the people it does match, so a partial name typed
     mid-word is answered rather than reported missing."""
-    assert [c.name for c in find_players(con, "urry")] == ["Seth Curry", "Stephen Curry"]
+    assert [c.name for c in find_players(players_of(con), "urry")] == ["Seth Curry", "Stephen Curry"]
 
 
 def test_resolve_team_by_name_and_by_abbreviation(con: duckdb.DuckDBPyConnection) -> None:
@@ -466,7 +473,7 @@ def _apply(con: duckdb.DuckDBPyConnection, question: str, slots: dict[str, Any],
     from association.query.subject import apply_subject, read_subject
 
     scope = Scope.from_slots(slots)
-    applied = apply_subject(read_subject(con, question, asked(intent), scope), scope, asked=asked(intent))
+    applied = apply_subject(read_subject(names_of(con), question, asked(intent), scope), scope, asked=asked(intent))
     # The writers took and mutated this dict until 5.0.0; the cases below
     # still read it afterwards, so the written scope is mirrored back.
     slots.clear()
@@ -490,7 +497,7 @@ def _scope(con: duckdb.DuckDBPyConnection, question: str, slots: dict[str, Any],
     assert not flags, flags
     intent = intent or ("game_log" if reads_player else "team_record")
     scope = Scope.from_slots(slots)
-    subject = read_subject(con, question, asked(intent), scope)
+    subject = read_subject(names_of(con), question, asked(intent), scope)
     applied = apply_subject(subject, scope, asked=asked(intent))
     # As above: the cases read the dict the writers used to mutate.
     slots.clear()
@@ -661,25 +668,25 @@ def test_a_surname_two_players_share_names_neither_of_them(con: duckdb.DuckDBPyC
 def test_a_fabricated_given_name_falls_back_to_the_surname(con: duckdb.DuckDBPyConnection) -> None:
     """Exact matching on one fewer token, not fuzzy: every token has to match,
     so one made-up word buried a player the warehouse holds."""
-    assert [p.name for p in suggest_players(con, "Jemel Embiid")] == ["Joel Embiid"]
+    assert [p.name for p in suggest_players(names_of(con), "Jemel Embiid")] == ["Joel Embiid"]
 
 
 def test_a_misspelling_the_router_did_not_correct_finds_the_player(con: duckdb.DuckDBPyConnection) -> None:
     """ "embid" is not a substring of "Embiid", so no amount of ILIKE reaches
     it and no amount of trusting the question helps - the typo is the
     question."""
-    assert [p.name for p in suggest_players(con, "embid")] == ["Joel Embiid"]
+    assert [p.name for p in suggest_players(names_of(con), "embid")] == ["Joel Embiid"]
 
 
 def test_nothing_close_suggests_nobody(con: duckdb.DuckDBPyConnection) -> None:
-    assert suggest_players(con, "asdf qwerty") == []
-    assert suggest_players(con, "") == []
+    assert suggest_players(names_of(con), "asdf qwerty") == []
+    assert suggest_players(names_of(con), "") == []
 
 
 def test_an_incidental_substring_is_not_a_suggestion(con: duckdb.DuckDBPyConnection) -> None:
     """The backoff takes word-boundary matches only. "All" lands inside
     "Ceballos" and "Ball", and suggesting either is worse than saying nothing."""
-    assert suggest_players(con, "Nobody At All") == []
+    assert suggest_players(names_of(con), "Nobody At All") == []
 
 
 def test_a_suggestion_too_long_to_be_one_is_dropped() -> None:
@@ -688,8 +695,8 @@ def test_a_suggestion_too_long_to_be_one_is_dropped() -> None:
     con = duckdb.connect(":memory:")
     con.execute("CREATE TABLE players (athlete_id VARCHAR, display_name VARCHAR)")
     con.execute("INSERT INTO players SELECT i::VARCHAR, 'Chris Smit' || chr((97 + i)::INTEGER) FROM range(8) t(i)")
-    assert suggest_players(con, "Chris Smit") == []  # the surname backoff
-    assert suggest_players(con, "Smitz") == []  # and the near-spelling pass
+    assert suggest_players(names_of(con), "Chris Smit") == []  # the surname backoff
+    assert suggest_players(names_of(con), "Smitz") == []  # and the near-spelling pass
 
 
 def test_a_common_surname_falls_back_to_the_near_spelling_pass() -> None:
@@ -701,7 +708,7 @@ def test_a_common_surname_falls_back_to_the_near_spelling_pass() -> None:
     con = duckdb.connect(":memory:")
     con.execute("CREATE TABLE players (athlete_id VARCHAR, display_name VARCHAR)")
     con.execute("INSERT INTO players VALUES ('1','Derek Harper'),('2','Dylan Harper'),('3','Jared Harper'),('4','Justin Harper'),('5','Ron Harper'),('6','Ron Harper Jr.')")
-    assert [p.name for p in suggest_players(con, "Dylon Harper")] == ["Dylan Harper"]
+    assert [p.name for p in suggest_players(names_of(con), "Dylon Harper")] == ["Dylan Harper"]
 
 
 def test_a_team_name_is_not_suggested_as_a_player() -> None:
@@ -715,7 +722,7 @@ def test_a_team_name_is_not_suggested_as_a_player() -> None:
     con.execute("INSERT INTO players VALUES ('1','Spencer Hawes')")
     con.execute("CREATE TABLE teams (team_id VARCHAR, abbreviation VARCHAR, display_name VARCHAR)")
     con.execute("INSERT INTO teams VALUES ('1','ATL','Atlanta Hawks')")
-    assert suggest_players(con, "Hawks") == []
+    assert suggest_players(names_of(con), "Hawks") == []
 
 
 EMBID_READING = "('embid' matches no player exactly and was read as Joel Embiid, the only near spelling on record - spell the name exactly to ask about someone else.)"
@@ -735,7 +742,7 @@ def test_a_single_near_spelling_is_that_player_and_the_answer_says_so(con: duckd
     con.execute("CREATE TABLE shot_chart (athlete_id VARCHAR, season INTEGER)")
     with collect_name_readings() as readings:
         assert resolve_player(con, "embid", Availability("shot_chart"), 2026) == Entity(id="12", name="Joel Embiid")
-        assert read_near_spelling(con, "embid") == Entity(id="12", name="Joel Embiid")
+        assert read_near_spelling(names_of(con), "embid") == Entity(id="12", name="Joel Embiid")
     assert readings == [EMBID_READING]
     # A possessive typed without its apostrophe: "embids" is two edits from
     # Embiid, one of them the "s".
@@ -898,7 +905,7 @@ def test_an_opponent_naming_a_player_nobody_asked_about_is_left_to_be_refused(sc
 def test_a_name_typed_with_accents_still_names_its_player(scope_con: duckdb.DuckDBPyConnection) -> None:
     """The warehouse spells every name in plain letters; "luka dončić last 15
     games vs. magic" matched nobody and answered the Lakers' log."""
-    assert [p.name for p in find_players(scope_con, "dončić")] == ["Luka Doncic"]
+    assert [p.name for p in find_players(players_of(scope_con), "dončić")] == ["Luka Doncic"]
 
 
 def test_a_letter_with_no_decomposition_folds_to_its_plain_spelling() -> None:
@@ -990,8 +997,8 @@ def _parsed(con: duckdb.DuckDBPyConnection, question: str, names: list[str]) -> 
     last step (``parse.reading_from_route``)."""
     from association.query.parse import read_route, reading_from_route
 
-    route, _, _ = read_route(con, question, names, "")
-    return reading_from_route(con, question, route)
+    route, _, _ = read_route(names_of(con), question, names, "")
+    return reading_from_route(names_of(con), question, route)
 
 
 def test_a_players_record_against_a_team_is_his_own_games(scope_con: duckdb.DuckDBPyConnection) -> None:
@@ -1278,7 +1285,7 @@ def franchises() -> duckdb.DuckDBPyConnection:
 
 
 def _teams(con: duckdb.DuckDBPyConnection, text: str, season: int | None = None) -> list[tuple[str, str]]:
-    return [(team.id, team.name) for team in find_teams(con, text, season)]
+    return [(team.id, team.name) for team in find_teams(teams_of(con), text, season)]
 
 
 def test_a_former_name_resolves_to_the_franchise(franchises: duckdb.DuckDBPyConnection) -> None:
@@ -1368,4 +1375,4 @@ def _no_match(con: duckdb.DuckDBPyConnection, text: str) -> str:
     from association.query.compose.say import say
     from association.query.entities import unmatched
 
-    return say(unmatched(con, text)).answer or ""
+    return say(unmatched(names_of(con), text)).answer or ""

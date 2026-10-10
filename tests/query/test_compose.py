@@ -37,6 +37,7 @@ from association.query.compose.sentence import sentence
 from association.query.compose.shots import ShotQuery
 from association.query.compose.team import TeamQuery, run_team
 from association.query.compose.team_stats import TeamSeasonQuery
+from association.query.entities import names_of
 from association.query.line import LineContext, read_lines
 from association.query.parse import with_point
 from association.query.point import _asc_or_desc, _ranking_minimum, read_point, team_read_point
@@ -51,7 +52,7 @@ def _reading(con: duckdb.DuckDBPyConnection, intent: str, slots: dict[str, Any],
     the package takes the Reading alone): the typed scope, and the subject
     read from the question the way ``point`` read it for a caller
     with none - never applied to the slots, so a case says what it did."""
-    return Reading(scope=_scope(intent, slots, question), asked=asked(intent), subject=subject or read_subject(con, question, asked(intent), Scope.from_slots(dict(slots))))
+    return Reading(scope=_scope(intent, slots, question), asked=asked(intent), subject=subject or read_subject(names_of(con), question, asked(intent), Scope.from_slots(dict(slots))))
 
 
 def _scope(intent: str, slots: dict[str, Any], question: str) -> Scope:
@@ -69,7 +70,7 @@ def _scope(intent: str, slots: dict[str, Any], question: str) -> Scope:
 
 def compose_answer(ctx: AnswerContext, intent: str, slots: dict[str, Any], question: str, subject: Subject | None = None, declined: Callable[[str], None] | None = None) -> Reply | None:
     """``compose.answer`` over the point ``question`` moves for ``slots``."""
-    reading = with_point(ctx.con, question, _reading(ctx.con, intent, slots, question, subject))
+    reading = with_point(question, _reading(ctx.con, intent, slots, question, subject))
     return compose.answer(ctx, reading, planned=plan_point(reading), declined=declined)
 
 
@@ -84,7 +85,7 @@ def team_move_point(con: duckdb.DuckDBPyConnection, slots: dict[str, Any], quest
     from the question, planned - the team's point as the team compiler runs
     it, or ``None`` where the team is not the subject."""
     scope = Scope.from_slots(slots)
-    reading = team_read_point(scope, question, read_subject(con, question, None, Scope.from_slots(dict(slots))))
+    reading = team_read_point(scope, question, read_subject(names_of(con), question, None, Scope.from_slots(dict(slots))))
     if reading is None:
         return None
     query = plan(reading)
@@ -1783,7 +1784,9 @@ def test_the_parser_reads_the_point_and_the_compiler_answers_it_unread(cx_ctx: A
     from association.query.parse import reading_from_route
 
     question = "how many 15+ point games did podziemski have"
-    reading = reading_from_route(cx_ctx.con, question, with_subject(cx_ctx.con, question, slots_route("threshold_count", {"player": "Brandin Podziemski", "stat": "points", "threshold": 15})))
+    reading = reading_from_route(
+        names_of(cx_ctx.con), question, with_subject(cx_ctx.con, question, slots_route("threshold_count", {"player": "Brandin Podziemski", "stat": "points", "threshold": 15}))
+    )
     assert reading.point is not None and (reading.point.shape, reading.point.aggregate) == ("scalar", "count")
     by_hand = compose_answer(cx_ctx, "threshold_count", reading.scope.to_slots(), question, reading.subject)
 
@@ -1803,13 +1806,13 @@ def test_a_point_the_compiler_declines_or_refuses_travels_on_the_reading(cx_ctx:
     answer it is handed."""
     from association.query.parse import reading_from_route
 
-    declined = reading_from_route(cx_ctx.con, "Embiid's game log", with_subject(cx_ctx.con, "Embiid's game log", slots_route("game_log", {})))
+    declined = reading_from_route(names_of(cx_ctx.con), "Embiid's game log", with_subject(cx_ctx.con, "Embiid's game log", slots_route("game_log", {})))
     assert declined.point is None and declined.point_declined == "no player subject and no ranking or position-group reading of the question"
     why: list[str] = []
     assert compose.answer(cx_ctx, declined, planned=plan_point(declined), declined=why.append) is None
     assert why == [declined.point_declined]
 
-    refused = reading_from_route(cx_ctx.con, "most gizmos in a single game", with_subject(cx_ctx.con, "most gizmos in a single game", slots_route("single_game_high", {"stat": "gizmos"})))
+    refused = reading_from_route(names_of(cx_ctx.con), "most gizmos in a single game", with_subject(cx_ctx.con, "most gizmos in a single game", slots_route("single_game_high", {"stat": "gizmos"})))
     assert refused.point is None and refused.point_refusal == Cause(kind="no_ranking_measure", facts={"stat": "gizmos"})
     planned = plan_point(refused)
     answered = compose.answer(cx_ctx, refused, planned=planned)
@@ -1858,7 +1861,7 @@ def test_the_planner_refuses_after_the_parser_has_read_and_only_once(cx_ctx: Ans
     from association.query.parse import reading_from_route
 
     reading = reading_from_route(
-        cx_ctx.con,
+        names_of(cx_ctx.con),
         "podziemski 30 point games per 36",
         with_subject(cx_ctx.con, "podziemski 30 point games per 36", slots_route("threshold_count", {"player": "Brandin Podziemski", "stat": "points", "threshold": 30, "rate": "per_36"})),
     )
@@ -1870,7 +1873,7 @@ def test_the_planner_refuses_after_the_parser_has_read_and_only_once(cx_ctx: Ans
     assert compose.answer(cx_ctx, reading, declined=why.append, planned=planned) is None and why == [planned.declined]
 
     answerable = reading_from_route(
-        cx_ctx.con,
+        names_of(cx_ctx.con),
         "podziemski 30 point games",
         with_subject(cx_ctx.con, "podziemski 30 point games", slots_route("threshold_count", {"player": "Brandin Podziemski", "stat": "points", "threshold": 30})),
     )
@@ -2012,6 +2015,6 @@ def test_a_ranking_in_a_unit_its_metric_has_no_form_of_is_the_readings_cause(cx_
     ranking's refusal, a sentence the ranking reader wrote until the point
     reader carried its cause (``ranking_unit``) - said by the planner, word
     for word as before."""
-    reading = with_point(cx_ctx.con, "top 10 in points / 90", Reading(scope=Scope.from_slots({"stat": "points", "rate": "/ 90"}), asked=asked("leaderboard"), subject=Subject("everyone")))
+    reading = with_point("top 10 in points / 90", Reading(scope=Scope.from_slots({"stat": "points", "rate": "/ 90"}), asked=asked("leaderboard"), subject=Subject("everyone")))
     assert reading.point is None and reading.point_refusal == Cause(kind="ranking_unit", facts={"metric": "avg_points", "rate": "/ 90"})
     assert refusal_result(reading.point_refusal).answer == "No leaderboard ranks avg points per 90 minutes - the warehouse stores it only per game or as a season total."

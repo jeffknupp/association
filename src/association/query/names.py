@@ -313,6 +313,47 @@ raised (then no columns and no rows).
 """
 
 
+@dataclass(frozen=True)
+class ActivePlayers:
+    """The players with a box score in the latest season on record - the
+    one fact beyond the two tables' names that recognizing a name reads: a
+    typo within reach of more than ``MAX_CLARIFY_CANDIDATES`` players is
+    narrowed to the ones who play now before it is read as one of them
+    (:func:`~association.query.entities.suggest_players`; ISSUES.md #240).
+    Read once per question beside the two tables, so the reader that reads
+    a name issues no statement of its own.
+
+    .. versionadded:: 6.0.0
+    """
+
+    season: int | None
+    """The latest season on record, or ``None`` for a warehouse with no
+    games (nothing is narrowed then, and nobody survives the narrowing)."""
+    ids: frozenset[str] = frozenset()
+    """The ``athlete_id`` of every player with a box score in :attr:`season`."""
+    error: Exception | None = None
+    """What reading the box scores raised, or ``None``: re-raised where the
+    narrowing needs them, as its statement raised it."""
+
+
+@dataclass(frozen=True)
+class NameIndex:
+    """What a reader of the question's words recognizes names from, and
+    nothing else: the players' and the teams' indexes and the players active
+    in the latest season on record - all three read before the reader runs
+    (:func:`~association.query.entities.names_of`, by the answering loop),
+    so the reader holds no connection and runs no statement
+    (``scripts/check_ratchets.py``, ``con_in_the_reader``; ``ROADMAP.md``,
+    contract 3).
+
+    .. versionadded:: 6.0.0
+    """
+
+    players: PlayerIndex
+    teams: TeamIndex
+    active: ActivePlayers
+
+
 @dataclass
 class _Slot:
     """One connection's indexes inside a :func:`loaded` block: each table's,
@@ -321,6 +362,7 @@ class _Slot:
     con: Any
     players: PlayerIndex | None = None
     teams: TeamIndex | None = None
+    active: ActivePlayers | None = None
 
 
 _LOADED: ContextVar[dict[int, _Slot] | None] = ContextVar("association_name_index", default=None)
@@ -400,3 +442,16 @@ def teams_for(con: Any, read: TableRead) -> TeamIndex:
         described, rows, error = read(con)
         slot.teams = TeamIndex.build((), (), error) if error is not None else _teams_from(tuple(described), tuple(tuple(row) for row in rows))
     return slot.teams
+
+
+def active_for(con: Any, read: Callable[[Any], ActivePlayers]) -> ActivePlayers:
+    """The players active in the latest season on record for ``con``, as
+    :func:`players_for` finds the players' index: ``read`` runs the first
+    time a lookup needs them in the :func:`loaded` block.
+
+    .. versionadded:: 6.0.0
+    """
+    slot = _slot_for(con)
+    if slot.active is None:
+        slot.active = read(con)
+    return slot.active

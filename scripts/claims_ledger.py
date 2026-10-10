@@ -118,6 +118,7 @@ def _reader(db_path: Path) -> Any:
     from association.nba.season import season_on_record
     from association.query.compose.plan import plan_point
     from association.query.connection import connect_read_only, latest_season_on_record
+    from association.query.entities import names_of
     from association.query.names import loaded
     from association.query.parse import read_route, reading_from_route
     from association.query.reading import ScopeError
@@ -134,8 +135,8 @@ def _reader(db_path: Path) -> Any:
         # (``span.claimed``), for the held count (:data:`HELD_JOINS`).
         with season_on_record(on_record), loaded():
             try:
-                routed, _subject, _parent = read_route(con, question, names, stat)
-                reading = reading_from_route(con, question, routed)
+                routed, _subject, _parent = read_route(names_of(con), question, names, stat)
+                reading = reading_from_route(names_of(con), question, routed)
                 if joined is not None:
                     joined.extend(claim.what for claim in reading.claims if "+" in claim.what)
                 return read_stages(reading, planned=plan_point(reading))

@@ -23,6 +23,7 @@ from test_conditions import league  # noqa: F401 - the league fixture, imported 
 from association.query import lexicon
 from association.query.answer import AnswerContext
 from association.query.compose.core import Query, compile_query, rows_of
+from association.query.entities import names_of
 from association.query.parse import read_route, reading_from_route
 from association.query.player_relation import POSITION_CODES
 from association.query.reading import Reading, Scope, ScopeError, Span
@@ -150,8 +151,8 @@ def test_the_subject_reading_claims_the_names_and_the_position_it_settled(league
 
 def test_the_claims_ride_the_reading(league: AnswerContext) -> None:  # noqa: F811 - the fixture
     question = "jayson tatum points vs the lakers"
-    route, _subject, _parent = read_route(league.con, question, ["jayson tatum", "lakers"], "points")
-    reading = reading_from_route(league.con, question, route)
+    route, _subject, _parent = read_route(names_of(league.con), question, ["jayson tatum", "lakers"], "points")
+    reading = reading_from_route(names_of(league.con), question, route)
     claimed = {question[c.start : c.end]: c.what for c in reading.claims}
     assert claimed["jayson tatum"] == "player" and claimed["vs the lakers"] == "opponent"
 
@@ -210,8 +211,8 @@ def test_a_period_is_never_the_one_who_scored_in_it_and_most_recent_is_no_rank(l
     window's end."""
     question = "display the first quarter scores for the Sixers' most recent 10 games"
     assert subject_named_in(question) is None
-    route, _subject, _parent = read_route(league.con, question, ["Sixers"], "points")
-    reading = reading_from_route(league.con, question, route)
+    route, _subject, _parent = read_route(names_of(league.con), question, ["Sixers"], "points")
+    reading = reading_from_route(names_of(league.con), question, route)
     assert reading.intent == "team_quarter_points" and reading.scope.subject.team == "Philadelphia 76ers" and reading.scope.subject.players == ()
     assert (reading.scope.window.order, reading.scope.window.count, reading.scope.window.rank) == ("recent", 10, None)
 
@@ -262,5 +263,5 @@ def test_the_76ers_are_read_from_their_own_spelling(league: AnswerContext) -> No
     found = _team_after_versus(teams, "jayson tatum stats vs 76ers this season")
     assert found is not None and found.name == "Philadelphia 76ers"
     question = "jayson tatum stats vs 76ers this season"
-    route, _subject, _parent = read_route(league.con, question, [], "")
-    assert reading_from_route(league.con, question, route).scope.cuts.opponent == "Philadelphia 76ers"
+    route, _subject, _parent = read_route(names_of(league.con), question, [], "")
+    assert reading_from_route(names_of(league.con), question, route).scope.cuts.opponent == "Philadelphia 76ers"

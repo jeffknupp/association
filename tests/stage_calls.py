@@ -84,15 +84,18 @@ def _plain(value: Any) -> Any:
 
 def _is_value(arg: Any) -> bool:
     """Whether an argument is part of what was asked - not the connection,
+    the name index the parser takes in its place (since Phase 3, step 4,
+    slice (b): the warehouse's names, as the connection was the warehouse),
     the answer context, a callback or the Agent a method was called on,
     which no comparison can read (an object ``stages.plain`` does not know
     prints its address, which no two runs share)."""
     import duckdb
 
     from association.query.answer import AnswerContext
+    from association.query.names import NameIndex, PlayerIndex, TeamIndex
     from association.query.stages import plain
 
-    if isinstance(arg, (duckdb.DuckDBPyConnection, AnswerContext)) or callable(arg):
+    if isinstance(arg, (duckdb.DuckDBPyConnection, NameIndex, PlayerIndex, TeamIndex, AnswerContext)) or callable(arg):
         return False
     shown = plain(arg)
     return not (isinstance(shown, dict) and set(shown) == {"unknown", "repr"})

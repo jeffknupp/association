@@ -61,7 +61,7 @@ def _compiled(intent: str) -> Callable[[AnswerContext, Reading], Reply]:
             kind = "team_players"  # a ranking within a team: its players, never its own figure
         subject = reading.subject or Subject(kind, players=named, teams=(scope.subject.team,) if scope.subject.team else ())
         why: list[str] = []
-        result = compose_answer(ctx, with_point(ctx.con, "", Reading(scope=scope, asked=asked(intent), subject=subject)), declined=why.append)
+        result = compose_answer(ctx, with_point("", Reading(scope=scope, asked=asked(intent), subject=subject)), declined=why.append)
         if result is None:
             raise Unsupported(why[0] if why else f"the compiler has no reading of this {intent} point")
         return result
@@ -4111,7 +4111,6 @@ def test_a_players_log_is_read_into_a_result_and_said_from_it_alone(pg_ctx: Answ
     from association.query.result import Result
 
     reading = with_point(
-        pg_ctx.con,
         "",
         Reading(scope=Scope.from_slots({"player": "Brandin Podziemski", "opponent": "Detroit Pistons"}), asked=asked("game_log"), subject=Subject("player", players=("Brandin Podziemski",))),
     )

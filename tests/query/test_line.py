@@ -27,6 +27,7 @@ from association.query import lexicon
 from association.query.answer import AnswerContext
 from association.query.compose.core import Query, compile_query, rows_of
 from association.query.compose.plan import cells_stated
+from association.query.entities import names_of
 from association.query.line import THRESHOLD_ASKS, LineContext, LinesRead, read_lines, read_period_line, threshold_named
 from association.query.lines import measure_filters, phrase_line, relation_lines, threshold_line, threshold_of
 from association.query.parse import read_route, reading_from_route
@@ -263,17 +264,17 @@ def test_relation_lines_are_the_narrowing_ones_in_the_slots_order() -> None:
 
 def test_the_subject_reading_reads_the_companions_and_claims_their_phrase(league: AnswerContext) -> None:  # noqa: F811 - the fixture
     question = "jaylen brown game log without jayson tatum this season"
-    subject = read_subject(league.con, question, asked("game_log"), Scope(subject=Who(kind="player", players=("Jaylen Brown",))))
+    subject = read_subject(names_of(league.con), question, asked("game_log"), Scope(subject=Who(kind="player", players=("Jaylen Brown",))))
     assert subject.conditions == (Companion(player="Jayson Tatum", predicate="absent"),)
     # The phrase's claim cut to the words the companion reader needed (Phase 3, step 3,
     # span.needed): either of "jayson" and "tatum" names him alone, so the keyword is the one
     # word it cannot do without; and the season the names are settled in is the reading's too.
     assert [(c.what, question[c.start : c.end]) for c in subject.claims] == [("companion", "without"), ("season", "season")]
-    reached = read_subject(league.con, "celtics record when jayson tatum scores 20+ points", asked("record_when"), Scope(subject=Who(kind="team", teams=("Boston Celtics",))))
+    reached = read_subject(names_of(league.con), "celtics record when jayson tatum scores 20+ points", asked("record_when"), Scope(subject=Who(kind="team", teams=("Boston Celtics",))))
     assert reached.conditions == (Companion(player="Jayson Tatum", predicate="reached", line=Line(measure="points", value=20, as_typed="20+ points")),)
     # The companions reach the Reading typed, through the one writer, and ride the route's claims.
-    route, _, _ = read_route(league.con, question, ["Jaylen Brown", "Jayson Tatum"], "")
-    reading = reading_from_route(league.con, question, route)
+    route, _, _ = read_route(names_of(league.con), question, ["Jaylen Brown", "Jayson Tatum"], "")
+    reading = reading_from_route(names_of(league.con), question, route)
     assert reading.scope.companions == (Companion(player="Jayson Tatum", predicate="absent"),) and reading.scope.subject.player == "Jaylen Brown"
     assert any(c.what == "companion" for c in reading.claims)
 
@@ -284,8 +285,8 @@ def test_a_count_over_several_lines_reads_the_first_as_the_points_not_the_models
     model's "rebounds", so it counted games with 20+ rebounds. The lines
     are read once, by the tagger, and the point's predicate is the first."""
     question = "most games with 20 pt,s 10 reb, 5 ast"
-    route, _, _ = read_route(league.con, question, [], "rebounds")
-    reading = reading_from_route(league.con, question, route)
+    route, _, _ = read_route(names_of(league.con), question, [], "rebounds")
+    reading = reading_from_route(names_of(league.con), question, route)
     assert reading.intent == "threshold_count" and reading.point is not None
     assert reading.point.predicates[0][:2] == ("points", ">=") and reading.point.predicates[0][2] == 20
     assert [_shape(line)[:3] for line in reading.scope.lines] == [("points", ">=", 20), ("rebounds", ">=", 10), ("assists", ">=", 5)]

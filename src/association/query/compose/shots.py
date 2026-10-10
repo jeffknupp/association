@@ -34,7 +34,7 @@ from association.nba.coverage import COVERAGE
 from association.query import reading
 from association.query.conditions import box_source
 from association.query.court import HAS_POSITION_SQL, SHOT_DISTANCE_SQL, render_court_html
-from association.query.entities import SHOT_AVAILABILITY, Ambiguous, Entity, clarify, unmatched
+from association.query.entities import SHOT_AVAILABILITY, Ambiguous, Entity, clarify, names_of, unmatched
 from association.query.game_label import game_label
 from association.query.lines import MeasureFilter, measure_filters
 from association.query.measure import keyed
@@ -350,7 +350,7 @@ def _shot_chart_settle_player(con: duckdb.DuckDBPyConnection, name: str, scope: 
     seasons = span_of(scope.span.over_career() if season_n else scope.span, "player_game_log")
     resolved = resolve_chart_player(con, name, SHOT_AVAILABILITY, seasons.season)
     if resolved is None:
-        return unmatched(con, name)
+        return unmatched(names_of(con), name)
     if isinstance(resolved, Ambiguous):
         return clarify(name, resolved.candidates, active=resolved.active)
     player, ambiguous = resolved

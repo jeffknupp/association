@@ -40,7 +40,7 @@ from .answer import Answer, AnsweredBy, Artifact, Timing
 from .compose.plan import Planned, plan_point, refusal_result
 from .compose.say import say_left_out
 from .connection import connect_read_only, latest_season_on_record
-from .entities import collect_name_readings, misread_players
+from .entities import collect_name_readings, misread_players, names_of
 from .history import DEFAULT_HISTORY_DIR, RunHistory, echo_to_stderr
 from .models import DEFAULT_ROUTER_MODEL
 from .names import loaded as names_loaded
@@ -317,7 +317,7 @@ class Agent:
         # One reading of WHO the question is about, from its own words, written
         # into the Scope - the parser's last step, and the only writer: nothing
         # after this changes a slot (query/subject.py, ROADMAP plan item 6).
-        reading = reading_from_route(self.con, question, routed)
+        reading = reading_from_route(names_of(self.con), question, routed)
         self.reading = reading
         # PLAN, once: the point on its relation, or why there is none. The
         # parser read the point; it does not plan it (ROADMAP.md, Phase 1).
@@ -371,7 +371,7 @@ class Agent:
         if normalized is None:
             return None
         history.log(f"  -> (normalizer) names={normalized.names} stat={normalized.stat!r}")
-        routed, subject, parent = read_route(self.con, question, normalized.names, normalized.stat)
+        routed, subject, parent = read_route(names_of(self.con), question, normalized.names, normalized.stat)
         history.log(f"  -> (parser) parent={parent!r} kind={subject.kind!r} intent={routed.intent!r}")
         return routed
 

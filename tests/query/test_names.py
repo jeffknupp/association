@@ -11,7 +11,7 @@ import duckdb
 import pytest
 
 from association.query import entities, names
-from association.query.entities import Entity, find_players, find_teams, players_of, teams_of
+from association.query.entities import Entity, find_players, find_teams, names_of, players_of, teams_of
 from association.query.subject import players_named_in, question_derived_player
 
 
@@ -176,23 +176,31 @@ def test_rows_come_in_table_order(con: duckdb.DuckDBPyConnection) -> None:
     assert [e.id for e in entities._exact_name_span(players_of(con), ["curry"], limit=10)] == ["3", "1", "2"]
     # Two players of one name: table order, which ORDER BY display_name left
     # to the engine.
-    assert [e.id for e in find_players(con, "chris smith")] == ["9", "8"]
-    assert [e.id for e in find_players(con, "curry")] == ["2", "3", "1"]
+    assert [e.id for e in find_players(players_of(con), "chris smith")] == ["9", "8"]
+    assert [e.id for e in find_players(players_of(con), "curry")] == ["2", "3", "1"]
 
 
 def test_a_question_reads_each_table_once_inside_the_block(con: duckdb.DuckDBPyConnection) -> None:
     counting = Counting(con)
     with names.loaded():
         assert players_named_in(players_of(counting), "how did jokic and seth curry do") == ["Nikola Jokic", "Seth Curry"]  # type: ignore[arg-type]
-        assert find_teams(counting, "lakers") == [Entity("13", "Los Angeles Lakers")]  # type: ignore[arg-type]
-        assert find_teams(counting, "blazers")[0].id == "22"  # type: ignore[arg-type]
-        assert entities.suggest_players(counting, "jokci") == [Entity("4", "Nikola Jokic")]  # type: ignore[arg-type]
-    assert counting.statements == ["SELECT athlete_id, display_name FROM players", "SELECT * FROM teams"]
+        assert find_teams(teams_of(counting), "lakers") == [Entity("13", "Los Angeles Lakers")]  # type: ignore[arg-type]
+        assert find_teams(teams_of(counting), "blazers")[0].id == "22"  # type: ignore[arg-type]
+        assert entities.suggest_players(names_of(counting), "jokci") == [Entity("4", "Nikola Jokic")]  # type: ignore[arg-type]
+    # The name index the parser takes (entities.names_of) reads the players
+    # active in the latest season on record beside the two tables - here a
+    # warehouse with no games, so there is no season to read them for.
+    assert counting.statements == [
+        "SELECT athlete_id, display_name FROM players",
+        "SELECT * FROM teams",
+        "SELECT MAX(season) FROM real_games WHERE season_type IN (2, 3) AND winner_team_id IS NOT NULL",
+        "SELECT MAX(season) FROM games WHERE season_type IN (2, 3) AND winner_team_id IS NOT NULL",
+    ]
     # The next block (the next question) reads again, once.
     with names.loaded():
-        find_players(counting, "jokic")  # type: ignore[arg-type]
-        find_players(counting, "curry")  # type: ignore[arg-type]
-    assert len(counting.statements) == 3
+        find_players(players_of(counting), "jokic")  # type: ignore[arg-type]
+        find_players(players_of(counting), "curry")  # type: ignore[arg-type]
+    assert len(counting.statements) == 5
 
 
 def test_a_block_serves_only_its_own_connection(con: duckdb.DuckDBPyConnection) -> None:
@@ -200,8 +208,8 @@ def test_a_block_serves_only_its_own_connection(con: duckdb.DuckDBPyConnection) 
     other.execute("CREATE TABLE players (athlete_id VARCHAR, display_name VARCHAR)")
     other.execute("INSERT INTO players VALUES ('7', 'Seth Curry')")
     with names.loaded():
-        assert find_players(con, "seth curry") == [Entity("3", "Seth Curry")]
-        assert find_players(other, "seth curry") == [Entity("7", "Seth Curry")]
+        assert find_players(players_of(con), "seth curry") == [Entity("3", "Seth Curry")]
+        assert find_players(players_of(other), "seth curry") == [Entity("7", "Seth Curry")]
 
 
 def test_a_lookup_outside_a_block_is_refused_and_a_new_block_reads_a_changed_table(con: duckdb.DuckDBPyConnection) -> None:
@@ -209,16 +217,16 @@ def test_a_lookup_outside_a_block_is_refused_and_a_new_block_reads_a_changed_tab
     token = names._LOADED.set(None)
     try:
         with pytest.raises(names.NotLoaded, match="outside names"):
-            find_players(con, "jokic")
+            find_players(players_of(con), "jokic")
     finally:
         names._LOADED.reset(token)
     # Inside one, a table is read once: a row added after is not seen ...
-    assert find_players(con, "wembanyama") == []
+    assert find_players(players_of(con), "wembanyama") == []
     con.execute("INSERT INTO players VALUES ('5', 'Victor Wembanyama')")
-    assert find_players(con, "wembanyama") == []
+    assert find_players(players_of(con), "wembanyama") == []
     # ... until the next block, as the next question sees a reloaded warehouse.
     with names.loaded():
-        assert find_players(con, "wembanyama") == [Entity("5", "Victor Wembanyama")]
+        assert find_players(players_of(con), "wembanyama") == [Entity("5", "Victor Wembanyama")]
 
 
 def test_a_warehouse_without_teams_raises_what_the_sql_raised() -> None:
@@ -226,9 +234,9 @@ def test_a_warehouse_without_teams_raises_what_the_sql_raised() -> None:
     c.execute("CREATE TABLE players (athlete_id VARCHAR, display_name VARCHAR)")
     c.execute("INSERT INTO players VALUES ('4', 'Nikola Jokic')")
     assert entities._team_named(teams_of(c), "lakers") is None  # caught: a partial load has no team to find
-    assert entities.suggest_players(c, "jokci") == [Entity("4", "Nikola Jokic")]
+    assert entities.suggest_players(names_of(c), "jokci") == [Entity("4", "Nikola Jokic")]
     with pytest.raises(duckdb.CatalogException):
-        find_teams(c, "lakers")
+        find_teams(teams_of(c), "lakers")
 
 
 def test_a_teams_without_its_name_columns_raises_what_the_sql_raised() -> None:
@@ -264,17 +272,17 @@ def test_the_readers_own_team_lookups_come_from_the_index_too(con: duckdb.DuckDB
 
     assert teams_named_by_word(teams_of(con), "blazers") == ["Portland Trail Blazers"] and teams_named_by_word(teams_of(con), "trail") == ["Portland Trail Blazers"]
     assert teams_named_by_word(teams_of(con), "blazer") == [] and teams_named_by_word(teams_of(con), "los") == ["Los Angeles Lakers"]
-    assert team_abbreviations(con) == {"lal": "Los Angeles Lakers", "por": "Portland Trail Blazers", "ind": "Indiana Pacers"}
+    assert team_abbreviations(teams_of(con)) == {"lal": "Los Angeles Lakers", "por": "Portland Trail Blazers", "ind": "Indiana Pacers"}
     counting = Counting(con)
     with names.loaded():
         assert team_named_in(teams_of(counting), "how many threes have the Blazers' guards made") == "Portland Trail Blazers"  # type: ignore[arg-type]
         assert team_named_in(teams_of(counting), "who led the league in scoring") is None  # type: ignore[arg-type]
-        assert _team_abbreviation(counting, "POR record 2026") == "Portland Trail Blazers" and _team_abbreviation(counting, "por record") is None  # type: ignore[arg-type]
-        assert _classify_span_abbreviation(counting, "ind") and not _classify_span_abbreviation(counting, "indy")  # type: ignore[arg-type]
+        assert _team_abbreviation(teams_of(counting), "POR record 2026") == "Portland Trail Blazers" and _team_abbreviation(teams_of(counting), "por record") is None  # type: ignore[arg-type]
+        assert _classify_span_abbreviation(teams_of(counting), "ind") and not _classify_span_abbreviation(teams_of(counting), "indy")  # type: ignore[arg-type]
     assert counting.statements == ["SELECT * FROM teams"]
     # A team with no abbreviation has none, and a warehouse with no teams raises what the SQL raised.
     con.execute("INSERT INTO teams VALUES ('99', NULL, 'Seattle SuperSonics', 'Seattle', 'SuperSonics')")
-    assert "none" not in team_abbreviations(con) and len(team_abbreviations(con)) == 3
+    assert "none" not in team_abbreviations(teams_of(con)) and len(team_abbreviations(teams_of(con))) == 3
     bare = duckdb.connect(":memory:")
     with pytest.raises(duckdb.CatalogException):
         teams_named_by_word(teams_of(bare), "lakers")

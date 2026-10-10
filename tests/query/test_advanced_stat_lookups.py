@@ -151,7 +151,6 @@ def test_a_narrowed_set_of_games_is_never_answered_with_the_season(advanced_ctx:
     from association.query.subject import Subject
 
     reading = with_point(
-        advanced_ctx.con,
         "",
         Reading(scope=Scope.from_slots({"player": "Klay Thompson", "stat": "ts_pct", "opponent": "Boston Celtics"}), asked=asked("player_stat"), subject=Subject("player", players=("Klay Thompson",))),
     )

@@ -23,7 +23,7 @@ from shapes import asked
 from association.query.answer import Reply
 from association.query.calendar import parse_alignment, parse_situation
 from association.query.compose.plan import refusal_result
-from association.query.entities import players_of, teams_of
+from association.query.entities import names_of, players_of, teams_of
 from association.query.parse import _reading_from_route_refused, _reading_from_route_unsupported
 from association.query.reading import Reading, Scope
 from association.query.subject import Subject, read_subject
@@ -33,7 +33,7 @@ def unanswerable(con: duckdb.DuckDBPyConnection, intent: str, slots: dict[str, A
     """A test's slot dict as a Reading - the typed scope, and the subject
     read from the question - and the first thing its words name that
     nothing reads, as the planner says it (or None)."""
-    reading = Reading(scope=Scope.from_slots(slots), asked=asked(intent), intent=intent, subject=read_subject(con, question, asked(intent), Scope.from_slots(dict(slots))))
+    reading = Reading(scope=Scope.from_slots(slots), asked=asked(intent), intent=intent, subject=read_subject(names_of(con), question, asked(intent), Scope.from_slots(dict(slots))))
     causes = _reading_from_route_unsupported(question, reading)
     return refusal_result(causes[0]) if causes else None
 
@@ -165,8 +165,8 @@ def test_a_player_set_against_another_is_the_second_of_two_players(con: duckdb.D
     from association.query.parse import read_route, reading_from_route
 
     def parsed(question: str, names: list[str]) -> Reading:
-        route, _, _ = read_route(con, question, names, "")
-        return reading_from_route(con, question, route)
+        route, _, _ = read_route(names_of(con), question, names, "")
+        return reading_from_route(names_of(con), question, route)
 
     for question in ("lebron vs kawhi head to head", "lebron vs kawhi record"):
         reading = parsed(question, ["lebron", "kawhi"])

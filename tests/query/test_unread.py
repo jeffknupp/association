@@ -10,6 +10,7 @@ import duckdb
 import pytest
 from shapes import asked
 
+from association.query.entities import names_of
 from association.query.lexicon import content_tokens, content_words, read_by_the_model, unread_words, without_possessive
 from association.query.parse import read_route, reading_from_route
 from association.query.reading import Reading
@@ -27,8 +28,8 @@ def con() -> duckdb.DuckDBPyConnection:
 
 def _read(con: duckdb.DuckDBPyConnection, question: str, names: list[str] | None = None, stat: str = "") -> Reading:
     """The parser's whole path, as the agent takes it."""
-    route, _, _ = read_route(con, question, names, stat)
-    return reading_from_route(con, question, route)
+    route, _, _ = read_route(names_of(con), question, names, stat)
+    return reading_from_route(names_of(con), question, route)
 
 
 def test_a_word_is_the_text_between_spaces_lowercased_without_its_edge_punctuation() -> None:
@@ -90,9 +91,9 @@ def test_a_word_the_model_copied_is_read_though_no_claim_holds_it(con: duckdb.Du
     """The model's names and stat ride the route (``Route.model_names``,
     ``model_stat``): a word of them is the model's reading, as the ledger
     counts it, whatever a rule claimed."""
-    route, _, _ = read_route(con, "how many points does embiid average", ["embiid"], "points")
+    route, _, _ = read_route(names_of(con), "how many points does embiid average", ["embiid"], "points")
     assert route.model_names == ("embiid",) and route.model_stat == "points"
-    assert reading_from_route(con, "how many points does embiid average", route).unread == ("average",)
+    assert reading_from_route(names_of(con), "how many points does embiid average", route).unread == ("average",)
 
 
 # ---------------- the claims cut to what each rule read (span.needed, span.read_by) ----------------

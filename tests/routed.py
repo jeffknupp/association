@@ -37,6 +37,8 @@ from association.query.agent import Agent
 from association.query.answer import Answer, AnswerContext, Reply
 from association.query.compose.core import Query
 from association.query.compose.plan import plan, plan_point
+from association.query.entities import names_of
+from association.query.names import NameIndex
 from association.query.normalizer import Normalized
 from association.query.point import default_point
 from association.query.reading import Companion, Line, Reading, Scope, Subject
@@ -52,7 +54,7 @@ def slots_route(intent: str, slots: Mapping[str, Any] | None = None) -> Route:
     return Route(asked(intent), Scope.from_slots(slots or {}))
 
 
-def with_subject(con: duckdb.DuckDBPyConnection, question: str, route: Route) -> Route:
+def with_subject(con: duckdb.DuckDBPyConnection | NameIndex, question: str, route: Route) -> Route:
     """``route`` carrying who ``question`` is about, read as ``read_route``
     reads it - under no intent, from the route's own scope - and settled
     under the route's intent, or under the child the subject's shape names
@@ -60,7 +62,7 @@ def with_subject(con: duckdb.DuckDBPyConnection, question: str, route: Route) ->
     stages do not run here: a child the stages would decline stands."""
     if route.subject is not None:
         return route
-    read = read_subject(con, question, None, route.scope)
+    read = read_subject(con if isinstance(con, NameIndex) else names_of(con), question, None, route.scope)
     named = child_named(read, route.asked, question)
     chosen, words = named if named is not None else (route.asked, None)
     return replace(route, asked=chosen, subject=settle_subject(read, chosen, parent=route.asked, words=words))
@@ -70,8 +72,8 @@ def ask_routed(agent: Agent, question: str, route: Route, *, label: str = "") ->
     """``agent``'s answer to ``question`` with ``route`` standing in for
     what the parser would have read. The normalizer is not asked."""
 
-    def read_route(con: duckdb.DuckDBPyConnection, asked: str, names: list[str] | None = None, stat: str = "") -> tuple[Route, Any, str]:
-        routed = with_subject(con, asked, route)
+    def read_route(index: NameIndex, asked: str, names: list[str] | None = None, stat: str = "") -> tuple[Route, Any, str]:
+        routed = with_subject(index, asked, route)
         return routed, routed.subject, route.intent
 
     with (

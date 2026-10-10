@@ -18,6 +18,7 @@ import pytest
 
 from association.query.agent import Agent
 from association.query.answer import Reply
+from association.query.entities import names_of
 from association.query.normalizer import Normalized
 from association.query.reading import Reading, asked_label
 
@@ -230,7 +231,7 @@ def test_the_parser_files_each_side_where_the_router_scrambled_it(league: duckdb
     from association.query.parse import read_route
     from association.query.subject import apply_subject, read_subject
 
-    route, _, _ = read_route(league, question, names, "")
-    applied = apply_subject(read_subject(league, question, route.asked, route.scope), route.scope, asked=route.asked)
+    route, _, _ = read_route(names_of(league), question, names, "")
+    applied = apply_subject(read_subject(names_of(league), question, route.asked, route.scope), route.scope, asked=route.asked)
     got = {key: tuple(value) if isinstance(value, list) else value for key, value in applied.scope.to_slots().items() if key in _SIDES}
     assert (asked_label(applied.asked), got, applied.dropped) == (intent, sides, [])

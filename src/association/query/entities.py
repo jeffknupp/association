@@ -24,7 +24,6 @@ wrong name means no plot gets drawn."""
 from __future__ import annotations
 
 import functools
-import re
 import unicodedata
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -36,7 +35,7 @@ import duckdb
 
 from association.nba.franchises import FRANCHISE_ERAS, FranchiseEra, season_name
 from association.nba.season import current_season
-from association.query import names
+from association.query import lexicon, names
 from association.query.connection import latest_season_on_record
 from association.query.notes import decided
 from association.query.reading import Scope, Unsupported
@@ -101,6 +100,44 @@ def teams_of(con: duckdb.DuckDBPyConnection) -> names.TeamIndex:
     return names.teams_for(con, _read_teams)
 
 
+def _read_active(con: duckdb.DuckDBPyConnection) -> names.ActivePlayers:
+    """The statements :func:`active_of` runs: the latest season on record,
+    and every player with a box score in it - or the error reading the box
+    scores raised, kept to be raised where the narrowing needs them, as
+    :func:`narrow_to_available`'s statement raised it there."""
+    latest = latest_season_on_record(con)
+    if latest is None:
+        return names.ActivePlayers(season=None)
+    try:
+        ids = _available_ids(con, None, (BOX_SCORES,), latest, None)
+    except duckdb.Error as error:
+        return names.ActivePlayers(season=latest, error=error)
+    return names.ActivePlayers(season=latest, ids=frozenset(ids))
+
+
+def active_of(con: duckdb.DuckDBPyConnection) -> names.ActivePlayers:
+    """The players with a box score in the latest season on record, read
+    once per :func:`~association.query.names.loaded` block - what a typo
+    within reach of too many players is narrowed by (:func:`suggest_players`).
+
+    .. versionadded:: 6.0.0
+    """
+    return names.active_for(con, _read_active)
+
+
+def names_of(con: duckdb.DuckDBPyConnection) -> names.NameIndex:
+    """Everything a name is recognized from, read for ``con`` before any
+    reader of the question's words runs: the players' and the teams' indexes
+    (:func:`players_of`, :func:`teams_of`) and the players active in the
+    latest season on record (:func:`active_of`). The answering loop reads it
+    once per question and hands it to the parser, which holds no connection
+    (``scripts/check_ratchets.py``, ``con_in_the_reader``).
+
+    .. versionadded:: 6.0.0
+    """
+    return names.NameIndex(players=players_of(con), teams=teams_of(con), active=active_of(con))
+
+
 def checked_players(index: names.PlayerIndex) -> names.PlayerIndex:
     """``index``, for a lookup that used to read ``players`` - raising what
     reading ``players`` raised, as that lookup's SQL did.
@@ -129,18 +166,6 @@ def team_columns(index: names.TeamIndex, *columns: str) -> names.TeamIndex:
     return index
 
 
-def _player_index(con: duckdb.DuckDBPyConnection) -> names.PlayerIndex:
-    """The players' index, for a lookup that used to read ``players`` -
-    raising what reading ``players`` raised, as that lookup's SQL did."""
-    return checked_players(players_of(con))
-
-
-def _team_index(con: duckdb.DuckDBPyConnection, *columns: str) -> names.TeamIndex:
-    """The teams' index, for a lookup whose SQL read ``columns`` of ``teams``
-    (:func:`team_columns`)."""
-    return team_columns(teams_of(con), *columns)
-
-
 def teams_named_by_word(teams: names.TeamIndex, word: str) -> list[str]:
     """The distinct display names of the teams ``word`` is a whole word of
     ("blazers" for the Portland Trail Blazers), in table order - from the
@@ -164,14 +189,17 @@ def teams_named_by_word(teams: names.TeamIndex, word: str) -> list[str]:
     return found
 
 
-def team_abbreviations(con: duckdb.DuckDBPyConnection) -> dict[str, Any]:
+def team_abbreviations(teams: names.TeamIndex) -> dict[str, Any]:
     """Each team's abbreviation, lowercased as the SQL's ``lower`` does it,
     with its display name - from the teams' index. A team with no
     abbreviation has none.
 
     .. versionadded:: 5.0.0
+
+    .. versionchanged:: 6.0.0
+       Takes the teams' index (:func:`teams_of`) in place of a connection.
     """
-    index = _team_index(con, "abbreviation", "display_name")
+    index = team_columns(teams, "abbreviation", "display_name")
     return {names.sql_lower(str(team["abbreviation"])): team["display_name"] for team in index.rows if team["abbreviation"] is not None}
 
 
@@ -329,7 +357,17 @@ def _fold(text: str) -> str:
 # "Gilgeous-Alexander" is two words and "Jokic's" is "Jokic" and a stray "s".
 # Accents are folded first (_fold), so "dončić" is the one word "doncic".
 def _words(text: str) -> list[str]:
-    return [w for w in re.split(r"[^A-Za-z]+", _fold(text)) if w]
+    words: list[str] = []
+    run: list[str] = []
+    for char in _fold(text):  # ASCII, every letter folded to its plain one
+        if "a" <= char <= "z" or "A" <= char <= "Z":
+            run.append(char)
+        elif run:
+            words.append("".join(run))
+            run = []
+    if run:
+        words.append("".join(run))
+    return words
 
 
 def _initials(name: str) -> str:
@@ -712,7 +750,7 @@ def _edit_budget(token: str) -> int:
     return 0 if len(token) <= 3 else 1 if len(token) <= 6 else 2
 
 
-def suggest_players(con: duckdb.DuckDBPyConnection, text: str) -> list[Entity]:
+def suggest_players(index: names.NameIndex, text: str) -> list[Entity]:
     """Players ``text`` plausibly meant, when it matched none of them exactly.
 
     Reached only after :func:`find_players` has come back empty, so it costs
@@ -757,12 +795,15 @@ def suggest_players(con: duckdb.DuckDBPyConnection, text: str) -> list[Entity]:
     .. versionchanged:: 4.3.0
        Falls through to the near-spelling pass when the surname alone matches
        too many players, and never suggests a name that is really a team's.
+    .. versionchanged:: 6.0.0
+       Takes the name index (:func:`names_of`) in place of a connection: the
+       narrowing to the players active now reads the set it holds.
     """
     tokens = [t for t in text.split() if t]
     if not tokens:
         return []
 
-    if _team_named(teams_of(con), text) is not None:
+    if _team_named(index.teams, text) is not None:
         # A team name is not a near miss on a player. "Hawks" is one edit
         # from Spencer Hawes, and "Most reb by a hawk player history"
         # answered "did you mean Spencer Hawes?" instead of naming the real
@@ -772,7 +813,7 @@ def suggest_players(con: duckdb.DuckDBPyConnection, text: str) -> list[Entity]:
         # to explain that with; guessing a person here can only mislead it.
         return []
 
-    backed_off = _suggest_players_by_surname(con, tokens)
+    backed_off = _suggest_players_by_surname(index.players, tokens)
     if backed_off:
         return backed_off
     # Otherwise more than MAX_CLARIFY_CANDIDATES share the surname alone, or
@@ -782,10 +823,10 @@ def suggest_players(con: duckdb.DuckDBPyConnection, text: str) -> list[Entity]:
     # exactly what a common surname needs: "Dylon Harper" backs off to 6
     # Harpers - too many to suggest - but only one of them, Dylan, is also
     # close on the given name.
-    return _suggest_players_by_spelling(con, tokens)
+    return _suggest_players_by_spelling(index, tokens)
 
 
-def _suggest_players_by_surname(con: duckdb.DuckDBPyConnection, tokens: list[str]) -> list[Entity]:
+def _suggest_players_by_surname(players: names.PlayerIndex, tokens: list[str]) -> list[Entity]:
     """:func:`suggest_players`' first pass: a multi-word name backed off to its
     last word, matched exactly at a word boundary. Empty when the name is one
     word, when nobody matches, and when more than ``MAX_CLARIFY_CANDIDATES``
@@ -796,12 +837,12 @@ def _suggest_players_by_surname(con: duckdb.DuckDBPyConnection, tokens: list[str
     # substring hits when nothing starts with the token, which is fine for a
     # name somebody typed and wrong for one being guessed at: backing "Nobody
     # At All" off to "All" otherwise suggests Bo Wall.
-    start = re.compile(_WORD_START + re.escape(tokens[-1]), re.IGNORECASE)
-    kept = [player for player in find_players(con, tokens[-1]) if start.search(player.name)]
+    start = lexicon.word_start(tokens[-1])
+    kept = [player for player in find_players(players, tokens[-1]) if start.search(player.name)]
     return kept if len(kept) <= MAX_CLARIFY_CANDIDATES else []
 
 
-def _suggest_players_by_spelling(con: duckdb.DuckDBPyConnection, tokens: list[str]) -> list[Entity]:
+def _suggest_players_by_spelling(index: names.NameIndex, tokens: list[str]) -> list[Entity]:
     """:func:`suggest_players`' second pass: the players every one of whose
     ``tokens`` is within :func:`_edit_budget` of some word of the name,
     closest first - or nobody, when more than ``MAX_CLARIFY_CANDIDATES``
@@ -817,21 +858,35 @@ def _suggest_players_by_spelling(con: duckdb.DuckDBPyConnection, tokens: list[st
     a preference, an elimination): "crry" is within one edit of six Currys,
     and only Seth and Stephen have a box score in the latest season, so the
     question asks between those two where it said "No player found"
-    (ISSUES.md #240)."""
-    index = _player_index(con)
+    (ISSUES.md #240). The players active now are the name index's own
+    (:class:`~association.query.names.ActivePlayers`), read before any
+    reader runs, so a reader of the words that asks this runs no statement."""
+    players = checked_players(index.players)
     pieces = [piece for token in tokens for piece in names.spelled_words(token)] or tokens
     # Closest first, then by name; two players of one name and one distance
     # stay in table order (an ORDER BY leaves that tie to the engine).
-    near = sorted(index.near([(t, _edit_budget(t)) for t in pieces]), key=lambda found: (found[1], str(index.rows[found[0]][1])))
-    found = _entities(index, [row for row, _total in near])
+    near = sorted(players.near([(t, _edit_budget(t)) for t in pieces]), key=lambda found: (found[1], str(players.rows[found[0]][1])))
+    found = _entities(players, [row for row, _total in near])
     if len(found) <= MAX_CLARIFY_CANDIDATES:
         return found
-    latest = latest_season_on_record(con)
-    active = narrow_to_available(con, found, BOX_SCORES, season=latest) if latest is not None else []
+    active = _active_among(index.active, found)
     return active if 0 < len(active) <= MAX_CLARIFY_CANDIDATES else []
 
 
-def read_near_spelling(con: duckdb.DuckDBPyConnection, text: str) -> Entity | None:
+def _active_among(active: names.ActivePlayers, found: list[Entity]) -> list[Entity]:
+    """The players of ``found`` with a box score in the latest season on
+    record, in the order given - :func:`narrow_to_available` over the box
+    scores for that season, read from the set the name index holds: nobody
+    for a warehouse with no games, and what reading the box scores raised
+    where it raised."""
+    if active.season is None:
+        return []
+    if active.error is not None:
+        raise _again(active.error)
+    return [player for player in found if player.id in active.ids]
+
+
+def read_near_spelling(index: names.NameIndex, text: str) -> Entity | None:
     """The one player ``text`` is a near spelling of, taken as the answer and
     said so - or None, and the caller asks or refuses as it always did.
 
@@ -862,25 +917,28 @@ def read_near_spelling(con: duckdb.DuckDBPyConnection, text: str) -> Entity | No
     is measured and recorded in AGENTS.md.
 
     .. versionadded:: 5.0.0
+
+    .. versionchanged:: 6.0.0
+       Takes the name index (:func:`names_of`) in place of a connection.
     """
     tokens = [t for t in text.split() if t]
-    if not tokens or _team_named(teams_of(con), text) is not None:
+    if not tokens or _team_named(index.teams, text) is not None:
         return None
-    near = _suggest_players_by_spelling(con, tokens)
+    near = _suggest_players_by_spelling(index, tokens)
     if not near and len(tokens[-1]) > 3 and tokens[-1].casefold().endswith("s"):
         # A possessive typed without its apostrophe ("joel embids fingerprint")
         # is the name plus an "s" - one edit the budget spends before the typo
         # itself is reached. Only where the spelling as typed is near nobody,
         # so it never settles an ambiguity; the parser reads the same spelling
         # (parse.classify_span), and the two must agree on who is named.
-        near = _suggest_players_by_spelling(con, [*tokens[:-1], tokens[-1][:-1]])
+        near = _suggest_players_by_spelling(index, [*tokens[:-1], tokens[-1][:-1]])
     if len(near) != 1:
         return None
     note_typo_reading(text, near[0])
     return near[0]
 
 
-def unmatched(con: duckdb.DuckDBPyConnection, text: str, kind: str = "player") -> Clarify | Refusal:
+def unmatched(index: names.NameIndex, text: str, kind: str = "player") -> Clarify | Refusal:
     """A name nothing matched: the question back naming its near misses
     when there are any (a :class:`~association.query.result.Clarify`), or
     the refusal saying nothing matched (``name_unmatched``) - the page
@@ -892,8 +950,11 @@ def unmatched(con: duckdb.DuckDBPyConnection, text: str, kind: str = "player") -
     .. versionchanged:: 5.0.0
        Returns the typed outcome; the sayer words it
        (``compose.say.suggestion``).
+
+    .. versionchanged:: 6.0.0
+       Takes the name index (:func:`names_of`) in place of a connection.
     """
-    near = tuple(player.name for player in suggest_players(con, text))
+    near = tuple(player.name for player in suggest_players(index, text))
     if near:
         return Clarify(asked=text, candidates=near, why="near_spelling", shown={}, under=("message",))
     return Refusal(kind="name_unmatched", facts={"asked": text, "kind": kind})
@@ -982,17 +1043,29 @@ def narrow_to_available(
     sources = source if isinstance(source, tuple) else (source,)
     if not candidates or not sources:
         return []
-    where = f"athlete_id IN ({', '.join('?' for _ in candidates)})"
-    params: list[Any] = [c.id for c in candidates]
+    have = _available_ids(con, [c.id for c in candidates], sources, season, through)
+    return [c for c in candidates if c.id in have]
+
+
+def _available_ids(con: duckdb.DuckDBPyConnection, ids: list[str] | None, sources: tuple[Availability, ...], season: int | None, through: int | None) -> set[str]:
+    """The ``athlete_id`` of every player with a row in one of ``sources`` -
+    among ``ids``, or among everyone where ``ids`` is None (the players
+    active in a season, :func:`active_of`) - for ``season``, or up to
+    ``through``: the one statement :func:`narrow_to_available` runs."""
+    conditions: list[str] = []
+    params: list[Any] = []
+    if ids is not None:
+        conditions.append(f"athlete_id IN ({', '.join('?' for _ in ids)})")
+        params.extend(ids)
     if season is not None:
-        where += " AND season = ?"
+        conditions.append("season = ?")
         params.append(season)
     if through is not None:
-        where += " AND season <= ?"
+        conditions.append("season <= ?")
         params.append(through)
-    union = " UNION ".join(f"SELECT DISTINCT athlete_id FROM {s.table} WHERE {where}" for s in sources)
-    have = {str(row[0]) for row in con.execute(union, params * len(sources)).fetchall()}
-    return [c for c in candidates if c.id in have]
+    where = f" WHERE {' AND '.join(conditions)}" if conditions else ""
+    union = " UNION ".join(f"SELECT DISTINCT athlete_id FROM {s.table}{where}" for s in sources)
+    return {str(row[0]) for row in con.execute(union, params * len(sources)).fetchall()}
 
 
 def _exact(candidates: list[Entity], text: str, keys: tuple[str, ...] = ("name",)) -> Entity | None:
@@ -1009,8 +1082,8 @@ def _exact(candidates: list[Entity], text: str, keys: tuple[str, ...] = ("name",
 # landing anywhere inside it. The boundary is any non-letter, not a space, so
 # the halves of a hyphenated or apostrophed name each start a word: "Alexander"
 # is a strong match for Shai Gilgeous-Alexander and Nickeil Alexander-Walker,
-# "Neal" for Shaquille O'Neal.
-_WORD_START = "(^|[^A-Za-z])"
+# "Neal" for Shaquille O'Neal (lexicon.WORD_START, the pattern DuckDB was
+# handed, and lexicon.word_start, the same boundary in Python's own regex).
 
 # The letters DuckDB's regexp_matches(..., 'i') folds onto an ASCII one beyond
 # its other case: RE2 folds by Unicode's simple case folding, under which the
@@ -1021,7 +1094,7 @@ _RE2_FOLDS = str.maketrans({"\u212a": "k", "\u017f": "s"})
 
 
 def _starts_a_word(name: str, token: str) -> bool:
-    """``regexp_matches(name, _WORD_START || <token, escaped>, 'i')``, as
+    """``regexp_matches(name, lexicon.WORD_START || <token, escaped>, 'i')``, as
     DuckDB answered it: ``token`` occurs in ``name``, ignoring case, at the
     start or after a character that is not a letter. ``token`` is ASCII here
     (:func:`find_players` folds it first)."""
@@ -1035,20 +1108,79 @@ def _starts_a_word(name: str, token: str) -> bool:
     return False
 
 
+#: One step of a LIKE pattern (:func:`_like_steps`): ``None`` is ``%``, any
+#: run of characters; ``""`` is ``_``, any one character; anything else the
+#: one character it is.
+_LikeStep = str | None
+
+
 @functools.lru_cache(maxsize=4096)
-def _like_pattern(pattern: str) -> re.Pattern[str]:
-    """A LIKE pattern as a regex: ``%`` any run, ``_`` any one character,
-    and a backslash making the next character literal - the escape the
-    statements this reproduces never had (DuckDB's LIKE has none unless one
-    is named), added for :func:`_literal`, so the question's own text is
-    matched as typed."""
-    parts, chars = [], iter(pattern)
+def _like_steps(pattern: str) -> tuple[tuple[_LikeStep, ...], tuple[str, ...] | None]:
+    """A LIKE pattern read once: its steps - ``%`` any run, ``_`` any one
+    character, and a backslash making the next character literal (the escape
+    the statements this reproduces never had - DuckDB's LIKE has none unless
+    one is named - added for :func:`_literal`, so the question's own text is
+    matched as typed) - and, where it holds no ``_``, the literal runs between
+    its ``%``s, which a match finds in order with no backtracking."""
+    steps: list[_LikeStep] = []
+    chars = iter(pattern)
     for char in chars:
         if char == "\\":
-            parts.append(re.escape(next(chars, "\\")))
+            steps.append(next(chars, "\\"))
         else:
-            parts.append(".*" if char == "%" else "." if char == "_" else re.escape(char))
-    return re.compile("".join(parts), re.DOTALL)
+            steps.append(None if char == "%" else "" if char == "_" else char)
+    if "" in steps:
+        return tuple(steps), None
+    runs = [""]
+    for step in steps:
+        if step is None:
+            runs.append("")
+        else:
+            runs[-1] += step
+    return tuple(steps), tuple(runs)
+
+
+def _like(value: str, pattern: str) -> bool:
+    """Whether ``value`` matches the LIKE ``pattern`` whole - the regex
+    ``.*``/``.`` reading of it, over any character (a newline too), with
+    no regex: the runs between ``%``s found in order where the pattern holds
+    no ``_`` (every pattern a lookup here builds), else the steps walked with
+    the last ``%`` to fall back to."""
+    steps, runs = _like_steps(pattern)
+    if runs is not None:
+        if len(runs) == 1:
+            return value == runs[0]
+        first, *middle, last = runs
+        if len(value) < len(first) + len(last) or not value.startswith(first) or not value.endswith(last):
+            return False
+        at, end = len(first), len(value) - len(last)
+        for run in middle:
+            found = value.find(run, at, end)
+            if found < 0:
+                return False
+            at = found + len(run)
+        return True
+    return _like_walk(value, steps)
+
+
+def _like_walk(value: str, steps: tuple[_LikeStep, ...]) -> bool:
+    """:func:`_like` for a pattern holding ``_``: each step matched in turn,
+    and on a miss the last ``%`` taking one more character."""
+    at = step = 0
+    star, mark = -1, 0
+    while at < len(value):
+        if step < len(steps) and steps[step] is not None and (steps[step] == "" or steps[step] == value[at]):
+            at += 1
+            step += 1
+        elif step < len(steps) and steps[step] is None:
+            star, mark = step, at
+            step += 1
+        elif star >= 0:
+            step, mark = star + 1, mark + 1
+            at = mark
+        else:
+            return False
+    return all(rest is None for rest in steps[step:])
 
 
 def _literal(text: str) -> str:
@@ -1067,7 +1199,7 @@ def _ilike(value: str | None, pattern: str, plain: bool) -> bool:
     Then the pattern is matched whole. A NULL value matches nothing."""
     if value is None or (plain and not pattern.isascii()):
         return False
-    return _like_pattern(names.sql_lower(pattern)).fullmatch(names.sql_lower(value)) is not None
+    return _like(names.sql_lower(value), names.sql_lower(pattern))
 
 
 def _as_varchar(value: Any) -> Any:
@@ -1076,7 +1208,7 @@ def _as_varchar(value: Any) -> Any:
     return value if value is None or isinstance(value, str) else str(value)
 
 
-def find_players(con: duckdb.DuckDBPyConnection, text: str, limit: int | None = MAX_CANDIDATES) -> list[Entity]:
+def find_players(players: names.PlayerIndex, text: str, limit: int | None = MAX_CANDIDATES) -> list[Entity]:
     """Every token must match, so "Luka Doncic" doesn't also match a player
     sharing only a first name.
 
@@ -1090,6 +1222,9 @@ def find_players(con: duckdb.DuckDBPyConnection, text: str, limit: int | None = 
        any, are the only ones returned. Incidental substring hits used to be
        ordered among them purely by name: "Ball" answered with Cedric Ceballos.
        Takes ``limit``.
+
+    .. versionchanged:: 6.0.0
+       Takes the players' index (:func:`players_of`) in place of a connection.
     """
     # Matched against the WHOLE query, never as a substring, so "book" resolves
     # to Devin Booker while "notebook" is untouched - and "Ant" stops matching
@@ -1112,7 +1247,7 @@ def find_players(con: duckdb.DuckDBPyConnection, text: str, limit: int | None = 
     # Two players of one name stay in table order; ORDER BY display_name
     # left that tie to the engine, whose order for it depended on which rows
     # were being sorted.
-    index = _player_index(con)
+    index = checked_players(players)
     rows = [
         (athlete_id, name, all(_starts_a_word(name, t) for t in tokens))
         for athlete_id, name in index.rows
@@ -1125,7 +1260,7 @@ def find_players(con: duckdb.DuckDBPyConnection, text: str, limit: int | None = 
     return [Entity(id=str(r[0]), name=str(r[1])) for r in matched]
 
 
-def find_teams(con: duckdb.DuckDBPyConnection, text: str, season: int | None = None) -> list[Entity]:
+def find_teams(teams: names.TeamIndex, text: str, season: int | None = None) -> list[Entity]:
     """Substring matching is kept (so "LA" stays honestly ambiguous rather than
     silently resolving to whichever team is literally named "LA"), but matches
     that start a word are ranked first - otherwise "LA" offers "Atlanta Hawks"
@@ -1140,8 +1275,10 @@ def find_teams(con: duckdb.DuckDBPyConnection, text: str, season: int | None = N
     .. versionchanged:: 2.2.0
        Reads ``season``, resolves former franchise names, and falls back to the
        nickname when the city is wrong.
+
+    .. versionchanged:: 6.0.0
+       Takes the teams' index (:func:`teams_of`) in place of a connection.
     """
-    teams = teams_of(con)
     historic = _franchise_in(teams, text, season)
     if historic is not None:
         return historic
@@ -1149,7 +1286,7 @@ def find_teams(con: duckdb.DuckDBPyConnection, text: str, season: int | None = N
     # them verbatim often enough that they fell through to the agent.
     text = _TEAM_NICKNAMES.get(text.strip().casefold(), text)
 
-    index = _team_index(con, "team_id", "abbreviation", "display_name")
+    index = team_columns(teams, "team_id", "abbreviation", "display_name")
     matched = [t for t in index.rows if t["team_id"] == text or _team_like(index, t, "abbreviation", _literal(text)) or _team_like(index, t, "display_name", f"%{_literal(text)}%")]
     # Best tier first, then by name (a missing name last, as DuckDB sorts a
     # NULL); two teams of one name stay in table order.
@@ -1346,8 +1483,8 @@ def resolve_player(
        where it used to be :class:`NotFound`.
     """
     if not available:
-        return _resolve_player_unnarrowed(con, find_players(con, text), text)
-    everyone = find_players(con, text, limit=None)
+        return _resolve_player_unnarrowed(con, find_players(players_of(con), text), text)
+    everyone = find_players(players_of(con), text, limit=None)
     if len(everyone) < 2:
         return _resolve_player_unnarrowed(con, everyone, text)
     # The season a name left open is settled by: the one asked about, else the
@@ -1380,7 +1517,7 @@ def _resolve_player_unnarrowed(con: duckdb.DuckDBPyConnection, candidates: list[
     is a near spelling of, said in the answer ("embid" is Joel Embiid; see
     :func:`read_near_spelling`)."""
     if not candidates:
-        near = read_near_spelling(con, text)
+        near = read_near_spelling(names_of(con), text)
         if near is not None:
             return near
     return _resolve(candidates, text, ("name",))
@@ -1424,7 +1561,7 @@ def resolve_team(con: duckdb.DuckDBPyConnection, text: str, season: int | None =
     .. versionchanged:: 2.2.0
        Takes the ``season`` a team name is read for.
     """
-    return _resolve(find_teams(con, text, season), text, ("name", "id"))
+    return _resolve(find_teams(teams_of(con), text, season), text, ("name", "id"))
 
 
 # "record" is the whole signal that a head_to_head naming a player is a
@@ -1491,7 +1628,7 @@ def resolved_player(
             # reason ambiguity is: the agent would resolve the same name
             # against the same table, and a name nothing matches is a fact,
             # not a shape this template happens not to cover.
-            near = tuple(player.name for player in suggest_players(con, text))
+            near = tuple(player.name for player in suggest_players(names_of(con), text))
             if near:
                 return Clarify(asked=text, candidates=near, why="near_spelling")
             # The read's own refusal, as the near-spelling question above is its

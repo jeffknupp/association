@@ -59,12 +59,10 @@ from association.query.entities import (
     _words,
     find_players,
     find_teams,
-    players_of,
     team_abbreviations,
     team_columns,
     teammate_names,
     teams_named_by_word,
-    teams_of,
 )
 from association.query.lexicon import season_from_text, season_named
 from association.query.measures import THRESHOLD_STAT_NAMES
@@ -406,15 +404,15 @@ def _near(name: str, text: str) -> bool:
     return any(len(w) >= 6 and any(_edit_distance(w.casefold(), x) <= 2 for x in t) for w in _words(name))
 
 
-def _is_a_team(con: duckdb.DuckDBPyConnection, name: str) -> bool:
+def _is_a_team(index: names.NameIndex, name: str) -> bool:
     """A name the router filed that is a team and no player ("Alamhamed
     Embiid" was filed under ``teams``; "Boston Celtics" under ``players``)."""
-    return bool(find_teams(con, name)) and not find_players(con, name)
+    return bool(find_teams(index.teams, name)) and not find_players(index.players, name)
 
 
-def _team_abbreviation(con: duckdb.DuckDBPyConnection, question: str) -> str | None:
+def _team_abbreviation(teams: names.TeamIndex, question: str) -> str | None:
     """A team named by its abbreviation, in capitals ("PHI record 2026")."""
-    rows = {str(abbr).casefold(): str(name) for abbr, name in team_abbreviations(con).items()}
+    rows = {str(abbr).casefold(): str(name) for abbr, name in team_abbreviations(teams).items()}
     for w in _words(question):
         if len(w) == 3 and w.isupper() and w.casefold() in rows:
             return rows[w.casefold()]
@@ -433,7 +431,7 @@ def _teams_by_word(teams: names.TeamIndex, question: str) -> set[str]:
     return found
 
 
-def _team_word(con: duckdb.DuckDBPyConnection, question: str) -> str | None:
+def _team_word(teams: names.TeamIndex, question: str) -> str | None:
     """The team the question names as a word: a singular or one-word
     nickname first, then :func:`~association.query.entities.team_named_in`
     (the roster table by whole word, the plural nicknames), then an
@@ -441,7 +439,7 @@ def _team_word(con: duckdb.DuckDBPyConnection, question: str) -> str | None:
     for w in _words(question.lower()):
         if w in lexicon.TEAM_SINGULARS:
             return lexicon.TEAM_SINGULARS[w]
-    return team_named_in(teams_of(con), question) or _team_abbreviation(con, question)
+    return team_named_in(teams, question) or _team_abbreviation(teams, question)
 
 
 def _team_words(text: str) -> list[str]:
@@ -464,7 +462,7 @@ def _by_nickname(name: str, question: str) -> bool:
     return any(f" {key} " in q for key, who in PLAYER_NICKNAMES.items() if who == name)
 
 
-def _question_players(con: duckdb.DuckDBPyConnection, question: str, routed: list[str], teams_here: set[str]) -> list[str]:
+def _question_players(index: names.NameIndex, question: str, routed: list[str], teams_here: set[str]) -> list[str]:
     """Players the question names, minus the spans that are not players in
     THIS question: the word that names a team here ("boston" after "vs" is
     the Celtics, not Brandon Boston Jr.; "magic" is Orlando, not Magic
@@ -475,12 +473,12 @@ def _question_players(con: duckdb.DuckDBPyConnection, question: str, routed: lis
     q_words = [w.casefold() for w in _words(question)]
     dictionary = _dictionary()
     kept: list[str] = []
-    for name in dict.fromkeys(players_named_in(players_of(con), question)):
+    for name in dict.fromkeys(players_named_in(index.players, question)):
         matched = [w for w in (x.casefold() for x in _words(name)) if w in q_words]
         if not matched:
             kept.append(name)  # a nickname key the question used: "kat", "sga"
             continue
-        if teams_here and any(len(w) >= 4 and (lexicon.TEAM_SINGULARS.get(w) or team_named_in(teams_of(con), w)) in teams_here for w in matched):
+        if teams_here and any(len(w) >= 4 and (lexicon.TEAM_SINGULARS.get(w) or team_named_in(index.teams, w)) in teams_here for w in matched):
             continue
         if all(w in dictionary for w in matched) and not any(question_supports(name, p) for p in routed) and not _by_nickname(name, question):
             continue
@@ -505,7 +503,7 @@ def _merge_names(router_named: list[str], question_named: list[str]) -> tuple[st
     return tuple(out)
 
 
-def _read_opponent(con: duckdb.DuckDBPyConnection, question: str, scope: Scope, season: int | None) -> str | None:
+def _read_opponent(index: names.NameIndex, question: str, scope: Scope, season: int | None) -> str | None:
     """The team the subject is set against: the team after "vs" / "against"
     in the question's own words, whenever there is one - "duren v nets 1h
     gameloh" arrived as ``opponent="New Jersey Nets"``, which resolves to no
@@ -520,62 +518,62 @@ def _read_opponent(con: duckdb.DuckDBPyConnection, question: str, scope: Scope, 
     of that word. A word after the "vs" that is a player's name the question
     names is the player, not a team it clips: "kevin garnett vs tim duncan
     games" read "tim" as the Timberwolves (:func:`_team_after_versus`)."""
-    versus = _team_after_versus(teams_of(con), question, season, names=players_named_in(players_of(con), question))
+    versus = _team_after_versus(index.teams, question, season, names=players_named_in(index.players, question))
     if versus is not None:
         return versus.name
     held = scope.cuts.opponent
-    held_team = _team_named(teams_of(con), held, season) if isinstance(held, str) and held.strip() else None
-    if held_team is not None and _team_grounded(teams_of(con), question, held_team) and not _named_as_own(con, question, held_team, season):
+    held_team = _team_named(index.teams, held, season) if isinstance(held, str) and held.strip() else None
+    if held_team is not None and _team_grounded(index.teams, question, held_team) and not _named_as_own(index.teams, question, held_team, season):
         return held_team.name
     # "karl towns stats vs netslast 5 games": the "vs" names a word nothing
     # resolves, and the router read it as a team it filed in `team` - a team
     # the question never holds otherwise, so the router's reading of that
     # word is the one there is.
-    team = _team_named(teams_of(con), scope.subject.team, season) if held_team is None else None
-    if team is not None and lexicon.AGAINST_PHRASE.search(question) and not _team_grounded(teams_of(con), question, team):
+    team = _team_named(index.teams, scope.subject.team, season) if held_team is None else None
+    if team is not None and lexicon.AGAINST_PHRASE.search(question) and not _team_grounded(index.teams, question, team):
         return team.name
     return None
 
 
-def _named_as_own(con: duckdb.DuckDBPyConnection, question: str, team: Entity, season: int | None) -> bool:
+def _named_as_own(teams: names.TeamIndex, question: str, team: Entity, season: int | None) -> bool:
     """Whether ``team`` is the one the question names after "for" - "show me
     splits for the sixers when maxey scores 20+ points" arrived with the
     76ers as the ``opponent`` beside an invented Joel Embiid (day5), and the
     reading took the router's word for it, leaving the question with no
     team as its subject. A "for <team>" with no "vs" anywhere is the
     subject's side, never the other one."""
-    own = _team_after_for(teams_of(con), question, season)
+    own = _team_after_for(teams, question, season)
     return own is not None and own[0].id == team.id and not lexicon.AGAINST_PHRASE.search(question)
 
 
-def _opponent_player(con: duckdb.DuckDBPyConnection, scope: Scope) -> str | None:
+def _opponent_player(index: names.NameIndex, scope: Scope) -> str | None:
     """A route's ``opponent`` when it names a player and not a team ("jay
     huff game log vs Embiid" arrived from the router with Jokic there): a
     name to check against the question like the subject's own, never read
     as a team the subject is set against. A team opponent is a narrowing,
     not a subject."""
     opponent = scope.cuts.opponent
-    if not isinstance(opponent, str) or not opponent.strip() or find_teams(con, opponent) or not find_players(con, opponent):
+    if not isinstance(opponent, str) or not opponent.strip() or find_teams(index.teams, opponent) or not find_players(index.players, opponent):
         return None
     return opponent
 
 
-def _routed_names(con: duckdb.DuckDBPyConnection, scope: Scope, question: str, opponent_player: str | None) -> tuple[list[str], list[str]]:
+def _routed_names(index: names.NameIndex, scope: Scope, question: str, opponent_player: str | None) -> tuple[list[str], list[str]]:
     """The router's player names - from ``player``, ``players``, a player
     filed as the ``opponent`` and one filed as the ``team`` - split into the
     ones the question supports and
     the ones it never held, minus any that is a team (the router files
     "Boston Celtics" as a player; a team is a narrowing, not an invention)."""
-    team_slot = _team_slot_player(con, scope)
-    routed = [p for p in _routed_player_slots(scope) + ([opponent_player] if opponent_player else []) + ([team_slot] if team_slot else []) if not _is_a_team(con, p) and not _not_a_name(p)]
+    team_slot = _team_slot_player(index, scope)
+    routed = [p for p in _routed_player_slots(scope) + ([opponent_player] if opponent_player else []) + ([team_slot] if team_slot else []) if not _is_a_team(index, p) and not _not_a_name(p)]
     supported = [p for p in routed if question_supports(p, question)]
     return supported, [p for p in routed if p not in supported]
 
 
-def _filler_names(con: duckdb.DuckDBPyConnection, scope: Scope, question: str) -> tuple[str, ...]:
+def _filler_names(index: names.NameIndex, scope: Scope, question: str) -> tuple[str, ...]:
     """The router's player names that are no name (:func:`_not_a_name`) or
     that the question holds only by a team's word - :attr:`Subject.filler`."""
-    return tuple(p for p in _routed_player_slots(scope) if _not_a_name(p) or (not _is_a_team(con, p) and _named_only_by_a_team_word(teams_of(con), question, p)))
+    return tuple(p for p in _routed_player_slots(scope) if _not_a_name(p) or (not _is_a_team(index, p) and _named_only_by_a_team_word(index.teams, question, p)))
 
 
 def _not_a_name(text: str) -> bool:
@@ -596,18 +594,18 @@ def _not_a_name(text: str) -> bool:
     return stripped.lower() in lexicon.FILLER_PLAYER_WORDS or any(pattern.fullmatch(stripped) for pattern, _ in lexicon.POSITION_WORDS)
 
 
-def _team_slot_player(con: duckdb.DuckDBPyConnection, scope: Scope) -> str | None:
+def _team_slot_player(index: names.NameIndex, scope: Scope) -> str | None:
     """The router's ``team`` when it names a player and no team: "Podziemski
     game log without curry" arrived as ``team='Podziemski'``, and "Will
     Riley last 5 game s" as ``team='Riley'`` (a bare fragment, three
     players) - the subject, in the wrong slot."""
     team = scope.subject.team
-    if team is None or _team_named(teams_of(con), team) is not None or not find_players(con, team):
+    if team is None or _team_named(index.teams, team) is not None or not find_players(index.players, team):
         return None
     return team
 
 
-def _spellings(con: duckdb.DuckDBPyConnection, question: str, routed: list[str]) -> dict[str, str]:
+def _spellings(players: names.PlayerIndex, question: str, routed: list[str]) -> dict[str, str]:
     """The question's own spelling of each router name it supports, resolved
     from the question's words anchored at the router's
     (:func:`~association.query.entities._question_derived_player`): a bare
@@ -619,7 +617,7 @@ def _spellings(con: duckdb.DuckDBPyConnection, question: str, routed: list[str])
     anchored span settles neither and the router's spelling stands."""
     out: dict[str, str] = {}
     for name in routed:
-        derived = question_derived_player(players_of(con), question, name)
+        derived = question_derived_player(players, question, name)
         if derived is not None and derived.name != name:
             out[name] = derived.name
     return _spellings_owned(out)
@@ -834,7 +832,7 @@ def _versus_companions(question: str, players: tuple[str, ...], scope: Scope, fo
     return versus, claims
 
 
-def _unrouted_companions(con: duckdb.DuckDBPyConnection, question: str, players: tuple[str, ...], scope: Scope) -> tuple[str, ...]:
+def _unrouted_companions(index: names.NameIndex, question: str, players: tuple[str, ...], scope: Scope) -> tuple[str, ...]:
     """A companion the model named nobody for, read from the phrase's own
     words: "show me splits for the sixers when maxey scores 20+ points"
     arrived with an invented Joel Embiid and no Maxey anywhere in the slots
@@ -869,13 +867,13 @@ def _unrouted_companions(con: duckdb.DuckDBPyConnection, question: str, players:
             # replayed route's own name for him, which the phrase misspells.
             if any(_same_person(segment, [p]) for p in (*players, *found)) or any(_near(r, segment) for r in routed):
                 continue
-            name = _unrouted_name(con, segment.split(), absent)
+            name = _unrouted_name(index, segment.split(), absent)
             if name is not None and not any(_same_person(name, [p]) for p in (*players, *found)):
                 found.append(name)
     return tuple(found)
 
 
-def _unrouted_name(con: duckdb.DuckDBPyConnection, words: list[str], absent: bool) -> str | None:
+def _unrouted_name(index: names.NameIndex, words: list[str], absent: bool) -> str | None:
     """The player's name a phrase's words by position hold, as typed: the
     whole run where its words are together some player's ("paul george",
     "curry"), else its leading two words, else its first ("maxey scores"
@@ -890,17 +888,17 @@ def _unrouted_name(con: duckdb.DuckDBPyConnection, words: list[str], absent: boo
         if size > len(words):
             continue
         span = [word.casefold().strip("'.,-").removesuffix("'s") for word in words[:size]]
-        if any(len(word) < 3 or word in lexicon.THRESHOLD_WORDS or word in lexicon.TEAM_SINGULARS or team_named_in(teams_of(con), word) for word in span):
+        if any(len(word) < 3 or word in lexicon.THRESHOLD_WORDS or word in lexicon.TEAM_SINGULARS or team_named_in(index.teams, word) for word in span):
             continue
         ordinary = any(word in dictionary for word in span)
         if ordinary and size < len(words) and not absent:
             continue
-        if _exact_name_span(players_of(con), span, limit=1) or _unrouted_near_spelling(con, span):
+        if _exact_name_span(index.players, span, limit=1) or _unrouted_near_spelling(index, span):
             return " ".join(words[:size]) if size == len(words) else " ".join(span)
     return None
 
 
-def _unrouted_near_spelling(con: duckdb.DuckDBPyConnection, span: list[str]) -> bool:
+def _unrouted_near_spelling(index: names.NameIndex, span: list[str]) -> bool:
     """Whether a companion phrase's leading words, which are no player's
     name as spelled, are a near spelling of exactly ONE player's:
     "without wembyanama". The words after "without" or "with" are a name's
@@ -914,7 +912,7 @@ def _unrouted_near_spelling(con: duckdb.DuckDBPyConnection, span: list[str]) -> 
     text = " ".join(span)
     if any(word in _dictionary() for word in span):
         return False  # a typo is no ordinary word: "season" is one edit from Tari Eason
-    return _team_named(teams_of(con), text) is None and len(_suggest_players_by_spelling(con, span)) == 1
+    return _team_named(index.teams, text) is None and len(_suggest_players_by_spelling(index, span)) == 1
 
 
 def with_without_named(scope: Scope) -> tuple[list[str], bool, dict[str, tuple[str, tuple[str, int] | None]]]:
@@ -997,7 +995,7 @@ def _condition_role(word: str, text: str) -> tuple[Predicate, Line | None, int |
     return "played", None, None
 
 
-def _team_names(con: duckdb.DuckDBPyConnection, question: str, scope: Scope, team_word: str | None, opponent: str | None, own_team: str | None) -> list[str]:
+def _team_names(index: names.NameIndex, question: str, scope: Scope, team_word: str | None, opponent: str | None, own_team: str | None) -> list[str]:
     """The team(s) the question is about: the word it names first, then the
     router's ``team`` / ``teams`` where the question supports them and they
     are teams - never the opponent or the player's own team over again."""
@@ -1010,17 +1008,17 @@ def _team_names(con: duckdb.DuckDBPyConnection, question: str, scope: Scope, tea
         and routed_team
         and not names
         and question_supports(routed_team, question)
-        and _team_named(teams_of(con), routed_team) is not None  # "any_team" is the router's placeholder, not a team
+        and _team_named(index.teams, routed_team) is not None  # "any_team" is the router's placeholder, not a team
         and not any(t and (question_supports(routed_team, t) or question_supports(t, routed_team)) for t in (opponent, own_team))
     ):
         names.append(routed_team)
     for t in _listed_teams(scope):
-        if isinstance(t, str) and question_supports(t, question) and _is_a_team(con, t) and t not in names and t != opponent:
+        if isinstance(t, str) and question_supports(t, question) and _is_a_team(index, t) and t not in names and t != opponent:
             names.append(t)
     return names
 
 
-def read_subject(con: duckdb.DuckDBPyConnection, question: str, asked: PointShape | None, scope: Scope) -> Subject:
+def read_subject(index: names.NameIndex, question: str, asked: PointShape | None, scope: Scope) -> Subject:
     """One reading of the subject. The question's spans decide; a slot the
     router filled (``scope``, the typed Scope a route carries) counts only
     where the question's own words support it
@@ -1033,6 +1031,10 @@ def read_subject(con: duckdb.DuckDBPyConnection, question: str, asked: PointShap
     .. versionchanged:: 6.0.0
        Takes what the words ask (``asked``, a
        :class:`~association.query.reading.PointShape`) where it took an intent.
+
+    .. versionchanged:: 6.0.0
+       Takes the name index (:class:`~association.query.names.NameIndex`) in
+       place of a connection.
     """
     # The season a team's name is read in. The parser reads the subject
     # BEFORE the stages settle the season (they are handed its companions),
@@ -1041,23 +1043,23 @@ def read_subject(con: duckdb.DuckDBPyConnection, question: str, asked: PointShap
     # Chris Paul's New Orleans team is asked about as a name nobody typed
     # (ISSUES.md #316).
     season = scope.span.season if scope.span.season is not None else season_from_text(question)
-    own = _team_after_for(teams_of(con), question, season)
-    team_word = _team_word(con, question)
+    own = _team_after_for(index.teams, question, season)
+    team_word = _team_word(index.teams, question)
     position = next((code for pattern, code in lexicon.POSITION_WORDS if pattern.search(question)), None)
-    routed_opponent = _opponent_player(con, scope)
-    opponent = _read_opponent(con, question, scope, season) if routed_opponent is None else None
+    routed_opponent = _opponent_player(index, scope)
+    opponent = _read_opponent(index, question, scope, season) if routed_opponent is None else None
     # Every team the words name, not only the first: "how many times did the
     # 76ers play boston" names the Celtics by "boston" beside the 76ers, and
     # "boston" is no player there (Brandon Boston Jr.).
-    teams_here = {t for t in (opponent, own[0].name if own is not None else None, team_word) if t} | _teams_by_word(teams_of(con), question)
+    teams_here = {t for t in (opponent, own[0].name if own is not None else None, team_word) if t} | _teams_by_word(index.teams, question)
 
-    routed, invented = _routed_names(con, scope, question, routed_opponent)
-    filler = _filler_names(con, scope, question)
+    routed, invented = _routed_names(index, scope, question, routed_opponent)
+    filler = _filler_names(index, scope, question)
     routed = [p for p in routed if p not in filler]
-    named = _question_players(con, question, routed, teams_here)
-    spellings = _spellings(con, question, routed)
+    named = _question_players(index, question, routed, teams_here)
+    spellings = _spellings(index.players, question, routed)
     players = _merge_names([spellings.get(r, r) for r in routed], named)
-    unrouted = _unrouted_companions(con, question, players, scope)
+    unrouted = _unrouted_companions(index, question, players, scope)
     conditions, claims = _read_subject_conditions(question, (*players, *unrouted), scope)
     companions = tuple(dict.fromkeys(c.player for c in conditions))
     players = tuple(p for p in players if p not in companions)
@@ -1069,7 +1071,7 @@ def read_subject(con: duckdb.DuckDBPyConnection, question: str, asked: PointShap
     # ("stats for sixers when maxey scored 20+", F087), it names the team the
     # question is about.
     own_team = own[0].name if own is not None and players and _named_before(question, players, own[1]) else None
-    teams = _team_names(con, question, scope, team_word, opponent, own_team)
+    teams = _team_names(index, question, scope, team_word, opponent, own_team)
     evidence = _evidence(named, routed, spellings, invented, team_word, opponent)
     if unrouted:
         evidence = (*evidence, f"companions the router named nobody for {list(unrouted)}")
