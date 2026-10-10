@@ -1131,6 +1131,39 @@ agents' reports named here are in `~/association-research/stages/`.
     is read as the subject's), filed as P1s. Cost: no rebase (master had
     not moved) and a fresh four-population run on both trees.
 
+29. **Phase 3, step 2, the measure (2026-10-10).** The sixth family, the
+    one the lead split out of the line's slice: one Fable agent at medium
+    effort (dispatched on the 9th under the day's exception) measured the
+    seven measure slots and the point's `measures`/`aggregate` on all
+    2,710 readings first - `stat` set on 1,004, under 69 spellings; where
+    the model's key and the words' both stood (240) they disagreed on 58
+    and the words won every one; 24 keys no answer-side vocabulary held,
+    and the normalizer's `games_played` the one enum key nothing reads -
+    and wrote one catalog of 42 keys with 390 spellings into it, in place
+    of six vocabularies. What moved: `reading.Measure` on `Scope.measure`,
+    seven slots gone, four alias tables and two modules' `re` imports
+    deleted, `query/measure.py` the catalog and the one tagger, the model's
+    required `stat` entering as context the words may confirm; `router.py`
+    421 lines shorter. Proved on all four populations through the
+    projection with the prompt and schema hashes unchanged, and SIX
+    enumerated feed moves from the slice's one fix (and 13 more
+    readings whose planned query carries the stat now while the result and
+    answer hold): the stages had dropped
+    the words' measure along with the model's key on whole-line readers
+    where the stat-word list did not know the word, so "grayson allen 3s
+    made last season" answered his points line; it answers his 3-pointers.
+    The ledger held at 702. What it taught: a slot-era spelling cannot
+    leave the typed value while sixty refusal sentences print it, so
+    `as_typed` rides on the `Measure` by necessity and is named as such;
+    the point's `measures` and `aggregate` are the compiler's names and
+    their retyping is `Query`'s shape, RUN's input, so it waits for step 4
+    (open item 13); a shot's value is the measure's, not a relation cell,
+    because a stat naming the same shots arrives beside it; and the one
+    reader of which stat a question names can hold the model's key as
+    context without a single answer moving, which is the shape the
+    subject's names will take. Cost: no rebase (master had not moved) and
+    a fresh four-population run on both trees.
+
 ## The plan items, as written
 
 In order of lift per unit of structural change, each measured on the

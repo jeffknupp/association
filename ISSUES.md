@@ -53,6 +53,7 @@ before that commit needs re-checking against the current warehouse.
 - **User sees:** the league's best offenses listed where its worst defenses were asked - a wrong answer fluently.
 - **Next step:** in the tagger, the opponent's reading the grammar made (`whose="opponent"`) survives the team alias: when the words name a given-up measure of the same key, the alias confirms the key and not whose. Enumerate on the feed first.
 - **Priority:** P1 - a wrong ranking fluently; 0 of the 2,710 readings, the wording natural.
+- **GitHub:** #361
 
 ### A single "N+ stat" line on a reader whose shape is not a line is read by nothing: "lebron game log with 20+ points this season" lists his last 10 games
 - **Found:** 2026-10-09, Phase 3 step 2's line slice, measuring the five carriers of a line on the 2,710 readings (`~/association-research/stages/line_family.py`)
@@ -2239,6 +2240,7 @@ those were found.
 - **User sees:** a per-game figure where a season total was asked, with a "how many ... made" wording the total reader exists for.
 - **Next step:** the reading should turn on `Measure.how`, not the spelling: a team's measure with `how="total"` (the words' "how many ... made"/"total") is the total, per game otherwise - which also reads "pippen ppg" as the per-game line it is. Enumerate the 12 first.
 - **Priority:** P3 - a wrong per-game answer where a total was asked, on a wording the alias happens to catch; 0 of the 12 recorded readings is a clear case.
+- **GitHub:** #362
 
 ### An overtime period named in the words is refused as a situation, never read as a period
 - **Found:** 2026-10-09, Phase 3, step 2, the period (the family measured on all 2,710 readings; the cuts slice counted these 4 among the 33 unread situations).
@@ -2880,6 +2882,7 @@ those were found.
 - **User sees:** a season figure where a narrowed one was asked, with no sentence saying so.
 - **Next step:** give the key its games-relation measure (`two_pct`) in the catalog and check `compose/stats.py` reads the rate's parts; enumerate the moved readings (the point's `measures` change for the 22).
 - **Priority:** P4 - no recorded question narrows it; filed from the catalog's own gap.
+- **GitHub:** #363
 
 ### A teammate who played beside an absent one on the with/without split is dropped from the split without a word
 - **Found:** 2026-10-09, Phase 3 step 2's line slice, writing the companions' projection
