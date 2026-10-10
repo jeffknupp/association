@@ -160,11 +160,11 @@ def test_every_scope_field_is_checked_and_every_group_is_the_compilers() -> None
 
     from association.query.compose.core import GROUPS
     from association.query.player_relation import RELATION_SCOPING
-    from association.query.reading import _CHECKS, _CUT_SLOT_KEYS, _SPAN_SLOT_NAMES, _WINDOW_SLOT_NAMES, SCOPING_SLOTS, Cuts, Group
+    from association.query.reading import _CHECKS, _CUT_SLOT_KEYS, _PERIOD_SLOT_NAMES, _SPAN_SLOT_NAMES, _WINDOW_SLOT_NAMES, SCOPING_SLOTS, Cuts, Group
 
     names = {f.name for f in fields(Scope)}
-    # The span's six slot names, the window's four and the cuts' eight pass the door into the typed values (Phase 3, step 2).
-    assert set(_CHECKS) == (names - {"span", "window", "cuts"}) | _SPAN_SLOT_NAMES | _WINDOW_SLOT_NAMES | _CUT_SLOT_KEYS
+    # The span's six slot names, the window's four, the cuts' eight and the period's two pass the door into the typed values (Phase 3, step 2).
+    assert set(_CHECKS) == (names - {"span", "window", "cuts", "period"}) | _SPAN_SLOT_NAMES | _WINDOW_SLOT_NAMES | _CUT_SLOT_KEYS | _PERIOD_SLOT_NAMES
     # `presence` is the team relation's own group (compose.team.compile_team_presence), not a key of the player relation's GROUPS.
     # `period` is the player relation's own, four reads of the same games rather than a GROUP BY (compose.core._compile_by_period).
     # `line` is keyed on the point's own predicate rather than a fixed column (compose.core._line_group).

@@ -1001,3 +1001,178 @@ def season_named(text: str) -> tuple[int, tuple[tuple[int, int], ...]] | None:
     if current:
         return current_season(), ((current.start(), current.end()),)
     return None
+
+
+# ---------------------------------------------------------------------------
+# The period family (Phase 3, step 2's fourth slice): what a read SEES of
+# each game - one quarter or one half - read by one tagger,
+# ``query/period.py`` (``which_period`` names the one, ``read_period`` keeps
+# it under a reader that takes one). The rest of the family's words choose
+# the period intents (``router._route_period_intents``: a quarter or half
+# named at all, a ranking of players by one, "by quarter" as a breakdown,
+# a period as a CONDITION on which games count) or name a cause
+# (``parse._unsupported_period_as_condition``), and read from here too, so
+# the family's words are declared once. A period used as a condition
+# ("after making one three in the first quarter") is the line slice's
+# value (``parse.read_period_condition``), read by PERIOD_CONDITION below
+# and a `which_period` of its period.
+# ---------------------------------------------------------------------------
+
+ORDINAL_PERIODS: dict[str, int] = {"first": 1, "1st": 1, "second": 2, "2nd": 2, "third": 3, "3rd": 3, "fourth": 4, "4th": 4}
+"""The ordinal a quarter or half is named by, to its number.
+
+.. versionadded:: 6.0.0
+   ``router._ORDINAL_PERIODS`` until Phase 3, step 2.
+"""
+
+# Which quarter or half, in the forms questions actually use. All three
+# shapes come from the feed: "1st quarter", "q1"/"1q", and "first half"/"2h"
+# - and the hyphenated adjective, "first-quarter rebounds", which read no
+# period. A half is never a quarter: the model mapped "first half" onto
+# period 1, which is wrong for a team the same way it is for a player, so
+# the half is read first and apart (``period.which_period``).
+WHICH_QUARTER = re.compile(
+    r"\b(?P<ordinal>first|second|third|fourth|1st|2nd|3rd|4th)[\s-]+(?:quarter|qtr|q)\b|\bq(?P<qn>[1-4])\b|\b(?P<nq>[1-4])q\b",
+    re.IGNORECASE,
+)
+"""Which quarter the words name, by ordinal or by number.
+
+.. versionadded:: 6.0.0
+   ``router._WHICH_QUARTER`` until Phase 3, step 2.
+"""
+WHICH_HALF = re.compile(r"\b(?P<ordinal>first|second|1st|2nd)[\s-]+half\b|\b(?P<hn>[12])h\b", re.IGNORECASE)
+"""Which half the words name, by ordinal or by number.
+
+.. versionadded:: 6.0.0
+   ``router._WHICH_HALF`` until Phase 3, step 2.
+"""
+
+# The words that name a quarter at all, which the intent stage reads
+# (period_split, period_leaderboard, team_quarter_points). Called
+# `_AGENT_ONLY` until 5.0.0, for the tool-calling agent a quarter question
+# was once sent to. `[1-4]q` is the mirror of `q[1-4]` and was missing:
+# "Duncan Robison 1q log" and "Devin Vassell nba player per game stats 1q"
+# were both answered with a whole-game line in the 2026-09-15 feed replay -
+# the same shape as the "4th qtr" gap that made these patterns grow
+# abbreviations in the first place. `td3s` used to be here too, sending
+# "luka td3s home" to the agent because nothing counted one player's
+# triple-doubles; the compiler does now, and the stages read the word.
+QUARTER_WORDS = re.compile(r"\b(?:first|second|third|fourth|1st|2nd|3rd|4th)[\s-]+(?:quarter|qtr|q)\b|\bq[1-4]\b|\b[1-4]q\b|\bqtrs?\b|\bper\s+quarter\b|\bby\s+quarter\b|\b(?:each|every)\s+quarter\b")
+"""A quarter named at all - one, or every one ("by quarter"). Read over the
+lowercased question, as the stage reads it.
+
+.. versionadded:: 6.0.0
+   ``router._QUARTER_WORDS`` until Phase 3, step 2.
+"""
+# A half is never a quarter. team_quarter_points reads a period number and
+# the model mapped "first half" onto period 1, which is wrong for a TEAM the
+# same way it would be for a player - so half words are kept apart from
+# QUARTER_WORDS, whose team exemption applies to quarters only, and always
+# route through the intent stage's override. "rj barrett 4th qtr log" is
+# why both patterns grew abbreviations - it slipped past "quarter" and
+# game_log answered with his whole last game.
+HALF_WORDS = re.compile(r"\b(?:first|second|1st|2nd)[\s-]+half\b|\b[12]h\b|\bhalftime\b", re.IGNORECASE)
+"""A half named at all.
+
+.. versionadded:: 6.0.0
+   ``router._HALF_WORDS`` until Phase 3, step 2.
+"""
+
+# A quarter or half question that ranks PLAYERS rather than asking about
+# one: "who has the highest average 1st quarter points this season?",
+# "knicks 1st quarter scoring leaders playoffs". Before `period_leaderboard`
+# existed these reached `other` and fell through. This wins over the team
+# exemption, and has to: the Knicks question routes to team_quarter_points
+# with the team filled and no player, which is exactly the shape the
+# exemption protects - and answering it would give the TEAM's first quarter
+# where its players' were asked for. "player" alone ranks too (yardstick-v2
+# F049, "hornets average 1st quarter points player": the team's own quarter
+# answered where its best player's was asked). Only ever read where no
+# player is named - a named player's quarter is period_split before this is
+# looked at - so "player" cannot pull a named player's question into a
+# ranking.
+PERIOD_LEADERS = re.compile(r"\bleaders?\b|\bwho\b|\bwhich\s+player\b|\bleading\s+scorers?\b|\bplayers?\b", re.IGNORECASE)
+"""Players ranked by a quarter or half, rather than one asked about.
+
+.. versionadded:: 6.0.0
+   ``router._PERIOD_LEADERS`` until Phase 3, step 2.
+"""
+# A named player's period "games" with no stat named is his games listed,
+# the way "log" is (yardstick-v2 F060, "Rudy gobert first half games this
+# season": the key lists his 76 first halves, and a total answered it).
+PERIOD_GAMES_WORDS = re.compile(r"\bgames\b", re.IGNORECASE)
+"""A named player's period games, listed.
+
+.. versionadded:: 6.0.0
+   ``router._PERIOD_GAMES_WORDS`` until Phase 3, step 2.
+"""
+# A period used as a CONDITION on the games rather than the part of each
+# game measured: "vj edgecombe three points made per game after making one
+# three in first quarter" (yardstick-v2 F062) asks his WHOLE-game threes
+# over the games whose first quarter held one. Once period_split read any
+# stat, it answered his first-quarter threes instead - fluent, and a
+# different question. A period as a condition is the line slice's value;
+# a wording it cannot read is kept off the period shapes and refused by
+# name (``parse._unsupported_period_as_condition``).
+PERIOD_AS_CONDITION = re.compile(
+    r"\bafter\s+(?:making|scoring|hitting|getting|having|recording|grabbing)\b|\bin\s+games?\s+(?:where|when|in\s+which)\b|\bif\s+(?:he|she|they)\b",
+    re.IGNORECASE,
+)
+"""The words that make a period a condition on which games count.
+
+.. versionadded:: 6.0.0
+   ``router._PERIOD_AS_CONDITION`` until Phase 3, step 2.
+"""
+# Every quarter at once, side by side (yardstick-v2 F048, "nba playerspoints
+# by quarter average", which fell through for want of one period).
+# period_leaderboard with no period is the league's table; period_split with
+# no period is a NAMED player's (#162, ROADMAP step 2). A "by quarter"
+# question reads NO period value: the breakdown is the point's shape.
+BY_QUARTER = re.compile(r"\b(?:by|per|each|every)\s+(?:quarter|qtr)s?\b|\bquarter\s+by\s+quarter\b", re.IGNORECASE)
+"""Every quarter at once - a breakdown, which names no one period.
+
+.. versionadded:: 6.0.0
+   ``router._BY_QUARTER`` until Phase 3, step 2.
+"""
+PERIOD_WORD = re.compile(r"\b(?:1st|2nd|3rd|4th|first|second|third|fourth)\s+(?:quarter|half)\b|\bq[1-4]\b|\b[1-4]q\b|\b[12]h\b|\b(?:quarter|half)\b", re.IGNORECASE)
+"""A quarter or half word anywhere, in any form - the ``period_as_condition``
+cause's second half, beside :data:`PERIOD_AS_CONDITION`.
+
+.. versionadded:: 6.0.0
+   ``parse._PERIOD_WORD`` until Phase 3, step 2.
+"""
+# The point reader's guard: a league-wide or a team's read that names a
+# quarter, a half, an overtime or a period is the period relation's
+# question, not the compiler's own - "least points by the Wizards in the
+# first half" once ranked players by their whole game.
+PERIOD_GUARD = re.compile(r"\b(quarter|qtr|half|period|overtime|\d(?:st|nd|rd|th) q|q[1-4]|[1-4]q|[12]h)\b", re.I)  # codespell:ignore nd - an ordinal suffix
+"""Any period word, for the point reader's "the period relation's question" guard.
+
+.. versionadded:: 6.0.0
+   ``point._PERIOD`` until Phase 3, step 2.
+"""
+PERIOD_INTENT_WORDS = r"\b(1st|2nd|3rd|4th|first|second|third|fourth)[\s-](quarter|half)|\bquarter\b|\b[1-4]h\b|\b[1-4]q\b|\bovertime\b|\bclutch\b"
+"""The words the parser's grammar names a period parent by
+(``parse.PARENT_GRAMMAR``: a team's quarter, the league's ranking by one, a
+player's), as the grammar's row holds them - a fragment, since the grammar
+compiles its rows itself.
+
+.. versionadded:: 6.0.0
+"""
+# A quarter or half used as a CONDITION on which games count: the verb, the
+# number, the stat and the period, in the shapes questions use - "after
+# making one three in first quarter" (yardstick-v2 F062), "in games where he
+# scored 10+ points in the first half", "when he makes a three in the 4th".
+PERIOD_CONDITION = re.compile(
+    r"\b(?:after\s+|(?:in|for|over)\s+(?:the\s+)?games?\s+(?:(?:where|when|in\s+which)\s+)?(?:(?:he|she|they)\s+)?|when(?:ever)?\s+(?:he|she|they)\s+|if\s+(?:he|she|they)\s+)"
+    r"(?:making|scoring|hitting|getting|having|recording|grabbing|made|scored|hit|got|had|recorded|grabbed|makes|scores|hits|gets|has|records|grabs)\s+"
+    r"(?P<least>at\s+least\s+)?(?P<n>\d{1,3}|an?|one|two|three|four|five|six|seven|eight|nine|ten)\s*(?P<more>\+|\s+or\s+more)?\s+"
+    r"(?P<stat>[a-z0-9 -]+?)\s+in\s+(?:the\s+)?(?P<period>(?:first|second|third|fourth|1st|2nd|3rd|4th)[\s-]+(?:quarter|half)|q[1-4]|[1-4]q|[12]h)\b",
+    re.IGNORECASE,
+)
+"""A line on a stat in one quarter or half, conditioning which games count
+(``parse.read_period_condition``, the line slice's reader).
+
+.. versionadded:: 6.0.0
+   ``parse._PERIOD_CONDITION`` until Phase 3, step 2.
+"""

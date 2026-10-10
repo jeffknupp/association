@@ -27,6 +27,7 @@ from dataclasses import replace
 from typing import TYPE_CHECKING, Any, Literal
 
 from association.nba.season import current_season
+from association.query import lexicon
 from association.query.entities import BOX_SCORES, SHOT_AVAILABILITY
 from association.query.lines import measure_filters, threshold_count_line
 from association.query.measures import (
@@ -82,7 +83,7 @@ _TOP_IN_A_GAME = re.compile(r"\b(most|highest|best|career[- ]high|record)\b.*\b(
 # players - "least points by the Wizards in the first half" ranked players
 # by fewest points until this existed.
 _NOT_PLAYERS = re.compile(r"\bby team\b|\bteams?\b|\ballowed\b|\bopponent'?s?\b|\bbench points\b|\bfranchise\b", re.I)
-_PERIOD = re.compile(r"\b(quarter|qtr|half|period|overtime|\d(?:st|nd|rd|th) q|q[1-4]|[1-4]q|[12]h)\b", re.I)  # codespell:ignore nd - an ordinal suffix
+# The period words are the lexicon's (PERIOD_GUARD) since Phase 3, step 2.
 _HOW_MANY_OR_OFTEN = re.compile(r"\bhow many\b|\bhow often\b|\bnumber of\b|\btimes\b", re.I)
 _WON = re.compile(r"\b(won|wins|win)\b", re.I)
 #: "least" on its own is ascending ("the least points"); "AT least" is the
@@ -164,7 +165,7 @@ def _everyone_guard(intent: str, question: str, position: str | None, *, period_
     reached this read once the reading stopped naming Travis Best for it,
     and a player ranking refusing it for want of a "record" measure names
     the wrong cause; it is not this relation's question."""
-    if _PERIOD.search(question) and not period_is_condition:
+    if lexicon.PERIOD_GUARD.search(question) and not period_is_condition:
         raise Unsupported("a quarter or half is the period relation's question")
     # "the top 50 ... with the team they play for" (F017) names no team's
     # question: the team is a column the ranking shows.
@@ -1220,7 +1221,7 @@ def _move_named(intent: str, scope: Scope, question: str) -> Reading:
     game's figure under the quarter's heading."""
     if intent == "period_split":
         return _move_default(intent, scope, None)
-    if _PERIOD.search(question) and scope.period_condition is None:
+    if lexicon.PERIOD_GUARD.search(question) and scope.period_condition is None:
         # The quarter words are a condition's (read into the scope), or the
         # period relation's question.
         raise Unsupported("a quarter or half is the period relation's question")
@@ -1373,7 +1374,7 @@ def team_read_point(scope: Scope, question: str, subject: Subject) -> Reading | 
        index and asked the warehouse nothing here (the ``con`` was carried
        and never used).
     """
-    if _named_player_in(scope) or _PERIOD.search(question) or _RANKING.search(question) or _LOG.search(question) or _TEAM_NOT_SUBJECT.search(question):
+    if _named_player_in(scope) or lexicon.PERIOD_GUARD.search(question) or _RANKING.search(question) or _LOG.search(question) or _TEAM_NOT_SUBJECT.search(question):
         return None
     if subject.kind == "team_players":
         # A team's players ("top scorers on the Lakers") are a ranking of

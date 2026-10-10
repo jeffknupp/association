@@ -379,6 +379,73 @@ otherwise.
     names it reads (the subject's own slice); the split beside the venue
     is the role family's.
 
+- **Declared in code by Phase 3, step 2, the period** (2026-10-09, the
+  lead's brief; no answer, result, remark, planned query or reading moved
+  on the four populations - every reading compared through the
+  projection, the typed value recorded beside it):
+  - The draft's `period: Period | None` ("what a read SEES of each game:
+    a quarter or half"), as `reading.Period(number, half)` on
+    `Scope.period`, in place of the two slots `period` (1-4, or an
+    overtime period by number, which nothing reads from the words) and
+    `half` (1-2); None is the whole game. **One cell, `period`, not two:**
+    measured on the 2,710 readings (`period_family.py`), 120 carry one - 79
+    quarters and 41 halves, never both - both relations apply a quarter and
+    a half through one step (`narrow_periods`, over the period's rebuilt
+    line of each game), and every reader's exclusion rows paired the two
+    slots under one reason in two wordings (rewritten as one). The slot
+    name a decline said (`period` or `half`) is kept by `Period.unhonored`
+    until the decline-to-Cause commit rewords it; the RUN-side cell the
+    read applied keeps its label, `result.Period(label, periods)`, and the
+    sayer's words stay where they are.
+  - One tagger: `period.read_period(question, PeriodContext) ->
+    PeriodRead(period, claims)`, over the lexicon's `WHICH_QUARTER`,
+    `WHICH_HALF` and `ORDINAL_PERIODS`, run in `router._settle` once the
+    intent is settled and before the cuts', the window's and the span's;
+    the context is the settled intent alone. `period.which_period(text)`
+    is the one reader of which period any words name: the intent stage
+    chooses among the three period intents by it (the choice itself is
+    step 4's, over the lexicon's `QUARTER_WORDS`, `HALF_WORDS`,
+    `PERIOD_LEADERS`, `PERIOD_GAMES_WORDS`, `PERIOD_AS_CONDITION`,
+    `BY_QUARTER`), and the line slice's condition reader
+    (`parse.read_period_condition`, over `lexicon.PERIOD_CONDITION`) reads
+    a condition's period through it. Measured first: three writers of one
+    value (the router's `_period_asked` through the intent stage's `raw |=
+    asked`, under the two player-side intents and a team's half; the
+    parser's `_read_route_period` for a team's quarter), none moving it
+    between the route and the reading, no period word inside another
+    tagger's claim; and the value written ONLY under the three period
+    intents - six readings name a quarter and carry none, their subject
+    unread and the point reader declining them by its guard. The tagger
+    keeps the value under those three readers (`PERIOD_INTENTS`) and
+    claims nothing where it writes nothing, so those six readings are
+    identical; whether the planner should refuse a period on a reader that
+    takes none (the typed design) is a decline-to-Cause commit, still open
+    below.
+  - The cells (contract 4): `Period.CELLS` is `period`, in
+    `RELATION_SCOPING` (applied by `apply_period`, said by
+    `Narrowed.filters`) and `TEAM_RELATION_SCOPING` (`_team_games_apply_period`,
+    `TeamNarrowed.filters`); each reader's refusal of it in the `*_EXCLUDED`
+    rows under the one name with one reason (the log, the line, a run, the
+    splits, a record, a matchup, the two shot readers on the player
+    relation; a leaderboard, a record and a series on the team relation);
+    `STATED_SCOPING`'s ranking-by-a-quarter row takes
+    `relation_period(intent)` where it listed the two names;
+    `SCOPING_SLOTS` loses the two, `_MODEL_SLOTS` loses `period`, and a
+    model-era `period`/`half` key a route still carries is dropped at the
+    stages' door with the span's (`_MODEL_SPAN_KEYS`); `cell_set(scope,
+    "period")` is whether a value is set.
+  - The record keeps its old shape through the projection
+    (`Scope.projected()`, `to_slots()`: `period` and `half` where the two
+    fields stood, after `split` and before `period_condition`), and the
+    typed value is recorded beside the reading as `period`.
+  - Not this slice's, on purpose: a period as a CONDITION on which games
+    count (`PeriodCondition`, `Scope.period_condition`, the
+    `period_as_condition` cause) is the line slice's; "by quarter" reads no
+    period (the point's shape); an overtime period named in the words
+    ("most points in an overtime game", 4 of the 2,710, every one a
+    `situation` the relation refuses by value) is measured and not read -
+    reading it as a period 5+ would move answers.
+
 ## What must be decided before which phase
 
 | Phase | Needs from this document |
@@ -775,10 +842,18 @@ moves into `data` before the slice that rewords its answer:
 2. **`record_when` is a split** by `line` with a total row, in 22 of 24;
    the other two are counts. One question family, two shapes: the reader
    decides from the words.
-3. **`period` has three roles**: what a read sees (its own field), a
-   filter (a `Line` with a period), and a dimension (a column per
-   quarter). Proposed as above, with the catalog saying which measures
-   have a reading in a quarter.
+3. **`period` has three roles**: what a read sees (its own field -
+   `reading.Period` on `Scope.period` since Phase 3, step 2, the period
+   slice above), a filter (a `Line` with a period - `PeriodCondition`
+   until the line slice types it), and a dimension (a column per
+   quarter - the point's `by="period"`). The catalog saying which measures
+   have a reading in a quarter is still the measure step's. Open from
+   the period slice: a period named on a reader that takes none (six of
+   the 2,710 readings, each with a subject nothing resolved) carries no
+   value, as the stages wrote none, and the point reader's guard declines
+   it ("a quarter or half is the period relation's question"); the typed
+   design has the tagger write it and the planner refuse the cell - a
+   decline-to-Cause commit with those six readings enumerated.
 4. **The default line** per relation and shape is a declared table. It is
    where the old intents' habits survive; proposed: accept that, keep it
    small, and review its rows as each slice lands.

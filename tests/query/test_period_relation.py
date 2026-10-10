@@ -20,7 +20,7 @@ from association.fetch.repairs import real_games
 from association.query.answer import AnswerContext
 from association.query.player_games import PERIOD_AGREEMENT, PERIOD_COLUMNS, Narrowed, aggregate_sql, period_line_sql, rows_sql
 from association.query.player_relation import RELATION_SCOPING, RELATION_SCOPING_EXCLUDED
-from association.query.reading import Reading, Scope, Span, period_narrowing
+from association.query.reading import Period, Reading, Scope, Span, period_narrowing
 from association.query.team_games import TEAM_PERIOD_AGREEMENT, TEAM_PERIOD_COLUMNS, TeamNarrowed, team_period_line_sql
 from association.query.team_games import aggregate_sql as team_aggregate_sql
 from association.query.team_games import rows_sql as team_rows_sql
@@ -228,19 +228,19 @@ def test_a_period_condition_sends_a_players_line_to_the_box_scores() -> None:
     assert not scope_reads_box_scores(Scope(player="x"), [])
 
 
-def test_the_scope_names_a_half_before_a_quarter() -> None:
-    assert period_narrowing(Scope(half=2)) == ((3, 4), "2nd half")
-    assert period_narrowing(Scope(period=5)) == ((5,), "overtime")
-    assert period_narrowing(Scope(period=1, half=1)) == ((1, 2), "1st half")
+def test_the_scope_narrows_to_a_half_or_a_quarter_through_the_typed_period() -> None:
+    assert period_narrowing(Scope(period=Period(number=2, half=True))) == ((3, 4), "2nd half")
+    assert period_narrowing(Scope(period=Period(number=5))) == ((5,), "overtime")
+    assert period_narrowing(Scope(period=Period(number=11))) is None, "no game has an 11th period: the period readers decline it by name"
     assert period_narrowing(Scope()) is None
 
 
 def test_period_is_a_relation_cell_and_every_exclusion_says_why() -> None:
-    assert {"period", "half"} <= RELATION_SCOPING
+    assert Period.CELLS <= RELATION_SCOPING
     for intent, cells in RELATION_SCOPING_EXCLUDED.items():
-        for cell in ("period", "half"):
-            if cell in cells:
-                assert cells[cell].strip(), f"{intent} excludes {cell} without a reason"
+        assert "half" not in cells, f"{intent}: a half is the period cell since Phase 3, step 2"
+        if "period" in cells:
+            assert cells["period"].strip(), f"{intent} excludes period without a reason"
 
 
 def test_the_agreement_table_names_only_period_columns_and_real_percentages() -> None:
@@ -258,10 +258,10 @@ def test_the_compiler_refuses_a_period_read_of_a_column_no_play_splits() -> None
     from association.query.compose.core import Query, Unsupported, _check_period_measures
 
     with pytest.raises(Unsupported, match="minutes"):
-        _check_period_measures(Query(scope=Scope(player="x", period=1)))
+        _check_period_measures(Query(scope=Scope(player="x", period=Period(number=1))))
     with pytest.raises(Unsupported, match="plusMinus"):
-        _check_period_measures(Query(scope=Scope(player="x", half=2), measures=["points"], predicates=[("plusMinus", ">=", 5)]))
-    _check_period_measures(Query(scope=Scope(player="x", period=1), measures=["points", "rebounds", "fg_pct"]))
+        _check_period_measures(Query(scope=Scope(player="x", period=Period(number=2, half=True)), measures=["points"], predicates=[("plusMinus", ">=", 5)]))
+    _check_period_measures(Query(scope=Scope(player="x", period=Period(number=1)), measures=["points", "rebounds", "fg_pct"]))
     _check_period_measures(Query(scope=Scope(player="x"), measures=["minutes"]))  # no period: nothing to refuse
     # A read grouped by period sees each quarter's line, and is held to the same columns.
     with pytest.raises(Unsupported, match="minutes"):
@@ -275,7 +275,7 @@ def test_compiling_a_period_read_of_minutes_refuses_before_the_warehouse_is_read
     from association.query.compose.core import Query, Unsupported, compile_query
 
     with pytest.raises(Unsupported, match="minutes"):
-        compile_query(duckdb.connect(":memory:"), Query(scope=Scope(player="x", period=1, span=Span(season=SEASON, season_type=2))))
+        compile_query(duckdb.connect(":memory:"), Query(scope=Scope(player="x", period=Period(number=1), span=Span(season=SEASON, season_type=2))))
 
 
 # ---------------------------------------------------------------------------
@@ -390,10 +390,10 @@ def test_a_team_read_without_shots_knows_only_the_linescore(team_con: duckdb.Duc
 
 
 def test_period_is_a_team_relation_cell_and_every_exclusion_says_why() -> None:
-    assert {"period", "half"} <= TEAM_RELATION_SCOPING
+    assert Period.CELLS <= TEAM_RELATION_SCOPING
     for intent in ("team_record", "head_to_head", "team_leaderboard"):
-        for cell in ("period", "half"):
-            assert TEAM_RELATION_SCOPING_EXCLUDED[intent][cell].strip(), f"{intent} excludes {cell} without a reason"
+        assert TEAM_RELATION_SCOPING_EXCLUDED[intent]["period"].strip(), f"{intent} excludes period without a reason"
+        assert "half" not in TEAM_RELATION_SCOPING_EXCLUDED[intent], f"{intent}: a half is the period cell since Phase 3, step 2"
 
 
 def test_the_team_agreement_table_names_only_period_columns_and_real_percentages() -> None:

@@ -167,7 +167,8 @@ def _period_log(con: duckdb.DuckDBPyConnection, q: Query) -> Result | Unanswered
     scope = q.scope
     asked = period_narrowing(scope)
     if asked is None:
-        raise Unsupported(f"period_split needs a period 1-10 or a half 1-2, got period={scope.period!r} half={scope.half!r}")
+        slots = scope.period.to_slots() if scope.period is not None else {}
+        raise Unsupported(f"period_split needs a period 1-10 or a half 1-2, got period={slots.get('period')!r} half={slots.get('half')!r}")
     measure = period_split_measure(scope.stat)
     if q.measures != [measure]:
         return None
@@ -565,7 +566,8 @@ def read_team_quarter_points(con: duckdb.DuckDBPyConnection, q: TeamQuery, *, st
         return refused
     asked = period_narrowing(scope)
     if asked is None:
-        raise Unsupported(f"team_quarter_points needs a period 1-10 or a half 1-2, got period={scope.period!r} half={scope.half!r}")
+        slots = scope.period.to_slots() if scope.period is not None else {}
+        raise Unsupported(f"team_quarter_points needs a period 1-10 or a half 1-2, got period={slots.get('period')!r} half={slots.get('half')!r}")
     periods, period_label = asked
     if scope.player is not None and scope.player.strip():
         # A named player's quarter or half is period_split's.
@@ -580,7 +582,7 @@ def read_team_quarter_points(con: duckdb.DuckDBPyConnection, q: TeamQuery, *, st
     # Every cell the shape reads, named: the quarter or half is the
     # relation's narrowing too, so every read of `narrowed` sees that part
     # of each game.
-    narrowing = Scope(cuts=Cuts(venue=scope.cuts.venue, game_n=scope.cuts.game_n, situation=scope.cuts.situation), window=scope.window, period=scope.period, half=scope.half)
+    narrowing = Scope(cuts=Cuts(venue=scope.cuts.venue, game_n=scope.cuts.game_n, situation=scope.cuts.situation), window=scope.window, period=scope.period)
     narrowed = team_games(con, team, span, narrowing, opponent=scope.cuts.opponent, date=scope.cuts.date)
     if isinstance(narrowed, Unanswered):
         return narrowed
@@ -713,7 +715,7 @@ def _period_leaderboard_by_quarter(con: duckdb.DuckDBPyConnection, span: Resolve
     narrowing = Narrowing()
     team = None
     for quarter in REGULATION_QUARTERS:
-        narrowed = league_games(con, span, replace(scope, period=quarter, half=None), position=None)
+        narrowed = league_games(con, span, replace(scope, period=reading.Period(number=quarter)), position=None)
         if isinstance(narrowed, Unanswered):
             return narrowed
         team = narrowed.team

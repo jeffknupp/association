@@ -97,9 +97,10 @@ this tree:
   floor follows the planned point's relation - and the fifth,
   `compose.core.COMPILER_SLOTS`, with step 2's window: `ranked_by` is the
   typed window's `by`, a cell the player relation declares; step 2 took
-  the span's and the window's names out of `SCOPING_SLOTS`, `_MODEL_SLOTS`
-  and every `STATED_SCOPING` row, and the relation tables carry the span's
-  three cells and the window's by name). A P1 wrong answer is
+  the span's, the window's, the cuts' and the period's names out of
+  `SCOPING_SLOTS`, `_MODEL_SLOTS` and every `STATED_SCOPING` row, and the
+  relation tables carry the span's three cells, the window's, the cuts'
+  and the period's one by name). A P1 wrong answer is
   still fixed, in the code that exists. The sections below describe the
   readers and the sayer, because they are what runs; they are not an
   invitation to add a shape.
@@ -461,10 +462,11 @@ gets turned off.
   - `check/` - the coverage report. `query/` - the reader (`parse.py`, with
     what the model sees in `normalizer.py`, the stages it runs in
     `router.py`, the words every tagger reads by in `lexicon.py` - the span,
-    window and cuts families' since Phase 3, step 2, the calendar's own
-    patterns among them, the rest as each family's slice lands - and the
-    three taggers, `span.py`, `window.py` and `cuts.py`; `calendar.py` is
-    the situation's parsers and clauses over the lexicon's words),
+    window, cuts and period families' since Phase 3, step 2, the calendar's
+    own patterns among them, the rest as each family's slice lands - and the
+    four taggers, `span.py`, `window.py`, `cuts.py` and `period.py`;
+    `calendar.py` is the situation's parsers and clauses over the lexicon's
+    words),
     entities, the relations (`player_games.py` and its
     shared steps `player_relation.py`, `team_games.py` and
     `team_relation.py`, `season_line.py`, `team_seasons.py`), the
@@ -554,9 +556,12 @@ the games' cuts (`reading.Cuts.CELLS`, Phase 3, step 2: `opponent`,
 opponent, or words nothing reads, parsed once into `reading.Situation`
 and refused by value where neither), `game_n`, `season_n` (the player
 relation's alone); `round` is a cut of no relation, refused wherever it
-is set), without, split, below/above, a
-quarter or half (`period`/`half`, which changes what a read SEES of each
-game rather than which games), the window's typed cell
+is set), without, split, below/above, the period's one typed cell
+(`reading.Period.CELLS`, Phase 3, step 2: `period`, a quarter or a half -
+`Period(number, half)` on `Scope.period`, the slots `period` and `half`
+until then - which changes what a read SEES of each game rather than
+which games: the relation rebuilds the period's line of every game from
+the shots and plays, `narrow_periods`), the window's typed cell
 (`reading.Window.CELLS`, Phase 3, step 2: `window`, an end of the span
 with its count - the slots `order` and `limit` until then - cut after
 every other filter by `relation_window`; a bare count is no cell, each
@@ -851,12 +856,52 @@ model's. Two things follow, and both matter when you add a shape:
   the check to rerun after a table change, beside the yardstick.
 - **A filter family is read by ONE tagger, from the lexicon, and claims
   the characters it read** (Phase 3, step 2; the span is the first, the
-  window the second, the games' cuts the third, and the pattern the other
-  families copy).
+  window the second, the games' cuts the third, the period the fourth, and
+  the pattern the other families copy).
   `query/lexicon.py` holds every pattern the family is read by, named,
   with its reason beside it, and nothing that reads the warehouse or the
   answer side (contract 6: regexes only in the lexicon; it is the lowest
-  layer of the reader). `query/cuts.py` is the cuts' tagger:
+  layer of the reader). `query/period.py` is the period's tagger:
+  `read_period(question, PeriodContext)` reads what a read SEES of each
+  game - one quarter or one half, by ordinal or by number ("1st quarter",
+  "q4", "4th qtr", "first half", "2h": `WHICH_QUARTER`, `WHICH_HALF`,
+  `ORDINAL_PERIODS`; a half is read first and apart, since a half is never
+  a quarter) - over the intent the stages settled, writes `reading.Period`
+  on `Scope.period` and claims what it read. `which_period(text)` is the
+  ONE reader of which period any words name: the intent stage calls it to
+  choose among the three period intents (the stage's choice is step 4's;
+  the words it chooses by - `QUARTER_WORDS`, `HALF_WORDS`,
+  `PERIOD_LEADERS`, `PERIOD_GAMES_WORDS`, `PERIOD_AS_CONDITION`,
+  `BY_QUARTER` - are the lexicon's, as are the point reader's guard
+  `PERIOD_GUARD`, the grammar's `PERIOD_INTENT_WORDS`, the
+  `period_as_condition` cause's `PERIOD_WORD` and the line slice's
+  `PERIOD_CONDITION`), and `parse.read_period_condition` calls it for a
+  condition's period, so no second copy of "first | second | 1st | 2nd"
+  exists. Measured first (`~/association-research/stages/period_family.py`,
+  the two slots as each stage set them on all 2,710 readings, with the
+  words, the intent chosen, the planner's verdict and the relations'
+  resolution): 120 readings carry a period (79 quarters, 41 halves - 82
+  `period_split`, 23 `period_leaderboard`, 15 `team_quarter_points`), no
+  stage moved one between the route and the reading, no period word fell
+  inside another tagger's claim, and the value was written ONLY under the
+  three period intents - six readings name a quarter and carry none (a
+  subject nothing resolved, the point reader declining them by its guard);
+  the tagger keeps that (`period.PERIOD_INTENTS`) and claims nothing where
+  it writes nothing. A "by quarter" question reads NO period (the
+  breakdown is the point's shape, `Reading.by="period"`), and a period as
+  a CONDITION on which games count is the line slice's value
+  (`Scope.period_condition`), untouched. The two slots are gone from
+  `Scope`; `Scope.from_slots` still takes them (it builds the `Period`;
+  both at once is refused at the door), `to_slots` and `projected()` give
+  the old shape back in the old field order, a model-era `period`/`half`
+  key a route still carries is dropped at the stages' door with the
+  span's, and the typed value is recorded beside the reading
+  (`stages._reading_record`, `period`). ONE cell, `period`, in both
+  relation tables (the exclusion rows paired the two slots under one
+  reason in two wordings; rewritten as one), a decline still saying the
+  slot name that was set (`Period.unhonored`: `half` or `period`) until
+  the decline-to-Cause commit rewords it; a reader whose other cells are
+  its own list takes `relation_period(intent)`. `query/cuts.py` is the cuts' tagger:
   `read_cuts(question, CutsContext)` reads which games of the span a read
   sees - a venue, a circumstance (`SITUATION`: a weekday, a month, a
   holiday, "since <day>", the opponent's conference or division, or words
@@ -924,9 +969,9 @@ model's. Two things follow, and both matter when you add a shape:
   characters it consumed, which the Route carries onto `Reading.claims`.
   A claim inside another's characters folds into it (the "playoffs" in
   "including the playoffs"); two claims that overlap without one holding
-  the other fail the reader (`span.claimed`) - a rule that read a word
-  another rule read. The span tagger runs LAST in `router._settle`, after
-  the subject is settled and the window tagger has run, because three of
+  the other are joined into one claim named for both (`span.claimed`,
+  since a29c7fd). The span tagger runs LAST in `router._settle`, after
+  the subject is settled and the period, cuts and window taggers have run, because three of
   its rules read the typed window (a bare "last N games" log reads both
   types; a count's "how many" with a player named is his career; a log's
   "last N vs the Pistons" is every meeting - `SpanContext.window_named`,

@@ -21,7 +21,7 @@ import duckdb
 
 from association.query.entities import Entity, resolved_team
 from association.query.player_relation import ResolvedSpan, apply_situation, has_table, relation_window, span_of
-from association.query.reading import Cuts, Scope, Span, Unsupported, period_narrowing
+from association.query.reading import Cuts, Period, Scope, Span, Unsupported, period_narrowing
 from association.query.result import Refusal, Unanswered
 from association.query.season_text import season_phrase
 from association.query.team_games import TEAM_GAMES_SQL, TeamNarrowed
@@ -61,16 +61,17 @@ from association.query.team_games import TEAM_GAMES_SQL, TeamNarrowed
 # never alone (`validated_until`), so a template honors it only by also
 # honoring `since`.
 #
-# `period` and `half` are the period relation's team half (ROADMAP plan item
-# 4): a quarter or a half narrows what a read SEES of each game - the
-# linescore's points, and every other column rebuilt from the plays
-# (`team_games.team_period_line_sql`) - applied by `team_games` through
-# `TeamNarrowed.narrow_periods`, the counterpart of the player relation's.
+# `period` is the period relation's team half (ROADMAP plan item 4; the
+# typed `Period` since Phase 3, step 2, one cell for a quarter or a half): it
+# narrows what a read SEES of each game - the linescore's points, and every
+# other column rebuilt from the plays (`team_games.team_period_line_sql`) -
+# applied by `team_games` through `TeamNarrowed.narrow_periods`, the
+# counterpart of the player relation's.
 #: The games' cuts a team's games carry (:attr:`~association.query.reading.Cuts.CELLS`
 #: less three): no game is labeled by its ``round``, and a ``tenure`` and
 #: an ordinal ``season_n`` are one player's.
 TEAM_CUTS: frozenset[str] = Cuts.CELLS - {"round", "tenure", "season_n"}
-TEAM_RELATION_SCOPING = frozenset({"window", "period", "half", *TEAM_CUTS, *Span.CELLS})
+TEAM_RELATION_SCOPING = frozenset({"window", *Period.CELLS, *TEAM_CUTS, *Span.CELLS})
 """The cells every reader on the team-games relation honors: the games'
 cuts a team's games carry (:data:`TEAM_CUTS`: ``opponent``, ``venue``,
 ``date``, ``situation``, ``game_n``, each applied by :func:`team_games`
@@ -96,7 +97,9 @@ refuses it, by :data:`TEAM_RELATION_SCOPING_EXCLUDED`.
 
 .. versionchanged:: 6.0.0
    The span's cells by name (``career``, ``range``, ``both``) in place of
-   the slots ``span``, ``since`` and ``until``; the games' cuts by name.
+   the slots ``span``, ``since`` and ``until``; the games' cuts by name; the
+   period's one cell (``period``, a quarter or a half) in place of the slots
+   ``period`` and ``half``.
 """
 
 
@@ -119,8 +122,7 @@ TEAM_RELATION_SCOPING_EXCLUDED: dict[str, dict[str, str]] = {
         # span of them; narrowing that pool to one weekday, month or holiday
         # within it is a different question from ranking the span itself.
         "situation": "a leaderboard ranks a season, not the games in one weekday, month or holiday within it",
-        "period": "a leaderboard ranks teams' season lines, and no season line is split by quarter",
-        "half": "a leaderboard ranks teams' season lines, and no season line is split by half",
+        "period": "a leaderboard ranks teams' season lines, and no season line is split by quarter or half",
     },
     # A record for one game is a single result, which game_log already answers
     # directly, and a record over a limited number of recent games is the same
@@ -133,8 +135,7 @@ TEAM_RELATION_SCOPING_EXCLUDED: dict[str, dict[str, str]] = {
     "team_record": {
         "date": "a record for one calendar date is a single game, which game_log already answers directly",
         "window": "a record over a limited set of games is a game_log question",
-        "period": "a record is won and lost over whole games; a quarter has no winner the record could count",
-        "half": "a record is won and lost over whole games; a half has no winner the record could count",
+        "period": "a record is won and lost over whole games; a quarter or half has no winner the record could count",
     },
     # head_to_head tallies every meeting in the span; `order` and `game_n`
     # pick out a subset of that tally, and neither is built. `since` and
@@ -151,8 +152,7 @@ TEAM_RELATION_SCOPING_EXCLUDED: dict[str, dict[str, str]] = {
         # holiday cut of an all-time series is a real question, just not this
         # step's.
         "situation": "head_to_head tallies every meeting in the span; narrowing that tally to one weekday, month or holiday within it is not built",
-        "period": "a series is won and lost in whole games; a quarter of each meeting has no winner to tally",
-        "half": "a series is won and lost in whole games; a half of each meeting has no winner to tally",
+        "period": "a series is won and lost in whole games; a quarter or half of each meeting has no winner to tally",
         "both": "a series is tallied in one season type; both at once would count regular-season and playoff meetings as one series",
     },
     "team_quarter_points": {"both": "a quarter's figures are reconciled per season and per type; one read over both types would carry one caveat for two"},
@@ -394,8 +394,9 @@ def team_games(con: duckdb.DuckDBPyConnection, team: Entity, span: ResolvedSpan,
 def _team_games_apply_period(con: duckdb.DuckDBPyConnection, narrowed: TeamNarrowed, scope: Scope) -> None:
     """A quarter or half narrows every read of the team relation to that part
     of each game (:meth:`~association.query.team_games.TeamNarrowed.narrow_periods`)
-    - the ``period``/``half`` cells of :data:`TEAM_RELATION_SCOPING`, the
-    team counterpart of :func:`apply_period`. A warehouse without the shots,
+    - the ``period`` cell of :data:`TEAM_RELATION_SCOPING` (the typed
+    :class:`~association.query.reading.Period`), the team counterpart of
+    :func:`apply_period`. A warehouse without the shots,
     the player rows or the plays - or with a shot or play table that carries
     no ``team_id`` (a fixture, a partial load) - leaves the columns rebuilt
     from them unknown rather than zero, and the linescore's points still

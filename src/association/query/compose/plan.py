@@ -16,9 +16,9 @@ from association.query.answer import Reply
 from association.query.conditions import condition_needs_player_refusal
 from association.query.coverage import coverage_refusal
 from association.query.measures import stat_measure
-from association.query.player_relation import RELATION_SCOPING_EXCLUDED, relation_cuts, relation_scoping, relation_span
+from association.query.player_relation import RELATION_SCOPING_EXCLUDED, relation_cuts, relation_period, relation_scoping, relation_span
 from association.query.point import TEAM_SEASON_POINTS, team_season_point
-from association.query.reading import CHART_INTENTS, Cause, Cuts, PointShape, Reading, Scope, Span, Window, _career_scope, cell_set, unhonored_scoping
+from association.query.reading import CHART_INTENTS, Cause, Cuts, Period, PointShape, Reading, Scope, Span, Window, _career_scope, cell_set, unhonored_scoping
 from association.query.result import Refusal
 from association.query.team_relation import team_relation_cuts, team_relation_scoping, team_relation_span
 
@@ -136,7 +136,7 @@ STATED_SCOPING: dict[PointShape, frozenset[str]] = {
     # narrowed by an opponent or a venue; a range of seasons and one date are
     # refused (the accuracy is measured per season, and one game ranks
     # nothing per game).
-    PointShape("player_periods", "ranking", "player"): frozenset({"period", "half"}) | relation_span("period_leaderboard") | relation_cuts("period_leaderboard"),
+    PointShape("player_periods", "ranking", "player"): relation_period("period_leaderboard") | relation_span("period_leaderboard") | relation_cuts("period_leaderboard"),
     # A team's record: the team relation's cells less a date and a window
     # (TEAM_RELATION_SCOPING_EXCLUDED says why), a split by month, and both
     # season types together ("including the playoffs").
@@ -381,9 +381,10 @@ def _excluded_cells_set(intent: str, scope: Scope, excluded: dict[str, str]) -> 
     it, and the compiler's own sentence names both quarters - as both
     season types are excluded from each of the three readers' words only,
     the reader stepping aside for the compiler's sentence, which reads
-    both. A span cell, a window cell and a cut are refused by the slot
-    names they were declared under (``reading._CELL_SLOT_NAMES``,
-    ``_WINDOW_CELL_SLOT_NAMES``, ``_CUT_SLOT_NAMES``)."""
+    both. A span cell, a window cell, a cut and the period are refused by
+    the slot names they were declared under (``reading._CELL_SLOT_NAMES``,
+    ``_WINDOW_CELL_SLOT_NAMES``, ``_CUT_SLOT_NAMES``; ``period`` or ``half``
+    for the typed :class:`~association.query.reading.Period`)."""
     refused: list[tuple[str, str]] = []
     for cell in excluded:
         if cell == "both" or (intent == "period_split" and cell == "period_condition"):
@@ -394,6 +395,8 @@ def _excluded_cells_set(intent: str, scope: Scope, excluded: dict[str, str]) -> 
             refused += [(slot, cell) for slot in scope.window.unhonored(Window.CELLS - {cell})]
         elif cell in Cuts.CELLS:
             refused += [(slot, cell) for slot in scope.cuts.unhonored(Cuts.CELLS - {cell})]
+        elif cell in Period.CELLS:
+            refused += [(slot, cell) for slot in (scope.period.unhonored(frozenset()) if scope.period is not None else [])]
         elif cell_set(scope, cell):
             refused.append((cell, cell))
     return refused

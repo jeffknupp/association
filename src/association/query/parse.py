@@ -36,9 +36,10 @@ from association.query.entities import _edit_budget, _words, find_players, find_
 from association.query.lexicon import COUNT, LOG_OR_WINDOW_WORDS
 from association.query.measures import MEASURE_WORDS, PERIOD_COLUMNS, PERIOD_RATE_STATS, TEAM_PERIOD_COLUMNS
 from association.query.metrics import EXTRA_FIELD_COLUMNS, TEAM_FIELD_WORDS
+from association.query.period import which_period
 from association.query.point import read_point
 from association.query.reading import TEAM_ONLY_INTENTS, Cause, ConditionSpec, LeftOut, PeriodCondition, PointRefused, Reading, Scope, ScopeError, Split, Unsupported
-from association.query.router import _PERIOD_AS_CONDITION, Route, _period_asked, _route_calendar_slots_split, settle
+from association.query.router import Route, _route_calendar_slots_split, settle
 from association.query.subject import (
     TEAM_SINGULARS,
     Subject,
@@ -85,9 +86,9 @@ PARENT_GRAMMAR: tuple[tuple[frozenset[str], str, str], ...] = (
     (ANY, r"\bfingerprint", "fingerprint"),
     # "plot" and the shots in either order: "threes by Plot Curry" is "plot curry's threes" reworded.
     (ANY, r"\bshot (chart|map|plot)|\bplot\b.*\b(shots?|threes)\b|\b(shots?|threes)\b.*\bplot\b|\bshots?\b.*\b(chart|plot|map)\b|\bwhere .* shoot", "shot_chart"),
-    (frozenset({"team", "teams"}), r"\b(1st|2nd|3rd|4th|first|second|third|fourth)[\s-](quarter|half)|\bquarter\b|\b[1-4]h\b|\b[1-4]q\b|\bovertime\b|\bclutch\b", "team_quarter_points"),
-    (frozenset({"everyone"}), r"\b(1st|2nd|3rd|4th|first|second|third|fourth)[\s-](quarter|half)|\bquarter\b|\b[1-4]h\b|\b[1-4]q\b|\bovertime\b|\bclutch\b", "period_leaderboard"),
-    (ANY, r"\b(1st|2nd|3rd|4th|first|second|third|fourth)[\s-](quarter|half)|\bquarter\b|\b[1-4]h\b|\b[1-4]q\b|\bovertime\b|\bclutch\b", "period_split"),
+    (frozenset({"team", "teams"}), lexicon.PERIOD_INTENT_WORDS, "team_quarter_points"),
+    (frozenset({"everyone"}), lexicon.PERIOD_INTENT_WORDS, "period_leaderboard"),
+    (ANY, lexicon.PERIOD_INTENT_WORDS, "period_split"),
     (ANY, r"\bcoach", "coach"),
     (frozenset({"pair"}), _PAIR_MEETING, "player_matchup"),
     (frozenset({"pair"}), r".", "player_compare"),
@@ -512,17 +513,9 @@ def _read_route_fields(intent: str, scope: Scope, question: str) -> Scope:
     return replace(scope, fields=tuple(fields)) if fields else scope
 
 
-# A quarter or half used as a CONDITION on which games count: the verb, the
-# number, the stat and the period, in the shapes questions use - "after
-# making one three in first quarter" (yardstick-v2 F062), "in games where he
-# scored 10+ points in the first half", "when he makes a three in the 4th".
-_PERIOD_CONDITION = re.compile(
-    r"\b(?:after\s+|(?:in|for|over)\s+(?:the\s+)?games?\s+(?:(?:where|when|in\s+which)\s+)?(?:(?:he|she|they)\s+)?|when(?:ever)?\s+(?:he|she|they)\s+|if\s+(?:he|she|they)\s+)"
-    r"(?:making|scoring|hitting|getting|having|recording|grabbing|made|scored|hit|got|had|recorded|grabbed|makes|scores|hits|gets|has|records|grabs)\s+"
-    r"(?P<least>at\s+least\s+)?(?P<n>\d{1,3}|an?|one|two|three|four|five|six|seven|eight|nine|ten)\s*(?P<more>\+|\s+or\s+more)?\s+"
-    r"(?P<stat>[a-z0-9 -]+?)\s+in\s+(?:the\s+)?(?P<period>(?:first|second|third|fourth|1st|2nd|3rd|4th)[\s-]+(?:quarter|half)|q[1-4]|[1-4]q|[12]h)\b",
-    re.IGNORECASE,
-)
+# A quarter or half used as a CONDITION on which games count is read by
+# the lexicon's PERIOD_CONDITION (the verb, the number, the stat and the
+# period); the tables below name the number and the stat.
 _CONDITION_NUMBERS = {"a": 1, "an": 1, "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10}
 # The singular a line's words take after "one" - the columns the period's
 # line rebuilds (MEASURE_WORDS holds the plurals and the abbreviations).
@@ -566,7 +559,7 @@ def read_period_condition(question: str) -> tuple[PeriodCondition, tuple[int, in
 
     .. versionadded:: 5.0.0
     """
-    m = _PERIOD_CONDITION.search(question)
+    m = lexicon.PERIOD_CONDITION.search(question)
     if m is None:
         return None
     number = m.group("n").lower()
@@ -575,11 +568,12 @@ def read_period_condition(question: str) -> tuple[PeriodCondition, tuple[int, in
     stat = _CONDITION_STAT_WORDS.get(words) or MEASURE_WORDS.get(words) or MEASURE_WORDS.get(f"{words}s")
     if stat is None or stat not in PERIOD_COLUMNS or threshold < 1:
         return None
-    asked = _period_asked(m.group("period"))
+    asked = which_period(m.group("period"))
     if asked is None:
         return None
+    period = asked[0]
     op: Literal[">=", "="] = ">=" if m.group("least") or m.group("more") or number in ("a", "an") else "="
-    return PeriodCondition(stat=stat, threshold=threshold, op=op, period=asked.get("period"), half=_as_half(asked.get("half"))), m.span()
+    return PeriodCondition(stat=stat, threshold=threshold, op=op, period=None if period.half else period.number, half=_as_half(period.number) if period.half else None), m.span()
 
 
 def _read_route_versus(subject: Subject, scope: Scope, intent: str) -> Scope:
@@ -596,16 +590,6 @@ def _read_route_versus(subject: Subject, scope: Scope, intent: str) -> Scope:
     if not versus:
         return scope
     return replace(scope, conditions=(*scope.conditions, *(ConditionSpec(player=c.name, side="opponent", predicate="played") for c in versus)))
-
-
-def _read_route_period(intent: str, scope: Scope, question: str) -> Scope:
-    """A team's quarter or half from the words ("first quarter", "2nd
-    half") - a slot the router's model filled and the stages only read for
-    the intents they assign themselves."""
-    if intent != "team_quarter_points" or scope.period is not None or scope.half is not None:
-        return scope
-    asked = _period_asked(question)
-    return replace(scope, period=asked.get("period"), half=_as_half(asked.get("half"))) if asked else scope
 
 
 #: The roles a companion can have that narrow the subject's OWN games as a
@@ -779,7 +763,7 @@ def read_route(con: duckdb.DuckDBPyConnection, question: str, names: list[str] |
     parent = parent_intent(question, subject.kind, _read_route_beside(subject, question))
     staged, decisions, words = _read_route_staged(question, slots, parent, read)
     final = staged.intent
-    scope = _read_route_fields(final, _read_route_period(final, staged.scope, question), question)
+    scope = _read_route_fields(final, staged.scope, question)
     # A teammate's start is his, never the subject's own split: the stages
     # read the split from the whole question.
     scope = _read_route_split(subject, question, final, scope)
@@ -952,7 +936,6 @@ _TITLE_ODDS = re.compile(r"\btitle\s+odds\b|\bchampionship\s+odds\b", re.IGNOREC
 """"Title odds": a regular-season projection ``team_outlook`` answers, not a
 championship."""
 _BENCH_POINTS = re.compile(r"\bbench\s+(?:points?|scoring|pts)\b", re.IGNORECASE)
-_PERIOD_WORD = re.compile(r"\b(?:1st|2nd|3rd|4th|first|second|third|fourth)\s+(?:quarter|half)\b|\bq[1-4]\b|\b[1-4]q\b|\b[12]h\b|\b(?:quarter|half)\b", re.IGNORECASE)
 
 
 def _reading_from_route_refused(players: names.PlayerIndex, teams: names.TeamIndex, question: str, reading: Reading) -> Cause | None:
@@ -1048,7 +1031,8 @@ def _unsupported_period_stat(reading: Reading) -> Cause | None:
     stat = scope.stat
     if intent not in ("period_split", "period_leaderboard") or not isinstance(stat, str) or stat in ("pts", "", "all") or stat in PERIOD_COLUMNS or stat in PERIOD_RATE_STATS:
         return None
-    return Cause(kind="period_stat", facts={"intent": intent, "stat": stat, "period": scope.period, "half": scope.half})
+    slots = scope.period.to_slots() if scope.period is not None else {}
+    return Cause(kind="period_stat", facts={"intent": intent, "stat": stat, "period": slots.get("period"), "half": slots.get("half")})
 
 
 def _unsupported_period_as_condition(question: str, reading: Reading) -> Cause | None:
@@ -1058,9 +1042,9 @@ def _unsupported_period_as_condition(question: str, reading: Reading) -> Cause |
     parser reads a readable one as ``period_condition``
     (:func:`read_period_condition`), which the relation applies; a wording
     it cannot read is kept off the period shapes
-    (``router._PERIOD_AS_CONDITION``), and a period read of it would answer
+    (``lexicon.PERIOD_AS_CONDITION``), and a period read of it would answer
     his first-quarter threes, fluently and wrongly."""
-    if reading.scope.period_condition is not None or not (_PERIOD_AS_CONDITION.search(question) and _PERIOD_WORD.search(question)):
+    if reading.scope.period_condition is not None or not (lexicon.PERIOD_AS_CONDITION.search(question) and lexicon.PERIOD_WORD.search(question)):
         return None
     return Cause(kind="period_as_condition", facts={"intent": reading.intent})
 

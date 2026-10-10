@@ -682,6 +682,85 @@ def situation_of(text: str) -> Situation:
     return Situation(text=text, calendar=calendar, alignment=None if calendar is not None else parse_alignment(text))
 
 
+@dataclass(frozen=True, kw_only=True)
+class Period:
+    """What a read SEES of each game, as the words gave it -
+    ``ROADMAP-TYPES.md``'s ``Reading.period`` ("a quarter or half"), the
+    fourth filter family typed (Phase 3, step 2). One value in place of two
+    slots (``period``, a quarter 1-4 - or an overtime period by number, 5
+    and up, which the relation labels and nothing reads from the words -
+    and ``half``, 1-2), read by one tagger
+    (:func:`~association.query.period.read_period`) and applied by one step
+    per relation (:func:`~association.query.player_relation.apply_period`,
+    ``team_relation._team_games_apply_period``), which narrows every read
+    to the period's line of each game rather than to which games are read.
+    None on the Scope is the whole game.
+
+    One cell, ``period``, not two: measured on the 2,710 readings of
+    2026-10-09 (``~/association-research/stages/period_family.py``), 120
+    carry one - 79 quarters and 41 halves, never both - the two relations
+    apply a quarter and a half through one step (``narrow_periods``), and
+    each reader's exclusion rows paired the two slots under one reason in
+    two wordings. The slot name a decline said (``period`` or ``half``) is
+    kept by :meth:`unhonored` until the decline-to-Cause commit rewords it.
+
+    .. versionadded:: 6.0.0
+    """
+
+    #: Which one, by number: the quarter (1-4; 5 and up an overtime period,
+    #: as ``period_label`` names it) or, with ``half``, the half (1-2).
+    number: int
+    #: Whether ``number`` counts halves rather than quarters.
+    half: bool = False
+
+    #: The family's one cell, which both relations' tables declare
+    #: (``player_relation.RELATION_SCOPING``, ``team_relation.TEAM_RELATION_SCOPING``).
+    CELLS: ClassVar[frozenset[str]] = frozenset({"period"})
+
+    def __post_init__(self) -> None:
+        if isinstance(self.number, bool) or not isinstance(self.number, int):
+            raise ScopeError(f"scope period={self.number!r} is not a whole number")
+        if self.half and self.number not in (1, 2):
+            raise ScopeError(f"scope half={self.number!r} is not one of (1, 2)")
+
+    def narrowing(self) -> tuple[tuple[int, ...], str] | None:
+        """The periods of each game this value narrows a read to, and how
+        an answer names them - ``((3, 4), "2nd half")``, ``((5,),
+        "overtime")`` - or None for a number no game has a period for
+        (outside 1-10), which the period readers decline by name."""
+        if self.half:
+            return _HALF_PERIODS[self.number], f"{ordinal_word(self.number)} half"
+        if 1 <= self.number <= 10:
+            return (self.number,), period_label(self.number)
+        return None
+
+    def cells(self) -> frozenset[str]:
+        """The one cell this value sets (:attr:`CELLS`)."""
+        return self.CELLS
+
+    def unhonored(self, honored: frozenset[str]) -> list[str]:
+        """The slot name (``half`` for a half, ``period`` for a quarter) of
+        the cell beyond ``honored`` - the name a decline says."""
+        return [] if "period" in honored else ["half" if self.half else "period"]
+
+    @classmethod
+    def from_slots(cls, slots: Mapping[str, Any]) -> Period:
+        """The Period the two slot values name (:meth:`Scope.from_slots`
+        reads them off a slot dict): ``period`` or ``half``, never both -
+        the words name one or the other, and a half beside a quarter was
+        the model-era slot under the stages' half."""
+        if "period" in slots and "half" in slots:
+            raise ScopeError(f"scope period={slots['period']!r} and half={slots['half']!r} at once")
+        if "half" in slots:
+            return cls(number=slots["half"], half=True)
+        return cls(number=slots["period"])
+
+    def to_slots(self) -> dict[str, Any]:
+        """The one slot, exactly as the stages wrote it until Phase 3, step
+        2 - the projection every recorded reading is compared through."""
+        return {"half": self.number} if self.half else {"period": self.number}
+
+
 @dataclass(frozen=True)
 class Claim:
     """The characters of the question one reader rule consumed - ``start``
@@ -741,8 +820,10 @@ class Scope:
     #: (:class:`Span`; six slots until Phase 3, step 2).
     span: Span = field(default_factory=Span)
     split: Split | None = None
-    period: int | None = None
-    half: Literal[1, 2] | None = None
+    #: What a read sees of each game: one typed value (:class:`Period`, a
+    #: quarter or a half; the two slots ``period`` and ``half`` until
+    #: Phase 3, step 2), None for the whole game.
+    period: Period | None = None
     #: A period as a condition on which games count (:class:`PeriodCondition`).
     period_condition: PeriodCondition | None = None
     #: Which rows are kept, and from which end: one typed value
@@ -759,11 +840,11 @@ class Scope:
 
         .. versionadded:: 5.0.0
         """
-        unknown = sorted(set(slots) - _SCOPE_FIELDS - _SPAN_SLOT_NAMES - _WINDOW_SLOT_NAMES - _CUT_SLOT_KEYS)
+        unknown = sorted(set(slots) - _SCOPE_FIELDS - _SPAN_SLOT_NAMES - _WINDOW_SLOT_NAMES - _CUT_SLOT_KEYS - _PERIOD_SLOT_NAMES)
         if unknown:
             raise ScopeError(f"no scope field for slot(s) {unknown}")
         values: dict[str, Any] = {}
-        typed_slots: dict[str, dict[str, Any]] = {"span": {}, "window": {}, "cuts": {}}
+        typed_slots: dict[str, dict[str, Any]] = {"span": {}, "window": {}, "cuts": {}, "period": {}}
         for name, raw in slots.items():
             # A blank string is the slot absent too: the model files " " for
             # an opponent it has none of, and every template read it as
@@ -778,7 +859,7 @@ class Scope:
                 values[name] = _CHECKS[name](name, raw)
             else:
                 typed_slots[family][name] = _CHECKS[name](name, raw)
-        for family, door in (("span", Span.from_slots), ("window", Window.from_slots), ("cuts", Cuts.from_slots)):
+        for family, door in (("span", Span.from_slots), ("window", Window.from_slots), ("cuts", Cuts.from_slots), ("period", Period.from_slots)):
             if typed_slots[family]:
                 if family in values:
                     raise ScopeError(f"a typed {family} and the slot(s) {sorted(typed_slots[family])} at once")
@@ -805,7 +886,7 @@ class Scope:
                     out[f.name] = [condition.to_slot() for condition in value]
                 elif f.name == "period_condition":
                     out[f.name] = value.to_slot()
-                elif f.name in ("span", "window"):
+                elif f.name in ("span", "window", "period"):
                     out.update(value.to_slots())
                 else:
                     out[f.name] = list(value) if isinstance(value, tuple) else value
@@ -816,7 +897,8 @@ class Scope:
 
     def projected(self) -> dict[str, Any]:
         """Every field, at its default or not, with the span as the six
-        slots, the window as the four and the cuts as the eight they were
+        slots, the window as the four, the cuts as the eight and the period
+        as the two (``period``, ``half``) they were
         until Phase 3, step 2, in the field order they stood in - the shape
         a recorded Scope kept (:func:`~association.query.stages.plain`), so
         a reading recorded before a part was typed compares identical to
@@ -841,6 +923,10 @@ class Scope:
             elif f.name == "window":
                 out["order"] = value.order
                 out["limit"] = value.count
+            elif f.name == "period":
+                slots = value.to_slots() if value is not None else {}
+                out["period"] = slots.get("period")
+                out["half"] = slots.get("half")
             elif f.name != "cuts":
                 out[f.name] = value
                 if f.name == "fields":
@@ -857,8 +943,9 @@ def _typed_family(name: str, raw: Any) -> tuple[str | None, bool]:
     whether ``raw`` IS that value whole: ``("span", True)`` for a
     :class:`Span` under ``span``, ``("span", False)`` for the span's slot
     ``season`` (and ``span``, the slot, as a string), the window's and the
-    cuts' the same, ``(None, False)`` for a field of the Scope's own."""
-    if (name == "span" and isinstance(raw, Span)) or (name == "window" and isinstance(raw, Window)) or (name == "cuts" and isinstance(raw, Cuts)):
+    cuts' and the period's the same, ``(None, False)`` for a field of the
+    Scope's own."""
+    if (name == "span" and isinstance(raw, Span)) or (name == "window" and isinstance(raw, Window)) or (name == "cuts" and isinstance(raw, Cuts)) or (name == "period" and isinstance(raw, Period)):
         return name, True
     if name in _SPAN_SLOT_NAMES:
         return "span", False
@@ -866,6 +953,8 @@ def _typed_family(name: str, raw: Any) -> tuple[str | None, bool]:
         return "window", False
     if name in _CUT_SLOT_KEYS:
         return "cuts", False
+    if name in _PERIOD_SLOT_NAMES:
+        return "period", False
     return None, False
 
 
@@ -893,6 +982,8 @@ def cell_set(scope: Scope, cell: str) -> bool:
         return cell in scope.span.cells()
     if cell in Window.CELLS:
         return cell in scope.window.cells()
+    if cell in Period.CELLS:
+        return scope.period is not None
     return bool(getattr(scope, cell))
 
 
@@ -979,6 +1070,8 @@ _SPAN_SLOT_NAMES = frozenset({"season", "season_type", "season_type_unstated", "
 _WINDOW_SLOT_NAMES = frozenset({"order", "limit", "rank", "ranked_by"})
 #: The eight slot names the cuts' door still takes (:meth:`Cuts.from_slots`).
 _CUT_SLOT_KEYS = frozenset(_CUT_SLOT_NAMES.values())
+#: The two slot names the period's door still takes (:meth:`Period.from_slots`).
+_PERIOD_SLOT_NAMES = frozenset({"period", "half"})
 
 
 CAUSES: frozenset[str] = frozenset(
@@ -1610,21 +1703,21 @@ def period_label(period: int) -> str:
 
 
 def period_narrowing(scope: Scope) -> tuple[tuple[int, ...], str] | None:
-    """The periods a question's ``period``/``half`` cell narrows each game to,
-    and how an answer names them - ``((3, 4), "2nd half")`` - or None for the
-    whole game. A half wins over a quarter, since the parser writes a half
-    only where the words said one; a period outside 1-10 is no period.
+    """The periods a question's ``period`` cell narrows each game to, and
+    how an answer names them - ``((3, 4), "2nd half")`` - or None for the
+    whole game (:meth:`Period.narrowing`; a period outside 1-10 is no
+    period either).
 
     .. versionadded:: 5.0.0
 
     .. versionchanged:: 5.0.0
        On the reader's side (``templates.common.period_narrowing`` was this).
+
+    .. versionchanged:: 6.0.0
+       Reads the typed :class:`Period` (the slots ``period`` and ``half``
+       until Phase 3, step 2).
     """
-    if scope.half is not None and scope.half in _HALF_PERIODS:
-        return _HALF_PERIODS[scope.half], f"{ordinal_word(scope.half)} half"
-    if scope.period is not None and 1 <= scope.period <= 10:
-        return (scope.period,), period_label(scope.period)
-    return None
+    return scope.period.narrowing() if scope.period is not None else None
 
 
 STARTER_SIDES: dict[str, bool] = {"starter": True, "bench": False}
@@ -1706,21 +1799,27 @@ def scope_reads_box_scores(scope: Scope, measures: list[Any]) -> bool:
 # by nothing: no game is labeled by one), a game of each series and an
 # ordinal season - are the typed `Cuts`' cells since Phase 3, step 2
 # (`Cuts.CELLS`), read beside this list the same way.
-SCOPING_SLOTS = frozenset({"without", "split", "below", "above", "conditions", "rate", "period", "half", "period_condition"})
+# A quarter or half - what a read SEES of each game - is the typed
+# `Period`'s one cell since Phase 3, step 2 (`Period.CELLS`: `period`), read
+# beside this list the same way.
+SCOPING_SLOTS = frozenset({"without", "split", "below", "above", "conditions", "rate", "period_condition"})
 
 
 def unhonored_cells(scope: Scope, honored: frozenset[str]) -> list[str]:
     """The slot names ``scope`` sets that ``honored`` does not hold, sorted:
     every slot of :data:`SCOPING_SLOTS` that is truthy, and the span's, the
-    window's and the cuts' cells (:attr:`Span.CELLS`, :attr:`Window.CELLS`,
-    :attr:`Cuts.CELLS`, by the slot names they were refused under -
-    :meth:`Span.unhonored`, :meth:`Window.unhonored`, :meth:`Cuts.unhonored`).
+    window's, the cuts' and the period's cells (:attr:`Span.CELLS`,
+    :attr:`Window.CELLS`, :attr:`Cuts.CELLS`, :attr:`Period.CELLS`, by the
+    slot names they were refused under - :meth:`Span.unhonored`,
+    :meth:`Window.unhonored`, :meth:`Cuts.unhonored`, :meth:`Period.unhonored`).
     One reading of "what is set beyond what is honored", for the planner's
     relation check and for a reader's own words (:func:`unhonored_scoping`).
 
     .. versionadded:: 6.0.0
     """
-    return sorted([name for name in SCOPING_SLOTS if getattr(scope, name) and name not in honored] + scope.span.unhonored(honored) + scope.window.unhonored(honored) + scope.cuts.unhonored(honored))
+    period = scope.period.unhonored(honored) if scope.period is not None else []
+    slots = [name for name in SCOPING_SLOTS if getattr(scope, name) and name not in honored]
+    return sorted(slots + scope.span.unhonored(honored) + scope.window.unhonored(honored) + scope.cuts.unhonored(honored) + period)
 
 
 #: Templates that honor one NAMED half of the starter/bench split and refuse

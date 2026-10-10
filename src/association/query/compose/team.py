@@ -306,7 +306,7 @@ def _team_narrowed(scope: Scope) -> bool:
     # first-quarter threes" would be their whole season's.
     if any((scope.cuts.opponent, scope.cuts.venue, scope.cuts.date, scope.span.since, scope.span.until, scope.cuts.game_n, scope.cuts.situation)):
         return True
-    if scope.period is not None or scope.half is not None:
+    if scope.period is not None:
         return True
     return scope.window.order is not None or scope.window.count is not None
 
@@ -462,7 +462,7 @@ def _compile_team_games_total(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> T
     if q.measure not in GAME_MEASURES:
         raise Unsupported(f"{q.measure!r} needs a box-score join the team relation does not have yet for a narrowed read")
     if _team_mixed(q.scope):
-        if q.scope.span.since or q.scope.span.until or q.scope.cuts.situation or q.scope.period is not None or q.scope.half is not None:
+        if q.scope.span.since or q.scope.span.until or q.scope.cuts.situation or q.scope.period is not None:
             # The both-types read is a plain window (an opponent and a venue
             # at most, as the log's is); a range of seasons or a calendar
             # would be dropped from it silently, so it is refused instead.

@@ -63,7 +63,7 @@ from association.query.player_relation import (
     span_of,
     team_slot_for_player,
 )
-from association.query.reading import DEFAULT_NAMED_RUNS, Scope, Span, period_narrowing, unhonored_cells
+from association.query.reading import DEFAULT_NAMED_RUNS, Period, Scope, Span, period_narrowing, unhonored_cells
 from association.query.reading import Unsupported as Unsupported
 from association.query.result import Refusal, Unanswered
 from association.query.season_line import Statement, seasons_on_record
@@ -880,7 +880,7 @@ def _compile_by_period(con: duckdb.DuckDBPyConnection, q: Query, narrowed: Narro
     params: list[Any] = []
     for quarter in REGULATION_QUARTERS:
         each = copy.deepcopy(narrowed)
-        apply_period(con, each, replace(q.scope, period=quarter, half=None))
+        apply_period(con, each, replace(q.scope, period=Period(number=quarter)))
         sql, each_params = aggregate_sql(each, [f'{quarter} AS "group"', *selects], rebuilt=rebuilt)
         parts.append(f"SELECT * FROM ({sql})")
         params += each_params

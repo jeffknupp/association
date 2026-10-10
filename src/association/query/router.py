@@ -31,9 +31,10 @@ from typing import TYPE_CHECKING, Any
 from . import lexicon
 from .cuts import CutsContext, CutsRead, read_cuts
 from .decisions import Decision
-from .lexicon import GAMES_WORDS, ORDER_WORDS, PAST_N_SEASONS, PERIOD_TOP, RANK_WORDS, WHO_RANKS
+from .lexicon import BY_QUARTER, GAMES_WORDS, HALF_WORDS, ORDER_WORDS, PAST_N_SEASONS, PERIOD_AS_CONDITION, PERIOD_GAMES_WORDS, PERIOD_LEADERS, PERIOD_TOP, QUARTER_WORDS, RANK_WORDS, WHO_RANKS
 from .measures import MEASURE_WORDS, STAT_ALIASES
-from .reading import Claim, Scope, Window
+from .period import PeriodContext, read_period, which_period
+from .reading import Claim, Period, Scope, Window
 from .span import SpanContext, claimed, range_named, read_span
 from .window import WindowContext, read_window
 
@@ -53,19 +54,12 @@ if TYPE_CHECKING:
 _FOULED_OUT = re.compile(r"\bfoul(?:ed|s|ing)?\s+out\b")
 FOUL_OUT_THRESHOLD = 6
 
-# The words that name a quarter. Called `_AGENT_ONLY` until 5.0.0, for the
-# tool-calling agent a quarter question was once sent to; the period
-# relation reads them now (period_split, period_leaderboard,
-# team_quarter_points).
-# `[1-4]q` is the mirror of `q[1-4]` and was missing: "Duncan Robison 1q log"
-# and "Devin Vassell nba player per game stats 1q" were both answered with a
-# whole-game line in the 2026-09-15 feed replay. Same shape as the "4th qtr"
-# gap that made these patterns grow abbreviations in the first place.
-# `td3s` used to be here too, sending "luka td3s home" to the agent because
-# nothing counted one player's triple-doubles. The compiler does now (a
-# per-game flag on the player-games relation), so it left: see
-# `_route_triple_double_abbreviation`, which reads the word instead.
-_QUARTER_WORDS = re.compile(r"\b(?:first|second|third|fourth|1st|2nd|3rd|4th)[\s-]+(?:quarter|qtr|q)\b|\bq[1-4]\b|\b[1-4]q\b|\bqtrs?\b|\bper\s+quarter\b|\bby\s+quarter\b|\b(?:each|every)\s+quarter\b")
+# The family's words - a quarter or half named at all, a ranking of
+# players by one, a period as a condition, "by quarter" - are the
+# lexicon's since Phase 3, step 2 (QUARTER_WORDS, HALF_WORDS,
+# PERIOD_LEADERS, PERIOD_GAMES_WORDS, PERIOD_AS_CONDITION, BY_QUARTER,
+# each with its reason beside it), and WHICH period the words name is the
+# period tagger's one reading (``period.which_period``).
 
 # "td3" is a triple-double, and the model reads its "3" as a shot value:
 # "luka td3s home" came back as `other` with stat threePointFieldGoalsMade
@@ -74,61 +68,6 @@ _QUARTER_WORDS = re.compile(r"\b(?:first|second|third|fourth|1st|2nd|3rd|4th)[\s
 # (query/point.py), so only the slots have to say it.
 _TRIPLE_DOUBLE_ABBREVIATION = re.compile(r"\btd3s?\b", re.IGNORECASE)
 _DRAW_WORDS = re.compile(r"\b(?:plot|chart|draw|render|visuali[sz]e|graph|show me a)\b", re.IGNORECASE)
-
-# A half is never a quarter. team_quarter_points reads a period number and the
-# model maps "first half" onto period 1, which is wrong for a TEAM the same way
-# it would be for a player - so half words are kept apart from _QUARTER_WORDS,
-# whose team exemption applies to quarters only, and instead always route
-# through the period_split override below (a named player's half now has a
-# template; a team's half still does not - see ISSUES.md #96). "rj barrett 4th
-# qtr log" is why both patterns grew abbreviations - it slipped past "quarter"
-# and game_log answered with his whole last game.
-_HALF_WORDS = re.compile(r"\b(?:first|second|1st|2nd)[\s-]+half\b|\b[12]h\b|\bhalftime\b", re.IGNORECASE)
-
-# A quarter or half question that ranks PLAYERS rather than asking about one:
-# "who has the highest average 1st quarter points this season?", "knicks 1st
-# quarter scoring leaders playoffs". Before `period_leaderboard` existed these
-# reached `other` and fell through, because the override below sends a period
-# question with no named player there and had nothing else to send it to.
-#
-# This wins over the team exemption, and has to: the Knicks question routes to
-# team_quarter_points with the team filled and no player, which is exactly the
-# shape the exemption protects - and answering it would give the TEAM's first
-# quarter where its players' were asked for.
-#
-# "player" alone ranks too (yardstick-v2 F049, "hornets average 1st quarter
-# points player": the team's own quarter answered where its best player's was
-# asked). Only ever read where no player is named - a named player's quarter
-# is period_split before this is looked at - so "player" cannot pull a named
-# player's question into a ranking.
-_PERIOD_LEADERS = re.compile(r"\bleaders?\b|\bwho\b|\bwhich\s+player\b|\bleading\s+scorers?\b|\bplayers?\b", re.IGNORECASE)
-
-# A named player's period "games" with no stat named is his games listed, the
-# way "log" is (yardstick-v2 F060, "Rudy gobert first half games this
-# season": the key lists his 76 first halves, and a total answered it).
-_PERIOD_GAMES_WORDS = re.compile(r"\bgames\b", re.IGNORECASE)
-
-# A period used as a CONDITION on the games rather than the part of each game
-# measured: "vj edgecombe three points made per game after making one three in
-# first quarter" (yardstick-v2 F062) asks his WHOLE-game threes over the games
-# whose first quarter held one. Once period_split read any stat, it answered
-# his first-quarter threes instead - fluent, and a different question. Nothing
-# reads a period as a condition, so it is not routed to a period template.
-_PERIOD_AS_CONDITION = re.compile(
-    r"\bafter\s+(?:making|scoring|hitting|getting|having|recording|grabbing)\b|\bin\s+games?\s+(?:where|when|in\s+which)\b|\bif\s+(?:he|she|they)\b",
-    re.IGNORECASE,
-)
-
-# "most first quarter rebounds per game" ranks the league's players too - but
-# only with no team in the question: "Detroit Pistons most points in a first
-# half" is the TEAM's single best half (team_quarter_points' own `rank`) -
-# the lexicon's PERIOD_TOP.
-
-# Every quarter at once, side by side (yardstick-v2 F048, "nba playerspoints
-# by quarter average", which fell through for want of one period).
-# period_leaderboard with no period is the league's table; period_split with
-# no period is a NAMED player's (#162, ROADMAP step 2).
-_BY_QUARTER = re.compile(r"\b(?:by|per|each|every)\s+(?:quarter|qtr)s?\b|\bquarter\s+by\s+quarter\b", re.IGNORECASE)
 
 
 # A TEAM's quarter score (no player named) is exempted below: linescores answer
@@ -188,42 +127,6 @@ to disagree deliberately rather than by drift.
 
 .. versionadded:: 2.2.0
 """
-
-_ORDINAL_PERIODS = {"first": 1, "1st": 1, "second": 2, "2nd": 2, "third": 3, "3rd": 3, "fourth": 4, "4th": 4}
-
-# Which quarter or half, in the forms questions actually use. All three shapes
-# come from the feed: "1st quarter", "q1"/"1q", and "first half"/"2h" - and
-# the hyphenated adjective, "first-quarter rebounds", which read no period.
-_WHICH_QUARTER = re.compile(
-    r"\b(?P<ordinal>first|second|third|fourth|1st|2nd|3rd|4th)[\s-]+(?:quarter|qtr|q)\b|\bq(?P<qn>[1-4])\b|\b(?P<nq>[1-4])q\b",
-    re.IGNORECASE,
-)
-_WHICH_HALF = re.compile(r"\b(?P<ordinal>first|second|1st|2nd)[\s-]+half\b|\b(?P<hn>[12])h\b", re.IGNORECASE)
-
-
-def _period_asked(question: str) -> dict[str, int] | None:
-    """The period a question names, as ``{"period": n}`` or ``{"half": n}``.
-
-    Read from the text rather than asked of the model, for the reason
-    `_validate_side` records: `period` is in ROUTER_SCHEMA but only ever taught
-    for a TEAM's quarter score, so on a player's question the model leaves it
-    empty. None when the question says "by quarter" or "qtrs" without naming
-    one - a breakdown across all four is a different shape, and this template
-    answers one period.
-
-    .. versionadded:: 2.2.0
-    """
-    half = _WHICH_HALF.search(question)
-    if half is not None:
-        named = half.group("ordinal")
-        return {"half": _ORDINAL_PERIODS[named.lower()] if named else int(half.group("hn"))}
-    quarter = _WHICH_QUARTER.search(question)
-    if quarter is None:
-        return None
-    named = quarter.group("ordinal")
-    if named is not None:
-        return {"period": _ORDINAL_PERIODS[named.lower()]}
-    return {"period": int(quarter.group("qn") or quarter.group("nq"))}
 
 
 class RouterUnavailable(RuntimeError):
@@ -1325,7 +1228,7 @@ def _route_coach_intent(raw: dict[str, Any], question: str) -> bool:
     return True
 
 
-def _recover_period_subject(raw: dict[str, Any], question: str, asked: dict[str, int] | None, named_player: bool, ranks_players: bool) -> str | None:
+def _recover_period_subject(raw: dict[str, Any], question: str, asked: tuple[Period, Claim] | None, named_player: bool, ranks_players: bool) -> str | None:
     """The player a quarter or half question names when the model's reply
     dropped `player` entirely - split out of :func:`_route_period_intents` to
     keep it inside the complexity gate.
@@ -1367,7 +1270,7 @@ def _route_period_split_slots(raw: dict[str, Any], question: str, subject: str |
     # A log was asked for, not a season average. Measured, 7 of the 11
     # questions this template answered in its first replay said "log",
     # "by game" or "each game" and got a total and an average.
-    if _LOG_WORDS.search(question) or (_PERIOD_GAMES_WORDS.search(question) and "stat" not in raw):
+    if _LOG_WORDS.search(question) or (PERIOD_GAMES_WORDS.search(question) and "stat" not in raw):
         raw["per_game"] = True
     if subject is not None:
         # The player came from the text, not from the model's own
@@ -1391,16 +1294,16 @@ def _route_period_intents(raw: dict[str, Any], question: str) -> None:
         raw["intent"] = "threshold_count"
         raw["stat"] = "fouls"
         raw["threshold"] = FOUL_OUT_THRESHOLD
-    ranks_players = _PERIOD_LEADERS.search(low) is not None or (PERIOD_TOP.search(low) is not None and not _team_slot_or_word(raw, low))
-    if (_QUARTER_WORDS.search(low) and (ranks_players or not _is_team_quarter_points(raw) or _names_a_period_subject(question))) or _HALF_WORDS.search(low):
+    ranks_players = PERIOD_LEADERS.search(low) is not None or (PERIOD_TOP.search(low) is not None and not _team_slot_or_word(raw, low))
+    if (QUARTER_WORDS.search(low) and (ranks_players or not _is_team_quarter_points(raw) or _names_a_period_subject(question))) or HALF_WORDS.search(low):
         # A named player's quarter or half now HAS a template, so the override
         # sends it there instead of to the agent - but only when the question
         # names one and the period is legible, since `period_split` answers
         # about a player and nothing else. Everything else keeps the old
         # behavior: slots are kept, because the agent sees the conversation
         # rather than the Route, and the log line shows what the model thought.
-        asked = _period_asked(question)
-        if asked is not None and _PERIOD_AS_CONDITION.search(low):
+        asked = which_period(question)
+        if asked is not None and PERIOD_AS_CONDITION.search(low):
             raw["intent"] = "other"
             return
         if asked is not None:
@@ -1413,10 +1316,12 @@ def _route_period_intents(raw: dict[str, Any], question: str) -> None:
         _route_period_intents_choose(raw, question, asked, bool(named_player) or subject is not None, ranks_players, subject)
 
 
-def _route_period_intents_choose(raw: dict[str, Any], question: str, asked: dict[str, int] | None, named_player: bool, ranks_players: bool, subject: str | None) -> None:
+def _route_period_intents_choose(raw: dict[str, Any], question: str, asked: tuple[Period, Claim] | None, named_player: bool, ranks_players: bool, subject: str | None) -> None:
     """Which period intent a quarter or half question is, once its period, its
     player and whether it ranks are known - split out of
-    :func:`_route_period_intents` to keep it inside the complexity gate."""
+    :func:`_route_period_intents` to keep it inside the complexity gate.
+    The period itself is the tagger's to write (:func:`~association.query.period.read_period`,
+    run once the intent is settled); the stage only chooses."""
     low = question.lower()
     if asked is not None and not named_player and ranks_players:
         # Players ranked by a quarter or a half - templates.games
@@ -1424,7 +1329,6 @@ def _route_period_intents_choose(raw: dict[str, Any], question: str, asked: dict
         # quarter scoring leaders"), where it narrows the ranking to that
         # team's players rather than becoming the subject.
         raw["intent"] = "period_leaderboard"
-        raw |= asked
         if not _named_a_stat(question):
             raw.pop("stat", None)
     elif asked is not None and not named_player and (_team_slot_or_word(raw, low)):
@@ -1439,26 +1343,20 @@ def _route_period_intents_choose(raw: dict[str, Any], question: str, asked: dict
         # the wizards in the first half" (yardstick-v2 F064) - the one
         # nickname the question itself holds, which _TEAM_WORD reads.
         raw["intent"] = "team_quarter_points"
-        raw |= asked
     elif asked is not None and named_player:
         raw["intent"] = "period_split"
-        raw |= asked
         _route_period_split_slots(raw, question, subject)
-    elif asked is None and named_player and _BY_QUARTER.search(low):
+    elif asked is None and named_player and BY_QUARTER.search(low):
         # A named player's four quarters side by side (#162): period_split
         # with no period, which its point reads as the breakdown
         # (point._default_period_split).
         raw["intent"] = "period_split"
-        raw.pop("period", None)
-        raw.pop("half", None)
         _route_period_split_slots(raw, question, subject)
-    elif asked is None and not named_player and _BY_QUARTER.search(low) and not _team_slot_or_word(raw, low):
+    elif asked is None and not named_player and BY_QUARTER.search(low) and not _team_slot_or_word(raw, low):
         # Every player's four quarters side by side - the league's; a
         # team's players' breakdown ("knicks points by quarter") reads
         # as the TEAM's by quarter, which is not built, and stays `other`.
         raw["intent"] = "period_leaderboard"
-        raw.pop("period", None)
-        raw.pop("half", None)
         if not _named_a_stat(question):
             raw.pop("stat", None)
     else:
@@ -1683,11 +1581,11 @@ def _route_line_and_record_intents(raw: dict[str, Any], question: str, beside: B
     return rerouted_to_line
 
 
-#: The model-era keys of the span, window and cuts families a raw route may
-#: still carry (a test's payload; a settled route run again): every one is
-#: read from the words by its tagger, so none passes the stages. The
-#: opponent is not among them: it is the subject reading's word, which the
-#: cuts tagger takes as settled.
+#: The model-era keys of the span, window, cuts and period families a raw
+#: route may still carry (a test's payload; a settled route run again):
+#: every one is read from the words by its tagger, so none passes the
+#: stages. The opponent is not among them: it is the subject reading's
+#: word, which the cuts tagger takes as settled.
 _MODEL_SPAN_KEYS: frozenset[str] = frozenset(
     {
         "season",
@@ -1708,6 +1606,8 @@ _MODEL_SPAN_KEYS: frozenset[str] = frozenset(
         "game_n",
         "season_n",
         "own_team",
+        "period",
+        "half",
     }
 )
 
@@ -2022,11 +1922,11 @@ def _route_side(intent: str, slots: dict[str, Any], question: str) -> None:
 #: the question for the intent they were run under (``since`` for a
 #: ``game_log``), and would
 #: otherwise survive into an intent whose template refuses it. The span's
-#: six slots, the window's four and the cuts' seven read from the words
-#: are not among them: the three taggers read every one from the words
-#: again (Phase 3, step 2); the ``opponent`` is, since it is the subject
-#: reading's word, which the cuts tagger takes as settled.
-_MODEL_SLOTS: frozenset[str] = frozenset({"stat", "threshold", "player", "players", "team", "teams", "period", "opponent", "rate", "side", "shot_value", "fields"})
+#: six slots, the window's four, the cuts' seven and the period's two read
+#: from the words are not among them: the four taggers read every one from
+#: the words again (Phase 3, step 2); the ``opponent`` is, since it is the
+#: subject reading's word, which the cuts tagger takes as settled.
+_MODEL_SLOTS: frozenset[str] = frozenset({"stat", "threshold", "player", "players", "team", "teams", "opponent", "rate", "side", "shot_value", "fields"})
 
 
 def settle(intent: str, slots: Mapping[str, Any] | Scope, question: str, beside: Beside | None = None) -> Route:
@@ -2108,11 +2008,16 @@ def _settle(raw: dict[str, Any], question: str, beside: Beside = Beside()) -> Ro
     _route_subject_slots(raw["intent"], slots, question)
     _route_record_when_threshold(raw["intent"], slots, question)
     _route_side(raw["intent"], slots, question)
-    # The cuts, the window, then the span, last: each the one reader of
-    # its family, over the intent the stages settled - the cuts at the
-    # position of the last stage that wrote one (an opponent that was the
-    # without list again, dropped), the span over the window and the cuts,
-    # since its rules read both (Phase 3, step 2).
+    # The period, the cuts, the window, then the span, last: each the one
+    # reader of its family, over the intent the stages settled - the
+    # period once the intent is final (the stage that chose it wrote the
+    # value beside its choice, and the parser again for a team's quarter,
+    # until Phase 3, step 2), the cuts at the position of the last stage
+    # that wrote one (an opponent that was the without list again,
+    # dropped), the span over the window and the cuts, since its rules
+    # read both.
+    period = read_period(question, PeriodContext(intent=raw["intent"]))
+    slots["period"] = period.period
     cuts = read_cuts(question, CutsContext(intent=raw["intent"], split=slots.get("split"), opponent=slots.get("opponent"), without=tuple(without)))
     slots.pop("opponent", None)
     slots["cuts"] = cuts.cuts
@@ -2122,7 +2027,7 @@ def _settle(raw: dict[str, Any], question: str, beside: Beside = Beside()) -> Ro
     slots["span"] = read.span
     # The stages' working dict crosses into the typed Scope here, once: a
     # value no field holds raises ScopeError to the parser.
-    return Route(intent=raw["intent"], scope=Scope.from_slots(slots), claims=claimed([*cuts.claims, *window.claims, *read.claims]))
+    return Route(intent=raw["intent"], scope=Scope.from_slots(slots), claims=claimed([*period.claims, *cuts.claims, *window.claims, *read.claims]))
 
 
 def _span_context(intent: str, slots: dict[str, Any], question: str, *, window: Window, cuts: CutsRead) -> SpanContext:

@@ -46,7 +46,7 @@ from association.query.player_games import (
     scope_without_guard,
     season_type_clause,
 )
-from association.query.reading import ConditionSpec, Cuts, PeriodCondition, Scope, Situation, Span, Unsupported, Window, _clamp_limit, ordinal_word, period_narrowing
+from association.query.reading import ConditionSpec, Cuts, Period, PeriodCondition, Scope, Situation, Span, Unsupported, Window, _clamp_limit, ordinal_word, period_narrowing
 from association.query.result import Cell, GameOfSeries, Line, Refusal, Role, Unanswered
 from association.query.season_text import SEASON_TYPE_NAMES, season_phrase
 from association.query.team_games import TeamNarrowed
@@ -79,7 +79,7 @@ from association.query.team_games import TeamNarrowed
 # the eight by name: `round` is left out, since no game is labeled by its
 # round and every reader refuses it (`unhonored_cells` lists it wherever it
 # is set). The tenure is a cell of this relation alone: a team has none.
-RELATION_SCOPING = frozenset({"without", "split", "below", "above", "conditions", "period", "half", "period_condition", *(Cuts.CELLS - {"round"}), *Span.CELLS, *Window.CELLS})
+RELATION_SCOPING = frozenset({"without", "split", "below", "above", "conditions", "period_condition", *(Cuts.CELLS - {"round"}), *Span.CELLS, *Window.CELLS, *Period.CELLS})
 """The cells every reader on the player-games relation honors: the
 scoping slots, the games' cuts (:attr:`~association.query.reading.Cuts.CELLS`
 less ``round``: ``opponent``, ``tenure``, ``venue``, ``date``,
@@ -106,6 +106,10 @@ refuses it, by :data:`RELATION_SCOPING_EXCLUDED`.
    the slots ``span``, ``since`` and ``until``; ``both`` was each reader's
    own extra (``season_type_unstated``) until then. The games' cuts by name,
    the ``tenure`` among them, which the compiler alone passed until then.
+   The period's one cell (:attr:`~association.query.reading.Period.CELLS`:
+   ``period``, a quarter or a half, what a read SEES of each game - applied
+   by :func:`apply_period`, said by :meth:`~association.query.player_games.Narrowed.filters`)
+   in place of the slots ``period`` and ``half``.
 """
 
 
@@ -116,34 +120,25 @@ RELATION_SCOPING_EXCLUDED: dict[str, dict[str, str]] = {
     # The two retired templates' WORDS (compose.plan.STATED_SCOPING) never
     # said a quarter: their presenters step aside for one, and the compiler's
     # own sentence, which names the period through Narrowed.filters, answers.
-    "game_log": {
-        "period": "the log's retired sentence heads whole games and never names a quarter",
-        "half": "the log's retired sentence heads whole games and never names a half",
-    },
-    "player_stat": {
-        "period": "the season line's retired sentence heads whole games and never names a quarter",
-        "half": "the season line's retired sentence heads whole games and never names a half",
-    },
+    "game_log": {"period": "the log's retired sentence heads whole games and never names a quarter or half"},
+    "player_stat": {"period": "the season line's retired sentence heads whole games and never names a quarter or half"},
     # A single date is one game, and one game is not a streak.
     "streak": {
         "date": "one game is not a run",
         "window": "a run is read over every game in the span, not the last N",
-        "period": "a run is a run of whole games; a quarter of each is a different streak nobody has defined",
-        "half": "a run is a run of whole games; a half of each is a different streak nobody has defined",
+        "period": "a run is a run of whole games; a quarter or half of each is a different streak nobody has defined",
     },
     # A split is a division of a span into groups; "the last N" is a window
     # that game_log answers.
     "player_splits": {
         "date": "one game has nothing to split",
         "window": "a limited number of recent games is game_log's question",
-        "period": "the splits table is headed as whole games; a quarter's split would print under the same heading",
-        "half": "the splits table is headed as whole games; a half's split would print under the same heading",
+        "period": "the splits table is headed as whole games; a quarter's or half's split would print under the same heading",
     },
     "record_when": {
         "date": "one game has no record",
         "window": "a record over the last N games is game_log's question",
-        "period": "a record is won and lost over whole games; its sentence would not say the condition was read in one quarter",
-        "half": "a record is won and lost over whole games; its sentence would not say the condition was read in one half",
+        "period": "a record is won and lost over whole games; its sentence would not say the condition was read in one quarter or half",
     },
     # A period question's accuracy caveat (PERIOD_RECONCILIATION) is measured
     # per SEASON against ESPN's own linescores - summing across several would
@@ -159,14 +154,13 @@ RELATION_SCOPING_EXCLUDED: dict[str, dict[str, str]] = {
         "opponent": "two players' meetings are the games they played against each other - there is no third team to narrow them to",
         "window": "the newest meetings are shown beneath averages over all of them - a window would cut the averages the matchup exists to give",
         "season_n": "an ordinal season is one player's - a matchup names two, and the question does not say whose fifth season is meant",
-        "period": "a meeting's line is both players' whole game; only one side of the pair would be read for the quarter",
-        "half": "a meeting's line is both players' whole game; only one side of the pair would be read for the half",
+        "period": "a meeting's line is both players' whole game; only one side of the pair would be read for the quarter or half",
     },
     # A shot read draws every shot of the games the relation narrows to; a
     # quarter narrows the LINE of each game, not which of its shots are drawn,
     # so the chart would be the whole game under a quarter's heading.
-    "shot_chart": {"period": "the chart draws every shot of each game, not the quarter's", "half": "the chart draws every shot of each game, not the half's"},
-    "shot_distance": {"period": "the average reads every shot of each game, not the quarter's", "half": "the average reads every shot of each game, not the half's"},
+    "shot_chart": {"period": "the chart draws every shot of each game, not the quarter's or half's"},
+    "shot_distance": {"period": "the average reads every shot of each game, not the quarter's or half's"},
     "period_split": {
         "career": "the accuracy caveat is measured per season, not across a career",
         "range": "the accuracy caveat is measured per season, and the header names one season - both wrong for a range",
@@ -278,6 +272,18 @@ def relation_span(intent: str) -> frozenset[str]:
     .. versionadded:: 6.0.0
     """
     return Span.CELLS - set(RELATION_SCOPING_EXCLUDED.get(intent, {}))
+
+
+def relation_period(intent: str) -> frozenset[str]:
+    """The period's cell ``intent`` states (:attr:`~association.query.reading.Period.CELLS`
+    less :data:`RELATION_SCOPING_EXCLUDED`'s), for a reader whose other
+    cells are its own list rather than the relation's (the ranking by a
+    quarter, which states the period, a season and the two cuts it pools
+    over).
+
+    .. versionadded:: 6.0.0
+    """
+    return Period.CELLS - set(RELATION_SCOPING_EXCLUDED.get(intent, {}))
 
 
 def relation_cuts(intent: str) -> frozenset[str]:
@@ -769,7 +775,7 @@ def _apply_period_condition(con: duckdb.DuckDBPyConnection, narrowed: Narrowed, 
 
     .. versionadded:: 5.0.0
     """
-    asked = period_narrowing(Scope(period=condition.period, half=condition.half))
+    asked = Period(number=condition.half, half=True).narrowing() if condition.half is not None else Period(number=condition.period).narrowing() if condition.period is not None else None
     if asked is None or condition.stat not in PERIOD_COLUMNS or condition.threshold < 1:
         raise Unsupported(f"no period condition reads {condition!r}")
     periods, label = asked
@@ -788,8 +794,9 @@ def _apply_period_condition(con: duckdb.DuckDBPyConnection, narrowed: Narrowed, 
 def apply_period(con: duckdb.DuckDBPyConnection, narrowed: Narrowed, scope: Scope) -> None:
     """A quarter or half narrows every read of the relation to that part of
     each game (:meth:`~association.query.player_games.Narrowed.narrow_periods`)
-    - the ``period``/``half`` cells of :data:`RELATION_SCOPING`, applied here
-    for a named player's games and a league-wide read alike."""
+    - the ``period`` cell of :data:`RELATION_SCOPING` (the typed
+    :class:`~association.query.reading.Period`), applied here for a named
+    player's games and a league-wide read alike."""
     asked = period_narrowing(scope)
     if asked is not None:
         log_columns = frozenset(row[0] for row in con.execute("DESCRIBE player_game_log").fetchall())

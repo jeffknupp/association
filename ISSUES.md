@@ -2200,6 +2200,14 @@ those were found.
 
 ## P3: refusal or gap
 
+### An overtime period named in the words is refused as a situation, never read as a period
+- **Found:** 2026-10-09, Phase 3, step 2, the period (the family measured on all 2,710 readings; the cuts slice counted these 4 among the 33 unread situations).
+- **Evidence:** `period.which_period` reads a quarter (1-4) or a half (1-2) and nothing else, though `reading.Period(number=5)` and the relations' `narrow_periods` take an overtime period by number (`period_label(5)` is "overtime", the team relation's `test_an_overtime_no_game_reached_is_null_not_zero`). "overtime" is `lexicon.SITUATION`'s word, so the 4 of the 2,710 readings that name one - "most points in an overtime game by a team nba", "most points in an overtime game nba", "most quadruple overtime points in a game by a team nba", "most triple overtime + quadruple overtime points in a game by a team nba", all `period_leaderboard` by the grammar's `overtime` word, all the feed's - carry `situation="overtime"` and are refused by the planner ("period_leaderboard cannot honor ['situation'] ..."); "OT"/"in ot" is read by nothing (0 of the 2,710 name it). Reading "overtime" as `Period(number=5)` would move those 4 answers from a refusal to a ranking by the overtime period's line, and "an overtime game" asks for the WHOLE game's points in games that went to overtime, not the period's - a different question still, which no cut expresses.
+- **User sees:** a refusal naming the situation, where the first two ask a question the warehouse could answer (the plays carry every period).
+- **Next step:** two shapes to tell apart from the words: an overtime PERIOD's figures ("points in overtime", "in ot", "3rd overtime") as `Period(number=5+)`, which the relations already apply; and a game that went to overtime as a games' cut (the draft's `Calendar`-like circumstance, over `games`' period count). Each a decline-to-Cause commit with the 4 feed answers enumerated.
+- **Priority:** P3 - a refusal where an answer exists; 4 feed readings, none of the 628.
+- **Source:** ours.
+
 ### A condition read's covered scope reads a range's first season and not its last: a split, a run or a matchup "from 2019-20 to 2023-24" with nothing to show is refused "since 2019"
 - **Found:** 2026-10-09, Phase 3, step 2 (the span typed): `player_relation.condition_scope` takes the typed `Span` now and its docstring says so - the retired bodies it serves (`compose.splits`, `compose.runs` through `core.run_scope`, `compose.pairs`) passed `since` alone, never `until`, and still do.
 - **Evidence:** `src/association/query/player_relation.py` `condition_scope`: `_Scope(None, kind, max(since, scope.first), scope.phantoms)` with no last season; `compose/splits.py:193`, `compose/pairs.py:56-57`, `compose/core.py` `run_scope`. The games themselves are read through `span_of` (`scoped_player`), which bounds both ends, so the rows are right; only the `_Scope` the "no games" refusal (`player_relation.no_games`: "in any regular season on record (2019 onward)"), its label and the empty-box-score count are built from is open at the far end. On the 2,710 readings 4 carry a closed range on one of these shapes (2 `player_splits`, 2 `player_matchup`, 0 `streak`), none of them a "no games" case.
@@ -2823,6 +2831,14 @@ those were found.
 - **GitHub:** #312
 
 ## P4: tooling, docs, low impact
+
+### A period condition's words are cut out of the question the stages read, so every claim after them is offset
+- **Found:** 2026-10-09, Phase 3, step 2, the period (writing the period tagger's claims beside the line slice's condition reader).
+- **Evidence:** `parse.read_route` reads a quarter or half used as a condition (`read_period_condition`, over `lexicon.PERIOD_CONDITION`) and then hands the stages the question with those words REMOVED - `f"{question[:start]} {question[end:]}"` - so a `reading.Claim` any tagger makes on characters after the condition is indexed into the shortened text, not the question the Reading is of; `Reading.claims` is documented as "a slice of the question". On the 2,710 readings the two condition questions ("vj edgecombe three points made per game after making one three in first quarter", "... after hitting one three in the first quarter") carry no claim at all, since nothing else in them is read, so no recorded claim is wrong today; the condition reader itself claims nothing yet (the line slice's).
+- **User sees:** nothing; step 3's unread words, read off the claims, would name the wrong characters on such a question.
+- **Next step:** the line slice, which claims the condition's span, keeps the question's length - blank the condition's characters to spaces of the same length rather than cutting them (measured on the four populations: a run of spaces in place of the words must move no reading), or keep the original offsets by adding the cut's length back to every claim after it.
+- **Priority:** P4 - no recorded claim is wrong; a latent offset for the line slice to close.
+- **Source:** ours.
 
 ### A month is read from the words of a day in it: "in march 24 2018" narrows by the month and the day, and the answer says both
 - **Found:** 2026-10-09, Phase 3, step 2, the games' cuts (the cuts tagger's claims: the situation's "in march" and the day's "march 24 2018" overlap on one word).
