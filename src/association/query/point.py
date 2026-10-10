@@ -29,13 +29,12 @@ from typing import TYPE_CHECKING, Any, Literal
 from association.nba.season import current_season
 from association.query import lexicon
 from association.query.entities import BOX_SCORES, SHOT_AVAILABILITY
-from association.query.lines import measure_filters, threshold_count_line
+from association.query.lines import measure_filters, relation_lines, threshold_count_line, threshold_line, threshold_of
 from association.query.measures import (
     BOOLEAN_MEASURES,
     DERIVED_LINES,
     HISTORY_STATS,
     LINE,
-    MEASURE_WORDS,
     SPLIT_LINE,
     STAT_LINE,
     TEAM_GAME_MEASURES,
@@ -182,27 +181,20 @@ def _everyone_opponent(scope: Scope, question: str) -> Scope:
     return scope
 
 
-def _everyone_threshold_predicates(scope: Scope, question: str, measure: str | None, predicates: list[tuple[str, str, Any]]) -> list[tuple[str, str, Any]]:
-    """The number's own words in the question name its column ("a 30 point
-    triple double game" is points >= 30, whatever stat the router filed
-    beside the threshold); the router's stat is read only when the question
-    carries no such phrase."""
-    threshold = scope.threshold
-    if threshold is None or threshold <= 0:
+def _everyone_threshold_predicates(scope: Scope, measure: str | None, predicates: list[tuple[str, str, Any]]) -> list[tuple[str, str, Any]]:
+    """The line the threshold grammar read ("a 30 point triple double game"
+    is points >= 30, whatever stat the model filed beside the number): its
+    own measure, read from the number's words; the model's stat only where
+    a line was built with no words of its own (a slot door's). Until Phase
+    3, step 2 this re-read the number's words from the question, and its
+    pattern could not pass a comma ("most games with 20 pt,s 10 reb, 5
+    ast" fell back to the model's "rebounds")."""
+    line = threshold_line(scope)
+    if line is None or int(line.value) <= 0:
         return predicates
-    phrase = re.search(rf"\b{threshold}\s*\+?\s*[-]?\s*([a-z][a-z ]{{0,24}}?)\b(?=\s|$)", question, re.I)
-    column = None
-    if phrase:
-        tokens = phrase.group(1).lower().split()
-        for width in (3, 2, 1):
-            candidate = " ".join(tokens[:width])
-            if candidate in MEASURE_WORDS:
-                column = MEASURE_WORDS[candidate]
-                break
-    if column is None and scope.stat:
-        column = stat_measure(scope.stat)
+    column = line.measure or stat_measure(scope.stat)
     if column and column != measure:
-        return [*predicates, (column, ">=", threshold)]
+        return [*predicates, (column, ">=", int(line.value))]
     return predicates
 
 
@@ -303,37 +295,24 @@ def _everyone_boolean_game_ranking(intent: str, question: str, scope: Scope, pre
     )
 
 
-_NUMBER_STAT = re.compile(r"\b(\d{1,3})\s*\+?\s*((?:[a-z]+\s*){1,3})", re.I)
-
-
-def _numbered_stat_lines(question: str) -> list[tuple[str, str, Any]]:
-    """Every "<N> <stat>" pair ``question`` itself names, as predicates - the
-    league-wide multi-line count a single ``threshold`` slot cannot carry
-    (F161: "33 point and 13 rebound and 10 assist 2 blocks and 2 steals").
-    Each number's own trailing word(s) name its column through
-    :data:`~association.query.measures.MEASURE_WORDS`, the lookup
-    :func:`_everyone_threshold_predicates` already uses for one number -
-    applied here to every number the question names, not only the router's
-    own ``threshold``, and never a duplicate column.
+def _numbered_lines(scope: Scope) -> list[tuple[str, str, Any]]:
+    """Every "<N> <stat>" line the question itself names, as predicates - the
+    league-wide multi-line count a single ``threshold`` slot could not carry
+    (F161: "33 point and 13 rebound and 10 assist 2 blocks and 2 steals"):
+    the subject's whole-game lines at or above a number, each column once.
+    Until Phase 3, step 2 this re-read every number's own trailing words
+    from the question (``_NUMBER_STAT``); the typed lines are the one
+    reading of them.
 
     .. versionadded:: 4.4.0
     """
     predicates: list[tuple[str, str, Any]] = []
     seen: set[str] = set()
-    for match in _NUMBER_STAT.finditer(question):
-        value = int(match.group(1))
-        if not value:
+    for line in scope.lines:
+        if line.period is not None or line.op != ">=" or line.measure is None or int(line.value) < 1 or line.measure in seen:
             continue
-        words = match.group(2).lower().split()
-        column = None
-        for width in (3, 2, 1):
-            candidate = " ".join(words[:width])
-            if candidate in MEASURE_WORDS:
-                column = MEASURE_WORDS[candidate]
-                break
-        if column and column not in seen:
-            seen.add(column)
-            predicates.append((column, ">=", value))
+        seen.add(line.measure)
+        predicates.append(line.as_predicate())
     return predicates
 
 
@@ -358,7 +337,7 @@ def _everyone_multi_line_games(intent: str, scope: Scope, question: str, predica
     """
     if intent != "threshold_count" or _RANKING.search(question):
         return None
-    text_lines = _numbered_stat_lines(question)
+    text_lines = _numbered_lines(scope)
     lines = text_lines if len(text_lines) > len(predicates) else predicates
     if len(lines) < 2:
         return None
@@ -388,7 +367,7 @@ def _everyone_threshold_count_line(scope: Scope) -> list[tuple[str, str, Any]]:
     .. versionadded:: 5.0.0
     """
     column = stat_measure(scope.stat)
-    threshold = scope.threshold
+    threshold = threshold_of(scope)
     if column is None or column in BOOLEAN_MEASURES or threshold is None or threshold < 1:
         return []
     return [(column, ">=", threshold)]
@@ -404,10 +383,11 @@ def _everyone_threshold_count(intent: str, scope: Scope, predicates: list[tuple[
         # filed - the team narrows the league read to its roster's games.
         return None
     if not predicates and intent == "threshold_count":
-        if scope.threshold is not None and scope.threshold < 1:
+        threshold = threshold_of(scope)
+        if threshold is not None and threshold < 1:
             # threshold_count's own refusal: measured, "most 3 pointers made
             # since 2020" arrived as threshold 0 and would count every game.
-            raise PointRefused(Cause(kind="threshold_counts_every_game", facts={"intent": "threshold_count", "threshold": scope.threshold}))
+            raise PointRefused(Cause(kind="threshold_counts_every_game", facts={"intent": "threshold_count", "threshold": threshold}))
         predicates = _everyone_threshold_count_line(scope)
     if not predicates:
         raise PointRefused(Cause(kind="needs_line"))
@@ -590,11 +570,11 @@ def _everyone_point(intent: str, scope: Scope, question: str, measure: str | Non
        and ranking moves, since both are more specific readings of a
        ``threshold_count``/ranking question than either of those.
     """
-    _everyone_guard(intent, question, position, period_is_condition=scope.period_condition is not None)
+    _everyone_guard(intent, question, position, period_is_condition=any(line.period is not None for line in scope.lines))
     scope = _everyone_opponent(scope, question)
     words = _measure_words(question)
     measure, predicates = _measure_and_predicates(words, measure if measure not in BOOLEAN_MEASURES else None)
-    predicates = _everyone_threshold_predicates(scope, question, measure, predicates)
+    predicates = _everyone_threshold_predicates(scope, measure, predicates)
     single = _everyone_single_game(intent, scope, question, measure, predicates, position)
     if single is not None:
         return single
@@ -630,7 +610,7 @@ def _move_single_game(intent: str, scope: Scope, question: str, measure: str | N
     meeting, the question a pair's summary never answered."""
     if not measure or measure in BOOLEAN_MEASURES:
         return None
-    against = any(c.side == "opponent" for c in scope.conditions)
+    against = any(c.side == "opponent" for c in scope.companions)
     if not (_TOP_IN_A_GAME.search(question) or (against and _RANKING.search(question))):
         return None
     return Reading(
@@ -680,7 +660,7 @@ def _move_boolean_count_is_line(measure: str, scope: Scope) -> bool:
     (:data:`~association.query.measures.DERIVED_LINES`), exactly the router's
     own ``stat``/``threshold`` line (``fouled_out`` is ``fouls >= 6``)."""
     column = stat_measure(scope.stat)
-    threshold = scope.threshold
+    threshold = threshold_of(scope)
     if column is None or threshold is None:
         return False
     return DERIVED_LINES.get(measure) == (column, threshold)
@@ -774,8 +754,8 @@ def _threshold_line(scope: Scope) -> list[tuple[str, str, Any]]:
     """A ``threshold`` as the line a log keeps games past, or nothing where
     it is a below/above phrase's own number; a threshold beside no stat is
     refused for the stat."""
-    threshold = scope.threshold
-    if threshold is None or any(line.value == threshold for line in measure_filters(scope.below, scope.above)):
+    threshold = threshold_of(scope)
+    if threshold is None or any(line.value == threshold for line in measure_filters(scope)):
         return []
     col = stat_column(scope.stat)
     if col is None:
@@ -797,7 +777,7 @@ def _default_player_stat(scope: Scope) -> Reading:
     measures = [col] if col else list(STAT_LINE)
     if scope.window.count or scope.window.order:
         return _default_game_log(scope)
-    if not (scope_reads_box_scores(scope, measure_filters(scope.below, scope.above)) or scope.cuts.date):
+    if not (scope_reads_box_scores(scope, measure_filters(scope)) or scope.cuts.date):
         return Reading(scope=scope, shape="scalar", by="line", on="player_seasons", measures=measures, aggregate="per_game", group="none", predicates=[])
     date = scope.cuts.date
     return Reading(
@@ -829,7 +809,7 @@ def _default_record_when(scope: Scope) -> Reading:
     the fact missing - the stat, a stat with no per-game column, the number,
     or a number every game clears - where it named one line only in part."""
     col = stat_column(scope.stat)
-    threshold = scope.threshold
+    threshold = threshold_of(scope)
     if not _named_player_in(scope):
         # read_point reads a named player's moves only; a caller's mistake.
         raise Unsupported("record_when needs a player, a stat and a positive threshold here")
@@ -903,10 +883,10 @@ def _default_threshold_count(scope: Scope) -> Reading:
     A league-wide count is declined here; the point reader's own move reads
     it as a count by player."""
     col = stat_column(scope.stat)
-    threshold = scope.threshold
+    threshold = threshold_of(scope)
     if not _named_player_in(scope):
         raise Unsupported("a league-wide count is not on the one-player relation")
-    if threshold is None and (scope.below or scope.above):
+    if threshold is None and relation_lines(scope):
         # Refuses (PointRefused) by the fact missing: a phrase naming no
         # stat, a stat with no per-game column.
         threshold_count_line(scope)
@@ -918,7 +898,7 @@ def _default_threshold_count(scope: Scope) -> Reading:
         raise Unsupported("threshold_count refuses; nothing to compare")
     # A below/above phrase carrying the threshold's own number IS the count,
     # misread as a threshold (the count's sayer words it as the phrase).
-    lines = [str(x) for x in (*scope.below, *scope.above)]
+    lines = [line.as_typed for line in relation_lines(scope)]
     predicates = [] if any(str(threshold) in line for line in lines) else [(col, ">=", threshold)]
     return Reading(scope=scope, shape="scalar", by="count", measures=[], aggregate="count", group="none", predicates=predicates, available=BOX_SCORES)
 
@@ -981,9 +961,10 @@ def _default_streak(scope: Scope) -> Reading:
     .. versionadded:: 5.0.0
        On the reader's side (``compose.adapt._adapt_streak`` was this).
     """
-    column = streak_column(scope.stat, scope.threshold)
+    threshold = threshold_of(scope)
+    column = streak_column(scope.stat, threshold)
     want_win = scope.kind != "loss"
-    predicates: list[tuple[str, str, Any]] = [(column, ">=", scope.threshold)] if column is not None else [("won", "=", want_win)]
+    predicates: list[tuple[str, str, Any]] = [(column, ">=", threshold)] if column is not None else [("won", "=", want_win)]
     if _named_player_in(scope):
         season = _streak_season(scope)
         return Reading(
@@ -1051,8 +1032,8 @@ def _default_with_without(scope: Scope) -> Reading:
     (:func:`~association.query.subject.with_without_named`), or failing those
     the one name beside a team or the second of two; more than that is
     "record when A and B and C play", which nobody has defined. A narrowing
-    its words do not state is the planner's to decline
-    (``compose.plan.WITH_WITHOUT_STATED``).
+    its words do not state is the planner's to decline (its row of
+    ``compose.plan.STATED_SCOPING``).
 
     .. versionadded:: 5.0.0
        On the reader's side (``compose.adapt._adapt_with_without`` was this).
@@ -1221,7 +1202,7 @@ def _move_named(intent: str, scope: Scope, question: str) -> Reading:
     game's figure under the quarter's heading."""
     if intent == "period_split":
         return _move_default(intent, scope, None)
-    if lexicon.PERIOD_GUARD.search(question) and scope.period_condition is None:
+    if lexicon.PERIOD_GUARD.search(question) and not any(line.period is not None for line in scope.lines):
         # The quarter words are a condition's (read into the scope), or the
         # period relation's question.
         raise Unsupported("a quarter or half is the period relation's question")

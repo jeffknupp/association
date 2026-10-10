@@ -294,7 +294,7 @@ class Agent:
         # reroute shipped broken once: the intent said with_without, the trace
         # said with_without, and head_to_head ran.
         if reading.intent != routed.intent:
-            history.log(f"  -> (subject) intent={reading.intent!r} slots={reading.scope.to_slots()}")
+            history.log(f"  -> (subject) intent={reading.intent!r} slots={reading.scope.to_slots(split_by_presence=reading.intent == 'with_without')}")
         settled = self._settled_before_reading(reading, history)
         if settled is not None:
             return settled

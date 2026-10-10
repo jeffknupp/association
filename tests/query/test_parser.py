@@ -13,9 +13,11 @@ from routed import slots_route, with_subject
 
 from association.query.compose.plan import plan_point
 from association.query.decisions import Decision
+from association.query.line import threshold_named as _threshold_from_text
+from association.query.lines import threshold_of
 from association.query.parse import classify_span, measure, parent_intent, read_route, reading_from_route
-from association.query.reading import Reading
-from association.query.router import Beside, _threshold_from_text, settle
+from association.query.reading import Companion, Reading
+from association.query.router import Route, settle
 
 
 @pytest.fixture
@@ -109,7 +111,7 @@ def test_the_parser_reads_a_question_into_a_reading(con: duckdb.DuckDBPyConnecti
     read, the window and the measure from the words, the child assigned."""
     r = _read(con, "How many 30+ point games did Jokic have this season?", names=["Jokic"], stat="points")
     assert r.intent == "threshold_count" and r.subject is not None and r.subject.kind == "player" and r.subject.players == ("Nikola Jokic",)
-    assert r.scope.threshold == 30 and r.scope.stat == "points"
+    assert threshold_of(r.scope) == 30 and r.scope.stat == "points"
     r = _read(con, "Lakers vs Celtics record this season", names=["Lakers", "Celtics"], stat="")
     assert r.intent == "head_to_head" and r.subject is not None and r.subject.kind == "teams"
     # A window over the two teams' meetings is still their meetings when a record is asked for; a log word is one team's games.
@@ -128,7 +130,7 @@ def test_the_parser_with_no_names_and_no_stat_still_reads_the_question(con: duck
     r = _read(con, "what was the sixers record when maxey scored 20+ points?")
     assert r.subject is not None and r.subject.kind == "team" and r.subject.teams == ("Philadelphia 76ers",)
     assert r.intent == "record_when"
-    assert r.scope.threshold == 20
+    assert threshold_of(r.scope) == 20
 
 
 def test_a_player_after_a_versus_word_reaches_the_route_as_a_condition(con: duckdb.DuckDBPyConnection) -> None:
@@ -140,22 +142,20 @@ def test_a_player_after_a_versus_word_reaches_the_route_as_a_condition(con: duck
     being his best meeting), a count, a log. A bare pair is still the
     matchup, and "vs <team> without <player>" is the player's own question,
     not a with/without split."""
-    from association.query.reading import ConditionSpec
-
-    against = ConditionSpec(player="Jayson Tatum", side="opponent", predicate="played")
+    against = Companion(player="Jayson Tatum", side="opponent", predicate="played")
     high = _read(con, "most points by tyrese maxey vs tatum", ["tyrese maxey", "tatum"], "points")
-    assert high.intent == "player_stat" and high.scope.player == "Tyrese Maxey" and high.scope.conditions == (against,)
+    assert high.intent == "player_stat" and high.scope.player == "Tyrese Maxey" and high.scope.companions == (against,)
     assert high.point is not None and high.point.shape == "rows" and high.point.order == "measure" and high.point.direction == "desc"
     fewest = _read(con, "fewest points by tyrese maxey vs tatum", ["tyrese maxey", "tatum"], "points")
     assert fewest.point is not None and fewest.point.order == "measure" and fewest.point.direction == "asc"
     count = _read(con, "how many times did tyrese maxey score 30 vs tatum", ["tyrese maxey", "tatum"], "points")
-    assert count.intent == "threshold_count" and count.scope.conditions == (against,) and count.scope.threshold == 30
+    assert count.intent == "threshold_count" and count.scope.companions == (against,) and threshold_of(count.scope) == 30
     log = _read(con, "tyrese maxey game log vs tatum", ["tyrese maxey", "tatum"], "")
-    assert log.intent == "game_log" and log.scope.conditions == (against,) and log.scope.players == ()
+    assert log.intent == "game_log" and log.scope.companions == (against,) and log.scope.players == ()
     pair = _read(con, "tyrese maxey vs tatum", ["tyrese maxey", "tatum"], "")
-    assert pair.intent == "player_matchup" and pair.scope.conditions == () and len(pair.scope.players) == 2
+    assert pair.intent == "player_matchup" and pair.scope.companions == () and len(pair.scope.players) == 2
     narrowed = _read(con, "tyrese maxey points vs boston without embiid", ["tyrese maxey", "boston", "embiid"], "points")
-    assert narrowed.intent == "player_stat" and narrowed.scope.cuts.opponent == "Boston Celtics" and narrowed.scope.without == ("Joel Embiid",)
+    assert narrowed.intent == "player_stat" and narrowed.scope.cuts.opponent == "Boston Celtics" and narrowed.scope.companions == (Companion(player="Joel Embiid", predicate="absent"),)
 
 
 def test_a_player_against_a_team_is_never_a_matchup(con: duckdb.DuckDBPyConnection) -> None:
@@ -306,7 +306,7 @@ def _settled(con: duckdb.DuckDBPyConnection, question: str, names: list[str], st
     ``conditions`` slot - the Reading the agent answers from, as slots."""
     route, _, _ = read_route(con, question, names, stat)
     reading = reading_from_route(con, question, route)
-    return reading.intent, reading.scope.to_slots()
+    return reading.intent, reading.scope.to_slots(split_by_presence=reading.intent == "with_without")
 
 
 def _with_the_warriors(con: duckdb.DuckDBPyConnection) -> None:
@@ -375,7 +375,7 @@ def test_the_subjects_own_split_still_reads_beside_a_teammates_role(con: duckdb.
     route, _, _ = read_route(con, question, ["sixers", "embiid"], "points")
     assert route.intent == "team_quarter_points" and "split" not in route.slots
     reading = reading_from_route(con, question, route)
-    assert [c.predicate for c in reading.scope.conditions] == ["started"]
+    assert [c.predicate for c in reading.scope.companions] == ["started"]
     planned = plan_point(reading)
     assert planned.query is None and planned.declined is not None and "conditions" in planned.declined, planned
 
@@ -392,16 +392,16 @@ def test_a_companion_who_sat_out_is_without_and_out_is_no_part_of_his_name(con: 
         ("stephen curry stats with draymond green out", ["stephen curry", "draymond green"], "with_without"),
         ("warriors record with draymond green out", ["warriors", "draymond green"], "with_without"),
     ):
-        route, _, _ = read_route(con, question, names, "")
-        assert (route.intent, route.slots["without"]) == (intent, ["Draymond Green"]) and "with_player" not in route.slots, question
-    route, _, _ = read_route(con, "maxey points when embiid doesn't play", ["maxey", "embiid"], "points")
-    assert (route.intent, route.slots["without"]) == ("with_without", ["Joel Embiid"]) and "with_player" not in route.slots
+        settled, slots = _settled(con, question, names, "")
+        assert (settled, slots["without"]) == (intent, ["Draymond Green"]) and "with_player" not in slots, question
+    settled, slots = _settled(con, "maxey points when embiid doesn't play", ["maxey", "embiid"], "points")
+    assert (settled, slots["without"]) == ("with_without", ["Joel Embiid"]) and "with_player" not in slots
     # And on a log he is absent, never a teammate who played beside the absence.
     settled, slots = _settled(con, "maxey game log when embiid doesn't play", ["maxey", "embiid"])
     assert (settled, slots["without"]) == ("game_log", ["Joel Embiid"]) and "conditions" not in slots
     # Never a pair: "in games X missed" is X's absence from the subject's games.
     route, subject, _ = read_route(con, "maxey points in games embiid missed", ["maxey", "embiid"], "points")
-    assert (route.intent, subject.kind, route.slots["without"]) == ("player_stat", "player", ["Joel Embiid"])
+    assert (route.intent, subject.kind, [c.player for c in subject.conditions if c.absent]) == ("player_stat", "player", ["Joel Embiid"])
 
 
 def test_a_record_with_a_teammate_out_is_the_split_from_the_other_side() -> None:
@@ -410,10 +410,11 @@ def test_a_record_with_a_teammate_out_is_the_split_from_the_other_side() -> None
     by his absence - never a teammate who played, named "draymond green
     out" or "draymond green" with the absence dropped."""
     for intent in ("record_when", "team_record"):
-        route = settle(intent, {"team": "Golden State Warriors", "season_type": 2}, "warriors record with draymond green out", Beside(absent=("draymond green",)))
-        assert (route.intent, route.slots.get("without"), route.slots.get("with_player")) == ("with_without", ["draymond green"], None), intent
+        route = settle(intent, {"team": "Golden State Warriors", "season_type": 2}, "warriors record with draymond green out", (Companion(player="draymond green", predicate="absent"),))
+        # The stages settle the split and write no name: the subject reading writes him onto the Reading (apply_subject).
+        assert (route.intent, route.slots.get("without"), route.slots.get("with_player")) == ("with_without", None, None), intent
         # Who sat out is the subject reading's: with nobody beside the team, the record stays a record.
-        assert settle(intent, {"team": "Golden State Warriors", "season_type": 2}, "warriors record with draymond green out").slots.get("without") is None
+        assert settle(intent, {"team": "Golden State Warriors", "season_type": 2}, "warriors record with draymond green out").intent == intent
 
 
 def test_a_companion_who_played_is_a_condition_where_with_player_is_read_by_nothing(con: duckdb.DuckDBPyConnection) -> None:
@@ -623,20 +624,26 @@ def test_a_period_used_as_a_condition_is_read_into_the_scope_and_off_the_period_
     reading, said as "exactly" in the answer) and "at least"/"+" at least.
     A condition whose line cannot be read ("after scoring a lot") is still
     kept off the period templates, for the refusal to name."""
-    from association.query.reading import PeriodCondition
+    from association.query.reading import Line, Period
+
+    def in_period(route: Route) -> Line | None:
+        lines = [line for line in route.scope.lines if line.period is not None]
+        return lines[0] if lines else None
 
     route, _, _ = read_route(con, "tyrese maxey three points made per game after making one three in first quarter", ["tyrese maxey"], "threePointFieldGoalsMade")
     assert route.intent == "player_stat"
-    assert route.scope.period_condition == PeriodCondition(stat="threePointFieldGoalsMade", threshold=1, op="=", period=1)
-    assert route.scope.period is None and route.scope.threshold is None, "the condition's number and period are the condition's, not the route's"
+    assert in_period(route) == Line(measure="threePointFieldGoalsMade", op="=", value=1, period=Period(number=1), as_typed="after making one three in first quarter")
+    assert route.scope.period is None and threshold_of(route.scope) is None, "the condition's number and period are the condition's, not the route's"
     at_least, _, _ = read_route(con, "tyrese maxey three points made per game after making at least one three in first quarter", ["tyrese maxey"], "threePointFieldGoalsMade")
-    assert at_least.scope.period_condition == PeriodCondition(stat="threePointFieldGoalsMade", threshold=1, op=">=", period=1)
+    assert in_period(at_least) == Line(measure="threePointFieldGoalsMade", op=">=", value=1, period=Period(number=1), as_typed="after making at least one three in first quarter")
     log, _, _ = read_route(con, "tyrese maxey game log in games where he scored 10+ points in the first half", ["tyrese maxey"], "points")
-    assert log.intent == "game_log" and log.scope.period_condition == PeriodCondition(stat="points", threshold=10, op=">=", half=1)
+    assert log.intent == "game_log" and in_period(log) == Line(
+        measure="points", op=">=", value=10, period=Period(number=1, half=True), as_typed="in games where he scored 10+ points in the first half"
+    )
     plain, _, _ = read_route(con, "tyrese maxey three points made in the first quarter", ["tyrese maxey"], "threePointFieldGoalsMade")
-    assert plain.intent == "period_split" and plain.scope.period_condition is None
+    assert plain.intent == "period_split" and in_period(plain) is None
     unread, _, _ = read_route(con, "tyrese maxey three points made per game after scoring a lot in the first quarter", ["tyrese maxey"], "threePointFieldGoalsMade")
-    assert unread.intent == "other" and unread.scope.period_condition is None
+    assert unread.intent == "other" and in_period(unread) is None
 
 
 def test_a_question_of_fewer_than_three_words_is_refused_unread() -> None:

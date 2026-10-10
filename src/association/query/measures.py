@@ -15,71 +15,11 @@ from __future__ import annotations
 
 from typing import Any
 
+# The words a question calls a column by are the lexicon's (Phase 3, step 2,
+# the line); re-exported here under the name every column list is built from.
+from association.query.lexicon import MEASURE_WORDS
 from association.query.metrics import LEADERBOARD_METRICS
 from association.query.reading import Cause, PointRefused
-
-#: What a question calls a box-score column, for a line it asks games to be
-#: kept under or over. Keys are the question's words after the number,
-#: casefolded; values are `player_game_log` columns and never question text.
-MEASURE_WORDS: dict[str, str] = {
-    "points": "points",
-    "point": "points",
-    "pts": "points",
-    "pt": "points",
-    "rebounds": "rebounds",
-    "rebound": "rebounds",
-    "reb": "rebounds",
-    "rebs": "rebounds",
-    "boards": "rebounds",
-    "assists": "assists",
-    "assist": "assists",
-    "ast": "assists",
-    "asts": "assists",
-    "steals": "steals",
-    "steal": "steals",
-    "stl": "steals",
-    "blocks": "blocks",
-    "block": "blocks",
-    "blk": "blocks",
-    "turnovers": "turnovers",
-    "turnover": "turnovers",
-    "tov": "turnovers",
-    "to": "turnovers",
-    "fouls": "fouls",
-    "foul": "fouls",
-    "pf": "fouls",
-    "minutes": "minutes",
-    "minute": "minutes",
-    "mins": "minutes",
-    "min": "minutes",
-    "fga": "fieldGoalsAttempted",
-    "field goal attempts": "fieldGoalsAttempted",
-    "shots": "fieldGoalsAttempted",
-    "shot attempts": "fieldGoalsAttempted",
-    "fgm": "fieldGoalsMade",
-    "field goals": "fieldGoalsMade",
-    "field goals made": "fieldGoalsMade",
-    "fta": "freeThrowsAttempted",
-    "free throw attempts": "freeThrowsAttempted",
-    "free throws attempted": "freeThrowsAttempted",
-    "ftm": "freeThrowsMade",
-    "free throws": "freeThrowsMade",
-    "free throws made": "freeThrowsMade",
-    "3pa": "threePointFieldGoalsAttempted",
-    "three point attempts": "threePointFieldGoalsAttempted",
-    "threes attempted": "threePointFieldGoalsAttempted",
-    "3pm": "threePointFieldGoalsMade",
-    "3s": "threePointFieldGoalsMade",
-    "threes": "threePointFieldGoalsMade",
-    "3 pointers": "threePointFieldGoalsMade",
-    "three pointers": "threePointFieldGoalsMade",
-    "threes made": "threePointFieldGoalsMade",
-    "oreb": "offensiveRebounds",
-    "offensive rebounds": "offensiveRebounds",
-    "dreb": "defensiveRebounds",
-    "defensive rebounds": "defensiveRebounds",
-}
-
 
 # The words a question uses for a TEAM metric - moved here from
 # team_metrics.py on 2026-10-02, where the catalog that ranks the metrics

@@ -52,7 +52,7 @@ narrowed reader is one season type at a time.
 from __future__ import annotations
 
 from collections.abc import Sequence
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field, fields, replace
 from typing import Any
 
 import duckdb
@@ -62,6 +62,7 @@ from association.nba.season import current_season
 from association.query.conditions import _PLAYER_GAME_TABLES, _TEAM_LINE, _longest_runs_sql, box_source, presence_games_sql
 from association.query.coverage import floor_refusal
 from association.query.entities import Entity, resolved_team
+from association.query.lines import threshold_of
 from association.query.player_relation import ResolvedSpan, span_of, whole_span
 from association.query.reading import DEFAULT_STREAK_LIMIT, Scope, _clamp_limit
 from association.query.result import Refusal, Unanswered
@@ -219,6 +220,20 @@ class TeamQuery:
     #: divided by whether named teammates played (``with_without``'s retired
     #: template, compiled by :func:`compile_team_presence`).
     group: str = "none"
+
+    def projected(self) -> dict[str, Any]:
+        """Every field as the query was recorded until Phase 3, step 2, the
+        companions: the scope's teammates who played print under the
+        with/without split's own slot where the query divides the games by
+        their presence (:func:`~association.query.stages.plain`), as
+        :meth:`~association.query.compose.core.Query.projected` prints the
+        player compiler's.
+
+        .. versionadded:: 6.0.0
+        """
+        out = {f.name: getattr(self, f.name) for f in fields(self)}
+        out["scope"] = self.scope.projected(split_by_presence=self.group == "presence")
+        return out
 
 
 @dataclass
@@ -810,7 +825,7 @@ def run_team(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> TeamResult:
         # The with/without split is compose.presence's reader; reaching here
         # means a narrowing its words do not state, which no sum answers.
         raise Unsupported("a with/without split narrowed beyond its own words has no reader")
-    if q.scope.threshold is not None:
+    if threshold_of(q.scope) is not None:
         raise Unsupported("a threshold names a record above and below a line, not a total - this module has no reader for one")
     if q.shape in ("rows", "grouped"):
         # The team's games listed, or split, are compose.logs' and

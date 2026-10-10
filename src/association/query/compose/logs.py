@@ -29,7 +29,7 @@ import duckdb
 from association.nba.season import current_season
 from association.nba.season import eastern_date as _eastern_date
 from association.query.entities import resolved_team, slot_season
-from association.query.lines import MeasureFilter, measure_filters
+from association.query.lines import MeasureFilter, measure_filters, threshold_of
 from association.query.measures import log_extras, stat_measure
 from association.query.notes import Note
 from association.query.player_games import Narrowed, aggregate_sql
@@ -93,13 +93,14 @@ def log_key(header: str) -> str:
     return LOG_PERCENTAGES[header][2] if header in LOG_PERCENTAGES else LOG_COLUMNS[header]
 
 
-def _game_log_lines(below: Any, above: Any, threshold: Any) -> list[MeasureFilter]:
-    """The lines a log keeps games under or over - the ``below``/``above``
-    phrases (:func:`~association.query.lines.measure_filters`).
-    A bare ``threshold`` beside them is the retired template's own refusal
-    (it never read one), unless it is one of those phrases' own number,
-    which the model files twice."""
-    measures = measure_filters(below, above)
+def _game_log_lines(scope: Scope) -> list[MeasureFilter]:
+    """The lines a log keeps games under or over - the lines the relation
+    narrows by (:func:`~association.query.lines.measure_filters`). A bare
+    threshold line beside them is the retired template's own refusal (it
+    never read one), unless it is one of those lines' own number, which
+    the model filed twice."""
+    measures = measure_filters(scope)
+    threshold = threshold_of(scope)
     if threshold is not None and not any(line.value == threshold for line in measures):
         raise Unsupported("game_log does not read a threshold - ask for games with at least N of a stat")
     return measures
@@ -256,7 +257,7 @@ def _player_log_mixed(con: duckdb.DuckDBPyConnection, q: Query, compiled: Compil
     ``without`` note reads identically whichever type it came from."""
     player, season, scope = compiled.player, compiled.span.season, q.scope
     assert player is not None and season is not None
-    measures = measure_filters(scope.below, scope.above)
+    measures = measure_filters(scope)
     per_type: dict[int, Compiled] = {}
     for season_type in (2, 3):
         type_span = ResolvedSpan(season, season_type)
@@ -323,7 +324,7 @@ def read_player_log(con: duckdb.DuckDBPyConnection, q: Query, *, stated: frozens
     scope = q.scope
     try:
         extras = log_extras(scope.stat)
-        _game_log_lines(scope.below, scope.above, scope.threshold)
+        _game_log_lines(scope)
     except Unsupported:
         return None
     # The router's own stat, which the log shows as its extra columns; a
@@ -498,9 +499,9 @@ def read_team_log(con: duckdb.DuckDBPyConnection, q: TeamQuery, *, stated: froze
     limit = _clamp_limit(scope.window.count, default=DEFAULT_GAME_LOG_LIMIT)
     ascending = scope.window.order == "first"
     date = scope.cuts.date
-    opponent, venue, without = scope.cuts.opponent, scope.cuts.venue, scope.without
+    opponent, venue, without = scope.cuts.opponent, scope.cuts.venue, tuple(c.player for c in scope.companions if c.absent)
     game_n = scope.cuts.game_n
-    measures = _game_log_lines(scope.below, scope.above, scope.threshold)
+    measures = _game_log_lines(scope)
     # A date names its game outright, so it replaces the season rather than
     # being filtered inside it.
     asked = scope.span.over_career() if date else scope.span

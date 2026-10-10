@@ -46,7 +46,8 @@ from association.query.player_games import (
     scope_without_guard,
     season_type_clause,
 )
-from association.query.reading import ConditionSpec, Cuts, Period, PeriodCondition, Scope, Situation, Span, Unsupported, Window, _clamp_limit, ordinal_word, period_narrowing
+from association.query.reading import Companion, Cuts, Period, Scope, Situation, Span, Unsupported, Window, _clamp_limit, ordinal_word, period_narrowing
+from association.query.reading import Line as ReadLine
 from association.query.result import Cell, GameOfSeries, Line, Refusal, Role, Unanswered
 from association.query.season_text import SEASON_TYPE_NAMES, season_phrase
 from association.query.team_games import TeamNarrowed
@@ -79,9 +80,17 @@ from association.query.team_games import TeamNarrowed
 # the eight by name: `round` is left out, since no game is labeled by its
 # round and every reader refuses it (`unhonored_cells` lists it wherever it
 # is set). The tenure is a cell of this relation alone: a team has none.
-RELATION_SCOPING = frozenset({"without", "split", "below", "above", "conditions", "period_condition", *(Cuts.CELLS - {"round"}), *Span.CELLS, *Window.CELLS, *Period.CELLS})
-"""The cells every reader on the player-games relation honors: the
-scoping slots, the games' cuts (:attr:`~association.query.reading.Cuts.CELLS`
+RELATION_SCOPING = frozenset({"split", *ReadLine.CELLS, *Companion.CELLS, *(Cuts.CELLS - {"round"}), *Span.CELLS, *Window.CELLS, *Period.CELLS})
+"""The cells every reader on the player-games relation honors: the split,
+the subject's lines (:attr:`~association.query.reading.Line.CELLS`, Phase
+3, step 2: ``line``, a line the relation narrows the games by - kept under
+a number, a floor of minutes, two or more "N+ stat" pairs on one game -
+applied by :func:`narrow_measures` and said by
+:meth:`~association.query.player_games.Narrowed.filters`; ``period_line``,
+a line in a quarter or half, applied by :func:`_apply_period_condition`),
+the companions (:attr:`~association.query.reading.Companion.CELLS`:
+``companion``, a player beside the subject with his role, applied by
+:func:`_narrow_player_games` through :func:`_condition_from_slot`), the games' cuts (:attr:`~association.query.reading.Cuts.CELLS`
 less ``round``: ``opponent``, ``tenure``, ``venue``, ``date``,
 ``situation``, ``game_n``, ``season_n``, each applied by :func:`scoped_games`
 and said by :meth:`~association.query.player_games.Narrowed.filters`), and
@@ -100,6 +109,11 @@ refuses it, by :data:`RELATION_SCOPING_EXCLUDED`.
 .. versionchanged:: 5.0.0
    ``period_condition`` - a quarter or half as a condition on which games
    count (ROADMAP step 2, #275), applied by :func:`_apply_period_condition`.
+
+.. versionchanged:: 6.0.0
+   The lines' two cells (``line``, ``period_line``) and the companions' one
+   (``companion``) in place of the slots ``below``, ``above``,
+   ``period_condition``, ``without`` and ``conditions`` (Phase 3, step 2).
 
 .. versionchanged:: 6.0.0
    The span's cells by name (``career``, ``range``, ``both``) in place of
@@ -169,10 +183,10 @@ RELATION_SCOPING_EXCLUDED: dict[str, dict[str, str]] = {
         # keeps the cell and the compiler's own sentence, which names both
         # the quarter measured and the quarter conditioning the games,
         # answers (point._default_period_split, the game_log rule).
-        "period_condition": "a period answer says the one period it measures, never a second one conditioning which games count",
+        "period_line": "a period answer says the one period it measures, never a second one conditioning which games count",
     },
 }
-RELATION_SCOPING_EXCLUDED["player_matchup"]["period_condition"] = "a meeting is both players' whole game; a quarter's line conditioning it would be read on one side of the pair only"
+RELATION_SCOPING_EXCLUDED["player_matchup"]["period_line"] = "a meeting is both players' whole game; a quarter's line conditioning it would be read on one side of the pair only"
 # The span's `both` cell (both season types in one read) is stated by a
 # log, a line and a count - their words said "including the playoffs", or
 # named no type on "last N games" - and by nothing else on the relation: a
@@ -527,7 +541,7 @@ def _narrow_player_games(
     split: Any = None,
     game_n: Any = None,
     team: Any = None,
-    conditions: Sequence[ConditionSpec] = (),
+    conditions: Sequence[Companion] = (),
 ) -> Narrowed | Unanswered:
     """``player``'s games in ``span``, narrowed to an opponent, a venue, a
     teammate's absence and a starter/bench half where the question named them.
@@ -538,9 +552,9 @@ def _narrow_player_games(
     is why they compose: a new one becomes available to every caller at once
     rather than being taught to each template separately. ``split`` was the
     fourth, and it reaches both `game_log` and `player_stat` through this one
-    change. ``conditions`` are the scope's typed entries
-    (:class:`~association.query.reading.ConditionSpec`), each read by
-    :func:`_condition_from_slot`.
+    change. ``conditions`` are the scope's typed companions but the
+    absences (:class:`~association.query.reading.Companion`), each read by
+    :func:`_condition_from_slot`; ``without`` the absent ones' names.
 
     .. versionchanged:: 4.3.0
        Honors one half of the starter/bench split (``split``), and one game of
@@ -764,31 +778,44 @@ def relation_window(scope: Scope) -> tuple[str, int] | None:
     return order, _clamp_limit(scope.window.count, default=1)
 
 
-def _apply_period_condition(con: duckdb.DuckDBPyConnection, narrowed: Narrowed, condition: PeriodCondition) -> Unanswered | None:
+def _apply_period_condition(con: duckdb.DuckDBPyConnection, narrowed: Narrowed, condition: ReadLine) -> Unanswered | None:
     """A quarter or half used as a condition on which games count - the
-    ``period_condition`` cell of :data:`RELATION_SCOPING`
-    (:class:`~association.query.reading.PeriodCondition`), applied here for
-    a named player's games and a league-wide read alike
+    ``period_line`` cell of :data:`RELATION_SCOPING`
+    (a :class:`~association.query.reading.Line` in a period), applied here
+    for a named player's games and a league-wide read alike
     (:meth:`~association.query.player_games.Narrowed.narrow_period_condition`).
     A column rebuilt from the plays, in a warehouse holding none, is refused
     rather than read as zero - every game would fail the condition.
 
     .. versionadded:: 5.0.0
+
+    .. versionchanged:: 6.0.0
+       Takes the typed line (a ``PeriodCondition`` until Phase 3, step 2).
     """
-    asked = Period(number=condition.half, half=True).narrowing() if condition.half is not None else Period(number=condition.period).narrowing() if condition.period is not None else None
-    if asked is None or condition.stat not in PERIOD_COLUMNS or condition.threshold < 1:
+    asked = condition.period.narrowing() if condition.period is not None else None
+    stat, threshold = condition.measure, int(condition.value)
+    if asked is None or stat is None or stat not in PERIOD_COLUMNS or threshold < 1:
         raise Unsupported(f"no period condition reads {condition!r}")
     periods, label = asked
     plays = has_table(con, "plays")
-    if not plays and condition.stat in PERIOD_PLAYS_COLUMNS:
-        return Refusal(kind="period_condition_needs_plays", facts={"threshold": condition.threshold, "stat": condition.stat, "period": label})
-    noun = STAT_LABELS.get(condition.stat, condition.stat)
+    if not plays and stat in PERIOD_PLAYS_COLUMNS:
+        return Refusal(kind="period_condition_needs_plays", facts={"threshold": threshold, "stat": stat, "period": label})
+    noun = STAT_LABELS.get(stat, stat)
     # Said outright either way, so the reading is visible and the other is
     # one word away: "exactly 1 3-pointer" against "1+ 3-pointers".
-    phrase = f"exactly {condition.threshold} {noun}{'' if condition.threshold == 1 else 's'} in the {label}" if condition.op == "=" else f"{condition.threshold}+ {noun}s in the {label}"
+    phrase = f"exactly {threshold} {noun}{'' if threshold == 1 else 's'} in the {label}" if condition.op == "=" else f"{threshold}+ {noun}s in the {label}"
     log_columns = frozenset(row[0] for row in con.execute("DESCRIBE player_game_log").fetchall())
-    narrowed.narrow_period_condition(periods, condition.stat, condition.threshold, phrase, op=condition.op, plays=plays, log_columns=log_columns)
+    narrowed.narrow_period_condition(periods, stat, threshold, phrase, op=condition.op, plays=plays, log_columns=log_columns)
     return None
+
+
+def period_lines(scope: Scope) -> list[ReadLine]:
+    """The lines ``scope`` holds in a quarter or half (the ``period_line``
+    cell), in the question's order.
+
+    .. versionadded:: 6.0.0
+    """
+    return [line for line in scope.lines if line.period is not None]
 
 
 def apply_period(con: duckdb.DuckDBPyConnection, narrowed: Narrowed, scope: Scope) -> None:
@@ -884,11 +911,11 @@ def scoped_games(
         venue=scope.cuts.venue,
         # A list, as the slot always was: teammate_names reads a list or one
         # bare name, and a tuple would be neither - every teammate dropped.
-        without=list(scope.without),
+        without=[c.player for c in scope.companions if c.absent],
         split=scope.split,
         game_n=scope.cuts.game_n,
         team=scope.cuts.tenure,
-        conditions=scope.conditions,
+        conditions=[c for c in scope.companions if not c.absent],
     )
     if isinstance(narrowed, Unanswered):
         return narrowed
@@ -904,8 +931,8 @@ def scoped_games(
         # returning") - see apply_situation.
         apply_situation(narrowed, scope.cuts.situation)
     apply_period(con, narrowed, scope)
-    if scope.period_condition is not None:
-        refused = _apply_period_condition(con, narrowed, scope.period_condition)
+    for in_period in period_lines(scope):
+        refused = _apply_period_condition(con, narrowed, in_period)
         if refused is not None:
             return refused
     narrowed.window = relation_window(scope)
@@ -972,7 +999,7 @@ def league_games(con: duckdb.DuckDBPyConnection, span: ResolvedSpan, scope: Scop
     if scope.cuts.venue:
         narrowed.venue = scope.cuts.venue
         narrowed.narrow("(g.home_team_id = pgl.team_id) = ?", scope.cuts.venue == "home")
-    narrow_measures(narrowed, measure_filters(scope.below, scope.above))
+    narrow_measures(narrowed, measure_filters(scope))
     season_n = scope.cuts.season_n
     if season_n is not None and season_n > 0:
         # Each player's Nth regular season, counted the way settle_ordinal_season
@@ -992,8 +1019,8 @@ def league_games(con: duckdb.DuckDBPyConnection, span: ResolvedSpan, scope: Scop
         codes = POSITION_CODES.get(position, [position])
         narrowed.narrow(f"pgl.athlete_id IN (SELECT athlete_id FROM players WHERE position_abbr IN ({', '.join('?' for _ in codes)}))", *codes)
     apply_period(con, narrowed, scope)
-    if scope.period_condition is not None:
-        refused = _apply_period_condition(con, narrowed, scope.period_condition)
+    for in_period in period_lines(scope):
+        refused = _apply_period_condition(con, narrowed, in_period)
         if refused is not None:
             return refused
     return narrowed
@@ -1088,8 +1115,8 @@ def _teammates_among(con: duckdb.DuckDBPyConnection, candidates: list[Entity], p
     return [c for c in candidates if c.id in have]
 
 
-def _condition_from_slot(con: duckdb.DuckDBPyConnection, entry: ConditionSpec, player: Entity, span: ResolvedSpan, opponent: Entity | None = None) -> Condition | Unanswered:
-    """One ``conditions`` entry - a :class:`~association.query.reading.ConditionSpec`:
+def _condition_from_slot(con: duckdb.DuckDBPyConnection, entry: Companion, player: Entity, span: ResolvedSpan, opponent: Entity | None = None) -> Condition | Unanswered:
+    """One companion - a :class:`~association.query.reading.Companion`:
     a player, his side (``"own"`` or ``"opponent"``), a predicate, and the
     line a ``reached`` one names - as a
     :class:`~association.query.player_games.Condition` with its player
@@ -1126,7 +1153,8 @@ def _condition_from_slot(con: duckdb.DuckDBPyConnection, entry: ConditionSpec, p
         return found
     line: tuple[str, str, int, str] | None = None
     if predicate == "reached":
-        stat, threshold = entry.stat, entry.threshold
+        stat = entry.line.measure if entry.line is not None else None
+        threshold = int(entry.line.value) if entry.line is not None else None
         column = THRESHOLD_STAT_COLUMNS.get(stat) if stat is not None else None
         if column is None or stat is None or threshold is None or threshold < 1:
             raise Unsupported(f"a reached condition needs a known stat and a positive threshold, got {stat!r}/{threshold!r}")

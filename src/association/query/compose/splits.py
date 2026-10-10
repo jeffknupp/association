@@ -297,7 +297,7 @@ def read_team_splits(con: duckdb.DuckDBPyConnection, q: TeamQuery, *, stated: fr
     if refused is not None:
         return refused
     _splits_refusals(scope)
-    measures = measure_filters(scope.below, scope.above)
+    measures = measure_filters(scope)
     team = optional_team(con, scope.team, season=scope.span.season)
     if isinstance(team, Unanswered):
         return team
@@ -306,7 +306,7 @@ def read_team_splits(con: duckdb.DuckDBPyConnection, q: TeamQuery, *, stated: fr
         return opponent
     if team is None:
         raise Unsupported("player_splits needs a player or a team")
-    if measures or scope.cuts.game_n or scope.cuts.season_n or scope.without or scope.conditions:
+    if measures or scope.cuts.game_n or scope.cuts.season_n or scope.companions:
         # A team's own splits read the team tables directly, not the
         # player-games relation these narrow - so a line on a box-score
         # column, a playoff-series game, an ordinal season or a teammate's

@@ -7,14 +7,16 @@ Phase 2 (2026-10-03 to 2026-10-05) removed what the rest of this file froze:
 the twelve templates, the presenters and ``compose/present.py``, the ten
 adapters and ``compose/adapt.py``, and - with step 6 - ``HONORED_SCOPING``,
 ``check_scope`` and the ``templates`` package itself. Their freezes went with
-them. Ten scoping declarations remain, and are frozen by module and name
+them. Nine scoping declarations remain, and are frozen by module and name
 (:data:`FROZEN_SCOPING_TABLES`): the four per-relation cell tables the
-roadmap keeps, the planner's ``STATED_SCOPING`` with its ``with_without``
-row, which Phase 3's cells replace, and four that are debt, each labeled with
-the step that owes its deletion (the sixth, ``coverage._BOX_SCORE_SCOPING``,
-went with Phase 3, step 1: the floor follows the planned point's relation;
-the fifth, ``compose.core.COMPILER_SLOTS``, with step 2's window: ``ranked_by``
-is the typed window's ``by``, a cell the player relation declares)."""
+roadmap keeps, the planner's ``STATED_SCOPING``, which Phase 3's cells
+replace, and four that are debt, each labeled with the step that owes its
+deletion (the sixth, ``coverage._BOX_SCORE_SCOPING``, went with Phase 3,
+step 1: the floor follows the planned point's relation; the fifth,
+``compose.core.COMPILER_SLOTS``, with step 2's window: ``ranked_by`` is the
+typed window's ``by``, a cell the player relation declares; the
+``with_without`` row named apart, ``compose.plan.WITH_WITHOUT_STATED``,
+became a row of the table with step 2's companions)."""
 
 from __future__ import annotations
 
@@ -81,9 +83,6 @@ FROZEN_SCOPING_TABLES: dict[tuple[str, str], str] = {
     ("team_relation", "TEAM_RELATION_SCOPING"): CELL_TABLE,
     ("team_relation", "TEAM_RELATION_SCOPING_EXCLUDED"): CELL_TABLE,
     ("compose.plan", "STATED_SCOPING"): STATED,
-    # STATED_SCOPING's with_without row, named apart because the point reader
-    # cites it; it goes with the table.
-    ("compose.plan", "WITH_WITHOUT_STATED"): STATED,
     ("compose.plan", "_TEAM_READER_REFUSES"): (
         "debt, owed by a decline-to-Cause commit after 'the Result is typed' (2026-10-05): the cells a team's log, splits and run"
         " refuse at RUN with a sentence of their own, let through the planner; RUN's refusals are typed now, but these are"

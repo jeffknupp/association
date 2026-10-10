@@ -16,11 +16,11 @@ import pytest
 from test_period_relation import SEASON, con, team_con  # noqa: F401 - the two relation fixtures, imported by name
 
 from association.query.compose.plan import STATED_SCOPING
-from association.query.parse import read_period_condition
+from association.query.line import read_period_line
 from association.query.period import PERIOD_INTENTS, PeriodContext, PeriodRead, read_period, which_period
 from association.query.player_games import Narrowed, rows_sql
 from association.query.player_relation import RELATION_SCOPING, RELATION_SCOPING_EXCLUDED, apply_period, relation_period, relation_scoping
-from association.query.reading import Claim, Period, PeriodCondition, PointShape, Scope, ScopeError, cell_set, period_narrowing, unhonored_cells, unhonored_scoping
+from association.query.reading import Claim, Line, Period, PointShape, Scope, ScopeError, cell_set, period_narrowing, unhonored_cells, unhonored_scoping
 from association.query.router import settle
 from association.query.team_games import TeamNarrowed
 from association.query.team_games import rows_sql as team_rows_sql
@@ -76,10 +76,10 @@ def test_which_period_is_the_one_reader_the_condition_reader_and_the_stage_share
     assert which_period("first quarter") == (Period(number=1), Claim(0, 13, "period"))
     assert which_period("2h") == (Period(number=2, half=True), Claim(0, 2, "period"))
     assert which_period("by quarter") is None
-    condition = read_period_condition("vj edgecombe three points made per game after making one three in first quarter")
-    assert condition is not None and condition[0] == PeriodCondition(stat="threePointFieldGoalsMade", threshold=1, op="=", period=1)
-    half = read_period_condition("lebron points in games where he scored 10+ points in the first half")
-    assert half is not None and half[0] == PeriodCondition(stat="points", threshold=10, op=">=", half=1)
+    condition = read_period_line("vj edgecombe three points made per game after making one three in first quarter")
+    assert condition is not None and condition[0] == Line(measure="threePointFieldGoalsMade", op="=", value=1, period=Period(number=1), as_typed="after making one three in first quarter")
+    half = read_period_line("lebron points in games where he scored 10+ points in the first half")
+    assert half is not None and half[0] == Line(measure="points", op=">=", value=10, period=Period(number=1, half=True), as_typed="in games where he scored 10+ points in the first half")
 
 
 def test_the_tagger_claims_the_characters_it_read_once_and_they_ride_the_route() -> None:

@@ -35,6 +35,7 @@ from association.query.compose.sentence import sentence
 from association.query.compose.shots import ShotQuery
 from association.query.compose.team import TeamQuery, run_team
 from association.query.compose.team_stats import TeamSeasonQuery
+from association.query.line import LineContext, read_lines
 from association.query.parse import with_point
 from association.query.point import _asc_or_desc, _ranking_minimum, read_point, team_read_point
 from association.query.reading import Cause, PointRefused, Reading, Scope, Span, _career_scope
@@ -47,7 +48,20 @@ def _reading(con: duckdb.DuckDBPyConnection, intent: str, slots: dict[str, Any],
     the package takes the Reading alone): the typed scope, and the subject
     read from the question the way ``point`` read it for a caller
     with none - never applied to the slots, so a case says what it did."""
-    return Reading(scope=Scope.from_slots(slots), intent=intent, subject=subject or read_subject(con, question, intent, Scope.from_slots(dict(slots))))
+    return Reading(scope=_scope(intent, slots, question), intent=intent, subject=subject or read_subject(con, question, intent, Scope.from_slots(dict(slots))))
+
+
+def _scope(intent: str, slots: dict[str, Any], question: str) -> Scope:
+    """``slots`` as the typed scope, the lines read from the question's own
+    words as the stages read them (Phase 3, step 2: a model-era ``threshold``
+    is dropped at the stages' door and the lines tagger reads the words) -
+    unless the case hands a line of its own as a slot, which the door builds."""
+    if any(key in slots for key in ("above", "below", "period_condition", "lines")):
+        return Scope.from_slots(slots)
+    read = read_lines(question, LineContext(intent=intent))
+    if not any(line.keyed for line in read.lines):
+        return Scope.from_slots(slots)  # a line the case hands as a slot, where the words carry none
+    return Scope.from_slots({**{k: v for k, v in slots.items() if k != "threshold"}, "lines": read.lines})
 
 
 def compose_answer(ctx: AnswerContext, intent: str, slots: dict[str, Any], question: str, subject: Subject | None = None, declined: Callable[[str], None] | None = None) -> Reply | None:
@@ -839,7 +853,7 @@ def test_a_team_point_refuses_a_cell_only_a_players_games_carry() -> None:
     there. The cells a team's reader refuses with its own sentence (a
     teammate's absence is with_without's question) still reach that
     reader, and the team relation's own cells pass."""
-    from association.query.reading import PeriodCondition, Reading
+    from association.query.reading import Line, Period, Reading
 
     def team_point(shape: str, **cells: Any) -> Reading:
         aggregate = "none" if shape in ("rows", "run") else ("record" if shape == "grouped" else "total")
@@ -852,7 +866,7 @@ def test_a_team_point_refuses_a_cell_only_a_players_games_carry() -> None:
             scope=Scope.from_slots({"team": "Orlando Magic", **cells}),
         )
 
-    line = PeriodCondition(stat="threePointFieldGoalsMade", threshold=5, period=1)
+    line = Line(measure="threePointFieldGoalsMade", value=5, period=Period(number=1))
     refused: list[tuple[str, dict[str, Any], str]] = [
         ("rows", {"period_condition": line}, "period_condition"),
         ("scalar", {"period_condition": line}, "period_condition"),

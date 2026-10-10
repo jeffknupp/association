@@ -153,7 +153,9 @@ def _reading_record(reading: Reading, mask: Mapping[str, str] | None) -> dict[st
     about how it was read."""
     subject = None
     if reading.subject is not None:
-        subject = {f.name: plain(getattr(reading.subject, f.name), mask=mask) for f in fields(reading.subject) if f.name not in _SUBJECT_TEXT}
+        # The subject through its projection (the companions as the tuples
+        # they were, the claims left out - Phase 3, step 2), as `plain` takes it.
+        subject = {name: plain(each, mask=mask) for name, each in reading.subject.projected().items() if name not in _SUBJECT_TEXT}
     point = None
     if reading.point is not None:
         projected = reading.point.projected()
@@ -163,20 +165,22 @@ def _reading_record(reading: Reading, mask: Mapping[str, str] | None) -> dict[st
         settled = reading.point.subject_span
         point["span"] = "career" if settled is not None and settled.career else None
         point["season"] = settled.season if settled is not None else None
-        point["scope"] = plain(reading.point.scope.to_slots(), mask=mask)
+        point["scope"] = plain(reading.point.scope.to_slots(split_by_presence=reading.point.intent == "with_without" or reading.point.group == "presence"), mask=mask)
         # Whose default the point is: the planner declines by it until
         # intent leaves the reader (Phase 3).
         point["intent"] = reading.point.intent
     return {
         "intent": reading.intent,
-        "scope": plain(reading.scope.to_slots(), mask=mask),
-        # The span, the window, the games' cuts and the period as the reader
-        # typed them (Phase 3, step 2), beside the scope's slot-era
-        # projection of them.
+        "scope": plain(reading.scope.to_slots(split_by_presence=reading.intent == "with_without"), mask=mask),
+        # The span, the window, the games' cuts, the period, the lines and
+        # the companions as the reader typed them (Phase 3, step 2), beside
+        # the scope's slot-era projection of them.
         "span": plain(reading.scope.span, mask=mask),
         "window": plain(reading.scope.window, mask=mask),
         "cuts": plain(reading.scope.cuts, mask=mask),
         "period": plain(reading.scope.period, mask=mask),
+        "lines": plain(reading.scope.lines, mask=mask),
+        "companions": plain(reading.scope.companions, mask=mask),
         "subject": subject,
         "misread": list(reading.misread),
         "decisions": [plain(decision.as_dict(), mask=mask) for decision in reading.decisions],
@@ -219,7 +223,7 @@ def _query_record(reading: Reading, planned: Planned, mask: Mapping[str, str] | 
     # A TeamQuery has no ``subject``: the team IS the relation. Read by
     # shape rather than imported, so this module stays clear of the compiler.
     record: dict[str, Any] = {"relation": getattr(query, "subject", "team"), **plain(query, mask=mask)}
-    record["scope"] = plain(query.scope.to_slots(), mask=mask)
+    record["scope"] = plain(query.scope.to_slots(split_by_presence=getattr(query, "group", None) == "presence"), mask=mask)
     return record
 
 

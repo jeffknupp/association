@@ -35,14 +35,14 @@ from __future__ import annotations
 import functools
 import gzip
 import re
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, fields, replace
 from importlib import resources
 from typing import Any, NamedTuple
 
 import duckdb
 from rapidfuzz.distance import DamerauLevenshtein
 
-from association.query import names
+from association.query import lexicon, names
 from association.query.decisions import Decision
 from association.query.entities import (
     _TEAM_NICKNAMES,
@@ -67,8 +67,20 @@ from association.query.entities import (
 )
 from association.query.lexicon import N_SEASONS, season_from_text
 from association.query.measures import THRESHOLD_STAT_NAMES
-from association.query.reading import FILLER_PLAYER_WORDS, OWN_TEAM_RESTORABLE_INTENTS, PLAYER_REQUIRED_INTENTS, POSITIONS, SUBJECT_RESTORABLE_INTENTS, ConditionSpec, Cuts, LeftOut, Scope
-from association.query.router import _ABSENCE_WORDS, _NAME_STOPWORDS, _THRESHOLD_WORDS, Beside, _threshold_from_text_scored
+from association.query.reading import (
+    FILLER_PLAYER_WORDS,
+    OWN_TEAM_RESTORABLE_INTENTS,
+    PLAYER_REQUIRED_INTENTS,
+    POSITIONS,
+    SUBJECT_RESTORABLE_INTENTS,
+    Claim,
+    Companion,
+    Cuts,
+    LeftOut,
+    Line,
+    Predicate,
+    Scope,
+)
 
 #: The kinds a subject can be. ``team_players`` is "a Hawks player" - the
 #: team's players as a group, which the compiler's team-where-a-player-
@@ -271,9 +283,35 @@ class Subject:
     #: where it is the route's own. What the parser's decision about the
     #: intent says (:func:`~association.query.parse.read_route`).
     intent_reason: str | None = None
-    #: Every companion with the role the question states (:class:`Companion`);
-    #: ``companions`` above is their names.
+    #: Every companion with the role the question states
+    #: (:class:`~association.query.reading.Companion`); ``companions`` above
+    #: is their names.
     conditions: tuple[Companion, ...] = ()
+    #: The characters each companion was read from - the keyword, the
+    #: names and the role's words, a reached one's line included
+    #: (:class:`~association.query.reading.Claim`, ``what`` ``"companion"``),
+    #: which ride the Route onto ``Reading.claims``. The subject's own names
+    #: are the subject slice's to claim.
+    #:
+    #: .. versionadded:: 6.0.0
+    claims: tuple[Claim, ...] = ()
+
+    def projected(self) -> dict[str, Any]:
+        """Every field as a Subject was recorded until Phase 3, step 2
+        (:func:`~association.query.stages.plain`): each companion as the
+        five-field tuple it was (name, predicate, stat, threshold, side),
+        and the claims - positions in the text, as the Reading's own claims
+        are - left out, so a reading recorded before the companions were
+        typed compares identical to one recorded after. The typed
+        companions are recorded beside the reading (``stages._reading_record``,
+        ``companions``), never here.
+
+        .. versionadded:: 6.0.0
+        """
+        out = {f.name: getattr(self, f.name) for f in fields(self) if f.name != "claims"}
+        out["conditions"] = [[c.player, c.predicate, c.line.measure if c.line is not None else None, c.line.value if c.line is not None else None, c.side] for c in self.conditions]
+        return out
+
     #: The router's player names that are no name at all - a rank word or
     #: a phrase of the question ("most", "most 30+ point games";
     #: :func:`_not_a_name`), or a name the question holds only by a TEAM's
@@ -286,78 +324,14 @@ class Subject:
 
 _MONTH_ABBREVIATIONS = frozenset({"jan", "feb", "mar", "apr", "jun", "jul", "aug", "sep", "sept", "oct", "nov", "dec"})
 
-#: A companion's role, from the question's own words: what follows
-#: "without" / "with" / "when" / "while", up to the next scoping word.
-#: Loose on purpose - the names it holds are still checked against the
-#: players the question names.
-_COMPARED_WITH = re.compile(r"\b(?:compare|compared|comparing|contrast|contrasted|contrasting)\b[^,;?]{0,40}?\bwith\b", re.IGNORECASE)
-"""A "with" that follows a compare verb closely ("compare luka with sga")
-joins the two subjects; it is not a companion phrase (ISSUES.md #233)."""
-# "excluding" is "without" reworded and "featuring" is "with"; a question word ends the phrase, so a
-# fronted "Without Kevin Durant, what is Steph Curry's record" names Durant
-# alone, not Curry with him.
-# "with and without Tatum" is the split over Tatum, read from its "without":
-# the "with" names nobody.
-_COMPANION = re.compile(
-    r"\b(without|excluding|with(?!\s+(?:and|or)\s+without\b)|featuring|when|while)\s+"
-    r"((?:(?!\b(?:vs\.?|versus|against|in|for|this|last|the|what|who|how|which|where)\b)[\w'.,+-]+\s*){1,9})",
-    re.IGNORECASE,
-)
-# "in games Embiid started", "in the games Brown missed": the role stated after
-# the games it narrows, with no "when" or "with" before the name - "maxey
-# points in games embiid started" compared the two players, since nothing read
-# Embiid as anything but a second subject. The name (one to three words) must
-# be followed directly by what he did in those games - started, came off,
-# played, scored or had a line, sat out - so "in games against Boston" and "in
-# games he started" (the subject's own) name no companion here.
-_COMPANION_STOP = r"vs\.?|versus|against|in|for|this|last|the|what|who|how|which|where|with|without|when|while"
-_COMPANION_IN_GAMES = re.compile(
-    r"\b(in\s+(?:the\s+)?games?(?:\s+(?:that|where|in\s+which))?)\s+"
-    rf"((?:(?!\b(?:{_COMPANION_STOP}|he|she|they|his|her|their)\b)[\w'.-]+\s+){{1,3}}"
-    rf"(?:start(?:s|ed)?|(?:comes?|came)\s+off|play(?:s|ed)?|scor(?:e|es|ed)|had|has|got|{_ABSENCE_WORDS})(?![A-Za-z])"
-    rf"(?:\s+(?!(?:{_COMPANION_STOP})\b)[\w'.,+-]+){{0,4}})",
-    re.IGNORECASE,
-)
-
-#: What a companion phrase says the player DID in the games asked about,
-#: read off the phrase's own words: a threshold ("scores 20+ points", or
-#: "scores 30", a line on points), a start, the bench, an absence ("out",
-#: "injured", "without"), else played.
-_CONDITION_THRESHOLD = re.compile(r"\b(\d{1,3})[\s-]*(?:\+|plus|or\s+more)?[\s-]*(" + "|".join(sorted((re.escape(w) for w in _THRESHOLD_WORDS), key=len, reverse=True)) + r")\b", re.IGNORECASE)
-_CONDITION_STARTED = re.compile(r"\bstart(?:s|ed|ing)?\b|\bin the starting lineup\b", re.IGNORECASE)
-# "off" alone too: the phrase stops at "the" (a stop word), so "with tatum
-# off the bench" reaches here as "tatum off".
-_CONDITION_BENCH = re.compile(r"\bbench\b|\boff\b|\bas a reserve\b", re.IGNORECASE)
-# The router's absence words (one list, so the `without` it reads and the role
-# read here agree), and "hurt", which the router cannot end a name at - it is
-# Matt Hurt's - and a role reader, which never cuts a name, can take.
-_CONDITION_ABSENT = re.compile(rf"\b(?:{_ABSENCE_WORDS}|hurt)(?![A-Za-z])", re.IGNORECASE)
-
-
-class Companion(NamedTuple):
-    """A player named beside the subject with the role the question gives
-    him in the games asked about: ``predicate`` is one of
-    :data:`~association.query.player_games.CONDITION_PREDICATES` (``played``,
-    ``absent``, ``started``, ``bench``, ``reached``), and a ``reached`` role
-    carries its ``stat`` and ``threshold`` ("when Maxey scores 20+ points").
-    ``side`` is whose games he was in: the subject's own (a teammate), or
-    the ``opponent``'s - a player after "vs"/"against" ("most points by
-    curry vs lebron": Curry's games with LeBron on the other side, ROADMAP
-    step 3). The reading's side of the relation's
-    :class:`~association.query.player_games.Condition`;
-    :func:`apply_subject` writes it as the ``conditions`` slot.
-
-    .. versionadded:: 5.0.0
-
-    .. versionchanged:: 5.0.0
-       ``side`` (ROADMAP step 3).
-    """
-
-    name: str
-    predicate: str
-    stat: str | None = None
-    threshold: int | None = None
-    side: str = "own"
+# The companions' words - the phrases a companion is named in ("without X",
+# "with X", "when X", "in games X started", the words after "vs"), what ends
+# a name, the absence, start and bench words, a compare verb's "with" that
+# names no companion - are the lexicon's since Phase 3, step 2 (COMPANION,
+# COMPANION_IN_GAMES, COMPARED_WITH, VERSUS_PHRASE, NAME_STOPWORDS,
+# ABSENCE_WORDS, CONDITION_STARTED, CONDITION_BENCH, CONDITION_ABSENT, the
+# line's THRESHOLD), each with its reason beside it; the companion itself is
+# the reading's typed value (reading.Companion, with a reached one's Line).
 
 
 #: The singular of a team's nickname names the team: "a hawk player", "a
@@ -666,51 +640,86 @@ def _spellings(con: duckdb.DuckDBPyConnection, question: str, routed: list[str])
 def _conditions(question: str, players: tuple[str, ...], scope: Scope) -> tuple[Companion, ...]:
     """The players whose ROLE the question states beside the subject -
     "without X", "with X on the floor", "when X scored 20+" - each with that
-    role (:class:`Companion`), read from the question's own words, never
-    from the router's ``without`` slot (which filed Embiid under it on
-    "Embiid's record against Boston"). The router's ``without``/``with_player``
-    slots are consulted only for a companion the question misspells
-    ("without wembyanama"), where the phrase is a near spelling of the
-    router's name. One phrase, one role: "when Embiid and Paul George
-    start" is two ``started`` companions.
+    role (:class:`~association.query.reading.Companion`), read from the
+    question's own words, never from the router's ``without`` slot (which
+    filed Embiid under it on "Embiid's record against Boston"). The
+    companions a replayed route carries are consulted only for one the
+    question misspells ("without wembyanama"), where the phrase is a near
+    spelling of the carried name. One phrase, one role: "when Embiid and
+    Paul George start" is two ``started`` companions.
 
     .. versionchanged:: 5.0.0
        Returns :class:`Companion` tuples with the predicate, not names; a
        player after a versus word is an opponent-side ``played`` companion
        where the words ask for the subject's games (:func:`_versus_companions`).
+
+    .. versionchanged:: 6.0.0
+       The typed :class:`~association.query.reading.Companion`, a reached
+       one carrying its :class:`~association.query.reading.Line`;
+       :func:`_conditions_read` returns the claims beside them.
+    """
+    return _conditions_read(question, players, scope)[0]
+
+
+def _conditions_read(question: str, players: tuple[str, ...], scope: Scope) -> tuple[tuple[Companion, ...], tuple[Claim, ...]]:
+    """:func:`_conditions`, with the characters each companion was read
+    from: the keyword, the names and the role's words ("without Tatum and
+    Brown", "when maxey scores 20+ points", "vs lebron") - what the subject
+    reading claims (contract 2), and inside which the lines tagger reads no
+    line.
+
+    .. versionadded:: 6.0.0
     """
     found: list[Companion] = []
+    claims: list[Claim] = []
     for match in _companion_phrases(question):
         word, text = match.group(1).lower(), match.group(2)
-        predicate, stat, threshold = _condition_role(word, text)
+        predicate, line, role_end = _condition_role(word, text)
         names = _companion_names(text, players, scope, predicate)
-        found.extend(Companion(name, predicate, stat, threshold) for name in names if not any(_same_person(name, [c.name]) for c in found))
-    found.extend(_versus_companions(question, players, scope, found))
-    return tuple(found)
+        new = [Companion(player=name, predicate=predicate, line=line) for name in names if not any(_same_person(name, [c.player]) for c in found)]
+        if new:
+            found.extend(new)
+            claims.append(Claim(match.start(), match.start(2) + _read_to(text, [c.player for c in new], role_end), "companion"))
+    versus, versus_claims = _versus_companions(question, players, scope, found)
+    found.extend(versus)
+    claims.extend(versus_claims)
+    return tuple(found), tuple(claims)
+
+
+def _read_to(text: str, names: list[str], role_end: int | None) -> int:
+    """How far into a companion phrase's words the reading reached: past the
+    last of the names it read (as the text spells each) and the role's
+    words, or the whole text where a name is not spelled in it (a carried
+    name the phrase misspells)."""
+    low = text.casefold()
+    ends = [role_end or 0]
+    for name in names:
+        at = low.find(name.casefold())
+        if at < 0:
+            return len(text.rstrip())
+        ends.append(at + len(name))
+    return max(ends)
 
 
 def _companion_phrases(question: str) -> list[re.Match[str]]:
-    """The companion phrases of ``question`` (:data:`_COMPANION`), minus a
-    "with" that a compare verb owns - "compare luka with sga" names two
-    subjects and no companion (:data:`_COMPARED_WITH`) - and the "in games
-    X started" ones (:data:`_COMPANION_IN_GAMES`) no keyword phrase already
-    covers, in the order the question gives them."""
-    compared = [m.span() for m in _COMPARED_WITH.finditer(question)]
-    phrases = [m for m in _COMPANION.finditer(question) if not any(a <= m.start() < b for a, b in compared)]
-    in_games = [m for m in _COMPANION_IN_GAMES.finditer(question) if not any(p.start() < m.end() and m.start() < p.end() for p in phrases)]
+    """The companion phrases of ``question`` (:data:`~association.query.lexicon.COMPANION`),
+    minus a "with" that a compare verb owns - "compare luka with sga" names
+    two subjects and no companion (:data:`~association.query.lexicon.COMPARED_WITH`)
+    - and the "in games X started" ones (:data:`~association.query.lexicon.COMPANION_IN_GAMES`)
+    no keyword phrase already covers, in the order the question gives them."""
+    compared = [m.span() for m in lexicon.COMPARED_WITH.finditer(question)]
+    phrases = [m for m in lexicon.COMPANION.finditer(question) if not any(a <= m.start() < b for a, b in compared)]
+    in_games = [m for m in lexicon.COMPANION_IN_GAMES.finditer(question) if not any(p.start() < m.end() and m.start() < p.end() for p in phrases)]
     return sorted([*phrases, *in_games], key=lambda m: m.start())
 
 
-_NAME_PIECES = re.compile(r"[^\s,&+]+|[,&+]")
-_NAME_SHAPED = re.compile(r"[A-Za-z][A-Za-z.'\-]*")
-_NAME_JOINERS = frozenset({"and", "or", "nor", "&", "+", ","})
 _MAX_NAME_WORDS = 3
 
 
 def _name_segments(text: str) -> list[str]:
     """The names a companion phrase holds BY POSITION, as typed and in
     order: the words after the keyword up to one that cannot be part of a
-    name (:data:`~association.query.router._NAME_STOPWORDS`, a number),
+    name (:data:`~association.query.lexicon.NAME_STOPWORDS`, a number),
     split at each joiner ("and", "or", a comma). "Tatum, Brown and Holiday
     this season" is three; "a turnover" is none ("a" is no name's word);
     "and without Tatum" is none, a joiner with nothing before it.
@@ -722,15 +731,15 @@ def _name_segments(text: str) -> list[str]:
     players share, which no lookup settles and the template asks about."""
     names: list[str] = []
     words: list[str] = []
-    for piece in _NAME_PIECES.findall(text):
+    for piece in lexicon.NAME_PIECES.findall(text):
         lowered = piece.casefold()
-        if lowered in _NAME_JOINERS:
+        if lowered in lexicon.NAME_JOINERS:
             if not words:
                 break
             names.append(" ".join(words))
             words = []
             continue
-        if not _NAME_SHAPED.fullmatch(piece) or lowered in _NAME_STOPWORDS or len(words) >= _MAX_NAME_WORDS:
+        if not lexicon.NAME_SHAPED.fullmatch(piece) or lowered in lexicon.NAME_STOPWORDS or len(words) >= _MAX_NAME_WORDS:
             break
         words.append(piece)
     if words:
@@ -750,7 +759,7 @@ def _companion_names(text: str, players: tuple[str, ...], scope: Scope, predicat
     be one the reading found (:func:`_unrouted_companions`), since the words
     after "with" and "when" are often no name at all ("with less than 15
     fga")."""
-    routed = [r for r in list(scope.without or []) + list(scope.with_player or []) + [c.player for c in scope.conditions] if isinstance(r, str)]
+    routed = [c.player for c in scope.companions]
     known = [p for p in players if question_supports(p, text)]
     by_position = [_companion_names_segment(segment, known, routed, predicate) for segment in _name_segments(text)]
     names = list(dict.fromkeys(name for name in by_position if name is not None))
@@ -771,16 +780,14 @@ def _companion_names_segment(segment: str, known: list[str], routed: list[str], 
     return segment if predicate == "absent" else None
 
 
-# A player after a versus word is on the OTHER side of the subject's games -
-# a condition (ROADMAP step 3: "most points by curry vs lebron", "how many
-# times did lebron score 30 vs kawhi"), never a second subject - wherever the
-# words ask for the subject's GAMES rather than the pair's summary: a high,
-# a count, a record, a log, a streak, a history, splits (the child grammars'
-# words and the log words). A bare "curry vs lebron" or "curry stats vs
-# lebron" stays the pair, whose matchup summary reads both lines.
-_VERSUS_PHRASE = re.compile(rf"\b(vs\.?|versus|against|v\.?)\s+((?:(?!\b(?:{_COMPANION_STOP})\b)[\w'.,+-]+\s*){{1,9}})", re.IGNORECASE)
-# Not "record": a pair's summary carries the head-to-head record, so "lebron
-# vs kawhi record" stays the matchup.
+# A player after a versus word (lexicon.VERSUS_PHRASE) is on the OTHER side
+# of the subject's games - a condition (ROADMAP step 3: "most points by
+# curry vs lebron", "how many times did lebron score 30 vs kawhi"), never a
+# second subject - wherever the words ask for the subject's GAMES rather
+# than the pair's summary: a high, a count, a record, a log, a streak, a
+# history, splits (the child grammars' words and the log words). A bare
+# "curry vs lebron" or "curry stats vs lebron" stays the pair, whose matchup
+# summary reads both lines.
 _GAMES_NOT_SUMMARY = re.compile(r"\b(?:game ?logs?|gamelogs?|logs?|each game|by game|game by game|box scores?|most|highest|fewest|lowest|best|worst)\b", re.IGNORECASE)
 
 
@@ -791,28 +798,33 @@ def _asks_for_games(question: str) -> bool:
     return _GAMES_NOT_SUMMARY.search(question) is not None or any(words.search(question) for _, words, _, _ in _CHILD_GRAMMARS)
 
 
-def _versus_companions(question: str, players: tuple[str, ...], scope: Scope, found: list[Companion]) -> list[Companion]:
+def _versus_companions(question: str, players: tuple[str, ...], scope: Scope, found: list[Companion]) -> tuple[list[Companion], list[Claim]]:
     """The players after a versus word, as opponent-side ``played``
     companions - only where a player is named BEFORE the phrase (the
     subject; "celtics vs lebron" names no subject beside him) and the words
     ask for his games (:func:`_asks_for_games`). Any number: "giannis
     points vs lebron and curry" is the games both played against him. A
-    team after "vs" names nobody here (it is the opponent slot's)."""
+    team after "vs" names nobody here (it is the opponent slot's). Returns
+    the companions and the characters each was read from (the versus word
+    and the names)."""
     # A pair's summary reads two lines; three names or more are a subject
-    # and conditions whatever the words ask - and so is a scope the route
-    # already carries them in (the reading's second pass, parse.read_route
-    # having written the first's).
-    carried = any(c.side == "opponent" for c in scope.conditions)
-    subjects = [p for p in players if not any(_same_person(p, [c.name]) for c in found)]
+    # and conditions whatever the words ask - and so is a scope a replayed
+    # route already carries them in.
+    carried = any(c.side == "opponent" for c in scope.companions)
+    subjects = [p for p in players if not any(_same_person(p, [c.player]) for c in found)]
     if not _asks_for_games(question) and len(subjects) <= 2 and not carried:
-        return []
+        return [], []
     versus: list[Companion] = []
-    for match in _VERSUS_PHRASE.finditer(question):
+    claims: list[Claim] = []
+    for match in lexicon.VERSUS_PHRASE.finditer(question):
         if not _named_before(question, players, match.start()):
             continue
-        names = [n for n in _companion_names(match.group(2), players, scope) if not any(_same_person(n, [c.name]) for c in [*found, *versus])]
-        versus.extend(Companion(name, "played", side="opponent") for name in names if not _named_before(question, (name,), match.start()))
-    return versus
+        names = [n for n in _companion_names(match.group(2), players, scope) if not any(_same_person(n, [c.player]) for c in [*found, *versus])]
+        new = [Companion(player=name, predicate="played", side="opponent") for name in names if not _named_before(question, (name,), match.start())]
+        if new:
+            versus.extend(new)
+            claims.append(Claim(match.start(), match.start(2) + _read_to(match.group(2), [c.player for c in new], None), "companion"))
+    return versus, claims
 
 
 def _unrouted_companions(con: duckdb.DuckDBPyConnection, question: str, players: tuple[str, ...], scope: Scope) -> tuple[str, ...]:
@@ -841,7 +853,7 @@ def _unrouted_companions(con: duckdb.DuckDBPyConnection, question: str, players:
        skipped a dictionary word: the stages' own reader of these phrases is
        gone (``ROADMAP.md``, Phase 1), and this is the only one.
     """
-    routed = [r for r in list(scope.without or []) + list(scope.with_player or []) + [c.player for c in scope.conditions] if isinstance(r, str)]
+    routed = [c.player for c in scope.companions]
     found: list[str] = []
     for match in _companion_phrases(question):
         absent = _condition_role(match.group(1).lower(), match.group(2))[0] == "absent"
@@ -871,7 +883,7 @@ def _unrouted_name(con: duckdb.DuckDBPyConnection, words: list[str], absent: boo
         if size > len(words):
             continue
         span = [word.casefold().strip("'.,-").removesuffix("'s") for word in words[:size]]
-        if any(len(word) < 3 or word in _THRESHOLD_WORDS or word in TEAM_SINGULARS or team_named_in(teams_of(con), word) for word in span):
+        if any(len(word) < 3 or word in lexicon.THRESHOLD_WORDS or word in TEAM_SINGULARS or team_named_in(teams_of(con), word) for word in span):
             continue
         ordinary = any(word in dictionary for word in span)
         if ordinary and size < len(words) and not absent:
@@ -898,83 +910,83 @@ def _unrouted_near_spelling(con: duckdb.DuckDBPyConnection, span: list[str]) -> 
     return _team_named(teams_of(con), text) is None and len(_suggest_players_by_spelling(con, span)) == 1
 
 
-def beside(conditions: tuple[Companion, ...]) -> Beside:
-    """Who the reading found beside the subject, for the stages
-    (:class:`~association.query.router.Beside`): a teammate who played with
-    him, and anyone who sat the games out. A start, the bench and a line
-    reached are roles :func:`apply_subject` writes as conditions; a player
-    on the other side is the relation's condition, never a teammate.
-
-    .. versionadded:: 5.0.0
-    """
-    return Beside(
-        played=tuple(c.name for c in conditions if c.predicate == "played" and c.side == "own"),
-        absent=tuple(c.name for c in conditions if c.predicate == "absent"),
-    )
-
-
 def with_without_named(scope: Scope) -> tuple[list[str], bool, dict[str, tuple[str, tuple[str, int] | None]]]:
-    """The teammates a with/without split divides by, read off the scope
-    the reading wrote (:func:`beside`'s names land in ``without`` and
-    ``with_player``, a role in ``conditions``): ``without``'s, else
-    ``with_player``'s, else the ones a ``conditions`` entry gives a role -
-    whether it asked "without", and each name's role (``started``,
+    """The teammates a with/without split divides by, read off the scope's
+    typed companions (:class:`~association.query.reading.Companion`): the
+    ones absent, else the ones who played, else the ones a role is stated
+    for - whether it asked "without", and each name's role (``started``,
     ``bench``, or ``reached`` with its column and threshold). Read by the
     split's default point (:func:`association.query.point.default_point`)
     and by the relation's read of the split.
 
     .. versionadded:: 5.0.0
        On the reader's side (``templates.splits._with_without_named`` was this).
+
+    .. versionchanged:: 6.0.0
+       Reads the typed companions; the ``without``, ``with_player`` and
+       ``conditions`` slots are gone.
     """
     # Lists, as the slots always were: teammate_names reads a list or one
     # bare name, and a tuple would be neither - every teammate dropped.
-    mate_texts = teammate_names(list(scope.without))
+    mate_texts = teammate_names([c.player for c in scope.companions if c.absent])
     asked_without = bool(mate_texts)
     if not asked_without:
-        mate_texts = teammate_names(list(scope.with_player))
-    roles = _with_without_roles(scope.conditions)
+        mate_texts = teammate_names([c.player for c in scope.companions if c.side == "own" and c.predicate == "played"])
+    roles = _with_without_roles(scope.companions)
     if not mate_texts and roles:
         mate_texts = list(roles)
     return mate_texts, asked_without, roles
 
 
-def _with_without_roles(conditions: tuple[ConditionSpec, ...]) -> dict[str, tuple[str, tuple[str, int] | None]]:
-    """The role each ``conditions`` entry (a
-    :class:`~association.query.reading.ConditionSpec`) gives its player -
-    ``started``, ``bench``, ``reached`` (with its column and threshold) - by
-    the name as written, for the split's read to pair with the resolved
-    teammates. A ``played``/``absent`` entry adds nothing the
-    ``with_player`` and ``without`` lists do not already say. A line's
-    column is its stat's own name (:data:`~association.query.measures.THRESHOLD_STAT_NAMES`;
-    the box score's column is named the same).
+def _with_without_roles(companions: tuple[Companion, ...]) -> dict[str, tuple[str, tuple[str, int] | None]]:
+    """The role each companion gives its player - ``started``, ``bench``,
+    ``reached`` (with its column and threshold) - by the name as written,
+    for the split's read to pair with the resolved teammates. A
+    ``played``/``absent`` companion adds nothing the names do not already
+    say. A line's column is its stat's own name
+    (:data:`~association.query.measures.THRESHOLD_STAT_NAMES`; the box
+    score's column is named the same).
     """
     roles: dict[str, tuple[str, tuple[str, int] | None]] = {}
-    for entry in conditions:
-        if entry.predicate in ("started", "bench"):
-            roles[entry.player] = (entry.predicate, None)
-        elif entry.predicate == "reached" and entry.stat is not None and entry.threshold is not None and entry.threshold >= 1 and entry.stat in THRESHOLD_STAT_NAMES:
-            roles[entry.player] = ("reached", (entry.stat, entry.threshold))
+    for each in companions:
+        if each.predicate in ("started", "bench"):
+            roles[each.player] = (each.predicate, None)
+        elif (
+            each.predicate == "reached"
+            and each.line is not None
+            and each.line.measure is not None
+            and isinstance(each.line.value, int)
+            and each.line.value >= 1
+            and each.line.measure in THRESHOLD_STAT_NAMES
+        ):
+            roles[each.player] = ("reached", (each.line.measure, each.line.value))
     return roles
 
 
-def _condition_role(word: str, text: str) -> tuple[str, str | None, int | None]:
+def _condition_role(word: str, text: str) -> tuple[Predicate, Line | None, int | None]:
     """The predicate a companion phrase states, from its keyword and its
-    words: a threshold pair wins ("scores 20+ points" is ``reached`` whatever
-    the keyword, and so is "scores 30", a line on points), then a start, the
-    bench, an absence ("without", "out", "injured"), else ``played``
-    ("with", "when ... play")."""
-    pair = _CONDITION_THRESHOLD.search(text)
-    if pair is not None and int(pair.group(1)) >= 1 and not (int(pair.group(1)) == 3 and pair.group(2).lower().startswith(("point", "pt"))):
-        return "reached", _THRESHOLD_WORDS[pair.group(2).lower()], int(pair.group(1))
-    scored = _threshold_from_text_scored(text)
+    words - a line reached wins ("scores 20+ points" is ``reached`` whatever
+    the keyword, and so is "scores 30", a line on points), then a start,
+    the bench, an absence ("without", "out", "injured"), else ``played``
+    ("with", "when ... play") - with the reached one's
+    :class:`~association.query.reading.Line` and how far into the text the
+    role's words reach (None where the keyword alone said it)."""
+    pairs = lexicon.threshold_pairs(text)
+    if pairs:
+        pair = pairs[0]
+        return "reached", Line(measure=lexicon.THRESHOLD_WORDS[pair.group(2).lower()], value=int(pair.group(1)), as_typed=pair.group(0).casefold()), pair.end()
+    scored = lexicon.scored_threshold(text)
     if scored is not None:
-        return "reached", "points", scored
-    if _CONDITION_STARTED.search(text):
-        return "started", None, None
-    if _CONDITION_BENCH.search(text):
-        return "bench", None, None
-    if word in ("without", "excluding") or _CONDITION_ABSENT.search(text):
-        return "absent", None, None
+        return "reached", Line(measure="points", value=int(scored.group(1)), as_typed=scored.group(0).casefold()), scored.end()
+    started = lexicon.CONDITION_STARTED.search(text)
+    if started is not None:
+        return "started", None, started.end()
+    bench = lexicon.CONDITION_BENCH.search(text)
+    if bench is not None:
+        return "bench", None, bench.end()
+    absent = lexicon.CONDITION_ABSENT.search(text)
+    if word in ("without", "excluding") or absent is not None:
+        return "absent", None, absent.end() if absent is not None else None
     return "played", None, None
 
 
@@ -1032,11 +1044,11 @@ def read_subject(con: duckdb.DuckDBPyConnection, question: str, intent: str, sco
     spellings = _spellings(con, question, routed)
     players = _merge_names([spellings.get(r, r) for r in routed], named)
     unrouted = _unrouted_companions(con, question, players, scope)
-    conditions = _conditions(question, (*players, *unrouted), scope)
-    companions = tuple(dict.fromkeys(c.name for c in conditions))
+    conditions, claims = _conditions_read(question, (*players, *unrouted), scope)
+    companions = tuple(dict.fromkeys(c.player for c in conditions))
     players = tuple(p for p in players if p not in companions)
     if _read_subject_alone(players, teams_here, conditions, scope):
-        players, conditions, companions = companions, (), ()
+        players, conditions, companions, claims = companions, (), (), ()
     # "for the Heat" is a player's OWN team only beside a player subject
     # named BEFORE it - the order a tenure is asked in ("lebron ... for
     # Miami"); with none, or with the player following as a condition
@@ -1047,7 +1059,7 @@ def read_subject(con: duckdb.DuckDBPyConnection, question: str, intent: str, sco
     evidence = _evidence(named, routed, spellings, invented, team_word, opponent)
     if unrouted:
         evidence = (*evidence, f"companions the router named nobody for {list(unrouted)}")
-    subject = replace(_decide(players, teams, position, opponent, own_team, companions, evidence, intent, question), conditions=conditions)
+    subject = replace(_decide(players, teams, position, opponent, own_team, companions, evidence, intent, question), conditions=conditions, claims=claims)
     # Read, not decided: the intent the subject's shape settles is the
     # parser's step (:func:`child_named`, with the stages run once under
     # it), and :func:`settle_subject` writes it here. Until 5.0.0's last
@@ -1240,13 +1252,18 @@ def apply_subject(subject: Subject, scope: Scope, *, intent: str) -> Applied:
     """
     scope, players, dropped = _apply_players(subject, scope, intent)
     if dropped:
+        # A name the question never held is refused by it; the companions
+        # the words DO hold are still written, as the parser wrote the
+        # other side's before Phase 3, step 2 ("jay huff game log vs
+        # Embiid", the model's Jokic beside it).
+        scope, _ = _apply_companions(subject, scope, intent)
         return Applied(scope, [], dropped, intent)
     decisions = list(players)
     scope, restored = _apply_restored_player(subject, scope, intent)
     decisions.extend(restored)
     scope, own = _apply_own_team(subject, scope, intent)
     decisions.extend(own)
-    scope, conditions = _apply_conditions(subject, scope, intent)
+    scope, conditions = _apply_companions(subject, scope, intent)
     decisions.extend(conditions)
     scope, rewritten, settled = _apply_intent(subject, scope, intent)
     decisions.extend(rewritten)
@@ -1268,9 +1285,10 @@ def _apply_team_record_when(subject: Subject, scope: Scope, intent: str) -> tupl
         # opponent ("sixers" beside its invented Joel Embiid), and the
         # question sets the team against nobody.
         cuts=Cuts(venue=scope.cuts.venue, opponent=scope.cuts.opponent if subject.opponent is not None else None),
-        player=condition.name,
-        stat=condition.stat,
-        threshold=condition.threshold,
+        player=condition.player,
+        stat=condition.line.measure if condition.line is not None else None,
+        # The companion's line is the record's own now: the shape is keyed on it.
+        lines=(replace(condition.line, keyed=True),) if condition.line is not None else (),
         team=subject.teams[0] if subject.teams else None,
     )
     if intent != "record_when":
@@ -1279,7 +1297,7 @@ def _apply_team_record_when(subject: Subject, scope: Scope, intent: str) -> tupl
     # decision only where the companion is not the player the route held -
     # the player read BEFORE the scope was rewritten, since after it is his
     # by construction.
-    return rewritten, ([Decision("subject", "player", player, condition.name, _TEAM_RECORD_WHEN)] if player != condition.name else []), "record_when"
+    return rewritten, ([Decision("subject", "player", player, condition.player, _TEAM_RECORD_WHEN)] if player != condition.player else []), "record_when"
 
 
 def _apply_intent(subject: Subject, scope: Scope, intent: str) -> tuple[Scope, list[Decision], str]:
@@ -1376,7 +1394,7 @@ def _spare_names(subject: Subject, kept: list[str], intent: str) -> list[str]:
     question with a companion's line, under an invented player)."""
     spare = [p for p in subject.players if not _same_person(p, kept)]
     if "record_when" in (intent, subject.intent):
-        spare += [c.name for c in subject.conditions if c.predicate == "reached" and not _same_person(c.name, [*kept, *spare])]
+        spare += [c.player for c in subject.conditions if c.predicate == "reached" and not _same_person(c.player, [*kept, *spare])]
     return spare
 
 
@@ -1408,46 +1426,61 @@ def _apply_players(subject: Subject, scope: Scope, intent: str = "") -> tuple[Sc
     return replace(scope, player=new[0]), decisions, []
 
 
-def _apply_conditions(subject: Subject, scope: Scope, intent: str) -> tuple[Scope, list[Decision]]:
-    """Write the companions' roles the router's own slots cannot carry - a
-    start, the bench, a line reached ("when Embiid starts", "in games Maxey
-    had 20+ points") - as the ``conditions`` the relation reads
-    (:class:`~association.query.reading.ConditionSpec`), whatever the
-    intent - the relation templates read them as a filter, ``with_without``
-    as the split's own side ("record when Embiid and Paul George start":
-    started against not), and an answer that cannot honor them refuses by
-    name (the planner). Until 5.0.0's last change they
-    were written only where the answering template honored them, a reader
-    that asked what would answer before it wrote (``ROADMAP.md``, Phase 1):
-    "how many times did the 76ers beat boston when embiid started"
-    answered every meeting, the start gone without a word, and "plot
-    jokic's fingerprint in games murray started" drew the season. A played companion ("when
-    Draymond plays", "with Draymond playing") is a condition too, on the
-    relation templates: ``with_player`` is read by ``with_without`` alone,
-    so on a game log or a shot chart it narrowed nothing and nothing
-    refused it. ``with_without`` keeps reading its ``with_player`` (the
-    router's stage reads it from the same words), and an absence stays the
-    router's ``without`` ("with Draymond out" included) - ROADMAP plan item
-    3, steps B and C. The compiler narrows its relation by every
-    condition, so "how many 30 point games did maxey have when embiid
-    started" counts his games with Embiid starting (34) - with nothing
-    written it counted all of them (86), the start gone without a word."""
-    own = [name for name in [scope.player, *scope.players] if isinstance(name, str)]
-    held = [c.player for c in scope.conditions]
-    roles = ("started", "bench", "reached") if intent == "with_without" else ("started", "bench", "reached", "played")
-    written = [
-        {"player": c.name, "side": c.side, "predicate": c.predicate, **({"stat": c.stat, "threshold": c.threshold} if c.predicate == "reached" else {})}
-        for c in subject.conditions
-        if c.predicate in roles and not _same_person(c.name, own) and not _same_person(c.name, held) and (c.side == "own" or intent != "with_without")
-    ]
+def _apply_companions(subject: Subject, scope: Scope, intent: str) -> tuple[Scope, list[Decision]]:
+    """Write every companion the reading found - an absence, a start, the
+    bench, a line reached, a teammate who played, a player on the other
+    side ("without KD", "when Embiid starts", "in games Maxey had 20+
+    points", "with Draymond playing", "vs lebron") - onto the scope as the
+    typed :class:`~association.query.reading.Companion`, whatever the
+    intent: the relation readers read each as a filter on the games, the
+    with/without split as the names it divides by (an absence, else the
+    teammates who played) and the roles it holds each to ("record when
+    Embiid and Paul George start": started against not), and an answer that
+    cannot honor one refuses by name (the planner). Until 5.0.0's last
+    change the roles were written only where the answering template honored
+    them, a reader that asked what would answer before it wrote
+    (``ROADMAP.md``, Phase 1): "how many times did the 76ers beat boston
+    when embiid started" answered every meeting, the start gone without a
+    word. Until Phase 3, step 2 the stages wrote the absences and the split's
+    names into two slots of their own, and the parser the other side's
+    players: one writer now. A companion who is the subject himself (his
+    name restored from the companion's phrase, "In his 18th season, how
+    many games with 40+ points did Lebron James have?") is no companion.
+    The compiler narrows its relation by every one, so "how many 30 point
+    games did maxey have when embiid started" counts his games with Embiid
+    starting (34) - with nothing written it counted all of them (86)."""
+    written = _apply_companions_to_write(subject, scope)
     if not written:
         return scope, []
-    # The decision records the roles in the slot shape the trace has always
-    # printed; the scope holds them typed - beside any the route already
-    # carries (an opponent-side player, parse.read_route's own writing).
-    return replace(scope, conditions=(*scope.conditions, *(ConditionSpec.from_slot(w) for w in written))), [
-        Decision("subject", "conditions", None, written, "the role the question gives each player named beside the subject")
-    ]
+    # The scope holds every companion typed, the other side first, as the
+    # parser wrote them before the stages.
+    ordered = [*(c for c in written if c.side == "opponent"), *(c for c in written if c.side == "own")]
+    return replace(scope, companions=(*scope.companions, *ordered)), _apply_companions_decision(ordered, intent)
+
+
+def _apply_companions_to_write(subject: Subject, scope: Scope) -> list[Companion]:
+    """The companions the reading found that ``scope`` does not already
+    hold: an absence keeps every name, the subject's own included, as the
+    ``without`` slot did ("without zzyzx" is refused by name); any other
+    role is written once per person and never for the subject himself."""
+    own = [name for name in [scope.player, *scope.players] if isinstance(name, str)]
+    held = [c.player for c in scope.companions]
+    written: list[Companion] = []
+    for each in subject.conditions:
+        already = [c.player for c in written]
+        new = not _same_person(each.player, already) if each.absent else not _same_person(each.player, own) and not _same_person(each.player, [*held, *already])
+        if new:
+            written.append(each)
+    return written
+
+
+def _apply_companions_decision(ordered: list[Companion], intent: str) -> list[Decision]:
+    """The decision that records the own-side roles in the slot shape the
+    trace has always printed (the other side's players the parser wrote
+    without one until Phase 3, step 2, and a teammate the with/without
+    split divides by was never a condition)."""
+    recorded = [c.to_slot() for c in ordered if c.side == "own" and not c.absent and (c.predicate != "played" or intent != "with_without")]
+    return [Decision("subject", "conditions", None, recorded, "the role the question gives each player named beside the subject")] if recorded else []
 
 
 def _routed_player_slots(scope: Scope) -> list[str]:

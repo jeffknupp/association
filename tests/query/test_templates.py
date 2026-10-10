@@ -4656,7 +4656,7 @@ def test_player_matchup_honors_without_on_a_real_two_player_matchup(pg_ctx: Answ
     The template is retired: its presenter's words state the relation's set
     (STATED_SCOPING), and its point refuses a window outright."""
     assert unhonored_scoping("player_matchup", Scope.from_slots({"players": ["Brandin Podziemski", "Stephen Curry"], "without": ["Jaylen Brown"]}), stated("player_matchup")) == []
-    assert "without" in stated("player_matchup") and "venue" in stated("player_matchup")
+    assert "companion" in stated("player_matchup") and "venue" in stated("player_matchup")
     assert "order" not in stated("player_matchup")
     # The behavior itself is pinned on the league fixture in
     # tests/query/test_conditions.py (a teammate's absence, a venue).

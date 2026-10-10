@@ -87,9 +87,10 @@ this tree:
   14 declarations were still there; restored 2026-10-05, it labels each
   one: 4 are the per-relation cell tables the roadmap keeps
   (`RELATION_SCOPING*` on `query/player_relation.py`,
-  `TEAM_RELATION_SCOPING*` on `query/team_relation.py`), 2 are the
-  planner's `STATED_SCOPING` and its `with_without` row
-  (`WITH_WITHOUT_STATED`), which Phase 3's cells replace, and 4 are debt,
+  `TEAM_RELATION_SCOPING*` on `query/team_relation.py`), 1 is the
+  planner's `STATED_SCOPING` (its `with_without` row, named apart as
+  `WITH_WITHOUT_STATED` until step 2's companions, is a row of the table),
+  which Phase 3's cells replace, and 4 are debt,
   each naming the step that owes its deletion (`compose.plan`'s
   `_TEAM_READER_REFUSES`, `reading.SCOPING_SLOTS`,
   `conditions._CONDITION_PLAYER_ONLY_CELLS`, `router._MODEL_SLOTS`; the
@@ -97,10 +98,12 @@ this tree:
   floor follows the planned point's relation - and the fifth,
   `compose.core.COMPILER_SLOTS`, with step 2's window: `ranked_by` is the
   typed window's `by`, a cell the player relation declares; step 2 took
-  the span's, the window's, the cuts' and the period's names out of
-  `SCOPING_SLOTS`, `_MODEL_SLOTS` and every `STATED_SCOPING` row, and the
-  relation tables carry the span's three cells, the window's, the cuts'
-  and the period's one by name). A P1 wrong answer is
+  the span's, the window's, the cuts', the period's, the lines' and the
+  companions' names out of `SCOPING_SLOTS`, `_MODEL_SLOTS` and every
+  `STATED_SCOPING` row - `SCOPING_SLOTS` is `split` and `rate` now - and
+  the relation tables carry the span's three cells, the window's, the
+  cuts', the period's one, the lines' two and the companions' one by
+  name). A P1 wrong answer is
   still fixed, in the code that exists. The sections below describe the
   readers and the sayer, because they are what runs; they are not an
   invitation to add a shape.
@@ -464,7 +467,8 @@ gets turned off.
     `router.py`, the words every tagger reads by in `lexicon.py` - the span,
     window, cuts and period families' since Phase 3, step 2, the calendar's
     own patterns among them, the rest as each family's slice lands - and the
-    four taggers, `span.py`, `window.py`, `cuts.py` and `period.py`;
+    five taggers, `span.py`, `window.py`, `cuts.py`, `period.py` and
+    `line.py`;
     `calendar.py` is the situation's parsers and clauses over the lexicon's
     words),
     entities, the relations (`player_games.py` and its
@@ -561,7 +565,25 @@ is set), without, split, below/above, the period's one typed cell
 `Period(number, half)` on `Scope.period`, the slots `period` and `half`
 until then - which changes what a read SEES of each game rather than
 which games: the relation rebuilds the period's line of every game from
-the shots and plays, `narrow_periods`), the window's typed cell
+the shots and plays, `narrow_periods`), the line family's typed cells
+(Phase 3, step 2: `reading.Line.CELLS` - `line`, a line on a stat the
+relation keeps the games under or over, a phrase kept under or over a
+number or two or more "N+ stat" pairs on one game, the slots `below` and
+`above` until then, applied by `narrow_measures` through
+`lines.measure_filters`; `period_line`, a line in a quarter or half, the
+slot `period_condition` until then, applied by `_apply_period_condition`;
+the shape's OWN line, `Line.keyed` - a count's "30+ points", a record's
+"scores 30", a run's, a high's - is the `threshold` slot's successor, read
+into the point's predicate by `lines.threshold_line` and sets no cell, as
+that slot never did - and `reading.Companion.CELLS` - `companion`, a
+player beside the subject with his role, `played`, `absent`, `started`,
+`bench` or `reached` with his `Line`, on the subject's `own` side or the
+`opponent`'s, the slots `without`, `with_player` and `conditions` until
+then, one cell because no table ever honored or refused one without the
+others, applied by `_narrow_player_games`/`condition_player`, and the
+with/without split's names; a decline still says the slot names
+(`reading.companion_slot_names`, `line_slot_names`, `slot_names_set`)
+until the decline-to-Cause commit rewords it), the window's typed cell
 (`reading.Window.CELLS`, Phase 3, step 2: `window`, an end of the span
 with its count - the slots `order` and `limit` until then - cut after
 every other filter by `relation_window`; a bare count is no cell, each
@@ -856,8 +878,9 @@ model's. Two things follow, and both matter when you add a shape:
   the check to rerun after a table change, beside the yardstick.
 - **A filter family is read by ONE tagger, from the lexicon, and claims
   the characters it read** (Phase 3, step 2; the span is the first, the
-  window the second, the games' cuts the third, the period the fourth, and
-  the pattern the other families copy).
+  window the second, the games' cuts the third, the period the fourth, the
+  line and the companions the fifth, and the pattern the other families
+  copy).
   `query/lexicon.py` holds every pattern the family is read by, named,
   with its reason beside it, and nothing that reads the warehouse or the
   answer side (contract 6: regexes only in the lexicon; it is the lowest
@@ -936,7 +959,60 @@ model's. Two things follow, and both matter when you add a shape:
   `tenure` and `season_n` in `TEAM_RELATION_SCOPING`), a reader whose
   words state fewer takes `relation_cuts(intent)` with its exclusions,
   and `reading.cell_set(scope, cell)` is the one reading of a cell name
-  against a Scope for the tables that list cells by name. `query/window.py` is the window's tagger:
+  against a Scope for the tables that list cells by name. `query/line.py` is the lines' tagger:
+  `read_lines(question, LineContext)` reads the lines on a stat a question
+  keeps the subject's games past - "30+ points", "20+ point 5+ assist
+  games", "scores 30", "fouled out" (fouls at six), "under 14 fta", "at
+  most 5 turnovers", "with 25 minutes" - over the settled intent alone,
+  writes `reading.Line` values on `Scope.lines` (the measure as the game
+  column's key, `op`, `value`, `as_typed`, `keyed` for the shape's own
+  line, `narrows` for one the relation filters by, and `period` for a line
+  in a quarter) and claims each line's characters once; a reader whose
+  shape is a line (`line.THRESHOLD_INTENTS`: the count, the record, the
+  streak, the high) reads a bare "N stat" as its own, every other reader
+  only what the words say outright - a floor of minutes, a line under a
+  number, two or more "N+ stat" pairs - as the stages read them (a single
+  "20+ points" on a log is read by nothing, ISSUES.md). `threshold_named`
+  is what the intent stages ask before the lines are read (a count with no
+  line is a ranking). `read_period_line(question)` is the parser's reader
+  of a line in a quarter or half ("after making one three in the first
+  quarter"), run before the stages, which BLANK its words to spaces - not
+  cut - so the period is not read as the one measured and every later
+  claim keeps its offset; `period.which_period` reads its period. The lines
+  are read from the WHOLE question, a companion's phrase included:
+  measured, leaving a companion's line to the companion moved one recorded
+  reading ("In his 18th season, how many games with 40+ points did Lebron
+  James have?": the phrase reads as a companion's, the subject is LeBron
+  himself, restored after the stages, and a count with no line became a
+  ranking), and the two claims fold into one. Measured first
+  (`~/association-research/stages/line_family.py`, the FIVE carriers of a
+  line - the `stat`/`threshold` pair, `above`/`below`, the point's
+  predicates, a companion's `reached` entry, `period_condition` - and the
+  three companion slots as each stage set them on all 2,710 readings): a
+  threshold on 120, a floor or a line under a number on 39, two or more
+  pairs on 11 - where the slot pair contradicted the words every time
+  ("20+ point 5+ assist" read `stat: assists, threshold: 20`, the relation
+  narrowing by the words and the pair unread; the typed `Line` is built
+  from the words, never from the pair) - a line in a quarter on 2, a
+  companion's line on 23 (every one a team's record, the line becoming the
+  record's own, `subject._apply_team_record_when`), and the point's own
+  re-read of the number's words (`point._everyone_threshold_predicates`,
+  `_numbered_stat_lines`, deleted) differed from the words on 1 ("most
+  games with 20 pt,s 10 reb, 5 ast": the pattern could not pass the comma
+  and fell back to the model's "rebounds" - the one answer this slice
+  moved). The seven slots are gone from `Scope`; `Scope.from_slots` still
+  takes them (it builds the `Line`s and `Companion`s: `threshold` with the
+  model's stat as a keyed line, `above`/`below` through
+  `lines.phrase_line`, `period_condition` through `Line.from_period_slot`,
+  the three companion slots through `Companion.from_slot`), `to_slots` and
+  `projected()` give the old shape back in the old field order
+  (`_ATTACHED_SLOT_POSITIONS`) - `with_player` only where the point is the
+  with/without split (`split_by_presence`, which `Reading.projected()`
+  reads off the intent or the point's `presence` group and `Query`/`TeamQuery.projected()`
+  off the group; a teammate who played projects as a `conditions` entry on
+  any other point, as the slot era wrote him) - and the typed values are
+  recorded beside the reading (`stages._reading_record`, `lines`,
+  `companions`). `query/window.py` is the window's tagger:
   `read_window(question, WindowContext)` reads which rows a question keeps
   and from which end - the grammar's count and end ("last 10 games", "his
   first game", "top 5"), a history's "past 5 years" as its count of
@@ -1020,16 +1096,37 @@ model's. Two things follow, and both matter when you add a shape:
   share a `display_name` (21 names), which DuckDB's sort left unspecified;
   the index uses table order.
 - **Who stands beside the subject has one reader: the subject reading.**
-  "without X", "with X out", "when X and Y play", "in games X missed" are
-  read by `subject._conditions`, each name with its role, and the stages
-  are HANDED those names (`router.Beside`, built by `subject.beside`): they
-  write `without` and `with_player` from it and decide a with/without split
-  from it, and read no name themselves. Until 5.0.0 the stages had readers
-  of their own for the same phrases; the two disagreed on seven of the 628
-  recorded questions, and "When Embiid plays with Paul George, what is the
-  PHI record?" answered for Embiid alone (#310). Do not give a stage a
-  name regex again. Three rules of that reading, each measured against the
-  old one on wordings outside the corpus before the stage readers went:
+  "without X", "with X out", "when X and Y play", "in games X missed",
+  "when X scores 20+ points", "vs X" are read by `subject._conditions_read`
+  (and `_versus_companions`), each name with its role as a typed
+  `reading.Companion` - `player` as the question spells him, `side` (`own`
+  or `opponent`), `predicate` (`played`, `absent`, `started`, `bench`,
+  `reached`) and a reached role's `Line` - with a `Claim` on the phrase
+  (`Subject.claims`, which the Route carries onto `Reading.claims`), and
+  ONE writer puts them on the Scope: `subject.apply_subject`
+  (`_apply_companions`: every companion, the other side's first, the
+  subject himself excluded unless absent; `Scope.companions` since Phase 3,
+  step 2, where the slots `without`, `with_player` and `conditions` stood
+  - and on the path that refuses an invented name too, so "jay huff game
+  log vs Embiid" keeps Embiid beside the refusal). The stages are HANDED
+  the typed companions (`router.settle(intent, slots, question,
+  companions)`) and read no name themselves: they decide a with/without
+  split from them (`subject.with_without_named`) and cut the opponent
+  against the absent ones (`router._absent`), and a model-era `without`,
+  `with_player` or `conditions` key a route still carries is dropped at
+  the stages' door with the span's. Until Phase 3, step 2 the stages took
+  a `router.Beside` built by `subject.beside` and wrote the two slots from
+  it; until 5.0.0 they had readers of their own for the same phrases; the
+  two disagreed on seven of the 628 recorded questions, and "When Embiid
+  plays with Paul George, what is the PHI record?" answered for Embiid
+  alone (#310). Do not give a stage a name regex again. The phrases the
+  reading reads by are the lexicon's (`ABSENCE_WORDS`, `ABSENT_NAMED`,
+  `COMPANION`, `COMPARED_WITH`, `COMPANION_STOP`, `COMPANION_IN_GAMES`,
+  `VERSUS_PHRASE`, `CONDITION_STARTED`, `CONDITION_BENCH`,
+  `CONDITION_ABSENT`, `WHEN_REACHES`, `NAME_PIECES`, `NAME_SHAPED`,
+  `NAME_JOINERS`, `NAME_STOPWORDS`). Three rules of that reading, each
+  measured against the old one on wordings outside the corpus before the
+  stage readers went:
   - **A name is read by its position in the phrase** (`_name_segments`:
     the words after the keyword, split at "and", "or" and commas, ended by
     a word no name holds), so it does not depend on the model having copied

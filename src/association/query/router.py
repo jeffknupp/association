@@ -25,17 +25,19 @@ from __future__ import annotations
 
 import re
 from collections.abc import Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 from typing import TYPE_CHECKING, Any
 
 from . import lexicon
 from .cuts import CutsContext, CutsRead, read_cuts
 from .decisions import Decision
 from .lexicon import BY_QUARTER, GAMES_WORDS, HALF_WORDS, ORDER_WORDS, PAST_N_SEASONS, PERIOD_AS_CONDITION, PERIOD_GAMES_WORDS, PERIOD_LEADERS, PERIOD_TOP, QUARTER_WORDS, RANK_WORDS, WHO_RANKS
-from .measures import MEASURE_WORDS, STAT_ALIASES
+from .line import LineContext, LinesRead, read_lines, threshold_named
+from .measures import STAT_ALIASES
 from .period import PeriodContext, read_period, which_period
-from .reading import Claim, Period, Scope, Window
-from .span import SpanContext, claimed, range_named, read_span
+from .reading import Claim, Companion, Line, Period, Scope, Window
+from .span import SpanContext, range_named, read_span
+from .span import claimed as claimed_once
 from .window import WindowContext, read_window
 
 if TYPE_CHECKING:
@@ -47,12 +49,9 @@ if TYPE_CHECKING:
 # no template computes, so a near-miss template absorbs them confidently.
 # Shot distance was the first entry and left by earning a template - a subject
 # belongs here only until one covers it.
-# "Fouling out" is six personal fouls - an NBA rule, not something a 3B knows.
-# It got the shape right (threshold_count) but emitted stat "fouls committed"
-# and threshold 1; the template refused, and the question then hung in the agent
-# until aborted at 95s. Normalized here so the rule lives in one place.
-_FOULED_OUT = re.compile(r"\bfoul(?:ed|s|ing)?\s+out\b")
-FOUL_OUT_THRESHOLD = 6
+# "Fouling out" (lexicon.FOULED_OUT) is six personal fouls - an NBA rule, not
+# something a 3B knows: the stage below names the count and its stat by it,
+# and the lines tagger reads the line (fouls at six).
 
 # The family's words - a quarter or half named at all, a ranking of
 # players by one, a period as a condition, "by quarter" - are the
@@ -61,12 +60,9 @@ FOUL_OUT_THRESHOLD = 6
 # each with its reason beside it), and WHICH period the words name is the
 # period tagger's one reading (``period.which_period``).
 
-# "td3" is a triple-double, and the model reads its "3" as a shot value:
-# "luka td3s home" came back as `other` with stat threePointFieldGoalsMade
-# and shot_value 3 (yardstick-v2 F098), and before that as his points per
-# game at home. The compiler's own measure words already read "td3s"
-# (query/point.py), so only the slots have to say it.
-_TRIPLE_DOUBLE_ABBREVIATION = re.compile(r"\btd3s?\b", re.IGNORECASE)
+# "td3" is a triple-double, and the model reads its "3" as a shot value
+# (lexicon.TRIPLE_DOUBLE_ABBREVIATION): the compiler's own measure words
+# already read "td3s" (query/point.py), so only the slots have to say it.
 _DRAW_WORDS = re.compile(r"\b(?:plot|chart|draw|render|visuali[sz]e|graph|show me a)\b", re.IGNORECASE)
 
 
@@ -192,28 +188,18 @@ class Route:
         .. versionchanged:: 5.0.0
            A projection of :attr:`scope`, no longer the field itself.
         """
-        return self.scope.to_slots()
+        return self.scope.to_slots(split_by_presence=self.intent == "with_without")
 
+    def projected(self) -> dict[str, Any]:
+        """Every field as a Route was recorded until Phase 3, step 2
+        (:func:`~association.query.stages.plain`): the scope's companions
+        under the with/without split's slot where the route is the split's.
 
-@dataclass(frozen=True)
-class Beside:
-    """The players the question names BESIDE its subject, as the one
-    reading of the subject found them
-    (:func:`association.query.subject.beside`): ``played`` with him ("with
-    Embiid", "when Embiid and Paul George play") and ``absent`` ("without
-    Embiid", "with Embiid out"). The stages write these names into
-    ``with_player`` and ``without`` and decide a with/without split from
-    them; they read no name themselves. Until 5.0.0 they had readers of
-    their own for the same phrases, which disagreed with the subject's on
-    seven of the 628 recorded questions - "When Embiid plays with Paul
-    George, what is the PHI record?" answered with and without Embiid alone
-    (ISSUES.md #310).
-
-    .. versionadded:: 5.0.0
-    """
-
-    played: tuple[str, ...] = ()
-    absent: tuple[str, ...] = ()
+        .. versionadded:: 6.0.0
+        """
+        out = {f.name: getattr(self, f.name) for f in fields(self)}
+        out["scope"] = self.scope.projected(split_by_presence=self.intent == "with_without")
+        return out
 
 
 # The side of the ball a fingerprint asked for, recognized from the text. The
@@ -505,51 +491,6 @@ def _subject_named_in(question: str) -> str | None:
     return None
 
 
-# The words that end a teammate's name in "without X this season" and the like.
-# The question words are here for the same reason the prepositions are: each
-# can follow a name, and none of them is one - without them "without Tatum and
-# how many wins" reads "how many wins" as a second teammate and refuses a
-# question that used to answer. The absence words end one too: "with draymond
-# green out" read "draymond green out" as the name, and the answer asked
-# whether Bo or Travis Outlaw was meant ("hurt" is not one: it is Matt Hurt's
-# name).
-_NAME_STOPWORDS = frozenset(
-    "this last in on since during for vs vs. versus against at when while game games season seasons record stats stat playing played plays from over the a an any his her their "
-    "how what who whose why many much did does do is are was were has have had than to of by not no "
-    "out injured sidelined resting rested rests sitting sits sat missing misses missed absent inactive dnp "
-    "doesn't didn't don't isn't wasn't aren't weren't doesnt didnt dont isnt wasnt arent werent".split()  # codespell:ignore doesnt,didnt,isnt,wasnt,arent,werent - typed without the apostrophe
-)
-
-# What a phrase naming a player says about one who sat the games out: "with
-# Embiid out", "when Tatum is injured", "when Embiid doesn't play", "in games
-# Brown missed". One list, a regex fragment with no groups of its own, read
-# here for the names it follows (`_ABSENT_NAMED`) and by the subject reading
-# for the role (`subject._CONDITION_ABSENT`), so the two cannot disagree about
-# who sat.
-_ABSENCE_WORDS = (
-    r"(?:out|injured|sidelined|inactive|absent|missing|dnp|rest(?:s|ed|ing)|sits?(?:\s+out)?|sitting(?:\s+out)?|sat(?:\s+out)?|miss(?:es|ed)"
-    r"|(?:does|do|did)\s*n[o']?t\s+play|(?:is|are|was|were)\s*n[o']?t\s+playing|not\s+playing)"
-)
-
-# "with Embiid out", "when Tatum and Brown are injured", "in games Brown
-# missed": a player named before an absence word sat those games out - the
-# same teammates "without" names, written the other way round. The stages
-# read only that the question HAS this phrase (it is what makes a record a
-# with/without split); WHO it names is the subject reading's
-# (:class:`Beside`), since 5.0.0 the only reader of a companion's name. "stephen curry
-# game log with draymond green out" answered his whole log, and "... stats with
-# draymond green out" asked whether Bo or Travis Outlaw was meant ("with" read
-# "draymond green out" as a name that PLAYED). The names are runs of words that
-# are no stop word, so the absence word must follow them directly - "with
-# Embiid playing and Maxey out" names nobody absent rather than Embiid - and a
-# pronoun names nobody ("when he is out" is the subject's own absence).
-_NAME_WORD = r"(?!(?:" + "|".join(sorted((re.escape(w) for w in _NAME_STOPWORDS), key=len, reverse=True)) + r"|he|she|they|him|them|it|we|you)(?![A-Za-z.'\-]))[A-Za-z][A-Za-z.'\-]*"
-_ABSENT_NAMED = re.compile(
-    rf"\b(?:with|when|while|in\s+(?:the\s+)?games?(?:\s+(?:that|where|in\s+which))?)\s+(?:both\s+)?({_NAME_WORD}(?:[\s,&+]+{_NAME_WORD}){{0,8}})\s+(?:(?:is|are|was|were)\s+)?{_ABSENCE_WORDS}(?![A-Za-z])",
-    re.IGNORECASE,
-)
-
-
 # Which split a player_splits question asks for. Exactly one or nothing.
 SPLIT_WORDS: dict[str, re.Pattern[str]] = {
     "home_away": re.compile(r"\bhome\b.{0,15}\b(?:away|road)\b|\b(?:away|road)\b.{0,15}\bhome\b", re.IGNORECASE),
@@ -593,29 +534,6 @@ def _split_side(split: str, question: str) -> str:
     return split
 
 
-# A comparison BELOW a number. No slot says "under", so without this "games
-# with under 14 FTA" reached threshold_count as 14 and was answered as 14 or
-# MORE - the inverse question. The words after the number are kept: they name
-# the stat, and the model's own `stat` beside them is the nearest one it knows
-# ("fta" arrived as freeThrowsMade), so the phrase is the only honest carrier.
-# `lines.measure_filters` reads it and refuses a word it cannot map.
-# The words kept after the number stop at a connective or the next comparison,
-# so "under 14 fta in his whole career" carries "under 14 fta" and "less than
-# 15 fga and with less than 35 minutes" is two phrases, not one.
-_BELOW = re.compile(
-    r"\b(?:under|fewer\s+than|less\s+than|below|at\s+most|no\s+more\s+than)\s+\d+%?(?:\s+(?!(?:and|or|with|in|for|vs|against|on|at|under|fewer|less|below|no|over|more)\b)[a-z][a-z-]*){0,3}"
-    r"|\b\d+\+?\s*(?:minutes|mins?)\s+or\s+less\b",
-    re.IGNORECASE,
-)
-
-# A comparison AT OR ABOVE a number, on minutes: "with 25 minutes", "20+
-# mins", "30 minutes or more". Read out of `_SITUATION` (where "paul reed
-# gamelog with 25 minutes" refused) into a slot the relation can filter on.
-# Deliberately only minutes: "30+ points" is the model's own `threshold`, and
-# the templates that read one (threshold_count, record_when) already carry it.
-# Not the "35 minutes" inside "less than 35 minutes", which is `_BELOW`'s.
-_ABOVE = re.compile(r"\b(?:with\s+(?:at\s+least\s+)?)?(?<!than\s)(?<!under\s)(?<!below\s)\d+\+?\s*(?:minutes|mins?)\b(?!\s+or\s+less)(?:\s+(?:or\s+more|played))?", re.IGNORECASE)
-
 # Words that name a TEAM stat, beyond the box-score words _STAT_WORDS knows.
 _TEAM_STAT_WORDS = re.compile(r"\b(?:pace|ratings?|offen\w*|defen\w*|net|possessions?|record|wins?|losses)\b", re.IGNORECASE)  # codespell:ignore offen - a regex stem
 
@@ -637,10 +555,6 @@ _PLAYER_RANKING_INTENTS = frozenset({"leaderboard", "single_game_high", "thresho
 #: each of which would answer the player's own line instead of the team's
 #: record under the condition.
 _WHEN_REACHES_REROUTABLE = frozenset({"player_stat", "threshold_count", "game_log", "team_stat", "team_record", "other"})
-_WHEN_REACHES = re.compile(
-    r"\bwhen\s+(?:[a-z][\w'.-]*\s+){1,3}?(?:scores?|scored|has|had|gets?|got|puts?\s+up|drops?|dropped|grabs?|grabbed|dishes|dished|records?|recorded|makes?|made|hits?)\b",
-    re.IGNORECASE,
-)
 
 # A fingerprint is one named artifact, and a question that never names it is not
 # asking for one. Measured: "Plot Curry's threes from last season" came back as
@@ -652,70 +566,6 @@ _FINGERPRINT_NAMED = re.compile(r"\bfinger\s?prints?\b|\bradar\b", re.IGNORECASE
 _FINGERPRINT_REROUTABLE = frozenset({"player_compare", "player_stat", "player_netpoints", "other", "game_log"})
 _FINGERPRINT_WORDS = re.compile(r"\bfinger\s?prints?\b|\bradar\b|\bnet\s?points?\b|\bplay[- ]types?\b", re.IGNORECASE)
 _SHOT_WORDS = re.compile(r"\bshots?\b|\bthrees\b|\b3s\b|\b(?:3|three)[- ]?pointers?\b|\bjumpers?\b|\blayups?\b|\bdunks?\b|\bchart\b", re.IGNORECASE)
-
-# A per-game threshold, stated in the question ("scores 30 points", "36 plus
-# points", "40 point games"). "3 point" is a shot type, not a threshold of three.
-_THRESHOLD_INTENTS = frozenset({"threshold_count", "record_when", "streak", "single_game_high"})
-
-# Every condition a question states as "N+ <stat>", in order. ROUTER_SCHEMA
-# carries ONE `threshold`, so a second condition survived only as a `fields`
-# entry the template ignores: "who had the most 30+ point 10+ rebound games
-# this year?" answered "Luka Doncic ... 30+ points, with 44" where the pair is
-# Jokic with 20, and "How many 20+ point 5+ assist games did luka have?"
-# answered 441 against 397 (#139). Read as lines on box-score columns, which
-# the relation already filters on, rather than as a second threshold slot.
-#
-# The "+" (or "plus" / "or more") is required, unlike `_THRESHOLD`: without it
-# "top 10 rebound leaders" reads as a condition and a leaderboard question
-# that answers today would start refusing.
-# Which SPELLINGS this grammar accepts beside a threshold, with the regex's own
-# alternation built from them (longest first, so "rebounds" is not matched as
-# "reb" with a stray "ounds" left over). What each one MEANS is not decided
-# here: it is read from `MEASURE_WORDS`, the one definition of what a question
-# calls a box-score column, which `lines.py` reads too.
-#
-# `router.py` imports nothing from the answer side on purpose - the stage
-# before it must not be made to depend on it - which is why this used to
-# be a second hand-kept copy that nothing checked for agreement (ISSUES.md
-# #164). `association.query.measures` is a leaf module with no imports of its
-# own, so reading it costs the router nothing and cannot cycle.
-#
-# A spelling dropped from MEASURE_WORDS raises KeyError at import rather than
-# silently narrowing what this grammar understands.
-_THRESHOLD_SPELLINGS = (
-    "points", "point", "pts", "pt",
-    "rebounds", "rebound", "rebs", "reb", "boards",
-    "assists", "assist", "asts", "ast",
-    "steals", "steal", "stl",
-    "blocks", "block", "blk",
-    "turnovers", "turnover",
-    "threes", "3s",
-)  # fmt: skip
-_THRESHOLD_WORDS: dict[str, str] = {word: MEASURE_WORDS[word] for word in _THRESHOLD_SPELLINGS}
-_THRESHOLD_PAIR = re.compile(
-    r"\b(\d{1,3})[\s-]*(?:\+|plus|or\s+more)[\s-]*(" + "|".join(sorted((re.escape(w) for w in _THRESHOLD_WORDS), key=len, reverse=True)) + r")\b",
-    re.IGNORECASE,
-)
-# The same spellings with the "+" optional - a threshold the model left out,
-# read only under the intents that carry one (_THRESHOLD_INTENTS), where a
-# bare "30 pt games" is a threshold and not a ranking. Built from the one
-# list, so "30 pt games" reads the 30 the way "30+ pt games" does: this used
-# to be a second hand-kept alternation without "pt", "reb" or "ast".
-_THRESHOLD = re.compile(
-    r"\b(\d{1,3})[\s-]*(?:\+|plus|or\s+more)?[\s-]*(" + "|".join(sorted((re.escape(w) for w in _THRESHOLD_WORDS), key=len, reverse=True)) + r")\b",
-    re.IGNORECASE,
-)
-# A number after a scoring verb is a line on points, stat word or not: "celtics
-# record when jayson tatum scores 30" read no threshold, and was refused as a
-# question about a team named Jayson Tatum. Not where a stat word follows the
-# number ("scored 30 points" is _THRESHOLD's; "scored 3 threes" is not points),
-# nor a rate ("scores 30 a game" is an average, not a line), a percentage, a
-# decimal or a year.
-_SCORED = re.compile(
-    r"\bscor(?:e|es|ed|ing)\s+(\d{1,3})(?![\d.,%])(?:\s*\+|[\s-]*plus\b|\s+or\s+more\b)?"
-    r"(?![\s-]*(?:%|percent\b|a\s+game\b|a\s+night\b|per\s+game\b|on\s+average\b|ppg\b|" + "|".join(sorted((re.escape(w) + r"\b" for w in MEASURE_WORDS), key=len, reverse=True)) + r"))",
-    re.IGNORECASE,
-)
 
 # Rate stats the prompt never lists as a player `stat`, so the model reaches for
 # the nearest one it knows. Measured: "kevin durant true shooting percentage
@@ -1151,30 +1001,6 @@ def _team_metric_in(question: str) -> str | None:
 _GIVEN_UP = re.compile(r"\s+(?:allowed|given\s+up|conceded)\b")
 
 
-def _threshold_from_text(question: str) -> int | None:
-    """The first per-game threshold the question states, or None: a number
-    with its stat word ("30+ points", "15 reb"), else a number after a
-    scoring verb (:func:`_threshold_from_text_scored`)."""
-    for match in _THRESHOLD.finditer(question):
-        number = int(match.group(1))
-        if number == 3 and match.group(2).casefold().startswith(("point", "pt")):
-            continue  # "3 point" / "3 pt" names the shot, not a threshold
-        if number >= 1:
-            return number
-    return _threshold_from_text_scored(question)
-
-
-def _threshold_from_text_scored(question: str) -> int | None:
-    """The line a scoring verb states with no stat word after it ("scores
-    30", "scored 40+"), which is points (:data:`_SCORED`) - or None, and
-    None too where the question also states a line WITH its stat word, which
-    is the one :func:`_threshold_from_text` reads."""
-    if any(int(m.group(1)) >= 1 and not (int(m.group(1)) == 3 and m.group(2).casefold().startswith(("point", "pt"))) for m in _THRESHOLD.finditer(question)):
-        return None
-    match = _SCORED.search(question)
-    return int(match.group(1)) if match is not None and int(match.group(1)) >= 1 else None
-
-
 # The words a question uses when it is actually asking about one stat, as
 # opposed to asking who is better. Loose on purpose, and safe because of where
 # it is used: see :func:`_named_a_stat`.
@@ -1290,10 +1116,11 @@ def _route_period_split_slots(raw: dict[str, Any], question: str, subject: str |
 def _route_period_intents(raw: dict[str, Any], question: str) -> None:
     """Fouling out, and a quarter or half: intents code assigns from the question's own words."""
     low = question.lower()
-    if _FOULED_OUT.search(low):
+    if lexicon.FOULED_OUT.search(low):
+        # The count of a player's foul-outs: the line itself (fouls at six)
+        # is the lines tagger's (``line.read_lines``).
         raw["intent"] = "threshold_count"
         raw["stat"] = "fouls"
-        raw["threshold"] = FOUL_OUT_THRESHOLD
     ranks_players = PERIOD_LEADERS.search(low) is not None or (PERIOD_TOP.search(low) is not None and not _team_slot_or_word(raw, low))
     if (QUARTER_WORDS.search(low) and (ranks_players or not _is_team_quarter_points(raw) or _names_a_period_subject(question))) or HALF_WORDS.search(low):
         # A named player's quarter or half now HAS a template, so the override
@@ -1404,7 +1231,7 @@ def _route_triple_double_abbreviation(raw: dict[str, Any], question: str) -> Non
     yardstick-v2): "luka td3s home" is the one question holding the word;
     the model filed it as ``other``, so only that intent is moved - a
     leaderboard or a count the model chose keeps its own intent."""
-    if not _TRIPLE_DOUBLE_ABBREVIATION.search(question):
+    if not lexicon.TRIPLE_DOUBLE_ABBREVIATION.search(question):
         return
     raw["stat"] = "triple_double"
     raw.pop("shot_value", None)
@@ -1439,7 +1266,7 @@ def _route_team_and_player_intents(raw: dict[str, Any], question: str) -> None:
         raw["intent"] = "team_leaderboard" if raw["intent"] == "leaderboard" else "other"
     if raw["intent"] == "threshold_count" and _RECORD.search(question):
         raw["intent"] = "record_when"
-    if raw["intent"] in _WHEN_REACHES_REROUTABLE and _WHEN_REACHES.search(question) and _threshold_from_text(question) is not None:
+    if raw["intent"] in _WHEN_REACHES_REROUTABLE and lexicon.WHEN_REACHES.search(question) and threshold_named(question) is not None:
         # "stats for sixers when maxey scored 20+ points" (yardstick-v2 F087):
         # a team's games divided by a NUMBER a player reached is record_when
         # whatever the model filed - it chose player_stat and answered Maxey's
@@ -1544,7 +1371,7 @@ def _route_matchup_against_team(raw: dict[str, Any], question: str, listed: list
 _PLAYED_TOGETHER_REROUTABLE = frozenset({"head_to_head", "team_record", "team_stat", "game_log", "other"})
 
 
-def _route_line_and_record_intents(raw: dict[str, Any], question: str, beside: Beside) -> bool:
+def _route_line_and_record_intents(raw: dict[str, Any], question: str, companions: tuple[Companion, ...]) -> bool:
     """A history that is really a line, a record ranking, and a career high.
     Returns whether a history was rerouted to a line."""
     rerouted_to_line = False
@@ -1555,14 +1382,14 @@ def _route_line_and_record_intents(raw: dict[str, Any], question: str, beside: B
         # "derozan career points vs knicks" refused on its opponent.
         raw["intent"] = "player_stat"
         rerouted_to_line = True
-    if raw["intent"] == "with_without" and not beside.absent and not beside.played and any(pattern.search(question) for pattern in ORDER_WORDS.values()):
+    if raw["intent"] == "with_without" and not _absent(companions) and not _played(companions) and any(pattern.search(question) for pattern in ORDER_WORDS.values()):
         # No teammate named, and "the last 7 games": a team's log, not a
         # split. "KNICKS point differential over the last 7 games" arrived
         # as with_without after the 5.0.0 prompt shrink (day5) and answered
         # the last seven REGULAR-season games where the last seven were the
         # Finals - game_log reads both types for "last N" (_route_game_log_recent_span).
         raw["intent"] = "game_log"
-    if raw["intent"] in _PLAYED_TOGETHER_REROUTABLE and _RECORD.search(question) and _threshold_from_text(question) is None and (beside.played or _absent_by_phrase(question, beside)):
+    if raw["intent"] in _PLAYED_TOGETHER_REROUTABLE and _RECORD.search(question) and threshold_named(question) is None and (_played(companions) or _absent_by_phrase(question, companions)):
         # "PHI record when Embiid and Paul George play" arrived as
         # head_to_head, the Pacers invented as the opponent, after the 5.0.0
         # prompt shrink; with no threshold it is the with/without split
@@ -1581,11 +1408,12 @@ def _route_line_and_record_intents(raw: dict[str, Any], question: str, beside: B
     return rerouted_to_line
 
 
-#: The model-era keys of the span, window, cuts and period families a raw
-#: route may still carry (a test's payload; a settled route run again):
-#: every one is read from the words by its tagger, so none passes the
-#: stages. The opponent is not among them: it is the subject reading's
-#: word, which the cuts tagger takes as settled.
+#: The model-era keys of the span, window, cuts, period, line and companion
+#: families a raw route may still carry (a test's payload; a settled route
+#: run again): every one is read from the words by its tagger or by the
+#: subject reading, so none passes the stages. The opponent is not among
+#: them: it is the subject reading's word, which the cuts tagger takes as
+#: settled.
 _MODEL_SPAN_KEYS: frozenset[str] = frozenset(
     {
         "season",
@@ -1608,6 +1436,13 @@ _MODEL_SPAN_KEYS: frozenset[str] = frozenset(
         "own_team",
         "period",
         "half",
+        "threshold",
+        "above",
+        "below",
+        "period_condition",
+        "with_player",
+        "without",
+        "conditions",
     }
 )
 
@@ -1632,41 +1467,43 @@ def _route_blank_slots(raw: dict[str, Any]) -> dict[str, Any]:
     return {k: v for k, v in raw.items() if k != "intent" and k not in _MODEL_SPAN_KEYS and not (isinstance(v, str) and not v.strip())}
 
 
-def _absent_by_phrase(question: str, beside: Beside) -> bool:
+def _played(companions: tuple[Companion, ...]) -> tuple[str, ...]:
+    """The teammates who PLAYED beside the subject, by name (an own-side
+    ``played`` companion) - what the stages decide a with/without split by."""
+    return tuple(c.player for c in companions if c.side == "own" and c.predicate == "played")
+
+
+def _absent(companions: tuple[Companion, ...]) -> tuple[str, ...]:
+    """The teammates who sat the games out, by name."""
+    return tuple(c.player for c in companions if c.absent)
+
+
+def _absent_by_phrase(question: str, companions: tuple[Companion, ...]) -> bool:
     """Whether a player named beside the subject sat out by an absence
     phrase - "with Embiid out", "when Embiid is injured" - rather than by a
     plain "without Embiid": the wording that makes a record a with/without
     split."""
-    return bool(beside.absent) and _ABSENT_NAMED.search(question) is not None
+    return bool(_absent(companions)) and lexicon.ABSENT_NAMED.search(question) is not None
 
 
-def _route_threshold(raw: dict[str, Any], slots: dict[str, Any], question: str, beside: Beside) -> None:
-    """A threshold the model left out, and a count of games that has none."""
-    if raw["intent"] in _THRESHOLD_INTENTS and not isinstance(slots.get("threshold"), int):
-        # Measured: "Sixers record when Embiid scores 30 points" came back with
-        # the intent right and no threshold at all.
-        threshold = _threshold_from_text(question)
-        if threshold is not None:
-            slots["threshold"] = threshold
-            if _threshold_from_text_scored(question) == threshold:
-                # "scores 30": the verb names the stat, whatever the model filed.
-                slots["stat"] = "points"
-    if raw["intent"] == "record_when" and not isinstance(slots.get("threshold"), int):
-        # A record "when X and Y played" is a with_without question - the
-        # games they were all in, beside the ones they were not - and not a
-        # record_when one, which divides a season by a NUMBER a player
-        # reached. With no threshold there is no number to divide by, and
-        # record_when refused all four phrasings the web session asked (#156).
-        # A question that does name a threshold keeps its intent, so "Sixers
-        # record when Embiid scores 30 points" is untouched. "When Embiid is
-        # out" is the same split from the other side: `without`, which
-        # `_route_filter_slots` reads.
-        together = list(beside.played)
-        if together or _absent_by_phrase(question, beside):
-            raw["intent"] = "with_without"
-        if together:
-            slots["with_player"] = together
-    if raw["intent"] == "threshold_count" and slots.get("stat") in ("games", "game") and not slots.get("threshold"):
+def _route_count_intents(raw: dict[str, Any], slots: dict[str, Any], question: str, companions: tuple[Companion, ...]) -> None:
+    """A count or a record whose words carry no line: what each becomes.
+    Until Phase 3, step 2 this stage also wrote the ``threshold`` slot off
+    the words (and ``stat`` for "scores 30"); the lines tagger reads every
+    line now (:func:`~association.query.line.read_lines`), and the stage
+    asks only whether the words name one (:func:`~association.query.line.threshold_named`)."""
+    named = threshold_named(question)
+    # A record "when X and Y played" is a with_without question - the games
+    # they were all in, beside the ones they were not - and not a record_when
+    # one, which divides a season by a NUMBER a player reached. With no
+    # threshold there is no number to divide by, and record_when refused all
+    # four phrasings the web session asked (#156). A question that does name
+    # a threshold keeps its intent, so "Sixers record when Embiid scores 30
+    # points" is untouched. "When Embiid is out" is the same split from the
+    # other side: an absent companion, which the subject reading writes.
+    if raw["intent"] == "record_when" and named is None and (_played(companions) or _absent_by_phrase(question, companions)):
+        raw["intent"] = "with_without"
+    if raw["intent"] == "threshold_count" and slots.get("stat") in ("games", "game") and named is None:
         # "bam adebayo career games in the month of march" (yardstick-v2 F096)
         # arrived as a count of games over the line 0 on the stat "games" -
         # no line at all, and no template or compiler reads it, so it fell
@@ -1675,55 +1512,19 @@ def _route_threshold(raw: dict[str, Any], slots: dict[str, Any], question: str, 
         # over the replayed corpus: this question is the only one routed so.
         raw["intent"] = "game_log"
         slots.pop("stat", None)
-        slots.pop("threshold", None)
         # The count's subject, restored as a count's would be
         # (_route_subject_slots) - game_log is not one of the intents that
         # step restores for, and the model dropped Bam here.
         subject = None if slots.get("player") or slots.get("players") else _subject_named_in(question)
         if subject is not None:
             slots["player"] = subject
-    if raw["intent"] == "threshold_count" and not isinstance(slots.get("threshold"), int) and not _BELOW.search(question):
+    if raw["intent"] == "threshold_count" and named is None and not lexicon.BELOW.search(question):
         # A count of games needs a threshold. Without one, "who has the most
         # threes" is a season ranking - measured, it arrived here with none and
         # fell through. A ceiling IS the count's line ("Sga games with under
         # 14 fta": compose.counts reads the phrase as the count), so
         # a count stated as one keeps its intent with no threshold at all.
         raw["intent"] = "leaderboard"
-
-
-def _route_filter_slots(slots: dict[str, Any], question: str, beside: Beside) -> list[str]:
-    """Teammates missing and a ceiling. Returns the absent teammates. (The
-    venue and the situation were this stage's until Phase 3, step 2; the
-    cuts tagger reads them, :func:`~association.query.cuts.read_cuts`.)"""
-    # The scoping slots below are read from the question and never asked of the
-    # model: none is in ROUTER_SCHEMA, so adding them changed no grammar and can
-    # have moved no other question's routing. A reader that cannot honor one
-    # refuses it (the planner) rather than answering a broader question.
-    # "with Embiid out" is "without Embiid" written the other way round, for
-    # every intent the way "without" is: a reader that cannot narrow by it
-    # refuses (the planner), never answers the games he played too.
-    without = list(beside.absent)
-    if without:
-        slots["without"] = without
-    # Every one, not the first: "less than 15 fga and with less than 35
-    # minutes" is two filters, and honoring one of them answers a wider
-    # question than was asked. A phrase the relation cannot read refuses there.
-    below = [m.group(0).casefold() for m in _BELOW.finditer(question)]
-    if below:
-        slots["below"] = below
-    above = [m.group(0).casefold() for m in _ABOVE.finditer(question)]
-    # Only where the question states more than one: a single "30+ points" is
-    # the model's own `threshold` and every template that reads one already
-    # carries it, so nothing changes for the questions that work today. With
-    # two, BOTH become lines - threshold_count reads a line carrying its own
-    # threshold's number as that threshold, misread, and filters on all of
-    # them (see compose.counts.read_threshold_count).
-    pairs = [m.group(0).casefold() for m in _THRESHOLD_PAIR.finditer(question)]
-    if len(pairs) > 1:
-        above += pairs
-    if above:
-        slots["above"] = above
-    return without
 
 
 def _route_split_slot(slots: dict[str, Any], question: str) -> None:
@@ -1749,16 +1550,12 @@ def _route_calendar_slots_split(question: str) -> str | None:
     return _split_side(splits[0], question) if len(splits) == 1 else None
 
 
-def _route_intent_slots(intent: str, slots: dict[str, Any], question: str, without: list[str], beside: Beside) -> None:
-    """Slots only one template reads."""
+def _route_intent_slots(intent: str, slots: dict[str, Any], question: str) -> None:
+    """Slots only one template reads. (The with/without split's teammates
+    were this stage's until Phase 3, step 2: the subject reading writes
+    every companion, and the split reads the ones who played.)"""
     # Intent-specific: each means nothing to any other template, so each is
     # only added where one reads it - the same rule `side` follows below.
-    if intent == "with_without":
-        # The same names the record_when reroute uses (#156) - the subject
-        # reading's, the one reader of who played beside him.
-        with_player = list(beside.played)
-        if with_player and not without:
-            slots["with_player"] = with_player
     if intent in ("team_leaderboard", "team_quarter_points"):
         # ISSUES.md #172: "nba team with least playoff wins since 2022" filed
         # the same word twice - correctly into the ranking's end (the window
@@ -1821,51 +1618,27 @@ def _route_team_slots(intent: str, slots: dict[str, Any], question: str) -> None
 _HOW_MANY = re.compile(r"\bhow\s+many\b", re.IGNORECASE)
 
 
-_GAMES_WON = re.compile(r"\bgames\b.{0,20}\b(won|lost|wins?|los[es]+)\b", re.IGNORECASE)
-
-
-def _route_record_when_threshold(intent: str, slots: dict[str, Any], question: str) -> None:
-    """Read a ``record_when`` question's threshold off its own words.
-
-    Measured live (web session, build ``178c21f-dirty``): "what was the sixers
-    record this season when tyrese maxey had 20+ points?" came back with
-    ``stat='wins'``. The word "record" is what the model had to file under
-    ``stat``, which is required and whose enum has no entry for a won-lost
-    record, so the nearest value it knows won - and the template refused with
-    "record_when needs a known stat and a positive threshold, got 'wins'/20"
-    about a question that states its stat plainly. `stat` is the shape
-    ISSUES.md #114 is about, arriving through the required slot again.
-
-    "20+ points" is one fact, so the pair is read as one: a question stating
-    exactly one of them sets both halves, and its own words beat the model's
-    guess. Two of them ("20+ points and 5+ assists") name a shape
-    ``record_when`` has no second threshold for, so they are left alone to
-    refuse rather than silently answering about whichever half won.
-
-    ``ROUTER_PROMPT`` and ``ROUTER_SCHEMA`` are untouched, so this can move no
-    other question's routing.
+def _route_games_won(intent: str, slots: dict[str, Any], question: str, read: LinesRead) -> None:
+    """A player's games won or lost - "how many playoff games has embiid
+    won?" - is his team's record in the games he played, with no line at
+    all: the compiler's read once the record's reader steps aside, and it
+    reads "wins"/"losses", not the model's own word for it ("playoff_wins",
+    day5). Where the words name a line the record is over it, and the
+    stat the lines tagger read beside it stands (``read.stat``: "scores 30"
+    is points; one "N+ stat" pair under a count or a record is that word's
+    column - until Phase 3, step 2 ``_route_record_when_threshold`` wrote
+    both off the words here: "what was the sixers record this season when
+    tyrese maxey had 20+ points?" came back with ``stat='wins'``, the word
+    "record" filed under the required slot, and the template refused with
+    "record_when needs a known stat and a positive threshold, got
+    'wins'/20" about a question that states its stat plainly).
     """
-    if intent not in ("record_when", "threshold_count"):
-        return
-    won = _GAMES_WON.search(question)
-    if intent == "record_when" and won is not None and not isinstance(slots.get("threshold"), int):
-        # A player's games won or lost - his team's record in the games he
-        # played, with no threshold at all: the compiler's read once the
-        # template steps aside, and it reads "wins"/"losses", not the
-        # model's own word for it ("playoff_wins", day5).
+    won = lexicon.GAMES_WON.search(question)
+    if intent == "record_when" and won is not None and not any(line.keyed for line in read.lines):
         slots["stat"] = "losses" if won.group(1).lower().startswith("los") else "wins"
-        slots.pop("threshold", None)
         return
-    pairs = list(_THRESHOLD_PAIR.finditer(question))
-    if len(pairs) != 1:
-        return
-    # threshold_count too, since 5.0.0: assigned from the words under a
-    # parent (subject.KIND_ASSIGNED_INTENTS), its stat is whatever the model
-    # filed for the PARENT - "Who had the most 30+ point games" arrived
-    # under leaderboard with threePointFieldGoalsMade - and the pair's own
-    # word is the one fact the question states.
-    slots["stat"] = _THRESHOLD_WORDS[pairs[0].group(2).casefold()]
-    slots["threshold"] = int(pairs[0].group(1))
+    if read.stat is not None:
+        slots["stat"] = read.stat
 
 
 # The intents whose missing subject is read back out of the question's grammar.
@@ -1926,10 +1699,10 @@ def _route_side(intent: str, slots: dict[str, Any], question: str) -> None:
 #: from the words are not among them: the four taggers read every one from
 #: the words again (Phase 3, step 2); the ``opponent`` is, since it is the
 #: subject reading's word, which the cuts tagger takes as settled.
-_MODEL_SLOTS: frozenset[str] = frozenset({"stat", "threshold", "player", "players", "team", "teams", "opponent", "rate", "side", "shot_value", "fields"})
+_MODEL_SLOTS: frozenset[str] = frozenset({"stat", "player", "players", "team", "teams", "opponent", "rate", "side", "shot_value", "fields"})
 
 
-def settle(intent: str, slots: Mapping[str, Any] | Scope, question: str, beside: Beside | None = None) -> Route:
+def settle(intent: str, slots: Mapping[str, Any] | Scope, question: str, companions: tuple[Companion, ...] = (), *, lines: tuple[Line, ...] = ()) -> Route:
     """The route the stages settle on for ``intent`` over ``slots``: the
     parser's raw route (:func:`association.query.parse.read_route` runs them
     under the parent its grammar names), or a settled route run again under
@@ -1955,9 +1728,13 @@ def settle(intent: str, slots: Mapping[str, Any] | Scope, question: str, beside:
     stages' own working dict never leaves this module, and the Route they
     return carries the Scope.
 
-    ``beside`` is who the subject reading found beside the subject
-    (:class:`Beside`): the stages write those names and read none. Left
-    out - the stages run alone - nobody is beside him.
+    ``companions`` is who the subject reading found beside the subject
+    (:class:`~association.query.reading.Companion`): the stages decide a
+    with/without split by them and write none - the subject reading writes
+    them onto the Scope (``subject.apply_subject``). ``lines`` are the lines
+    read before the stages ran (a line in a quarter, whose words the parser
+    blanks so the period is not read as the one measured), which join the
+    tagger's. Left out - the stages run alone - nobody is beside him.
 
     .. versionadded:: 5.0.0
 
@@ -1969,15 +1746,19 @@ def settle(intent: str, slots: Mapping[str, Any] | Scope, question: str, beside:
     .. versionchanged:: 5.0.0
        Takes ``beside``; the stages' own readers of the names after "with"
        and "without" are gone (``ROADMAP.md``, Phase 1).
+
+    .. versionchanged:: 6.0.0
+       Takes the typed ``companions`` (``router.Beside`` is gone) and the
+       ``lines`` read before the stages (Phase 3, step 2).
     """
     if isinstance(slots, Scope):
         slots = slots.to_slots()
     raw: dict[str, Any] = {key: value for key, value in slots.items() if key in _MODEL_SLOTS}
     raw["intent"] = intent
-    return _settle(raw, question, beside or Beside())
+    return _settle(raw, question, companions, lines=lines)
 
 
-def _settle(raw: dict[str, Any], question: str, beside: Beside = Beside()) -> Route:  # noqa: B008 - a frozen, empty value
+def _settle(raw: dict[str, Any], question: str, companions: tuple[Companion, ...] = (), *, lines: tuple[Line, ...] = ()) -> Route:
     """The stages, over a raw route or a reassigned one (:func:`settle`)."""
     # A coach question is refused whatever the model said, and carries no
     # slots, so it short-circuits before any of the stages below run.
@@ -1985,17 +1766,16 @@ def _settle(raw: dict[str, Any], question: str, beside: Beside = Beside()) -> Ro
         return Route(intent=raw["intent"])
     # The stages run in this order because each reads what the ones before it
     # rewrote: the intents code assigns decide which slots are read, and a
-    # threshold the question lacks turns a count back into a ranking before
-    # any intent-specific slot is chosen.
+    # count whose words carry no line turns back into a ranking before any
+    # intent-specific slot is chosen.
     _route_period_intents(raw, question)
     _route_triple_double_abbreviation(raw, question)
     _route_team_and_player_intents(raw, question)
-    rerouted_to_line = _route_line_and_record_intents(raw, question, beside)
+    rerouted_to_line = _route_line_and_record_intents(raw, question, companions)
     slots = _route_blank_slots(raw)
-    _route_threshold(raw, slots, question, beside)
-    without = _route_filter_slots(slots, question, beside)
+    _route_count_intents(raw, slots, question, companions)
     _route_split_slot(slots, question)
-    _route_intent_slots(raw["intent"], slots, question, without, beside)
+    _route_intent_slots(raw["intent"], slots, question)
     _route_line_stat(raw["intent"], slots, question, rerouted_to_line)
     _route_game_score(raw["intent"], slots, question)
     _route_two_point_pct(raw["intent"], slots, question)
@@ -2006,7 +1786,13 @@ def _settle(raw: dict[str, Any], question: str, beside: Beside = Beside()) -> Ro
     _route_rate(raw["intent"], slots, question)
     _route_team_total(raw["intent"], slots, question)
     _route_subject_slots(raw["intent"], slots, question)
-    _route_record_when_threshold(raw["intent"], slots, question)
+    # The lines, at the position of the last stage that wrote one
+    # (``_route_record_when_threshold``, the pair's stat and number), over
+    # the settled intent; the stat the words name beside a line is written
+    # where that stage wrote it.
+    read = read_lines(question, LineContext(intent=raw["intent"]))
+    slots["lines"] = (*lines, *read.lines)
+    _route_games_won(raw["intent"], slots, question, read)
     _route_side(raw["intent"], slots, question)
     # The period, the cuts, the window, then the span, last: each the one
     # reader of its family, over the intent the stages settled - the
@@ -2018,16 +1804,16 @@ def _settle(raw: dict[str, Any], question: str, beside: Beside = Beside()) -> Ro
     # read both.
     period = read_period(question, PeriodContext(intent=raw["intent"]))
     slots["period"] = period.period
-    cuts = read_cuts(question, CutsContext(intent=raw["intent"], split=slots.get("split"), opponent=slots.get("opponent"), without=tuple(without)))
+    cuts = read_cuts(question, CutsContext(intent=raw["intent"], split=slots.get("split"), opponent=slots.get("opponent"), without=_absent(companions)))
     slots.pop("opponent", None)
     slots["cuts"] = cuts.cuts
     window = read_window(question, WindowContext(intent=raw["intent"], boolean_stat=slots.get("stat") in _BOOLEAN_STATS))
     slots["window"] = window.window
-    read = read_span(question, _span_context(raw["intent"], slots, question, window=window.window, cuts=cuts))
-    slots["span"] = read.span
+    span = read_span(question, _span_context(raw["intent"], slots, question, window=window.window, cuts=cuts))
+    slots["span"] = span.span
     # The stages' working dict crosses into the typed Scope here, once: a
     # value no field holds raises ScopeError to the parser.
-    return Route(intent=raw["intent"], scope=Scope.from_slots(slots), claims=claimed([*period.claims, *cuts.claims, *window.claims, *read.claims]))
+    return Route(intent=raw["intent"], scope=Scope.from_slots(slots), claims=claimed_once([*period.claims, *cuts.claims, *window.claims, *read.claims, *span.claims]))
 
 
 def _span_context(intent: str, slots: dict[str, Any], question: str, *, window: Window, cuts: CutsRead) -> SpanContext:

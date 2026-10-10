@@ -27,6 +27,7 @@ from association.nba.franchises import season_name
 from association.nba.season import current_season
 from association.query.conditions import _box_missing, _names, _totals, _unseen, box_source, condition_span_label
 from association.query.entities import Entity, optional_team
+from association.query.lines import threshold_of
 from association.query.measures import streak_column
 from association.query.notes import Note
 from association.query.player_games import Narrowed, games_subquery, named
@@ -86,7 +87,8 @@ def _streak_runs(q: Query, runs: tuple[Run, ...]) -> Runs:
     """The runs, with what they held along: the stat's line, or a run of
     wins or losses."""
     scope = q.scope
-    line = Line(column=scope.stat, value=scope.threshold) if streak_column(scope.stat, scope.threshold) is not None else None
+    threshold = threshold_of(scope)
+    line = Line(column=scope.stat, value=threshold) if streak_column(scope.stat, threshold) is not None else None
     return Runs(runs=runs, line=line, won=scope.kind != "loss")
 
 

@@ -1005,7 +1005,7 @@ def test_a_players_record_against_a_team_is_his_own_games(scope_con: duckdb.Duck
     for question, names in (("Embiid career record vs boston", ["embiid", "boston"]), ("Show Embiid's career record against Boston", ["Embiid", "Boston"])):
         reading = _parsed(scope_con, question, names)
         assert reading.intent == "player_splits" and reading.scope.player == "Joel Embiid" and reading.scope.cuts.opponent == "Boston Celtics", question
-        assert reading.scope.span.career and not reading.scope.without and not reading.scope.team, question
+        assert reading.scope.span.career and not any(c.absent for c in reading.scope.companions) and not reading.scope.team, question
 
 
 def test_a_real_head_to_head_and_a_players_games_against_a_team_stay_what_they_are(scope_con: duckdb.DuckDBPyConnection) -> None:

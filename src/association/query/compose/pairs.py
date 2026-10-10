@@ -32,7 +32,7 @@ from association.query.conditions import _PLAYER_GAME_TABLES, MEETING_STATS, _ma
 from association.query.entities import Entity
 from association.query.notes import Note
 from association.query.player_relation import condition_scope, no_games
-from association.query.reading import ConditionSpec, Scope, Unsupported, _clamp_limit, unhonored_scoping
+from association.query.reading import Companion, Scope, Unsupported, _clamp_limit, unhonored_scoping
 from association.query.result import Grouped, MatchupFacts, Met, Narrowing, Part, Result, Rows, Span, Unanswered, Window
 
 from .core import Compiled, Query, Refused, compile_query, rows_of
@@ -175,8 +175,8 @@ def _pair_absence(con: duckdb.DuckDBPyConnection, q: Query, compiled: Compiled, 
     absent = compiled.narrowed.without
     if not absent:
         return None
-    unconditioned = replace(q.scope, without=(), conditions=())
-    playing = tuple(ConditionSpec(player=mate.name, side="own", predicate="played") for mate in absent)
+    unconditioned = replace(q.scope, companions=())
+    playing = tuple(Companion(player=mate.name, side="own", predicate="played") for mate in absent)
     try:
         everywhere = rows_of(con, compile_query(con, replace(q, scope=unconditioned)))
     except Refused, Unsupported:
@@ -184,7 +184,7 @@ def _pair_absence(con: duckdb.DuckDBPyConnection, q: Query, compiled: Compiled, 
     if not everywhere:
         return None
     try:
-        beside = len(rows_of(con, compile_query(con, replace(q, scope=replace(unconditioned, conditions=playing)))))
+        beside = len(rows_of(con, compile_query(con, replace(q, scope=replace(unconditioned, companions=playing)))))
     except Refused, Unsupported:
         beside = 0
     seasons = [row["season"] for row in everywhere]

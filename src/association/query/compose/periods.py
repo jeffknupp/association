@@ -302,7 +302,7 @@ def _period_redirect(con: duckdb.DuckDBPyConnection, read: Query, compiled: Comp
     if not span.defaulted or window is None or window[0] != "recent":
         return None
     career = span_of(reading.Span(career=True), "player_game_log", season_type=span.season_type)
-    narrowed = scoped_games(con, player, career, scope, opponent=compiled.narrowed.opponent, measures=measure_filters(scope.below, scope.above))
+    narrowed = scoped_games(con, player, career, scope, opponent=compiled.narrowed.opponent, measures=measure_filters(scope))
     if isinstance(narrowed, Unanswered):
         return None
     widened = compile_over(con, replace(read, limit=window[1], direction="desc"), player, career, narrowed)

@@ -21,7 +21,7 @@ from association.query.compose.core import Query, compile_query, rows_of
 from association.query.compose.plan import STATED_SCOPING
 from association.query.cuts import CutsContext, CutsRead, read_cuts
 from association.query.player_relation import RELATION_SCOPING, RELATION_SCOPING_EXCLUDED, relation_cuts, relation_scoping
-from association.query.reading import Claim, Cuts, PointShape, Scope, ScopeError, Situation, Span, cell_set, situation_of, unhonored_cells
+from association.query.reading import Claim, Companion, Cuts, PointShape, Scope, ScopeError, Situation, Span, cell_set, situation_of, unhonored_cells
 from association.query.router import settle
 from association.query.team_games import TeamNarrowed, rows_sql
 from association.query.team_relation import TEAM_CUTS, TEAM_RELATION_SCOPING, TEAM_RELATION_SCOPING_EXCLUDED, scoped_team, team_games, team_relation_cuts
@@ -222,7 +222,7 @@ def test_the_cells_and_what_a_reader_leaves_unhonored() -> None:
     assert cuts.unhonored(Cuts.CELLS - {"round", "tenure"}) == ["own_team", "round"]
     assert unhonored_cells(Scope(cuts=Cuts(round="finals", opponent="BOS")), relation_scoping("game_log")) == ["round"]
     assert unhonored_cells(Scope(cuts=Cuts(tenure="MIA")), relation_scoping("game_log")) == [] and unhonored_cells(Scope(cuts=Cuts(tenure="MIA")), TEAM_RELATION_SCOPING) == ["own_team"]
-    assert cell_set(Scope(cuts=Cuts(tenure="MIA")), "tenure") and not cell_set(Scope(), "tenure") and cell_set(Scope(without=("X",)), "without")
+    assert cell_set(Scope(cuts=Cuts(tenure="MIA")), "tenure") and not cell_set(Scope(), "tenure") and cell_set(Scope(companions=(Companion(player="X", predicate="absent"),)), "companion")
 
 
 def test_the_relation_tables_declare_the_cuts_once() -> None:

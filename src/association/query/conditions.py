@@ -71,7 +71,7 @@ import duckdb
 
 from association.nba.coverage import COVERAGE
 from association.nba.season import eastern_date_sql
-from association.query.reading import Scope, Unsupported, cell_set, ordinal_word
+from association.query.reading import Scope, Unsupported, ordinal_word, slot_names_set
 
 from .season_text import MONTH_NAMES
 from .team_games import TeamNarrowed, games_subquery, named
@@ -997,19 +997,22 @@ def condition_span_label(covered: _Scope, scope: Scope, first: Any, last: Any) -
 # would silently answer a run over a scattered, non-adjacent subset rather
 # than the real games in between.
 #
-# `conditions` is here (added 5.0.0, ISSUES.md) for the same reason as
-# `without`/`split`/`below`/`above`: a companion's role - he started, came off
-# the bench, or reached a line - is a fact about a named PLAYER's game, and a
-# team or league branch has no such player settled to check it against.
-# Silently dropping it answered a team's or the league's whole span as though
-# "76ers record when they score 120 when embiid starts" had named no
-# condition at all.
+# A companion (added 5.0.0 as `conditions`, ISSUES.md) is here for the same
+# reason as an absence, the split and a line: his role - he sat out, started,
+# came off the bench, or reached a line - is a fact about a named PLAYER's
+# game, and a team or league branch has no such player settled to check it
+# against. Silently dropping it answered a team's or the league's whole span
+# as though "76ers record when they score 120 when embiid starts" had named
+# no condition at all.
 #
-# `season_n` is a cut of the typed `reading.Cuts` since Phase 3, step 2
-# (read here by its cell name, `reading.cell_set`); it stays listed because
-# the planner lets it through to these branches (`plan._TEAM_READER_REFUSES`)
-# for this sentence, which names the missing player, to be the refusal.
-_CONDITION_PLAYER_ONLY_CELLS: tuple[str, ...] = ("without", "split", "season_n", "below", "above", "conditions")
+# `season_n` is a cut of the typed `reading.Cuts` since Phase 3, step 2, the
+# companions and the lines the typed `Companion`'s and `Line`'s cells
+# (`companion`, `line`; read here by cell name, said under the slot names
+# they were declared under: `reading.slot_names_set`); `season_n` stays
+# listed because the planner lets it through to these branches
+# (`plan._TEAM_READER_REFUSES`) for this sentence, which names the missing
+# player, to be the refusal.
+_CONDITION_PLAYER_ONLY_CELLS: tuple[str, ...] = ("companion", "split", "season_n", "line")
 
 
 def condition_needs_player_refusal(intent: str, scope: Scope, *extra: str) -> None:
@@ -1022,6 +1025,6 @@ def condition_needs_player_refusal(intent: str, scope: Scope, *extra: str) -> No
        Takes ``*extra`` (step 3, C4b), so the two intents' team branches no
        longer have to agree on exactly the same refused set.
     """
-    claimed = sorted(cell for cell in (*_CONDITION_PLAYER_ONLY_CELLS, *extra) if cell_set(scope, cell))
+    claimed = slot_names_set(scope, (*_CONDITION_PLAYER_ONLY_CELLS, *extra))
     if claimed:
         raise Unsupported(f"{intent} cannot honor {claimed} without a named player - only his own games can be narrowed that way")

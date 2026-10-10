@@ -445,6 +445,74 @@ otherwise.
     ("most points in an overtime game", 4 of the 2,710, every one a
     `situation` the relation refuses by value) is measured and not read -
     reading it as a period 5+ would move answers.
+- **Declared in code by Phase 3, step 2, the line and the companions**
+  (2026-10-09, the lead's brief; one feed answer moved, named, on the four
+  populations - every reading compared through the projection, the two
+  typed values recorded beside it):
+  - The draft's `Line(measure, op, value, who, period)` as
+    `reading.Line(measure, op, value, period, as_typed, keyed, narrows)`
+    on `Scope.lines`, in place of the FIVE carriers a line had - the
+    `stat`/`threshold` slot pair, the `above` and `below` phrases kept
+    whole, the point's re-reading of the number's words into a predicate,
+    a companion's `reached` entry, and `period_condition`
+    (`PeriodCondition`, gone). `measure` is the game column's key (the
+    `Measure` catalog is the next slice's; `Scope.stat`, `rate`,
+    `per_game`, `side`, `shot_value`, `fields` and `kind` stay). The
+    draft's `who` lives where the value does: on the Scope it is the
+    subject's, on a `Companion` the companion's. Two bits the draft did
+    not have, each a fact the slots carried by their NAME: `keyed`, the
+    shape's own line (the draft's `line(Line)` dimension - a count's, a
+    record's, a run's, a high's; the `threshold` slot), read into the
+    point's predicate and setting no cell; `narrows`, a line the relation
+    filters the games by (`below`/`above`). A line that is neither (the
+    second and later bare "N stat" of "20 pts, 10 reb, 5 ast") is read
+    and applied by the league's multi-line listing alone, as before.
+    Built from the words, never from the slot pair: in 11 of the 2,710
+    readings the pair contradicted the words ("20+ point 5+ assist" read
+    `stat: assists, threshold: 20`), and the typed value is the words'.
+  - The draft's `Companion(player, side, predicate)` as
+    `reading.Companion(player, side, predicate, line)` on
+    `Scope.companions`, in place of three slots (`with_player`, `without`,
+    `conditions`), read by ONE reader (the subject reading, with a claim
+    on the phrase) and written by ONE writer (`subject.apply_subject`);
+    the stages take the typed companions where they took `router.Beside`
+    (gone) and read no name. **One cell, `companion`, not two:** no table
+    ever honored or refused `without` apart from `conditions`.
+  - One tagger for the lines: `line.read_lines(question, LineContext) ->
+    LinesRead(lines, claims, stat)`, over the lexicon's `THRESHOLD`,
+    `THRESHOLD_PAIR`, `THRESHOLD_WORDS`, `SCORED`, `FOULED_OUT`, `ABOVE`,
+    `BELOW`, `MEASURE_PHRASE`, `AT_MOST_LEADS` (and `MEASURE_WORDS`, moved
+    there from `measures.py`), run in `router._settle` after the subject's
+    slots and before the games-won read; `line.read_period_line` is the
+    parser's reader of a line in a quarter (`lexicon.PERIOD_CONDITION`,
+    `CONDITION_NUMBERS`, `CONDITION_STAT_WORDS`), its words blanked, not
+    cut, so later claims keep their offsets. The reading's gating is the
+    stages' measured rule: a bare "N stat" is a line only on a reader whose
+    shape is one (`THRESHOLD_INTENTS`); elsewhere a floor of minutes, a
+    line under a number, two or more pairs.
+  - The cells (contract 4): `Line.CELLS` is `line` and `period_line`,
+    `Companion.CELLS` is `companion`, all three in `RELATION_SCOPING`
+    (applied by `narrow_measures`, `_apply_period_condition`,
+    `_narrow_player_games`/`condition_player`); the with/without split's
+    row of `STATED_SCOPING` names `companion` (the team relation's one
+    cell its words state; `WITH_WITHOUT_STATED` folded into the table);
+    `_TEAM_READER_REFUSES` and `_CONDITION_PLAYER_ONLY_CELLS` name the
+    cells; `SCOPING_SLOTS` is `split` and `rate`; a decline still says the
+    slot names (`companion_slot_names`, `line_slot_names`,
+    `slot_names_set`) until the decline-to-Cause commit rewords it.
+  - The record keeps its old shape through the projection
+    (`Scope.projected()`, `to_slots()`: the seven slots where they stood,
+    `_ATTACHED_SLOT_POSITIONS`); `with_player` is the projection's one
+    intent-dependent key - the with/without split's name where the point
+    is the split and none is absent, a `conditions` entry on any other
+    point, as the two slot writers wrote him (`split_by_presence`, read
+    off the intent or the `presence` group) - and the typed values are
+    recorded beside the reading as `lines` and `companions`.
+  - Not this slice's, on purpose: `Won` and `Met`. A team's run of wins is
+    the point's `won` predicate (`Reading.kind`, the `kind` slot the brief
+    keeps), and a matchup's `Met` is the pair shape's own `by="met"` on
+    the Reading - neither is a filter the relations apply, so neither is
+    a `Filter` member here. Still open below.
 
 ## What must be decided before which phase
 
@@ -844,9 +912,9 @@ moves into `data` before the slice that rewords its answer:
    decides from the words.
 3. **`period` has three roles**: what a read sees (its own field -
    `reading.Period` on `Scope.period` since Phase 3, step 2, the period
-   slice above), a filter (a `Line` with a period - `PeriodCondition`
-   until the line slice types it), and a dimension (a column per
-   quarter - the point's `by="period"`). The catalog saying which measures
+   slice above), a filter (a `Line` with a period - `Line.period` on
+   `Scope.lines` since the line slice, the `period_line` cell), and a
+   dimension (a column per quarter - the point's `by="period"`). The catalog saying which measures
    have a reading in a quarter is still the measure step's. Open from
    the period slice: a period named on a reader that takes none (six of
    the 2,710 readings, each with a subject nothing resolved) carries no
@@ -907,3 +975,22 @@ moves into `data` before the slice that rewords its answer:
     (`since_date`); the typed value records what was read, and the
     decision which the words mean is open (ISSUES.md, "A worded since-date
     with a year...").
+11. **The team relation declares no `companion` cell, and the companions it
+    honors are declared by other rows.** Three readers on `team_games`
+    read companions - the with/without split (its own row of
+    `STATED_SCOPING` names `companion`), a team's record over a companion's
+    line and a team's log (declared through the PLAYER relation's rows,
+    `relation_scoping("record_when")`, `relation_scoping("game_log")`) -
+    while `TEAM_RELATION_SCOPING` holds no `companion` and the team
+    compiler refuses every one by name (`compose.plan._TEAM_READER_REFUSES`,
+    debt). The typed design has the cell on the team relation's table with
+    a reasoned exclusion per team reader; adding it now would need six
+    rows and move no answer, and the lines slice left it for the step that
+    deletes `_TEAM_READER_REFUSES`.
+12. **`Won` and `Met` are not filters.** The draft lists both under
+    `Filter`; in the code a team's run of wins is the point's `won`
+    predicate (`Reading.kind`), and two players' meetings are the pair
+    shape itself (`Reading.by="met"`, the pair relation's own read) -
+    neither is a cell a relation table declares or a reader declines.
+    Proposed: type `kind` with the `Measure` catalog (a boolean measure's
+    line) and leave `Met` as the shape's `by`.

@@ -1176,3 +1176,464 @@ PERIOD_CONDITION = re.compile(
 .. versionadded:: 6.0.0
    ``parse._PERIOD_CONDITION`` until Phase 3, step 2.
 """
+
+
+# --- The line and the companions (Phase 3, step 2's fifth slice) ---------------------
+
+MEASURE_WORDS: dict[str, str] = {
+    "points": "points",
+    "point": "points",
+    "pts": "points",
+    "pt": "points",
+    "rebounds": "rebounds",
+    "rebound": "rebounds",
+    "reb": "rebounds",
+    "rebs": "rebounds",
+    "boards": "rebounds",
+    "assists": "assists",
+    "assist": "assists",
+    "ast": "assists",
+    "asts": "assists",
+    "steals": "steals",
+    "steal": "steals",
+    "stl": "steals",
+    "blocks": "blocks",
+    "block": "blocks",
+    "blk": "blocks",
+    "turnovers": "turnovers",
+    "turnover": "turnovers",
+    "tov": "turnovers",
+    "to": "turnovers",
+    "fouls": "fouls",
+    "foul": "fouls",
+    "pf": "fouls",
+    "minutes": "minutes",
+    "minute": "minutes",
+    "mins": "minutes",
+    "min": "minutes",
+    "fga": "fieldGoalsAttempted",
+    "field goal attempts": "fieldGoalsAttempted",
+    "shots": "fieldGoalsAttempted",
+    "shot attempts": "fieldGoalsAttempted",
+    "fgm": "fieldGoalsMade",
+    "field goals": "fieldGoalsMade",
+    "field goals made": "fieldGoalsMade",
+    "fta": "freeThrowsAttempted",
+    "free throw attempts": "freeThrowsAttempted",
+    "free throws attempted": "freeThrowsAttempted",
+    "ftm": "freeThrowsMade",
+    "free throws": "freeThrowsMade",
+    "free throws made": "freeThrowsMade",
+    "3pa": "threePointFieldGoalsAttempted",
+    "three point attempts": "threePointFieldGoalsAttempted",
+    "threes attempted": "threePointFieldGoalsAttempted",
+    "3pm": "threePointFieldGoalsMade",
+    "3s": "threePointFieldGoalsMade",
+    "threes": "threePointFieldGoalsMade",
+    "3 pointers": "threePointFieldGoalsMade",
+    "three pointers": "threePointFieldGoalsMade",
+    "threes made": "threePointFieldGoalsMade",
+    "oreb": "offensiveRebounds",
+    "offensive rebounds": "offensiveRebounds",
+    "dreb": "defensiveRebounds",
+    "defensive rebounds": "defensiveRebounds",
+}
+"""What a question calls a box-score column, for a line it asks games to be
+kept under or over: the question's words after the number, casefolded, to
+the ``player_game_log`` column each names - never question text. The one
+definition of what a question calls a column, which the threshold grammar
+(:data:`THRESHOLD`, :data:`THRESHOLD_PAIR`), a below/above phrase's reader
+(``lines.measure_filters``) and the point reader all read by.
+
+.. versionadded:: 6.0.0
+   In the lexicon (``measures.MEASURE_WORDS`` until Phase 3, step 2, the
+   line; ``measures`` re-exports it under the same name).
+"""
+
+# --- A line on a stat: the five carriers' words --------------------------------------
+
+#: Which SPELLINGS the threshold grammar accepts beside a number, with the
+#: regex's own alternation built from them (longest first, so "rebounds" is
+#: not matched as "reb" with a stray "ounds" left over). What each one MEANS
+#: is read from :data:`MEASURE_WORDS`, the one definition of what a question
+#: calls a box-score column: a spelling dropped from it raises ``KeyError``
+#: at import rather than silently narrowing what the grammar understands.
+#: Minutes are not among them on purpose: "30+ minutes" is :data:`ABOVE`'s
+#: phrase, read on every reader, where a threshold is a count's, a
+#: record's, a streak's and a high's own line.
+THRESHOLD_SPELLINGS: tuple[str, ...] = (
+    "points", "point", "pts", "pt",
+    "rebounds", "rebound", "rebs", "reb", "boards",
+    "assists", "assist", "asts", "ast",
+    "steals", "steal", "stl",
+    "blocks", "block", "blk",
+    "turnovers", "turnover",
+    "threes", "3s",
+)  # fmt: skip
+"""The spellings the threshold grammar reads a line's stat by.
+
+.. versionadded:: 6.0.0
+   ``router._THRESHOLD_SPELLINGS`` until Phase 3, step 2.
+"""
+THRESHOLD_WORDS: dict[str, str] = {word: MEASURE_WORDS[word] for word in THRESHOLD_SPELLINGS}
+"""Each threshold spelling to the column it names (:data:`MEASURE_WORDS`).
+
+.. versionadded:: 6.0.0
+   ``router._THRESHOLD_WORDS`` until Phase 3, step 2.
+"""
+_THRESHOLD_ALTERNATION = "|".join(sorted((re.escape(w) for w in THRESHOLD_WORDS), key=len, reverse=True))
+# Every "N+ <stat>" pair, in order: "20+ points", "36-plus points", "30 or
+# more rebounds". The "+" (or "plus" / "or more") is required: without it
+# "top 10 rebound leaders" would read as a line and a ranking question that
+# answers today would start refusing. Two or more of them are lines on the
+# same game ("20+ point 5+ assist games", #139), which the relation narrows
+# by together; one alone is the threshold the shape's own line is read as.
+THRESHOLD_PAIR = re.compile(rf"\b(\d{{1,3}})[\s-]*(?:\+|plus|or\s+more)[\s-]*({_THRESHOLD_ALTERNATION})\b", re.IGNORECASE)
+"""A line at or above a number with its stat word, the plus required.
+
+.. versionadded:: 6.0.0
+   ``router._THRESHOLD_PAIR`` until Phase 3, step 2.
+"""
+# The same spellings with the "+" optional - a line stated as a bare number
+# ("30 pt games", "15 reb"), read only under the readers whose shape is a
+# line (a count, a record, a streak, a high: ``line.THRESHOLD_INTENTS``),
+# where a bare "30 pt games" is a line and not a ranking. Built from the one
+# list, so "30 pt games" reads the 30 the way "30+ pt games" does. A "3
+# point" or "3 pt" names the shot, not a line of three
+# (:func:`threshold_pairs` leaves it out).
+THRESHOLD = re.compile(rf"\b(\d{{1,3}})[\s-]*(?:\+|plus|or\s+more)?[\s-]*({_THRESHOLD_ALTERNATION})\b", re.IGNORECASE)
+"""A line on a stat, the plus optional - the subject's, or a companion's
+inside his phrase (``subject._condition_role`` reads it through this too).
+
+.. versionadded:: 6.0.0
+   ``router._THRESHOLD`` and ``subject._CONDITION_THRESHOLD``, one pattern
+   twice, until Phase 3, step 2.
+"""
+# A number after a scoring verb is a line on points, stat word or not:
+# "celtics record when jayson tatum scores 30" read no threshold, and was
+# refused as a question about a team named Jayson Tatum. Not where a stat
+# word follows the number ("scored 30 points" is THRESHOLD's; "scored 3
+# threes" is not points), nor a rate ("scores 30 a game" is an average, not
+# a line), a percentage, a decimal or a year.
+SCORED = re.compile(
+    r"\bscor(?:e|es|ed|ing)\s+(\d{1,3})(?![\d.,%])(?:\s*\+|[\s-]*plus\b|\s+or\s+more\b)?"
+    r"(?![\s-]*(?:%|percent\b|a\s+game\b|a\s+night\b|per\s+game\b|on\s+average\b|ppg\b|" + "|".join(sorted((re.escape(w) + r"\b" for w in MEASURE_WORDS), key=len, reverse=True)) + r"))",
+    re.IGNORECASE,
+)
+"""A line on points stated by a scoring verb and a bare number.
+
+.. versionadded:: 6.0.0
+   ``router._SCORED`` until Phase 3, step 2.
+"""
+# A comparison BELOW a number. No slot ever said "under", so without this
+# "games with under 14 FTA" reached the count as 14 and was answered as 14
+# or MORE - the inverse question. The words after the number are kept: they
+# name the stat (the model's own `stat` beside them is the nearest one it
+# knows: "fta" arrived as freeThrowsMade), and ``lines.measure_filters``
+# refuses a word it cannot map. The words kept after the number stop at a
+# connective or the next comparison, so "under 14 fta in his whole career"
+# carries "under 14 fta" and "less than 15 fga and with less than 35 minutes"
+# is two lines, not one.
+BELOW = re.compile(
+    r"\b(?:under|fewer\s+than|less\s+than|below|at\s+most|no\s+more\s+than)\s+\d+%?(?:\s+(?!(?:and|or|with|in|for|vs|against|on|at|under|fewer|less|below|no|over|more)\b)[a-z][a-z-]*){0,3}"
+    r"|\b\d+\+?\s*(?:minutes|mins?)\s+or\s+less\b",
+    re.IGNORECASE,
+)
+"""A line a game is kept under, as worded.
+
+.. versionadded:: 6.0.0
+   ``router._BELOW`` until Phase 3, step 2.
+"""
+# A comparison AT OR ABOVE a number, on minutes: "with 25 minutes", "20+
+# mins", "30 minutes or more" - read out of the situation words (where "paul
+# reed gamelog with 25 minutes" refused) into a line the relation applies.
+# Deliberately only minutes: "30+ points" is the threshold grammar's, and
+# the readers of a line already carry it. Not the "35 minutes" inside "less
+# than 35 minutes", which is BELOW's.
+ABOVE = re.compile(r"\b(?:with\s+(?:at\s+least\s+)?)?(?<!than\s)(?<!under\s)(?<!below\s)\d+\+?\s*(?:minutes|mins?)\b(?!\s+or\s+less)(?:\s+(?:or\s+more|played))?", re.IGNORECASE)
+"""A line of minutes a game is kept at or over, as worded.
+
+.. versionadded:: 6.0.0
+   ``router._ABOVE`` until Phase 3, step 2.
+"""
+# The number and the words after it in a below/above phrase; the leading
+# words ("under", "at most", "with") say which way the line faces.
+MEASURE_PHRASE = re.compile(r"^(?P<lead>.*?)\b(?P<n>\d+)\+?%?\s*(?P<words>.*)$")
+"""A below/above phrase split into its lead, its number and its stat words.
+
+.. versionadded:: 6.0.0
+   ``lines._MEASURE_PHRASE`` until Phase 3, step 2.
+"""
+AT_MOST_LEADS: tuple[str, ...] = ("at most", "no more than")
+"""The leads of a below phrase that read as "at or under" ("at most 5
+turnovers"); every other lead of :data:`BELOW` ("under", "fewer than",
+"less than", "below") reads as under.
+
+.. versionadded:: 6.0.0
+"""
+# "Fouling out" is six personal fouls - an NBA rule, not something a 3B
+# knows. The model got the shape right (a count) and emitted stat "fouls
+# committed" and threshold 1; the count refused, and the question then
+# hung for 95 seconds. One rule, in one place: the line is fouls >= 6.
+FOULED_OUT = re.compile(r"\bfoul(?:ed|s|ing)?\s+out\b", re.IGNORECASE)
+"""Fouling out, by its words.
+
+.. versionadded:: 6.0.0
+   ``router._FOULED_OUT`` until Phase 3, step 2.
+"""
+FOUL_OUT_THRESHOLD = 6
+"""The fouls that foul a player out: the line :data:`FOULED_OUT` names.
+
+.. versionadded:: 6.0.0
+   ``router.FOUL_OUT_THRESHOLD`` until Phase 3, step 2.
+"""
+# "td3" is a triple-double, and the model reads its "3" as a shot value:
+# "luka td3s home" came back as `other` with stat threePointFieldGoalsMade
+# and shot_value 3 (yardstick-v2 F098), and before that as his points per
+# game at home.
+TRIPLE_DOUBLE_ABBREVIATION = re.compile(r"\btd3s?\b", re.IGNORECASE)
+"""The "td3" spelling of a triple-double.
+
+.. versionadded:: 6.0.0
+   ``router._TRIPLE_DOUBLE_ABBREVIATION`` until Phase 3, step 2.
+"""
+# A player's games won or lost: "how many playoff games has embiid won" is
+# his team's record in the games he played, with no line at all.
+GAMES_WON = re.compile(r"\bgames\b.{0,20}\b(won|lost|wins?|los[es]+)\b", re.IGNORECASE)
+"""Games won or lost, by their words, the result word in the group.
+
+.. versionadded:: 6.0.0
+   ``router._GAMES_WON`` until Phase 3, step 2.
+"""
+WHEN_REACHES = re.compile(
+    r"\bwhen\s+(?:[a-z][\w'.-]*\s+){1,3}?(?:scores?|scored|has|had|gets?|got|puts?\s+up|drops?|dropped|grabs?|grabbed|dishes|dished|records?|recorded|makes?|made|hits?)\b",
+    re.IGNORECASE,
+)
+"""A "<team> when <player> reaches N" clause: "when <someone> scores/has/gets".
+
+.. versionadded:: 6.0.0
+   ``router._WHEN_REACHES`` until Phase 3, step 2.
+"""
+# A line in one quarter or half, conditioning which games count: the number
+# as a word ("one three", "a three"), and the singular a line's words take
+# after "one" - the columns the period's line rebuilds (MEASURE_WORDS holds
+# the plurals and the abbreviations).
+CONDITION_NUMBERS: dict[str, int] = {"a": 1, "an": 1, "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10}
+"""A period line's number as a word.
+
+.. versionadded:: 6.0.0
+   ``parse._CONDITION_NUMBERS`` until Phase 3, step 2.
+"""
+CONDITION_STAT_WORDS: dict[str, str] = {
+    "three": "threePointFieldGoalsMade",
+    "3": "threePointFieldGoalsMade",
+    "three pointer": "threePointFieldGoalsMade",
+    "3 pointer": "threePointFieldGoalsMade",
+    "3-pointer": "threePointFieldGoalsMade",
+    "three-pointer": "threePointFieldGoalsMade",
+    "triple": "threePointFieldGoalsMade",
+    "point": "points",
+    "rebound": "rebounds",
+    "board": "rebounds",
+    "assist": "assists",
+    "steal": "steals",
+    "block": "blocks",
+    "turnover": "turnovers",
+    "foul": "fouls",
+    "free throw": "freeThrowsMade",
+    "field goal": "fieldGoalsMade",
+    "basket": "fieldGoalsMade",
+    "shot": "fieldGoalsMade",
+}
+"""A period line's stat in the singular, to the column the period's line rebuilds.
+
+.. versionadded:: 6.0.0
+   ``parse._CONDITION_STAT_WORDS`` until Phase 3, step 2.
+"""
+
+# --- The companions: who stands beside the subject -------------------------------------
+
+# The words that end a teammate's name in "without X this season" and the
+# like. The question words are here for the same reason the prepositions
+# are: each can follow a name, and none of them is one - without them
+# "without Tatum and how many wins" reads "how many wins" as a second
+# teammate and refuses a question that used to answer. The absence words end
+# one too: "with draymond green out" read "draymond green out" as the name,
+# and the answer asked whether Bo or Travis Outlaw was meant ("hurt" is not
+# one: it is Matt Hurt's name).
+NAME_STOPWORDS: frozenset[str] = frozenset(
+    "this last in on since during for vs vs. versus against at when while game games season seasons record stats stat playing played plays from over the a an any his her their "
+    "how what who whose why many much did does do is are was were has have had than to of by not no "
+    "out injured sidelined resting rested rests sitting sits sat missing misses missed absent inactive dnp "
+    "doesn't didn't don't isn't wasn't aren't weren't doesnt didnt dont isnt wasnt arent werent".split()  # codespell:ignore doesnt,didnt,isnt,wasnt,arent,werent - typed without the apostrophe
+)
+"""The words no companion's name holds.
+
+.. versionadded:: 6.0.0
+   ``router._NAME_STOPWORDS`` until Phase 3, step 2.
+"""
+# What a phrase naming a player says about one who sat the games out: "with
+# Embiid out", "when Tatum is injured", "when Embiid doesn't play", "in games
+# Brown missed". One list, a regex fragment with no groups of its own, read
+# for the names it follows (ABSENT_NAMED) and by the subject reading for the
+# role (CONDITION_ABSENT), so the two cannot disagree about who sat.
+ABSENCE_WORDS = (
+    r"(?:out|injured|sidelined|inactive|absent|missing|dnp|rest(?:s|ed|ing)|sits?(?:\s+out)?|sitting(?:\s+out)?|sat(?:\s+out)?|miss(?:es|ed)"
+    r"|(?:does|do|did)\s*n[o']?t\s+play|(?:is|are|was|were)\s*n[o']?t\s+playing|not\s+playing)"
+)
+"""The words that say a player sat the games out - a fragment, no groups.
+
+.. versionadded:: 6.0.0
+   ``router._ABSENCE_WORDS`` until Phase 3, step 2.
+"""
+# "with Embiid out", "when Tatum and Brown are injured", "in games Brown
+# missed": a player named before an absence word sat those games out - the
+# same teammates "without" names, written the other way round. The stages
+# read only that the question HAS this phrase (it is what makes a record a
+# with/without split); WHO it names is the subject reading's. The names are
+# runs of words that are no stop word, so the absence word must follow them
+# directly - "with Embiid playing and Maxey out" names nobody absent rather
+# than Embiid - and a pronoun names nobody ("when he is out" is the
+# subject's own absence).
+_NAME_WORD = r"(?!(?:" + "|".join(sorted((re.escape(w) for w in NAME_STOPWORDS), key=len, reverse=True)) + r"|he|she|they|him|them|it|we|you)(?![A-Za-z.'\-]))[A-Za-z][A-Za-z.'\-]*"
+ABSENT_NAMED = re.compile(
+    rf"\b(?:with|when|while|in\s+(?:the\s+)?games?(?:\s+(?:that|where|in\s+which))?)\s+(?:both\s+)?({_NAME_WORD}(?:[\s,&+]+{_NAME_WORD}){{0,8}})\s+(?:(?:is|are|was|were)\s+)?{ABSENCE_WORDS}(?![A-Za-z])",
+    re.IGNORECASE,
+)
+"""A player named before an absence word.
+
+.. versionadded:: 6.0.0
+   ``router._ABSENT_NAMED`` until Phase 3, step 2.
+"""
+# A companion's phrase: what follows "without" / "with" / "when" / "while",
+# up to the next scoping word. Loose on purpose - the names it holds are
+# still checked against the players the question names. "excluding" is
+# "without" reworded and "featuring" is "with"; a question word ends the
+# phrase, so a fronted "Without Kevin Durant, what is Steph Curry's record"
+# names Durant alone, not Curry with him. "with and without Tatum" is the
+# split over Tatum, read from its "without": the "with" names nobody.
+COMPANION = re.compile(
+    r"\b(without|excluding|with(?!\s+(?:and|or)\s+without\b)|featuring|when|while)\s+"
+    r"((?:(?!\b(?:vs\.?|versus|against|in|for|this|last|the|what|who|how|which|where)\b)[\w'.,+-]+\s*){1,9})",
+    re.IGNORECASE,
+)
+"""A companion phrase: the keyword, and the words after it a name is read from.
+
+.. versionadded:: 6.0.0
+   ``subject._COMPANION`` until Phase 3, step 2.
+"""
+COMPARED_WITH = re.compile(r"\b(?:compare|compared|comparing|contrast|contrasted|contrasting)\b[^,;?]{0,40}?\bwith\b", re.IGNORECASE)
+"""A "with" that follows a compare verb closely ("compare luka with sga")
+joins the two subjects; it is not a companion phrase (ISSUES.md #233).
+
+.. versionadded:: 6.0.0
+   ``subject._COMPARED_WITH`` until Phase 3, step 2.
+"""
+# "in games Embiid started", "in the games Brown missed": the role stated
+# after the games it narrows, with no "when" or "with" before the name -
+# "maxey points in games embiid started" compared the two players, since
+# nothing read Embiid as anything but a second subject. The name (one to
+# three words) must be followed directly by what he did in those games -
+# started, came off, played, scored or had a line, sat out - so "in games
+# against Boston" and "in games he started" (the subject's own) name no
+# companion here.
+COMPANION_STOP = r"vs\.?|versus|against|in|for|this|last|the|what|who|how|which|where|with|without|when|while"
+"""The words that end a companion phrase - a fragment.
+
+.. versionadded:: 6.0.0
+   ``subject._COMPANION_STOP`` until Phase 3, step 2.
+"""
+COMPANION_IN_GAMES = re.compile(
+    r"\b(in\s+(?:the\s+)?games?(?:\s+(?:that|where|in\s+which))?)\s+"
+    rf"((?:(?!\b(?:{COMPANION_STOP}|he|she|they|his|her|their)\b)[\w'.-]+\s+){{1,3}}"
+    rf"(?:start(?:s|ed)?|(?:comes?|came)\s+off|play(?:s|ed)?|scor(?:e|es|ed)|had|has|got|{ABSENCE_WORDS})(?![A-Za-z])"
+    rf"(?:\s+(?!(?:{COMPANION_STOP})\b)[\w'.,+-]+){{0,4}})",
+    re.IGNORECASE,
+)
+"""A companion named after the games his role narrows: "in games X started".
+
+.. versionadded:: 6.0.0
+   ``subject._COMPANION_IN_GAMES`` until Phase 3, step 2.
+"""
+# A player after a versus word is on the OTHER side of the subject's games -
+# a condition (ROADMAP step 3: "most points by curry vs lebron"), never a
+# second subject - wherever the words ask for the subject's games.
+VERSUS_PHRASE = re.compile(rf"\b(vs\.?|versus|against|v\.?)\s+((?:(?!\b(?:{COMPANION_STOP})\b)[\w'.,+-]+\s*){{1,9}})", re.IGNORECASE)
+"""The words after a versus word, a name on the other side is read from.
+
+.. versionadded:: 6.0.0
+   ``subject._VERSUS_PHRASE`` until Phase 3, step 2.
+"""
+# What a companion phrase says the player DID in the games asked about: a
+# start, the bench ("off" alone too: the phrase stops at "the", a stop word,
+# so "with tatum off the bench" reaches the role reader as "tatum off"), an
+# absence (the absence words, and "hurt", which the name reader cannot end
+# a name at - it is Matt Hurt's - and a role reader, which never cuts a
+# name, can take).
+CONDITION_STARTED = re.compile(r"\bstart(?:s|ed|ing)?\b|\bin the starting lineup\b", re.IGNORECASE)
+"""A start, by its words.
+
+.. versionadded:: 6.0.0
+   ``subject._CONDITION_STARTED`` until Phase 3, step 2.
+"""
+CONDITION_BENCH = re.compile(r"\bbench\b|\boff\b|\bas a reserve\b", re.IGNORECASE)
+"""The bench, by its words.
+
+.. versionadded:: 6.0.0
+   ``subject._CONDITION_BENCH`` until Phase 3, step 2.
+"""
+CONDITION_ABSENT = re.compile(rf"\b(?:{ABSENCE_WORDS}|hurt)(?![A-Za-z])", re.IGNORECASE)
+"""An absence, by its words (:data:`ABSENCE_WORDS`, and "hurt").
+
+.. versionadded:: 6.0.0
+   ``subject._CONDITION_ABSENT`` until Phase 3, step 2.
+"""
+NAME_PIECES = re.compile(r"[^\s,&+]+|[,&+]")
+"""A companion phrase's words and joiners, one piece each.
+
+.. versionadded:: 6.0.0
+   ``subject._NAME_PIECES`` until Phase 3, step 2.
+"""
+NAME_SHAPED = re.compile(r"[A-Za-z][A-Za-z.'\-]*")
+"""A piece shaped like a word of a name.
+
+.. versionadded:: 6.0.0
+   ``subject._NAME_SHAPED`` until Phase 3, step 2.
+"""
+NAME_JOINERS: frozenset[str] = frozenset({"and", "or", "nor", "&", "+", ","})
+"""The joiners between two names in one phrase.
+
+.. versionadded:: 6.0.0
+   ``subject._NAME_JOINERS`` until Phase 3, step 2.
+"""
+
+
+def threshold_pairs(text: str) -> list[re.Match[str]]:
+    """Every line :data:`THRESHOLD` reads in ``text``, in order, that is a
+    line and not a shot type - "3 point" and "3 pt" name the shot, not three
+    points - and holds a number of one or more.
+
+    .. versionadded:: 6.0.0
+    """
+    found: list[re.Match[str]] = []
+    for match in THRESHOLD.finditer(text):
+        number = int(match.group(1))
+        if number == 3 and match.group(2).casefold().startswith(("point", "pt")):
+            continue
+        if number >= 1:
+            found.append(match)
+    return found
+
+
+def scored_threshold(text: str) -> re.Match[str] | None:
+    """The line a scoring verb states with no stat word after it ("scores
+    30", "scored 40+"), which is points (:data:`SCORED`), holding a number
+    of one or more - or None. A reader of it reads it only where the text
+    states no line WITH its stat word (:func:`threshold_pairs`), which wins.
+
+    .. versionadded:: 6.0.0
+       ``router._threshold_from_text_scored`` until Phase 3, step 2, which
+       returned the number and made the pairs' check itself.
+    """
+    match = SCORED.search(text)
+    return match if match is not None and int(match.group(1)) >= 1 else None

@@ -364,6 +364,9 @@ class Query:
         .. versionadded:: 6.0.0
         """
         out = {f.name: getattr(self, f.name) for f in fields(self) if f.name != "subject_span"}
+        # The scope's companions print under the with/without split's slot
+        # where the query divides the games by their presence.
+        out["scope"] = self.scope.projected(split_by_presence=self.group == "presence")
         settled = self.subject_span
         out["span"] = "career" if settled is not None and settled.career else None
         out["season"] = settled.season if settled is not None else None
@@ -583,7 +586,7 @@ def _resolve_named(con: duckdb.DuckDBPyConnection, q: Query) -> tuple[Entity | N
     # since Phase 3, step 2 (`scope.cuts.tenure`, read by scoped_games);
     # passed by the compiler alone until then, and ignored once, the same
     # question averaged his whole career's starts (1,612 games for 294).
-    narrowed = scoped_games(con, player, span, scope, opponent=scope.cuts.opponent, measures=measure_filters(scope.below, scope.above), date=scope.cuts.date)
+    narrowed = scoped_games(con, player, span, scope, opponent=scope.cuts.opponent, measures=measure_filters(scope), date=scope.cuts.date)
     if isinstance(narrowed, Unanswered):
         raise Refused(narrowed)
     return player, span, narrowed
@@ -649,7 +652,7 @@ def _apply_team_slot(con: duckdb.DuckDBPyConnection, q: Query, player: Entity | 
         if isinstance(resolved_opponent, Unanswered):
             raise Refused(resolved_opponent)
         if resolved_opponent is not None and narrowed.opponent is None:
-            rescoped = scoped_games(con, player, span, scope, opponent=resolved_opponent, measures=measure_filters(scope.below, scope.above), date=scope.cuts.date)
+            rescoped = scoped_games(con, player, span, scope, opponent=resolved_opponent, measures=measure_filters(scope), date=scope.cuts.date)
             if isinstance(rescoped, Unanswered):
                 raise Refused(rescoped)
             narrowed = rescoped

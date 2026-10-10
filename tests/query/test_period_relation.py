@@ -222,9 +222,9 @@ def test_a_period_condition_sends_a_players_line_to_the_box_scores() -> None:
     """The season line has no quarter in it: a condition on one narrows the
     GAMES, and `player_stat` reads them from box scores as it does for an
     opponent or a teammate's role (#212's shape, guarded)."""
-    from association.query.reading import PeriodCondition, scope_reads_box_scores
+    from association.query.reading import Line, Period, scope_reads_box_scores
 
-    assert scope_reads_box_scores(Scope(player="x", period_condition=PeriodCondition(stat="points", threshold=10, period=1)), [])
+    assert scope_reads_box_scores(Scope(player="x", lines=(Line(measure="points", value=10, period=Period(number=1)),)), [])
     assert not scope_reads_box_scores(Scope(player="x"), [])
 
 

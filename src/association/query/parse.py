@@ -26,7 +26,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import replace
-from typing import Any, Literal, cast, get_args
+from typing import Any, cast, get_args
 
 import duckdb
 
@@ -34,12 +34,13 @@ from association.query import lexicon, names
 from association.query.decisions import Decision
 from association.query.entities import _edit_budget, _words, find_players, find_teams, players_of, suggest_players, team_abbreviations, teams_of
 from association.query.lexicon import COUNT, LOG_OR_WINDOW_WORDS
+from association.query.line import read_period_line
 from association.query.measures import MEASURE_WORDS, PERIOD_COLUMNS, PERIOD_RATE_STATS, TEAM_PERIOD_COLUMNS
 from association.query.metrics import EXTRA_FIELD_COLUMNS, TEAM_FIELD_WORDS
-from association.query.period import which_period
 from association.query.point import read_point
-from association.query.reading import TEAM_ONLY_INTENTS, Cause, ConditionSpec, LeftOut, PeriodCondition, PointRefused, Reading, Scope, ScopeError, Split, Unsupported
+from association.query.reading import TEAM_ONLY_INTENTS, Cause, Claim, LeftOut, Line, PointRefused, Reading, Scope, ScopeError, Split, Unsupported
 from association.query.router import Route, _route_calendar_slots_split, settle
+from association.query.span import claimed as claimed_once
 from association.query.subject import (
     TEAM_SINGULARS,
     Subject,
@@ -48,7 +49,6 @@ from association.query.subject import (
     _edit_distance,
     _near,
     apply_subject,
-    beside,
     child_named,
     compared_but_unmatched,
     nicknames_in,
@@ -233,22 +233,10 @@ _TWO_TEAMS_LOG_WORDS = re.compile(r"\b(log|gamelog|game log)\b", re.IGNORECASE)
 _TWO_TEAMS_RECORD_WORDS = re.compile(r"\b(record|rec|w-?l|win.loss)\b", re.IGNORECASE)
 
 
-def _as_half(half: int | None) -> Literal[1, 2] | None:
-    """A half of a game as the Scope's own literal - the readers write one
-    of the two, and one that wrote anything else is a bug said out loud,
-    as the Scope's door says it for a slot dict."""
-    if half == 1:
-        return 1
-    if half == 2:
-        return 2
-    if half is not None:
-        raise ScopeError(f"half {half!r} is not 1 or 2")
-    return None
-
-
 def _as_split(split: str | None) -> Split | None:
-    """A split read off the words as the Scope's own literal
-    (:func:`_as_half`'s reason)."""
+    """A split read off the words as the Scope's own literal - the readers
+    write one of the set, and one that wrote anything else is a bug said out
+    loud, as the Scope's door says it for a slot dict."""
     if split is None:
         return None
     if split not in get_args(Split):
@@ -513,83 +501,9 @@ def _read_route_fields(intent: str, scope: Scope, question: str) -> Scope:
     return replace(scope, fields=tuple(fields)) if fields else scope
 
 
-# A quarter or half used as a CONDITION on which games count is read by
-# the lexicon's PERIOD_CONDITION (the verb, the number, the stat and the
-# period); the tables below name the number and the stat.
-_CONDITION_NUMBERS = {"a": 1, "an": 1, "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10}
-# The singular a line's words take after "one" - the columns the period's
-# line rebuilds (MEASURE_WORDS holds the plurals and the abbreviations).
-_CONDITION_STAT_WORDS: dict[str, str] = {
-    "three": "threePointFieldGoalsMade",
-    "3": "threePointFieldGoalsMade",
-    "three pointer": "threePointFieldGoalsMade",
-    "3 pointer": "threePointFieldGoalsMade",
-    "3-pointer": "threePointFieldGoalsMade",
-    "three-pointer": "threePointFieldGoalsMade",
-    "triple": "threePointFieldGoalsMade",
-    "point": "points",
-    "rebound": "rebounds",
-    "board": "rebounds",
-    "assist": "assists",
-    "steal": "steals",
-    "block": "blocks",
-    "turnover": "turnovers",
-    "foul": "fouls",
-    "free throw": "freeThrowsMade",
-    "field goal": "fieldGoalsMade",
-    "basket": "fieldGoalsMade",
-    "shot": "fieldGoalsMade",
-}
-
-
-def read_period_condition(question: str) -> tuple[PeriodCondition, tuple[int, int]] | None:
-    """The quarter or half a question uses as a condition on which games
-    count, as a :class:`~association.query.reading.PeriodCondition` with
-    the span of the words that said it - or None where the question uses
-    none, or words one whose stat the period's line does not rebuild
-    (:data:`~association.query.measures.PERIOD_COLUMNS`; the reading names
-    that by its ``period_as_condition`` cause). Read from the text alone, the
-    way every slot but the names and the stat is (ROADMAP plan item 6).
-    "At least N", "N+", "N or more" and "a"/"an" are at-least lines; a bare
-    number ("one three", "10 points") is exactly that many - the reading
-    yardstick-v2 F062's key takes (31 games with exactly one first-quarter
-    three, not the 36 with one or more) - and the answer says "exactly", so
-    the other reading is one word away (Jeff's rule: a visible default that
-    can be corrected).
-
-    .. versionadded:: 5.0.0
-    """
-    m = lexicon.PERIOD_CONDITION.search(question)
-    if m is None:
-        return None
-    number = m.group("n").lower()
-    threshold = int(number) if number.isdigit() else _CONDITION_NUMBERS[number]
-    words = re.sub(r"\s+", " ", m.group("stat").lower().strip())
-    stat = _CONDITION_STAT_WORDS.get(words) or MEASURE_WORDS.get(words) or MEASURE_WORDS.get(f"{words}s")
-    if stat is None or stat not in PERIOD_COLUMNS or threshold < 1:
-        return None
-    asked = which_period(m.group("period"))
-    if asked is None:
-        return None
-    period = asked[0]
-    op: Literal[">=", "="] = ">=" if m.group("least") or m.group("more") or number in ("a", "an") else "="
-    return PeriodCondition(stat=stat, threshold=threshold, op=op, period=None if period.half else period.number, half=_as_half(period.number) if period.half else None), m.span()
-
-
-def _read_route_versus(subject: Subject, scope: Scope, intent: str) -> Scope:
-    """The players the reading put on the OTHER side of the subject's games
-    ("most points by curry vs lebron", ROADMAP step 3), written into the
-    route's ``conditions`` here rather than left for the reading's second
-    pass (:func:`reading_from_route`, which reads the route and not the
-    model's names): a name two players share ("curry") is read as a player
-    only through the model's span, so a second pass without it would lose
-    him - and with him lost, "giannis points vs lebron and curry" was two
-    subjects again. Whatever the intent: a condition the answer cannot
-    honor is refused by name, never dropped."""
-    versus = [c for c in subject.conditions if c.side == "opponent"]
-    if not versus:
-        return scope
-    return replace(scope, conditions=(*scope.conditions, *(ConditionSpec(player=c.name, side="opponent", predicate="played") for c in versus)))
+# A quarter or half used as a CONDITION on which games count is the lines
+# tagger's reading (``line.read_period_line``), made here before the stages
+# so its words are blanked out of the question they read.
 
 
 #: The roles a companion can have that narrow the subject's OWN games as a
@@ -617,7 +531,7 @@ def _read_route_role_phrases(subject: Subject, question: str) -> list[tuple[re.M
     phrases: list[tuple[re.Match[str], str]] = []
     for match in _companion_phrases(question):
         predicate = _condition_role(match.group(1).lower(), match.group(2))[0]
-        if any(c.predicate == predicate and _near(c.name, match.group(2)) for c in subject.conditions):
+        if any(c.predicate == predicate and _near(c.player, match.group(2)) for c in subject.conditions):
             phrases.append((match, predicate))
     return phrases
 
@@ -753,23 +667,25 @@ def read_route(con: duckdb.DuckDBPyConnection, question: str, names: list[str] |
     subject = _two_teams(read, question, slots)
     slots = _read_route_names(subject, slots)
     # A quarter or half used as a condition on which games count is read
-    # here and its words taken out of the question the grammar and the
+    # here and its words blanked out of the question the grammar and the
     # stages see (#275): left in, "after making one three in first quarter"
     # is the period relation's question and "one three" a line on nothing.
-    condition = read_period_condition(question)
-    if condition is not None:
-        start, end = condition[1]
-        question = f"{question[:start]} {question[end:]}"
+    # Blanked to spaces of equal length, not cut, so every claim after it
+    # is where the real question holds it (the period slice's P4).
+    in_period = read_period_line(question)
+    period_lines: tuple[Line, ...] = ()
+    period_claims: tuple[Claim, ...] = ()
+    if in_period is not None:
+        claim = in_period[1]
+        question = question[: claim.start] + " " * (claim.end - claim.start) + question[claim.end :]
+        period_lines, period_claims = (in_period[0],), (claim,)
     parent = parent_intent(question, subject.kind, _read_route_beside(subject, question))
-    staged, decisions, words = _read_route_staged(question, slots, parent, read)
+    staged, decisions, words = _read_route_staged(question, slots, parent, read, period_lines)
     final = staged.intent
     scope = _read_route_fields(final, staged.scope, question)
     # A teammate's start is his, never the subject's own split: the stages
     # read the split from the whole question.
     scope = _read_route_split(subject, question, final, scope)
-    if condition is not None:
-        scope = replace(scope, period_condition=condition[0])
-    scope = _read_route_versus(subject, scope, final)
     # The one reading, settled under the intent the route ends with: what
     # the parser's last step and everything after it answer from.
     settled = settle_subject(read, final, parent=parent, words=words)
@@ -780,10 +696,12 @@ def read_route(con: duckdb.DuckDBPyConnection, question: str, names: list[str] |
         teams=subject.teams if subject.kind == "teams" else settled.teams,
         opponent=subject.opponent if subject.kind == "teams" else settled.opponent,
     )
-    return Route(final, scope, decisions, subject=settled, claims=staged.claims), subject, parent
+    # The companions' phrases are the subject reading's claims, the line in
+    # a quarter the parser's; the taggers' ride the staged route.
+    return Route(final, scope, decisions, subject=settled, claims=claimed_once([*staged.claims, *period_claims, *read.claims])), subject, parent
 
 
-def _read_route_staged(question: str, slots: dict[str, Any], parent: str, read: Subject) -> tuple[Route, tuple[Decision, ...], str | None]:
+def _read_route_staged(question: str, slots: dict[str, Any], parent: str, read: Subject, lines: tuple[Line, ...] = ()) -> tuple[Route, tuple[Decision, ...], str | None]:
     """The stages, run ONCE: under the child the subject's shape and the
     question's words name for ``parent``
     (:func:`~association.query.subject.child_named` - a count of 30+ point
@@ -801,13 +719,14 @@ def _read_route_staged(question: str, slots: dict[str, Any], parent: str, read: 
     Returns the route, the decisions made getting to it
     (:attr:`~association.query.router.Route.decisions`: the intent moving
     off the parent, and why) and the words that named the child, if one
-    stands."""
+    stands. ``lines`` are the lines read before the stages (a line in a
+    quarter, whose words the parser blanked), handed to them whole."""
     named = child_named(read, parent, question)
-    companions = beside(read.conditions)
+    companions = read.conditions
     decisions: list[Decision] = []
     if named is not None:
         child, words = named
-        staged = settle(child, slots, question, companions)
+        staged = settle(child, slots, question, companions, lines=lines)
         # A team's record under a companion's line names no words, and the
         # stages' own settling of it stands, as the route's did.
         if staged.intent == child or words is None:
@@ -816,7 +735,7 @@ def _read_route_staged(question: str, slots: dict[str, Any], parent: str, read: 
                 decisions.append(Decision("parser", "intent", child, staged.intent, "the stages settle it from the question's words"))
             return staged, tuple(decisions), words
         decisions.append(Decision("parser", "intent", child, parent, f"the words {words!r} name {child}, and the stages declined it"))
-    staged = settle(parent, slots, question, companions)
+    staged = settle(parent, slots, question, companions, lines=lines)
     if staged.intent != parent:
         decisions.append(Decision("parser", "intent", parent, staged.intent, "the stages settle it from the question's words"))
     return staged, tuple(decisions), None
@@ -1039,12 +958,12 @@ def _unsupported_period_as_condition(question: str, reading: Reading) -> Cause |
     """A quarter or half used as a CONDITION on which games count - "three
     points made per game after making one three in first quarter"
     (yardstick-v2 F062) - where no line could be read from the words: the
-    parser reads a readable one as ``period_condition``
-    (:func:`read_period_condition`), which the relation applies; a wording
+    parser reads a readable one as a line in that period
+    (:func:`~association.query.line.read_period_line`), which the relation applies; a wording
     it cannot read is kept off the period shapes
     (``lexicon.PERIOD_AS_CONDITION``), and a period read of it would answer
     his first-quarter threes, fluently and wrongly."""
-    if reading.scope.period_condition is not None or not (lexicon.PERIOD_AS_CONDITION.search(question) and lexicon.PERIOD_WORD.search(question)):
+    if any(line.period is not None for line in reading.scope.lines) or not (lexicon.PERIOD_AS_CONDITION.search(question) and lexicon.PERIOD_WORD.search(question)):
         return None
     return Cause(kind="period_as_condition", facts={"intent": reading.intent})
 

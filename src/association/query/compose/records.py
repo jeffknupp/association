@@ -25,6 +25,7 @@ from association.nba.franchises import season_name
 from association.query.conditions import _PLAYER_GAME_TABLES, _names, _unseen, box_source, condition_needs_player_refusal, condition_span_label
 from association.query.coverage import coverage_refusal
 from association.query.entities import optional_team
+from association.query.lines import threshold_of
 from association.query.notes import Note
 from association.query.player_games import STAT_LABELS, THRESHOLD_STAT_COLUMNS, games_subquery
 from association.query.player_relation import condition_scope, no_games, span_of, whole_span
@@ -57,7 +58,7 @@ def _own_line(q: Query, stated: frozenset[str]) -> tuple[str, str, int] | None:
         return None
     stat = scope.stat
     column = THRESHOLD_STAT_COLUMNS.get(stat) if stat is not None else None
-    threshold = scope.threshold
+    threshold = threshold_of(scope)
     if stat is None or column is None or threshold is None or threshold < 1:
         return None
     if q.skeleton != "scalar" or q.aggregate != "record" or q.subject != "player" or q.predicates != [(column, ">=", threshold)] or [m for m in q.measures if m != column]:
@@ -171,7 +172,7 @@ def read_team_record_when(con: duckdb.DuckDBPyConnection, q: TeamQuery, *, state
     .. versionadded:: 5.0.0
     """
     scope = q.scope
-    if scope.threshold is None or unhonored_scoping("record_when", scope, stated):
+    if threshold_of(scope) is None or unhonored_scoping("record_when", scope, stated):
         return None
     refused = coverage_refusal(PointShape("team_games", "split", "line"), scope)
     if refused is not None:
@@ -182,7 +183,7 @@ def read_team_record_when(con: duckdb.DuckDBPyConnection, q: TeamQuery, *, state
         return team
     if team is None:
         raise Unsupported("record_when needs a player or a team")
-    stat, threshold = _record_when_team_stat(scope.stat, scope.threshold)
+    stat, threshold = _record_when_team_stat(scope.stat, threshold_of(scope))
     span = span_of(scope.span, "games")
     narrowed = team_games(con, team, span, scope, opponent=scope.cuts.opponent)
     if isinstance(narrowed, Unanswered):

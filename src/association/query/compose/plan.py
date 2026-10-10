@@ -18,7 +18,7 @@ from association.query.coverage import coverage_refusal
 from association.query.measures import stat_measure
 from association.query.player_relation import RELATION_SCOPING_EXCLUDED, relation_cuts, relation_period, relation_scoping, relation_span
 from association.query.point import TEAM_SEASON_POINTS, team_season_point
-from association.query.reading import CHART_INTENTS, Cause, Cuts, Period, PointShape, Reading, Scope, Span, Window, _career_scope, cell_set, unhonored_scoping
+from association.query.reading import CHART_INTENTS, Cause, Companion, Cuts, Line, Period, PointShape, Reading, Scope, Span, Window, _career_scope, cell_set, slot_names_set, unhonored_scoping
 from association.query.result import Refusal
 from association.query.team_relation import team_relation_cuts, team_relation_scoping, team_relation_span
 
@@ -30,22 +30,6 @@ from .seasons import player_compare_reads, player_history_reads, player_line_rea
 from .shots import ShotQuery
 from .team import TeamQuery
 from .team_stats import TeamSeasonQuery, team_season_declines
-
-WITH_WITHOUT_STATED: frozenset[str] = frozenset({"without", "conditions"}) | team_relation_span("with_without") | team_relation_cuts("with_without")
-"""The scoping ``with_without``'s words state - a career, the teammates
-divided by, one opponent (both rows narrow together, #163: the team
-relation's one cut its words state, ``TEAM_RELATION_SCOPING_EXCLUDED``
-naming the rest) and a companion's role - the retired template's own
-declaration; any other narrowing is declined by name
-(:func:`_shape_declines`), and the reader's words state the same
-(:data:`STATED_SCOPING`).
-
-In the planner, which declines by it, since the last adapter
-(``compose.adapt``, where it lived) was deleted.
-
-.. versionadded:: 5.0.0
-"""
-
 
 STATED_SCOPING: dict[PointShape, frozenset[str]] = {
     # game_log and player_stat retired stating the relation's whole set,
@@ -100,19 +84,22 @@ STATED_SCOPING: dict[PointShape, frozenset[str]] = {
     # an ordinal season and a quarter (RELATION_SCOPING_EXCLUDED), which the
     # planner refuses outright (compose.plan._shape_declines).
     PointShape("player_games", "comparison", "met"): relation_scoping("player_matchup"),
-    # with_without's words: a career, the teammates, one opponent and a
-    # companion's role, the template's own declaration when it retired.
-    PointShape("team_games", "split", "presence"): WITH_WITHOUT_STATED,
+    # with_without's words: a career, the companions it divides by and holds
+    # to their roles, and one opponent (both rows narrow together, #163: the
+    # team relation's one cut its words state, TEAM_RELATION_SCOPING_EXCLUDED
+    # naming the rest) - the retired template's own declaration, one row of
+    # this table since Phase 3, step 2 (``WITH_WITHOUT_STATED``, named apart, until then).
+    PointShape("team_games", "split", "presence"): frozenset({"companion"}) | team_relation_span("with_without") | team_relation_cuts("with_without"),
     PointShape("player_games", "rows", "measure"): relation_span("single_game_high") | relation_cuts("single_game_high"),
-    # A count is already a line on a column; `below` is the same line the
-    # other way ("games with under 14 fta"), and a phrase carrying the count's
-    # own number IS the count, misread - compose.counts reads it so. The
+    # A count is already a line on a column; the `line` cell is the same line
+    # the other way ("games with under 14 fta"), and a phrase carrying the
+    # count's own number IS the count, misread - compose.counts reads it so. The
     # span's `both` cell is stated the way `scoped_player` reads it - one
     # combined `season_type IN (2, 3)` read (player_relation_season_type);
     # the one cut its words state is an ordinal season.
-    PointShape("player_games", "scalar", "count"): frozenset({"below", "above"}) | relation_span("threshold_count") | relation_cuts("threshold_count"),
-    PointShape("player_games", "ranking", "count"): frozenset({"below", "above"}) | relation_span("threshold_count") | relation_cuts("threshold_count"),
-    PointShape("player_games", "rows", "count"): frozenset({"below", "above"}) | relation_span("threshold_count") | relation_cuts("threshold_count"),
+    PointShape("player_games", "scalar", "count"): frozenset({"line"}) | relation_span("threshold_count") | relation_cuts("threshold_count"),
+    PointShape("player_games", "ranking", "count"): frozenset({"line"}) | relation_span("threshold_count") | relation_cuts("threshold_count"),
+    PointShape("player_games", "rows", "count"): frozenset({"line"}) | relation_span("threshold_count") | relation_cuts("threshold_count"),
     # The team-season readers' words (compose.team_stats), as the retired
     # templates honored them: one team's line and its power index state no
     # narrowing at all; a ranking states the team relation's cells less the
@@ -173,8 +160,8 @@ names.
 .. versionadded:: 5.0.0
 
 .. versionchanged:: 5.0.0
-   In the planner, its one reader beside :data:`WITH_WITHOUT_STATED`, since
-   ``compose/present.py`` was deleted (Phase 2, slice (iv)).
+   In the planner, its one reader, since ``compose/present.py`` was deleted
+   (Phase 2, slice (iv)).
 
 .. versionchanged:: 5.0.0
    Keyed by :class:`~association.query.reading.PointShape` (2026-10-05); by intent until then.
@@ -293,7 +280,7 @@ row moved) by name, in the sentence the retired scope check refused it with
 #: ``templates.splits.team_splits``, ``point._default_streak``): let
 #: through here so that sentence, which says where the question belongs, is
 #: the refusal. Anything else a team's games do not carry is refused here.
-_TEAM_READER_REFUSES: frozenset[str] = frozenset({"without", "below", "above", "season_n", "conditions"})
+_TEAM_READER_REFUSES: frozenset[str] = frozenset({"companion", "line", "season_n"})
 
 
 def _team_shape_cells(reading: Reading) -> frozenset[str]:
@@ -306,7 +293,7 @@ def _team_shape_cells(reading: Reading) -> frozenset[str]:
         # Declined beyond these first, in the shape's own words.
         return STATED_SCOPING[point_shape(reading)]
     if reading.group == "presence":
-        return frozenset({"without", "conditions"})
+        return frozenset({"companion"})
     skeleton = skeleton_of(reading)
     if skeleton == "grouped":
         return _TEAM_READER_REFUSES | {"split"}
@@ -346,10 +333,7 @@ def _shape_declines(point: Reading) -> str | None:
     if intent == "player_compare":
         ignored = unhonored_scoping(intent, scope, frozenset())
         return f"player_compare cannot honor {ignored} - it would answer for a different span than was asked" if ignored else None
-    if intent == "with_without":
-        ignored = unhonored_scoping(intent, scope, WITH_WITHOUT_STATED)
-        return f"with_without cannot honor {ignored} - it would answer for a different span than was asked" if ignored else None
-    if intent in PORTED_SHAPES or intent in CHART_INTENTS:
+    if intent == "with_without" or intent in PORTED_SHAPES or intent in CHART_INTENTS:
         ignored = unhonored_scoping(intent, scope, STATED_SCOPING[point_shape(point)])
         return f"{intent} cannot honor {ignored} - it would answer for a different span than was asked" if ignored else None
     if intent == "streak" and point.relation != "player":
@@ -387,7 +371,7 @@ def _excluded_cells_set(intent: str, scope: Scope, excluded: dict[str, str]) -> 
     for the typed :class:`~association.query.reading.Period`)."""
     refused: list[tuple[str, str]] = []
     for cell in excluded:
-        if cell == "both" or (intent == "period_split" and cell == "period_condition"):
+        if cell == "both" or (intent == "period_split" and cell == "period_line"):
             continue
         if cell in Span.CELLS:
             refused += [(slot, cell) for slot in scope.span.unhonored(Span.CELLS - {cell})]
@@ -397,6 +381,8 @@ def _excluded_cells_set(intent: str, scope: Scope, excluded: dict[str, str]) -> 
             refused += [(slot, cell) for slot in scope.cuts.unhonored(Cuts.CELLS - {cell})]
         elif cell in Period.CELLS:
             refused += [(slot, cell) for slot in (scope.period.unhonored(frozenset()) if scope.period is not None else [])]
+        elif cell in Line.CELLS or cell in Companion.CELLS:
+            refused += [(slot, cell) for slot in slot_names_set(scope, (cell,))]
         elif cell_set(scope, cell):
             refused.append((cell, cell))
     return refused

@@ -10,13 +10,12 @@ import json
 from typing import Any, get_args, get_type_hints
 
 import pytest
-from routed import slots_route
 
 from association.nba.season import current_season
 from association.query.compose.plan import refusal_result
 from association.query.lexicon import ORDER_WORDS
-from association.query.reading import Cause, Scope, Window
-from association.query.router import CODE_ASSIGNED_INTENTS, SIDE_VALUES, Beside, Route, _settle
+from association.query.reading import Cause, Companion, Scope, Window
+from association.query.router import CODE_ASSIGNED_INTENTS, SIDE_VALUES, Route, _settle
 from association.query.window import ORDER_INTENTS
 
 
@@ -27,8 +26,12 @@ def _route(payload: str) -> Route:
 
 
 def test_parses_intent_and_slots() -> None:
-    got = _route('{"intent":"threshold_count","stat":"points","threshold":30}')
-    assert got == slots_route("threshold_count", {"stat": "points", "threshold": 30, "season_type": 2})
+    """The names and the stat are the model's; every other slot is read from
+    the words (a model-era ``threshold`` is dropped at the stages' door, and
+    the lines tagger reads "30 point games")."""
+    got = _ask("how many 30 point games", '{"intent":"threshold_count","stat":"points","threshold":30}')
+    assert got.intent == "threshold_count" and got.slots == {"stat": "points", "threshold": 30, "season_type": 2}
+    assert _route('{"intent":"threshold_count","stat":"points","threshold":30}').intent == "leaderboard"  # no line in the words "q": a ranking
 
 
 def test_season_type_defaults_to_regular_season() -> None:
@@ -440,10 +443,10 @@ def test_only_a_comparison_drops_an_unasked_stat() -> None:
     assert got.slots["stat"] == "points"
 
 
-def _asking(payload: str, question: str, beside: Beside | None = None) -> Route:
+def _asking(payload: str, question: str, companions: tuple[Companion, ...] = ()) -> Route:
     """_route, but for the checks that read the question text rather than only
     the payload."""
-    return _ask(question, payload, beside)
+    return _ask(question, payload, companions)
 
 
 def test_question_text_beats_a_dropped_order_slot() -> None:
@@ -553,12 +556,23 @@ def test_the_order_intents_are_the_ones_that_honor_order() -> None:
 # consulted.
 
 
-def _ask(question: str, payload: str, beside: Beside | None = None) -> Route:
+def _ask(question: str, payload: str, companions: tuple[Companion, ...] = ()) -> Route:
     """The stages on a real question, over a fixed model reply: what the
     router returned for it, since its model call (deleted in 5.0.0) only
-    decoded the reply before handing it to them. ``beside`` is who the
-    subject reading found beside the subject: the stages read no name."""
-    return _settle(json.loads(payload), question, beside or Beside())
+    decoded the reply before handing it to them. ``companions`` is who the
+    subject reading found beside the subject: the stages read no name and
+    write none (the subject reading writes them onto the Reading)."""
+    return _settle(json.loads(payload), question, companions)
+
+
+def _absent(*names: str) -> tuple[Companion, ...]:
+    """Teammates the subject reading found absent, as it hands them to the stages."""
+    return tuple(Companion(player=name, predicate="absent") for name in names)
+
+
+def _played(*names: str) -> tuple[Companion, ...]:
+    """Teammates the subject reading found playing beside the subject."""
+    return tuple(Companion(player=name, predicate="played") for name in names)
 
 
 def test_the_postseason_comes_from_the_question_not_the_model() -> None:
@@ -772,30 +786,30 @@ def test_all_season_type_games_does_not_fire_on_all_star() -> None:
     assert "span" not in games.slots
 
 
-def test_the_stages_write_the_names_the_subject_found_beside_him_and_read_none() -> None:
+def test_the_stages_take_the_companions_the_subject_found_and_write_none() -> None:
     """Who sat out and who played beside the subject is the subject
     reading's (``subject._conditions``, the one reader of a companion's
-    name since 5.0.0); the stages take it as :class:`Beside`. Every name is
-    written - reading only the first answered "Celtics record without Tatum
-    and Brown" with the games Tatum missed - and run alone, with nobody
-    beside him, they name nobody: the stages' own readers of "without X" and
-    "with X" are gone."""
-    both = _ask("Celtics record without Tatum and Brown", '{"intent":"with_without"}', Beside(absent=("Tatum", "Brown")))
-    assert both.slots["without"] == ["Tatum", "Brown"]
-    # For every intent, the way "without" always was: a template that cannot
-    # narrow by it refuses, never answers the games he played too.
-    assert _ask("Podziemski game log without curry", '{"intent":"game_log"}', Beside(absent=("curry",))).slots["without"] == ["curry"]
+    name since 5.0.0), written onto the Reading by ``subject.apply_subject``
+    (Phase 3, step 2); the stages take the typed companions to settle the
+    intent by, write none, and run alone - with nobody beside him - name
+    nobody: their own readers of "without X" and "with X" are gone."""
+    both = _ask("Celtics record without Tatum and Brown", '{"intent":"with_without"}', _absent("Tatum", "Brown"))
+    assert both.intent == "with_without" and "without" not in both.slots and not both.scope.companions
+    assert "without" not in _ask("Podziemski game log without curry", '{"intent":"game_log"}', _absent("curry")).slots
     assert "without" not in _ask("Celtics record without Tatum and Brown", '{"intent":"with_without"}').slots
     assert "without" not in _ask("most games without a turnover", '{"intent":"game_log"}').slots
 
 
-def test_with_a_teammate_is_only_written_for_the_template_that_uses_it() -> None:
-    """ "with" is everywhere ("games with 30+ points"), so outside with_without it
-    would be noise at best."""
-    beside = Beside(played=("ja morant", "desmond bane"))
-    question = "jjj stats with ja morant and desmond bane last season"
-    assert _ask(question, '{"intent":"with_without"}', beside).slots["with_player"] == ["ja morant", "desmond bane"]
-    assert "with_player" not in _ask(question, '{"intent":"player_stat"}', beside).slots
+def test_with_a_teammate_is_the_splits_name_on_the_split_alone() -> None:
+    """ "with" is everywhere ("games with 30+ points"), so outside with_without
+    a teammate who played is a condition on the games, not the split's name:
+    the typed companion is the same, and the slot it printed under follows
+    the shape (``Scope.to_slots(split_by_presence=...)``)."""
+    beside = _played("ja morant", "desmond bane")
+    scope = Scope(team="Memphis Grizzlies", companions=beside)
+    assert scope.to_slots(split_by_presence=True)["with_player"] == ["ja morant", "desmond bane"] and "conditions" not in scope.to_slots(split_by_presence=True)
+    assert "with_player" not in scope.to_slots() and [c["predicate"] for c in scope.to_slots()["conditions"]] == ["played", "played"]
+    assert _ask("jjj stats with ja morant and desmond bane last season", '{"intent":"with_without"}', beside).intent == "with_without"
 
 
 @pytest.mark.parametrize(
@@ -1908,9 +1922,10 @@ def test_the_router_and_the_templates_agree_on_what_a_stat_word_means() -> None:
     its map from it, so a spelling dropped there raises at import rather than
     silently narrowing what the threshold grammar understands. This pins that
     the derivation stays a derivation."""
-    from association.query.lines import MEASURE_WORDS as LINES_MEASURE_WORDS
+    from association.query.lexicon import MEASURE_WORDS as LINES_MEASURE_WORDS
+    from association.query.lexicon import THRESHOLD_SPELLINGS as _THRESHOLD_SPELLINGS
+    from association.query.lexicon import THRESHOLD_WORDS as _THRESHOLD_WORDS
     from association.query.measures import MEASURE_WORDS
-    from association.query.router import _THRESHOLD_SPELLINGS, _THRESHOLD_WORDS
 
     # The one table, read by the stages and by the below/above phrase reader alike.
     assert LINES_MEASURE_WORDS is MEASURE_WORDS
@@ -1924,7 +1939,8 @@ def test_the_threshold_pair_words_and_their_pattern_cannot_drift() -> None:
     knows is a word the pattern matches, and every word it matches has a
     meaning. They were a hand-kept list and a map before, which could disagree
     about a word with nothing to notice."""
-    from association.query.router import _THRESHOLD_PAIR, _THRESHOLD_WORDS
+    from association.query.lexicon import THRESHOLD_PAIR as _THRESHOLD_PAIR
+    from association.query.lexicon import THRESHOLD_WORDS as _THRESHOLD_WORDS
 
     for word, means in _THRESHOLD_WORDS.items():
         match = _THRESHOLD_PAIR.search(f"games with 20+ {word} this season")
@@ -2364,9 +2380,8 @@ def test_a_record_when_two_players_played_is_a_with_without_question(question: s
     divides a season by a NUMBER a player reached, and none of these names
     one. The players are the subject reading's (``tests/query/test_subject.py``
     holds the four wordings); given them, the stages settle the split."""
-    got = _ask(question, '{"intent":"record_when","stat":"wins","team":"Philadelphia 76ers","season":2026}', Beside(played=("Embiid", "Paul George")))
+    got = _ask(question, '{"intent":"record_when","stat":"wins","team":"Philadelphia 76ers","season":2026}', _played("Embiid", "Paul George"))
     assert got.intent == "with_without"
-    assert got.slots.get("with_player") == ["Embiid", "Paul George"]
 
 
 def test_a_record_when_a_player_reaches_a_number_keeps_its_intent() -> None:
@@ -2396,14 +2411,13 @@ def test_an_opponent_that_is_the_without_list_is_dropped() -> None:
     got = _asking(
         '{"intent":"game_log","stat":"minutes","player":"Bane","opponent":"Anthony Black, Franz Wagner","limit":10,"season":2026}',
         "bane game log without anthony black and franz wagner this season",
-        Beside(absent=("anthony black", "franz wagner")),
+        _absent("anthony black", "franz wagner"),
     )
-    assert got.slots["without"] == ["anthony black", "franz wagner"]
     assert "opponent" not in got.slots
     kept = _asking(
         '{"intent":"game_log","stat":"minutes","player":"Bane","opponent":"Boston Celtics","limit":10,"season":2026}',
         "bane game log vs boston without franz wagner this season",
-        Beside(absent=("franz wagner",)),
+        _absent("franz wagner"),
     )
     assert kept.slots["opponent"] == "Boston Celtics"
 
@@ -2476,7 +2490,7 @@ def test_settle_reads_a_childs_slots_off_the_text_and_drops_the_parents_derived_
     assert settled.slots["threshold"] == 30 and settled.slots["season"] == current_season()
     # The stages may settle elsewhere: a count with no threshold is a ranking.
     assert settle("threshold_count", {"stat": "threePointFieldGoalsMade"}, "who has the most threes").intent == "leaderboard"
-    assert settle("record_when", {"stat": "points", "team": "Philadelphia 76ers"}, "PHI record when Embiid and Paul George played", Beside(played=("Embiid", "Paul George"))).intent == "with_without"
+    assert settle("record_when", {"stat": "points", "team": "Philadelphia 76ers"}, "PHI record when Embiid and Paul George played", _played("Embiid", "Paul George")).intent == "with_without"
 
 
 def test_the_kind_assigned_intents_all_have_readers() -> None:
@@ -2494,7 +2508,7 @@ def test_a_threshold_without_a_plus_reads_every_spelling_the_pair_grammar_does()
     """`_THRESHOLD` used to be a second hand-kept alternation that lacked
     "pt", "reb" and "ast", so "30 pt games" read no threshold and became a
     ranking."""
-    from association.query.router import _threshold_from_text
+    from association.query.line import threshold_named as _threshold_from_text
 
     assert _threshold_from_text("who had the most 30 pt games in 2024") == 30
     assert _threshold_from_text("games with 15 reb this season") == 15
@@ -2538,7 +2552,7 @@ def test_a_last_n_games_with_no_teammate_named_is_a_log_not_a_split() -> None:
 
     settled = settle("with_without", {"stat": "points_differential", "team": "New York Knicks", "order": "recent", "limit": 7}, "KNICKS point differential over the last 7 games")
     assert settled.intent == "game_log" and settled.slots["limit"] == 7 and settled.slots["order"] == "recent"
-    assert settle("with_without", {"team": "Boston Celtics"}, "Celtics record without Tatum in the last 10 games", Beside(absent=("Tatum",))).intent == "with_without"
+    assert settle("with_without", {"team": "Boston Celtics"}, "Celtics record without Tatum in the last 10 games", _absent("Tatum")).intent == "with_without"
 
 
 def test_a_game_of_each_series_drops_a_filler_order_and_limit() -> None:

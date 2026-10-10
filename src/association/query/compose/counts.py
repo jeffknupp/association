@@ -34,7 +34,7 @@ import duckdb
 
 from association.nba.coverage import COVERAGE
 from association.query.entities import Entity
-from association.query.lines import measure_filters, threshold_count_line
+from association.query.lines import measure_filters, threshold_count_line, threshold_of
 from association.query.notes import Note
 from association.query.player_games import REBUILT_STATS, STAT_LABELS
 from association.query.player_relation import empty_box_scores, player_relation_season_type, rebuilt_in_scope
@@ -51,7 +51,7 @@ def _threshold_count_is_own_point(q: Query, column: str) -> bool:
     that threshold instead, which the count reads as the line), for one
     player or grouped by player over the league - nothing the question's
     words added."""
-    threshold = q.scope.threshold
+    threshold = threshold_of(q.scope)
     counted = [(column, ">=", threshold)] if threshold is not None else []
     if q.predicates not in (counted, []) or q.position:
         return False
@@ -115,7 +115,7 @@ def read_threshold_count(con: duckdb.DuckDBPyConnection, q: Query, *, stated: fr
         # point reads them: a below/above phrase may be the whole line, with
         # no threshold at all ("Sga games with under 14 fta").
         column, threshold = threshold_count_line(scope)
-        lines = measure_filters(scope.below, scope.above)
+        lines = measure_filters(scope)
     except Unsupported:
         return None
     if not _threshold_count_is_own_point(q, column):

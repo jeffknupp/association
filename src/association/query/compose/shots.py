@@ -117,7 +117,7 @@ def _shots_other_narrowing(scope: Scope, date: str | None, measures: list[Measur
     relation's set rather than listed, so a cell the relation gains reaches
     a shot read at once - ``situation`` and ``conditions`` once silently
     drew the whole span because a hand list predated them."""
-    cells = RELATION_SCOPING - reading.Span.CELLS - reading.Window.CELLS - {"season_n", "date", "below", "above"}
+    cells = RELATION_SCOPING - reading.Span.CELLS - reading.Window.CELLS - {"season_n", "date", "line"}
     return bool(any(cell_set(scope, cell) for cell in cells) or scope.span.since is not None or scope.span.until is not None or date or measures)
 
 
@@ -250,7 +250,7 @@ def read_shot_distance(con: duckdb.DuckDBPyConnection, q: ShotQuery, *, stated: 
     scope = q.scope
     if q.shape != "scalar" or unhonored_scoping("shot_distance", scope, stated):
         return None
-    measures = measure_filters(scope.below, scope.above)
+    measures = measure_filters(scope)
     subject = scoped_player(con, scope, "shot_distance needs a player name", table="player_game_log", available=SHOT_AVAILABILITY)
     if isinstance(subject, Unanswered):
         return subject
@@ -555,7 +555,7 @@ def read_shot_chart(con: duckdb.DuckDBPyConnection, q: ShotQuery, *, stated: fro
     name = scope.player
     if name is None or not name.strip():
         raise Unsupported("shot_chart needs a player name")
-    measures = measure_filters(scope.below, scope.above)
+    measures = measure_filters(scope)
     subject = _shot_chart_settle_player(con, name, scope)
     if isinstance(subject, Unanswered):
         return subject
