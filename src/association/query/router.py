@@ -187,6 +187,17 @@ class Route:
     #:
     #: .. versionadded:: 6.0.0
     claims: tuple[Claim, ...] = ()
+    #: The model's reply the route was read beside - the names it copied
+    #: out of the question and the stat key it picked
+    #: (:func:`~association.query.parse.read_route`'s arguments, as given) -
+    #: so the parser's last step can leave the words the model accounts for
+    #: out of the unread ones (:attr:`Reading.unread
+    #: <association.query.reading.Reading.unread>`), as the claims ledger
+    #: leaves them out of its count. Empty where nothing asked the model.
+    #:
+    #: .. versionadded:: 6.0.0
+    model_names: tuple[str, ...] = ()
+    model_stat: str = ""
 
     @property
     def slots(self) -> dict[str, Any]:

@@ -186,6 +186,9 @@ def _reading_record(reading: Reading, mask: Mapping[str, str] | None) -> dict[st
         "lines": plain(reading.scope.lines, mask=mask),
         "companions": plain(reading.scope.companions, mask=mask),
         "measure": plain(reading.scope.measure, mask=mask),
+        # The content words no claim covers (Phase 3, step 3): what the
+        # claims ledger checks from outside, word for word.
+        "unread": list(reading.unread),
         "subject": subject,
         "misread": list(reading.misread),
         "decisions": [plain(decision.as_dict(), mask=mask) for decision in reading.decisions],

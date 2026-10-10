@@ -2719,3 +2719,153 @@ name the model copied is matched back to (``parse._as_typed``).
 .. versionadded:: 6.0.0
    ``parse._AS_TYPED_WORD`` until Phase 3, step 2.
 """
+
+# The words a reading has to account for (Phase 3, step 3). Until then this
+# rule was ``scripts/claims_ledger.py``'s alone, the ledger's measure of the
+# words whose deletion leaves the reading and the planned query unchanged;
+# the parser reads it too now, so the Reading states the words nothing
+# claimed (``Reading.unread``) by the same rule the ledger counts them by,
+# and the ledger is the check from outside that the two agree.
+CONTENT_TOKEN = re.compile(r"\S+")
+"""A word as the content rule counts one: a run of anything but white space
+(:func:`content_tokens`).
+
+.. versionadded:: 6.0.0
+   ``scripts/claims_ledger.py``'s ``_TOKEN`` until Phase 3, step 3.
+"""
+CONTENT_EDGE = re.compile(r"^[^\w%+']+|[^\w%+']+$")
+"""The punctuation a counted word is read without, at either end: a comma,
+a question mark, a quote - never a percent sign, a plus or an apostrophe,
+which are part of "ts%", "30+" and "curry's".
+
+.. versionadded:: 6.0.0
+   ``scripts/claims_ledger.py``'s ``_EDGE`` until Phase 3, step 3.
+"""
+POSSESSIVE_END = re.compile("['\u2019]s$")
+"""A possessive ending, typed with either apostrophe (:func:`without_possessive`).
+
+.. versionadded:: 6.0.0
+"""
+CONTENT_STOPWORDS: frozenset[str] = frozenset(
+    """a an the of in on at to for from by with and or is are was were be been do does did has have had his her their its he she they it
+    this that these those what who which how many much me my i show give tell list get find display create generate please can you us nba s vs versus""".split()
+) | {"whats", "whos"}  # codespell:ignore whats,whos - the question words as typed with no apostrophe
+"""Words that carry no narrowing of their own, which no reading has to
+account for. Deliberately short: a word left off this list is counted when
+nothing reads it, and a word wrongly on it hides.
+
+.. versionadded:: 6.0.0
+   ``scripts/claims_ledger.py``'s ``STOPWORDS`` until Phase 3, step 3.
+"""
+MODEL_STAT_WORDS: dict[str, re.Pattern[str]] = {
+    key: re.compile(words)
+    for key, words in {
+        "points": r"points?|pts|ppg|scor\w*",
+        "rebounds": r"rebounds?|reb|rebs|rpg|boards?",
+        "assists": r"assists?|ast|asts|apg|dimes?",
+        "steals": r"steals?|stl|stls|spg",
+        "blocks": r"blocks?|blk|blks|bpg",
+        "turnovers": r"turnovers?|tov|tovs|to",
+        "fouls": r"fouls?|pf|pfs",
+        "minutes": r"minutes?|mins?|mpg",
+        "fieldGoalsMade": r"field|goals?|fgm|fg|made|makes?",
+        "fieldGoalsAttempted": r"field|goals?|fga|attempts?|attempted|shots?",
+        "fieldGoalPct": r"field|goals?|fg%?|percentage|percent|pct|shooting|%",
+        "threePointFieldGoalsMade": r"threes?|3s|3'?s|3pm|3pts?|3-?pt|3-?pointers?|three-?pointers?|pointers?|triples|made|makes?|3|three|point",
+        "threePointFieldGoalsAttempted": r"threes?|3s|3pa|3pts?|3-?pt|3-?pointers?|three-?pointers?|pointers?|attempts?|attempted|3|three|point",
+        "threePointFieldGoalPct": r"threes?|3s|3p%?|3pt%?|3-?point|three-?point|percentage|percent|pct|shooting|%|3|three|point",
+        "twoPointFieldGoalPct": r"twos?|2s|2p%?|2pt%?|2-?pt|2-?point|two-?point|percentage|percent|pct|%|2|two|point",
+        "freeThrowsMade": r"free|throws?|ftm|ft|fts|made|makes?",
+        "freeThrowsAttempted": r"free|throws?|fta|ft|fts|attempts?|attempted",
+        "freeThrowPct": r"free|throws?|ft%?|percentage|percent|pct|%",
+        "offensiveRebounds": r"offensive|rebounds?|oreb|orebs|boards?",
+        "defensiveRebounds": r"defensive|rebounds?|dreb|drebs|boards?",
+        "ts_pct": r"true|shooting|ts%?|percentage|percent|pct|%",
+        "efg_pct": r"effective|efg%?|field|goals?|percentage|percent|pct|%",
+        "usage_pct": r"usage|usg%?|rate|percentage|pct|%",
+        "double_double": r"double-?doubles?|doubles?|dd2?s?",
+        "triple_double": r"triple-?doubles?|triples?|doubles?|td3?s?",
+        "netpoints": r"net|points?|netpoints?",
+        "netpoints_per_100": r"net|points?|netpoints?|per|100|possessions?",
+        "netpoints_offense": r"net|points?|netpoints?|offensive|offense",
+        "netpoints_defense": r"net|points?|netpoints?|defensive|defense",
+        "netpoints_offense_per_100": r"net|points?|netpoints?|offensive|offense|per|100|possessions?",
+        "netpoints_defense_per_100": r"net|points?|netpoints?|defensive|defense|per|100|possessions?",
+        "wins": r"wins?|won|winning",
+        "losses": r"loss(es)?|lost|losing",
+        "record": r"record|w-l|wins?|loss(es)?",
+        "games_played": r"games?|played|gp",
+        "shot_distance": r"shots?|distance|feet|ft|far",
+        "points_allowed": r"points?|allowed|allow|opponents?|against|defense",
+        "point_differential": r"points?|differential|diff|margin|\+/-|plus-?minus",
+    }.items()
+}
+"""The words that name each stat key the model may pick - what the model's
+reply accounts for in the question (:func:`read_by_the_model`). A key
+missing here accounts for no word.
+
+.. versionadded:: 6.0.0
+   ``scripts/claims_ledger.py``'s ``STAT_WORDS`` until Phase 3, step 3.
+"""
+
+
+def content_tokens(question: str) -> list[tuple[int, int, str]]:
+    """Each white-space-separated word of ``question`` as ``(start, end,
+    the word lowercased with its leading and trailing punctuation
+    dropped)`` - ``start`` and ``end`` the whole word's characters,
+    punctuation included.
+
+    .. versionadded:: 6.0.0
+       ``scripts/claims_ledger.py``'s ``tokens`` until Phase 3, step 3.
+    """
+    return [(found.start(), found.end(), CONTENT_EDGE.sub("", found.group()).lower()) for found in CONTENT_TOKEN.finditer(question)]
+
+
+def without_possessive(word: str) -> str:
+    """``word`` without its possessive ending, typed with either apostrophe.
+
+    .. versionadded:: 6.0.0
+       ``scripts/claims_ledger.py``'s ``_possessive`` until Phase 3, step 3.
+    """
+    return POSSESSIVE_END.sub("", word)
+
+
+def read_by_the_model(word: str, names: tuple[str, ...] | list[str], stat: str) -> bool:
+    """Whether the model's reply accounts for ``word``: it is a word of one
+    of ``names`` (the names the model copied out of the question, and the
+    names the reading settled on), or it names the ``stat`` the model
+    picked (:data:`MODEL_STAT_WORDS`). A word the model read is not one the
+    reader has to claim: the reply still holds the name after the word is
+    gone, so nothing could tell whether the reader read it.
+
+    .. versionadded:: 6.0.0
+       ``scripts/claims_ledger.py``'s own until Phase 3, step 3.
+    """
+    bare = without_possessive(word)
+    for name in names:
+        if any(bare == without_possessive(CONTENT_EDGE.sub("", part).lower()) for part in name.split()):
+            return True
+    pattern = MODEL_STAT_WORDS.get(stat)
+    return bool(pattern and pattern.fullmatch(bare))
+
+
+def content_words(question: str, names: tuple[str, ...] | list[str], stat: str) -> list[tuple[int, int, str]]:
+    """The words of ``question`` a reading has to account for
+    (:func:`content_tokens`): not a function word (:data:`CONTENT_STOPWORDS`),
+    and not read by the model (:func:`read_by_the_model`, over ``names`` and
+    ``stat``).
+
+    .. versionadded:: 6.0.0
+       ``scripts/claims_ledger.py``'s own until Phase 3, step 3.
+    """
+    return [(start, end, word) for start, end, word in content_tokens(question) if word and without_possessive(word) not in CONTENT_STOPWORDS and not read_by_the_model(word, names, stat)]
+
+
+def unread_words(question: str, claimed: list[tuple[int, int]], names: tuple[str, ...] | list[str], stat: str) -> tuple[str, ...]:
+    """The content words of ``question`` (:func:`content_words`) no stretch
+    of ``claimed`` touches - each ``(start, end)`` the characters a reader
+    rule consumed - in the question's order: what the reading did not read.
+
+    .. versionadded:: 6.0.0
+    """
+    return tuple(word for start, end, word in content_words(question, names, stat) if not any(first < end and last > start for first, last in claimed))

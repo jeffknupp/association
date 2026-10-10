@@ -23,19 +23,27 @@ roadmap's "done" table holds ("not grown").
 
 Three kinds of word are not counted, each for a reason:
 
-- a function word (``STOPWORDS``): "the", "did", "of" carry no narrowing.
+- a function word (``CONTENT_STOPWORDS``): "the", "did", "of" carry no narrowing.
 - a word of a name the model copied out of the question, or of a name the
   reading settled on: the recorded reply stands in for the model, and it
   still holds the name after the word is deleted, so the deletion cannot
   be seen. The model read it.
-- a word that names the stat the model picked (``STAT_WORDS``), for the
+- a word that names the stat the model picked (``MODEL_STAT_WORDS``), for the
   same reason.
 
 So the instrument is blind to a word only the model could have dropped.
-It overcounts too, in one known way: a word a rule matched but did not need
-("games" in "last 10 games", which reads as ten games without it) is
-reported unread. The baseline is a number to hold, not a list of bugs;
-the report's list is where to look for them.
+The baseline is a number to hold, not a list of bugs; the report's list is
+where to look for them.
+
+Since Phase 3, step 3 the rule is the package's
+(:mod:`association.query.lexicon`: ``content_words``, ``CONTENT_STOPWORDS``,
+``MODEL_STAT_WORDS``), and the Reading states its own unread words by it -
+the content words no reader rule claimed (``Reading.unread``). This is the
+check from outside that the two agree: ``run`` records the Reading's list
+beside the deletion's, and ``report`` names every question where they
+differ and exits 1 on one. They measure one thing two ways, so a
+disagreement is a finding - a rule that claimed a word the reading does not
+depend on, or a word a stage reads without claiming it.
 """
 
 from __future__ import annotations
@@ -54,85 +62,10 @@ RECORDED_DIR = Path.home() / "association-research" / "parser-greenfield"
 DEFAULT_RECORDED = tuple(RECORDED_DIR / name for name in ("normalizer_qwen2.5_3b.jsonl", "normalizer_corpus_qwen2.5_3b.jsonl", "normalizer_paraphrases_qwen2.5_3b.jsonl"))
 DEFAULT_TODAY = "2026-09-30"
 
-#: Words that carry no narrowing of their own. Deliberately short: a word
-#: left off this list is counted when unread, and a word wrongly on it hides.
-STOPWORDS = frozenset(
-    """a an the of in on at to for from by with and or is are was were be been do does did has have had his her their its he she they it
-    this that these those what who which how many much me my i show give tell list get find display create generate please can you us nba s vs versus""".split()
-) | {"whats", "whos"}  # codespell:ignore whats,whos - the question words as typed with no apostrophe
-
-#: The words that name each stat key the model may pick - what the model's
-#: reply stands for in the question. A key missing here claims nothing.
-STAT_WORDS: dict[str, str] = {
-    "points": r"points?|pts|ppg|scor\w*",
-    "rebounds": r"rebounds?|reb|rebs|rpg|boards?",
-    "assists": r"assists?|ast|asts|apg|dimes?",
-    "steals": r"steals?|stl|stls|spg",
-    "blocks": r"blocks?|blk|blks|bpg",
-    "turnovers": r"turnovers?|tov|tovs|to",
-    "fouls": r"fouls?|pf|pfs",
-    "minutes": r"minutes?|mins?|mpg",
-    "fieldGoalsMade": r"field|goals?|fgm|fg|made|makes?",
-    "fieldGoalsAttempted": r"field|goals?|fga|attempts?|attempted|shots?",
-    "fieldGoalPct": r"field|goals?|fg%?|percentage|percent|pct|shooting|%",
-    "threePointFieldGoalsMade": r"threes?|3s|3'?s|3pm|3pts?|3-?pt|3-?pointers?|three-?pointers?|pointers?|triples|made|makes?|3|three|point",
-    "threePointFieldGoalsAttempted": r"threes?|3s|3pa|3pts?|3-?pt|3-?pointers?|three-?pointers?|pointers?|attempts?|attempted|3|three|point",
-    "threePointFieldGoalPct": r"threes?|3s|3p%?|3pt%?|3-?point|three-?point|percentage|percent|pct|shooting|%|3|three|point",
-    "twoPointFieldGoalPct": r"twos?|2s|2p%?|2pt%?|2-?pt|2-?point|two-?point|percentage|percent|pct|%|2|two|point",
-    "freeThrowsMade": r"free|throws?|ftm|ft|fts|made|makes?",
-    "freeThrowsAttempted": r"free|throws?|fta|ft|fts|attempts?|attempted",
-    "freeThrowPct": r"free|throws?|ft%?|percentage|percent|pct|%",
-    "offensiveRebounds": r"offensive|rebounds?|oreb|orebs|boards?",
-    "defensiveRebounds": r"defensive|rebounds?|dreb|drebs|boards?",
-    "ts_pct": r"true|shooting|ts%?|percentage|percent|pct|%",
-    "efg_pct": r"effective|efg%?|field|goals?|percentage|percent|pct|%",
-    "usage_pct": r"usage|usg%?|rate|percentage|pct|%",
-    "double_double": r"double-?doubles?|doubles?|dd2?s?",
-    "triple_double": r"triple-?doubles?|triples?|doubles?|td3?s?",
-    "netpoints": r"net|points?|netpoints?",
-    "netpoints_per_100": r"net|points?|netpoints?|per|100|possessions?",
-    "netpoints_offense": r"net|points?|netpoints?|offensive|offense",
-    "netpoints_defense": r"net|points?|netpoints?|defensive|defense",
-    "netpoints_offense_per_100": r"net|points?|netpoints?|offensive|offense|per|100|possessions?",
-    "netpoints_defense_per_100": r"net|points?|netpoints?|defensive|defense|per|100|possessions?",
-    "wins": r"wins?|won|winning",
-    "losses": r"loss(es)?|lost|losing",
-    "record": r"record|w-l|wins?|loss(es)?",
-    "games_played": r"games?|played|gp",
-    "shot_distance": r"shots?|distance|feet|ft|far",
-    "points_allowed": r"points?|allowed|allow|opponents?|against|defense",
-    "point_differential": r"points?|differential|diff|margin|\+/-|plus-?minus",
-}
-
-_TOKEN = re.compile(r"\S+")
-_EDGE = re.compile(r"^[^\w%+']+|[^\w%+']+$")
-
-
-def tokens(question: str) -> list[tuple[int, int, str]]:
-    """Each whitespace-separated word as ``(start, end, the word lowercased
-    with its leading and trailing punctuation dropped)``."""
-    return [(found.start(), found.end(), _EDGE.sub("", found.group()).lower()) for found in _TOKEN.finditer(question)]
-
 
 def without(question: str, start: int, end: int) -> str:
     """The question with one word deleted and the space it left closed."""
     return re.sub(r"\s+", " ", question[:start] + " " + question[end:]).strip()
-
-
-def _possessive(word: str) -> str:
-    """A word without its possessive ending, typed with either apostrophe."""
-    return re.sub("['\u2019]s$", "", word)
-
-
-def read_by_the_model(word: str, names: list[str], stat: str) -> bool:
-    """Whether the model's recorded reply accounts for ``word``: it is part
-    of a name the model copied out, or it names the stat the model picked."""
-    bare = _possessive(word)
-    for name in names:
-        if any(bare == _possessive(_EDGE.sub("", part).lower()) for part in name.split()):
-            return True
-    pattern = STAT_WORDS.get(stat)
-    return bool(pattern and re.fullmatch(pattern, bare))
 
 
 #: The slots of a reading that hold a name.
@@ -155,8 +88,27 @@ def names_read(whole: dict[str, Any]) -> list[str]:
 def content_words(question: str, names: list[str], stat: str) -> list[tuple[int, int, str]]:
     """The words the reader itself has to account for: not a function word,
     and not read by the model (``names`` is the model's names and the names
-    the reading settled on)."""
-    return [(start, end, word) for start, end, word in tokens(question) if word and _possessive(word) not in STOPWORDS and not read_by_the_model(word, names, stat)]
+    the reading settled on) - the package's rule (``lexicon.content_words``),
+    which the Reading's own ``unread`` is counted by."""
+    from association.query.lexicon import content_words as rule
+
+    return rule(question, names, stat)
+
+
+def _probed(record: dict[str, Any]) -> dict[str, Any]:
+    """A read's record as the deletion probe compares it: without the
+    Reading's own unread words, which a deleted word always moves."""
+    reading = record.get("reading")
+    if not isinstance(reading, dict) or "unread" not in reading:
+        return record
+    return {**record, "reading": {key: value for key, value in reading.items() if key != "unread"}}
+
+
+def stated_unread(whole: dict[str, Any]) -> list[str] | None:
+    """The Reading's own unread words, where its record holds them (a tree
+    since Phase 3, step 3), or None."""
+    reading = whole.get("reading")
+    return list(reading["unread"]) if isinstance(reading, dict) and "unread" in reading else None
 
 
 def _reader(db_path: Path) -> Any:
@@ -211,8 +163,13 @@ def run(args: argparse.Namespace) -> int:
             stat = reply.get("stat") if reply.get("stat") in NORMALIZER_STATS else ""
             whole = read(question, names, stat)
             words = content_words(question, [*names, *names_read(whole)], stat)
-            unread = [word for start, end, word in words if read(without(question, start, end), names, stat) == whole]
-            out.write(json.dumps({"question": question, "content_words": [word for _, _, word in words], "unread": unread}) + "\n")
+            probed = _probed(whole)
+            unread = [word for start, end, word in words if _probed(read(without(question, start, end), names, stat)) == probed]
+            row = {"question": question, "content_words": [word for _, _, word in words], "unread": unread}
+            stated = stated_unread(whole)
+            if stated is not None:
+                row["reading_unread"] = stated
+            out.write(json.dumps(row) + "\n")
             if index % 100 == 0:
                 print(f"{index}/{len(replies)} {time.monotonic() - started:.0f}s", flush=True)
     print(f"wrote {args.out} in {time.monotonic() - started:.0f}s", flush=True)
@@ -230,7 +187,22 @@ def report(args: argparse.Namespace) -> int:
     for row in rows[: args.show] if args.show else []:
         if row["unread"]:
             print(f"  {row['question']}  ->  {' '.join(row['unread'])}")
-    return 0
+    return _report_disagreements(rows)
+
+
+def _report_disagreements(rows: list[dict[str, Any]]) -> int:
+    """Every question whose Reading states other unread words than the
+    deletion finds, and 1 if there is one (0 where the ledger was run on a
+    tree whose Reading states none)."""
+    stated = [row for row in rows if "reading_unread" in row]
+    if not stated:
+        print("the Reading's own unread words: not recorded (a tree before Phase 3, step 3)")
+        return 0
+    differ = [row for row in stated if row["reading_unread"] != row["unread"]]
+    print(f"the Reading's own unread words: {len(stated) - len(differ)} of {len(stated)} questions agree with the deletion, {len(differ)} differ")
+    for row in differ:
+        print(f"  {row['question']}  ->  Reading {row['reading_unread']}  deletion {row['unread']}")
+    return 1 if differ else 0
 
 
 def main() -> int:

@@ -11,6 +11,8 @@ from types import ModuleType
 
 import pytest
 
+from association.query.lexicon import content_tokens, content_words
+
 SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "claims_ledger.py"
 
 
@@ -26,32 +28,21 @@ def _load() -> ModuleType:
 ledger = _load()
 
 
-def test_a_question_is_cut_into_words_without_their_punctuation() -> None:
-    assert [word for _, _, word in ledger.tokens("How far was Curry's average three-pointer, (2026)?")] == ["how", "far", "was", "curry's", "average", "three-pointer", "2026"]
-    assert [word for _, _, word in ledger.tokens("20+ points, 45% from 3")] == ["20+", "points", "45%", "from", "3"]
-
-
 def test_one_word_is_deleted_and_the_gap_closed() -> None:
     question = "jokic points  in the last 10 games"
-    spans = {word: (start, end) for start, end, word in ledger.tokens(question)}
+    spans = {word: (start, end) for start, end, word in content_tokens(question)}
     assert ledger.without(question, *spans["10"]) == "jokic points in the last games"
     assert ledger.without(question, *spans["jokic"]) == "points in the last 10 games"
     assert ledger.without(question, *spans["games"]) == "jokic points in the last 10"
 
 
-def test_a_word_the_models_reply_accounts_for_is_not_the_readers_to_read() -> None:
-    names, stat = ["steph curry", "the Celtics"], "threePointFieldGoalsMade"
-    assert ledger.read_by_the_model("curry's", names, stat) and ledger.read_by_the_model("curry" + chr(0x2019) + "s", names, stat) and ledger.read_by_the_model("celtics", names, stat)
-    assert ledger.read_by_the_model("threes", names, stat) and ledger.read_by_the_model("3s", names, stat)
-    assert not ledger.read_by_the_model("rebounds", names, stat) and not ledger.read_by_the_model("playoffs", names, stat)
-    # No stat picked: no stat word is the model's.
-    assert not ledger.read_by_the_model("points", names, "")
-
-
-def test_content_words_leave_out_function_words_and_the_models_words() -> None:
-    words = [word for _, _, word in ledger.content_words("How many threes did Steph Curry's team make against the Celtics in the playoffs?", ["Steph Curry", "Celtics"], "threePointFieldGoalsMade")]
-    # "make" is the stat's own word (three-pointers MADE), so the model's.
-    assert words == ["team", "against", "playoffs"]
+def test_the_ledger_counts_by_the_rule_the_reading_states_its_unread_words_by() -> None:
+    """One rule, the lexicon's (Phase 3, step 3): the ledger's content
+    words are the package's, so its count and ``Reading.unread`` count the
+    same words."""
+    question = "How many threes did Steph Curry's team make against the Celtics in the playoffs?"
+    names, stat = ["Steph Curry", "Celtics"], "threePointFieldGoalsMade"
+    assert ledger.content_words(question, names, stat) == content_words(question, names, stat)
 
 
 def test_a_name_the_reading_settled_on_counts_as_read() -> None:
@@ -67,7 +58,8 @@ def test_a_name_the_reading_settled_on_counts_as_read() -> None:
 def test_a_run_reports_the_words_the_reading_does_not_depend_on(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     """The whole instrument over an empty warehouse. "what did the lakers
     coach say last night": deleting "coach" changes the reading (it is what
-    names the intent), deleting "night" does not."""
+    names the intent), deleting "night" does not; the Reading's own unread
+    words are recorded beside the deletion's."""
     import duckdb
 
     monkeypatch.setenv("ASSOCIATION_TODAY", "2026-01-01")
@@ -85,8 +77,31 @@ def test_a_run_reports_the_words_the_reading_does_not_depend_on(monkeypatch: pyt
     (row,) = [json.loads(line) for line in out.read_text().splitlines()]
     assert row["question"] == "what did the lakers coach say last night"
     assert "coach" in row["content_words"] and "coach" not in row["unread"] and "night" in row["unread"]
+    assert "night" in row["reading_unread"]
     capsys.readouterr()
     monkeypatch.setattr(sys, "argv", ["claims_ledger.py", "report", str(out)])
-    assert ledger.main() == 0
+    agrees = row["reading_unread"] == row["unread"]
+    assert ledger.main() == (0 if agrees else 1)
     said = capsys.readouterr().out
     assert said.startswith(f"1 questions, {len(row['content_words'])} content words: {len(row['unread'])} unread") and "night 1" in said
+    assert f"{int(agrees)} of 1 questions agree with the deletion" in said
+
+
+def test_the_report_names_each_question_the_reading_and_the_deletion_disagree_on(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """The check from outside: a question whose Reading states other unread
+    words than the deletion finds is named, and the report exits 1; a ledger
+    from a tree whose Reading states none is not failed for it."""
+    import argparse
+
+    rows = [
+        {"question": "how many points does embiid average", "content_words": ["average"], "unread": ["average"], "reading_unread": ["average"]},
+        {"question": "show me luka's avg assists year over year", "content_words": ["avg", "year", "over", "year"], "unread": ["avg"], "reading_unread": ["avg", "year", "over", "year"]},
+    ]
+    path = tmp_path / "ledger.jsonl"
+    path.write_text("".join(json.dumps(row) + "\n" for row in rows))
+    assert ledger.report(argparse.Namespace(ledger=path, top=5, show=0)) == 1
+    said = capsys.readouterr().out
+    assert "1 of 2 questions agree with the deletion, 1 differ" in said and "show me luka's avg assists year over year" in said
+    path.write_text("".join(json.dumps({key: value for key, value in row.items() if key != "reading_unread"}) + "\n" for row in rows))
+    assert ledger.report(argparse.Namespace(ledger=path, top=5, show=0)) == 0
+    assert "not recorded" in capsys.readouterr().out

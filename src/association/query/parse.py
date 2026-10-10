@@ -535,6 +535,9 @@ def read_route(con: duckdb.DuckDBPyConnection, question: str, names: list[str] |
 
     .. versionadded:: 5.0.0
     """
+    # The model's reply as given, beside the route: the words it accounts
+    # for are no unread words (Reading.unread, by the claims ledger's rule).
+    given = tuple(names or ())
     question = _read_route_folded(question)
     names = [_read_route_folded(name) for name in names or []]
     slots = _slots_from_names(con, [_as_typed_part(con, question, _as_typed(question, name)) for name in names], stat)
@@ -576,7 +579,8 @@ def read_route(con: duckdb.DuckDBPyConnection, question: str, names: list[str] |
     )
     # The companions' phrases are the subject reading's claims, the line in
     # a quarter the parser's; the taggers' ride the staged route.
-    return Route(final, scope, decisions, subject=settled, claims=claimed_once([*staged.claims, *period_claims, *read.claims])), subject, parent
+    claims = claimed_once([*staged.claims, *period_claims, *read.claims])
+    return Route(final, scope, decisions, subject=settled, claims=claims, model_names=given, model_stat=stat), subject, parent
 
 
 def _read_route_staged(question: str, slots: dict[str, Any], parent: str, read: Subject, lines: tuple[Line, ...], handed: Named) -> tuple[Route, tuple[Decision, ...], str | None]:
@@ -666,16 +670,20 @@ def reading_from_route(con: duckdb.DuckDBPyConnection, question: str, route: Rou
         raise ValueError("reading_from_route needs the route's subject - who the question is about, as read_route read it")
     subject = route.subject
     applied = apply_subject(subject, scope, intent=route.intent)
+    # The subject reading's claims on the names it settled and their
+    # position group, beside the taggers' and the companions' the route
+    # carries.
+    claims = claimed_once([*route.claims, *subject_claims(teams_of(con), question, applied.scope)])
     reading = Reading(
         scope=applied.scope,
         intent=applied.intent,
         subject=subject,
         decisions=(*_subject_decisions(subject), *route.decisions, *applied.decisions),
         misread=tuple(applied.dropped),
-        # The subject reading's claims on the names it settled and their
-        # position group, beside the taggers' and the companions' the route
-        # carries.
-        claims=claimed_once([*route.claims, *subject_claims(teams_of(con), question, applied.scope)]),
+        claims=claims,
+        # The words nothing claimed, by the claims ledger's rule, over the
+        # question as it was asked (the fold keeps every position).
+        unread=lexicon.unread_words(asked, [(c.start, c.end) for c in claims], (*route.model_names, *_reading_from_route_names(applied.scope, subject, applied.intent)), route.model_stat),
     )
     pointed = with_point(con, question, reading)
     # What the words name that nothing reads, read once, here: a refusal
@@ -688,6 +696,25 @@ def reading_from_route(con: duckdb.DuckDBPyConnection, question: str, route: Rou
         unsupported=_reading_from_route_unsupported(asked, pointed),
         left_out=_reading_from_route_left_out(players_of(con), asked, pointed),
     )
+
+
+# The slots a name is recorded under, on the reading's scope and on its
+# subject: the words of every name in them are the reading's own, which the
+# claims ledger counts as read (``names_read``) - a word of "Stephen Curry"
+# the model copied only "steph" of, which the nickname table completes.
+_READING_FROM_ROUTE_NAME_KEYS = ("player", "players", "team", "teams", "opponent", "own_team", "with_player", "without")
+
+
+def _reading_from_route_names(scope: Scope, subject: Subject, intent: str) -> tuple[str, ...]:
+    """Every name the reading settled on - the scope's and the subject's, as
+    the reading's record holds them (``stages._reading_record``) - whose
+    words no reader has to claim (:func:`~association.query.lexicon.content_words`)."""
+    found: list[str] = []
+    for holder in (scope.to_slots(split_by_presence=intent == "with_without"), subject.projected()):
+        for slot in _READING_FROM_ROUTE_NAME_KEYS:
+            value = holder.get(slot)
+            found.extend(value if isinstance(value, (list, tuple)) else [value] if isinstance(value, str) else [])
+    return tuple(found)
 
 
 def with_point(con: duckdb.DuckDBPyConnection, question: str, reading: Reading) -> Reading:

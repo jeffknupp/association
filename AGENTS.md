@@ -253,7 +253,17 @@ this tree:
   reader change, run it and read the unread numbers first; the count may
   not grow. It is blind to a word only the model could have dropped, and
   it overcounts a word a rule matched and did not need ("games" in "last
-  10 games").
+  10 games"). Since Phase 3, step 3 the Reading states the same list
+  itself: `Reading.unread`, the content words no claim covers, counted by
+  the ledger's own rule moved to the lexicon (`lexicon.content_words`,
+  `CONTENT_STOPWORDS`, `MODEL_STAT_WORDS`; the model's names and stat ride
+  the Route, `model_names`/`model_stat`, so a word the model accounts for
+  is left out as the ledger leaves it out), recorded beside the reading
+  (`unread`). `run` records it beside the deletion's list and `report`
+  names every question where the two differ and exits 1 on one: they
+  measure one thing two ways, so a disagreement is a finding - a claim
+  over a word the reading does not depend on, or a word a stage reads
+  without claiming it.
 - **A caveat, a stated default or a definition is written through
   `query/notes.py`.** `note(kind, text, **facts)` for something about the
   data or a term the answer uses, `decided(kind, text, field=, chose=, ...)`

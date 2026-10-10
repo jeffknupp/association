@@ -2233,10 +2233,26 @@ class Reading:
     #: The characters of the question each tagger consumed
     #: (:class:`Claim`), in the question's order: the span's since Phase 3,
     #: step 2, each family's as its slice lands. What they leave unclaimed
-    #: is step 3's ``unread``.
+    #: is :attr:`unread`.
     #:
     #: .. versionadded:: 6.0.0
     claims: tuple[Claim, ...] = ()
+    #: The content words of the question no claim covers, in the question's
+    #: order, as the claims ledger spells a word (lowercased, its edge
+    #: punctuation dropped): the words nothing read (``ROADMAP.md``,
+    #: contract 2). Counted by the ledger's own rule
+    #: (:func:`~association.query.lexicon.content_words` - a function word
+    #: is no content word, nor a word the model's reply accounts for: a word
+    #: of a name it copied or the reading settled on, a word of the stat it
+    #: picked), by the parser's last step
+    #: (:func:`~association.query.parse.reading_from_route`), so
+    #: ``scripts/claims_ledger.py`` - which deletes each content word in
+    #: turn and asks whether the reading moved - checks it from outside. An
+    #: unread word is recorded, never a refusal: the roadmap measures them
+    #: before anything acts on one.
+    #:
+    #: .. versionadded:: 6.0.0
+    unread: tuple[str, ...] = ()
     #: The compiler's point for the question - its word tables' reading of it
     #: on the relation it names (:func:`~association.query.point.read_point`),
     #: read once, by the parser, so the compiler only plans and runs it
@@ -2298,8 +2314,8 @@ class Reading:
         ``span`` and ``season`` pair it replaced, the point's ``offset`` as
         the 0 it always was, its ``position`` as the position group its
         subject carries where it is the league's (the field it was), every
-        other field as it is - ``claims`` included, the one field the
-        record gained.
+        other field as it is - ``claims`` and ``unread`` included, the two
+        fields the record gained (Phase 3, steps 2 and 3).
 
         .. versionadded:: 6.0.0
         """
