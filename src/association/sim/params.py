@@ -193,8 +193,18 @@ class PlayerParams:
     @property
     def near_prior(self) -> bool:
         """Whether the player is simulated at nearly the league prior: fewer
-        than :data:`MIN_TRIALS` shots in the window. The output says so."""
-        return self.shots_per_minute.trials < MIN_TRIALS
+        than :data:`MIN_TRIALS` shots in the window. The output says so.
+
+        Read off the zone mix, whose trials are his charted shots: a
+        per-minute rate's trials are his MINUTES (the denominator the rate
+        is shrunk over), so ``shots_per_minute.trials`` would test minutes,
+        not shots.
+
+        .. versionchanged:: 6.0.0
+           Reads ``zone_mix.trials``, the shots, where it read
+           ``shots_per_minute.trials``, the minutes (step 4, the estimator).
+        """
+        return self.zone_mix.trials < MIN_TRIALS
 
     def make_rate_in(self, zone: str) -> Rate:
         """The make rate in ``zone``; a zone the record lacks is an error,
@@ -227,7 +237,10 @@ class LeagueParams:
 
     ``strengths`` is keyed by the rate's field name (``"make_rate.restricted"``
     for a zone's); a strength the window did not fit falls back to
-    :data:`DEFAULT_STRENGTH`.
+    :data:`DEFAULT_STRENGTH`. ``per_minute`` holds the league's per-minute
+    rates by the player field they are the prior for (``"shots_per_minute"``,
+    ``"fouls_per_minute"``, ...), which the per-possession fields here do not
+    express and the estimator (step 4) fills.
 
     .. versionadded:: 6.0.0
     """
@@ -245,10 +258,21 @@ class LeagueParams:
     offensive_rebound_rate: float  # share of misses the offense rebounds
     home_court: float  # points per game the home side is better by, applied as an efficiency multiplier
     strengths: Mapping[str, float] = field(default_factory=dict)
+    per_minute: Mapping[str, float] = field(default_factory=dict)
 
     def strength(self, name: str) -> float:
         """The fitted prior strength for ``name``, or :data:`DEFAULT_STRENGTH`."""
         return self.strengths.get(name, DEFAULT_STRENGTH)
+
+    def per_minute_rate(self, name: str) -> float:
+        """The league's per-minute rate a player's ``name`` field shrinks toward
+        (``"shots_per_minute"``, ``"assists_per_minute"``, ...): the prior for a
+        player the window never saw. A name the window did not estimate is an
+        error, since no sensible default exists for it.
+
+        .. versionadded:: 6.0.0
+        """
+        return self.per_minute[name]
 
 
 @dataclass(frozen=True)
