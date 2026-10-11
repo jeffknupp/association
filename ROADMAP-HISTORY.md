@@ -1281,6 +1281,33 @@ agents' reports named here are in `~/association-research/stages/`.
     the names gone. Cost: no rebase and a fresh four-population run on
     both trees.
 
+34. **Phase 3, step 4, slice (b) (2026-10-11).** The Route and
+    `router.py` go. One Opus agent, reviewed by the lead in flight and
+    presented to Jeff before the merge: the reader takes the names index
+    and no connection (both ratchets at zero, the lists kept empty so a
+    new violation still fails), the parser's last step recorded as a
+    boundary on both trees before the old one went, the stages' rules
+    that move what the words ask kept as one module over a typed working
+    reading, the taggers run once in dependency order, and the Scope
+    folded into a frozen base the Reading and every planned query inherit,
+    with the cells declared once. The taggers read the words alone and one
+    function per family in the point reader applies the key, because those
+    rules change what the Reading says while the planner's check decides
+    what a relation honors. The grammars read a typed line and a typed
+    opponent through marks that keep every character's position, so the
+    joins fell from 48 to 15 with no reshaping; the fifteen left each have
+    a named owner. One correction in flight: the active-players set was
+    read once a question, now lazily, and statements per question are
+    measured at 5.16, unchanged. Proved identical on every population with
+    nothing ignored but the twelve readings whose declined-child decision
+    gave way to unread numbers, the P1 the ledger could not see until
+    then. What it taught: a regex grammar can read typed values
+    positionally, which is a bridge, and the end state is grammar rows as
+    predicates over the typed values; a step's measurement harness is
+    where the per-question cost shows, since the ratchets count sites and
+    not statements. Cost: the lead's in-flight review and a fresh
+    four-population run on both trees.
+
 ## The plan items, as written
 
 In order of lift per unit of structural change, each measured on the

@@ -87,6 +87,7 @@ before that commit needs re-checking against the current warehouse.
 - **User sees:** a fluent log of every game where the games over (or at) a line were asked for.
 - **Next step:** the lines tagger reads "more than N stat" / "above N stat" as a line over N, "exactly N stat" as an equality (`LineOp` "=", which the period condition already writes), and a percentage line over the made/attempted ratio the relation derives; each wording a test, the feed's 12 enumerated before and after. Until then the planner could refuse a log whose words hold an unread number beside "games with".
 - **Priority:** P1 - a broader question answered fluently; 12 of the 2,082, none of the 628.
+- **GitHub:** #371
 
 ### A count's second and later bare lines are dropped: "most games with 20 pts, 10 reb, 5 ast last season" answers the most 20+ point games
 - **Found:** 2026-10-09, Phase 3 step 2's line slice (`line_family.py`: the multi-line questions)
