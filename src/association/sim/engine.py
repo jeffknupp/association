@@ -85,6 +85,7 @@ from association.sim import shrink
 from association.sim.events import BoxLine, SimEvent, SimGame, TeamTotals
 from association.sim.params import HEAVE, ZONES, LeagueParams, PlayerGameState, PlayerParams, RotationContext, RotationPolicy, TeamParams, value_of
 from association.sim.plays import OVERTIME_PERIOD_SECONDS, REGULATION_PERIOD_SECONDS
+from association.sim.zones import HEAVE_SECONDS
 
 REGULATION_PERIODS = 4
 """Periods before overtime.
@@ -120,13 +121,6 @@ OVERTIME_BONUS_TEAM_FOULS = 4
 .. versionadded:: 6.0.0
 """
 
-HEAVE_SECONDS = 3.0
-"""A possession that starts with this much or less on the period clock is a
-heave: the shot, if the user shoots, is from the heave zone at
-:data:`HEAVE_MAKE_RATE`, and the period ends.
-
-.. versionadded:: 6.0.0
-"""
 
 HEAVE_MAKE_RATE = 0.05
 """The make rate of a heave, a constant until the league record carries one

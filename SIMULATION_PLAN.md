@@ -388,6 +388,30 @@ per-game sibling check. The `End Game` row's score matches the final in
 only 84-91% of 2018-2026 games (the row is sometimes written before the
 last free throws), which is why the check uses the max.
 
+**0.10 Found by step 4 (2026-10-11, 2019-2026 on this checkout's files).**
+ESPN's `Shooting Foul` rows name only the fouler - 0 of 25,543-27,573 a
+season carry a second participant - so free-throw trips drawn are counted
+from the first attempt of each trip (`type LIKE 'Free Throw - %1 of %'`,
+technicals excluded); FTA/2 undercounts trips by ~8% (2025: 28,113 against
+30,769, the one-of-one trips). A `Free Throw - 1 of 1` follows a made shot
+by the same player at the same clock in 95.7-98.0% of rows; the rest are
+away-from-play and loose-ball fouls. 2026's 1,153 typed heaves are all
+labeled threes and none made; 7 fail the geometric rule ("6-foot heave jump
+shot": blocked attempts mistyped) and 91 geometric heaves are typed `Jump
+Shot`, so both definitions are kept; earlier seasons have 523-799 geometric
+heaves a season, 3-6% made. Team turnovers nobody takes (`team_play`
+turnovers) run 1,433-2,114 a season and match `team_box_stats.teamTurnovers`
+within 2 in 2025; the team box's FGA, OREB, DREB and FTA equal the player
+sums within 0.01%, so neither source carries team rebounds. `live_ball` is
+NULL on 6-104 turnover rows a season (counted as dead). 29 of 2026's
+234,997 charted shots are by players with no box line with minutes.
+
+**0.11 Found by step 6 (2026-10-11, 2024-2026).** The four personal-foul
+kinds summed per player-game equal the box `fouls` on 99.8-99.9% of
+player-games with minutes; with technicals counted, 94.9-96.3% - a
+technical is not a personal foul in the box either. 728 of 268,044 stints
+touch an unresolved segment.
+
 **0.9 Shot positions (for P4.1).** From 2015, 99.95-100% of charted field
 goals carry a position; 2022's `points_attempted` is 0 on 96% of shots
 (`SHOT_VALUE_SQL` handles it); and from 2019 the shot chart holds exactly
@@ -566,9 +590,99 @@ check measured on 2019-2026 and recorded in the module docstring:
    team, pace from the box possession formula and team-level defense
    (opponent efficiency by zone, forced turnover rate, foul rate,
    defensive-rebound rate). All as `as_of` windows with fitted `k`.
+   **Done 2026-10-11** (`sim/zones.py`, `sim/rates.py`; `scripts/sim_p4/`):
+   `zone_of` and `zone_sql` agree on all 6,387 distinct positions; no
+   charted field goal of 2019-2026 lacks a zone, and the label wins over the
+   geometry where ESPN labeled a shot on the other side of the arc from its
+   coordinates (152-211 a season), so `value_of(zone)` always matches the
+   points. Zone shares and make rates 2026: restricted 26.1% / 68.1%, paint
+   24.3% / 45.0%, midrange 7.9% / 41.2%, corner three 10.5% / 38.6%,
+   above-the-break three 30.7% / 35.0%, heave 0.53% / 3.1% (the table for
+   2019-2026 is in the module docstring). `rates.estimate(con, window,
+   team_ids, athlete_ids) -> Estimates` runs in 0.8-1.5 s for all 802
+   players and 30 teams of a 2024-2026 window (3,859 games; the window is
+   every game whose EASTERN date is before `as_of`, so a replay cannot see
+   its own evening). Fitted strengths on that window, in each rate's own
+   unit: shots per minute 22 minutes, free-throw trips 64, turnovers 129,
+   assists 41, offensive rebounds 46, defensive 56, steals 229, blocks 69,
+   fouls 120; zone mix 8 shots; make rates restricted 90, paint 120,
+   midrange 165, corner 160, above-the-break 417 shots; and-one 92 makes,
+   assisted 10, free-throw rate 22 attempts, live-ball share 38 turnovers;
+   team pace 3.6 games, forced turnovers 539 possessions, fouls 1,338,
+   defensive rebounding 1,070 misses, allowed make rates 457-6,089 and the
+   corner three at the search's ceiling (no team-level signal: every
+   defense sits at the league's 38.7%). As expected, usage and shot profile
+   show almost at once and the above-the-break three needs a season.
+   Sanity: FT rate 0.782, threes 40.9% of shots, TOV 0.138 a possession,
+   home margin +1.97 (the window holds two postseasons); league pace 101.2
+   against NBA.com's 98.8, about 2.4% high, because the one-sided box
+   formula over player lines carries no team rebounds - recorded, not
+   corrected, until P3 counts possessions. 211 of 802 players are
+   `near_prior` (under 100 charted shots); 16 rostered players have no
+   minutes in three seasons (`missing`). One change to step 3's records, in
+   its own commit: `PlayerParams.near_prior` reads the charted shots
+   (`zone_mix.trials`), since a per-minute `Rate`'s trials are the minutes
+   it was shrunk over; and `LeagueParams.per_minute` holds the league's
+   per-minute priors by field name.
 5. **P5, the engine** (parallel) - against hand parameters first, then
-   P4-box's; invariants and the performance budget as written.
-6. **P6, rotation** (parallel) - from P2's segments, as written.
+   P4-box's; invariants and the performance budget as written. **Done
+   2026-10-11** (`sim/engine.py`, `sim/events.py`, `tests/sim/toy.py`;
+   `scripts/sim_p5/`): `simulate(GameSetup, seed, debug=False) -> SimGame`
+   with `StartersPolicy` as the trivial rotation. Benchmark 10,000 toy games
+   in 26.1 s on one core (28.2 s re-measured by the lead), budget met with
+   no optimization; the profile's first lever is the per-game recombination
+   of the matchup's rates (13%) and the context objects built at every dead
+   ball (21%). Sanity over 1,000 toy games: 3PA share 0.420 against 0.414
+   implied, OREB share 0.243 against 0.250, TOV per possession 0.133 against
+   the 0.133 implied by 0.12 per use times 1.11 uses a possession - and pace
+   95.5 against 100 input, 4.5% light, because offensive-rebound
+   continuations, foul restarts and a period's unused last seconds add to
+   the duration draw's mean; left unfudged for P3's durations by start
+   type. Constants the engine had to invent because `LeagueParams` lacks
+   them, for the estimator to supply: heave make rate 0.05, block share of
+   misses 0.11, non-shooting defensive share of fouls 0.65, the duration
+   spread 0.4 with a 3 s floor and 24 s cap, put-back mean 5 s. Two
+   contracts the estimator must honor: `forced_turnover_rate` and
+   `foul_rate` are per opponent POSSESSION (the odds ratio against the
+   league's per-possession rates is the only place they enter), and a
+   possession's mean duration is 1440 / mean(pace) seconds, since both
+   teams' possessions share the 2,880. Not modeled, per D10: the
+   last-two-minutes bonus, substitutions after made baskets, the shot clock
+   as state.
+6. **P6, rotation** (parallel) - from P2's segments, as written. **Done
+   2026-10-11** (`sim/rotation.py`; `scripts/sim_p6/`): `build_profiles`
+   (0.6 s for a three-season window), `build_league_rotation` (1.4 s),
+   `RotationModel` implementing `params.RotationPolicy`. Measured on
+   2024-2026 (3,944 games): the kinds preceding a substitution, 230,031 of
+   them - timeout 25.7%, a made free throw 17.3%, period end 14.2%,
+   personal foul 12.0%, turnover 8.6%, offensive rebound 8.2% (ESPN's
+   dead-ball team rebound after a missed first free throw), shooting foul
+   4.8%, defensive rebound 3.7%, review 2.4%, made shot 1.7%, violation
+   0.6% - 99.2% cumulative, the engine's substitution windows
+   (`rotation.SUBSTITUTION_KINDS`); the preceding ROW is itself a
+   substitution 48% of the time. Real stints (267,316): median 6.5 min,
+   q10-q90 2.0-12.6, starters median 7.3, bench 5.4, 3.15 stints a player.
+   Foul trouble as an observed/expected ratio: 2 fouls in Q1 0.59, 3 in Q2
+   0.35, 4 in Q3 0.62, 5 in Q4 1.02 (coaches keep a five-foul player in
+   late). Blowouts, box starters in the last 3 minutes: up 16-20 0.54, 21-30
+   0.22, 31+ 0.18 of their profile. Calibration on a dry-run harness (1,000
+   runs): Boston 2026, 9 of 10 regulars within 2 minutes of target (worst
+   +2.1), stint quantiles within 1.0 min of the real ones, 27 substitutions
+   a game against a real median of 31; Oklahoma City 11 of 11 once targets
+   are scaled to the 240 minutes a game holds. Five decisions to carry: a
+   FIFTH factor, pace (expected seconds so far minus seconds played), was
+   needed to hold minutes at all; the foul and blowout factors are relative
+   to a baseline cell and capped at 1.0, because the raw ratios also carry
+   that fouls go with minutes and that tonight's starters play more than
+   their average; rest is the model's own state (the contract carries no
+   bench time); fewer than five available raises `RotationError` rather
+   than playing four; a rostered player the window never saw gets
+   `UNKNOWN_ON_FLOOR` = 0.05 and is listed in `RotationModel.unprofiled`
+   for the output to say so. Data facts for 0b: the four personal-foul
+   kinds summed per player-game equal the box `fouls` on 99.8-99.9% of
+   2024-2026 player-games (with technicals counted, 94.9-96.3%, so a
+   technical is not a personal foul in the box either); 728 of 268,044
+   stints touch an unresolved segment.
 7. **P7, output and CLI** - `sim game`, `sim replay`, `sim build`.
 8. **P8, validation** - the replay harness with BOTH baselines (home-win
    rate and a team-strength logistic fit on net rating or

@@ -88,15 +88,34 @@ was learned the hard way and is about the data, not the pipeline.
   and `association.sim.shrink` (shrinkage, fitted prior strength, the
   odds-ratio combination). Build against these fields; add a field in your
   own commit rather than reshaping one.
-- **Next: steps 4, 5 and 6 in parallel**, one agent each, disjoint files:
-  `sim/zones.py` + `sim/rates.py` (P4-box: the records above estimated per
-  minute from `nba.player_box_stats_deduped`, `nba.shot_chart` and
-  `sim_segments`' resolved minutes, with `shrink.fit_strength` run per rate
-  on odd/even game splits and every fitted `k` recorded in the docstring);
-  `sim/engine.py` (P5: the seeded state machine, first against hand-written
-  `PlayerParams`); `sim/rotation.py` (P6: on-floor probability by minute,
-  foul trouble and blowout behavior from `sim_segments`). Then step 7, the
-  CLI and output, and step 8, the replay harness with both baselines.
+- **Steps 4, 5 and 6 done 2026-10-11**, three agents in parallel, merged:
+  `sim/zones.py` + `sim/rates.py` (`rates.estimate(con, window, team_ids,
+  athlete_ids)`, 0.8-1.5 s for the whole league; the fitted strengths and
+  the zone table are in the docstrings and the plan's build-order item 4),
+  `sim/engine.py` + `sim/events.py` (`simulate(GameSetup, seed)`, 10,000
+  toy games in 26-28 s; the constants it invented for want of league
+  fields - heave make rate, block share, non-shooting foul share, the
+  duration draw - are listed in the plan's item 5 for the estimator to
+  supply), `sim/rotation.py` (`build_profiles`, `build_league_rotation`,
+  `RotationModel`; calibration in the plan's item 6). Contracts to keep:
+  `TeamParams.forced_turnover_rate` and `foul_rate` are per opponent
+  POSSESSION; a possession's mean duration is 1440 / mean(pace) seconds;
+  `RotationModel` raises `RotationError` with fewer than five available and
+  the engine raises `EngineError`, neither plays four.
+- **Next: step 7**, the CLI and output (`association sim game`, `sim
+  replay`, text play-by-play in ESPN's phrasing, box score, N-game summary,
+  `--json`), wiring `rates.estimate` -> `engine.simulate` with
+  `RotationModel`; then **step 8**, the replay harness on 2025 from January
+  1 with BOTH baselines (home-win rate and a team-strength fit), which is
+  the first measured game and the regression gate after it.
+- **Dispatching agents here:** make their worktrees by hand from the
+  intended SHA (`git worktree add -b <branch> .claude/worktrees/<name>
+  <sha>`); the Agent tool's own worktree isolation branched from master,
+  and three agents rightly stopped at their SHA check. Remove the
+  worktrees before running the gates on the merged tree (deptry scans
+  them). Read gate results from `.venv/bin/pre-commit run --all-files
+  --verbose` and the exit status; the `uv run` wrapper was seen printing
+  every hook as Passed while exiting 1.
 
 ## Facts about `plays` every phase relies on (Phase 0, 2026-10-11)
 
