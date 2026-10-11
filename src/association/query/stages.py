@@ -84,7 +84,8 @@ says so by listing ``notes`` here.
 # than what was read: the evidence prose (the question's text itself left
 # the Subject on 2026-10-03: nothing read it) and the claims, positions in
 # the text, which the Reading's own ``unread`` stands for.
-_SUBJECT_LEFT_OUT = frozenset({"evidence", "claims"})
+# The companions' phrases are positions too (slice (c)).
+_SUBJECT_LEFT_OUT = frozenset({"evidence", "claims", "companion_phrases"})
 
 # The point's own fields - the algebra as the reader read it - in the order
 # the trace prints them, after the key the words asked and its label; the

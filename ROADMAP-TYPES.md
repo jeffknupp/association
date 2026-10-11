@@ -1434,7 +1434,9 @@ moves into `data` before the slice that rewords its answer:
     (`claims_ledger.py`'s `HELD_JOINS`, the 628's: `intent+line` 12,
     `intent+opponent` 4, `companion+intent` 2, `intent+companion` 1,
     `situation+intent` 1, `refused+measure` 1; the report fails on a new
-    kind or a grown count). Step 4 is held to zero joins but #354's four.
+    kind or a grown count). Step 4 is held to zero joins but #354's four -
+    met at slice (c) (2026-10-11): the 628 at 0 and the 2,710 at #354's 4,
+    `HELD_JOINS` empty.
     Measured at step 4's slice (a), which re-keyed the grammar and left
     every claim where it was (the 43 unchanged): the intent joins come
     from all three choosers - the parent grammar alone 10 (`intent+opponent`

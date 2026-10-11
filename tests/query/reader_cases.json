@@ -516,13 +516,6 @@
      "before": "with_without",
      "after": "record_when",
      "reason": "a team's record in the games a player named beside it reached a line"
-    },
-    {
-     "stage": "subject",
-     "field": "player",
-     "before": "maxey",
-     "after": "Maxey",
-     "reason": "a team's record in the games a player named beside it reached a line"
     }
    ],
    "point": {
@@ -9083,7 +9076,8 @@
     "by": null
    },
    "unread": [
-    "stats"
+    "stats",
+    "games"
    ],
    "subject": {
     "kind": "player",
@@ -9986,7 +9980,9 @@
     "rank": null,
     "by": null
    },
-   "unread": [],
+   "unread": [
+    "games"
+   ],
    "subject": {
     "kind": "player",
     "players": [
@@ -10163,7 +10159,9 @@
     "rank": null,
     "by": null
    },
-   "unread": [],
+   "unread": [
+    "games"
+   ],
    "subject": {
     "kind": "player",
     "players": [
@@ -29271,13 +29269,6 @@
      "before": "with_without",
      "after": "record_when",
      "reason": "a team's record in the games a player named beside it reached a line"
-    },
-    {
-     "stage": "subject",
-     "field": "player",
-     "before": "Embiid",
-     "after": "Joel Embiid",
-     "reason": "a team's record in the games a player named beside it reached a line"
     }
    ],
    "point": {
@@ -30430,13 +30421,6 @@
      "field": "intent",
      "before": "with_without",
      "after": "record_when",
-     "reason": "a team's record in the games a player named beside it reached a line"
-    },
-    {
-     "stage": "subject",
-     "field": "player",
-     "before": "Embiid",
-     "after": "Joel Embiid",
      "reason": "a team's record in the games a player named beside it reached a line"
     }
    ],
@@ -54097,7 +54081,8 @@
     "by": null
    },
    "unread": [
-    "markkan"
+    "markkan",
+    "games"
    ],
    "subject": {
     "kind": "player",
@@ -61472,13 +61457,6 @@
      "field": "intent",
      "before": "with_without",
      "after": "record_when",
-     "reason": "a team's record in the games a player named beside it reached a line"
-    },
-    {
-     "stage": "subject",
-     "field": "player",
-     "before": "tyrese maxey",
-     "after": "Tyrese Maxey",
      "reason": "a team's record in the games a player named beside it reached a line"
     }
    ],
@@ -74575,13 +74553,6 @@
      "before": "with_without",
      "after": "record_when",
      "reason": "a team's record in the games a player named beside it reached a line"
-    },
-    {
-     "stage": "subject",
-     "field": "player",
-     "before": "Embiid",
-     "after": "Joel Embiid",
-     "reason": "a team's record in the games a player named beside it reached a line"
     }
    ],
    "point": {
@@ -74831,13 +74802,6 @@
      "field": "intent",
      "before": "with_without",
      "after": "record_when",
-     "reason": "a team's record in the games a player named beside it reached a line"
-    },
-    {
-     "stage": "subject",
-     "field": "player",
-     "before": "maxey",
-     "after": "Maxey",
      "reason": "a team's record in the games a player named beside it reached a line"
     }
    ],

@@ -264,36 +264,22 @@ def _report_disagreements(rows: list[dict[str, Any]]) -> int:
 #: grammar names a count from a line the tagger read, never a bare number
 #: no line is read from (``intent+measure``, 11 -> 0 on the 2,710: "games
 #: with 40 field goal percentage" - a P1 the join hid, ISSUES.md).
-#: What is held:
-#: - ``companion+intent`` 2 and ``intent+companion`` 1: the grammar's rules
-#:   and the parent row read a companion's phrase ("when maxey scored",
-#:   "with/without embiid") that the subject reading claims. Step 4's after
-#:   slice (b): the same marking for the companions the subject reading
-#:   types makes them one reading.
-#: - ``situation+intent`` 1: "since 1/26/20," - the parent's log row reads
-#:   a date's words (``\d+/\d+``) the cuts tagger reads as a situation.
-#:   Step 4's after slice (b), marked as the cuts tagger types it.
-#: - ``refused+measure`` 1: "bench points allowed", read by the unsupported
-#:   shape's recognizer and by the measure - both need it; it goes when
-#:   the recognizers read the typed measure (Phase 3, step 4's refusals).
-#: - #354's double read, ``situation+date`` (4 on the 2,710, none of the
-#:   628): one tagger reading a day's month again as a situation - a word two
-#:   RULES of one tagger read, which is a bug (ISSUES.md, "A month is read
-#:   from the words of a day in it").
-#: On the 2,710 beside them (15 in all, from 48): ``window+intent`` 3 ("last 25 game log": the window and the log
-#: row both need "game"), ``opponent+intent`` 2 and
-#: ``opponent+intent+window`` 1 (the grammar's rules read the opponent's
-#: team word - "vs raptors second half", "v warriors most recent 5 games" -
-#: which they still read unmarked).
-#: Step 4 is held to zero joins but #354's.
+#: None is held since Phase 3, step 4, slice (c) (2026-10-11): the five the
+#: 628 had after slice (b) went when the parent grammar read the companions'
+#: phrases, the windows of games and a dated range as the taggers typed
+#: them (``lexicon.mark_companions``, ``WINDOW_MARK``, ``DATE_MARK``), the
+#: rules were handed the team words, a reached companion's "when" clause and
+#: his name typed, and the bench recognizer read the typed measure
+#: (``companion+intent`` 2, ``intent+companion`` 1, ``situation+intent`` 1,
+#: ``refused+measure`` 1); on the 2,710 the same took ``window+intent`` 3,
+#: ``opponent+intent`` 2 and ``opponent+intent+window`` 1, and #354's
+#: ``situation+date`` 4 (one tagger reading a day's month again as a
+#: situation - a word two RULES of one tagger read, which is a bug, ISSUES.md
+#: "A month is read from the words of a day in it") are the only joins left.
+#: A join on the 628 fails the report outright.
 HELD_JOINS_QUESTIONS = 628
 """The recorded questions :data:`HELD_JOINS` was counted over."""
-HELD_JOINS: dict[str, int] = {
-    "companion+intent": 2,
-    "intent+companion": 1,
-    "situation+intent": 1,
-    "refused+measure": 1,
-}
+HELD_JOINS: dict[str, int] = {}
 
 
 def _report_joins(rows: list[dict[str, Any]]) -> int:

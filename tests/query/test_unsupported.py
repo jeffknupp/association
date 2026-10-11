@@ -208,9 +208,15 @@ def test_a_period_used_as_a_condition_is_refused_by_name(con: duckdb.DuckDBPyCon
 def test_bench_points_are_refused_as_a_gap_of_ours_not_missing_data(con: duckdb.DuckDBPyConnection) -> None:
     """yardstick-v2 F106: the box score flags starters, so bench points are
     derivable - the refusal says nothing reads them yet, never "no data"."""
-    refusal = unanswerable(con, "other", {"stat": "points", "venue": "home"}, "most opponent bench points allowed in the west at home by team this month")
-    assert refusal is not None
+    from association.query.parse import read_route
+
+    # The recognizer reads the word "bench" beside the typed measure the WORDS
+    # named (slice (c)); a reading built from the model's key alone names none.
+    reading = read_route(names_of(con), "most opponent bench points allowed in the west at home by team this month", [], "points")
+    assert [cause.kind for cause in reading.unsupported] == ["bench_points"]
+    refusal = refusal_result(reading.unsupported[0])
     assert "not read yet" in refusal.answer and "flags starters" in refusal.answer
+    assert unanswerable(con, "other", {"stat": "points", "venue": "home"}, "most opponent bench points allowed in the west at home by team this month") is None
 
 
 def test_a_championship_question_is_refused_before_a_ranking_answers_it(con: duckdb.DuckDBPyConnection) -> None:

@@ -140,7 +140,7 @@ def test_the_held_disagreements_pass_and_one_that_clears_fails_until_it_is_remov
     assert f"GONE: {held[0]!r}" in capsys.readouterr().out
 
 
-def test_the_joined_claims_are_held_by_kind_and_count(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_the_joined_claims_are_held_by_kind_and_count(tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch) -> None:
     """Jeff's ruling (2026-10-10): a partial overlap joins into one claim
     named for both readings, and the joins are held by kind and count
     (``HELD_JOINS``): a new kind or a grown count fails the report, and so
@@ -154,10 +154,14 @@ def test_the_joined_claims_are_held_by_kind_and_count(tmp_path: Path, capsys: py
         path.write_text("".join(json.dumps(row) + "\n" for row in rows))
         return int(ledger.report(argparse.Namespace(ledger=path, top=5, show=0)))
 
+    # The table is empty since slice (c): any join on the 628 is new.
+    assert ledger.HELD_JOINS == {} and report([]) == 0
+    assert report(["window+period"]) == 1 and "NEW: window+period 0 -> 1" in capsys.readouterr().out
+    # The kinds Phase 3, step 4, slices (b) and (c) made one reading are gone from the table: one back is new.
+    assert report(["intent+line"]) == 1 and "NEW: intent+line 0 -> 1" in capsys.readouterr().out
+    # A held table, as slice (b) left one: a grown count and a vanished kind each fail.
+    monkeypatch.setattr(ledger, "HELD_JOINS", {"companion+intent": 2, "refused+measure": 1})
     held = [what for what, count in ledger.HELD_JOINS.items() for _ in range(count)]
     assert report(held) == 0
-    assert report([*held, "window+period"]) == 1 and "NEW: window+period 0 -> 1" in capsys.readouterr().out
     assert report([*held, "companion+intent"]) == 1 and "GREW: companion+intent" in capsys.readouterr().out
-    # The kinds Phase 3, step 4, slice (b) made one reading are gone from the table: one back is new.
-    assert report([*held, "intent+line"]) == 1 and "NEW: intent+line 0 -> 1" in capsys.readouterr().out
     assert report([what for what in held if what != "refused+measure"]) == 1 and "GONE: refused+measure 1 -> 0" in capsys.readouterr().out

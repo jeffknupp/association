@@ -539,13 +539,16 @@ def test_a_shape_nothing_reads_is_refused_with_its_cause(monkeypatch: pytest.Mon
     assert agent.unanswered is None
 
 
-def test_a_shape_nothing_reads_is_refused_even_where_no_template_exists(tmp_path: Path) -> None:
+def test_a_shape_nothing_reads_is_refused_even_where_no_template_exists(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """An intent with no reader is refused by name; what the words name
     that nothing reads (``Reading.unsupported``) is said first, so "bench points" (routed `other`) is refused with
-    its cause rather than with the intent."""
+    its cause rather than with the intent. Read by the parser from the words
+    (the recognizer reads the measure the words named, slice (c))."""
+    from association.query.normalizer import Normalized
 
+    monkeypatch.setattr("association.query.normalizer.normalize", lambda model, question: Normalized([], "points"))
     agent = _agent_with_players(tmp_path, "Joel Embiid")
-    answer = ask_routed(agent, "most opponent bench points allowed in the west at home by team this month", slots_route("other", {"stat": "points", "venue": "home"}))
+    answer = agent.ask("most opponent bench points allowed in the west at home by team this month")
 
     assert "Bench points are not read yet" in answer.text
     assert answer.answered_by == "fast"

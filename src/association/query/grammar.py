@@ -129,6 +129,11 @@ class _Working:
     #: typed values, never the line's words, which the question they read
     #: holds marked (``lexicon.mark_lines``).
     lines: LinesNamed
+    #: Whether a companion reached a line in a clause led by "when" ("sixers
+    #: record when maxey scored 20+ points"), as the subject reading typed
+    #: it - the words ``lexicon.WHEN_REACHES`` read until slice (c), kept
+    #: for a clause with no companion in it ("record when he scored 30").
+    reached_when: bool = False
 
 
 def settle(
@@ -140,6 +145,7 @@ def settle(
     companions: tuple[Companion, ...] = (),
     stat: Any = None,
     lines: LinesNamed | None = None,
+    reached_when: bool = False,
 ) -> Asked:
     """What the grammar's rules settle ``question`` to, under the key a
     grammar named (``asked``): the subject reading's typed ``subject`` and
@@ -159,30 +165,61 @@ def settle(
     """
     who = subject if subject is not None else reading.Subject()
     typed = lines if lines is not None else lines_named(question)
-    working = _working(question, asked, who, opponent, stat, typed)
+    # The team nicknames the words hold, read ONCE by the subject reading's
+    # reader and handed to the rules as the typed subject is (slice (c)):
+    # a rule that writes one as the team claims its words below, where
+    # the rules' probe read them again and joined the claim with the
+    # opponent's.
+    team_words = team_words_in(question)
+    working = _working(question, asked, who, opponent, stat, typed, team_words, reached_when)
     coach = _settle_rules(working, question, companions)
     # What the rules read: the words whose deletion changes the key they
     # settle or a name they write (span.read_by) - the rules are over the
     # whole question ("which team", "as a starter", "log"), so what they
     # read is what their decision turned on (Phase 3, step 3).
-    claims = read_by(question, "intent", lambda probed: _settle_read(probed, asked, who, opponent, companions, stat, typed))
-    return Asked(asked=working.asked, coach=coach, subject=working.subject, opponent=working.opponent, stat=working.stat, claims=claims)
+    claims = read_by(question, "intent", lambda probed: _settle_read(probed, asked, who, opponent, companions, stat, typed, team_words, reached_when))
+    return Asked(
+        asked=working.asked, coach=coach, subject=working.subject, opponent=working.opponent, stat=working.stat, claims=(*claims, *_team_word_claims(question, who, working.subject, team_words))
+    )
 
 
-def _working(question: str, asked: PointShape | None, subject: reading.Subject, opponent: str | None, stat: Any, lines: LinesNamed) -> _Working:
+def _team_word_claims(question: str, handed: reading.Subject, settled: reading.Subject, team_words: tuple[str, ...]) -> tuple[Claim, ...]:
+    """The characters of each team nickname a rule wrote as the subject's
+    team (:func:`_team_named`), where the subject reading handed none:
+    the rule's reading of the word, claimed as the ``team`` the subject
+    reading's own claims name a team under."""
+    written = [team for team in settled.teams if team not in handed.teams and team in team_words]
+    if not written:
+        return ()
+    return tuple(Claim(m.start(), m.end(), "team") for m in lexicon.TEAM_NICKNAME.finditer(question.lower()) if m.group(0) in written)
+
+
+def _working(
+    question: str, asked: PointShape | None, subject: reading.Subject, opponent: str | None, stat: Any, lines: LinesNamed, team_words: tuple[str, ...], reached_when: bool = False
+) -> _Working:
     """The rules' working reading of ``question`` before any rule has run:
     the key and the names as handed, the grammar's subject and the team
     nicknames the words hold (:func:`~association.query.subject.subject_named_in`,
     :func:`~association.query.subject.team_words_in`)."""
-    return _Working(asked=asked, subject=subject, opponent=opponent, stat=stat, grammar=subject_named_in(question), team_words=team_words_in(question), lines=lines)
+    return _Working(asked=asked, subject=subject, opponent=opponent, stat=stat, grammar=subject_named_in(question), team_words=team_words, lines=lines, reached_when=reached_when)
 
 
-def _settle_read(question: str, asked: PointShape | None, subject: reading.Subject, opponent: str | None, companions: tuple[Companion, ...], stat: Any, lines: LinesNamed) -> tuple[Any, ...]:
+def _settle_read(
+    question: str,
+    asked: PointShape | None,
+    subject: reading.Subject,
+    opponent: str | None,
+    companions: tuple[Companion, ...],
+    stat: Any,
+    lines: LinesNamed,
+    team_words: tuple[str, ...],
+    reached_when: bool,
+) -> tuple[Any, ...]:
     """What the rules settle over ``question`` - the key, whether it is a
     coach's, the subject and the opponent - as one value, the reading the
     words they read are claimed by (:func:`settle`). The measure key is the
     tagger's context, not the rules' reading."""
-    working = _working(question, asked, subject, opponent, stat, lines)
+    working = _working(question, asked, subject, opponent, stat, lines, team_words, reached_when)
     coach = _settle_rules(working, question, companions)
     return working.asked, coach, working.subject, working.opponent
 
@@ -207,11 +244,11 @@ def _settle_rules(working: _Working, question: str, companions: tuple[Companion,
     # name of its own is settled.
     _period(working, question)
     _triple_double_abbreviation(working, question)
-    _team_and_player(working, question)
+    _team_and_player(working, question, companions)
     _line_and_record(working, question, companions)
     _count(working, question, companions)
     _shot_distance_subject(working, question)
-    _restored_subject(working)
+    _restored_subject(working, companions)
     return False
 
 
@@ -255,6 +292,12 @@ def _period(working: _Working, question: str) -> None:
         # The count of a player's foul-outs: the line itself (fouls at six)
         # is the lines tagger's, the stat the measure tagger's.
         working.asked = GAMES_COUNTED
+    if not (QUARTER_WORDS.search(low) or HALF_WORDS.search(low)):
+        # No quarter or half named: nothing below applies - and the team a
+        # rank word beside no quarter would have named is left unwritten
+        # (until slice (c) "gafford v warriors most recent 5 games" had the
+        # Warriors written as his team by the check below, run for nothing).
+        return
     ranks_players = PERIOD_LEADERS.search(low) is not None or (PERIOD_TOP.search(low) is not None and not _team_named(working))
     if (QUARTER_WORDS.search(low) and (ranks_players or not _team_quarter_total(working) or _names_a_period_subject(working))) or HALF_WORDS.search(low):
         # A named player's quarter or half is the period log's - but only
@@ -378,7 +421,7 @@ _WHEN_REACHES_REROUTABLE = frozenset({PLAYER_LINE, GAMES_COUNTED, PLAYER_LOG, TE
 _FINGERPRINT_REROUTABLE = frozenset({PLAYER_COMPARISON, PLAYER_LINE, NETPOINTS_RATINGS, None, PLAYER_LOG})
 
 
-def _team_and_player(working: _Working, question: str) -> None:
+def _team_and_player(working: _Working, question: str, companions: tuple[Companion, ...]) -> None:
     """A team where a player ranking was named, a record, a fingerprint with
     no fingerprint words, and a player measured against a team."""
     if working.asked in _PLAYER_RANKING_ASKS and lexicon.TEAM_SUBJECT.search(question):
@@ -388,7 +431,8 @@ def _team_and_player(working: _Working, question: str) -> None:
         working.asked = TEAM_RANKING if working.asked == PLAYER_RANKING else None
     if working.asked == GAMES_COUNTED and lexicon.RECORD_WORD.search(question):
         working.asked = LINE_RECORD
-    if working.asked in _WHEN_REACHES_REROUTABLE and lexicon.WHEN_REACHES.search(question) and working.lines.threshold is not None:
+    reached = working.reached_when or (lexicon.WHEN_REACHES.search(question) is not None and not any(c.predicate == "reached" for c in companions))
+    if working.asked in _WHEN_REACHES_REROUTABLE and reached and working.lines.threshold is not None:
         # "stats for sixers when maxey scored 20+ points" (yardstick-v2
         # F087): a team's games divided by a NUMBER a player reached is the
         # record over a line whatever was named first - it was answered as
@@ -588,13 +632,20 @@ def _shot_distance_subject(working: _Working, question: str) -> None:
 _SUBJECT_RESTORED_ASKS = (GAME_HIGHS, GAMES_COUNTED, LINE_RECORD)
 
 
-def _restored_subject(working: _Working) -> None:
+def _restored_subject(working: _Working, companions: tuple[Companion, ...]) -> None:
     """A single-game high's, a threshold count's or a line record's missing
     subject, settled from the question's own grammar - only where the
     reader reads one player: a ranking with no player IS the league's, and
     settling the subject only where the grammar names one (#138) never
     turns a league question into one about somebody it only appears to
-    name."""
+    name. A line record's player is the companion who reached the line,
+    as the subject reading typed him ("sixers record when maxey scored
+    20+ points": Maxey), read from the grammar's words until slice (c)."""
+    if working.asked == LINE_RECORD and not working.subject.players:
+        reached = next((c.player for c in companions if c.predicate == "reached" and c.side == "own"), None)
+        if reached is not None:
+            working.subject = replace(working.subject, players=(reached,))
+            return
     if working.asked in _SUBJECT_RESTORED_ASKS:
         _grammar_subject(working)
 

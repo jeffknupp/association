@@ -18,8 +18,9 @@ from association.query.entities import names_of
 from association.query.line import threshold_named as _threshold_from_text
 from association.query.lines import threshold_of
 from association.query.measure import named
-from association.query.parse import classify_span, parent_asked, read_route
-from association.query.reading import Companion, Reading, asked_label
+from association.query.parse import classify_span, marked_for_grammar, read_route
+from association.query.parse import parent_asked as _parent_asked
+from association.query.reading import Companion, PointShape, Reading, asked_label
 from association.query.reading import Subject as Who
 from association.query.subject import Subject
 
@@ -132,6 +133,12 @@ def _route(con: duckdb.DuckDBPyConnection, question: str, names: list[str] | Non
     reading = read_route(names_of(con), question, names, stat)
     parser = tuple(decision for decision in reading.decisions if decision.stage == "parser")
     return _Read(reading.asked, reading, reading.subject, parser, reading.claims, reading=reading)
+
+
+def parent_asked(question: str, kind: str, companions: bool = False) -> PointShape | None:
+    """The parent grammar over ``question`` as ``read_route`` hands it: the
+    windows of games and the dated ranges marked (``marked_for_grammar``)."""
+    return _parent_asked(marked_for_grammar(question), kind, companions)
 
 
 def _read(con: duckdb.DuckDBPyConnection, question: str, names: list[str] | None = None, stat: str = "") -> Reading:
@@ -539,8 +546,12 @@ def test_the_reading_carries_the_parsers_decisions_between_who_and_what_it_wrote
     route = _route(con, question, ["sixers", "maxey"], "points")
     assert route.reading is not None
     decisions = route.reading.decisions
-    assert [(d.stage, d.field) for d in decisions] == [("subject", "kind"), ("subject", "teams"), ("subject", "companions"), ("parser", "intent"), ("subject", "player")]
-    assert (decisions[-1].before, decisions[-1].after) == ("maxey", "Tyrese Maxey")
+    # The record's player is the companion who reached the line, written once
+    # by the rules from the typed companion (slice (c)): until then the
+    # grammar's spelling was written first and the companion's resolved
+    # name over it, a decision recorded on every such question.
+    assert [(d.stage, d.field) for d in decisions] == [("subject", "kind"), ("subject", "teams"), ("subject", "companions"), ("parser", "intent")]
+    assert route.reading.who.player == "Tyrese Maxey"
     handed = Reading(**{**route.scope.filters(), "who": Who.from_slots({"player": "Tyrese Maxey", "team": route.who.team})})
     replayed = reading_of(con, question, with_subject(con, question, Routed(route.asked, handed)))
     assert [(d.stage, d.field) for d in replayed.decisions] == [("subject", "kind"), ("subject", "teams"), ("subject", "companions")]
@@ -756,6 +767,38 @@ def test_the_grammars_read_a_line_and_an_opponent_as_the_taggers_type_them(con: 
     assert read["against boston"] == "opponent" and read["games"] == "intent" and not any("+" in what for what in read.values())
 
 
+def test_the_grammars_read_the_companions_the_windows_and_the_dates_as_the_taggers_type_them(con: duckdb.DuckDBPyConnection) -> None:
+    """Slice (c): a companion's phrase, a window of games and a dated range
+    are marked the same way (``lexicon.mark_companions``, ``WINDOW_MARK``,
+    ``DATE_MARK``), and the rules are handed the team words, a reached
+    companion's "when" clause and his name typed - no claim is joined from
+    two readings of one word. The names go in before the first read: the
+    index is loaded once per test."""
+    con.execute("INSERT INTO players VALUES ('40', 'Julius Randle'), ('41', 'Karl-Anthony Towns')")
+    con.execute("INSERT INTO teams VALUES ('42', 'San Antonio Spurs', 'SA'), ('43', 'Toronto Raptors', 'TOR')")
+    for question, names, intent, own in (
+        ("What was the sixers record with/without embiid this season?", ["sixers", "embiid"], "with_without", ("without embiid", "companion")),
+        ("What was the sixers record this season when maxey scored 20+ points?", ["sixers", "maxey"], "record_when", ("when maxey", "companion")),
+        ("randle last 10 game log vs lakers", ["randle", "lakers"], "game_log", ("last 10 game", "window")),
+        ("since 1/26/20, what are the towns home records including playoffs against the spurs?", ["towns", "spurs"], "game_log", ("since 1/26/20", "situation")),
+        ("miles bridges stats vs raptors second half", ["raptors"], "team_quarter_points", ("vs raptors", "opponent")),
+    ):
+        r = _read(con, question, names=names, stat="")
+        read = {question[c.start : c.end]: c.what for c in r.claims}
+        assert r.intent == intent and read[own[0]] == own[1] and not any("+" in what for what in read.values()), (question, r.intent, read)
+
+
+def test_a_rank_word_beside_no_quarter_names_no_team(con: duckdb.DuckDBPyConnection) -> None:
+    """ "gafford v warriors most recent 5 games": the period rule's check for
+    a ranking of players wrote the one nickname as the subject's team on
+    the way to deciding nothing (no quarter named) - a player's log with
+    the Warriors as his team (slice (c))."""
+    _with_the_warriors(con)
+    con.execute("INSERT INTO players VALUES ('30', 'Daniel Gafford')")
+    reading = read_route(names_of(con), "Gafford v warriors most recent 5 games", ["Gafford", "warriors"], "")
+    assert (reading.intent, reading.who.teams, reading.cuts.opponent) == ("game_log", (), "Golden State Warriors")
+
+
 def test_a_line_and_an_opponent_are_marked_where_their_words_stand() -> None:
     """The marks keep every character where it stands: a line's number (with
     its plus) and stat, the words that lead a line under a number, and an
@@ -773,3 +816,7 @@ def test_a_line_and_an_opponent_are_marked_where_their_words_stand() -> None:
     )
     assert numbered == "games with " + lexicon.LINE_MARK_PLUS * 3 + " points or under " + lexicon.LINE_MARK * 2 + " fta"
     assert lexicon.mark_opponent("games vs boston", ((6, 15),)) == "games " + lexicon.OPPONENT_MARK_AGAINST * 9
+    # A companion's phrase by its presence word, a line inside it kept; any other phrase by the plain mark; a window and a dated range by theirs.
+    assert lexicon.mark_companions("record when maxey scored \ue000\ue000\ue000 points", ((7, 28),)) == "record " + lexicon.COMPANION_MARK_PRESENCE * 18 + "\ue000" * 3 + " points"
+    assert lexicon.mark_companions("log in games embiid missed", ((4, 26),)) == "log " + lexicon.COMPANION_MARK * 22
+    assert marked_for_grammar("randle last 10 game log since 1/26/20") == "randle " + lexicon.WINDOW_MARK * 12 + " log " + lexicon.DATE_MARK * 13

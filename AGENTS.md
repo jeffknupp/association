@@ -1000,11 +1000,14 @@ a shape:
   against `HELD_JOINS` and exits 1 on a new kind or a grown count, and -
   on a run of every recorded question - on one that fell or vanished until
   the table is lowered with the change.
-  The ones held are a child grammar's words over a tagger's (`intent+line`
-  12, `intent+opponent` 4, ... - step 4's, which re-keys the grammar and
-  is held to zero joins but #354's) and one recognizer beside the measure
-  (`refused+measure`); a word two RULES of one tagger read is still a bug
-  (#354's `situation+date`, the cuts tagger reading a day's month again).
+  None is held since step 4's slice (c): the 628 have no join, and the
+  2,710 only #354's four (`situation+date`, one tagger reading a day's
+  month again - a word two RULES of one tagger read is still a bug). The
+  joins that were held - a child grammar's words over a tagger's
+  (`intent+line` 12, `intent+opponent` 4, ...) went with slice (b)'s
+  marks, the companions', the windows' and a dated range's with slice
+  (c)'s, and a recognizer beside the measure (`refused+measure`) when it
+  read the typed measure.
   The subject's own has no tagger: its one reader is the
   subject reading (`subject.read_subject`, once per question, below), and
   its one writer `subject.apply_subject`, which writes ONE typed value,
@@ -1944,13 +1947,36 @@ a shape:
   (`LinesNamed.threshold`, `below`), and the parent grammar the opponent
   the subject reading read, versus word and team, marked
   (`lexicon.mark_opponent`, `subject.opponent_read`: `_PLAYER_LOG`'s
-  "games against boston" is "games" before an opponent). Every mark keeps
+  "games against boston" is "games" before an opponent), and since slice
+  (c) each companion's phrase as the subject reading read it
+  (`lexicon.mark_companions` over `subject.Subject.companion_phrases`, the
+  phrases whole - the probed claims are cut to the words the companion
+  reading needed and can land on a word a row reads;
+  `COMPANION_MARK_PRESENCE` where the phrase holds a presence word, which
+  the with/without split's rows read, `COMPANION_MARK` otherwise), each
+  window of games the window tagger reads (`WINDOW_MARK`: the grammar's
+  end and count and the looser end words - not a ranking's "top 5", a
+  count of seasons or one game named as the subject's own, whose stretch
+  reaches over words other rows read) and a range opened on a dated day
+  (`DATE_MARK`, "since 1/26/20"; a calendar day and a month stay words),
+  which the log rows read where they read the words (`parse._PLAYER_LOG`,
+  the team's log row; `parse.marked_for_grammar` is the same text for a
+  test of the rows over words alone). The rules are handed the team
+  nicknames the words hold (`subject.team_words_in`, read once by
+  `grammar.settle` and claimed as the `team` where a rule writes one), a
+  reached companion's "when" clause (`reached_when`; `lexicon.WHEN_REACHES`
+  stays for a clause with no companion in it) and his name as a line
+  record's player (`grammar._restored_subject`). Every mark keeps
   each character where it stands, so a row's distances hold and a child's
   words in its decision are the question's own. A grammar so claims its
   own words around the value and the value's characters are its tagger's:
   measured on the 2,710 readings (`route_family.py`), `intent+line` 17 ->
-  0 and `intent+opponent` 5 -> 0 joined claims, every reading, answer and
-  unread word identical. A row that reads a number or a versus word reads
+  0 and `intent+opponent` 5 -> 0 joined claims at slice (b), every reading,
+  answer and unread word identical, and the 11 left but #354's at slice
+  (c), where a window read as the typed window no longer needs its "games"
+  (23 readings' unread words grew by it) and a broader window the tagger
+  reads is a log as "last 10 games" is (5 readings' key moved, every answer
+  identical). A row that reads a number or a versus word reads
   the mark beside it (`N_PLUS`, `MARKED_NUMBER`, `MEETING_WORDS`,
   `_PAIR_MEETING`); a new row does the same. The count's child grammar
   reads no bare digits beside its marks: a count is named from a line the

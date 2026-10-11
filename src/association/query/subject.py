@@ -295,6 +295,16 @@ class Subject(reading.Subject):
     #:
     #: .. versionadded:: 6.0.0
     claims: tuple[Claim, ...] = ()
+    #: Where each companion's phrase stands - the keyword to the last word
+    #: the reading took (``(start, end)``) - with the role read from it:
+    #: what the parent grammar reads in place of the words
+    #: (``lexicon.mark_companions``) and the rules are handed as a reached
+    #: line's "when" clause. Positions in the text, like :attr:`claims`,
+    #: which the probe cuts to the words the reading needed; these are the
+    #: phrases whole, before it.
+    #:
+    #: .. versionadded:: 6.0.0
+    companion_phrases: tuple[tuple[int, int, str], ...] = ()
 
     def __post_init__(self) -> None:
         """The typed subject's checks, and :attr:`intent` held to the label
@@ -652,7 +662,7 @@ def _conditions(question: str, players: tuple[str, ...], scope: Filtered) -> tup
     return _conditions_read(question, players, scope)[0]
 
 
-def _conditions_read(question: str, players: tuple[str, ...], scope: Filtered) -> tuple[tuple[Companion, ...], tuple[Claim, ...]]:
+def _conditions_read(question: str, players: tuple[str, ...], scope: Filtered) -> tuple[tuple[Companion, ...], tuple[Claim, ...], tuple[tuple[int, int, str], ...]]:
     """:func:`_conditions`, with the characters each companion was read
     from: the keyword, the names and the role's words ("without Tatum and
     Brown", "when maxey scores 20+ points", "vs lebron") - what the subject
@@ -666,6 +676,7 @@ def _conditions_read(question: str, players: tuple[str, ...], scope: Filtered) -
     # "with" as joining two subjects, never as a companion's phrase: its
     # words are read here (span.needed keeps the ones the reading needs).
     claims: list[Claim] = [Claim(m.start(), m.end(), "companion") for m in lexicon.COMPARED_WITH.finditer(question)]
+    phrases: list[tuple[int, int, str]] = []
     for match in _companion_phrases(question):
         word, text = match.group(1).lower(), match.group(2)
         predicate, line, role_end = _condition_role(word, text)
@@ -673,11 +684,14 @@ def _conditions_read(question: str, players: tuple[str, ...], scope: Filtered) -
         new = [Companion(player=name, predicate=predicate, line=line) for name in names if not any(_same_person(name, [c.player]) for c in found)]
         if new:
             found.extend(new)
-            claims.append(Claim(match.start(), match.start(2) + _read_to(text, [c.player for c in new], role_end), "companion"))
+            end = match.start(2) + _read_to(text, [c.player for c in new], role_end)
+            claims.append(Claim(match.start(), end, "companion"))
+            phrases.append((match.start(), end, predicate))
     versus, versus_claims = _versus_companions(question, players, scope, found)
     found.extend(versus)
     claims.extend(versus_claims)
-    return tuple(found), tuple(claims)
+    phrases.extend((claim.start, claim.end, "played") for claim in versus_claims)
+    return tuple(found), tuple(claims), tuple(phrases)
 
 
 def _read_to(text: str, names: list[str], role_end: int | None) -> int:
@@ -690,7 +704,16 @@ def _read_to(text: str, names: list[str], role_end: int | None) -> int:
     for name in names:
         at = low.find(name.casefold())
         if at < 0:
-            return len(text.rstrip())
+            # A name the text spells in part ("lebron" for LeBron James, a
+            # surname alone): as far as its longest word the text holds,
+            # the whole text where it holds none (a carried name the
+            # phrase misspells).
+            words = [(at, word) for word in sorted(name.casefold().split(), key=len, reverse=True) if (at := low.find(word)) >= 0]
+            if not words:
+                return len(text.rstrip())
+            at, word = words[0]
+            ends.append(at + len(word))
+            continue
         ends.append(at + len(name))
     return max(ends)
 
@@ -1044,7 +1067,7 @@ def read_subject(index: names.NameIndex, question: str, asked: PointShape | None
     spellings = _spellings(index.players, question, routed)
     players = _merge_names([spellings.get(r, r) for r in routed], named)
     unrouted = _unrouted_companions(index, question, players, scope)
-    conditions, claims = _read_subject_conditions(question, (*players, *unrouted), scope)
+    conditions, claims, phrases = _read_subject_conditions(question, (*players, *unrouted), scope)
     companions = tuple(dict.fromkeys(c.player for c in conditions))
     players = tuple(p for p in players if p not in companions)
     if _read_subject_alone(players, teams_here, conditions, scope):
@@ -1060,7 +1083,7 @@ def read_subject(index: names.NameIndex, question: str, asked: PointShape | None
     if unrouted:
         evidence = (*evidence, f"companions the router named nobody for {list(unrouted)}")
     decided = _decide(players, teams, position, opponent, own_team, companions, evidence, asked, question)
-    subject = replace(decided, conditions=conditions, claims=(*claims, *_decide_claims(decided, question)))
+    subject = replace(decided, conditions=conditions, companion_phrases=phrases, claims=(*claims, *_decide_claims(decided, question)))
     # Read, not decided: what the subject's shape settles the words to ask
     # is the parser's step (:func:`child_named`, with the stages run once
     # under it), and :func:`settle_subject` writes it here. Until 5.0.0's
@@ -1077,14 +1100,16 @@ def read_subject(index: names.NameIndex, question: str, asked: PointShape | None
     )
 
 
-def _read_subject_conditions(question: str, beside: tuple[str, ...], scope: Filtered) -> tuple[tuple[Companion, ...], tuple[Claim, ...]]:
+def _read_subject_conditions(question: str, beside: tuple[str, ...], scope: Filtered) -> tuple[tuple[Companion, ...], tuple[Claim, ...], tuple[tuple[int, int, str], ...]]:
     """The companions beside the subject (:func:`_conditions_read`), each
     phrase's claim cut to the words the companion reader needed
     (:func:`~association.query.span.needed`): "play" in "when Embiid and
     Paul George play" reads the same companions without it. A word outside
-    every phrase that the companions turn on is claimed beside them."""
-    conditions, claims = _conditions_read(question, beside, scope)
-    return conditions, needed(question, claims, lambda probed: _conditions_read(probed, beside, scope)[0], outside="companion", gives_up=True)
+    every phrase that the companions turn on is claimed beside them. The
+    phrases whole, with the role each read, come third
+    (:attr:`Subject.companion_phrases`)."""
+    conditions, claims, phrases = _conditions_read(question, beside, scope)
+    return conditions, needed(question, claims, lambda probed: _conditions_read(probed, beside, scope)[0], outside="companion", gives_up=True), phrases
 
 
 def _read_subject_season_claims(question: str) -> tuple[Claim, ...]:

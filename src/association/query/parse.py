@@ -117,6 +117,14 @@ _PLAYER_LOG = (
     # subject reading read right after it (lexicon.mark_opponent), its
     # versus word the opponent's.
     r"|(?<!per )\bgames? \ue005"
+    # A window of games ("last 10 games", "his first game", "most recent 5
+    # games") and a range opened on a dated day ("since 1/26/20"), each as
+    # the window tagger and the cuts tagger typed it (lexicon.WINDOW_MARK,
+    # DATE_MARK): the row reads that one stands here, and its words are the
+    # taggers' to claim (slice (c)). The window words above stay for a form
+    # the tagger does not type ("final games"); a typed one is marked and
+    # the words cannot see it.
+    r"|\ue00a|\ue00b"
 )
 """A player's games rather than his line: a log word, a window, one game, a date."""
 
@@ -137,11 +145,17 @@ PARENT_GRAMMAR: tuple[tuple[frozenset[str], str, PointShape], ...] = (
     (frozenset({"teams"}), r".", TEAM_MEETINGS),
     (frozenset({"team_players"}), r".", PLAYER_RANKING),
     (frozenset({"team"}), r"(?=.*\b(top \d+|scorers?|rebounders?|passers?|leaders?|players?)\b)(?=.*\b(top|most|best|leaders?)\b)", PLAYER_RANKING),
-    (frozenset({"team+companions"}), r"\b(with|without|when|while)\b", PRESENCE_SPLIT),
+    # A companion's phrase led by a presence word, as the subject reading
+    # typed it (lexicon.COMPANION_MARK_PRESENCE), or such a word anywhere else.
+    (frozenset({"team+companions"}), r"\b(with|without|when|while)\b|\ue008", PRESENCE_SPLIT),
+    # A log word, a window of games as the window tagger typed it
+    # (lexicon.WINDOW_MARK: "last 10 games", "the season opener"), or the
+    # window words the row read before the mark, for a form the tagger
+    # does not type ("last 10 match ups").
     (
         frozenset({"team"}),
         r"\b(game ?log|(last|past|previous|most recent) " + _COUNT + r"\b|first \d+ games|each game|game by game|differential"
-        r"|(first|opening|last|latest|most recent|final) game|(season )?opener)",
+        r"|(first|opening|last|latest|most recent|final) game|(season )?opener)|\ue00a",
         PLAYER_LOG,
     ),
     (frozenset({"team"}), r"\bstreak", TEAM_RECORD),
@@ -169,7 +183,7 @@ PARENT_GRAMMAR: tuple[tuple[frozenset[str], str, PointShape], ...] = (
     # a team, where "maxey points vs boston without embiid" is his own games
     # narrowed (ROADMAP step 3: the absence a condition, on whichever side the
     # name resolves to), not a two-sided split.
-    (frozenset({"player+companions"}), r"(?=.*\b(with|without|while|when)\b)(?!.*(\b(?:vs\.?|versus|against)\b|[\ue005\ue006]))", PRESENCE_SPLIT),
+    (frozenset({"player+companions"}), r"(?=.*(\b(with|without|while|when)\b|\ue008))(?!.*(\b(?:vs\.?|versus|against)\b|[\ue005\ue006]))", PRESENCE_SPLIT),
     (frozenset({"player"}), r".", PLAYER_LINE),
     (frozenset({"position"}), r"\b(log|game ?log)\b", PLAYER_LOG),
     (frozenset({"position"}), r".", PLAYER_RANKING),
@@ -182,7 +196,8 @@ PARENT_GRAMMAR: tuple[tuple[frozenset[str], str, PointShape], ...] = (
     # as the league's scorers, the everyone row below.
     (frozenset({"everyone"}), r"(?=.*\b(record|standings?|w-?l)\b)(?!.*\b(players?|who scored|scorers?)\b)", TEAM_RANKING),
     (frozenset({"everyone"}), r"\bstreak", TEAM_RECORD),
-    (frozenset({"everyone"}), r"\b(finals|game ?log)\b", PLAYER_LOG),
+    # "game log", or a log after a window of games as the window tagger typed it ("last game log", lexicon.WINDOW_MARK).
+    (frozenset({"everyone"}), r"\b(finals|game ?log)\b|\ue00a log\b", PLAYER_LOG),
     (frozenset({"everyone"}), r".", PLAYER_RANKING),
 )
 """The parent grammar: the first row whose kinds hold the subject's kind
@@ -600,15 +615,28 @@ def read_route(index: names.NameIndex, question: str, names: list[str] | None = 
     # it, the same way: "games against boston" is a player's games with a
     # team set against him, and "against boston" the opponent's words.
     opposed = lexicon.mark_opponent(numbered, tuple((c.start, c.end) for c in opponent_read(index.teams, question, opponent)))
-    parent = parent_asked(opposed, subject.kind, beside)
+    # And the companions' phrases, the windows of games and the calendar
+    # days the subject reading, the window tagger and the cuts tagger read,
+    # the same way (slice (c)): a row reads "a companion stands here", "a
+    # window of games here", "a day here", and claims only its own words
+    # around them - the phrase's, the window's and the day's are their
+    # readers' to claim, so no claim is joined from two readings of one word.
+    companions_at = tuple((start, end) for start, end, _ in read.companion_phrases)
+    prepared = lexicon.mark_companions(opposed, companions_at)
+    prepared = lexicon.mark_spans(prepared, _window_spans(question), lexicon.WINDOW_MARK)
+    prepared = lexicon.mark_spans(prepared, _date_spans(question, opponent, read.conditions), lexicon.DATE_MARK)
+    parent = parent_asked(prepared, subject.kind, beside)
     # What the grammar read: the words whose deletion names another parent
     # (span.read_by) - a row's own words ("fingerprint", "record"), a word
     # that rules an earlier row out ("compare" keeps a pair off the matchup
     # row), the meeting word that makes two teams the kind it reads ("how
     # many times did the 76ers play boston"); not the "game" of "game log",
     # which "log" names alone.
-    parent_claims = read_by(opposed, "intent", lambda probed: parent_asked(probed, _two_teams(read, probed, slots).kind, beside))
-    settled_ask, decisions, words, child_claims = _read_route_staged(question, stat or None, parent, read, who, opponent, lines=named_lines)
+    parent_claims = read_by(prepared, "intent", lambda probed: parent_asked(probed, _two_teams(read, probed, slots).kind, beside))
+    # The rules are handed what the phrases typed, never their words: a
+    # record "when <someone> scored N" is a reached companion led by "when".
+    reached_when = any(predicate == "reached" and question[start:end].lower().startswith("when") for start, end, predicate in read.companion_phrases)
+    settled_ask, decisions, words, child_claims = _read_route_staged(question, stat or None, parent, read, who, opponent, lines=named_lines, reached_when=reached_when)
     final = settled_ask.asked
     scope, tagger_claims = _tagged(question, settled_ask, read.conditions, lines=period_lines, model_stat=stat or None) if not settled_ask.coach else (Reading(), ())
     # The one reading, settled under the key the words end with: what the
@@ -620,8 +648,63 @@ def read_route(index: names.NameIndex, question: str, names: list[str] | None = 
     return _reading(index, asked, final, scope, settled, decisions=decisions, claims=claims, model_names=given, model_stat=stat)
 
 
+def marked_for_grammar(question: str) -> str:
+    """``question`` as :func:`read_route` hands it to the parent grammar
+    (:func:`parent_asked`) where no name is read from it: each window of
+    games and each range opened on a dated day written over by its mark
+    (:func:`_window_spans`, :func:`_date_spans`). The opponent's and the
+    companions' marks need the subject reading, which only ``read_route``
+    runs; a test of the grammar's rows over words alone goes through here.
+
+    .. versionadded:: 6.0.0
+    """
+    prepared = lexicon.mark_spans(question, _window_spans(question), lexicon.WINDOW_MARK)
+    return lexicon.mark_spans(prepared, _date_spans(question, None, ()), lexicon.DATE_MARK)
+
+
+def _window_spans(question: str) -> tuple[tuple[int, int], ...]:
+    """Where the window tagger reads a window of GAMES from - the grammar's
+    end and count, and the looser end words
+    (:func:`~association.query.window.read_window`) - which the parent
+    grammar reads as :data:`~association.query.lexicon.WINDOW_MARK`. A
+    ranking's "top 5" names a count and no end, and is a word the ranking
+    rows read, so it stays words; so does a count of seasons, which a
+    history's child grammar reads; and so does one game named as the
+    subject's own ("his last game" - the grammar's "last game" inside it
+    is marked), whose stretch reaches over words other rows read ("barnes's
+    first quarter game": the period's)."""
+    found = read_window(question, WindowContext())
+    spans: list[tuple[int, int]] = []
+    order, _count, claim = found.grammar
+    if order is not None and claim is not None:
+        spans.append((claim.start, claim.end))
+    spans.extend((claim.start, claim.end) for _, claim in found.order_words)
+    return tuple(spans)
+
+
+_SLASHED_DAY = re.compile(r"\d+/\d+")
+
+
+def _date_spans(question: str, opponent: str | None, companions: tuple[Companion, ...]) -> tuple[tuple[int, int], ...]:
+    """Where the cuts tagger reads a range opened on a dated day from
+    ("since 1/26/20", a situation with the day in it) - which the parent
+    grammar reads as :data:`~association.query.lexicon.DATE_MARK`. A
+    calendar day, a month and a weekday stay words: the log row reads a
+    month's name and a slashed day itself, as it did."""
+    found = read_cuts(question, CutsContext(opponent=opponent, without=absent(companions)))
+    return tuple((c.start, c.end) for c in found.claims if c.what == "situation" and _SLASHED_DAY.search(question[c.start : c.end]) is not None)
+
+
 def _read_route_staged(
-    question: str, stat: str | None, parent: PointShape | None, read: Subject, who: ReadSubject, opponent: str | None, *, lines: LinesNamed | None = None
+    question: str,
+    stat: str | None,
+    parent: PointShape | None,
+    read: Subject,
+    who: ReadSubject,
+    opponent: str | None,
+    *,
+    lines: LinesNamed | None = None,
+    reached_when: bool = False,
 ) -> tuple[Asked, tuple[Decision, ...], str | None, tuple[Claim, ...]]:
     """The grammar's rules (:func:`~association.query.grammar.settle`), run
     ONCE: under the child the subject's shape and the question's words name
@@ -658,7 +741,7 @@ def _read_route_staged(
     child_claims = read_by(marked, "intent", lambda probed: child_named(read, parent, probed))
     if named is not None:
         child, words = named
-        staged = settle(numbered, child, subject=who, opponent=opponent, companions=companions, stat=stat, lines=lines)
+        staged = settle(numbered, child, subject=who, opponent=opponent, companions=companions, stat=stat, lines=lines, reached_when=reached_when)
         # A team's record under a companion's line names no words, and the
         # rules' own settling of it stands. The decisions record the moves
         # by their labels, as the trace prints them.
@@ -668,7 +751,7 @@ def _read_route_staged(
                 decisions.append(Decision("parser", "intent", asked_label(child), asked_label(staged.asked), "the stages settle it from the question's words"))
             return staged, tuple(decisions), words, child_claims
         decisions.append(Decision("parser", "intent", asked_label(child), asked_label(parent), f"the words {words!r} name {asked_label(child)}, and the stages declined it"))
-    staged = settle(numbered, parent, subject=who, opponent=opponent, companions=companions, stat=stat, lines=lines)
+    staged = settle(numbered, parent, subject=who, opponent=opponent, companions=companions, stat=stat, lines=lines, reached_when=reached_when)
     if staged.asked != parent:
         decisions.append(Decision("parser", "intent", asked_label(parent), asked_label(staged.asked), "the stages settle it from the question's words"))
     return staged, tuple(decisions), None, child_claims
@@ -964,7 +1047,7 @@ ranking would answer the question fluently and wrongly."""
 _TITLE_ODDS = re.compile(r"\btitle\s+odds\b|\bchampionship\s+odds\b", re.IGNORECASE)
 """"Title odds": a regular-season projection ``team_outlook`` answers, not a
 championship."""
-_BENCH_POINTS = re.compile(r"\bbench\s+(?:points?|scoring|pts)\b", re.IGNORECASE)
+_BENCH_WORD = re.compile(r"\bbench\b", re.IGNORECASE)
 
 
 def _reading_from_route_refused(players: names.PlayerIndex, teams: names.TeamIndex, question: str, reading: Reading) -> Cause | None:
@@ -1103,7 +1186,13 @@ def _unsupported_bench_points(question: str, reading: Reading) -> Cause | None:
     which flags starters) and read by nothing yet - a gap of ours, named as
     one, never "no data" (yardstick-v2 F106, "most opponent bench points
     allowed ...")."""
-    return Cause(kind="bench_points", facts={"intent": reading.intent}) if _BENCH_POINTS.search(question) else None
+    # The measure as the words named it (the typed measure, with the
+    # measure tagger's claim on the words: a key the model's reply alone
+    # stands for names none - "stats off the bench" asks no bench points),
+    # beside the one word this reads (slice (c): it read "bench points" as
+    # words, and the measure's "points" twice over).
+    named = reading.measure is not None and reading.measure.key == "points" and any(c.what == "measure" for c in reading.claims)
+    return Cause(kind="bench_points", facts={"intent": reading.intent}) if named and _BENCH_WORD.search(question) else None
 
 
 def _unsupported_team_boolean_count(reading: Reading) -> Cause | None:

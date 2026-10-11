@@ -538,7 +538,7 @@ not a count was read beside it).
 .. versionadded:: 6.0.0
    ``span._LAST`` until the window's slice.
 """
-LOG_OR_WINDOW_WORDS = re.compile(r"\b(log|gamelog|game log|last \d+|past \d+|first \d+)\b", re.IGNORECASE)
+LOG_OR_WINDOW_WORDS = re.compile(r"\b(log|gamelog|game log|last \d+|past \d+|first \d+)\b|\ue00a", re.IGNORECASE)
 """A log word or a window beside two teams: one team's games, not their meetings.
 
 .. versionadded:: 6.0.0
@@ -3006,6 +3006,74 @@ named with no versus word).
 
 .. versionadded:: 6.0.0
 """
+
+
+COMPANION_MARK_PRESENCE = "\ue008"
+"""The character the grammars read a companion's phrase as where it holds a
+presence word (:data:`PRESENCE_WORDS`: "with", "without", "when", "while" -
+"when maxey scored", "with/without embiid"), the words the with/without
+split's rows read.
+
+.. versionadded:: 6.0.0
+"""
+COMPANION_MARK = "\ue009"
+"""The character they read any other companion's phrase as ("in games X
+missed", the words after a versus word).
+
+.. versionadded:: 6.0.0
+"""
+WINDOW_MARK = "\ue00a"
+"""The character the parent grammar reads a window of games as, where the
+window tagger reads one ("last 10 games", "his first game", "most recent 5
+games"): a log's words, read as the typed window.
+
+.. versionadded:: 6.0.0
+"""
+DATE_MARK = "\ue00b"
+"""The character it reads a calendar day or a dated range as, where the cuts
+tagger reads one ("on 1/26/20", "since 1/26/20"): a log's words too.
+
+.. versionadded:: 6.0.0
+"""
+PRESENCE_WORDS = re.compile(r"\b(with|without|when|while)\b", re.IGNORECASE)
+"""The words the with/without split's grammar rows read a companion by.
+
+.. versionadded:: 6.0.0
+"""
+
+
+def mark_spans(question: str, spans: tuple[tuple[int, int], ...], mark: str) -> str:
+    """``question`` with each of ``spans`` written over by ``mark``, one
+    character per character, so every other character keeps its place
+    (Phase 3, step 4, slice (c): the windows and the days the parent grammar
+    reads as the taggers typed them).
+
+    .. versionadded:: 6.0.0
+    """
+    chars = list(question)
+    for start, end in spans:
+        chars[start:end] = mark * (end - start)
+    return "".join(chars)
+
+
+def mark_companions(question: str, claims: tuple[tuple[int, int], ...]) -> str:
+    """``question`` with each companion's phrase - the stretch the subject
+    reading read him from, keyword and role included - written over by its
+    mark: :data:`COMPANION_MARK_PRESENCE` where the phrase holds a presence
+    word, :data:`COMPANION_MARK` otherwise. A grammar reads "a companion
+    stands here", the typed companion, and never his phrase's words, which
+    are the subject reading's to claim.
+
+    .. versionadded:: 6.0.0
+    """
+    chars = list(question)
+    for start, end in claims:
+        mark = COMPANION_MARK_PRESENCE if PRESENCE_WORDS.search(question[start:end]) else COMPANION_MARK
+        # A line inside the phrase ("when maxey scored 20+ points") keeps
+        # the lines tagger's mark: the rows read the typed line beside the
+        # typed companion.
+        chars[start:end] = [char if "\ue000" <= char <= "\ue004" else mark for char in question[start:end]]
+    return "".join(chars)
 
 
 def mark_opponent(question: str, claims: tuple[tuple[int, int], ...]) -> str:
