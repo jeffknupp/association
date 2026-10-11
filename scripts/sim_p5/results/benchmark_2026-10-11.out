@@ -1,0 +1,27 @@
+python 3.14.8 on x86_64; 10000 games of the toy matchup, one process
+10000 games in 26.08 s: 2.608 ms a game (383 a second)
+budget: 60 s for 10,000 -> MET (26.1 s for 10,000)
+home won 6066 of 10000; mean score 112.4-107.7
+         9557308 function calls in 2.921 seconds
+
+   Ordered by: internal time
+   List reduced from 97 to 15 due to restriction <15>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+   486560    0.270    0.000    0.270    0.000 <string>:2(__init__)
+   289285    0.208    0.000    0.576    0.000 /home/jeff/code/association-simulator/.claude/worktrees/sim-step5/src/association/sim/engine.py:528(_emit)
+   535216    0.196    0.000    0.466    0.000 /home/jeff/code/association-simulator/.claude/worktrees/sim-step5/src/association/sim/engine.py:556(<genexpr>)
+   212046    0.156    0.000    0.214    0.000 /home/jeff/code/association-simulator/.claude/worktrees/sim-step5/src/association/sim/engine.py:314(_pick)
+    95630    0.118    0.000    2.509    0.000 /home/jeff/code/association-simulator/.claude/worktrees/sim-step5/src/association/sim/engine.py:609(_possession)
+   289514    0.113    0.000    0.167    0.000 {built-in method builtins.sum}
+   363000    0.109    0.000    0.285    0.000 /home/jeff/code/association-simulator/.claude/worktrees/sim-step5/src/association/sim/shrink.py:164(logit)
+    48656    0.106    0.000    0.612    0.000 /home/jeff/code/association-simulator/.claude/worktrees/sim-step5/src/association/sim/engine.py:554(_context)
+   363000    0.095    0.000    0.147    0.000 /home/jeff/code/association-simulator/.claude/worktrees/sim-step5/src/association/sim/shrink.py:156(clamp)
+    84114    0.093    0.000    0.655    0.000 /home/jeff/code/association-simulator/.claude/worktrees/sim-step5/src/association/sim/engine.py:676(_shot)
+    24328    0.093    0.000    0.951    0.000 /home/jeff/code/association-simulator/.claude/worktrees/sim-step5/src/association/sim/engine.py:564(_dead_ball)
+   111953    0.091    0.000    0.230    0.000 /home/jeff/code/association-simulator/.claude/worktrees/sim-step5/src/association/sim/engine.py:518(_duration)
+   934232    0.086    0.000    0.086    0.000 {method 'random' of '_random.Random' objects}
+   121000    0.068    0.000    0.388    0.000 /home/jeff/code/association-simulator/.claude/worktrees/sim-step5/src/association/sim/shrink.py:181(combine)
+   106276    0.066    0.000    1.622    0.000 /home/jeff/code/association-simulator/.claude/worktrees/sim-step5/src/association/sim/engine.py:666(_action)
+
+

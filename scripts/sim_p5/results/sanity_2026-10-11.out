@@ -1,0 +1,21 @@
+1000 games of the toy matchup; league pace 99.0, home court 2.5 points
+home won 583; overtime in 23; mean margin +4.33 (home court implies about +2.5)
+
+per team-game                 home sim   home in  away sim   away in
+points                         112.406         -   108.077         -
+possessions per 48              95.543   100.000    95.508   100.000
+FGA per 48                      83.471         -    84.153         -
+FGA per possession               0.874         -     0.881         -
+3PA share of FGA                 0.420     0.414     0.418     0.414
+FTA per 48                      26.703         -    27.079         -
+TOV per possession               0.133     0.120     0.134     0.120
+OREB share of own misses         0.243     0.250     0.249     0.250
+AST per 48                      23.578         -    22.616         -
+STL per 48                       7.063         -     7.005         -
+BLK per 48                       5.054         -     4.855         -
+PF per 48                       16.889         -    16.767         -
+points per possession            1.174         -     1.129         -
+
+shooting fouls drawn per possession (and-ones included): 0.116 (implied trips 0.090 home, 0.090 away, plus and-ones)
+non-shooting defensive fouls per possession: 0.060 (engine constant NON_SHOOTING_DEFENSIVE_SHARE)
+starting five usage per minute: home 2.557, away 2.557; team possessions per minute at the mean pace: 2.083
