@@ -191,6 +191,10 @@ type = "layers"
 layers = [
     "association.cli",
     "association.web",
+    # The simulator sits above query so it can import the court geometry and
+    # the shot-value SQL (SIMULATION_PLAN.md, D1 as decided 2026-10-11) rather
+    # than copy them; nothing in query may import it.
+    "association.sim",
     "association.query | association.check",
     "association.fetch",
     "association.nba",
@@ -231,6 +235,7 @@ source_modules = [
     "association.fetch",
     "association.check",
     "association.nba",
+    "association.sim",
 ]
 forbidden_modules = ["fastapi", "uvicorn", "pydantic"]
 

@@ -15,6 +15,7 @@ data_pull
 data_load
 data_check
 web
+sim_build
 
 # association/web/app.py, inside create_app: registered by FastAPI's @app.get
 # / @app.post.

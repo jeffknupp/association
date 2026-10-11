@@ -14,7 +14,7 @@ from typing import Any
 import click
 
 from association import __version__
-from association.cli.paths import default_data_dir, default_db_path
+from association.cli.paths import default_data_dir, default_db_path, default_sim_path
 
 # query.models holds no heavy imports, so this does not pull ollama or duckdb
 # into CLI startup - unlike the Agent import, which stays lazy below.
@@ -26,6 +26,7 @@ log: logging.Logger = logging.getLogger("association.cli")
 # warehouse of its own gets the main checkout's, per association.cli.paths.
 DEFAULT_DATA_DIR = default_data_dir()
 DEFAULT_DB_PATH = default_db_path()
+DEFAULT_SIM_PATH = default_sim_path()
 DEFAULT_OUT_DIR = "./query_output"
 
 LOG_LEVELS = ["DEBUG", "INFO", "WARNING", "ERROR"]
@@ -273,6 +274,38 @@ def data_check(seasons: str | None, season_types: str | None, data_dir: str, rat
     parsed_seasons = _parse_seasons(seasons) if seasons else None
     parsed_season_types = _parse_season_types(season_types) if season_types else None
     run_check(Path(data_dir), parsed_seasons, parsed_season_types, rate_limit=rate_limit, live=live, force=force)
+
+
+@cli.group()
+def sim() -> None:
+    """Build and run the possession-level game simulator (experimental; SIMULATION_PLAN.md)."""
+
+
+@sim.command("build")
+@click.option("--seasons", default=None, help="e.g. '2019-2026'. Defaults to every season from the floor (2007).")
+@click.option("--db-path", default=DEFAULT_DB_PATH, show_default=True, help="DuckDB warehouse file, attached read-only.")
+@click.option("--sim-path", default=DEFAULT_SIM_PATH, show_default=True, help="The simulator's own DuckDB file; created if missing, its tables replaced.")
+@click.option("--log-level", type=click.Choice(LOG_LEVELS), default="INFO", show_default=True)
+def sim_build(seasons: str | None, db_path: str, sim_path: str, log_level: str) -> None:
+    """(Re)create the simulator's derived tables from the warehouse.
+
+    Phase 1 today: ``sim_plays``, every play of every real game classified,
+    ordered and timed, with a per-season report of what was kept and how it
+    checks against the final score. Later phases add their tables here.
+    """
+    _configure_logging(log_level)
+    from association.sim import database, plays
+
+    con = database.connect(Path(sim_path), Path(db_path))
+    try:
+        reports = plays.build_plays(con, _parse_seasons(seasons) if seasons else None)
+        database.write_meta(con, seasons=[r.season for r in reports], warehouse_path=Path(db_path))
+    finally:
+        con.close()
+    click.echo(f"{'season':>6} {'games':>6} {'plays':>8} {'unmapped':>8} {'reach final':>11} {'points sum':>10}")
+    for r in reports:
+        click.echo(f"{r.season:>6} {r.games:>6} {r.plays:>8} {r.unmapped:>8} {r.games_reaching_final:>11} {r.points_match_final:>10}")
+    click.echo(f"wrote {sim_path}")
 
 
 @cli.command("query")

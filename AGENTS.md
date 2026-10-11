@@ -69,6 +69,16 @@ was learned the hard way and is about the data, not the pipeline.
 - **Write the result, not the reasoning.** Name the population behind every
   number, the script that measured it, and which copy of the data.
 
+## Where the work stands
+
+- **Step 1 (P1) done 2026-10-11:** `association sim build` writes
+  `sim_play_kinds` and `sim_plays` to `sim.duckdb` (`association.sim.database`,
+  `vocab`, `plays`), 2007-2026 in 19 seconds; the acceptance table is in
+  `sim/plays.py`'s docstring and `scripts/sim_p1/results/`. Read `sim_plays`
+  ordered by `seq`; never by `play_id`.
+- **Next: step 2 (P2), segments** - `sim/segments.py` over `sim_plays`, with
+  the sibling checks in the plan's P2 table measured on 2019-2026 first.
+
 ## Facts about `plays` every phase relies on (Phase 0, 2026-10-11)
 
 Details and the per-season tables are in the plan's section 0b.

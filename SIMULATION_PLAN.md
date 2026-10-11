@@ -717,6 +717,17 @@ Shot value for a `shot` play comes from the shared `SHOT_VALUE_SQL` joined via
 **Acceptance.** Per season, recorded in the module docstring: plays kept,
 plays unmapped, games kept against `real_games`.
 
+**Done 2026-10-11** (`association sim build`, 19 seconds for 2007-2026;
+`scripts/sim_p1/results/build_2026-10-11.out`; the per-season table is in
+`sim/plays.py`'s docstring). 0 unmapped plays of 11,878,125. Points summed
+from the plays equal the final in 99.5-100% of games in 2019-2026 except
+2022 (95.3%: the position-derived shot values misread a two for a three in
+about one game in twenty - a NEW fact for the P3 and P4 work, which must
+exclude or flag those games), and in 2013 (68.8%) and 2016 (50.0%), the
+two seasons `DATA.md` records as typing made shots as misses. The points
+check passes MORE games than the running score reaches in six of the eight
+recent seasons, which confirms "points from the play, not the score".
+
 **Phase 0 corrections (0b, 0.1 and 0.6).** `period_start` is synthesized
 from the first row of each `period`, not read from `Start Period` (gone
 after 2012); `game_end` likewise from the last row (`End Game` is missing

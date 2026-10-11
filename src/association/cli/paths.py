@@ -35,6 +35,13 @@ DB_FILENAME = "nba.duckdb"
 DATA_DIRNAME = "data/parquet"
 """The pulled Parquet tree's path, relative to a checkout's root."""
 
+SIM_DB_FILENAME = "sim.duckdb"
+"""The simulator's derived-tables file, beside the warehouse
+(:mod:`association.sim.database`).
+
+.. versionadded:: 6.0.0
+"""
+
 
 def _main_checkout_root(start: Path) -> Path | None:
     """The root of the main checkout sharing ``start``'s ``.git``, or
@@ -76,6 +83,15 @@ def default_db_path() -> str:
     .. versionadded:: 2.2.0
     """
     return _resolve(DB_FILENAME)
+
+
+def default_sim_path() -> str:
+    """``./sim.duckdb`` where that exists, else the main checkout's copy, else
+    the literal default - which is where ``association sim build`` creates it.
+
+    .. versionadded:: 6.0.0
+    """
+    return _resolve(SIM_DB_FILENAME)
 
 
 def default_data_dir() -> str:
