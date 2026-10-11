@@ -76,8 +76,17 @@ was learned the hard way and is about the data, not the pipeline.
   `vocab`, `plays`), 2007-2026 in 19 seconds; the acceptance table is in
   `sim/plays.py`'s docstring and `scripts/sim_p1/results/`. Read `sim_plays`
   ordered by `seq`; never by `play_id`.
-- **Next: step 2 (P2), segments** - `sim/segments.py` over `sim_plays`, with
-  the sibling checks in the plan's P2 table measured on 2019-2026 first.
+- **Step 2 (P2) done 2026-10-11:** `sim_segments` and `sim_team_periods`
+  (`association.sim.segments`), built by the same command; 2021-2026
+  resolve 99.8-99.9% of seconds, minutes within one 99.6-99.99%, plus-minus
+  exact 96.6-98.6%. Read only `resolved` segments for any estimate. The
+  same-clock convention is ESPN's: a substitution changes the lineup at
+  once but the segment closes at the next clock reading
+  (`scripts/sim_p2/plus_minus_conventions.py` is the measurement).
+- **Next: step 3**, the P4 dataclasses (`PlayerParams`, `TeamParams`,
+  `LeagueParams`, the shrinkage and odds-ratio helpers with unit tests) as
+  ONE small commit, so steps 4 (P4-box rates), 5 (P5 engine) and 6 (P6
+  rotation) can run in parallel against it.
 
 ## Facts about `plays` every phase relies on (Phase 0, 2026-10-11)
 

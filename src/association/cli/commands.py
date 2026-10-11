@@ -294,17 +294,27 @@ def sim_build(seasons: str | None, db_path: str, sim_path: str, log_level: str) 
     checks against the final score. Later phases add their tables here.
     """
     _configure_logging(log_level)
-    from association.sim import database, plays
+    from association.sim import database, plays, segments
 
+    wanted = _parse_seasons(seasons) if seasons else None
     con = database.connect(Path(sim_path), Path(db_path))
     try:
-        reports = plays.build_plays(con, _parse_seasons(seasons) if seasons else None)
+        reports = plays.build_plays(con, wanted)
+        segment_reports = segments.build_segments(con, wanted)
         database.write_meta(con, seasons=[r.season for r in reports], warehouse_path=Path(db_path))
     finally:
         con.close()
+    click.echo("sim_plays")
     click.echo(f"{'season':>6} {'games':>6} {'plays':>8} {'unmapped':>8} {'reach final':>11} {'points sum':>10}")
     for r in reports:
         click.echo(f"{r.season:>6} {r.games:>6} {r.plays:>8} {r.unmapped:>8} {r.games_reaching_final:>11} {r.points_match_final:>10}")
+    click.echo("sim_segments (minutes and plus-minus over fully resolved games)")
+    click.echo(
+        f"{'season':>6} {'games':>6} {'resolved s':>10} {'starters':>9} {'player-games':>12} {'min within 1':>12} {'+/- exact':>9} {'phantoms':>8} {'one-id':>6} {'inconsist':>9} {'unrostered':>10}"
+    )
+    for s in segment_reports:
+        shares = f"{100 * s.resolved_share:>9.2f}% {100 * s.starters_share:>8.2f}% {s.player_games:>12} {100 * s.minutes_share:>11.2f}% {100 * s.plus_minus_share:>8.2f}%"
+        click.echo(f"{s.season:>6} {s.games:>6} {shares} {s.phantom_touches:>8} {s.one_id_subs:>6} {s.inconsistent_subs:>9} {s.unrostered_touches:>10}")
     click.echo(f"wrote {sim_path}")
 
 

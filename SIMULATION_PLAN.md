@@ -857,10 +857,37 @@ in `DATA.md` (ESPN's fault) or the module docstring (ours).
 **Phase 0 corrections (0b, 0.3).** A one-id substitution (2018-2020,
 ~2,600) has its role read from the text: "X enters the game for " means
 the id enters, "enters the game for Y" means it leaves; the other player is
-unknown, and the walk carries the lineup as four known plus one unknown
-until the fill rule or the next substitution resolves him, else the
-team-period is unresolved. The expected contradiction rate to beat is in
-D3: 0.013-0.02% of touches from 2021.
+unknown. The expected contradiction rate to beat is in D3: 0.013-0.02% of
+touches from 2021.
+
+**Done 2026-10-11** (`sim/segments.py`; `association sim build`, 44 seconds
+for plays and segments 2007-2026; `scripts/sim_p2/results/build_2026-10-11.out`,
+the per-season table in the module docstring). Every target met for the
+seasons that matter: 2021-2026 resolve 99.84-99.93% of game seconds (target
+99%), open period 1 with the box five in 100% of team-games (99%), put
+99.6-99.99% of player-games within a minute of the box (97%) and
+96.6-98.6% at the box's exact plus-minus (95%), with 10-41 phantoms a
+season. Three things the implementation settled or found:
+
+- **ESPN's plus-minus convention.** Applying each substitution where it is
+  served matched the box plus-minus in 42.16% of 2025's player-games;
+  applying every substitution at a clock reading after that reading's plays
+  matched 98.14% but broke period openings (a player subbed in at 12:00 who
+  takes the jump ball at 12:00). The walk does both: the lineup changes at
+  once, for presence and for the consistency check, and the segment closes
+  at the next clock reading, so a free throw after a substitution at the
+  same clock is credited to the five who were there before it
+  (`scripts/sim_p2/plus_minus_conventions.py`).
+- **A one-id substitution marks the team unresolved** for the rest of the
+  period rather than carrying an unknown slot; 2018-2020 resolve 94.9-95.7%
+  of seconds for it, and no later season loses more than 0.2%. Carrying the
+  unknown player is an upgrade for those three seasons only.
+- **ESPN's 2007-2008 `plusMinus` is not a plus-minus.** 0 of 2008's 2,632
+  team-games sum to five times the margin (2,630 of 2,630 in 2025; 2,249 of
+  2,266 in 2015), so the 4.6-4.9% agreement there is the column's fault.
+  New fact for `DATA.md` when this merges. Also: 996-1,114 touches a season
+  in 2013-2015 are by an id outside the deduped box roster - ESPN's second
+  id for one player, which the deduped box merges and the plays keep.
 
 **Tests.** A hand-built fixture game covering: a normal substitution; two
 substitutions at one clock; a player on for a whole quarter who touches

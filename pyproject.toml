@@ -110,8 +110,9 @@ target-version = "py314"
 # The simulator's measurement scripts (SIMULATION_PLAN.md, section 0b) are
 # one-shot DuckDB queries whose printed output is committed beside them; they
 # are read as records of what was measured, not maintained as code, so they
-# are formatted but not linted (simulation branch, 2026-10-11).
-extend-exclude = ["scripts/sim_phase0"]
+# are formatted but not linted (simulation branch, 2026-10-11); every
+# phase's scripts/sim_<phase>/ is one.
+extend-exclude = ["scripts/sim_*"]
 
 [tool.ruff.lint]
 select = [
@@ -142,7 +143,7 @@ known_first_party = ["association"]
 # The simulator's measurement scripts import a sibling helper module by file
 # name (`common`), which deptry reads as an undeclared package. See the ruff
 # exclusion above for why they are records rather than code.
-extend_exclude = ["scripts/sim_phase0"]
+extend_exclude = ["scripts/sim_.*"]
 # Tools that are run rather than imported (pytest, mypy, sphinx, ...) are
 # never reported as unused, and importing one from src would be reported.
 optional_dependencies_dev_groups = ["dev", "docs"]
