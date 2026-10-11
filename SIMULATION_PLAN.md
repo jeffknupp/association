@@ -25,20 +25,23 @@ its decision is recorded** at the top of this file (replace "Recommended" with
 "Decided", with a date). If Jeff says "go with the recommendations", every
 recommendation below becomes the decision.
 
-| id | decision | blocks | recommended |
+**All decided 2026-10-11** (Jeff: "go with the recommendations, including
+D15"), with the Phase 0 measurements and the section 0c review folded in.
+
+| id | decision | blocks | decided 2026-10-11 |
 | --- | --- | --- | --- |
-| D1 | Where the code lives | all | new `association.sim` package |
+| D1 | Where the code lives | all | new `association.sim` package, ABOVE `query` in the layer contract; imports `query.court` and `query.shotchart.SHOT_VALUE_SQL`, copies nothing; no refactor now (0c, item 7) |
 | D2 | Where derived tables live | P1 | a separate `sim.duckdb` |
-| D3 | How plays are ordered | P1 | **Measured 2026-10-11:** `ORDER BY period, clock DESC, play_id::HUGEINT`. Numeric `play_id` order FAILED Phase 0 (section 0b) |
-| D4 | Earliest season supported | P1 | **Measured 2026-10-11:** build tables from 2007; estimate from the last 1-5 seasons by default (section 0b, D4) |
-| D14 | Refetch to capture ESPN's served order, `scoreValue`, `wallclock` | none (nice to have) | not needed for ordering; see 0b |
-| D15 | Build order: engine on box-score rates first, possessions later? | P3-P5 | Jeff's call; see section 0c |
+| D3 | How plays are ordered | P1 | `ORDER BY period, clock DESC, play_id::HUGEINT` (measured; numeric id order failed) |
+| D4 | Earliest season supported | P1 | build tables from 2007; estimate from the last 1-5 seasons by default; per-season blemish flags for 2013, 2016, 2018-2020 |
+| D14 | Refetch for `scoreValue`, `wallclock`, served position | none | deferred; do it only if a P3 sibling check needs it |
+| D15 | Build order | all | engine and rotation on box-score and shot-chart rates FIRST; the possession table (P3) and on-court defense are the fidelity upgrade after a first validated game (section 3, "Build order") |
 | D5 | Which games a rate is estimated from | P4 | one `as_of` parameter, point-in-time |
-| D6 | How defense is modeled | P4 | shrunk on-court player ratings |
+| D6 | How defense is modeled | P4 | v1: team-level defense (option 1) plus player-level steal, block and rebound weights; option 2 after P3 |
 | D7 | What a rate shrinks toward | P4 | league mean |
 | D8 | Aging and injuries | P4 | out of scope |
 | D9 | numpy | P5 | not in v1 |
-| D10 | Simulation fidelity in v1 | P5 | possession start type yes, end-game fouling no |
+| D10 | Simulation fidelity in v1 | P5 | start-type conditioning moves to the P3 upgrade (it needs possessions); team fouls, the bonus, foul-outs and last shots stay in v1; end-game fouling no |
 | D11 | Output formats | P7 | text play-by-play, box score, JSON |
 | D12 | Public API status | P7 | experimental, outside the compatibility promise |
 
@@ -529,6 +532,48 @@ P0 → P1 → P2 → P3 → P4 ─┬→ P5 ─┬→ P7 → P8
 
 P5 can start against hand-written parameters as soon as P4's dataclasses are
 defined, before estimation works. P6 needs P2's segments only.
+
+### Build order under D15 (decided 2026-10-11)
+
+The graph above is the plan's dependency order; the ORDER OF WORK is this,
+each step a commit (or a few) on the `simulation` branch with its sibling
+check measured on 2019-2026 and recorded in the module docstring:
+
+1. **P1, `sim_plays`** - `sim/database.py`, `sim/vocab.py`, `sim/plays.py`:
+   every type classified, the D3 ordering as `seq`, period boundaries
+   synthesized, shot value through the shared SQL. Check: plays kept and
+   unmapped per season; the running score's max reaches the final in the
+   games kept.
+2. **P2, segments** - `sim/segments.py` over `sim_plays`: period starters,
+   the walk, the one-id substitution rule. Checks: minutes, plus-minus,
+   period-1 starters, resolution, phantoms, against the table in P2. This
+   is the one derived table the first engine needs (for P6).
+3. **P4 dataclasses** - `PlayerParams`, `TeamParams`, `LeagueParams`, the
+   shrinkage and the odds-ratio helpers with their unit tests, as ONE small
+   commit the next two steps build against.
+4. **P4-box, estimation from the box and the shot chart** (parallel with 5
+   and 6) - `sim/zones.py` and `sim/rates.py`: per player, per-minute usage
+   (field-goal attempts, free-throw trips and turnovers per minute), zone
+   mix and make rate by zone from `shot_chart`, assist and rebound and
+   steal and block weights per minute, free-throw rate, foul rate; per
+   team, pace from the box possession formula and team-level defense
+   (opponent efficiency by zone, forced turnover rate, foul rate,
+   defensive-rebound rate). All as `as_of` windows with fitted `k`.
+5. **P5, the engine** (parallel) - against hand parameters first, then
+   P4-box's; invariants and the performance budget as written.
+6. **P6, rotation** (parallel) - from P2's segments, as written.
+7. **P7, output and CLI** - `sim game`, `sim replay`, `sim build`.
+8. **P8, validation** - the replay harness with BOTH baselines (home-win
+   rate and a team-strength logistic fit on net rating or
+   `team_power_index`), run on 2025 from January 1. This is the first
+   measured game and the regression gate for everything after.
+9. **P3, possessions and actions**, then the P4 upgrades that need them:
+   possession duration by start type (D10), per-player on-court defensive
+   factors (D6 option 2), usage as a share of lineup possessions. Each is
+   accepted only if P8's metrics do not get worse.
+
+Steps 1-3 are sequential and one agent's work; 4, 5 and 6 are three
+agents in parallel once 3 has merged; 7 and 8 follow 5 and 6.
 
 ### Phase 0. Verify assumptions against the warehouse
 
