@@ -53,6 +53,7 @@ before that commit needs re-checking against the current warehouse.
 - **Next step:** the team log row reads a window of games as the window tagger types it (`lexicon.WINDOW_MARK`) and no longer its own `last COUNT` words, and "last N seasons" on a team becomes the team-season relation's history over N seasons (`Window.of == "seasons"`, as a player's history reads it) - with the 3 answers enumerated. Slice (c) kept the row's words beside the mark so no team reading moved but "warriors first 10 game record every season".
 - **Priority:** P1 - a wrong answer fluently.
 - **Source:** ours.
+- **GitHub:** #372
 
 ### A model name the words do not support stays among the subject's players, and changes the kind and the key: "points per quarter for Luka" with an invented "Stephen Curry" is the league's quarter ranking
 - **Found:** 2026-10-11, Phase 3, step 4, slice (c) (re-seating the router tests as question-to-Reading cases, where the retired tests handed the stages a wrong model name on purpose and the stages' `_recover_period_subject` put the question's own name back).
@@ -61,6 +62,7 @@ before that commit needs re-checking against the current warehouse.
 - **Next step:** `subject.read_subject` writes `who.players` from the question's own names alone and keeps the model's unsupported spans on `misread` only - the kind is decided from what the words hold - so the answering loop's by-name refusal still fires on a player shape and the key no longer moves. An enumerated commit: no population reading moves; the unit cases that hand an invented name move (named), and `test_one_writer.py`'s invented-name tests re-seated.
 - **Priority:** P1 - a wrong answer fluently, conditional on the model inventing a name (observed in production before: Nurkic, Ben Simmons for "embiid").
 - **Source:** ours.
+- **GitHub:** #373
 
 ### A team named with "in a single game" is answered with the team's season line: "most points in a single game on the 76ers" answers 115.9 points per game
 - **Found:** 2026-10-10, Phase 3, step 2's subject slice, reading the feed answers the "76ers" fix moved (`b1daa88`).
