@@ -1,0 +1,24 @@
+===== 401809511 2026 plays served: 529
+play keys: ['awayScore', 'clock', 'coordinate', 'homeScore', 'id', 'participants', 'period', 'pointsAttempted', 'scoreValue', 'scoringPlay', 'sequenceNumber', 'shootingPlay', 'shortDescription', 'team', 'text', 'type', 'wallclock']
+sample: {'id': '40180951113', 'sequenceNumber': '13', 'type': {'id': '132', 'text': 'Step Back Jump Shot'}, 'text': 'CJ McCollum misses 23-foot three point step back jumpshot', 'awayScore': 4, 'homeScore': 0, 'period': {'number': 1, 'displayValue': '1st Quarter'}, 'clock': {'displayValue': '10:44'}, 'scoringPlay': False, 'scoreValue': 0, 'team': {'id': '27'}, 'wallclock': '2025-11-08T00:12:01Z', 'shootingPlay': True, 'coordinate': {'x': 2, 'y': 0}, 'pointsAttempted': 3, 'shortDescription': 'Missed 3PT'}
+served order == id order: False | served == sequenceNumber order: False | seq distinct: True
+served order clock inversions > 0.5s within a period: 0
+id order == sequenceNumber order: True
+warehouse plays: 529 | ids only live: 0 | ids only warehouse: 0
+  anomaly 401809511347 served at index 159 seq 347 wallclock 2025-11-08T00:49:43Z clock 8:15 | neighbors: 401809511255 8:15 -> 401809511256 8:04
+===== 401584959 2024 plays served: 463
+play keys: ['awayScore', 'clock', 'coordinate', 'homeScore', 'id', 'participants', 'period', 'pointsAttempted', 'scoreValue', 'scoringPlay', 'sequenceNumber', 'shootingPlay', 'shortDescription', 'team', 'text', 'type', 'wallclock']
+sample: {'id': '40158495914', 'sequenceNumber': '14', 'type': {'id': '42', 'text': 'Offensive Foul'}, 'text': 'Jeremy Sochan offensive foul', 'awayScore': 2, 'homeScore': 4, 'period': {'number': 1, 'displayValue': '1st Quarter'}, 'clock': {'displayValue': '11:00'}, 'scoringPlay': False, 'scoreValue': 0, 'team': {'id': '24'}, 'wallclock': '2023-12-16T00:44:29Z', 'shootingPlay': False, 'coordinate': {'x': 34, 'y': 17}, 'pointsAttempted': 0, 'shortDescription': 'Foul'}
+served order == id order: False | served == sequenceNumber order: False | seq distinct: True
+served order clock inversions > 0.5s within a period: 0
+id order == sequenceNumber order: True
+warehouse plays: 463 | ids only live: 0 | ids only warehouse: 0
+  anomaly 401584959267 served at index 145 seq 267 wallclock 2023-12-16T01:16:48Z clock 9:36 | neighbors: 401584959207 9:45 -> 401584959208 9:35
+  anomaly 401584959268 served at index 147 seq 268 wallclock 2023-12-16T01:16:49Z clock 9:35 | neighbors: 401584959208 9:35 -> 401584959209 9:25
+===== 291109009 2010 plays served: 503
+play keys: ['awayScore', 'clock', 'coordinate', 'homeScore', 'id', 'period', 'pointsAttempted', 'scoreValue', 'scoringPlay', 'sequenceNumber', 'shootingPlay', 'shortDescription', 'text', 'type']
+sample: {'id': '29110900900005', 'sequenceNumber': '6', 'type': {'id': '92', 'text': 'Jump Shot'}, 'text': 'Mikki Moore misses 17-foot jumper', 'awayScore': 0, 'homeScore': 2, 'period': {'number': 1, 'displayValue': '1st Quarter'}, 'clock': {'displayValue': '11:12'}, 'scoringPlay': False, 'scoreValue': 0, 'team': {'id': '9'}, 'shootingPlay': True, 'coordinate': {'x': 9, 'y': 5}, 'pointsAttempted': 0, 'shortDescription': 'Jump Shot'}
+served order == id order: False | served == sequenceNumber order: False | seq distinct: True
+served order clock inversions > 0.5s within a period: 0
+id order == sequenceNumber order: False
+warehouse plays: 503 | ids only live: 0 | ids only warehouse: 0

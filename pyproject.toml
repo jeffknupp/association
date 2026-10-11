@@ -107,6 +107,11 @@ testpaths = ["tests"]
 # up to 200 columns rather than fighting them back down to 88.
 line-length = 200
 target-version = "py314"
+# The simulator's measurement scripts (SIMULATION_PLAN.md, section 0b) are
+# one-shot DuckDB queries whose printed output is committed beside them; they
+# are read as records of what was measured, not maintained as code, so they
+# are formatted but not linted (simulation branch, 2026-10-11).
+extend-exclude = ["scripts/sim_phase0"]
 
 [tool.ruff.lint]
 select = [
@@ -134,6 +139,10 @@ min_confidence = 60
 # and the Sphinx config. tests/ stays excluded (deptry's default), since it
 # imports dev-only packages by design.
 known_first_party = ["association"]
+# The simulator's measurement scripts import a sibling helper module by file
+# name (`common`), which deptry reads as an undeclared package. See the ruff
+# exclusion above for why they are records rather than code.
+extend_exclude = ["scripts/sim_phase0"]
 # Tools that are run rather than imported (pytest, mypy, sphinx, ...) are
 # never reported as unused, and importing one from src would be reported.
 optional_dependencies_dev_groups = ["dev", "docs"]

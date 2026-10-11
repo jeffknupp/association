@@ -1,0 +1,66 @@
+== score decreases and FT-trip breaks under ORDER BY pid: season, decreases(all rows), decreases(scoring rows vs previous scoring row), ft '1 of 2' with no '2 of 2' in next 3 rows
+   (2007, 7, 4, 876, 28832)
+   (2008, 9, 5, 768, 28209)
+   (2009, 7, 3, 728, 27973)
+   (2010, 6, 3, 800, 27564)
+   (2011, 6, 3, 887, 27020)
+   (2012, 6, 3, 1281, 20706)
+   (2013, 8670, 268, 1728, 25097)
+   (2014, 8018, 284, 1644, 26520)
+   (2015, 7858, 299, 1801, 25687)
+   (2016, 7020, 305, 1854, 25871)
+   (2017, 7728, 329, 1725, 24693)
+   (2018, 4368, 492, 1903, 23170)
+   (2019, 4177, 384, 2097, 24781)
+   (2020, 3621, 320, 1860, 21297)
+   (2021, 4011, 378, 1804, 20610)
+   (2022, 4471, 422, 2010, 23544)
+   (2023, 4256, 351, 2118, 24990)
+   (2024, 4750, 325, 2105, 23155)
+   (2025, 3871, 120, 2208, 23551)
+   (2026, 3980, 168, 2607, 25395)
+== score decreases and FT-trip breaks under ORDER BY period,clock desc,pid: season, decreases(all rows), decreases(scoring rows vs previous scoring row), ft '1 of 2' with no '2 of 2' in next 3 rows
+   (2007, 995, 60, 850, 28832)
+   (2008, 1069, 53, 747, 28209)
+   (2009, 1141, 63, 706, 27973)
+   (2010, 1281, 77, 764, 27564)
+   (2011, 1349, 63, 864, 27020)
+   (2012, 1100, 45, 1263, 20706)
+   (2013, 6789, 185, 1706, 25097)
+   (2014, 6281, 221, 1614, 26520)
+   (2015, 6081, 241, 1773, 25687)
+   (2016, 5179, 259, 1818, 25871)
+   (2017, 5498, 278, 1693, 24693)
+   (2018, 1317, 329, 1847, 23170)
+   (2019, 1212, 298, 2013, 24781)
+   (2020, 1155, 258, 1793, 21297)
+   (2021, 1201, 300, 1724, 20610)
+   (2022, 1530, 331, 1943, 23544)
+   (2023, 1359, 293, 2034, 24990)
+   (2024, 1254, 258, 2022, 23155)
+   (2025, 199, 77, 2116, 23551)
+   (2026, 249, 108, 2519, 25395)
+== under clock order: the remaining scoring-row decreases, sample 8 (2019+)
+   (2020, '401160733', 1, '4:48', 'Luke Kennard makes 26-foot three pointer (Andre Drummond assists)', 16, 17, '4:29', 'Thomas Bryant makes 17-foot jumper (Isaiah Thomas assists)', 18, 16)
+   (2020, '401160803', 1, '6:28', 'Collin Sexton makes free throw 1 of 1', 9, 15, '5:53', 'Meyers Leonard makes layup (Bam Adebayo assists)', 8, 17)
+   (2021, '401267631', 2, '11:44', 'Donte DiVincenzo makes driving layup (Khris Middleton assists)', 30, 25, '11:28', 'Tyrese Haliburton makes 8-foot pullup jump shot (Jabari Parker assists)', 28, 27)
+   (2024, '401585310', 4, '5:36', 'Aaron Gordon makes driving layup', 92, 83, '4:55', 'Shai Gilgeous-Alexander makes free throw 2 of 2', 90, 83)
+   (2024, '401584864', 2, '10:58', 'Klay Thompson makes 27-foot three point jumper (Chris Paul assists)', 28, 34, '10:30', 'Grayson Allen makes 26-foot three pointer (Nassir Little assists)', 31, 33)
+   (2022, '401360147', 3, '0.0', 'Jarrett Allen makes tip shot', 46, 61, '11:26', 'Evan Mobley makes 24-foot three point jumper (Isaac Okoro assists)', 43, 64)
+   (2025, '401705181', 1, '5:55', 'Dillon Brooks makes free throw 2 of 2', 14, 21, '5:38', 'Darius Garland makes 2-foot two point shot', 12, 23)
+   (2024, '401585212', 1, '5:20', 'Brandon Miller makes driving layup', 21, 13, '5:20', 'Brandon Miller makes free throw 1 of 1', 20, 13)
+Traceback (most recent call last):
+  File "/tmp/claude-1001/-home-jeff-code-association-simulator/fa055aea-a53a-4c00-a4ae-d85f5eda7566/scratchpad/p0/q12.py", line 18, in <module>
+    show("same-clock groups: rows sharing (game, period, clock) where pid order and text logic disagree? -> count of same-clock groups with >1 row, and groups where a rebound precedes its shot by pid (2019+)", con.execute("""
+                                                                                                                                                                                                                  ~~~~~~~~~~~^^^^
+    WITH g AS (SELECT season, event_id, period, clock_remaining, count(*) n,
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+               FROM p WHERE season >= 2019 GROUP BY ALL HAVING count(*) > 1)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    SELECT season, count(*) groups, count(*) FILTER (WHERE has_reb AND first_type IN ('Offensive Rebound','Defensive Rebound')) rebound_first FROM g GROUP BY season ORDER BY season""").fetchall())
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_duckdb.ParserException: Parser Error: syntax error at or near "groups"
+
+LINE 6: SELECT season, count(*) groups, count(*) FILTER (WHERE has_reb AND first_type IN...
+                                ^
