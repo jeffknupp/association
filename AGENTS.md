@@ -83,10 +83,20 @@ was learned the hard way and is about the data, not the pipeline.
   same-clock convention is ESPN's: a substitution changes the lineup at
   once but the segment closes at the next clock reading
   (`scripts/sim_p2/plus_minus_conventions.py` is the measurement).
-- **Next: step 3**, the P4 dataclasses (`PlayerParams`, `TeamParams`,
-  `LeagueParams`, the shrinkage and odds-ratio helpers with unit tests) as
-  ONE small commit, so steps 4 (P4-box rates), 5 (P5 engine) and 6 (P6
-  rotation) can run in parallel against it.
+- **Step 3 done 2026-10-11:** `association.sim.params` (`Rate`, `Mix`,
+  `Window`, `PlayerParams`, `TeamParams`, `LeagueParams`, the zone names)
+  and `association.sim.shrink` (shrinkage, fitted prior strength, the
+  odds-ratio combination). Build against these fields; add a field in your
+  own commit rather than reshaping one.
+- **Next: steps 4, 5 and 6 in parallel**, one agent each, disjoint files:
+  `sim/zones.py` + `sim/rates.py` (P4-box: the records above estimated per
+  minute from `nba.player_box_stats_deduped`, `nba.shot_chart` and
+  `sim_segments`' resolved minutes, with `shrink.fit_strength` run per rate
+  on odd/even game splits and every fitted `k` recorded in the docstring);
+  `sim/engine.py` (P5: the seeded state machine, first against hand-written
+  `PlayerParams`); `sim/rotation.py` (P6: on-floor probability by minute,
+  foul trouble and blowout behavior from `sim_segments`). Then step 7, the
+  CLI and output, and step 8, the replay harness with both baselines.
 
 ## Facts about `plays` every phase relies on (Phase 0, 2026-10-11)
 

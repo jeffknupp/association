@@ -550,7 +550,14 @@ check measured on 2019-2026 and recorded in the module docstring:
    is the one derived table the first engine needs (for P6).
 3. **P4 dataclasses** - `PlayerParams`, `TeamParams`, `LeagueParams`, the
    shrinkage and the odds-ratio helpers with their unit tests, as ONE small
-   commit the next two steps build against.
+   commit the next two steps build against. **Done 2026-10-11:**
+   `sim/params.py` (the records, `Rate` and `Mix` carrying their trials and
+   prior so the output can say "near the league prior", the zone names) and
+   `sim/shrink.py` (`shrink`, `shrink_mix`, `fit_strength`,
+   `fit_mix_strength`, `combine`, `combine_defenders`). The rates are PER
+   MINUTE on the floor in v1 (D15: no possession table yet), and the
+   defense is the team's (D6, option 1); steps 4-6 build against exactly
+   these fields and add to them in their own commits.
 4. **P4-box, estimation from the box and the shot chart** (parallel with 5
    and 6) - `sim/zones.py` and `sim/rates.py`: per player, per-minute usage
    (field-goal attempts, free-throw trips and turnovers per minute), zone
