@@ -149,7 +149,13 @@ DEP004 = ["packaging", "sphinx_autodoc_typehints"]
 # `uv sync --extra dev` would pull a package (and, to be useful, a ~150MB
 # browser) for a check that is deliberately not a gate. See that script's
 # docstring for why it is not one.
-DEP001 = ["playwright"]
+# scripts/reader_cases.py regenerates the reader's snapshot cases
+# (tests/query/reader_cases.json) through the suite's own fixture module,
+# tests/reader_cases.py, put on sys.path by name: the cases must be written by
+# exactly the record the test compares, so the generator imports the test's
+# module rather than carrying a second copy. It is a test-side module, not a
+# package.
+DEP001 = ["playwright", "reader_cases"]
 
 [tool.codespell]
 # en-GB_to_en-US enforces the American spelling AGENTS.md asks for; British
@@ -158,7 +164,12 @@ builtin = "clear,rare,en-GB_to_en-US"
 # CHANGES.md is a record: its released entries quote the spellings that were
 # fixed. CLAUDE.md is a symlink to AGENTS.md, which is checked. Binary and
 # generated files are never prose.
-skip = "CHANGES.md,CLAUDE.md,uv.lock,*.png,*.jpg,*.svg,*.duckdb,*.parquet,completions/*"
+# tests/query/reader_cases.json quotes 456 recorded questions as their users
+# typed them, typos included, and the reader is held to reading the typo'd
+# wording; a spelling corrected there would be a different case.
+# tests/names/*.json are the warehouse's players and teams tables, names and
+# ids alone: a surname is no misspelling.
+skip = "CHANGES.md,CLAUDE.md,uv.lock,*.png,*.jpg,*.svg,*.duckdb,*.parquet,completions/*,tests/query/reader_cases.json,tests/names/*.json"
 # Basketball and ESPN tokens, not misspellings: OT (overtime), IST (the
 # In-Season Tournament), PlayIn (ESPN's play-in season-type label). "alltime"
 # is the yardstick-v2 F111 question's own spelling ("alperen şengün alltime

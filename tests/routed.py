@@ -287,11 +287,3 @@ def staged(intent: str, slots: Mapping[str, Any], question: str, companions: tup
     model-era slot ignored, as ``settle`` ignored it."""
     given = {key: value for key, value in slots.items() if key in _NAME_SLOTS or key in _MEASURE_CONTEXT}
     return _staged(asked(intent), given, question, companions, lines)
-
-
-def staged_raw(raw: Mapping[str, Any], question: str, companions: tuple[Companion, ...] = ()) -> Staged:
-    """The grammar's rules and the taggers over a raw reply a test spells as
-    the router's model did (the intent and its slots), its names handed
-    typed (:func:`handed`) - ``router._settle`` until Phase 3, step 4,
-    slice (b)."""
-    return _staged(asked(raw["intent"]), raw, question, companions, ())
