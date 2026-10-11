@@ -37,6 +37,7 @@ from association.query.metrics import LEADERBOARD_METRICS, PER_GAME_MIN_GAMES, P
 from association.query.parse import with_point
 from association.query.player_games import PERIOD_COLUMNS, PERIOD_RATES, period_distrust
 from association.query.player_relation import scoped_games, scoped_player
+from association.query.point import default_point
 from association.query.reading import Cuts, Filtered, PointShape, Reading, Span, SubjectKind
 from association.query.reading import Subject as Who
 from association.query.result import Unanswered
@@ -4631,7 +4632,7 @@ def test_the_matchup_point_honors_without_too(pg_ctx: AnswerContext) -> None:
     """A teammate's absence narrows the first player's games on a genuine
     two-player matchup, as it does on every reader of the relation."""
     scope = slots_scope({"players": ["Brandin Podziemski", "Stephen Curry"], "without": ["Jaylen Brown"]})
-    assert default_reading("player_matchup", scope.to_slots()).shape == "comparison"
+    assert default_point(asked("player_matchup"), scope).shape == "comparison"
     assert unhonored("player_matchup", scope) == []
 
 

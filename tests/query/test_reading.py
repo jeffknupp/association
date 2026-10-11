@@ -28,7 +28,7 @@ def test_the_default_point_is_a_reading_and_its_plan_is_the_query_it_always_was(
     planned = plan(reading)
     assert isinstance(planned, Query)
     assert planned == default_query("threshold_count", slots)
-    assert planned.filters() == slots_scope(slots).filters() and planned.to_slots() == slots
+    assert planned.filters() == slots_scope(slots).filters()
     assert planned.skeleton == "scalar" and planned.aggregate == "count"
 
 
@@ -109,13 +109,14 @@ def test_describe_names_every_deciding_field_and_drops_empty_scope() -> None:
     )
     line = reading.describe()
     assert line.startswith("relation=player subject=? shape=scalar by= on=player_games measures=[] aggregate=count group=none predicates=[('points', '>=', 30)] window=date/desc")
-    assert "scope={'player': 'Joel Embiid', 'season': 2026}" in line
+    assert "filters={'who': {'kind': 'player', 'players': ['Joel Embiid']}, 'span': {'season': 2026}}" in line
 
 
-def test_a_slot_dict_round_trips_through_the_scope() -> None:
-    """``Scope.from_slots`` types a slot dict and ``to_slots`` gives it back,
-    empty slots (None, "", [], False) read as absent - the reading
-    ``check_scope`` already takes of a falsy slot."""
+def test_a_slot_dict_types_through_the_door() -> None:
+    """The tests' slot door (``tests/slots.py``, ``Scope.from_slots`` until
+    Phase 3, step 4) types a slot dict, empty slots (None, "", [], False)
+    read as absent - the reading ``check_scope`` already took of a falsy
+    slot. Nothing projects back: the slot-era ``to_slots`` went with slice (c)."""
     slots: dict[str, Any] = {
         "player": "Joel Embiid",
         "opponent": "Boston Celtics",
@@ -129,7 +130,7 @@ def test_a_slot_dict_round_trips_through_the_scope() -> None:
     }
     scope = slots_scope({**slots, "team": None, "players": [], "stat": "", "per_game": False})
     assert (scope.who.player, [c.player for c in scope.companions if c.absent], scope.cuts.venue, scope.window.count, scope.span.both) == ("Joel Embiid", ["Tyrese Maxey"], "home", 10, True)
-    assert scope.to_slots() == slots
+    assert (scope.cuts.opponent, scope.span.season, scope.span.season_type, scope.window.order) == ("Boston Celtics", 2026, 2, "recent")
 
 
 @pytest.mark.parametrize(
@@ -164,13 +165,11 @@ def test_every_scope_field_is_checked_and_every_group_is_the_compilers() -> None
     against the Scope's fields."""
     from typing import get_args
 
-    from slots import _CHECKS, _COMPANION_SLOT_NAMES, _CUT_SLOT_KEYS, _LINE_SLOT_NAMES, _PERIOD_SLOT_NAMES, _SPAN_SLOT_NAMES, _WINDOW_SLOT_NAMES
+    from slots import _CHECKS, _COMPANION_SLOT_NAMES, _CUT_SLOT_KEYS, _LINE_SLOT_NAMES, _MEASURE_SLOT_NAMES, _PERIOD_SLOT_NAMES, _SPAN_SLOT_NAMES, _SUBJECT_SLOT_NAMES, _WINDOW_SLOT_NAMES
 
     from association.query.compose.core import GROUPS
     from association.query.player_relation import RELATION_SCOPING
     from association.query.reading import (
-        _MEASURE_SLOT_NAMES,
-        _SUBJECT_SLOT_NAMES,
         Companion,
         Cuts,
         Filtered,
@@ -265,10 +264,8 @@ def test_a_period_condition_round_trips_through_the_slot_door() -> None:
 
     scope = slots_scope({"period_condition": {"stat": "threePointFieldGoalsMade", "threshold": 1, "period": 1}})
     assert scope.lines == (Line(measure="threePointFieldGoalsMade", op=">=", value=1, period=Period(number=1)),)
-    assert scope.to_slots()["period_condition"] == {"stat": "threePointFieldGoalsMade", "threshold": 1, "op": ">=", "period": 1}
     exact = slots_scope({"period_condition": {"stat": "points", "threshold": 10, "op": "=", "half": 1}})
     assert exact.lines == (Line(measure="points", op="=", value=10, period=Period(number=1, half=True)),)
-    assert slots_scope(exact.to_slots()) == exact
     for bad in (
         {"stat": "points", "threshold": 1},
         {"stat": "points", "threshold": 1, "period": 1, "half": 1},

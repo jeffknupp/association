@@ -171,8 +171,10 @@ def _period_log(con: duckdb.DuckDBPyConnection, q: Query) -> Result | Unanswered
     scope = q
     asked = period_narrowing(scope)
     if asked is None:
-        slots = scope.period.to_slots() if scope.period is not None else {}
-        raise Unsupported(f"period_split needs a period 1-10 or a half 1-2, got period={slots.get('period')!r} half={slots.get('half')!r}")
+        period = scope.period
+        quarter = period.number if period is not None and not period.half else None
+        half = period.number if period is not None and period.half else None
+        raise Unsupported(f"period_split needs a period 1-10 or a half 1-2, got period={quarter!r} half={half!r}")
     measure = period_split_measure(scope.measure)
     if q.measures != [measure]:
         return None
@@ -577,8 +579,10 @@ def read_team_quarter_points(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> Re
         return refused
     asked = period_narrowing(scope)
     if asked is None:
-        slots = scope.period.to_slots() if scope.period is not None else {}
-        raise Unsupported(f"team_quarter_points needs a period 1-10 or a half 1-2, got period={slots.get('period')!r} half={slots.get('half')!r}")
+        period = scope.period
+        quarter = period.number if period is not None and not period.half else None
+        half = period.number if period is not None and period.half else None
+        raise Unsupported(f"team_quarter_points needs a period 1-10 or a half 1-2, got period={quarter!r} half={half!r}")
     periods, period_label = asked
     if scope.who.player is not None:
         # A named player's quarter or half is period_split's.

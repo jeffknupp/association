@@ -6,11 +6,10 @@ rules' own cases on the small fixture warehouse."""
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
 
 import duckdb
 import pytest
-from routed import Routed, reading_of, slots_route, with_subject
+from routed import Routed, reading_of, with_subject
 from routed import staged as settle
 
 from association.query.compose.plan import plan_point
@@ -21,6 +20,7 @@ from association.query.lines import threshold_of
 from association.query.measure import named
 from association.query.parse import classify_span, parent_asked, read_route
 from association.query.reading import Companion, Reading, asked_label
+from association.query.reading import Subject as Who
 from association.query.subject import Subject
 
 
@@ -139,6 +139,21 @@ def _read(con: duckdb.DuckDBPyConnection, question: str, names: list[str] | None
     return read_route(names_of(con), question, names, stat)
 
 
+def _quarter(read: Routed | Reading) -> int | None:
+    """The quarter the reading sees, where it sees one (the ``period`` slot)."""
+    return read.period.number if read.period is not None and not read.period.half else None
+
+
+def _half(read: Routed | Reading) -> int | None:
+    """The half the reading sees, where it sees one (the ``half`` slot)."""
+    return read.period.number if read.period is not None and read.period.half else None
+
+
+def _threshold(read: Routed | Reading) -> float | None:
+    """The shape's own line on the whole game (the ``threshold`` slot)."""
+    return next((line.value for line in read.lines if line.keyed and line.period is None), None)
+
+
 def test_the_parser_reads_a_question_into_a_reading(con: duckdb.DuckDBPyConnection) -> None:
     """The whole path on the fixture: names classified, the kind and parent
     read, the window and the measure from the words, the child assigned."""
@@ -220,19 +235,19 @@ def test_read_route_takes_the_names_from_the_subject_reading(con: duckdb.DuckDBP
     team; an ambiguous span the reading could not settle is kept as typed,
     for the template to ask about."""
     dropped = _route(con, "plot the fingerprint for Nikola Jokic for the 2025 season", [], "")
-    assert dropped.slots["player"] == "Nikola Jokic"
+    assert dropped.who.player == "Nikola Jokic"
     companion = _route(con, "Tyrese Maxey game log without Joel Embiid", ["Tyrese Maxey", "Joel Embiid"], "")
-    assert companion.slots["player"] == "Tyrese Maxey" and "players" not in companion.slots and companion.who.companions
+    assert companion.who.players == ("Tyrese Maxey",) and companion.who.companions
     against = _route(con, "show maxey's games against boston", ["maxey", "boston"], "")
-    assert against.slots["opponent"] == "Boston Celtics" and "team" not in against.slots
+    assert against.cuts.opponent == "Boston Celtics" and against.who.teams == ()
     code = _route(con, "PHI record 2026", ["PHI"], "")
-    assert (code.intent, code.slots.get("team"), code.slots.get("player")) == ("team_record", "Philadelphia 76ers", None)
+    assert (code.intent, code.who.team, code.who.player) == ("team_record", "Philadelphia 76ers", None)
     kept = _route(con, "who is better, tatum or nikola", ["tatum", "nikola"], "")
-    assert kept.slots["players"] == ["Jayson Tatum", "nikola"]
+    assert kept.who.players == ("Jayson Tatum", "nikola")
     # The model's names were only the companions: they narrow, and are
     # nobody's subject.
     only = _route(con, "game log this season without Joel Embiid and Tyrese Maxey", ["Joel Embiid", "Tyrese Maxey"], "")
-    assert only.who.companions and "player" not in only.slots and "players" not in only.slots
+    assert only.who.companions and only.who.players == ()
 
 
 def test_a_conference_or_a_pronoun_is_never_a_name(con: duckdb.DuckDBPyConnection) -> None:
@@ -249,9 +264,9 @@ def test_read_route_reads_the_window_before_the_stages_and_the_quarter_from_the_
     decide only beside the window (``_route_game_log_recent_span``); a
     team's quarter is a slot the router's model used to fill."""
     recent = _route(con, "How did the Celtics do in their last 10 games?", ["Celtics"], "")
-    assert (recent.intent, recent.slots["limit"], recent.slots.get("season_type_unstated")) == ("game_log", 10, True)
+    assert (recent.intent, recent.window.count, recent.span.both) == ("game_log", 10, True)
     quarter = _route(con, "show sixers first quarter scoring for their last 10 games", ["sixers"], "points")
-    assert (quarter.intent, quarter.slots.get("period")) == ("team_quarter_points", 1)
+    assert (quarter.intent, _quarter(quarter)) == ("team_quarter_points", 1)
 
 
 def test_a_players_record_reads_his_splits_through_a_window_but_not_over_a_log_word() -> None:
@@ -288,13 +303,13 @@ def test_read_route_reads_the_columns_a_ranking_asks_to_see(con: duckdb.DuckDBPy
     (yardstick-v2 F017) are the leaderboard's `fields`, which the router's
     model used to fill; a ranking that asks for none gets none."""
     extra = _route(con, "Top 5 scorers with their rebounds and assists", [], "points")
-    assert (extra.intent, extra.slots.get("fields"), extra.slots.get("limit")) == ("leaderboard", ["rebounds", "assists"], 5)
+    assert (extra.intent, extra.measure.beside, extra.window.count) == ("leaderboard", ("rebounds", "assists"), 5)
     team = _route(con, "show the top 50 in total adjusted netpoints and the team they play for", [], "netpoints")
-    assert team.slots.get("fields") == ["team"]
+    assert team.measure.beside == ("team",)
     current = _route(con, "who are the top 50 players in total adjusted netpoints while playing for their current team", [], "netpoints")
-    assert current.slots.get("fields") == ["team"]
+    assert current.measure.beside == ("team",)
     plain = _route(con, "who led the league in scoring", [], "points")
-    assert "fields" not in plain.slots
+    assert plain.measure is not None and plain.measure.beside == ()
 
 
 def test_a_name_the_model_corrected_is_put_back_as_the_question_typed_it(con: duckdb.DuckDBPyConnection) -> None:
@@ -304,17 +319,17 @@ def test_a_name_the_model_corrected_is_put_back_as_the_question_typed_it(con: du
     the entity index's to read, visibly, so the question's own spelling goes
     back in; a completion of a surname typed as-is is left alone."""
     typo = _route(con, "how many points does embid average", ["embiid"], "points")
-    assert typo.slots["player"] == "embid"
+    assert typo.who.player == "embid"
     both = _route(con, "how many points does embidd average", ["Joel Embiid"], "points")
-    assert both.slots["player"] == "embidd"
+    assert both.who.player == "embidd"
     completed = _route(con, "how many points does embiid average", ["Joel Embiid"], "points")
-    assert completed.slots["player"] in ("Joel Embiid", "embiid")
+    assert completed.who.player in ("Joel Embiid", "embiid")
     # A possessive "s" left on a typo ("embids" for "embid's") is the
     # question's own spelling too, as the index reads it: put back, it is a
     # player's history, where two edits from "embiid" it read as a name the
     # question never held and was refused (ISSUES.md #180).
     possessive = _route(con, "show me embids 3pt percentage over the last 5 years", ["embiid"], "threePointFieldGoalPct")
-    assert (possessive.intent, possessive.slots["player"], possessive.who.invented) == ("player_history", "embids", ())
+    assert (possessive.intent, possessive.who.player, possessive.who.invented) == ("player_history", "embids", ())
 
 
 def test_a_count_spelled_out_is_the_count(con: duckdb.DuckDBPyConnection) -> None:
@@ -323,7 +338,7 @@ def test_a_count_spelled_out_is_the_count(con: duckdb.DuckDBPyConnection) -> Non
     package review's F2)."""
     for spelled, n in (("twelve", 12), ("eleven", 11), ("twenty five", 25), ("twenty-five", 25), ("fifty", 50)):
         route = _route(con, f"tyrese maxey last {spelled} games", ["tyrese maxey"], "")
-        assert (route.intent, route.slots.get("order"), route.slots.get("limit")) == ("game_log", "recent", n), spelled
+        assert (route.intent, route.window.order, route.window.count) == ("game_log", "recent", n), spelled
 
 
 # ---------------------------------------------------------------------------
@@ -331,16 +346,6 @@ def test_a_count_spelled_out_is_the_count(con: duckdb.DuckDBPyConnection) -> Non
 # plan item 6, step (d) follow-ups). The route is what these assert - the
 # intent and the slots - never an answer: `player_stat`'s reading of a
 # condition is another change.
-
-
-def _settled(con: duckdb.DuckDBPyConnection, question: str, names: list[str], stat: str = "") -> tuple[str, dict[str, Any]]:
-    """The route :func:`read_route` settles, then the parser's last step
-    (:func:`reading_from_route`), which writes a companion's role as the
-    ``conditions`` slot - the Reading the agent answers from, as slots."""
-    route = _route(con, question, names, stat)
-    reading = route.reading
-    assert reading is not None
-    return reading.intent, reading.to_slots(split_by_presence=reading.intent == "with_without")
 
 
 def _with_the_warriors(con: duckdb.DuckDBPyConnection) -> None:
@@ -355,7 +360,7 @@ def test_a_teammates_start_is_his_condition_on_the_subjects_own_intent(con: duck
     started" read the two as a pair and compared them. A teammate's start or
     bench is his condition, on the subject's own intent - never the subject's
     split, never a second subject."""
-    started = [{"player": "Joel Embiid", "side": "own", "predicate": "started"}]
+    started = (Companion(player="Joel Embiid", predicate="started"),)
     for question, stat, intent in (
         ("maxey points when embiid starts", "points", "player_stat"),
         ("how many points does maxey average when embiid starts", "points", "player_stat"),
@@ -365,15 +370,14 @@ def test_a_teammates_start_is_his_condition_on_the_subjects_own_intent(con: duck
         ("maxey game log in games embiid started", "", "game_log"),
     ):
         route = _route(con, question, ["maxey", "embiid"], stat)
-        assert (route.intent, route.who.kind, route.slots["player"]) == (intent, "player", "Tyrese Maxey"), question
-        assert "split" not in route.slots and "players" not in route.slots, question
-        assert _settled(con, question, ["maxey", "embiid"], stat) == (intent, {**route.slots, "conditions": started}), question
+        assert (route.intent, route.who.kind, route.who.players) == (intent, "player", ("Tyrese Maxey",)), question
+        assert route.split is None and route.companions == started, question
     route = _route(con, "maxey stats when embiid comes off the bench", ["maxey", "embiid"], "")
-    assert route.intent == "player_stat" and "split" not in route.slots
-    assert _settled(con, "maxey stats when embiid comes off the bench", ["maxey", "embiid"])[1]["conditions"] == [{"player": "Joel Embiid", "side": "own", "predicate": "bench"}]
+    assert route.intent == "player_stat" and route.split is None
+    assert route.companions == (Companion(player="Joel Embiid", predicate="bench"),)
     # A child the words assign reads it too: the compiler answers a count first and narrows by every condition.
-    settled, slots = _settled(con, "how many 30 point games did maxey have when embiid started", ["maxey", "embiid"], "points")
-    assert (settled, slots["threshold"], slots["conditions"]) == ("threshold_count", 30, started)
+    counted = _read(con, "how many 30 point games did maxey have when embiid started", ["maxey", "embiid"], "points")
+    assert (counted.intent, _threshold(counted), counted.companions) == ("threshold_count", 30, started)
 
 
 def test_a_teammates_start_narrows_a_shot_chart_or_a_distance_not_the_players_own_starts(con: duckdb.DuckDBPyConnection) -> None:
@@ -383,8 +387,8 @@ def test_a_teammates_start_narrows_a_shot_chart_or_a_distance_not_the_players_ow
     _with_the_warriors(con)
     for question, intent in (("stephen curry shot chart when draymond green starts", "shot_chart"), ("stephen curry average shot distance when draymond green starts", "shot_distance")):
         route = _route(con, question, ["stephen curry", "draymond green"], "")
-        assert route.intent == intent and "split" not in route.slots, question
-        assert _settled(con, question, ["stephen curry", "draymond green"])[1]["conditions"] == [{"player": "Draymond Green", "side": "own", "predicate": "started"}], question
+        assert route.intent == intent and route.split is None, question
+        assert route.companions == (Companion(player="Draymond Green", predicate="started"),), question
 
 
 def test_the_subjects_own_split_still_reads_beside_a_teammates_role(con: duckdb.DuckDBPyConnection) -> None:
@@ -394,11 +398,11 @@ def test_the_subjects_own_split_still_reads_beside_a_teammates_role(con: duckdb.
     with/without split, whose other half is the one asked for - as a
     condition it would narrow to the very games the question excludes."""
     route = _route(con, "maxey points as a starter when embiid comes off the bench", ["maxey", "embiid"], "points")
-    assert (route.intent, route.slots["split"]) == ("player_stat", "starter")
+    assert (route.intent, route.split) == ("player_stat", "starter")
     route = _route(con, "maxey points when he starts", ["maxey"], "points")
-    assert (route.intent, route.slots["split"]) == ("player_stat", "starter")
+    assert (route.intent, route.split) == ("player_stat", "starter")
     route = _route(con, "76ers record when embiid starts", ["76ers", "embiid"], "")
-    assert route.intent == "with_without" and "split" not in route.slots
+    assert route.intent == "with_without" and route.split is None
     route = _route(con, "maxey points when embiid doesn't start", ["maxey", "embiid"], "points")
     assert route.intent == "with_without"
     # Where nothing reads the start as a condition, the condition is still
@@ -407,7 +411,7 @@ def test_the_subjects_own_split_still_reads_beside_a_teammates_role(con: duckdb.
     # change the misread split was left in place to do the refusing).
     question = "sixers first quarter points when embiid starts"
     route = _route(con, question, ["sixers", "embiid"], "points")
-    assert route.intent == "team_quarter_points" and "split" not in route.slots
+    assert route.intent == "team_quarter_points" and route.split is None
     reading = route.reading
     assert reading is not None
     assert [c.predicate for c in reading.companions] == ["started"]
@@ -427,13 +431,13 @@ def test_a_companion_who_sat_out_is_without_and_out_is_no_part_of_his_name(con: 
         ("stephen curry stats with draymond green out", ["stephen curry", "draymond green"], "with_without"),
         ("warriors record with draymond green out", ["warriors", "draymond green"], "with_without"),
     ):
-        settled, slots = _settled(con, question, names, "")
-        assert (settled, slots["without"]) == (intent, ["Draymond Green"]) and "with_player" not in slots, question
-    settled, slots = _settled(con, "maxey points when embiid doesn't play", ["maxey", "embiid"], "points")
-    assert (settled, slots["without"]) == ("with_without", ["Joel Embiid"]) and "with_player" not in slots
+        reading = _read(con, question, names, "")
+        assert (reading.intent, reading.companions) == (intent, (Companion(player="Draymond Green", predicate="absent"),)), question
+    reading = _read(con, "maxey points when embiid doesn't play", ["maxey", "embiid"], "points")
+    assert (reading.intent, reading.companions) == ("with_without", (Companion(player="Joel Embiid", predicate="absent"),))
     # And on a log he is absent, never a teammate who played beside the absence.
-    settled, slots = _settled(con, "maxey game log when embiid doesn't play", ["maxey", "embiid"])
-    assert (settled, slots["without"]) == ("game_log", ["Joel Embiid"]) and "conditions" not in slots
+    reading = _read(con, "maxey game log when embiid doesn't play", ["maxey", "embiid"])
+    assert (reading.intent, reading.companions) == ("game_log", (Companion(player="Joel Embiid", predicate="absent"),))
     # Never a pair: "in games X missed" is X's absence from the subject's games.
     route = _route(con, "maxey points in games embiid missed", ["maxey", "embiid"], "points")
     assert (route.intent, route.who.kind, [c.player for c in route.who.conditions if c.absent]) == ("player_stat", "player", ["Joel Embiid"])
@@ -447,7 +451,7 @@ def test_a_record_with_a_teammate_out_is_the_split_from_the_other_side() -> None
     for intent in ("record_when", "team_record"):
         route = settle(intent, {"team": "Golden State Warriors", "season_type": 2}, "warriors record with draymond green out", (Companion(player="draymond green", predicate="absent"),))
         # The stages settle the split and write no name: the subject reading writes him onto the Reading (apply_subject).
-        assert (route.intent, route.slots.get("without"), route.slots.get("with_player")) == ("with_without", None, None), intent
+        assert (route.intent, route.companions) == ("with_without", ()), intent
         # Who sat out is the subject reading's: with nobody beside the team, the record stays a record.
         assert settle(intent, {"team": "Golden State Warriors", "season_type": 2}, "warriors record with draymond green out").intent == intent
 
@@ -459,12 +463,12 @@ def test_a_companion_who_played_is_a_condition_where_with_player_is_read_by_noth
     with/without split keeps its ``with_player``."""
     _with_the_warriors(con)
     names = ["stephen curry", "draymond green"]
-    played = [{"player": "Draymond Green", "side": "own", "predicate": "played"}]
+    played = (Companion(player="Draymond Green"),)
     for question, intent in (("stephen curry shot chart when draymond green plays", "shot_chart"), ("stephen curry game log when draymond green plays", "game_log")):
-        settled, slots = _settled(con, question, names)
-        assert (settled, slots["conditions"]) == (intent, played) and "with_player" not in slots, question
-    settled, slots = _settled(con, "stephen curry stats with draymond green playing", names)
-    assert (settled, slots["with_player"]) == ("with_without", ["Draymond Green"]) and "conditions" not in slots
+        reading = _read(con, question, names)
+        assert (reading.intent, reading.companions) == (intent, played), question
+    split = _read(con, "stephen curry stats with draymond green playing", names)
+    assert (split.intent, split.companions) == ("with_without", played)
 
 
 def test_a_number_after_a_scoring_verb_is_a_line_on_points(con: duckdb.DuckDBPyConnection) -> None:
@@ -477,13 +481,14 @@ def test_a_number_after_a_scoring_verb_is_a_line_on_points(con: duckdb.DuckDBPyC
         ("celtics record when jayson tatum scored 30", "", None),
     ):
         route = _route(con, question, ["celtics", "jayson tatum"], stat)
-        assert (route.intent, route.slots["stat"], route.slots["threshold"], route.slots.get("since")) == ("record_when", "points", 30, since), question
+        assert (route.intent, route.measure.as_typed, _threshold(route), route.span.since) == ("record_when", "points", 30, since), question
         assert route.who.kind == "team" and route.who.teams == ("Boston Celtics",), question
     route = _route(con, "how many times has embiid scored 40", ["embiid"], "points")
-    assert (route.intent, route.slots["threshold"]) == ("threshold_count", 40)
+    assert (route.intent, _threshold(route)) == ("threshold_count", 40)
     # A companion's line reads the same way: "when embiid scores 30" is a 30-point condition.
-    assert _settled(con, "maxey points when embiid scores 30", ["maxey", "embiid"], "points")[1]["conditions"] == [
-        {"player": "Joel Embiid", "side": "own", "predicate": "reached", "stat": "points", "threshold": 30}
+    reached = _read(con, "maxey points when embiid scores 30", ["maxey", "embiid"], "points").companions
+    assert [(c.player, c.side, c.predicate, c.line.measure if c.line is not None else None, c.line.value if c.line is not None else None) for c in reached] == [
+        ("Joel Embiid", "own", "reached", "points", 30)
     ]
     # Not a line: a stat word after the number is that stat's, a rate is an average, a year is a year.
     assert _threshold_from_text("when he scored 12 rebounds") == 12 and _threshold_from_text("tatum scored 3 threes") == 3
@@ -536,7 +541,8 @@ def test_the_reading_carries_the_parsers_decisions_between_who_and_what_it_wrote
     decisions = route.reading.decisions
     assert [(d.stage, d.field) for d in decisions] == [("subject", "kind"), ("subject", "teams"), ("subject", "companions"), ("parser", "intent"), ("subject", "player")]
     assert (decisions[-1].before, decisions[-1].after) == ("maxey", "Tyrese Maxey")
-    replayed = reading_of(con, question, with_subject(con, question, slots_route(route.intent, {**route.slots, "player": "Tyrese Maxey"})))
+    handed = Reading(**{**route.scope.filters(), "who": Who.from_slots({"player": "Tyrese Maxey", "team": route.who.team})})
+    replayed = reading_of(con, question, with_subject(con, question, Routed(route.asked, handed)))
     assert [(d.stage, d.field) for d in replayed.decisions] == [("subject", "kind"), ("subject", "teams"), ("subject", "companions")]
 
 
@@ -561,15 +567,15 @@ def test_a_typographic_apostrophe_reads_as_a_straight_one(con: duckdb.DuckDBPyCo
     ):
         curly = _route(con, typed.format(a=apostrophe), [name.format(a=apostrophe) for name in names], stat)
         straight = _route(con, typed.format(a="'"), [name.format(a="'") for name in names], stat)
-        assert (curly.intent, curly.slots) == (straight.intent, straight.slots), typed
+        assert (curly.intent, curly.scope.filters()) == (straight.intent, straight.scope.filters()), typed
     decade = _route(con, f"most points in the 2010{apostrophe}s", [], "points")
-    assert (decade.slots.get("since"), decade.slots.get("until"), decade.slots.get("season")) == (2010, 2019, None)
+    assert (decade.span.since, decade.span.until, decade.span.season) == (2010, 2019, None)
     booker = _route(con, f"Devin Booker{apostrophe}s stats last five games", [f"Devin Booker{apostrophe}s"], "")
-    assert (booker.intent, booker.slots["player"], booker.slots["limit"]) == ("game_log", "Devin Booker", 5)
+    assert (booker.intent, booker.who.player, booker.window.count) == ("game_log", "Devin Booker", 5)
     russell = _route(con, f"D{apostrophe}Angelo Russell game against the Timberwolves", [f"D{apostrophe}Angelo Russell", "Timberwolves"], "")
-    assert (russell.slots["player"], russell.slots["opponent"]) == ("D'Angelo Russell", "Minnesota Timberwolves")
+    assert (russell.who.player, russell.cuts.opponent) == ("D'Angelo Russell", "Minnesota Timberwolves")
     holiday = _route(con, f"maxey points on new year{apostrophe}s eve", ["maxey"], "points")
-    assert holiday.slots["situation"] == "new year's eve"
+    assert holiday.cuts.situation is not None and holiday.cuts.situation.text == "new year's eve"
     # The whole path, as the agent takes it: the parser's last step is handed
     # the question as typed too, and reads who it is about from its words.
     reading = _read(con, f"D{apostrophe}Angelo Russell game against the Timberwolves", [f"D{apostrophe}Angelo Russell", "Timberwolves"])
@@ -589,9 +595,9 @@ def test_a_name_the_model_copied_with_a_typographic_apostrophe_anchors_to_the_qu
     con.execute("INSERT INTO players VALUES ('11', 'De''Aaron Fox'), ('12', 'Kel''el Ware'), ('13', 'Casey Ware')")
     for apostrophe in ("\u2019", "\u2018"):
         first = _route(con, f"De{apostrophe}Aaron stats this season", [f"De{apostrophe}Aaron"], "")
-        assert (first.intent, first.slots.get("player"), first.who.kind) == ("player_stat", "De'Aaron", "player")
+        assert (first.intent, first.who.player, first.who.kind) == ("player_stat", "De'Aaron", "player")
         full = _route(con, f"Kel{apostrophe}el Ware rebounds", [f"Kel{apostrophe}el Ware"], "rebounds")
-        assert full.slots["player"] == "Kel'el Ware"
+        assert full.who.player == "Kel'el Ware"
 
 
 def test_a_quarter_ranking_that_says_player_ranks_the_teams_players(con: duckdb.DuckDBPyConnection) -> None:
@@ -600,7 +606,7 @@ def test_a_quarter_ranking_that_says_player_ranks_the_teams_players(con: duckdb.
     asked. "player" ranks, as "who" and "leaders" do, and only where no player
     is named."""
     route = _route(con, "celtics average 1st quarter points player", ["celtics"], "points")
-    assert (route.intent, route.slots.get("period")) == ("period_leaderboard", 1)
+    assert (route.intent, _quarter(route)) == ("period_leaderboard", 1)
     team = _route(con, "celtics average 1st quarter points", ["celtics"], "points")
     assert team.intent == "team_quarter_points"
 
@@ -610,9 +616,9 @@ def test_a_named_players_period_games_are_listed(con: duckdb.DuckDBPyConnection)
     lists his first halves, and a total answered it. "games" with no stat
     named is a log, as "log" is; with a stat named it stays the total."""
     route = _route(con, "tyrese maxey first half games this season", ["tyrese maxey"], "")
-    assert (route.intent, route.slots.get("half"), route.slots.get("per_game")) == ("period_split", 1, True)
+    assert (route.intent, _half(route), route.measure is not None and route.measure.how == "per_game") == ("period_split", 1, True)
     total = _route(con, "tyrese maxey first half points over his games this season", ["tyrese maxey"], "points")
-    assert total.slots.get("per_game") is None
+    assert total.measure is None or total.measure.how != "per_game"
 
 
 def test_points_by_quarter_with_no_one_named_is_the_leagues_table(con: duckdb.DuckDBPyConnection) -> None:
@@ -620,16 +626,16 @@ def test_points_by_quarter_with_no_one_named_is_the_leagues_table(con: duckdb.Du
     for want of one period: every quarter at once is period_leaderboard with
     none. A named player's breakdown is period_split with none (#162)."""
     route = _route(con, "nba playerspoints by quarter average", [], "")
-    assert route.intent == "period_leaderboard" and route.slots.get("period") is None and route.slots.get("half") is None
+    assert route.intent == "period_leaderboard" and route.period is None
     named = _route(con, "Jokic points by quarter", ["Jokic"], "points")
-    assert named.intent == "period_split" and named.slots.get("period") is None and named.slots.get("half") is None
+    assert named.intent == "period_split" and named.period is None
 
 
 def test_most_ranks_a_quarter_only_where_no_team_is_named(con: duckdb.DuckDBPyConnection) -> None:
     """ "most first quarter rebounds per game" ranks the league's players; "the
     celtics most points in a first half" is the team's own best half."""
     league = _route(con, "most first quarter rebounds per game this season", [], "rebounds")
-    assert (league.intent, league.slots.get("period"), league.slots.get("stat")) == ("period_leaderboard", 1, "rebounds")
+    assert (league.intent, _quarter(league), league.measure.as_typed) == ("period_leaderboard", 1, "rebounds")
     team = _route(con, "celtics most points in a first half this season", ["celtics"], "points")
     assert team.intent == "team_quarter_points"
 
@@ -640,13 +646,13 @@ def test_a_teams_quarter_of_any_stat_is_the_teams_quarter(con: duckdb.DuckDBPyCo
     with the stat kept and the period read from the words - hyphenated too
     ("first-quarter rebounds"), which read no period at all."""
     rebounds = _route(con, "how many first-quarter rebounds do the celtics average", ["celtics"], "rebounds")
-    assert (rebounds.intent, rebounds.slots.get("period"), rebounds.slots.get("stat")) == ("team_quarter_points", 1, "rebounds")
+    assert (rebounds.intent, _quarter(rebounds), rebounds.measure.as_typed) == ("team_quarter_points", 1, "rebounds")
     threes = _route(con, "magic stats last 10 games 3 point average 1st quarter", ["magic"], "threePointFieldGoalsMade")
-    assert (threes.intent, threes.slots.get("period"), threes.slots.get("limit"), threes.slots.get("stat")) == ("team_quarter_points", 1, 10, "threePointFieldGoalsMade")
+    assert (threes.intent, _quarter(threes), threes.window.count, threes.measure.as_typed) == ("team_quarter_points", 1, 10, "threePointFieldGoalsMade")
     turnovers = _route(con, "celtics 2nd half turnovers vs the lakers", ["celtics", "lakers"], "turnovers")
-    assert (turnovers.intent, turnovers.slots.get("half"), turnovers.slots.get("opponent")) == ("team_quarter_points", 2, "Los Angeles Lakers")
+    assert (turnovers.intent, _half(turnovers), turnovers.cuts.opponent) == ("team_quarter_points", 2, "Los Angeles Lakers")
     assists = _route(con, "sixers second-half assists per game", ["sixers"], "assists")
-    assert (assists.intent, assists.slots.get("half"), assists.slots.get("stat")) == ("team_quarter_points", 2, "assists")
+    assert (assists.intent, _half(assists), assists.measure.as_typed) == ("team_quarter_points", 2, "assists")
 
 
 def test_a_period_used_as_a_condition_is_read_into_the_scope_and_off_the_period_templates(con: duckdb.DuckDBPyConnection) -> None:

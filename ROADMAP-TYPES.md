@@ -224,6 +224,10 @@ otherwise.
     `stages.plain` the slot-era keys (the six slots; the point's
     `span`/`season` pair) from the typed values, and the typed value is
     recorded beside the reading under its own key (`span`), listed by count.
+    Deleted in Phase 3, step 4, slice (c) (2026-10-11), once every family
+    was typed: the record is the typed Reading, and a change to the record's
+    shape is proven by running the before tree with the after tree's record
+    functions swapped in (`~/association-research/stages/typed_records.py`).
   - `Reading.subject_span: Span | None` (and `Query.subject_span`): the one
     typed override where the point reader settles the subject's span apart
     from the scope's - over the career for a date (the name narrowed over

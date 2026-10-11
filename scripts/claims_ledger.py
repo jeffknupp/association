@@ -68,20 +68,27 @@ def without(question: str, start: int, end: int) -> str:
     return re.sub(r"\s+", " ", question[:start] + " " + question[end:]).strip()
 
 
-#: The slots of a reading that hold a name.
-NAME_SLOTS = ("player", "players", "team", "teams", "opponent", "own_team", "with_player", "without")
-
-
 def names_read(whole: dict[str, Any]) -> list[str]:
-    """Every name the reading settled on - the scope's and the subject's -
-    so a word of one counts as read where the model copied only part of the
-    name ("steph" for "steph curry", which the nickname table completes)."""
+    """Every name the reading settled on - the typed subject's players and
+    teams, the cuts' opponent and tenure, the companions the slot era carried
+    by name (the absent ones; the teammates who played, on the with/without
+    split alone and only where none is absent) and the subject reading's
+    own players, teams, opponent and tenure (``parse._reading_from_route_names``,
+    the same list from the Reading) - so a word of one counts as read where
+    the model copied only part of the name ("steph" for "steph curry", which
+    the nickname table completes). Read off the typed record since Phase 3,
+    step 4, slice (c); the slot-era ``scope`` record until then."""
     reading = whole.get("reading") or {}
-    found: list[str] = []
-    for holder in (reading.get("scope") or {}, reading.get("subject") or {}):
-        for slot in NAME_SLOTS:
-            value = holder.get(slot)
-            found.extend(value if isinstance(value, list) else [value] if isinstance(value, str) else [])
+    who = reading.get("who") or {}
+    cuts = reading.get("cuts") or {}
+    found: list[str] = [*who.get("players", []), *who.get("teams", []), *(name for name in (cuts.get("opponent"), cuts.get("tenure")) if isinstance(name, str))]
+    companions = reading.get("companions") or []
+    absent = [c["player"] for c in companions if c.get("predicate") == "absent" and c.get("side") == "own"]
+    if reading.get("intent") == "with_without" and not absent:
+        found.extend(c["player"] for c in companions if c.get("side") == "own" and c.get("predicate") == "played")
+    found.extend(absent)
+    subject = reading.get("subject") or {}
+    found.extend((*subject.get("players", []), *subject.get("teams", []), *(name for name in (subject.get("opponent"), subject.get("own_team")) if isinstance(name, str))))
     return found
 
 

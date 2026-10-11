@@ -50,13 +50,12 @@ def test_a_snapshot_holds_the_four_stages_as_json() -> None:
     record = _snapshot()
     assert set(STAGES) <= set(record) and record["question"] == QUESTION
     assert json.loads(json.dumps(record)) == record
-    assert record["reading"]["intent"] == "player_stat" and record["reading"]["scope"] == {"player": "Nikola Jokic", "opponent": "Boston Celtics", "season": 2026}
+    assert record["reading"]["intent"] == "player_stat" and record["reading"]["asked"] == {"relation": "player_seasons", "shape": "scalar", "by": "line"}
+    assert (record["reading"]["who"]["players"], record["reading"]["cuts"]["opponent"], record["reading"]["span"]["season"]) == (["Nikola Jokic"], "Boston Celtics", 2026)
     assert record["reading"]["decisions"] == [{"stage": "subject", "field": "kind", "before": None, "after": "player", "reason": ""}]
     assert record["reading"]["point"]["shape"] == "scalar" and record["reading"]["point"]["measures"] == ["points"]
     # The query stage is what the PLANNER built from that point, not the point again.
-    assert (
-        record["query"]["relation"] == "player" and record["query"]["skeleton"] == "scalar" and record["query"]["measures"] == ["points"] and record["query"]["scope"]["opponent"] == "Boston Celtics"
-    )
+    assert record["query"]["relation"] == "player" and record["query"]["skeleton"] == "scalar" and record["query"]["measures"] == ["points"] and record["query"]["cuts"]["opponent"] == "Boston Celtics"
     assert record["result"]["value"] == 53 and record["answer"]["answered_by"] == "fast"
 
 
@@ -162,7 +161,7 @@ def _moved(path: list[Any], value: Any, stage: str = "result") -> dict[str, Any]
         (["games", 0, "rate"], 0.5000001, "result", ("result", "games[0].rate", "changed")),
         (["value"], 53.0, "result", ("result", "value", "type")),
         (["value"], None, "result", ("result", "value", "changed")),
-        (["scope", "season"], 2025, "reading", ("reading", "scope.season", "changed")),
+        (["span", "season"], 2025, "reading", ("reading", "span.season", "changed")),
         (["intent"], "game_log", "reading", ("reading", "intent", "changed")),
         (["aggregate"], "per_game", "query", ("query", "aggregate", "changed")),
         (["text"], "Jokic scored 54 points.", "answer", ("answer", "text", "changed")),
@@ -204,7 +203,7 @@ def test_the_same_rows_in_another_order_are_one_reordered_difference() -> None:
 
 
 def test_the_first_difference_is_in_the_earliest_stage() -> None:
-    record = _moved(["scope", "season"], 2025, "reading")
+    record = _moved(["span", "season"], 2025, "reading")
     record["result"]["value"] = 1
     record["answer"]["text"] = "something else"
     assert [d.stage for d in differences(_snapshot(), record)] == ["reading", "result", "answer"]
@@ -247,7 +246,7 @@ def test_the_agent_keeps_the_reading_it_answered_from_and_forgets_it_on_the_next
     record = snapshot(agent.reading, answer, planned=agent.planned)
     with pytest.raises(ValueError, match="needs its planning"):
         snapshot(agent.reading, answer)
-    assert record["reading"]["scope"]["stat"] == "points" and record["result"] == {"value": 1}
+    assert record["reading"]["measure"]["as_typed"] == "points" and record["result"] == {"value": 1}
     # Refused before anything read it: the last question's Reading is not this one's.
     agent.ask("Tatum rec")
     assert agent.reading is None

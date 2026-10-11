@@ -158,54 +158,10 @@ def test_the_cuts_claims_ride_the_route_with_the_windows_and_the_spans() -> None
         {"opponent": "Boston Celtics", "own_team": "Los Angeles Lakers", "date": "2026-03-17", "situation": "in march", "game_n": 7, "season_n": 3, "round": "finals", "venue": "away"},
     ],
 )
-def test_the_eight_slots_round_trip_through_the_cuts(slots: dict[str, Any]) -> None:
+def test_the_eight_slots_type_through_the_door_as_the_cuts(slots: dict[str, Any]) -> None:
     scope = slots_scope(slots)
-    assert scope.to_slots() == slots and cuts_from_slots(slots).to_slots() == slots
+    assert cuts_from_slots(slots) == scope.cuts and scope.cuts.cells() == {("tenure" if slot == "own_team" else slot) for slot in slots}
     assert slots_scope({"cuts": scope.cuts}) == scope
-
-
-def test_the_projection_keeps_the_slot_era_shape_and_its_order() -> None:
-    scope = slots_scope(
-        {
-            "player": "LeBron James",
-            "team": "LAL",
-            "opponent": "BOS",
-            "own_team": "MIA",
-            "stat": "points",
-            "date": "2026-01-19",
-            "situation": "in january",
-            "split": "month",
-            "game_n": 2,
-            "season_n": 5,
-            "round": "finals",
-            "period": 1,
-            "venue": "home",
-            "limit": 3,
-        }
-    )
-    keys = list(scope.to_slots())
-    assert keys == ["player", "team", "opponent", "own_team", "stat", "season_type", "date", "situation", "split", "game_n", "season_n", "round", "period", "venue", "limit"] or keys == [
-        "player",
-        "team",
-        "opponent",
-        "own_team",
-        "stat",
-        "date",
-        "situation",
-        "split",
-        "game_n",
-        "season_n",
-        "round",
-        "period",
-        "venue",
-        "limit",
-    ]
-    projected = scope.scope_record()
-    assert projected["opponent"] == "BOS" and projected["own_team"] == "MIA" and projected["situation"] == "in january" and projected["venue"] == "home" and projected["round"] == "finals"
-    assert "cuts" not in projected and "tenure" not in projected
-    empty = Reading().scope_record()
-    assert all(empty[slot] is None for slot in ("opponent", "own_team", "venue", "date", "situation", "round", "game_n", "season_n"))
-    assert list(empty).index("opponent") == list(empty).index("teams") + 1 and list(empty).index("venue") == list(empty).index("period_condition") + 1
 
 
 def test_a_typed_cuts_and_a_slot_at_once_or_a_bad_value_is_refused_at_the_door() -> None:

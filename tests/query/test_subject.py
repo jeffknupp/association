@@ -20,18 +20,20 @@ from association.query.decisions import Decision
 from association.query.entities import find_teams, names_of, teams_of
 from association.query.lines import threshold_of
 from association.query.names import NameIndex
-from association.query.reading import Filtered, Line, Reading, asked_label
+from association.query.reading import Companion, Filtered, Line, Reading, asked_label
 from association.query.subject import SUBJECT_KINDS, Subject, apply_subject, child_named, question_supports, read_subject, settle_subject
 
 
-def _applied(con: duckdb.DuckDBPyConnection, question: str, intent: str, slots: dict[str, Any]) -> tuple[dict[str, Any], list[Decision], list[str], str]:
-    """``apply_subject`` over ``slots``' typed scope, as the slots the
-    reading wrote (``Scope.to_slots``), the decisions, the names dropped
-    and the intent - the shape these cases were first written against,
-    when the writers mutated a dict (5.0.0: they take and return the Scope)."""
+def _applied(con: duckdb.DuckDBPyConnection, question: str, intent: str, slots: dict[str, Any]) -> tuple[Filtered, list[Decision], list[str], str]:
+    """``apply_subject`` over ``slots``' typed scope: the typed filters the
+    reading wrote, the decisions, the names dropped and the intent. The
+    cases were first written against the slot dict the writers mutated
+    (5.0.0: they take and return the scope; Phase 3, step 4, slice (c): the
+    slot-era projection of it is gone, and a case compares the typed scope
+    to the one its slots type to)."""
     scope = slots_scope(slots)
     applied = apply_subject(read_subject(names_of(con), question, asked(intent), scope), scope, asked=asked(intent))
-    return applied.scope.to_slots(), applied.decisions, applied.dropped, asked_label(applied.asked)
+    return applied.scope, applied.decisions, applied.dropped, asked_label(applied.asked)
 
 
 @pytest.fixture
@@ -282,22 +284,22 @@ def test_apply_subject_writes_the_players_the_question_names_in_the_routers_own_
 
     slots: dict[str, Any] = {"players": ["Shai Gilgeous-Alexander", "Jusuf Nurkic"]}
     after, decisions, dropped, _ = _applied(con, "compare sga and embiid", "player_compare", slots)
-    assert after["players"] == ["Shai Gilgeous-Alexander", "Joel Embiid"] and dropped == []
+    assert after.who.players == ("Shai Gilgeous-Alexander", "Joel Embiid") and dropped == []
     assert [(d.field, d.before, d.after) for d in decisions] == [("players", "Jusuf Nurkic", "Joel Embiid")]
 
     single: dict[str, Any] = {"player": "Ben Simmons"}
     after, decisions, dropped, _ = _applied(con, "how many points does embiid average", "player_stat", single)
-    assert after == {"player": "Joel Embiid"} and [d.field for d in decisions] == ["player"] and dropped == []
+    assert after == slots_scope({"player": "Joel Embiid"}) and [d.field for d in decisions] == ["player"] and dropped == []
 
     kept: dict[str, Any] = {"player": "Nikola Jokic"}
-    assert _applied(con, "jokic ppg", "player_stat", kept)[:3] == ({"player": "Nikola Jokic"}, [], [])
+    assert _applied(con, "jokic ppg", "player_stat", kept)[:3] == (slots_scope({"player": "Nikola Jokic"}), [], [])
 
     # A companion the router filed among the players (player_matchup's pair
     # shape) is the question's own name, kept - the golden caught this as a
     # refusal of "fox vs magic ... without wembyanama" (F157, graded correct).
     pair: dict[str, Any] = {"players": ["De'Aaron Fox", "Victor Wembanyama"]}
     after, decisions, dropped, _ = _applied(con, "de'aaron fox vs magic last five games without wembyanama", "player_matchup", pair)
-    assert after["players"] == ["De'Aaron Fox", "Victor Wembanyama"] and dropped == []
+    assert after.who.players == ("De'Aaron Fox", "Victor Wembanyama") and dropped == []
 
     # A kept router name the question spells differently takes the question's
     # own resolved name: a bare surname completed, a fabricated given name
@@ -305,22 +307,23 @@ def test_apply_subject_writes_the_players_the_question_names_in_the_routers_own_
     # right - _question_derived_player's job, now the reading's.
     bare: dict[str, Any] = {"player": "Jokic"}
     after, decisions, _, _ = _applied(con, "How many 30+ point games did Jokic have this season?", "threshold_count", bare)
-    assert after == {"player": "Nikola Jokic"} and [(d.before, d.after) for d in decisions] == [("Jokic", "Nikola Jokic")]
+    assert after == slots_scope({"player": "Nikola Jokic"}) and [(d.before, d.after) for d in decisions] == [("Jokic", "Nikola Jokic")]
     near: dict[str, Any] = {"player": "Deron Williams"}
-    assert _applied(con, "derozan career points vs knicks", "player_stat", near)[0] == {"player": "DeMar DeRozan"}
+    assert _applied(con, "derozan career points vs knicks", "player_stat", near)[0] == slots_scope({"player": "DeMar DeRozan"})
     right: dict[str, Any] = {"player": "Deron Williams"}
-    assert _applied(con, "deron williams career points", "player_stat", right)[:3] == ({"player": "Deron Williams"}, [], [])
+    assert _applied(con, "deron williams career points", "player_stat", right)[:3] == (slots_scope({"player": "Deron Williams"}), [], [])
 
     # A player the router left OUT (the question names two, the slot holds
     # one) is not put back here - the parser reads every name the question
     # holds - and must not trip anything: the golden crashed on this shape
     # twice.
     omitted: dict[str, Any] = {"player": "Nikola Jokic"}
-    assert _applied(con, "compare jokic and embiid", "player_compare", omitted)[:3] == ({"player": "Nikola Jokic"}, [], [])
+    after, decisions, dropped, _ = _applied(con, "compare jokic and embiid", "player_compare", omitted)
+    assert (after.who.players, decisions, dropped) == (("Nikola Jokic",), [], [])
 
     nobody: dict[str, Any] = {"players": ["Ronaldo Lopes", "Nikola Jokic"]}
     after, decisions, dropped, _ = _applied(con, "compare jokic's fingerprint to last season", "fingerprint", nobody)
-    assert dropped == ["Ronaldo Lopes"] and decisions == [] and after["players"] == ["Ronaldo Lopes", "Nikola Jokic"]  # reported, untouched
+    assert dropped == ["Ronaldo Lopes"] and decisions == [] and after.who.players == ("Ronaldo Lopes", "Nikola Jokic")  # reported, untouched
 
 
 def test_a_typo_of_the_questions_own_is_resolved_from_the_span_the_routers_name_anchors(con: duckdb.DuckDBPyConnection) -> None:
@@ -340,7 +343,7 @@ def test_a_typo_of_the_questions_own_is_resolved_from_the_span_the_routers_name_
 
     typo: dict[str, Any] = {"player": "Payton Prichard", "opponent": "Philadelphia 76ers", "venue": "home"}
     after = _applied(con, "Payton Prichard stats vs 76ers at home including playoffs game log", "game_log", typo)[0]
-    assert after["player"] == "Payton Pritchard" and after["opponent"] == "Philadelphia 76ers"
+    assert (after.who.player, after.cuts.opponent) == ("Payton Pritchard", "Philadelphia 76ers")
 
 
 def test_the_routers_spelling_stands_where_a_whole_word_names_somebody_else(con: duckdb.DuckDBPyConnection) -> None:
@@ -403,7 +406,7 @@ def test_a_supported_name_stays_as_the_router_spelled_it(con: duckdb.DuckDBPyCon
     ):
         after, decisions, dropped, _ = _applied(con, question, intent, slots)
         assert (decisions, dropped) == ([], []), question
-        assert after == slots_scope(slots).to_slots(), question
+        assert after == slots_scope(slots), question
 
 
 def test_a_position_phrase_or_a_filler_word_in_the_player_slot_is_not_a_player(con: duckdb.DuckDBPyConnection) -> None:
@@ -481,12 +484,11 @@ def test_a_team_is_read_in_the_season_the_question_names(franchises: duckdb.Duck
     assert today.cuts.tenure == "Charlotte Hornets" and today.span.career
 
 
-def _assigned(con: duckdb.DuckDBPyConnection, question: str, parent: str, **slots: Any) -> tuple[str, dict[str, Any]]:
-    """The intent and slots the agent hands the template for a question
+def _assigned(con: duckdb.DuckDBPyConnection, question: str, parent: str, **slots: Any) -> tuple[str, Reading]:
+    """The intent and the Reading the agent answers from for a question
     whose reading arrives under ``parent``: the one subject reading, the
     parser's child step and the grammar's rules (``parse._read_route_staged``),
-    the taggers (``parse._tagged``), then its last step (``parse._reading``)
-    - the Reading, as slots."""
+    the taggers (``parse._tagged``), then its last step (``parse._reading``)."""
     from association.query.parse import _read_route_staged, _tagged
 
     # The subject is read once; the rules run once, under the child the
@@ -497,61 +499,76 @@ def _assigned(con: duckdb.DuckDBPyConnection, question: str, parent: str, **slot
     settled, decisions, words, _claims = _read_route_staged(question, stat, asked(parent), who, subject, opponent)
     scope = _tagged(question, settled, who.conditions, model_stat=stat)[0] if not settled.coach else Reading()
     reading = reading_of(con, question, Routed(settled.asked, scope, settle_subject(who, settled.asked, parent=asked(parent), words=words), decisions))
-    return reading.intent, reading.to_slots()
+    return reading.intent, reading
+
+
+def _threshold(reading: Reading) -> float | None:
+    """The count's own line on the whole game (the ``threshold`` slot)."""
+    return next((line.value for line in reading.lines if line.keyed and line.period is None), None)
+
+
+def _below(reading: Reading) -> list[str]:
+    """The lines kept under a number, as typed (the ``below`` slot)."""
+    return [line.as_typed for line in reading.lines if line.narrows and line.below]
+
+
+def _stat(reading: Reading) -> str | None:
+    """The measure's spelling (the ``stat`` slot)."""
+    return reading.measure.as_typed if reading.measure is not None else None
 
 
 def test_a_count_of_games_over_a_threshold_is_assigned_under_its_parents(con: duckdb.DuckDBPyConnection) -> None:
     for parent in ("game_log", "player_stat", "leaderboard", "other"):
-        intent, slots = _assigned(con, "How many 30+ point games did Jokic have this season?", parent, stat="points", player="Jokic", season=2026, season_type=2)
+        intent, reading = _assigned(con, "How many 30+ point games did Jokic have this season?", parent, stat="points", player="Jokic", season=2026, season_type=2)
         assert intent == "threshold_count", parent
-        assert slots["threshold"] == 30 and slots["stat"] == "points" and slots["season"] == 2026 and "Jokic" in slots["player"], slots
+        assert _threshold(reading) == 30 and _stat(reading) == "points" and reading.span.season == 2026 and "Jokic" in (reading.who.player or ""), reading.stated()
     # No "+": "30 pt games" is still thirty or more, and "pt" a point.
-    intent, slots = _assigned(con, "who had the most 30 pt games in 2024", "leaderboard", stat="points", season=2024, season_type=2)
-    assert intent == "threshold_count" and slots["threshold"] == 30 and slots["season"] == 2024 and "player" not in slots
+    intent, reading = _assigned(con, "who had the most 30 pt games in 2024", "leaderboard", stat="points", season=2024, season_type=2)
+    assert intent == "threshold_count" and _threshold(reading) == 30 and reading.span.season == 2024 and reading.who.player is None
     # "How many times" with no season is a career, as the router reads it.
-    intent, slots = _assigned(con, "How many times did wembanyama score 30+ points", "other", stat="points", player="wembanyama")
-    assert intent == "threshold_count" and slots["threshold"] == 30 and slots["span"] == "career" and "season" not in slots
+    intent, reading = _assigned(con, "How many times did wembanyama score 30+ points", "other", stat="points", player="wembanyama")
+    assert intent == "threshold_count" and _threshold(reading) == 30 and reading.span.career and reading.span.season is None
     # A ceiling is the count's own line: no threshold at all, and the
     # attempted column the question names - not the model's nearest made-stat.
-    intent, slots = _assigned(con, "Sga games with under 14 fta in his whole career", "game_log", stat="freeThrowsMade", player="Shai Gilgeous-Alexander", season_type=2)
-    assert intent == "threshold_count" and slots["below"] == ["under 14 fta"] and slots["stat"] == "freeThrowsAttempted" and "threshold" not in slots
+    intent, reading = _assigned(con, "Sga games with under 14 fta in his whole career", "game_log", stat="freeThrowsMade", player="Shai Gilgeous-Alexander", season_type=2)
+    assert intent == "threshold_count" and _below(reading) == ["under 14 fta"] and _stat(reading) == "freeThrowsAttempted" and _threshold(reading) is None
     # "How many games ... N stat" with bare numbers (ISSUES.md #290): the count, its lines the
     # five numbers - where until Phase 3, step 3 it stayed the league's ranking by one stat.
     question = "since 2000-01, how many games have players recorded 33 points, 13 rebounds, 10 assists, 2 blocks, and 2 steals?"
-    intent, slots = _assigned(con, question, "leaderboard", stat="rebounds")
-    assert intent == "threshold_count" and slots["threshold"] == 33 and "player" not in slots
-    intent, slots = _assigned(con, "how many games in 2005-2006 did kobe score under 25 points", "game_log", stat="points", player="Kobe Bryant")
-    assert intent == "threshold_count" and slots["below"] == ["under 25 points"]
+    intent, reading = _assigned(con, question, "leaderboard", stat="rebounds")
+    assert intent == "threshold_count" and _threshold(reading) == 33 and reading.who.player is None
+    intent, reading = _assigned(con, "how many games in 2005-2006 did kobe score under 25 points", "game_log", stat="points", player="Kobe Bryant")
+    assert intent == "threshold_count" and _below(reading) == ["under 25 points"]
 
 
 def test_a_count_with_no_threshold_in_the_text_stays_the_routers_question(con: duckdb.DuckDBPyConnection) -> None:
     """The router's own stages, run under the child, turn a count with no
     threshold into a ranking - so the words alone do not move it."""
-    intent, slots = _assigned(con, "how many times has jokic been named mvp", "other", stat="points", player="Nikola Jokic")
+    intent, reading = _assigned(con, "how many times has jokic been named mvp", "other", stat="points", player="Nikola Jokic")
     # The stages, run under the parent once the child declined, add their own season type.
-    assert intent == "other" and slots == {"stat": "points", "player": "Nikola Jokic", "season_type": 2}
+    assert intent == "other" and reading.filters() == slots_scope({"stat": "points", "player": "Nikola Jokic", "season_type": 2}).filters()
 
 
 def test_two_teams_meeting_is_not_a_count_of_games(con: duckdb.DuckDBPyConnection) -> None:
     """The kind gate: "how many times" on two TEAMS is head_to_head's
     question, the one false positive the ungated grammar had."""
-    intent, slots = _assigned(con, "how many times did the 76ers play boston", "head_to_head", stat="points", teams=["Philadelphia 76ers", "Boston Celtics"])
-    assert intent == "head_to_head" and slots["teams"] == ["Philadelphia 76ers", "Boston Celtics"]
+    intent, reading = _assigned(con, "how many times did the 76ers play boston", "head_to_head", stat="points", teams=["Philadelphia 76ers", "Boston Celtics"])
+    assert intent == "head_to_head" and reading.who.teams == ("Philadelphia 76ers", "Boston Celtics")
 
 
 def test_a_single_game_high_is_assigned_and_its_subject_restored(con: duckdb.DuckDBPyConnection) -> None:
     # The router dropped Kawhi (F093); under a game log nothing restores him,
     # and the single-game high the words settle is his.
-    intent, slots = _assigned(con, "kawhi most threes in a game", "game_log", stat="threePointFieldGoalsMade")
-    assert intent == "single_game_high" and slots["player"] == "Kawhi Leonard" and slots["stat"] == "threePointFieldGoalsMade"
-    intent, slots = _assigned(con, "who had the most assists in a single game this season?", "leaderboard", stat="assists", season=2026, season_type=2)
-    assert intent == "single_game_high" and "player" not in slots
-    intent, slots = _assigned(con, "Diabate career high assists", "player_stat", stat="assists", player="Diabate", season_type=2)
-    assert intent == "single_game_high" and slots["span"] == "career"
+    intent, reading = _assigned(con, "kawhi most threes in a game", "game_log", stat="threePointFieldGoalsMade")
+    assert intent == "single_game_high" and reading.who.player == "Kawhi Leonard" and _stat(reading) == "threePointFieldGoalsMade"
+    intent, reading = _assigned(con, "who had the most assists in a single game this season?", "leaderboard", stat="assists", season=2026, season_type=2)
+    assert intent == "single_game_high" and reading.who.player is None
+    intent, reading = _assigned(con, "Diabate career high assists", "player_stat", stat="assists", player="Diabate", season_type=2)
+    assert intent == "single_game_high" and reading.span.career
     # Precedence: a career's most points IN A GAME is a single-game high
     # before it is a count of games.
-    intent, slots = _assigned(con, "PODZIEMSKI career most points in a game", "game_log", stat="points", player="PODZIEMSKI", season_type=2)
-    assert intent == "single_game_high" and slots["span"] == "career"
+    intent, reading = _assigned(con, "PODZIEMSKI career most points in a game", "game_log", stat="points", player="PODZIEMSKI", season_type=2)
+    assert intent == "single_game_high" and reading.span.career
 
 
 def test_a_single_game_named_without_an_article_is_one_game(con: duckdb.DuckDBPyConnection) -> None:
@@ -561,14 +578,14 @@ def test_a_single_game_named_without_an_article_is_one_game(con: duckdb.DuckDBPy
     24-25" the season's total. Neither names anybody - "single game with"
     is no player called Single - and the kind still gates it: a team's
     single game is not a player's high."""
-    intent, slots = _assigned(con, "this season's single game with the most assists", "leaderboard", stat="assists", season=2026, season_type=2)
-    assert intent == "single_game_high" and slots["stat"] == "assists" and slots["season"] == 2026 and "player" not in slots
-    intent, slots = _assigned(con, "most 3 pointers made in single game 24-25", "leaderboard", stat="threePointFieldGoalsMade", season=2025, season_type=2)
-    assert intent == "single_game_high" and slots["season"] == 2025 and "player" not in slots
-    intent, slots = _assigned(con, "single game with the most points this season", "leaderboard", stat="points", season=2026, season_type=2)
-    assert intent == "single_game_high" and "player" not in slots
-    intent, slots = _assigned(con, "jokic single-game high rebounds", "game_log", stat="rebounds", player="Nikola Jokic", season_type=2)
-    assert intent == "single_game_high" and slots["player"] == "Nikola Jokic" and slots["stat"] == "rebounds"
+    intent, reading = _assigned(con, "this season's single game with the most assists", "leaderboard", stat="assists", season=2026, season_type=2)
+    assert intent == "single_game_high" and _stat(reading) == "assists" and reading.span.season == 2026 and reading.who.player is None
+    intent, reading = _assigned(con, "most 3 pointers made in single game 24-25", "leaderboard", stat="threePointFieldGoalsMade", season=2025, season_type=2)
+    assert intent == "single_game_high" and reading.span.season == 2025 and reading.who.player is None
+    intent, reading = _assigned(con, "single game with the most points this season", "leaderboard", stat="points", season=2026, season_type=2)
+    assert intent == "single_game_high" and reading.who.player is None
+    intent, reading = _assigned(con, "jokic single-game high rebounds", "game_log", stat="rebounds", player="Nikola Jokic", season_type=2)
+    assert intent == "single_game_high" and reading.who.player == "Nikola Jokic" and _stat(reading) == "rebounds"
     intent, _ = _assigned(con, "celtics most points single game", "other", stat="points", team="Boston Celtics", season_type=2)
     assert intent == "other"
     # A plural is games, not one game.
@@ -578,50 +595,50 @@ def test_a_single_game_named_without_an_article_is_one_game(con: duckdb.DuckDBPy
 
 def test_a_history_over_several_seasons_is_assigned_with_the_seasons_count(con: duckdb.DuckDBPyConnection) -> None:
     for parent in ("player_stat", "game_log", "other"):
-        intent, slots = _assigned(con, "Klay Thompson's 3pt percentage over the past 4 seasons", parent, stat="threePointFieldGoalPct", player="Klay Thompson", season_type=2)
+        intent, reading = _assigned(con, "Klay Thompson's 3pt percentage over the past 4 seasons", parent, stat="threePointFieldGoalPct", player="Klay Thompson", season_type=2)
         assert intent == "player_history", parent
-        # `limit` counts seasons for a history; a game log's own `since` for
-        # the same words does not survive into a template that refuses it.
-        assert slots["limit"] == 4 and "since" not in slots and "season" not in slots, slots
-    intent, slots = _assigned(con, "show me lebron's 2pt percentage for the past 10 years", "player_stat", stat="fieldGoalPct", player="LeBron James", season_type=2)
-    assert intent == "player_history" and slots["limit"] == 10 and slots["stat"] == "twoPointFieldGoalPct"
-    intent, slots = _assigned(con, "Show me luka's avg assists in each year since he joined the league", "player_stat", stat="assists", player="Luka Doncic", season_type=2)
-    assert intent == "player_history" and slots["span"] == "career"
+        # The window's count is of seasons for a history; a game log's own
+        # `since` for the same words does not survive into a reader that refuses it.
+        assert (reading.window.count, reading.window.of, reading.span.since, reading.span.season) == (4, "seasons", None, None), reading.stated()
+    intent, reading = _assigned(con, "show me lebron's 2pt percentage for the past 10 years", "player_stat", stat="fieldGoalPct", player="LeBron James", season_type=2)
+    assert intent == "player_history" and reading.window.count == 10 and _stat(reading) == "twoPointFieldGoalPct"
+    intent, reading = _assigned(con, "Show me luka's avg assists in each year since he joined the league", "player_stat", stat="assists", player="Luka Doncic", season_type=2)
+    assert intent == "player_history" and reading.span.career
     # A count over the past two seasons is the count, not a history.
-    intent, slots = _assigned(con, "how many 20+ point games did SGA have in the past two seasons?", "game_log", stat="points", player="Shai Gilgeous-Alexander", season_type=2)
-    assert intent == "threshold_count" and slots["threshold"] == 20 and slots["since"] == current_season() - 1 and "limit" not in slots
+    intent, reading = _assigned(con, "how many 20+ point games did SGA have in the past two seasons?", "game_log", stat="points", player="Shai Gilgeous-Alexander", season_type=2)
+    assert intent == "threshold_count" and _threshold(reading) == 20 and reading.span.since == current_season() - 1 and reading.window.count is None
     # A team ranking over ten years names no player to read a history of.
     intent, _ = _assigned(con, "which team won the championship for the past 10 years", "team_leaderboard", stat="record")
     assert intent == "team_leaderboard"
 
 
 def test_shot_distance_is_assigned_for_a_player_and_not_for_the_league(con: duckdb.DuckDBPyConnection) -> None:
-    intent, slots = _assigned(con, "How far away does Wembanyama shoot from?", "player_stat", stat="fieldGoalsMade", player="Victor Wembanyama")
-    assert intent == "shot_distance" and slots["player"] == "Victor Wembanyama"
+    intent, reading = _assigned(con, "How far away does Wembanyama shoot from?", "player_stat", stat="fieldGoalsMade", player="Victor Wembanyama")
+    assert intent == "shot_distance" and reading.who.player == "Victor Wembanyama"
     # A leaderboard's own stage drops the filler player a distance question
     # arrives with; the reading puts the named one back for the template
     # that cannot answer without him.
-    intent, slots = _assigned(con, "what was steph curry's avg 3pt shot distance", "leaderboard", stat="shot_distance")
-    assert intent == "shot_distance" and slots["player"] == "Stephen Curry"
-    intent, slots = _assigned(con, "who lead the league in avg 3 point distance", "leaderboard", stat="shot_distance")
-    assert intent == "leaderboard" and "player" not in slots
+    intent, reading = _assigned(con, "what was steph curry's avg 3pt shot distance", "leaderboard", stat="shot_distance")
+    assert intent == "shot_distance" and reading.who.player == "Stephen Curry"
+    intent, reading = _assigned(con, "who lead the league in avg 3 point distance", "leaderboard", stat="shot_distance")
+    assert intent == "leaderboard" and reading.who.player is None
 
 
 def test_a_teams_record_when_a_player_reached_a_threshold_is_assigned(con: duckdb.DuckDBPyConnection) -> None:
     for parent in ("team_record", "other", "game_log"):
-        intent, slots = _assigned(con, "what was the sixers record when maxey scored 15+ points?", parent, stat="points", team="Philadelphia 76ers")
+        intent, reading = _assigned(con, "what was the sixers record when maxey scored 15+ points?", parent, stat="points", team="Philadelphia 76ers")
         assert intent == "record_when", parent
-        assert slots["threshold"] == 15 and slots["stat"] == "points" and "maxey" in slots["player"].lower() and slots["team"] == "Philadelphia 76ers", slots
+        assert _threshold(reading) == 15 and _stat(reading) == "points" and "maxey" in (reading.who.player or "").lower() and reading.who.team == "Philadelphia 76ers", reading.stated()
     # No player at all from the model, and no "X scored" grammar for the
     # router's own restore to read: the reading's player, since the
     # template cannot answer without one.
-    intent, slots = _assigned(con, "Sga record 36 plus points", "team_record", stat="points", season_type=2)
-    assert intent == "record_when" and slots["threshold"] == 36 and slots["player"] == "Shai Gilgeous-Alexander"
+    intent, reading = _assigned(con, "Sga record 36 plus points", "team_record", stat="points", season_type=2)
+    assert intent == "record_when" and _threshold(reading) == 36 and reading.who.player == "Shai Gilgeous-Alexander"
     # A player's games won: his team's record in the games he played, with
     # no threshold - and a TEAM's games won stay the team's own record.
     for parent in ("team_record", "game_log", "player_stat"):
-        intent, slots = _assigned(con, "how many playoff games has embiid won?", parent, stat="wins", team="Philadelphia 76ers", season_type=3)
-        assert intent == "record_when" and slots["player"] == "Joel Embiid" and slots["season_type"] == 3 and "threshold" not in slots, (parent, slots)
+        intent, reading = _assigned(con, "how many playoff games has embiid won?", parent, stat="wins", team="Philadelphia 76ers", season_type=3)
+        assert intent == "record_when" and reading.who.player == "Joel Embiid" and reading.span.season_type == 3 and _threshold(reading) is None, (parent, reading.stated())
     # ... and read by the parser itself, with no team slot: the router once
     # filed the subject as an outlook's "team" named Joel Embiid (day5), a
     # shape the parser never writes.
@@ -632,17 +649,17 @@ def test_a_teams_record_when_a_player_reached_a_threshold_is_assigned(con: duckd
 
 
 def test_a_streak_is_assigned_with_its_kind(con: duckdb.DuckDBPyConnection) -> None:
-    intent, slots = _assigned(con, "what was the sixers longest winstreak this year?", "team_record", team="Philadelphia 76ers", season=2026, season_type=2)
-    assert intent == "streak" and slots["kind"] == "win" and slots["team"] == "Philadelphia 76ers"
-    intent, slots = _assigned(con, "Longest losing streak in the NBA this season", "team_leaderboard", stat="record", season=2026, season_type=2)
-    assert intent == "streak" and slots["kind"] == "loss"
+    intent, reading = _assigned(con, "what was the sixers longest winstreak this year?", "team_record", team="Philadelphia 76ers", season=2026, season_type=2)
+    assert intent == "streak" and reading.measure is not None and reading.measure.won is True and reading.who.team == "Philadelphia 76ers"
+    intent, reading = _assigned(con, "Longest losing streak in the NBA this season", "team_leaderboard", stat="record", season=2026, season_type=2)
+    assert intent == "streak" and reading.measure is not None and reading.measure.won is False
 
 
 def test_a_players_splits_are_assigned_with_the_split(con: duckdb.DuckDBPyConnection) -> None:
-    intent, slots = _assigned(con, "Nikola Jokic home and away splits", "player_stat", stat="points", player="Nikola Jokic")
-    assert intent == "player_splits" and slots["split"] == "home_away" and "venue" not in slots
-    intent, slots = _assigned(con, "Giannis Antetokounmpo stats by month", "player_stat", stat="points", player="Giannis Antetokounmpo")
-    assert intent == "player_splits" and slots["split"] == "month"
+    intent, reading = _assigned(con, "Nikola Jokic home and away splits", "player_stat", stat="points", player="Nikola Jokic")
+    assert intent == "player_splits" and reading.split == "home_away" and reading.cuts.venue is None
+    intent, reading = _assigned(con, "Giannis Antetokounmpo stats by month", "player_stat", stat="points", player="Giannis Antetokounmpo")
+    assert intent == "player_splits" and reading.split == "month"
     # A team's record by month names no player to split.
     intent, _ = _assigned(con, "knicks record by month", "team_record", team="New York Knicks")
     assert intent == "team_record"
@@ -652,17 +669,19 @@ def test_a_child_the_router_chose_itself_stands(con: duckdb.DuckDBPyConnection) 
     """With the children still in the router's enum, a child it emitted is
     never re-read: the grammar fires under a parent only, so nothing recorded
     under a child moves (the golden's 308 rows are the proof at scale)."""
-    intent, slots = _assigned(con, "PODZIEMSKI career 30 point games in a single game", "threshold_count", stat="points", threshold=-1, player="PODZIEMSKI", season_type=2, span="career")
-    assert intent == "threshold_count" and slots["threshold"] == 30  # the words' line; the model-era -1 is dropped at the stages' door
+    intent, reading = _assigned(con, "PODZIEMSKI career 30 point games in a single game", "threshold_count", stat="points", threshold=-1, player="PODZIEMSKI", season_type=2, span="career")
+    assert intent == "threshold_count" and _threshold(reading) == 30  # the words' line; the model-era -1 is dropped at the stages' door
 
 
 def test_a_router_name_that_is_no_name_leaves_the_slots(con: duckdb.DuckDBPyConnection) -> None:
     """Day5 after the 5.0.0 prompt shrink: with no count or ranking example
     in its prompt, the model files the ranking's own words as the player."""
-    intent, slots = _assigned(con, "who had the most 30 pt games in 2024", "leaderboard", stat="points", player="most", season=2024, season_type=2)
-    assert intent == "threshold_count" and "player" not in slots and slots["threshold"] == 30
-    intent, slots = _assigned(con, "Who had the most 30+ point games this season?", "leaderboard", stat="threePointFieldGoalsMade", player="most 30+ point games", limit=1, season=2026, season_type=2)
-    assert intent == "threshold_count" and "player" not in slots and slots["stat"] == "points" and slots["threshold"] == 30 and "limit" not in slots
+    intent, reading = _assigned(con, "who had the most 30 pt games in 2024", "leaderboard", stat="points", player="most", season=2024, season_type=2)
+    assert intent == "threshold_count" and reading.who.player is None and _threshold(reading) == 30
+    intent, reading = _assigned(
+        con, "Who had the most 30+ point games this season?", "leaderboard", stat="threePointFieldGoalsMade", player="most 30+ point games", limit=1, season=2026, season_type=2
+    )
+    assert intent == "threshold_count" and reading.who.player is None and _stat(reading) == "points" and _threshold(reading) == 30 and reading.window.count is None
     s = _read(con, "Most points in 15th season played", "player_stat", player="Most Player in 15th Season Played", stat="points")
     assert s.kind == "everyone" and s.filler == ("Most Player in 15th Season Played",)
     # A real name ending in a rank word is still a name.
@@ -676,13 +695,13 @@ def test_a_position_group_is_the_subject_and_never_a_player_slot(con: duckdb.Duc
     refuses a position subject itself, and the compiler reads the group off
     the subject."""
     question = "highest 3 point percentage in a season by a shooting guard with at least 400 attempts"
-    intent, slots = _assigned(con, question, "leaderboard", stat="threePointFieldGoalPct", season_type=2)
-    assert intent == "leaderboard" and "player" not in slots
+    intent, reading = _assigned(con, question, "leaderboard", stat="threePointFieldGoalPct", season_type=2)
+    assert intent == "leaderboard" and reading.who.player is None
     s = read_subject(names_of(con), question, asked("leaderboard"), slots_scope({"stat": "threePointFieldGoalPct"}))
     assert s.kind == "position" and s.position == "SG"
     # A team-only intent reads no player, so nothing is written there.
-    _, slots = _assigned(con, "which team has the best centers", "team_leaderboard", stat="record", season_type=2)
-    assert "player" not in slots
+    _, reading = _assigned(con, "which team has the best centers", "team_leaderboard", stat="record", season_type=2)
+    assert reading.who.player is None
 
 
 # ---------------------------------------------------------------------------
@@ -712,19 +731,20 @@ def test_a_companions_role_is_read_off_its_phrase(con: duckdb.DuckDBPyConnection
 
 
 def test_a_start_or_a_line_is_written_as_a_condition_where_the_template_honors_it(con: duckdb.DuckDBPyConnection) -> None:
-    intent, slots = _assigned(con, "jaylen brown game log with tatum starting", "game_log", player="Jaylen Brown", with_player=["tatum"])
-    assert intent == "game_log" and slots["conditions"] == [{"player": "Jayson Tatum", "side": "own", "predicate": "started"}]
+    intent, reading = _assigned(con, "jaylen brown game log with tatum starting", "game_log", player="Jaylen Brown", with_player=["tatum"])
+    assert intent == "game_log" and reading.companions == (Companion(player="Jayson Tatum", predicate="started"),)
     # "in games X did something" is a companion phrase too, the role after the name.
-    intent, slots = _assigned(con, "jaylen brown stats in games tatum scored 30+ points", "player_stat", player="Jaylen Brown", stat="points")
-    assert slots["conditions"] == [{"player": "Jayson Tatum", "side": "own", "predicate": "reached", "stat": "points", "threshold": 30}]
-    intent, slots = _assigned(con, "jaylen brown ppg when tatum scores 30+ points", "player_stat", player="Jaylen Brown", stat="points")
-    assert slots["conditions"] == [{"player": "Jayson Tatum", "side": "own", "predicate": "reached", "stat": "points", "threshold": 30}]
-    # An absence stays the router's `without`; the comparison templates read it as the split's two sides.
-    intent, slots = _assigned(con, "celtics record without tatum", "with_without", team="Boston Celtics", without=["tatum"])
-    assert "conditions" not in slots and slots["without"] == ["Jayson Tatum"]  # the stages write the one reading's companion, resolved
-    # with_without reads a start as the split's own side (step C).
-    intent, slots = _assigned(con, "celtics record when tatum starts", "with_without", team="Boston Celtics", with_player=["tatum"])
-    assert slots["conditions"] == [{"player": "Jayson Tatum", "side": "own", "predicate": "started"}] and "with_player" not in slots  # a start is the condition, not a presence
+    reached = [("Jayson Tatum", "own", "reached", "points", 30)]
+    intent, reading = _assigned(con, "jaylen brown stats in games tatum scored 30+ points", "player_stat", player="Jaylen Brown", stat="points")
+    assert [(c.player, c.side, c.predicate, c.line.measure if c.line is not None else None, c.line.value if c.line is not None else None) for c in reading.companions] == reached
+    intent, reading = _assigned(con, "jaylen brown ppg when tatum scores 30+ points", "player_stat", player="Jaylen Brown", stat="points")
+    assert [(c.player, c.side, c.predicate, c.line.measure if c.line is not None else None, c.line.value if c.line is not None else None) for c in reading.companions] == reached
+    # An absence is the one reading's companion, resolved; the split reads it as its two sides.
+    intent, reading = _assigned(con, "celtics record without tatum", "with_without", team="Boston Celtics", without=["tatum"])
+    assert reading.companions == (Companion(player="Jayson Tatum", predicate="absent"),)
+    # with_without reads a start as the split's own side (step C): a start is the condition, not a presence.
+    intent, reading = _assigned(con, "celtics record when tatum starts", "with_without", team="Boston Celtics", with_player=["tatum"])
+    assert reading.companions == (Companion(player="Jayson Tatum", predicate="started"),)
 
 
 def test_a_team_with_a_companions_line_is_record_when_with_him_as_the_player(con: duckdb.DuckDBPyConnection) -> None:
@@ -732,16 +752,16 @@ def test_a_team_with_a_companions_line_is_record_when_with_him_as_the_player(con
     points": the 76ers' record in the games Maxey reached 20 - record_when
     with Maxey as its player, whatever the router filed (the player's own
     splits; a line for an invented Joel Embiid)."""
-    intent, slots = _assigned(con, "show me splits for the sixers when maxey scores 20+ points", "player_splits", stat="points", player="Maxey")
-    assert intent == "record_when" and "maxey" in slots["player"].lower() and slots["team"] == "Philadelphia 76ers" and (slots["stat"], slots["threshold"]) == ("points", 20)
-    assert "season" not in slots and slots["season_type"] == 2  # no season named: the span tagger's reading, carried onto the rewritten scope
-    intent, slots = _assigned(
+    intent, reading = _assigned(con, "show me splits for the sixers when maxey scores 20+ points", "player_splits", stat="points", player="Maxey")
+    assert intent == "record_when" and "maxey" in (reading.who.player or "").lower() and reading.who.team == "Philadelphia 76ers" and (_stat(reading), _threshold(reading)) == ("points", 20)
+    assert reading.span.season is None and reading.span.season_type == 2  # no season named: the span tagger's reading, carried onto the rewritten scope
+    intent, reading = _assigned(
         con, "show me splits for the sixers when maxey scores 20+ points", "record_when", stat="points", player="Joel Embiid", opponent="Philadelphia 76ers", season=2026, season_type=2, threshold=20
     )
-    assert intent == "record_when" and "maxey" in slots["player"].lower() and slots["team"] == "Philadelphia 76ers" and "opponent" not in slots
+    assert intent == "record_when" and "maxey" in (reading.who.player or "").lower() and reading.who.team == "Philadelphia 76ers" and reading.cuts.opponent is None
     # A player subject keeps his own question: his splits, the condition beside him.
-    intent, slots = _assigned(con, "jaylen brown splits when tatum scores 30+ points", "player_splits", stat="points", player="Jaylen Brown")
-    assert intent == "player_splits" and slots["player"] == "Jaylen Brown"
+    intent, reading = _assigned(con, "jaylen brown splits when tatum scores 30+ points", "player_splits", stat="points", player="Jaylen Brown")
+    assert intent == "player_splits" and reading.who.player == "Jaylen Brown"
 
 
 def test_a_companion_the_router_named_nobody_for_is_read_from_the_question(con: duckdb.DuckDBPyConnection) -> None:
@@ -841,14 +861,14 @@ def test_the_paraphrases_wordings_of_the_children_are_assigned(con: duckdb.DuckD
     over the recorded corpus (``intent-shrink/port_check.py``)."""
     intent, _ = _assigned(con, "in this season's games, who recorded the highest number of assists in one match?", "leaderboard", stat="assists", season=2026, season_type=2)
     assert intent == "single_game_high"
-    intent, slots = _assigned(con, "who had the highest number of 30-point games in 2024", "leaderboard", stat="points", season=2024, season_type=2)
-    assert intent == "threshold_count" and slots["threshold"] == 30
-    intent, slots = _assigned(con, "games where Klay Thompson made at least 2 threes including playoffs", "game_log", stat="threePointFieldGoalsMade", player="Klay Thompson", season_type=2)
-    assert intent == "threshold_count" and slots["threshold"] == 2
+    intent, reading = _assigned(con, "who had the highest number of 30-point games in 2024", "leaderboard", stat="points", season=2024, season_type=2)
+    assert intent == "threshold_count" and _threshold(reading) == 30
+    intent, reading = _assigned(con, "games where Klay Thompson made at least 2 threes including playoffs", "game_log", stat="threePointFieldGoalsMade", player="Klay Thompson", season_type=2)
+    assert intent == "threshold_count" and _threshold(reading) == 2
     intent, _ = _assigned(con, "Display Luka's average assists from year to year", "player_stat", stat="assists", player="Luka Doncic", season_type=2)
     assert intent == "player_history"
-    intent, slots = _assigned(con, "36-plus points SGA record", "player_stat", stat="points", season_type=2)
-    assert intent == "record_when" and slots["threshold"] == 36 and slots["player"] == "Shai Gilgeous-Alexander"
+    intent, reading = _assigned(con, "36-plus points SGA record", "player_stat", stat="points", season_type=2)
+    assert intent == "record_when" and _threshold(reading) == 36 and reading.who.player == "Shai Gilgeous-Alexander"
     # "per game" is an average, never one game: the season ranking stands.
     intent, _ = _assigned(con, "which player has the highest points per game average in the league?", "leaderboard", stat="points", season_type=2)
     assert intent == "leaderboard"

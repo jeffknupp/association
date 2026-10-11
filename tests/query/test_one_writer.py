@@ -191,7 +191,23 @@ def league() -> duckdb.DuckDBPyConnection:
     return con
 
 
-_SIDES = ("player", "players", "team", "opponent", "without")
+def _sides_of(reading: Reading) -> dict[str, Any]:
+    """Each side the reading filed, by the slot it was carried in: one player
+    as ``player`` and two or more as ``players``, the one team as ``team``,
+    the opponent, and the teammates absent as ``without``."""
+    sides: dict[str, Any] = {}
+    if len(reading.who.players) == 1:
+        sides["player"] = reading.who.players[0]
+    elif reading.who.players:
+        sides["players"] = reading.who.players
+    if reading.who.team is not None:
+        sides["team"] = reading.who.team
+    if reading.cuts.opponent is not None:
+        sides["opponent"] = reading.cuts.opponent
+    absent = tuple(c.player for c in reading.companions if c.absent)
+    if absent:
+        sides["without"] = absent
+    return sides
 
 
 @pytest.mark.parametrize(
@@ -231,5 +247,5 @@ def test_the_parser_files_each_side_where_the_router_scrambled_it(league: duckdb
     from association.query.parse import read_route
 
     reading = read_route(names_of(league), question, names, "")
-    got = {key: tuple(value) if isinstance(value, list) else value for key, value in reading.to_slots().items() if key in _SIDES}
+    got = _sides_of(reading)
     assert (asked_label(reading.asked), got, list(reading.misread)) == (intent, sides, [])

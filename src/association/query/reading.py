@@ -14,9 +14,12 @@ point from it; step (b) made the parser that builds it; step (d) typed it -
 the scoping as fields rather than a slot dict, every field a closed type the
 checkers hold every construction to. Since Phase 3, step 4, slice (b) those
 fields are the Reading's own (:class:`Filtered`, the base every planned query
-inherits too), the ``Scope`` record they stood on is gone with its slot door
-(``tests/slots.py`` keeps it for the tests), and :meth:`Filtered.to_slots`
-is the way back to the slot shape a reading is recorded and traced in.
+inherits too), and the ``Scope`` record they stood on is gone with its slot
+door (``tests/slots.py`` keeps it for the tests). Since slice (c) the typed
+values are the shape a reading is recorded and traced in: the projection
+back to the slot dict (``to_slots``, ``scope_record``, ``projected``) went
+with it, and what a decline still says in slot names is read off the typed
+values (:func:`cell_slots`).
 
 .. versionadded:: 5.0.0
 """
@@ -24,7 +27,7 @@ is the way back to the slot shape a reading is recorded and traced in.
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass, field, fields, replace
+from dataclasses import MISSING, dataclass, field, fields, is_dataclass, replace
 from typing import TYPE_CHECKING, Any, ClassVar, Literal, get_args
 
 from association.query import lexicon
@@ -277,24 +280,6 @@ class Span:
         season was named."""
         return replace(self, career=True)
 
-    def to_slots(self) -> dict[str, Any]:
-        """The six slots, exactly as the stages wrote them until Phase 3,
-        step 2 - the projection every recorded reading is compared through."""
-        out: dict[str, Any] = {}
-        if self.season is not None:
-            out["season"] = self.season
-        if self.season_type is not None:
-            out["season_type"] = self.season_type
-        if self.both:
-            out["season_type_unstated"] = True
-        if self.career:
-            out["span"] = "career"
-        if self.since is not None:
-            out["since"] = self.since
-        if self.until is not None:
-            out["until"] = self.until
-        return out
-
 
 #: The slot name each window cell was declared and refused under until
 #: Phase 3, step 2 - the name a decline still says ("cannot honor
@@ -383,26 +368,12 @@ class Window:
         sets beyond ``honored`` - the names a decline says."""
         return [slot for cell in self.cells() - honored for slot in _WINDOW_CELL_SLOT_NAMES[cell]]
 
-    def to_slots(self) -> dict[str, Any]:
-        """The four slots, exactly as the stages wrote them until Phase 3,
-        step 2 - the projection every recorded reading is compared through."""
-        out: dict[str, Any] = {}
-        if self.by is not None:
-            out["ranked_by"] = self.by
-        if self.rank is not None:
-            out["rank"] = self.rank
-        if self.order is not None:
-            out["order"] = self.order
-        if self.count is not None:
-            out["limit"] = self.count
-        return out
-
 
 #: The slot name each cut was declared and refused under until Phase 3,
 #: step 2 - the name a decline still says ("cannot honor ['situation']"),
 #: until the decline-to-Cause commit rewords it. ``own_team`` is the
 #: tenure's slot name; the rest are their own. The order is the old
-#: ``Scope``'s field order, which :meth:`Filtered.to_slots` keeps.
+#: ``Scope``'s field order, which a decline's list keeps.
 _CUT_SLOT_NAMES: dict[str, str] = {
     "opponent": "opponent",
     "tenure": "own_team",
@@ -529,17 +500,6 @@ class Cuts:
         says."""
         return [_CUT_SLOT_NAMES[cell] for cell in _CUT_SLOT_NAMES if cell in self.cells() and cell not in honored]
 
-    def to_slots(self) -> dict[str, Any]:
-        """The eight slots, exactly as the stages wrote them until Phase 3,
-        step 2 (the situation as its words), in the old field order - the
-        projection every recorded reading is compared through."""
-        out: dict[str, Any] = {}
-        for cell, slot in _CUT_SLOT_NAMES.items():
-            value = getattr(self, cell)
-            if value is not None:
-                out[slot] = value.text if isinstance(value, Situation) else value
-        return out
-
 
 def situation_of(text: str) -> Situation:
     """The :class:`Situation` ``text`` names: its words, and the calendar
@@ -614,11 +574,6 @@ class Period:
         the cell beyond ``honored`` - the name a decline says."""
         return [] if "period" in honored else ["half" if self.half else "period"]
 
-    def to_slots(self) -> dict[str, Any]:
-        """The one slot, exactly as the stages wrote it until Phase 3, step
-        2 - the projection every recorded reading is compared through."""
-        return {"half": self.number} if self.half else {"period": self.number}
-
 
 #: The slot names the line family's cells were declared and refused under
 #: until Phase 3, step 2 - the names a decline still says ("cannot honor
@@ -672,8 +627,7 @@ class Line:
     #: whole game.
     period: Period | None = None
     #: The characters the line was read from, as typed and casefolded
-    #: ("20+ points", "under 14 fta"): what a refusal quotes, and what the
-    #: slot-era projection prints (:meth:`Filtered.to_slots`). Empty for a
+    #: ("20+ points", "under 14 fta"): what a refusal quotes. Empty for a
     #: line built by hand rather than read.
     as_typed: str = ""
     #: Whether the shape is KEYED on this line - a count of the games over
@@ -740,23 +694,6 @@ class Line:
         if self.measure is None:
             raise ScopeError(f"a line on no stat ({self.as_typed!r}) is no predicate")
         return (self.measure, self.op, self.value)
-
-    def to_slot(self) -> dict[str, Any]:
-        """The ``period_condition`` slot value this line was recorded as until
-        Phase 3, step 2 (a line in a quarter or half), the projection every
-        recorded reading is compared through."""
-        if self.period is None or self.measure is None:
-            raise ScopeError(f"{self!r} is no period condition")
-        where = {"half": self.period.number} if self.period.half else {"period": self.period.number}
-        return {"stat": self.measure, "threshold": self.value, "op": self.op, **where}
-
-    def to_period_record(self) -> dict[str, Any]:
-        """The ``period_condition`` value as a recorded reading held it until
-        Phase 3, step 2 - every field of the record it was, a quarter's
-        ``half`` and a half's ``period`` as None."""
-        if self.period is None or self.measure is None:
-            raise ScopeError(f"{self!r} is no period condition")
-        return {"stat": self.measure, "threshold": self.value, "op": self.op, "period": None if self.period.half else self.period.number, "half": self.period.number if self.period.half else None}
 
 
 Predicate = Literal["played", "absent", "started", "bench", "reached"]
@@ -834,18 +771,6 @@ class Companion:
             line = {key: value for key, value in (("stat", self.line.measure), ("threshold", self.line.value)) if value is not None}
         return {"player": self.player, "side": self.side, "predicate": self.predicate, **line}
 
-    def to_record(self) -> dict[str, Any]:
-        """The ``conditions`` entry as a recorded reading held it until Phase
-        3, step 2 - every field of the record it was, ``stat`` and
-        ``threshold`` None for any role but ``reached``."""
-        return {
-            "player": self.player,
-            "side": self.side,
-            "predicate": self.predicate,
-            "stat": self.line.measure if self.line is not None else None,
-            "threshold": self.line.value if self.line is not None else None,
-        }
-
 
 MeasureHow = Literal["per_game", "total", "per_100", "per_90"]
 """How a measure is asked for: a figure per game, a season total, a rate per
@@ -904,8 +829,7 @@ class Measure:
     key: str | None = None
     #: How the reader wrote the measure: the model's key, the grammar's,
     #: a stage's spelling or a team metric's alias text as the words had it
-    #: - what a refusal prints ("no team metric for stat 'ppg'") and what
-    #: the ``stat`` slot projects to (:meth:`Filtered.to_slots`). None where
+    #: - what a refusal prints ("no team metric for stat 'ppg'"). None where
     #: no measure was named.
     as_typed: str | None = None
     #: How the figure is asked for (:data:`MeasureHow`); None where the
@@ -1008,53 +932,6 @@ class Measure:
             beside=tuple(fields or ()),
         )
 
-    def to_slots(self) -> dict[str, Any]:
-        """The seven slots this value was recorded as until Phase 3, step 2,
-        in the field order they stood in - each only where set, as the
-        slot dict held them."""
-        out: dict[str, Any] = {}
-        folded_side, folded_how = self._folded()
-        if self.as_typed is not None:
-            out["stat"] = self.as_typed
-        if self.beside:
-            out["fields"] = list(self.beside)
-        if self.how == "per_game" and self.unit is None and folded_how is None:
-            out["per_game"] = True
-        if self.unit is not None:
-            out["rate"] = self.unit
-        if self.side is not None and folded_side is None:
-            out["side"] = self.side
-        if self.shot_value is not None:
-            out["shot_value"] = self.shot_value
-        if self.won is not None:
-            out["kind"] = "win" if self.won else "loss"
-        return out
-
-    def _folded(self) -> tuple[MeasureSide | None, MeasureHow | None]:
-        """The side and the rate the key's own spelling folds in
-        (``netpoints_defense_per_100``, ``avg_game_score``), which the slots
-        never carried apart from it - left out of the projection."""
-        from association.query.measure import key_of  # the catalog; `measure` imports this module's types
-
-        if self.as_typed is None:
-            return None, None
-        _key, _whose, side, how, _category = key_of(self.as_typed)
-        return side, how
-
-    def projected(self) -> dict[str, Any]:
-        """Every one of the seven slots, at its default or not, in field
-        order (:meth:`Filtered.scope_record`)."""
-        folded_side, folded_how = self._folded()
-        return {
-            "stat": self.as_typed,
-            "fields": self.beside,
-            "per_game": self.how == "per_game" and self.unit is None and folded_how is None,
-            "rate": self.unit,
-            "side": self.side if folded_side is None else None,
-            "shot_value": self.shot_value,
-            "kind": None if self.won is None else ("win" if self.won else "loss"),
-        }
-
 
 _UNIT_HOW: tuple[tuple[str, MeasureHow], ...] = (("total", "total"), ("90", "per_90"), ("100", "per_100"), ("possession", "per_100"), ("adjusted", "per_100"))
 
@@ -1067,19 +944,6 @@ def _how_of_unit(unit: str) -> MeasureHow | None:
         if word in unit.casefold():
             return how
     return None
-
-
-#: The seven slots the measure was carried as until Phase 3, step 2, in
-#: the order they stood among the filters' fields - where the projection
-#: emits them (:meth:`Filtered.scope_record`), with the window's ``ranked_by``
-#: after ``fields`` and its ``rank`` after ``kind`` as before.
-_MEASURE_SLOT_NAMES = frozenset({"stat", "fields", "per_game", "rate", "side", "shot_value", "kind"})
-
-
-#: The four slot names the subject was carried as until Phase 3, step 2,
-#: in the order they stood among the filters' fields - the names the
-#: subject's door still takes (:meth:`Subject.from_slots`).
-_SUBJECT_SLOT_NAMES = ("player", "players", "team", "teams")
 
 
 @dataclass(frozen=True)
@@ -1124,8 +988,8 @@ class Subject:
     nobody), a team beside a position group on 9, a position group under a
     ``player`` kind on 1. One player is never carried in the plural slot,
     two never in the singular, and a list of teams never at all (players:
-    1,439 one, 122 two, 1 three; teams: 382 one), so the count says which
-    slot a name was carried in (:meth:`to_slots`). No cell: no relation table
+    1,439 one, 122 two, 1 three; teams: 382 one), so the count said which
+    slot a name was carried in. No cell: no relation table
     declares, honors or refuses a name - a reader narrows to whom it is
     about, and a name nothing resolves is the relation's refusal
     (:attr:`CELLS`).
@@ -1185,30 +1049,6 @@ class Subject:
         teams = tuple(dict.fromkeys(_slot_names(slots.get("team")) + _slot_names(slots.get("teams"))))
         return cls(kind=_kind_named(players, teams), players=players, teams=teams)
 
-    def to_slots(self) -> dict[str, Any]:
-        """The four slots this value was recorded as until Phase 3, step 2,
-        each only where set: one player as ``player`` and two or more as
-        ``players``, one team as ``team`` and two or more as ``teams`` (the
-        parser filled them so; a slot dict that listed ONE name in a
-        plural slot, or split two teams between ``team`` and ``teams``,
-        comes back as the count says)."""
-        out: dict[str, Any] = {}
-        if len(self.players) == 1:
-            out["player"] = self.players[0]
-        elif self.players:
-            out["players"] = list(self.players)
-        if len(self.teams) == 1:
-            out["team"] = self.teams[0]
-        elif self.teams:
-            out["teams"] = list(self.teams)
-        return out
-
-    def slot_record(self) -> dict[str, Any]:
-        """Every one of the four slots, at its default or not, in field
-        order (:meth:`Filtered.scope_record`)."""
-        slots = self.to_slots()
-        return {"player": slots.get("player"), "players": tuple(slots.get("players", ())), "team": slots.get("team"), "teams": tuple(slots.get("teams", ()))}
-
     def without_position(self) -> Subject:
         """This subject with no position group: what a point that honors
         none reads (``point._read_point``)."""
@@ -1262,9 +1102,25 @@ class Claim:
 
 
 #: The typed filters' field names, in the order the Scope held them - the
-#: order the slot-era projection emits them in (:meth:`Filtered.to_slots`,
-#: :meth:`Filtered.scope_record`).
+#: order :meth:`Filtered.filters` hands them in and a record holds them.
 _FILTER_FIELDS: tuple[str, ...] = ("who", "cuts", "companions", "lines", "measure", "span", "split", "period", "window")
+
+
+def _set_fields(value: Any) -> Any:
+    """``value`` as what it sets: a dataclass as the fields away from their
+    defaults (each the same way), a tuple as the list of its values so
+    shown, anything else as it is (:meth:`Filtered.stated`)."""
+    if isinstance(value, tuple):
+        return [_set_fields(each) for each in value]
+    if not (is_dataclass(value) and not isinstance(value, type)):
+        return value
+    out: dict[str, Any] = {}
+    for f in fields(value):
+        got = getattr(value, f.name)
+        default = f.default if f.default is not MISSING else (f.default_factory() if f.default_factory is not MISSING else MISSING)
+        if got != default:
+            out[f.name] = _set_fields(got)
+    return out
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -1348,198 +1204,21 @@ class Filtered:
         """
         return {name: getattr(self, name) for name in _FILTER_FIELDS}
 
-    def to_slots(self, *, split_by_presence: bool = False) -> dict[str, Any]:
-        """The filters as a slot dict - every field away from its default,
-        sequences as lists: the shape a route is recorded in and the trace
-        prints (:meth:`Reading.describe`). The cuts' eight slots print where
-        the fields stood until Phase 3, step 2 (:data:`_CUT_SLOT_POSITIONS`),
-        the lines' four and the companions' three where theirs stood
-        (:data:`_LINE_SLOT_POSITIONS`, :data:`_COMPANION_SLOT_POSITIONS`),
-        so the trace line reads as it did. ``split_by_presence`` is whether
-        the point divides the games by the companions' presence (the
-        with/without split): there a teammate who PLAYED is a name the split
-        is by (``with_player``), everywhere else a condition on the games
-        (``conditions``) - the one place the slot a value printed under
-        depended on the shape, which the holder says
-        (:meth:`Reading.projected`, ``Query.projected``).
-
-        .. versionadded:: 5.0.0
-
-        .. versionchanged:: 6.0.0
-           Takes ``split_by_presence`` (Phase 3, step 2, the companions).
-        """
-        out: dict[str, Any] = {}
-        cut_slots = self.cuts.to_slots()
-        line_slots = self.line_slots()
-        companion_slots = self.companion_slots(split_by_presence=split_by_presence)
-        for name in _FILTER_FIELDS:
-            value = getattr(self, name)
-            if name in ("cuts", "lines", "companions"):
-                continue
-            if name == "who":
-                # The four slots where the fields stood, the cuts' and the
-                # companions' attached after them.
-                out.update(value.to_slots())
-            elif not (value is None or value is False or value == ()):
-                if name in ("span", "window", "period"):
-                    out.update(value.to_slots())
-                elif name == "measure":
-                    # The seven slots, with the lines' three attached after
-                    # the first of them, where they stood.
-                    measure_slots = value.to_slots()
-                    for slot in ("stat", "fields"):
-                        if slot in measure_slots:
-                            out[slot] = measure_slots[slot]
-                        if slot == "stat":
-                            out.update(_attached_line_slots(line_slots))
-                    out.update({slot: measure_slots[slot] for slot in ("per_game", "rate", "side", "shot_value", "kind") if slot in measure_slots})
-                    continue
-                else:
-                    out[name] = list(value) if isinstance(value, tuple) else value
-            elif name == "measure":
-                out.update(_attached_line_slots(line_slots))
-                continue
-            for family, slot in _ATTACHED_SLOT_POSITIONS.get(name, ()):
-                held = {"cuts": cut_slots, "companions": companion_slots, "lines": line_slots}[family]
-                if slot in held:
-                    out[slot] = [c.to_slot() for c in held[slot]] if slot == "conditions" else held[slot]
-        return out
-
-    def line_slots(self) -> dict[str, Any]:
-        """The four slots the subject's lines were recorded as until Phase 3,
-        step 2, exactly as the stages wrote them: ``threshold``, the first
-        line the threshold grammar read (a count's, a record's, a streak's or
-        a high's own); ``above``, the floors of minutes and - where the words
-        hold two or more - the "N+ stat" pairs, as typed; ``below``, the
-        lines kept under a number, as typed; ``period_condition``, the one
-        line in a quarter or half. The projection every recorded reading is
-        compared through."""
-        out: dict[str, Any] = {}
-        whole = [line for line in self.lines if line.period is None]
-        keyed = next((line for line in whole if line.keyed), None)
-        if keyed is not None:
-            out["threshold"] = keyed.value
-        narrowing = [line for line in whole if line.narrows]
-        above = [line.as_typed for line in narrowing if line.op == ">=" and not line.pair] + [line.as_typed for line in narrowing if line.pair]
-        if above:
-            out["above"] = above
-        below = [line.as_typed for line in narrowing if line.below]
-        if below:
-            out["below"] = below
-        in_period = next((line for line in self.lines if line.period is not None), None)
-        if in_period is not None:
-            out["period_condition"] = in_period.to_slot()
-        return out
-
-    def companion_slots(self, *, split_by_presence: bool = False) -> dict[str, Any]:
-        """The three slots the companions were recorded as until Phase 3,
-        step 2, exactly as the two writers wrote them: ``without``, the
-        teammates absent; ``with_player``, the teammates who played, on the
-        with/without split alone (``split_by_presence``) and only where none
-        is absent (the split divides by the absent ones then, and the
-        players who played went unwritten); ``conditions``, every companion
-        on the other side first (the parser's own writing), then each own-side
-        role but an absence - and a teammate who played, where the point is
-        not the split."""
-        out: dict[str, Any] = {}
-        without = [c.player for c in self.companions if c.absent]
-        if without:
-            out["without"] = without
-        played = [c.player for c in self.companions if c.side == "own" and c.predicate == "played"]
-        if split_by_presence and played and not without:
-            out["with_player"] = played
-        other_side = [c for c in self.companions if c.side == "opponent"]
-        own = [c for c in self.companions if c.side == "own" and c.predicate != "absent" and (c.predicate != "played" or not split_by_presence)]
-        if other_side or own:
-            out["conditions"] = [*other_side, *own]
-        return out
-
-    def scope_record(self, *, split_by_presence: bool = False) -> dict[str, Any]:
-        """Every filter, at its default or not, with the span as the six
-        slots, the window as the four, the cuts as the eight, the period
-        as the two (``period``, ``half``), the lines as the four
-        (``threshold``, ``above``, ``below``, ``period_condition``) and the
-        companions as the three (``with_player``, ``without``,
-        ``conditions``) they were until Phase 3, step 2, in the field order
-        they stood in - the shape a recorded Scope kept
-        (:func:`~association.query.stages.plain`), so a reading recorded
-        before a part was typed compares identical to one recorded after.
-        The typed values are recorded beside the reading
-        (``stages._reading_record``: ``span``, ``window``, ``cuts``,
-        ``period``, ``lines``, ``companions``), never here.
-        ``split_by_presence`` as :meth:`to_slots` takes it.
-
-        .. versionadded:: 6.0.0
-           ``Scope.projected`` until Phase 3, step 4, slice (b): the
-           Reading's own :meth:`Reading.projected` records it under
-           ``scope``, as the field it was.
-        """
-        out: dict[str, Any] = {}
-        cut_slots = self.cuts.to_slots()
-        line_slots = self.line_slots()
-        companion_slots = self.companion_slots(split_by_presence=split_by_presence)
-        for name in _FILTER_FIELDS:
-            value = getattr(self, name)
-            if name in ("lines", "companions"):
-                continue
-            if name == "who":
-                out.update(value.slot_record())
-            elif name == "span":
-                slots = value.to_slots()
-                out["season"] = slots.get("season")
-                out["season_type"] = slots.get("season_type")
-                out["season_type_unstated"] = bool(slots.get("season_type_unstated"))
-                out["span"] = slots.get("span")
-                out["since"] = slots.get("since")
-                out["until"] = slots.get("until")
-            elif name == "window":
-                out["order"] = value.order
-                out["limit"] = value.count
-            elif name == "period":
-                slots = value.to_slots() if value is not None else {}
-                out["period"] = slots.get("period")
-                out["half"] = slots.get("half")
-            elif name == "measure":
-                # The seven slots where the fields stood - the lines' three
-                # after `stat`, the window's `ranked_by` after `fields` and
-                # its `rank` after `kind`, as the record held them.
-                measure_slots = value.projected() if value is not None else _NO_MEASURE_RECORD
-                for slot in ("stat", "fields", "per_game", "rate", "side", "shot_value", "kind"):
-                    out[slot] = measure_slots[slot]
-                    if slot == "stat":
-                        for attached in ("threshold", "above", "below"):
-                            out[attached] = _projected_slot(self, "lines", attached, cut_slots, companion_slots, line_slots)
-                    elif slot == "fields":
-                        out["ranked_by"] = self.window.by
-                    elif slot == "kind":
-                        out["rank"] = self.window.rank
-                continue
-            elif name != "cuts":
-                out[name] = value
-            for family, slot in _ATTACHED_SLOT_POSITIONS.get(name, ()):
-                out[slot] = _projected_slot(self, family, slot, cut_slots, companion_slots, line_slots)
-        return out
-
-    def projected(self) -> dict[str, Any]:
-        """Every field as a record holding a ``Scope`` was recorded until
-        Phase 3, step 4, slice (b) (:func:`~association.query.stages.plain`):
-        the holder's own fields as they are, and the filters under
-        ``scope`` (:meth:`scope_record`), the field they stood on. A holder
-        whose companions print under the with/without split's slot where it
-        divides the games by their presence says so in its own.
+    def stated(self) -> dict[str, Any]:
+        """The filters away from their defaults, by field, each typed value as
+        the fields it sets (a nested value the same way) - what the trace
+        prints, where it printed the slot dict until Phase 3, step 4, slice
+        (c). A tuple of values prints each so; a sequence or a value with
+        nothing set is left out.
 
         .. versionadded:: 6.0.0
         """
-        return self.scoped_record()
-
-    def scoped_record(self, *, split_by_presence: bool = False) -> dict[str, Any]:
-        """:meth:`projected`, the with/without split's slot as the holder
-        says (``split_by_presence``, as :meth:`to_slots` takes it).
-
-        .. versionadded:: 6.0.0
-        """
-        out = {f.name: getattr(self, f.name) for f in fields(self) if f.name not in _FILTER_FIELDS}
-        return {"scope": self.scope_record(split_by_presence=split_by_presence), **out}
+        out: dict[str, Any] = {}
+        for name, value in self.filters().items():
+            shown = _set_fields(value)
+            if shown not in (None, False, (), [], {}):
+                out[name] = shown
+        return out
 
     def cells(self) -> frozenset[str]:
         """Every cell this scope sets (:attr:`CELLS`): what the shape a point
@@ -1563,27 +1242,65 @@ class Filtered:
 
     def _line_cells(self) -> frozenset[str]:
         """The line family's cells this scope sets (:attr:`Line.CELLS`,
-        :attr:`Companion.CELLS`), read off the slots they were recorded as."""
+        :attr:`Companion.CELLS`): ``line`` where a line the relation
+        narrows by stands on the whole game, ``period_line`` where one
+        stands in a quarter or half, ``companion`` where anyone stands
+        beside the subject."""
         held = set()
-        slots = self.line_slots()
-        if "above" in slots or "below" in slots:
+        named = line_slots_set(self.lines)
+        if "above" in named or "below" in named:
             held.add("line")
-        if "period_condition" in slots:
+        if "period_condition" in named:
             held.add("period_line")
         if self.companions:
             held.add("companion")
         return frozenset(held)
 
 
-def companion_slot_names(scope: Filtered) -> list[str]:
-    """The slot names (``without``, ``conditions``) the companions on
-    ``scope`` were declared and refused under - the names a decline says,
-    in the order the slot list said them.
+def line_slots_set(lines: tuple[Line, ...]) -> frozenset[str]:
+    """The slot names the subject's ``lines`` were declared and refused under
+    until Phase 3, step 2, as the typed values set them: ``threshold``, the
+    shape's own line; ``above``, a floor or an "N+ stat" pair the relation
+    narrows by; ``below``, a line kept under its number; ``period_condition``,
+    a line in a quarter or half. The names a decline says, until the
+    decline-to-Cause commit rewords it; the slot-era projection that listed
+    them went with Phase 3, step 4, slice (c).
 
     .. versionadded:: 6.0.0
     """
-    slots = scope.companion_slots()
-    return [name for name in ("without", "conditions") if name in slots]  # a teammate who played is the split's name or a condition: a cell either way
+    named = set()
+    for line in lines:
+        if line.period is not None:
+            named.add("period_condition")
+            continue
+        if line.keyed:
+            named.add("threshold")
+        if line.narrows and line.below:
+            named.add("below")
+        elif line.narrows and line.op == ">=":
+            # A floor ("with 25 minutes") or an "N+ stat" pair; a narrowing
+            # line stated "more than" or "exactly" named no slot, as the
+            # slot-era writer wrote none (ISSUES.md, the P1 on such lines).
+            named.add("above")
+    return frozenset(named)
+
+
+def companion_slot_names(scope: Filtered) -> list[str]:
+    """The slot names (``without``, ``conditions``) the companions on
+    ``scope`` were declared and refused under - the names a decline says,
+    in the order the slot list said them: ``without`` where a teammate is
+    absent, ``conditions`` where anyone stands on the other side or in an
+    own-side role but an absence (a teammate who played is the split's
+    name or a condition: a cell either way).
+
+    .. versionadded:: 6.0.0
+    """
+    named = []
+    if any(c.absent for c in scope.companions):
+        named.append("without")
+    if any(c.side == "opponent" or c.predicate != "absent" for c in scope.companions):
+        named.append("conditions")
+    return named
 
 
 def line_slot_names(scope: Filtered, cell: str) -> list[str]:
@@ -1592,8 +1309,8 @@ def line_slot_names(scope: Filtered, cell: str) -> list[str]:
 
     .. versionadded:: 6.0.0
     """
-    slots = scope.line_slots()
-    return [name for name in _LINE_CELL_SLOT_NAMES[cell] if name in slots]
+    named = line_slots_set(scope.lines)
+    return [name for name in _LINE_CELL_SLOT_NAMES[cell] if name in named]
 
 
 def cell_slots(scope: Filtered, cell: str) -> list[str]:
@@ -1623,51 +1340,6 @@ def cell_slots(scope: Filtered, cell: str) -> list[str]:
     if cell in Companion.CELLS:
         return companion_slot_names(scope)
     return [cell]
-
-
-#: Where each typed family's slot stood among the filters' fields until Phase
-#: 3, step 2 - ``(family, slot)`` emitted after the named field, in order.
-#: The opponent and the tenure followed ``teams`` (the subject's last slot,
-#: so they follow the typed subject), then the companions' three; the lines' ``threshold``, ``above`` and ``below`` followed
-#: ``stat`` (the measure's first slot, emitted by the measure's own branch);
-#: the date and the situation followed the span; a game of a
-#: series, an ordinal season and a round followed the split; the line in a
-#: quarter followed the period, and the venue it.
-_ATTACHED_SLOT_POSITIONS: dict[str, tuple[tuple[str, str], ...]] = {
-    "who": (("cuts", "opponent"), ("cuts", "own_team"), ("companions", "with_player"), ("companions", "without"), ("companions", "conditions")),
-    "span": (("cuts", "date"), ("cuts", "situation")),
-    "split": (("cuts", "game_n"), ("cuts", "season_n"), ("cuts", "round")),
-    "period": (("lines", "period_condition"), ("cuts", "venue")),
-}
-
-
-#: Every measure slot at its default, for a Scope with no measure.
-_NO_MEASURE_RECORD: dict[str, Any] = {"stat": None, "fields": (), "per_game": False, "rate": None, "side": None, "shot_value": None, "kind": None}
-
-
-def _attached_line_slots(line_slots: dict[str, Any]) -> dict[str, Any]:
-    """The lines' three slots that followed ``stat`` (``threshold``,
-    ``above``, ``below``), each where set, for :meth:`Filtered.to_slots`."""
-    return {slot: line_slots[slot] for slot in ("threshold", "above", "below") if slot in line_slots}
-
-
-def _projected_slot(scope: Filtered, family: str, slot: str, cut_slots: dict[str, Any], companion_slots: dict[str, Any], line_slots: dict[str, Any]) -> Any:
-    """One attached slot as the full-field projection recorded it: a cut as
-    its value or None; a companion slot as the tuple it was, its
-    ``conditions`` entries with every field; a line slot as its value, the
-    phrase tuples empty by default, a ``period_condition`` with every field."""
-    if family == "cuts":
-        return cut_slots.get(slot)
-    if family == "companions":
-        if slot not in companion_slots:
-            return ()
-        return tuple(c.to_record() for c in companion_slots[slot]) if slot == "conditions" else tuple(companion_slots[slot])
-    if slot == "period_condition":
-        in_period = next((line for line in scope.lines if line.period is not None), None)
-        return in_period.to_period_record() if in_period is not None else None
-    if slot == "threshold":
-        return line_slots.get("threshold")
-    return tuple(line_slots[slot]) if slot in line_slots else ()
 
 
 def cell_set(scope: Filtered, cell: str) -> bool:
@@ -2299,44 +1971,14 @@ class Reading(Filtered):
         """Hold :attr:`intent` to the label :attr:`asked` is named by."""
         object.__setattr__(self, "intent", labeled(self.asked, self.intent))
 
-    def projected(self) -> dict[str, Any]:
-        """Every field as a Reading was recorded until Phase 3, step 2
-        (:func:`~association.query.stages.plain`): ``subject_span`` as the
-        ``span`` and ``season`` pair it replaced, the point's ``offset`` as
-        the 0 it always was, its ``position`` as the position group its
-        subject carries where it is the league's (the field it was), every
-        other field as it is - ``claims`` and ``unread`` included, the two
-        fields the record gained (Phase 3, steps 2 and 3) - but the key the
-        words asked (``asked``, Phase 3, step 4), which the record holds as
-        its label (``intent``), as it did.
-
-        .. versionadded:: 6.0.0
-        """
-        out = {f.name: getattr(self, f.name) for f in fields(self) if f.name not in ("subject_span", "asked", *_FILTER_FIELDS)}
-        # The point's position group, a field of its own until Phase 3,
-        # step 2: the league's read honors it, and only the point reader's
-        # moves that do carry one on the point's subject
-        # (``point._everyone_point``); every other Reading held None.
-        out["position"] = self.who.position if self.relation == "everyone" else None
-        # The filters as the ``scope`` record they were until Phase 3, step
-        # 4, slice (b); its companions print under the with/without split's
-        # slot where the point divides the games by their presence.
-        out["scope"] = self.scope_record(split_by_presence=self.asked == PRESENCE_SPLIT or self.group == "presence")
-        settled = self.subject_span
-        out["span"] = "career" if settled is not None and settled.career else None
-        out["season"] = settled.season if settled is not None else None
-        # The point's `offset`, 0 on every reading until the window was
-        # typed (Phase 3, step 2), when it went.
-        out["offset"] = 0
-        return out
-
     def describe(self) -> str:
-        """The one trace line: every field that decides the answer."""
+        """The one trace line: every field that decides the answer, the
+        filters as :meth:`Filtered.stated` prints them."""
         window = f"{self.order}/{self.direction}" + (f"/{self.limit}" if self.limit is not None else "")
         who = self.subject.kind if self.subject is not None else "?"
         return (
             f"relation={self.relation} subject={who} shape={self.shape} by={self.by} on={self.on} measures={self.measures} aggregate={self.aggregate} "
-            f"group={self.group} predicates={self.predicates} window={window} scope={self.to_slots(split_by_presence=self.asked == PRESENCE_SPLIT)}"
+            f"group={self.group} predicates={self.predicates} window={window} filters={self.stated()}"
         )
 
 

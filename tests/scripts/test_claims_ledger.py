@@ -8,6 +8,7 @@ import json
 import sys
 from pathlib import Path
 from types import ModuleType
+from typing import Any
 
 import pytest
 
@@ -48,8 +49,21 @@ def test_the_ledger_counts_by_the_rule_the_reading_states_its_unread_words_by() 
 def test_a_name_the_reading_settled_on_counts_as_read() -> None:
     """The model copied "steph" alone; the nickname table reads Stephen
     Curry, so "curry" was read as part of the name it is part of."""
-    whole = {"reading": {"scope": {"player": "Stephen Curry", "opponent": "Boston Celtics", "season": 2026}, "subject": {"players": ["Stephen Curry"], "teams": []}}}
-    assert ledger.names_read(whole) == ["Stephen Curry", "Boston Celtics", "Stephen Curry"]
+    whole: dict[str, Any] = {
+        "reading": {
+            "who": {"kind": "player", "players": ["Stephen Curry"], "teams": []},
+            "cuts": {"opponent": "Boston Celtics", "tenure": None},
+            "companions": [{"player": "Draymond Green", "side": "own", "predicate": "absent"}, {"player": "Klay Thompson", "side": "own", "predicate": "played"}],
+            "span": {"season": 2026},
+            "subject": {"players": ["Stephen Curry"], "teams": [], "opponent": "Boston Celtics", "own_team": None},
+        }
+    }
+    # A teammate who played counts on the with/without split alone, and only with nobody absent - as the slot era carried him.
+    assert ledger.names_read(whole) == ["Stephen Curry", "Boston Celtics", "Draymond Green", "Stephen Curry", "Boston Celtics"]
+    whole["reading"]["intent"] = "with_without"
+    assert ledger.names_read(whole) == ["Stephen Curry", "Boston Celtics", "Draymond Green", "Stephen Curry", "Boston Celtics"]
+    whole["reading"]["companions"] = whole["reading"]["companions"][1:]
+    assert ledger.names_read(whole) == ["Stephen Curry", "Boston Celtics", "Klay Thompson", "Stephen Curry", "Boston Celtics"]
     assert ledger.names_read({"refused": "a slot nothing can hold"}) == []
     words = [word for _, _, word in ledger.content_words("show steph curry games vs boston", ["steph", *ledger.names_read(whole)], "")]
     assert words == ["games"]

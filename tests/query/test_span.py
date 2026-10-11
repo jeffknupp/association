@@ -165,35 +165,6 @@ def test_a_word_two_readings_share_reads_both_and_raises_nothing() -> None:
 # ---------------- the typed value's door and projection ----------------
 
 
-@pytest.mark.parametrize(
-    "slots",
-    [
-        {},
-        {"season": 2024},
-        {"season_type": 3},
-        {"season": 2024, "season_type": 3},
-        {"season_type": 2, "season_type_unstated": True},
-        {"span": "career"},
-        {"span": "career", "season": 2001},
-        {"since": 2020},
-        {"since": 2020, "until": 2024},
-        {"span": "career", "since": 2020, "season_type_unstated": True},
-    ],
-)
-def test_the_six_slots_round_trip_through_the_span(slots: dict[str, Any]) -> None:
-    scope = slots_scope(slots)
-    assert scope.span.to_slots() == slots
-    assert scope.to_slots() == slots
-    assert slots_scope(scope.to_slots()) == scope
-
-
-def test_the_projection_keeps_the_slot_era_shape() -> None:
-    projected = Reading(who=Who(kind="player", players=("X",)), span=Span(since=2020, until=2024, season_type=2)).scope_record()
-    assert {"season", "season_type", "season_type_unstated", "span", "since", "until"} <= set(projected)
-    assert (projected["season"], projected["season_type"], projected["season_type_unstated"], projected["span"], projected["since"], projected["until"]) == (None, 2, False, None, 2020, 2024)
-    assert "player" in projected and all(not isinstance(v, Span) for v in projected.values())
-
-
 def test_a_typed_span_and_a_slot_at_once_is_refused_at_the_door() -> None:
     with pytest.raises(ScopeError, match="typed span"):
         slots_scope({"span": Span(career=True), "season": 2024})

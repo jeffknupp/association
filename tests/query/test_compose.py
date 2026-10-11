@@ -1786,7 +1786,7 @@ def test_the_parser_reads_the_point_and_the_compiler_answers_it_unread(cx_ctx: A
     question = "how many 15+ point games did podziemski have"
     reading = reading_of(cx_ctx.con, question, with_subject(cx_ctx.con, question, slots_route("threshold_count", {"player": "Brandin Podziemski", "stat": "points", "threshold": 15})))
     assert reading.point is not None and (reading.point.shape, reading.point.aggregate) == ("scalar", "count")
-    by_hand = compose_answer(cx_ctx, "threshold_count", reading.to_slots(), question, reading.subject)
+    by_hand = compose_answer(cx_ctx, "threshold_count", {"player": "Brandin Podziemski", "stat": "points", "threshold": 15}, question, reading.subject)
 
     def unread(*args: Any, **kwargs: Any) -> Reading:
         raise AssertionError("the compiler read the question")

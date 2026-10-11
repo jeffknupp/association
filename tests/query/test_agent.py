@@ -610,8 +610,10 @@ def test_a_compiled_intent_is_read_planned_and_answered_by_the_compiler_alone(mo
     assert calls == ["compose"]
     reading_lines = [line for line in seen if "(reading)" in line]
     expected = "  -> (reading) relation=player subject=? shape=scalar by= on=player_games measures=[] aggregate=count group=none predicates=[('points', '>=', 30)] window=date/desc"
-    # The scope prints in the Scope's field order, whatever order the slots came in.
-    assert reading_lines == [f"{expected} scope={{'player': 'Joel Embiid', 'stat': 'points', 'threshold': 30}}"]
+    # The filters print in the Reading's field order, each typed value as the fields it sets, whatever order the slots came in.
+    who, lines = "'who': {'kind': 'player', 'players': ['Joel Embiid']}", "'lines': [{'measure': 'points', 'value': 30, 'as_typed': '30 points', 'keyed': True}]"
+    filters = f"{{{who}, {lines}, 'measure': {{'key': 'points', 'as_typed': 'points'}}}}"
+    assert reading_lines == [f"{expected} filters={filters}"]
 
     # Declining refuses with the compiler's own reason.
     calls.clear()
@@ -641,7 +643,7 @@ def test_the_parser_reads_the_question(monkeypatch: pytest.MonkeyPatch, tmp_path
     seen: dict[str, Any] = {}
 
     def record(ctx: Any, reading: Reading) -> Reply:
-        seen.update(reading.to_slots())
+        seen.update({"player": reading.who.player, "stat": reading.measure.as_typed if reading.measure is not None else None})
         return Reply(data={}, answer="templated")
 
     monkeypatch.setattr("association.query.normalizer.normalize", lambda model, question: Normalized(["embiid"], "points"))

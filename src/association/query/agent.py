@@ -34,7 +34,7 @@ import duckdb
 from association.nba.season import calendar_season, season_on_record
 from association.query.answer import AnswerContext, Reply
 from association.query.coverage import check_coverage, coverage_caveat
-from association.query.reading import PLAYER_ASKS, PRESENCE_SPLIT, Cause, ShapeDeclined
+from association.query.reading import PLAYER_ASKS, Cause, ShapeDeclined
 
 from .answer import Answer, AnsweredBy, Artifact, Timing
 from .compose.plan import Planned, plan_point, refusal_result
@@ -303,7 +303,7 @@ class Agent:
         # intent stood: the key the words ask is the Reading's own.
         path = "the compiler" if reading.asked is not None else "no reader: refused unless a named refusal has its cause"
         kind = reading.subject.kind if reading.subject is not None else None
-        history.log(f"  -> (parser) asked={reading.intent!r} kind={kind!r} slots={reading.to_slots(split_by_presence=reading.asked == PRESENCE_SPLIT)} - {path}")
+        history.log(f"  -> (parser) asked={reading.intent!r} kind={kind!r} filters={reading.stated()} - {path}")
         self.reading = reading
         # PLAN, once: the point on its relation, or why there is none. The
         # parser read the point; it does not plan it (ROADMAP.md, Phase 1).

@@ -157,35 +157,6 @@ def test_the_two_readers_the_intent_stages_ask() -> None:
 # ---------------- the typed value: the door, the projection, the cells ----------------
 
 
-@pytest.mark.parametrize(
-    "slots",
-    [
-        {"stat": "points"},
-        {"stat": "threePointFieldGoalPct", "rate": "total"},
-        {"stat": "netpoints_defense_per_100"},
-        {"stat": "fouls", "rate": "per 100"},
-        {"stat": "avg_game_score"},
-        {"per_game": True},
-        {"stat": "rebounds", "per_game": True},
-        {"side": "defense"},
-        {"shot_value": 3},
-        {"stat": "threePointFieldGoalsMade", "shot_value": 3},
-        {"kind": "win"},
-        {"stat": "assists", "kind": "win"},
-        {"kind": "loss"},
-        {"stat": "netpoints_per_100", "fields": ["team"]},
-        {"stat": "points", "fields": ["rebounds", "assists"]},
-        {"stat": "rebounds allowed"},
-        {"stat": "career_playoffs"},
-        {"stat": "assist_o_net_pts"},
-    ],
-)
-def test_the_seven_slots_round_trip_through_the_measure(slots: dict[str, Any]) -> None:
-    scope = slots_scope(slots)
-    assert scope.measure is not None and scope.to_slots() == slots
-    assert Reading(measure=scope.measure).to_slots() == slots
-
-
 def test_the_door_resolves_the_spelling_and_keeps_it() -> None:
     folded = slots_scope({"stat": "netpoints_defense_per_100"}).measure
     assert folded == Measure(key="netpoints", as_typed="netpoints_defense_per_100", how="per_100", side="defense")
@@ -196,28 +167,6 @@ def test_the_door_resolves_the_spelling_and_keeps_it() -> None:
     fingerprint = slots_scope({"stat": "assist_o_net_pts"}).measure
     assert fingerprint == Measure(key="netpoints", as_typed="assist_o_net_pts", side="offense", category="assist")
     assert slots_scope({"stat": ""}).measure is None and slots_scope({}).measure is None
-
-
-def test_the_projection_keeps_the_slot_era_shape_in_its_place() -> None:
-    projected = slots_scope({"stat": "points", "threshold": 30, "fields": ["rebounds"], "rate": "total", "kind": "win"}).scope_record()
-    keys = list(projected)
-    # The seven where the fields stood, the lines' three after `stat`, the window's `ranked_by` after `fields` and its `rank` after `kind`.
-    assert keys[keys.index("stat") : keys.index("rank") + 1] == ["stat", "threshold", "above", "below", "fields", "ranked_by", "per_game", "rate", "side", "shot_value", "kind", "rank"]
-    assert (projected["stat"], projected["threshold"], projected["fields"], projected["per_game"], projected["rate"], projected["side"], projected["shot_value"], projected["kind"]) == (
-        "points",
-        30,
-        ("rebounds",),
-        False,
-        "total",
-        None,
-        None,
-        "win",
-    )
-    empty = Reading().scope_record()
-    assert (empty["stat"], empty["fields"], empty["per_game"], empty["rate"], empty["side"], empty["shot_value"], empty["kind"]) == (None, (), False, None, None, None, None)
-    # A side or a rate the key folds in is the key's, never a slot of its own.
-    assert slots_scope({"stat": "netpoints_defense_per_100"}).scope_record()["side"] is None
-    assert slots_scope({"stat": "avg_game_score"}).scope_record()["per_game"] is False
 
 
 def test_a_value_no_measure_can_hold_is_refused_at_the_door() -> None:

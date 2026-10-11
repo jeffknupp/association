@@ -34,9 +34,9 @@ from __future__ import annotations
 
 import functools
 import gzip
-from dataclasses import dataclass, fields, replace
+from dataclasses import dataclass, replace
 from importlib import resources
-from typing import TYPE_CHECKING, Any, NamedTuple, get_args
+from typing import TYPE_CHECKING, NamedTuple, get_args
 
 import duckdb
 from rapidfuzz.distance import DamerauLevenshtein
@@ -301,23 +301,6 @@ class Subject(reading.Subject):
         :attr:`asked` is named by (:func:`~association.query.reading.labeled`)."""
         super().__post_init__()
         object.__setattr__(self, "intent", labeled(self.asked, self.intent))
-
-    def projected(self) -> dict[str, Any]:
-        """Every field as a Subject was recorded until Phase 3, step 2
-        (:func:`~association.query.stages.plain`): each companion as the
-        five-field tuple it was (name, predicate, stat, threshold, side),
-        and the claims - positions in the text, as the Reading's own claims
-        are - left out, so a reading recorded before the companions were
-        typed compares identical to one recorded after. The typed
-        companions are recorded beside the reading (``stages._reading_record``,
-        ``companions``), never here; the key the words asked (``asked``) is
-        recorded as its label (``intent``), as it was.
-
-        .. versionadded:: 6.0.0
-        """
-        out = {f.name: getattr(self, f.name) for f in fields(self) if f.name not in ("claims", "asked")}
-        out["conditions"] = [[c.player, c.predicate, c.line.measure if c.line is not None else None, c.line.value if c.line is not None else None, c.side] for c in self.conditions]
-        return out
 
     #: The router's player names that are no name at all - a rank word or
     #: a phrase of the question ("most", "most 30+ point games";
@@ -2105,7 +2088,7 @@ def compared_but_unmatched(players: names.PlayerIndex, question: str, held: list
     return LeftOut(held=tuple(held), names=tuple(dropped))
 
 
-def _has_a_real_team(teams: names.TeamIndex, slots: dict[str, Any], question: str) -> bool:
+def _has_a_real_team(teams: names.TeamIndex, who: reading.Subject, season: int | None, question: str) -> bool:
     """Whether ``slots`` carries a ``team``/``teams`` value that actually
     resolves to a real franchise - not merely a non-empty string. The router
     invents a team the way it invents a player (AGENTS.md, "the router
@@ -2121,17 +2104,14 @@ def _has_a_real_team(teams: names.TeamIndex, slots: dict[str, Any], question: st
     F110) arrived with ``team='Toronto Raptors'`` - a real team, and no word
     of it in the question - and would have answered the Raptors' record
     about a question naming Karl-Anthony Towns (:func:`_team_grounded`)."""
-    season = slots.get("season") if isinstance(slots.get("season"), int) else None
-    filed = slots.get("teams")
-    texts = [slots.get("team"), *(filed if isinstance(filed, list) else [filed])]
-    for text in texts:
-        team = _team_named(teams, text, season) if isinstance(text, str) and text.strip() else None
+    for text in who.teams:
+        team = _team_named(teams, text, season) if text.strip() else None
         if team is not None and _team_grounded(teams, question, team):
             return True
     return False
 
 
-def player_named_on_a_team_only_question(players: names.PlayerIndex, teams: names.TeamIndex, question: str, slots: dict[str, Any]) -> str | None:
+def player_named_on_a_team_only_question(players: names.PlayerIndex, teams: names.TeamIndex, question: str, who: reading.Subject, season: int | None) -> str | None:
     """The one player a question names, when the routed intent has no
     reading for him at all and the question names no REAL team either - or
     None.
@@ -2166,8 +2146,10 @@ def player_named_on_a_team_only_question(players: names.PlayerIndex, teams: name
        Lives in :mod:`association.query.subject`, the reader's, and takes the
        players' and teams' in-memory indexes (:func:`~association.query.entities.players_of`)
        in place of a connection: it was ``entities.player_named_on_a_team_only_question``.
+       Takes the typed subject and the season the words name where it took
+       the slot dict (Phase 3, step 4, slice (c)).
     """
-    if _has_a_real_team(teams, slots, question):
+    if _has_a_real_team(teams, who, season, question):
         return None
     named = [name for name in players_named_in(players, question) if not _named_only_by_a_team_word(teams, question, name) and not _named_only_by_a_common_word(question, name)]
     return named[0] if len(named) == 1 else None

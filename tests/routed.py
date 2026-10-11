@@ -51,7 +51,7 @@ from association.query.line import lines_named
 from association.query.names import NameIndex
 from association.query.normalizer import Normalized
 from association.query.point import default_point
-from association.query.reading import PRESENCE_SPLIT, Claim, Companion, Line, PointShape, Reading, Subject, asked_label
+from association.query.reading import Claim, Companion, Line, PointShape, Reading, Subject, asked_label
 from association.query.span import claimed
 from association.query.subject import Subject as ReadSubject
 from association.query.subject import child_named, read_subject, settle_subject
@@ -87,11 +87,6 @@ class Routed:
     def intent(self) -> str:
         """The key's label, as the trace prints it."""
         return asked_label(self.asked)
-
-    @property
-    def slots(self) -> dict[str, Any]:
-        """The scope as a slot dict, the shape a test asserts on."""
-        return self.scope.to_slots(split_by_presence=self.asked == PRESENCE_SPLIT)
 
 
 def slots_route(intent: str, slots: Mapping[str, Any] | None = None) -> Routed:
@@ -231,11 +226,6 @@ class Staged:
     def intent(self) -> str:
         """The key's label, as the trace prints it."""
         return asked_label(self.asked)
-
-    @property
-    def slots(self) -> dict[str, Any]:
-        """The scope as a slot dict, the shape a test asserts on."""
-        return self.scope.to_slots(split_by_presence=self.asked == PRESENCE_SPLIT)
 
 
 def handed(question: str, slots: Mapping[str, Any]) -> tuple[Subject, str | None]:

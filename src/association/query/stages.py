@@ -11,10 +11,13 @@ recorded corpus with no model.
 The record is what the stages hold today:
 
 ``reading``
-    What the parser settled (:func:`~association.query.parse.reading_from_route`):
-    the intent, the scope, who the question is about, the names it could
-    not place, each decision it made, and the point it read
-    (:attr:`Reading.point <association.query.reading.Reading.point>`).
+    What the parser settled (:func:`~association.query.parse.read_route`):
+    the key the words asked and its label, the nine typed filters, who the
+    question is about, the names it could not place, each decision it
+    made, and the point it read
+    (:attr:`Reading.point <association.query.reading.Reading.point>`) -
+    the typed Reading, since Phase 3, step 4, slice (c) deleted the
+    slot-era projection it was recorded through.
 ``query``
     What the planner built from that point
     (:func:`~association.query.compose.plan.plan_point`): the
@@ -41,12 +44,10 @@ from decimal import Decimal
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from association.query.reading import PRESENCE_SPLIT
-
 if TYPE_CHECKING:
     from association.query.answer import Answer
     from association.query.compose.plan import Planned
-    from association.query.reading import Reading
+    from association.query.reading import Filtered, Reading
 
 STAGES: tuple[str, ...] = ("reading", "query", "result", "answer")
 """The stages a snapshot holds, in the order a question passes through them.
@@ -79,18 +80,23 @@ says so by listing ``notes`` here.
 .. versionadded:: 5.0.0
 """
 
-# What a Reading's subject carries that is prose about how it was read
-# rather than what was read (the question's text itself left the Subject on
-# 2026-10-03: nothing read it).
-_SUBJECT_TEXT = frozenset({"evidence"})
+# What a Reading's subject carries that is about HOW it was read rather
+# than what was read: the evidence prose (the question's text itself left
+# the Subject on 2026-10-03: nothing read it) and the claims, positions in
+# the text, which the Reading's own ``unread`` stands for.
+_SUBJECT_LEFT_OUT = frozenset({"evidence", "claims"})
 
 # The point's own fields - the algebra as the reader read it - in the order
-# the trace prints them.
+# the trace prints them, after the key the words asked and its label; the
+# point's typed filters follow them (``_filters_record``), since the point
+# reader may move one (a team read as the opponent, a position group the
+# move does not honor).
 # ``shape``, ``by`` and ``on`` are the point reader's declaration (Phase 3,
 # step 1; ``shape`` was the compiler's skeleton and ``source`` the season
 # line's flag until then - both derived by the planner now, and on the
-# query record still).
-_POINT_FIELDS = ("relation", "on", "shape", "by", "measures", "aggregate", "group", "predicates", "order", "direction", "limit", "offset", "minimum_games", "available", "position")
+# query record still). ``subject_span`` is the one typed override of the
+# span the subject is settled in.
+_POINT_FIELDS = ("asked", "intent", "relation", "on", "shape", "by", "measures", "aggregate", "group", "predicates", "order", "direction", "limit", "minimum_games", "available", "subject_span")
 
 
 def plain(value: Any, *, mask: Mapping[str, str] | None = None) -> Any:
@@ -132,15 +138,19 @@ def plain(value: Any, *, mask: Mapping[str, str] | None = None) -> Any:
 
 
 def _plain_record(value: Any, mask: Mapping[str, str] | None) -> dict[str, Any]:
-    """A dataclass as a dict of its fields - or, where it has a
-    ``projected()``, of the fields it had before a part was typed (Phase 3,
-    step 2: the filters' six span slots, the Query's span pair), so a record
-    made before the part was typed compares identical to one made after;
-    the typed value is recorded beside it, by name."""
-    projected = getattr(value, "projected", None)
-    if callable(projected):
-        return {name: plain(each, mask=mask) for name, each in projected().items()}
+    """A dataclass as a dict of its fields. Until Phase 3, step 4, slice (c)
+    a value with a ``projected()`` was recorded as the slot-era fields it
+    had before a part was typed, so a record made before the part was typed
+    compared identical to one made after; the projection went with that
+    slice, and every typed value is recorded as its own fields."""
     return {f.name: plain(getattr(value, f.name), mask=mask) for f in fields(value)}
+
+
+def _filters_record(filtered: Filtered, mask: Mapping[str, str] | None) -> dict[str, Any]:
+    """The nine typed filters by field name (``who``, ``cuts``, ``companions``,
+    ``lines``, ``measure``, ``span``, ``split``, ``period``, ``window``) as
+    the reader typed them - the record of a Reading and of its point."""
+    return {name: plain(value, mask=mask) for name, value in filtered.filters().items()}
 
 
 def _masked(text: str, mask: Mapping[str, str] | None) -> str:
@@ -155,40 +165,28 @@ def _reading_record(reading: Reading, mask: Mapping[str, str] | None) -> dict[st
     about how it was read."""
     subject = None
     if reading.subject is not None:
-        # The subject through its projection (the companions as the tuples
-        # they were, the claims left out - Phase 3, step 2), as `plain` takes it.
-        subject = {name: plain(each, mask=mask) for name, each in reading.subject.projected().items() if name not in _SUBJECT_TEXT}
+        # The subject reading's own record: the typed subject's fields and
+        # the parser's beside them, the evidence prose and the claims left out.
+        subject = {f.name: plain(getattr(reading.subject, f.name), mask=mask) for f in fields(reading.subject) if f.name not in _SUBJECT_LEFT_OUT}
     point = None
     if reading.point is not None:
-        projected = reading.point.projected()
-        point = {name: plain(projected[name], mask=mask) for name in _POINT_FIELDS}
-        # The span the subject is settled in, as the slot pair it was
-        # recorded as until Phase 3, step 2.
-        settled = reading.point.subject_span
-        point["span"] = "career" if settled is not None and settled.career else None
-        point["season"] = settled.season if settled is not None else None
-        point["scope"] = plain(reading.point.to_slots(split_by_presence=reading.point.asked == PRESENCE_SPLIT or reading.point.group == "presence"), mask=mask)
-        # Whose default the point is, as its label: what the words asked
-        # (``Reading.asked``) since Phase 3, step 4, recorded as the
-        # retired intent's name it was.
-        point["intent"] = reading.point.intent
+        # The point's own fields, then its typed filters: the point reader
+        # may have moved one off the reading's (a team as the opponent, a
+        # position group the move does not honor).
+        point = {name: plain(getattr(reading.point, name), mask=mask) for name in _POINT_FIELDS}
+        point.update(_filters_record(reading.point, mask))
     return {
+        # The key the words asked (``Reading.asked``, Phase 3, step 4) and
+        # its label, the page's (``Reading.intent``).
         "intent": reading.intent,
-        "scope": plain(reading.to_slots(split_by_presence=reading.asked == PRESENCE_SPLIT), mask=mask),
-        # Who the read is about, the span, the window, the games' cuts, the
-        # period, the lines, the companions and the measure as the reader
-        # typed them (Phase 3, step 2), beside the scope's slot-era
-        # projection of them. The typed subject (``Reading.who``) is
-        # ``who``: ``subject`` is the reading's own record of it, the
-        # parser's fields beside.
-        "who": plain(reading.who, mask=mask),
-        "span": plain(reading.span, mask=mask),
-        "window": plain(reading.window, mask=mask),
-        "cuts": plain(reading.cuts, mask=mask),
-        "period": plain(reading.period, mask=mask),
-        "lines": plain(reading.lines, mask=mask),
-        "companions": plain(reading.companions, mask=mask),
-        "measure": plain(reading.measure, mask=mask),
+        "asked": plain(reading.asked, mask=mask),
+        # Who the read is about, the games' cuts, the companions, the lines,
+        # the measure, the span, the split, the period and the window as the
+        # reader typed them (Phase 3, step 2) - the typed Reading, since
+        # slice (c) deleted the slot-era projection they were recorded
+        # beside. The typed subject (``Reading.who``) is ``who``: ``subject``
+        # is the subject reading's own record of it, the parser's fields beside.
+        **_filters_record(reading, mask),
         # The content words no claim covers (Phase 3, step 3): what the
         # claims ledger checks from outside, word for word.
         "unread": list(reading.unread),
@@ -233,9 +231,7 @@ def _query_record(reading: Reading, planned: Planned, mask: Mapping[str, str] | 
         return {"declined": verdict.declined}
     # A TeamQuery has no ``subject``: the team IS the relation. Read by
     # shape rather than imported, so this module stays clear of the compiler.
-    record: dict[str, Any] = {"relation": getattr(query, "subject", "team"), **plain(query, mask=mask)}
-    record["scope"] = plain(query.to_slots(split_by_presence=getattr(query, "group", None) == "presence"), mask=mask)
-    return record
+    return {"relation": getattr(query, "subject", "team"), **plain(query, mask=mask)}
 
 
 def read_stages(reading: Reading, *, planned: Planned, mask: Mapping[str, str] | None = None) -> dict[str, Any]:

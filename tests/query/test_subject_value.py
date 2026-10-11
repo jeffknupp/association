@@ -47,29 +47,20 @@ from association.query.team_relation import scoped_team
         ({}, Who()),
     ],
 )
-def test_the_name_slots_pass_the_door_into_the_typed_subject_and_project_back(slots: dict[str, Any], who: Who) -> None:
-    """Every shape the parser writes - one player or two and more, one team
-    or a list - is the typed subject and comes back as it went in."""
-    scope = slots_scope(slots)
-    assert scope.who == who
-    assert scope.to_slots() == slots
-    record = scope.scope_record()
-    assert {key: record[key] for key in ("player", "players", "team", "teams")} == {
-        "player": slots.get("player"),
-        "players": tuple(slots.get("players", ())),
-        "team": slots.get("team"),
-        "teams": tuple(slots.get("teams", ())),
-    }
+def test_the_name_slots_pass_the_door_into_the_typed_subject(slots: dict[str, Any], who: Who) -> None:
+    """Every shape the parser wrote - one player or two and more, one team
+    or a list - is the typed subject through the tests' door."""
+    assert slots_scope(slots).who == who
 
 
-def test_a_router_era_slot_shape_comes_back_as_its_count_says() -> None:
+def test_a_router_era_slot_shape_is_typed_by_its_names() -> None:
     """One name listed in a plural slot, or two teams split between ``team``
     and ``teams``, are slot dicts no reader of the words writes (0 of the
-    2,710 readings): the typed subject holds the names, and the count says
-    which slot each projects to."""
-    assert slots_scope({"players": ["Luka Doncic"]}).to_slots() == {"player": "Luka Doncic"}
+    2,710 readings): the typed subject holds the names, each once, and its
+    kind is what they hold."""
+    assert slots_scope({"players": ["Luka Doncic"]}).who == Who(kind="player", players=("Luka Doncic",))
     assert slots_scope({"team": "Knicks", "teams": ["Celtics"]}).who.teams == ("Knicks", "Celtics")
-    assert slots_scope({"team": "Knicks", "teams": ["Knicks"]}).to_slots() == {"team": "Knicks"}
+    assert slots_scope({"team": "Knicks", "teams": ["Knicks"]}).who == Who(kind="team", teams=("Knicks",))
 
 
 def test_the_subject_holds_its_kind_its_names_and_its_position_to_their_sets() -> None:
@@ -81,15 +72,6 @@ def test_the_subject_holds_its_kind_its_names_and_its_position_to_their_sets() -
     assert Who(kind="position", position="C").without_position() == Who(kind="position")
     # One set of position groups: the words read as these, and the league's read reaches each.
     assert frozenset(POSITION_CODES) == lexicon.POSITION_GROUPS
-
-
-def test_the_points_position_is_its_subjects_where_the_league_is_read() -> None:
-    """The point's ``position`` was a field until this slice: a league-wide
-    point honors its subject's position group, and every other Reading held
-    none - which the record keeps (``Reading.projected``)."""
-    scope = replace(Reading(), who=Who(kind="position", position="C"))
-    assert Reading(**scope.filters(), relation="everyone").projected()["position"] == "C"
-    assert Reading(**scope.filters()).projected()["position"] is None
 
 
 # ---------------- what the grammar's rules are handed ----------------

@@ -375,22 +375,6 @@ class Query(Filtered):
     #: ``subject`` is ``"everyone"``.
     position: str | None = None
 
-    def projected(self) -> dict[str, Any]:
-        """Every field as the query was recorded until Phase 3, step 2:
-        ``subject_span`` as the ``span`` and ``season`` it replaced
-        (:func:`~association.query.stages.plain`).
-
-        .. versionadded:: 6.0.0
-        """
-        # The filters print under ``scope``; its companions under the
-        # with/without split's slot where the query divides the games by
-        # their presence.
-        out = {name: value for name, value in self.scoped_record(split_by_presence=self.group == "presence").items() if name != "subject_span"}
-        settled = self.subject_span
-        out["span"] = "career" if settled is not None and settled.career else None
-        out["season"] = settled.season if settled is not None else None
-        return out
-
 
 @dataclass
 class Compiled:

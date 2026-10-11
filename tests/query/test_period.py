@@ -121,20 +121,10 @@ def test_the_value_is_one_quarter_or_one_half_and_says_so_when_it_is_neither() -
 
 
 @pytest.mark.parametrize("slots", [{"period": 1}, {"period": 4}, {"half": 1}, {"half": 2}, {"period": 5}])
-def test_the_two_slots_round_trip_through_the_period(slots: dict[str, Any]) -> None:
+def test_the_two_slots_type_through_the_door_as_one_period(slots: dict[str, Any]) -> None:
     scope = slots_scope(slots)
-    assert scope.period is not None and scope.period.to_slots() == slots
-    assert scope.to_slots() == slots
+    assert scope.period is not None and (scope.period.number, scope.period.half) == (slots.get("period", slots.get("half")), "half" in slots)
     assert slots_scope({"period": scope.period}) == scope
-
-
-def test_the_projection_keeps_the_slot_era_shape_in_its_place() -> None:
-    projected = slots_scope({"half": 2, "split": "starter"}).scope_record()
-    keys = list(projected)
-    assert keys.index("split") < keys.index("period") < keys.index("half") < keys.index("period_condition") < keys.index("venue")
-    assert (projected["period"], projected["half"]) == (None, 2)
-    assert slots_scope({"period": 3}).scope_record()["period"] == 3
-    assert Reading().scope_record()["period"] is None and Reading().scope_record()["half"] is None
 
 
 def test_a_typed_period_and_a_slot_at_once_or_both_slots_or_a_bad_value_is_refused_at_the_door() -> None:

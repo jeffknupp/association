@@ -28,8 +28,6 @@ from typing import TYPE_CHECKING, Any
 from association.query.reading import (
     _CUT_SLOT_NAMES,
     _FILTER_FIELDS,
-    _MEASURE_SLOT_NAMES,
-    _SUBJECT_SLOT_NAMES,
     Companion,
     Cuts,
     Line,
@@ -260,6 +258,13 @@ _CHECKS: dict[str, Callable[[str, Any], Any]] = {
     "order": _one_of("recent", "first"),
 }
 _SCOPE_FIELDS = frozenset({*_FILTER_FIELDS, "subject"})
+#: The four slot names the subject was carried as until Phase 3, step 2 -
+#: the names the subject's door still takes (:meth:`Subject.from_slots`);
+#: the reader's module held them until slice (c) deleted the projection.
+_SUBJECT_SLOT_NAMES = ("player", "players", "team", "teams")
+#: The seven slot names the measure was carried as until Phase 3, step 2 -
+#: the names the measure's door still takes (:func:`_measure_from_slots`).
+_MEASURE_SLOT_NAMES = frozenset({"stat", "fields", "per_game", "rate", "side", "shot_value", "kind"})
 #: The six slot names the span's door still takes (:meth:`Span.from_slots`).
 _SPAN_SLOT_NAMES = frozenset({"season", "season_type", "season_type_unstated", "span", "since", "until"})
 #: The four slot names the window's door still takes (:meth:`Window.from_slots`).

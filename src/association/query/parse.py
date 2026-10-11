@@ -893,22 +893,25 @@ def _reading_from_route_point(reading: Reading) -> tuple[Reading | None, str | N
     return reading.point, reading.point_declined, reading.point_refusal
 
 
-# The slots a name is recorded under, on the reading's scope and on its
-# subject: the words of every name in them are the reading's own, which the
-# claims ledger counts as read (``names_read``) - a word of "Stephen Curry"
-# the model copied only "steph" of, which the nickname table completes.
-_READING_FROM_ROUTE_NAME_KEYS = ("player", "players", "team", "teams", "opponent", "own_team", "with_player", "without")
-
-
 def _reading_from_route_names(scope: Filtered, subject: Subject, asked: PointShape | None) -> tuple[str, ...]:
-    """Every name the reading settled on - the scope's and the subject's, as
-    the reading's record holds them (``stages._reading_record``) - whose
-    words no reader has to claim (:func:`~association.query.lexicon.content_words`)."""
-    found: list[str] = []
-    for holder in (scope.to_slots(split_by_presence=asked == PRESENCE_SPLIT), subject.projected()):
-        for slot in _READING_FROM_ROUTE_NAME_KEYS:
-            value = holder.get(slot)
-            found.extend(value if isinstance(value, (list, tuple)) else [value] if isinstance(value, str) else [])
+    """Every name the reading settled on - the scope's and the subject's -
+    whose words no reader has to claim
+    (:func:`~association.query.lexicon.content_words`): the words of every
+    name are the reading's own, which the claims ledger counts as read
+    (``names_read``) - a word of "Stephen Curry" the model copied only
+    "steph" of, which the nickname table completes. The names are the typed
+    subject's players and teams, the cuts' opponent and tenure, the
+    companions the slot era carried by name (the absent ones; the teammates
+    who played, on the with/without split alone and only where none is
+    absent) and the subject reading's own players, teams, opponent and
+    tenure - what the slot-era projection listed until Phase 3, step 4,
+    slice (c), read off the typed values."""
+    found: list[str] = [*scope.who.players, *scope.who.teams, *(name for name in (scope.cuts.opponent, scope.cuts.tenure) if name is not None)]
+    absent = [c.player for c in scope.companions if c.absent]
+    if asked == PRESENCE_SPLIT and not absent:
+        found.extend(c.player for c in scope.companions if c.side == "own" and c.predicate == "played")
+    found.extend(absent)
+    found.extend((*subject.players, *subject.teams, *(name for name in (subject.opponent, subject.own_team) if name is not None)))
     return tuple(found)
 
 
@@ -989,7 +992,7 @@ def _reading_from_route_refused(players: names.PlayerIndex, teams: names.TeamInd
         return Cause(kind="championship", facts={"intent": reading.intent})
     if reading.asked not in TEAM_ONLY_ASKS:
         return None
-    player = player_named_on_a_team_only_question(players, teams, question, reading.to_slots())
+    player = player_named_on_a_team_only_question(players, teams, question, reading.who, reading.span.season)
     return Cause(kind="no_player_reading", facts={"player": player, "intent": reading.intent}) if player is not None else None
 
 
@@ -1061,8 +1064,10 @@ def _unsupported_period_stat(reading: Reading) -> Cause | None:
     key = measure.key if measure.whose == "own" else None
     if key in PERIOD_COLUMNS or key in PERIOD_RATE_STATS:
         return None
-    slots = scope.period.to_slots() if scope.period is not None else {}
-    return Cause(kind="period_stat", facts={"intent": intent, "stat": measure.as_typed, "period": slots.get("period"), "half": slots.get("half")})
+    period = scope.period
+    quarter = period.number if period is not None and not period.half else None
+    half = period.number if period is not None and period.half else None
+    return Cause(kind="period_stat", facts={"intent": intent, "stat": measure.as_typed, "period": quarter, "half": half})
 
 
 def _unsupported_period_as_condition(question: str, reading: Reading) -> Cause | None:

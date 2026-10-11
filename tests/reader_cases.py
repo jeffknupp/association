@@ -43,12 +43,6 @@ players "Curry" reached one man where the index holds two, and the
 "Luther" in a holiday's name read as a surname the full index's own
 dictionary rules out (54 of 430 cases differed, measured 2026-10-11)."""
 
-#: The slot-era keys of a Reading's record, dropped from a case's expected
-#: value: the projection goes with the step, and a case is written in the
-#: typed vocabulary from the start.
-SLOT_ERA_KEYS: frozenset[str] = frozenset({"scope", "subject"})
-SLOT_ERA_POINT_KEYS: frozenset[str] = frozenset({"scope", "span", "season"})
-
 
 def warehouse() -> duckdb.DuckDBPyConnection:
     """An in-memory warehouse holding the names the cases use."""
@@ -66,11 +60,9 @@ def read(con: duckdb.DuckDBPyConnection, question: str, names: list[str] | None 
 
 
 def record(reading: Reading) -> dict[str, Any]:
-    """The Reading as the stage snapshot records it, in the typed vocabulary."""
-    out = {key: value for key, value in _reading_record(reading, None).items() if key not in SLOT_ERA_KEYS}
-    if isinstance(out.get("point"), dict):
-        out["point"] = {key: value for key, value in out["point"].items() if key not in SLOT_ERA_POINT_KEYS}
-    return out
+    """The Reading as the stage snapshot records it: the typed vocabulary,
+    since Phase 3, step 4, slice (c) deleted the slot-era projection."""
+    return _reading_record(reading, None)
 
 
 def load_cases() -> list[dict[str, Any]]:

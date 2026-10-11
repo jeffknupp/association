@@ -138,61 +138,21 @@ def test_a_line_in_a_quarter_is_read_by_the_parser_with_its_claim() -> None:
 # ---------------- the typed value: the door, the projection, the cells ----------------
 
 
-@pytest.mark.parametrize(
-    "slots",
-    [
-        {"stat": "points", "threshold": 30},
-        {"above": ["with 25 minutes"]},
-        {"below": ["under 14 fta", "at most 5 turnovers"]},
-        {"period_condition": {"stat": "threePointFieldGoalsMade", "threshold": 1, "op": "=", "period": 1}},
-        {"period_condition": {"stat": "points", "threshold": 10, "op": ">=", "half": 2}},
-        {"without": ["Jayson Tatum"]},
-        {"conditions": [{"player": "Joel Embiid", "side": "own", "predicate": "started"}]},
-        {"conditions": [{"player": "Tyrese Maxey", "side": "own", "predicate": "reached", "stat": "points", "threshold": 20}]},
-        {"conditions": [{"player": "Joel Embiid", "side": "opponent", "predicate": "played"}], "without": ["Paul George"]},
-    ],
-)
-def test_the_slots_round_trip_through_the_typed_values(slots: dict[str, Any]) -> None:
-    scope = slots_scope(slots)
-    assert scope.to_slots() == slots
-    assert slots_scope(scope.to_slots()) == scope
-
-
-def test_the_splits_teammates_project_under_its_own_slot_and_as_conditions_elsewhere() -> None:
+def test_the_door_types_the_splits_teammates_and_a_role_beside_them() -> None:
+    """The three companion slots type as one tuple: a teammate who played
+    beside a role the same name holds is two companions (the split divides
+    by the one and narrows by the other), and one who played beside one
+    absent is held typed - where the slot-era writer wrote the split's
+    ``with_player`` only with nobody absent (ISSUES.md, "A teammate who
+    played beside an absent one on the with/without split is dropped")."""
     scope = slots_scope({"with_player": ["Jayson Tatum", "Jaylen Brown"]})
     assert scope.companions == (Companion(player="Jayson Tatum"), Companion(player="Jaylen Brown"))
-    assert scope.to_slots(split_by_presence=True) == {"with_player": ["Jayson Tatum", "Jaylen Brown"]}
-    assert scope.to_slots() == {"conditions": [{"player": "Jayson Tatum", "side": "own", "predicate": "played"}, {"player": "Jaylen Brown", "side": "own", "predicate": "played"}]}
-    # A teammate who played beside a role the same name holds: both, as the two slots held them (the split divides by the one and narrows by the other).
     both = slots_scope({"with_player": ["Jayson Tatum"], "conditions": [{"player": "Jayson Tatum", "side": "own", "predicate": "started"}]})
-    assert len(both.companions) == 2 and both.to_slots(split_by_presence=True) == {"with_player": ["Jayson Tatum"], "conditions": [{"player": "Jayson Tatum", "side": "own", "predicate": "started"}]}
-    # Where one is absent the split divides by the absent ones and the teammates who played went unwritten - the slot era's silent drop, kept in the
-    # projection and held typed (ISSUES.md, "A teammate who played beside an absent one on the with/without split is dropped").
+    assert sorted((c.player, c.predicate) for c in both.companions) == [("Jayson Tatum", "played"), ("Jayson Tatum", "started")]
     absent = slots_scope({"with_player": ["Jaylen Brown"], "without": ["Jayson Tatum"]})
-    assert len(absent.companions) == 2 and absent.to_slots(split_by_presence=True) == {"without": ["Jayson Tatum"]}
-    assert absent.to_slots() == {"without": ["Jayson Tatum"], "conditions": [{"player": "Jaylen Brown", "side": "own", "predicate": "played"}]}
-    # The Reading projects by its intent; a Query by its group.
-    assert list(Reading(**scope.filters(), asked=asked("with_without")).projected()["scope"]["with_player"]) == ["Jayson Tatum", "Jaylen Brown"]
-    assert list(Reading(**scope.filters(), asked=asked("game_log")).projected()["scope"]["with_player"]) == []
-
-
-def test_the_projection_keeps_the_slot_era_shape() -> None:
-    projected = Reading(
-        who=Who(kind="player", players=("X",)),
-        lines=(Line(measure="points", value=30, as_typed="30 point", keyed=True), phrase_line("under 14 fta", below=True)),
-        companions=(Companion(player="Jayson Tatum", predicate="absent"),),
-    ).scope_record()
-    assert (
-        projected["threshold"],
-        list(projected["below"]),
-        list(projected["above"]),
-        list(projected["without"]),
-        list(projected["conditions"]),
-        list(projected["with_player"]),
-        projected["period_condition"],
-    ) == (30, ["under 14 fta"], [], ["Jayson Tatum"], [], [], None)
-    assert "lines" not in projected and "companions" not in projected and all(not isinstance(v, (Line, Companion)) for v in projected.values())
-    assert set(_SLOT_ERA) <= set(projected)
+    assert sorted((c.player, c.predicate) for c in absent.companions) == [("Jaylen Brown", "played"), ("Jayson Tatum", "absent")]
+    # What a decline names: the absent ones under `without`, every other role under `conditions`, whatever the point.
+    assert companion_slot_names(absent) == ["without", "conditions"] and companion_slot_names(scope) == ["conditions"]
 
 
 def test_a_line_or_a_companion_the_relation_could_not_read_is_refused_at_the_door() -> None:

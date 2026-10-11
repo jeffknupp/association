@@ -195,21 +195,10 @@ def test_the_windows_claims_and_the_spans_fold_and_never_cross(question: str) ->
         {"ranked_by": "points", "rank": "best", "order": "recent", "limit": 3},
     ],
 )
-def test_the_four_slots_round_trip_through_the_window(slots: dict[str, Any]) -> None:
+def test_the_four_slots_type_through_the_door_as_the_window(slots: dict[str, Any]) -> None:
     scope = slots_scope(slots)
-    assert scope.window.to_slots() == slots
-    assert scope.to_slots() == slots
-    assert slots_scope(scope.to_slots()) == scope
-
-
-def test_the_projection_keeps_the_slot_era_shape_and_its_order() -> None:
-    projected = Reading(who=Who(kind="player", players=("X",)), window=Window(order="recent", count=10, rank="most", by="points")).scope_record()
-    keys = list(projected)
-    assert (projected["order"], projected["limit"], projected["rank"], projected["ranked_by"]) == ("recent", 10, "most", "points")
-    # The four keys sit where the four fields sat: `ranked_by` after `fields`, `rank` after `kind`, `order` and `limit` last.
-    assert keys.index("ranked_by") == keys.index("fields") + 1 and keys.index("rank") == keys.index("kind") + 1 and keys[-2:] == ["order", "limit"]
-    assert "window" not in projected and all(not isinstance(v, Window) for v in projected.values())
-    assert Reading().scope_record()["limit"] is None and Reading().scope_record()["order"] is None
+    assert (scope.window.by, scope.window.rank, scope.window.order, scope.window.count) == (slots.get("ranked_by"), slots.get("rank"), slots.get("order"), slots.get("limit"))
+    assert slots_scope({"window": scope.window}) == scope
 
 
 def test_a_typed_window_and_a_slot_at_once_or_a_count_below_one_is_refused_at_the_door() -> None:

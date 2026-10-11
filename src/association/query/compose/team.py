@@ -242,21 +242,6 @@ class TeamQuery(Filtered):
     #: template, compiled by :func:`compile_team_presence`).
     group: str = "none"
 
-    def projected(self) -> dict[str, Any]:
-        """Every field as the query was recorded until Phase 3, step 2, the
-        companions: the scope's teammates who played print under the
-        with/without split's own slot where the query divides the games by
-        their presence (:func:`~association.query.stages.plain`), as
-        :meth:`~association.query.compose.core.Query.projected` prints the
-        player compiler's.
-
-        .. versionadded:: 6.0.0
-        """
-        out = self.scoped_record(split_by_presence=self.group == "presence")
-        # The team compiler's measure, recorded as the field it was.
-        out["measure"] = out.pop("metric")
-        return out
-
 
 @dataclass
 class TeamCompiled:
