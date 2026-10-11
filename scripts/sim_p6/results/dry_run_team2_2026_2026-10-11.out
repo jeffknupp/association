@@ -1,0 +1,23 @@
+Boston Celtics 2026 through 2026-09-01: 89 games in the profile; roster = the 10 regulars (in at least half the games), 1000 runs
+sum of the roster's minutes targets: 240.8 (a game has 240 plus overtime)
+settings: RotationSettings(fresh_seconds=300.0, fatigue_tau=1000.0, rest_tau=180.0, hysteresis=1.7, pace_tau=300.0)
+overtime in 28 of 1000 runs; substitutions per game mean 27.0 (real 2026 team-game median 31, 2018-2025 26-28)
+a simulated game holds 240.7 player-minutes against the roster's 240.8 of targets: the 'scaled' column is each target times 1.000
+
+ athlete games start target   mean    sd   diff  within 2?   scaled  diff within 2?
+ 3917376    78    78   34.5   33.9   2.7   -0.6  yes          34.5  -0.6 yes
+ 3078576    84    84   34.2   34.7   2.4   +0.5  yes          34.2  +0.5 yes
+ 4066354    86    50   32.5   34.6   2.5   +2.1  NO           32.4  +2.1 NO
+ 4397424    83    81   25.0   25.1   1.9   +0.1  yes          25.0  +0.1 yes
+ 4065804    85    55   24.7   24.8   1.8   +0.2  yes          24.7  +0.2 yes
+ 4351851    49     0   24.5   23.8   1.5   -0.7  yes          24.5  -0.7 yes
+ 4593841    84    21   18.2   17.7   1.4   -0.5  yes          18.2  -0.5 yes
+ 4683689    75    25   17.4   17.3   1.2   -0.1  yes          17.4  -0.0 yes
+ 4277951    76     7   15.4   14.7   2.2   -0.8  yes          15.4  -0.8 yes
+ 5175647    78     3   14.3   14.1   1.3   -0.2  yes          14.3  -0.2 yes
+
+regulars within 2 minutes of target: 9 of 10; worst 2.10; against the scaled targets 9 of 10
+stint quantiles (minutes)   sim: q10=2.77 q25=5.19 q50=7.07 q75=9.47 q90=12.68
+                           real: q10=2.03 q25=4.18 q50=6.53 q75=9.15 q90=12.62   (max |sim - real| 1.01)
+stints per player who played: sim 3.20, real 3.15
+stint mean sim 7.53 real 7.10

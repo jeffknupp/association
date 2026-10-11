@@ -1,0 +1,146 @@
+window 2024-2026 through 2026-09-01; sim.duckdb meta {'schema_version': '1', 'seasons': '2007,2008,2009,2010,2011,2012,2013,2014,2015,2016,2017,2018,2019,2020,2021,2022,2023,2024,2025,2026', 'warehouse': 'nba.duckdb', 'built_at': '2026-10-11T22:32:40+00:00'}
+
+== games and resolution ==
+(2024, 1313, 1313, 99.84)
+(2025, 1315, 1315, 99.93)
+(2026, 1316, 1316, 99.84)
+
+== P6.2 substitution windows: the nearest preceding non-substitution kind ==
+230031 substitutions
+                 timeout   59149  25.71% cumulative  25.71%
+         free_throw_made   39689  17.25% cumulative  42.97%
+              period_end   32707  14.22% cumulative  57.19%
+           foul_personal   27584  11.99% cumulative  69.18%
+                turnover   19873   8.64% cumulative  77.82%
+       offensive_rebound   18740   8.15% cumulative  85.96%
+           foul_shooting   11094   4.82% cumulative  90.79%
+       defensive_rebound    8555   3.72% cumulative  94.51%
+                  review    5488   2.39% cumulative  96.89%
+               shot_made    3904    1.7% cumulative  98.59%
+               violation    1477   0.64% cumulative  99.23%
+       free_throw_missed     635   0.28% cumulative  99.51%
+          foul_technical     518   0.23% cumulative  99.73%
+             shot_missed     284   0.12% cumulative  99.85%
+                ejection     135   0.06% cumulative  99.91%
+               jump_ball     126   0.05% cumulative  99.97%
+          foul_offensive      45   0.02% cumulative  99.99%
+           foul_flagrant      26   0.01% cumulative  100.0%
+                game_end       1    0.0% cumulative  100.0%
+                  ignore       1    0.0% cumulative  100.0%
+the 99% list by kind: ['defensive_rebound', 'foul_personal', 'foul_shooting', 'free_throw', 'offensive_rebound', 'period_end', 'review', 'shot', 'timeout', 'turnover', 'violation']
+
+free-throw types preceding a substitution (which attempt the window sits on):
+               Free Throw - 1 of 2   34599
+               Free Throw - 2 of 2    1879
+               Free Throw - 2 of 3    1325
+            Free Throw - Technical    1312
+               Free Throw - 1 of 1     741
+      Free Throw - Flagrant 2 of 2     164
+               Free Throw - 3 of 3     132
+      Free Throw - Flagrant 3 of 3      55
+               Free Throw - 1 of 3      34
+    Free Throw - Clear Path 2 of 2      30
+      Free Throw - Flagrant 1 of 1      29
+      Free Throw - Flagrant 1 of 2      11
+    Free Throw - Clear Path 1 of 2       7
+      Free Throw - Flagrant 2 of 3       4
+      Free Throw - Flagrant 1 of 3       2
+(0.7s)
+
+== real stint lengths (minutes), consecutive resolved segments a player stays on ==
+                                    all stints: n= 267316 mean=  7.1 q10= 2.03 q25= 4.18 q50= 6.53 q75= 9.15 q90=12.62
+                                  box starters: n= 149722 mean= 8.03 q10= 3.08 q25= 5.17 q50= 7.32 q75= 9.88 q90=14.62
+                                         bench: n= 117594 mean= 5.92 q10= 1.35 q25= 3.18 q50=  5.4 q75= 8.08 q90=10.97
+  stints that end at the final buzzer excluded: n= 227038 mean= 7.21 q10= 2.45 q25= 4.43 q50= 6.63 q75= 9.17 q90=12.53
+  stints with an unresolved segment, excluded: 728 of 268044
+  stints per player-game (players who played): 3.153
+(2.5s)
+
+== the four personal-foul kinds against the box's fouls, per player-game with minutes ==
+  2024: 27978 player-games, four kinds equal the box on 27954 (99.91%), with technicals 26563 (94.94%)
+  2025: 28024 player-games, four kinds equal the box on 28000 (99.91%), with technicals 26994 (96.32%)
+  2026: 28462 player-games, four kinds equal the box on 28415 (99.83%), with technicals 27377 (96.19%)
+
+== league tables (rotation.build_league_rotation) ==
+(1.4s)
+foul trouble: (fouls, period) raw observed/expected ratio [samples] -> policy factor (relative to 0 fouls, capped at 1)
+  period 1: 0f 0.983 [873635] -> 1.00 | 1f 1.153 [124372] -> 1.00 | 2f 0.593 [ 18941] -> 0.60 | 3f 0.259 [   645] -> 0.26
+  period 2: 0f 0.971 [577547] -> 1.00 | 1f 1.067 [308965] -> 1.00 | 2f 1.068 [109219] -> 1.00 | 3f 0.346 [ 20076] -> 0.36 | 4f 0.207 [   638] -> 0.21 | 5f 0.966 [     5] -> 1.00
+  period 3: 0f 0.871 [400901] -> 1.00 | 1f 1.049 [312123] -> 1.00 | 2f 1.104 [195341] -> 1.00 | 3f 1.121 [ 85677] -> 1.00 | 4f 0.618 [ 21221] -> 0.71 | 5f 0.273 [  1439] -> 0.31
+  period 4: 0f 0.890 [281988] -> 1.00 | 1f 1.000 [274369] -> 1.00 | 2f 1.034 [229377] -> 1.00 | 3f 1.073 [142792] -> 1.00 | 4f 1.146 [ 66957] -> 1.00 | 5f 1.015 [ 18296] -> 1.00
+  period 5: 0f 0.779 [  3340] -> 1.00 | 1f 0.911 [  4927] -> 1.00 | 2f 1.022 [  4526] -> 1.00 | 3f 1.107 [  3557] -> 1.00 | 4f 1.159 [  2214] -> 1.00 | 5f 1.211 [  1122] -> 1.00
+blowouts, box starters in the second half: (|margin| bucket, time bucket) raw ratio [samples] -> policy factor (relative to within five, capped at 1)
+  0-3 min left:   0-5 1.535 [33000] -> 1.00 |  6-10 1.500 [23580] -> 0.98 | 11-15 1.166 [19170] -> 0.76 | 16-20 0.539 [16210] -> 0.35 | 21-30 0.216 [18350] -> 0.14 |   31+ 0.175 [ 7650] -> 0.11
+           3-6:   0-5 1.281 [32940] -> 1.00 |  6-10 1.282 [24900] -> 1.00 | 11-15 1.242 [20600] -> 0.97 | 16-20 1.007 [15620] -> 0.79 | 21-30 0.504 [16670] -> 0.39 |   31+ 0.197 [ 7290] -> 0.15
+           6-9:   0-5 1.109 [33180] -> 1.00 |  6-10 1.117 [26040] -> 1.00 | 11-15 1.106 [21060] -> 1.00 | 16-20 1.059 [15310] -> 0.95 | 21-30 0.801 [15950] -> 0.72 |   31+ 0.375 [ 6560] -> 0.34
+          9-12:   0-5 0.942 [34090] -> 1.00 |  6-10 0.973 [26850] -> 1.00 | 11-15 0.962 [21280] -> 1.00 | 16-20 0.960 [15350] -> 1.00 | 21-30 0.855 [15250] -> 0.91 |   31+ 0.541 [ 5310] -> 0.57
+         12-18:   0-5 0.920 [71760] -> 1.00 |  6-10 0.898 [57400] -> 0.98 | 11-15 0.904 [43280] -> 0.98 | 16-20 0.876 [29730] -> 0.95 | 21-30 0.847 [26550] -> 0.92 |   31+ 0.743 [ 7560] -> 0.81
+         18-24:   0-5 1.244 [80240] -> 1.00 |  6-10 1.245 [62580] -> 1.00 | 11-15 1.243 [44180] -> 1.00 | 16-20 1.230 [26250] -> 0.99 | 21-30 1.228 [18680] -> 0.99 |   31+ 1.195 [ 4500] -> 0.96
+
+== profiles (rotation.build_profiles) ==
+(0.6s) 30 teams
+             Atlanta Hawks: 252 games, 46 players, 6 in half the games or more; sum of regulars' minutes targets 179.2; the profile's regulation minutes vs the box target differ by at most 0.32
+            Boston Celtics: 283 games, 33 players, 10 in half the games or more; sum of regulars' minutes targets 262.5; the profile's regulation minutes vs the box target differ by at most 0.37
+             Brooklyn Nets: 246 games, 47 players, 4 in half the games or more; sum of regulars' minutes targets 89.5; the profile's regulation minutes vs the box target differ by at most 0.28
+         Charlotte Hornets: 246 games, 54 players, 5 in half the games or more; sum of regulars' minutes targets 139.3; the profile's regulation minutes vs the box target differ by at most 0.35
+             Chicago Bulls: 246 games, 44 players, 9 in half the games or more; sum of regulars' minutes targets 209.7; the profile's regulation minutes vs the box target differ by at most 0.40
+       Cleveland Cavaliers: 285 games, 37 players, 10 in half the games or more; sum of regulars' minutes targets 254.4; the profile's regulation minutes vs the box target differ by at most 0.21
+          Dallas Mavericks: 268 games, 46 players, 6 in half the games or more; sum of regulars' minutes targets 132.6; the profile's regulation minutes vs the box target differ by at most 0.22
+            Denver Nuggets: 278 games, 32 players, 9 in half the games or more; sum of regulars' minutes targets 223.7; the profile's regulation minutes vs the box target differ by at most 0.40
+           Detroit Pistons: 266 games, 52 players, 8 in half the games or more; sum of regulars' minutes targets 199.8; the profile's regulation minutes vs the box target differ by at most 0.21
+     Golden State Warriors: 258 games, 39 players, 10 in half the games or more; sum of regulars' minutes targets 217.6; the profile's regulation minutes vs the box target differ by at most 0.30
+           Houston Rockets: 259 games, 29 players, 11 in half the games or more; sum of regulars' minutes targets 282.3; the profile's regulation minutes vs the box target differ by at most 0.45
+            Indiana Pacers: 287 games, 44 players, 10 in half the games or more; sum of regulars' minutes targets 253.9; the profile's regulation minutes vs the box target differ by at most 0.31
+               LA Clippers: 259 games, 49 players, 8 in half the games or more; sum of regulars' minutes targets 218.8; the profile's regulation minutes vs the box target differ by at most 0.22
+        Los Angeles Lakers: 267 games, 43 players, 6 in half the games or more; sum of regulars' minutes targets 146.4; the profile's regulation minutes vs the box target differ by at most 0.22
+         Memphis Grizzlies: 250 games, 62 players, 5 in half the games or more; sum of regulars' minutes targets 122.4; the profile's regulation minutes vs the box target differ by at most 0.27
+                Miami Heat: 255 games, 37 players, 8 in half the games or more; sum of regulars' minutes targets 205.6; the profile's regulation minutes vs the box target differ by at most 0.35
+           Milwaukee Bucks: 258 games, 42 players, 8 in half the games or more; sum of regulars' minutes targets 206.6; the profile's regulation minutes vs the box target differ by at most 0.43
+    Minnesota Timberwolves: 289 games, 36 players, 8 in half the games or more; sum of regulars' minutes targets 235.1; the profile's regulation minutes vs the box target differ by at most 0.27
+      New Orleans Pelicans: 250 games, 48 players, 7 in half the games or more; sum of regulars' minutes targets 189.8; the profile's regulation minutes vs the box target differ by at most 0.25
+           New York Knicks: 297 games, 47 players, 7 in half the games or more; sum of regulars' minutes targets 216.1; the profile's regulation minutes vs the box target differ by at most 0.73
+     Oklahoma City Thunder: 295 games, 36 players, 10 in half the games or more; sum of regulars' minutes targets 236.2; the profile's regulation minutes vs the box target differ by at most 0.29
+             Orlando Magic: 265 games, 31 players, 11 in half the games or more; sum of regulars' minutes targets 248.0; the profile's regulation minutes vs the box target differ by at most 0.35
+        Philadelphia 76ers: 263 games, 62 players, 3 in half the games or more; sum of regulars' minutes targets 86.6; the profile's regulation minutes vs the box target differ by at most 0.41
+              Phoenix Suns: 254 games, 46 players, 6 in half the games or more; sum of regulars' minutes targets 167.6; the profile's regulation minutes vs the box target differ by at most 0.33
+    Portland Trail Blazers: 251 games, 34 players, 10 in half the games or more; sum of regulars' minutes targets 238.6; the profile's regulation minutes vs the box target differ by at most 0.27
+          Sacramento Kings: 246 games, 49 players, 6 in half the games or more; sum of regulars' minutes targets 169.1; the profile's regulation minutes vs the box target differ by at most 0.41
+         San Antonio Spurs: 270 games, 36 players, 7 in half the games or more; sum of regulars' minutes targets 190.3; the profile's regulation minutes vs the box target differ by at most 0.27
+           Toronto Raptors: 253 games, 50 players, 8 in half the games or more; sum of regulars' minutes targets 210.4; the profile's regulation minutes vs the box target differ by at most 0.30
+                 Utah Jazz: 246 games, 45 players, 7 in half the games or more; sum of regulars' minutes targets 186.5; the profile's regulation minutes vs the box target differ by at most 0.41
+        Washington Wizards: 246 games, 51 players, 6 in half the games or more; sum of regulars' minutes targets 145.8; the profile's regulation minutes vs the box target differ by at most 0.95
+
+Boston 2024-2026 through 2026-09-01: starters ('3078576', '3917376', '3995', '4065648', '3102531')
+   4065648 games 195 started 195 target  36.4 profile-minutes  36.0 OT 1.00 by six minutes [1.0, 0.66, 0.55, 0.74, 0.99, 0.87, 0.46, 0.76, 1.0]
+   3917376 games 241 started 241 target  34.4 profile-minutes  34.2 OT 0.93 by six minutes [1.0, 0.91, 0.28, 0.9, 0.99, 0.84, 0.39, 0.71, 0.93]
+   3078576 games 263 started 263 target  33.9 profile-minutes  33.7 OT 1.00 by six minutes [1.0, 0.63, 0.59, 0.8, 1.0, 0.59, 0.64, 0.75, 1.0]
+      3995 games 158 started 158 target  32.6 profile-minutes  32.2 OT 0.84 by six minutes [1.0, 0.59, 0.61, 0.65, 0.99, 0.74, 0.42, 0.64, 0.84]
+   3102531 games 117 started 110 target  28.1 profile-minutes  28.0 OT 0.73 by six minutes [0.94, 0.87, 0.31, 0.67, 0.84, 0.66, 0.33, 0.46, 0.73]
+      3213 games 155 started  99 target  27.9 profile-minutes  27.7 OT 0.75 by six minutes [0.64, 0.66, 0.56, 0.6, 0.66, 0.61, 0.5, 0.56, 0.75]
+   4066354 games 278 started  58 target  27.1 profile-minutes  27.0 OT 0.39 by six minutes [0.21, 0.54, 0.83, 0.56, 0.23, 0.57, 0.81, 0.59, 0.39]
+   4351851 games  49 started   0 target  24.5 profile-minutes  24.4 OT 0.43 by six minutes [0.0, 0.8, 0.92, 0.35, 0.0, 0.76, 0.91, 0.36, 0.43]
+   4065804 games 262 started  87 target  22.0 profile-minutes  22.0 OT 0.21 by six minutes [0.33, 0.49, 0.68, 0.38, 0.34, 0.41, 0.65, 0.32, 0.21]
+      6478 games  22 started   1 target  20.6 profile-minutes  20.5 OT 0.00 by six minutes [0.05, 0.65, 0.55, 0.35, 0.09, 0.8, 0.5, 0.24, 0.0]
+   4397424 games 180 started  87 target  18.5 profile-minutes  18.2 OT 0.28 by six minutes [0.48, 0.27, 0.43, 0.34, 0.47, 0.24, 0.43, 0.41, 0.28]
+   3064560 games 160 started  24 target  16.7 profile-minutes  16.5 OT 0.21 by six minutes [0.15, 0.32, 0.54, 0.33, 0.19, 0.35, 0.57, 0.26, 0.21]
+   4593841 games 119 started  23 target  16.3 profile-minutes  16.2 OT 0.58 by six minutes [0.19, 0.25, 0.4, 0.32, 0.2, 0.31, 0.45, 0.38, 0.58]
+   4687718 games  33 started  10 target  15.9 profile-minutes  15.9 OT 0.00 by six minutes [0.3, 0.1, 0.42, 0.48, 0.25, 0.26, 0.3, 0.24, 0.0]
+   4277951 games  76 started   7 target  15.4 profile-minutes  15.5 OT 0.20 by six minutes [0.09, 0.43, 0.36, 0.39, 0.11, 0.45, 0.3, 0.38, 0.2]
+   5175647 games  78 started   3 target  14.3 profile-minutes  14.1 OT 0.24 by six minutes [0.04, 0.3, 0.37, 0.28, 0.06, 0.27, 0.47, 0.25, 0.24]
+   4683689 games 144 started  27 target  12.8 profile-minutes  12.6 OT 0.00 by six minutes [0.19, 0.16, 0.27, 0.19, 0.17, 0.19, 0.25, 0.31, 0.0]
+   4397104 games   3 started   0 target  11.7 profile-minutes  11.6 OT 0.00 by six minutes [0.0, 0.0, 0.33, 0.33, 0.0, 0.33, 0.33, 0.33, 0.0]
+   4278031 games  65 started   1 target  10.7 profile-minutes  10.5 OT 0.00 by six minutes [0.02, 0.2, 0.28, 0.15, 0.03, 0.19, 0.38, 0.25, 0.0]
+   3948153 games   9 started   0 target  10.4 profile-minutes  10.5 OT 0.00 by six minutes [0.0, 0.17, 0.67, 0.33, 0.0, 0.12, 0.17, 0.22, 0.0]
+   4397251 games  35 started   4 target  10.0 profile-minutes   9.8 OT 0.00 by six minutes [0.11, 0.17, 0.17, 0.09, 0.09, 0.15, 0.14, 0.3, 0.0]
+   2528693 games  22 started   3 target  10.0 profile-minutes  10.1 OT 0.00 by six minutes [0.14, 0.12, 0.27, 0.21, 0.14, 0.18, 0.32, 0.18, 0.0]
+   4277964 games  76 started   5 target   9.3 profile-minutes   9.1 OT 0.00 by six minutes [0.07, 0.2, 0.26, 0.12, 0.04, 0.14, 0.2, 0.25, 0.0]
+   3133602 games  49 started   2 target   9.1 profile-minutes   9.1 OT 0.00 by six minutes [0.04, 0.07, 0.16, 0.06, 0.06, 0.12, 0.33, 0.36, 0.0]
+   4593043 games   6 started   0 target   8.4 profile-minutes   7.0 OT 0.00 by six minutes [0.0, 0.09, 0.17, 0.0, 0.0, 0.0, 0.17, 0.19, 0.0]
+   4397885 games  30 started   1 target   7.9 profile-minutes   7.6 OT 0.00 by six minutes [0.03, 0.17, 0.07, 0.04, 0.03, 0.15, 0.2, 0.41, 0.0]
+   4397689 games  28 started   1 target   7.7 profile-minutes   7.5 OT 0.00 by six minutes [0.04, 0.09, 0.07, 0.07, 0.04, 0.05, 0.18, 0.27, 0.0]
+   4432164 games  47 started   1 target   6.8 profile-minutes   6.1 OT 0.90 by six minutes [0.02, 0.07, 0.09, 0.02, 0.02, 0.01, 0.17, 0.3, 0.9]
+   4066405 games  19 started   1 target   6.8 profile-minutes   6.4 OT 0.00 by six minutes [0.05, 0.06, 0.0, 0.0, 0.11, 0.01, 0.21, 0.4, 0.0]
+   4702745 games  23 started   2 target   6.7 profile-minutes   6.2 OT 0.51 by six minutes [0.09, 0.25, 0.02, 0.09, 0.0, 0.13, 0.09, 0.09, 0.51]
+   4576085 games  28 started   0 target   5.7 profile-minutes   5.2 OT 0.00 by six minutes [0.0, 0.03, 0.11, 0.01, 0.0, 0.0, 0.11, 0.27, 0.0]
+   4701992 games  13 started   1 target   3.8 profile-minutes   3.1 OT 0.00 by six minutes [0.08, 0.02, 0.08, 0.0, 0.08, 0.08, 0.0, 0.05, 0.0]
+   4397886 games   5 started   0 target   3.4 profile-minutes   3.4 OT 0.00 by six minutes [0.0, 0.0, 0.0, 0.2, 0.0, 0.0, 0.2, 0.2, 0.0]
