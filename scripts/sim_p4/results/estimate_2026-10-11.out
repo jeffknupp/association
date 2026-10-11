@@ -1,0 +1,113 @@
+window: 2024-2026 through 2026-04-13 (as_of is the day after the last 2026 regular-season game in real_games, Eastern)
+population: 3859 games, 1723 player-seasons with minutes, 90 team-seasons
+estimate: 1.3s for 42 players on 2 teams, 0 missing ([])
+estimate (every team): 1.5s for 802 players, 30 teams, 16 missing
+
+league
+  pace 101.22 possessions per 48 team-minutes   home_court +1.97 points
+  turnover_rate 0.1384/poss   foul_rate (trips) 0.1175/poss   offensive_rebound_rate 0.2514
+  free_throw_rate 0.7821   and_one_rate 0.0559   assisted_rate 0.6335   live_ball_share 0.6070
+  zone_mix  restricted 0.2644  paint 0.2439  midrange 0.0830  corner_three 0.1039  above_break_three 0.3048
+  make_rate restricted 0.6778  paint 0.4471  midrange 0.4173  corner_three 0.3874  above_break_three 0.3547
+  per_minute assists 0.1097  blocks 0.0205  defensive_rebounds 0.1356  fouls 0.0791  free_throw_trips 0.0496  offensive_rebounds 0.0456  shots 0.3683  steals 0.0331  turnovers 0.0553
+
+fitted strengths (k, pseudo-trials of the rate's own unit)
+  allowed_make_rate.above_break_three       6088.74  shots
+  allowed_make_rate.corner_three         1000000.00  shots
+  allowed_make_rate.midrange                3374.43  shots
+  allowed_make_rate.paint                    765.53  shots
+  allowed_make_rate.restricted               457.28  shots
+  allowed_zone_mix                          1112.30  shots
+  and_one_rate                                91.55  makes
+  assisted_rate                               10.12  makes
+  assists_per_minute                          40.61  minutes
+  blocks_per_minute                           68.84  minutes
+  defensive_rebound_rate                    1070.15  misses
+  defensive_rebounds_per_minute               55.81  minutes
+  forced_turnover_rate                       538.61  possessions
+  foul_rate                                 1338.27  possessions
+  fouls_per_minute                           119.46  minutes
+  free_throw_rate                             21.77  free throws
+  free_throw_trips_per_minute                 63.57  minutes
+  live_ball_share                             37.84  turnovers
+  make_rate.above_break_three                417.26  shots
+  make_rate.corner_three                     160.00  shots
+  make_rate.midrange                         164.97  shots
+  make_rate.paint                            119.61  shots
+  make_rate.restricted                        89.97  shots
+  offensive_rebounds_per_minute               45.47  minutes
+  pace                                         3.58  games of 48 team-minutes
+  shots_per_minute                            21.62  minutes
+  steals_per_minute                          228.70  minutes
+  turnovers_per_minute                       128.70  minutes
+  zone_mix                                     8.35  shots
+
+teams
+  Boston Celtics: pace 98.12 (raw 98.12 over 277.7 games48)  forced_turnover 0.1255  foul 0.1026  dreb 0.7607
+    allowed make restricted 0.665 (n=5463)  paint 0.436 (n=6431)  midrange 0.418 (n=2386)  corner_three 0.387 (n=2152)  above_break_three 0.351 (n=8024)
+    allowed mix  restricted 0.225  paint 0.262  midrange 0.097  corner_three 0.089  above_break_three 0.327
+  Oklahoma City Thunder: pace 101.69 (raw 101.69 over 281.7 games48)  forced_turnover 0.1611  foul 0.1186  dreb 0.7422
+    allowed make restricted 0.632 (n=5996)  paint 0.426 (n=5759)  midrange 0.408 (n=2136)  corner_three 0.387 (n=3272)  above_break_three 0.352 (n=7358)
+    allowed mix  restricted 0.245  paint 0.235  midrange 0.087  corner_three 0.132  above_break_three 0.300
+
+players: the star, a bench player, a near-prior player
+
+  Shai Gilgeous-Alexander (25): 8699 minutes, 5211 charted shots, near_prior=False
+    shots_per_minute                 0.5990  (x36 = 21.57; raw 0.5996, prior 0.3683, k 21.6, prior weight 0.002)
+    free_throw_trips_per_minute      0.1342  (x36 =  4.83; raw 0.1348, prior 0.0496, k 63.6, prior weight 0.007)
+    turnovers_per_minute             0.0666  (x36 =  2.40; raw 0.0668, prior 0.0553, k 128.7, prior weight 0.015)
+    assists_per_minute               0.1853  (x36 =  6.67; raw 0.1857, prior 0.1097, k 40.6, prior weight 0.005)
+    offensive_rebounds_per_minute    0.0232  (x36 =  0.84; raw 0.0231, prior 0.0456, k 45.5, prior weight 0.005)
+    defensive_rebounds_per_minute    0.1247  (x36 =  4.49; raw 0.1246, prior 0.1356, k 55.8, prior weight 0.006)
+    steals_per_minute                0.0489  (x36 =  1.76; raw 0.0493, prior 0.0331, k 228.7, prior weight 0.026)
+    blocks_per_minute                0.0267  (x36 =  0.96; raw 0.0268, prior 0.0205, k 68.8, prior weight 0.008)
+    fouls_per_minute                 0.0675  (x36 =  2.43; raw 0.0674, prior 0.0791, k 119.5, prior weight 0.014)
+    and_one_rate                     0.0785  (n 2739, prior 0.0559, k 91.5, prior weight 0.032)
+    assisted_rate                    0.2159  (n 2739, prior 0.6335, k 10.1, prior weight 0.004)
+    free_throw_rate                  0.8786  (n 2234, prior 0.7821, k 21.8, prior weight 0.010)
+    live_ball_share                  0.6533  (n 582, prior 0.6070, k 37.8, prior weight 0.061)
+    zone_mix  restricted 0.254  paint 0.333  midrange 0.191  corner_three 0.011  above_break_three 0.210
+    make_rate restricted 0.702 (n=1321, w=0.06)  paint 0.505 (n=1737, w=0.06)  midrange 0.490 (n=998, w=0.14)  corner_three 0.383 (n=59, w=0.73)  above_break_three 0.363 (n=1096, w=0.28)
+
+  Baylor Scheierman (2): 1842 minutes, 453 charted shots, near_prior=False
+    shots_per_minute                 0.2473  (x36 =  8.90; raw 0.2459, prior 0.3683, k 21.6, prior weight 0.012)
+    free_throw_trips_per_minute      0.0127  (x36 =  0.46; raw 0.0114, prior 0.0496, k 63.6, prior weight 0.033)
+    turnovers_per_minute             0.0336  (x36 =  1.21; raw 0.0320, prior 0.0553, k 128.7, prior weight 0.065)
+    assists_per_minute               0.0815  (x36 =  2.93; raw 0.0809, prior 0.1097, k 40.6, prior weight 0.022)
+    offensive_rebounds_per_minute    0.0419  (x36 =  1.51; raw 0.0418, prior 0.0456, k 45.5, prior weight 0.024)
+    defensive_rebounds_per_minute    0.1415  (x36 =  5.09; raw 0.1417, prior 0.1356, k 55.8, prior weight 0.029)
+    steals_per_minute                0.0322  (x36 =  1.16; raw 0.0320, prior 0.0331, k 228.7, prior weight 0.110)
+    blocks_per_minute                0.0049  (x36 =  0.18; raw 0.0043, prior 0.0205, k 68.8, prior weight 0.036)
+    fouls_per_minute                 0.0721  (x36 =  2.60; raw 0.0717, prior 0.0791, k 119.5, prior weight 0.061)
+    and_one_rate                     0.0215  (n 193, prior 0.0559, k 91.5, prior weight 0.322)
+    assisted_rate                    0.8340  (n 193, prior 0.6335, k 10.1, prior weight 0.050)
+    free_throw_rate                  0.8341  (n 43, prior 0.7821, k 21.8, prior weight 0.336)
+    live_ball_share                  0.5986  (n 59, prior 0.6070, k 37.8, prior weight 0.391)
+    zone_mix  restricted 0.085  paint 0.141  midrange 0.049  corner_three 0.245  above_break_three 0.480
+    make_rate restricted 0.693 (n=37, w=0.71)  paint 0.452 (n=63, w=0.66)  midrange 0.432 (n=22, w=0.88)  corner_three 0.412 (n=112, w=0.59)  above_break_three 0.350 (n=219, w=0.66)
+
+  Brooks Barnhizer (25): 349 minutes, 71 charted shots, near_prior=True
+    shots_per_minute                 0.2131  (x36 =  7.67; raw 0.2034, prior 0.3683, k 21.6, prior weight 0.058)
+    free_throw_trips_per_minute      0.0222  (x36 =  0.80; raw 0.0172, prior 0.0496, k 63.6, prior weight 0.154)
+    turnovers_per_minute             0.0358  (x36 =  1.29; raw 0.0287, prior 0.0553, k 128.7, prior weight 0.269)
+    assists_per_minute               0.0679  (x36 =  2.44; raw 0.0630, prior 0.1097, k 40.6, prior weight 0.104)
+    offensive_rebounds_per_minute    0.0534  (x36 =  1.92; raw 0.0544, prior 0.0456, k 45.5, prior weight 0.115)
+    defensive_rebounds_per_minute    0.1644  (x36 =  5.92; raw 0.1691, prior 0.1356, k 55.8, prior weight 0.138)
+    steals_per_minute                0.0322  (x36 =  1.16; raw 0.0315, prior 0.0331, k 228.7, prior weight 0.396)
+    blocks_per_minute                0.0153  (x36 =  0.55; raw 0.0143, prior 0.0205, k 68.8, prior weight 0.165)
+    fouls_per_minute                 0.0778  (x36 =  2.80; raw 0.0774, prior 0.0791, k 119.5, prior weight 0.255)
+    and_one_rate                     0.0601  (n 27, prior 0.0559, k 91.5, prior weight 0.772)
+    assisted_rate                    0.6307  (n 27, prior 0.6335, k 10.1, prior weight 0.273)
+    free_throw_rate                  0.7563  (n 10, prior 0.7821, k 21.8, prior weight 0.685)
+    live_ball_share                  0.5638  (n 10, prior 0.6070, k 37.8, prior weight 0.791)
+    zone_mix  restricted 0.292  paint 0.278  midrange 0.084  corner_three 0.162  above_break_three 0.183
+    make_rate restricted 0.649 (n=21, w=0.81)  paint 0.440 (n=20, w=0.86)  midrange 0.409 (n=6, w=0.96)  corner_three 0.389 (n=12, w=0.93)  above_break_three 0.349 (n=12, w=0.97)
+
+  near-prior players: 10 of 42 on the two teams; 211 of 802 league-wide (under 100 charted shots)
+
+sanity against known figures
+  pace 101.2 against ~98-100 (NBA.com's pace, which averages the two sides and uses 0.44 FTA, was 98.8 in 2024-25); the box formula over one side's lines runs about a possession high
+  free-throw rate 0.782 against ~0.78
+  three-point share of charted shots 0.409 against ~0.40-0.42 of FGA
+  home margin +1.97 against ~+2 (the window holds the 2024 and 2025 playoffs too)
+  turnovers per possession 0.138 against ~0.13-0.14; free-throw trips per possession 0.118; offensive rebound rate 0.251 against ~0.25-0.27
