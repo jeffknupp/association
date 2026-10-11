@@ -119,3 +119,20 @@ def test_zone_values() -> None:
     assert params.value_of(params.HEAVE) == 3
     assert params.value_of(params.UNKNOWN_THREE) == 3
     assert params.value_of(params.UNKNOWN_TWO) == 2
+
+
+class _Starters:
+    """A policy that keeps whoever is on the floor: the shape the engine ships."""
+
+    def lineup(self, context: params.RotationContext) -> tuple[str, ...]:
+        return context.on_floor()
+
+
+def test_the_rotation_contract_is_a_five_from_the_context() -> None:
+    players = tuple(params.PlayerGameState(athlete_id=f"p{i}", on_floor=i < 5, seconds_played=0.0, stint_seconds=0.0, fouls=0, available=True) for i in range(9))
+    context = params.RotationContext(team_id="18", period=2, clock_remaining=480.0, elapsed=960.0, margin=-3, players=players)
+    policy: params.RotationPolicy = _Starters()
+    assert policy.lineup(context) == ("p0", "p1", "p2", "p3", "p4")
+    assert context.on_floor() == ("p0", "p1", "p2", "p3", "p4")
+    assert (context.team_id, context.period, context.clock_remaining, context.elapsed, context.margin) == ("18", 2, 480.0, 960.0, -3)
+    assert (players[0].seconds_played, players[0].stint_seconds, players[0].fouls, players[0].available) == (0.0, 0.0, 0, True)

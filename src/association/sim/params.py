@@ -33,6 +33,7 @@ from __future__ import annotations
 import datetime as dt
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from typing import Protocol
 
 ZONES: tuple[str, ...] = ("restricted", "paint", "midrange", "corner_three", "above_break_three")
 """The five zones a shot is modeled in, rim-origin: the restricted area
@@ -248,6 +249,64 @@ class LeagueParams:
     def strength(self, name: str) -> float:
         """The fitted prior strength for ``name``, or :data:`DEFAULT_STRENGTH`."""
         return self.strengths.get(name, DEFAULT_STRENGTH)
+
+
+@dataclass(frozen=True)
+class PlayerGameState:
+    """What a rotation policy sees about one player at a dead ball: whether
+    he is on the floor, how long he has played in all and in his current
+    stint, his personal fouls, and whether he can still play (not fouled
+    out, not ejected, not marked unavailable by the caller).
+
+    .. versionadded:: 6.0.0
+    """
+
+    athlete_id: str
+    on_floor: bool
+    seconds_played: float
+    stint_seconds: float
+    fouls: int
+    available: bool
+
+
+@dataclass(frozen=True)
+class RotationContext:
+    """One team's situation at a dead ball, handed to its rotation policy:
+    the period and clock, the seconds elapsed from tip-off, this team's lead
+    (negative when behind) and every rostered player's state.
+
+    .. versionadded:: 6.0.0
+    """
+
+    team_id: str
+    period: int
+    clock_remaining: float
+    elapsed: float
+    margin: int
+    players: tuple[PlayerGameState, ...]
+
+    def on_floor(self) -> tuple[str, ...]:
+        """The five on the floor now, in roster order."""
+        return tuple(p.athlete_id for p in self.players if p.on_floor)
+
+
+class RotationPolicy(Protocol):
+    """The contract between the engine (step 5) and the rotation model
+    (step 6): at every dead ball the engine asks each team's policy for the
+    five who should be on the floor, and substitutes for the difference.
+
+    A policy returns exactly five distinct athlete ids from the context's
+    ``available`` players. Returning the current five means no change.
+    The engine ships a trivial policy (the starters, replaced only on a
+    foul-out) so it runs before the rotation model exists; the rotation
+    model is the real one.
+
+    .. versionadded:: 6.0.0
+    """
+
+    def lineup(self, context: RotationContext) -> tuple[str, ...]:
+        """The five to have on the floor from this dead ball on."""
+        ...
 
 
 DEFAULT_STRENGTH = 50.0
