@@ -30,13 +30,12 @@ from typing import Any
 
 import duckdb
 import pytest
-from slots import slots_reading
 from test_templates import shot_chart, shot_distance  # the shot relation's reader (compose.shots), its templates retired
 
 from association.fetch.repairs import real_games
 from association.nba.season import current_season
 from association.query.answer import AnswerContext
-from association.query.reading import Companion, Cuts, Line, Reading, Span, Unsupported, Window
+from association.query.reading import Companion, Cuts, Line, Reading, Span, Unsupported, Window, situation_of
 from association.query.reading import Subject as Who
 
 SEASON = current_season()
@@ -212,7 +211,7 @@ def test_shot_chart_honors_a_named_half_of_the_starter_bench_split(shots_ctx: An
 def test_shot_chart_honors_one_eastern_date(shots_ctx: AnswerContext) -> None:
     """e3 alone (the Lakers game the fixture's own docstring tips at
     ``{SEASON}-11-05T23:00Z``, the same Eastern day)."""
-    answer = shot_chart(shots_ctx, slots_reading({"player": "Stephen Curry", "season": SEASON, "date": f"{SEASON}-11-05"})).answer or ""
+    answer = shot_chart(shots_ctx, Reading(who=Who(kind="player", players=("Stephen Curry",)), cuts=Cuts(date=f"{SEASON}-11-05"), span=Span(season=SEASON))).answer or ""
     assert "1/1 made" in answer
     assert "e3" in answer  # the game-label fallback names the bare event id with no `games` row for it to describe further
 
@@ -307,7 +306,7 @@ def test_shot_chart_honors_situation(shots_ctx: AnswerContext) -> None:
     ({SEASON}-11-05) is the only one of the six on its weekday, and e3 alone
     is 1 attempt, made."""
     weekday = _date(SEASON, 11, 5).strftime("%A").lower()
-    answer = shot_chart(shots_ctx, slots_reading({"player": "Stephen Curry", "season": SEASON, "situation": f"{weekday}s"})).answer or ""
+    answer = shot_chart(shots_ctx, Reading(who=Who(kind="player", players=("Stephen Curry",)), cuts=Cuts(situation=situation_of(f"{weekday}s")), span=Span(season=SEASON))).answer or ""
     assert "1/1 made" in answer
 
 
@@ -316,8 +315,9 @@ def test_shot_chart_honors_conditions(shots_ctx: AnswerContext) -> None:
     used to answer the whole season too. Klay Thompson (athlete 2) starts
     e1, e2, e3 and e6 (he sits e4 and e5) - 2 + 1 + 1 + 2 = 6 attempts, 4
     made."""
-    conditions = [{"player": "Klay Thompson", "side": "own", "predicate": "started"}]
-    answer = shot_chart(shots_ctx, slots_reading({"player": "Stephen Curry", "season": SEASON, "conditions": conditions})).answer or ""
+    answer = (
+        shot_chart(shots_ctx, Reading(who=Who(kind="player", players=("Stephen Curry",)), companions=(Companion(player="Klay Thompson", predicate="started"),), span=Span(season=SEASON))).answer or ""
+    )
     assert "4/6 made" in answer
 
 
@@ -359,14 +359,16 @@ def test_shot_distance_honors_situation(shots_ctx: AnswerContext) -> None:
     season's 803-attempt (real warehouse) average regardless. e3's weekday
     (see `test_shot_chart_honors_situation`) is one attempt."""
     weekday = _date(SEASON, 11, 5).strftime("%A").lower()
-    answer = shot_distance(shots_ctx, slots_reading({"player": "Stephen Curry", "season": SEASON, "situation": f"{weekday}s"})).answer or ""
+    answer = shot_distance(shots_ctx, Reading(who=Who(kind="player", players=("Stephen Curry",)), cuts=Cuts(situation=situation_of(f"{weekday}s")), span=Span(season=SEASON))).answer or ""
     assert "over 1 attempts" in answer
 
 
 def test_shot_distance_honors_conditions(shots_ctx: AnswerContext) -> None:
     """Klay Thompson starting (e1, e2, e3, e6): 2 + 1 + 1 + 2 = 6 attempts."""
-    conditions = [{"player": "Klay Thompson", "side": "own", "predicate": "started"}]
-    answer = shot_distance(shots_ctx, slots_reading({"player": "Stephen Curry", "season": SEASON, "conditions": conditions})).answer or ""
+    answer = (
+        shot_distance(shots_ctx, Reading(who=Who(kind="player", players=("Stephen Curry",)), companions=(Companion(player="Klay Thompson", predicate="started"),), span=Span(season=SEASON))).answer
+        or ""
+    )
     assert "over 6 attempts" in answer
 
 
@@ -383,6 +385,6 @@ def test_shot_distance_situations_one_game_note_names_the_situation(shots_ctx: A
     finds) has no `order`/`limit` at all, so the note must name the weekday,
     never "most recent game"."""
     weekday = _date(SEASON, 11, 5).strftime("%A").lower()
-    answer = shot_distance(shots_ctx, slots_reading({"player": "Stephen Curry", "season": SEASON, "situation": f"{weekday}s"})).answer or ""
+    answer = shot_distance(shots_ctx, Reading(who=Who(kind="player", players=("Stephen Curry",)), cuts=Cuts(situation=situation_of(f"{weekday}s")), span=Span(season=SEASON))).answer or ""
     assert f"on {weekday.capitalize()}s" in answer
     assert "most recent game" not in answer
