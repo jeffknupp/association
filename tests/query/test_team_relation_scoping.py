@@ -14,12 +14,16 @@ import inspect
 import re
 from typing import Any
 
-from shapes import key, stated
-
 from association.query.compose.meetings import read_head_to_head
 from association.query.compose.periods import read_team_quarter_points
 from association.query.compose.plan import cells_stated
-from association.query.reading import TEAM_MEETINGS, TEAM_PERIOD_TOTAL, TEAM_RANKING, TEAM_RECORD
+from association.query.reading import (
+    TEAM_MEETINGS,
+    TEAM_PERIOD_TOTAL,
+    TEAM_RANKING,
+    TEAM_RECORD,
+    PointShape,
+)
 from association.query.team_relation import TEAM_RELATION_SCOPING, TEAM_RELATION_SCOPING_EXCLUDED
 
 
@@ -38,14 +42,14 @@ def test_team_templates_declare_scoping_through_the_shared_table() -> None:
        ``team_relation_scoping`` built each reader's ``STATED_SCOPING`` row
        from the intent-keyed exclusions until then.
     """
-    on_the_relation = {"team_record": {"split"}, "head_to_head": set(), "team_quarter_points": set(), "team_leaderboard": {"rate"}}
+    on_the_relation: dict[PointShape, set[str]] = {TEAM_RECORD: {"split"}, TEAM_MEETINGS: set(), TEAM_PERIOD_TOTAL: set(), TEAM_RANKING: {"rate"}}
     for words, extra in on_the_relation.items():
-        row = TEAM_RELATION_SCOPING_EXCLUDED[key(words)]
+        row = TEAM_RELATION_SCOPING_EXCLUDED[words]
         assert row.taken == extra, words
         for cell, reason in row.unstated.items():
             assert cell in TEAM_RELATION_SCOPING | row.taken, f"{words} excludes {cell!r}, which is not a team-relation cell at all"
             assert reason.strip(), f"{words} excludes {cell!r} without a reason"
-        assert stated(words) == (TEAM_RELATION_SCOPING | extra) - set(row.unstated), f"{words} declares scoping of its own rather than through its row"
+        assert cells_stated(words) == (TEAM_RELATION_SCOPING | extra) - set(row.unstated), f"{words} declares scoping of its own rather than through its row"
     # What the readers' words state, as their retired declarations had it.
     assert cells_stated(TEAM_RECORD) == (TEAM_RELATION_SCOPING | {"split"}) - {"date", "window", "period"}
     assert cells_stated(TEAM_RANKING) == {"venue", "range"}
