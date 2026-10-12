@@ -17,7 +17,6 @@ from typing import Any
 
 import duckdb
 import pytest
-from slots import companion_from_slot, line_from_period_slot
 from test_conditions import BROWN, TATUM, league, with_without  # noqa: F401 - the league fixture and the split's reader, imported by name
 from test_period_relation import SEASON as PERIOD_SEASON
 from test_period_relation import con as period_con  # noqa: F401 - the plays fixture, imported by name
@@ -159,27 +158,19 @@ def test_a_line_in_a_quarter_is_read_by_the_parser_with_its_claim() -> None:
 # ---------------- the typed value: the door, the projection, the cells ----------------
 
 
-def test_the_door_types_the_splits_teammates_and_a_role_beside_them() -> None:
-    """The three companion slots type as one tuple: a teammate who played
-    beside a role the same name holds is two companions (the split divides
-    by the one and narrows by the other), and one who played beside one
-    absent is held typed - where the slot-era writer wrote the split's
-    ``with_player`` only with nobody absent (ISSUES.md, "A teammate who
-    played beside an absent one on the with/without split is dropped")."""
-    scope = Reading(companions=(Companion(player="Jayson Tatum"), Companion(player="Jaylen Brown")))
-    assert scope.companions == (Companion(player="Jayson Tatum"), Companion(player="Jaylen Brown"))
-    both = Reading(companions=(Companion(player="Jayson Tatum", predicate="started"), Companion(player="Jayson Tatum")))
-    assert sorted((c.player, c.predicate) for c in both.companions) == [("Jayson Tatum", "played"), ("Jayson Tatum", "started")]
+def test_a_decline_names_each_companion_by_his_name_side_and_role() -> None:
+    """What a decline names of the companion cell: each companion by his
+    name, side and role, in the order the reading holds them. Until Phase
+    4, step 0 this was the tail of a test of the slot door's three
+    companion slots (the door went with the tests' slot dicts)."""
     absent = Reading(companions=(Companion(player="Jayson Tatum", predicate="absent"), Companion(player="Jaylen Brown")))
-    assert sorted((c.player, c.predicate) for c in absent.companions) == [("Jaylen Brown", "played"), ("Jayson Tatum", "absent")]
-    # What a decline names: each companion by his name, side and role.
     assert cell_facts(absent, "companion")["companions"] == [
         {"player": "Jayson Tatum", "side": "own", "predicate": "absent"},
         {"player": "Jaylen Brown", "side": "own", "predicate": "played"},
     ]
 
 
-def test_a_line_or_a_companion_the_relation_could_not_read_is_refused_at_the_door() -> None:
+def test_a_line_or_a_companion_the_relation_could_not_read_is_refused() -> None:
     with pytest.raises(ScopeError, match="op"):
         Line(measure="points", op="!=", value=3)  # type: ignore[arg-type]
     with pytest.raises(ScopeError, match="whole number"):
@@ -188,10 +179,8 @@ def test_a_line_or_a_companion_the_relation_could_not_read_is_refused_at_the_doo
         Companion(player="X", predicate="started", line=Line(measure="points", value=3))
     with pytest.raises(ScopeError, match="reached"):
         Companion(player="X", predicate="reached")
-    with pytest.raises(ScopeError, match="no player"):
-        companion_from_slot({"predicate": "absent"})
-    with pytest.raises(ScopeError, match="exactly one of period and half"):
-        line_from_period_slot({"stat": "points", "threshold": 1})
+    with pytest.raises(ScopeError, match="needs a player"):
+        Companion(player=" ", predicate="absent")
     with pytest.raises(ScopeError, match="no predicate"):
         phrase_line("under 25 years old", below=True).as_predicate()
     assert Line(measure="points", value=30).as_predicate() == ("points", ">=", 30)
