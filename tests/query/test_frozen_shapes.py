@@ -133,36 +133,13 @@ def test_no_scoping_declaration_is_added_and_each_says_why_it_is_here() -> None:
     assert unlabeled == set(), "each scoping declaration is a cell table, or debt naming the step that owes it"
 
 
-# D4 names more than the intents: no new per-intent renderer either (Phase
-# 1's order from here, step 4), held the same way - the set as it stood,
-# which may lose a member with its slice and gain none. The page's renderers
-# become one per shape in Phase 4.
-FROZEN_RENDERERS = frozenset(
-    {
-        "game_log",
-        "head_to_head",
-        "leaderboard",
-        "period_leaderboard",
-        "period_split",
-        "player_compare",
-        "player_history",
-        "player_matchup",
-        "player_netpoints",
-        "player_splits",
-        "player_stat",
-        "record_when",
-        "shot_distance",
-        "single_game_high",
-        "streak",
-        "team_leaderboard",
-        "team_outlook",
-        "team_quarter_points",
-        "team_record",
-        "team_stat",
-        "threshold_count",
-        "with_without",
-    }
-)
+# D4 names more than the intents: no new renderer either (Phase 1's order
+# from here, step 4), held the same way - the set as it stands, which may
+# lose a member with its slice and gain none. Phase 4, step 1 keyed the
+# page's renderers by the planned point's shape: the 22 per-intent renderers
+# became one per shape (``reading.Shape``), and a renderer is added only
+# with a shape.
+FROZEN_RENDERERS = frozenset({"scalar", "rows", "ranking", "comparison", "split", "runs", "chart"})
 
 
 def _renderers_today() -> set[str]:
@@ -175,6 +152,16 @@ def _renderers_today() -> set[str]:
     block = re.search(r"const RENDERERS = \{(.*?)\n  \};", page, re.S)
     assert block is not None, "could not find the RENDERERS table in index.html"
     return set(re.findall(r"^    (\w+): \{", block.group(1), re.M))
+
+
+def test_the_page_renders_by_the_shapes_and_nothing_else() -> None:
+    """The frozen renderers are the shapes a planned point is read and said
+    as, one each: a renderer keyed by anything else is a label come back."""
+    from typing import get_args
+
+    from association.query.reading import Shape
+
+    assert frozenset(get_args(Shape)) == FROZEN_RENDERERS
 
 
 def _frozen(name: str, today: set[Any], frozen: frozenset[Any]) -> None:
