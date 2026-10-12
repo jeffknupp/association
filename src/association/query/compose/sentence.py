@@ -221,6 +221,24 @@ def _grouped_line(q: Query, r: dict[str, Any]) -> str:
     return f"  {label:24s} " + "  ".join(cells)
 
 
+def _grouped_empty(q: Query, who: str, where: str, span: str) -> str:
+    """A grouped read with no rows: a stated minimum that kept every player
+    out says so, which "no games" would misname (ISSUES.md #377)."""
+    if q.minimum is not None and q.group == "player":
+        return f"No player{where} played {q.minimum.count:,} games in the {span}, the minimum asked for."
+    return f"No games for {who}{where} in the {span}."
+
+
+def _grouped_minimum(q: Query) -> str:
+    """ ", minimum 20 games" for a ranking's qualifier, or nothing: the
+    default is the reader's decision; one the question stated is what was
+    asked, said the same way and recorded as no decision (ISSUES.md #377)."""
+    if not q.minimum_games:
+        return ""
+    said = f", minimum {q.minimum_games} games"
+    return said if q.minimum is not None else decided("minimum", said, field="minimum", chose=q.minimum_games, of="games")
+
+
 def _grouped_sentence(q: Query, out: dict[str, Any]) -> str:
     """A ``grouped`` read: a split by venue or starter/bench, or a ranking of players."""
     rows = out["rows"]
@@ -228,11 +246,10 @@ def _grouped_sentence(q: Query, out: dict[str, Any]) -> str:
     where = out["narrowing"]
     span = _span_phrase(out["span"], out.get("player_seasons"))
     if not rows:
-        return f"No games for {who}{where} in the {span}."
+        return _grouped_empty(q, who, where, span)
     head = f"{who}{where}, {span}{_predicates(q)}, by {q.group}"
     if q.measures:
-        minimum = decided("minimum", f", minimum {q.minimum_games} games", field="minimum", chose=q.minimum_games, of="games") if q.minimum_games else ""
-        head += f" ({LABELS.get(q.measures[0], q.measures[0])} {'per game' if q.aggregate == 'per_game' else q.aggregate}" + minimum + ")"
+        head += f" ({LABELS.get(q.measures[0], q.measures[0])} {'per game' if q.aggregate == 'per_game' else q.aggregate}" + _grouped_minimum(q) + ")"
     if q.group == "season" and q.limit and len(rows) >= q.limit:
         # The span names the whole career; the rows are its newest N (the
         # limit cut them - core._compile_grouped), which the heading says.

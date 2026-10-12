@@ -951,7 +951,14 @@ last). Nothing carries a route between the words and the Reading, and
 the filters are the Reading's own fields (`reading.Filtered`: `who` - the
 typed subject, `Reading.subject` being the subject reading's record -
 `cuts`, `companions`, `lines`, `measure`, `span`, `split`, `period`,
-`window`), a frozen base every planned query inherits too (`Query`,
+`window`, and since 2026-10-11 `minimum` - a ranking's qualifier as the
+question states it, `reading.Minimum`, read by the window tagger's
+`window.read_minimum` with its words blanked out of what every other
+tagger and the grammar read, kept on the players' ranking alone by
+`point.minimum_under`, applied by the season-line ranking where the
+metric qualifies by its unit (`metrics.qualifies_by`) and by the
+game-level ranking in games, refused by a cause naming the floor
+elsewhere, ISSUES.md #377), a frozen base every planned query inherits too (`Query`,
 `TeamQuery`, whose compiler measure is `metric`, `NetPointsQuery`,
 `ShotQuery`, `TeamSeasonQuery`), with the cells declared once on it
 (`Filtered.CELLS`, `cells()`): a relation's step narrows by the query
@@ -961,7 +968,7 @@ called (`tests/slots.py`: `slots_scope`, `slots_reading`, the families'
 doors). Until slice (c) `to_slots()` and the `scope` record
 (`scope_record`, `projected()`) kept the shape the populations were
 recorded in; slice (c) deleted that projection, so the populations
-record the typed Reading (`stages._reading_record`: the nine filters by
+record the typed Reading (`stages._reading_record`: the ten filters by
 field, the key the words asked beside its label, the subject reading's
 own record, the point's own fields with its typed filters, the planned
 query's fields), and what a decline still says in slot names is read off
@@ -1568,8 +1575,10 @@ a shape:
   ranking by `player` whose `ranked_by` is the metric - a count of games
   over a line ranks by `"games"`, which is how the sayer tells the two
   apart - read through `season_line.rank_season_line`, which keeps the
-  dedup, the qualifier and the career pool exactly; the qualifier is the
-  `minimum` decision it was, the career pool a `floor` note), and a
+  dedup, the qualifier and the career pool exactly; the default qualifier
+  is the `minimum` decision it was, one the question states is what was
+  asked and no decision (`RankingFacts.stated_minimum`), the career pool a
+  `floor` note), and a
   player's unnarrowed line, his stat season by season and two or more
   players' lines side by side (`compose/seasons.py`, since 2026-10-05,
   over the SEASON LINE - `query/season_line.py`: one row per player per

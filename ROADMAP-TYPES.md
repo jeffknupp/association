@@ -262,7 +262,10 @@ otherwise.
     of the SPAN - a ranking's own rank word says which end of the ranking -
     so the grammar reads them as the count alone, as the stages did. `rank`
     is the draft's missing row ("nowhere for `ranked_by` or a stated
-    qualifier" -> `Window.by`; the qualifier, `Minimum`, is still open).
+    qualifier" -> `Window.by`; the qualifier, `Minimum`, is still open -
+    declared in code 2026-10-11 by the change that first reads it,
+    `reading.Minimum(count, unit, of, word)` on `Filtered.minimum`,
+    ISSUES.md #377).
   - One tagger: `window.read_window(question, WindowContext) ->
     WindowRead(window, claims)`, over `lexicon.py`'s `WINDOW_GRAMMAR`,
     `ORDER_WORDS`, `SINGLE_GAME`, `RANK_WORDS`, `RANKED_BOOLEAN_GAMES`,

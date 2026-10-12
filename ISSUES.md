@@ -380,11 +380,11 @@ those were found.
 - **Priority:** P1 - a different stat answered.
 - **GitHub:** #348
 
-### "worst" is not a ranking word, so "who has the worst fg% with at least 1000 fg attempted" (typed as one word) answers the best, at the default floor
-- **Found:** 2026-10-09, the lead, reading the feed population's field-goal rankings while re-floored `fg_pct` (#12).
-- **Evidence:** the feed answer is "Rudy Gobert led the league in field-goal percentage in the 2026 regular season (minimum 400 field-goal attempts), at 68.2% ..." - the best, where the worst was asked, and the default floor where the question stated its own. `point._RANKING` is `leaders?|most|highest|top|best|fewest|least|lowest`: no "worst", so the direction stays descending; and the stated minimum is read by `point._ranking_minimum` from "at least N"/"minimum N", which "atleast" (one word, as typed) does not match, so "1000" is an unread number - the claims ledger's own class (`AGENTS.md`, "a number among them is a bug"). Probed with no model at f77c30b. <!-- codespell:ignore atleast - the question as the user typed it -->
-- **User sees:** the opposite ranking, fluently, with a floor the question did not ask for.
-- **Next step:** "worst" joins the ranking words with "lowest"'s direction (the window family's words - step 2's window slice is rewriting them, so after it lands, or in it); the one-word spelling of "at least" reads as the phrase (the lexicon's fold, as "3's" and "76ers" need); a case per wording in `tests/query/test_parser.py`; the readings and feed answers that move enumerated.
+### "worst" is not a ranking word, so "who has the worst fg% with atleast 1000 fg attempted" (typed as one word) answers the best
+- **Found:** 2026-10-09, the lead, reading the feed population's field-goal rankings while re-floored `fg_pct` (#12); the floor half fixed 2026-10-11 (#377: the stated minimum, "atleast" included, is the Reading's typed `minimum`).
+- **Evidence:** the feed answer is "Nikola Jokic led the league in field-goal percentage in the 2026 regular season (minimum 1,000 field-goal attempts), at 56.9% ..." - the best, where the worst was asked; the floor is the one asked since #377. `point._RANKING` is `leaders?|most|highest|top|best|fewest|least|lowest`: no "worst", so the direction stays descending, and "worst" is the question's one unread word. The same for "who has the worst 3pt% / ft% with atleast 1000 ... attempted" (empty at that floor in one season).
+- **User sees:** the opposite ranking, fluently.
+- **Next step:** "worst" joins the ranking words with "lowest"'s direction (the window family's words, `lexicon.RANK_WORDS` already reads it for a team ranking); a case per wording in `tests/query/test_parser.py`; the readings and feed answers that move enumerated.
 - **Source:** ours.
 - **Priority:** P1 - the opposite question answered.
 - **GitHub:** #350
@@ -2287,14 +2287,6 @@ those were found.
 - **Next step:** refuse a rate per N possessions for N != 100 by a cause naming the unit, and add the "50" case to `span.needed`'s `gives_up` checks so the number stays unread until it is.
 - **Priority:** P2 - a different figure than asked, with the unit said.
 - **GitHub:** #376
-
-### A stated minimum is read by nothing: "nba plus minus per game leaders minimum 100 games played" answers "minimum 20 games"
-- **Found:** 2026-10-11, the Phase 3 review (`~/association-research/reviews/phase3-2026-10-11/`, finding 4).
-- **Evidence:** the 2,082 feed run on `4de1801`; 8 feed questions state "minimum N" or "at least N gp|games|attempts" and every one leaves the number unread (the review's `data/ledger-feed-4de1801.jsonl.gz`): "highest single season 3pt percent minimum 20 attempts", "nba pg highest win% games at least 300 gp", ... The Reading has no `minimum` field; `ROADMAP-TYPES.md`'s Reading draft has one.
-- **User sees:** the default qualifier stated beside the ranking ("minimum 20 games"), with no wording that reaches the one asked - the case "A reasonable default beats a question" does not allow (AGENTS.md: both conditions, the value shown AND a wording that reaches the alternative).
-- **Next step:** read "minimum|at least N games|gp|attempts|minutes" into a qualifier the ranking takes (the draft Reading's `minimum`), or refuse it by a cause naming the floor asked; the 8 feed answers enumerated.
-- **Priority:** P2 - the right numbers under the wrong floor, said.
-- **GitHub:** #377
 
 ### "lebron james last 5 first games stats" answers his FIRST 10 games, with "last" and "5" unread
 - **Found:** 2026-10-11, the Phase 3 review (`~/association-research/reviews/phase3-2026-10-11/`, finding 5); one of the ten answer moves of `9da65c0` (Phase 3, step 4, slice (c)) that Jeff kept on 2026-10-11 - before it, his season line.

@@ -543,6 +543,13 @@ def _ranking_floor_unit(unit: str, count: int) -> str:
     return f"A minimum of {count} {unit} is not a floor this ranking can apply yet - only a minimum number of games is. Ask with 'at least N games', or without the floor."
 
 
+def _minimum_unranked(unit: str, count: int) -> str:
+    """The refusal for a qualifier stated for a point that ranks no players
+    ("most points in a game minimum 20 games"), naming the floor asked
+    (ISSUES.md #377)."""
+    return f"A minimum of {count} {unit} keeps the players a ranking ranks, and this question ranks none - ask without the floor, or for the leaders."
+
+
 def _ranking_unit(metric: str, rate: Any) -> str:
     """The refusal for a ranking in a unit the metric has no form of,
     naming the forms THIS metric has ("who were the top 10 in defensive
@@ -2183,15 +2190,23 @@ def _leader_value(row: dict[str, Any], ratio: Sequence[str] | None, *, short: bo
 
 def _leaderboard_minimum(result: Result) -> tuple[Decided | None, Any]:
     """The ranking's qualifier decision and the minimum it applied (``None``
-    where the metric applies none)."""
+    where the metric applies none) - the stated one where the question
+    stated it, which is no decision (ISSUES.md #377)."""
     minimum = next((each for each in result.decisions if each.kind == "minimum"), None)
+    stated = _facts(result, RankingFacts).stated_minimum
+    if minimum is None and stated is not None:
+        return None, stated[0]
     return minimum, (minimum.chose if minimum is not None else None)
 
 
-def _leaderboard_qualifier(minimum: Decided | None) -> str:
+def _leaderboard_qualifier(result: Result, minimum: Decided | None) -> str:
     """ " (minimum 200 3-point attempts)", or nothing. Shown because it answers
     "why isn't X here?" before it is asked - and makes an empty early-season
-    board say why it is empty."""
+    board say why it is empty. A floor the question stated is said the same
+    way, as what was asked rather than a decision."""
+    stated = _facts(result, RankingFacts).stated_minimum
+    if minimum is None and stated is not None:
+        return f" (minimum {stated[0]:,} {stated[1]})"
     if minimum is None or not minimum.chose:
         return ""
     return decision_phrase(minimum)
@@ -2262,7 +2277,7 @@ def say_leaderboard(result: Result) -> Reply:
     # in the order the template wrote them.
     trade_note = "".join(note(each.kind, note_phrase(each), **each.facts) for each in result.notes)
     minimum, applied = _leaderboard_minimum(result)
-    qualifier = _leaderboard_qualifier(minimum)
+    qualifier = _leaderboard_qualifier(result, minimum)
     answer = _tabulate_leaderboard(rows, label, where, period, fields, qualifier, ratio) if fields else _phrase_leaderboard(rows, label, where, period, qualifier, ratio)
     data = {
         "question_shape": f"{label}, {period}",
@@ -2291,7 +2306,7 @@ def _say_career_leaderboard(result: Result, body: Grouped) -> Reply:
     assert pool is not None
     since = season_label(pool)
     minimum, applied = _leaderboard_minimum(result)
-    qualifier = _leaderboard_qualifier(minimum)
+    qualifier = _leaderboard_qualifier(result, minimum)
     gap = "".join(note(each.kind, note_phrase(each), **each.facts) for each in result.notes)
     if not rows:
         answer = f"No player qualified for {label} in the {kind}{qualifier}. {gap}"
@@ -4242,6 +4257,7 @@ _RANKING_PHRASES: dict[str, Callable[[Mapping[str, Any]], str | None]] = {
     "shot_distance_ranking": lambda _facts: _say_shot_distance_ranking(),
     "no_ranking_measure": lambda facts: _no_ranking_for(facts["stat"]),
     "ranking_floor_unit": lambda facts: _ranking_floor_unit(facts["unit"], facts["count"]),
+    "minimum_unranked": lambda facts: _minimum_unranked(facts["unit"], facts["count"]),
     "ranking_unit": lambda facts: _ranking_unit(facts["metric"], facts["rate"]),
 }
 

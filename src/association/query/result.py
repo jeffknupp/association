@@ -574,16 +574,24 @@ class TeamPeriodFacts:
 @dataclass(frozen=True, kw_only=True)
 class RankingFacts:
     """A ranking of players by a season-line metric, besides its rows: the
-    metric's label, its ratio's columns, the columns shown beside it and the
-    team whose players it ranks.
+    metric's label, its ratio's columns, the columns shown beside it, the
+    team whose players it ranks and the qualifier the question stated.
 
     .. versionadded:: 5.0.0
+
+    .. versionchanged:: 6.0.0
+       ``stated_minimum`` (ISSUES.md #377).
     """
 
     label: str
     ratio: tuple[str, ...] | None = None
     fields: tuple[str, ...] = ()
     team: str | None = None
+    #: The qualifier the question stated, applied as asked - the number and
+    #: what it counts ("games", "3-point attempts") - which the sayer says
+    #: beside the ranking as the default's decision is said; None where
+    #: the default applied (the ``minimum`` decision, ISSUES.md #377).
+    stated_minimum: tuple[int, str] | None = None
 
 
 @dataclass(frozen=True, kw_only=True)

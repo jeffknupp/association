@@ -39,6 +39,7 @@ from typing import Literal
 from association.query import lexicon
 from association.query.reading import (
     Claim,
+    Minimum,
     ScopeError,
     Window,
 )
@@ -206,3 +207,51 @@ def _ranked_by(question: str, context: WindowContext) -> tuple[str, tuple[Claim,
     if word is not None:
         claims.append(Claim(word.start(), word.end(), "ranked_by"))
     return "points" if measure in ("scoring", "point") else measure + ("s" if not measure.endswith("s") else ""), tuple(claims)
+
+
+@dataclass(frozen=True)
+class MinimumRead:
+    """A ranking's qualifier as the words state it - the
+    :class:`~association.query.reading.Minimum` and the characters that
+    said it - or none. Which keys keep it is the key's reading
+    (:func:`~association.query.point.minimum_under`).
+
+    .. versionadded:: 6.0.0
+    """
+
+    minimum: Minimum | None
+    claims: tuple[Claim, ...] = ()
+
+
+def read_minimum(question: str) -> MinimumRead:
+    """The qualifier ``question``'s words state for a ranking
+    (:data:`~association.query.lexicon.MINIMUM`): "minimum 100 games
+    played", "at least 300 gp", "with at least 400 attempts", "with
+    atleast 1000 fg attempted" - the first the words hold. A word after the
+    number that a line or the floor of minutes reads ("at least 50
+    points", "minimum of 20 points per game", "at least 30 minutes") is
+    theirs, and not read here: a qualifier keeps a ranking's players, a
+    line keeps a player's games. Read with the window, the family that
+    says which rows a read keeps (ISSUES.md #377, 2026-10-11).
+
+    .. versionadded:: 6.0.0
+    """
+    for match in lexicon.MINIMUM.finditer(question):
+        word = " ".join(match.group("word").casefold().split())
+        other = match.group("other")
+        if other is not None and (match.group("at_least") is None or other.casefold() in lexicon.MEASURE_WORDS or other.casefold() in ("minute", "minutes", "min", "mins")):
+            # "at least 10 seasons" is a floor no ranking applies, refused by
+            # name as the game-level ranking always refused it; "a minimum of
+            # 20 per game" (its "points" deleted) is no floor at all.
+            continue
+        count = int(match.group("count").replace(",", ""))
+        if match.group("games") is not None:
+            minimum = Minimum(count=count, unit="games", word=word)
+        elif match.group("attempts") is not None:
+            of = match.group("of")
+            kind = lexicon.MINIMUM_OF.get(" ".join(of.casefold().replace("-", " ").split())) if of is not None else lexicon.MINIMUM_OF.get(match.group("attempts").casefold())
+            minimum = Minimum(count=count, unit="attempts", of=kind, word=word)
+        else:
+            minimum = Minimum(count=count, unit="other", word=word)
+        return MinimumRead(minimum, (Claim(match.start(), match.end(), "minimum"),))
+    return MinimumRead(None)

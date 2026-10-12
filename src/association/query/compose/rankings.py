@@ -38,7 +38,7 @@ import duckdb
 
 from association.query.measure import keyed
 from association.query.measures import resolve_metric
-from association.query.metrics import EXTRA_FIELD_COLUMNS, LEADERBOARD_METRICS
+from association.query.metrics import EXTRA_FIELD_COLUMNS, LEADERBOARD_METRICS, qualifies_by
 from association.query.notes import Note
 from association.query.reading import Filtered, Unsupported, _clamp_limit
 from association.query.result import Decided, Part, RankingFacts, Refusal, Result, Span, Unanswered
@@ -83,7 +83,13 @@ def leaderboard_reads(q: Query) -> bool:
     scope = q
     if keyed(scope.measure) == "shot_distance" or (scope.span.career and scope.span.season is not None):
         return True
-    if resolve_metric(scope.measure, career=scope.span.career) is None:
+    metric = resolve_metric(scope.measure, career=scope.span.career)
+    if metric is None:
+        return False
+    if q.minimum is not None and not qualifies_by(metric, q.minimum.unit, q.minimum.of):
+        # A qualifier the question states in a unit the metric does not
+        # qualify by: the game-level ranking's, or its refusal by name - the
+        # point reader planned it there already (ISSUES.md #377).
         return False
     unit = scope.measure.unit if scope.measure is not None else None
     if unit is not None and unit != "total":
@@ -199,6 +205,7 @@ def read_leaderboard(con: duckdb.DuckDBPyConnection, q: Query) -> Result | Unans
             team=scope.who.team,
             fields=fields,
             limit=_clamp_limit(scope.window.count, default=DEFAULT_LEADERBOARD_LIMIT),
+            min_sample=q.minimum.count if q.minimum is not None else None,
         )
     except LeaderboardError as exc:
         # An ambiguous team, an unknown metric, a team column with no season
@@ -208,11 +215,17 @@ def read_leaderboard(con: duckdb.DuckDBPyConnection, q: Query) -> Result | Unans
     found = ranking.result
     minimum = found.min_sample_applied
     decisions: tuple[Decided, ...] = ()
+    stated: tuple[int, str] | None = None
     if minimum is not None:
         unit = MIN_SAMPLE_LABELS.get(found.min_sample_column or "", found.min_sample_column or "")
-        decisions = (Decided(kind="minimum", field="minimum", chose=minimum, facts={"of": unit, "column": found.min_sample_column}),)
+        if q.minimum is not None:
+            # The words asked for this floor: said as the default is, and no
+            # decision - the question stated it (ISSUES.md #377).
+            stated = (minimum, unit)
+        else:
+            decisions = (Decided(kind="minimum", field="minimum", chose=minimum, facts={"of": unit, "column": found.min_sample_column}),)
     ratio = LEADERBOARD_METRICS[metric].ratio
-    facts = RankingFacts(label=found.label, ratio=tuple(ratio) if ratio else None, fields=tuple(fields))
+    facts = RankingFacts(label=found.label, ratio=tuple(ratio) if ratio else None, fields=tuple(fields), stated_minimum=stated)
     if isinstance(found, CareerLeaderboardResult):
         pool = found.pool_first_season
         span = Span(season=None, season_type=found.season_type, career=True, first=pool, source="seasons")

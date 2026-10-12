@@ -504,6 +504,76 @@ RANKED_BY_WORD = re.compile(r"\b(scoring|points?|rebounds?|assists?|steals?|bloc
    ``router._RANKED_BY_WORD`` until Phase 3, step 2.
 """
 
+# A ranking's qualifier as the question states it - "minimum 100 games
+# played", "at least 300 gp", "with at least 400 attempts", "with atleast
+# 1000 fg attempted" (the one-word spelling as typed), "a minimum of 10
+# games" - read into a typed ``reading.Minimum`` (ISSUES.md #377,
+# 2026-10-11), which the season-line ranking and the game-level ranking
+# apply where they qualify by that unit and the point reader refuses by a
+# cause where they do not. Until then the game-level ranking read "at least
+# N <word>" with a pattern of its own (``point._AT_LEAST``) and nothing read
+# "minimum N": "nba plus minus per game leaders minimum 100 games played"
+# answered at the default 20 games. A floor of MINUTES is not one: "with 25
+# minutes" is the lines tagger's floor per game (:data:`ABOVE`), and a box-
+# score word after the number is a line ("at least 50 points", "minimum of
+# 20 points per game"), so neither is read here.
+_MINIMUM_OF = r"3pt|3-?pt|3-?point(?:ers?)?|three[- ]point(?:ers?)?|threes?|3s|fg|field[- ]goals?|ft|free[- ]throws?|ts|true[- ]shooting"
+MINIMUM = re.compile(
+    r"\b(?:(?:with\s+)?(?:an?\s+)?(?:minimum|min\.?)(?:\s+of)?|(?:with\s+)?(?P<at_least>at\s*least))\s+(?P<count>\d{1,3}(?:,\d{3})+|\d+)\s+"
+    rf"(?P<word>(?P<games>games?(?:\s+played)?|gp)|(?:(?P<of>{_MINIMUM_OF})\s+)?(?P<attempts>attempts|attempted|fga|3pa|fta|tsa)|(?P<other>[a-z]+))\b",
+    re.IGNORECASE,
+)
+"""A ranking's qualifier as stated: the number, the unit's words, and which
+unit they name - ``games``, ``attempts`` (of one kind where the words say
+which, ``of``), or ``other`` (any other word after "at least", which no
+ranking qualifies by: a box-score word is a line's, and the reader leaves
+it; after "minimum" a word no unit names is read by nothing, as it was).
+
+.. versionadded:: 6.0.0
+"""
+MINIMUM_OF: dict[str, str] = {
+    "3pt": "3pt",
+    "3-pt": "3pt",
+    "3point": "3pt",
+    "3-point": "3pt",
+    "3pointer": "3pt",
+    "3-pointer": "3pt",
+    "3pointers": "3pt",
+    "3-pointers": "3pt",
+    "three point": "3pt",
+    "three-point": "3pt",
+    "three pointer": "3pt",
+    "three-pointer": "3pt",
+    "three pointers": "3pt",
+    "three-pointers": "3pt",
+    "three": "3pt",
+    "threes": "3pt",
+    "3s": "3pt",
+    "3pa": "3pt",
+    "fg": "fg",
+    "field goal": "fg",
+    "field-goal": "fg",
+    "field goals": "fg",
+    "field-goals": "fg",
+    "fga": "fg",
+    "ft": "ft",
+    "free throw": "ft",
+    "free-throw": "ft",
+    "free throws": "ft",
+    "free-throws": "ft",
+    "fta": "ft",
+    "ts": "ts",
+    "true shooting": "ts",
+    "true-shooting": "ts",
+    "tsa": "ts",
+}
+"""Which attempts a qualifier's words name (:data:`MINIMUM`'s ``of``, or the
+attempts word itself: "fga" is a field goal's), by the kind a ranking's
+qualifying column counts (``metrics.QUALIFIER_UNITS``).
+
+.. versionadded:: 6.0.0
+"""
+
 # The window family's guard words, read by the stages that choose an intent
 # (never a value): "games" or "last" beside a player's name is his log and
 # not his line; "who ... the most", "top 10", "leaders" asked with no player

@@ -182,10 +182,11 @@ def test_every_scope_field_is_checked_and_every_group_is_the_compilers() -> None
 
     names = {f.name for f in fields(Filtered)}
     # The subject's four slot names, the span's six, the window's four, the cuts' eight, the period's two, the lines' four and the
-    # companions' three pass the door into the typed values (Phase 3, step 2).
+    # companions' three pass the door into the typed values (Phase 3, step 2). A stated minimum was born typed (ISSUES.md #377):
+    # no slot ever carried it, and the door takes none.
     assert (
         set(_CHECKS)
-        == (names - {"who", "span", "window", "cuts", "period", "lines", "companions", "measure"})
+        == (names - {"who", "span", "window", "cuts", "period", "lines", "companions", "measure", "minimum"})
         | set(_SUBJECT_SLOT_NAMES)
         | _MEASURE_SLOT_NAMES
         | _SPAN_SLOT_NAMES

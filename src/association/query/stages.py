@@ -148,9 +148,10 @@ def _plain_record(value: Any, mask: Mapping[str, str] | None) -> dict[str, Any]:
 
 
 def _filters_record(filtered: Filtered, mask: Mapping[str, str] | None) -> dict[str, Any]:
-    """The nine typed filters by field name (``who``, ``cuts``, ``companions``,
-    ``lines``, ``measure``, ``span``, ``split``, ``period``, ``window``) as
-    the reader typed them - the record of a Reading and of its point."""
+    """The ten typed filters by field name (``who``, ``cuts``, ``companions``,
+    ``lines``, ``measure``, ``span``, ``split``, ``period``, ``window``, and
+    ``minimum`` since ISSUES.md #377) as the reader typed them - the record
+    of a Reading and of its point."""
     return {name: plain(value, mask=mask) for name, value in filtered.filters().items()}
 
 

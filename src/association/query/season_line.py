@@ -1120,6 +1120,7 @@ def rank_season_line(
     team: str | None,
     fields: list[str],
     limit: int,
+    min_sample: int | None = None,
 ) -> SeasonLineRanking:
     """The season line's ranking, the one door the reader calls
     (``compose.rankings.read_leaderboard``): a season's ranking
@@ -1130,19 +1131,25 @@ def rank_season_line(
     (:func:`most_recent_teams`). ``fields`` beside ``"team"`` are the box-score
     columns :data:`~association.query.metrics.EXTRA_FIELD_COLUMNS` names; a
     career ranking takes none, which its caller refuses before asking.
+    ``min_sample`` is a qualifier the question stated, in the unit the
+    metric qualifies by (``reading.Minimum``, ``metrics.qualifies_by``),
+    applied in place of the default; None applies the default.
 
     Raises:
         LeaderboardError: whatever the ranking raises, and a team column asked
             of a metric with no season type to look a team up by.
 
     .. versionadded:: 5.0.0
+
+    .. versionchanged:: 6.0.0
+       Takes ``min_sample``, a qualifier the question stated (ISSUES.md #377).
     """
     if career:
-        found_career = run_career_leaderboard(con, metric, season_type=season_type, limit=limit)
+        found_career = run_career_leaderboard(con, metric, season_type=season_type, min_sample=min_sample, limit=limit)
         return SeasonLineRanking(result=found_career, body=_ranking_body(metric, found_career.rows))
     show_team = "team" in fields
     box_fields = [f for f in fields if f != "team"]
-    found = run_leaderboard(con, metric, season=season, season_type=season_type, team=team, fields=box_fields or None, limit=limit)
+    found = run_leaderboard(con, metric, season=season, season_type=season_type, min_sample=min_sample, team=team, fields=box_fields or None, limit=limit)
     traded = False
     if show_team:
         if found.season_type is None:

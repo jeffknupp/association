@@ -369,6 +369,55 @@ class Window:
         return [slot for cell in self.cells() - honored for slot in _WINDOW_CELL_SLOT_NAMES[cell]]
 
 
+MinimumUnit = Literal["games", "attempts", "other"]
+"""What a stated qualifier counts: games played, shot attempts, or another
+word no ranking qualifies by (:class:`Minimum`).
+
+.. versionadded:: 6.0.0
+"""
+
+
+@dataclass(frozen=True, kw_only=True)
+class Minimum:
+    """A ranking's qualifier as the question states it - "minimum 100 games
+    played", "at least 300 gp", "with at least 400 attempts", "with atleast
+    1000 fg attempted" - ``ROADMAP-TYPES.md``'s ``Minimum`` (the draft
+    Reading's ``minimum``, "a qualifier the question states"), declared by
+    the change that first reads it (ISSUES.md #377, 2026-10-11). Read by the
+    window tagger (:func:`~association.query.window.read_minimum`, over
+    :data:`~association.query.lexicon.MINIMUM`), kept by the key's reading
+    on the keys that rank players
+    (:func:`~association.query.point.minimum_under`), and applied by the
+    ranking that qualifies by its unit - the season line's
+    (``compose.rankings``, where the metric's qualifying column counts it)
+    or the game-level ranking (games); the point reader refuses one no
+    ranking of the point applies by a cause naming the floor asked
+    (``ranking_floor_unit``). A stated minimum is what the words asked, so
+    the answer says it as such and records no ``minimum`` decision: the
+    default qualifier is the decision (``notes.DECISION_KINDS``).
+
+    No cell: a qualifier narrows no games, it keeps a ranking's players.
+
+    .. versionadded:: 6.0.0
+    """
+
+    #: The number the words state.
+    count: int
+    #: What it counts (:data:`MinimumUnit`).
+    unit: MinimumUnit
+    #: Which attempts, where the words say ("fg", "3pt", "ft", "ts";
+    #: :data:`~association.query.lexicon.MINIMUM_OF`) - None for a games
+    #: floor and for attempts of no named kind.
+    of: str | None = None
+    #: The unit's words as typed ("games played", "gp", "fg attempted",
+    #: "attempts") - what a refusal names.
+    word: str = ""
+
+    def __post_init__(self) -> None:
+        if self.count < 0:
+            raise ScopeError(f"a stated minimum of {self.count} is below 0")
+
+
 #: The slot name each cut was declared and refused under until Phase 3,
 #: step 2 - the name a decline still says ("cannot honor ['situation']"),
 #: until the decline-to-Cause commit rewords it. ``own_team`` is the
@@ -1103,7 +1152,7 @@ class Claim:
 
 #: The typed filters' field names, in the order the Scope held them - the
 #: order :meth:`Filtered.filters` hands them in and a record holds them.
-_FILTER_FIELDS: tuple[str, ...] = ("who", "cuts", "companions", "lines", "measure", "span", "split", "period", "window")
+_FILTER_FIELDS: tuple[str, ...] = ("who", "cuts", "companions", "lines", "measure", "span", "split", "period", "window", "minimum")
 
 
 def _set_fields(value: Any) -> Any:
@@ -1185,6 +1234,10 @@ class Filtered:
     #: (:class:`Window`; the four slots ``order``, ``limit``, ``rank`` and
     #: ``ranked_by`` until Phase 3, step 2).
     window: Window = field(default_factory=Window)
+    #: A ranking's qualifier as the question states it (:class:`Minimum`),
+    #: None where it states none - the ranking's default is the reader's
+    #: decision. No cell (ISSUES.md #377, 2026-10-11).
+    minimum: Minimum | None = None
 
     #: Every cell a scope can set, by name: each typed family's
     #: (:attr:`Span.CELLS`, :attr:`Window.CELLS`, :attr:`Cuts.CELLS`,
@@ -1196,7 +1249,7 @@ class Filtered:
     CELLS: ClassVar[frozenset[str]] = Span.CELLS | Window.CELLS | Cuts.CELLS | Period.CELLS | Line.CELLS | Companion.CELLS | Measure.CELLS | {"split"}
 
     def filters(self) -> dict[str, Any]:
-        """The nine typed values by field name - what a Reading hands the
+        """The ten typed values by field name - what a Reading hands the
         query it is planned into, and a reading built from another's
         filters starts from.
 
@@ -1362,6 +1415,7 @@ CAUSES: frozenset[str] = frozenset(
         "shot_distance_ranking",
         "no_ranking_measure",
         "ranking_floor_unit",
+        "minimum_unranked",
         "ranking_unit",
         "needs_stat",
         "unknown_stat",
@@ -1398,6 +1452,8 @@ missing thing, never only the slot"):
   (``shot_distance_ranking``); a ranking by a named stat the relation has
   no measure for (``no_ranking_measure``: ``stat``); a ranking floor in a
   unit no ranking applies (``ranking_floor_unit``: ``unit``, ``count``); a
+  floor stated for a point that ranks no players (``minimum_unranked``:
+  ``unit``, ``count``); a
   season-line ranking in a unit its metric has no form of
   (``ranking_unit``: ``metric``, ``rate``);
 - a shape over a line on a stat - a single-game high, a record or a count

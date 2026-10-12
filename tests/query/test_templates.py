@@ -3709,6 +3709,36 @@ def test_a_ranking_names_the_season_line_as_its_relation(lb_con: AnswerContext) 
     assert say(result).answer == say_leaderboard(result).answer
 
 
+def test_a_stated_minimum_is_the_season_lines_qualifier_and_no_decision(lb_con: AnswerContext) -> None:
+    """ISSUES.md #377: "minimum 69 games" is the qualifier the season line
+    ranks under, in place of its default 20 - Curry's 68 games leave him
+    out - said as the default is, and recorded as what the words asked, not
+    as the reader's decision. A floor in a unit the metric does not qualify
+    by (points per game counts games, not attempts) is the game-level
+    ranking's question, which refuses it by name."""
+    from dataclasses import replace
+
+    from association.query.compose.rankings import read_leaderboard
+    from association.query.compose.say import say_leaderboard
+    from association.query.point import read_point
+    from association.query.reading import Minimum, PointRefused
+    from association.query.result import RankingFacts, Result
+
+    reading = Reading(**(slots_scope({"stat": "points"})).filters(), asked=asked("leaderboard"), subject=Subject("everyone"))
+    stated = replace(reading, minimum=Minimum(count=69, unit="games", word="games"))
+    planned = plan(read_point(stated, "points per game leaders minimum 69 games"))
+    assert isinstance(planned, Query) and planned.source == "seasons" and planned.minimum == stated.minimum
+    result = read_leaderboard(lb_con.con, planned)
+    assert isinstance(result, Result)
+    assert [row["key"] for row in result.grouped.rows] == ["Luka Doncic"]  # type: ignore[union-attr]
+    assert not any(each.kind == "minimum" for each in result.decisions)
+    assert isinstance(result.facts, RankingFacts) and result.facts.stated_minimum == (69, "games")
+    assert say_leaderboard(result).answer == f"Luka Doncic led the league in points per game in the {current_season()} regular season (minimum 69 games), at 33.5."
+    with pytest.raises(PointRefused) as refused:
+        read_point(replace(reading, minimum=Minimum(count=100, unit="attempts", word="attempts")), "points per game leaders minimum 100 attempts")
+    assert refused.value.cause.kind == "ranking_floor_unit"
+
+
 def test_a_zero_threshold_is_refused_rather_than_counting_every_game(con: AnswerContext) -> None:
     """Measured: "most 3 pointers made since 2020" arrived as threshold 0."""
     assert threshold_count(con, slots_reading({"stat": "points", "threshold": 0})).answer == "A threshold of 0 counts every game - there is no line there to keep games past."

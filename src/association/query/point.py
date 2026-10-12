@@ -49,7 +49,7 @@ from association.query.measures import (
     stat_measure,
     streak_column,
 )
-from association.query.metrics import PER_GAME_MIN_GAMES
+from association.query.metrics import PER_GAME_MIN_GAMES, qualifies_by
 from association.query.period import PeriodRead
 from association.query.reading import (
     DEFAULT_GAME_LOG_LIMIT,
@@ -109,7 +109,7 @@ from association.query.reading import (
 from association.query.reading import named_player_in as _named_player_in
 from association.query.span import SpanCandidates, SpanRead, claimed
 from association.query.subject import with_without_named
-from association.query.window import WindowCandidates, WindowRead, window_end
+from association.query.window import MinimumRead, WindowCandidates, WindowRead, window_end
 
 if TYPE_CHECKING:
     from association.query.subject import Subject
@@ -124,7 +124,7 @@ _NOT_PLAYERS = re.compile(r"\bby team\b|\bteams?\b|\ballowed\b|\bopponent'?s?\b|
 _HOW_MANY_OR_OFTEN = re.compile(r"\bhow many\b|\bhow often\b|\bnumber of\b|\btimes\b", re.I)
 _WON = re.compile(r"\b(won|wins|win)\b", re.I)
 #: "least" on its own is ascending ("the least points"); "AT least" is the
-#: minimum-sample floor phrase (:func:`_ranking_minimum`, F056: "with at
+#: minimum-sample floor phrase (``reading.Minimum``, F056: "with at
 #: least 100 attempts") and names no direction at all - the negative
 #: lookbehind keeps that phrase from flipping a "highest ..." ranking to
 #: ascending, which it did before this existed (measured against the real
@@ -177,22 +177,6 @@ def _measure_and_predicates(words: list[str], fallback: str | None) -> tuple[str
 def _asc_or_desc(question: str) -> Literal["asc", "desc"]:
     """ "asc" for a "fewest"/"least"/"lowest" question, "desc" otherwise."""
     return "asc" if _FEWEST.search(question) else "desc"
-
-
-_AT_LEAST = re.compile(r"\bat least\s+(\d+)\s+([a-z]+)", re.I)
-
-
-def _ranking_minimum(question: str) -> tuple[str, int] | None:
-    """The "at least N <unit>" phrase naming a league ranking's own minimum
-    sample ("with at least 100 attempts", F056) - the unit and the number,
-    or ``None`` where the question names no such floor.
-
-    .. versionadded:: 4.4.0
-    """
-    match = _AT_LEAST.search(question)
-    if not match:
-        return None
-    return match.group(2).lower(), int(match.group(1))
 
 
 def _everyone_guard(asked: PointShape | None, question: str, position: str | None, *, period_is_condition: bool = False) -> None:
@@ -452,7 +436,13 @@ def _everyone_ranking(asked: PointShape | None, scope: Filtered, question: str, 
     "... by a shooting guard with at least 100 attempts").
 
     .. versionchanged:: 4.4.0
-       Reads a "with at least N <unit>" floor (:func:`_ranking_minimum`).
+       Reads a "with at least N <unit>" floor.
+
+    .. versionchanged:: 6.0.0
+       The floor is the Reading's typed qualifier (``Filtered.minimum``,
+       ISSUES.md #377), read by the window tagger: "minimum 100 games
+       played" and "at least 300 gp" are games, where "minimum" was read by
+       nothing and "gp" refused.
 
     .. versionchanged:: 4.4.0
        Refuses by name, rather than silently ranking by points, when the
@@ -482,16 +472,14 @@ def _everyone_ranking(asked: PointShape | None, scope: Filtered, question: str, 
             raise PointRefused(Cause(kind="no_ranking_measure", facts={"stat": stat}))
     aggregate: Aggregate = "total" if _TOTAL.search(question) else "per_game"
     minimum_games = PER_GAME_MIN_GAMES
-    named_minimum = _ranking_minimum(question)
-    if named_minimum is not None:
-        unit, count = named_minimum
-        if not unit.startswith("game"):
-            # A refusal, not a decline: nothing downstream reads an attempts or
-            # minutes floor either, and "None" here sent yardstick-v2 F056 to
+    if scope.minimum is not None:
+        if scope.minimum.unit != "games":
+            # A refusal, not a decline: nothing downstream reads an attempts
+            # floor on this ranking, and "None" here sent yardstick-v2 F056 to
             # the agent for a minute. The planner's sentence names the floor
             # that IS applied so the question can be re-asked with it.
-            raise PointRefused(Cause(kind="ranking_floor_unit", facts={"unit": unit, "count": count}))
-        minimum_games = count
+            raise PointRefused(Cause(kind="ranking_floor_unit", facts={"unit": scope.minimum.word, "count": scope.minimum.count}))
+        minimum_games = scope.minimum.count
     # The game-level ranking by player, which no reader takes: the
     # compiler's own ranking and sentence.
     return Reading(
@@ -516,9 +504,12 @@ def _leaderboard_season_line(asked: PointShape | None, scope: Filtered, question
     ``run_leaderboard``'s pool, floors, traded-player dedup and NetPoints
     tables - read by ``compose.rankings.read_leaderboard`` and said by the sayer,
     for a stat that resolves to a leaderboard metric with no line on a
-    column, no "at least N" floor of the question's own and no position
-    group, each of which the game-level ranking reads and the season line
-    does not. A measure the words moved in that is not the stat's own is the
+    column and no position group, each of which the game-level ranking
+    reads and the season line does not - a stated qualifier only where the metric qualifies by its
+    unit (``metrics.qualifies_by``: "minimum 100 games played" on a per-game
+    rate, "with at least 1000 fg attempted" on field-goal percentage), which
+    the reader applies in place of its default (ISSUES.md #377). A measure
+    the words moved in that is not the stat's own is the
     game-level ranking's too ("most points in a game" is a single game;
     "total" stays a rate the presenter reads from ``scope.rate``).
 
@@ -528,10 +519,16 @@ def _leaderboard_season_line(asked: PointShape | None, scope: Filtered, question
     # True) is the count the season line keeps; any other line on a column
     # is the game-level ranking's.
     own_boolean = all(scope.measure is not None and name == scope.measure.key and value is True for name, _, value in predicates)
-    if asked != PLAYER_RANKING or not own_boolean or scope.who.position is not None or _ranking_minimum(question) is not None:
+    if asked != PLAYER_RANKING or not own_boolean or scope.who.position is not None:
         return None
     metric = resolve_metric(scope.measure, career=scope.span.career)
     if metric is None:
+        return None
+    if scope.minimum is not None and not qualifies_by(metric, scope.minimum.unit, scope.minimum.of):
+        # A qualifier the question states in a unit this metric does not
+        # qualify by ("highest 3-point percentage ... with at least 40
+        # games"): the game-level ranking, which qualifies by games, or its
+        # refusal naming the floor asked.
         return None
     if measure is not None and stat_measure(scope.measure) not in (None, measure):
         return None
@@ -1507,6 +1504,7 @@ def read_point(reading: Reading, question: str) -> Reading:
         # team's own question is not the player relation's" - which the
         # retired template answered past.
         point = team_season_point(reading.asked, replace(scope, who=scope.who.without_position()))
+    _minimum_honored(scope, point)
     if reading.asked in TEAM_SEASON_POINTS:
         # Whatever the words moved (a team's own total on the team relation),
         # the point is read and said as the team's own season's shape:
@@ -1797,6 +1795,31 @@ def _lines_pairs(asked: PointShape | None, pairs: list[LineCandidate], *, beside
         if lined or narrows:
             kept.append((candidate.start, replace(candidate.line, keyed=lined and candidate is pairs[0], narrows=narrows), candidate.claim))
     return kept
+
+
+def minimum_under(asked: PointShape | None, read: MinimumRead) -> MinimumRead:
+    """The qualifier the words state, under the key: kept where the words
+    ask for players ranked by a measure (:data:`~association.query.reading.PLAYER_RANKING`,
+    whose rankings apply it - :func:`_leaderboard_season_line`,
+    :func:`_everyone_ranking` - or refuse it by name), and read by nothing
+    on any other key, its words left unread, as a line no reader of the key
+    reads is (ISSUES.md #377, 2026-10-11).
+
+    .. versionadded:: 6.0.0
+    """
+    return read if asked == PLAYER_RANKING else MinimumRead(None)
+
+
+def _minimum_honored(scope: Filtered, point: Reading) -> None:
+    """Refuse a point that ranks no players under a qualifier the words
+    state - "most points in a game minimum 20 games" is one game's high, and
+    a minimum games a player needs to be ranked keeps nothing there - by a
+    cause naming the floor asked, never answering past it. A ranking of
+    players applies it, or refused it already (:func:`_everyone_ranking`)."""
+    minimum = scope.minimum
+    if minimum is None or (point.shape == "ranking" and point.by == "player" and (point.on == "player_seasons" or point.minimum_games == minimum.count)):
+        return
+    raise PointRefused(Cause(kind="minimum_unranked", facts={"unit": minimum.word, "count": minimum.count}))
 
 
 def window_under(asked: PointShape | None, read: WindowCandidates) -> WindowRead:

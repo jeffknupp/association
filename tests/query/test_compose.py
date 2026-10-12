@@ -40,20 +40,25 @@ from association.query.compose.team import TeamQuery, run_team
 from association.query.compose.team_stats import TeamSeasonQuery
 from association.query.entities import names_of
 from association.query.line import read_lines
+from association.query.notes import collect
 from association.query.parse import with_point
-from association.query.point import _asc_or_desc, _ranking_minimum, lines_under, read_point, team_read_point
+from association.query.point import _asc_or_desc, lines_under, minimum_under, read_point, team_read_point
 from association.query.reading import Cause, Filtered, PointRefused, Reading, Span, _career_scope
 from association.query.reading import Subject as Who
 from association.query.result import Refusal
 from association.query.subject import Subject, read_subject
+from association.query.window import read_minimum
 
 
 def _reading(con: duckdb.DuckDBPyConnection, intent: str, slots: dict[str, Any], question: str, subject: Subject | None = None) -> Reading:
     """A test's slot dict as the Reading the parser hands the compiler (5.0.0:
     the package takes the Reading alone): the typed scope, and the subject
     read from the question the way ``point`` read it for a caller
-    with none - never applied to the slots, so a case says what it did."""
-    return Reading(**(_scope(intent, slots, question)).filters(), asked=asked(intent), subject=subject or read_subject(names_of(con), question, asked(intent), slots_scope(dict(slots))))
+    with none - never applied to the slots, so a case says what it did. A
+    qualifier the words state ("with at least 2 games") is read from them
+    as the parser reads it (ISSUES.md #377)."""
+    scope = replace(_scope(intent, slots, question), minimum=minimum_under(asked(intent), read_minimum(question)).minimum)
+    return Reading(**scope.filters(), asked=asked(intent), subject=subject or read_subject(names_of(con), question, asked(intent), slots_scope(dict(slots))))
 
 
 def _scope(intent: str, slots: dict[str, Any], question: str) -> Filtered:
@@ -1132,7 +1137,7 @@ def test_a_position_group_subject_reads_that_positions_ranking(cx_ctx: AnswerCon
     subject is read off the subject reading - the phrase no longer rides in
     the ``player`` slot for the compiler to take back out. Curry ('PG') is
     the fixture's only point guard; a "with at least 2 games" floor
-    (:func:`_ranking_minimum`) clears his 4 games past the real
+    (``Filtered.minimum``) clears his 4 games past the real
     ``PER_GAME_MIN_GAMES`` default, which he does not reach on his own."""
     q = move_point(cx_ctx.con, "leaderboard", {"stat": "points", "season_type": 2}, "highest points per game this season by a point guard with at least 2 games")
     assert isinstance(q, Query)
@@ -1141,6 +1146,34 @@ def test_a_position_group_subject_reads_that_positions_ranking(cx_ctx: AnswerCon
     assert out["rows"][0]["group"] == "Stephen Curry"
     assert out["rows"][0]["games"] == 4
     assert out["rows"][0]["points"] == pytest.approx(30.5)  # (35 + 40 + 25 + 22) / 4
+
+
+@pytest.mark.parametrize("floor", ["minimum 2 games played", "at least 2 gp", "with a minimum of 2 games"])
+def test_a_stated_minimum_in_any_wording_is_the_rankings_qualifier_said_as_asked(cx_ctx: AnswerContext, floor: str) -> None:
+    """ISSUES.md #377: "minimum N games played", "at least N gp" and "a
+    minimum of N games" are the qualifier "with at least N games" is -
+    "minimum" was read by nothing and "gp" refused as no games count. The
+    sentence says it as the default is said, and records no decision: the
+    words asked for it. Above everyone's games, the ranking is empty, and
+    says the minimum emptied it - never "no games"."""
+    q = move_point(cx_ctx.con, "leaderboard", {"stat": "points", "season_type": 2}, f"highest points per game this season by a point guard {floor}")
+    assert isinstance(q, Query) and q.minimum_games == 2 and q.minimum is not None
+    with collect() as remarks:
+        said = sentence(q, run(cx_ctx.con, q))
+    assert ", minimum 2 games)" in said and not remarks.decisions
+    emptied = move_point(cx_ctx.con, "leaderboard", {"stat": "points", "season_type": 2}, f"highest points per game this season by a point guard {floor.replace('2', '5')}")
+    assert isinstance(emptied, Query)
+    assert sentence(emptied, run(cx_ctx.con, emptied)).startswith("No player played 5 games in the ")
+
+
+def test_a_stated_minimum_on_a_point_that_ranks_no_players_is_refused_by_name(cx_ctx: AnswerContext) -> None:
+    """A qualifier keeps the players a ranking ranks: under a single game's
+    high it keeps nothing, so it is refused by a cause naming the floor
+    asked rather than answered past (ISSUES.md #377)."""
+    with pytest.raises(PointRefused) as refused:
+        move_point(cx_ctx.con, "leaderboard", {"stat": "points", "season_type": 2}, "most points in a game this season minimum 20 games")
+    assert refused.value.cause == Cause(kind="minimum_unranked", facts={"unit": "games", "count": 20})
+    assert "20 games" in refusal_result(refused.value.cause).answer
 
 
 def test_an_attempts_or_minutes_floor_is_refused_by_name_not_dropped_or_misapplied(cx_ctx: AnswerContext) -> None:
@@ -1177,15 +1210,6 @@ def test_a_stat_this_relation_cannot_read_is_refused_not_defaulted_to_points(cx_
     q = move_point(cx_ctx.con, "leaderboard", {}, "who are the top scorers this season")
     assert isinstance(q, Query)
     assert q.measures == ["points"]
-
-
-def test_ranking_minimum_reads_the_unit_and_the_number() -> None:
-    """:func:`_ranking_minimum` reads the "at least N <unit>" phrase without
-    committing to what a caller does with it - the unit is read back, not
-    silently coerced to a games count."""
-    assert _ranking_minimum("... with at least 100 attempts") == ("attempts", 100)
-    assert _ranking_minimum("... with at least 20 games") == ("games", 20)
-    assert _ranking_minimum("... this season") is None
 
 
 def test_at_least_does_not_flip_a_highest_ranking_to_ascending() -> None:
@@ -1939,6 +1963,7 @@ _CAUSE_EXAMPLES: dict[str, dict[str, Any]] = {
     "shot_distance_ranking": {},
     "no_ranking_measure": {"stat": "gizmos"},
     "ranking_floor_unit": {"unit": "attempts", "count": 100},
+    "minimum_unranked": {"unit": "games", "count": 20},
     "ranking_unit": {"metric": "avg_points", "rate": "/ 90"},
     "needs_stat": {"intent": "single_game_high"},
     "unknown_stat": {"intent": "streak", "stat": "double_double"},

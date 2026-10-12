@@ -483,3 +483,43 @@ metric's error lists - see the note above ``_BOX_SCORE_METRICS``.
 
 .. versionadded:: 2.1.0
 """
+
+
+QUALIFIER_UNITS: dict[str, tuple[str, str | None]] = {
+    "gamesPlayed": ("games", None),
+    "games_played": ("games", None),
+    "minutes": ("minutes", None),
+    "total_minutes": ("minutes", None),
+    "fieldGoalsAttempted": ("attempts", "fg"),
+    "field_goals_attempted": ("attempts", "fg"),
+    "threePointFieldGoalsAttempted": ("attempts", "3pt"),
+    "freeThrowsAttempted": ("attempts", "ft"),
+    "true_shooting_attempts": ("attempts", "ts"),
+}
+"""What each metric's qualifying column (``min_sample_column``) counts: the
+unit and, for attempts, which kind - what a qualifier the question states
+(``reading.Minimum``) is matched against (:func:`qualifies_by`).
+
+.. versionadded:: 6.0.0
+"""
+
+
+def qualifies_by(metric: str, unit: str, of: str | None) -> bool:
+    """Whether the season-line ranking by ``metric`` qualifies its players
+    by ``unit`` (``"games"``, ``"attempts"``) - and, for attempts of a kind
+    the question named (``of``: "fg", "3pt", "ft", "ts"), by that kind - so
+    a stated minimum in that unit is one it applies as asked ("minimum 100
+    games played" on a per-game ranking, "with at least 1000 fg attempted"
+    on field-goal percentage). ``False`` for a metric with no qualifying
+    column, or one in another unit: the game-level ranking qualifies by
+    games, and a floor no ranking applies is refused by name.
+
+    .. versionadded:: 6.0.0
+    """
+    spec = LEADERBOARD_METRICS.get(metric)
+    if spec is None or spec.min_sample_column is None:
+        return False
+    counted = QUALIFIER_UNITS.get(spec.min_sample_column)
+    if counted is None or counted[0] != unit:
+        return False
+    return of is None or counted[1] == of

@@ -174,8 +174,11 @@ skip = "CHANGES.md,CLAUDE.md,uv.lock,*.png,*.jpg,*.svg,*.duckdb,*.parquet,comple
 # In-Season Tournament), PlayIn (ESPN's play-in season-type label). "alltime"
 # is the yardstick-v2 F111 question's own spelling ("alperen şengün alltime
 # record"), quoted verbatim across src/ and tests/ once it recurred past the
-# single inline codespell:ignore in ISSUES.md.
-ignore-words-list = "ot,ist,playin,alltime"
+# single inline codespell:ignore in ISSUES.md. "atleast" is the feed's own
+# spelling of "at least" ("who has the worst fg% with atleast 1000 fg
+# attempted"), which the stated minimum reads (lexicon.MINIMUM, ISSUES.md
+# #377) and its docstrings, tests and entries quote.
+ignore-words-list = "ot,ist,playin,alltime,atleast"
 
 [tool.importlinter]
 root_package = "association"

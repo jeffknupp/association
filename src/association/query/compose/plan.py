@@ -454,7 +454,7 @@ def refusal_of(cause: Cause) -> Refusal:
     """
     if cause.kind in ("shot_distance_ranking", "ranking_unit"):
         return Refusal(kind=cause.kind, facts=cause.facts, under=("message", "headline"))
-    if cause.kind == "ranking_floor_unit":
+    if cause.kind in ("ranking_floor_unit", "minimum_unranked"):
         return Refusal(kind=cause.kind, facts=cause.facts, shown={"floor": {"unit": cause.facts["unit"], "count": cause.facts["count"]}})
     if cause.kind in _REFUSED_BY_NAME:
         # What the page showed beside these sentences when the answering

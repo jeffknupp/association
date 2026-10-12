@@ -39,7 +39,7 @@ from association.query.line import LinesNamed, LinesRead, lines_named, read_line
 from association.query.measure import BOOLEAN_KEYS, MeasureContext, named, read_measure
 from association.query.measures import PERIOD_COLUMNS, PERIOD_RATE_STATS, TEAM_PERIOD_COLUMNS
 from association.query.period import read_period
-from association.query.point import cuts_under, lines_under, measure_under, period_under, read_point, span_under, window_under
+from association.query.point import cuts_under, lines_under, measure_under, minimum_under, period_under, read_point, span_under, window_under
 from association.query.reading import (
     NETPOINTS_FINGERPRINT,
     NETPOINTS_RATINGS,
@@ -96,7 +96,7 @@ from association.query.subject import (
     subject_claims,
     team_named_in,
 )
-from association.query.window import WindowContext, read_window
+from association.query.window import MinimumRead, WindowContext, read_minimum, read_window
 
 _PAIR_MEETING = (
     r"(?!.*\b(compare|compared|comparing|contrast|evaluate|who scores more|who is better|who was better)\b)"
@@ -599,6 +599,15 @@ def read_route(index: names.NameIndex, question: str, names: list[str] | None = 
         claim = in_period[1]
         question = question[: claim.start] + " " * (claim.end - claim.start) + question[claim.end :]
         period_lines, period_claims = (in_period[0],), (claim,)
+    # A ranking's qualifier as stated ("minimum 100 games played", "with at
+    # least 1000 fg attempted") is read here and blanked the same way: left
+    # in, its number is a season to the span ("minimum 2000 attempts") and
+    # its "attempts" the measure's ("3pt percent minimum 20 attempts" ranked
+    # 3-point attempts). The key decides below whether it stands
+    # (point.minimum_under; ISSUES.md #377).
+    unblanked = question
+    stated_minimum = read_minimum(question)
+    question = _blanked(question, stated_minimum.claims)
     # Who the grammar's rules and the taggers are handed: the names the
     # reading read, typed.
     who, opponent = _read_route_names(subject, slots)
@@ -638,7 +647,9 @@ def read_route(index: names.NameIndex, question: str, names: list[str] | None = 
     reached_when = any(predicate == "reached" and question[start:end].lower().startswith("when") for start, end, predicate in read.companion_phrases)
     settled_ask, decisions, words, child_claims = _read_route_staged(question, stat or None, parent, read, who, opponent, lines=named_lines, reached_when=reached_when)
     final = settled_ask.asked
-    scope, tagger_claims = _tagged(question, settled_ask, read.conditions, lines=period_lines, model_stat=stat or None) if not settled_ask.coach else (Reading(), ())
+    scope, tagger_claims = (
+        _tagged(question, settled_ask, read.conditions, lines=period_lines, model_stat=stat or None, minimum=(stated_minimum, unblanked)) if not settled_ask.coach else (Reading(), ())
+    )
     # The one reading, settled under the key the words end with: what the
     # parser's last step and everything after it answer from.
     settled = settle_subject(read, final, parent=parent, words=words)
@@ -646,6 +657,15 @@ def read_route(index: names.NameIndex, question: str, names: list[str] | None = 
     # a quarter the parser's; the rules' and the taggers' read first.
     claims = claimed_once([*claimed_once([*settled_ask.claims, *tagger_claims]), *child_claims, *period_claims, *read.claims, *parent_claims])
     return _reading(index, asked, final, scope, settled, decisions=decisions, claims=claims, model_names=given, model_stat=stat)
+
+
+def _blanked(question: str, claims: tuple[Claim, ...]) -> str:
+    """``question`` with each claim's characters written over by spaces of
+    equal length, not cut, so every claim read after it is where the real
+    question holds it."""
+    for claim in claims:
+        question = question[: claim.start] + " " * (claim.end - claim.start) + question[claim.end :]
+    return question
 
 
 def marked_for_grammar(question: str) -> str:
@@ -772,6 +792,7 @@ def _tagged(
     side: str | None = None,
     shot_value: int | None = None,
     fields: tuple[str, ...] = (),
+    minimum: tuple[MinimumRead, str] | None = None,
 ) -> tuple[Reading, tuple[Claim, ...]]:
     """The taggers, each the one reader of its family, over the key and the
     names the grammar's rules settled (``settled``), in the order each reads
@@ -787,8 +808,13 @@ def _tagged(
     model's stat key (the measure tagger's claims are cut against it, the
     words' key read again from each probe); ``side``,
     ``shot_value`` and ``fields`` a test's model-era context for the measure
-    (the normalizer files none). Returns the typed scope and each tagger's
-    claims, cut to the words its reading depends on
+    (the normalizer files none). A ranking's stated qualifier
+    (:func:`~association.query.window.read_minimum`) is read first and its
+    words blanked out of what every other tagger reads ("minimum 2000
+    attempts" is no season, its "attempts" no measure); ``minimum`` is that
+    reading and the question as typed where the parser read it already,
+    before the grammar (:func:`read_route`). Returns the typed scope and
+    each tagger's claims, cut to the words its reading depends on
     (:func:`~association.query.span.needed`).
 
     .. versionadded:: 6.0.0
@@ -796,6 +822,9 @@ def _tagged(
        after the stages over their slot dict.
     """
     asked = settled.asked
+    stated, typed = minimum if minimum is not None else (read_minimum(question), question)
+    question = _blanked(question, stated.claims)
+    kept = minimum_under(asked, stated)
     # Each family is read twice over: the tagger reads the words alone, and
     # the key the words ask decides what of it stands (point.*_under) - the
     # point reader's reading of the words under its key, written here where
@@ -811,7 +840,9 @@ def _tagged(
     window_context = WindowContext(boolean_stat=measure.measure is not None and measure.measure.key in BOOLEAN_KEYS)
     window = window_under(asked, read_window(question, window_context))
     span = span_under(asked, read_span(question, _tagged_span_context(settled, question, window=window.window, cuts=cuts)))
-    scope = Reading(who=settled.subject, split=split.split, lines=(*lines, *read.lines), measure=measure.measure, period=period.period, cuts=cuts.cuts, window=window.window, span=span.span)
+    scope = Reading(
+        who=settled.subject, split=split.split, lines=(*lines, *read.lines), measure=measure.measure, period=period.period, cuts=cuts.cuts, window=window.window, span=span.span, minimum=kept.minimum
+    )
     # Each family's claims cut to the words it could not do without, asked
     # of the tagger and the key's reading together (span.needed), with the
     # context its own words give it read again from the same words (the
@@ -824,6 +855,8 @@ def _tagged(
         *needed(question, period.claims, lambda q: period_under(asked, read_period(q)).period, outside="period", gives_up=True),
         *needed(question, cuts.claims, lambda q: _tagged_cuts(cuts_under(asked, read_cuts(q, cuts_context), split=split.split)), outside="cuts", gives_up=True),
         *needed(question, window.claims, lambda q: window_under(asked, read_window(q, window_context)).window, outside="window", gives_up=True),
+        # The qualifier's over the question as typed, its words blanked in the rest.
+        *needed(typed, kept.claims, lambda q: minimum_under(asked, read_minimum(q)).minimum, outside="minimum", gives_up=True),
         *needed(question, read.claims, lambda q: _tagged_lines(lines_under(asked, read_lines(q), beside_line=beside_line)), outside="line", gives_up=True),
         *needed(
             question,

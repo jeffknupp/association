@@ -23,14 +23,14 @@ from association.query.answer import AnswerContext
 from association.query.compose.core import Query, compile_query, rows_of
 from association.query.compose.plan import cells_stated
 from association.query.player_relation import RELATION_SCOPING, RELATION_SCOPING_EXCLUDED, relation_window
-from association.query.point import ORDER_ASKS, span_under, window_under
-from association.query.reading import Claim, Cuts, PointShape, Reading, ScopeError, Span, Window, unhonored_cells
+from association.query.point import ORDER_ASKS, minimum_under, span_under, window_under
+from association.query.reading import Claim, Cuts, Minimum, PointShape, Reading, ScopeError, Span, Window, unhonored_cells
 from association.query.reading import Subject as Who
 from association.query.season_line import history_seasons
 from association.query.span import SpanContext, claimed, read_span
 from association.query.team_games import TeamNarrowed, rows_sql
 from association.query.team_relation import TEAM_RELATION_SCOPING, TEAM_RELATION_SCOPING_EXCLUDED, scoped_team, team_games
-from association.query.window import WindowContext, WindowRead, read_window
+from association.query.window import MinimumRead, WindowContext, WindowRead, read_minimum, read_window
 
 S = current_season()
 
@@ -290,3 +290,38 @@ def test_the_window_cell_changes_what_the_team_relation_reads(team_cells_con: An
 def test_read_window_returns_the_window_and_its_claims() -> None:
     read = window_under(asked("game_log"), read_window("curry last 3 games", WindowContext()))
     assert isinstance(read, WindowRead) and read.window == Window(order="recent", count=3) and len(read.claims) == 1
+
+
+# ---------------- a ranking's stated qualifier (ISSUES.md #377) ----------------
+
+
+@pytest.mark.parametrize(
+    ("question", "expected"),
+    [
+        ("nba plus minus per game leaders minimum 100 games played", Minimum(count=100, unit="games", word="games played")),
+        ("nba pg highest win% games at least 300 gp", Minimum(count=300, unit="games", word="gp")),
+        ("highest true shooting percentage in a playoff run minimum 10 games and average 10 ppg", Minimum(count=10, unit="games", word="games")),
+        ("highest single season 3pt percent minimum 20 attempts", Minimum(count=20, unit="attempts", word="attempts")),
+        ("who has the worst fg% with atleast 1000 fg attempted", Minimum(count=1000, unit="attempts", of="fg", word="fg attempted")),
+        ("who has the worst 3pt% with atleast 1000 3pt attempted", Minimum(count=1000, unit="attempts", of="3pt", word="3pt attempted")),
+        ("career 3pt% leaders with a minimum of 2,000 three point attempts", Minimum(count=2000, unit="attempts", of="3pt", word="three point attempts")),
+        ("three point leaders min. 200 3pa", Minimum(count=200, unit="attempts", of="3pt", word="3pa")),
+        ("top scorers with at least 10 seasons", Minimum(count=10, unit="other", word="seasons")),
+        # A box-score word after the number is a line's, and minutes the floor of minutes: neither is a qualifier.
+        ("anthony edwards log with at least 50 points", None),
+        ("nba players who averaged a minimum of 20 points per game", None),
+        ("centers min 2 threes v bos gamelog 2024", None),
+        ("jokic stats with at least 30 minutes", None),
+    ],
+)
+def test_the_words_read_as_a_stated_minimum(question: str, expected: Minimum | None) -> None:
+    read = read_minimum(question)
+    assert read.minimum == expected
+    assert len(read.claims) == (0 if expected is None else 1)
+
+
+def test_a_stated_minimum_stands_on_a_players_ranking_alone() -> None:
+    read = read_minimum("most points per game minimum 70 games")
+    assert minimum_under(asked("leaderboard"), read).minimum == Minimum(count=70, unit="games", word="games")
+    assert minimum_under(asked("single_game_high"), read) == MinimumRead(None)
+    assert minimum_under(asked("game_log"), read) == MinimumRead(None)

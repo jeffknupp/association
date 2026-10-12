@@ -72,6 +72,7 @@ from association.query.reading import (  # noqa: F401 - the folded filters' fiel
     Filtered,
     Line,
     Measure,
+    Minimum,
     Period,
     Span,
     Split,
