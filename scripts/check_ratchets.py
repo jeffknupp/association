@@ -27,7 +27,10 @@ target"):
 ``sql_outside_the_relations``
     How many statements each module executes, by module: calls of
     ``.execute``, ``.executemany``, ``.sql`` and ``.query``, of
-    ``entities._read_table`` (since 2026-10-03), and - since 2026-10-05,
+    ``entities._read_table`` (since 2026-10-03) or any function that runs
+    the SQL it is handed (found by its body since 2026-10-12, its own call
+    of that SQL no longer counted beside its callers': the name index's two
+    loads read as three until then), and - since 2026-10-05,
     when Phase 2's review found 35 hand-written statements moved whole
     behind the compiler's door, where the count was blind to them - each
     ``core.rows_of``/``core.values_of`` call whose statement is not one the
@@ -287,17 +290,49 @@ def _door_sites(modules: dict[str, ast.Module]) -> dict[str, int]:
             return counts
 
 
+def _string_sql_helpers(modules: dict[str, ast.Module]) -> set[str]:
+    """The functions that run a statement handed to them as a string: an
+    ``.execute``-family call (:data:`_EXECUTORS`) whose SQL is one of the
+    function's own parameters - ``entities._read_table(con, sql)``. Each is
+    a door, as :func:`_door_sites`' are: its callers are counted, and its
+    own call of the parameter is not a second statement (until 2026-10-12
+    ``_read_table``'s body counted beside each of its two callers, so the
+    name index's two loads read as three). Found, not listed, so a new
+    helper's callers are counted without anyone adding it."""
+    found: set[str] = set()
+    for tree in modules.values():
+        for function, call in _calls_by_function(tree):
+            if function is not None and _runs_its_parameter(function, call):
+                found.add(function.name)
+    return found
+
+
+#: The connection's own methods that run a statement: the SQL is their first argument.
+_CONNECTION_METHODS = frozenset({"execute", "executemany", "sql", "query"})
+
+
+def _runs_its_parameter(function: Function, call: ast.Call) -> bool:
+    """Whether ``call`` is a connection method (``con.execute(sql)``) whose
+    SQL is one of ``function``'s own parameters."""
+    return isinstance(call.func, ast.Attribute) and call.func.attr in _CONNECTION_METHODS and bool(call.args) and isinstance(call.args[0], ast.Name) and call.args[0].id in _parameters(function)
+
+
 def sql_outside_the_relations(modules: dict[str, ast.Module]) -> dict[str, int]:
     """How many statements each module runs, for the modules that run any:
     ``.execute``, ``.executemany``, ``.sql`` and ``.query`` calls, calls to
-    the package's own string-SQL helpers (:data:`_EXECUTORS`), and - since
-    2026-10-05 - each hand-built statement run through the compiler's door
+    the package's own string-SQL helpers (:data:`_EXECUTORS`, and any
+    function :func:`_string_sql_helpers` finds - whose own call of the SQL
+    it is handed is not counted again), and - since 2026-10-05 - each
+    hand-built statement run through the compiler's door
     (:func:`_door_sites`), counted in the module whose call hands it over."""
+    helpers = _string_sql_helpers(modules)
+    executors = _EXECUTORS | helpers
 
-    def runs(node: ast.AST) -> bool:
-        return isinstance(node, ast.Call) and _callee(node) in _EXECUTORS
+    def passes_on(function: Function | None, call: ast.Call) -> bool:
+        # A helper's own call of the SQL it was handed: its callers count it.
+        return function is not None and function.name in helpers and _runs_its_parameter(function, call)
 
-    counts = {name: sum(1 for node in ast.walk(tree) if runs(node)) for name, tree in modules.items()}
+    counts = {name: sum(1 for function, call in _calls_by_function(tree) if _callee(call) in executors and not passes_on(function, call)) for name, tree in modules.items()}
     for name, count in _door_sites(modules).items():
         counts[name] += count
     return {name: count for name, count in counts.items() if count}

@@ -124,7 +124,10 @@ this tree:
   2026-10-05 - counted per module because a listed module could grow
   statements freely; `.execute`, `.executemany`, `.sql`, `.query` and the
   package's own string-SQL helpers since 2026-10-03, when a statement
-  through `entities._read_table` counted as none; and since 2026-10-05
+  through `entities._read_table` counted as none (each found by its body
+  since 2026-10-12 - a function that runs the SQL it is handed - and its
+  own call of that SQL no longer counted beside its callers', which read
+  the name index's two loads as three); and since 2026-10-05
   every `core.rows_of`/`core.values_of` call over a statement the compiler
   did not build, in the module making the call, and every call of a
   function that only hands its parameter to one, such as
