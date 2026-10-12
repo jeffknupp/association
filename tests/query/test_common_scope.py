@@ -11,7 +11,8 @@ from __future__ import annotations
 from slots import slots_scope
 
 from association.query.coverage import sources_for
-from association.query.reading import PointShape
+from association.query.reading import Measure, PointShape, Reading, Span
+from association.query.reading import Subject as Who
 
 
 def test_a_team_season_line_names_the_games_table_only_where_it_reads_opponent_points() -> None:
@@ -23,7 +24,11 @@ def test_a_team_season_line_names_the_games_table_only_where_it_reads_opponent_p
     ratings and points allowed are dashed where the tally is short) and a
     metric built on them."""
     line = PointShape("team_seasons", "scalar", "line")
-    assert sources_for(line, slots_scope({"team": "Philadelphia 76ers", "stat": "3 pointers made", "season": 2001, "season_type": 3})) == ("team_season_stats",)
-    assert sources_for(line, slots_scope({"team": "Philadelphia 76ers", "stat": "points", "season": 2001, "season_type": 3})) == ("team_season_stats",)
+    assert sources_for(
+        line, Reading(who=Who(kind="team", teams=("Philadelphia 76ers",)), measure=Measure(key="threePointFieldGoalsMade", as_typed="3 pointers made"), span=Span(season=2001, season_type=3))
+    ) == ("team_season_stats",)
+    assert sources_for(line, Reading(who=Who(kind="team", teams=("Philadelphia 76ers",)), measure=Measure(key="points", as_typed="points"), span=Span(season=2001, season_type=3))) == (
+        "team_season_stats",
+    )
     for stat in (None, "point differential", "points allowed", "defensive rating"):
         assert sources_for(line, slots_scope({"team": "Philadelphia 76ers", "stat": stat, "season": 2001, "season_type": 3})) == ("team_season_stats", "games"), stat
