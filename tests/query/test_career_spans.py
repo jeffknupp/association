@@ -15,7 +15,6 @@ from typing import Any
 import duckdb
 import pytest
 from routed import planned_answer as compose_answer
-from slots import slots_reading
 from test_templates import leaderboard  # the compiler's, leaderboard's template retired (compose.COMPILED_INTENTS)
 
 from association.nba.season import current_season
@@ -226,17 +225,17 @@ def test_a_career_postseason_leaves_out_the_copied_postseasons(career_ctx: Answe
 
 
 @pytest.mark.parametrize(
-    "slots",
+    "scope",
     [
-        {"stat": "points", "span": "career", "season": 2015},  # since 2015? through it? only it?
-        {"stat": "points", "span": "career", "team": "Warriors"},  # a franchise's list is a different pool
-        {"stat": "points", "span": "career", "fields": ["minutes"]},
-        {"stat": "ts_pct", "span": "career"},  # needs team context no season row carries
+        {"measure": measure_of("points"), "span": Span(season=2015, career=True)},  # since 2015? through it? only it?
+        {"who": Who(kind="team", teams=("Warriors",)), "measure": measure_of("points"), "span": Span(career=True)},  # a franchise's list is a different pool
+        {"measure": measure_of("points", beside=("minutes",)), "span": Span(career=True)},
+        {"measure": measure_of("ts_pct"), "span": Span(career=True)},  # needs team context no season row carries
     ],
 )
-def test_a_career_leaderboard_refuses_what_it_cannot_answer(career_ctx: AnswerContext, slots: dict[str, Any]) -> None:
+def test_a_career_leaderboard_refuses_what_it_cannot_answer(career_ctx: AnswerContext, scope: dict[str, Any]) -> None:
     with pytest.raises(Unsupported):
-        leaderboard(career_ctx, slots_reading(slots))
+        leaderboard(career_ctx, Reading(**scope))
 
 
 @pytest.mark.parametrize("shape", [PLAYER_RANKING, GAMES_COUNTED, GAME_HIGHS])
