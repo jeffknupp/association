@@ -35,6 +35,15 @@ knows nothing of the game it predicts. Games where either team has fewer
 than :data:`MIN_RATED_GAMES` earlier games get no strength prediction and
 are scored on the other baselines alone.
 
+**Speed.** A game costs about 1.2 s at 200 simulations on one core (the
+engine, half of it the rotation model scoring lineups at dead balls; the
+day's shared estimation is a sixth). :func:`validate` replays game DAYS in
+parallel with ``jobs`` worker processes, each on its own read-only
+connection from ``connect``; a day is the unit because its games share one
+window's estimates. Every game's seeds are ``seed .. seed + n - 1`` whatever
+the worker, so the result is identical for any ``jobs``, and the games are
+reported in date order either way.
+
 .. versionadded:: 6.0.0
 """
 
@@ -45,6 +54,7 @@ import logging
 import math
 import time
 from collections.abc import Callable, Iterable, Mapping, Sequence
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
@@ -271,7 +281,7 @@ def _real_lines(con: duckdb.DuckDBPyConnection, real: matchup.RealGame) -> tuple
     rows = con.execute(
         f"""
         SELECT team_id, athlete_id, minutes, points, "offensiveRebounds", "defensiveRebounds", assists, "fieldGoalsAttempted", "threePointFieldGoalsAttempted", "freeThrowsAttempted", turnovers
-        FROM {WAREHOUSE}.player_box_stats_deduped WHERE event_id = ? AND season = ? AND minutes IS NOT NULL
+        FROM {WAREHOUSE}.player_box_stats_deduped WHERE event_id = ? AND season = ? AND minutes IS NOT NULL ORDER BY team_id, athlete_id
         """,
         [real.event_id, real.season],
     ).fetchall()
@@ -338,18 +348,35 @@ def check_game(con: duckdb.DuckDBPyConnection, real: matchup.RealGame, games: Se
 # -- the held-out set and the baselines ----------------------------------------
 
 
+def held_out_days(con: duckdb.DuckDBPyConnection, season: int, start: dt.date, limit: int | None = None) -> list[list[str]]:
+    """The regular-season games of ``season`` on or after ``start`` (Eastern),
+    oldest first and grouped by Eastern game day, the first ``limit`` games
+    of them when given.
+
+    .. versionadded:: 6.0.0
+    """
+    rows = con.execute(
+        f"SELECT event_id, {eastern_date_sql('date')} AS day FROM {WAREHOUSE}.real_games WHERE season = ? AND season_type = 2 AND {eastern_date_sql('date')} >= ? ORDER BY day, event_id",
+        [season, start],
+    ).fetchall()
+    kept = rows[:limit] if limit else rows
+    days: list[list[str]] = []
+    last: object = None
+    for event_id, day in kept:
+        if day != last:
+            days.append([])
+            last = day
+        days[-1].append(str(event_id))
+    return days
+
+
 def held_out(con: duckdb.DuckDBPyConnection, season: int, start: dt.date, limit: int | None = None) -> list[str]:
     """The regular-season games of ``season`` on or after ``start`` (Eastern),
     oldest first, the first ``limit`` of them when given.
 
     .. versionadded:: 6.0.0
     """
-    rows = con.execute(
-        f"SELECT event_id FROM {WAREHOUSE}.real_games WHERE season = ? AND season_type = 2 AND {eastern_date_sql('date')} >= ? ORDER BY {eastern_date_sql('date')}, event_id",
-        [season, start],
-    ).fetchall()
-    ids = [str(r[0]) for r in rows]
-    return ids[:limit] if limit else ids
+    return [event_id for day in held_out_days(con, season, start, limit) for event_id in day]
 
 
 @dataclass(frozen=True)
@@ -443,16 +470,31 @@ class Validation:
     refused: list[tuple[str, str]] = field(default_factory=list)
 
 
-def validate(con: duckdb.DuckDBPyConnection, season: int, start: dt.date, n: int, seed: int, limit: int | None = None, progress: Callable[[str], None] | None = None) -> Validation:
-    """Replay the held-out set and score it. The league-wide estimates and
-    rotations are built once per game day (:func:`association.sim.game.shared_for`)
-    and shared by that day's games.
+Connect = Callable[[], duckdb.DuckDBPyConnection]
+"""A factory for a worker's own read-only connection (``functools.partial``
+of :func:`association.sim.database.connect` with the two paths): it must
+pickle, since the workers are processes.
 
-    .. versionadded:: 6.0.0
-    """
-    run = Validation(season, start, n, seed, baselines_for(con, season, start))
+.. versionadded:: 6.0.0
+"""
+
+
+@dataclass(frozen=True)
+class _DayResult:
+    """One game day replayed: its checks, its refusals and its progress lines."""
+
+    checks: list[GameCheck]
+    refused: list[tuple[str, str]]
+    lines: list[str]
+
+
+def _replay_day(con: duckdb.DuckDBPyConnection, event_ids: Sequence[str], n: int, seed: int, baselines: Baselines, offset: int) -> _DayResult:
+    """Replay one day's games on ``con``: the estimates and rotations are
+    built once for the day's window (:func:`association.sim.game.shared_for`)
+    and shared. ``offset`` numbers the progress lines across days."""
+    result = _DayResult([], [], [])
     shared: matchup.Shared | None = None
-    for i, event_id in enumerate(held_out(con, season, start, limit)):
+    for i, event_id in enumerate(event_ids):
         began = time.perf_counter()
         real = matchup.real_game(con, event_id)
         window = matchup.window_for(con, real.season, real.date)
@@ -464,11 +506,81 @@ def validate(con: duckdb.DuckDBPyConnection, season: int, start: dt.date, n: int
         except (matchup.SimulationRefused, EngineError, RotationError) as exc:
             # A replay's roster is the real one, which can run short after
             # foul-outs; the engine refuses to play four, and so does the harness.
-            run.refused.append((event_id, f"{type(exc).__name__}: {exc}"))
+            result.refused.append((event_id, f"{type(exc).__name__}: {exc}"))
             continue
-        run.games.append(check_game(con, real, games, run.baselines.for_game(event_id), time.perf_counter() - began))
-        if progress is not None:
-            progress(f"{i + 1}: {event_id} {real.date} in {time.perf_counter() - began:.1f}s")
+        result.checks.append(check_game(con, real, games, baselines.for_game(event_id), time.perf_counter() - began))
+        result.lines.append(f"{offset + i + 1}: {event_id} {real.date} in {time.perf_counter() - began:.1f}s")
+    return result
+
+
+WORKER_THREADS = 2
+"""DuckDB threads per worker connection: a connection takes a thread per
+core by default, and sixteen workers on a 24-core machine then run through
+384 of them for queries that are small and many.
+
+.. versionadded:: 6.0.0
+"""
+
+
+def _replay_day_in_worker(connect: Connect, event_ids: Sequence[str], n: int, seed: int, baselines: Baselines, offset: int) -> _DayResult:
+    """:func:`_replay_day` on a connection of the worker's own, with
+    :data:`WORKER_THREADS` DuckDB threads."""
+    con = connect()
+    try:
+        con.execute(f"SET threads TO {WORKER_THREADS}")
+        return _replay_day(con, event_ids, n, seed, baselines, offset)
+    finally:
+        con.close()
+
+
+def _absorb(run: Validation, result: _DayResult, progress: Callable[[str], None] | None) -> None:
+    run.games.extend(result.checks)
+    run.refused.extend(result.refused)
+    if progress is not None:
+        for line in result.lines:
+            progress(line)
+
+
+def validate(
+    con: duckdb.DuckDBPyConnection,
+    season: int,
+    start: dt.date,
+    n: int,
+    seed: int,
+    limit: int | None = None,
+    progress: Callable[[str], None] | None = None,
+    jobs: int = 1,
+    connect: Connect | None = None,
+) -> Validation:
+    """Replay the held-out set and score it. The league-wide estimates and
+    rotations are built once per game day (:func:`association.sim.game.shared_for`)
+    and shared by that day's games. With ``jobs`` above one the days are
+    replayed by that many worker processes, each opening its own connection
+    with ``connect`` (required then); the result is the same for any
+    ``jobs``, games in date order, and the progress lines arrive a day at a
+    time as days complete.
+
+    .. versionadded:: 6.0.0
+    """
+    if jobs > 1 and connect is None:
+        raise ValueError("jobs above one need a connect factory for the workers' own connections")
+    run = Validation(season, start, n, seed, baselines_for(con, season, start))
+    days = held_out_days(con, season, start, limit)
+    offsets = [sum(len(d) for d in days[:k]) for k in range(len(days))]
+    if jobs <= 1 or connect is None or len(days) <= 1:
+        for day, offset in zip(days, offsets, strict=True):
+            _absorb(run, _replay_day(con, day, n, seed, run.baselines, offset), progress)
+        return run
+    results: dict[int, _DayResult] = {}
+    with ProcessPoolExecutor(max_workers=min(jobs, len(days))) as pool:
+        futures = {pool.submit(_replay_day_in_worker, connect, day, n, seed, run.baselines, offset): k for k, (day, offset) in enumerate(zip(days, offsets, strict=True))}
+        for future in as_completed(futures):
+            results[futures[future]] = future.result()
+            if progress is not None:
+                for line in results[futures[future]].lines:
+                    progress(line)
+    for k in sorted(results):
+        _absorb(run, results[k], None)
     return run
 
 

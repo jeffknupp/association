@@ -118,9 +118,10 @@ was learned the hard way and is about the data, not the pipeline.
   `game.traced(prepared, seed)` does it for a prepared matchup.
 - **Step 8 done 2026-10-11:** `association sim validate --season 2025
   --from 2025-01-01 --n 200 --out scripts/sim_p8/results/<name>.md` is the
-  simulator's yardstick (`association.sim.validate`; about 15 minutes for
-  the 750 held-out games). The plan's build-order item 8 holds the
-  baseline table. **Every change to the simulator from here is measured
+  simulator's yardstick (`association.sim.validate`; about three minutes
+  for the 750 held-out games with `--jobs 16`, game days in parallel with
+  identical results, fifteen minutes with `--jobs 1`). The plan's
+  build-order item 8 holds the baseline table. **Every change to the simulator from here is measured
   by running it and committing the report**; a metric that gets worse
   beyond noise needs a written reason. The first thing it found - free
   throws at 0.371 per field-goal attempt against 0.240 - was fixed the same

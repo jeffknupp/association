@@ -116,3 +116,30 @@ def test_baselines_answer_for_a_game_with_and_without_ratings() -> None:
     assert b.for_game("g1") == {"home_rate": 0.57, "strength": pytest.approx(1 / (1 + math.exp(-1.0))), "espn": 0.61}
     assert b.for_game("g2") == {"home_rate": 0.57, "strength": None, "espn": None}
     assert b.for_game("g3")["strength"] is None
+
+
+def test_held_out_days_group_the_games_by_eastern_day_and_honor_the_limit() -> None:
+    import duckdb
+
+    con = duckdb.connect(":memory:")
+    con.execute("ATTACH ':memory:' AS nba")
+    con.execute("CREATE TABLE nba.real_games (event_id VARCHAR, season INTEGER, season_type INTEGER, date VARCHAR)")
+    rows = [
+        ("g1", 2025, 2, "2025-01-02T00:30Z"),  # 7:30 pm Eastern on January 1
+        ("g2", 2025, 2, "2025-01-02T01:00Z"),  # the same Eastern day
+        ("g3", 2025, 2, "2025-01-03T00:00Z"),  # January 2
+        ("g0", 2025, 2, "2024-12-31T23:00Z"),  # before the start
+        ("g4", 2025, 2, "2025-01-04T00:00Z"),  # January 3
+        ("p1", 2025, 3, "2025-01-04T00:00Z"),  # a playoff game is not held out
+    ]
+    con.executemany("INSERT INTO nba.real_games VALUES (?, ?, ?, ?)", rows)
+    assert validate.held_out_days(con, 2025, dt.date(2025, 1, 1)) == [["g1", "g2"], ["g3"], ["g4"]]
+    assert validate.held_out_days(con, 2025, dt.date(2025, 1, 1), limit=3) == [["g1", "g2"], ["g3"]]
+    assert validate.held_out(con, 2025, dt.date(2025, 1, 1)) == ["g1", "g2", "g3", "g4"]
+
+
+def test_parallel_validation_needs_a_connect_factory() -> None:
+    import duckdb
+
+    with pytest.raises(ValueError, match="connect factory"):
+        validate.validate(duckdb.connect(":memory:"), 2025, dt.date(2025, 1, 1), 1, 7, jobs=2)
