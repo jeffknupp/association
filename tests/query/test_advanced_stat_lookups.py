@@ -14,12 +14,12 @@ from pathlib import Path
 
 import duckdb
 import pytest
-from slots import slots_reading
 from test_templates import player_stat  # the compiler's, player_stat's template retired (compose.COMPILED_INTENTS)
 
 from association.nba.season import current_season
 from association.query.answer import AnswerContext
 from association.query.coverage import _ADVANCED_STAT_NAMES, check_coverage, sources_for
+from association.query.measure import measure_of
 from association.query.reading import PLAYER_LINE, Cuts, Measure, PointShape, Reading, Span, Unsupported
 from association.query.reading import Subject as Who
 from association.query.season_line import ADVANCED_STATS
@@ -127,7 +127,7 @@ def test_efg_is_weighted_by_field_goal_attempts_not_true_shooting_ones(advanced_
 
 def test_a_season_figure_is_read_rather_than_recomputed(advanced_ctx: AnswerContext) -> None:
     for stat, expected in (("ts_pct", ".700 true shooting percentage"), ("usage_pct", "31.0 usage rate"), ("game_score", "19.0 game score")):
-        answer = player_stat(advanced_ctx, slots_reading({"player": "Klay Thompson", "stat": stat, "season": 2025})).answer
+        answer = player_stat(advanced_ctx, Reading(who=Who(kind="player", players=("Klay Thompson",)), measure=measure_of(stat), span=Span(season=2025))).answer
         assert expected in answer, stat
         assert "in the 2025 regular season" in answer, stat
 
@@ -138,7 +138,7 @@ def test_a_stat_with_no_volume_column_refuses_a_career_rather_than_averaging(adv
     per-game composite; neither has a denominator the seasons can be weighted
     by, so a career figure would be the mean of means the test above rejects."""
     with pytest.raises(Unsupported, match="no career figure"):
-        player_stat(advanced_ctx, slots_reading({"player": "Klay Thompson", "stat": stat, "span": "career"}))
+        player_stat(advanced_ctx, Reading(who=Who(kind="player", players=("Klay Thompson",)), measure=measure_of(stat), span=Span(career=True)))
 
 
 def test_a_narrowed_set_of_games_is_never_answered_with_the_season(advanced_ctx: AnswerContext) -> None:
