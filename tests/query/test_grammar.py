@@ -13,7 +13,7 @@ from association.query.compose.plan import refusal_result
 from association.query.grammar import CODE_ASSIGNED_ASKS
 from association.query.lexicon import ORDER_WORDS
 from association.query.point import ORDER_ASKS
-from association.query.reading import PLAYER_LINE, PLAYER_LOG, Cause, Filtered, Window
+from association.query.reading import PLAYER_LINE, PLAYER_LOG, Cause, Filtered, PointShape, Window
 
 
 def _scope_values(field: str, of: type = Filtered) -> set[object]:
@@ -32,18 +32,28 @@ def test_every_intent_is_reachable_from_the_reader() -> None:
     Until Phase 2, step 6 this read
     ``test_every_template_is_reachable_from_the_reader``, over the
     templates; until Phase 3, step 4 it held the intents' names
-    (``compose.COMPILED_INTENTS``) - the asked keys now, each the label
-    table's (``tests/shapes.ASKED``).
+    (``compose.COMPILED_INTENTS``) - the asked keys now, every one the
+    reading module names (:func:`_asked_keys`).
 
     Until 5.0.0 the first route was the router's schema enum, and this read
     ``test_every_ported_template_has_an_intent_in_the_schema``."""
-    from shapes import ASKED
-
     from association.query.parse import PARENT_GRAMMAR
     from association.query.subject import KIND_ASSIGNED_ASKS
 
     parents = {parent for _, _, parent in PARENT_GRAMMAR}
-    assert parents | CODE_ASSIGNED_ASKS | KIND_ASSIGNED_ASKS == {shape for shape in ASKED.values() if shape is not None}
+    assert parents | CODE_ASSIGNED_ASKS | KIND_ASSIGNED_ASKS == _asked_keys()
+
+
+def _asked_keys() -> set[PointShape]:
+    """Every key the words can ask, as the reading module names them
+    (``reading.PLAYER_LOG``, ...): the grammar's 25 (``test_frozen_shapes``
+    freezes them). Until Phase 4, step 0 the tests' label table
+    (``tests/shapes.ASKED``) listed them by the retired intents' names."""
+    from association.query import reading
+
+    keys = {value for name, value in vars(reading).items() if name.isupper() and isinstance(value, PointShape)}
+    assert len(keys) == 25, sorted(map(str, keys))
+    return keys
 
 
 def test_the_side_values_match_the_scope() -> None:
@@ -70,17 +80,17 @@ def test_the_order_intents_are_the_ones_that_honor_order() -> None:
     does not import the templates. An intent honoring `order` and missing here
     keeps the bug this fixed; one listed here that does not honor it turns
     into a fall-through."""
-    from shapes import stated
-
+    from association.query.compose.plan import cells_stated
     from association.query.point import _WINDOW_ORDER_ON_A_SINGLE_GAME as _ORDER_ON_A_SINGLE_GAME
-    from association.query.reading import SHAPE_NAMES, asked_label
 
     # player_stat honors an order only beside a limit of one (a single game
     # handed to game_log), so the tagger sets the pair together for it rather
     # than filling order alone - see _ORDER_ON_A_SINGLE_GAME. A retired
     # template's list is what its reader's words state (STATED_SCOPING); the
-    # cell is the window's (Window.CELLS, "window") since Phase 3, step 2.
-    assert frozenset(name for name in set(SHAPE_NAMES.values()) - {"coach"} if "window" in stated(name)) == {asked_label(shape) for shape in ORDER_ASKS | _ORDER_ON_A_SINGLE_GAME}
+    # cell is the window's (Window.CELLS, "window") since Phase 3, step 2;
+    # the shapes are the keys the words ask since Phase 4, step 0, where the
+    # retired names stood.
+    assert {shape for shape in _asked_keys() if "window" in cells_stated(shape)} == ORDER_ASKS | _ORDER_ON_A_SINGLE_GAME
 
 
 def test_a_last_n_games_signal_requires_a_real_limit_and_the_recent_order() -> None:
