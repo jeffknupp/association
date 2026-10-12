@@ -1376,6 +1376,42 @@ agents' reports named here are in `~/association-research/stages/`.
     the review's 85 minutes and 470k tokens, the lead's evening. Filed: 13
     entries. Phase 3 closed.
 
+37. **The Phase 3 review's cleanup, worked in order (2026-10-11 to
+    2026-10-12).** Jeff's ruling the night the phase closed: "work the
+    cleanup list in order, (a) first". (a) the same night - the lead's
+    `regex_in_the_reader` ratchet (point 12, parse 5, line 1), then one
+    Opus agent's nine commits on the seam: a floor of minutes read, a
+    stated minimum the tenth typed filter (`reading.Minimum`, read by the
+    window tagger, honored by the rankings or refused by name), "percent"
+    spelled out, a season type between a count's line and "games", both
+    ends of a window named at once and a window in every season each
+    refused by a cause, and two count/record fixes the floor exposed; 21
+    feed answers moved, every one counted. The merge itself tested the
+    ratchet: the branch deleted a point-reader pattern and the gate said
+    GONE, shrunk to 11. (b) and (c) the next morning, one Opus agent, 53
+    commits: the private-use range stripped; the claims ledger holding
+    the feed as it holds the 628 (`scripts/ledger_held.json`, `--shrink`),
+    and the feed's 177 unread numbers read one by one - 12 kinds, six new
+    P1s, two reader fixes on the way; the intent label out of the cause
+    facts (a `shape` fact, the key) and the sayer's tables; the decline
+    sentences reworded from a slot list to what the words asked (5 of the
+    628 and 130 of the 2,082, enumerated, `answered_by` unchanged, the
+    slot-name readers deleted); CI holding every pushed commit to the
+    CHANGES rule (unfloored over the phase it names exactly `bfe09f7`);
+    and 44 test-only commits re-seating about 1,100 of 1,600 test-door
+    call sites, the doors standing for the 250 left. The lead re-verified
+    both merges against fresh runs of the source before them: every
+    difference on the 628, the 2,082 and the 2,710 reconciled to the
+    commits' enumerations, nothing unnamed. What it taught: a cleanup
+    worked as a ranked list with one agent on the seam at a time merges
+    cleanly, and each agent found two or more real bugs beside the ones it
+    was sent for ("per 36 minutes" read as a floor; "stats by season" with
+    no stat as one season's line; a count's line dropped beside a floor at
+    the same number) - the review's list was the start of the sweep, not
+    its extent. Cost: the lead's night and morning, two agents of about
+    2.2 and 2.3 hours (565k and 604k tokens). Filed: #387-#394, all P1.
+    Left: #385's remainder, Phase 4's first item.
+
 ## The plan items, as written
 
 In order of lift per unit of structural change, each measured on the

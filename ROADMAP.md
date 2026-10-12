@@ -593,8 +593,47 @@ the same 22 moved; the ledger 702 of 2,411 in 405 line for line, the feed's
 3,704 -> 3,666; the ratchets at the shrunk count. Filed by the agent: #387
 ("stats by season" with no stat named answers one season's line, P1) and
 #388 ("per 36 minutes" read as a floor of 36 minutes, P1); #350 rewritten
-to its "worst" half. (b) and (c)'s CI check next, one agent at a time on the
-seam.
+to its "worst" half. (b) and (c) the next morning (2026-10-12), one Opus
+agent on the seam, 53 commits merged at `6183a76` and re-verified by the
+lead against a fresh run of `8e1a787`'s source: `3de23ad` a private-use
+character typed into a question is a space (#383); `29776a7` the claims
+ledger holds the feed as it holds the 628 - `scripts/ledger_held.json`, per
+population the unread count, the questions with an unread number, the
+feed's 91 disagreements and its joins, `report` exiting 1 on growth and
+`--shrink` lowering it (#382, part 1) - with two reader fixes the feed's
+numbers exposed (`a0bcfee` a season span "to" a bare year is the range,
+`4c595b8` "2015 16" is the season 2015-16; 3 feed answers each) and the
+feed's 177 unread numbers read one by one (`4e52927`: 32 a fact no table
+holds, 23 a missed window, 23 a line on a percentage, 20 a line on a
+season average, 16 a range of dates, 16 a single game's line, 14 a number
+inside a measure word, 12 a two-digit or glued year, 8 a count misread, 7
+a count of seasons, 3 a first or last N seasons, 3 typos - six new P1s,
+#389-#394, the rest on their entries); `2e80f8a` a cause carries the key
+the words ask (a `shape` fact, the `PointShape`) and the sayer's four
+tables key on it, the label read only where it is printed; `14a1fc1` a
+decline says each narrowing by what the words asked, not a slot list
+(#281; `cell_slots`, `line_slots_set`, `companion_slot_names`,
+`_CUT_SLOT_NAMES` and every family's `unhonored` deleted; 5 of the 628 and
+130 of the 2,082 answers reworded, every one enumerated, `answered_by`
+unchanged); `09d3cbb` CI holds every pushed commit to the CHANGES rule
+(`scripts/check_changes_per_commit.py`, the `changelog-per-commit` job,
+floored at `8e1a787`; over `87cc782..HEAD` unfloored it names `bfe09f7`
+alone; #380); and 44 test-only commits re-seating the test doors file by
+file (`bdf74a2`..`e8351dc`): about 1,100 of 1,600 call sites now state a
+Reading in the typed fields and a shape by its `PointShape`, the
+unit-test calls 4,096 of 4,096 identical, and what is left is #385's
+rewritten entry - `slots_reading` 55, `slots_scope` 55, `shapes.asked` 18,
+`routed.*` 119 - mostly helpers that take a label and a slot dict together
+(`test_compose`'s `compose_answer` needs a typed redesign first), with the
+three doors still standing. Across `8e1a787 -> 6183a76`: the 628 differ
+on 15 (10 the renamed fact, 5 reworded declines) and the 2,082 on 310 (134
+answers - 128 reworded declines and the 6 of the season fixes - 176 the
+fact, 97 the planned query's `declined` text alone), the 2,710 readings on
+289 (186 the fact, 195 the `declined` text, 6 the season fixes), nothing
+else; the ledger 702 of 2,411 in 405 on the 628 and 3,660 of 8,547 in
+1,657 on the feed, 177 numbers, 91 disagreements, held; the ratchets
+unchanged. The cleanup is done but for #385's remainder, which is Phase
+4's first item as the review ranked it.
 
 **Phase 4 - Close out.** `Answer.intent` removed and the web page's
 renderers keyed by shape (22 become one per shape); the browser check run;
