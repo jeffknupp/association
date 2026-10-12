@@ -16,7 +16,7 @@ import duckdb
 import pytest
 from routed import planned_answer as compose_answer
 from shapes import asked, unhonored
-from slots import slots_reading, slots_scope
+from slots import slots_reading
 from test_templates import leaderboard  # the compiler's, leaderboard's template retired (compose.COMPILED_INTENTS)
 
 from association.nba.season import current_season
@@ -26,7 +26,8 @@ from association.query.measures import resolve_metric
 from association.query.metrics import LEADERBOARD_METRICS
 from association.query.normalizer import NORMALIZER_STATS
 from association.query.parse import with_point
-from association.query.reading import Reading, SubjectKind, Unsupported
+from association.query.reading import Line, Measure, Reading, Span, SubjectKind, Unsupported, Window
+from association.query.reading import Subject as Who
 from association.query.subject import Subject
 
 
@@ -138,21 +139,21 @@ def season_ctx(tmp_path: Path) -> AnswerContext:
 
 
 def test_a_shooting_percentage_names_its_qualifier_and_its_volume(season_ctx: AnswerContext) -> None:
-    answer = leaderboard(season_ctx, slots_reading({"stat": "threePointFieldGoalPct"})).answer
+    answer = leaderboard(season_ctx, Reading(measure=Measure(key="threePointFieldGoalPct", as_typed="threePointFieldGoalPct"))).answer
     assert answer == (
         f"Sharp Shooter led the league in 3-point percentage in the {current_season()} regular season (minimum 200 3-point attempts), at 47.8% (117 of 245). Next: Volume Scorer (45.6%)."
     )
 
 
 def test_most_threes_is_a_season_count(season_ctx: AnswerContext) -> None:
-    result = leaderboard(season_ctx, slots_reading({"stat": "threePointFieldGoalsMade"}))
+    result = leaderboard(season_ctx, Reading(measure=Measure(key="threePointFieldGoalsMade", as_typed="threePointFieldGoalsMade")))
     assert result.data["leaders"][0]["display_name"] == "Volume Scorer"
     assert "led the league in 3-pointers made" in result.answer and "at 135." in result.answer
 
 
 def test_rate_total_ranks_the_season_total_rather_than_the_average(season_ctx: AnswerContext) -> None:
-    assert leaderboard(season_ctx, slots_reading({"stat": "points"})).data["leaders"][0]["display_name"] == "Low Volume"
-    result = leaderboard(season_ctx, slots_reading({"stat": "points", "rate": "total"}))
+    assert leaderboard(season_ctx, Reading(measure=Measure(key="points", as_typed="points"))).data["leaders"][0]["display_name"] == "Low Volume"
+    result = leaderboard(season_ctx, Reading(measure=Measure(key="points", as_typed="points", how="total", unit="total")))
     assert result.data["leaders"][0]["display_name"] == "Volume Scorer"
     assert "in total points" in result.answer and "2,000" in result.answer
 
@@ -160,7 +161,7 @@ def test_rate_total_ranks_the_season_total_rather_than_the_average(season_ctx: A
 def test_a_postseason_copied_from_the_regular_season_is_not_a_postseason(season_ctx: AnswerContext) -> None:
     """Eddy Curry never played a playoff game and has 6,820 playoff points,
     because his regular seasons are stored twice. Unfiltered, this board is his."""
-    leaders = leaderboard(season_ctx, slots_reading({"stat": "points", "rate": "total", "season_type": 3})).data["leaders"]
+    leaders = leaderboard(season_ctx, Reading(measure=Measure(key="points", as_typed="points", how="total", unit="total"), span=Span(season_type=3))).data["leaders"]
     assert [row["display_name"] for row in leaders] == ["Volume Scorer"]
 
 
@@ -193,7 +194,7 @@ def test_career_points_are_summed_from_the_stints_and_counted_once(career_ctx: A
     """Moses Malone's combined 1976-77 row is empty, so a sum over it loses the
     season; a traded player's combined row alongside its stints would count
     his season twice. Summed over the stints, each is right."""
-    leaders = leaderboard(career_ctx, slots_reading({"stat": "points", "span": "career"})).data["leaders"]
+    leaders = leaderboard(career_ctx, Reading(measure=Measure(key="points", as_typed="points"), span=Span(career=True))).data["leaders"]
     assert _ranked(leaders) == [
         ("Michael Jordan", 14991),
         ("LeBron James", 10000),
@@ -205,7 +206,7 @@ def test_career_points_are_summed_from_the_stints_and_counted_once(career_ctx: A
 
 
 def test_a_career_list_says_whose_careers_and_that_it_is_not_all_time(career_ctx: AnswerContext) -> None:
-    answer = leaderboard(career_ctx, slots_reading({"stat": "points", "span": "career", "limit": 2})).answer
+    answer = leaderboard(career_ctx, Reading(measure=Measure(key="points", as_typed="points"), span=Span(career=True), window=Window(count=2))).answer
     assert answer == (
         "Among players active in 1993-94 or later, Michael Jordan leads in career points in the regular season: 14,991, over 492 games (1984-85 through 1995-96). "
         "Next: LeBron James (10,000). Careers that ended before 1993-94 are not in this warehouse, so this is not an all-time list."
@@ -213,14 +214,14 @@ def test_a_career_list_says_whose_careers_and_that_it_is_not_all_time(career_ctx
 
 
 def test_a_career_average_is_games_weighted_and_qualified(career_ctx: AnswerContext) -> None:
-    result = leaderboard(career_ctx, slots_reading({"stat": "avg_points", "span": "career"}))
+    result = leaderboard(career_ctx, Reading(measure=Measure(key="points", as_typed="avg_points", how="per_game"), span=Span(career=True)))
     assert [name for name, _ in _ranked(result.data["leaders"])] == ["Michael Jordan", "LeBron James"]  # Short Career's 40.0 is 10 games
     assert result.data["leaders"][0]["value"] == pytest.approx(14991 / 492)
     assert "(minimum 400 games)" in result.answer
 
 
 def test_a_career_postseason_leaves_out_the_copied_postseasons(career_ctx: AnswerContext) -> None:
-    leaders = leaderboard(career_ctx, slots_reading({"stat": "points", "span": "career", "season_type": 3})).data["leaders"]
+    leaders = leaderboard(career_ctx, Reading(measure=Measure(key="points", as_typed="points"), span=Span(season_type=3, career=True))).data["leaders"]
     assert _ranked(leaders) == [("Michael Jordan", 552), ("LeBron James", 400)]
 
 
@@ -243,7 +244,7 @@ def test_a_career_span_is_honored_by_the_ranking_templates(intent: str) -> None:
     """A career is declared by what each reader's words state (its shape's
     row, ``compose.plan.cells_stated``), beside the relation, which honors
     a career for any named player."""
-    assert unhonored(intent, slots_scope({"span": "career"})) == []
+    assert unhonored(intent, Reading(span=Span(career=True))) == []
 
 
 # ---------------- career counts and highs, from box scores ----------------
@@ -301,14 +302,22 @@ def box_ctx(tmp_path: Path) -> AnswerContext:
 
 
 def test_a_career_count_does_not_count_the_phantom_season_twice(box_ctx: AnswerContext) -> None:
-    result = threshold_count(box_ctx, slots_reading({"stat": "points", "threshold": 40, "span": "career"}))
+    result = threshold_count(box_ctx, Reading(lines=(Line(measure="points", value=40, as_typed="40 points", keyed=True),), measure=Measure(key="points", as_typed="points"), span=Span(career=True)))
     assert {"player": "Hakeem Olajuwon", "games": 1} in result.data["leaders"]
     assert "since 1993-94" in result.answer and "not all-time counts" in result.answer
     assert "1 game in 2013-14 has an empty box score in this warehouse, so these counts may be low." in result.answer
 
 
 def test_a_players_career_count_names_the_career_and_the_games_it_could_not_see(box_ctx: AnswerContext) -> None:
-    answer = threshold_count(box_ctx, slots_reading({"stat": "points", "threshold": 30, "span": "career", "player": "LeBron James"})).answer
+    answer = threshold_count(
+        box_ctx,
+        Reading(
+            who=Who(kind="player", players=("LeBron James",)),
+            lines=(Line(measure="points", value=30, as_typed="30 points", keyed=True),),
+            measure=Measure(key="points", as_typed="points"),
+            span=Span(career=True),
+        ),
+    ).answer
     assert answer == (
         "LeBron James had 2 games with 30+ points in his regular season career (2003-04 through 2014-15). "
         "1 of LeBron James's games in 2013-14 has an empty box score in this warehouse, so the count may be low."
@@ -318,20 +327,28 @@ def test_a_players_career_count_names_the_career_and_the_games_it_could_not_see(
 def test_a_career_that_began_before_the_box_scores_says_so_first(box_ctx: AnswerContext) -> None:
     """Michael Jordan's "career high" from these box scores is 55, not 69. The
     gap is stated before the number, not after it."""
-    answer = single_game_high(box_ctx, slots_reading({"stat": "points", "span": "career", "player": "Michael Jordan"})).answer
+    answer = single_game_high(box_ctx, Reading(who=Who(kind="player", players=("Michael Jordan",)), measure=Measure(key="points", as_typed="points"), span=Span(career=True))).answer
     assert answer.startswith("Box scores here begin in 1993-94, and Michael Jordan's regular season career began in 1984-85")
     assert answer.endswith("highest point total in a single game in the regular season since 1993-94 was 55, on 1995-03-28 vs OPP.")
-    count = threshold_count(box_ctx, slots_reading({"stat": "points", "threshold": 50, "span": "career", "player": "Michael Jordan"})).answer
+    count = threshold_count(
+        box_ctx,
+        Reading(
+            who=Who(kind="player", players=("Michael Jordan",)),
+            lines=(Line(measure="points", value=50, as_typed="50 points", keyed=True),),
+            measure=Measure(key="points", as_typed="points"),
+            span=Span(career=True),
+        ),
+    ).answer
     assert count.startswith("Box scores here begin in 1993-94") and "since 1993-94" in count
 
 
 def test_a_career_high_is_dated_the_day_it_was_played(box_ctx: AnswerContext) -> None:
-    answer = single_game_high(box_ctx, slots_reading({"stat": "points", "span": "career", "player": "LeBron James"})).answer
+    answer = single_game_high(box_ctx, Reading(who=Who(kind="player", players=("LeBron James",)), measure=Measure(key="points", as_typed="points"), span=Span(career=True))).answer
     assert answer.startswith("LeBron James's highest point total in a single game in his regular season career (2003-04 through 2014-15) was 61, on 2014-03-03 vs OPP.")
 
 
 def test_the_leagues_best_game_is_not_called_all_time(box_ctx: AnswerContext) -> None:
-    result = single_game_high(box_ctx, slots_reading({"stat": "points", "span": "career", "limit": 5}))
+    result = single_game_high(box_ctx, Reading(measure=Measure(key="points", as_typed="points"), span=Span(career=True), window=Window(count=5)))
     assert [game["value"] for game in result.data["games"]][:4] == [61, 55, 45, 35]  # Hakeem's 45 once, not twice
     assert "in the regular season since 1993-94: 61, on 2014-03-03" in result.answer
     assert "so this is not an all-time record" in result.answer
@@ -339,7 +356,10 @@ def test_the_leagues_best_game_is_not_called_all_time(box_ctx: AnswerContext) ->
 
 def test_an_ambiguous_name_is_asked_about_rather_than_counted(box_ctx: AnswerContext) -> None:
     """It used to be an ILIKE per word: "Curry" counted both and reported the bigger."""
-    answer = threshold_count(box_ctx, slots_reading({"stat": "points", "threshold": 1, "span": "career", "player": "Curry"})).answer
+    answer = threshold_count(
+        box_ctx,
+        Reading(who=Who(kind="player", players=("Curry",)), lines=(Line(measure="points", as_typed="1 points", keyed=True),), measure=Measure(key="points", as_typed="points"), span=Span(career=True)),
+    ).answer
     assert "did you mean Seth Curry or Stephen Curry?" in answer
 
 
@@ -351,5 +371,7 @@ def test_a_career_with_a_season_named_reads_the_named_season(box_ctx: AnswerCont
     one - where their retired templates refused ("... since it, or through
     it"). It answered them first from ROADMAP plan item 6, step (a), so
     nothing a question reads moved."""
-    result = answered(box_ctx, slots_reading({"stat": "points", "threshold": 30, "span": "career", "season": 2024}))
+    result = answered(
+        box_ctx, Reading(lines=(Line(measure="points", value=30, as_typed="30 points", keyed=True),), measure=Measure(key="points", as_typed="points"), span=Span(season=2024, career=True))
+    )
     assert "2024 regular season" in result.answer and "career" not in result.answer
