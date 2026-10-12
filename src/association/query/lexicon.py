@@ -2418,7 +2418,11 @@ CHILD_RECORD_WHEN_GAMES_WON = re.compile(r"\bhow many\b.{0,40}\bgames\b.{0,20}\b
 CHILD_THRESHOLD_COUNT = re.compile(
     rf"\b(?:how many|most|fewest)\b.*\b(?:games?|times)\b.*{N_PLUS}|\b(?:how many|most|fewest)\b.*{N_PLUS}.*\bgames?\b|\bhow many (?:times|occasions)\b"
     rf"|\bgames? (?:with|where|in which)\b.*{MARKED_NUMBER}\s+(?:\w+|\ue003+)"
-    rf"|[\ue000-\ue002]+[\s-]*\ue003+[\s-]+games?\b"
+    # "40 point games", and the same with the season type or the venue
+    # between the line and "games" ("how many 40 point playoff games does
+    # kobe have", ISSUES.md #375: refused "no 2026 postseason numbers" as a
+    # player's line over a defaulted season).
+    rf"|[\ue000-\ue002]+[\s-]*\ue003+[\s-]+(?:(?:playoffs?|postseason|post-season|regular[\s-]+season|home|road|away)[\s-]+)?games?\b"
     # The paraphrases' shapes (parser-greenfield, step b): "which games had 15 or more assists", "the highest number of
     # 30+ point games", "how many games did he score 30 points or more in".
     rf"|\b(?:which|what) games?\b.*{N_PLUS}|\bnumber of\b.*{N_PLUS}.*\bgames?\b|\bhow many\b.*\bgames?\b.*{MARKED_NUMBER}\s+(?:\w+|\ue003+)\s+or more\b"

@@ -2272,14 +2272,6 @@ those were found.
 - **Next step:** read the team-only check's player from the subject reading's own players (`Reading.subject`), which already excludes ordinary words, rather than a second `players_named_in` pass; re-measure the three.
 - **GitHub:** #342
 
-### "how many 40 point playoff games does kobe have" is refused for a false cause: "Kobe Bryant has no 2026 postseason numbers in the warehouse"
-- **Found:** 2026-10-11, the Phase 3 review (`~/association-research/reviews/phase3-2026-10-11/`, finding 2).
-- **Evidence:** on `4de1801` and `87cc782`, the recorded-reply probe (the review's `data/adhoc-after-*.txt`) and the feed run; `Reading.unread` = 40, games. "how many 40 point games does kobe have in the playoffs" answers "13 games with 40+ points in his postseason career". The count's child grammar (`lexicon.CHILD_THRESHOLD_COUNT`) misses "N point playoff games" - a season-type word between the line and "games" - so the question is `player_stat` over a defaulted 2026 postseason, which the warehouse has nothing for. 1 feed question.
-- **User sees:** a refusal naming a missing season when the count asked for exists (13).
-- **Next step:** a season-type word between the line and "games" in the count's rows, with the feed answer enumerated.
-- **Priority:** P2 - a refusal naming the wrong cause.
-- **GitHub:** #375
-
 ### "top 10 players in offensive netpoints per 50 possessions" answers season totals, and the "50" counts as read
 - **Found:** 2026-10-11, the Phase 3 review (`~/association-research/reviews/phase3-2026-10-11/`, finding 3).
 - **Evidence:** on `4de1801` with the model's stat `netpoints_offense_per_100`: "... led the league in offensive NetPoints (season total) ..., at 403.9", `Reading.unread` = ["players"]; with `netpoints_offense`: unread = players, per, possessions - the "50" is never unread. "per possessions" and "per 100 possessions" answer per 100. The same on `87cc782`. Step 3's ROADMAP row says a number other than 100 "is left unread, never read as 100"; measured, it is claimed and the rate is dropped to the total - a word whose presence makes the reader read LESS, claimed, the case `span.needed`'s `gives_up` exists for.

@@ -2009,6 +2009,8 @@ a shape:
   tagger read, so a number no line is read from ("games with 40 field
   goal percentage") stays in `Reading.unread`, where it was hidden in the
   child's claim (`intent+measure`, 11 -> 0; ISSUES.md, the P1 it hid).
+  A season type or a venue may stand between the marked line and "games"
+  ("how many 40 point playoff games does kobe have", ISSUES.md #375).
   The child is named from the grammar alone (`subject.child_named`), and
   the grammar's rules run ONCE, under it (`parse._read_route_staged`); they
   may decline it (a count with no threshold is a ranking), and only then
