@@ -17,7 +17,6 @@ from typing import Any
 import duckdb
 import pytest
 from routed import planned_answer as compose_answer
-from shapes import asked
 from slots import slots_reading
 from test_templates import streak  # the compiler's, the template retired (compose.COMPILED_INTENTS)
 
@@ -28,14 +27,32 @@ from association.query.compose.plan import cells_unhonored
 from association.query.coverage import check_coverage
 from association.query.measure import measure_of
 from association.query.parse import with_point
-from association.query.reading import TEAM_LINE, TEAM_OUTLOOK, TEAM_RANKING, TEAM_RECORD, Cuts, Line, Measure, Period, Reading, Span, SubjectKind, Unsupported, Window, situation_of
+from association.query.reading import (
+    LINE_RECORD,
+    TEAM_LINE,
+    TEAM_OUTLOOK,
+    TEAM_PERIOD_TOTAL,
+    TEAM_RANKING,
+    TEAM_RECORD,
+    Cuts,
+    Line,
+    Measure,
+    Period,
+    PointShape,
+    Reading,
+    Span,
+    SubjectKind,
+    Unsupported,
+    Window,
+    situation_of,
+)
 from association.query.reading import Subject as Who
 from association.query.subject import Subject
 from association.query.team_metrics import TEAM_METRICS, descending_for, resolve_team_metric
 
 
-def _compiled(intent: str) -> Callable[[AnswerContext, Reading], Reply]:
-    """``intent`` answered the way its retired template was called - a
+def _compiled(shape: PointShape | None) -> Callable[[AnswerContext, Reading], Reply]:
+    """The shape ``shape`` names answered the way its retired template was called - a
     Reading in, a Reply out, ``Unsupported`` with the
     reason where the compiler has no reading of the point - now that the
     compiler alone answers it (``compose.COMPILED_INTENTS``, ROADMAP plan item
@@ -49,21 +66,21 @@ def _compiled(intent: str) -> Callable[[AnswerContext, Reading], Reply]:
         kind: SubjectKind = "pair" if len(named) > 1 else "player" if named else "team" if scope.who.team else "everyone"
         subject = reading.subject or Subject(kind, players=named, teams=(scope.who.team,) if scope.who.team else ())
         why: list[str] = []
-        result = compose_answer(ctx, with_point("", Reading(**scope.filters(), asked=asked(intent), subject=subject)), declined=why.append)
+        result = compose_answer(ctx, with_point("", Reading(**scope.filters(), asked=shape, subject=subject)), declined=why.append)
         if result is None:
-            raise Unsupported(why[0] if why else f"the compiler has no reading of this {intent} point")
+            raise Unsupported(why[0] if why else f"the compiler has no reading of this {shape} point")
         return result
 
     return answered
 
 
-record_when = _compiled("record_when")
+record_when = _compiled(LINE_RECORD)
 # The power index's reader and sayer (compose.team_stats, compose.say; Phase 2, step 4).
-team_outlook = _compiled("team_outlook")
-team_stat = _compiled("team_stat")
-team_leaderboard = _compiled("team_leaderboard")
-team_quarter_points = _compiled("team_quarter_points")
-team_record = _compiled("team_record")
+team_outlook = _compiled(TEAM_OUTLOOK)
+team_stat = _compiled(TEAM_LINE)
+team_leaderboard = _compiled(TEAM_RANKING)
+team_quarter_points = _compiled(TEAM_PERIOD_TOTAL)
+team_record = _compiled(TEAM_RECORD)
 
 S = current_season()
 LAST = f"{S - 1}-{S % 100:02d}"
