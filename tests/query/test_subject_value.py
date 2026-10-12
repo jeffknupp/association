@@ -16,7 +16,6 @@ from dataclasses import replace
 from typing import Any
 
 import pytest
-from slots import slots_scope
 from test_compose import cx_ctx  # noqa: F401 - the fixture with positions, imported by name
 from test_conditions import league  # noqa: F401 - the league fixture, imported by name
 
@@ -47,9 +46,11 @@ from association.query.team_relation import scoped_team
     ],
 )
 def test_the_name_slots_pass_the_door_into_the_typed_subject(slots: dict[str, Any], who: Who) -> None:
-    """Every shape the parser wrote - one player or two and more, one team
-    or a list - is the typed subject through the tests' door."""
-    assert slots_scope(slots).who == who
+    """Every shape of names a slot dict holds - one player or two and more,
+    one team or a list - is the typed subject through its door
+    (:meth:`~association.query.reading.Subject.from_slots`, which the
+    parser reads the model's names through)."""
+    assert Who.from_slots(slots) == who
 
 
 def test_a_router_era_slot_shape_is_typed_by_its_names() -> None:
