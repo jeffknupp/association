@@ -34,7 +34,7 @@ from association.query.reading import (
     period_narrowing,
 )
 from association.query.reading import Subject as Who
-from association.query.team_games import TEAM_PERIOD_AGREEMENT, TEAM_PERIOD_COLUMNS, TeamNarrowed, period_games, team_period_line_sql
+from association.query.team_games import TEAM_PERIOD_AGREEMENT, TEAM_PERIOD_COLUMNS, TeamNarrowed, period_games, team_period_line_sql, unnarrowed_games
 from association.query.team_games import aggregate_sql as team_aggregate_sql
 from association.query.team_games import rows_sql as team_rows_sql
 from association.query.team_relation import TEAM_RELATION_SCOPING, TEAM_RELATION_SCOPING_EXCLUDED
@@ -424,6 +424,18 @@ def test_a_teams_period_games_are_the_relations_own_read(team_con: duckdb.DuckDB
         (datetime.date(2025, 10, 31), 50, 5, "Away Team", SEASON),
         (datetime.date(2025, 11, 1), 50, 0, "Away Team", SEASON),
     ]
+
+
+def test_a_teams_games_without_the_narrowing_are_the_relations_own_read(team_con: duckdb.DuckDBPyConnection) -> None:
+    """Phase 4, step 5: what a team's empty log names as missing - its games
+    in the span, or the match - is read by the team-games relation with the
+    narrowing off (``compose.logs``' read until then), the first and last
+    season a postseason's calendar year where the read is one. The team
+    fixture borrowed: g1 and g2, Eastern 2025-10-31 and 2025-11-01."""
+    narrowed = TeamNarrowed(base=["tg.team_id = ?", "tg.season = ?"], base_params=["9", SEASON], extra=["tg.opponent_id = ?"], extra_params=["nobody"])
+    assert unnarrowed_games(team_con, narrowed, 2) == (2, SEASON, SEASON)
+    assert unnarrowed_games(team_con, narrowed, 3) == (2, 2025, 2025), "the calendar year the games were played in"
+    assert unnarrowed_games(team_con, TeamNarrowed(base=["tg.team_id = ?"], base_params=["nobody"]), 2) == (0, None, None)
 
 
 def test_a_team_read_without_shots_knows_only_the_linescore(team_con: duckdb.DuckDBPyConnection) -> None:

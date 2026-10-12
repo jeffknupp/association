@@ -1698,7 +1698,12 @@ a shape:
     (`player_games.period_ranking`, `period_quarter`, `most_games`, beside
     the statements and `PERIOD_RECONCILIATION`), and a team's quarter or
     half (`team_games.period_games`); `compose/periods.py` runs only the
-    compiled statements.
+    compiled statements. The game log's and the splits': how many games a
+    log was cut from and their seasons (`player_relation.log_total`),
+    whether a narrowing left a player no games his span holds
+    (`player_relation.narrowing_emptied`, beside `no_narrowed_games`), and
+    a team's games with its narrowing off, which an empty team log names
+    as missing (`team_games.unnarrowed_games`).
   - **Proved identical, text and all.** 628 of 628 recorded questions and
     1,391 of 1,391 unit-test calls; the slice rewords nothing. Step 0 grew
     the private-template-import ratchet by the shared steps the moved body

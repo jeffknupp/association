@@ -33,11 +33,11 @@ from association.query.lines import MeasureFilter, measure_filters, threshold_of
 from association.query.measure import spelled
 from association.query.measures import log_extras, stat_measure
 from association.query.notes import Note
-from association.query.player_games import Narrowed, aggregate_sql
-from association.query.player_relation import ResolvedSpan, box_score_notes_read, no_narrowed_games, scoped_games, span_of, whole_span
+from association.query.player_games import Narrowed
+from association.query.player_relation import ResolvedSpan, box_score_notes_read, log_total, no_narrowed_games, scoped_games, span_of
 from association.query.reading import DEFAULT_GAME_LOG_LIMIT, Cuts, Filtered, Unsupported, _clamp_limit
 from association.query.result import LogFacts, Narrowing, Part, Refusal, Result, Rows, Span, Unanswered, Window
-from association.query.team_games import TEAM_GAMES_SQL, TeamNarrowed
+from association.query.team_games import TeamNarrowed, unnarrowed_games
 from association.query.team_relation import team_games
 
 from .core import LINE, Compiled, Query, compile_over, compile_query, rows_of
@@ -180,23 +180,6 @@ def _player_log_averages(headers: list[str], raws: list[dict[str, Any]]) -> dict
     return averages
 
 
-def _player_log_total(con: duckdb.DuckDBPyConnection, narrowed: Narrowed, *, rebuilt: bool) -> tuple[int, int | None, int | None]:
-    """How many of the player's games match every narrowing the question
-    carries, before the window (``order``/``limit``) cuts them to the rows
-    listed - what the heading says "of how many" with (F149) - and the first
-    and last season among them, which the heading's parenthesis names:
-    until ISSUES.md #285/#277 it named the seasons of the rows SHOWN, so a
-    career's "last 10 of 118 games" read "(2026 regular season)". Read
-    through :func:`~association.query.player_games.aggregate_sql` over
-    :func:`~association.query.player_relation.whole_span`, never a
-    hand-written ``COUNT(*)``."""
-    sql, params = aggregate_sql(whole_span(narrowed), ["COUNT(*)", "MIN(pgl.season)", "MAX(pgl.season)"], rebuilt=rebuilt)
-    row = con.execute(sql, params).fetchone()
-    if not row or row[0] is None:
-        return 0, None, None
-    return int(row[0]), (int(row[1]) if row[1] is not None else None), (int(row[2]) if row[2] is not None else None)
-
-
 def _player_narrowing(narrowed: Narrowed) -> Narrowing:
     return Narrowing(
         phrase=narrowed.filters(dated=False),
@@ -220,7 +203,7 @@ def _player_log(con: duckdb.DuckDBPyConnection, compiled: Compiled, headers: lis
         return Result(subject=player.name, relation="player", span=about, narrowing=narrowing, window=window, parts=(Part(body=Rows()),), facts=LogFacts(), empty=empty)
     games, raws = _player_log_rows(rows, needed, headers)
     averages = _player_log_averages(headers, raws)
-    total, first_season, last_season = _player_log_total(con, narrowed, rebuilt=compiled.rebuilt)
+    total, first_season, last_season = log_total(con, narrowed, rebuilt=compiled.rebuilt)
     seasons = [g["season"] for g in games]
     first_season, last_season = first_season if first_season is not None else min(seasons), last_season if last_season is not None else max(seasons)
     # The span the count covers, with its cut where the question made one
@@ -385,14 +368,10 @@ def _team_log_summary(games: list[dict[str, Any]]) -> dict[str, int]:
 
 def _team_log_none(con: duckdb.DuckDBPyConnection, team_name: str, span: ResolvedSpan, narrowed: TeamNarrowed) -> Refusal:
     """Which fact is missing when no row matched: the team's games in that
-    span, or the match - so the cause names the right one. Reads
-    ``narrowed`` WITHOUT its narrowing, the discipline
-    :func:`~association.query.player_relation.no_narrowed_games` uses for a
-    player."""
-    where, params = narrowed.clauses(narrowed=False)
-    season_col = "year(tg.eastern_date)" if span.season_type == 3 else "tg.season"
-    found = con.execute(f"{TEAM_GAMES_SQL} SELECT COUNT(*), MIN({season_col}), MAX({season_col}) FROM team_games tg WHERE {where}", params).fetchone()
-    total, first, last = found if found else (0, None, None)
+    span, or the match - so the cause names the right one, read by the
+    relation WITHOUT the narrowing
+    (:func:`~association.query.team_games.unnarrowed_games`)."""
+    total, first, last = unnarrowed_games(con, narrowed, span.season_type)
     if not total:
         from association.query.season_text import season_phrase
 

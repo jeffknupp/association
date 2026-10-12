@@ -42,6 +42,7 @@ from association.query.player_games import (
     Condition,
     Narrowed,
     _tenure_clause,
+    aggregate_sql,
     league,
     scope_without_guard,
     season_type_clause,
@@ -1403,6 +1404,44 @@ def _no_narrowed_games_in_span(con: duckdb.DuckDBPyConnection, player: Entity, s
         found = season_redirect(con, player.id, span.season_type, "player_game_log")
         redirect = list(found) if found is not None else None
     return Refusal(kind="no_games_in_span", facts={"player": player.name, "span": span.during()[len("in the ") :], "kind": span.kind, "redirect": redirect}, shown={})
+
+
+def narrowing_emptied(con: duckdb.DuckDBPyConnection, narrowed: Narrowed) -> bool:
+    """Whether the player has games under the base clauses alone - so it is
+    the narrowing (an opponent, a condition, a venue) that left none, and
+    the answer should name it rather than the span.
+
+    .. versionadded:: 6.0.0
+       ``compose.splits._narrowing_emptied``, moved to its relation whole
+       (Phase 4, step 5).
+    """
+    if not narrowed.extra:
+        return False
+    where, params = narrowed.clauses(narrowed=False, rebuilt=box_source(con).rebuilt)
+    row = con.execute(f"SELECT COUNT(*) {_PLAYER_GAMES} WHERE {where}", params).fetchone()
+    return bool(row and row[0])
+
+
+def log_total(con: duckdb.DuckDBPyConnection, narrowed: Narrowed, *, rebuilt: bool) -> tuple[int, int | None, int | None]:
+    """How many of the player's games match every narrowing the question
+    carries, before the window (``order``/``limit``) cuts them to the rows
+    listed - what a game log's heading says "of how many" with (F149) - and
+    the first and last season among them, which the heading's parenthesis
+    names: until ISSUES.md #285/#277 it named the seasons of the rows SHOWN,
+    so a career's "last 10 of 118 games" read "(2026 regular season)". Read
+    through :func:`~association.query.player_games.aggregate_sql` over
+    :func:`whole_span` (which takes the window off ``narrowed`` itself),
+    never a hand-written ``COUNT(*)``.
+
+    .. versionadded:: 6.0.0
+       ``compose.logs._player_log_total``, moved to its relation whole
+       (Phase 4, step 5).
+    """
+    sql, params = aggregate_sql(whole_span(narrowed), ["COUNT(*)", "MIN(pgl.season)", "MAX(pgl.season)"], rebuilt=rebuilt)
+    row = con.execute(sql, params).fetchone()
+    if not row or row[0] is None:
+        return 0, None, None
+    return int(row[0]), (int(row[1]) if row[1] is not None else None), (int(row[2]) if row[2] is not None else None)
 
 
 def narrowed_cells(narrowed: Narrowed) -> tuple[Cell, ...]:
