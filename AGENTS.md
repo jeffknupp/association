@@ -102,12 +102,22 @@ was learned the hard way and is about the data, not the pipeline.
   POSSESSION; a possession's mean duration is 1440 / mean(pace) seconds;
   `RotationModel` raises `RotationError` with fewer than five available and
   the engine raises `EngineError`, neither plays four.
-- **Next: step 7**, the CLI and output (`association sim game`, `sim
-  replay`, text play-by-play in ESPN's phrasing, box score, N-game summary,
-  `--json`), wiring `rates.estimate` -> `engine.simulate` with
-  `RotationModel`; then **step 8**, the replay harness on 2025 from January
-  1 with BOTH baselines (home-win rate and a team-strength fit), which is
-  the first measured game and the regression gate after it.
+- **Step 7 done 2026-10-11:** `association sim game HOME AWAY` and
+  `association sim replay EVENT_ID` (`association.sim.game` wires
+  `rates.estimate` -> `rotation.RotationModel` -> `engine.simulate`;
+  `association.sim.render` words it). `uv run association sim game NY BOS
+  --n 1000 --pbp` is the quickest way to see the whole thing run (7 s).
+  Nothing is validated yet.
+- **Next: step 8**, the replay harness (`sim/validate.py`, `association sim
+  validate --season 2025 --from 2025-01-01 --n 1000`): for each real game
+  in the held-out set, `game.prepare_replay` -> `run` -> compare with what
+  happened; Brier score against BOTH baselines (the home-win rate, and a
+  team-strength logistic fit on net rating or `nba.team_power_index`),
+  margin PIT histogram, totals mean error and spread, league pace and
+  rates against the real ones, player points/rebounds/assists 80% interval
+  coverage, minutes mean error. Report as a markdown file under
+  `scripts/sim_p8/results/`; the first run sets the tolerances and is the
+  regression gate for every change after it.
 - **Dispatching agents here:** make their worktrees by hand from the
   intended SHA (`git worktree add -b <branch> .claude/worktrees/<name>
   <sha>`); the Agent tool's own worktree isolation branched from master,

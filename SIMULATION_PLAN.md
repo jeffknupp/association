@@ -683,7 +683,25 @@ check measured on 2019-2026 and recorded in the module docstring:
    2024-2026 player-games (with technicals counted, 94.9-96.3%, so a
    technical is not a personal foul in the box either); 728 of 268,044
    stints touch an unresolved segment.
-7. **P7, output and CLI** - `sim game`, `sim replay`, `sim build`.
+7. **P7, output and CLI** - `sim game`, `sim replay`, `sim build`. **Done
+   2026-10-11** (`sim/game.py`, `sim/render.py`; `scripts/sim_p7/`):
+   `association sim game HOME AWAY` and `association sim replay EVENT_ID`,
+   with `--pbp` (the first game's play-by-play in ESPN's phrasing and its
+   box score) and `--json` (schema `sim.1`). The defaults, each stated in
+   the output: a three-season window ending the day after the season's last
+   regular-season game (D5); a roster of the players who appeared in at
+   least 25% of the team's games in the window's last season, the top 13 by
+   minutes target, refused under 8 (`--home-roster`/`--away-roster` replace
+   it); the profile's likely five as starters; near-prior players (under
+   100 charted shots) named and marked. A replay uses the players who
+   appeared and the box five, with the window ending on the game's own
+   Eastern date. Measured on this checkout: NY-BOS 2026, 1,000 games, 7 s
+   wall of which about 2 s is estimation; the first run has Boston winning
+   58% in New York, with Jayson Tatum absent from Boston's 2026 regulars
+   (the roster rule reads the current season, as D4 intends). Nothing is
+   validated yet: step 8 is the measurement. Two warehouse facts the team
+   resolver needed: ESPN's `teams.nickname` holds the city and `teams.name`
+   the team name.
 8. **P8, validation** - the replay harness with BOTH baselines (home-win
    rate and a team-strength logistic fit on net rating or
    `team_power_index`), run on 2025 from January 1. This is the first

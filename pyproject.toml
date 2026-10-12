@@ -174,7 +174,9 @@ skip = "CHANGES.md,CLAUDE.md,uv.lock,*.png,*.jpg,*.svg,*.duckdb,*.parquet,comple
 # is the yardstick-v2 F111 question's own spelling ("alperen şengün alltime
 # record"), quoted verbatim across src/ and tests/ once it recurred past the
 # single inline codespell:ignore in ISSUES.md.
-ignore-words-list = "ot,ist,playin,alltime"
+# "hart" is Josh Hart, who plays in every recorded Knicks simulation under
+# scripts/sim_p7/results/.
+ignore-words-list = "ot,ist,playin,alltime,hart"
 
 [tool.importlinter]
 root_package = "association"

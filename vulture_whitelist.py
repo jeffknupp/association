@@ -16,6 +16,8 @@ data_load
 data_check
 web
 sim_build
+sim_game
+sim_replay
 
 # association/web/app.py, inside create_app: registered by FastAPI's @app.get
 # / @app.post.

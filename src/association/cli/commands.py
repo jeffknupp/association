@@ -318,6 +318,102 @@ def sim_build(seasons: str | None, db_path: str, sim_path: str, log_level: str) 
     click.echo(f"wrote {sim_path}")
 
 
+def _sim_output(prepared: Any, games: list[Any], summary: Any, *, pbp: bool, as_json: bool, meta: dict[str, Any]) -> None:
+    """Print a run: the summary (and, with ``--pbp``, the first game's
+    play-by-play and box score), as text or as JSON."""
+    import json
+
+    from association.sim import game as sim_game_module
+    from association.sim import render
+
+    if as_json:
+        payload: dict[str, Any] = {"summary": sim_game_module.summary_json(summary, prepared.names)}
+        if pbp:
+            payload["game"] = render.game_json(games[0], prepared.names, meta)
+        click.echo(json.dumps(payload, indent=2))
+        return
+    if pbp:
+        click.echo(render.play_by_play(games[0], prepared.names))
+        click.echo("")
+        click.echo(render.box_score(games[0], prepared.names, prepared.near_prior))
+        click.echo("")
+    click.echo(sim_game_module.summary_text(summary, prepared.names))
+
+
+def _sim_run_options[F: Callable[..., Any]](f: F) -> F:
+    f = click.option("--n", type=int, default=1000, show_default=True, help="How many games to simulate.")(f)
+    f = click.option("--seed", type=int, default=7, show_default=True, help="Game i of n is played from seed + i.")(f)
+    f = click.option("--pbp", is_flag=True, help="Also print the first game's play-by-play and box score.")(f)
+    f = click.option("--json", "as_json", is_flag=True, help="Emit JSON (schema sim.1) instead of text.")(f)
+    f = click.option("--db-path", default=DEFAULT_DB_PATH, show_default=True, help="DuckDB warehouse file, attached read-only.")(f)
+    return click.option("--sim-path", default=DEFAULT_SIM_PATH, show_default=True, help="The simulator's own DuckDB file (`association sim build`).")(f)
+
+
+@sim.command("game")
+@click.argument("home")
+@click.argument("away")
+@click.option("--season", type=int, default=None, help="The season the matchup is set in (the year it ends). Defaults to the latest on record.")
+@click.option("--as-of", "as_of", type=click.DateTime(formats=["%Y-%m-%d"]), default=None, help="Rates from games before this date. Defaults to the day after the season's last regular-season game.")
+@click.option("--home-roster", default=None, help="Comma-separated athlete ids to play for the home side instead of its regulars.")
+@click.option("--away-roster", default=None, help="Comma-separated athlete ids to play for the away side instead of its regulars.")
+@_sim_run_options
+def sim_game(home: str, away: str, season: int | None, as_of: Any, home_roster: str | None, away_roster: str | None, n: int, seed: int, pbp: bool, as_json: bool, db_path: str, sim_path: str) -> None:
+    """Simulate HOME against AWAY (abbreviations, nicknames or names) N times
+    from the last three seasons' rates and print the summary.
+
+    Experimental (SIMULATION_PLAN.md). Every output states the window the
+    rates came from, the seed, the rosters used and the players simulated at
+    nearly the league prior.
+    """
+    from association.sim import database
+    from association.sim import game as sim_game_module
+
+    con = database.connect(Path(sim_path), Path(db_path), read_only=True)
+    try:
+        home_id, away_id = sim_game_module.resolve_team(con, home), sim_game_module.resolve_team(con, away)
+        chosen = season or sim_game_module.latest_season(con)
+        window = sim_game_module.window_for(con, chosen, as_of.date() if as_of else None)
+        rosters = {t: r.split(",") for t, r in ((home_id, home_roster), (away_id, away_roster)) if r}
+        prepared = sim_game_module.prepare(con, home_id, away_id, window, rosters=rosters or None)
+    except sim_game_module.SimulationRefused as exc:
+        raise click.ClickException(str(exc)) from exc
+    finally:
+        con.close()
+    games = sim_game_module.run(prepared, n, seed)
+    summary = sim_game_module.summarize(games, prepared, seed)
+    _sim_output(prepared, games, summary, pbp=pbp, as_json=as_json, meta={"window": window.describe(), "season": chosen})
+
+
+@sim.command("replay")
+@click.argument("event_id")
+@_sim_run_options
+def sim_replay(event_id: str, n: int, seed: int, pbp: bool, as_json: bool, db_path: str, sim_path: str) -> None:
+    """Replay a real game N times: the players who appeared, rates from the
+    games before that day, and the real result beside the simulated one.
+
+    Experimental (SIMULATION_PLAN.md).
+    """
+    from association.sim import database
+    from association.sim import game as sim_game_module
+
+    con = database.connect(Path(sim_path), Path(db_path), read_only=True)
+    try:
+        real = sim_game_module.real_game(con, event_id)
+        prepared = sim_game_module.prepare_replay(con, real)
+    except sim_game_module.SimulationRefused as exc:
+        raise click.ClickException(str(exc)) from exc
+    finally:
+        con.close()
+    games = sim_game_module.run(prepared, n, seed)
+    summary = sim_game_module.summarize(games, prepared, seed)
+    names = prepared.names
+    if not as_json:
+        click.echo(f"real result, {real.date.isoformat()}: {names.abbreviation(real.away)} {real.away_score}, {names.abbreviation(real.home)} {real.home_score}")
+    _sim_output(
+        prepared, games, summary, pbp=pbp, as_json=as_json, meta={"window": prepared.window.describe(), "event_id": event_id, "real": {"home_score": real.home_score, "away_score": real.away_score}}
+    )
+
+
 @cli.command("query")
 @click.argument("question")
 @_query_engine_options
