@@ -13,7 +13,6 @@ import itertools
 from typing import Any
 
 import pytest
-from slots import slots_scope
 from test_templates import pg_ctx, team_cells_con  # noqa: F401 - the two relation fixtures, imported by name
 
 from association.nba.season import current_season
@@ -37,7 +36,6 @@ from association.query.reading import (
     Cuts,
     PointShape,
     Reading,
-    ScopeError,
     Span,
     unhonored_cells,
 )
@@ -181,18 +179,12 @@ def test_a_word_two_readings_share_reads_both_and_raises_nothing() -> None:
     game), both read, the shared "game" claimed once for both."""
     from routed import staged as settle
 
-    route = settle("game_log", {"player": "LeBron James"}, "lebron's last game 7")
+    route = settle(PLAYER_LOG, "lebron's last game 7", who=Who(kind="player", players=("LeBron James",)))
     assert route.window.order == "recent" and route.window.count == 1 and route.span.season_type == 3 and route.cuts.game_n == 7
     assert [c.what for c in route.claims] == ["window+game_n"]
 
 
-# ---------------- the typed value's door and projection ----------------
-
-
-def test_a_typed_span_and_a_slot_at_once_is_refused_at_the_door() -> None:
-    with pytest.raises(ScopeError, match="typed span"):
-        slots_scope({"span": Span(career=True), "season": 2024})
-    assert slots_scope({"span": Span(career=True)}).span.career
+# ---------------- the typed value ----------------
 
 
 def test_the_cells_and_what_a_reader_leaves_unhonored() -> None:
