@@ -29,14 +29,14 @@ from typing import Any
 
 import duckdb
 import pytest
-from routed import ask_routed, slots_route
-from slots import slots_reading
+from routed import Routed, ask_routed
 from test_templates import player_stat  # the compiler's, player_stat's template retired (compose.COMPILED_INTENTS)
 
 from association.fetch.repairs import real_games
 from association.nba.season import current_season
 from association.query.answer import AnswerContext
-from association.query.reading import Measure, Reading
+from association.query.point import default_point
+from association.query.reading import PLAYER_LINE, Companion, Line, Measure, Predicate, Reading
 from association.query.reading import Subject as Who
 
 SEASON = current_season()
@@ -123,8 +123,14 @@ def pstat_conditions_ctx(tmp_path: Path) -> AnswerContext:
     return AnswerContext(con=c, out_dir=tmp_path / "out")
 
 
-def _condition(predicate: str, **extra: Any) -> dict[str, Any]:
-    return {"player": "Joel Embiid", "side": "own", "predicate": predicate, **extra}
+def _embiid(predicate: Predicate, line: Line | None = None) -> Companion:
+    """Joel Embiid beside the subject, on his own side, in ``predicate``'s role."""
+    return Companion(player="Joel Embiid", predicate=predicate, line=line)
+
+
+def _maxey_points(*companions: Companion) -> Reading:
+    """Tyrese Maxey's points, with ``companions`` beside him."""
+    return Reading(who=Who(kind="player", players=("Tyrese Maxey",)), companions=companions, measure=Measure(key="points", as_typed="points"))
 
 
 def test_player_stat_ignores_the_season_line_and_reads_box_scores_when_no_other_slot_narrows(pstat_conditions_ctx: AnswerContext) -> None:
@@ -135,13 +141,13 @@ def test_player_stat_ignores_the_season_line_and_reads_box_scores_when_no_other_
     season = player_stat(pstat_conditions_ctx, Reading(who=Who(kind="player", players=("Tyrese Maxey",)), measure=Measure(key="points", as_typed="points")))
     assert season.answer == f"Tyrese Maxey averaged 24 points per game in 4 games in the {SEASON} regular season. That is 96 in total."
 
-    started = player_stat(pstat_conditions_ctx, slots_reading({"player": "Tyrese Maxey", "stat": "points", "conditions": [_condition("started")]}))
+    started = player_stat(pstat_conditions_ctx, _maxey_points(_embiid("started")))
     assert started.data["stats"] == {"gamesPlayed": 2, "avgPoints": 23.0, "points": 46}
     assert started.answer == f"Tyrese Maxey averaged 23 points per game in 2 games with Joel Embiid starting in the {SEASON} regular season. That is 46 in total."
 
 
 def test_player_stat_honors_a_bench_condition(pstat_conditions_ctx: AnswerContext) -> None:
-    result = player_stat(pstat_conditions_ctx, slots_reading({"player": "Tyrese Maxey", "stat": "points", "conditions": [_condition("bench")]}))
+    result = player_stat(pstat_conditions_ctx, _maxey_points(_embiid("bench")))
     assert result.data["stats"] == {"gamesPlayed": 1, "avgPoints": 20.0, "points": 20}
     assert result.answer == f"Tyrese Maxey averaged 20 points per game in 1 game with Joel Embiid off the bench in the {SEASON} regular season. That is 20 in total."
 
@@ -151,7 +157,7 @@ def test_player_stat_honors_a_reached_condition(pstat_conditions_ctx: AnswerCont
     where he has no box row to read a threshold off at all, so the EXISTS
     clause a "reached" condition compiles to correctly excludes a game he
     did not play rather than crediting it to a threshold of zero."""
-    result = player_stat(pstat_conditions_ctx, slots_reading({"player": "Tyrese Maxey", "stat": "points", "conditions": [_condition("reached", stat="points", threshold=20)]}))
+    result = player_stat(pstat_conditions_ctx, _maxey_points(_embiid("reached", Line(measure="points", value=20))))
     assert result.data["stats"] == {"gamesPlayed": 3, "avgPoints": 22.0, "points": 66}
     assert result.answer == f"Tyrese Maxey averaged 22 points per game in 3 games in games Joel Embiid had 20+ points in the {SEASON} regular season. That is 66 in total."
 
@@ -163,11 +169,9 @@ def test_the_default_point_also_reads_box_scores_for_a_condition() -> None:
     bug. Unnarrowed, the point is the season line (``on="player_seasons"``); a
     bare ``conditions`` entry now switches it to box scores
     (``on="player_games"``), the same as ``without`` already did."""
-    from routed import default_reading
-
-    season = default_reading("player_stat", {"player": "Tyrese Maxey", "stat": "points"})
+    season = default_point(PLAYER_LINE, _maxey_points())
     assert season.on == "player_seasons"
-    narrowed = default_reading("player_stat", {"player": "Tyrese Maxey", "stat": "points", "conditions": [_condition("started")]})
+    narrowed = default_point(PLAYER_LINE, _maxey_points(_embiid("started")))
     assert narrowed.on == "player_games"
 
 
@@ -234,7 +238,7 @@ def test_agent_with_a_recorded_route_also_honors_the_condition(tmp_path: Path) -
 
     db_path = _agent_warehouse(tmp_path)
     agent = Agent(str(db_path), tmp_path / "out", history_dir=tmp_path / ".history")
-    route = slots_route("player_stat", {"player": "Tyrese Maxey", "stat": "points", "conditions": [_condition("started")]})
+    route = Routed(PLAYER_LINE, _maxey_points(_embiid("started")))
     answer = ask_routed(agent, "Tyrese Maxey points when embiid starts", route)
     data = answer.data
     assert data is not None
