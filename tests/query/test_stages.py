@@ -13,14 +13,13 @@ from typing import Any
 
 import pytest
 from routed import ask_routed, slots_route
-from shapes import asked
 
 from association.query.agent import Agent
 from association.query.answer import Answer, Artifact, Reply, Timing
 from association.query.compose.core import Query
 from association.query.compose.plan import plan_point
 from association.query.decisions import Decision
-from association.query.reading import Cause, Cuts, Reading, Span
+from association.query.reading import PLAYER_LINE, PLAYER_RANKING, SHOT_CHART, Cause, Cuts, Reading, Span
 from association.query.reading import Subject as Who
 from association.query.stages import STAGES, WORDING, Difference, differences, plain, read_stages, snapshot
 from association.query.subject import Subject
@@ -31,9 +30,9 @@ _TIMING = Timing(total_seconds=0.0, model_seconds=0.0, model_calls=0, tool_secon
 
 def _reading() -> Reading:
     scope = Reading(who=Who(kind="player", players=("Nikola Jokic",)), cuts=Cuts(opponent="Boston Celtics"), span=Span(season=2026))
-    point = Reading(**scope.filters(), shape="scalar", measures=["points"], aggregate="total", asked=asked("player_stat"))
+    point = Reading(**scope.filters(), shape="scalar", measures=["points"], aggregate="total", asked=PLAYER_LINE)
     subject = Subject(kind="player", players=("Nikola Jokic",), opponent="Boston Celtics", evidence=("'jokic' names one player",))
-    return Reading(**scope.filters(), asked=asked("player_stat"), subject=subject, point=point, decisions=(Decision("subject", "kind", None, "player", ""),))
+    return Reading(**scope.filters(), asked=PLAYER_LINE, subject=subject, point=point, decisions=(Decision("subject", "kind", None, "player", ""),))
 
 
 def _answer(**changes: Any) -> Answer:
@@ -96,9 +95,9 @@ def test_a_question_nothing_read_has_no_reading_or_query() -> None:
 
 
 def test_a_point_the_compiler_has_none_of_says_why() -> None:
-    declined = Reading(asked=asked("shot_chart"), point_declined="no player subject")
+    declined = Reading(asked=SHOT_CHART, point_declined="no player subject")
     assert snapshot(declined, _answer(), planned=plan_point(declined))["query"] == {"declined": "no player subject"}
-    refused = Reading(asked=asked("leaderboard"), point_refusal=Cause(kind="no_ranking_measure", facts={"stat": "bench points"}))
+    refused = Reading(asked=PLAYER_RANKING, point_refusal=Cause(kind="no_ranking_measure", facts={"stat": "bench points"}))
     said = "No ranking reads 'bench points' on the player-games relation - it only ranks the box-score measures it knows, not a NetPoints or other outside figure."
     assert snapshot(refused, _answer(), planned=plan_point(refused))["query"] == {"refused": {"message": said, "stat": "bench points"}, "said": said}
     # The reader's own verdict is on the reading record too, so a decline
