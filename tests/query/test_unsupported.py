@@ -26,7 +26,7 @@ from association.query.calendar import parse_alignment, parse_situation
 from association.query.compose.plan import refusal_result
 from association.query.entities import names_of, players_of, teams_of
 from association.query.parse import _reading_from_route_refused, _reading_from_route_unsupported
-from association.query.reading import Reading
+from association.query.reading import PLAYER_LINE, Reading
 from association.query.subject import Subject, read_subject
 
 
@@ -88,7 +88,7 @@ def test_an_age_is_refused_because_no_birth_date_is_on_record(con: duckdb.DuckDB
     from association.query.cuts import CutsContext, read_cuts
     from association.query.point import cuts_under
 
-    situation = cuts_under(asked("player_stat"), read_cuts("18-year-old Lebron's ppg total", CutsContext()), split=None).cuts.situation
+    situation = cuts_under(PLAYER_LINE, read_cuts("18-year-old Lebron's ppg total", CutsContext()), split=None).cuts.situation
     assert situation is not None and situation.text == "18-year-old" and not situation.read
     hyphenated = unanswerable(con, "player_stat", {"player": "LeBron James", "stat": "points", "situation": "18-year-old"}, "18-year-old Lebron's ppg total")
     assert hyphenated is not None and "birth date" in hyphenated.answer and "'18-year-old'" in hyphenated.answer
