@@ -14,17 +14,17 @@ from typing import Any
 import duckdb
 import pytest
 from routed import staged as settle
-from shapes import asked, stated, unhonored
+from shapes import asked
 from slots import slots_scope
 from test_period_relation import SEASON, con, team_con  # noqa: F401 - the two relation fixtures, imported by name
 
-from association.query.compose.plan import cells_stated
+from association.query.compose.plan import cells_stated, cells_unhonored
 from association.query.line import read_period_line
 from association.query.period import PeriodRead, read_period, which_period
 from association.query.player_games import Narrowed, rows_sql
 from association.query.player_relation import RELATION_SCOPING, RELATION_SCOPING_EXCLUDED, apply_period
 from association.query.point import PERIOD_ASKS, period_under
-from association.query.reading import Claim, Filtered, Line, Period, PointShape, Reading, ScopeError, cell_set, period_narrowing, unhonored_cells
+from association.query.reading import PERIOD_LOG, PERIOD_RANKING, PLAYER_LOG, Claim, Filtered, Line, Period, PointShape, Reading, ScopeError, cell_set, period_narrowing, unhonored_cells
 from association.query.team_games import TeamNarrowed
 from association.query.team_games import rows_sql as team_rows_sql
 from association.query.team_relation import TEAM_RELATION_SCOPING, TEAM_RELATION_SCOPING_EXCLUDED, _team_games_apply_period
@@ -69,8 +69,8 @@ def test_the_value_is_kept_under_a_reader_that_takes_one_and_dropped_elsewhere()
     assert {asked(name) for name in ("period_split", "period_leaderboard", "team_quarter_points")} == PERIOD_ASKS
     for shape in PERIOD_ASKS:
         assert period_under(shape, read_period("Damian Lillard first quarter game log")) == PeriodRead(Period(number=1), (Claim(15, 28, "period"),))
-    assert period_under(asked("other"), read_period("Damian L first quarter game log")) == PeriodRead(None, ())
-    assert period_under(asked("period_split"), read_period("jokic game log")) == PeriodRead(None, ())
+    assert period_under(None, read_period("Damian L first quarter game log")) == PeriodRead(None, ())
+    assert period_under(PERIOD_LOG, read_period("jokic game log")) == PeriodRead(None, ())
 
 
 def test_which_period_is_the_one_reader_the_condition_reader_and_the_stage_share() -> None:
@@ -140,13 +140,13 @@ def test_a_typed_period_and_a_slot_at_once_or_both_slots_or_a_bad_value_is_refus
 
 def test_the_cell_and_what_a_reader_leaves_unhonored() -> None:
     assert {"period"} == Period.CELLS and Period(number=2).cells() == {"period"}
-    assert cell_set(slots_scope({"half": 1}), "period") and not cell_set(Reading(), "period")
-    assert unhonored_cells(slots_scope({"half": 1}), frozenset()) == ["period"]
-    assert unhonored_cells(slots_scope({"period": 4}), frozenset()) == ["period"]
-    assert unhonored_cells(slots_scope({"period": 4}), frozenset({"period"})) == []
+    assert cell_set(Reading(period=Period(number=1, half=True)), "period") and not cell_set(Reading(), "period")
+    assert unhonored_cells(Reading(period=Period(number=1, half=True)), frozenset()) == ["period"]
+    assert unhonored_cells(Reading(period=Period(number=4)), frozenset()) == ["period"]
+    assert unhonored_cells(Reading(period=Period(number=4)), frozenset({"period"})) == []
     # A reader whose words never said a quarter steps aside for one.
-    assert unhonored("game_log", slots_scope({"player": "x", "half": 2})) == ["period"]
-    assert unhonored("period_split", slots_scope({"player": "x", "half": 2})) == []
+    assert [cell for cell, _ in cells_unhonored(slots_scope({"player": "x", "half": 2}), PLAYER_LOG)] == ["period"]
+    assert [cell for cell, _ in cells_unhonored(slots_scope({"player": "x", "half": 2}), PERIOD_LOG)] == []
 
 
 def test_the_relation_tables_declare_the_period_once() -> None:
@@ -156,7 +156,7 @@ def test_the_relation_tables_declare_the_period_once() -> None:
             assert "half" not in row.unstated, shape
             if "period" in row.unstated:
                 assert row.unstated["period"].strip(), shape
-    assert stated("period_leaderboard") & Period.CELLS == {"period"} and stated("game_log") & Period.CELLS == set()
+    assert cells_stated(PERIOD_RANKING) & Period.CELLS == {"period"} and cells_stated(PLAYER_LOG) & Period.CELLS == set()
     assert cells_stated(PointShape("player_periods", "ranking", "player")) & Period.CELLS == {"period"}
     assert cells_stated(PointShape("team_periods", "scalar", "total")) & Period.CELLS == {"period"}
     from association.query import compose
