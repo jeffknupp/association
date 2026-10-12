@@ -59,12 +59,12 @@ from association.query.player_games import (
     PERIOD_REFUSE_BELOW,
     REGULATION_QUARTERS,
     Narrowed,
-    most_games_sql,
+    most_games,
     period_agreement_notes,
     period_columns,
     period_distrust,
-    period_quarter_sql,
-    period_ranking_sql,
+    period_quarter,
+    period_ranking,
     period_rate,
 )
 from association.query.player_relation import ResolvedSpan, league_games, relation_window, scoped_games, span_of
@@ -90,12 +90,11 @@ from association.query.result import (
     Unanswered,
     Window,
 )
-from association.query.season_line import Statement
 from association.query.season_text import season_phrase
-from association.query.team_games import TEAM_PERIOD_AGREEMENT, TEAM_PERIOD_COLUMNS, TeamNarrowed, period_games_sql
+from association.query.team_games import TEAM_PERIOD_AGREEMENT, TEAM_PERIOD_COLUMNS, TeamNarrowed, period_games
 from association.query.team_relation import scoped_team, team_games
 
-from .core import Compiled, Query, compile_over, compile_query, rows_of, values_of
+from .core import Compiled, Query, compile_over, compile_query, rows_of
 from .team import TeamQuery
 
 #: What the per-period log reads beside the fixed columns: the period's whole
@@ -456,7 +455,7 @@ def _team_quarter_points_games(con: duckdb.DuckDBPyConnection, narrowed: TeamNar
     columns = period_columns(measure)
     # The period line's own statement, the relation's: the team compiler's
     # rows read selects whole games' columns, not a period's.
-    rows = values_of(con, Statement(*period_games_sql(narrowed, columns)))
+    rows = period_games(con, narrowed, columns)
     games: list[dict[str, Any]] = []
     seasons: list[int] = []
     for date, points, *values, opp_name, season_year in rows:
@@ -637,8 +636,7 @@ def _period_leaderboard_minimum(con: duckdb.DuckDBPyConnection, narrowed: Narrow
     minimum and never under one)."""
     if not (scope.cuts.opponent or scope.cuts.venue):
         return default, None
-    row = values_of(con, Statement(*most_games_sql(narrowed, rebuilt=box_source(con).rebuilt)))
-    most = int(row[0][0]) if row else 0
+    most = most_games(con, narrowed, rebuilt=box_source(con).rebuilt)
     share = max(1, -(-most // 2))
     if share >= default:
         # A venue leaves half a season, where the season's own minimum
@@ -704,7 +702,7 @@ def read_period_leaderboard(con: duckdb.DuckDBPyConnection, q: Query) -> Result 
     if not narrowed.period_plays and measure in PERIOD_PLAYS_COLUMNS:
         return Refusal(kind="period_rank_unread", facts={"measure": measure})
     minimum, most = _period_leaderboard_minimum(con, narrowed, scope, minimum)
-    rows = values_of(con, Statement(*period_ranking_sql(narrowed, measure, minimum=minimum, limit=_clamp_limit(scope.window.count), rebuilt=box_source(con).rebuilt)))
+    rows = period_ranking(con, narrowed, measure, minimum=minimum, limit=_clamp_limit(scope.window.count), rebuilt=box_source(con).rebuilt)
     leaders = tuple({"player": name, "games": int(games), measure: int(total), "average": round(float(average), 1)} for name, games, total, average in rows)
     return Result(
         subject=narrowed.team.name if narrowed.team is not None else "",
@@ -740,7 +738,7 @@ def _period_leaderboard_by_quarter(con: duckdb.DuckDBPyConnection, span: Resolve
             # read once (#185).
             minimum, most = _period_leaderboard_minimum(con, narrowed, scope, minimum)
             narrowing = _period_leaderboard_narrowing(narrowed, None)
-        for athlete, name, games, average in values_of(con, Statement(*period_quarter_sql(narrowed, minimum=minimum, rebuilt=rebuilt))):
+        for athlete, name, games, average in period_quarter(con, narrowed, minimum=minimum, rebuilt=rebuilt):
             names[athlete] = name
             per_quarter.setdefault(athlete, {})[quarter] = (int(games), float(average))
     whole = {athlete: quarters for athlete, quarters in per_quarter.items() if len(quarters) == len(REGULATION_QUARTERS)}

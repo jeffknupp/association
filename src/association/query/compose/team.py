@@ -87,8 +87,9 @@ from association.query.team_games import aggregate_sql as team_aggregate_sql
 from association.query.team_games import grouped_sql as team_grouped_sql
 from association.query.team_games import named as team_named
 from association.query.team_games import rows_sql as team_rows_sql
-from association.query.team_relation import league_team_narrowed, scoped_team
+from association.query.team_relation import league_team_narrowed, scoped_team, team_games_total
 from association.query.team_relation import team_games as narrow_team_games
+from association.query.team_seasons import read_team_season_total
 
 from .core import Refused, Unsupported, rows_of
 
@@ -372,11 +373,10 @@ def _resolved_team_subject(con: duckdb.DuckDBPyConnection, scope: Filtered) -> E
 
 def _season_total(con: duckdb.DuckDBPyConnection, team: Entity, season: int, season_type: int, column: str) -> tuple[float, int] | None:
     """``column``'s value and the games it covers, from one team-season row -
-    or ``None`` where the warehouse has no such row."""
-    row = con.execute(f"SELECT {column}, gamesPlayed FROM team_season_stats WHERE team_id = ? AND season = ? AND season_type = ?", [team.id, season, season_type]).fetchone()
-    if row is None or row[0] is None:
-        return None
-    return float(row[0]), int(row[1] or 0)
+    or ``None`` where the warehouse has no such row: the team-season
+    relation's read (:func:`~association.query.team_seasons.read_team_season_total`),
+    which runs the statement this ran itself until Phase 4, step 5."""
+    return read_team_season_total(con, team.id, season, season_type, column)
 
 
 def _team_season_note(con: duckdb.DuckDBPyConnection, team: Entity, season: int, column: str) -> str:
@@ -517,9 +517,7 @@ def _compile_team_games_total(con: duckdb.DuckDBPyConnection, q: TeamQuery) -> T
         return _compile_team_games_mixed(con, q)
     narrowed, team, span = _team_games_narrowed(con, q)
     column = GAME_MEASURES[q.metric]
-    selects = [f"SUM({column}) AS total", "COUNT(*) AS games", "SUM(tg.won::INT) AS wins", "SUM((NOT tg.won)::INT) AS losses"]
-    sql, params = team_aggregate_sql(narrowed, selects)
-    row = con.execute(sql, params).fetchone()
+    row = team_games_total(con, narrowed, column)
     total, games, wins, losses = row if row else (None, 0, 0, 0)
     return TeamResult(
         team=team,

@@ -23,8 +23,8 @@ from association.query.entities import Entity, optional_team
 from association.query.lines import measure_filters
 from association.query.measure import spelled
 from association.query.notes import Note
-from association.query.player_games import _PLAYER_GAMES, Narrowed, games_subquery
-from association.query.player_relation import condition_scope, narrowed_cells, no_games, no_narrowed_games, span_of
+from association.query.player_games import games_subquery
+from association.query.player_relation import condition_scope, narrowed_cells, narrowing_emptied, no_games, no_narrowed_games, span_of
 from association.query.reading import SPLIT_KINDS, Filtered, Unsupported
 from association.query.result import Grouped, Narrowing, Part, Result, Span, SplitsFacts, Unanswered
 from association.query.season_text import MONTH_NAMES
@@ -151,17 +151,6 @@ def _player_groups(con: duckdb.DuckDBPyConnection, q: Query, compiled: Compiled,
     return Grouped(by="split", rows=tuple(rows)), unread
 
 
-def _narrowing_emptied(con: duckdb.DuckDBPyConnection, narrowed: Narrowed) -> bool:
-    """Whether the player has games under the base clauses alone - so it is
-    the narrowing (an opponent, a condition, a venue) that left none, and
-    the answer should name it rather than the span."""
-    if not narrowed.extra:
-        return False
-    where, params = narrowed.clauses(narrowed=False, rebuilt=box_source(con).rebuilt)
-    row = con.execute(f"SELECT COUNT(*) {_PLAYER_GAMES} WHERE {where}", params).fetchone()
-    return bool(row and row[0])
-
-
 def read_player_splits(con: duckdb.DuckDBPyConnection, q: Query) -> Result | Unanswered | None:
     """A player's splits - one or all four, side by side - over the
     compiler's settled player and narrowing (#228). ``None`` where the point
@@ -211,7 +200,7 @@ def _player_splits(
     base, params = games_subquery(narrowed, box_source(con))
     games, first, last = _totals(con, base, params)
     if not games:
-        if span is not None and _narrowing_emptied(con, narrowed):
+        if span is not None and narrowing_emptied(con, narrowed):
             # The narrowing emptied the games, not the span: "steph curry
             # record vs lebron" with no meeting this season said "listed in
             # 43 box scores but did not play in any of them" - a confident

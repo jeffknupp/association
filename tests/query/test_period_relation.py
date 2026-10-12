@@ -20,7 +20,7 @@ from test_templates import team_quarter_points  # the compiler's since Phase 2's
 from association.fetch.repairs import real_games
 from association.query.answer import AnswerContext
 from association.query.measure import measure_of
-from association.query.player_games import PERIOD_AGREEMENT, PERIOD_COLUMNS, Narrowed, aggregate_sql, period_line_sql, rows_sql
+from association.query.player_games import PERIOD_AGREEMENT, PERIOD_COLUMNS, Narrowed, aggregate_sql, most_games, period_line_sql, period_quarter, period_ranking, rows_sql
 from association.query.player_relation import RELATION_SCOPING, RELATION_SCOPING_EXCLUDED
 from association.query.reading import (
     TEAM_MEETINGS,
@@ -34,7 +34,7 @@ from association.query.reading import (
     period_narrowing,
 )
 from association.query.reading import Subject as Who
-from association.query.team_games import TEAM_PERIOD_AGREEMENT, TEAM_PERIOD_COLUMNS, TeamNarrowed, team_period_line_sql
+from association.query.team_games import TEAM_PERIOD_AGREEMENT, TEAM_PERIOD_COLUMNS, TeamNarrowed, period_games, team_period_line_sql, unnarrowed_games
 from association.query.team_games import aggregate_sql as team_aggregate_sql
 from association.query.team_games import rows_sql as team_rows_sql
 from association.query.team_relation import TEAM_RELATION_SCOPING, TEAM_RELATION_SCOPING_EXCLUDED
@@ -231,6 +231,22 @@ def test_a_period_as_a_condition_keeps_the_games_whose_period_held_the_line_and_
         narrowed.narrow_period_condition((1,), "minutes", 1, "1+ minutes in the 1st quarter")
 
 
+def test_the_leagues_period_reads_are_the_relations_own(con: duckdb.DuckDBPyConnection) -> None:
+    """Phase 4, step 5: the three reads a league's period ranking makes are
+    the relation's, run there through the one door - the ranking by a
+    quarter's stat, one quarter of the points-by-quarter table, and the most
+    games anyone played in a narrowed pool - each over the quarter's own
+    rebuilt line (g1's first quarter 4 points, g2's none), never the box
+    score's 40."""
+    narrowed = _narrowed(con, (1,), "1st quarter")
+    assert period_ranking(con, narrowed, "points", minimum=1, limit=10, rebuilt=False) == [("Player One", 2, 4, 2.0)]
+    assert period_ranking(con, narrowed, "points", minimum=3, limit=10, rebuilt=False) == [], "two games never reach a three-game minimum"
+    assert period_quarter(con, narrowed, minimum=2, rebuilt=False) == [("1", "Player One", 2, 2.0)]
+    assert most_games(con, narrowed, rebuilt=False) == 2
+    nobody = Narrowed(base=["pgl.athlete_id = ?"], base_params=["nobody"])
+    assert most_games(con, nobody, rebuilt=False) == 0, "an empty pool is no games, not an error"
+
+
 def test_a_period_condition_sends_a_players_line_to_the_box_scores() -> None:
     """The season line has no quarter in it: a condition on one narrows the
     GAMES, and `player_stat` reads them from box scores as it does for an
@@ -395,6 +411,31 @@ def test_a_team_game_the_shot_table_does_not_cover_has_no_rebuilt_line(team_con:
     real_games.build_table(team_con, {"games", "teams"})
     sql, params = team_rows_sql(_team_narrowed((1,), "1st quarter"), "tg.event_id, tg.points, tg.rebounds", order="tg.eastern_date")
     assert team_con.execute(sql, params).fetchall()[-1] == ("g3", 25, None)
+
+
+def test_a_teams_period_games_are_the_relations_own_read(team_con: duckdb.DuckDBPyConnection) -> None:
+    """Phase 4, step 5: a team's quarter or half is read by the relation,
+    through the one door - each game's Eastern date, the linescore's points
+    for the half, a rebuilt column beside them, the opponent and the
+    season it was played in, in date order."""
+    import datetime
+
+    assert period_games(team_con, _team_narrowed((1, 2), "1st half"), ("turnovers",)) == [
+        (datetime.date(2025, 10, 31), 50, 5, "Away Team", SEASON),
+        (datetime.date(2025, 11, 1), 50, 0, "Away Team", SEASON),
+    ]
+
+
+def test_a_teams_games_without_the_narrowing_are_the_relations_own_read(team_con: duckdb.DuckDBPyConnection) -> None:
+    """Phase 4, step 5: what a team's empty log names as missing - its games
+    in the span, or the match - is read by the team-games relation with the
+    narrowing off (``compose.logs``' read until then), the first and last
+    season a postseason's calendar year where the read is one. The team
+    fixture borrowed: g1 and g2, Eastern 2025-10-31 and 2025-11-01."""
+    narrowed = TeamNarrowed(base=["tg.team_id = ?", "tg.season = ?"], base_params=["9", SEASON], extra=["tg.opponent_id = ?"], extra_params=["nobody"])
+    assert unnarrowed_games(team_con, narrowed, 2) == (2, SEASON, SEASON)
+    assert unnarrowed_games(team_con, narrowed, 3) == (2, 2025, 2025), "the calendar year the games were played in"
+    assert unnarrowed_games(team_con, TeamNarrowed(base=["tg.team_id = ?"], base_params=["nobody"]), 2) == (0, None, None)
 
 
 def test_a_team_read_without_shots_knows_only_the_linescore(team_con: duckdb.DuckDBPyConnection) -> None:

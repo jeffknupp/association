@@ -1435,6 +1435,38 @@ agents' reports named here are in `~/association-research/stages/`.
     (633k tokens), the lead's re-verification. Filed: #395 (P4). Closed:
     #385.
 
+39. **Phase 4, the lanes' first merges (2026-10-12).** Jeff's go-ahead the
+    same evening; five Opus agents at once from `aaa0a8a`, each in its own
+    worktree with a fresh before-tree run of its own, and the lead
+    re-proving each merge on the merged tree in a chain - master, then
+    lane B's tip, then C3's, then A's, then C2's, each lane's tree the
+    next one's before tree, every compare on the lead's own runs. Merged,
+    in order: lane B's step 1 (`7441c35`: `Answer.shape`, the page's 22
+    renderers -> 7 by shape, every recorded answer rendered in Chromium
+    before and after), lane C3 (`429c0b3`: `netpoints.py` and `shots.py`,
+    9 statements, the ratchet's `_read_table` miscount fixed), lane A's
+    first slice (`2af564e`: `reading.Aggregate` a closed enum) and lane C2
+    (`a9ecbf6`: the periods', logs', splits' and standings' 11 statements
+    to the relations, `standings.py` new). Every merge identical on the
+    four populations and both ledgers with nothing ignored but lane B's
+    new `answer.shape` field; the SQL ratchet 80 in 20 -> 79 in 17; four
+    merge-time conflicts in C2's (`CHANGES.md`, the ratchet list, both
+    import contracts, `AGENTS.md`), each a union of disjoint edits,
+    resolved by hand and gated. Not merged: lane A's measures slice
+    (`807d0aa`, one line in lane C1's `compose/seasons.py`), waiting for
+    C1; lane C1 still running at the entry's writing. Open for Jeff from
+    lane A: the aggregate is not a function of the shape alone (27
+    readings in three keys move under either design), and the typed
+    `Query.measures` follows step 5. What it taught: merging each lane
+    onto the previous lane's tip before that lane had reached master kept
+    the chain moving (one lane's gate runs while the previous lane's proof
+    runs) at the price of a redo had a proof failed - none did; and an
+    `AGENTS.md` that documents the conflict markers trips a resolver that
+    greps for them anywhere, so the check is anchored to a line start.
+    Cost: the four agents' 3.4 hours (1.43M tokens) and the lead's four
+    re-verifications of about ten minutes each. Filed: #396 (P1), #397
+    (P4). Rewritten: #110.
+
 ## The plan items, as written
 
 In order of lift per unit of structural change, each measured on the

@@ -24,7 +24,7 @@ from association.query.player_relation import RELATION_SCOPING_EXCLUDED, Resolve
 from association.query.reading import Cuts, Filtered, Measure, Period, PointShape, ShapeCells, Span, Unsupported, period_narrowing
 from association.query.result import Refusal, Unanswered
 from association.query.season_text import season_phrase
-from association.query.team_games import TEAM_GAMES_SQL, TeamNarrowed
+from association.query.team_games import TEAM_GAMES_SQL, TeamNarrowed, aggregate_sql, game_list_gaps_sql, season_game_counts_sql
 
 # What the team-games relation narrows by, declared ONCE - the team
 # counterpart of RELATION_SCOPING. Every template that settles its team and
@@ -544,3 +544,53 @@ def league_team_narrowed(span: ResolvedSpan) -> TeamNarrowed:
     # turn up in a few regular-season rows (1992-2000), not franchises - the
     # same guard `_team_games` used to apply inline.
     return TeamNarrowed(base=["tg.team_id IN (SELECT team_id FROM teams)", "tg.season_type = ?", clause], base_params=[span.season_type, *clause_params])
+
+
+# --- the reads the team readers take (Phase 4, step 5) -------------------------
+# Statements over the team-games relation a team reader ran itself until
+# then (compose.team_records' two checks, the team compiler's narrowed
+# total), run here and handed back as rows - the relation's own executor,
+# as condition_team_no_games' is.
+
+
+def team_season_game_counts(con: duckdb.DuckDBPyConnection, scope: str, scope_params: list[Any], team_id: str) -> tuple[int, int]:
+    """How many games the relation holds in a season scope for any team, and
+    how many of them are ``team_id``'s
+    (:func:`~association.query.team_games.season_game_counts_sql`) - what
+    tells "the warehouse holds no games that season" from "the team played
+    none"; ``(0, 0)`` where the statement returns no row.
+
+    .. versionadded:: 6.0.0
+       Run by ``compose.team_records`` until then.
+    """
+    sql, params = season_game_counts_sql(scope, scope_params, team_id)
+    counts = con.execute(sql, params).fetchall()
+    return counts[0] if counts else (0, 0)
+
+
+def team_game_list_gaps(
+    con: duckdb.DuckDBPyConnection, narrowed: TeamNarrowed, team_id: str, season_type: int, *, season: int | None, since: int | None, until: int | None, floor: int
+) -> list[tuple[Any, ...]]:
+    """``(season, games listed, games played)`` for each season from
+    ``floor`` where the narrowed games tallied for a team do not number its
+    games in ``team_season_stats``
+    (:func:`~association.query.team_games.game_list_gaps_sql`).
+
+    .. versionadded:: 6.0.0
+       Run by ``compose.team_records`` until then.
+    """
+    sql, params = game_list_gaps_sql(narrowed, team_id, season_type, season=season, since=since, until=until, floor=floor)
+    return con.execute(sql, params).fetchall()
+
+
+def team_games_total(con: duckdb.DuckDBPyConnection, narrowed: TeamNarrowed, column: str) -> tuple[Any, ...] | None:
+    """A sum over the narrowed team games' own ``column`` (a game-level
+    measure's, never a slot) with the games, wins and losses it covers -
+    ``(total, games, wins, losses)``, or ``None`` with no row.
+
+    .. versionadded:: 6.0.0
+       ``compose.team._compile_team_games_total``'s statement, moved whole.
+    """
+    selects = [f"SUM({column}) AS total", "COUNT(*) AS games", "SUM(tg.won::INT) AS wins", "SUM((NOT tg.won)::INT) AS losses"]
+    sql, params = aggregate_sql(narrowed, selects)
+    return con.execute(sql, params).fetchone()

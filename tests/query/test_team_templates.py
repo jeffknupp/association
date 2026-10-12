@@ -46,6 +46,7 @@ from association.query.reading import (
     situation_of,
 )
 from association.query.reading import Subject as Who
+from association.query.standings import career_rows, first_season, season_games, season_row
 from association.query.subject import Subject
 from association.query.team_metrics import TEAM_METRICS, descending_for, resolve_team_metric
 
@@ -220,6 +221,20 @@ def team_ctx(tmp_path: Path) -> AnswerContext:
 
 
 # ---------------- team_record: a season, from standings ----------------
+
+
+def test_the_standings_reads_are_the_relations_own(team_ctx: AnswerContext) -> None:
+    """Phase 4, step 5: the four reads a team's record makes of the
+    standings are the relation's (``query/standings.py``), run there through
+    the one door - a season's row (none where the standings hold none),
+    every season's, the first season they hold for anyone, and the team's
+    own games played the standings are checked against, by season."""
+    con = team_ctx.con
+    assert season_row(con, "18", 2000) == [(49.0, 31.0, 0.6125, 1.0, 2.0, 3.0, "28-13", "21-18", "6-4", 95.0, 92.0, 3.0)]
+    assert season_row(con, "18", 1980) == []
+    assert career_rows(con, "18") == [(1990, 45.0, 37.0, "0-0", "0-0"), (2000, 49.0, 31.0, "28-13", "21-18"), (S, 53.0, 29.0, "30-10", "22-19")]
+    assert first_season(con) == 1990
+    assert season_games(con, "18", [2000, S, 1990]) == {2000: 82.0, S: 3.0}, "1990 has no season totals to check against"
 
 
 def test_a_season_record_is_the_standings_line(team_ctx: AnswerContext) -> None:

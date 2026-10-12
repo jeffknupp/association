@@ -67,6 +67,24 @@ def test_the_bypasses_the_phase_1_review_found_are_caught() -> None:
     assert ratchets.con_in_the_reader(modules) == {"point:read"}
 
 
+def test_a_string_sql_helper_counts_its_callers_and_not_its_own_body() -> None:
+    """A function that runs the SQL it is handed (``con.execute(sql)``, ``sql``
+    a parameter) is a door: each call of it is a statement, and its own call
+    is not one more. ``entities._read_table`` counted three for the name
+    index's two loads until 2026-10-12; a helper of any name is found by its
+    body, so renaming one is no way past the count."""
+    modules = _modules(
+        entities=(
+            "def _read_table(con, sql):\n    return con.execute(sql).fetchall()\n"
+            "def players(con):\n    return _read_table(con, 'SELECT * FROM players')\n"
+            "def teams(con):\n    return _read_table(con, 'SELECT * FROM teams')\n"
+            "def ids(con, table):\n    return con.execute(f'SELECT id FROM {table}').fetchall()"
+        ),
+        compose__charts="def run(con, statement):\n    return con.sql(statement)\ndef read(con):\n    return run(con, 'SELECT 1')",
+    )
+    assert ratchets.sql_outside_the_relations(modules) == {"entities": 3, "compose.charts": 1}
+
+
 def test_a_connection_under_another_name_is_a_connection_in_the_reader() -> None:
     """``con_in_the_reader`` read a parameter's name alone until 2026-10-10,
     when the list reached zero: a reader function handed the warehouse as

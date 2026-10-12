@@ -6,10 +6,17 @@ beside the team-games relation (:mod:`association.query.team_games`) and the
 player's season line (:mod:`association.query.season_line`).
 
 This module holds what the team-season readers
-(:mod:`association.query.compose.team_stats`) share and nothing that words
-an answer: each statement a read runs, built here and executed through the
-compiler's one door (:func:`~association.query.compose.core.values_of`),
-never by a reader of its own, and the plain values its rows are read into.
+(:mod:`association.query.compose.team_stats`, and the team compiler's
+season total, :mod:`association.query.compose.team`) share and nothing
+that words an answer: each statement a read runs, built AND run here
+through the compiler's one door
+(:func:`~association.query.compose.core.values_of`), never by a reader of
+its own, and the plain values its rows are read into. A reader names the
+read it takes (:func:`read_team_lines`, :func:`read_team_records`,
+:func:`read_team_since_records`, :func:`read_team_venue_rows`,
+:func:`read_team_outlook_snapshots`, :func:`read_team_outlook_rows`,
+:func:`read_team_season_total`) - since Phase 4, step 5, when the
+statements the readers ran themselves moved here, unchanged.
 Phase 2's slice (iv) (``ROADMAP.md``): the statements are the retired
 templates' (``templates.teams.team_outlook``'s two power-index reads,
 ``team_metrics.season_table`` and ``record_table``,
@@ -23,6 +30,8 @@ templates' (``templates.teams.team_outlook``'s two power-index reads,
 from __future__ import annotations
 
 from typing import Any
+
+import duckdb
 
 from association.nba.franchises import season_name_sql
 from association.query import reading
@@ -392,3 +401,106 @@ def team_since_records_statement(season_type: int, since: int, until: int | None
         f"SELECT t.display_name, count(*) FILTER (WHERE x.won) AS wins, count(*) FILTER (WHERE NOT x.won) AS losses FROM teams t LEFT JOIN ({base}) x ON x.team_id = t.team_id GROUP BY 1",
         sub_params,
     )
+
+
+# --- the reads (Phase 4, step 5) ---------------------------------------------
+# Each statement above run here, through the compiler's one door, and handed
+# back read: the team-season readers (compose.team_stats) and the team
+# compiler's season total (compose.team) ran them themselves until then.
+
+
+def _values(con: duckdb.DuckDBPyConnection, statement: Statement) -> list[tuple[Any, ...]]:
+    """``statement`` run through the compiler's one door
+    (:func:`~association.query.compose.core.values_of`). At call time: the
+    compiler imports the relations."""
+    from association.query.compose.core import values_of
+
+    return values_of(con, statement)
+
+
+def read_team_lines(con: duckdb.DuckDBPyConnection, season: int, season_type: int) -> list[TeamLine]:
+    """Every team's line for one season (:func:`team_lines_statement`, read
+    by :func:`team_lines`).
+
+    .. versionadded:: 6.0.0
+       Run by ``compose.team_stats``' line and ranking readers until then.
+    """
+    return team_lines(_values(con, team_lines_statement(season, season_type)), season)
+
+
+def read_team_records(con: duckdb.DuckDBPyConnection, season: int, season_type: int) -> list[TeamRecord]:
+    """Every team's record for one season (:func:`team_records_statement`,
+    read by :func:`team_records`).
+
+    .. versionadded:: 6.0.0
+       Run by ``compose.team_stats``' line and ranking readers until then.
+    """
+    return team_records(_values(con, team_records_statement(season, season_type)))
+
+
+def read_team_since_records(con: duckdb.DuckDBPyConnection, season_type: int, since: int, until: int | None = None) -> list[TeamRecord]:
+    """Every team's record across the seasons from ``since`` on
+    (:func:`team_since_records_statement`, read by :func:`team_records`).
+
+    .. versionadded:: 6.0.0
+       Run by ``compose.team_stats``' ranking reader until then.
+    """
+    return team_records(_values(con, team_since_records_statement(season_type, since, until)))
+
+
+def read_team_venue_rows(con: duckdb.DuckDBPyConnection, season: int, season_type: int, venue: str) -> list[tuple[Any, ...]]:
+    """Every team's home or road record rows for one season
+    (:func:`team_venue_records_statement`), as the statement returns them -
+    the reader reads them with :func:`venue_records` and tells "no split in
+    that season's standings" from "no rows" by both.
+
+    .. versionadded:: 6.0.0
+       Run by ``compose.team_stats``' ranking reader until then.
+    """
+    return _values(con, team_venue_records_statement(season, season_type, venue))
+
+
+def read_team_outlook_snapshots(con: duckdb.DuckDBPyConnection, team_id: str, season: int) -> list[tuple[Any, ...]]:
+    """Each power-index snapshot a season holds
+    (:func:`team_outlook_snapshots_statement`'s rows).
+
+    .. versionadded:: 6.0.0
+       Run by ``compose.team_stats``' power-index reader until then.
+    """
+    return _values(con, team_outlook_snapshots_statement(team_id, season))
+
+
+def read_team_outlook_rows(con: duckdb.DuckDBPyConnection, season: int, kind: int, team_id: str) -> list[tuple[Any, ...]]:
+    """One team's row of one snapshot (:func:`team_outlook_row_statement`'s
+    rows: one, or none).
+
+    .. versionadded:: 6.0.0
+       Run by ``compose.team_stats``' power-index reader until then.
+    """
+    return _values(con, team_outlook_row_statement(season, kind, team_id))
+
+
+def team_season_total_statement(team_id: str, season: int, season_type: int, column: str) -> Statement:
+    """``column`` and the games it covers, from one ``team_season_stats``
+    row. ``column`` is the team compiler's own season measure's
+    (``compose.team.SEASON_MEASURES``), never a slot.
+
+    .. versionadded:: 6.0.0
+       ``compose.team._season_total``'s statement, moved whole.
+    """
+    return Statement(f"SELECT {column}, gamesPlayed FROM team_season_stats WHERE team_id = ? AND season = ? AND season_type = ?", [team_id, season, season_type])
+
+
+def read_team_season_total(con: duckdb.DuckDBPyConnection, team_id: str, season: int, season_type: int, column: str) -> tuple[float, int] | None:
+    """``column``'s value and the games it covers, from one team-season row
+    (:func:`team_season_total_statement`) - or ``None`` where the warehouse
+    has no such row, or the row no value.
+
+    .. versionadded:: 6.0.0
+       ``compose.team._season_total``'s read, moved here.
+    """
+    rows = _values(con, team_season_total_statement(team_id, season, season_type, column))
+    row = rows[0] if rows else None
+    if row is None or row[0] is None:
+        return None
+    return float(row[0]), int(row[1] or 0)
