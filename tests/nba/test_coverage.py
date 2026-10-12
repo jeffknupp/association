@@ -11,13 +11,13 @@ ranked a league of seven players.
 
 from __future__ import annotations
 
-from shapes import key
 from slots import slots_scope
 
 from association.nba.coverage import COVERAGE, KNOWN_TABLES, POSTSEASON, REGULAR_SEASON, caveat, unavailable
 from association.query.coverage import RELATION_SOURCES, SOURCES, check_coverage, coverage_caveat, sources_for
 from association.query.measure import measure_of
 from association.query.reading import (
+    GAME_HIGHS,
     GAMES_COUNTED,
     NETPOINTS_FINGERPRINT,
     PLAYER_COMPARISON,
@@ -285,13 +285,10 @@ def test_the_2001_caveat_reaches_the_templates_that_never_read_the_game_list() -
     a caveat declared on `games` alone never reached them: Shaquille O'Neal's
     "4 games with 30+ points" was stated as fact over 11 of the 16 playoff
     games he played."""
-    for intent in ("single_game_high", "threshold_count"):
-        note = coverage_caveat(key(intent), Reading(who=Who(kind="player", players=("Shaquille O'Neal",)), measure=Measure(key="points", as_typed="points"), span=Span(season=2001, season_type=3)))
-        assert note is not None and "2001 playoffs" in note, intent
-        assert (
-            coverage_caveat(key(intent), Reading(who=Who(kind="player", players=("Shaquille O'Neal",)), measure=Measure(key="points", as_typed="points"), span=Span(season=2001, season_type=2)))
-            is None
-        )
+    for shape in (GAME_HIGHS, GAMES_COUNTED):
+        note = coverage_caveat(shape, Reading(who=Who(kind="player", players=("Shaquille O'Neal",)), measure=Measure(key="points", as_typed="points"), span=Span(season=2001, season_type=3)))
+        assert note is not None and "2001 playoffs" in note, shape
+        assert coverage_caveat(shape, Reading(who=Who(kind="player", players=("Shaquille O'Neal",)), measure=Measure(key="points", as_typed="points"), span=Span(season=2001, season_type=2))) is None
 
 
 def test_the_2001_player_caveat_says_what_a_player_is_missing() -> None:
