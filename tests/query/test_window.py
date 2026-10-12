@@ -30,7 +30,7 @@ from association.query.season_line import history_seasons
 from association.query.span import SpanContext, claimed, read_span
 from association.query.team_games import TeamNarrowed, rows_sql
 from association.query.team_relation import TEAM_RELATION_SCOPING, TEAM_RELATION_SCOPING_EXCLUDED, scoped_team, team_games
-from association.query.window import MinimumRead, WindowContext, WindowRead, contradicting_ends, read_minimum, read_window
+from association.query.window import MinimumRead, WindowContext, WindowRead, contradicting_ends, per_season_window, read_minimum, read_window
 
 S = current_season()
 
@@ -341,3 +341,19 @@ def test_a_stated_minimum_stands_on_a_players_ranking_alone() -> None:
 )
 def test_a_question_naming_both_ends_is_found_by_the_words_of_each(question: str, expected: list[str]) -> None:
     assert [question[claim.start : claim.end] for claim in contradicting_ends(question)] == expected
+
+
+@pytest.mark.parametrize(
+    ("question", "expected"),
+    [
+        # A window of games taken in each season (ISSUES.md #379): the window's words, then the season's.
+        ("warriors first 10 game record every season", ["first 10 game", "every season"]),
+        ("warriors record in the first 10 games of each season", ["first 10 games", "each season"]),
+        ("celtics last 5 games each season", ["last 5 games", "each season"]),
+        # A history by season with no window, or a window with no season beside it, is none.
+        ("kobe bryant points per game each season", []),
+        ("warriors first 10 games", []),
+    ],
+)
+def test_a_window_taken_in_each_season_is_found_by_its_words(question: str, expected: list[str]) -> None:
+    assert [question[claim.start : claim.end] for claim in per_season_window(question)] == expected

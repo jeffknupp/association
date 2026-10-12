@@ -458,6 +458,18 @@ COUNTED_END = re.compile(rf"\b(last|past|previous|most\s+recent|latest|final|fir
 
 .. versionadded:: 6.0.0
 """
+# A window taken in EACH season: "every season", "each season", "per
+# season", "season by season" beside a window of games ("warriors first 10
+# game record every season", ISSUES.md #379), which nothing reads yet - the
+# relations cut one window from the span, and a history cuts it from the
+# career. Not a bare "by season": deleting "regular" from "last 15 games ...
+# by regular season game" made one, so the refusal claimed a word it did not
+# read.
+EACH_SEASON = re.compile(r"\b(?:each|every|per)\s+(?:season|year)\b|\b(?:season|year)[- ]by[- ](?:season|year)\b", re.IGNORECASE)
+"""Words asking for something in each season, as typed.
+
+.. versionadded:: 6.0.0
+"""
 FIRST_END_WORDS: frozenset[str] = frozenset({"first", "opening", "earliest"})
 """The words of :data:`COUNTED_END` that name the oldest end; the rest name the newest.
 

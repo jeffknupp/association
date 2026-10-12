@@ -279,3 +279,29 @@ def contradicting_ends(question: str) -> tuple[Claim, ...]:
     if not found["recent"] or not found["first"]:
         return ()
     return tuple(sorted({*found["recent"], *found["first"]}, key=lambda claim: (claim.start, claim.end)))
+
+
+def per_season_window(question: str) -> tuple[Claim, ...]:
+    """The words of a window of games taken in each season - "first 10
+    game" beside "every season" in "warriors first 10 game record every
+    season" (ISSUES.md #379) - the window's words (an end of the window
+    grammar, :data:`~association.query.lexicon.WINDOW_GRAMMAR`, or the
+    looser end words, :data:`~association.query.lexicon.ORDER_WORDS`) and
+    the season's (:data:`~association.query.lexicon.EACH_SEASON`), or none.
+    Nothing reads a window per season yet: the games relations cut one
+    window from the span, and a history cuts it from the whole career, so
+    the parser refuses the question by a cause naming both
+    (``window_per_season``), where the team log answered the first 10
+    games of one season with "every season" unread.
+
+    .. versionadded:: 6.0.0
+    """
+    each = lexicon.EACH_SEASON.search(question)
+    if each is None:
+        return ()
+    window = next((match for pattern, order, _ in lexicon.WINDOW_GRAMMAR if order is not None and (match := pattern.search(question)) is not None), None)
+    if window is None:
+        window = next((match for pattern in lexicon.ORDER_WORDS.values() if (match := pattern.search(question)) is not None), None)
+    if window is None:
+        return ()
+    return tuple(sorted((Claim(window.start(), window.end(), "window"), Claim(each.start(), each.end(), "window")), key=lambda claim: claim.start))

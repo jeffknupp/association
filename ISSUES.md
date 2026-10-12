@@ -50,7 +50,7 @@ before that commit needs re-checking against the current warehouse.
 - **Found:** 2026-10-11, Phase 3, step 4, slice (c), enumerating the readings the window marks moved (the team's log row read "last 10" by its own words, and still does).
 - **Evidence:** the parent grammar's team log row reads `(last|past|previous|most recent) COUNT` with anything after the count, so "raptors record last 10 season", "portland trailblazers winning percentage last 10 seasons" and "hornets on the road vs magic last 2 seasons" (3 of the 2,082 feed questions, none of the 628) are `game_log`, and the window tagger reads the count as games: the feed answers are "Toronto Raptors, last 10 games (all-time, 2026 regular season) (6-4): ...", the Blazers' last 10 games (7-3) and the Hornets' last 4 games against the Magic. A span tagger reading of "last 10 seasons" as the window's count of SEASONS exists for a player's history (`Window.of == "seasons"`, "the past 5 years").
 - **User sees:** a fluent wrong answer - ten games where ten seasons were asked.
-- **Next step:** the team log row reads a window of games as the window tagger types it (`lexicon.WINDOW_MARK`) and no longer its own `last COUNT` words, and "last N seasons" on a team becomes the team-season relation's history over N seasons (`Window.of == "seasons"`, as a player's history reads it) - with the 3 answers enumerated. Slice (c) kept the row's words beside the mark so no team reading moved but "warriors first 10 game record every season".
+- **Next step:** the team log row reads a window of games as the window tagger types it (`lexicon.WINDOW_MARK`) and no longer its own `last COUNT` words, and "last N seasons" on a team becomes the team-season relation's history over N seasons (`Window.of == "seasons"`, as a player's history reads it) - with the 3 answers enumerated. Slice (c) kept the row's words beside the mark so no team reading moved but "warriors first 10 game record every season" (refused since 2026-10-11 as a window of games in each season, #379's `window_per_season`).
 - **Priority:** P1 - a wrong answer fluently.
 - **Source:** ours.
 - **GitHub:** #372
@@ -2279,14 +2279,6 @@ those were found.
 - **Next step:** refuse a rate per N possessions for N != 100 by a cause naming the unit, and add the "50" case to `span.needed`'s `gives_up` checks so the number stays unread until it is.
 - **Priority:** P2 - a different figure than asked, with the unit said.
 - **GitHub:** #376
-
-### "warriors first 10 game record every season" answers the first 10 games of 2026 only, "every season" unread
-- **Found:** 2026-10-11, the Phase 3 review (`~/association-research/reviews/phase3-2026-10-11/`, finding 6); one of the ten kept moves of `9da65c0` - before it a "cannot honor ['order']" refusal. #372's next step names this question as the one team reading slice (c) moved.
-- **Evidence:** the feed run and the probe on `4de1801`: "Golden State Warriors, first 10 games of the 2026 regular season (5-5): ...", `Reading.unread` = every, season. 1 feed question.
-- **User sees:** one season's opening record where every season's was asked.
-- **Next step:** "every season" beside a window is a per-season split the team log does not read: refuse it by a cause until the team-season relation reads a window per season (with #372, whose fix reads a team's "last N seasons" there).
-- **Priority:** P2 - one season's figure, stated, where every season's was asked.
-- **GitHub:** #379
 
 ## P3: refusal or gap
 

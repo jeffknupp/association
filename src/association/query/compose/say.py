@@ -558,6 +558,14 @@ def _window_ends_contradict(ends: Sequence[str]) -> str:
     return f"The question names both ends of the games at once ({said}) - ask for the first games or the last ones, not both."
 
 
+def _window_per_season(window: str, per: str) -> str:
+    """The refusal for a window of games taken in each season ("warriors
+    first 10 game record every season", ISSUES.md #379): nothing reads one
+    yet, so the sentence names what was asked and the two questions that
+    are read."""
+    return f"A window of games in each season ({window!r} {per}) is read by nothing here yet - name one season for its {window}, or ask for the seasons whole."
+
+
 def _ranking_unit(metric: str, rate: Any) -> str:
     """The refusal for a ranking in a unit the metric has no form of,
     naming the forms THIS metric has ("who were the top 10 in defensive
@@ -4267,6 +4275,7 @@ _RANKING_PHRASES: dict[str, Callable[[Mapping[str, Any]], str | None]] = {
     "ranking_floor_unit": lambda facts: _ranking_floor_unit(facts["unit"], facts["count"]),
     "minimum_unranked": lambda facts: _minimum_unranked(facts["unit"], facts["count"]),
     "window_ends_contradict": lambda facts: _window_ends_contradict(facts["ends"]),
+    "window_per_season": lambda facts: _window_per_season(facts["window"], facts["per"]),
     "ranking_unit": lambda facts: _ranking_unit(facts["metric"], facts["rate"]),
 }
 
