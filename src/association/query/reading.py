@@ -1277,10 +1277,12 @@ def line_slots_set(lines: tuple[Line, ...]) -> frozenset[str]:
             named.add("threshold")
         if line.narrows and line.below:
             named.add("below")
-        elif line.narrows and line.op == ">=":
-            # A floor ("with 25 minutes") or an "N+ stat" pair; a narrowing
-            # line stated "more than" or "exactly" named no slot, as the
-            # slot-era writer wrote none (ISSUES.md, the P1 on such lines).
+        elif line.narrows:
+            # A floor ("with 25 minutes"), a line kept over its number
+            # ("over 26 minutes") or an "N+ stat" pair: the line cell, so a
+            # reader that does not honor it declines rather than answering
+            # every game (a line kept over its number set no cell until
+            # 2026-10-11, when the lines tagger first wrote one).
             named.add("above")
     return frozenset(named)
 

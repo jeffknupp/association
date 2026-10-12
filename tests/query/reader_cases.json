@@ -82013,5 +82013,218 @@
    "point_declined": null,
    "point_refusal": null
   }
+ },
+ {
+  "name": "issue_374_playing_n_or_more_minutes",
+  "why": "\"N or more minutes\" after \"when playing\" is the floor of minutes \"with 25 minutes\" is (ISSUES.md #374): the question answered every game he played.",
+  "question": "Victor wembanyama stats when playing 20 or more minutes playoffs",
+  "names": [
+   "Victor wembanyama"
+  ],
+  "stat": "minutes",
+  "expected": {
+   "intent": "player_stat",
+   "asked": {
+    "relation": "player_seasons",
+    "shape": "scalar",
+    "by": "line"
+   },
+   "who": {
+    "kind": "player",
+    "players": [
+     "Victor Wembanyama"
+    ],
+    "teams": [],
+    "position": null
+   },
+   "cuts": {
+    "opponent": null,
+    "tenure": null,
+    "venue": null,
+    "date": null,
+    "situation": null,
+    "round": null,
+    "game_n": null,
+    "season_n": null
+   },
+   "companions": [],
+   "lines": [
+    {
+     "measure": "minutes",
+     "op": ">=",
+     "value": 20,
+     "period": null,
+     "as_typed": "playing 20 or more minutes",
+     "keyed": false,
+     "narrows": true
+    }
+   ],
+   "measure": {
+    "key": "minutes",
+    "as_typed": "minutes",
+    "how": null,
+    "unit": null,
+    "whose": "own",
+    "side": null,
+    "shot_value": null,
+    "category": null,
+    "won": null,
+    "beside": []
+   },
+   "span": {
+    "season": null,
+    "season_type": 3,
+    "both": false,
+    "career": false,
+    "since": null,
+    "until": null
+   },
+   "split": null,
+   "period": null,
+   "window": {
+    "order": null,
+    "count": null,
+    "of": "games",
+    "rank": null,
+    "by": null
+   },
+   "unread": [
+    "stats",
+    "when"
+   ],
+   "subject": {
+    "kind": "player",
+    "players": [
+     "Victor Wembanyama"
+    ],
+    "teams": [],
+    "position": null,
+    "opponent": null,
+    "own_team": null,
+    "companions": [],
+    "invented": [],
+    "named_season": null,
+    "asked": {
+     "relation": "player_seasons",
+     "shape": "scalar",
+     "by": "line"
+    },
+    "intent": "player_stat",
+    "intent_reason": null,
+    "conditions": [],
+    "filler": []
+   },
+   "misread": [],
+   "decisions": [
+    {
+     "stage": "subject",
+     "field": "kind",
+     "before": null,
+     "after": "player",
+     "reason": "question names players ['Victor Wembanyama']; router players the question supports ['Victor wembanyama']; question spells 'Victor wembanyama' as 'Victor Wembanyama'"
+    },
+    {
+     "stage": "subject",
+     "field": "players",
+     "before": null,
+     "after": [
+      "Victor Wembanyama"
+     ],
+     "reason": "from the question's own words"
+    }
+   ],
+   "point": {
+    "asked": {
+     "relation": "player_seasons",
+     "shape": "scalar",
+     "by": "line"
+    },
+    "intent": "player_stat",
+    "relation": "player",
+    "on": "player_games",
+    "shape": "scalar",
+    "by": "line",
+    "measures": [
+     "minutes"
+    ],
+    "aggregate": "per_game",
+    "group": "none",
+    "predicates": [],
+    "order": "date",
+    "direction": "desc",
+    "limit": null,
+    "minimum_games": null,
+    "available": null,
+    "subject_span": {
+     "season": null,
+     "season_type": 3,
+     "both": false,
+     "career": false,
+     "since": null,
+     "until": null
+    },
+    "who": {
+     "kind": "player",
+     "players": [
+      "Victor Wembanyama"
+     ],
+     "teams": [],
+     "position": null
+    },
+    "cuts": {
+     "opponent": null,
+     "tenure": null,
+     "venue": null,
+     "date": null,
+     "situation": null,
+     "round": null,
+     "game_n": null,
+     "season_n": null
+    },
+    "companions": [],
+    "lines": [
+     {
+      "measure": "minutes",
+      "op": ">=",
+      "value": 20,
+      "period": null,
+      "as_typed": "playing 20 or more minutes",
+      "keyed": false,
+      "narrows": true
+     }
+    ],
+    "measure": {
+     "key": "minutes",
+     "as_typed": "minutes",
+     "how": null,
+     "unit": null,
+     "whose": "own",
+     "side": null,
+     "shot_value": null,
+     "category": null,
+     "won": null,
+     "beside": []
+    },
+    "span": {
+     "season": null,
+     "season_type": 3,
+     "both": false,
+     "career": false,
+     "since": null,
+     "until": null
+    },
+    "split": null,
+    "period": null,
+    "window": {
+     "order": null,
+     "count": null,
+     "of": "games",
+     "rank": null,
+     "by": null
+    }
+   },
+   "point_declined": null,
+   "point_refusal": null
+  }
  }
 ]

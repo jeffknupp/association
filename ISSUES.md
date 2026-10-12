@@ -55,14 +55,6 @@ before that commit needs re-checking against the current warehouse.
 - **Source:** ours.
 - **GitHub:** #372
 
-### "N or more minutes" after "when playing" is read by nothing: "Victor wembanyama stats when playing 20 or more minutes playoffs" answers his whole postseason
-- **Found:** 2026-10-11, the Phase 3 review (`~/association-research/reviews/phase3-2026-10-11/`, finding 1).
-- **Evidence:** on `4de1801` (and on `87cc782` before the phase), with the recorded reply and in the feed run: "Victor Wembanyama averaged 34.1 minutes per game in 22 games in the 2026 postseason."; `Reading.unread` = stats, when, playing, 20, more. 2 of the 2,082 feed questions ("Victor wembanyama stats when playing 20 or more minutes" and its "... playoffs" twin), none of the 628. `lexicon.N_PLUS` reads "N or more" only as a line on the readers whose shape is a line, or beside "games with"; the floor of minutes the lines tagger reads ("with 25 minutes") does not take "playing N (or more) minutes".
-- **User sees:** a fluent line over every game where the games he played 20+ minutes in were asked for.
-- **Next step:** the lines tagger reads "playing N (or more) minutes" as the floor of minutes "with 25 minutes" already is, on every player reader, with the 2 feed answers enumerated before and after. The same family as #371's stated forms ("more than N stat", "exactly N stat"): one change that reads both is the better one.
-- **Priority:** P1 - a broader question answered fluently.
-- **GitHub:** #374
-
 ### A model name the words do not support stays among the subject's players, and changes the kind and the key: "points per quarter for Luka" with an invented "Stephen Curry" is the league's quarter ranking
 - **Found:** 2026-10-11, Phase 3, step 4, slice (c) (re-seating the router tests as question-to-Reading cases, where the retired tests handed the stages a wrong model name on purpose and the stages' `_recover_period_subject` put the question's own name back).
 - **Evidence:** `parse.read_route(index, "points per quarter for Luka", ["Stephen Curry"], "points")` on the real index reads `who.players == ("Luka Doncic", "Stephen Curry")`, `misread == ["Stephen Curry"]` and asks `period_leaderboard` - two players are not "a named player", so the player's quarter breakdown becomes the league's ranking; with the model's name right, or with none, it asks `period_split`. The same on `508d643` (before the subject slice and step 4), so it predates them. "jokic game log this season" with an invented "Stephen Curry" keeps both and is refused by the invented name downstream (the documented refusal, AGENTS.md "When it cannot be repaired, say so by name"); the quarter case is refused by nothing and answered as a different shape. 0 of the 628 and 0 of the 2,082 (no recorded reply invents a name; the feed is read with none), so no population shows it; the unit cases `test_reader_cases.py` record it as it is.

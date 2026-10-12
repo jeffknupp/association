@@ -1411,24 +1411,48 @@ BELOW = re.compile(
    ``router._BELOW`` until Phase 3, step 2.
 """
 # A comparison AT OR ABOVE a number, on minutes: "with 25 minutes", "20+
-# mins", "30 minutes or more" - read out of the situation words (where "paul
-# reed gamelog with 25 minutes" refused) into a line the relation applies.
-# Deliberately only minutes: "30+ points" is the threshold grammar's, and
-# the readers of a line already carry it. Not the "35 minutes" inside "less
-# than 35 minutes", which is BELOW's.
-ABOVE = re.compile(r"\b(?:with\s+(?:at\s+least\s+)?)?(?<!than\s)(?<!under\s)(?<!below\s)\d+\+?\s*(?:minutes|mins?)\b(?!\s+or\s+less)(?:\s+(?:or\s+more|played))?", re.IGNORECASE)
+# mins", "30 minutes or more", "when playing 20 or more minutes" - read out
+# of the situation words (where "paul reed gamelog with 25 minutes"
+# refused) into a line the relation applies. Deliberately only minutes:
+# "30+ points" is the threshold grammar's, and the readers of a line
+# already carry it. Not the "35 minutes" inside "less than 35 minutes",
+# which is BELOW's. "N or more minutes" (ISSUES.md #374, 2026-10-11) was
+# read by nothing until the "or more" between the number and the word:
+# "Victor wembanyama stats when playing 20 or more minutes" answered every
+# game he played. "over N minutes" and "more than N minutes" are a line kept
+# OVER the number (:data:`OVER_LEADS`), where the bare number they lead was
+# read as a floor at it and the lead word unread.
+ABOVE = re.compile(
+    r"\b(?:(?:with|playing)\s+)?(?:(?:at\s+least|over|(?<!no\s)more\s+than)\s+|(?<!than\s)(?<!under\s)(?<!below\s))"
+    r"\d+(?:\+|\s+or\s+more)?\s*(?:minutes|mins?)\b(?!\s+or\s+less)(?:\s+(?:or\s+more|played))?",
+    re.IGNORECASE,
+)
 """A line of minutes a game is kept at or over, as worded.
 
 .. versionadded:: 6.0.0
    ``router._ABOVE`` until Phase 3, step 2.
+
+.. versionchanged:: 6.0.0
+   Reads "N or more minutes", the lead "playing" ("when playing 20 or
+   more minutes", ISSUES.md #374) and a line kept over the number ("over
+   26 minutes", "more than 26 minutes").
 """
 # The number and the words after it in a below/above phrase; the leading
-# words ("under", "at most", "with") say which way the line faces.
-MEASURE_PHRASE = re.compile(r"^(?P<lead>.*?)\b(?P<n>\d+)\+?%?\s*(?P<words>.*)$")
+# words ("under", "at most", "with") say which way the line faces, and an
+# "or more" between the number and its words ("20 or more minutes") is the
+# number's, as a plus is.
+MEASURE_PHRASE = re.compile(r"^(?P<lead>.*?)\b(?P<n>\d+)\+?%?\s*(?:or\s+more\s+)?(?P<words>.*)$")
 """A below/above phrase split into its lead, its number and its stat words.
 
 .. versionadded:: 6.0.0
    ``lines._MEASURE_PHRASE`` until Phase 3, step 2.
+"""
+OVER_LEADS: tuple[str, ...] = ("over", "more than")
+"""The leads of an above phrase that read as over, not at or over ("when
+playing over 26 minutes"); every other phrase of :data:`ABOVE` ("with 25
+minutes", "at least 25 minutes", "20 or more minutes") reads as at or over.
+
+.. versionadded:: 6.0.0
 """
 AT_MOST_LEADS: tuple[str, ...] = ("at most", "no more than")
 """The leads of a below phrase that read as "at or under" ("at most 5

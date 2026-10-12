@@ -83,6 +83,17 @@ def _shape(line: Line) -> tuple[str | None, str, int | bool, str, bool, bool]:
         ("sga games with under 14 fta", "threshold_count", [("freeThrowsAttempted", "<", 14, "under 14 fta", False, True)], None),
         ("jokic games with at most 5 turnovers", "game_log", [("turnovers", "<=", 5, "at most 5 turnovers", False, True)], None),
         ("curry games with 25 minutes", "game_log", [("minutes", ">=", 25, "with 25 minutes", False, True)], None),
+        # "N or more minutes" and the lead "playing" are the same floor, on every reader (ISSUES.md #374): "stats when
+        # playing 20 or more minutes" answered every game he played.
+        ("Victor wembanyama stats when playing 20 or more minutes playoffs", "player_stat", [("minutes", ">=", 20, "playing 20 or more minutes", False, True)], None),
+        ("wemby game log with 30 or more minutes", "game_log", [("minutes", ">=", 30, "with 30 or more minutes", False, True)], None),
+        ("wemby splits playing 30+ minutes", "player_splits", [("minutes", ">=", 30, "playing 30+ minutes", False, True)], None),
+        ("wemby stats playing at least 30 minutes", "player_stat", [("minutes", ">=", 30, "playing at least 30 minutes", False, True)], None),
+        ("wemby stats playing 30 minutes", "player_stat", [("minutes", ">=", 30, "playing 30 minutes", False, True)], None),
+        # "over N minutes" and "more than N minutes" keep the games OVER the number, where the number alone was read as a floor at it.
+        ("collin murray-boyles stats this season when playing over 26 minutes", "player_stat", [("minutes", ">", 26, "playing over 26 minutes", False, True)], None),
+        ("wemby game log with more than 30 minutes", "game_log", [("minutes", ">", 30, "with more than 30 minutes", False, True)], None),
+        ("wemby game log with no more than 30 minutes", "game_log", [("minutes", "<=", 30, "no more than 30 minutes", False, True)], None),
         # One "N+ stat" pair on a reader whose shape is not a line is read by nothing - the stages' rule, measured (a team's line carried no threshold).
         ("How many 10+ point leads did the Sacramento Kings have", "team_leaderboard", [], None),
         # ... but on a reader of a player's games one line stated outright narrows them (ISSUES.md #357, Phase 3,

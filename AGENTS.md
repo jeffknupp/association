@@ -1182,7 +1182,10 @@ a shape:
   in a quarter) and claims each line's characters once; a reader whose
   shape is a line (`point.THRESHOLD_ASKS`: the count, the record, the
   streak, the high) reads a bare "N stat" as its own, every other reader
-  only what the words say outright - a floor of minutes, a line under a
+  only what the words say outright - a floor of minutes ("with 25
+  minutes", "when playing 20 or more minutes", "playing 30+ minutes"; "over
+  26 minutes" and "more than 26 minutes" keep the games OVER the number,
+  `lexicon.OVER_LEADS`), a line under a
   number, two or more "N+ stat" pairs - as the router's stages read them (a single
   "20+ points" on a log is read by nothing, ISSUES.md). `threshold_named`
   is what the grammar's rules ask before the lines are read (a count with no

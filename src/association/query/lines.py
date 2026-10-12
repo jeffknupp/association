@@ -77,7 +77,9 @@ def phrase_line(phrase: str, *, below: bool) -> Line:
     number, the column its words name (None where they name none, which the
     relation refuses by the words: :func:`measure_filters`), and which way
     the line faces: ``below`` reads "at most"/"no more than"/"or less" as at
-    or under, anything else as under; a phrase kept over is at or above.
+    or under, anything else as under; a phrase kept over is at or above,
+    or over where its lead says so (:data:`~association.query.lexicon.OVER_LEADS`:
+    "over 26 minutes", "more than 26 minutes").
 
     .. versionadded:: 6.0.0
     """
@@ -86,7 +88,7 @@ def phrase_line(phrase: str, *, below: bool) -> Line:
     if match is None:
         return Line(measure=None, op="<" if below else ">=", value=0, as_typed=text, narrows=True)
     lead, words = match.group("lead").strip(), match.group("words")
-    op: LineOp = ">="
+    op: LineOp = ">" if not below and lead.endswith(lexicon.OVER_LEADS) else ">="
     if below:
         op = "<=" if lead.startswith(lexicon.AT_MOST_LEADS) or " or less" in words else "<"
     return Line(measure=measure_column(words), op=op, value=int(match.group("n")), as_typed=text, narrows=True)
@@ -96,14 +98,15 @@ def relation_lines(scope: Filtered) -> list[Line]:
     """The subject's lines the RELATION narrows the games by
     (:attr:`~association.query.reading.Line.narrows`), in the order the slots
     applied them: the lines kept under a number, then the floors of minutes
-    (and any other line kept over a number), then the "N+ stat" pairs. The
+    (and any other line kept at or over a number, "over 26 minutes" among
+    them), then the "N+ stat" pairs. The
     line the shape is keyed on (:func:`threshold_line`) is read into the
     point's predicate, not here.
 
     .. versionadded:: 6.0.0
     """
     narrowing = [line for line in scope.lines if line.narrows and line.period is None]
-    return [line for line in narrowing if line.below] + [line for line in narrowing if line.op == ">=" and not line.pair] + [line for line in narrowing if line.pair]
+    return [line for line in narrowing if line.below] + [line for line in narrowing if not line.below and not line.pair] + [line for line in narrowing if line.pair]
 
 
 def measure_filters(scope: Filtered) -> list[MeasureFilter]:

@@ -249,7 +249,8 @@ def _phrase_stat(question: str, number: tuple[int, int, Literal["plus", "at_leas
 def _phrase_number(question: str, start: int, end: int) -> tuple[int, int, Literal["plus", "at_least", "bare"]] | None:
     """Where the number of a floor of minutes or a line under a number
     stands in ``question[start:end]`` - its first run of digits, with the
-    "+" after it where one stands ("25+ minutes")."""
+    "+" or the "or more" after it where one stands ("25+ minutes", "20 or
+    more minutes")."""
     first = next((at for at in range(start, end) if question[at].isdigit()), None)
     if first is None:
         return None
@@ -258,6 +259,11 @@ def _phrase_number(question: str, start: int, end: int) -> tuple[int, int, Liter
         last += 1
     if last < end and question[last] == "+":
         return first, last + 1, "plus"
+    after = question[last:end]
+    words = after.casefold().split()
+    if words[:2] == ["or", "more"]:
+        more = after.casefold().index("more") + len("more")
+        return first, last + more, "plus"
     return first, last, "bare"
 
 
