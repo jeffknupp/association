@@ -9,16 +9,17 @@ row in the shape of the real play that taught it.
 from __future__ import annotations
 
 from collections.abc import Iterator
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
 import duckdb
 import pytest
-from slots import slots_reading
 from test_templates import team_quarter_points  # the compiler's since Phase 2's slice (iv) (compose.COMPILED_INTENTS)
 
 from association.fetch.repairs import real_games
 from association.query.answer import AnswerContext
+from association.query.measure import measure_of
 from association.query.player_games import PERIOD_AGREEMENT, PERIOD_COLUMNS, Narrowed, aggregate_sql, period_line_sql, rows_sql
 from association.query.player_relation import RELATION_SCOPING, RELATION_SCOPING_EXCLUDED
 from association.query.reading import (
@@ -29,6 +30,7 @@ from association.query.reading import (
     Period,
     Reading,
     Span,
+    Window,
     period_narrowing,
 )
 from association.query.reading import Subject as Who
@@ -444,13 +446,13 @@ def test_team_quarter_points_answers_a_shooting_percentage_as_makes_over_attempt
     naming g1 a record over two attempts, and a season either column
     rebuilds badly refuses the percentage with it."""
     ctx = AnswerContext(con=team_con, out_dir=tmp_path)
-    slots: dict[str, Any] = {"team": "Home Team", "half": 1, "season": SEASON, "season_type": 2, "stat": "freeThrowPct"}
-    result = team_quarter_points(ctx, slots_reading(slots))
+    scope = Reading(who=Who(kind="team", teams=("Home Team",)), measure=measure_of("freeThrowPct"), span=Span(season=SEASON, season_type=2), period=Period(number=1, half=True))
+    result = team_quarter_points(ctx, scope)
     assert (result.data["stat"], result.data["total"], result.data["attempted"], result.data["average"]) == ("ft_pct", 1, 2, 50.0)
     assert [(g["freeThrowsMade"], g["freeThrowsAttempted"], g["ft_pct"]) for g in result.data["games"]] == [(1, 2, 50.0), (0, 0, None)]
     answer = result.answer or ""
     assert "The Home Team shot 1 of 2 (50.0%) on free throws in the 1st half across 2 2026 regular season games:" in answer and "1-2  50.0%" in answer and "0-0  -" in answer
-    most = team_quarter_points(ctx, slots_reading({**slots, "rank": "most"}))
+    most = team_quarter_points(ctx, replace(scope, window=Window(rank="most")))
     assert "extreme" not in most.data and "is not ranked" in (most.answer or "")
 
 
