@@ -433,7 +433,7 @@ class Agent:
             # The shape's decline, by its cause, said by the planner where
             # the plain decline was - the same sentence.
             history.log(f"  -> (compose) {why} - refused ({causes[0].kind})")
-            return intent, refusal_result(ShapeDeclined.labeled(causes[0], intent))
+            return intent, refusal_result(ShapeDeclined.under(causes[0], reading.asked))
         history.log(f"  -> (compose) {why}: refused")
         self.unanswered = f"{intent}: {why}"
         return None

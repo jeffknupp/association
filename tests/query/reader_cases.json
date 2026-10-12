@@ -8425,7 +8425,11 @@
    "point_refusal": {
     "kind": "needs_stat",
     "facts": {
-     "intent": "single_game_high"
+     "shape": {
+      "relation": "player_games",
+      "shape": "rows",
+      "by": "measure"
+     }
     }
    }
   }
@@ -9693,7 +9697,11 @@
     {
      "kind": "playoff_round",
      "facts": {
-      "intent": "player_stat",
+      "shape": {
+       "relation": "player_seasons",
+       "shape": "scalar",
+       "by": "line"
+      },
       "round": "finals"
      }
     }
@@ -11350,7 +11358,11 @@
     {
      "kind": "playoff_round",
      "facts": {
-      "intent": "game_log",
+      "shape": {
+       "relation": "player_games",
+       "shape": "rows",
+       "by": "date"
+      },
       "round": "finals"
      }
     }
@@ -20183,7 +20195,11 @@
     {
      "kind": "playoff_round",
      "facts": {
-      "intent": "player_stat",
+      "shape": {
+       "relation": "player_seasons",
+       "shape": "scalar",
+       "by": "line"
+      },
       "round": "finals"
      }
     }
@@ -20530,7 +20546,11 @@
     {
      "kind": "playoff_round",
      "facts": {
-      "intent": "player_stat",
+      "shape": {
+       "relation": "player_seasons",
+       "shape": "scalar",
+       "by": "line"
+      },
       "round": "second round"
      }
     }
@@ -34657,7 +34677,11 @@
     {
      "kind": "non_calendar_situation",
      "facts": {
-      "intent": "team_record",
+      "shape": {
+       "relation": "team_games",
+       "shape": "scalar",
+       "by": "record"
+      },
       "situation": "back to backs",
       "reads_as": "other"
      }
@@ -34848,7 +34872,11 @@
     {
      "kind": "non_calendar_situation",
      "facts": {
-      "intent": "team_quarter_points",
+      "shape": {
+       "relation": "team_periods",
+       "shape": "scalar",
+       "by": "total"
+      },
       "situation": "overtime",
       "reads_as": "other"
      }
@@ -35416,7 +35444,11 @@
     {
      "kind": "non_calendar_situation",
      "facts": {
-      "intent": "team_leaderboard",
+      "shape": {
+       "relation": "team_seasons",
+       "shape": "ranking",
+       "by": "team"
+      },
       "situation": "since the all-star break",
       "reads_as": "other"
      }
@@ -36267,7 +36299,11 @@
     {
      "kind": "non_calendar_situation",
      "facts": {
-      "intent": "player_stat",
+      "shape": {
+       "relation": "player_seasons",
+       "shape": "scalar",
+       "by": "line"
+      },
       "situation": "division",
       "reads_as": "alignment"
      }
@@ -37227,7 +37263,11 @@
     {
      "kind": "non_calendar_situation",
      "facts": {
-      "intent": "leaderboard",
+      "shape": {
+       "relation": "player_seasons",
+       "shape": "ranking",
+       "by": "player"
+      },
       "situation": "before turning 27",
       "reads_as": "age"
      }
@@ -37420,7 +37460,11 @@
     {
      "kind": "non_calendar_situation",
      "facts": {
-      "intent": "player_stat",
+      "shape": {
+       "relation": "player_seasons",
+       "shape": "scalar",
+       "by": "line"
+      },
       "situation": "18 year old",
       "reads_as": "age"
      }
@@ -37542,7 +37586,11 @@
     {
      "kind": "non_calendar_situation",
      "facts": {
-      "intent": "player_stat",
+      "shape": {
+       "relation": "player_seasons",
+       "shape": "scalar",
+       "by": "line"
+      },
       "situation": "since returning",
       "reads_as": "other"
      }
@@ -43797,7 +43845,11 @@
     {
      "kind": "non_calendar_situation",
      "facts": {
-      "intent": "player_stat",
+      "shape": {
+       "relation": "player_seasons",
+       "shape": "scalar",
+       "by": "line"
+      },
       "situation": "easter",
       "reads_as": "other"
      }
@@ -52579,7 +52631,11 @@
     {
      "kind": "non_calendar_situation",
      "facts": {
-      "intent": "game_log",
+      "shape": {
+       "relation": "player_games",
+       "shape": "rows",
+       "by": "date"
+      },
       "situation": "march 17",
       "reads_as": "other"
      }
@@ -52772,7 +52828,11 @@
     {
      "kind": "non_calendar_situation",
      "facts": {
-      "intent": "game_log",
+      "shape": {
+       "relation": "player_games",
+       "shape": "rows",
+       "by": "date"
+      },
       "situation": "february 31",
       "reads_as": "other"
      }
@@ -79877,7 +79937,11 @@
    "point_refusal": {
     "kind": "unknown_stat",
     "facts": {
-     "intent": "record_when",
+     "shape": {
+      "relation": "player_games",
+      "shape": "split",
+      "by": "line"
+     },
      "stat": "losses"
     }
    }

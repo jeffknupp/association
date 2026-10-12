@@ -1123,7 +1123,7 @@ def _reading_from_route_refused(players: names.PlayerIndex, teams: names.TeamInd
     The championship first, as the answering loop asked them, then the
     window's ends, then a window per season."""
     if _CHAMPIONSHIP.search(question) and not _TITLE_ODDS.search(question):
-        return Cause(kind="championship", facts={"intent": reading.intent})
+        return Cause(kind="championship", facts={"shape": reading.asked})
     ends = contradicting_ends(question)
     if ends:
         return Cause(kind="window_ends_contradict", facts={"ends": [question[claim.start : claim.end] for claim in ends]})
@@ -1133,7 +1133,7 @@ def _reading_from_route_refused(players: names.PlayerIndex, teams: names.TeamInd
     if reading.asked not in TEAM_ONLY_ASKS:
         return None
     player = player_named_on_a_team_only_question(players, teams, question, reading.who, reading.span.season)
-    return Cause(kind="no_player_reading", facts={"player": player, "intent": reading.intent}) if player is not None else None
+    return Cause(kind="no_player_reading", facts={"player": player, "shape": reading.asked}) if player is not None else None
 
 
 def _reading_from_route_unsupported(question: str, reading: Reading) -> tuple[Cause, ...]:
@@ -1170,7 +1170,7 @@ def _unsupported_playoff_round(reading: Reading) -> Cause | None:
     playoff_round = reading.cuts.round
     if not isinstance(playoff_round, str) or not playoff_round.strip():
         return None
-    return Cause(kind="playoff_round", facts={"intent": reading.intent, "round": playoff_round})
+    return Cause(kind="playoff_round", facts={"shape": reading.asked, "round": playoff_round})
 
 
 def _unsupported_situation(reading: Reading) -> Cause | None:
@@ -1186,7 +1186,7 @@ def _unsupported_situation(reading: Reading) -> Cause | None:
     if situation is None or situation.read:
         return None
     reads_as = "age" if lexicon.AGE_WORDS.search(situation.text) else "alignment" if lexicon.CONFERENCE_OR_DIVISION.search(situation.text) else "other"
-    return Cause(kind="non_calendar_situation", facts={"intent": reading.intent, "situation": situation.text, "reads_as": reads_as})
+    return Cause(kind="non_calendar_situation", facts={"shape": reading.asked, "situation": situation.text, "reads_as": reads_as})
 
 
 def _unsupported_period_stat(reading: Reading) -> Cause | None:
@@ -1196,7 +1196,7 @@ def _unsupported_period_stat(reading: Reading) -> Cause | None:
     carries no minutes, plus-minus or advanced rate per quarter; a field
     goal, 3-point or free throw percentage IS read (``PERIOD_RATE_STATS``).
     The period and whether it is a half are the sentence's."""
-    scope, intent = reading, reading.intent
+    scope = reading
     asked = reading.asked
     measure = scope.measure
     if asked not in (PERIOD_LOG, PERIOD_RANKING) or measure is None or measure.as_typed is None or measure.as_typed in ("pts", "all"):
@@ -1207,7 +1207,7 @@ def _unsupported_period_stat(reading: Reading) -> Cause | None:
     period = scope.period
     quarter = period.number if period is not None and not period.half else None
     half = period.number if period is not None and period.half else None
-    return Cause(kind="period_stat", facts={"intent": intent, "stat": measure.as_typed, "period": quarter, "half": half})
+    return Cause(kind="period_stat", facts={"shape": reading.asked, "stat": measure.as_typed, "period": quarter, "half": half})
 
 
 def _unsupported_period_as_condition(question: str, reading: Reading) -> Cause | None:
@@ -1221,7 +1221,7 @@ def _unsupported_period_as_condition(question: str, reading: Reading) -> Cause |
     his first-quarter threes, fluently and wrongly."""
     if any(line.period is not None for line in reading.lines) or not (lexicon.PERIOD_AS_CONDITION.search(question) and lexicon.PERIOD_WORD.search(question)):
         return None
-    return Cause(kind="period_as_condition", facts={"intent": reading.intent})
+    return Cause(kind="period_as_condition", facts={"shape": reading.asked})
 
 
 def _unsupported_team_period_stat(reading: Reading) -> Cause | None:
@@ -1229,13 +1229,13 @@ def _unsupported_team_period_stat(reading: Reading) -> Cause | None:
     points) nor the period's rebuilt line
     (:data:`~association.query.measures.TEAM_PERIOD_COLUMNS`) holds:
     minutes, plus-minus, points in the paint."""
-    measure, intent = reading.measure, reading.intent
+    measure = reading.measure
     if reading.asked != TEAM_PERIOD_TOTAL or measure is None or measure.as_typed is None or measure.as_typed in ("points", "pts"):
         return None
     key = measure.key if measure.whose == "own" else None
     if key in TEAM_PERIOD_COLUMNS or key in PERIOD_RATE_STATS:
         return None
-    return Cause(kind="team_period_stat", facts={"intent": intent, "stat": measure.as_typed})
+    return Cause(kind="team_period_stat", facts={"shape": reading.asked, "stat": measure.as_typed})
 
 
 def _unsupported_bench_points(question: str, reading: Reading) -> Cause | None:
@@ -1249,7 +1249,7 @@ def _unsupported_bench_points(question: str, reading: Reading) -> Cause | None:
     # beside the one word this reads (slice (c): it read "bench points" as
     # words, and the measure's "points" twice over).
     named = reading.measure is not None and reading.measure.key == "points" and any(c.what == "measure" for c in reading.claims)
-    return Cause(kind="bench_points", facts={"intent": reading.intent}) if named and _BENCH_WORD.search(question) else None
+    return Cause(kind="bench_points", facts={"shape": reading.asked}) if named and _BENCH_WORD.search(question) else None
 
 
 def _unsupported_team_boolean_count(reading: Reading) -> Cause | None:
@@ -1270,7 +1270,7 @@ def _unsupported_team_boolean_count(reading: Reading) -> Cause | None:
         or scope.who.team is None
     ):
         return None
-    return Cause(kind="team_boolean_count", facts={"intent": reading.intent, "stat": measure.as_typed})
+    return Cause(kind="team_boolean_count", facts={"shape": reading.asked, "stat": measure.as_typed})
 
 
 def _reading_from_route_left_out(players: names.PlayerIndex, question: str, reading: Reading) -> LeftOut | None:

@@ -1756,11 +1756,11 @@ def test_a_single_game_high_with_no_stat_is_declined_for_the_stat_not_the_player
 
     with pytest.raises(PointRefused) as no_stat:
         default_point(asked("single_game_high"), slots_scope({"player": "Brice Sensabaugh", "span": "career"}))
-    assert no_stat.value.cause == Cause(kind="needs_stat", facts={"intent": "single_game_high"})
+    assert no_stat.value.cause == Cause(kind="needs_stat", facts={"shape": asked("single_game_high")})
     assert refusal_result(no_stat.value.cause).answer == "A single-game high needs a stat to rank games by, and none was read."
     with pytest.raises(PointRefused) as unknown:
         default_point(asked("single_game_high"), slots_scope({"player": "Brice Sensabaugh", "stat": "asistss"}))
-    assert unknown.value.cause == Cause(kind="unknown_stat", facts={"intent": "single_game_high", "stat": "asistss"})
+    assert unknown.value.cause == Cause(kind="unknown_stat", facts={"shape": asked("single_game_high"), "stat": "asistss"})
     assert refusal_result(unknown.value.cause).answer == "A single-game high cannot rank games by 'asistss' - only by a box-score stat each game has a number for."
     with pytest.raises(Unsupported, match="needs a named player"):
         default_point(asked("single_game_high"), slots_scope({"stat": "points"}))
@@ -1967,31 +1967,31 @@ _CAUSE_EXAMPLES: dict[str, dict[str, Any]] = {
     "window_ends_contradict": {"ends": ["last 5", "first games"]},
     "window_per_season": {"window": "first 10 game", "per": "every season"},
     "ranking_unit": {"metric": "avg_points", "rate": "/ 90"},
-    "needs_stat": {"intent": "single_game_high"},
-    "unknown_stat": {"intent": "streak", "stat": "double_double"},
-    "needs_threshold": {"intent": "record_when", "stat": "points"},
-    "threshold_needs_stat": {"intent": "game_log", "threshold": 15},
-    "threshold_counts_every_game": {"intent": "threshold_count", "threshold": 0},
+    "needs_stat": {"shape": asked("single_game_high")},
+    "unknown_stat": {"shape": asked("streak"), "stat": "double_double"},
+    "needs_threshold": {"shape": asked("record_when"), "stat": "points"},
+    "threshold_needs_stat": {"shape": asked("game_log"), "threshold": 15},
+    "threshold_counts_every_game": {"shape": asked("threshold_count"), "threshold": 0},
     "line_names_no_stat": {"phrase": "under 30 gizmos", "side": "under"},
     "needs_line": {},
     "career_place_needs_player": {"season_n": 15},
-    "needs_subject": {"intent": "record_when"},
+    "needs_subject": {"shape": asked("record_when")},
     "team_streak_of_stat": {"stat": "points"},
     "matchup_needs_two": {"names": ["Jayson Tatum"]},
     "no_period_stat": {"stat": "minutes"},
     "no_coach_table": {"unanswerable": "coach"},
     "too_short": {"asked": "Tatum rec"},
-    "championship": {"intent": "team_leaderboard"},
-    "no_player_reading": {"player": "Alperen Sengun", "intent": "team_leaderboard"},
-    "playoff_round": {"intent": "game_log", "round": "finals"},
-    "non_calendar_situation": {"intent": "player_stat", "situation": "18 year old", "reads_as": "age"},
-    "period_stat": {"intent": "period_leaderboard", "stat": "minutes", "period": 4, "half": None},
-    "period_as_condition": {"intent": "other"},
-    "team_period_stat": {"intent": "team_quarter_points", "stat": "plusMinus"},
-    "bench_points": {"intent": "team_leaderboard"},
-    "team_boolean_count": {"intent": "leaderboard", "stat": "triple_double"},
-    "cannot_honor": {"intent": "with_without", "name": "with_without", "slots": ["since", "until"], "without": None, "why": "it would answer for a different span than was asked"},
-    "no_reading_of_point": {"intent": "team_record", "name": "team_record"},
+    "championship": {"shape": asked("team_leaderboard")},
+    "no_player_reading": {"player": "Alperen Sengun", "shape": asked("team_leaderboard")},
+    "playoff_round": {"shape": asked("game_log"), "round": "finals"},
+    "non_calendar_situation": {"shape": asked("player_stat"), "situation": "18 year old", "reads_as": "age"},
+    "period_stat": {"shape": asked("period_leaderboard"), "stat": "minutes", "period": 4, "half": None},
+    "period_as_condition": {"shape": asked("other")},
+    "team_period_stat": {"shape": asked("team_quarter_points"), "stat": "plusMinus"},
+    "bench_points": {"shape": asked("team_leaderboard")},
+    "team_boolean_count": {"shape": asked("leaderboard"), "stat": "triple_double"},
+    "cannot_honor": {"shape": asked("with_without"), "name": "with_without", "slots": ["since", "until"], "without": None, "why": "it would answer for a different span than was asked"},
+    "no_reading_of_point": {"shape": asked("team_record"), "name": "team_record"},
 }
 
 #: The kinds whose ``intent`` fact is the page's, shown beside the sentence
@@ -2026,9 +2026,18 @@ def test_every_cause_a_reading_refuses_by_is_said_naming_its_fact() -> None:
         "Nothing here answers this question: with_without: with_without cannot honor ['since', 'until'] - it would answer for a different span than was asked."
     )
     assert refusal_result(
-        Cause(kind="cannot_honor", facts={"intent": "streak", "name": "streak", "slots": ["situation"], "without": "team or player", "why": "the league-wide streak has no single subject to narrow"})
+        Cause(
+            kind="cannot_honor",
+            facts={
+                "shape": asked("streak"),
+                "name": "streak",
+                "slots": ["situation"],
+                "without": "team or player",
+                "why": "the league-wide streak has no single subject to narrow",
+            },
+        )
     ).answer == ("Nothing here answers this question: streak: streak cannot honor ['situation'] without a named team or player - the league-wide streak has no single subject to narrow.")
-    assert refusal_result(Cause(kind="needs_threshold", facts={"intent": "streak", "stat": "threePointFieldGoalsMade"})).answer == (
+    assert refusal_result(Cause(kind="needs_threshold", facts={"shape": asked("streak"), "stat": "threePointFieldGoalsMade"})).answer == (
         "A streak needs the number of 3-pointers each game has to reach, and none was read."
     )
 

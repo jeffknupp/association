@@ -30,7 +30,7 @@ from association.query.measures import PERIOD_COLUMNS
 from association.query.metrics import LEADERBOARD_METRICS
 from association.query.notes import Note, decided, note
 from association.query.player_games import PERIOD_LOG_COLUMNS, PERIOD_RATES, STAT_LABELS, _joined, period_columns
-from association.query.reading import LeftOut, ordinal_word
+from association.query.reading import GAME_HIGHS, GAMES_COUNTED, LINE_RECORD, LINE_RUNS, PLAYER_LOG, LeftOut, PointShape, asked_label, ordinal_word
 from association.query.result import (
     Calendar,
     Chart,
@@ -586,33 +586,33 @@ def _ranking_unit(metric: str, rate: Any) -> str:
     return f"No leaderboard ranks {metric.replace('_', ' ')} {asked} - the warehouse stores it only {' or '.join(forms)}."
 
 
-#: How each shape over a line is named in its refusal, by the intent the
+#: How each shape over a line is named in its refusal, by the key the
 #: cause carries.
-_LINE_SHAPES: dict[str, str] = {
-    "single_game_high": "a single-game high",
-    "record_when": "a record in the games over a line",
-    "threshold_count": "a count of games over a line",
-    "streak": "a streak",
-    "game_log": "keeping only the games past a number",
+_LINE_SHAPES: dict[PointShape, str] = {
+    GAME_HIGHS: "a single-game high",
+    LINE_RECORD: "a record in the games over a line",
+    GAMES_COUNTED: "a count of games over a line",
+    LINE_RUNS: "a streak",
+    PLAYER_LOG: "keeping only the games past a number",
 }
 
 #: What the stat is for, in each shape's refusal.
-_STAT_FOR: dict[str, str] = {
-    "single_game_high": "to rank games by",
-    "record_when": "the line is on",
-    "threshold_count": "the line is on",
-    "streak": "each game has to reach",
-    "game_log": "the games have to reach it in",
+_STAT_FOR: dict[PointShape, str] = {
+    GAME_HIGHS: "to rank games by",
+    LINE_RECORD: "the line is on",
+    GAMES_COUNTED: "the line is on",
+    LINE_RUNS: "each game has to reach",
+    PLAYER_LOG: "the games have to reach it in",
 }
 
 
 #: A shape over a line by the number its games reach, for a number read
 #: with no stat.
-_REACHING: dict[str, str] = {
-    "game_log": "Keeping only the games past {}",
-    "streak": "A streak of games reaching {}",
-    "record_when": "A record in the games reaching {}",
-    "threshold_count": "A count of games reaching {}",
+_REACHING: dict[PointShape, str] = {
+    PLAYER_LOG: "Keeping only the games past {}",
+    LINE_RUNS: "A streak of games reaching {}",
+    LINE_RECORD: "A record in the games reaching {}",
+    GAMES_COUNTED: "A count of games reaching {}",
 }
 
 
@@ -629,12 +629,14 @@ def _cause_sentence(kind: str, facts: Mapping[str, Any]) -> str | None:
     missing; ``None`` for a kind said elsewhere. Moved from
     ``compose.plan``, which said a reading's causes until the run's joined
     them here."""
-    shape = _LINE_SHAPES.get(facts.get("intent", ""), "this answer")
+    asked = facts.get("shape") if isinstance(facts.get("shape"), PointShape) else None
+    shape = _LINE_SHAPES.get(asked, "this answer") if asked is not None else "this answer"
+    reaching = _REACHING.get(asked, "Games reaching {}") if asked is not None else "Games reaching {}"
     sentences = {
-        "needs_stat": lambda: f"{shape.capitalize()} needs a stat {_STAT_FOR.get(facts.get('intent', ''), 'to read')}, and none was read.",
-        "unknown_stat": lambda: _unknown_stat(facts.get("intent", ""), facts["stat"], shape),
+        "needs_stat": lambda: f"{shape.capitalize()} needs a stat {_STAT_FOR.get(asked, 'to read') if asked is not None else 'to read'}, and none was read.",
+        "unknown_stat": lambda: _unknown_stat(asked, facts["stat"], shape),
         "needs_threshold": lambda: f"{shape.capitalize()} needs the number of {_stat_words(facts['stat'])} each game has to reach, and none was read.",
-        "threshold_needs_stat": lambda: f"{_REACHING.get(facts.get('intent', ''), 'Games reaching {}').format(facts['threshold'])} needs the stat they reach it in, and none was read.",
+        "threshold_needs_stat": lambda: f"{reaching.format(facts['threshold'])} needs the stat they reach it in, and none was read.",
         "threshold_counts_every_game": lambda: f"A threshold of {facts['threshold']} counts every game - there is no line there to keep games past.",
         "line_names_no_stat": lambda: f"{facts['phrase']!r} names no box-score stat a game can be kept {facts['side']}.",
         "needs_line": lambda: "A count of games across the league needs the line it counts - a stat and a number, as in '40-point games' - and none could be read from the question.",
@@ -693,12 +695,12 @@ COACH_REFUSAL: str = (
 """
 
 
-def _unknown_stat(words: str, stat: Any, shape: str) -> str:
+def _unknown_stat(asked: Any, stat: Any, shape: str) -> str:
     """The refusal for a stat with no per-game column, in the shape's words
-    (``words``: the cause's ``intent`` fact, the reading's name for them)."""
-    if words == "single_game_high":
+    (``asked``: the cause's ``shape`` fact, the key the words ask)."""
+    if asked == GAME_HIGHS:
         return f"A single-game high cannot rank games by {stat!r} - only by a box-score stat each game has a number for."
-    if words == "game_log":
+    if asked == PLAYER_LOG:
         return f"A game log has no per-game column for {stat!r}."
     return f"{shape.capitalize()} cannot be read over {stat!r} - it has no per-game box-score column."
 
@@ -4181,7 +4183,8 @@ def _say_no_player_reading(facts: Mapping[str, Any]) -> str:
     ("alperen şengün alltime record" read as a team ranking): names the
     player it read rather than answering the league's or a team's own
     numbers, the wrong subject. Was ``entities.team_only_question_names_a_player``."""
-    player, shape = facts["player"], str(facts["intent"]).replace("_", " ")
+    # The shape by the page's label (Phase 4 deletes it with SHAPE_NAMES).
+    player, shape = facts["player"], asked_label(facts["shape"]).replace("_", " ")
     return (
         f"This was read as a question about {player}, a player, but {shape} has no reading for one - "
         f"it would have answered the league's or a team's own numbers instead. Ask about {player}'s own stats, "
@@ -4257,8 +4260,10 @@ def _shape_declined(facts: Mapping[str, Any], decline: str) -> str:
     loop's sentence for a question nothing answered
     (``agent.refusal_text``), under the page's label, word for word: Phase
     3, step 4 made each a cause the planner says (``cannot_honor``,
-    ``no_reading_of_point``), and the sentence did not move."""
-    return f"Nothing here answers this question: {facts['intent']}: {decline}."
+    ``no_reading_of_point``), and the sentence did not move. The label is
+    read off the key the words ask (the cause's ``shape``, :func:`asked_label`), which
+    Phase 4 deletes with the page's labels."""
+    return f"Nothing here answers this question: {asked_label(facts['shape'])}: {decline}."
 
 
 def _without_named(facts: Mapping[str, Any]) -> str:

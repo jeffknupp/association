@@ -2362,11 +2362,17 @@ class ShapeDeclined(Unsupported):
         self.cause: Cause = Cause(kind=kind, facts=dict(facts))
 
     @staticmethod
-    def labeled(cause: Cause, intent: str) -> Cause:
-        """``cause`` under the page's label ``intent`` - the retired name the
-        sentence begins with (``"Nothing here answers this question:
-        <intent>: ..."``)."""
-        return Cause(kind=cause.kind, facts={"intent": intent, **cause.facts})
+    def under(cause: Cause, asked: PointShape | None) -> Cause:
+        """``cause`` under the key the words ask (``asked``), whose label
+        the sentence begins with (``"Nothing here answers this question:
+        <label>: ..."``, :func:`asked_label`).
+
+        .. versionchanged:: 6.0.0
+           ``labeled(cause, intent)``, which carried the label itself, until
+           the Phase 3 review's cleanup: the sayer keys on the shape, and
+           names it by the label only where the sentence prints it.
+        """
+        return Cause(kind=cause.kind, facts={"shape": asked, **cause.facts})
 
 
 _HALF_PERIODS: dict[int, tuple[int, ...]] = {1: (1, 2), 2: (3, 4)}

@@ -10,7 +10,9 @@ field the Reading did not settle is not settled here either.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, replace
+from typing import Any
 
 from association.query.answer import Reply
 from association.query.coverage import coverage_refusal
@@ -18,7 +20,7 @@ from association.query.measure import spelled
 from association.query.measures import stat_measure
 from association.query.player_relation import RELATION_SCOPING, RELATION_SCOPING_EXCLUDED
 from association.query.point import TEAM_SEASON_POINTS, team_season_point
-from association.query.reading import SHAPE_NAMES, Cause, Filtered, Measure, PointShape, Reading, ShapeCells, ShapeDeclined, _career_scope, cell_set, cell_slots
+from association.query.reading import SHAPE_NAMES, Cause, Filtered, Measure, PointShape, Reading, ShapeCells, ShapeDeclined, _career_scope, asked_label, cell_set, cell_slots
 from association.query.result import Refusal
 from association.query.team_relation import TEAM_RELATION_SCOPING, TEAM_RELATION_SCOPING_EXCLUDED
 
@@ -459,10 +461,18 @@ def refusal_of(cause: Cause) -> Refusal:
     if cause.kind in _REFUSED_BY_NAME:
         # What the page showed beside these sentences when the answering
         # loop said them itself: the shape refused, by name, and the intent.
-        return Refusal(kind=cause.kind, facts=cause.facts, shown={"refused": cause.kind, "intent": cause.facts["intent"]})
+        return Refusal(kind=cause.kind, facts=cause.facts, shown={"refused": cause.kind, "intent": asked_label(cause.facts["shape"])})
     if cause.kind == "no_player_reading":
         return Refusal(kind=cause.kind, facts=cause.facts, shown={"named_player": cause.facts["player"]})
-    return Refusal(kind=cause.kind, facts=cause.facts, shown=dict(cause.facts))
+    return Refusal(kind=cause.kind, facts=cause.facts, shown=_page_facts(cause.facts))
+
+
+def _page_facts(facts: Mapping[str, Any]) -> dict[str, Any]:
+    """A cause's facts as the page shows them beside its sentence: the key
+    the words ask (``shape``) under the page's label, as ``intent`` - what
+    the page showed while the facts carried the label (Phase 4 deletes the
+    label with :data:`~association.query.reading.SHAPE_NAMES`)."""
+    return {("intent" if key == "shape" else key): (asked_label(value) if key == "shape" else value) for key, value in facts.items()}
 
 
 def refusal_result(cause: Cause) -> Reply:
@@ -509,7 +519,7 @@ def plan_point(reading: Reading) -> Planned:
         query = plan(reading.point)
     except ShapeDeclined as exc:
         # A decline the planner says by its cause (the answering loop puts
-        # the page's label on it, ShapeDeclined.labeled).
+        # the key the words ask on it, ShapeDeclined.under).
         return Planned(declined=str(exc), shape=shape, cause=exc.cause)
     except Unsupported as exc:
         return Planned(declined=str(exc), shape=shape)

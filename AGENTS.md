@@ -1546,7 +1546,13 @@ a shape:
     a `PointShape` (`Reading.asked`, below, "An intent comes from the
     question's own words"), the point reader and the taggers key on it,
     and `Reading.intent` is the page's label alone (`Answer.intent`,
-    written from `SHAPE_NAMES`, Phase 4's to delete). Proved on the four populations: 628 of 628, 2,082 of 2,082
+    written from `SHAPE_NAMES`, Phase 4's to delete). A cause carries the
+    key, never the label (its `shape` fact, since the Phase 3 review's
+    cleanup (b)2): the sayer's phrase tables are keyed by the `PointShape`
+    (`say._LINE_SHAPES`, `_STAT_FOR`, `_REACHING`), and a sentence or a
+    page that prints the retired name reads it off the key through
+    `asked_label` (a decline's "Nothing here answers this question:
+    <label>: ...", `compose.plan._page_facts`). Proved on the four populations: 628 of 628, 2,082 of 2,082
     and the 2,710 readings identical with the point's `by`, `on`, `shape`
     and `source` left out (`compare --ignore`, `reader_cmp.py --ignore`:
     each lists the field's values by count), 2,608 of 2,608 unit-test

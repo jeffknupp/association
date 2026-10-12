@@ -1159,7 +1159,7 @@ def test_a_team_only_question_naming_one_player_is_read_back(scope_con: duckdb.D
     from association.query.compose.plan import refusal_result
     from association.query.reading import Cause
 
-    said = refusal_result(Cause(kind="no_player_reading", facts={"player": named, "intent": "team_leaderboard"}))
+    said = refusal_result(Cause(kind="no_player_reading", facts={"player": named, "shape": asked("team_leaderboard")}))
     assert "Alperen Sengun" in said.answer and "team leaderboard" in said.answer
     assert said.data == {"named_player": "Alperen Sengun", "message": said.answer}
 

@@ -395,7 +395,7 @@ def _everyone_threshold_count(asked: PointShape | None, scope: Filtered, predica
         if threshold is not None and threshold < 1:
             # threshold_count's own refusal: measured, "most 3 pointers made
             # since 2020" arrived as threshold 0 and would count every game.
-            raise PointRefused(Cause(kind="threshold_counts_every_game", facts={"intent": asked_label(GAMES_COUNTED), "threshold": threshold}))
+            raise PointRefused(Cause(kind="threshold_counts_every_game", facts={"shape": GAMES_COUNTED, "threshold": threshold}))
         predicates = _everyone_threshold_count_line(scope)
     if not predicates:
         raise PointRefused(Cause(kind="needs_line"))
@@ -778,7 +778,7 @@ def _threshold_line(scope: Filtered) -> list[tuple[str, str, Any]]:
         return []
     col = stat_column(scope.measure)
     if col is None:
-        raise PointRefused(Cause(kind="threshold_needs_stat", facts={"intent": asked_label(PLAYER_LOG), "threshold": threshold}))
+        raise PointRefused(Cause(kind="threshold_needs_stat", facts={"shape": PLAYER_LOG, "threshold": threshold}))
     return [(col, ">=", threshold)]
 
 
@@ -834,17 +834,15 @@ def _default_record_when(scope: Filtered) -> Reading:
         raise Unsupported("record_when needs a player, a stat and a positive threshold here")
     stat = _named_stat(scope)
     if col is None and stat and stat.strip():
-        raise PointRefused(Cause(kind="unknown_stat", facts={"intent": asked_label(LINE_RECORD), "stat": stat}))
+        raise PointRefused(Cause(kind="unknown_stat", facts={"shape": LINE_RECORD, "stat": stat}))
     if col is None:
         raise PointRefused(
-            Cause(kind="threshold_needs_stat", facts={"intent": asked_label(LINE_RECORD), "threshold": threshold})
-            if threshold is not None
-            else Cause(kind="needs_stat", facts={"intent": asked_label(LINE_RECORD)})
+            Cause(kind="threshold_needs_stat", facts={"shape": LINE_RECORD, "threshold": threshold}) if threshold is not None else Cause(kind="needs_stat", facts={"shape": LINE_RECORD})
         )
     if threshold is None:
-        raise PointRefused(Cause(kind="needs_threshold", facts={"intent": asked_label(LINE_RECORD), "stat": col}))
+        raise PointRefused(Cause(kind="needs_threshold", facts={"shape": LINE_RECORD, "stat": col}))
     if threshold < 1:
-        raise PointRefused(Cause(kind="threshold_counts_every_game", facts={"intent": asked_label(LINE_RECORD), "threshold": threshold}))
+        raise PointRefused(Cause(kind="threshold_counts_every_game", facts={"shape": LINE_RECORD, "threshold": threshold}))
     # A record over a line: said as a split by the line (compose.records),
     # compiled as the scalar record above and below it.
     return Reading(**scope.filters(), shape="split", by="line", measures=[], aggregate="record", group="none", predicates=[(col, ">=", threshold)], available=BOX_SCORES)
@@ -939,7 +937,7 @@ def _default_single_game_high(scope: Filtered) -> Reading:
     col = stat_column(scope.measure)
     stat = _named_stat(scope)
     if col is None:
-        raise PointRefused(Cause(kind="unknown_stat", facts={"intent": asked_label(GAME_HIGHS), "stat": stat}) if stat else Cause(kind="needs_stat", facts={"intent": asked_label(GAME_HIGHS)}))
+        raise PointRefused(Cause(kind="unknown_stat", facts={"shape": GAME_HIGHS, "stat": stat}) if stat else Cause(kind="needs_stat", facts={"shape": GAME_HIGHS}))
     if not _named_player_in(scope):
         raise Unsupported("single_game_high needs a named player here")
     return Reading(
@@ -1606,7 +1604,7 @@ def _read_point(asked: PointShape | None, scope: Filtered, question: str, subjec
             # A record "when" is a player's line or a team's own (the team
             # branch above); naming neither, it has nobody to read - the
             # reason record_when's retired template gave.
-            raise PointRefused(Cause(kind="needs_subject", facts={"intent": asked_label(LINE_RECORD)}))
+            raise PointRefused(Cause(kind="needs_subject", facts={"shape": LINE_RECORD}))
         # The league's read, the one point a position group narrows: the
         # scope as read, its position with it.
         return _everyone_point(asked, positioned, question, stat_measure(scope.measure))
