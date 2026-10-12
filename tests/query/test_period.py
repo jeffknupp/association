@@ -14,7 +14,6 @@ from typing import Any
 import duckdb
 import pytest
 from routed import staged as settle
-from shapes import asked
 from slots import slots_scope
 from test_period_relation import SEASON, con, team_con  # noqa: F401 - the two relation fixtures, imported by name
 
@@ -24,14 +23,30 @@ from association.query.period import PeriodRead, read_period, which_period
 from association.query.player_games import Narrowed, rows_sql
 from association.query.player_relation import RELATION_SCOPING, RELATION_SCOPING_EXCLUDED, apply_period
 from association.query.point import PERIOD_ASKS, period_under
-from association.query.reading import PERIOD_LOG, PERIOD_RANKING, PLAYER_LOG, Claim, Filtered, Line, Period, PointShape, Reading, ScopeError, cell_set, period_narrowing, unhonored_cells
+from association.query.reading import (
+    PERIOD_LOG,
+    PERIOD_RANKING,
+    PLAYER_LOG,
+    TEAM_PERIOD_TOTAL,
+    Claim,
+    Filtered,
+    Line,
+    Period,
+    PointShape,
+    Reading,
+    ScopeError,
+    cell_set,
+    period_narrowing,
+    unhonored_cells,
+)
+from association.query.reading import Subject as Who
 from association.query.team_games import TeamNarrowed
 from association.query.team_games import rows_sql as team_rows_sql
 from association.query.team_relation import TEAM_RELATION_SCOPING, TEAM_RELATION_SCOPING_EXCLUDED, _team_games_apply_period
 
 
-def _read(question: str, intent: str = "period_split") -> Period | None:
-    return period_under(asked(intent), read_period(question)).period
+def _read(question: str, shape: PointShape | None = PERIOD_LOG) -> Period | None:
+    return period_under(shape, read_period(question)).period
 
 
 # ---------------- the tagger: words to a Period ----------------
@@ -66,7 +81,7 @@ def test_the_value_is_kept_under_a_reader_that_takes_one_and_dropped_elsewhere()
     three period intents alone, and six readings naming a quarter carry
     none (their subject unread, the point reader declining them). The tagger
     keeps that, and claims nothing where it writes nothing."""
-    assert {asked(name) for name in ("period_split", "period_leaderboard", "team_quarter_points")} == PERIOD_ASKS
+    assert {PERIOD_LOG, PERIOD_RANKING, TEAM_PERIOD_TOTAL} == PERIOD_ASKS
     for shape in PERIOD_ASKS:
         assert period_under(shape, read_period("Damian Lillard first quarter game log")) == PeriodRead(Period(number=1), (Claim(15, 28, "period"),))
     assert period_under(None, read_period("Damian L first quarter game log")) == PeriodRead(None, ())
@@ -145,8 +160,8 @@ def test_the_cell_and_what_a_reader_leaves_unhonored() -> None:
     assert unhonored_cells(Reading(period=Period(number=4)), frozenset()) == ["period"]
     assert unhonored_cells(Reading(period=Period(number=4)), frozenset({"period"})) == []
     # A reader whose words never said a quarter steps aside for one.
-    assert [cell for cell, _ in cells_unhonored(slots_scope({"player": "x", "half": 2}), PLAYER_LOG)] == ["period"]
-    assert [cell for cell, _ in cells_unhonored(slots_scope({"player": "x", "half": 2}), PERIOD_LOG)] == []
+    assert [cell for cell, _ in cells_unhonored(Reading(who=Who(kind="player", players=("x",)), period=Period(number=2, half=True)), PLAYER_LOG)] == ["period"]
+    assert [cell for cell, _ in cells_unhonored(Reading(who=Who(kind="player", players=("x",)), period=Period(number=2, half=True)), PERIOD_LOG)] == []
 
 
 def test_the_relation_tables_declare_the_period_once() -> None:
